@@ -431,6 +431,32 @@ def _sort_parse_fn_lines() -> list[str]:
     ]
 
 
+def _auth_docstring_paragraph(*, read_only: bool) -> str:
+    """The auth-seam paragraph appended to every generated router's module docstring
+    (#367). A generated router is unauthenticated by construction — the consumer wires
+    a dependency onto `app.include_router` — and until this, nothing in the emitted
+    module said so, mirroring the gap the TS route generators closed for #367 with a
+    doc-comment above the register function. Python has no `expose` option to narrow a
+    generated router down to a safe subset (non-TS REST templates are frozen for
+    features), so the escape hatch for anything a dependency cannot express — a
+    row-ownership rule — is `metaobjects eject`, not a narrowing flag.
+
+    *read_only* only swaps "these endpoints" for "these read endpoints" on a
+    projection's GET-only surface; the guidance is otherwise identical. Returned text
+    starts and ends with a newline so a caller can splice it directly between the
+    docstring's summary line and the closing `\"\"\"`."""
+    verbs = "read endpoints" if read_only else "endpoints"
+    return (
+        "\n"
+        f"Auth: these {verbs} are unauthenticated. To guard them, include the router with a\n"
+        "dependency, e.g. `app.include_router(router, dependencies=[Depends(require_auth)])`.\n"
+        "\n"
+        'A row-ownership rule ("only the owner may read this row") cannot be expressed as a\n'
+        "router dependency: eject this generator with `metaobjects eject` and hand-write\n"
+        "those endpoints.\n"
+    )
+
+
 class RouterGenerator:
     """One ``<entity_snake>_router.py`` per routed object (FastAPI ``APIRouter``):
     full CRUD for a writable source, read-only for a view-backed one.
@@ -882,7 +908,9 @@ class RouterGenerator:
         parts.append(
             h + "\n"
             + f'"""GENERATED — TPH polymorphic REST router for the {short_name} hierarchy '
-            + '(single-table inheritance: polymorphic base + per-subtype CRUD)."""\n'
+            + '(single-table inheritance: polymorphic base + per-subtype CRUD).\n'
+            + _auth_docstring_paragraph(read_only=False)
+            + '"""\n'
         )
         parts.append("from __future__ import annotations")
         parts.append("")
@@ -1232,7 +1260,9 @@ class RouterGenerator:
         parts: list[str] = []
         parts.append(
             generated_header(short_name, _effective_fqn(entity)).rstrip() + "\n"
-            + f'"""GENERATED — REST router for {short_name} entity. Implements the cross-port API contract."""\n'
+            + f'"""GENERATED — REST router for {short_name} entity. Implements the cross-port API contract.\n'
+            + _auth_docstring_paragraph(read_only=False)
+            + '"""\n'
         )
         parts.append("from __future__ import annotations")
         parts.append("")
@@ -1401,7 +1431,9 @@ class RouterGenerator:
             generated_header(short_name, _effective_fqn(entity)).rstrip() + "\n"
             + f'"""GENERATED — read-only REST router for the {short_name} projection.\n\n'
             + "Implements the cross-port API contract: GET list + GET by id; every write\n"
-            + 'verb answers 405 {"error": "method_not_allowed"}."""\n'
+            + 'verb answers 405 {"error": "method_not_allowed"}.\n'
+            + _auth_docstring_paragraph(read_only=True)
+            + '"""\n'
         )
         parts.append("from __future__ import annotations")
         parts.append("")

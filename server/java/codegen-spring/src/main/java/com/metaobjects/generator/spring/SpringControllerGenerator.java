@@ -220,8 +220,17 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("import java.util.Map;\n");
         src.append("import java.util.Set;\n\n");
 
-        src.append("/** GENERATED — REST controller for ").append(shortName)
-           .append(" entity. Implements the cross-port API contract. */\n");
+        src.append("/**\n");
+        src.append(" * GENERATED — REST controller for ").append(shortName)
+           .append(" entity. Implements the cross-port API contract.\n");
+        src.append(" *\n");
+        src.append(" * <p>Auth: these endpoints are unauthenticated. Require authentication for this path in\n");
+        src.append(" * your Spring Security config, e.g. {@code http.authorizeHttpRequests(a ->\n");
+        src.append(" * a.requestMatchers(\"").append(routeBase).append("/**\").authenticated())}.\n");
+        src.append(" * A row-ownership rule (\"only the owner may read this row\") can't be expressed in path\n");
+        src.append(" * config — eject this generator with {@code mvn metaobjects:eject} and hand-write those\n");
+        src.append(" * endpoints.\n");
+        src.append(" */\n");
         src.append("@RestController\n");
         src.append("@RequestMapping(\"").append(routeBase).append("\")\n");
         src.append("public class ").append(controllerName).append(" {\n\n");
@@ -552,6 +561,13 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
            .append(" projection.\n");
         src.append(" * Implements the cross-port API contract: GET list + GET by id; every write\n");
         src.append(" * verb answers 405 {\"error\": \"method_not_allowed\"}.\n");
+        src.append(" *\n");
+        src.append(" * <p>Auth: these read endpoints are unauthenticated. Require authentication for this path\n");
+        src.append(" * in your Spring Security config, e.g. {@code http.authorizeHttpRequests(a ->\n");
+        src.append(" * a.requestMatchers(\"").append(routeBase).append("/**\").authenticated())}.\n");
+        src.append(" * A row-ownership rule (\"only the owner may read this row\") can't be expressed in path\n");
+        src.append(" * config — eject this generator with {@code mvn metaobjects:eject} and hand-write those\n");
+        src.append(" * endpoints.\n");
         src.append(" */\n");
         src.append("@RestController\n");
         src.append("@RequestMapping(\"").append(routeBase).append("\")\n");
@@ -800,8 +816,18 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("import java.util.Map;\n");
         src.append("import java.util.Set;\n\n");
 
-        src.append("/** GENERATED — TPH discriminator-base controller for ").append(shortName)
-           .append(" (polymorphic collection + per-subtype CRUD). Implements the cross-port API contract. */\n");
+        src.append("/**\n");
+        src.append(" * GENERATED — TPH discriminator-base controller for ").append(shortName)
+           .append(" (polymorphic collection + per-subtype CRUD).\n");
+        src.append(" * Implements the cross-port API contract.\n");
+        src.append(" *\n");
+        src.append(" * <p>Auth: these endpoints are unauthenticated. Require authentication for this path in\n");
+        src.append(" * your Spring Security config, e.g. {@code http.authorizeHttpRequests(a ->\n");
+        src.append(" * a.requestMatchers(\"").append(routeBase).append("/**\").authenticated())}.\n");
+        src.append(" * A row-ownership rule (\"only the owner may read this row\") can't be expressed in path\n");
+        src.append(" * config — eject this generator with {@code mvn metaobjects:eject} and hand-write those\n");
+        src.append(" * endpoints.\n");
+        src.append(" */\n");
         src.append("@RestController\n");
         src.append("@RequestMapping(\"").append(routeBase).append("\")\n");
         src.append("public class ").append(controllerName).append(" {\n\n");

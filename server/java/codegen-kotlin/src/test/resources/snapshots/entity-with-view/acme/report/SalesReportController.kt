@@ -274,7 +274,14 @@ private fun rowToSalesReport(row: ResultRow): SalesReport = SalesReport(
     totalCents = row[SalesReportTable.totalCents],
 )
 
-/** GENERATED — READ-ONLY REST controller for the SalesReport projection. */
+/**
+ * GENERATED — READ-ONLY REST controller for the SalesReport projection.
+ *
+ * Auth: these read endpoints are unauthenticated. In your Spring Security config, require
+ * authentication for `/api/sales_reports` and every path under it (`requestMatchers` + `authenticated()`).
+ * A row-ownership rule ("only the owner may read this row") can't be expressed in path
+ * config — eject this generator with `mvn metaobjects:eject` and hand-write those endpoints.
+ */
 @RestController
 @RequestMapping("/api/sales_reports")
 class SalesReportController {

@@ -68,6 +68,22 @@ public class RoutesGenerator : PerEntityGenerator
         return GenerateStandardRoutes(entity, ctx);
     }
 
+    // #367 — a generated route file carries no auth by default; ASP.NET Core applies no
+    // policy to a bare Map* call, and an adopter that doesn't notice ships it open. The XML
+    // doc on the mount method is the one place a consumer reads before wiring it into their
+    // host, so it says so and shows the fix rather than leaving it to a README nobody opens.
+    private static void AppendUnauthenticatedRoutesDoc(StringBuilder sb, string cls, bool readOnly)
+    {
+        var verbs = readOnly ? "read endpoints" : "endpoints";
+        sb.AppendLine($"    /// <summary>Maps <c>{cls}</c> REST routes. Unauthenticated — see remarks.</summary>");
+        sb.AppendLine("    /// <remarks>");
+        sb.AppendLine($"    /// These {verbs} are unauthenticated. Guard them by mapping on a group that requires");
+        sb.AppendLine($"    /// authorization, e.g. <c>app.MapGroup(\"\").RequireAuthorization().Map{cls}Routes();</c>");
+        sb.AppendLine("    /// A row-ownership rule (\"only the owner may read this row\") cannot be expressed on a mount:");
+        sb.AppendLine($"    /// eject this generator with <c>dotnet meta eject</c> and hand-write those {verbs}.");
+        sb.AppendLine("    /// </remarks>");
+    }
+
     protected virtual EmittedFile GenerateStandardRoutes(MetaObject entity, GenContext ctx)
     {
         var cls = CSharpNaming.Pascal(entity.Name);
@@ -157,6 +173,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("    };");
         sb.AppendLine();
         AppendSortDefaultOrder(sb, entity, "SortDefaultDesc");
+        AppendUnauthenticatedRoutesDoc(sb, cls, isProjection);
         sb.AppendLine($"    public static IEndpointRouteBuilder Map{cls}Routes(this IEndpointRouteBuilder app, string prefix = \"/api\")");
         sb.AppendLine("    {");
 
@@ -448,6 +465,7 @@ public class RoutesGenerator : PerEntityGenerator
             AppendSortDefaultOrder(sb, st.Entity, $"{subClsName}SortDefaultDesc");
         }
 
+        AppendUnauthenticatedRoutesDoc(sb, baseCls, readOnly: false);
         sb.AppendLine($"    public static IEndpointRouteBuilder Map{baseCls}Routes(this IEndpointRouteBuilder app, string prefix = \"/api\")");
         sb.AppendLine("    {");
 

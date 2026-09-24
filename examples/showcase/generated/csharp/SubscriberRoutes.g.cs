@@ -24,6 +24,13 @@ public static class SubscriberRoutes
     {
     };
 
+    /// <summary>Maps <c>Subscriber</c> REST routes. Unauthenticated — see remarks.</summary>
+    /// <remarks>
+    /// These endpoints are unauthenticated. Guard them by mapping on a group that requires
+    /// authorization, e.g. <c>app.MapGroup("").RequireAuthorization().MapSubscriberRoutes();</c>
+    /// A row-ownership rule ("only the owner may read this row") cannot be expressed on a mount:
+    /// eject this generator with <c>dotnet meta eject</c> and hand-write those endpoints.
+    /// </remarks>
     public static IEndpointRouteBuilder MapSubscriberRoutes(this IEndpointRouteBuilder app, string prefix = "/api")
     {
         app.MapGet(prefix + "/subscribers", async (HttpContext http, AppDbContext db) =>

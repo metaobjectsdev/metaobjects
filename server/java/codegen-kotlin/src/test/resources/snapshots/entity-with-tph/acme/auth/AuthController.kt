@@ -309,7 +309,14 @@ private fun rowToAuth(row: ResultRow): Auth = Auth(
     priorAuthNumber = row[AuthTable.priorAuthNumber],
 )
 
-/** GENERATED — TPH discriminator-base controller for Auth (polymorphic + per-subtype CRUD). */
+/**
+ * GENERATED — TPH discriminator-base controller for Auth (polymorphic + per-subtype CRUD).
+ *
+ * Auth: these endpoints are unauthenticated. In your Spring Security config, require
+ * authentication for `/api/auths` and every path under it (`requestMatchers` + `authenticated()`).
+ * A row-ownership rule ("only the owner may read this row") can't be expressed in path
+ * config — eject this generator with `mvn metaobjects:eject` and hand-write those endpoints.
+ */
 @RestController
 @RequestMapping("/api/auths")
 class AuthController(private val objectMapper: ObjectMapper, private val validator: Validator) {

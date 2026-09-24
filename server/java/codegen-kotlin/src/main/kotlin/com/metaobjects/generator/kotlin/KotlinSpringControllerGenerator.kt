@@ -344,7 +344,16 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
 
             appendRowToMapper(this, shortName, entity, readObj)
 
-            append("/** GENERATED — REST controller for ${shortName} entity. Implements the cross-port API contract. */\n")
+            append("/**\n")
+            append(" * GENERATED — REST controller for ${shortName} entity. Implements the cross-port API contract.\n")
+            append(" *\n")
+            // No `/**` glob in the example: Kotlin NESTS block comments, so a `/*` inside this
+            // KDoc would open a comment that never closes and the file would not compile.
+            append(" * Auth: these endpoints are unauthenticated. In your Spring Security config, require\n")
+            append(" * authentication for `$routeBase` and every path under it (`requestMatchers` + `authenticated()`).\n")
+            append(" * A row-ownership rule (\"only the owner may read this row\") can't be expressed in path\n")
+            append(" * config — eject this generator with `mvn metaobjects:eject` and hand-write those endpoints.\n")
+            append(" */\n")
             append("@RestController\n")
             append("@RequestMapping(\"$routeBase\")\n")
             // FR-036: `validator` is always injected (POST + present-PATCH-value enforcement).
@@ -771,7 +780,15 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             for (field in scalarFields) append("    ${field.name} = row[$table.${field.name}],\n")
             append(")\n\n")
 
-            append("/** GENERATED — TPH discriminator-base controller for $shortName (polymorphic + per-subtype CRUD). */\n")
+            append("/**\n")
+            append(" * GENERATED — TPH discriminator-base controller for $shortName (polymorphic + per-subtype CRUD).\n")
+            append(" *\n")
+            // No `/**` glob in the example: Kotlin NESTS block comments (see emit()).
+            append(" * Auth: these endpoints are unauthenticated. In your Spring Security config, require\n")
+            append(" * authentication for `$routeBase` and every path under it (`requestMatchers` + `authenticated()`).\n")
+            append(" * A row-ownership rule (\"only the owner may read this row\") can't be expressed in path\n")
+            append(" * config — eject this generator with `mvn metaobjects:eject` and hand-write those endpoints.\n")
+            append(" */\n")
             append("@RestController\n")
             append("@RequestMapping(\"$routeBase\")\n")
             // FR-036: the per-subtype PATCH tristate binds present values through the Spring-configured
@@ -1728,7 +1745,15 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             emitFilterPipeline(this, shortName, readObj, allowlistName, scalarFields)
             appendRowToMapper(this, shortName, entity, readObj)
 
-            append("/** GENERATED — READ-ONLY REST controller for the ${shortName} projection. */\n")
+            append("/**\n")
+            append(" * GENERATED — READ-ONLY REST controller for the ${shortName} projection.\n")
+            append(" *\n")
+            // No `/**` glob in the example: Kotlin NESTS block comments (see emit()).
+            append(" * Auth: these read endpoints are unauthenticated. In your Spring Security config, require\n")
+            append(" * authentication for `$routeBase` and every path under it (`requestMatchers` + `authenticated()`).\n")
+            append(" * A row-ownership rule (\"only the owner may read this row\") can't be expressed in path\n")
+            append(" * config — eject this generator with `mvn metaobjects:eject` and hand-write those endpoints.\n")
+            append(" */\n")
             append("@RestController\n")
             append("@RequestMapping(\"$routeBase\")\n")
             // No constructor at all: nothing here binds a request body, so injecting an

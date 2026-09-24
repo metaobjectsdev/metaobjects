@@ -272,7 +272,14 @@ private fun rowToAuthLine(row: ResultRow): AuthLine = AuthLine(
     label = row[AuthLineTable.label],
 )
 
-/** GENERATED — REST controller for AuthLine entity. Implements the cross-port API contract. */
+/**
+ * GENERATED — REST controller for AuthLine entity. Implements the cross-port API contract.
+ *
+ * Auth: these endpoints are unauthenticated. In your Spring Security config, require
+ * authentication for `/api/auth_lines` and every path under it (`requestMatchers` + `authenticated()`).
+ * A row-ownership rule ("only the owner may read this row") can't be expressed in path
+ * config — eject this generator with `mvn metaobjects:eject` and hand-write those endpoints.
+ */
 @RestController
 @RequestMapping("/api/auth_lines")
 class AuthLineController(private val objectMapper: ObjectMapper, private val validator: Validator) {
