@@ -176,6 +176,12 @@ import { registerAuthorRoutes } from "./generated/Author.routes";
 registerAuthorRoutes(app, { db });   // GET/POST/PATCH/PUT/DELETE under apiPrefix
 ```
 
+To register every entity at once, pass `registerAll: true` to the generator
+(`routesFile({ registerAll: true })` / `routesFileHono({ registerAll: true })`). It also
+emits `routes.index.ts` (`routes.index.hono.ts` for Hono) at the target root with one
+`registerAllRoutes(...)`, so a new entity needs no edit to the host file. It is off by
+default.
+
 The routes call `parseFilterParams` (from `@metaobjectsdev/runtime-ts/drizzle-fastify`)
 to validate `?filter[..][..]=..&sort=..&limit=&offset=` against the generated
 `<Entity>FilterAllowlist` / `<Entity>SortAllowlist`, returning HTTP 400 on an

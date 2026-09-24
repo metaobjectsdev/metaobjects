@@ -37,6 +37,8 @@ import {
   isTphSubtype,
   servesReadApi,
   formatTs,
+  renderRoutesIndex,
+  routesIndexFileName,
   entityOutputPath,
   effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
@@ -53,6 +55,12 @@ export interface RoutesFileHonoOpts {
    * only remove the whole surface, not restrict it to a subset of verbs.
    */
   expose?: ExposeOption;
+  /**
+   * Also emit `routes.index.hono.ts` at the target root: one `registerAllRoutes(...)` that registers every
+   * entity this generator emitted a routes file for, so adding an entity needs no edit to
+   * your host file. Off by default, so a project that does not ask gets no new file.
+   */
+  registerAll?: boolean;
   target?: string;
 }
 
@@ -91,7 +99,14 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
         const names = skipped.map((e) => e.name).join(", ");
         ctx.warn(`no Hono routes emitted for the TPH subtype(s) ${names} — ${why}`);
       }
-      return emit(ctx);
+      const files = await emit(ctx);
+      if (!opts?.registerAll) return files;
+      const matched = ctx.entities.filter(ctx.matches);
+      if (matched.length === 0 || !ctx.renderContext) return files;
+      return [...files, {
+        path: routesIndexFileName("hono"),
+        content: await formatTs(renderRoutesIndex(matched, ctx.renderContext, "hono")),
+      }];
     },
   };
   const emit = perEntity(async (entity, ctx) => {

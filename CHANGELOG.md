@@ -25,6 +25,11 @@ here.**
   with rows. The diff reports them as `hazards`, the CLI prints a warning, and the Postgres
   migration file carries the preparation step (a backfill `UPDATE` or the `SELECT` that finds
   violating rows) as a comment above the statement. `DiffResult` gains a `hazards` field.
+- **`routesFile({ registerAll: true })` and `routesFileHono({ registerAll: true })` emit one
+  module that registers every generated entity's routes.** `routes.index.ts` (or
+  `routes.index.hono.ts`) at the target root exports `registerAllRoutes(...)`, so adding an
+  entity no longer means editing the host file. Off by default: a project that does not ask
+  gets no new file. TypeScript only; in the other ports, eject the route generator.
 
 ### Fixed
 

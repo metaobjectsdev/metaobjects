@@ -3,6 +3,7 @@ import { perEntity, type Generator, type GeneratorFactory } from "../generator.j
 import { renderRoutesFile } from "../templates/routes-file.js";
 import { isTphSubtype } from "../templates/zod-validators.js";
 import { servesReadApi } from "../api-surface.js";
+import { renderRoutesIndex, routesIndexFileName } from "../templates/routes-index.js";
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
 import { resolveExpose, type ExposeOption } from "../routes-expose.js";
@@ -20,6 +21,12 @@ export interface RoutesFileOpts {
    * only remove the whole surface, not restrict it to a subset of verbs.
    */
   expose?: ExposeOption;
+  /**
+   * Also emit `routes.index.ts` at the target root: one `registerAllRoutes(...)` that registers every
+   * entity this generator emitted a routes file for, so adding an entity needs no edit to
+   * your host file. Off by default, so a project that does not ask gets no new file.
+   */
+  registerAll?: boolean;
   target?: string;
 }
 
@@ -41,20 +48,30 @@ export interface RoutesFileOpts {
  */
 export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator {
   const userFilter = opts?.filter ?? (() => true);
+  const emitEntities = perEntity(async (entity, ctx) => {
+    if (!ctx.renderContext) {
+      throw new Error("routes-file: renderContext is required (provided by runGen)");
+    }
+    return {
+      path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.routes.ts`),
+      content: await formatTs(renderRoutesFile(entity, ctx.renderContext, resolveExpose(entity, opts?.expose))),
+    };
+  });
   const generator: Generator = {
     name: "routes-file",
     // Always set: AND-composes the built-in gates with the optional user filter.
     filter: (e: MetaObject) =>
       servesReadApi(e) && !isTphSubtype(e) && userFilter(e),
-    generate: perEntity(async (entity, ctx) => {
-      if (!ctx.renderContext) {
-        throw new Error("routes-file: renderContext is required (provided by runGen)");
-      }
-      return {
-        path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.routes.ts`),
-        content: await formatTs(renderRoutesFile(entity, ctx.renderContext, resolveExpose(entity, opts?.expose))),
-      };
-    }),
+    generate: async (ctx) => {
+      const files = await emitEntities(ctx);
+      if (!opts?.registerAll) return files;
+      const matched = ctx.entities.filter(ctx.matches);
+      if (matched.length === 0 || !ctx.renderContext) return files;
+      return [...files, {
+        path: routesIndexFileName("fastify"),
+        content: await formatTs(renderRoutesIndex(matched, ctx.renderContext, "fastify")),
+      }];
+    },
   };
   if (opts?.target) {
     generator.target = opts.target;

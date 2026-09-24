@@ -209,7 +209,10 @@ rather than off this page; its own JSDoc carries the recipe with the right one.)
 
 Both are executed as tests (`runtime-ts/test/route-auth-seam.test.ts`) rather than
 asserted in prose. For mounting *fewer* endpoints, narrow the generator:
-`routesFile({ expose: ["list", "get"] })`. What neither can express is a row-ownership
+`routesFile({ expose: ["list", "get"] })`. To register every entity's routes in one call,
+pass `registerAll: true`: the generator also emits `routes.index.ts` (or
+`routes.index.hono.ts`) with a `registerAllRoutes(...)`, so adding an entity needs no edit
+to your host file. What neither can express is a row-ownership
 rule — "only the owner may read this row" is not a property of a mount — so hand-write
 those verbs and narrow the generated file around them.
 

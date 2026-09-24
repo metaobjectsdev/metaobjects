@@ -2,6 +2,7 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import { perEntity, type Generator, type GeneratorFactory } from "../generator.js";
 import { renderRoutesFileHono } from "../templates/routes-file-hono.js";
 import { servesReadApi } from "../api-surface.js";
+import { renderRoutesIndex, routesIndexFileName } from "../templates/routes-index.js";
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
 import { isTphSubtype } from "../templates/zod-validators.js";
@@ -20,6 +21,12 @@ export interface RoutesFileHonoOpts {
    * only remove the whole surface, not restrict it to a subset of verbs.
    */
   expose?: ExposeOption;
+  /**
+   * Also emit `routes.index.hono.ts` at the target root: one `registerAllRoutes(...)` that registers every
+   * entity this generator emitted a routes file for, so adding an entity needs no edit to
+   * your host file. Off by default, so a project that does not ask gets no new file.
+   */
+  registerAll?: boolean;
   target?: string;
 }
 
@@ -79,7 +86,14 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
           "dispatches TPH correctly, or hand-write the scoped routes.",
         );
       }
-      return emit(ctx);
+      const files = await emit(ctx);
+      if (!opts?.registerAll) return files;
+      const matched = ctx.entities.filter(ctx.matches);
+      if (matched.length === 0 || !ctx.renderContext) return files;
+      return [...files, {
+        path: routesIndexFileName("hono"),
+        content: await formatTs(renderRoutesIndex(matched, ctx.renderContext, "hono")),
+      }];
     },
   };
   const emit = perEntity(async (entity, ctx) => {

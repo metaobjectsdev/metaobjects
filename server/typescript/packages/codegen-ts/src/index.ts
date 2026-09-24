@@ -228,6 +228,7 @@ export { CRUD_VERBS, TPH_POLYMORPHIC_VERBS, resolveExpose, intersectExpose, expo
 export type { CrudVerb, ExposeOption } from "./routes-expose.js";
 export { renderRoutesFile } from "./templates/routes-file.js";
 export { renderRoutesFileHono } from "./templates/routes-file-hono.js";
+export { renderRoutesIndex, routesIndexFileName, type RoutesIndexFlavor } from "./templates/routes-index.js";
 export { renderValueObjectFile } from "./templates/value-object-file.js";
 export { renderNamesDecl } from "./templates/names-decl.js";
 export type { NamesDeclOpts } from "./templates/names-decl.js";
