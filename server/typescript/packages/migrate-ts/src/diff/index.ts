@@ -3,7 +3,7 @@ import type {
   ViewDescriptor,
   DependentRelation,
   Change, ChangeStatus, DiffResult, AllowOptions, AmbiguousCallback, Dialect,
-  CheckDescriptor, NameChange,
+  CheckDescriptor, NameChange, DataHazard, DeclaredRename,
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 import { sqlTypeEquals } from "../sql-type.js";
@@ -16,12 +16,20 @@ import { checkExprEquals, normalizeCheckExpr } from "../check-expr-compare.js";
 import { isPgAutoSequenceDefault } from "../pg-identity-default.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 import { qualifiedDbName } from "../qualified-name.js";
+import { columnDefaultsEqual } from "../column-default.js";
 
 export interface DiffArgs {
   expected: SchemaSnapshot;
   actual: SchemaSnapshot;
   allow?: AllowOptions;
   onAmbiguous?: AmbiguousCallback;
+  /**
+   * Renames the author declares (`--rename-table` / `--rename-column`). Each resolves its
+   * drop+add pair as a rename before the heuristic runs, without asking `onAmbiguous`; one
+   * that finds no such pair throws {@link DeclaredRenameError} rather than falling back to
+   * drop+add. Set by migration generation only — the drift/verify path never renames.
+   */
+  renames?: readonly DeclaredRename[];
   /**
    * Table-name patterns to ignore on both sides of the diff. Tables matching
    * any pattern are excluded from comparison — neither create-table nor
@@ -234,7 +242,7 @@ export async function diff(
   // Pass 1c: table renames, resolved BEFORE Pass 2. A renamed table is then diffed like
   // any table present on both sides (diffRenamedTables), and its columns are never
   // scanned as orphaned drop/add pairs by the column heuristic in Pass 3.
-  await detectTableRenames(changes, args.onAmbiguous);
+  await detectTableRenames(changes, args.onAmbiguous, args.renames);
   const { renamed, predecessors } = diffRenamedTables(changes, expectedTables, actualTables, args.dialect);
 
   // Pass 2: tables in both → compare columns/indexes/FKs
@@ -272,7 +280,7 @@ export async function diff(
   annotateViewDropDependents(args.actual.views, changes);
 
   // Pass 3: column renames (table renames were resolved in Pass 1c).
-  await detectColumnRenames(changes, args.onAmbiguous);
+  await detectColumnRenames(changes, args.onAmbiguous, args.renames);
 
   // Strip the rename-detection side-channel fields before status assignment / return.
   for (const c of changes) {
@@ -299,7 +307,37 @@ export async function diff(
   }
 
   applyStatus(changes, args.allow ?? {});
-  return { changes, blocked: changes.filter((c) => c.status.state === "blocked") };
+  return {
+    changes,
+    blocked: changes.filter((c) => c.status.state === "blocked"),
+    hazards: changes.flatMap((c) => dataHazardOf(c) ?? []),
+  };
+}
+
+/**
+ * The data hazard `c` carries, if any: a change that applies to an empty table and fails
+ * on a populated one (see {@link DataHazard}). `add-column` and `add-check` only ever
+ * target an existing table — a new table's columns and CHECKs ride on its create-table.
+ * Exported for the Postgres emitter, which writes the preparation step above the statement.
+ */
+export function dataHazardOf(c: Change): DataHazard | undefined {
+  switch (c.kind) {
+    case "add-column": {
+      const col = c.column;
+      if (col.nullable || col.default !== undefined || col.identity !== undefined) return undefined;
+      return { kind: "add-required-column", table: c.table, ...schemaSpread(c.schema), column: col.name };
+    }
+    case "change-column-nullable":
+      if (c.to) return undefined;
+      return { kind: "set-not-null", table: c.table, ...schemaSpread(c.schema), column: c.column };
+    case "add-check":
+      return {
+        kind: "add-check", table: c.table, ...schemaSpread(c.schema),
+        check: c.check.name, expression: c.check.expression,
+      };
+    default:
+      return undefined;
+  }
 }
 
 /**
@@ -974,12 +1012,6 @@ function recreateViewsDependingOnChangedTables(
     });
     changes.push({ kind: "create-view", view: v, ...schemaSpread(v.schema), status: ALLOWED });
   }
-}
-
-export function columnDefaultsEqual(a: ColumnDescriptor["default"], b: ColumnDescriptor["default"]): boolean {
-  if (a === undefined && b === undefined) return true;
-  if (a === undefined || b === undefined) return false;
-  return a.kind === b.kind && a.value === b.value;
 }
 
 function indexEquals(a: IndexDescriptor, b: IndexDescriptor): boolean {

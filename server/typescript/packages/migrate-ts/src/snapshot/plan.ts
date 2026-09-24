@@ -7,7 +7,7 @@ import { carryForwardOutOfScope, scopeExpectedSchema, scopedDiffInputs, type Obj
 import type { Dialect, DiffResult, SchemaSnapshot } from "../types.js";
 import type { ExpectedViewInput } from "../expected-schema.js";
 
-export interface PlanOfflineArgs extends Pick<DiffArgs, "allow" | "onAmbiguous" | "ignoreTables"> {
+export interface PlanOfflineArgs extends Pick<DiffArgs, "allow" | "onAmbiguous" | "renames" | "ignoreTables"> {
   metadata: MetaData;
   dialect: Dialect;
   /** The stored reference snapshot (the "from" side). Use `{ tables: [], views: [] }` for a fresh project. */
@@ -94,6 +94,7 @@ export async function planOffline(args: PlanOfflineArgs): Promise<PlanOfflineRes
     refusePrimaryKeyChange: true,
     ...(args.allow ? { allow: args.allow } : {}),
     ...(args.onAmbiguous ? { onAmbiguous: args.onAmbiguous } : {}),
+    ...(args.renames ? { renames: args.renames } : {}),
     ...(args.ignoreTables ? { ignoreTables: args.ignoreTables } : {}),
   });
   return {

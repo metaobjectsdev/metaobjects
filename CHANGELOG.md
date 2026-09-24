@@ -10,6 +10,22 @@ here.**
 
 ## [Unreleased]
 
+### Added
+
+- **`meta migrate --rename-column` and `--rename-table` declare a rename, so the column's
+  data is kept.** The diff offers a dropped and an added column as a possible rename only
+  when their names are close, so `origin_city` → `origin_port` became `DROP COLUMN` +
+  `ADD COLUMN` and lost every value; an adopter estate had to hand-edit the emitted SQL. A
+  declared rename resolves the pair as a rename without `--on-ambiguous` or
+  `--allow drop-column`, and is refused (exit 1) when there is nothing to rename. A column's
+  type, nullability and default must not change in the same run.
+- **`meta migrate` warns about changes that fail on a populated table.** A new required
+  column with no default, an optional column made required, and a new CHECK on an existing
+  table (an enum narrowed to fewer values) all apply to an empty database and fail on one
+  with rows. The diff reports them as `hazards`, the CLI prints a warning, and the Postgres
+  migration file carries the preparation step (a backfill `UPDATE` or the `SELECT` that finds
+  violating rows) as a comment above the statement. `DiffResult` gains a `hazards` field.
+
 ### Fixed
 
 - **`extract` no longer discards a fenced answer that follows an earlier object or a brace in

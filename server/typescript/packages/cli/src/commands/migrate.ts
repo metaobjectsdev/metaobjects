@@ -32,8 +32,8 @@ import {
   readSnapshot,
   writeSnapshot,
   qualifiedDbName,
-  BlockedChangesError,
-  PrimaryKeyChangeError,
+  type BlockedChangesError,
+  type PrimaryKeyChangeError,
   renderD1,
   writeMigrationD1,
   writeMigrationFlyway,
@@ -46,6 +46,7 @@ import {
   type AmbiguousChange,
   type AmbiguousResolution,
   type Change,
+  type DataHazard,
   type D1Binding,
   type EmitResult,
   type D1Runner,
@@ -112,6 +113,15 @@ MIGRATE FLAGS:
                        never existed.
   --on-ambiguous abort|rename|drop-add
                        How to handle ambiguous renames (default: abort)
+  --rename-table [schema.]old=new
+                       Declare a table rename (repeatable). Resolves the drop+create
+                       as ALTER TABLE ... RENAME TO whatever the rename heuristic
+                       makes of the names; refused if no such pair is pending.
+  --rename-column [schema.]table.old=new
+                       Declare a column rename (repeatable); keeps the column's data.
+                       'table' is the name in the metadata (the NEW name when the
+                       table is renamed in the same run). The column's type,
+                       nullability and default must not change in the same run.
   --from-db            Introspect live DB instead of using the committed snapshot
   --apply              Run pending migration files against the DB after writing
   --rollback <target>  Roll back applied migrations newer than <target>
@@ -267,6 +277,52 @@ class AlreadyEmittedError extends Error {
 
 function mapOnAmbiguous(v: "abort" | "rename" | "drop-add"): AmbiguousResolution {
   return v === "drop-add" ? "drop+add" : v;
+}
+
+/**
+ * Is `err` the migrate engine's `name` error? By NAME, not `instanceof`: two physical
+ * copies of `@metaobjectsdev/migrate-ts` in one process (a global `meta` beside a
+ * project-local dependency) give the class and the instance different identities, so
+ * `instanceof` alone returns false for a real error and its refusal falls through to an
+ * unhandled throw. Same defect and remedy as `isApplyError` (replay-remedy.ts).
+ */
+function isEngineError<T extends Error>(err: unknown, name: T["name"]): err is T {
+  return err instanceof Error && err.name === name;
+}
+
+/** Refuse a declared rename that does not apply; the message names the side that is wrong. */
+function refuseDeclaredRename(err: Error, fmt: OutputFormat): number {
+  log.error(`migrate: ${err.message}`);
+  emitStructuredError(
+    `migrate: ${err.message}`,
+    "fix or remove the --rename-table / --rename-column flag; a table's name is its name in the metadata (the new name when it is renamed too)",
+    fmt,
+  );
+  return 1;
+}
+
+/**
+ * Warn about changes that apply to an empty table and fail on a populated one. Warn, not
+ * refuse: the diff cannot see rows, and a new required column on an empty table is fine.
+ * The Postgres migration file carries the same warning, with the preparation step, above
+ * the statement.
+ */
+function warnDataHazards(hazards: readonly DataHazard[]): string[] {
+  const warnings = hazards.map((h) => {
+    const t = h.schema !== undefined ? `${h.schema}.${h.table}` : h.table;
+    switch (h.kind) {
+      case "add-required-column":
+        return `${t}.${h.column} is added NOT NULL with no default — fails if ${t} has rows. `
+          + `Give the field a @default, or add it optional, backfill, then make it required.`;
+      case "set-not-null":
+        return `${t}.${h.column} becomes NOT NULL — fails if any row holds NULL. Backfill it first.`;
+      case "add-check":
+        return `CHECK ${h.check} is added to ${t} — fails if any existing row violates `
+          + `(${h.expression}). Fix those rows first.`;
+    }
+  });
+  for (const w of warnings) log.warn(`migrate: ${w}`);
+  return warnings;
 }
 
 /**
@@ -657,6 +713,7 @@ export async function migrateCommand(
   let applyFailed = false;
   let blocked: BlockedEntry[] = [];
   let ambiguous: AmbiguousEntry[] = [];
+  let hazardWarnings: string[] = [];
   let changeCounts: Record<string, number> = {};
 
   try {
@@ -712,6 +769,7 @@ export async function migrateCommand(
         actual,
         dialect: kysely.dialect,
         allow: tokensToAllowOptions(config.allow),
+        renames: config.renames,
         // #258 — adopting a live DB whose PRIMARY KEY differs from the metadata identity
         // has no expressible migration; refuse loudly instead of emitting SQL that drops
         // the constraint and breaks referencing FKs at apply.
@@ -723,11 +781,15 @@ export async function migrateCommand(
       });
     } catch (err) {
       // #258 — a primary-key move has no expressible migration; refuse loudly.
-      if (err instanceof PrimaryKeyChangeError) {
+      if (isEngineError<PrimaryKeyChangeError>(err, "PrimaryKeyChangeError")) {
         log.error(`migrate: ${err.message}`);
         emitStructuredError(`migrate: ${err.message}`, "align the primary key manually, or reconcile the metadata identity to match the live table", fmt);
         await kysely.close();
         return 1;
+      }
+      if (isEngineError(err, "DeclaredRenameError")) {
+        await kysely.close();
+        return refuseDeclaredRename(err, fmt);
       }
       // diff() throws when onAmbiguous returns "abort" — surface as exit 1
       // with the collected ambiguity list.
@@ -756,6 +818,7 @@ export async function migrateCommand(
     }
 
     changeCounts = summarizeChanges(diffResult.changes);
+    hazardWarnings = warnDataHazards(diffResult.hazards);
 
     // #313 — refuse to AUTHOR a drop for an object the committed snapshot never
     // contained. This path diffs metadata against introspection and never reads the
@@ -813,7 +876,7 @@ export async function migrateCommand(
           ...(actual.meta !== undefined ? { actualMeta: actual.meta } : {}),
         });
       } catch (err) {
-        if (err instanceof BlockedChangesError) {
+        if (isEngineError<BlockedChangesError>(err, "BlockedChangesError")) {
           blocked = blockedToEntries(err);
           exitCode = 1;
         } else {
@@ -944,6 +1007,7 @@ export async function migrateCommand(
     format: config.format,
     applied: appliedNames,
     applyFailed,
+    warnings: hazardWarnings,
   };
   const output =
     fmt === "toon" ? formatMigrateResultToon(migrateResult)
@@ -1267,6 +1331,7 @@ export async function runOfflineGenerate(
       // the default `meta migrate` — performing no import exclusion at all.
       ...importedOption(collection),
       allow: tokensToAllowOptions(config.allow),
+      renames: config.renames,
       onAmbiguous: async (a) => {
         collectedAmbiguous.push(a);
         return onAmbiguousResolution;
@@ -1274,11 +1339,12 @@ export async function runOfflineGenerate(
     });
   } catch (err) {
     // #258 — a primary-key move has no expressible migration; refuse loudly.
-    if (err instanceof PrimaryKeyChangeError) {
+    if (isEngineError<PrimaryKeyChangeError>(err, "PrimaryKeyChangeError")) {
       log.error(`migrate: ${err.message}`);
       emitStructuredError(`migrate: ${err.message}`, "align the primary key manually, or reconcile the metadata identity to match the live table", fmt);
       return 1;
     }
+    if (isEngineError(err, "DeclaredRenameError")) return refuseDeclaredRename(err, fmt);
     if ((err as Error).message.includes("aborted by onAmbiguous")) {
       log.error(`migrate: ambiguous rename/drop detected; re-run with --on-ambiguous rename|drop-add`);
       return 1;
@@ -1304,6 +1370,7 @@ export async function runOfflineGenerate(
     log.error(`migrate: --slug <name> required when there are changes (e.g., --slug add-user-shipping)`);
     return 2;
   }
+  warnDataHazards(diffResult.hazards);
 
   const emitResult = emit(diffResult.changes, {
     dialect: config.dialect,
@@ -1523,6 +1590,7 @@ async function runD1Migrate(
       // @constraintName models churning and enum @values changes silent on D1.
       dialect: "d1",
       allow: tokensToAllowOptions(config.allow),
+      renames: config.renames,
       // #258 — adopting a live D1 DB whose PRIMARY KEY differs from the metadata identity
       // has no expressible migration; refuse loudly instead of emitting SQL that drops
       // the constraint and breaks referencing FKs at apply (same failure as the online path).
@@ -1534,11 +1602,12 @@ async function runD1Migrate(
     });
   } catch (err) {
     // #258 — a primary-key move has no expressible migration; refuse loudly.
-    if (err instanceof PrimaryKeyChangeError) {
+    if (isEngineError<PrimaryKeyChangeError>(err, "PrimaryKeyChangeError")) {
       log.error(`migrate: ${err.message}`);
       emitStructuredError(`migrate: ${err.message}`, "align the primary key manually, or reconcile the metadata identity to match the live table", fmt);
       return 1;
     }
+    if (isEngineError(err, "DeclaredRenameError")) return refuseDeclaredRename(err, fmt);
     if ((err as Error).message.includes("aborted by onAmbiguous")) {
       const entries = ambiguousToEntries(collectedAmbiguous);
       for (const e of entries) {
@@ -1551,6 +1620,7 @@ async function runD1Migrate(
   }
 
   const changeCounts = summarizeChanges(diffResult.changes);
+  warnDataHazards(diffResult.hazards);
 
   // Views are emitted by the one schema-diff path: renderD1 = renderSqlite (which
   // renders view DDL) + the D1 safety pass (applied inside renderD1, stripping the
@@ -1572,7 +1642,7 @@ async function runD1Migrate(
   try {
     emitResult = renderD1(diffResult.changes, expected, actual.meta, actual);
   } catch (err) {
-    if (err instanceof BlockedChangesError) {
+    if (isEngineError<BlockedChangesError>(err, "BlockedChangesError")) {
       const entries = blockedToEntries(err);
       for (const e of entries) {
         log.error(`migrate: blocked '${e.kind}' on ${e.description} (allow with --allow ${e.allowFlag})`);

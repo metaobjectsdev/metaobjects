@@ -105,3 +105,42 @@ describe("meta migrate — --on-ambiguous", () => {
     }
   });
 });
+
+// A rename the heuristic never offers (the names are too far apart): without a declaration it
+// is drop+add and the column's data is gone. An adopter estate hit this on a populated table.
+describe("meta migrate — --rename-column", () => {
+  test("declared rename → RENAME COLUMN, with no --on-ambiguous and no --allow drop-column", async () => {
+    const { repo, dbUrl } = await setupMigratedRepo();
+    try {
+      renameField(join(repo, "metaobjects", "myapp.json"), "User", "displayName", "publicLabel");
+
+      const exit = await run([
+        "migrate", "--from-db", "--cwd", repo, "--db", dbUrl, "--slug", "rename",
+        "--rename-column", "users.display_name=public_label",
+      ]);
+      expect(exit).toBe(0);
+
+      const root = join(repo, ".metaobjects", "migrations");
+      const sql = readFileSync(join(root, findMigrationDir(root, "rename")!, "up.sql"), "utf8");
+      expect(sql).toMatch(/RENAME COLUMN "display_name" TO "public_label"/);
+      expect(sql).not.toMatch(/DROP COLUMN/i);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("a declared rename that does not apply → exit 1, no migration written", async () => {
+    const { repo, dbUrl } = await setupMigratedRepo();
+    try {
+      const exit = await run([
+        "migrate", "--from-db", "--cwd", repo, "--db", dbUrl, "--slug", "rename",
+        "--rename-column", "users.display_name=public_label",
+      ]);
+      expect(exit).toBe(1);
+      expect(findMigrationDir(join(repo, ".metaobjects", "migrations"), "rename")).toBeUndefined();
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+});
+

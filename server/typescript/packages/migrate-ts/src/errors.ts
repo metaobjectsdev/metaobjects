@@ -147,3 +147,18 @@ export class PrimaryKeyChangeError extends Error {
     if (schema !== undefined) this.schema = schema;
   }
 }
+
+// ---------------------------------------------------------------------------
+// DeclaredRenameError — a --rename-table / --rename-column that does not apply
+// ---------------------------------------------------------------------------
+
+/**
+ * Thrown by `diff()` when a declared rename (see `DeclaredRename`) cannot be resolved: the
+ * old name is not in the database, the new name is not in the metadata, the rename was
+ * already applied, or the renamed column also changes shape. Refusing is the point — a
+ * declared rename that silently did nothing would fall back to drop+add and lose the data
+ * the author declared it to keep.
+ */
+export class DeclaredRenameError extends Error {
+  override readonly name = "DeclaredRenameError";
+}

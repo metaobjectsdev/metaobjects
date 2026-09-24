@@ -1,12 +1,13 @@
 import type {
   Change, EmitResult, ColumnDescriptor, IndexDescriptor, FkDescriptor,
-  TableDescriptor, ViewDescriptor, ColumnDefault, FkAction, NameChange,
+  TableDescriptor, ViewDescriptor, ColumnDefault, FkAction, NameChange, DataHazard,
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 import { renderFingerprintMarker, viewFingerprint } from "../view-fingerprint.js";
 import { viewReplaceIsLegal } from "../view-column-types.js";
-import { columnDefaultsEqual } from "../diff/index.js";
+import { columnDefaultsEqual } from "../column-default.js";
+import { dataHazardOf } from "../diff/index.js";
 
 // Stages run low → high. drop-view runs BEFORE drop-table so a view that
 // depends on a soon-to-be-dropped table is removed first. create-view runs
@@ -55,7 +56,8 @@ export function renderPostgres(changes: Change[]): EmitResult {
   const upStmts: string[] = [];
   const downStmts: string[] = [];
   for (const c of sorted) {
-    upStmts.push(renderUp(c));
+    const hazard = dataHazardOf(c);
+    upStmts.push(hazard === undefined ? renderUp(c) : `${hazardComment(hazard)}\n${renderUp(c)}`);
     downStmts.push(renderDown(c));
   }
   // Down runs in reverse order (so creates undo correctly w.r.t. FKs).
@@ -305,6 +307,25 @@ function columnCommentSql(
 
 function pgEscape(s: string): string {
   return s.replace(/'/g, "''");
+}
+
+/**
+ * The preparation step a data hazard needs, as SQL comments above its statement. A fresh
+ * database has no rows, so a replay never fails here — the populated one does, at deploy.
+ */
+function hazardComment(h: DataHazard): string {
+  const t = quoteQualified(h.table, h.schema);
+  switch (h.kind) {
+    case "add-required-column":
+      return `-- WARNING: fails if ${t} has rows: ${quote(h.column)} is NOT NULL with no default.\n`
+        + `-- To keep existing rows: give the field a @default, or add it nullable, backfill it, then make it required.`;
+    case "set-not-null":
+      return `-- WARNING: fails if any row of ${t} holds NULL in ${quote(h.column)}. Backfill first:\n`
+        + `-- UPDATE ${t} SET ${quote(h.column)} = <value> WHERE ${quote(h.column)} IS NULL;`;
+    case "add-check":
+      return `-- WARNING: fails if any row of ${t} violates ${quote(h.check)}. Find them first:\n`
+        + `-- SELECT * FROM ${t} WHERE NOT (${h.expression});`;
+  }
 }
 
 function renderColumn(c: ColumnDescriptor): string {

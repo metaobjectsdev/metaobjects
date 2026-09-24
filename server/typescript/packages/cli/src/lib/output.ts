@@ -181,6 +181,12 @@ export interface MigrateResultShape {
    * that cannot work.
    */
   format?: "default" | "flyway";
+  /**
+   * Data-hazard warnings: changes that apply to an empty table and fail on a populated one.
+   * Text output already carries them on stderr; JSON/toon carry them here so a programmatic
+   * caller sees the risk before applying.
+   */
+  warnings?: string[];
 }
 
 export function formatMigrateResult(result: MigrateResultShape, _opts: FormatOptions): string {
@@ -298,6 +304,7 @@ export function migrateResultToData(result: MigrateResultShape): {
   written: string[];
   summary: string;
   help: string[];
+  warnings?: string[];
 } {
   const changeEntries = Object.entries(result.changeCounts).filter(([, v]) => v > 0);
   const changes = changeEntries.map(([kind, count]) => ({ kind, count }));
@@ -352,7 +359,12 @@ export function migrateResultToData(result: MigrateResultShape): {
     help = ["re-run with --slug <name> to write the migration"];
   }
 
-  return { changes, written: result.writtenPaths, summary, help };
+  const warnings = result.warnings ?? [];
+  return {
+    changes, written: result.writtenPaths, summary, help,
+    // Only when present, so a run with no hazard keeps its existing shape.
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
 }
 
 export function formatMigrateResultToon(result: MigrateResultShape): string {

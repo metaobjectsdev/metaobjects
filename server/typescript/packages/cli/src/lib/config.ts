@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { ConfigSchema, type Config, DEFAULT_METAOBJECTS_DIR } from "@metaobjectsdev/sdk";
 import type { GenFlags, MigrateFlags, MigrateFormat } from "./args.js";
 import type { Dialect } from "./kysely.js";
+import type { DeclaredRename } from "@metaobjectsdev/migrate-ts";
 
 // ---------------------------------------------------------------------------
 // Built-in defaults
@@ -42,6 +43,8 @@ export interface ResolvedMigrateConfig {
   /** Output-format adapter (#192): "default" homegrown layout, or "flyway" V__/U__. */
   format: MigrateFormat;
   onAmbiguous: "abort" | "rename" | "drop-add";
+  /** Declared renames — CLI-only, never config: a rename is a one-time migration event. */
+  renames: DeclaredRename[];
   allow: string[];
   slug: string | undefined;
   dryRun: boolean;
@@ -121,6 +124,7 @@ export async function resolveMigrateConfig(
     dialect: flags.dialect ?? cfgBlock.dialect ?? MIGRATE_DEFAULTS.dialect,
     format: flags.format ?? cfgBlock.format ?? MIGRATE_DEFAULTS.format,
     onAmbiguous: flags.onAmbiguous ?? cfgBlock.onAmbiguous ?? MIGRATE_DEFAULTS.onAmbiguous,
+    renames: flags.renames,
     allow: flags.allow.length > 0
       ? flags.allow
       : (cfgBlock.allow ?? MIGRATE_DEFAULTS.allow),

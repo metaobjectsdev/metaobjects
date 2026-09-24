@@ -67,6 +67,7 @@ describe("resolveMigrateConfig", () => {
       slug: undefined,
       allow: [],
       onAmbiguous: undefined,
+      renames: [],
       dryRun: false,
       ...defaultD1Flags,
     }, root);
@@ -88,6 +89,7 @@ describe("resolveMigrateConfig", () => {
       slug: undefined,
       allow: [],
       onAmbiguous: undefined,
+      renames: [],
       dryRun: false,
       ...defaultD1Flags,
     }, root);
@@ -104,6 +106,7 @@ describe("resolveMigrateConfig", () => {
       slug: undefined,
       allow: [],
       onAmbiguous: undefined,
+      renames: [],
       dryRun: false,
       ...defaultD1Flags,
     }, root);
@@ -121,6 +124,7 @@ describe("resolveMigrateConfig", () => {
       slug: undefined,
       allow: ["drop-table"],
       onAmbiguous: undefined,
+      renames: [],
       dryRun: false,
       ...defaultD1Flags,
     }, root);
@@ -138,6 +142,7 @@ describe("resolveMigrateConfig", () => {
         slug: undefined,
         allow: [],
         onAmbiguous: undefined,
+        renames: [],
         dryRun: false,
         ...defaultD1Flags,
       }, root);
@@ -159,6 +164,7 @@ describe("resolveMigrateConfig", () => {
       slug: undefined,
       allow: [],
       onAmbiguous: undefined,
+      renames: [],
       dryRun: false,
       d1Binding: "MYDB",
       remote: false,
@@ -185,6 +191,7 @@ describe("resolveMigrateConfig", () => {
       slug: undefined,
       allow: [],
       onAmbiguous: undefined,
+      renames: [],
       dryRun: false,
       d1Binding: undefined,
       remote: true,
@@ -255,6 +262,7 @@ describe("resolveD1Config", () => {
       slug: undefined,
       allow: [],
       onAmbiguous: undefined,
+      renames: [],
       dryRun: false,
       d1Binding: "DB",
       remote: false,

@@ -411,7 +411,38 @@ export interface DiffResult {
   changes: Change[];
   /** Subset of `changes` where status.state === "blocked"; convenience for CLI error messaging. */
   blocked: Change[];
+  /**
+   * Changes that apply to an empty table and FAIL on a populated one. The diff cannot see
+   * rows, so these are reported rather than blocked; the CLI warns, and the Postgres emitter
+   * writes the preparation step above the statement. See {@link DataHazard}.
+   */
+  hazards: DataHazard[];
 }
+
+/**
+ * A change whose apply depends on the data already in the table.
+ *
+ * - `add-required-column` — `ADD COLUMN … NOT NULL` with no default fails on any existing row.
+ * - `set-not-null` — `SET NOT NULL` fails on any row holding NULL.
+ * - `add-check` — `ADD CONSTRAINT … CHECK` fails on any row that violates it (an enum
+ *   narrowed to fewer values is the common case).
+ */
+export type DataHazard =
+  | { kind: "add-required-column"; table: string; schema?: string; column: string }
+  | { kind: "set-not-null"; table: string; schema?: string; column: string }
+  | { kind: "add-check"; table: string; schema?: string; check: string; expression: string };
+
+/**
+ * A rename the author declares, so the diff resolves the drop+add pair as a rename
+ * whatever the rename heuristic would make of the names. CLI: `--rename-table` /
+ * `--rename-column`. A column's `table` is the table's name in the METADATA — the new name
+ * when the table is renamed in the same run. `schema` defaults to the dialect's default.
+ *
+ * Not metadata: a rename is an event in the migration history, not a fact about the model.
+ */
+export type DeclaredRename =
+  | { kind: "table"; from: string; to: string; schema?: string }
+  | { kind: "column"; table: string; from: string; to: string; schema?: string };
 
 // ---------------------------------------------------------------------------
 // emit() result

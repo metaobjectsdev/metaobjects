@@ -101,7 +101,12 @@ describe("renderPostgres — column changes", () => {
       from: true, to: false, status: ALLOWED,
     }];
     const { up } = emit(changes, { dialect: "postgres" });
-    expect(norm(up)).toBe(`ALTER TABLE "users" ALTER COLUMN "email" SET NOT NULL;`);
+    // A data hazard (fails on any NULL row), so the statement carries the backfill step.
+    expect(norm(up)).toBe(
+      `-- WARNING: fails if any row of "users" holds NULL in "email". Backfill first:\n`
+      + `-- UPDATE "users" SET "email" = <value> WHERE "email" IS NULL;\n`
+      + `ALTER TABLE "users" ALTER COLUMN "email" SET NOT NULL;`,
+    );
   });
 
   test("change-column-default: set", () => {

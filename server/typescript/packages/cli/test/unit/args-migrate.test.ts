@@ -11,6 +11,7 @@ describe("parseMigrateArgs", () => {
       slug: undefined,
       allow: [],
       onAmbiguous: undefined,
+      renames: [],
       dryRun: false,
       d1Binding: undefined,
       remote: false,
@@ -112,5 +113,28 @@ describe("parseMigrateArgs (d1 flags)", () => {
 
   test("rejects unknown dialect", () => {
     expect(() => parseMigrateArgs(["--dialect", "mysql"])).toThrow(/invalid --dialect/);
+  });
+
+  test("--rename-table and --rename-column, repeatable, with optional schema", () => {
+    expect(parseMigrateArgs([
+      "--rename-table", "stop=port_call",
+      "--rename-table", "ops.leg=shipment_leg",
+      "--rename-column", "shipment.origin_city=origin_port",
+      "--rename-column", "ops.shipment_leg.seq=sequence",
+    ]).renames).toEqual([
+      { kind: "table", from: "stop", to: "port_call" },
+      { kind: "table", schema: "ops", from: "leg", to: "shipment_leg" },
+      { kind: "column", table: "shipment", from: "origin_city", to: "origin_port" },
+      { kind: "column", schema: "ops", table: "shipment_leg", from: "seq", to: "sequence" },
+    ]);
+  });
+
+  test("malformed renames are refused with the expected shape", () => {
+    for (const bad of ["stop", "stop=", "=port_call", "a.b.c=d", "stop=ops.port_call", "orders=orders=archive"]) {
+      expect(() => parseMigrateArgs(["--rename-table", bad])).toThrow(/expected \[schema\.\]old=new/);
+    }
+    for (const bad of ["origin_city=origin_port", "a.b.c.d=e", "shipment.=x", "shipment.a=b.c"]) {
+      expect(() => parseMigrateArgs(["--rename-column", bad])).toThrow(/expected \[schema\.\]table\.old=new/);
+    }
   });
 });

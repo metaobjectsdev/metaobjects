@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { formatMigrateResult } from "../../src/lib/output.js";
+import { formatMigrateResult, migrateResultToData } from "../../src/lib/output.js";
 
 describe("formatMigrateResult", () => {
   test("clean migration written", () => {
@@ -88,5 +88,22 @@ describe("formatMigrateResult", () => {
       dryRun: true,
     }, { isTTY: false });
     expect(out).toContain("--dry-run");
+  });
+});
+
+describe("migrateResultToData — data-hazard warnings", () => {
+  const base = {
+    dialect: "postgres" as const, displayUrl: "postgres://x", changeCounts: { "add-column": 1 },
+    blocked: [], ambiguous: [], writtenPaths: [], dryRun: true,
+  };
+
+  test("structured output carries the warnings a text run prints on stderr", () => {
+    const w = "shipment.mode is added NOT NULL with no default — fails if shipment has rows.";
+    expect(migrateResultToData({ ...base, warnings: [w] }).warnings).toEqual([w]);
+  });
+
+  test("no hazard keeps the existing shape (no warnings key)", () => {
+    expect("warnings" in migrateResultToData({ ...base, warnings: [] })).toBe(false);
+    expect("warnings" in migrateResultToData(base)).toBe(false);
   });
 });

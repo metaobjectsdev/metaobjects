@@ -67,6 +67,49 @@ migration from the metadata-vs-DB diff before applying it. `apply-pending` just 
 the pending already-committed files, making it idempotent; `--dry-run` lists what would
 run. postgres/sqlite only — on D1 use `wrangler d1 migrations apply`.
 
+#### Renames and populated tables
+
+A replay against a fresh database proves a migration applies to **no rows**. Four kinds
+of change behave differently once the table has data, and `meta migrate` handles each
+one explicitly.
+
+**A rename the heuristic does not see loses the data.** The diff pairs a dropped column
+with an added one as a possible rename only when their names are close
+(`first_name` / `firstname`). A pair like `origin_city` → `origin_port` is too far apart
+to be offered at all, so the migration is `DROP COLUMN` + `ADD COLUMN` and every value
+is gone. Declare it:
+
+```bash
+meta migrate --slug rename-origin --rename-column shipment.origin_city=origin_port
+meta migrate --slug rename-stop   --rename-table stop=port_call
+```
+
+Both flags are repeatable and take an optional schema prefix
+(`ops.shipment.origin_city=origin_port`). A declared rename is resolved before the
+heuristic, without asking `--on-ambiguous`, and needs no `--allow drop-column`. For a
+column, `table` is the table's name in the metadata, so it is the **new** name when the
+table is renamed in the same run. A declared rename that finds nothing to rename is
+refused (exit 1) rather than falling back to drop+add: the old name is not in the
+database, the new name is not in the metadata, or the rename was already applied. A
+column's type, nullability and default must not change in the same run. Migrate the
+rename first, then the shape.
+
+The flags are deliberately not metadata. A rename is an event in the migration
+history, not a lasting fact about the model.
+
+**Three changes apply to an empty table and fail on a populated one.** The diff cannot
+see rows, so it warns instead of refusing. On Postgres the migration file also carries
+the preparation step as a comment above the statement:
+
+| Change | Fails when | Preparation the comment names |
+|---|---|---|
+| New required field with no `@default` (`ADD COLUMN … NOT NULL`) | the table has any row | give the field a `@default`, or add it optional, backfill, then make it required |
+| Optional field made required (`SET NOT NULL`, needs `--allow nullable-to-not-null`) | any row holds NULL | `UPDATE … SET <col> = <value> WHERE <col> IS NULL` |
+| New CHECK on an existing table, e.g. an enum narrowed to fewer `@values` | any row violates it | `SELECT * FROM … WHERE NOT (<check>)`, then fix those rows |
+
+Postgres runs each migration in a transaction, so a failure rolls the migration back and
+loses nothing. The warning moves the discovery from deploy time to authoring time.
+
 ### `meta verify --replay` — the chain applies from empty
 
 ```bash

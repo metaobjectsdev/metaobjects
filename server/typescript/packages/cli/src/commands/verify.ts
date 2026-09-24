@@ -122,7 +122,7 @@ const ERR_UNKNOWN_ATTR = "ERR_UNKNOWN_ATTR";
  */
 const EMPTY_MIGRATE_FLAGS = {
   db: undefined, dialect: undefined, format: undefined, outDir: undefined, slug: undefined,
-  allow: [], onAmbiguous: undefined, dryRun: false, d1Binding: undefined, remote: false,
+  allow: [], onAmbiguous: undefined, renames: [], dryRun: false, d1Binding: undefined, remote: false,
   apply: false, rollback: undefined, yes: false, fromDb: false, baseline: false,
   applyPending: false,
 } as const satisfies MigrateFlags;

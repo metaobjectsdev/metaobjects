@@ -1,4 +1,5 @@
 import { parseArgs } from "node:util";
+import type { DeclaredRename } from "@metaobjectsdev/migrate-ts";
 import { parseAdvisoryLimit } from "./advisory.js";
 
 // ---------------------------------------------------------------------------
@@ -510,6 +511,8 @@ export interface MigrateFlags {
   slug: string | undefined;
   allow: AllowToken[];
   onAmbiguous: OnAmbiguous | undefined;
+  /** `--rename-table` / `--rename-column`: renames the author declares (see `DeclaredRename`). */
+  renames: DeclaredRename[];
   dryRun: boolean;
   // D1-specific:
   d1Binding: string | undefined;
@@ -539,6 +542,8 @@ export const MIGRATE_OPTIONS = {
   "slug": { type: "string" },
   "allow": { type: "string", multiple: true },
   "on-ambiguous": { type: "string" },
+  "rename-table": { type: "string", multiple: true },
+  "rename-column": { type: "string", multiple: true },
   "dry-run": { type: "boolean", default: false },
   "from-db": { type: "boolean", default: false },
   "d1": { type: "string" },
@@ -593,6 +598,10 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
     slug: values.slug as string | undefined,
     allow: allowTokens as AllowToken[],
     onAmbiguous: onAmb as OnAmbiguous | undefined,
+    renames: [
+      ...((values["rename-table"] as string[] | undefined) ?? []).map(parseTableRename),
+      ...((values["rename-column"] as string[] | undefined) ?? []).map(parseColumnRename),
+    ],
     dryRun: !!values["dry-run"],
     d1Binding: values.d1 as string | undefined,
     remote: !!values.remote,
@@ -603,6 +612,36 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
     baseline,
     applyPending,
   };
+}
+
+/** `--rename-table [schema.]old=new` — the new name is bare: a rename never moves schemas. */
+function parseTableRename(v: string): DeclaredRename {
+  const { path, to } = splitRename(v, "--rename-table", "[schema.]old=new");
+  if (path.length > 2) throw new Error(`invalid --rename-table '${v}'; expected [schema.]old=new`);
+  const from = path[path.length - 1]!;
+  return path.length === 2 ? { kind: "table", schema: path[0]!, from, to } : { kind: "table", from, to };
+}
+
+/** `--rename-column [schema.]table.old=new` — `table` is the table's name in the metadata. */
+function parseColumnRename(v: string): DeclaredRename {
+  const { path, to } = splitRename(v, "--rename-column", "[schema.]table.old=new");
+  if (path.length < 2 || path.length > 3) {
+    throw new Error(`invalid --rename-column '${v}'; expected [schema.]table.old=new`);
+  }
+  const [from, table] = [path[path.length - 1]!, path[path.length - 2]!];
+  return path.length === 3
+    ? { kind: "column", schema: path[0]!, table, from, to }
+    : { kind: "column", table, from, to };
+}
+
+function splitRename(v: string, flag: string, shape: string): { path: string[]; to: string } {
+  const eq = v.indexOf("=");
+  const path = eq < 0 ? [] : v.slice(0, eq).split(".");
+  const to = eq < 0 ? "" : v.slice(eq + 1);
+  if (to === "" || to.includes(".") || to.includes("=") || path.some((p) => p === "")) {
+    throw new Error(`invalid ${flag} '${v}'; expected ${shape}`);
+  }
+  return { path, to };
 }
 
 // ---------------------------------------------------------------------------

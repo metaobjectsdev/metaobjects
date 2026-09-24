@@ -1,10 +1,12 @@
 import type {
   Change, AmbiguousCallback, AmbiguousChange, AmbiguousResolution, ColumnDescriptor,
-  TableDescriptor,
+  DeclaredRename, TableDescriptor,
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 import { sqlTypeEquals } from "../sql-type.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
+import { DeclaredRenameError } from "../errors.js";
+import { columnDefaultsEqual } from "../column-default.js";
 
 const TABLE_RENAME_OVERLAP_THRESHOLD = 0.8;
 
@@ -21,13 +23,46 @@ const TABLE_RENAME_OVERLAP_THRESHOLD = 0.8;
 export async function detectTableRenames(
   changes: Change[],
   onAmbiguous: AmbiguousCallback | undefined,
+  declared: readonly DeclaredRename[] = [],
 ): Promise<void> {
+  const indicesToRemove = new Set<number>();
+  const renamesToInsert: { afterIdx: number; change: Change }[] = [];
+
+  // Declared renames first: the author has said these ARE renames, so the pair is resolved
+  // without the overlap test and without asking, and the heuristic never sees either half.
+  for (const d of declared) {
+    if (d.kind !== "table") continue;
+    // A half an earlier declaration already consumed is not pending: two declarations
+    // sharing a name would otherwise both claim it, and one create would vanish.
+    const dropIdx = changes.findIndex((c, i) => !indicesToRemove.has(i)
+      && c.kind === "drop-table" && c.table === d.from && sameSchema(c.schema, d.schema));
+    const createIdx = changes.findIndex((c, i) => !indicesToRemove.has(i)
+      && c.kind === "create-table" && c.table.name === d.to && sameSchema(c.table.schema, d.schema));
+    if (dropIdx < 0 || createIdx < 0) {
+      throw new DeclaredRenameError(
+        `declared table rename ${d.from} → ${d.to} does not apply: `
+        + unresolvedReason(`table "${d.from}"`, dropIdx >= 0, `table "${d.to}"`, createIdx >= 0),
+      );
+    }
+    const schema = changes[dropIdx]!.schema;
+    indicesToRemove.add(dropIdx).add(createIdx);
+    renamesToInsert.push({
+      afterIdx: dropIdx,
+      change: {
+        kind: "rename-table", from: d.from, to: d.to,
+        ...(schema !== undefined ? { schema } : {}),
+        status: { state: "allowed" },
+      },
+    });
+  }
+
   const drops: {
     idx: number; tableName: string; schema: string | undefined; columns: ColumnDescriptor[];
   }[] = [];
   const creates: { idx: number; table: TableDescriptor }[] = [];
 
   changes.forEach((c, idx) => {
+    if (indicesToRemove.has(idx)) return;
     if (c.kind === "drop-table") {
       const aug = c as Change & { _columns?: ColumnDescriptor[] };
       if (aug._columns) drops.push({ idx, tableName: c.table, schema: c.schema, columns: aug._columns });
@@ -35,11 +70,6 @@ export async function detectTableRenames(
       creates.push({ idx, table: c.table });
     }
   });
-
-  if (drops.length === 0 || creates.length === 0) return;
-
-  const indicesToRemove = new Set<number>();
-  const renamesToInsert: { afterIdx: number; change: Change }[] = [];
 
   for (const drop of drops) {
     let bestOverlap = 0;
@@ -97,6 +127,35 @@ export async function detectTableRenames(
 }
 
 /**
+ * Why a declared rename found no drop+add pair. Neither half pending means the rename was
+ * already applied (or never needed); one half missing names the side that is wrong.
+ */
+function unresolvedReason(from: string, fromPending: boolean, to: string, toPending: boolean): string {
+  if (!fromPending && !toPending) {
+    return `${from} is not being dropped and ${to} is not being added. If the rename was `
+      + `already applied, drop the flag`;
+  }
+  if (!fromPending) return `${from} is not in the database (or is still declared in the metadata)`;
+  return `${to} is not in the metadata (or already exists in the database)`;
+}
+
+/** The first aspect other than the name in which a renamed column's two sides differ. */
+function shapeDifference(live: ColumnDescriptor | undefined, declared: ColumnDescriptor): string | undefined {
+  if (live === undefined) return undefined;
+  if (!sqlTypeEquals(live.sqlType, declared.sqlType)) {
+    return `type (${live.sqlType.kind} → ${declared.sqlType.kind})`;
+  }
+  if (live.nullable !== declared.nullable) {
+    return `nullability (${live.nullable ? "NULL" : "NOT NULL"} → ${declared.nullable ? "NULL" : "NOT NULL"})`;
+  }
+  if (!columnDefaultsEqual(live.default, declared.default)) return "default";
+  if (live.identity !== declared.identity) {
+    return `identity (${live.identity ?? "none"} → ${declared.identity ?? "none"})`;
+  }
+  return undefined;
+}
+
+/**
  * Compare two schema strings, treating undefined as equivalent to "public" (Postgres default).
  * Used by the table-rename heuristic to avoid pairing drops and creates across schemas.
  */
@@ -130,6 +189,7 @@ function colSig(c: ColumnDescriptor): string {
 export async function detectColumnRenames(
   changes: Change[],
   onAmbiguous: AmbiguousCallback | undefined,
+  declared: readonly DeclaredRename[] = [],
 ): Promise<void> {
   // Group drop-columns and add-columns by (schema, table) — same table name in
   // different schemas must not cross-pair. Key: schema-or-public . table.
@@ -171,6 +231,42 @@ export async function detectColumnRenames(
 
   const indicesToRemove = new Set<number>();
   const renamesToInsert: { afterIdx: number; change: Change }[] = [];
+
+  // Declared renames first, as for tables. The pair must differ ONLY by name: the emitter
+  // runs column alterations (stage 2) before renames (stage 3) and keys them by the new
+  // name, so a type/nullability/default change cannot ride along in the same migration.
+  for (const d of declared) {
+    if (d.kind !== "column") continue;
+    const k = keyOf(d.table, d.schema);
+    const drop = dropsByTable.get(k)?.find((x) => x.column === d.from);
+    const add = addsByTable.get(k)?.find((x) => x.column.name === d.to);
+    const label = `declared column rename ${d.table}.${d.from} → ${d.to}`;
+    if (drop === undefined || add === undefined) {
+      throw new DeclaredRenameError(`${label} does not apply: ` + unresolvedReason(
+        `column "${d.table}.${d.from}"`, drop !== undefined, `column "${d.table}.${d.to}"`, add !== undefined,
+      ));
+    }
+    const live = changes[drop.idx] as Extract<Change, { kind: "drop-column" }>;
+    const shapeChange = shapeDifference(live.restore, add.column);
+    if (shapeChange !== undefined) {
+      throw new DeclaredRenameError(
+        `${label} also changes its ${shapeChange}. One migration cannot rename a column and `
+        + `change its shape: migrate the rename first with the old shape still declared, then `
+        + `change the shape in a second migration`,
+      );
+    }
+    indicesToRemove.add(drop.idx).add(add.idx);
+    renamesToInsert.push({
+      afterIdx: drop.idx,
+      change: {
+        kind: "rename-column", table: drop.table,
+        ...(drop.schema !== undefined ? { schema: drop.schema } : {}),
+        from: d.from, to: d.to, status: { state: "allowed" },
+      },
+    });
+    dropsByTable.set(k, dropsByTable.get(k)!.filter((x) => x !== drop));
+    addsByTable.set(k, addsByTable.get(k)!.filter((x) => x !== add));
+  }
 
   for (const [k, drops] of dropsByTable) {
     const adds = addsByTable.get(k) ?? [];

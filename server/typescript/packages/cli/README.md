@@ -153,6 +153,7 @@ Flags:
 - `--slug <name>` — required when changes are pending (e.g., `add-user-shipping`)
 - `--allow <csv>` — destructive-change permissions: `drop-column,drop-table,type-change,drop-index,drop-fk,drop-check,drop-view,drop-view-cascade,adopt-view,nullable-to-not-null,drop-identity-default`
 - `--on-ambiguous abort|rename|drop-add` (default `abort`) — non-interactive
+- `--rename-table [schema.]old=new` / `--rename-column [schema.]table.old=new` — declare a rename (repeatable), so the migration is `RENAME` instead of drop+add whatever the rename heuristic makes of the names. Refused if nothing matches. See [Renames and populated tables](../../../../docs/features/migrations-and-drift.md#renames-and-populated-tables).
 - `--dry-run` — print SQL pair to stdout, write nothing
 - `--apply` — after writing migration files, immediately apply all pending migrations against the DB (runs `up.sql` for each unapplied entry, tracked in the migration ledger). Mutually exclusive with `--rollback`. Postgres and SQLite only (D1 uses `--apply` to invoke `wrangler d1 migrations apply` instead).
 - `--rollback <version>` — roll back applied migrations newer than `<version>` by running their `down.sql` in reverse order, ledger-tracked. Pass an empty string (`--rollback ""`) to roll back everything. Mutually exclusive with `--apply`. Postgres and SQLite only.
