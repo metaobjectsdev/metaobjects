@@ -12,7 +12,12 @@ here.**
 
 ## [1.0.7] — 2026-09-24
 
-_npm `1.0.7` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+_npm `1.0.7` (all 14 `@metaobjectsdev/*` packages in lockstep), Maven Central `8.0.7`, PyPI
+`1.0.7` and NuGet `1.0.7`. Every port has a product change. npm, PyPI and NuGet skip `1.0.6`,
+which only Maven Central took (`8.0.6`). `metamodelVersion` stays `1.0`._
+
+**Upgrading: run `gen`.** The C#, Java, Kotlin and Python route generators emit a new doc
+comment, so adopters with committed generated code see a comment-only diff.
 
 ### Added
 
