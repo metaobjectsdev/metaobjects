@@ -64,10 +64,9 @@ but the semantics are one contract — call them **PATCH-1..7** (FR-035):
 - **PATCH-7 (verbs).** At the HTTP tier both `PATCH` and `PUT` route to the update
   handler with partial-merge semantics. True PUT-as-full-replace is out of scope.
 
-Optimistic concurrency (a `WHERE … AND version = ?` guard) is **not** a separate
-vocabulary item: an [`@autoSet`](#autoset-timestamp-stamping) field already models
-"stamps on every write," which is the natural lock column (owner ruling,
-2026-07-13 — a dedicated `@rowVersion` attribute was declined per ADR-0023).
+The generated update does **not** guard against a concurrent write: two callers
+patching the same row both succeed, and the last one wins. Adding that guard is
+adopter-owned — see [Optimistic concurrency](#optimistic-concurrency-adopter-owned).
 
 ## The generated surface, per port
 
@@ -128,6 +127,60 @@ repository. The contract (cross-port):
 ```jsonc
 { "field.timestamp": { "name": "updatedAt", "@autoSet": "onUpdate" }}
 ```
+
+## Optimistic concurrency (adopter-owned)
+
+Optimistic concurrency means an update succeeds only if the row has not changed since
+the caller read it. Without it, two people editing the same record both save, and the
+second silently overwrites the first.
+
+**What the metadata already carries.** An `@autoSet: onUpdate` field changes on every
+write, so it is the lock column. There is no separate attribute for this: a dedicated
+`@rowVersion` was declined (owner ruling 2026-07-13, ADR-0023), because it would be a
+second name for what `@autoSet: onUpdate` already says.
+
+**What is not generated.** No port's generated update route or query checks the lock
+column. The update code is a [reference helper](own-your-codegen.md) (ADR-0034 Amendment 3),
+so the guard belongs in your owned copy: `meta eject` the query and route generators
+(`dotnet meta eject`, `mvn metaobjects:eject`, `metaobjects eject` in the other ports)
+and add it there.
+
+**The pattern, in any port:**
+
+1. The client sends back the lock value it read (for example `updatedAt`, as a body
+   field or an `If-Match` header).
+2. The update adds it to the `WHERE` clause:
+   `UPDATE … SET … WHERE id = ? AND updated_at = ?`. The generated update already
+   stamps the `onUpdate` column with `now()` on every write, so a successful update
+   moves the lock forward.
+3. When no row matches, read the row by id. If it is gone, answer `404`. If it exists,
+   someone saved first: answer `409` with the standard error envelope, for example
+   `{ "error": "stale_write" }`, and let the client re-read and retry.
+
+In an ejected TypeScript query module (Drizzle) the guarded update is one extra
+condition:
+
+```ts
+import { and, eq } from "drizzle-orm";
+
+export async function updateOrderIfCurrent(
+  db: Db, id: number, seenUpdatedAt: Date, patch: OrderPatch,
+): Promise<Order | null> {
+  const validated = OrderUpdateSchema.parse(patch);   // also stamps updatedAt = now()
+  const [order] = await db.update(orders).set(validated)
+    .where(and(eq(orders.id, id), eq(orders.updatedAt, seenUpdatedAt)))
+    .returning();
+  return order ?? null;   // null: the row is gone, or someone saved since seenUpdatedAt
+}
+```
+
+**Known limit: SQLite and D1 timestamps.** A timestamp lock is only as fine as the
+stored value. SQLite and D1 commonly store whole seconds, so two writes within the same
+second carry the same lock value and the second is not caught. On those dialects use a
+store that keeps sub-second precision, or keep an integer counter you increment in the
+same `SET`. The metamodel does not declare an integer lock column today. If one is
+needed, the approved route is to allow `@autoSet` on `field.int`/`field.long` rather
+than add a new attribute.
 
 ## See also
 
