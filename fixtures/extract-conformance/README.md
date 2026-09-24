@@ -49,3 +49,10 @@ FR-011 added the `enum-*`, `nested-object-*`, `array-of-objects`, `xml-nested`, 
 `json-shapeless-object-then-answer` cases: JSON selection searches fenced blocks first, then
 the whole reply, and takes the first object carrying at least one declared field; only when
 none does is the first object taken.
+
+Three XML cases pin how the tolerant reader treats text that is not a clean scalar:
+`xml-mixed-content-text-kept` (an element with both prose and child elements keeps its own
+text under `#text`, so a scalar field reads the prose), `xml-element-into-scalar-malformed`
+(an element with only child elements is `MALFORMED` for a scalar field, never a stringified
+map), and `xml-unclosed-stray-close-tag` (an unclosed element's body ends at a close tag of
+another element, which models often write instead of the right one).

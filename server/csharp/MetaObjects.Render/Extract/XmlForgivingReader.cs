@@ -26,6 +26,9 @@ public sealed class XmlForgivingReader
     // tag name + everything up to the closing '>' (attributes and/or a trailing '/' for a
     // self-closing tag). Non-greedy so the first '>' closes the open tag.
     private const string OpenTagPattern = @"<([A-Za-z_][A-Za-z0-9_]*)([^>]*?)>";
+    // a closing tag. Used to spot a STRAY close (of an element whose open never appeared in
+    // the body) — LLMs commonly end a block with the wrong tag.
+    private const string CloseTagPattern = @"</([A-Za-z_][A-Za-z0-9_]*)\s*>";
     // one attribute: name = "double" | 'single' | bareword.
     private static readonly Regex AttrRegex = new(
         "([A-Za-z_:][A-Za-z0-9_:.\\-]*)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s/>]+))",
@@ -43,7 +46,7 @@ public sealed class XmlForgivingReader
         int innerEnd = (rootEnd < 0 || rootEnd <= gt) ? span.Length : rootEnd;
         string inner = span.Substring(gt + 1, innerEnd - (gt + 1));
 
-        ParseChildren(inner, caseInsensitive, out_);
+        ParseChildren(inner, caseInsensitive, out_, null);
         return out_;
     }
 
@@ -57,11 +60,16 @@ public sealed class XmlForgivingReader
     {
         var out_ = new Dictionary<string, object?>();
         if (string.IsNullOrWhiteSpace(text)) return out_;
-        ParseChildren(text!, caseInsensitive, out_);
+        ParseChildren(text!, caseInsensitive, out_, null);
         return out_;
     }
 
-    private static void ParseChildren(string inner, bool ci, Dictionary<string, object?> out_)
+    /// <summary>
+    /// Parse <paramref name="inner"/>'s elements into <paramref name="out_"/>. When
+    /// <paramref name="loose"/> is non-null, the text BETWEEN those elements (an element's own
+    /// text in mixed content) is appended to it, one segment per gap.
+    /// </summary>
+    private static void ParseChildren(string inner, bool ci, Dictionary<string, object?> out_, List<string>? loose)
     {
         var openTag = new Regex(OpenTagPattern, ci ? RegexOptions.IgnoreCase : RegexOptions.None);
 
@@ -69,6 +77,8 @@ public sealed class XmlForgivingReader
         Match m = openTag.Match(inner, pos);
         while (m.Success)
         {
+            loose?.Add(inner.Substring(pos, m.Index - pos));
+
             string tag = m.Groups[1].Value;
             string key = ci ? tag.ToLowerInvariant() : tag;
 
@@ -130,6 +140,15 @@ public sealed class XmlForgivingReader
                     contentEnd = inner.Length;
                     next = inner.Length;
                 }
+                // A STRAY close tag of another element inside the unclosed element's body ends
+                // the body there (the model closed the block with the wrong tag), and the stray
+                // tag itself is dropped rather than kept as literal text.
+                (int Start, int End)? stray = FindStrayClose(inner, contentStart, contentEnd, ci);
+                if (stray is { } s)
+                {
+                    contentEnd = s.Start;
+                    next = s.End;
+                }
             }
 
             string content = inner.Substring(contentStart, contentEnd - contentStart);
@@ -138,24 +157,69 @@ public sealed class XmlForgivingReader
             if (pos >= inner.Length) break;
             m = openTag.Match(inner, pos);
         }
+        loose?.Add(inner.Substring(pos));
     }
 
-    /// <summary>Combine an element's attributes with its body (nested children or plain text).</summary>
+    /// <summary>
+    /// The first close tag in <paramref name="inner"/>[from, to) whose element was never opened
+    /// after <paramref name="from"/> — a stray close — as (start, end), or null. A close whose
+    /// open DID appear is a nested child's own close, not stray.
+    /// </summary>
+    private static (int Start, int End)? FindStrayClose(string inner, int from, int to, bool ci)
+    {
+        var flags = ci ? RegexOptions.IgnoreCase : RegexOptions.None;
+        string scope = inner.Substring(0, to);
+        var closeRegex = new Regex(CloseTagPattern, flags);
+        Match close = closeRegex.Match(scope, from);
+        while (close.Success)
+        {
+            var openRegex = new Regex("<" + Regex.Escape(close.Groups[1].Value) + "(?=[\\s/>])", flags);
+            if (!openRegex.IsMatch(inner.Substring(from, close.Index - from)))
+            {
+                return (close.Index, close.Index + close.Length);
+            }
+            close = closeRegex.Match(scope, close.Index + close.Length);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Combine an element's attributes with its body (nested children or plain text). Mixed
+    /// content keeps BOTH: the children, and the element's own text under <see cref="TextKey"/>,
+    /// so a scalar or @xmlText consumer still reads the prose around a child element.
+    /// </summary>
     private static object? Combine(Dictionary<string, object?> attrs, string content, bool ci)
     {
         if (content.Contains('<'))
         {
             var nested = new Dictionary<string, object?>();
-            ParseChildren(content, ci, nested);
+            var loose = new List<string>();
+            ParseChildren(content, ci, nested, loose);
             if (nested.Count > 0)
             {
                 // attributes first; a child element wins a name collision
                 var merged = new Dictionary<string, object?>(attrs);
                 foreach (var kv in nested) merged[kv.Key] = kv.Value;
+                string text = MixedText(loose, ci);
+                if (text.Length > 0) merged[TextKey] = text;
                 return merged;
             }
         }
         return TextValue(attrs, content);
+    }
+
+    /// <summary>The text segments between child elements: stray close tags dropped, each
+    /// trimmed, the non-empty ones joined with a single space.</summary>
+    private static string MixedText(List<string> segments, bool ci)
+    {
+        var closeRegex = new Regex(CloseTagPattern, ci ? RegexOptions.IgnoreCase : RegexOptions.None);
+        var parts = new List<string>();
+        foreach (string seg in segments)
+        {
+            string t = closeRegex.Replace(seg, "").Trim();
+            if (t.Length > 0) parts.Add(t);
+        }
+        return string.Join(" ", parts);
     }
 
     private static object? TextValue(Dictionary<string, object?> attrs, string content)

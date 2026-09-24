@@ -33,6 +33,18 @@ here.**
 
 ### Fixed
 
+- **XML `extract` no longer writes a map's text into a string field, and reads the right
+  text from malformed replies, in every port.** Three defects, one symptom: an adopter's
+  end users were shown `{details=}. The door opens.` as generated prose.
+  - An element holding prose AND a child element (`<narrative>The door
+    opens.<details/></narrative>`) kept only the child and dropped the prose. It now
+    keeps the element's own text too, so a string field reads the prose.
+  - A string field that received an element with only child elements was filled with the
+    stringified map (`{details=}`). It is now `MALFORMED`.
+  - An unclosed element closed with the WRONG tag (`<narrative>prose</mood><next/>`)
+    kept the stray `</mood>` in its text. The stray close now ends the element there.
+  Three new `extract-conformance` cases pin this in all four engines (Kotlin runs the Java
+  one).
 - **`extract` no longer discards a fenced answer that follows an earlier object or a brace in
   prose ([#363]), in every port.** The JSON locator took the first object that parsed, so a
   draft object in the model's reasoning, an echoed format example (`{"topic": "<slug>"}`) or

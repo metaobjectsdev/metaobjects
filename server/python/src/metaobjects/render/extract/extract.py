@@ -199,7 +199,11 @@ def _extract_value(
     # A text element that also carried XML attributes is represented by XmlForgivingReader
     # as a dict with the body under TEXT_KEY. A scalar field reads that text (attributes
     # ignored for scalars — preserving pre-attribute-support behaviour).
-    if isinstance(present, dict) and TEXT_KEY in present:
+    if isinstance(present, dict):
+        # An element with no text of its own (only child elements) is not a scalar value.
+        # Never stringify the dict: that delivered "{'child': ...}" as the field's text.
+        if TEXT_KEY not in present:
+            return MALFORMED
         present = present[TEXT_KEY]
     raw_str = present if isinstance(present, str) else str(present)
     return _coerce.value(raw_str, f, o, path, report)

@@ -31,6 +31,10 @@ TEXT_KEY = "#text"
 # self-closing tag). Non-greedy so the first '>' closes the open tag.
 _OPEN_TAG = re.compile(r"<([A-Za-z_][A-Za-z0-9_]*)([^>]*?)>")
 _OPEN_TAG_CI = re.compile(r"<([A-Za-z_][A-Za-z0-9_]*)([^>]*?)>", re.IGNORECASE)
+# a closing tag. Used to spot a STRAY close (of an element whose open never appeared in
+# the body) — LLMs commonly end a block with the wrong tag.
+_CLOSE_TAG = re.compile(r"</([A-Za-z_][A-Za-z0-9_]*)\s*>")
+_CLOSE_TAG_CI = re.compile(r"</([A-Za-z_][A-Za-z0-9_]*)\s*>", re.IGNORECASE)
 # one attribute: name = "double" | 'single' | bareword.
 _ATTR = re.compile(r"""([A-Za-z_:][A-Za-z0-9_:.\-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s/>]+))""")
 
@@ -46,7 +50,7 @@ class XmlForgivingReader:
         root_end = span.rfind("</")
         inner_end = len(span) if (root_end < 0 or root_end <= gt) else root_end
         inner = span[gt + 1 : inner_end]
-        self._parse_children(inner, case_insensitive, out)
+        self._parse_children(inner, case_insensitive, out, None)
         return out
 
     def read_rootless(self, text: str | None, case_insensitive: bool) -> dict[str, object]:
@@ -57,16 +61,23 @@ class XmlForgivingReader:
         out: dict[str, object] = {}
         if text is None or text.strip() == "":
             return out
-        self._parse_children(text, case_insensitive, out)
+        self._parse_children(text, case_insensitive, out, None)
         return out
 
-    def _parse_children(self, inner: str, ci: bool, out: dict[str, object]) -> None:
+    def _parse_children(
+        self, inner: str, ci: bool, out: dict[str, object], loose: list[str] | None
+    ) -> None:
+        """Parse ``inner``'s elements into ``out``. When ``loose`` is not ``None``, the text
+        BETWEEN those elements (an element's own text in mixed content) is appended to it,
+        one segment per gap."""
         open_tag = _OPEN_TAG_CI if ci else _OPEN_TAG
         pos = 0
         while True:
             m = open_tag.search(inner, pos)
             if m is None:
-                return
+                break
+            if loose is not None:
+                loose.append(inner[pos : m.start()])
             tag = m.group(1)
             key = tag.lower() if ci else tag
 
@@ -112,21 +123,66 @@ class XmlForgivingReader:
                 else:
                     content_end = len(inner)
                     nxt = len(inner)
+                # A STRAY close tag of another element inside the unclosed element's body
+                # ends the body there (the model closed the block with the wrong tag), and
+                # the stray tag itself is dropped rather than kept as literal text.
+                stray = self._find_stray_close(inner, content_start, content_end, ci)
+                if stray is not None:
+                    content_end, nxt = stray
             content = inner[content_start:content_end]
             self._accumulate(out, key, self._combine(attrs, content, ci))
             pos = nxt
+        if loose is not None:
+            loose.append(inner[pos:])
+
+    def _find_stray_close(
+        self, inner: str, from_: int, to: int, ci: bool
+    ) -> tuple[int, int] | None:
+        """The first close tag in ``inner[from_, to)`` whose element was never opened
+        after ``from_`` — a stray close — as ``(start, end)``, or ``None``. A close whose
+        open DID appear is a nested child's own close, not stray."""
+        close_re = _CLOSE_TAG_CI if ci else _CLOSE_TAG
+        at = from_
+        while True:
+            m = close_re.search(inner, at, to)
+            if m is None:
+                return None
+            open_re = re.compile(
+                "<" + re.escape(m.group(1)) + r"(?=[\s/>])", re.IGNORECASE if ci else 0
+            )
+            if open_re.search(inner, from_, m.start()) is None:
+                return (m.start(), m.end())
+            at = m.end()
 
     def _combine(self, attrs: dict[str, object], content: str, ci: bool) -> object:
-        """Combine an element's attributes with its body (nested children or plain text)."""
+        """Combine an element's attributes with its body (nested children or plain text).
+        Mixed content keeps BOTH: the children, and the element's own text under
+        :data:`TEXT_KEY`, so a scalar or ``@xmlText`` consumer still reads the prose
+        around a child element."""
         if "<" in content:
             nested: dict[str, object] = {}
-            self._parse_children(content, ci, nested)
+            loose: list[str] = []
+            self._parse_children(content, ci, nested, loose)
             if nested:
                 # attributes first; a child element wins a name collision
                 merged: dict[str, object] = dict(attrs)
                 merged.update(nested)
+                text = self._mixed_text(loose, ci)
+                if text:
+                    merged[TEXT_KEY] = text
                 return merged
         return self._text_value(attrs, content)
+
+    def _mixed_text(self, segments: list[str], ci: bool) -> str:
+        """The text segments between child elements: stray close tags dropped, each
+        trimmed, the non-empty ones joined with a single space."""
+        close_re = _CLOSE_TAG_CI if ci else _CLOSE_TAG
+        parts: list[str] = []
+        for seg in segments:
+            t = close_re.sub("", seg).strip()
+            if t:
+                parts.append(t)
+        return " ".join(parts)
 
     def _text_value(self, attrs: dict[str, object], content: str) -> object:
         text = content.strip()

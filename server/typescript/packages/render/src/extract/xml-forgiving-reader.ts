@@ -31,6 +31,9 @@ function matchFrom(source: string, flags: string, text: string, from: number): R
 // tag name + everything up to the closing '>' (attributes and/or a trailing '/' for a
 // self-closing tag). Non-greedy so the first '>' closes the open tag.
 const OPEN_TAG_SRC = "<([A-Za-z_][A-Za-z0-9_]*)([^>]*?)>";
+// a closing tag. Used to spot a STRAY close (of an element whose open never appeared in the
+// body) — LLMs commonly end a block with the wrong tag.
+const CLOSE_TAG_SRC = "</([A-Za-z_][A-Za-z0-9_]*)\\s*>";
 // one attribute: name = "double" | 'single' | bareword.
 const ATTR_SRC = "([A-Za-z_:][A-Za-z0-9_:.\\-]*)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s/>]+))";
 
@@ -41,7 +44,7 @@ export function readXml(span: string | null | undefined, caseInsensitive: boolea
   if (gt < 0) return out;
   const rootEnd = span.lastIndexOf("</");
   const inner = span.substring(gt + 1, rootEnd < 0 || rootEnd <= gt ? span.length : rootEnd);
-  parseChildren(inner, caseInsensitive, out);
+  parseChildren(inner, caseInsensitive, out, null);
   return out;
 }
 
@@ -56,16 +59,26 @@ export function readXmlRootless(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (text == null || text.trim().length === 0) return out;
-  parseChildren(text, caseInsensitive, out);
+  parseChildren(text, caseInsensitive, out, null);
   return out;
 }
 
-function parseChildren(inner: string, ci: boolean, out: Record<string, unknown>): void {
+/**
+ * Parse `inner`'s elements into `out`. When `loose` is non-null, the text BETWEEN those
+ * elements (an element's own text in mixed content) is appended to it, one segment per gap.
+ */
+function parseChildren(
+  inner: string,
+  ci: boolean,
+  out: Record<string, unknown>,
+  loose: string[] | null,
+): void {
   const flags = ci ? "i" : "";
   let pos = 0;
   for (;;) {
     const m = matchFrom(OPEN_TAG_SRC, flags, inner, pos);
     if (m == null) break;
+    loose?.push(inner.substring(pos, m.index));
     const tag = m[1] ?? "";
     const key = ci ? tag.toLowerCase() : tag;
 
@@ -113,25 +126,75 @@ function parseChildren(inner: string, ci: boolean, out: Record<string, unknown>)
         contentEnd = inner.length;
         next = inner.length;
       }
+      // A STRAY close tag of another element inside the unclosed element's body ends the body
+      // there (the model closed the block with the wrong tag), and the stray tag itself is
+      // dropped rather than kept as literal text.
+      const stray = findStrayClose(inner, contentStart, contentEnd, ci);
+      if (stray != null) {
+        contentEnd = stray[0];
+        next = stray[1];
+      }
     }
 
     const content = inner.substring(contentStart, contentEnd);
     accumulate(out, key, combine(attrs, content, ci));
     pos = next;
   }
+  loose?.push(inner.substring(pos));
 }
 
-/** Combine an element's attributes with its body (nested children or plain text). */
+/**
+ * The first close tag in `inner[from, to)` whose element was never opened after `from` — a
+ * stray close — as `[start, end]`, or `null`. A close whose open DID appear is a nested
+ * child's own close, not stray.
+ */
+function findStrayClose(inner: string, from: number, to: number, ci: boolean): [number, number] | null {
+  const flags = ci ? "i" : "";
+  const bounded = inner.substring(0, to);
+  let at = from;
+  for (;;) {
+    const close = matchFrom(CLOSE_TAG_SRC, flags, bounded, at);
+    if (close == null) return null;
+    const openName = close[1] ?? "";
+    const openRe = `<${quote(openName)}(?=[\\s/>])`;
+    const opened = matchFrom(openRe, flags, inner.substring(from, close.index), 0);
+    if (opened == null) return [close.index, close.index + close[0].length];
+    at = close.index + close[0].length;
+  }
+}
+
+/**
+ * Combine an element's attributes with its body (nested children or plain text). Mixed content
+ * keeps BOTH: the children, and the element's own text under TEXT_KEY, so a scalar or
+ * `@xmlText` consumer still reads the prose around a child element.
+ */
 function combine(attrs: Record<string, unknown>, content: string, ci: boolean): unknown {
   if (content.includes("<")) {
     const nested: Record<string, unknown> = {};
-    parseChildren(content, ci, nested);
+    const loose: string[] = [];
+    parseChildren(content, ci, nested, loose);
     if (Object.keys(nested).length > 0) {
       // attributes first; a child element wins a name collision
-      return { ...attrs, ...nested };
+      const merged: Record<string, unknown> = { ...attrs, ...nested };
+      const text = mixedText(loose, ci);
+      if (text.length > 0) merged[TEXT_KEY] = text;
+      return merged;
     }
   }
   return textValue(attrs, content);
+}
+
+/** The text segments between child elements: stray close tags dropped, each trimmed, the
+ *  non-empty ones joined with a single space. */
+function mixedText(segments: readonly string[], ci: boolean): string {
+  const closeRe = new RegExp(CLOSE_TAG_SRC, ci ? "gi" : "g");
+  const parts: string[] = [];
+  for (const seg of segments) {
+    closeRe.lastIndex = 0;
+    const t = seg.replace(closeRe, "").trim();
+    if (t.length > 0) parts.push(t);
+  }
+  return parts.join(" ");
 }
 
 function textValue(attrs: Record<string, unknown>, content: string): unknown {

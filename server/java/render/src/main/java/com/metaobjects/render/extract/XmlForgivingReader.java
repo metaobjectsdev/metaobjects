@@ -42,6 +42,10 @@ public final class XmlForgivingReader {
     // self-closing tag). Non-greedy so the first '>' closes the open tag.
     private static final String OPEN_TAG_RE = "<([A-Za-z_][A-Za-z0-9_]*)([^>]*?)>";
 
+    // a closing tag. Used to spot a STRAY close (of an element whose open never appeared in
+    // the body) — LLMs commonly end a block with the wrong tag.
+    private static final String CLOSE_TAG_RE = "</([A-Za-z_][A-Za-z0-9_]*)\\s*>";
+
     // one attribute: name = "double" | 'single' | bareword. Tolerant of surrounding whitespace.
     private static final Pattern ATTR = Pattern.compile(
             "([A-Za-z_:][A-Za-z0-9_:.\\-]*)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s/>]+))");
@@ -53,7 +57,7 @@ public final class XmlForgivingReader {
         if (gt < 0) return out;
         int rootEnd = span.lastIndexOf("</");
         String inner = span.substring(gt + 1, (rootEnd < 0 || rootEnd <= gt) ? span.length() : rootEnd);
-        parseChildren(inner, caseInsensitive, out);
+        parseChildren(inner, caseInsensitive, out, null);
         return out;
     }
 
@@ -66,15 +70,21 @@ public final class XmlForgivingReader {
     public Map<String, Object> readRootless(String text, boolean caseInsensitive) {
         Map<String, Object> out = new LinkedHashMap<>();
         if (text == null || text.isBlank()) return out;
-        parseChildren(text, caseInsensitive, out);
+        parseChildren(text, caseInsensitive, out, null);
         return out;
     }
 
-    private void parseChildren(String inner, boolean ci, Map<String, Object> out) {
+    /**
+     * Parse {@code inner}'s elements into {@code out}. When {@code loose} is non-null, the text
+     * BETWEEN those elements (an element's own text in mixed content) is appended to it, one
+     * segment per gap.
+     */
+    private void parseChildren(String inner, boolean ci, Map<String, Object> out, List<String> loose) {
         Pattern openTag = Pattern.compile(OPEN_TAG_RE, ci ? Pattern.CASE_INSENSITIVE : 0);
         Matcher m = openTag.matcher(inner);
         int pos = 0;
         while (m.find(pos)) {
+            if (loose != null) loose.add(inner.substring(pos, m.start()));
             String tag = m.group(1);
             String key = ci ? tag.toLowerCase() : tag;
 
@@ -121,26 +131,73 @@ public final class XmlForgivingReader {
                     contentEnd = inner.length();
                     next = inner.length();
                 }
+                // A STRAY close tag of another element inside the unclosed element's body ends
+                // the body there (the model closed the block with the wrong tag), and the stray
+                // tag itself is dropped rather than kept as literal text.
+                int[] stray = findStrayClose(inner, contentStart, contentEnd, ci);
+                if (stray != null) {
+                    contentEnd = stray[0];
+                    next = stray[1];
+                }
             }
             String content = inner.substring(contentStart, contentEnd);
             accumulate(out, key, combine(attrs, content, ci));
             pos = next;
         }
+        if (loose != null) loose.add(inner.substring(pos));
     }
 
-    /** Combine an element's attributes with its body (nested children or plain text). */
+    /**
+     * The first close tag in {@code inner[from, to)} whose element was never opened after
+     * {@code from} — a stray close — as {@code {start, end}}, or {@code null}. A close whose
+     * open DID appear is a nested child's own close, not stray.
+     */
+    private static int[] findStrayClose(String inner, int from, int to, boolean ci) {
+        int flags = ci ? Pattern.CASE_INSENSITIVE : 0;
+        Matcher close = Pattern.compile(CLOSE_TAG_RE, flags).matcher(inner.substring(0, to));
+        int at = from;
+        while (close.find(at)) {
+            Pattern open = Pattern.compile("<" + Pattern.quote(close.group(1)) + "(?=[\\s/>])", flags);
+            if (!open.matcher(inner.substring(from, close.start())).find()) {
+                return new int[] {close.start(), close.end()};
+            }
+            at = close.end();
+        }
+        return null;
+    }
+
+    /**
+     * Combine an element's attributes with its body (nested children or plain text). Mixed
+     * content keeps BOTH: the children, and the element's own text under {@link #TEXT_KEY}, so
+     * a scalar or {@code @xmlText} consumer still reads the prose around a child element.
+     */
     private Object combine(Map<String, Object> attrs, String content, boolean ci) {
         if (content.contains("<")) {
             Map<String, Object> nested = new LinkedHashMap<>();
-            parseChildren(content, ci, nested);
+            List<String> loose = new ArrayList<>();
+            parseChildren(content, ci, nested, loose);
             if (!nested.isEmpty()) {
                 // attributes first; a child element takes precedence on a name collision
                 Map<String, Object> merged = new LinkedHashMap<>(attrs);
                 merged.putAll(nested);
+                String text = mixedText(loose, ci);
+                if (!text.isEmpty()) merged.put(TEXT_KEY, text);
                 return merged;
             }
         }
         return textValue(attrs, content);
+    }
+
+    /** The text segments between child elements: stray close tags dropped, each trimmed, the
+     *  non-empty ones joined with a single space. */
+    private static String mixedText(List<String> segments, boolean ci) {
+        Pattern close = Pattern.compile(CLOSE_TAG_RE, ci ? Pattern.CASE_INSENSITIVE : 0);
+        List<String> parts = new ArrayList<>();
+        for (String seg : segments) {
+            String t = close.matcher(seg).replaceAll("").trim();
+            if (!t.isEmpty()) parts.add(t);
+        }
+        return String.join(" ", parts);
     }
 
     /** A text body: bare {@code String} when there are no attributes, else a map carrying the

@@ -209,7 +209,10 @@ function extractValue(
   // A text element that also carried XML attributes is represented by readXml as a record with
   // the body under TEXT_KEY. A scalar field reads that text (attributes ignored for scalars —
   // preserving pre-attribute-support behaviour).
-  if (isPlainObject(present) && Object.prototype.hasOwnProperty.call(present, TEXT_KEY)) {
+  if (isPlainObject(present)) {
+    // An element with no text of its own (only child elements) is not a scalar value. Never
+    // stringify the record: that delivered "[object Object]" as the field's text.
+    if (!Object.prototype.hasOwnProperty.call(present, TEXT_KEY)) return MALFORMED;
     present = (present as Record<string, unknown>)[TEXT_KEY];
   }
   const rawStr = typeof present === "string" ? present : stringifyScalar(present);

@@ -220,8 +220,12 @@ public static class ExtractEngine
         // A text element that also carried XML attributes is represented by XmlForgivingReader
         // as a dictionary with the body under TextKey. A scalar field reads that text (attributes
         // ignored for scalars — preserving pre-attribute-support behaviour).
-        if (present is Dictionary<string, object?> mp && mp.ContainsKey(XmlForgivingReader.TextKey))
+        if (present is Dictionary<string, object?> mp)
         {
+            // An element with no text of its own (only child elements) is not a scalar value.
+            // Never stringify the dictionary: that delivered the dictionary's ToString() as
+            // the field's text.
+            if (!mp.ContainsKey(XmlForgivingReader.TextKey)) return Coerce.Malformed;
             present = mp[XmlForgivingReader.TextKey];
         }
 

@@ -166,7 +166,10 @@ public final class Extract {
         // A text element that also carried XML attributes is represented by XmlForgivingReader
         // as a map with the body under TEXT_KEY. A scalar field reads that text (attributes are
         // ignored for scalars — preserving pre-attribute-support behaviour).
-        if (present instanceof Map<?, ?> mp && mp.containsKey(XmlForgivingReader.TEXT_KEY)) {
+        if (present instanceof Map<?, ?> mp) {
+            // An element with no text of its own (only child elements) is not a scalar value.
+            // Never stringify the map: that delivered "{child=}" as the field's text.
+            if (!mp.containsKey(XmlForgivingReader.TEXT_KEY)) return Coerce.MALFORMED;
             present = mp.get(XmlForgivingReader.TEXT_KEY);
         }
         String rawStr = present instanceof String s ? s : String.valueOf(present);

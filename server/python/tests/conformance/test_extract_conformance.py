@@ -6,7 +6,7 @@ Each fixture dir under ``fixtures/extract-conformance/`` holds:
 - ``input.txt``     the raw (possibly dirty) LLM output
 - ``expected.json`` ``{ "empty": bool, "states": {field: FieldExtraction}, "data": {field: value} }``
 
-All 22 cases must pass. The corpus is the oracle — do not weaken assertions.
+All cases must pass. The corpus is the oracle — do not weaken assertions.
 1:1 port of ``ExtractConformanceTest.java`` / ``ExtractConformanceTests.cs``.
 """
 from __future__ import annotations
@@ -60,7 +60,7 @@ def _cases() -> list[str]:
 def test_discovers_all_extract_conformance_cases() -> None:
     """FR-011: lock the corpus size so a deleted fixture fails CI rather than
     silently reducing coverage. Mirrors the TS / Java / C# count guards."""
-    assert len(_cases()) == 38
+    assert len(_cases()) == 41
 
 
 _NORMALIZE_MODES = {"none", "collapse", "strip"}
