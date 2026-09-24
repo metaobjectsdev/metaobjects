@@ -10,6 +10,10 @@ here.**
 
 ## [Unreleased]
 
+## [1.0.7] — 2026-09-24
+
+_npm `1.0.7` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
 ### Added
 
 - **`meta migrate --rename-column` and `--rename-table` declare a rename, so the column's
@@ -30,6 +34,16 @@ here.**
   `routes.index.hono.ts`) at the target root exports `registerAllRoutes(...)`, so adding an
   entity no longer means editing the host file. Off by default: a project that does not ask
   gets no new file. TypeScript only; in the other ports, eject the route generator.
+
+### Changed
+
+- **Generated routes say they are unauthenticated in C#, Java, Kotlin and Python ([#367]).**
+  The TypeScript route generators already did. The others emitted open CRUD over every table
+  with no warning. Each now puts a doc comment on the generated register method, controller or
+  router: the endpoints are unauthenticated, how to guard them in that framework, and that a
+  row-ownership rule needs the generator ejected (`dotnet meta eject`, `mvn metaobjects:eject`,
+  `metaobjects eject`). Comment-only: adopters with committed generated code see a doc diff on
+  the next `gen`, and no behaviour changes.
 
 ### Fixed
 
