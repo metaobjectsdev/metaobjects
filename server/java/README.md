@@ -8,7 +8,11 @@ For the standard itself (metamodel, conformance corpora, ADRs) see the [reposito
 
 The first four MetaObjects pillars ship across all five language ports — TypeScript, Java, Kotlin, C#, Python; the fifth (requirements and testing) ships its vocabulary and `verify` checks in every port and its test scaffolding in TypeScript only. Java's contributions:
 
-- **Codegen** — Spring REST + DTO + repository-interface emit (you supply the impl) (`codegen-spring`), Mustache template engine (`codegen-mustache`), PlantUML diagrams (`codegen-plantuml`), and a Kotlin emit pipeline on KotlinPoet (`codegen-kotlin`). Output is hand-edit-preserving via three-way merge.
+Only the loader and registry, runtime metadata access and the drift gates are a MetaObjects
+guarantee. The generators are reference helpers: copy one into your build with
+`mvn metaobjects:eject` and own it ([Own your codegen → Java and Kotlin](../../docs/features/own-your-codegen.md#java-and-kotlin-mvn-metaobjectseject)).
+
+- **Codegen** *(reference generators, ejectable)* — Spring REST + DTO + repository-interface emit (you supply the impl) (`codegen-spring`), Mustache template engine (`codegen-mustache`), PlantUML diagrams (`codegen-plantuml`), and a Kotlin emit pipeline on KotlinPoet (`codegen-kotlin`). Output is hand-edit-preserving via three-way merge.
 - **Runtime metadata** — OMDB persistence layer over modernized JDBC with Spring-`@Transactional` integration. FR-003 fully shipped: binding registry, typed jsonb codec, source/origin metamodel, atomic mapping cache + JDBC codec registry + `inTransaction` template (Plan 4). Schema migrations are owned by the TypeScript toolchain (`@metaobjectsdev/cli migrate`); the `metaobjects:migrate` Maven goal was removed. Per the schema-authority consolidation the dev/test runtime auto-create path and `MetaClassDBValidatorService` were also removed — OMDB is now pure data-access (CRUD/query/codec/transactions only).
 - **Drift detection** — Template-drift: `Renderer.verify` checks `{{...}}` references against the payload VO at build time. The live-DB-schema mode of `metaobjects:verify` was removed; the goal now covers codegen drift (`mode=codegen`, the default) and template/prompt drift (`mode=templates`).
 - **Prompt construction** — `metaobjects-render` (Mustache + payload-VO + verify), FR-006 `template.output` parser-on-receipt codegen, render output byte-identical with the other four ports against the shared render-conformance corpus.

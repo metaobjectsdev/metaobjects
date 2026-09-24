@@ -43,7 +43,8 @@ else:
 The primary public API is the **loader** (`load_directory` / `load_uris` /
 `load_string`, `MetaDataLoader`, `LoadResult`, `ErrorCode`, `MetaError`). The
 distribution also ships the Python implementations of the other pillars used by the CLI
-and tooling: `codegen` (Pydantic + FastAPI emit), `render` (Mustache + payload-VO +
+and tooling: `codegen` (Pydantic + FastAPI emit — reference generators you own:
+`metaobjects eject <name>` copies one into your repo), `render` (Mustache + payload-VO +
 verify), and `runtime` (a DB-API 2 `ObjectManager` — pg8000 / psycopg — no SQLAlchemy).
 Schema migrations are owned by the TypeScript `meta` CLI (ADR-0015); there is
 **no `migrate` module** in this distribution.

@@ -21,8 +21,10 @@ The contract has two halves: the **URL grammar** (paths + query-string
 shape) and the **wire format** (JSON request / response bodies). Both
 halves are language-agnostic and stable across all five shipped
 language ports. Every port ships a generated route implementation today
-(see "Per-port route codegen status" below) — hand-writing a controller
-is an option for custom needs, not the default path.
+(see "Per-port route codegen status" below). That route code is a
+[reference helper](own-your-codegen.md): it implements this contract on the
+reference fixtures, and you eject it and own the copy when you need to change
+it. The contract is what stays fixed.
 
 ## The `EntityFetcher` contract
 

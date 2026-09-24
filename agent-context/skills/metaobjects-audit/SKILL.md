@@ -530,7 +530,7 @@ The audit never edits code. Pattern: **dry-run → review the diff → apply**.
 
 ## Calibration — port gaps & non-defects (do NOT flag these as adopter fault)
 
-- **Filter-operator route codegen — the CORE grammar ships in all five ports.** The
+- **Filter-operator route codegen — the baseline grammar ships in all five ports.** The
   `?filter[field][op]=value` grammar (all 9 operators `eq/ne/gt/gte/lt/lte/in/like/isNull`,
   implicit-AND across params, the generated `<Entity>FilterAllowlist` + `invalid-field` /
   `invalid-op` / `in`-over-cap 400s) is **generated in every port** (Java `SpringControllerGenerator`,

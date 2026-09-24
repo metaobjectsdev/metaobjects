@@ -284,10 +284,12 @@ ADR-0015. Schema migrations are TypeScript-owned across all ports.)*
   five ports). A given entity produces the same logical model, routes, and validation
   everywhere.
 - **Per-port (idiomatic):** *how* you invoke codegen (npm CLI vs `dotnet` tool vs
-  Maven goal vs console-script) and *how far* template ownership goes (TS copies
-  editable templates into your repo; the other ports own codegen via build config +
-  the declarative template surface). This split follows each ecosystem's norms
-  rather than forcing a single mechanism.
+  Maven goal vs console-script) and how you take ownership of a generator. Every
+  port copies a reference generator into your repo with its own eject command
+  (`meta eject`, `metaobjects eject`, `mvn metaobjects:eject`, `dotnet meta eject`);
+  C# and Python also offer a declarative template surface for a shape no built-in
+  generator emits. This split follows each ecosystem's norms rather than forcing a
+  single mechanism.
 
 ## Reading a field's view: name the surface, never take the first
 
@@ -334,7 +336,7 @@ provider class** in each language: a JSON file could express the declarative sur
 
 This split follows each ecosystem's norms — interpreted ports (TS / Python) name or
 import the provider module; compiled ports (JVM) discover it on the build classpath —
-the same "idiomatic per port" principle as generator ownership (ADR-0035 §3).
+the same "idiomatic per port" principle as generator ownership ([Per port](#per-port)).
 
 ## Deprecated (removed at 1.0)
 

@@ -513,9 +513,11 @@ the `metaobjects.config.ts` keys, the exported `render*` functions — see this 
 config takes generator values, and keeping the declaration there is what keeps
 `meta verify --codegen` regenerating with it.
 
-**Java / Kotlin** have both. **No eject command** — a programmatic generator means
-implementing `com.metaobjects.generator.Generator` and naming your class in the Maven
-`<generator>` element, which the plugin loads from the project classpath. The declarative
+**Java / Kotlin** have both, and both are ownable. `mvn metaobjects:eject -Dnames=<name,...>`
+copies a reference generator into a `codegen/` Maven module you own and edit. A new
+programmatic generator means implementing `com.metaobjects.generator.Generator` and naming
+your class in the Maven `<generator>` element, which the plugin loads from the project
+classpath. The declarative
 path is `TemplateScopeGenerator`, wired the same way with `<template>` / `<scope>` /
 `<outputPattern>` / `<format>` / `<templatesDir>` (plus the standard `<outputDir>`), and
 covers Java and Kotlin alike. No `--template-spec` flag here either, for the same reason:
