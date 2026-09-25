@@ -10,6 +10,39 @@ here.**
 
 ## [Unreleased]
 
+### Fixed
+
+- **A generator selected without the generators its output references now warns, in C#
+  and Python.** Python `--generators entity,routes,names` emitted a router that imports
+  `<entity>_filter_allowlist`, so the package failed at import with `ModuleNotFoundError`;
+  C# `--generators entity,routes` emitted handlers that reference `AppDbContext` and
+  `<Entity>FilterAllowlist` and did not compile. Python `routes` now declares
+  `entity, filter-allowlist`. C# gains the `requires` mechanism TypeScript and Python
+  already had: `routes` requires `entity, db-context, filter-allowlist`, `db-context`
+  requires `entity`, and the prompt-tier generators require `entity`. `gen` warns and
+  `--list` shows `(requires: ...)`. Advisory, as before: a hand-written file at that path
+  is allowed.
+- **A template spec alone is a generator selection, in C# and Python.** `gen` refused a
+  project that generates only through a `template-spec.json` ("no generators selected"),
+  so the documented `gen --template-root` examples failed as printed. C# `verify
+  --codegen` returned clean for the same project without checking anything. Both now
+  resolve the spec before deciding nothing was selected. C# `gen` also reports an empty
+  selection as a usage error (exit 2) instead of "metadata did not load cleanly".
+- **The Python and C# port pages' first `gen` examples named no generators**, so, codegen
+  being opt-in, they wrote nothing, and the Python `verify` beside it checked nothing and
+  exited 0. Both now name the suite. The Python page also shows the template file its render
+  example reads and how to serve the generated router.
+
+### Changed
+
+- **Docs: generated code has "no proprietary runtime", not "no MetaObjects dependency".**
+  Entity and model code imports nothing from MetaObjects at runtime; the REST, prompt,
+  client and runtime tiers import ordinary Apache-2.0 packages. The shipped codegen skill
+  said otherwise, so the agent-context an adopter installs changes.
+- **ADR-0034: runtime metadata access is core; its HTTP adapters are helpers.**
+  `runtime-ts`'s root and `./drivers` (`ObjectManager` and the layer under it) are core;
+  `./fastify`, `./hono` and `./drizzle-fastify` are reference helpers. No code change.
+
 ## [1.0.7] — 2026-09-24
 
 _npm `1.0.7` (all 14 `@metaobjectsdev/*` packages in lockstep), Maven Central `8.0.7`, PyPI
