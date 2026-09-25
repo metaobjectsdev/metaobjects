@@ -100,6 +100,13 @@ public sealed record GeneratorRegistryEntry
     /// its own to own — every other Native entry names its file here.
     /// </summary>
     public string? SourceFileName { get; init; }
+    /// <summary>
+    /// Stable names of the generators whose output this one's output references. A run
+    /// that selects this entry without them gets a warning from <c>gen</c> (see
+    /// <see cref="GeneratorRegistry.UnsatisfiedRequires"/>) and <c>--list</c> shows them.
+    /// Advisory, never an error: an adopter may keep a hand-written file at that path.
+    /// </summary>
+    public IReadOnlyList<string> Requires { get; init; } = [];
 }
 
 /// <summary>
@@ -147,6 +154,8 @@ public static class GeneratorRegistry
                 Layer = GeneratorLayer.Persistence,
                 Factory = _ => new DbContextGenerator(),
                 SourceFileName = "DbContextGenerator.cs",
+                // DbSet<Entity> for every entity class EntityGenerator emits.
+                Requires = ["entity"],
             },
             ["routes"] = new()
             {
@@ -156,6 +165,9 @@ public static class GeneratorRegistry
                 Layer = GeneratorLayer.Api,
                 Factory = _ => new RoutesGenerator(),
                 SourceFileName = "RoutesGenerator.cs",
+                // The handlers take AppDbContext, read <Entity>FilterAllowlist and bind the
+                // entity classes; without any of the three the output does not compile.
+                Requires = ["entity", "db-context", "filter-allowlist"],
             },
             ["output-parser"] = new()
             {
@@ -166,6 +178,8 @@ public static class GeneratorRegistry
                 Factory = _ => new OutputParserGenerator(),
                 Note = "Needs `entity` in the same run: it references each value object's own POCO (ADR-0056).",
                 SourceFileName = "OutputParserGenerator.cs",
+                // ADR-0056: the value object's own POCO, which EntityGenerator emits.
+                Requires = ["entity"],
             },
             ["extractor"] = new()
             {
@@ -176,6 +190,8 @@ public static class GeneratorRegistry
                 Factory = _ => new ExtractorGenerator(),
                 Note = "Needs `entity` in the same run: it references each value object's own POCO (ADR-0056).",
                 SourceFileName = "ExtractorGenerator.cs",
+                // ADR-0056: the value object's own POCO, which EntityGenerator emits.
+                Requires = ["entity"],
             },
             ["output-prompt"] = new()
             {
@@ -196,6 +212,8 @@ public static class GeneratorRegistry
                 Options = "template-root (required when selected)",
                 Note = "Needs `entity` in the same run: it references each value object's own POCO (ADR-0056).",
                 SourceFileName = "RenderHelperGenerator.cs",
+                // ADR-0056: the value object's own POCO, which EntityGenerator emits.
+                Requires = ["entity"],
             },
             ["filter-allowlist"] = new()
             {
@@ -271,6 +289,31 @@ public static class GeneratorRegistry
     /// Build the generators for the given stable names, in the order requested.
     /// Throws <see cref="ArgumentException"/> naming the first unknown id.
     /// </summary>
+    /// <summary>
+    /// One warning per selected generator whose <see cref="GeneratorRegistryEntry.Requires"/>
+    /// are not all selected too. Advisory, never an error. Mirrors TS
+    /// <c>warnUnsatisfiedRequires</c> and Python <c>unsatisfied_requires</c>.
+    /// </summary>
+    public static IReadOnlyList<string> UnsatisfiedRequires(IReadOnlyList<string> names)
+    {
+        var selected = new HashSet<string>(names, StringComparer.Ordinal);
+        var warnings = new List<string>();
+        foreach (var name in names)
+        {
+            var entry = Get(name);
+            if (entry is null) continue;
+            var missing = entry.Requires.Where(d => !selected.Contains(d)).ToList();
+            if (missing.Count == 0) continue;
+            var listed = string.Join(", ", missing.Select(m => $"\"{m}\""));
+            warnings.Add(
+                $"\"{name}\" is selected but {listed} {(missing.Count == 1 ? "is" : "are")} not. " +
+                $"The code \"{name}\" emits references what {listed} would have emitted, so it " +
+                $"will not compile. Add {listed} to --generators, or keep your own hand-written " +
+                "files at those paths.");
+        }
+        return warnings;
+    }
+
     public static IReadOnlyList<IGenerator> Resolve(IEnumerable<string> names, GeneratorBuildContext? ctx = null)
     {
         var build = ctx ?? new GeneratorBuildContext();

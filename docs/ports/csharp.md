@@ -85,11 +85,17 @@ for a worked example.
 
 ```bash
 # Generate EF Core entities + AppDbContext + CRUD minimal-API routes
-dotnet meta gen ./metadata --out ./Generated --namespace Acme.Blog
+dotnet meta gen ./metadata --out ./Generated --namespace Acme.Blog \
+  --generators entity,db-context,filter-allowlist,routes
 
 # Drift-check templates against payloads (FR-004)
 dotnet meta verify ./metadata --templates ./prompts
 ```
+
+Codegen is opt-in: with no `--generators`, `gen` writes nothing. `dotnet meta gen --list` is
+the catalog, and it shows what each generator requires. `routes` requires `entity`,
+`db-context` and `filter-allowlist`, because the handlers it emits reference their output;
+`gen` warns when one is missing, since the result would not compile.
 
 Schema migrations are owned by the Node `meta` CLI (ADR-0015) — the C# CLI is
 `gen` + `verify` only.

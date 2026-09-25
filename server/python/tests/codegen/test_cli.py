@@ -199,6 +199,24 @@ def test_gen_auto_discovers_template_spec(tmp_path: Path) -> None:
     assert (out / "_model.txt").exists()
 
 
+def test_gen_with_only_a_template_spec_is_not_refused(tmp_path: Path) -> None:
+    """A template spec is a selection. A project that generates only from one used to be
+    refused with "no generators selected", while verify already honoured it."""
+    root = _spec_project(tmp_path)
+    out = root / "out"
+    rc = main(["gen", str(root / "meta"), "--out", str(out), "--templates", str(root / "templates")])
+    assert rc == 0
+    assert (out / "Product.txt").exists()
+    assert not (out / "__init__.py").exists(), "no Python suite ran, so no package init"
+
+
+def test_gen_with_neither_generators_nor_spec_is_refused(tmp_path: Path, capsys) -> None:
+    root = _spec_project(tmp_path, spec_name=None)
+    rc = main(["gen", str(root / "meta"), "--out", str(root / "out")])
+    assert rc == 2
+    assert "no generators selected" in capsys.readouterr().err
+
+
 def test_gen_without_spec_file_emits_no_template_output(tmp_path: Path) -> None:
     """No spec file ⇒ today's behaviour exactly: the default suite only."""
     root = _spec_project(tmp_path, spec_name=None)

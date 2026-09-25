@@ -113,6 +113,38 @@ public sealed class VerifyTemplateSpecTests : IDisposable
         Assert.NotEqual(0, r.ExitCode);
     }
 
+    // A spec IS a selection. Both commands used to test for an empty --generators BEFORE
+    // resolving the spec: gen refused a spec-only project, and verify reported it clean
+    // without checking anything.
+    [Fact]
+    public void Gen_with_only_a_spec_is_not_refused()
+    {
+        var outcome = GenCommand.Run(MetaDir, OutDir, "Acme.Generated", emitAbstractShapes: false,
+            generatorNames: null, templateRoot: TemplateRoot);
+        Assert.True(outcome.Ok, string.Join("; ", outcome.LoadErrors));
+        Assert.True(File.Exists(Path.Combine(OutDir, "Widget.summary.txt")));
+    }
+
+    [Fact]
+    public void Verify_with_only_a_spec_still_catches_an_edited_template_file()
+    {
+        Assert.True(GenCommand.Run(MetaDir, OutDir, "Acme.Generated", emitAbstractShapes: false,
+            generatorNames: null, templateRoot: TemplateRoot).Ok);
+        File.WriteAllText(Path.Combine(OutDir, "Widget.summary.txt"), "tampered\n");
+
+        var r = VerifyCommand.RunSubverbs(CodegenOpts() with { Generators = null });
+        Assert.NotEqual(0, r.ExitCode);
+    }
+
+    [Fact]
+    public void Gen_with_neither_generators_nor_a_spec_is_still_refused()
+    {
+        File.Delete(DiscoveredSpec);
+        var outcome = GenCommand.Run(MetaDir, OutDir, "Acme.Generated", emitAbstractShapes: false,
+            generatorNames: null, templateRoot: TemplateRoot);
+        Assert.Equal([GenCommand.NoGeneratorsSelected], outcome.LoadErrors);
+    }
+
     [Fact]
     public void No_spec_file_leaves_behaviour_unchanged()
     {

@@ -1069,11 +1069,6 @@ def _cmd_gen(args: argparse.Namespace) -> int:
             for msg in gen_errors:
                 print(f"  {msg}", file=sys.stderr)
             return 1
-    else:
-        # Codegen is opt-in: refuse here, at the door, rather than letting the run reach
-        # the generator loop and fail with an empty out dir half-created.
-        print(f"error: {NO_GENERATORS_SELECTED}", file=sys.stderr)
-        return 2
 
     # SP-1: declarative Mustache generators from a JSON template-spec. Their output
     # is format-agnostic (text/markdown/csv/json/xml/html), so they run as a SECOND,
@@ -1087,6 +1082,14 @@ def _cmd_gen(args: argparse.Namespace) -> int:
     if spec_err is not None:
         print(spec_err, file=sys.stderr)
         return 1
+
+    # Codegen is opt-in: refuse at the door when nothing is selected, rather than letting
+    # the run reach the generator loop and fail with an empty out dir half-created. A
+    # template spec IS a selection (flag or the conventional template-spec.json), so a
+    # project that generates only from one is not refused; verify already agreed.
+    if not generators and not spec_gens:
+        print(f"error: {NO_GENERATORS_SELECTED}", file=sys.stderr)
+        return 2
 
     entities = _parse_entities(getattr(args, "entities", None))
     providers, providers_ok = _providers_from_args(args)
@@ -1112,7 +1115,7 @@ def _cmd_gen(args: argparse.Namespace) -> int:
             root, args.out, generators, entities,
             gen_state_dir=gen_state, column_naming=column_naming,
             project_root=gen_project_root, baseline=baseline, refused_out=refused,
-        )
+        ) if generators else []
     except ValueError as exc:
         # A generator refused the model — a run_gen output collision, or
         # `render-helper`'s build-time drift gate. The targets path below has caught

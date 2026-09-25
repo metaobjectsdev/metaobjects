@@ -165,10 +165,22 @@ static int RunGen(string[] rest)
     // branches now build a LoadResult up front and share the single
     // GenCommand.Run(LoadResult, ...) overload, exactly as VerifyCommand.LoadMetadata
     // already does.
+    // Advisory, before the run: a generator selected without the ones its output
+    // references still generates, but the result will not compile.
+    if (generatorNames is { Length: > 0 } selectedNames)
+        foreach (var w in GeneratorRegistry.UnsatisfiedRequires(selectedNames))
+            Console.Error.WriteLine($"warning: {w}");
+
     var load = resolvedMeta.Load();
     var outcome = GenCommand.Run(
         load, outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath, projectRoot,
         columnNaming, baseline);
+    if (outcome.LoadErrors is [GenCommand.NoGeneratorsSelected])
+    {
+        // A usage error, not a load failure: say so, and exit 2 as Python does.
+        Console.Error.WriteLine($"error: {GenCommand.NoGeneratorsSelected}");
+        return 2;
+    }
     if (!outcome.Ok)
     {
         foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");

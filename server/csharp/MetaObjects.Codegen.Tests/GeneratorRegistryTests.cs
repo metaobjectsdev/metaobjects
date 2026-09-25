@@ -104,4 +104,34 @@ public sealed class GeneratorRegistryTests
         }
         finally { Directory.Delete(root, recursive: true); }
     }
+
+    // A generator whose output imports another generator's output declares it, and
+    // `gen` warns when the dependency is not selected (advisory: an adopter may keep a
+    // hand-written file at that path). Mirrors TS warnUnsatisfiedRequires and Python's
+    // unsatisfied_requires. Before this, `--generators entity,routes` emitted routes that
+    // reference <Entity>FilterAllowlist and AppDbContext and did not compile.
+    [Fact]
+    public void Routes_declares_the_modules_its_output_references()
+    {
+        Assert.Equal(["entity", "db-context", "filter-allowlist"], GeneratorRegistry.Get("routes")!.Requires);
+        Assert.Equal(["entity"], GeneratorRegistry.Get("db-context")!.Requires);
+        foreach (var name in new[] { "output-parser", "extractor", "render-helper" })
+            Assert.Equal(["entity"], GeneratorRegistry.Get(name)!.Requires);
+        Assert.Empty(GeneratorRegistry.Get("entity")!.Requires);
+    }
+
+    [Fact]
+    public void UnsatisfiedRequires_warns_once_per_generator_naming_what_is_missing()
+    {
+        var warnings = GeneratorRegistry.UnsatisfiedRequires(["entity", "routes"]);
+        var w = Assert.Single(warnings);
+        Assert.StartsWith("\"routes\" is selected but \"db-context\", \"filter-allowlist\" are not.", w);
+    }
+
+    [Fact]
+    public void UnsatisfiedRequires_is_silent_when_every_dependency_is_selected()
+    {
+        Assert.Empty(GeneratorRegistry.UnsatisfiedRequires(
+            ["entity", "db-context", "filter-allowlist", "routes", "names"]));
+    }
 }

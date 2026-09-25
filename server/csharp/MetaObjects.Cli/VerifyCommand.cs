@@ -258,22 +258,7 @@ public static class VerifyCommand
                         string.Join("; ", load.Errors.Select(e => e.Code + ": " + e.Message)) + ").",
             };
 
-        // `verify --codegen` re-runs the SELECTION and compares. With no default suite
-        // there is nothing to compare against, so it says so rather than silently
-        // checking nine artifacts this project never generates — which would convict
-        // every one of them as missing.
-        if (opts.Generators is not { Count: > 0 })
-            return new Codegen.CodegenDrift.Result
-            {
-                Clean = true,
-                Lines =
-                [
-                    "verify --codegen: no generators selected, so there is no generated " +
-                    "output to check. Pass --generators <a,b,c> (dotnet meta gen --list " +
-                    "is the catalog).",
-                ],
-            };
-        var names = opts.Generators;
+        var names = opts.Generators ?? [];
         IReadOnlyList<IGenerator> generators;
         try
         {
@@ -301,6 +286,23 @@ public static class VerifyCommand
         {
             return new Codegen.CodegenDrift.Result { Clean = false, Error = $"verify --codegen: {ex.Message}" };
         }
+
+        // `verify --codegen` re-runs the SELECTION and compares. With no default suite and
+        // nothing selected there is nothing to compare against, so it says so rather than
+        // convicting every committed file as missing. A discovered template-spec.json IS a
+        // selection: this check used to run before discovery, so a project generating only
+        // from a spec passed verify without anything being checked.
+        if (generators.Count == 0)
+            return new Codegen.CodegenDrift.Result
+            {
+                Clean = true,
+                Lines =
+                [
+                    "verify --codegen: no generators selected, so there is no generated " +
+                    "output to check. Pass --generators <a,b,c> (dotnet meta gen --list " +
+                    "is the catalog).",
+                ],
+            };
 
         // The C# namespace is embedded in every generated file (`namespace {ns};`).
         // If the user did NOT pass --namespace, infer it from the committed output so

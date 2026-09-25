@@ -63,6 +63,14 @@ public sealed class GenListAndSelectionTests : IDisposable
     }
 
     [Fact]
+    public void ListLines_shows_what_a_generator_requires()
+    {
+        var lines = GenCommand.ListLines(_tmp);
+        Assert.Contains(lines, l => l.Contains(" routes —") && l.Contains("(requires: entity, db-context, filter-allowlist)"));
+        Assert.DoesNotContain(lines, l => l.Contains(" entity —") && l.Contains("requires"));
+    }
+
+    [Fact]
     public void There_is_no_default_suite()
     {
         // This port used to run NINE generators for a caller who named none, and this

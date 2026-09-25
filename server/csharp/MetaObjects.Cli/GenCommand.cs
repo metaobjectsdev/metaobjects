@@ -46,8 +46,9 @@ public static class GenCommand
 
     /// <summary>
     /// Run codegen selecting generators by stable name. There is no default suite:
-    /// a null or empty <paramref name="generatorNames"/> generates nothing and reports
-    /// <see cref="NoGeneratorsSelected"/> — ADR-0034 Amendment 2 made codegen opt-in.
+    /// a null or empty <paramref name="generatorNames"/> with no template spec either
+    /// generates nothing and reports <see cref="NoGeneratorsSelected"/> — ADR-0034
+    /// Amendment 2 made codegen opt-in. A template spec alone is a selection.
     /// An unknown name (or a render-helper selected without a
     /// <paramref name="templateRoot"/>) surfaces as a load-style error in the
     /// returned <see cref="Outcome"/> rather than throwing.
@@ -133,11 +134,7 @@ public static class GenCommand
         if (loadErrors.Count > 0)
             return new Outcome(loadErrors, null);
 
-        // No default suite — see NoGeneratorsSelected. A caller that names none gets a
-        // usage error and an empty out dir, never a shape this CLI picked.
-        if (generatorNames is not { Count: > 0 })
-            return new Outcome([NoGeneratorsSelected], null);
-        var names = generatorNames;
+        var names = generatorNames ?? [];
         List<IGenerator> generators;
         try
         {
@@ -157,6 +154,13 @@ public static class GenCommand
         {
             return new Outcome([ex.Message], null);
         }
+
+        // No default suite — see NoGeneratorsSelected. A caller that selects nothing gets a
+        // usage error and an empty out dir, never a shape this CLI picked. A template spec
+        // (flag or the conventional template-spec.json) IS a selection, so this runs after
+        // spec resolution: it used to run before, and refused a spec-only project.
+        if (generators.Count == 0)
+            return new Outcome([NoGeneratorsSelected], null);
 
         // Build-config + CodegenRunner.Run + hash-manifest / overwrite-policy / merge, and
         // the RenderException / ArgumentException-to-clean-error translation, all live in
@@ -192,7 +196,8 @@ public static class GenCommand
             {
                 var owned = OwnedCopy.Status(cwd, e);
                 var ownedMark = owned is not null ? $" [owned — {owned}]" : "";
-                return $"  {e.Name} — {e.Description}" + (e.Note is not null ? $" [{e.Note}]" : "") + ownedMark;
+                var requires = e.Requires.Count > 0 ? $" (requires: {string.Join(", ", e.Requires)})" : "";
+                return $"  {e.Name} — {e.Description}" + requires + (e.Note is not null ? $" [{e.Note}]" : "") + ownedMark;
             })
             .ToList();
 }
