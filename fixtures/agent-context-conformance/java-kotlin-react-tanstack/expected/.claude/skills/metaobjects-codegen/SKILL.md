@@ -8,9 +8,10 @@ description: Use when configuring or running MetaObjects code generation — gen
 Codegen is the first pillar: MetaObjects reads your typed metadata and emits
 **idiomatic per-language code** — entity types, DB tables/schemas, query helpers,
 REST routes, validators, payload value-objects, output parsers. The metadata is the
-durable spine; the generated code is a disposable artifact. It runs at runtime
-**without any MetaObjects dependency** — if the libraries disappeared tomorrow, you
-keep working code.
+durable spine; the generated code is a disposable artifact. It has **no
+proprietary runtime**: entity and model code imports nothing from MetaObjects, and the
+REST, prompt and client tiers import ordinary Apache-2.0 packages you can vendor or
+replace — if the libraries disappeared tomorrow, you keep working code.
 
 **Generators are reference helpers, not guarantees** (ADR-0034 Amendment 3). The core —
 metamodel, loader, `migrate`, `verify`, prompt render — is what MetaObjects guarantees.

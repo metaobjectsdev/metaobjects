@@ -4,7 +4,7 @@
 
 MetaObjects is a **cross-language metadata standard** for declaring typed entity models that drive code generation, runtime metadata access, and drift detection — across TypeScript, C#, Java, Python, and Kotlin (Kotlin runs on the JVM via `metadata-ktx` + `codegen-kotlin`).
 
-The metamodel is the **durable spine**; generated code is the **disposable artifact**. Substrate is local-first: typed metadata lives in your repo, generated code is idiomatic per-language output that runs without any MetaObjects dependency at runtime. If `@metaobjectsdev/*` disappears tomorrow, you keep working code.
+The metamodel is the **durable spine**; generated code is the **disposable artifact**. Substrate is local-first: typed metadata lives in your repo, generated code is idiomatic per-language output with **no proprietary runtime**: the generated entity and model code imports nothing from MetaObjects at runtime, and the REST, prompt, client and runtime tiers import ordinary Apache-2.0 packages you can vendor, fork or replace. If `@metaobjectsdev/*` disappears tomorrow, you keep working code.
 
 **Core vs helpers (ADR-0034 Amendment 3, 2026-09-22).** Only the core is a product promise: the metamodel, loader, canonical format and registry; runtime metadata access (the `ObjectManager` and its drivers; the HTTP adapters that mount it on a web framework are helpers, 2026-09-24 ruling); schema migrations (`meta migrate`); the drift gates (`meta verify`); prompt render and the reply parser. Every generator that writes application code into an adopter's repo — routes, controllers, ORM wiring, DTOs, forms, grids, hooks, filter allowlists — is a **reference helper**: it must compile and pass its reference fixtures, and the adopter copies it with `meta eject` and owns the copy. Mechanical test: what the tool guarantees is core; what it writes into your repo is a helper. Every port can eject: `meta eject` (TypeScript), `metaobjects eject` (Python), `mvn metaobjects:eject` (Java/Kotlin), `dotnet meta eject` (C#). When you find a generator defect, fix the reference; do not describe it as a broken core guarantee.
 
@@ -270,7 +270,7 @@ import { EntityFetcherProvider, EntityGrid } from "@metaobjectsdev/tanstack";
 
 - A custom DSL. Plain typed metadata only — Wasp's seven-year DSL-tax is the cautionary tale.
 - A spec-driven workflow like Kiro / Spec Kit. Humans don't author rich specs; Claude proposes metadata, humans review.
-- A proprietary runtime. All generated code runs without MetaObjects installed; runtime libraries are normal language-native packages.
+- A proprietary runtime. Generated entity and model code runs without MetaObjects installed; the tiers that do import a MetaObjects package (REST helpers, prompt render and extract, the web client, the runtime pillar) import normal Apache-2.0, language-native packages.
 - A prompt-to-app builder (not Lovable, Bolt, or v0). MetaObjects generates entity-shaped boilerplate; users hand-write the interesting business logic.
 - Replacing CLAUDE.md, cursor rules, or other prompt-engineering surfaces — MetaObjects complements them.
 - An LLM provider. The MCP integration is model-agnostic.
