@@ -162,7 +162,7 @@ correct starting points") and the positioning that lists codegen as the first ca
 
 | Layer | What it is | Promise |
 |---|---|---|
-| **Core** | The metamodel, loader, canonical format and registry; runtime metadata access; schema migrations (`meta migrate`); the drift gates (`meta verify`); prompt render and the reply parser | Conformance-gated, identical behaviour in every port that ships it, covered by `docs/compatibility-policy.md`. A defect here is a MetaObjects bug. |
+| **Core** | The metamodel, loader, canonical format and registry; runtime metadata access (the `ObjectManager` and its drivers, not the HTTP adapters that mount it); schema migrations (`meta migrate`); the drift gates (`meta verify`); prompt render and the reply parser | Conformance-gated, identical behaviour in every port that ships it, covered by `docs/compatibility-policy.md`. A defect here is a MetaObjects bug. |
 | **Helpers** | Every generator that writes application code into the adopter's repo: routes, controllers, ORM wiring, DTOs, forms, grids, hooks, filter allowlists | Reference starting points. They compile and pass the reference fixtures; the adopter copies them with `meta eject` and owns the copy. A defect in the reference is fixed there, and an adopter's copy is theirs to fix. |
 
 The line is a mechanical test: **what the tool guarantees is core; what it writes into
@@ -211,4 +211,24 @@ reference is scaffolding; this amendment stops describing it as anything else.
   documented as a known limit rather than closed in every port. First case: an entity
   navigation for an M:N declared on a TPH subtype is emitted by the Python `entity`
   generator only (`docs/features/relationships.md`).
+
+**Ruling made under this amendment (2026-09-24): runtime metadata access splits at HTTP.**
+
+- **Core:** the metadata-driven runtime. In TypeScript that is `@metaobjectsdev/runtime-ts`'s
+  root and `./drivers` entries: `ObjectManager`, the query builder, the validator runner,
+  the relation, M:N and TPH resolvers, type coercion and the constraint-error mapping. It
+  loads the model at runtime and drives CRUD, queries and validation from it with no
+  generated code. The persistence corpus gates it against the same layer in Python
+  (`ObjectManager`), Java (OMDB) and Kotlin (Exposed). A defect in it is a MetaObjects bug.
+- **Helper:** the HTTP adapters that mount that runtime on a web framework. In TypeScript
+  that is the `./fastify`, `./hono` and `./drizzle-fastify` entries. Their only callers
+  are the generated route files, which are already helpers, and they carry the same
+  framework-specific traps. They stay in the package and keep their tests and the
+  api-contract lanes, but they are not a promise. An adopter who ejects the route
+  generator owns the call into them and can mount routes by hand instead.
+- **The wire contract is the guarantee, not the adapter.** `./fastify` mounts
+  `ObjectManager`; `./hono` and `./drizzle-fastify` call Drizzle directly and touch the
+  runtime not at all. Either way, the status codes and error bodies a mount must answer with
+  are pinned by `api-contract-conformance` in every port. An adapter can be replaced; it
+  cannot silently change that contract.
 

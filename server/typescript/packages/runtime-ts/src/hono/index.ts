@@ -1,3 +1,8 @@
+// REFERENCE HELPER, not core (ADR-0034 Amendment 3, 2026-09-24 ruling). Only generated
+// route files call this; eject the route generator and you own that call, and can mount
+// routes by hand instead. The wire contract it answers with is what MetaObjects gates
+// (api-contract-conformance), not this adapter.
+//
 // Drizzle-direct Hono adapter — Hono parallel of the drizzle-fastify mount
 // helpers. Aimed at Workers / Bun / Node consumers running Hono on top of
 // a Drizzle instance.

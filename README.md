@@ -170,7 +170,7 @@ MetaObjects has two layers, and only the first is a promise
 
 | | Core — guaranteed | Helpers — yours |
 |---|---|---|
-| **What** | The metamodel, loader, canonical format and registry; runtime metadata access; schema migrations (`meta migrate`); the drift gates (`meta verify`); prompt render and the reply parser | Every generator that writes application code into your repo: routes, controllers, ORM wiring, DTOs, forms, grids, hooks |
+| **What** | The metamodel, loader, canonical format and registry; runtime metadata access (the `ObjectManager`, not the HTTP adapters that mount it); schema migrations (`meta migrate`); the drift gates (`meta verify`); prompt render and the reply parser | Every generator that writes application code into your repo: routes, controllers, ORM wiring, DTOs, forms, grids, hooks |
 | **Promise** | Conformance-gated, the same behaviour in every port that ships it, covered by the [compatibility policy](docs/compatibility-policy.md) | Reference starting points that compile and pass their reference fixtures. Copy one with `meta eject` and change it freely |
 | **A defect is** | A MetaObjects bug, fixed in a release | A bug in the reference, fixed there; your copy is yours |
 

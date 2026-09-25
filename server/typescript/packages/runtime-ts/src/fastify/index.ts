@@ -1,3 +1,8 @@
+// REFERENCE HELPER, not core (ADR-0034 Amendment 3, 2026-09-24 ruling). Only generated
+// route files call this; eject the route generator and you own that call, and can mount
+// routes by hand instead. The wire contract it answers with is what MetaObjects gates
+// (api-contract-conformance), not this adapter.
+//
 // Fastify adapter for ObjectManager-driven CRUD.
 //
 // Generated route files call `mountCrudRoutes(...)` from here so all the
