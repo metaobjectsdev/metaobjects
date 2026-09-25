@@ -101,6 +101,28 @@ def test_template_tier_without_entity_warns(capsys, tmp_path: Path) -> None:
     assert 'warning: "extractor" is selected but "entity" is not.' in err
 
 
+def test_routes_without_filter_allowlist_warns(capsys, tmp_path: Path) -> None:
+    """The router imports ``<entity>_filter_allowlist``; selecting ``routes`` without it
+    generated a package that failed at import with ModuleNotFoundError and no warning."""
+    meta_dir = _meta_dir(tmp_path)
+    rc = main(
+        ["gen", meta_dir, "--out", str(tmp_path / "out"), "--generators", "entity,names,routes"]
+    )
+    assert rc == 0
+    err = capsys.readouterr().err
+    assert 'warning: "routes" is selected but "filter-allowlist" is not.' in err
+
+
+def test_routes_with_its_requires_does_not_warn(capsys, tmp_path: Path) -> None:
+    meta_dir = _meta_dir(tmp_path)
+    rc = main(
+        ["gen", meta_dir, "--out", str(tmp_path / "out"),
+         "--generators", "entity,names,filter-allowlist,routes"]
+    )
+    assert rc == 0
+    assert "is selected but" not in capsys.readouterr().err
+
+
 def test_template_tier_with_entity_does_not_warn(capsys, tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     rc = main(

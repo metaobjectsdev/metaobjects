@@ -181,6 +181,10 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         tier="native",
         layer="api",
         factory=lambda _ctx: router_generator(),
+        # The router imports <Entity>Create/Patch from the entity module and the
+        # FIELDS/OPS constants from <entity>_filter_allowlist; without either the
+        # generated package fails at import (ModuleNotFoundError).
+        requires=("entity", "filter-allowlist"),
         source=router_generator,
     ),
     "output-parser": GeneratorEntry(
@@ -279,8 +283,8 @@ def unsatisfied_requires(names: list[str]) -> list[str]:
         listed = ", ".join(f'"{m}"' for m in missing)
         warnings.append(
             f'"{name}" is selected but {listed} {"is" if len(missing) == 1 else "are"} not. '
-            f'The code "{name}" emits imports the value-object models {listed} would have '
-            f"emitted, so importing it will fail. Add {listed} to --generators, or keep your "
-            "own hand-written models at those module paths."
+            f'The code "{name}" emits imports the modules {listed} would have emitted, so '
+            f"importing it will fail. Add {listed} to --generators, or keep your own "
+            "hand-written modules at those paths."
         )
     return warnings

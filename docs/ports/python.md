@@ -36,10 +36,10 @@ dependencies = [
 
 ## Configure
 
-Drop metadata under `metadata/`:
+Drop metadata under `metaobjects/`:
 
 ```yaml
-# metadata/meta.blog.yaml
+# metaobjects/meta.blog.yaml
 metadata:
   package: acme::blog
   children:
@@ -72,7 +72,7 @@ from metaobjects.provider import Provider
 from metaobjects import MetaDataLoader
 from .providers import your_provider
 
-result = MetaDataLoader.from_directory("./metadata", providers=[your_provider])
+result = MetaDataLoader.from_directory("./metaobjects", providers=[your_provider])
 ```
 
 The provider object has the same four-member contract (`id`, `dependencies`,
@@ -91,9 +91,18 @@ codegen and the drift gate — there is no `python -m metaobjects.codegen`
 module entry point:
 
 ```bash
-metaobjects gen ./metadata --out ./generated      # codegen → write
-metaobjects verify ./metadata --out ./generated   # drift gate; bare verify defaults to --codegen
+metaobjects gen ./metaobjects --out ./generated \
+  --generators entity,names,filter-allowlist,routes       # codegen → write
+metaobjects verify ./metaobjects --out ./generated \
+  --generators entity,names,filter-allowlist,routes       # drift gate; bare verify means --codegen
 ```
+
+Codegen is opt-in, so both commands name the generators. `verify` regenerates exactly
+the suite you name and compares, so pass it the same list `gen` ran. With no
+`--generators`, `gen` writes nothing and `verify` reports that there is nothing to
+check and exits 0: in CI that is a gate that checks nothing. `routes` needs `entity`
+and `filter-allowlist` beside it (the router imports both), and `metaobjects gen`
+warns when one is missing.
 
 For multi-target projects (several `outDir`s, per-target generator/entity
 selection, config-relative provider resolution), `metaobjects gen`/`verify` also
@@ -111,7 +120,7 @@ but which still has physical table and column names hard-coded across its data
 layer:
 
 ```bash
-metaobjects gen ./metadata --out ./generated --generators names
+metaobjects gen ./metaobjects --out ./generated --generators names
 ```
 
 It emits one `<entity>_names.py` per object and nothing else. Each carries
@@ -196,6 +205,10 @@ app = FastAPI()
 app.include_router(author_router)
 app.dependency_overrides[get_repository] = lambda: SqlAlchemyAuthorRepository(session)
 ```
+
+The generated `get_repository` raises until you override it. Any object with the six
+`AuthorRepository` methods above works, including an in-memory dict while you try it
+out. Serve the app with `uvicorn my_app.main:app --reload` (`pip install uvicorn`).
 
 ### `<entity>_names.py` — the physical names, as constants
 
@@ -347,7 +360,7 @@ and the neutral data dict in
 [`docs/features/codegen-data-shapes.md`](../features/codegen-data-shapes.md)):
 
 ```bash
-metaobjects gen ./metadata --out ./generated \
+metaobjects gen ./metaobjects --out ./generated \
   --template-spec ./template-spec.json --templates ./templates
 ```
 
@@ -372,8 +385,8 @@ A spec reachable only by flag leaves `verify` regenerating a different generator
 `gen` and reporting your committed template output as stale.
 
 ```bash
-metaobjects gen ./metadata --out ./generated --templates ./templates
-metaobjects verify --codegen ./metadata --out ./generated --templates-root ./templates
+metaobjects gen ./metaobjects --out ./generated --templates ./templates
+metaobjects verify --codegen ./metaobjects --out ./generated --templates-root ./templates
 #   ^ both resolve <projectRoot>/template-spec.json — the gate agrees with the generator
 ```
 
@@ -418,7 +431,7 @@ inherited via `extends` — see ADR-0039):
 ```python
 from metaobjects import MetaDataLoader
 
-result = MetaDataLoader.from_directory("./metadata")
+result = MetaDataLoader.from_directory("./metaobjects")
 author = result.root.children()[0]
 name_field = [f for f in author.children() if f.name == "name"][0]
 print(name_field.get_meta_attr("maxLength"))   # -> 200
@@ -428,6 +441,15 @@ print(name_field.get_meta_attr("maxLength"))   # -> 200
 
 `render` takes a `RenderRequest` (only `payload` + `provider` are required; `ref`
 defaults to `None`, `format` to `"text"`):
+
+The provider resolves `ref` to a Mustache file under its root, so `lobby/welcome`
+reads `prompts/lobby/welcome.mustache`:
+
+```mustache
+Welcome back, {{displayName}}. You have written {{postCount}} posts.
+{{#posts}}- {{title}}
+{{/posts}}
+```
 
 ```python
 from metaobjects.render import FilesystemProvider
