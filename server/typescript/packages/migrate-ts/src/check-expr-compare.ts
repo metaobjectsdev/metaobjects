@@ -275,3 +275,53 @@ export function stripCheckWrapper(def: string): string {
   const m = /^\s*CHECK\s*\((.*)\)(?:\s+NOT\s+VALID)?\s*$/is.exec(def);
   return m ? m[1]!.trim() : def.trim();
 }
+
+/**
+ * `expr` with every column IDENTIFIER named in `renames` (old → new) respelled — the body
+ * a constraint has after `RENAME COLUMN`, which rewrites it in place on both engines.
+ * Matches a double-quoted identifier or a bare word token, and never touches the inside of
+ * a single-quoted literal (a regex or IN-list value that happens to spell a column name is
+ * data, not a reference). Used only to COMPARE: a miss leaves the drop+add pair it would
+ * have paired exactly as it was — gated — so it fails closed.
+ */
+export function renameExprIdentifiers(expr: string, renames: ReadonlyMap<string, string>): string {
+  let out = "";
+  let i = 0;
+  const n = expr.length;
+  while (i < n) {
+    const ch = expr[i]!;
+    if (ch === "'") {
+      // Copy the single-quoted literal verbatim ('' escapes honored).
+      const start = i;
+      i++;
+      while (i < n) {
+        if (expr[i] === "'") {
+          if (expr[i + 1] === "'") { i += 2; continue; }
+          i++;
+          break;
+        }
+        i++;
+      }
+      out += expr.slice(start, i);
+      continue;
+    }
+    if (ch === '"') {
+      const close = expr.indexOf('"', i + 1);
+      if (close === -1) { out += expr.slice(i); break; }
+      const to = renames.get(expr.slice(i + 1, close));
+      out += to === undefined ? expr.slice(i, close + 1) : `"${to}"`;
+      i = close + 1;
+      continue;
+    }
+    if (/[A-Za-z_]/.test(ch)) {
+      const start = i;
+      while (i < n && /\w/.test(expr[i]!)) i++;
+      const word = expr.slice(start, i);
+      out += renames.get(word) ?? word;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}

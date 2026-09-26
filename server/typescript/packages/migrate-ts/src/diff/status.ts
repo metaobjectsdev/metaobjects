@@ -53,10 +53,16 @@ function blockedReasonFor(
     case "drop-table":
       return allow.dropTable ? null : "destructive: drop-table not allowed (pass allow.dropTable)";
     case "drop-index":
+      // Carried through a rename-column: the same rule over the same data — nothing is lost.
+      if (c.carriedByRename === true) return null;
       return allow.dropIndex ? null : "destructive: drop-index not allowed (pass allow.dropIndex)";
     case "drop-fk":
+      // Carried through a rename-column: the same rule over the same data — nothing is lost.
+      if (c.carriedByRename === true) return null;
       return allow.dropFk ? null : "destructive: drop-fk not allowed (pass allow.dropFk)";
     case "drop-check":
+      // Carried through a rename-column: the same rule over the same data — nothing is lost.
+      if (c.carriedByRename === true) return null;
       return allow.dropCheck ? null : "destructive: drop-check not allowed (pass allow.dropCheck)";
     case "drop-view": {
       // A drop that would destroy relations we do NOT manage is gated INDEPENDENTLY of

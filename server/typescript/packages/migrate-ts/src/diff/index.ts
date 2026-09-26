@@ -12,7 +12,7 @@ import { PrimaryKeyChangeError } from "../errors.js";
 import { detectColumnRenames, detectTableRenames } from "./rename-heuristic.js";
 import { viewSqlEquals } from "../view-sql-compare.js";
 import { viewReplaceIsLegal } from "../view-column-types.js";
-import { checkExprEquals, normalizeCheckExpr } from "../check-expr-compare.js";
+import { checkExprEquals, normalizeCheckExpr, renameExprIdentifiers } from "../check-expr-compare.js";
 import { isPgAutoSequenceDefault } from "../pg-identity-default.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 import { qualifiedDbName } from "../qualified-name.js";
@@ -274,6 +274,8 @@ export async function diff(
 
   // Pass 3: column renames (table renames were resolved in Pass 1c).
   await detectColumnRenames(changes, args.onAmbiguous, args.renames);
+  // Pass 3b: a renamed column carries the constraints and indexes named after it.
+  carryThroughColumnRenames(changes, args.dialect);
 
   // Strip the rename-detection side-channel fields before status assignment / return.
   for (const c of changes) {
@@ -444,6 +446,99 @@ function foldNameOnlyChanges(r: Extract<Change, { kind: "rename-table" }>, table
   if (constraintRenames.length > 0) r.constraintRenames = constraintRenames;
   if (indexRenames.length > 0) r.indexRenames = indexRenames;
   return tableChanges.filter((c) => !folded.has(c));
+}
+
+/**
+ * Pair each drop+add of a CHECK / FK / index that a `rename-column` in the same table
+ * explains — the add is the drop with the renamed columns respelled — and mark it carried.
+ *
+ * Constraint names are derived from the physical column (`<table>_<col>_numeric_chk`,
+ * `<table>_<col>_fk`), so renaming a constrained column made the diff see its constraint
+ * dropped and a new one added, and the drop was refused as destructive. Nothing is
+ * destroyed: `RENAME COLUMN` keeps the constraint and rewrites its body on both engines.
+ *
+ *  - Postgres: the pair folds into the rename-column as a name change
+ *    (`RENAME CONSTRAINT` / `ALTER INDEX … RENAME`), or disappears when the name did not
+ *    change — the `foldNameOnlyChanges` treatment a table rename already gets.
+ *  - sqlite/d1: the pair stays, marked `carriedByRename`, so it is not gated and raises no
+ *    data hazard; the CHECK/FK change rebuilds the table, which writes the constraint under
+ *    its new name while copying the column's data across.
+ *
+ * Anything that is not EXACTLY the old rule under the new names stays a gated drop+add.
+ */
+function carryThroughColumnRenames(changes: Change[], dialect: Dialect | undefined): void {
+  const renamesByTable = new Map<string, Map<string, string>>();
+  const renameChangeByTable = new Map<string, Extract<Change, { kind: "rename-column" }>>();
+  for (const c of changes) {
+    if (c.kind !== "rename-column") continue;
+    const id = tableIdentity({ name: c.table, ...schemaSpread(c.schema) });
+    if (!renamesByTable.has(id)) renamesByTable.set(id, new Map());
+    renamesByTable.get(id)!.set(c.from, c.to);
+    if (!renameChangeByTable.has(id)) renameChangeByTable.set(id, c);
+  }
+  if (renamesByTable.size === 0) return;
+
+  const idOf = (c: Change): string | undefined =>
+    "table" in c && typeof c.table === "string"
+      ? tableIdentity({ name: c.table, ...schemaSpread(c.schema) })
+      : undefined;
+  const mapCols = (cols: readonly string[], m: ReadonlyMap<string, string>): string[] =>
+    cols.map((col) => m.get(col) ?? col);
+
+  const paired = new Set<Change>();
+  const pairs: { drop: Change; add: Change; from: string; to: string; index: boolean; table: string }[] = [];
+  for (const d of changes) {
+    if (paired.has(d)) continue;
+    const table = idOf(d);
+    const renames = table === undefined ? undefined : renamesByTable.get(table);
+    if (table === undefined || renames === undefined) continue;
+    const sameTable = (c: Change): boolean => !paired.has(c) && idOf(c) === table;
+    if (d.kind === "drop-check" && d.restore !== undefined) {
+      const want = renameExprIdentifiers(d.restore.expression, renames);
+      const a = changes.find((c): c is Extract<Change, { kind: "add-check" }> =>
+        c.kind === "add-check" && sameTable(c) && checkExprEquals(c.check.expression, want));
+      if (a) { paired.add(d).add(a); pairs.push({ drop: d, add: a, from: d.check, to: a.check.name, index: false, table }); }
+    } else if (d.kind === "drop-fk" && d.restore !== undefined) {
+      const want: FkDescriptor = { ...d.restore, columns: mapCols(d.restore.columns, renames) };
+      const a = changes.find((c): c is Extract<Change, { kind: "add-fk" }> =>
+        c.kind === "add-fk" && sameTable(c) && fkEquals(c.fk, want));
+      if (a) { paired.add(d).add(a); pairs.push({ drop: d, add: a, from: d.fk, to: a.fk.name, index: false, table }); }
+    } else if (d.kind === "drop-index" && d.restore !== undefined) {
+      const restore = d.restore;
+      const want: IndexDescriptor = {
+        ...restore,
+        columns: mapCols(restore.columns, renames),
+        ...(restore.expr !== undefined ? { expr: renameExprIdentifiers(restore.expr, renames) } : {}),
+        ...(restore.where !== undefined ? { where: renameExprIdentifiers(restore.where, renames) } : {}),
+      };
+      const a = changes.find((c): c is Extract<Change, { kind: "add-index" }> =>
+        c.kind === "add-index" && sameTable(c) && indexEquals(c.index, want));
+      if (a) {
+        paired.add(d).add(a);
+        // Renaming a UNIQUE constraint renames its backing index with it.
+        pairs.push({ drop: d, add: a, from: d.index, to: a.index.name, index: restore.constraint === undefined, table });
+      }
+    }
+  }
+  if (pairs.length === 0) return;
+
+  if (dialect === "postgres") {
+    for (const p of pairs) {
+      if (p.from === p.to) continue; // the body follows the column; the name needs nothing
+      const r = renameChangeByTable.get(p.table)!;
+      const list = p.index ? (r.indexRenames ??= []) : (r.constraintRenames ??= []);
+      list.push({ from: p.from, to: p.to });
+    }
+    for (let i = changes.length - 1; i >= 0; i--) if (paired.has(changes[i]!)) changes.splice(i, 1);
+    return;
+  }
+  for (const p of pairs) {
+    for (const c of [p.drop, p.add]) {
+      if (c.kind === "drop-check" || c.kind === "add-check" || c.kind === "drop-fk" || c.kind === "drop-index") {
+        c.carriedByRename = true;
+      }
+    }
+  }
 }
 
 /**
