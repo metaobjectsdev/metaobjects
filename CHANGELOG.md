@@ -26,6 +26,37 @@ bad reply.
 
 ### Added
 
+- **Write your own generator is the primary codegen path (ADR-0034 Amendment 4).** The core
+  (model, loader, verify, migrate, render, extract) is the product; the shipped generators are
+  examples. `meta generator new <name> [--scope entity|package|model]` scaffolds a working
+  generator into `codegen/generators/` and wires it into `metaobjects.config.ts`. New
+  model-walking helpers: TS `objectRefTarget`, `enumValues`, `servedPath` and the case helpers;
+  Python `metaobjects.codegen.model_walk`; JVM `ModelWalk` and `FileEmittingGenerator`
+  (codegen-base). A new guide, `docs/recipes/write-your-own-generator.md`, shows the 20-line
+  shape in every port, with JSON Schema and OpenAPI 3.1 example generators that a test runs in
+  each port. The skills, the agent context `meta init` installs and the docs now teach writing
+  the generator you need first and ejecting a reference second, and no longer claim C# and
+  Python cannot register a generator of your own.
+- **Eject hands over the helper runtime, in every port.** Ejecting a generator whose output
+  calls helper runtime code now copies that code into your repository, and the ejected
+  generator's output imports your copy, so you can fix a helper bug without waiting for a
+  release. Projects that have not ejected are unchanged.
+  - TypeScript: `meta eject routes`, `routes-hono` or `entity` copies the HTTP adapter source
+    (mount helpers, filter parser, error envelopes, pagination, allowlist types) into
+    `codegen/runtime/`; the routes references now carry the full route composition. Ejected
+    output no longer needs `@metaobjectsdev/runtime-ts`; `runtimeImport` restores the package
+    import.
+  - C#: `dotnet meta eject routes` copies `FilterParser`, `FilterParseResult`, `FilterPredicate`,
+    `EfCoreFilterDispatch`, `ValueObjectValidator`, `ConstraintErrors` and
+    `Iso8601TimestampConverter` into `codegen/runtime/` (namespace `Codegen.Runtime`).
+  - Java: `mvn metaobjects:eject` of `routes`, `dto` or `repository` copies the helper classes
+    their output imports into `src/main/java/<groupId>.runtime/` (`-DruntimePackage`,
+    `-DruntimeDir`). Kotlin output imports no helper runtime.
+  - Python: `metaobjects eject routes` copies `filter_parser` and `constraint_errors` into
+    `codegen/runtime/`; the generated package imports its own `_runtime/` copy.
+  - In every port, `verify --codegen` treats the copies as owned code, `gen --list` marks each
+    one identical or DIFFERS against the installed version, and the docs give a recipe for
+    pulling an upstream fix into your copy.
 - **`FilesystemProvider` for TypeScript prompt rendering**, on the Node-only
   `@metaobjectsdev/render/providers` subpath. `lobby/welcome` resolves to
   `<root>/lobby/welcome.mustache`, as in C#, Java and Python. The package's root entry stays
@@ -46,6 +77,10 @@ bad reply.
 
 ### Fixed
 
+- **JVM template data reads inherited `@required` and `@maxLength`**, so a field that inherits
+  them through `extends` renders like one that declares them. Template output changes for those
+  fields. Python no longer writes `__init__.py` into non-Python output folders, and C# names a
+  generator that throws instead of reporting "metadata did not load cleanly".
 - **`meta migrate` no longer steers a column rename toward data loss.** A rename the diff
   cannot pair (`title` → `summary`) arrives as a blocked drop plus an add, and the hint said
   `--allow drop-column`, which deletes the column's data. Every hint on that shape now
