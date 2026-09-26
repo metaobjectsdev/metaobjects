@@ -396,22 +396,33 @@ export async function verifyCommand(
     replayExit,
   );
 
+  const gates: VerifyGateRow[] = [
+    { gate: "templates", ran: runTemplates, ok: templateExit === 0 },
+    // The schema gate decides internally whether it is selected (--db, or
+    // --dialect d1), so "ran" is read off the same signals rather than
+    // restated: a payload that claims a gate ran when it did not is the
+    // failure mode this whole change exists to remove.
+    { gate: "schema", ran: ranSchemaGate, ok: schemaExit === 0 },
+    { gate: "codegen", ran: runCodegen, ok: codegenExit === 0 },
+    { gate: "docs", ran: runDocs, ok: docsExit === 0 },
+    { gate: "deps", ran: runDeps, ok: depsExit === 0 },
+    { gate: "requirements", ran: true, ok: requirementExit === 0 },
+    { gate: "replay", ran: flags.replay || flags.replaySnapshot, ok: replayExit === 0 },
+  ];
+
+  // Naming a gate runs ONLY the gates named (ADR-0021 D2), so `verify --codegen --db <url>`
+  // exits 0 without ever looking at the prompt templates. A green partial run must not read
+  // as a full one: say which gates did not run and how to select each. A bare `verify` has
+  // already said so in its default note above.
+  if (flags.anyExplicit) {
+    const note = notRunNote(gates);
+    if (note !== undefined) say(note);
+  }
+
   if (structured) {
     emitStructured(
       buildVerifyPayload({
-        gates: [
-          { gate: "templates", ran: runTemplates, ok: templateExit === 0 },
-          // The schema gate decides internally whether it is selected (--db, or
-          // --dialect d1), so "ran" is read off the same signals rather than
-          // restated: a payload that claims a gate ran when it did not is the
-          // failure mode this whole change exists to remove.
-          { gate: "schema", ran: ranSchemaGate, ok: schemaExit === 0 },
-          { gate: "codegen", ran: runCodegen, ok: codegenExit === 0 },
-          { gate: "docs", ran: runDocs, ok: docsExit === 0 },
-          { gate: "deps", ran: runDeps, ok: depsExit === 0 },
-          { gate: "requirements", ran: true, ok: requirementExit === 0 },
-          { gate: "replay", ran: flags.replay || flags.replaySnapshot, ok: replayExit === 0 },
-        ],
+        gates,
         exitCode,
         requirements: requirementSection,
         requirementCounts,
@@ -1615,6 +1626,30 @@ interface VerifyGateRow {
   gate: string;
   ran: boolean;
   ok: boolean;
+}
+
+/** The flag that selects each gate, for the "not run" note. `requirements` always runs. */
+const GATE_SELECTOR: Record<string, string> = {
+  templates: "--templates",
+  schema: "--db <url>",
+  codegen: "--codegen",
+  docs: "--docs",
+  deps: "--deps",
+  replay: "--replay",
+};
+
+/**
+ * One line naming every gate this run did NOT run, each with the flag that selects it —
+ * undefined when every gate ran. Exported for its test.
+ */
+export function notRunNote(gates: readonly VerifyGateRow[]): string | undefined {
+  const skipped = gates.filter((g) => !g.ran);
+  if (skipped.length === 0) return undefined;
+  const named = skipped.map((g) => {
+    const flag = GATE_SELECTOR[g.gate];
+    return flag !== undefined ? `${g.gate} (${flag})` : g.gate;
+  });
+  return `meta verify — not run: ${named.join(", ")}`;
 }
 
 /**
