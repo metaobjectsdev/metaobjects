@@ -202,6 +202,7 @@ export function renderOutputParser(
   const errorName = `${base}ValidationError`;
   const parseName = `parse${base}`;
   const safeParseName = `safeParse${base}`;
+  const extractLenientWithName = `extractLenient${base}WithLoader`;
 
   // FR-010: emit the tolerant extract() API alongside the strict Zod parser.
   //
@@ -234,7 +235,9 @@ export function renderOutputParser(
 export type ${errorName} = z.ZodError;
 
 /**
- * Parse an LLM response into a typed ${dataName}.
+ * Parse an LLM response into a typed ${dataName}. The reply must BE the JSON document (a
+ * structured-output / JSON-mode reply); prose or a code fence around it fails. For a raw
+ * model reply use \`${extractLenientWithName}\`.
  * @throws ZodError on validation failure.
  */
 export function ${parseName}(text: string): ${dataName} {
@@ -270,7 +273,6 @@ export function ${safeParseName}(
   // longer a third case to gate on.
   // ADR-0056: the mirror is named for the value object, like every nested one.
   const extractedName = mirrorName(vo, ctx);
-  const extractLenientWithName = `extractLenient${templateSymbolBase(templateName)}WithLoader`;
   const payloadFqnConst = `${templateName.toUpperCase()}_PAYLOAD_NAME`;
   const formatEnum = format === RESPONSE_FORMAT_XML ? "Format.XML" : "Format.JSON";
 
@@ -331,7 +333,11 @@ ${nestedMappers(vo, root, ctx)}
 ${delegateHelpers(usedHelpers(vo, root))}
 
 /**
- * Runtime-delegating tolerant best-effort extraction; never throws. FULLY populates
+ * Runtime-delegating tolerant best-effort extraction for a RAW model reply (prose, code
+ * fences, a truncated or mis-typed field): a bad reply never throws — each field is classified
+ * in \`report\` and \`data\` carries what was recovered (\`orThrow\` from the render package
+ * makes a lost @required field an error). Throws only when \`root\` does not declare the payload
+ * value object — a setup error, not a reply error. FULLY populates
  * nested-object and array-of-object components by delegating to the metadata-driven runtime
  * \`extractObject\` (which assembles the whole graph reflection-free via the Phase A object
  * model, reading the live metadata directly), then maps the assembled graph into the typed

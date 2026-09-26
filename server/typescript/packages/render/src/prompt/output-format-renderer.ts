@@ -246,12 +246,16 @@ function exampleValueIfDeclared(field: PromptField, overrides: PromptOverrides):
   return null;
 }
 
+// An enum with no declared example shows its allowed MEMBERS (`low | medium | high`,
+// the inline style's spelling), never one pre-filled member: a model shown a filled-in
+// value copies it, so every reply came back as the first member. Declaring `@example`
+// is how an author asks for a concrete value in the skeleton.
 function exampleValue(field: PromptField, overrides: PromptOverrides): string {
   const ov = overrides.examples?.[field.name];
   if (ov != null) return ov;
   if (field.example != null) return field.example;
   if (field.kind === FieldKind.ENUM && field.enumValues != null && field.enumValues.length > 0) {
-    return field.enumValues[0]!;
+    return field.enumValues.join(" | ");
   }
   return `{${field.name}}`;
 }

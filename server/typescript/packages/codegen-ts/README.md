@@ -243,6 +243,26 @@ const r = safeParseSupportAnswerPrompt(llmResponseText);
 if (!r.success) { /* handle r.error (a ZodError) */ } else { /* use r.data */ }
 ```
 
+`parse*` / `safeParse*` expect `llmResponseText` to BE the JSON document (a structured-output
+or JSON-mode reply). A raw chat reply — prose around a fenced JSON block — fails them with
+`invalid JSON: …`. Use the tolerant tier for that; it takes a loaded `MetaRoot` because it
+reads the live metadata (there is no text-only variant):
+
+```ts
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { orThrow } from "@metaobjectsdev/render";
+import { extractLenientSupportAnswerPromptWithLoader } from "./generated/SupportAnswerPrompt.response";
+
+const { root } = await MetaDataLoader.fromDirectory("./metaobjects");   // once, at startup
+const result = extractLenientSupportAnswerPromptWithLoader(root, rawReply);
+result.data;     // SupportAnswerExtracted — what was recovered, every field nullable
+result.report;   // per field: recovered / defaulted / lost / malformed
+orThrow(result); // opt-in: ExtractError when a @required field was lost
+```
+
+A bad reply never throws; `extractLenient…WithLoader` throws only when `root` does not declare
+the response value object.
+
 **Field-type → Zod-type mapping:**
 
 | Field subtype | Emitted Zod |

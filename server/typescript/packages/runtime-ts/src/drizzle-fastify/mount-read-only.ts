@@ -1,7 +1,7 @@
 import type { FastifyInstance, RouteShorthandOptions } from "fastify";
 import { sql, eq, and, count } from "drizzle-orm";
 import qs from "qs";
-import { parseFilterParams, FilterParseError } from "./filter-parser.js";
+import { parseFilterParams, parsePageBound, RAW_VIEW_MAX_LIMIT, FilterParseError } from "./filter-parser.js";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 import { isTruthyFlag, contractErrorCode, coerceIdForColumn, rawIdLiteral, viewBaseConfig } from "./util.js";
 import { timestampWire } from "../timestamp-wire.js";
@@ -140,8 +140,9 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
         const qIdx = url.indexOf("?");
         const queryString = qIdx >= 0 ? url.slice(qIdx + 1) : "";
         const parsed = qs.parse(queryString) as Record<string, unknown>;
-        const limitVal = Math.min(1000, Math.max(1, Number(typeof parsed["limit"] === "string" ? parsed["limit"] : 1000)));
-        const offsetVal = Math.max(0, Number(typeof parsed["offset"] === "string" ? parsed["offset"] : 0));
+        // A bound that is not an integer in range is a 400, not silently clamped.
+        const limitVal = parsePageBound(parsed, "limit", RAW_VIEW_MAX_LIMIT) ?? RAW_VIEW_MAX_LIMIT;
+        const offsetVal = parsePageBound(parsed, "offset") ?? 0;
         const withCount = isTruthyFlag(parsed["withCount"]);
         // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
         const rows = await rawRows(db, dialect, sql.raw(`SELECT * FROM "${viewName}" LIMIT ${limitVal} OFFSET ${offsetVal}`)) as any[];

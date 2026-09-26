@@ -29,6 +29,7 @@ import qs from "qs";
 import { contractErrorCode } from "../drizzle-fastify/util.js";
 import {
   parseFilterParams,
+  parsePageBound,
   FilterParseError,
   type ParseFilterResult,
 } from "../drizzle-fastify/filter-parser.js";
@@ -204,9 +205,10 @@ export function mountListRoute(opts: VerbOptions): void {
         if (parsed.offset !== undefined) q = q.offset(parsed.offset);
       } else {
         // No allowlists configured. Only limit/offset.
-        const flat = c.req.query();
-        if (flat.limit  !== undefined) q = q.limit(Number(flat.limit));
-        if (flat.offset !== undefined) q = q.offset(Number(flat.offset));
+        const limit = parsePageBound(qsParsed, "limit");
+        const offset = parsePageBound(qsParsed, "offset");
+        if (limit  !== undefined) q = q.limit(limit);
+        if (offset !== undefined) q = q.offset(offset);
       }
 
       // Await the query directly rather than calling `.all()`: the drizzle-orm

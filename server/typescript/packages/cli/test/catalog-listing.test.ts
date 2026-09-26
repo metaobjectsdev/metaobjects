@@ -13,7 +13,7 @@ import { loadMemory } from "@metaobjectsdev/sdk";
 import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import { genCommand } from "../src/commands/gen.js";
 import {
-  buildCatalogListing, wiredGeneratorNames,
+  buildCatalogListing, wiredGeneratorNames, renderCatalogText,
   type GeneratorCatalogRow, type LibraryCatalogRow,
 } from "../src/lib/catalog-listing.js";
 import { composeCatalog } from "../src/lib/catalog.js";
@@ -210,16 +210,38 @@ describe("--probe — what would this emit for MY model", () => {
       .toBeGreaterThan(rows.length - 4);
   });
 
-  test("a config that omits a generator's configKey shows up as that generator's probeError", async () => {
+  test("a config that omits dbImport still COUNTS routes, and names the key it needs", async () => {
     // The catalog says `routes` reads `dbImport`. Dropping it must surface on the
     // ROUTES row and nowhere else — that is what makes the probe an answer to "can I
-    // turn this on" rather than a yes/no about the whole project.
+    // turn this on" rather than a yes/no about the whole project. It used to surface as
+    // a null count and a probeError, which the text listing rendered as nothing at all:
+    // `routes … [fastify]` beside `routes-hono … [hono, would emit 3]`. The path changes
+    // one import line, never the file count, so the count is real and the key is named.
     const { dbImport: _omitted, ...withoutDbImport } = baseConfig;
     const rows = await probeRows(withoutDbImport);
     const routes = rows.find((r) => r.name === "routes")!.project!;
-    expect(routes.wouldEmit).toBeNull();
-    expect(String(routes.probeError)).toContain("dbImport");
+    const withIt = (await probeRows()).find((r) => r.name === "routes")!.project!;
+    expect(routes.wouldEmit).toBe(withIt.wouldEmit);
+    expect(routes.wouldEmit).toBeGreaterThan(0);
+    expect(routes.probeError).toBeUndefined();
+    expect(routes.needsConfig).toEqual(["dbImport"]);
+    expect(withIt.needsConfig).toBeUndefined();
+    expect(rows.find((r) => r.name === "routes-hono")!.project!.needsConfig).toBeUndefined();
     expect(rows.find((r) => r.name === "entity")!.project!.wouldEmit).toBeGreaterThan(0);
+    expect(rows.find((r) => r.name === "entity")!.project!.needsConfig).toBeUndefined();
+
+    const text = renderCatalogText(rows, true);
+    expect(text).toMatch(/\n\s+routes\s+—.*would emit \d+ once dbImport is set\]/);
+  });
+
+  test("a generator the probe cannot run says so in the text listing", async () => {
+    const rows = await probeRows();
+    const text = renderCatalogText(rows, true);
+    for (const r of rows.filter((x) => x.project?.probeError !== undefined)) {
+      const line = text.split("\n").find((l) => l.trimStart().startsWith(`${r.name} `));
+      expect(line, `${r.name} has a line`).toBeDefined();
+      expect(line!).toContain("probe failed");
+    }
   });
 
   test("`wired` reflects the config's own generator list", async () => {

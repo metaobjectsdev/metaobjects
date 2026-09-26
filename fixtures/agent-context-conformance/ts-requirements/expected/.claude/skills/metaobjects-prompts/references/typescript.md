@@ -81,9 +81,27 @@ export function safeParseNpcReview(text: string):
 The dual API mirrors Zod's idiomatic shape: `parse*` throws a `ZodError`,
 `safeParse*` returns a discriminated union. Both return the `@responseRef` value
 object's OWN interface — the one `entityFile()` declares in `NpcResponse.ts` (ADR-0056)
-— so the parser declares no type of its own. The same file also exports a tolerant,
-never-throwing `extractLenientNpcReview…` for replies that need recovering rather
-than rejecting.
+— so the parser declares no type of its own. `parse*` / `safeParse*` expect the reply to
+BE the JSON document; a raw chat reply — `Sure!` followed by a fenced JSON block — fails
+them with `invalid JSON: Unexpected token 'S'…`. For a raw reply the same file exports the
+tolerant tier:
+
+```ts
+import { extractLenientNpcReviewWithLoader } from "./generated/NpcReview.response.js";
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { orThrow } from "@metaobjectsdev/render";
+
+const { root } = await MetaDataLoader.fromDirectory("./metaobjects"); // load once at startup
+const result = extractLenientNpcReviewWithLoader(root, reply);    // strips prose + fences
+result.report;              // per field: recovered / defaulted / lost / malformed
+const npc = orThrow(result); // opt-in: throws ExtractError if a @required field was lost
+```
+
+It reads the live metadata, so it takes a loaded `MetaRoot`; there is no text-only
+`extractLenientNpcReview(text)`. A bad reply never throws — it is classified in `report`
+and `data` holds what was recovered (every field of the `<Vo>Extracted` mirror is
+nullable). It throws only when `root` does not declare the response value object, which is
+a setup error.
 
 Field-type → Zod mapping: `field.string` → `z.string()`; `field.int`/`long`/`currency`
 → `z.number().int()`; `field.double`/`float` → `z.number()`; `field.boolean` →

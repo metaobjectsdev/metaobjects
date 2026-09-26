@@ -64,6 +64,10 @@ describe("filter values are checked against the field's wire format", () => {
   const bad: Array<[string, string, string, RegExp]> = [
     ["publishedOn", "gte", "notadate",            /date/],
     ["publishedOn", "eq",  "2026-02-30",          /date/],   // not a calendar date
+    ["publishedOn", "eq",  "2023-02-29",          /date/],   // not a leap year
+    ["publishedOn", "eq",  "1900-02-29",          /date/],   // a century, not /400
+    ["publishedOn", "eq",  "2026-04-31",          /date/],   // a 30-day month
+    ["updatedAt",   "gte", "2020-02-30T10:00:00Z", /timestamp/], // a timestamp's date part too
     ["publishedOn", "eq",  "2026-01-01T00:00:00Z", /date/],  // a timestamp is not a date
     ["publishedOn", "in",  "2026-01-01,nope",     /date/],   // every element of an in-list
     ["publishedOn", "lt",  "",                    /date/],
@@ -91,6 +95,8 @@ describe("filter values are checked against the field's wire format", () => {
   const good: Array<[string, string, string]> = [
     ["publishedOn", "gte", "2026-01-01"],
     ["publishedOn", "in",  "2026-01-01,2024-02-29"],
+    ["publishedOn", "eq",  "2000-02-29"],                // a /400 century IS a leap year
+    ["updatedAt",   "gte", "2024-02-29T23:59:59Z"],
     ["opensAt",     "gt",  "09:30"],
     ["opensAt",     "gt",  "09:30:15.250"],
     ["updatedAt",   "gte", "2026-05-25T14:30:00Z"],

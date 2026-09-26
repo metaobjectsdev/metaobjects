@@ -245,6 +245,9 @@ public final class OutputFormatRenderer {
         return null;
     }
 
+    // An enum with no declared example shows its allowed MEMBERS ("low | medium | high",
+    // the inline style's spelling), never one pre-filled member: a model shown a filled-in
+    // value copies it. Declaring @example is how an author asks for a concrete value.
     static String exampleValue(PromptField field, PromptOverrides overrides) {
         String fromOverride = overrides.examples().get(field.name());
         if (fromOverride != null) return fromOverride;
@@ -252,7 +255,7 @@ public final class OutputFormatRenderer {
         if (field.kind() == FieldKind.ENUM
                 && field.enumValues() != null
                 && !field.enumValues().isEmpty()) {
-            return field.enumValues().get(0);
+            return String.join(" | ", field.enumValues());
         }
         return "{" + field.name() + "}";
     }

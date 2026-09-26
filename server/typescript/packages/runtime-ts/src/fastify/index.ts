@@ -26,6 +26,7 @@ import type { RouteShorthandOptions } from "fastify";
 import type { SortAllowlist } from "../drizzle-fastify/filter-allowlist.js";
 import { sortOrderSpec } from "../drizzle-fastify/filter-allowlist.js";
 import { isTruthyFlag, contractErrorCode } from "../drizzle-fastify/util.js";
+import { parsePageBound, FilterParseError, SORT_EXPECTED } from "../drizzle-fastify/list-params.js";
 import { withContractErrorHandler } from "../drizzle-fastify/route-error-handler.js";
 
 // ---------------------------------------------------------------------------
@@ -129,9 +130,15 @@ export function mountListRoute(opts: SingleVerbOptions): void {
     const withCount = isTruthyFlag(parsed["withCount"]);
 
     const readOpts: { limit?: number; offset?: number; orderBy?: [string, "asc" | "desc"] } = {};
-    const { limit, offset } = req.query as { limit?: string; offset?: string };
-    if (limit !== undefined) readOpts.limit = Number(limit);
-    if (offset !== undefined) readOpts.offset = Number(offset);
+    try {
+      const limit = parsePageBound(parsed, "limit");
+      const offset = parsePageBound(parsed, "offset");
+      if (limit !== undefined) readOpts.limit = limit;
+      if (offset !== undefined) readOpts.offset = offset;
+    } catch (err) {
+      if (err instanceof FilterParseError) return reply.code(400).send({ error: err.code, ...(err.details ?? {}) });
+      throw err;
+    }
 
     // Sort allowlist gate (cross-port REST contract). Only enforced when a
     // sortAllowlist is configured; absent → ?sort is ignored (back-compat).
@@ -140,7 +147,12 @@ export function mountListRoute(opts: SingleVerbOptions): void {
       if (sortParse.error) {
         // `field` is REQUIRED on the invalid_sort envelope cross-port (F20 ruling) —
         // it names the offending sort field instead of making the caller guess.
-        return reply.code(400).send({ error: contractErrorCode(sortParse.error), field: sortParse.field });
+        return reply.code(400).send({
+          error: contractErrorCode(sortParse.error),
+          field: sortParse.field,
+          expected: SORT_EXPECTED,
+          allowed: Object.keys(opts.sortAllowlist),
+        });
       }
       if (sortParse.orderBy) readOpts.orderBy = sortParse.orderBy;
     }

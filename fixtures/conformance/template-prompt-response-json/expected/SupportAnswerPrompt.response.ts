@@ -17,7 +17,9 @@ const SupportAnswerPromptSchema = z.object({
 export type SupportAnswerPromptValidationError = z.ZodError;
 
 /**
- * Parse an LLM response into a typed SupportAnswer.
+ * Parse an LLM response into a typed SupportAnswer. The reply must BE the JSON document (a
+ * structured-output / JSON-mode reply); prose or a code fence around it fails. For a raw
+ * model reply use `extractLenientSupportAnswerPromptWithLoader`.
  * @throws ZodError on validation failure.
  */
 export function parseSupportAnswerPrompt(text: string): SupportAnswer {
@@ -82,7 +84,11 @@ function dlgString(v: unknown): string | null {
 }
 
 /**
- * Runtime-delegating tolerant best-effort extraction; never throws. FULLY populates
+ * Runtime-delegating tolerant best-effort extraction for a RAW model reply (prose, code
+ * fences, a truncated or mis-typed field): a bad reply never throws — each field is classified
+ * in `report` and `data` carries what was recovered (`orThrow` from the render package
+ * makes a lost @required field an error). Throws only when `root` does not declare the payload
+ * value object — a setup error, not a reply error. FULLY populates
  * nested-object and array-of-object components by delegating to the metadata-driven runtime
  * `extractObject` (which assembles the whole graph reflection-free via the Phase A object
  * model, reading the live metadata directly), then maps the assembled graph into the typed

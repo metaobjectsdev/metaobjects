@@ -94,6 +94,26 @@ describe("mountReadOnlyCrudRoutes", () => {
     expect(rows[0].title).toBe("Alpha");
   });
 
+  // A VIEW's columns count as the entity's fields too: `?extra=x` names one that is not
+  // filterable, so it is refused rather than ignored.
+  test("a bare view-column parameter that is not filterable → 400 filter.bare_field", async () => {
+    const res = await fastify.inject({ method: "GET", url: "/program-summaries?extra=x" });
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body);
+    expect(body.error).toBe("filter.bare_field");
+    expect(body.field).toBe("extra");
+    expect(body.filterable).toBe(false);
+    expect(body.allowed).toEqual(["title"]);
+  });
+
+  test("?limit=abc → 400 pagination.invalid_value", async () => {
+    const res = await fastify.inject({ method: "GET", url: "/program-summaries?limit=abc" });
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body);
+    expect(body.error).toBe("pagination.invalid_value");
+    expect(body.param).toBe("limit");
+  });
+
   test("bare array contract is unchanged when withCount is absent", async () => {
     const res = await fastify.inject({ method: "GET", url: "/program-summaries" });
     expect(res.statusCode).toBe(200);
@@ -145,4 +165,48 @@ describe("mountReadOnlyCrudRoutes", () => {
     const body = JSON.parse(res.body) as { rows: unknown[]; total: number };
     expect(body.total).toBe(0);
   });
+});
+
+// An OPAQUE view (empty column map) takes the raw-SQL branch, which pages to at most
+// RAW_VIEW_MAX_LIMIT rows. It used to CLAMP a bad bound (`?limit=abc` → 1000, `-5` → 1);
+// now a bound that is not an integer in 0..1000 is refused, naming the range.
+describe("mountReadOnlyCrudRoutes — raw-SQL (opaque view) page bounds", () => {
+  let fastify: FastifyInstance;
+  let client: ReturnType<typeof createClient>;
+
+  beforeAll(async () => {
+    client = createClient({ url: ":memory:" });
+    await client.execute(`CREATE TABLE things (id INTEGER PRIMARY KEY, name TEXT NOT NULL)`);
+    await client.execute(`CREATE VIEW v_things AS SELECT id, name FROM things`);
+    await client.execute(`INSERT INTO things (id, name) VALUES (1, 'a'), (2, 'b'), (3, 'c')`);
+    const db = drizzle(client);
+    fastify = Fastify();
+    mountReadOnlyCrudRoutes({
+      fastify, path: "/things", db, view: sqliteView("v_things", {}).existing(),
+      filterAllowlist: {}, sortAllowlist: {}, dialect: "sqlite",
+    });
+    await fastify.ready();
+  });
+
+  afterAll(async () => {
+    await fastify.close();
+    client.close();
+  });
+
+  test("a valid limit/offset pages the rows", async () => {
+    const res = await fastify.inject({ method: "GET", url: "/things?limit=1&offset=1" });
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toEqual([{ id: 2, name: "b" }]);
+  });
+
+  for (const [param, value] of [["limit", "abc"], ["limit", "-5"], ["limit", "1001"], ["offset", "x"]] as const) {
+    test(`?${param}=${value} → 400 naming the range`, async () => {
+      const res = await fastify.inject({ method: "GET", url: `/things?${param}=${value}` });
+      expect(res.statusCode).toBe(400);
+      const body = JSON.parse(res.body);
+      expect(body.error).toBe("pagination.invalid_value");
+      expect(body.param).toBe(param);
+      expect(body.expected).toBe(param === "limit" ? "an integer from 0 to 1000" : "a non-negative integer (0 or more)");
+    });
+  }
 });

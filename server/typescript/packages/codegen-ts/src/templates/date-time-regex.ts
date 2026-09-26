@@ -10,9 +10,13 @@
 // emit), and the codegen peer range is `zod >=3.23.0 <5`. `.regex()` behaves
 // identically on both — the same reasoning as `net-regex.ts`.
 //
-// SHAPE ONLY, not calendar arithmetic: `2026-02-30` passes (the database is the final
-// judge of the day-of-month), but free text, a wrong field order and an out-of-range
-// month/day/hour/minute do not.
+// The date part is CALENDAR-exact: month lengths and the Gregorian leap rule (every 4th
+// year, not every 100th, but every 400th) are spelled out in the regex, so `2020-02-30`,
+// `2026-04-31` and `2023-02-29` are refused while `2024-02-29` and `2000-02-29` pass. It
+// stays a regex rather than a `.refine()` so the emitted expression remains a plain
+// `ZodString` on Zod 3 as well as Zod 4 (a Zod 3 refine is a `ZodEffects`, which the
+// chains appended after it — `.max()`, `.nullable()` — do not all accept). Before 1.0.9
+// this was a shape check only, and `POST {"birthDate": "2020-02-30"}` was a 201.
 //
 // Every spelling the runtime ITSELF produces must pass, or the check breaks round-trips:
 //   - `new Date().toISOString()`       — the @autoSet stamp, and JSON.stringify(Date);
@@ -24,7 +28,12 @@
 
 const TIME_OF_DAY = "(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?";
 const UTC_OFFSET = "(?:[Zz]|[+-](?:[01]\\d|2[0-3])(?::?[0-5]\\d)?)?";
-const CALENDAR_DATE = "\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])";
+// 31-day months, 30-day months, February 1–28 in any year, and February 29 in a leap
+// year: `YY` + a multiple of 4 other than `00`, or a multiple-of-4 century + `00`.
+const DAY_IN_MONTH =
+  "(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8]))";
+const LEAP_YEAR = "(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)";
+const CALENDAR_DATE = `(?:\\d{4}-${DAY_IN_MONTH}|${LEAP_YEAR}-02-29)`;
 
 /** `field.date` — an ISO calendar date, `YYYY-MM-DD`, and nothing else. */
 export const ZOD_DATE_EXPR = `z.string().regex(/^${CALENDAR_DATE}$/)`;

@@ -130,3 +130,32 @@ describe("plain fastify mount — contract parity", () => {
   });
 
 });
+
+describe("plain fastify mount — page bounds and the sort hint", () => {
+  // `?limit=abc` / `?limit=-5` were passed on as NaN / -5; a page bound that is not a
+  // non-negative integer is a 400 naming the parameter and the range — the same answer
+  // the Drizzle mounts give.
+  for (const [param, value] of [["limit", "abc"], ["limit", "-5"], ["offset", "1.5"]] as const) {
+    test(`?${param}=${value} → 400 pagination.invalid_value`, async () => {
+      const r = await app.inject({ method: "GET", url: `/authors?${param}=${value}` });
+      expect(r.statusCode).toBe(400);
+      expect(JSON.parse(r.body)).toEqual({
+        error: "pagination.invalid_value",
+        param,
+        value,
+        expected: "a non-negative integer (0 or more)",
+      });
+    });
+  }
+
+  test("an unknown sort spec → invalid_sort naming the syntax and the allowed fields", async () => {
+    const r = await app.inject({ method: "GET", url: "/authors?sort=-name" });
+    expect(r.statusCode).toBe(400);
+    expect(JSON.parse(r.body)).toEqual({
+      error: "invalid_sort",
+      field: "-name",
+      expected: "sort=<field>:asc|desc",
+      allowed: ["name", "createdAt"],
+    });
+  });
+});

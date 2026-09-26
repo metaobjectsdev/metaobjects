@@ -324,13 +324,16 @@ def _example_value_if_declared(field: PromptField, overrides: PromptOverrides) -
 
 
 def _example_value(field: PromptField, overrides: PromptOverrides) -> str:
+    # An enum with no declared example shows its allowed MEMBERS ("low | medium | high",
+    # the inline style's spelling), never one pre-filled member: a model shown a filled-in
+    # value copies it. Declaring @example is how an author asks for a concrete value.
     from_override = overrides.examples.get(field.name)
     if from_override is not None:
         return from_override
     if field.example is not None:
         return field.example
     if field.kind is FieldKind.ENUM and field.enum_values:
-        return field.enum_values[0]
+        return " | ".join(field.enum_values)
     return "{" + field.name + "}"
 
 

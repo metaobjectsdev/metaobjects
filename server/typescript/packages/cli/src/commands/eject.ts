@@ -142,6 +142,9 @@ export interface EjectResult {
   packageName: string;
   /** Advisory lines about packages the ejected file imports but the project lacks. */
   dependencyNotes: string[];
+  /** Every `@metaobjectsdev/*` package the ejected file imports (declared or not) — what
+   *  the consolidated install summary folds in, so it covers each per-file line. */
+  templatePackages: string[];
   status: "created" | "preserved" | "replaced";
   /**
    * How the file ALREADY on disk compares to the reference template this CLI ships.
@@ -231,6 +234,7 @@ export async function ejectGenerator(opts: EjectOptions): Promise<EjectResult> {
     exportName,
     packageName: source.packageName,
     dependencyNotes: notes,
+    templatePackages: requiredPackages(templateSource),
   };
 
   const existing = (await fileExists(abs)) ? await readFile(abs, "utf8") : undefined;
@@ -570,6 +574,7 @@ export async function ejectCommand(
   const catalog = composeCatalog();
   const rows: EjectedRow[] = [];
   const libraries: LibraryEjectResult[] = [];
+  const templatePackages = new Set<string>();
   try {
     for (const name of flags.names) {
       if (isLibraryName(name)) {
@@ -579,6 +584,7 @@ export async function ejectCommand(
         continue;
       }
       const result = await ejectGenerator({ cwd, name, force: flags.force });
+      for (const p of result.templatePackages) templatePackages.add(p);
       rows.push({
         name,
         path: result.path,
@@ -595,12 +601,16 @@ export async function ejectCommand(
 
   // ONE install set for the whole call, not one per name: ejecting `hooks` and `grid`
   // needs @metaobjectsdev/codegen-ts-tanstack once, and an adopter handed the same
-  // package twice reasonably wonders which line to run.
+  // package twice reasonably wonders which line to run. It folds in what the ejected
+  // FILES import as well as what the catalog says the generators need: the reference
+  // templates import `@metaobjectsdev/metadata` at gen time, which no catalog entry
+  // names, so a summary built from the catalog alone printed a line that omitted a
+  // package each per-file note had just asked for.
   const entries = flags.names
     .filter((n) => !isLibraryName(n))
     .map((n) => catalog[n])
     .filter((e) => e !== undefined);
-  const install = installSetFor(entries);
+  const install = installSetFor(entries, [...templatePackages]);
   const configKeys = [...new Set(entries.flatMap((e) => e.configKeys ?? []))].sort();
 
   if (fmt === "text") {

@@ -108,7 +108,13 @@ function specs(from: Map<string, string | undefined>): string[] {
  * `@metaobjectsdev/codegen-ts-tanstack` ONCE, and an adopter handed the same package
  * twice reasonably wonders which one to run.
  */
-export function installSetFor(entries: readonly GeneratorRegistryEntry[]): InstallSet {
+export function installSetFor(
+  entries: readonly GeneratorRegistryEntry[],
+  /** `@metaobjectsdev/*` packages an ejected generator FILE imports at gen time (the
+   *  catalog does not know them). Build-time, so dev — unless the runtime set already
+   *  installs the package, which satisfies the build too. */
+  templatePackages: readonly string[] = [],
+): InstallSet {
   const version = cliVersion();
   const dev = new Map<string, string | undefined>();
   const runtime = new Map<string, string | undefined>();
@@ -129,6 +135,10 @@ export function installSetFor(entries: readonly GeneratorRegistryEntry[]): Insta
       for (const rt of entry.runtimePackages ?? []) Object.assign(ranges, peerRangesOf(rt));
       for (const peer of entry.runtimePeers) addPackage(runtime, peer, ranges[peer]);
     }
+  }
+
+  for (const p of templatePackages) {
+    if (!runtime.has(p)) addPackage(dev, p, `^${version}`);
   }
 
   const devList = specs(dev);
