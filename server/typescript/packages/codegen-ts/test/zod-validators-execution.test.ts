@@ -409,6 +409,30 @@ describe("field.date / field.time / field.timestamp — ISO shapes only, never f
     }
   });
 
+  // The shape check alone passed `2020-02-30`: `POST {"birthDate":"2020-02-30"}` was a 201.
+  // Month lengths and leap years are part of the check — a date that is not on the
+  // calendar is refused on the way in, for field.date and the date part of a timestamp.
+  test("field.date and a timestamp's date part must be a real calendar day", async () => {
+    const due = metaField(FIELD_SUBTYPE_DATE, "due");
+    const dateSchema = await insertSchemaOf(entityWith("Task", due));
+    for (const ok of ["2024-02-29", "2000-02-29", "1600-02-29", "2023-02-28", "2026-04-30",
+      "2026-01-31", "2026-12-31", "0000-02-29"]) {
+      expect(accepts(dateSchema, { due: ok })).toBe(true);
+    }
+    for (const bad of ["2020-02-30", "2023-02-29", "1900-02-29", "2100-02-29", "2026-04-31",
+      "2026-06-31", "2026-09-31", "2026-11-31", "2026-02-31", "2026-01-00"]) {
+      expect(accepts(dateSchema, { due: bad })).toBe(false);
+    }
+    const seenAt = metaField(FIELD_SUBTYPE_TIMESTAMP, "seenAt");
+    const tsSchema = await insertSchemaOf(entityWith("Visit", seenAt));
+    for (const ok of ["2024-02-29T10:00:00Z", "2000-02-29 00:00:00", "2026-04-30"]) {
+      expect(accepts(tsSchema, { seenAt: ok })).toBe(true);
+    }
+    for (const bad of ["2020-02-30T10:00:00Z", "2023-02-29 10:00:00", "2026-04-31"]) {
+      expect(accepts(tsSchema, { seenAt: bad })).toBe(false);
+    }
+  });
+
   test("the PATCH shape carries the same check", async () => {
     const due = metaField(FIELD_SUBTYPE_DATE, "due");
     const schema = await updateSchemaOf(entityWith("Task", due));
