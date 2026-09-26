@@ -14,7 +14,15 @@ Found by a cold external review of 1.0.8: a reviewer ran the getting-started pag
 demo and the fit assessment from public sources only, then built a small app of their own.
 
 **Upgrading: run `meta gen`.** Generated TypeScript changes: value-object interfaces,
-date/time validators and form input types (see Fixed).
+date/time validators, typed create inputs, UTC timestamps and form input types (see Fixed).
+
+**Behaviour change in `extract`, every port: a required field that is present but unusable
+now fails the strict extractor.** A model reply with an undeclared enum member or text where
+a number belongs used to come back from `extract<Name>` / `orThrow` with `null` in a field
+typed non-null. The written contract (the typed-enums and FR-010 designs) always said it must
+fail; no port implemented it. Code that relied on those nulls now sees the failure, which names
+the malformed fields (`malformedRequired()`). The tolerant extractor still never throws on a
+bad reply.
 
 ### Added
 
@@ -121,6 +129,26 @@ date/time validators and form input types (see Fixed).
 - **`meta eject`'s install summary lists every package the ejected files import**, and `meta gen
   --list --probe` counts the Fastify `routes` generator before `dbImport` is set.
 
+- **Generated `create<Entity>` takes a typed input** (`<Entity>Create`, the insert schema's
+  input type), so a misspelt or renamed field is a compile error at the call site. It was
+  `data: unknown` and failed only at runtime. The same applies to `insertPreserving`, TPH
+  `create<Sub>` / `update<Sub>ById` and write-through create; a TPH subtype's create now names
+  the discriminator in its input type, as its runtime schema already required.
+- **Timestamps carrying an offset are stored and filtered in UTC ISO form** (`toISOString()`), so
+  SQLite and D1 text comparison orders them correctly. `2026-09-21T01:00:00+05:00` compared as text
+  against a `Z` bound gave wrong results. Values without a zone, and `@localTime` fields, are
+  stored as sent. Rows written earlier with an offset keep sorting wrongly until rewritten.
+- **Date, time and timestamp validation errors carry a short message** (`"must be an ISO date
+  (YYYY-MM-DD)"`), and the TS route helpers drop Zod's `pattern` from validation responses; the
+  error body used to carry a ~300-character regex.
+- **`meta verify --codegen` lists every generated file that carries a hand edit**, as a notice
+  that does not change the exit code, and says how to see the edit. Hand edits are kept by the
+  three-way merge by design; `--forbid-hand-edits` makes any of them fail the build, for teams
+  that want generated code untouchable.
+- **A bare `meta verify` says which gates it did not run**, with the flags, instead of only
+  "nothing to check".
+- **`meta gen --list --probe` counts `shared-model`** instead of reporting a failed probe.
+
 ### Changed
 
 - **The generated TypeScript file header no longer says `DO NOT EDIT`.** Hand edits are kept by a
@@ -128,6 +156,9 @@ date/time validators and form input types (see Fixed).
   checks only the generated parts. Regenerating rewrites line 1 of every generated file.
 - **The fit assessment's maintainer notes moved to the end of the file**, and the site copy strips
   them, so a reader of `assess.md` meets the prompt first.
+- **Docs: PUT is an alias of PATCH in every port; an omitted `limit` returns every row in TS and
+  C# and the first 50 in Java, Kotlin and Python; the migration reference lists the CHECK
+  constraints `meta migrate` derives.**
 - **Docs: enums sort by their stored value, not by declared order** (a stated known limit in
   `docs/features/api-contract.md`).
 
