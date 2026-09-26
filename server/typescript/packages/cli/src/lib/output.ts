@@ -6,6 +6,7 @@
 import type { Dialect } from "./kysely.js";
 import { toonEncode } from "./format.js";
 import { skippedSection, type AdvisoryFindingRow, type AdvisorySection } from "./advisory.js";
+import { blockedHintLines } from "./allow.js";
 
 export interface FormatOptions {
   isTTY: boolean;
@@ -154,6 +155,15 @@ export interface BlockedEntry {
   kind: string;
   description: string;
   allowFlag: string;
+  /**
+   * Set on a blocked drop-column that pairs with an add-column in the same table: the exact
+   * `--rename-column` flag that keeps the data. Printed BEFORE `--allow`, which deletes it.
+   */
+  renameFlag?: string;
+  /** `table.column` the dropped column may have been renamed to. */
+  renameTo?: string;
+  /** The shape difference that forces the rename and the reshape into two migrations. */
+  shapeChange?: string;
 }
 
 export interface AmbiguousEntry {
@@ -204,9 +214,14 @@ export function formatMigrateResult(result: MigrateResultShape, _opts: FormatOpt
   }
 
   if (result.blocked.length > 0) {
-    lines.push("  Blocked (re-run with --allow):");
+    const anyRename = result.blocked.some((b) => b.renameFlag !== undefined);
+    lines.push(anyRename ? "  Blocked (re-run with the flag shown):" : "  Blocked (re-run with --allow):");
     for (const b of result.blocked) {
-      lines.push(`    ${b.kind}  ${b.description}  (--allow ${b.allowFlag})`);
+      if (b.renameFlag === undefined) {
+        lines.push(`    ${b.kind}  ${b.description}  (--allow ${b.allowFlag})`);
+      } else {
+        for (const l of blockedHintLines(b)) lines.push(`    ${l}`);
+      }
     }
     lines.push("");
   }
@@ -328,8 +343,15 @@ export function migrateResultToData(result: MigrateResultShape): {
   let help: string[];
   if (isBlocked) {
     summary = `${changeSummary}; not applied`;
+    // A rename-pairable drop leads: its `--allow` would delete the data the rename keeps.
+    const renames = result.blocked.filter((b) => b.renameFlag !== undefined);
+    const others = result.blocked.filter((b) => b.renameFlag === undefined);
     help = [
-      ...result.blocked.map((b) => `re-run with --allow ${b.allowFlag} to apply: ${b.description}`),
+      ...renames.map((b) =>
+        `if ${b.description} was renamed to ${b.renameTo ?? "the added column"}, re-run with ${b.renameFlag} to keep its data` +
+        `${b.shapeChange !== undefined ? ` (its ${b.shapeChange} also changes: rename first, reshape in a second migration)` : ""}` +
+        `; --allow ${b.allowFlag} instead DELETES the column and all its data`),
+      ...others.map((b) => `re-run with --allow ${b.allowFlag} to apply: ${b.description}`),
       ...result.ambiguous.map((a) => `re-run with --on-ambiguous to resolve: ${a.hint}`),
     ];
   } else if (result.dryRun) {

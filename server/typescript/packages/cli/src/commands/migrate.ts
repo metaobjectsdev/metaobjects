@@ -16,7 +16,6 @@ import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenConfigDir } fro
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { exclusionNotes, importedOption, migrateScopeMismatch } from "../lib/migrate-scope.js";
 import {
-  allowOptionFor,
   isBlockedChangesError,
   isPrimaryKeyChangeError,
   isDeclaredRenameError,
@@ -35,7 +34,6 @@ import {
   readSnapshot,
   writeSnapshot,
   qualifiedDbName,
-  type BlockedChangesError,
   renderD1,
   writeMigrationD1,
   writeMigrationFlyway,
@@ -62,7 +60,7 @@ import {
   type WranglerRunner,
 } from "../lib/wrangler.js";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
-import { ALLOW_TOKEN_MAP, tokensToAllowOptions, describeChange } from "../lib/allow.js";
+import { tokensToAllowOptions, blockedEntriesFor, blockedHintLines } from "../lib/allow.js";
 import { reportLoadError } from "../lib/load-error.js";
 
 /**
@@ -108,6 +106,9 @@ MIGRATE FLAGS:
                        drop-check,drop-view,drop-view-cascade,
                        adopt-view,nullable-to-not-null,drop-identity-default,
                        drop-unmanaged
+                       drop-column DELETES the column and every value in it. If
+                       the column was RENAMED, use --rename-column instead: it
+                       keeps the data.
                        drop-unmanaged permits dropping a table/view the committed
                        snapshot never contained — one this toolchain never managed.
                        Without it that drop is refused, because the migration it
@@ -436,21 +437,10 @@ async function snapshotAbsentDrops(changes: Change[], snapPath: string): Promise
   return absent;
 }
 
-/** The `--allow` token that unblocks `c`. migrate-ts picks the permission by what blocked the
- *  change (a type change can be blocked by the auto-sequence default it carries), so this only
- *  maps that permission back to its CLI token. */
-function allowFlagFor(c: Change): string {
-  const option = allowOptionFor(c);
-  const token = Object.keys(ALLOW_TOKEN_MAP).find((t) => ALLOW_TOKEN_MAP[t] === option);
-  return token ?? c.kind;
-}
-
-function blockedToEntries(err: BlockedChangesError): BlockedEntry[] {
-  return err.blocked.map((c) => ({
-    kind: c.kind,
-    description: describeChange(c),
-    allowFlag: allowFlagFor(c),
-  }));
+/** Report blocked changes on stderr, one hint per change, rename-first (see `blockedHintLines`). */
+function logBlocked(entries: readonly BlockedEntry[]): void {
+  log.error(`migrate: ${entries.length} destructive change(s) blocked; nothing written`);
+  for (const e of entries) for (const l of blockedHintLines(e)) log.error(`migrate:   ${l}`);
 }
 
 function ambiguousToEntries(amb: AmbiguousChange[]): AmbiguousEntry[] {
@@ -873,7 +863,7 @@ export async function migrateCommand(
         });
       } catch (err) {
         if (isBlockedChangesError(err)) {
-          blocked = blockedToEntries(err);
+          blocked = blockedEntriesFor(err.blocked, diffResult.changes);
           exitCode = 1;
         } else {
           throw err;
@@ -1351,7 +1341,7 @@ export async function runOfflineGenerate(
   logOutOfScope(plan.outOfScope, plan.importedOutOfScope ?? [], fmt);
 
   if (diffResult.blocked.length > 0) {
-    log.error(`migrate: ${diffResult.blocked.length} destructive change(s) blocked; re-run with --allow <tokens>`);
+    logBlocked(blockedEntriesFor(diffResult.blocked, diffResult.changes));
     return 1;
   }
   if (diffResult.changes.length === 0) {
@@ -1631,10 +1621,7 @@ async function runD1Migrate(
     emitResult = renderD1(diffResult.changes, expected, actual.meta, actual);
   } catch (err) {
     if (isBlockedChangesError(err)) {
-      const entries = blockedToEntries(err);
-      for (const e of entries) {
-        log.error(`migrate: blocked '${e.kind}' on ${e.description} (allow with --allow ${e.allowFlag})`);
-      }
+      logBlocked(blockedEntriesFor(err.blocked, diffResult.changes));
       return 1;
     }
     throw err;

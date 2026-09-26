@@ -26,7 +26,7 @@ export interface EmitOptions {
 
 export function emit(changes: Change[], opts: EmitOptions): EmitResult {
   const blocked = changes.filter((c) => c.status.state === "blocked");
-  if (blocked.length > 0) throw new BlockedChangesError(blocked);
+  if (blocked.length > 0) throw new BlockedChangesError(blocked, changes);
 
   switch (opts.dialect) {
     case "postgres": return renderPostgres(changes);

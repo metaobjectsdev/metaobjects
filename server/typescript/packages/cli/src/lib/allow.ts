@@ -2,7 +2,9 @@
 // both `meta migrate` and `meta verify --db`. Keeping a single copy avoids the
 // two commands drifting on which `--allow` tokens exist or how a change reads.
 
-import type { AllowOptions, Change } from "@metaobjectsdev/migrate-ts";
+import { allowOptionFor, suggestColumnRenames } from "@metaobjectsdev/migrate-ts";
+import type { AllowOptions, Change, ColumnRenameSuggestion } from "@metaobjectsdev/migrate-ts";
+import type { BlockedEntry } from "./output.js";
 
 // Map CLI allow tokens → migrate-ts AllowOptions field names.
 // Exported (not just module-local) so allow-tokens-pinned.test.ts can pin its
@@ -82,4 +84,58 @@ export function describeChange(c: Change): string {
     case "drop-view": return c.view;
     default: return JSON.stringify(c);
   }
+}
+
+/** The `--allow` token that unblocks `c`. migrate-ts picks the permission by what blocked the
+ *  change (a type change can be blocked by the auto-sequence default it carries), so this only
+ *  maps that permission back to its CLI token. */
+export function allowFlagFor(c: Change): string {
+  const option = allowOptionFor(c);
+  const token = Object.keys(ALLOW_TOKEN_MAP).find((t) => ALLOW_TOKEN_MAP[t] === option);
+  return token ?? c.kind;
+}
+
+/** `--rename-column [schema.]table.old=new`, spelled with the pair's real names. */
+export function renameColumnFlag(r: ColumnRenameSuggestion): string {
+  return `--rename-column ${r.schema !== undefined ? `${r.schema}.` : ""}${r.table}.${r.from}=${r.to}`;
+}
+
+/**
+ * One reportable entry per blocked change. `changes` is the whole diff the blocked ones came
+ * from: a blocked drop-column that pairs with an add-column in the same table may be a column
+ * the author RENAMED, and `--allow drop-column` would delete its data — so that entry carries
+ * the declared-rename flag, which every renderer prints FIRST.
+ */
+export function blockedEntriesFor(blocked: readonly Change[], changes: readonly Change[]): BlockedEntry[] {
+  const renames = suggestColumnRenames(changes);
+  return blocked.map((c) => {
+    const entry: BlockedEntry = { kind: c.kind, description: describeChange(c), allowFlag: allowFlagFor(c) };
+    if (c.kind !== "drop-column") return entry;
+    const r = renames.find((x) => x.from === c.column && x.table === c.table && x.schema === c.schema);
+    if (r === undefined) return entry;
+    return {
+      ...entry,
+      renameFlag: renameColumnFlag(r),
+      renameTo: `${r.table}.${r.to}`,
+      ...(r.shapeChange !== undefined ? { shapeChange: r.shapeChange } : {}),
+    };
+  });
+}
+
+/**
+ * The hint for one blocked entry, as the lines a renderer prints in order. A rename-pairable
+ * drop leads with the declared rename and names `--allow drop-column` as what deletes the data;
+ * every other entry is the one-line `--allow` hint it always was.
+ */
+export function blockedHintLines(e: BlockedEntry): string[] {
+  if (e.renameFlag === undefined) {
+    return [`blocked '${e.kind}' on ${e.description} (allow with --allow ${e.allowFlag})`];
+  }
+  const shape = e.shapeChange !== undefined
+    ? ` (its ${e.shapeChange} also changes: rename first with the old shape still declared, then change the shape in a second migration)`
+    : "";
+  return [
+    `${e.description} is dropped and ${e.renameTo ?? "a column"} is added in the same table. If it was renamed, keep its data: re-run with ${e.renameFlag}${shape}`,
+    `  (--allow ${e.allowFlag} instead DELETES ${e.description} and all its data)`,
+  ];
 }

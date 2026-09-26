@@ -8,6 +8,7 @@ import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 import { DeclaredRenameError } from "../errors.js";
 import { columnDefaultsEqual } from "../column-default.js";
 import { schemaSpread } from "../schema-spread.js";
+import { shapeDifference } from "./rename-suggestions.js";
 
 const TABLE_RENAME_OVERLAP_THRESHOLD = 0.8;
 
@@ -142,22 +143,6 @@ function unresolvedReason(from: string, fromPending: boolean, to: string, toPend
   }
   if (!fromPending) return `${from} is not in the database (or is still declared in the metadata)`;
   return `${to} is not in the metadata (or already exists in the database)`;
-}
-
-/** The first aspect other than the name in which a renamed column's two sides differ. */
-function shapeDifference(live: ColumnDescriptor | undefined, declared: ColumnDescriptor): string | undefined {
-  if (live === undefined) return undefined;
-  if (!sqlTypeEquals(live.sqlType, declared.sqlType)) {
-    return `type (${live.sqlType.kind} → ${declared.sqlType.kind})`;
-  }
-  if (live.nullable !== declared.nullable) {
-    return `nullability (${live.nullable ? "NULL" : "NOT NULL"} → ${declared.nullable ? "NULL" : "NOT NULL"})`;
-  }
-  if (!columnDefaultsEqual(live.default, declared.default)) return "default";
-  if (live.identity !== declared.identity) {
-    return `identity (${live.identity ?? "none"} → ${declared.identity ?? "none"})`;
-  }
-  return undefined;
 }
 
 /**

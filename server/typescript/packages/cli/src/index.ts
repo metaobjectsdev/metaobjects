@@ -142,6 +142,8 @@ MIGRATE FLAGS:
                         drop-column,drop-table,type-change,drop-index,drop-fk,
                         drop-check,drop-view,drop-view-cascade,
                         adopt-view,nullable-to-not-null,drop-identity-default
+                        drop-column DELETES the column's data; for a renamed
+                        column use --rename-column, which keeps it
   --on-ambiguous abort|rename|drop-add   Default abort
   --rename-table [schema.]old=new         Declare a table rename (repeatable)
   --rename-column [schema.]table.old=new  Declare a column rename; keeps its data (repeatable)

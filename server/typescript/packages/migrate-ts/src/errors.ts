@@ -1,5 +1,6 @@
 import type { AllowOptions, Change, ChangeKind } from "./types.js";
 import { dropsAutoSequenceDefault } from "./pg-identity-default.js";
+import { suggestColumnRenames, type ColumnRenameSuggestion } from "./diff/rename-suggestions.js";
 
 // ---------------------------------------------------------------------------
 // SetNullNotNullableError — surfaced by buildExpectedSchema
@@ -96,13 +97,41 @@ function changeLocator(c: Change): string {
   }
 }
 
+function renameFor(
+  renames: readonly ColumnRenameSuggestion[],
+  c: Extract<Change, { kind: "drop-column" }>,
+): ColumnRenameSuggestion | undefined {
+  return renames.find((r) => r.from === c.column && r.table === c.table && r.schema === c.schema);
+}
+
+function renameHint(c: Extract<Change, { kind: "drop-column" }>, r: ColumnRenameSuggestion): string {
+  const schema = r.schema !== undefined ? `, schema: "${r.schema}"` : "";
+  const declared = `{ kind: "column", table: "${r.table}"${schema}, from: "${r.from}", to: "${r.to}" }`;
+  const shape = r.shapeChange !== undefined
+    ? ` (its ${r.shapeChange} also changes: declare the rename with the old shape first, then change the shape in a second migration)`
+    : "";
+  return `drop-column on ${changeLocator(c)}: if it was renamed to ${r.table}.${r.to}, keep its data by `
+    + `declaring renames: [${declared}]${shape}; pass allow.dropColumn only to DELETE the column and its data`;
+}
+
 export class BlockedChangesError extends Error {
   override readonly name = "BlockedChangesError";
   readonly blocked: Change[];
   readonly enableHints: string[];
 
-  constructor(blocked: Change[]) {
+  /**
+   * @param changes the whole change list the blocked ones came from. With it, a blocked
+   *   drop-column that pairs with an add-column in the same table is hinted as the rename
+   *   it may be — the declared rename FIRST, and `allow.dropColumn` named as what deletes
+   *   the data — instead of offering only the permission that loses it.
+   */
+  constructor(blocked: Change[], changes: readonly Change[] = blocked) {
+    const renames = suggestColumnRenames(changes);
     const hints = blocked.map((c) => {
+      if (c.kind === "drop-column") {
+        const rename = renameFor(renames, c);
+        if (rename !== undefined) return renameHint(c, rename);
+      }
       const option = allowOptionFor(c);
       const flag = option === undefined ? "(no flag enables this)" : `allow.${option}`;
       return `${c.kind} on ${changeLocator(c)}: pass ${flag}`;

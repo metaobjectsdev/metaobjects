@@ -52,6 +52,11 @@ export {
   allowOptionFor, isBlockedChangesError, isPrimaryKeyChangeError, isDeclaredRenameError,
 } from "./errors.js";
 
+// Drop+add pairs in one table that may be a rename — the CLI's hint text reads it so the
+// declared rename is offered ahead of the data-losing `--allow drop-column`.
+export { suggestColumnRenames } from "./diff/rename-suggestions.js";
+export type { ColumnRenameSuggestion } from "./diff/rename-suggestions.js";
+
 // SqlType helpers (rarely needed but useful for advanced consumers)
 export { isWidening, sqlTypeEquals } from "./sql-type.js";
 
