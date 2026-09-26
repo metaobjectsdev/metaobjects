@@ -675,14 +675,58 @@ export function summariseRequirements(
     // `exactOptionalPropertyTypes`, so the keys are absent rather than undefined.
   };
 
-  for (const req of reqs) {
+  // `undecided` counts only the requirements a `@disposition` could actually
+  // SETTLE. A parent is `partial` because a descendant is, so a disposition on it
+  // would have to mean "we accept that memory is incomplete" — which settles
+  // nothing, names no work, and cannot be acted on.
+  //
+  // Measured on a real ledger before this was written: one adopter's tree printed
+  // "19 recorded gap(s) with no @disposition", and SIXTEEN of the nineteen were
+  // roll-up parents (`assistant`, `memory`, `security`, `understanding`,
+  // `conversation`, `growth`, `action`). Three were leaves anyone could rule on.
+  // Overstating by 6x is not cosmetic: a count nobody can action is a count
+  // everybody learns to skip, and the real gaps then ride along inside it
+  // invisibly — the opposite of what the line exists to do.
+  //
+  // Ancestry comes from the scan's own dotted PATHS rather than a second
+  // traversal, so this cannot disagree with how every other check addresses a
+  // node. `::` carries no dot, so splitting on "." keeps a package-qualified root
+  // segment intact. EVERY ancestor is excluded, not only the immediate parent:
+  // real ledgers are five deep, and an L1 node three levels above the work is no
+  // more actionable than the L2 one.
+  //
+  // A descendant marks its ancestors whether or not it is itself DISPOSED, and
+  // that asymmetry is the point. Once the only outstanding leaf under a parent has
+  // been ruled on, nothing beneath that parent is owed — so the parent must not be
+  // resurrected as a fresh decision by the roll-up status the ruled-on child gave
+  // it. Skipping disposed descendants here would do exactly that: it was the first
+  // implementation, and the test for the disposed-child tree caught it.
+  const rollUpAncestors = new Set<string>();
+  for (const { node, path } of scan.addressed) {
+    if (!node.hasOutstandingWork()) continue;
+    const segments = path.split(".");
+    for (let i = 1; i < segments.length; i++) {
+      rollUpAncestors.add(segments.slice(0, i).join("."));
+    }
+  }
+
+  for (const { node: req, path } of scan.addressed) {
     if (req.subType === REQUIREMENT_SUBTYPE_ARCHITECTURAL) summary.architectural++;
     else summary.functional++;
 
     const status = req.status();
+    // byStatus is UNCHANGED on purpose: a roll-up parent is still genuinely
+    // `partial`, and the status breakdown is where that belongs. Only the
+    // "decisions owed" line narrows.
     if (status !== undefined) summary.byStatus[status] = (summary.byStatus[status] ?? 0) + 1;
 
-    if (req.hasOutstandingWork() && req.disposition() === undefined) summary.undecided++;
+    if (
+      req.hasOutstandingWork() &&
+      req.disposition() === undefined &&
+      !rollUpAncestors.has(path)
+    ) {
+      summary.undecided++;
+    }
     if (req.disposition() === REQUIREMENT_DISPOSITION_DEFERRED && req.trackedBy().length === 0) {
       summary.deferredUntracked++;
     }

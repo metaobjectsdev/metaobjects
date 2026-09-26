@@ -955,3 +955,171 @@ metadata:
     expect(r.summary!.entitiesClaimed).toBe(r.summary!.entitiesTotal);
   });
 });
+
+describe("undecided counts only requirements a @disposition could actually settle", () => {
+  // MEASURED ON A REAL LEDGER, which is why this exists. One adopter's
+  // requirements metadata made `meta verify` print "19 recorded gap(s) with no
+  // @disposition" — a line that reads as nineteen decisions somebody owes. Sixteen
+  // of the nineteen were PARENTS: `assistant`, `memory`, `security`,
+  // `understanding`, `conversation`, `growth`, `action`. A parent is `partial`
+  // because a descendant is, so a disposition on it would have to mean "we accept
+  // that memory is incomplete", which settles nothing and cannot be acted on.
+  // Only three were leaves anyone could rule on.
+  //
+  // Overstating by 6x is not a cosmetic problem: a count nobody can action is a
+  // count everybody learns to skip, and then the three real gaps ride along
+  // invisibly inside it. The roll-up is still REPORTED through byStatus —
+  // `partial` keeps counting every node — it just stops being presented as an
+  // outstanding decision.
+
+  test("a partial parent whose child carries the work is not counted", async () => {
+    const r = await runSummary(caps(COVER) + `
+    - requirement.functional:
+        name: Memory
+        level: 1
+        status: partial
+        statement: "The assistant keeps what stays relevant"
+        counterexample: "A fact forgotten by the next turn"
+        children:
+          - requirement.functional:
+              name: FactsArePersisted
+              level: 4
+              status: partial
+              statement: "A stated fact is stored"
+              counterexample: "A fact accepted in the reply and never written"
+              implementedBy: ["acme::shop::Order"]
+`, OTHER);
+
+    // Both are partial, so the status breakdown is unchanged...
+    expect(r.summary?.byStatus["partial"]).toBe(2);
+    // ...but only the child is a decision anyone can take.
+    expect(r.summary?.undecided).toBe(1);
+  });
+
+  test("a partial parent with no outstanding child IS counted", async () => {
+    // The other half. A parent can be partial on its own merits — something it
+    // declares is unbuilt and no child says so — and that IS a real gap. Without
+    // this, excluding every parent would silently drop genuine decisions.
+    const r = await runSummary(caps(COVER) + `
+    - requirement.functional:
+        name: Memory
+        level: 1
+        status: partial
+        statement: "The assistant keeps what stays relevant"
+        counterexample: "A fact forgotten by the next turn"
+        children:
+          - requirement.functional:
+              name: FactsArePersisted
+              level: 4
+              status: live
+              statement: "A stated fact is stored"
+              counterexample: "A fact accepted in the reply and never written"
+              implementedBy: ["acme::shop::Order"]
+`, OTHER);
+
+    expect(r.summary?.undecided).toBe(1);
+  });
+
+  test("a planned child under a partial parent still counts once, at the child", async () => {
+    // `planned` also carries outstanding work, so the same rule has to apply to
+    // it — the measured adopter ledger had a planned leaf under a partial parent.
+    const r = await runSummary(caps(COVER) + `
+    - requirement.functional:
+        name: Learning
+        level: 1
+        status: partial
+        statement: "The assistant keeps what it was taught"
+        counterexample: "A correction forgotten by the next turn"
+        children:
+          - requirement.functional:
+              name: LearningEventsAreRecorded
+              level: 4
+              status: planned
+              statement: "Learning records an event"
+              counterexample: "A correction leaving the event log unchanged"
+`, OTHER);
+
+    expect(r.summary?.undecided).toBe(1);
+  });
+
+  test("a disposition on the child still silences it, and the parent stays uncounted", async () => {
+    const r = await runSummary(caps(COVER) + `
+    - requirement.functional:
+        name: Memory
+        level: 1
+        status: partial
+        statement: "The assistant keeps what stays relevant"
+        counterexample: "A fact forgotten by the next turn"
+        children:
+          - requirement.functional:
+              name: FactsArePersisted
+              level: 4
+              status: partial
+              disposition: accepted
+              statement: "A stated fact is stored"
+              counterexample: "A fact accepted in the reply and never written"
+              implementedBy: ["acme::shop::Order"]
+`, OTHER);
+
+    // The child is ruled on; the parent is a roll-up of it. Nothing is owed.
+    expect(r.summary?.undecided).toBe(0);
+  });
+
+  test("a grandchild carrying the work excludes BOTH ancestors", async () => {
+    // Real ledgers are five deep. If only the immediate parent were excluded, an
+    // L1 node would still be reported as a decision three levels from the work.
+    const r = await runSummary(caps(COVER) + `
+    - requirement.functional:
+        name: Assistant
+        level: 1
+        status: partial
+        statement: "A person can delegate to an assistant"
+        counterexample: "An assistant that forgets everything"
+        children:
+          - requirement.functional:
+              name: Memory
+              level: 2
+              status: partial
+              statement: "The assistant keeps what stays relevant"
+              counterexample: "A fact forgotten by the next turn"
+              children:
+                - requirement.functional:
+                    name: FactsArePersisted
+                    level: 4
+                    status: partial
+                    statement: "A stated fact is stored"
+                    counterexample: "A fact accepted and never written"
+                    implementedBy: ["acme::shop::Order"]
+`, OTHER);
+
+    expect(r.summary?.byStatus["partial"]).toBe(3);
+    expect(r.summary?.undecided).toBe(1);
+  });
+
+  test("two sibling leaves under one parent are two decisions, not three", async () => {
+    const r = await runSummary(caps(COVER) + `
+    - requirement.functional:
+        name: Memory
+        level: 1
+        status: partial
+        statement: "The assistant keeps what stays relevant"
+        counterexample: "A fact forgotten by the next turn"
+        children:
+          - requirement.functional:
+              name: FactsArePersisted
+              level: 4
+              status: partial
+              statement: "A stated fact is stored"
+              counterexample: "A fact accepted and never written"
+              implementedBy: ["acme::shop::Order"]
+          - requirement.functional:
+              name: FactsAreRetrieved
+              level: 4
+              status: planned
+              statement: "A stored fact is found again"
+              counterexample: "A fact stored and never retrievable"
+`, OTHER);
+
+    expect(r.summary?.undecided).toBe(2);
+  });
+});
