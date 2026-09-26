@@ -77,6 +77,20 @@ bad reply.
 
 ### Fixed
 
+- **SQLite / D1 CHECK constraints open on SQLite older than 3.39.** The ones derived from
+  `requiredWhen` / `presentIff` used `IS DISTINCT FROM`, and a database containing one would
+  not open at all on older SQLite (Ubuntu 22.04's `sqlite3`, Python 3.10's stdlib):
+  `malformed database schema … near "DISTINCT"`. They now use SQLite's `IS NOT` / `IS`. An
+  existing database is re-spelled once by the next `meta migrate` (a table rebuild that keeps
+  the data, with no `--allow` needed). The SQLite version floor is now documented: 3.35 for
+  tables, 3.44 for projection views that use `origin.collect`.
+- **`gen` warns about attributes `verify` rejects**, in TypeScript, Python and C#. A misspelt
+  attribute (`isAbstrakt: true`) used to generate silently; `gen` now names the attribute,
+  node and file. The exit code is unchanged.
+- **The tolerant extractor skips `//` and `/* */` comments in a JSON reply**, in every port. A
+  comment used to make every later field count as lost. The strict parser is unchanged.
+- **`meta gen --list` marks owned generators WIRED correctly**, and attributes an owned runtime
+  copy only to the generators that were ejected, in text and JSON.
 - **JVM template data reads inherited `@required` and `@maxLength`**, so a field that inherits
   them through `extends` renders like one that declares them. Template output changes for those
   fields. Python no longer writes `__init__.py` into non-Python output folders, and C# names a
