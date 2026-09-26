@@ -10,6 +10,10 @@ here.**
 
 ## [Unreleased]
 
+## [1.0.9] — 2026-09-26
+
+_npm `1.0.9` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
 Found by a cold external review of 1.0.8: a reviewer ran the getting-started page, the drift
 demo and the fit assessment from public sources only, then built a small app of their own.
 
