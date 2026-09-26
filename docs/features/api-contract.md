@@ -146,7 +146,7 @@ or use the TS-only `?search` extension, which IS case-insensitive.
 
 ### TS-only filter extensions (not part of the cross-port contract)
 
-The TypeScript runtime parser ships five filter behaviors beyond the nine
+The TypeScript runtime parser ships six filter behaviors beyond the nine
 operators. They are **NOT part of the cross-port REST contract** — the other
 ports (Java, Kotlin, Python, C#) do not implement them, and a relying adopter
 must not assume them on a non-TS backend. They are deliberately deferred until
@@ -159,6 +159,7 @@ added cross-port later as a purely additive, non-breaking change):
 | `filter[or][N]` / `filter[and][N]` | boolean combinators (recursive nesting) |
 | leading-wildcard gating | a `like` pattern starting with `%` → HTTP 400 (`filter.leading_wildcard_disallowed`) |
 | filter nesting-depth cap | rejects deeply-nested `or`/`and` (tied to the combinators) |
+| bare filterable-field parameter | `?priority=low` where `priority` is in the allowlist → HTTP 400 `{ "error": "filter.bare_field", "field": "priority", "expected": "filter[priority][eq]=low" }` instead of silently returning every row. Any other unknown parameter (a cache-buster, a tracking tag) is still ignored, and the reserved list parameters (`filter`, `sort`, `limit`, `offset`, `search`, `withCount`) are never claimed |
 
 **Leading-wildcard gating is fail-closed with no metadata opt-in.** The
 generated `<Entity>FilterAllowlist` hardcodes `leadingWildcard: false` on every
@@ -485,9 +486,9 @@ codegen status" above and "Verified by" below, and
 
 What's still genuinely open:
 
-- The five **TS-only filter extensions** (`?search=`, `filter[or]` /
+- The six **TS-only filter extensions** (`?search=`, `filter[or]` /
   `filter[and]` nesting, leading-wildcard gating, the nesting-depth cap,
-  and the `in`-list size cap) — see "TS-only filter extensions" above.
+  the `in`-list size cap, and the bare filterable-field 400) — see "TS-only filter extensions" above.
   None touch the metamodel vocabulary, so any of them can be promoted
   cross-port later as a purely additive, non-breaking change if real
   consumer demand shows up.

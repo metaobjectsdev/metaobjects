@@ -47,6 +47,25 @@ describe("mountListRoute with filter+sort allowlists", () => {
     expect(JSON.parse(r.body).length).toBe(3);
   });
 
+  // `?firstName=Alice` is the spelling everyone tries first, and it used to be dropped on
+  // the floor: 200 with EVERY row, which reads as "the filter matched everything". A bare
+  // parameter named after a filterable field is now a 400 naming the bracketed syntax.
+  test("a bare ?<filterableField>= parameter → 400 naming filter[<field>][eq]=", async () => {
+    const r = await app.inject({ method: "GET", url: "/subscribers?firstName=Alice" });
+    expect(r.statusCode).toBe(400);
+    expect(JSON.parse(r.body)).toEqual({
+      error: "filter.bare_field",
+      field: "firstName",
+      expected: "filter[firstName][eq]=Alice",
+    });
+  });
+
+  test("other unknown parameters are still ignored (cache-busters are legitimate)", async () => {
+    const r = await app.inject({ method: "GET", url: "/subscribers?_=1727350000&cb=x&id=1" });
+    expect(r.statusCode).toBe(200);
+    expect(JSON.parse(r.body).length).toBe(3);
+  });
+
   test("filter by exact match returns only matching rows", async () => {
     const r = await app.inject({ method: "GET", url: "/subscribers?filter[firstName]=Alice" });
     expect(r.statusCode).toBe(200);
