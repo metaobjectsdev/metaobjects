@@ -2,6 +2,7 @@
 // Source metadata: WorkoutEvent (WorkoutEvent)
 // Extend in your own module (e.g. WorkoutEvent.extra.ts) — nothing imports it for you.
 import { eq, inArray } from "drizzle-orm";
+import type { z } from "zod";
 
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 type Db = BaseSQLiteDatabase<
@@ -12,7 +13,6 @@ type Db = BaseSQLiteDatabase<
 
 import {
   type WorkoutEvent,
-  type WorkoutEventCreate,
   WorkoutEventInsertSchema,
   type WorkoutEventPatch,
   workoutEvents,
@@ -44,7 +44,7 @@ export async function listWorkoutEvents(
 }
 export async function createWorkoutEvent(
   db: Db,
-  data: WorkoutEventCreate,
+  data: z.input<typeof WorkoutEventInsertSchema>,
 ): Promise<WorkoutEvent> {
   const validated = WorkoutEventInsertSchema.parse(data);
   const [workoutEvent] = await db

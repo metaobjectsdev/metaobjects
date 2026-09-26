@@ -2,13 +2,13 @@
 // Source metadata: Lesson (Lesson)
 // Extend in your own module (e.g. Lesson.extra.ts) — nothing imports it for you.
 import { eq, inArray } from "drizzle-orm";
+import type { z } from "zod";
 
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;
 
 import {
   type Lesson,
-  type LessonCreate,
   LessonInsertSchema,
   type LessonPatch,
   lessons,
@@ -40,7 +40,7 @@ export async function listLessons(
 }
 export async function createLesson(
   db: Db,
-  data: LessonCreate,
+  data: z.input<typeof LessonInsertSchema>,
 ): Promise<Lesson> {
   const validated = LessonInsertSchema.parse(data);
   const [lesson] = await db.insert(lessons).values(validated).returning();

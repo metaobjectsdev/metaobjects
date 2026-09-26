@@ -116,8 +116,10 @@ describe("renderCreateFn", () => {
     const post = makePost();
     const ctx = makeCtx(post);
     const out = renderCreateFn(post, ctx).toString();
-    // Signature: createPost(db: Db, data: PostCreate) — typed with the insert input, like the patch.
-    expect(out).toMatch(/createPost\(\s*db:\s*Db\s*,\s*data:\s*PostCreate\s*\)/);
+    // Signature: createPost(db: Db, data: z.input<typeof PostInsertSchema>) — typed with the
+    // insert input, spelled through the schema so an owned queries generator predating the
+    // `PostCreate` alias still compiles.
+    expect(out).toMatch(/createPost\(\s*db:\s*Db\s*,\s*data:\s*z\.input<typeof PostInsertSchema>\s*\)/);
   });
 });
 

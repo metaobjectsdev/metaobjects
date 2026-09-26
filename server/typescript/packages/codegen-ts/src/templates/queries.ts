@@ -81,6 +81,19 @@ export async function ${fnName}(db: Db, opts?: { limit?: number; offset?: number
 `;
 }
 
+/**
+ * `z.input<typeof <schema>>` — a write function's typed input, spelled through the schema it
+ * parses with. NOT through the entity module's `<Entity>Create` / `<Entity>CreatePreserving`
+ * aliases: this primitive's output lands in whatever file an OWNED queries generator
+ * composes, and the names in scope there are the ones that owned copy's import line brings
+ * in. A copy ejected before 1.0.9 imports `<Entity>InsertSchema` (every version does) but not
+ * the aliases, so `data: <Entity>Create` was TS2304 "Cannot find name" in every queries
+ * module of an adopter who upgraded. `z` is hoisted here as a type-only import.
+ */
+export function schemaInputType(schema: string | Code | ReturnType<typeof imp>): Code {
+  return code`${imp("t:z@zod")}.input<typeof ${schema}>`;
+}
+
 export function renderCreateFn(entity: MetaObject, ctx: RenderContext): Code {
   const varName = ctx.collectionName(entity.name);
   const entityName = entity.name;
@@ -88,11 +101,12 @@ export function renderCreateFn(entity: MetaObject, ctx: RenderContext): Code {
   const fnName = createFnName(entityName);
   const schemaName = `${entityName}InsertSchema`;
 
-  // Typed with the insert schema's INPUT type (`<Entity>Create`, emitted beside it) so a
-  // renamed/misspelt field is a compile error at the call site, as `<Entity>Patch` is for
-  // update. The schema still parses at runtime (a caller holding `unknown` casts).
+  // Typed with the insert schema's INPUT type (what the entity module exports as
+  // `<Entity>Create`) so a renamed/misspelt field is a compile error at the call site, as
+  // `<Entity>Patch` is for update. The schema still parses at runtime (a caller holding
+  // `unknown` casts). Spelled via the schema, not the alias — see schemaInputType.
   return code`
-export async function ${fnName}(db: Db, data: ${entityName}Create): Promise<${entityName}> {
+export async function ${fnName}(db: Db, data: ${schemaInputType(schemaName)}): Promise<${entityName}> {
   const validated = ${schemaName}.parse(data);
   const [${singularVar}] = await db.insert(${varName}).values(validated).returning();
   return ${singularVar}!;
@@ -117,7 +131,7 @@ export function renderInsertPreservingFn(entity: MetaObject, ctx: RenderContext)
   const schemaName = `${entityName}InsertPreservingSchema`;
 
   return code`
-export async function ${fnName}(db: Db, data: ${entityName}CreatePreserving): Promise<${entityName}> {
+export async function ${fnName}(db: Db, data: ${schemaInputType(schemaName)}): Promise<${entityName}> {
   const validated = ${schemaName}.parse(data);
   const [${singularVar}] = await db.insert(${varName}).values(validated).returning();
   return ${singularVar}!;

@@ -35,7 +35,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   TypeId, TYPE_IDENTITY, TYPE_VALIDATOR,
-  IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
+  IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE,
   FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET,
   FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP,
@@ -490,13 +490,14 @@ describe("field.timestamp values with an offset are stored as UTC (toISOString f
       const obj = entityWith("Note", metaField(FIELD_SUBTYPE_TIMESTAMP, "tastedAt"));
       const mod = await executeGenerated(rewrite(renderZodValidators(obj).toString()));
       const cases: Array<[string, string]> = [
-        ["2026-09-21T01:00:00+05:00", "2026-09-20T20:00:00.000Z"],
-        ["2026-09-20T21:00:00Z", "2026-09-20T21:00:00.000Z"],
-        ["2026-09-20t21:00:00z", "2026-09-20T21:00:00.000Z"],
+        ["2026-09-21T01:00:00+05:00", "2026-09-20T20:00:00Z"],
+        ["2026-09-20T21:00:00Z", "2026-09-20T21:00:00Z"],     // already canonical: kept byte-for-byte
+        ["2026-09-20t21:00:00z", "2026-09-20T21:00:00Z"],
         ["2026-09-20 16:30:00.123456-04:30", "2026-09-20T21:00:00.123Z"],
-        ["2026-09-21 01:00:00+05", "2026-09-20T20:00:00.000Z"],   // Postgres string-mode output
-        ["2026-09-21T01:00+0530", "2026-09-20T19:30:00.000Z"],
-        ["2024-02-29T00:30:00+01:00", "2024-02-28T23:30:00.000Z"],
+        ["2026-09-21 01:00:00+05", "2026-09-20T20:00:00Z"],   // Postgres string-mode output
+        ["2026-09-21T01:00+0530", "2026-09-20T19:30:00Z"],
+        ["2024-02-29T00:30:00+01:00", "2024-02-28T23:30:00Z"],
+        ["2026-09-20T21:00:00.120+00:00", "2026-09-20T21:00:00.12Z"],
       ];
       for (const schemaName of ["NoteInsertSchema", "NoteUpdateSchema"]) {
         for (const [sent, stored] of cases) {
@@ -506,21 +507,63 @@ describe("field.timestamp values with an offset are stored as UTC (toISOString f
     });
   }
 
-  test("a value with no offset is left exactly as sent (no guessed zone)", async () => {
-    const obj = entityWith("Note", metaField(FIELD_SUBTYPE_TIMESTAMP, "tastedAt"));
-    const mod = await executeGenerated(renderZodValidators(obj).toString());
-    for (const naive of ["2026-09-26 10:00:00", "2026-09-26T10:00", "2026-09-26"]) {
-      expect(mod["NoteInsertSchema"].parse({ tastedAt: naive }).tastedAt).toBe(naive);
-    }
-  });
+  // A zone-aware field.timestamp is an instant whose wire form is "always UTC"
+  // (docs/features/api-contract.md, "Type encodings"; ADR-0036 Wave 2); only @localTime is
+  // a wall clock. So a value with no zone is read as UTC and a date-only value as midnight
+  // UTC. Kept as sent, `2026-10-06` sorted BEFORE `2026-10-06T00:00:00Z` as text, and
+  // `filter[dueAt][gte]=2026-10-06T00:00:00Z` omitted that row (cold review, 1.0.9-rc.4).
+  for (const { label, rewrite } of ZOD_MAJORS) {
+    test(`${label}: a zoneless value is UTC, a date-only value is midnight UTC`, async () => {
+      const obj = entityWith("Note", metaField(FIELD_SUBTYPE_TIMESTAMP, "tastedAt"));
+      const mod = await executeGenerated(rewrite(renderZodValidators(obj).toString()));
+      const cases: Array<[string, string]> = [
+        ["2026-10-06", "2026-10-06T00:00:00Z"],
+        ["2026-10-06T09:00", "2026-10-06T09:00:00Z"],
+        ["2026-09-26 10:00:00", "2026-09-26T10:00:00Z"],   // SQLite CURRENT_TIMESTAMP text
+        ["2026-09-26t10:00:00.1234", "2026-09-26T10:00:00.123Z"],
+        ["2024-02-29", "2024-02-29T00:00:00Z"],
+      ];
+      for (const schemaName of ["NoteInsertSchema", "NoteUpdateSchema"]) {
+        for (const [sent, stored] of cases) {
+          expect(mod[schemaName].parse({ tastedAt: sent }).tastedAt).toBe(stored);
+        }
+      }
+    });
+  }
+
+  // A value already in the canonical UTC spelling is kept BYTE-FOR-BYTE. rc.4 rewrote
+  // `2026-09-20T12:10:00Z` to `…12:10:00.000Z`, and an adopter's api-contract scenario reading
+  // a timestamp back out of a jsonb value object failed on the added `.000`. Everything that
+  // IS rewritten takes the canonical wire form (fixtures/persistence-conformance/
+  // normalization.md): millisecond resolution, no trailing zeros, no fraction when zero.
+  for (const { label, rewrite } of ZOD_MAJORS) {
+    test(`${label}: an already-UTC value is kept exactly as sent, on an entity and in a value object`, async () => {
+      const entity = entityWith("Note", metaField(FIELD_SUBTYPE_TIMESTAMP, "tastedAt"));
+      const vo = metaObject(OBJECT_SUBTYPE_VALUE, "Telemetry");
+      vo.addChild(metaField(FIELD_SUBTYPE_TIMESTAMP, "capturedAt"));
+      const kept = ["2026-09-20T12:10:00Z", "2026-09-20T12:10:00.000Z", "2026-09-20T12:10:00.123Z", "2026-09-20T12:10:00.5Z"];
+      const entityMod = await executeGenerated(rewrite(renderZodValidators(entity).toString()));
+      const voMod = await executeGenerated(rewrite(renderZodValidators(vo).toString()));
+      for (const v of kept) {
+        expect(entityMod["NoteInsertSchema"].parse({ tastedAt: v }).tastedAt).toBe(v);
+        expect(entityMod["NoteUpdateSchema"].parse({ tastedAt: v }).tastedAt).toBe(v);
+        expect(voMod["TelemetryInsertSchema"].parse({ capturedAt: v }).capturedAt).toBe(v);
+      }
+      // ...and the value-object member is normalized by the same rule when it needs it.
+      expect(voMod["TelemetryInsertSchema"].parse({ capturedAt: "2026-09-20T14:10:00+02:00" }).capturedAt).toBe(
+        "2026-09-20T12:10:00Z",
+      );
+      expect(voMod["TelemetryInsertSchema"].parse({ capturedAt: "2026-09-20" }).capturedAt).toBe("2026-09-20T00:00:00Z");
+    });
+  }
 
   test("an @localTime timestamp is a wall clock and is never shifted", async () => {
     const f = metaField(FIELD_SUBTYPE_TIMESTAMP, "opensAt");
     f.setAttr(FIELD_ATTR_LOCAL_TIME, true);
     const mod = await executeGenerated(renderZodValidators(entityWith("Shop", f)).toString());
-    expect(mod["ShopInsertSchema"].parse({ opensAt: "2026-09-21T01:00:00+05:00" }).opensAt).toBe(
-      "2026-09-21T01:00:00+05:00",
-    );
+    for (const sent of ["2026-09-21T01:00:00+05:00", "2026-10-06T09:00", "2026-10-06"]) {
+      expect(mod["ShopInsertSchema"].parse({ opensAt: sent }).opensAt).toBe(sent);
+    }
   });
 
   test("the module-local normalizer is declared once, and only when a schema uses it", () => {

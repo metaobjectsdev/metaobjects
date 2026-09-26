@@ -14,6 +14,7 @@ import {
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_ENUM,
+  FIELD_ATTR_LOCAL_TIME,
   opsForField,
 } from "@metaobjectsdev/metadata";
 import { enumValues } from "../enum-meta.js";
@@ -56,15 +57,31 @@ const VALUE_FORMAT_SUBTYPES = new Set<string>([
   FIELD_SUBTYPE_UUID,
 ]);
 
+/** Subtypes whose values are whole numbers — `field.currency` is integer minor units. */
+const INTEGER_SUBTYPES = new Set<string>([
+  FIELD_SUBTYPE_INT,
+  FIELD_SUBTYPE_LONG,
+  FIELD_SUBTYPE_CURRENCY,
+]);
+
 /**
- * The `format` / `enumValues` members of a rule, so runtime-ts's filter parser can refuse
- * a value that cannot be the field's type (`invalid_filter_value`) instead of binding it —
- * a malformed date compared as text on SQLite and silently matched nothing. Scalar fields
- * only: an array field's filter value is not one element of the declared type.
+ * The `format` / `enumValues` / `instant` / `integer` members of a rule, so runtime-ts's
+ * filter parser can refuse a value that cannot be the field's type (`invalid_filter_value`)
+ * instead of binding it — a malformed date compared as text on SQLite and silently matched
+ * nothing, and `filter[dailyRateCents][gte]=40.5` was a 200. `instant` marks a
+ * `field.timestamp` that is NOT `@localTime`: the parser reads a zoneless or date-only bound
+ * as UTC, the same rule the generated write schema stores it by. Scalar fields only: an
+ * array field's filter value is not one element of the declared type.
  */
 function valueShape(f: MetaField): string {
   if (f.resolvedIsArray()) return "";
-  if (VALUE_FORMAT_SUBTYPES.has(f.subType)) return `, format: ${JSON.stringify(f.subType)} as const`;
+  if (INTEGER_SUBTYPES.has(f.subType)) return ", integer: true as const";
+  if (VALUE_FORMAT_SUBTYPES.has(f.subType)) {
+    const instant = f.subType === FIELD_SUBTYPE_TIMESTAMP && f.attr(FIELD_ATTR_LOCAL_TIME) !== true
+      ? ", instant: true as const"
+      : "";
+    return `, format: ${JSON.stringify(f.subType)} as const${instant}`;
+  }
   if (f.subType === FIELD_SUBTYPE_ENUM) {
     // Member SYMBOLS for string- and int-backed enums alike: an int-backed column's codec
     // maps the symbol to its integer when the value is bound.

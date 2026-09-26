@@ -109,4 +109,30 @@ describe("meta verify — unindexed foreign keys (advisory)", () => {
     const rows = payload.antiPatterns.rows.filter((r) => r.rule === "unindexed-foreign-key");
     expect(rows.map((r) => r.construct)).toEqual(["tracker::Issue.fkProject"]);
   });
+
+  // A cold review of 1.0.9-rc.4: a project whose only advisories were three unindexed FKs
+  // got `help: "3 authored site(s) hand-roll what MetaObjects can model"` and the summary
+  // "3 advisory anti-pattern finding(s)" — neither true of a missing index. Each kind of
+  // advisory row is now counted under its own label.
+  test("the structured summary and help label the finding as an FK index, not hand-rolling", async () => {
+    const root = await project();
+    const lines: string[] = [];
+    const log = console.log;
+    const err = console.error;
+    console.log = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); };
+    console.error = () => {};
+    try {
+      expect(await verifyCommand([], root, undefined, "json")).toBe(0);
+    } finally {
+      console.log = log;
+      console.error = err;
+    }
+    const payload = JSON.parse(lines.join("\n")) as { summary: string; help: string[] };
+    expect(payload.summary).toContain("1 advisory finding(s)");
+    expect(payload.summary).not.toContain("anti-pattern");
+    const help = payload.help.join("\n");
+    expect(help).toContain("1 foreign key(s) with no covering index");
+    expect(help).toContain("index.lookup");
+    expect(help).not.toContain("hand-roll");
+  });
 });

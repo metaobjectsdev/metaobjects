@@ -92,7 +92,10 @@ The create side is typed the same way: `create<Entity>(db, data: <Entity>Create)
 takes `<Entity>CreatePreserving`; a TPH subtype's `create<Sub>` / `update<Sub>ById` take
 `<Sub>Create` / `Partial<<Sub>Create>`). A misspelt or missing field is a compile error at
 the call site, and the schema still validates at runtime, so a caller holding an untyped
-request body casts it (`body as AuthorCreate`) and relies on that parse.
+request body casts it (`body as AuthorCreate`) and relies on that parse. The generated
+queries module spells the parameter as `z.input<typeof <Entity>InsertSchema>` (the same
+type) rather than importing the alias, so a queries generator you ejected before the alias
+existed keeps compiling against the current engine.
 
 **Kotlin** — the generated repository ships both a full `update(id, dto)` and a
 `patch` that takes the Exposed statement lambda, so a renamed/dropped column is a

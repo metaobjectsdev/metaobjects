@@ -17,6 +17,7 @@ import {
   libraryPrefixRows,
   unindexedFkRows,
   referentialActionConflictRows,
+  advisoryHelpLines,
 } from "../lib/advisory.js";
 import { scanForUnprovenancedLibraryPrefix } from "../lib/library-prefix-advisory.js";
 import { scanForUnindexedForeignKeys, type UnindexedFkFinding } from "../lib/fk-index-advisory.js";
@@ -1815,7 +1816,9 @@ function buildVerifyPayload(input: {
       : `${failed.length} of ${ran.length} gate(s) failed (${failed.map((g) => g.gate).join(", ")})`,
   ];
   if (input.antiPatterns.status === "ran" && input.antiPatterns.total > 0) {
-    parts.push(`${input.antiPatterns.total} advisory anti-pattern finding(s)`);
+    // "advisory", not "anti-pattern": the section also carries unindexed foreign keys, a
+    // missing baseUrl and the other non-scanner rows — `help` breaks the count down by kind.
+    parts.push(`${input.antiPatterns.total} advisory finding(s)`);
   }
   if (input.requirements.total > 0) {
     parts.push(`${input.requirements.total} requirement diagnostic(s)`);
@@ -1831,9 +1834,7 @@ function buildVerifyPayload(input: {
     );
   }
   if (input.antiPatterns.total > 0) {
-    help.push(
-      `${input.antiPatterns.total} authored site(s) hand-roll what MetaObjects can model — see antiPatterns.rows[] and run \`meta types <construct>\``,
-    );
+    help.push(...advisoryHelpLines(input.antiPatterns.rows));
   }
   if (input.overlays.total > 0) {
     help.push(

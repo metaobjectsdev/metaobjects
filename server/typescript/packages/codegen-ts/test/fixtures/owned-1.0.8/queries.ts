@@ -56,7 +56,6 @@ import {
   formatTs,
   entityOutputPath,
   GENERATED_HEADER,
-  GENERATED_EDIT_NOTE,
   sidecarLine,
 } from "@metaobjectsdev/codegen-ts";
 
@@ -103,9 +102,6 @@ function renderQueries(obj: MetaObject, ctx: RenderContext): string {
   const autoSet = hasAutoSetFields(obj);
   const preservingImport = autoSet ? `, ${entityName}InsertPreservingSchema` : "";
 
-  // The create functions' typed inputs are spelled through these schemas by the engine
-  // primitives (`z.input<typeof <Entity>InsertSchema>`), so this line names no alias the
-  // entity module may not export.
   const literalImports = code`
 ${dbTypeImport}
 ${dbTypeAlias}
@@ -132,7 +128,7 @@ import { ${varName}, type ${entityName}, type ${entityName}Patch, ${entityName}I
 
   const body = joinCode(sections, { on: "\n" }).toString();
   const header =
-    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
+    `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
     `// Source metadata: ${entityName} (${obj.fqn()})\n${sidecarLine(`${entityName}.extra.ts`)}`;
   return header + body;
 }

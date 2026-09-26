@@ -2,6 +2,7 @@
 // Source metadata: Customer (shop::users::Customer)
 // Extend in your own module (e.g. Customer.extra.ts) — nothing imports it for you.
 import { eq } from "drizzle-orm";
+import type { z } from "zod";
 
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 type Db = BaseSQLiteDatabase<
@@ -12,7 +13,6 @@ type Db = BaseSQLiteDatabase<
 
 import {
   type Customer,
-  type CustomerCreate,
   CustomerInsertSchema,
   type CustomerPatch,
   customers,
@@ -44,7 +44,7 @@ export async function listCustomers(
 }
 export async function createCustomer(
   db: Db,
-  data: CustomerCreate,
+  data: z.input<typeof CustomerInsertSchema>,
 ): Promise<Customer> {
   const validated = CustomerInsertSchema.parse(data);
   const [customer] = await db.insert(customers).values(validated).returning();

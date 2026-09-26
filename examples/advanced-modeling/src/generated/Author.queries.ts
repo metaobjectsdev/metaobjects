@@ -2,13 +2,13 @@
 // Source metadata: Author (Author)
 // Extend in your own module (e.g. Author.extra.ts) — nothing imports it for you.
 import { eq } from "drizzle-orm";
+import type { z } from "zod";
 
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;
 
 import {
   type Author,
-  type AuthorCreate,
   AuthorInsertSchema,
   type AuthorPatch,
   authors,
@@ -40,7 +40,7 @@ export async function listAuthors(
 }
 export async function createAuthor(
   db: Db,
-  data: AuthorCreate,
+  data: z.input<typeof AuthorInsertSchema>,
 ): Promise<Author> {
   const validated = AuthorInsertSchema.parse(data);
   const [author] = await db.insert(authors).values(validated).returning();

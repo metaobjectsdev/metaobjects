@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { renderFilterAllowlist, renderSortAllowlist } from "../../src/templates/filter-allowlist.js";
 import { resolve } from "node:path";
-import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
@@ -53,6 +53,40 @@ describe("renderFilterAllowlist", () => {
     expect(out).toMatch(/priority:\s*\{[^}]*enumValues: \["low", "high"\]/);
     // A plain string carries neither.
     expect(out).not.toMatch(/title:\s*\{[^}]*(format|enumValues)/);
+  });
+
+  // `instant` tells runtime-ts to read a zoneless / date-only bound as UTC (the same rule the
+  // generated write schema applies); an @localTime wall clock never gets it. `integer` tells
+  // it a fractional bound (`filter[dailyRateCents][gte]=40.5`) is invalid_filter_value.
+  test("marks instant timestamps and integer-valued numbers", async () => {
+    const model = {
+      "metadata.root": { package: "shop", children: [
+        { "object.entity": { name: "Rental", children: [
+          { "source.rdb": { "@table": "rentals" } },
+          { "field.long": { name: "id", "@filterable": true } },
+          { "field.timestamp": { name: "dueAt", "@filterable": true } },
+          { "field.timestamp": { name: "opensAt", "@filterable": true, "@localTime": true } },
+          { "field.int": { name: "days", "@filterable": true } },
+          { "field.currency": { name: "rateCents", "@currency": "USD", "@filterable": true } },
+          { "field.double": { name: "rating", "@filterable": true } },
+          { "field.decimal": { name: "deposit", "@filterable": true } },
+          { "identity.primary": { name: "pk", "@fields": "id" } },
+        ]}},
+      ]},
+    };
+    const { root, errors } = await new MetaDataLoader({ strict: true }).load([
+      new InMemoryStringSource(JSON.stringify(model), { id: "rental.json" }),
+    ]);
+    expect(errors).toEqual([]);
+    const out = renderFilterAllowlist(root.objects().find((o) => o.name === "Rental")!).toString();
+    expect(out).toMatch(/dueAt:\s*\{[^}]*format: "timestamp" as const,\s*instant: true as const/);
+    expect(out).not.toMatch(/opensAt:\s*\{[^}]*instant/);
+    for (const f of ["id", "days", "rateCents"]) {
+      expect(out).toMatch(new RegExp(`${f}:\\s*\\{[^}]*integer: true as const`));
+    }
+    for (const f of ["rating", "deposit", "dueAt"]) {
+      expect(out).not.toMatch(new RegExp(`${f}:\\s*\\{[^}]*integer`));
+    }
   });
 
   test("entity with no filterable fields emits empty allowlist", async () => {

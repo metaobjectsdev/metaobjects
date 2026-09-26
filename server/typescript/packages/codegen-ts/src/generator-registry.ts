@@ -219,7 +219,8 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     factory: () => queriesFile(),
     options: "filter?, target?",
     requires: ["entity"],
-    runtimePeers: ["drizzle-orm"],
+    // zod: a TYPE-only import — the create inputs are `z.input<typeof <Entity>InsertSchema>`.
+    runtimePeers: ["drizzle-orm", "zod"],
     configKeys: ["dialect", "extStyle", "pluralizeCollections", "collectionNameOverrides"],
     ejectable: ejectable("queries"),
   },

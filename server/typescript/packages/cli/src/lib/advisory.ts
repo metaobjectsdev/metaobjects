@@ -108,6 +108,72 @@ export function ranSection<Row>(rows: Row[]): AdvisorySection<Row> {
   return { status: "ran", total: rows.length, rows };
 }
 
+// The `rule` of each advisory row that is NOT an anti-pattern-scanner finding. A row whose
+// rule is none of these came from the scanner: an authored site hand-rolling a construct.
+export const RULE_MISSING_BASE_URL = "missing-base-url";
+export const RULE_REMOVED_PROP_PREFIX = "removed-prop:";
+export const RULE_LIBRARY_PREFIX = "library-prefix-unprovenanced";
+export const RULE_UNINDEXED_FK = "unindexed-foreign-key";
+export const RULE_REFERENTIAL_ACTION_CONFLICT = "overridden-referential-action";
+
+/** The next-step line for `n` rows of one advisory kind, each naming what the rows are. */
+const ADVISORY_HELP: ReadonlyArray<{ matches: (rule: string) => boolean; line: (n: number) => string }> = [
+  {
+    matches: (r) => r === RULE_UNINDEXED_FK,
+    line: (n) =>
+      `${n} foreign key(s) with no covering index — see antiPatterns.rows[] (rule "${RULE_UNINDEXED_FK}"); each names the index.lookup to declare`,
+  },
+  {
+    matches: (r) => r === RULE_REFERENTIAL_ACTION_CONFLICT,
+    line: (n) =>
+      `${n} foreign key(s) whose two sides disagree on the referential action — see antiPatterns.rows[] (rule "${RULE_REFERENTIAL_ACTION_CONFLICT}")`,
+  },
+  {
+    matches: (r) => r === RULE_MISSING_BASE_URL,
+    line: (n) =>
+      `${n} entity-fetcher provider(s) mounted with no baseUrl while apiPrefix is set — see antiPatterns.rows[] (rule "${RULE_MISSING_BASE_URL}")`,
+  },
+  {
+    matches: (r) => r.startsWith(RULE_REMOVED_PROP_PREFIX),
+    line: (n) =>
+      `${n} provider(s) still mounted with a prop 1.0 renamed away — see antiPatterns.rows[] (rule "${RULE_REMOVED_PROP_PREFIX}<prop>")`,
+  },
+  {
+    matches: (r) => r === RULE_LIBRARY_PREFIX,
+    line: (n) =>
+      `${n} node(s) declared under "metaobjects::" with no ejection provenance — see antiPatterns.rows[] (rule "${RULE_LIBRARY_PREFIX}")`,
+  },
+];
+
+/**
+ * One next-step line per KIND of advisory row, in a structured payload's `help`.
+ *
+ * The advisory section carries several kinds of row keyed by `rule`, and the help line used
+ * to count them all as "authored site(s) hand-roll what MetaObjects can model" — so a project
+ * whose only advisories were unindexed foreign keys was told it hand-rolled three constructs.
+ * Scanner findings keep that line; every other kind is counted under its own label.
+ */
+export function advisoryHelpLines(rows: readonly AdvisoryFindingRow[]): string[] {
+  const counts = ADVISORY_HELP.map(() => 0);
+  let handRolled = 0;
+  for (const row of rows) {
+    const kind = ADVISORY_HELP.findIndex((k) => k.matches(row.rule));
+    if (kind === -1) handRolled++;
+    else counts[kind] = (counts[kind] ?? 0) + 1;
+  }
+  const lines: string[] = [];
+  if (handRolled > 0) {
+    lines.push(
+      `${handRolled} authored site(s) hand-roll what MetaObjects can model — see antiPatterns.rows[] and run \`meta types <construct>\``,
+    );
+  }
+  ADVISORY_HELP.forEach((k, i) => {
+    const n = counts[i] ?? 0;
+    if (n > 0) lines.push(k.line(n));
+  });
+  return lines;
+}
+
 /** Project the scanner's findings into payload rows. `snippet` is deliberately
  *  dropped: it is a copy of the reader's own source line, and `file`+`line`
  *  already address it. */
@@ -129,7 +195,7 @@ export function missingBaseUrlRows(findings: readonly BaseUrlFinding[]): Advisor
   return findings.map((f) => ({
     file: f.file,
     line: f.line,
-    rule: "missing-base-url",
+    rule: RULE_MISSING_BASE_URL,
     construct: f.construct,
     message: f.message,
   }));
@@ -144,7 +210,7 @@ export function removedPropRows(findings: readonly RemovedPropFinding[]): Adviso
   return findings.map((f) => ({
     file: f.file,
     line: f.line,
-    rule: `removed-prop:${f.prop}`,
+    rule: `${RULE_REMOVED_PROP_PREFIX}${f.prop}`,
     construct: f.construct,
     message: f.message,
   }));
@@ -157,7 +223,7 @@ export function libraryPrefixRows(
   return findings.map((f) => ({
     file: f.file,
     line: 0,
-    rule: "library-prefix-unprovenanced",
+    rule: RULE_LIBRARY_PREFIX,
     construct: f.fqn,
     message: f.message,
   }));
@@ -174,7 +240,7 @@ export function unindexedFkRows(
   return findings.map((f) => ({
     file: f.file,
     line: 0,
-    rule: "unindexed-foreign-key",
+    rule: RULE_UNINDEXED_FK,
     construct: f.construct,
     message: f.message,
   }));
@@ -190,7 +256,7 @@ export function referentialActionConflictRows(
   return findings.map((f) => ({
     file: f.file,
     line: 0,
-    rule: "overridden-referential-action",
+    rule: RULE_REFERENTIAL_ACTION_CONFLICT,
     construct: f.construct,
     message: f.message,
   }));

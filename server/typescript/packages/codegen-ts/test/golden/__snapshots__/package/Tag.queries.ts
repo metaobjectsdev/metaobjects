@@ -2,6 +2,7 @@
 // Source metadata: Tag (Tag)
 // Extend in your own module (e.g. Tag.extra.ts) — nothing imports it for you.
 import { eq, inArray } from "drizzle-orm";
+import type { z } from "zod";
 
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 type Db = BaseSQLiteDatabase<
@@ -12,7 +13,6 @@ type Db = BaseSQLiteDatabase<
 
 import {
   type Tag,
-  type TagCreate,
   TagInsertSchema,
   type TagPatch,
   tags,
@@ -35,7 +35,10 @@ export async function listTags(
   }
   return q;
 }
-export async function createTag(db: Db, data: TagCreate): Promise<Tag> {
+export async function createTag(
+  db: Db,
+  data: z.input<typeof TagInsertSchema>,
+): Promise<Tag> {
   const validated = TagInsertSchema.parse(data);
   const [tag] = await db.insert(tags).values(validated).returning();
   return tag!;

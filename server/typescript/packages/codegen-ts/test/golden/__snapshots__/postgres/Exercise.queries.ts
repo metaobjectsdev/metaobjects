@@ -2,13 +2,13 @@
 // Source metadata: Exercise (Exercise)
 // Extend in your own module (e.g. Exercise.extra.ts) — nothing imports it for you.
 import { eq, inArray } from "drizzle-orm";
+import type { z } from "zod";
 
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;
 
 import {
   type Exercise,
-  type ExerciseCreate,
   ExerciseInsertSchema,
   type ExercisePatch,
   exercises,
@@ -40,7 +40,7 @@ export async function listExercises(
 }
 export async function createExercise(
   db: Db,
-  data: ExerciseCreate,
+  data: z.input<typeof ExerciseInsertSchema>,
 ): Promise<Exercise> {
   const validated = ExerciseInsertSchema.parse(data);
   const [exercise] = await db.insert(exercises).values(validated).returning();

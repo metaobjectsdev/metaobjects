@@ -2,6 +2,7 @@
 // Source metadata: Video (Video)
 // Extend in your own module (e.g. Video.extra.ts) — nothing imports it for you.
 import { eq, inArray } from "drizzle-orm";
+import type { z } from "zod";
 
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 type Db = BaseSQLiteDatabase<
@@ -12,7 +13,6 @@ type Db = BaseSQLiteDatabase<
 
 import {
   type Video,
-  type VideoCreate,
   VideoInsertSchema,
   type VideoPatch,
   videos,
@@ -39,7 +39,10 @@ export async function listVideos(
   }
   return q;
 }
-export async function createVideo(db: Db, data: VideoCreate): Promise<Video> {
+export async function createVideo(
+  db: Db,
+  data: z.input<typeof VideoInsertSchema>,
+): Promise<Video> {
   const validated = VideoInsertSchema.parse(data);
   const [video] = await db.insert(videos).values(validated).returning();
   return video!;

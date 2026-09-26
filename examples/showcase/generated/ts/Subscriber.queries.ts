@@ -2,6 +2,7 @@
 // Source metadata: Subscriber (Subscriber)
 // Extend in your own module (e.g. Subscriber.extra.ts) — nothing imports it for you.
 import { eq } from "drizzle-orm";
+import type { z } from "zod";
 
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 type Db = BaseSQLiteDatabase<
@@ -12,8 +13,6 @@ type Db = BaseSQLiteDatabase<
 
 import {
   type Subscriber,
-  type SubscriberCreate,
-  type SubscriberCreatePreserving,
   SubscriberInsertPreservingSchema,
   SubscriberInsertSchema,
   type SubscriberPatch,
@@ -46,7 +45,7 @@ export async function listSubscribers(
 }
 export async function createSubscriber(
   db: Db,
-  data: SubscriberCreate,
+  data: z.input<typeof SubscriberInsertSchema>,
 ): Promise<Subscriber> {
   const validated = SubscriberInsertSchema.parse(data);
   const [subscriber] = await db
@@ -57,7 +56,7 @@ export async function createSubscriber(
 }
 export async function insertPreservingSubscriber(
   db: Db,
-  data: SubscriberCreatePreserving,
+  data: z.input<typeof SubscriberInsertPreservingSchema>,
 ): Promise<Subscriber> {
   const validated = SubscriberInsertPreservingSchema.parse(data);
   const [subscriber] = await db

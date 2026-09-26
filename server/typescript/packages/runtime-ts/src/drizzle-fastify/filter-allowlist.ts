@@ -60,6 +60,22 @@ export interface FilterFieldRule {
    */
   readonly format?: FilterValueFormat;
   /**
+   * `format: "timestamp"` only. Set by codegen for a `field.timestamp` that is an instant —
+   * the default, i.e. NOT `@localTime`. A bound with no zone is then read as UTC and a
+   * date-only bound as midnight UTC, the same rule the generated write schema stores such
+   * a value by, so `filter[dueAt][gte]=2026-10-06T00:00:00Z` finds a row sent as
+   * `"2026-10-06"`. Absent (an `@localTime` wall clock, or an allowlist generated before
+   * this existed), only a bound that carries a zone is rewritten to UTC.
+   */
+  readonly instant?: boolean;
+  /**
+   * `subType: "number"` only. Set by codegen for `field.int` / `field.long` /
+   * `field.currency` (integer minor units): a bound that is not a whole number
+   * (`filter[dailyRateCents][gte]=40.5`) answers `invalid_filter_value`. Absent, any
+   * finite number is accepted, as before.
+   */
+  readonly integer?: boolean;
+  /**
    * The declared members of a `field.enum` (`@values`), set by codegen. A value that is
    * not a member is rejected with `invalid_filter_value`. Absent, the parser falls back
    * to the Drizzle column's own `enumValues` when it has them.

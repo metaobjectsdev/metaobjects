@@ -2,6 +2,7 @@
 // Source metadata: Product (shop::commerce::Product)
 // Extend in your own module (e.g. Product.extra.ts) — nothing imports it for you.
 import { eq, inArray } from "drizzle-orm";
+import type { z } from "zod";
 
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 type Db = BaseSQLiteDatabase<
@@ -12,7 +13,6 @@ type Db = BaseSQLiteDatabase<
 
 import {
   type Product,
-  type ProductCreate,
   ProductInsertSchema,
   type ProductPatch,
   products,
@@ -44,7 +44,7 @@ export async function listProducts(
 }
 export async function createProduct(
   db: Db,
-  data: ProductCreate,
+  data: z.input<typeof ProductInsertSchema>,
 ): Promise<Product> {
   const validated = ProductInsertSchema.parse(data);
   const [product] = await db.insert(products).values(validated).returning();

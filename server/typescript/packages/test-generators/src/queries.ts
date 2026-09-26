@@ -101,15 +101,16 @@ function renderQueries(obj: MetaObject, ctx: RenderContext): string {
   // the `insertPreserving<Entity>` escape hatch after `create<Entity>`. OWNED: drop both
   // halves together if you never insert rows carrying their own timestamps.
   const autoSet = hasAutoSetFields(obj);
-  const preservingImport = autoSet
-    ? `, type ${entityName}CreatePreserving, ${entityName}InsertPreservingSchema`
-    : "";
+  const preservingImport = autoSet ? `, ${entityName}InsertPreservingSchema` : "";
 
+  // The create functions' typed inputs are spelled through these schemas by the engine
+  // primitives (`z.input<typeof <Entity>InsertSchema>`), so this line names no alias the
+  // entity module may not export.
   const literalImports = code`
 ${dbTypeImport}
 ${dbTypeAlias}
 
-import { ${varName}, type ${entityName}, type ${entityName}Create, type ${entityName}Patch, ${entityName}InsertSchema${preservingImport}, ${entityName}UpdateSchema } from ${JSON.stringify(entityFileName)};
+import { ${varName}, type ${entityName}, type ${entityName}Patch, ${entityName}InsertSchema${preservingImport}, ${entityName}UpdateSchema } from ${JSON.stringify(entityFileName)};
 `;
 
   const sections: Code[] = [

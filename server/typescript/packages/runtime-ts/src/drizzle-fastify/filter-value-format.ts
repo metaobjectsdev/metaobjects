@@ -62,29 +62,69 @@ export function matchesFormat(format: FilterValueFormat, s: string): boolean {
   return CHECKS[format](s);
 }
 
-/** A timestamp with a time part AND an explicit zone (`Z` or `±HH[[:]MM]`). */
-const ZONED_TIMESTAMP_RE =
-  /^(\d{4}-\d{2}-\d{2})[Tt ](\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?(?:([Zz])|([+-]\d{2}):?(\d{2})?)$/;
+/** A timestamp: a date, then optionally a time part, then optionally a zone (`Z` or `±HH[[:]MM]`). */
+const TIMESTAMP_PARTS_RE =
+  /^(\d{4}-\d{2}-\d{2})(?:[Tt ](\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?(?:([Zz])|([+-]\d{2}):?(\d{2})?)?)?$/;
+
+/** Already the canonical UTC spelling: `YYYY-MM-DDTHH:MM:SS[.f…]Z`. Kept byte-for-byte. */
+const CANONICAL_UTC_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 
 /**
- * A zoned timestamp bound rewritten to its instant's `toISOString()` spelling; any other
- * value (a naive timestamp, a date-only bound) is returned unchanged.
+ * A timestamp bound in the canonical UTC spelling of its instant — `YYYY-MM-DDTHH:MM:SS[.fff]Z`,
+ * millisecond resolution, no trailing zeros, no fraction when it is zero (the wire form
+ * fixtures/persistence-conformance/normalization.md pins). A value already spelled that way
+ * is returned as sent; any other value carrying a zone is rewritten; a zoneless or date-only
+ * value only when `zonelessIsUtc`, and then read as UTC (a date alone as midnight UTC).
+ * Anything else is returned unchanged.
  *
- * The generated insert/update schemas store every zoned `field.timestamp` value in that
- * same fixed-width UTC form, because SQLite and D1 compare the TEXT column as text: a row
- * sent as `2026-09-21T01:00:00+05:00` (20:00Z) and a bound of `2026-09-20T21:00:00+00:00`
- * only order correctly once both are spelled in UTC. A naive value names no zone, so it is
- * never guessed at. Postgres compares timestamptz instants and reads either spelling the
- * same way. The rebuilt string is the ECMAScript date-time format `Date.parse` must accept,
- * so this does not rely on an engine reading `+05` or a six-digit fraction.
+ * The generated insert/update schemas store a `field.timestamp` instant by the same rule
+ * (codegen-ts `utcIsoTimestamp`), because SQLite and D1 compare the TEXT column as text: a
+ * row sent as `2026-09-21T01:00:00+05:00` (20:00Z) and a bound of `2026-09-20T21:00:00+00:00`
+ * only order correctly once both are spelled in UTC. Postgres compares timestamptz instants
+ * and reads either spelling the same way. The string handed to `Date.parse` is the
+ * ECMAScript date-time format it must accept, so this does not rely on an engine reading
+ * `+05`, a six-digit fraction, or a zoneless string (which ECMAScript reads as LOCAL time).
  */
-export function utcIsoIfZoned(s: string): string {
-  const m = ZONED_TIMESTAMP_RE.exec(s);
+function utcIso(s: string, zonelessIsUtc: boolean): string {
+  if (CANONICAL_UTC_RE.test(s)) return s;
+  const m = TIMESTAMP_PARTS_RE.exec(s);
   if (m === null) return s;
   const [, date, hm, sec, frac, z, oh, om] = m;
+  const zoned = z !== undefined || oh !== undefined;
+  if (!zoned && !zonelessIsUtc) return s;
   const ms = (frac ?? "").slice(0, 3).padEnd(3, "0");
-  const t = Date.parse(`${date}T${hm}:${sec ?? "00"}.${ms}${z === undefined ? `${oh}:${om ?? "00"}` : "Z"}`);
-  return Number.isNaN(t) ? s : new Date(t).toISOString();
+  const t = Date.parse(`${date}T${hm ?? "00:00"}:${sec ?? "00"}.${ms}${oh === undefined ? "Z" : `${oh}:${om ?? "00"}`}`);
+  return Number.isNaN(t) ? s : new Date(t).toISOString().replace(/\.?0+Z$/, "Z");
+}
+
+/** A zoned timestamp bound in UTC; a naive or date-only one unchanged (a wall clock). */
+export function utcIsoIfZoned(s: string): string {
+  return utcIso(s, false);
+}
+
+/**
+ * A `field.timestamp` INSTANT bound (not `@localTime`) in UTC: a zoned value at its
+ * instant, a zoneless one read as UTC, a date alone as midnight UTC — the rule the
+ * generated write schema (codegen-ts `utcIsoTimestamp`) stores the column by. A default
+ * timestamp's wire form is "always UTC" (docs/features/api-contract.md, "Type encodings").
+ */
+export function utcIsoInstant(s: string): string {
+  return utcIso(s, true);
+}
+
+/**
+ * A timestamp bound whose offset arrived as a space: `…T00:00:00+00:00` sent unencoded in a
+ * query string, where `+` decodes to a space, reaches the parser as `…T00:00:00 00:00`.
+ */
+const SPACE_FOR_PLUS_OFFSET_RE =
+  /^\d{4}-\d{2}-\d{2}[Tt ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)? \d{2}(?::?\d{2})?$/;
+
+/** The `hint` for a timestamp bound that fails only because its `+` offset was not encoded. */
+export const PLUS_OFFSET_HINT =
+  "a \"+\" in a query string decodes to a space: URL-encode the offset's \"+\" as %2B, or use Z for UTC";
+
+export function looksLikeUnencodedPlusOffset(s: string): boolean {
+  return SPACE_FOR_PLUS_OFFSET_RE.test(s);
 }
 
 /** For a `datetime` rule with no `format` (generated before it existed): any of the three. */

@@ -57,22 +57,33 @@ export const ZOD_TIME_EXPR =
 export const ZOD_TIMESTAMP_EXPR =
   `z.string().regex(/^${CALENDAR_DATE}(?:[Tt ]${TIME_OF_DAY}${UTC_OFFSET})?$/, ${JSON.stringify(TIMESTAMP_FORMAT_MESSAGE)})`;
 
-// A zoned timestamp is rewritten to the instant's `toISOString()` spelling on WRITE.
+// An instant timestamp is rewritten to UTC on WRITE.
 //
 // SQLite and D1 keep a string-mode timestamp as TEXT and compare it as text, so a value
 // stored as sent — `2026-09-21T01:00:00+05:00`, which is 20:00Z — sorted after
-// `2026-09-20T21:00:00Z` and `filter[tastedAt][gt]=…21:00:00Z` returned it. The fixed-width
-// `YYYY-MM-DDTHH:MM:SS.sssZ` form (the same one the @autoSet stamp writes) makes text
-// order equal instant order; the runtime filter parser rewrites a zoned bound the same way
-// (`utcIsoIfZoned` in runtime-ts — the two must agree). Postgres timestamptz stores the
-// instant either way, so it is unaffected.
+// `2026-09-20T21:00:00Z` and `filter[tastedAt][gt]=…21:00:00Z` returned it. The rewritten
+// form is the canonical wire spelling of an instant (fixtures/persistence-conformance/
+// normalization.md): `YYYY-MM-DDTHH:MM:SS[.fff]Z`, millisecond resolution, no trailing
+// zeros, no fraction at all when it is zero. Its prefix through the seconds is fixed-width,
+// so text order equals instant order down to the second. The runtime filter parser
+// rewrites a bound the same way (`utcIsoInstant` in runtime-ts — the two must agree).
+// Postgres timestamptz stores the instant either way, so it is unaffected.
 //
-// Only a value WITH an offset (or `Z`) is rewritten: a naive one names no zone, and
-// picking one would change what it means — it is kept exactly as sent. The rebuilt string
-// is the ECMAScript date-time format `Date.parse` is REQUIRED to read (seconds and a
-// three-digit fraction padded in, the offset as `±HH:MM`), so the result does not depend on
-// the engine's tolerance for Postgres' `+00` or a six-digit fraction. It runs after the
-// format check, so it only ever sees a well-formed value.
+// A value ALREADY spelled `YYYY-MM-DDTHH:MM:SS[.f…]Z` is kept byte-for-byte: it is in UTC and
+// orders correctly as it is, and rc.4 turning `…12:10:00Z` into `…12:10:00.000Z` broke an
+// adopter's round-trip of a timestamp inside a jsonb value object.
+//
+// A value with NO zone is read as UTC, and a date-only value as midnight UTC. A default
+// `field.timestamp` is an instant whose wire form is "always UTC"
+// (docs/features/api-contract.md, "Type encodings"; ADR-0036 Wave 2); a wall clock is
+// what `@localTime` declares, and those fields never reach this helper. Kept as sent,
+// `2026-10-06` sorted before `2026-10-06T00:00:00Z` as text, so
+// `filter[dueAt][gte]=2026-10-06T00:00:00Z` omitted the row. The string handed to
+// `Date.parse` is the ECMAScript date-time format it is REQUIRED to read (seconds and a
+// three-digit fraction padded in, the offset as `±HH:MM`), so the result does not depend
+// on the engine's tolerance for Postgres' `+00`, a six-digit fraction, or a zoneless string
+// (which ECMAScript would read as LOCAL time). It runs after the format check, so it only
+// ever sees a well-formed value.
 //
 // Emitted ONCE per module as a local function (generated model code imports nothing from
 // MetaObjects at runtime), and referenced by name from each schema that needs it.
@@ -82,17 +93,19 @@ export const UTC_TIMESTAMP_HELPER = "utcIsoTimestamp";
 
 /** The normalizer's declaration, emitted at the top of a module that uses it. */
 export const UTC_TIMESTAMP_HELPER_DECL = [
-  "/** A zoned field.timestamp value in its instant's toISOString() spelling; a naive one as sent.",
-  " *  SQLite/D1 compare timestamps as text, so zoned values are stored in UTC. Generated. */",
+  "/** A field.timestamp instant in UTC (`YYYY-MM-DDTHH:MM:SS[.fff]Z`): a value already spelled so is kept",
+  " *  as sent, an offset is applied, a zoneless value is UTC and a date alone is midnight UTC.",
+  " *  SQLite/D1 compare timestamps as text, so instants are stored in UTC. Generated. */",
   `function ${UTC_TIMESTAMP_HELPER}(v: string): string {`,
-  "  const m = /^(\\d{4}-\\d{2}-\\d{2})[Tt ](\\d{2}:\\d{2})(?::(\\d{2})(?:\\.(\\d+))?)?(?:([Zz])|([+-]\\d{2}):?(\\d{2})?)$/.exec(v);",
+  "  if (/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$/.test(v)) return v;",
+  "  const m = /^(\\d{4}-\\d{2}-\\d{2})(?:[Tt ](\\d{2}:\\d{2})(?::(\\d{2})(?:\\.(\\d+))?)?(?:([Zz])|([+-]\\d{2}):?(\\d{2})?)?)?$/.exec(v);",
   "  if (m === null) return v;",
-  '  const t = Date.parse(`${m[1]}T${m[2]}:${m[3] ?? "00"}.${(m[4] ?? "").slice(0, 3).padEnd(3, "0")}${m[5] === undefined ? `${m[6]}:${m[7] ?? "00"}` : "Z"}`);',
-  "  return Number.isNaN(t) ? v : new Date(t).toISOString();",
+  '  const t = Date.parse(`${m[1]}T${m[2] ?? "00:00"}:${m[3] ?? "00"}.${(m[4] ?? "").slice(0, 3).padEnd(3, "0")}${m[6] === undefined ? "Z" : `${m[6]}:${m[7] ?? "00"}`}`);',
+  '  return Number.isNaN(t) ? v : new Date(t).toISOString().replace(/\\.?0+Z$/, "Z");',
   "}",
 ].join("\n");
 
 /** `field.timestamp` (string mode, instant — not `@localTime`) on a WRITE shape: the format
- *  check, then the zoned-to-UTC rewrite above. A module emitting it must also emit
+ *  check, then the to-UTC rewrite above. A module emitting it must also emit
  *  {@link UTC_TIMESTAMP_HELPER_DECL}. */
 export const ZOD_TIMESTAMP_UTC_EXPR = `${ZOD_TIMESTAMP_EXPR}.transform(${UTC_TIMESTAMP_HELPER})`;

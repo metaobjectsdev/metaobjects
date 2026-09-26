@@ -72,7 +72,7 @@ describe("timestamp filters compare instants, not offset-bearing text (SQLite)",
   test("the offset-bearing row is stored in UTC", async () => {
     const r = await app.inject({ method: "GET", url: "/notes" });
     const a = (JSON.parse(r.body) as Array<{ label: string; tastedAt: string }>).find((n) => n.label === "A");
-    expect(a?.tastedAt).toBe("2026-09-20T20:00:00.000Z");
+    expect(a?.tastedAt).toBe("2026-09-20T20:00:00Z");
   });
 
   test("gt a Z bound excludes the earlier-instant row sent with +05:00 (the reported case)", async () => {
@@ -89,7 +89,7 @@ describe("timestamp filters compare instants, not offset-bearing text (SQLite)",
   test("eq matches the same instant in any spelling", async () => {
     expect(await labels(q("eq", "2026-09-20T20:00:00Z"))).toEqual(["A"]);
     expect(await labels(q("eq", "2026-09-21T01:00:00+05:00"))).toEqual(["A"]);
-    expect(await labels(q("in", "2026-09-21T01:00:00+05:00,2026-09-20T22:00:00.000Z"))).toEqual(["A", "B"]);
+    expect(await labels(q("in", "2026-09-21T01:00:00+05:00,2026-09-20T22:00:00Z"))).toEqual(["A", "B"]);
   });
 });
 
@@ -117,10 +117,10 @@ describe("a failed format check answers its message, never the regex source", ()
 
 describe("utcIsoIfZoned", () => {
   test("rewrites zoned values to toISOString form", () => {
-    expect(utcIsoIfZoned("2026-09-21T01:00:00+05:00")).toBe("2026-09-20T20:00:00.000Z");
-    expect(utcIsoIfZoned("2026-09-21 01:00:00+05")).toBe("2026-09-20T20:00:00.000Z");
+    expect(utcIsoIfZoned("2026-09-21T01:00:00+05:00")).toBe("2026-09-20T20:00:00Z");
+    expect(utcIsoIfZoned("2026-09-21 01:00:00+05")).toBe("2026-09-20T20:00:00Z");
     expect(utcIsoIfZoned("2026-09-20 16:30:00.123456-04:30")).toBe("2026-09-20T21:00:00.123Z");
-    expect(utcIsoIfZoned("2026-09-20t21:00z")).toBe("2026-09-20T21:00:00.000Z");
+    expect(utcIsoIfZoned("2026-09-20t21:00z")).toBe("2026-09-20T21:00:00Z");
   });
 
   test("leaves naive and date-only values alone", () => {

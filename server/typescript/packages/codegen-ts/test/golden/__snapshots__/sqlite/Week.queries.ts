@@ -2,6 +2,7 @@
 // Source metadata: Week (Week)
 // Extend in your own module (e.g. Week.extra.ts) — nothing imports it for you.
 import { eq, inArray } from "drizzle-orm";
+import type { z } from "zod";
 
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 type Db = BaseSQLiteDatabase<
@@ -12,7 +13,6 @@ type Db = BaseSQLiteDatabase<
 
 import {
   type Week,
-  type WeekCreate,
   WeekInsertSchema,
   type WeekPatch,
   weeks,
@@ -35,7 +35,10 @@ export async function listWeeks(
   }
   return q;
 }
-export async function createWeek(db: Db, data: WeekCreate): Promise<Week> {
+export async function createWeek(
+  db: Db,
+  data: z.input<typeof WeekInsertSchema>,
+): Promise<Week> {
   const validated = WeekInsertSchema.parse(data);
   const [week] = await db.insert(weeks).values(validated).returning();
   return week!;

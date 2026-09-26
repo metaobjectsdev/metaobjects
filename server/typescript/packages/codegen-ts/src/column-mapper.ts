@@ -777,7 +777,7 @@ export function mapColumnType(
   // .$type<>() annotation. Carry the logical TS type so the column is typed:
   //  - SQLite isArray: arrays serialize as JSON-in-text → .$type<E[]>() (scalar
   //    element type, or the @objectRef VO for object arrays).
-  //  - Postgres field.object: a single jsonb column → .$type<VO>(), or
+  //  - field.object on either dialect: a single JSON column → .$type<VO>(), or
   //    .$type<VO[]>() when isArray (the JSON array lives in the one column; no
   //    native .array() is emitted for object storage — see modifiers above).
   //    Scalar Postgres arrays use native .array() (already element-typed by
@@ -806,7 +806,11 @@ export function mapColumnType(
         dollarTypeRef = { kind: "scalar", tsType: scalar as "string" | "number" | "boolean", array: true };
       }
     }
-  } else if (dialect === "postgres" && subType === FIELD_SUBTYPE_OBJECT) {
+  } else if (subType === FIELD_SUBTYPE_OBJECT) {
+    // A single value object (or, on Postgres, an array of them) in one JSON column —
+    // jsonb() on Postgres, text(…, { mode: "json" }) on SQLite/D1. Both infer the
+    // column as `unknown` without the annotation, so a finder's row read
+    // `c?.address?.city` as TS2339 on SQLite until it was typed here too.
     const base = objectRefBaseName(field);
     if (base !== undefined) {
       dollarTypeRef = { kind: "objectRef", name: base, array: isArray };

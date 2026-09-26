@@ -46,9 +46,46 @@ export function contractRouteErrorHandler(
   return reply.code(HTTP_STATUS_INTERNAL).send(INTERNAL_ERROR_BODY);
 }
 
-/** The adopter's route options plus the contract error handler — unless they set their own. */
+/** Methods that carry no request body in the contract. Fastify already skips parsing for
+ *  GET and HEAD, but it parses a DELETE body like a POST one. */
+const BODYLESS_METHODS: ReadonlySet<string> = new Set(["GET", "HEAD", "DELETE"]);
+
+/**
+ * `onRequest` hook: on a bodyless method whose body is EMPTY, drop a declared
+ * `content-type` so Fastify has nothing to parse.
+ *
+ * Many HTTP clients send `content-type: application/json` on every request. Fastify's JSON
+ * parser refuses an empty body declared as JSON (`FST_ERR_CTP_EMPTY_JSON_BODY`), which the
+ * handler above answers as `invalid_json` — so `DELETE /rentals/3` with that header and no
+ * body was a 400. With no content-type and no body, Fastify skips parsing and the route
+ * runs. A DELETE that DOES carry bytes is parsed as before, and POST/PUT/PATCH are never
+ * touched: an empty body there is still `invalid_json`.
+ */
+export function acceptEmptyBodyOnBodylessMethod(
+  request: FastifyRequest,
+  _reply: FastifyReply,
+  done: () => void,
+): void {
+  const headers = request.raw.headers;
+  if (
+    BODYLESS_METHODS.has(request.method) &&
+    headers["content-type"] !== undefined &&
+    headers["transfer-encoding"] === undefined &&
+    (headers["content-length"] === undefined || headers["content-length"] === "0")
+  ) {
+    delete headers["content-type"];
+  }
+  done();
+}
+
+/**
+ * The adopter's route options plus the contract error handler — unless they set their own —
+ * and the empty-body hook above, ahead of any `onRequest` hooks the adopter passed.
+ */
 export function withContractErrorHandler(ro: RouteShorthandOptions | undefined): RouteShorthandOptions {
   const base = ro ?? {};
-  if (base.errorHandler !== undefined) return base;
-  return { ...base, errorHandler: contractRouteErrorHandler };
+  const adopterHooks = base.onRequest === undefined ? [] : Array.isArray(base.onRequest) ? base.onRequest : [base.onRequest];
+  const withHook: RouteShorthandOptions = { ...base, onRequest: [acceptEmptyBodyOnBodylessMethod, ...adopterHooks] };
+  if (base.errorHandler !== undefined) return withHook;
+  return { ...withHook, errorHandler: contractRouteErrorHandler };
 }

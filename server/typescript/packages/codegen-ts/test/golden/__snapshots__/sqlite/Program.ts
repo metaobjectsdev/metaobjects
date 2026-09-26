@@ -19,22 +19,28 @@ export const programs = sqliteTable("programs", {
 export type Program = InferSelectModel<typeof programs>;
 export type ProgramInsert = InferInsertModel<typeof programs>;
 export type ProgramUpdate = Partial<ProgramInsert>;
-/** A zoned field.timestamp value in its instant's toISOString() spelling; a naive one as sent.
- *  SQLite/D1 compare timestamps as text, so zoned values are stored in UTC. Generated. */
+/** A field.timestamp instant in UTC (`YYYY-MM-DDTHH:MM:SS[.fff]Z`): a value already spelled so is kept
+ *  as sent, an offset is applied, a zoneless value is UTC and a date alone is midnight UTC.
+ *  SQLite/D1 compare timestamps as text, so instants are stored in UTC. Generated. */
 function utcIsoTimestamp(v: string): string {
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(v)) {
+    return v;
+  }
   const m =
-    /^(\d{4}-\d{2}-\d{2})[Tt ](\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?(?:([Zz])|([+-]\d{2}):?(\d{2})?)$/.exec(
+    /^(\d{4}-\d{2}-\d{2})(?:[Tt ](\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?(?:([Zz])|([+-]\d{2}):?(\d{2})?)?)?$/.exec(
       v,
     );
   if (m === null) {
     return v;
   }
   const t = Date.parse(
-    `${m[1]}T${m[2]}:${m[3] ?? "00"}.${(m[4] ?? "").slice(0, 3).padEnd(3, "0")}${
-      m[5] === undefined ? `${m[6]}:${m[7] ?? "00"}` : "Z"
+    `${m[1]}T${m[2] ?? "00:00"}:${m[3] ?? "00"}.${(m[4] ?? "").slice(0, 3).padEnd(3, "0")}${
+      m[6] === undefined ? "Z" : `${m[6]}:${m[7] ?? "00"}`
     }`,
   );
-  return Number.isNaN(t) ? v : new Date(t).toISOString();
+  return Number.isNaN(t)
+    ? v
+    : new Date(t).toISOString().replace(/\.?0+Z$/, "Z");
 }
 
 export const ProgramInsertSchema = z.object({

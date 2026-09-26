@@ -2,13 +2,13 @@
 // Source metadata: Program (Program)
 // Extend in your own module (e.g. Program.extra.ts) — nothing imports it for you.
 import { eq, inArray } from "drizzle-orm";
+import type { z } from "zod";
 
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;
 
 import {
   type Program,
-  type ProgramCreate,
   ProgramInsertSchema,
   type ProgramPatch,
   programs,
@@ -40,7 +40,7 @@ export async function listPrograms(
 }
 export async function createProgram(
   db: Db,
-  data: ProgramCreate,
+  data: z.input<typeof ProgramInsertSchema>,
 ): Promise<Program> {
   const validated = ProgramInsertSchema.parse(data);
   const [program] = await db.insert(programs).values(validated).returning();

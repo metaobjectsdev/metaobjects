@@ -2,13 +2,13 @@
 // Source metadata: Purchase (Purchase)
 // Extend in your own module (e.g. Purchase.extra.ts) — nothing imports it for you.
 import { eq, inArray } from "drizzle-orm";
+import type { z } from "zod";
 
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;
 
 import {
   type Purchase,
-  type PurchaseCreate,
   PurchaseInsertSchema,
   type PurchasePatch,
   purchases,
@@ -40,7 +40,7 @@ export async function listPurchases(
 }
 export async function createPurchase(
   db: Db,
-  data: PurchaseCreate,
+  data: z.input<typeof PurchaseInsertSchema>,
 ): Promise<Purchase> {
   const validated = PurchaseInsertSchema.parse(data);
   const [purchase] = await db.insert(purchases).values(validated).returning();

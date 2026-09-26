@@ -2,13 +2,13 @@
 // Source metadata: Subscriber (Subscriber)
 // Extend in your own module (e.g. Subscriber.extra.ts) — nothing imports it for you.
 import { eq } from "drizzle-orm";
+import type { z } from "zod";
 
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;
 
 import {
   type Subscriber,
-  type SubscriberCreate,
   SubscriberInsertSchema,
   type SubscriberPatch,
   subscribers,
@@ -40,7 +40,7 @@ export async function listSubscribers(
 }
 export async function createSubscriber(
   db: Db,
-  data: SubscriberCreate,
+  data: z.input<typeof SubscriberInsertSchema>,
 ): Promise<Subscriber> {
   const validated = SubscriberInsertSchema.parse(data);
   const [subscriber] = await db

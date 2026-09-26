@@ -139,8 +139,11 @@ for (const dialect of ["postgres", "sqlite"] as const) {
         expect(brewer).toContain(
           "export type BrewerCreatePreserving = z.input< typeof BrewerInsertPreservingSchema >;",
         );
-        expect(queries).toContain("data: BrewerCreate");
-        expect(queries).toContain("data: BrewerCreatePreserving");
+        // Spelled through the schema, not the entity module's alias, so an owned queries
+        // generator ejected before the alias existed still compiles (owned-generator-skew-compile).
+        expect(queries).toContain("data: z.input<typeof BrewerInsertSchema>");
+        expect(queries).toContain("data: z.input<typeof BrewerInsertPreservingSchema>");
+        expect(queries).toContain('import type { z } from "zod";');
         expect(queries).not.toContain("data: unknown");
         expect(party).not.toContain("data: unknown");
       } finally {

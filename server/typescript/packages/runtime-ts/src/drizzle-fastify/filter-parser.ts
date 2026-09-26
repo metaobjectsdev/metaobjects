@@ -10,7 +10,10 @@ import { FilterParseError, parsePageBound, SORT_EXPECTED } from "./list-params.j
 // Re-exported so existing importers keep one door; the definitions live in the
 // drizzle-free list-params module, which the ObjectManager Fastify mount also uses.
 export { FilterParseError, parsePageBound, PAGINATION_EXPECTED, RAW_VIEW_MAX_LIMIT, SORT_EXPECTED } from "./list-params.js";
-import { ANY_TEMPORAL_EXPECTED, FORMAT_EXPECTED, matchesAnyTemporal, matchesFormat, utcIsoIfZoned } from "./filter-value-format.js";
+import {
+  ANY_TEMPORAL_EXPECTED, FORMAT_EXPECTED, PLUS_OFFSET_HINT,
+  looksLikeUnencodedPlusOffset, matchesAnyTemporal, matchesFormat, utcIsoIfZoned, utcIsoInstant,
+} from "./filter-value-format.js";
 import { FIELD_SUBTYPE_TIMESTAMP } from "@metaobjectsdev/metadata";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user's Drizzle table
@@ -273,9 +276,10 @@ function invalidValue(
   expected: string,
   extra: Record<string, unknown> = {},
 ): FilterParseError {
+  const hint = typeof extra["hint"] === "string" ? ` Hint: ${extra["hint"]}.` : "";
   return new FilterParseError(
     "filter.invalid_value",
-    `Field "${field}" op "${op}" requires ${expected}, got "${s}".`,
+    `Field "${field}" op "${op}" requires ${expected}, got "${s}".${hint}`,
     { field, op, expected, ...extra },
   );
 }
@@ -299,7 +303,15 @@ function assertWellFormed(s: string, rule: FilterFieldRule, col: unknown, field:
     throw invalidValue(field, op, s, `one of: ${members.join(", ")}`, { allowed: [...members] });
   }
   if (rule.format !== undefined) {
-    if (!matchesFormat(rule.format, s)) throw invalidValue(field, op, s, FORMAT_EXPECTED[rule.format]);
+    if (!matchesFormat(rule.format, s)) {
+      // `filter[dueAt][lt]=2026-10-06T00:00:00+00:00` sent unencoded arrives with a space
+      // where the `+` was; "expected timestamp" alone does not say why a valid-looking
+      // value failed, so the answer names the fix.
+      const hint = rule.format === FIELD_SUBTYPE_TIMESTAMP && looksLikeUnencodedPlusOffset(s)
+        ? { hint: PLUS_OFFSET_HINT }
+        : {};
+      throw invalidValue(field, op, s, FORMAT_EXPECTED[rule.format], hint);
+    }
   } else if (rule.subType === "datetime" && !matchesAnyTemporal(s)) {
     throw invalidValue(field, op, s, ANY_TEMPORAL_EXPECTED);
   }
@@ -310,14 +322,26 @@ function coerce(value: unknown, rule: FilterFieldRule, col: unknown, field: stri
   if (value === null || value === undefined) return null;
   const s = typeof value === "string" ? value : String(value);
   assertWellFormed(s, rule, col, field, op);
-  // A zoned timestamp bound is compared in the same UTC spelling the generated schemas
-  // store (see utcIsoIfZoned): on SQLite/D1 the column is TEXT and compares as text. A
-  // Date-bound (`dateValues`) column parses the instant itself and is left alone.
-  if (rule.format === FIELD_SUBTYPE_TIMESTAMP && rule.dateValues !== true) {
-    return coerceAs(utcIsoIfZoned(s), rule.subType, field, op, rule.dateValues);
+  // A timestamp bound is compared in the same UTC spelling the generated schemas store:
+  // on SQLite/D1 the column is TEXT and compares as text. An instant field (`instant`, i.e.
+  // not @localTime) reads a zoneless or date-only bound as UTC, as its write schema does —
+  // also before a Date-bound (`dateValues`) column's `new Date(...)`, which would otherwise
+  // read a zoneless string in the SERVER's local zone. Without `instant`, only a zoned
+  // bound is rewritten, and a Date-bound column parses the value itself.
+  if (rule.format === FIELD_SUBTYPE_TIMESTAMP) {
+    const bound = rule.instant === true ? utcIsoInstant(s) : rule.dateValues === true ? s : utcIsoIfZoned(s);
+    return coerceAs(bound, rule.subType, field, op, rule.dateValues);
   }
-  return coerceAs(s, rule.subType, field, op, rule.dateValues);
+  const coerced = coerceAs(s, rule.subType, field, op, rule.dateValues);
+  // field.int / field.long / field.currency: a fractional bound is not a value of the field.
+  if (rule.integer === true && typeof coerced === "number" && !Number.isInteger(coerced)) {
+    throw invalidValue(field, op, s, INTEGER_EXPECTED);
+  }
+  return coerced;
 }
+
+/** `expected` for a non-whole bound on an integer-valued field (`integer: true`). */
+const INTEGER_EXPECTED = "integer (a whole number)";
 
 function coerceAs(value: unknown, subType: string, field: string, op: string, dateValues?: boolean): unknown {
   if (value === null || value === undefined) return null;

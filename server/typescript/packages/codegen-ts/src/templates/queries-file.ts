@@ -20,6 +20,7 @@ import {
   reverseFksFor,
   getPkInfo,
   getPkFields,
+  schemaInputType,
 } from "./queries.js";
 import { pluralize, findByIdFnName, listFnName, createFnName, insertPreservingFnName, updateFnName } from "../naming.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants.js";
@@ -110,17 +111,17 @@ export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
   // #203 — an @autoSet entity additionally imports its preserving-shape schema
   // and emits the `insertPreserving<Entity>` escape hatch after `create<Entity>`.
   const autoSet = hasAutoSetFields(obj);
-  const preservingImport = autoSet
-    ? `, type ${entityName}CreatePreserving, ${entityName}InsertPreservingSchema`
-    : "";
+  const preservingImport = autoSet ? `, ${entityName}InsertPreservingSchema` : "";
 
   // Literal imports (Db type + entity types) live in a code block so they sort
-  // alongside ts-poet's hoisted imp() imports at the top of the body.
+  // alongside ts-poet's hoisted imp() imports at the top of the body. The typed create
+  // inputs are spelled through the schemas (schemaInputType), so nothing here names the
+  // `<Entity>Create` aliases — an owned copy of this import line predating them still works.
   const literalImports = code`
 ${dbTypeImport}
 ${dbTypeAlias}
 
-import { ${varName}, type ${entityName}, type ${entityName}Create, type ${entityName}Patch, ${entityName}InsertSchema${preservingImport}, ${entityName}UpdateSchema } from ${JSON.stringify(entityFileName)};
+import { ${varName}, type ${entityName}, type ${entityName}Patch, ${entityName}InsertSchema${preservingImport}, ${entityName}UpdateSchema } from ${JSON.stringify(entityFileName)};
 `;
 
   const sections: Code[] = [
@@ -228,14 +229,12 @@ function renderWriteThroughQueriesFile(obj: MetaObject, ctx: RenderContext): str
 
   const { import: dbTypeImport, alias: dbTypeAlias } = dbTypeBlock(ctx.dialect);
 
-  const preservingImport = autoSet
-    ? `, type ${entityName}CreatePreserving, ${entityName}InsertPreservingSchema`
-    : "";
+  const preservingImport = autoSet ? `, ${entityName}InsertPreservingSchema` : "";
   const literalImports = code`
 ${dbTypeImport}
 ${dbTypeAlias}
 
-import { ${viewVar}, ${tableVar}, type ${entityName}, type ${entityName}Create, type ${entityName}Patch, ${entityName}InsertSchema${preservingImport}, ${entityName}UpdateSchema } from ${JSON.stringify(entityFileName)};
+import { ${viewVar}, ${tableVar}, type ${entityName}, type ${entityName}Patch, ${entityName}InsertSchema${preservingImport}, ${entityName}UpdateSchema } from ${JSON.stringify(entityFileName)};
 `;
 
   // The view re-read predicate keyed on ALL primary-key columns of `source` (the
@@ -249,8 +248,8 @@ import { ${viewVar}, ${tableVar}, type ${entityName}, type ${entityName}Create, 
 
   // A create/insertPreserving writes the table, then reads the persisted row back
   // through the view so the returned <Entity> carries the derived fields.
-  const insertReturningView = (fnName: string, schemaName: string, inputType: string): Code => code`
-export async function ${fnName}(db: Db, data: ${inputType}): Promise<${entityName}> {
+  const insertReturningView = (fnName: string, schemaName: string): Code => code`
+export async function ${fnName}(db: Db, data: ${schemaInputType(schemaName)}): Promise<${entityName}> {
   const validated = ${schemaName}.parse(data);
   const [${singularVar}] = await db.insert(${tableVar}).values(validated).returning();
   const [row] = await db.select().from(${viewVar}).where(${viewByAllPk(`${singularVar}!`)}).limit(1);
@@ -276,13 +275,9 @@ export async function ${updateFnName(entityName)}(db: Db, ${pkField}: ${pkType},
     renderFindByIdFn(obj, ctx, viewVar),
     renderListFn(obj, ctx, viewVar),
     // Writes target the table (create/update re-read through the view; delete is boolean).
-    insertReturningView(createFnName(entityName), `${entityName}InsertSchema`, `${entityName}Create`),
+    insertReturningView(createFnName(entityName), `${entityName}InsertSchema`),
     ...(autoSet
-      ? [insertReturningView(
-          insertPreservingFnName(entityName),
-          `${entityName}InsertPreservingSchema`,
-          `${entityName}CreatePreserving`,
-        )]
+      ? [insertReturningView(insertPreservingFnName(entityName), `${entityName}InsertPreservingSchema`)]
       : []),
     updateFn,
     renderDeleteByIdFn(obj, ctx),
@@ -359,8 +354,10 @@ export async function list${pluralize(baseName)}(db: Db, opts?: { limit?: number
     const subSchemaSym = imp(`${sub.name}Schema@${subFileSpec}`);
     const subInsertSym = imp(`${sub.name}InsertSchema@${subFileSpec}`);
     // Typed write inputs (the subtype's insert-schema INPUT type): a misspelt field is a
-    // compile error at the call site; the schema still parses at runtime.
-    const subCreateSym = imp(`t:${sub.name}Create@${subFileSpec}`);
+    // compile error at the call site; the schema still parses at runtime. Spelled through
+    // the schema (schemaInputType), so a subtype module from an owned entity generator
+    // that predates the `<Sub>Create` alias still satisfies it.
+    const subCreateSym = schemaInputType(subInsertSym);
 
     subtypeSections.push(code`
 export async function list${pluralize(sub.name)}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${subTypeSym}[]> {
