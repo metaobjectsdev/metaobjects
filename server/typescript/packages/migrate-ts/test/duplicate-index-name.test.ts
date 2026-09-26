@@ -19,6 +19,7 @@ import { join } from "node:path";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import { buildExpectedSchema } from "../src/expected-schema.js";
+import { isDuplicateSqlNameError } from "../src/errors.js";
 
 function entity(name: string, secondaryName: string) {
   return {
@@ -60,6 +61,24 @@ describe("ERR_DUPLICATE_SQL_NAME covers index names, not just tables and views",
     expect(msg).toContain("bySlug");
     expect(msg).toContain("posts");
     expect(msg).toContain("pages");
+  });
+
+  test("an INDEX collision says so, names both declarations, and gives the index fix (not @table)", async () => {
+    const root = await load([entity("Post", "bySlug"), entity("Page", "bySlug")]);
+    let err: unknown;
+    try {
+      buildExpectedSchema(root, { dialect: "sqlite" });
+    } catch (e) {
+      err = e;
+    }
+    expect(isDuplicateSqlNameError(err)).toBe(true);
+    const msg = (err as Error).message;
+    expect(msg).toContain(`index name "bySlug"`);
+    expect(msg).toContain(`identity.secondary "bySlug" on acme::dup::Post (table "posts")`);
+    expect(msg).toContain(`identity.secondary "bySlug" on acme::dup::Page (table "pages")`);
+    expect(msg).toMatch(/NOT prefixed with its table/);
+    // The table-rename hint is wrong for an index collision and must not be offered.
+    expect(msg).not.toContain("@table");
   });
 
   test("sqlite too — an index name is database-global there", async () => {

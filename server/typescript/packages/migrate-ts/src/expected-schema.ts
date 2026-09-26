@@ -1,3 +1,4 @@
+import { DuplicateSqlNameError } from "./errors.js";
 import type {
   ColumnNamingStrategy, MetaData, MetaField, MetaObject, MetaReferenceIdentity, MetaRoot, MetaValidator,
 } from "@metaobjectsdev/metadata";
@@ -393,8 +394,16 @@ export function buildExpectedSchemaWithProvenance(
     if (list) list.push(label);
     else sqlNameOwners.set(key, [label]);
   };
+  const indexOwnerLabels = new Map<string, string>();
   for (const { entity, tableName } of entities) {
     addOwner(resolveTableSchema(entity), tableName, `table ${entity.resolutionKey()}`);
+    // Name the DECLARATION an index came from, so a collision says where to rename it.
+    for (const node of [...entity.secondaryIdentities(), ...entity.lookupIndexes()]) {
+      indexOwnerLabels.set(
+        `${tableName}.${resolveIndexName(node)}`,
+        `${node.type}.${node.subType} "${resolveIndexName(node)}" on ${entity.resolutionKey()} (table "${tableName}")`,
+      );
+    }
   }
   for (const v of views) addOwner(v.schema, v.name, `view "${v.name}"`);
   // Indexes share this namespace. On Postgres an index is a `pg_class` relation like a
@@ -404,21 +413,23 @@ export function buildExpectedSchemaWithProvenance(
   // entity that extends it — invisible in the metadata, because each entity reads
   // correctly on its own. Refused here rather than emitted, since the failure would
   // otherwise land at apply time on a migration this tool wrote.
+  const indexOwners = new Set<string>();
   for (const t of tables) {
     for (const idx of t.indexes) {
-      addOwner(t.schema, idx.name, `index "${idx.name}" on table "${t.name}"`);
+      const label =
+        indexOwnerLabels.get(`${t.name}.${idx.name}`) ?? `index "${idx.name}" on table "${t.name}"`;
+      indexOwners.add(label);
+      addOwner(t.schema, idx.name, label);
     }
   }
-  const collisions = [...sqlNameOwners.entries()].filter(([, owners]) => owners.length > 1);
-  if (collisions.length > 0) {
-    const detail = collisions
-      .map(([key, owners]) => `  "${key.slice(key.indexOf(".") + 1)}" ← ${owners.join(" + ")}`)
-      .join("\n");
-    throw new Error(
-      `ERR_DUPLICATE_SQL_NAME: distinct metadata objects generate the same database name. ` +
-        `Rename one (entity source \`@table\`, projection \`@kind view @table\`):\n${detail}`,
-    );
-  }
+  const collisions = [...sqlNameOwners.entries()]
+    .filter(([, owners]) => owners.length > 1)
+    .map(([key, owners]) => ({
+      name: key.slice(key.indexOf(".") + 1),
+      owners,
+      involvesIndex: owners.some((o) => indexOwners.has(o)),
+    }));
+  if (collisions.length > 0) throw new DuplicateSqlNameError(collisions);
 
   return { snapshot: { tables, views }, provenance };
 }

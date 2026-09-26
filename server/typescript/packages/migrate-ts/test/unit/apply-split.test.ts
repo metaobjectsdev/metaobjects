@@ -85,4 +85,19 @@ describe("splitSqlStatements — quote/comment/dollar-quote-aware", () => {
     expect(splitSqlStatements("")).toEqual([]);
     expect(splitSqlStatements("   \n  ")).toEqual([]);
   });
+
+  test("comment-only fragments are dropped — they are not statements", () => {
+    expect(splitSqlStatements("DROP TABLE a;\n\n-- WARNING: x\n-- y\n")).toEqual(["DROP TABLE a"]);
+    expect(splitSqlStatements("-- only a comment")).toEqual([]);
+    expect(splitSqlStatements("/* block */ ; -- line\n;")).toEqual([]);
+    // A comment LEADING a real statement stays attached to it.
+    expect(splitSqlStatements("-- note\nSELECT 1;")).toEqual(["-- note\nSELECT 1"]);
+  });
+
+  test("keepCommentOnly returns the comment-only fragments for re-emitters", () => {
+    expect(splitSqlStatements("DROP TABLE a;\n-- WARNING: x", { keepCommentOnly: true })).toEqual([
+      "DROP TABLE a",
+      "-- WARNING: x",
+    ]);
+  });
 });

@@ -447,3 +447,40 @@ describe("migrate structured error output (--format json)", () => {
     // the primary structured-error-on-stdout test is the no-snapshot case above.
   });
 });
+
+describe("migrate: an index-name collision is a normal refusal, not an unexpected error", () => {
+  test("two identity.secondary named byEmail on different tables", async () => {
+    const root = await mkdtemp(join(tmpdir(), "mts-dupidx-"));
+    dirs.push(root);
+    await mkdir(join(root, "metaobjects"), { recursive: true });
+    const entity = (name: string, table: string) => ({
+      "object.entity": {
+        name,
+        children: [
+          { "field.long": { name: "id" } },
+          { "field.string": { name: "email", "@required": true } },
+          { "source.rdb": { name: "src", "@table": table } },
+          { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
+          { "identity.secondary": { name: "byEmail", "@fields": ["email"] } },
+        ],
+      },
+    });
+    await writeFile(
+      join(root, "metaobjects", "meta.people.json"),
+      JSON.stringify({ "metadata.root": { children: [entity("Owner", "owners"), entity("Vet", "vets")] } }),
+      "utf8",
+    );
+    const { exit, stdout } = await captureCommand(
+      ["--dialect", "sqlite", "--db", `file:${join(root, "x.db")}`, "--from-db", "--dry-run"],
+      root,
+      "json",
+    );
+    expect(exit).toBe(1);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.error).not.toContain("unexpected error");
+    expect(parsed.error).toContain('index name "byEmail"');
+    expect(parsed.error).toContain('(table "owners")');
+    expect(parsed.error).toContain('(table "vets")');
+    expect(parsed.hint).toContain("not prefixed with its table");
+  });
+});

@@ -139,11 +139,16 @@ export function emitD1Cascade(
 
   const up = stmts.join("\n\n");
 
-  // Best-effort down, mirroring renderRecreate's WARNING block.
+  // The cascade's down is NOT generated: reversing it is another whole cascade over the
+  // previous shapes. Name exactly which tables are left as they are, and which changes.
+  // (D1 has no `meta migrate --rollback`; this sidecar is the hand-reversal brief.)
   const downWarning = [
-    `-- WARNING: SQLite recreate-and-copy down migration is best-effort.`,
-    `-- Reverse the column type/nullable/default changes by hand if needed.`,
-    `-- Dropped data cannot be restored.`,
+    `-- WARNING: this down does NOT reverse the D1 foreign-key cascade rebuild of`,
+    `-- ${order.map(quote).join(", ")}. Reverse by hand from the pre-migration schema:`,
+    ...changes
+      .filter((c) => { const t = changeTable(c); return t !== undefined && affected.has(t); })
+      .map((c) => `--   ${c.kind} on ${quote(changeTable(c) as string)}`),
+    `-- Rows are not lost by the rebuild itself; values in any column it dropped are.`,
   ].join("\n");
 
   return { up, downWarning, affected, handledViews };

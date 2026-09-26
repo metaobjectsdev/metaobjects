@@ -70,6 +70,11 @@ export interface GenResultShape {
    * already correct. The output's own first line (`gen: []`) already knew.
    */
   generatorCount: number;
+  /**
+   * The "now migrate" next step, worded for this project's dialect — or absent when
+   * this run cannot have changed the database schema (see gen-migrate-advice.ts).
+   */
+  migrateAdvice?: string;
 }
 
 const GEN_GLYPHS: Record<GenFileStatus, string> = {
@@ -283,7 +288,7 @@ export function genResultToData(result: GenResultShape): {
       ? "no generators are wired in metaobjects.config.ts, so nothing was generated"
       : `no entities to generate in ${result.outDir}`;
   const help = result.files.length !== 0
-    ? ["typecheck the generated code with `npx tsc`", "create your database tables with `meta migrate --from-db --db <url> --dialect <sqlite|postgres> --slug init --apply`"]
+    ? ["typecheck the generated code with `npx tsc`", ...(result.migrateAdvice !== undefined ? [result.migrateAdvice] : [])]
     : noGenerators
       ? ["add generators to the `generators: []` array in metaobjects.config.ts — `meta eject --list` names every generator you can own, and `meta init` scaffolds the usual set"]
       : ["author entities in this project's metadata sources then re-run `meta gen`"];

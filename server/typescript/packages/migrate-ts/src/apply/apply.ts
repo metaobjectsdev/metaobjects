@@ -216,6 +216,14 @@ export async function rollbackTo(
             `hand-authored, never silently skipped.`,
         );
       }
+      // Comments alone reverse nothing: running them would only delete the ledger row
+      // and report a rollback that never happened.
+      if (splitSqlStatements(downText).length === 0) {
+        throw new Error(
+          `rollback '${name}': down.sql has no executable statement (only comments) — ` +
+            `nothing would be reversed. Author the down by hand, or roll forward instead.`,
+        );
+      }
       // Run the down SQL + the ledger delete in ONE transaction.
       await runSqlFileWithLedgerMutation(db, downText, (trx) =>
         deleteApplied(trx, name, dialect, ledger),

@@ -19,6 +19,7 @@ import {
   isBlockedChangesError,
   isPrimaryKeyChangeError,
   isDeclaredRenameError,
+  isDuplicateSqlNameError,
   buildExpectedSchemaWithProvenance,
   scopeExpectedSchema,
   scopedDiffInputs,
@@ -314,6 +315,8 @@ function refuseEngineError(err: Error, hint: string, fmt: OutputFormat): number 
 
 const PK_CHANGE_HINT =
   "align the primary key manually, or reconcile the metadata identity to match the live table";
+const DUPLICATE_SQL_NAME_HINT =
+  "rename one of the colliding declarations; an index's database name is its identity.secondary / index.lookup name, not prefixed with its table";
 const DECLARED_RENAME_HINT =
   "fix or remove the --rename-table / --rename-column flag; a table's name is its name in the metadata (the new name when it is renamed too)";
 
@@ -1032,6 +1035,8 @@ export async function migrateCommand(
     // AlreadyEmittedError: sub-function already called emitStructuredError — just
     // propagate the exit code without double-emitting.
     if (err instanceof AlreadyEmittedError) return err.exitCode;
+    // A metadata defect, not a tool failure: two declarations generate one database name.
+    if (isDuplicateSqlNameError(err)) return refuseEngineError(err, DUPLICATE_SQL_NAME_HINT, fmt);
     // Unexpected error: emit structured error on stdout in the active format, then exit 1.
     const msg = (err as Error).message ?? String(err);
     log.error(`migrate: unexpected error: ${msg}`);

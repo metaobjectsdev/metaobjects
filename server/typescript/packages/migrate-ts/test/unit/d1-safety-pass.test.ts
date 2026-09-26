@@ -85,4 +85,10 @@ describe("applyD1SafetyPass", () => {
   test("noop on empty input", () => {
     expect(applyD1SafetyPass("")).toBe("");
   });
+
+  test("a trailing comment-only block survives as prose with NO statement terminator", () => {
+    // A `;` after a comment-only fragment is an empty statement for whatever runs the file.
+    const input = "DROP TABLE a;\n\n-- WARNING: cannot restore x\n-- second line";
+    expect(applyD1SafetyPass(input)).toBe("DROP TABLE a;\n\n-- WARNING: cannot restore x\n-- second line");
+  });
 });

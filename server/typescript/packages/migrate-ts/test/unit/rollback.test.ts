@@ -78,6 +78,32 @@ describe("rollbackTo — down.sql, reverse order, ledger unrecord (sqlite)", () 
     expect((await appliedNames(db)).has("20260102000000-b")).toBe(true);
   });
 
+  test("a down.sql ENDING in a comment-only block rolls back (never sends a comment to the driver)", async () => {
+    // The shape a SQLite table-rebuild down had: real statements followed by a trailing
+    // `-- WARNING…` block. The splitter handed that block to libsql as its own statement,
+    // which failed the whole rollback with "SQLITE_OK: not an error".
+    writeMig(migDir, "20260101000000-a", "CREATE TABLE a (id INTEGER PRIMARY KEY);", "DROP TABLE a;");
+    writeMig(
+      migDir,
+      "20260102000000-b",
+      "CREATE TABLE b (id INTEGER PRIMARY KEY);\n-- trailing note\n",
+      "DROP TABLE b;\n\n-- WARNING: something about this down.\n-- A second comment line.\n",
+    );
+    await applyPending(db, migDir, { dryRun: false });
+    expect(await tableExists(db, "b")).toBe(true);
+
+    const result = await rollbackTo(db, migDir, "20260101000000-a", {});
+    expect(result.rolledBack).toEqual(["20260102000000-b"]);
+    expect(await tableExists(db, "b")).toBe(false);
+  });
+
+  test("a COMMENT-ONLY down.sql THROWS like an empty one (nothing would be reversed)", async () => {
+    writeMig(migDir, "20260101000000-a", "CREATE TABLE a (id INTEGER PRIMARY KEY);", "-- WARNING: cannot restore\n/* nothing */\n");
+    await applyPending(db, migDir, { dryRun: false });
+    await expect(rollbackTo(db, migDir, null, {})).rejects.toThrow(/no executable statement/i);
+    expect((await appliedNames(db)).has("20260101000000-a")).toBe(true);
+  });
+
   test("MISSING down.sql throws a 'not found' error — distinct from empty content", async () => {
     // Create the migration dir + up.sql but DELIBERATELY no down.sql file.
     const dir = join(migDir, "20260101000000-nodown");

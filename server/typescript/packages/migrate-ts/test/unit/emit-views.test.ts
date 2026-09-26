@@ -33,6 +33,21 @@ test("sqlite renders view DDL (DROP+CREATE for replace, no OR REPLACE)", () => {
   expect(replace).toContain(`CREATE VIEW "v" AS`);
 });
 
+test("sqlite down RESTORES a dropped/replaced view from the introspected definition", () => {
+  const live = { name: "v", sql: `CREATE VIEW "v" AS SELECT 0 AS x` };
+  const drop: Change[] = [{ kind: "drop-view", view: "v", restore: live, status: ALLOWED }];
+  expect(emit(drop, { dialect: "sqlite" }).down).toBe(`CREATE VIEW "v" AS SELECT 0 AS x;`);
+
+  const replace: Change[] = [
+    { kind: "replace-view", view: { name: "v", sql: "SELECT 1 AS x" }, restore: live, status: ALLOWED },
+  ];
+  expect(emit(replace, { dialect: "sqlite" }).down).toBe(`DROP VIEW IF EXISTS "v";\nCREATE VIEW "v" AS SELECT 0 AS x;`);
+
+  // A bare body (the expected side's form) is wrapped.
+  const bare: Change[] = [{ kind: "drop-view", view: "v", restore: { name: "v", sql: "SELECT 2 AS x" }, status: ALLOWED }];
+  expect(emit(bare, { dialect: "sqlite" }).down).toBe(`CREATE VIEW "v" AS\nSELECT 2 AS x;`);
+});
+
 test("d1 renders view DDL the same way as sqlite", () => {
   const create = emit(createV, { dialect: "d1" }).up;
   expect(create).toContain(`CREATE VIEW "v" AS`);

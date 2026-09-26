@@ -219,7 +219,8 @@ describe("emit(dialect: 'd1') — FK-cascade rebuild (#241)", () => {
     expect(d1.up).toBe(applyD1SafetyPass(sq.up));
     expect(d1.down).toBe(applyD1SafetyPass(sq.down));
 
-    // Passing actualSchema must not change the non-referenced path.
+    // Passing actualSchema must not change the non-referenced UP; the down becomes the
+    // same reverse rebuild SQLite emits (the previous shape is now known).
     const actual: SchemaSnapshot = { tables: [leafTable(false)], views: [] };
     const d1WithActual = emit(changes, {
       dialect: "d1",
@@ -227,6 +228,7 @@ describe("emit(dialect: 'd1') — FK-cascade rebuild (#241)", () => {
       actualSchema: actual,
     });
     expect(d1WithActual.up).toBe(d1.up);
-    expect(d1WithActual.down).toBe(d1.down);
+    expect(d1WithActual.down).toBe(applyD1SafetyPass(renderSqlite(changes, expected, undefined, actual).down));
+    expect(d1WithActual.down).toContain(`CREATE TABLE "__old_logs"`);
   });
 });
