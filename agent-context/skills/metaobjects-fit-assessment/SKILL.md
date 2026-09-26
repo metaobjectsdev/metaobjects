@@ -78,8 +78,9 @@ table above and § Capability sheet at the end; skip everything in between.
    package, a prompt payload, an export format). Monorepo workspaces, `packages/*-types`,
    generated or hand-copied API clients, OpenAPI/JSON Schema files and message schemas are the
    tells.
-3. **Existing gates.** What already keeps the seams in sync (OpenAPI generation and checks, a
-   shared-types package, a schema registry, `prisma migrate diff`, contract tests)? A seam that
+3. **Existing gates.** What already keeps the seams in sync (OpenAPI generation and checks,
+   protobuf/gRPC codegen from shared `.proto` files, a shared-types package, a schema registry,
+   `prisma migrate diff`, contract tests)? A seam that
    is already gated is not a MetaObjects opportunity; say so.
 4. **Drift evidence, cheaply.** `git log --oneline -i --grep` for `sync|mismatch|out of date|
    forgot|keep in sync|to match`, plus grep for comments like `keep in sync with` / `mirrors
