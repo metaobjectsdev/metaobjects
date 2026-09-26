@@ -6,6 +6,13 @@ website-self-updating-codegen programs moved from Active to Shipped._
 > **This file is the single source of truth for the roadmap.** GitHub Milestones + Issues +
 > the Project board mirror it. Keeping them in sync: `docs/ROADMAP-PROCESS.md`.
 
+## 1.1 direction
+
+A solid core, and generators anyone can build on it: OpenAPI and JSON Schema emitters, reference
+generators that target established libraries, a generator catalog to start from, an evaluation
+of Atlas as the migrate diff backend, and continued investment in the prompt tier. Plan and the
+evidence behind it: [`docs/superpowers/specs/2026-09-26-1.1-core-and-generators-plan.md`](../docs/superpowers/specs/2026-09-26-1.1-core-and-generators-plan.md).
+
 ## FR registry
 
 Every feature request, its status, target release, and tracking issue. Shipped FRs are detailed
