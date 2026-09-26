@@ -108,11 +108,7 @@ export function resolveReferentialActions(
   // bare @references pairs correctly with an FQN @objectRef (and vice versa) —
   // an exact-string tier 2 used to miss the FQN form, letting the parent-side
   // tier override a child-side declaration.
-  const root = entity.parent;
-  const refOwner = ref.parent ?? entity;
-  const refOwnerPkg = refOwner.package ?? refOwner.fileDefaultPackage ?? "";
-  const targetObj =
-    root !== undefined ? (resolveObjectRef(root, target, refOwnerPkg).node as MetaObject | undefined) : undefined;
+  const targetObj = resolveReferenceTarget(entity, ref, target);
 
   // (2) Otherwise correlate with a sibling relationship and use its action /
   //     subtype default. onUpdate's "cascade" default only applies when a
@@ -136,16 +132,7 @@ export function resolveReferentialActions(
   //     not a second parallel rule.
   // (3) Failing that, correlate the REVERSE relationship declared on the
   //     TARGET entity (the documented parent-side authoring shape).
-  let rel = entity.relationships().find((r) => {
-    if (r.through !== undefined) return false;
-    const objectRef = r.objectRef;
-    if (objectRef === undefined) return false;
-    if (targetObj === undefined) return objectRef === target;
-    const relOwner = r.parent ?? entity;
-    const relOwnerPkg = relOwner.package ?? relOwner.fileDefaultPackage ?? "";
-    if (!refMatchesObject(targetObj, objectRef, relOwnerPkg)) return false;
-    return resolveRelationshipReference(entity, r.name, objectRef, r.sourceRefField) === ref;
-  });
+  let rel = findSiblingRelationship(entity, ref, target, targetObj);
   // When the tier-3 satisfiability guard fires, the reverse relationship's
   // AUTHORED @onUpdate still applies (only the inferred contributions drop).
   let suppressedReverseOnUpdate: string | undefined;
@@ -188,6 +175,127 @@ export function resolveReferentialActions(
     onDelete: normalize(onDeleteRaw),
     onUpdate: normalize(onUpdateRaw),
   };
+}
+
+/**
+ * The reference's target entity, resolved package-aware (ADR-0042: a bare @references
+ * resolves in the DECLARING owner's package). Undefined for a dangling @references.
+ */
+function resolveReferenceTarget(
+  entity: MetaObject,
+  ref: MetaReferenceIdentity,
+  target: string,
+): MetaObject | undefined {
+  const root = entity.parent;
+  if (root === undefined) return undefined;
+  const refOwner = ref.parent ?? entity;
+  const refOwnerPkg = refOwner.package ?? refOwner.fileDefaultPackage ?? "";
+  return resolveObjectRef(root, target, refOwnerPkg).node as MetaObject | undefined;
+}
+
+/**
+ * Tier-2 correlation: the relationship declared on the FK-owning entity itself that
+ * navigates THIS reference (see resolveReferentialActions for the #368 inversion).
+ */
+function findSiblingRelationship(
+  entity: MetaObject,
+  ref: MetaReferenceIdentity,
+  target: string,
+  targetObj: MetaObject | undefined,
+): MetaRelationship | undefined {
+  return entity.relationships().find((r) => {
+    if (r.through !== undefined) return false;
+    const objectRef = r.objectRef;
+    if (objectRef === undefined) return false;
+    if (targetObj === undefined) return objectRef === target;
+    const relOwner = r.parent ?? entity;
+    const relOwnerPkg = relOwner.package ?? relOwner.fileDefaultPackage ?? "";
+    if (!refMatchesObject(targetObj, objectRef, relOwnerPkg)) return false;
+    return resolveRelationshipReference(entity, r.name, objectRef, r.sourceRefField) === ref;
+  });
+}
+
+/**
+ * Both sides of one foreign key declare a relationship, and they disagree on its
+ * referential action. The FK-owning side governs (tier 2 beats tier 3), so the parent's
+ * relationship — typically a `composition` the author meant to CASCADE — has no effect
+ * on the constraint, and nothing else says so.
+ */
+export interface ReferentialActionConflict {
+  /** The FK-owning entity and its identity.reference (the FK). */
+  entity: MetaObject;
+  ref: MetaReferenceIdentity;
+  /** The relationship on the FK-owning entity — the one that governs. */
+  governing: MetaRelationship;
+  /** The relationship on the referenced (parent) entity — the one overridden. */
+  overridden: MetaRelationship;
+  /** The referenced entity, which declares `overridden`. */
+  parent: MetaObject;
+  /** Each action the two relationships disagree on: [governing value, overridden value]. */
+  onDelete?: [string, string];
+  onUpdate?: [string, string];
+}
+
+/**
+ * The tier-2 / tier-3 disagreement for one FK, or undefined when there is none.
+ *
+ * Reported only when both relationships would correlate with this FK and neither is
+ * settled by an action declared on the reference itself (tier 1 overrides both, which
+ * is the author saying which one they mean). The reverse relationship is found with
+ * tier 3's own guards, so a relationship tier 3 would never have used (a second FK to
+ * the same parent, an ambiguous set of reverse relationships, an M:N) never reports; and
+ * an INFERRED set-null that tier 3 would have dropped anyway (NOT NULL FK) is not a
+ * disagreement worth reporting.
+ */
+export function findReferentialActionConflict(
+  entity: MetaObject,
+  ref: MetaReferenceIdentity,
+): ReferentialActionConflict | undefined {
+  const target = ref.targetEntity;
+  if (target === undefined) return undefined;
+  const targetObj = resolveReferenceTarget(entity, ref, target);
+  if (targetObj === undefined) return undefined;
+  const governing = findSiblingRelationship(entity, ref, target, targetObj);
+  if (governing === undefined) return undefined;
+  const overridden = findReverseRelationship(entity, ref, targetObj);
+  if (overridden === undefined) return undefined;
+
+  const conflict: ReferentialActionConflict = { entity, ref, governing, overridden, parent: targetObj };
+  if (ref.onDelete === undefined) {
+    const g = governing.onDelete ?? ON_DELETE_DEFAULT_BY_SUBTYPE[governing.subType];
+    const inferredSetNull = overridden.onDelete === undefined
+      && ON_DELETE_DEFAULT_BY_SUBTYPE[overridden.subType] === "set-null";
+    const unsatisfiable = inferredSetNull && readIdentityFields(ref).some((jsName) => {
+      const field = findField(entity, jsName);
+      return field !== undefined && isRequired(field);
+    });
+    const o = overridden.onDelete ?? ON_DELETE_DEFAULT_BY_SUBTYPE[overridden.subType];
+    if (!unsatisfiable && g !== undefined && o !== undefined && g !== o) conflict.onDelete = [g, o];
+  }
+  if (ref.onUpdate === undefined) {
+    const g = governing.onUpdate ?? ON_UPDATE_DEFAULT;
+    const o = overridden.onUpdate ?? ON_UPDATE_DEFAULT;
+    if (g !== o) conflict.onUpdate = [g, o];
+  }
+  return conflict.onDelete !== undefined || conflict.onUpdate !== undefined ? conflict : undefined;
+}
+
+/**
+ * The advisory sentence for a conflict, in the author's terms: which relationship wins,
+ * what that does to the FK, and the two ways to say what they meant.
+ */
+export function describeReferentialActionConflict(c: ReferentialActionConflict): string {
+  const node = (r: MetaRelationship): string => `${r.type}.${r.subType} "${r.name}"`;
+  const parts: string[] = [];
+  if (c.onDelete !== undefined) parts.push(`ON DELETE ${c.onDelete[0]} (not ${c.onDelete[1]})`);
+  if (c.onUpdate !== undefined) parts.push(`ON UPDATE ${c.onUpdate[0]} (not ${c.onUpdate[1]})`);
+  const [attr, pair] = c.onDelete !== undefined ? ["onDelete", c.onDelete] : ["onUpdate", c.onUpdate!];
+  return `${c.entity.name}.${c.ref.name}: ${c.parent.name}'s ${node(c.overridden)} and ` +
+    `${c.entity.name}'s ${node(c.governing)} are two relationships over this one foreign key, and ` +
+    `they disagree. The FK-owning side governs, so the constraint is ${parts.join(", ")}: ` +
+    `${c.parent.name}'s relationship does not reach it. Say which you mean on the foreign key ` +
+    `itself: \`${attr}: ${pair[1]}\` on ${c.entity.name}'s identity.reference "${c.ref.name}" ` +
+    `takes ${c.parent.name}'s, \`${attr}: ${pair[0]}\` keeps the current one.`;
 }
 
 /**

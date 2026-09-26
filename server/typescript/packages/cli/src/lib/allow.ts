@@ -79,11 +79,19 @@ export function describeChange(c: Change): string {
     case "drop-index": return `${c.table} idx ${c.index}`;
     case "add-fk": return `${c.table} fk ${c.fk.name}`;
     case "drop-fk": return `${c.table} fk ${c.fk}`;
+    case "add-check": return `${c.table} check ${c.check.name} (${c.check.expression})`;
+    case "drop-check":
+      return c.restore !== undefined
+        ? `${c.table} check ${c.check} (${c.restore.expression})`
+        : `${c.table} check ${c.check}`;
     case "create-view": return c.view.name;
     case "replace-view": return c.view.name;
     case "drop-view": return c.view;
-    default: return JSON.stringify(c);
   }
+  // Exhaustive: a new Change kind fails to compile here rather than printing a JSON dump
+  // of the change object to a person (which is what a blocked drop-check used to do).
+  const unhandled: never = c;
+  return unhandled;
 }
 
 /** The `--allow` token that unblocks `c`. migrate-ts picks the permission by what blocked the

@@ -20,6 +20,8 @@ export function dataHazardOf(c: Change): DataHazard | undefined {
       if (c.to) return undefined;
       return { kind: "set-not-null", table: c.table, ...schemaSpread(c.schema), column: c.column };
     case "add-check":
+      // Carried through a rename-column: the rows already satisfy the very same rule.
+      if (c.carriedByRename === true) return undefined;
       return {
         kind: "add-check", table: c.table, ...schemaSpread(c.schema),
         check: c.check.name, expression: c.check.expression,

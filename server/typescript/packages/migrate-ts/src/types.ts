@@ -246,7 +246,19 @@ export type Change =
     }
   | { kind: "add-column"; table: string; schema?: string; column: ColumnDescriptor; status: ChangeStatus }
   | { kind: "drop-column"; table: string; schema?: string; column: string; restore?: ColumnDescriptor; status: ChangeStatus }
-  | { kind: "rename-column"; table: string; schema?: string; from: string; to: string; status: ChangeStatus }
+  | {
+      kind: "rename-column"; table: string; schema?: string; from: string; to: string;
+      /**
+       * Constraints named after the renamed column (the derived `<table>_<col>_chk` /
+       * `_fk`) whose NAME follows it. `ALTER TABLE … RENAME COLUMN` keeps the constraint
+       * and rewrites its body, so the name is renamed, never re-created. Postgres only;
+       * sqlite/d1 carry them through the table rebuild instead (see `carriedByRename`).
+       */
+      constraintRenames?: NameChange[];
+      /** Plain indexes named after the renamed column whose name follows it. Postgres only. */
+      indexRenames?: NameChange[];
+      status: ChangeStatus;
+    }
   | { kind: "change-column-type"; table: string; schema?: string; column: string;
       from: SqlType; to: SqlType;
       /** The column's live default and the default it should end with, when either exists.
@@ -262,11 +274,37 @@ export type Change =
   | { kind: "change-column-default"; table: string; schema?: string; column: string;
       from?: ColumnDefault; to?: ColumnDefault; status: ChangeStatus }
   | { kind: "add-index"; table: string; schema?: string; index: IndexDescriptor; status: ChangeStatus }
-  | { kind: "drop-index"; table: string; schema?: string; index: string; restore?: IndexDescriptor; status: ChangeStatus }
+  | {
+      kind: "drop-index"; table: string; schema?: string; index: string; restore?: IndexDescriptor;
+      /** Carried through a `rename-column` — see `drop-check`'s `carriedByRename`. */
+      carriedByRename?: true;
+      status: ChangeStatus;
+    }
   | { kind: "add-fk"; table: string; schema?: string; fk: FkDescriptor; status: ChangeStatus }
-  | { kind: "drop-fk"; table: string; schema?: string; fk: string; restore?: FkDescriptor; status: ChangeStatus }
-  | { kind: "add-check"; table: string; schema?: string; check: CheckDescriptor; status: ChangeStatus }
-  | { kind: "drop-check"; table: string; schema?: string; check: string; restore?: CheckDescriptor; status: ChangeStatus }
+  | {
+      kind: "drop-fk"; table: string; schema?: string; fk: string; restore?: FkDescriptor;
+      /** Carried through a `rename-column` — see `drop-check`'s `carriedByRename`. */
+      carriedByRename?: true;
+      status: ChangeStatus;
+    }
+  | {
+      kind: "add-check"; table: string; schema?: string; check: CheckDescriptor;
+      /** Carried through a `rename-column` — see `drop-check`'s `carriedByRename`. */
+      carriedByRename?: true;
+      status: ChangeStatus;
+    }
+  | {
+      kind: "drop-check"; table: string; schema?: string; check: string; restore?: CheckDescriptor;
+      /**
+       * This change is one half of a constraint that a `rename-column` in the same table
+       * CARRIES — the same rule over the same data, rewritten for the column's new name.
+       * Nothing is lost, so the drop is not gated and the add raises no data hazard. Set on
+       * sqlite/d1 only, where the pair rebuilds the table; Postgres folds the pair into the
+       * rename-column's `constraintRenames` instead.
+       */
+      carriedByRename?: true;
+      status: ChangeStatus;
+    }
   // Declared for v0.3, never produced in v0.1:
   | { kind: "create-view"; view: ViewDescriptor; schema?: string; status: ChangeStatus }
   | {

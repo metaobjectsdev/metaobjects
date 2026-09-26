@@ -222,9 +222,9 @@ function renderRecreate(
  * reaching this emitter with carried renames means that branch was bypassed — fail loudly
  * rather than emit `ALTER INDEX … RENAME`, which SQLite cannot parse.
  */
-function assertNoCarriedRenames(c: Extract<Change, { kind: "rename-table" }>): void {
+function assertNoCarriedRenames(c: Extract<Change, { kind: "rename-table" | "rename-column" }>): void {
   if (c.constraintRenames !== undefined || c.indexRenames !== undefined) {
-    throw new Error("rename-table carries constraintRenames/indexRenames — the sqlite/d1 diff never produces these (postgres-only fold)");
+    throw new Error(`${c.kind} carries constraintRenames/indexRenames — the sqlite/d1 diff never produces these (postgres-only fold)`);
   }
 }
 
@@ -245,7 +245,10 @@ function renderUpNative(c: Change): string {
     }
     case "add-column":     return `ALTER TABLE ${quote(c.table)} ADD COLUMN ${renderColumnInline(c.column)};`;
     case "drop-column":    return `ALTER TABLE ${quote(c.table)} DROP COLUMN ${quote(c.column)};`;
-    case "rename-column":  return `ALTER TABLE ${quote(c.table)} RENAME COLUMN ${quote(c.from)} TO ${quote(c.to)};`;
+    case "rename-column": {
+      assertNoCarriedRenames(c);
+      return `ALTER TABLE ${quote(c.table)} RENAME COLUMN ${quote(c.from)} TO ${quote(c.to)};`;
+    }
     case "add-index":      return renderCreateIndex(c.table, c.index);
     case "drop-index":     return `DROP INDEX IF EXISTS ${quote(c.index)};`;
     case "add-check":
@@ -286,7 +289,10 @@ function renderDownNative(c: Change): string {
     }
     case "add-column":     return `ALTER TABLE ${quote(c.table)} DROP COLUMN ${quote(c.column.name)};`;
     case "drop-column":    return `-- WARNING: down migration cannot restore data\n-- TODO: re-add dropped column "${c.column}" manually`;
-    case "rename-column":  return `ALTER TABLE ${quote(c.table)} RENAME COLUMN ${quote(c.to)} TO ${quote(c.from)};`;
+    case "rename-column": {
+      assertNoCarriedRenames(c);
+      return `ALTER TABLE ${quote(c.table)} RENAME COLUMN ${quote(c.to)} TO ${quote(c.from)};`;
+    }
     case "add-index":      return `DROP INDEX ${quote(c.index.name)};`;
     case "drop-index":     return `-- WARNING: down migration cannot restore the original index definition`;
     case "add-check":

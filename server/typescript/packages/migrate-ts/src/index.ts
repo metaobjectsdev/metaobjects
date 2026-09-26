@@ -9,6 +9,11 @@
 
 // Pipeline functions
 export { buildExpectedSchema, buildExpectedSchemaWithProvenance } from "./expected-schema.js";
+export {
+  findReferentialActionConflict,
+  describeReferentialActionConflict,
+  type ReferentialActionConflict,
+} from "./referential-actions.js";
 export type { ExpectedSchemaWithProvenance, SchemaProvenance } from "./expected-schema.js";
 export { introspect, introspectPostgres, introspectSqlite } from "./introspect/index.js";
 export { diff } from "./diff/index.js";

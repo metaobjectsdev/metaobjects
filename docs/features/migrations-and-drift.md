@@ -94,6 +94,17 @@ database, the new name is not in the metadata, or the rename was already applied
 column's type, nullability and default must not change in the same run. Migrate the
 rename first, then the shape.
 
+A renamed column carries the constraints named after it. CHECK and FK names derive from
+the physical column (`reviews_rating_numeric_chk`, `reviews_book_id_fk`), so the new
+name is a new constraint name, but it is the same rule over the same data and needs no
+`--allow drop-check` or `--allow drop-fk`. On Postgres the migration is `RENAME COLUMN`
+followed by `RENAME CONSTRAINT` (Postgres rewrites the constraint body itself); on
+SQLite and D1 the table is rebuilt with the constraint under its new name while the
+column's values are copied across. This applies to any resolved rename, declared or
+accepted from the heuristic. A constraint whose rule changed beyond the rename (a
+`validator.numeric` whose `max` moved in the same run) is not carried: its drop stays
+gated, so migrate the rename first, then the rule.
+
 The flags are deliberately not metadata. A rename is an event in the migration
 history, not a lasting fact about the model.
 

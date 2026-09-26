@@ -124,7 +124,7 @@ function renderUp(c: Change): string {
       return `${base}\n${columnCommentSql(c.table, c.schema, c.column.name, c.column.description)}`;
     }
     case "drop-column":            return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP COLUMN ${quote(c.column)};`;
-    case "rename-column":          return `ALTER TABLE ${quoteQualified(c.table, c.schema)} RENAME COLUMN ${quote(c.from)} TO ${quote(c.to)};`;
+    case "rename-column":          return renderRenameColumn(c, "up");
     case "change-column-type":     return renderAlterColumnType(c, c.from, c.to, c.fromDefault, c.toDefault);
     case "change-column-nullable":
       return c.to
@@ -181,6 +181,26 @@ function renderUp(c: Change): string {
 }
 
 /**
+ * The column rename plus the constraints and indexes named after the column, whose names
+ * follow it (the diff's `carryThroughColumnRenames`). `RENAME COLUMN` already rewrote their
+ * bodies, so only the names move. The down is the exact mirror: names back first.
+ */
+function renderRenameColumn(c: Extract<Change, { kind: "rename-column" }>, dir: "up" | "down"): string {
+  const up = dir === "up";
+  const table = quoteQualified(c.table, c.schema);
+  const column = `ALTER TABLE ${table} RENAME COLUMN ${quote(up ? c.from : c.to)} TO ${quote(up ? c.to : c.from)};`;
+  const flip = (r: NameChange): NameChange => (up ? r : { from: r.to, to: r.from });
+  const carried = [
+    ...(c.constraintRenames ?? []).map(flip).map((r) =>
+      `ALTER TABLE ${table} RENAME CONSTRAINT ${quote(r.from)} TO ${quote(r.to)};`),
+    ...(c.indexRenames ?? []).map(flip).map((r) =>
+      `ALTER INDEX ${quoteIndexQualified(r.from, c.schema)} RENAME TO ${quote(r.to)};`),
+  ];
+  const lines = [column, ...carried];
+  return (up ? lines : [...lines].reverse()).join("\n\n");
+}
+
+/**
  * The table rename plus the carried constraints and indexes whose names follow it. The
  * down is the exact mirror: names back first, while the table still has its new name.
  */
@@ -224,7 +244,7 @@ function renderDown(c: Change): string {
       return c.restore
         ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD COLUMN ${renderColumn(c.restore)};\n-- NOTE: column data is not restored by this down migration.`
         : `-- WARNING: down migration cannot restore data\n-- TODO: re-add dropped column "${c.column}" manually with original type/nullable/default`;
-    case "rename-column":          return `ALTER TABLE ${quoteQualified(c.table, c.schema)} RENAME COLUMN ${quote(c.to)} TO ${quote(c.from)};`;
+    case "rename-column":          return renderRenameColumn(c, "down");
     case "change-column-type":     return renderAlterColumnType(c, c.to, c.from, c.toDefault, c.fromDefault);
     case "change-column-nullable":
       return c.from

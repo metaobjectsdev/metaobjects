@@ -16,9 +16,11 @@ import {
   type AdvisoryDiagnosticRow, type AdvisoryFindingRow, type AdvisorySection,
   libraryPrefixRows,
   unindexedFkRows,
+  referentialActionConflictRows,
 } from "../lib/advisory.js";
 import { scanForUnprovenancedLibraryPrefix } from "../lib/library-prefix-advisory.js";
 import { scanForUnindexedForeignKeys, type UnindexedFkFinding } from "../lib/fk-index-advisory.js";
+import { scanForReferentialActionConflicts, type ReferentialActionConflictFinding } from "../lib/referential-action-advisory.js";
 import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
@@ -868,12 +870,23 @@ export async function verifyCommand(
       // schema builder refuses is migrate's to report, with its own message.
     }
 
+    // Relationships on both sides of one FK that disagree on its ON DELETE / ON UPDATE:
+    // the FK-owning side governs, so the parent's (typically a composition meant to
+    // cascade) silently has no effect. Same discipline as its siblings.
+    let actionConflicts: ReferentialActionConflictFinding[] = [];
+    try {
+      actionConflicts = scanForReferentialActionConflicts(root, { skip: collection.imported });
+    } catch {
+      // advisory only — a model the schema builder refuses is migrate's to report.
+    }
+
     antiPatternSection = ranSection([
       ...antiPatternRows(findings),
       ...missingBaseUrlRows(baseUrl),
       ...removedPropRows(removedProps),
       ...libraryPrefixRows(libraryPrefix),
       ...unindexedFkRows(unindexedFks),
+      ...referentialActionConflictRows(actionConflicts),
     ]);
     if (findings.length > 0) {
       log.warn(
@@ -902,6 +915,13 @@ export async function verifyCommand(
           `column(s) (advisory — does not fail the build):`,
       );
       warnCapped(unindexedFks.map((f) => `  ${f.message}`), flags.limit, { structured });
+    }
+    if (actionConflicts.length > 0) {
+      log.warn(
+        `meta verify — ${actionConflicts.length} foreign key(s) whose two sides declare relationships ` +
+          `that disagree on its referential action (advisory — does not fail the build):`,
+      );
+      warnCapped(actionConflicts.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
     if (libraryPrefix.length > 0) {
       log.warn(
@@ -1634,7 +1654,6 @@ const DRIFT_PRESENTATION: Record<Change["kind"], { glyph: string; noun: string }
 function summarizeDrift(changes: Change[]): string[] {
   return changes.map((c) => {
     const p = DRIFT_PRESENTATION[c.kind];
-    if (p === undefined) return JSON.stringify(c);
     return `${p.glyph} ${p.noun} ${describeChange(c)}`;
   });
 }

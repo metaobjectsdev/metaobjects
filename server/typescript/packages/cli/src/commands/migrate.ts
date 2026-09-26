@@ -62,6 +62,8 @@ import {
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { tokensToAllowOptions, blockedEntriesFor, blockedHintLines } from "../lib/allow.js";
 import { reportLoadError } from "../lib/load-error.js";
+import { scanForReferentialActionConflicts } from "../lib/referential-action-advisory.js";
+import type { MetaData } from "@metaobjectsdev/metadata";
 
 /**
  * Print a load failure with everything the loader's ADR-0009 envelope carried — the stable
@@ -234,6 +236,22 @@ function logOutOfScope(
     if (fmt === "text") log.info(msg);
     else log.warn(msg);
   }
+}
+
+/**
+ * Warn about each foreign key whose two sides declare relationships that disagree on its
+ * referential action — the parent's is overridden, and the DDL this run writes carries the
+ * child's. Advisory: it never changes the exit code, and a scan that throws is dropped
+ * (the schema build itself reports anything wrong with the model).
+ */
+function warnReferentialActionConflicts(metadata: MetaData, collection: Collection): void {
+  let findings;
+  try {
+    findings = scanForReferentialActionConflicts(metadata, { skip: collection.imported });
+  } catch {
+    return;
+  }
+  for (const f of findings) log.warn(`migrate: ${f.message}`);
 }
 
 function emitStructuredError(error: string, hint: string, fmt: OutputFormat): void {
@@ -685,6 +703,7 @@ export async function migrateCommand(
     reportLoadError(log, "failed to load metadata", err);
     return 2;
   }
+  warnReferentialActionConflicts(metadata, collection);
 
   let kysely;
   try {
@@ -1259,6 +1278,7 @@ export async function runOfflineGenerate(
     reportLoadError(log, "migrate: failed to load metadata", err);
     return 2;
   }
+  warnReferentialActionConflicts(metadata, collection);
 
   const offlineDialect = config.dialect;
   const offlineViews = buildProjectionViews(metadata, { dialect: offlineDialect, columnNamingStrategy: offlineStrategy });
@@ -1527,6 +1547,7 @@ async function runD1Migrate(
     reportLoadError(log, "migrate: failed to load metadata", err);
     return 2;
   }
+  warnReferentialActionConflicts(metadata, collection);
 
   // 4. Build expected schema + introspect actual.
   let columnNamingStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
