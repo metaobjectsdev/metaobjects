@@ -4,70 +4,11 @@ description: Use BEFORE adopting MetaObjects — assess how much of it a not-yet
 scaffold: false
 ---
 
-<!--
-NOT SCAFFOLDED. This is a PRE-adoption tool, so it is deliberately absent from the
-SDK's `SKILL_NAMES` (`server/typescript/packages/sdk/src/agent-context/types.js`) and
-is never emitted by `meta init` — a target that has not adopted MetaObjects has no
-`.claude/skills/metaobjects-*` to drop it into. This directory is its single source of
-truth. Its sibling is `metaobjects-audit` (POST-adoption; scaffolded). Design +
-retro-test validation: `docs/superpowers/specs/2026-07-12-metaobjects-fit-assessment-design.md`.
-How to run it: point a high-end LLM at a target repo + this file (e.g. paste it, or
-fetch it from GitHub / metaobjects.dev) and let it produce the report below.
-
-DEFERRED, ON PURPOSE — capability requirements (`requirement.functional` /
-`requirement.architectural`). This skill deliberately says NOTHING about them, and that is a
-decision, not an omission.
-
-Why not now: (1) SPENT -- this read "not in a release yet", and it is now. `requirement.*`
-shipped in 0.22.0 and has evolved twice since (0.23.0 added `planned` / `@disposition` /
-`@trackedBy`; 0.24.0 made the vocabulary prescriptive-only). Do not repeat this reason.
-(2) The signal->feature mapping is unvalidated against this skill's own kill criterion: the
-controlled evidence (0/24 model-only revivals) measures POST-adoption model-reading, and the
-feature's premise -- that the disproof lives nowhere in the model -- cuts against pre-adoption
-detectability. If the reasoning was never written down, there is nothing for an evidence-cited
-assessment to cite. (3) Whether anyone fills the ledger in is itself untested; advertising it pre-adoption
-is the brochure failure this skill exists to avoid.
-
-TRIGGER to revisit — the release carrying `requirement.*` has shipped, AND either:
-  Arm A  a dogfooded project's retired capabilities are shown, retrospectively,
-         to have been discoverable PRE-adoption from repo evidence at file:line standard
-         (removal commit, dead flag, do-not-reintroduce comment);
-  Arm B  a team that adopted via this assessment hits a resurrection the ledger would have
-         caught, or asks why the assessment never mentioned it.
-
-ARM A HAS FIRED (dogfooded adopter estate, 2026-08-13). Three retired or reversed capability
-decisions were each citable PRE-adoption at file:line -- a removal commit, two explicit
-do-not-reintroduce comments on the very constant an agent would revive, an .env.example line
-saying the knob does not exist. The ANTI-TRIGGER did NOT fire: every one traced to committed
-prose. Bound it honestly -- n=1, and that estate is unusually disciplined about recording
-reversals in co-located prose, which is precisely the manual work `requirement.*` systematizes,
-so it is a confound rather than a clean sample. It also partly falsifies the feature's own
-premise that the disproof lives nowhere in the model.
-
-SO THE DEFERRAL NOW RESTS ON (3) ALONE, which makes it a judgement about VALUE rather than a
-fact about the release. Unprompted uptake is still unmeasured, and a later cross-estate reading
-sharpened the question: ledger value tracks whether the ledger is EXECUTABLE -- whether some
-mechanism can falsify a claim -- not when it was written. The largest ledger measured carried
-no harness and produced no defect found by any mechanism. Advertising that to a team that will
-hand-maintain it is the brochure failure this skill exists to avoid. Revisiting means deciding
-the SHAPE below is worth spending, not re-checking whether the capability exists.
-
-ANTI-TRIGGER (defer -> never): if dogfooded entries trace only to tribal knowledge with no
-repo artifact, this assessment structurally cannot speak to the feature as a finding.
-
-SHAPE, pre-committed so it is not re-litigated as new machinery: ONE P7 hunt line in the
-existing grammar (observable signal -> vocabulary + metadata_sketch), gated like every other
-P7 line by "if a hunt line has hits, it must appear" -- so a repo with no retirement scar
-tissue produces zero requirements content. NOT a fifth pillar, NOT a P4 rubric row, NOT an
-R0 verdict line: no verdict may turn on it.
--->
-
 # MetaObjects Fit & Migration Assessment
 
-_Assessment prompt v2. Capability claims below were checked against the MetaObjects source at
-release **1.0.8** (npm `1.0.8`, Maven `8.0.7`, PyPI `1.0.8`, NuGet `1.0.8`) on 2026-09-26. If
-the current release is newer, the § Capability sheet may be behind it: check anything
-load-bearing against the published sources named in M3._
+_Assessment prompt v2. The § Capability sheet was last checked against the MetaObjects source
+on 2026-09-26 (the 1.0.8 / 1.0.9 line). A later release may add capabilities the sheet does not
+list yet: check anything load-bearing against the published sources named in M3._
 
 **What this costs you.** It runs in your coding agent, on your tokens.
 
@@ -651,3 +592,63 @@ building block. Every generator is a reference helper an adopter selects, ejects
 6. *(Full only)* Disqualifier table worked row by row; reconciliation block present; P2-b run;
    ceiling paragraph labeled `horizon: "later"`; "What you will NOT get" complete; every prose
    prediction has a JSON twin.
+
+<!--
+MAINTAINER NOTES (not part of the prompt; kept at the end so a reader meets the prompt first).
+
+NOT SCAFFOLDED. This is a PRE-adoption tool, so it is deliberately absent from the
+SDK's `SKILL_NAMES` (`server/typescript/packages/sdk/src/agent-context/types.js`) and
+is never emitted by `meta init` — a target that has not adopted MetaObjects has no
+`.claude/skills/metaobjects-*` to drop it into. This directory is its single source of
+truth. Its sibling is `metaobjects-audit` (POST-adoption; scaffolded). Design +
+retro-test validation: `docs/superpowers/specs/2026-07-12-metaobjects-fit-assessment-design.md`.
+How to run it: point a high-end LLM at a target repo + this file (e.g. paste it, or
+fetch it from GitHub / metaobjects.dev) and let it produce the report below.
+
+DEFERRED, ON PURPOSE — capability requirements (`requirement.functional` /
+`requirement.architectural`). This skill deliberately says NOTHING about them, and that is a
+decision, not an omission.
+
+Why not now: (1) SPENT -- this read "not in a release yet", and it is now. `requirement.*`
+shipped in 0.22.0 and has evolved twice since (0.23.0 added `planned` / `@disposition` /
+`@trackedBy`; 0.24.0 made the vocabulary prescriptive-only). Do not repeat this reason.
+(2) The signal->feature mapping is unvalidated against this skill's own kill criterion: the
+controlled evidence (0/24 model-only revivals) measures POST-adoption model-reading, and the
+feature's premise -- that the disproof lives nowhere in the model -- cuts against pre-adoption
+detectability. If the reasoning was never written down, there is nothing for an evidence-cited
+assessment to cite. (3) Whether anyone fills the ledger in is itself untested; advertising it pre-adoption
+is the brochure failure this skill exists to avoid.
+
+TRIGGER to revisit — the release carrying `requirement.*` has shipped, AND either:
+  Arm A  a dogfooded project's retired capabilities are shown, retrospectively,
+         to have been discoverable PRE-adoption from repo evidence at file:line standard
+         (removal commit, dead flag, do-not-reintroduce comment);
+  Arm B  a team that adopted via this assessment hits a resurrection the ledger would have
+         caught, or asks why the assessment never mentioned it.
+
+ARM A HAS FIRED (dogfooded adopter estate, 2026-08-13). Three retired or reversed capability
+decisions were each citable PRE-adoption at file:line -- a removal commit, two explicit
+do-not-reintroduce comments on the very constant an agent would revive, an .env.example line
+saying the knob does not exist. The ANTI-TRIGGER did NOT fire: every one traced to committed
+prose. Bound it honestly -- n=1, and that estate is unusually disciplined about recording
+reversals in co-located prose, which is precisely the manual work `requirement.*` systematizes,
+so it is a confound rather than a clean sample. It also partly falsifies the feature's own
+premise that the disproof lives nowhere in the model.
+
+SO THE DEFERRAL NOW RESTS ON (3) ALONE, which makes it a judgement about VALUE rather than a
+fact about the release. Unprompted uptake is still unmeasured, and a later cross-estate reading
+sharpened the question: ledger value tracks whether the ledger is EXECUTABLE -- whether some
+mechanism can falsify a claim -- not when it was written. The largest ledger measured carried
+no harness and produced no defect found by any mechanism. Advertising that to a team that will
+hand-maintain it is the brochure failure this skill exists to avoid. Revisiting means deciding
+the SHAPE below is worth spending, not re-checking whether the capability exists.
+
+ANTI-TRIGGER (defer -> never): if dogfooded entries trace only to tribal knowledge with no
+repo artifact, this assessment structurally cannot speak to the feature as a finding.
+
+SHAPE, pre-committed so it is not re-litigated as new machinery: ONE P7 hunt line in the
+existing grammar (observable signal -> vocabulary + metadata_sketch), gated like every other
+P7 line by "if a hunt line has hits, it must appear" -- so a repo with no retirement scar
+tissue produces zero requirements content. NOT a fifth pillar, NOT a P4 rubric row, NOT an
+R0 verdict line: no verdict may turn on it.
+-->
