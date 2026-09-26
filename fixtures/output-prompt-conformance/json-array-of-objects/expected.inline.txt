@@ -2,7 +2,7 @@
   "lines": [
     {
       "sku": "{product code}",
-      "qty": "{quantity}"
+      "qty": {quantity}
     }
   ]
 }

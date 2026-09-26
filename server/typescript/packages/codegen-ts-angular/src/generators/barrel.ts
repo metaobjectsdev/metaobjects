@@ -12,6 +12,7 @@ import {
 } from "@metaobjectsdev/codegen-ts";
 import {
   GENERATED_HEADER,
+  GENERATED_EDIT_NOTE,
 } from "@metaobjectsdev/codegen-ts";
 import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjectsdev/metadata";
 
@@ -61,7 +62,7 @@ export const barrel = function barrel(opts?: AngularBarrelOpts): Generator {
           lines.push(`export * from ${JSON.stringify(specifierFor(layout, pkg, `${e.name}.grid.component`))};`);
         }
       }
-      const content = `// ${GENERATED_HEADER}-angular — DO NOT EDIT.\n${lines.join("\n")}\n`;
+      const content = `// ${GENERATED_HEADER}-angular — ${GENERATED_EDIT_NOTE}\n${lines.join("\n")}\n`;
       return {
         path: "index.ts",
         content: await formatTs(content),

@@ -187,7 +187,8 @@ public final class GeneratorRegistry {
                 "Per-entity Spring @RestController endpoint surface.", Tier.NATIVE, Layer.API,
                 ejectPath(SpringControllerGenerator.class));
         register(m, "output-parser", SpringOutputParserGenerator.class.getName(),
-                "Per-template tolerant output parser (recover-on-receipt). [Emitted code imports "
+                "Per-template response parser: a strict parse that rejects a reply not matching the "
+                    + "@responseRef shape, plus a tolerant, never-throwing extractLenient. [Emitted code imports "
                     + "com.metaobjects.object.extract, so the consuming module needs a "
                     + "`metaobjects-om` dependency — without it the generated parser does not "
                     + "compile and nothing in the build says why.]", Tier.NATIVE, Layer.CAPABILITY,
@@ -202,7 +203,8 @@ public final class GeneratorRegistry {
         // ejectable: it is fused into "entity"'s own emission (JavaObjectCodeGenerator),
         // not a separately wirable generator with its own emit logic to own.
         register(m, "extractor", ExtractorCodeGenerator.class.getName(),
-                "Per-template strict typed extract<Name> helper. FUSED into `entity` on this "
+                "Per-template typed extract<Name> helper: tolerant recovery of the typed response from "
+                    + "dirty model text; throws only when a @required field is lost. FUSED into `entity` on this "
                     + "port — emitted by JavaObjectCodeGenerator, not separately wirable.", Tier.NATIVE, Layer.CAPABILITY);
         // "template" stays registered but is NOT ejectable: it is already a generic,
         // declaratively-configured primitive (Mustache template + output pattern) with no

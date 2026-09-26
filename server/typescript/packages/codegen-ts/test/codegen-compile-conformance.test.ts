@@ -69,19 +69,56 @@ async function loadCorpus(): Promise<MetaRoot> {
   return result.root;
 }
 
+// The compiler-option PROFILES every lane is compiled under: strictness OFF and ON.
+//
+// `defaults` is the permissive baseline. `tscInit` is exactly what `npx tsc --init` writes
+// (TypeScript 5.9 and 7 alike) — the getting-started page tells adopters to run it, so it
+// is the tsconfig an adopter's first build actually uses. Flags in it have, more than once,
+// turned generated output that "compiles" into a red adopter build while this gate stayed
+// green:
+//
+//   - exactOptionalPropertyTypes: 1.0.8's response parser failed TS2375 (a Zod
+//     `.optional()` output carries `T | undefined`; a bare `x?: T` refuses it).
+//   - verbatimModuleSyntax: 1.0.9-rc.1 imported a nested value object's INTERFACE as a
+//     value (`import { ReviewLine, ReviewLineInsertSchema }`) — TS1484 in every project
+//     whose payload nests another value object. The corpus already had that shape
+//     (`ProgramBrief` nests `WeekLabel`); only the flag was missing.
+//
+// The profile is spelled out rather than derived because `ts.generateTSConfig` is not
+// public API. When a TypeScript upgrade changes what `tsc --init` writes, update it here.
+const TSC_INIT_OPTIONS: ts.CompilerOptions = {
+  module: ts.ModuleKind.NodeNext,
+  moduleResolution: ts.ModuleResolutionKind.NodeNext,
+  target: ts.ScriptTarget.ESNext,
+  types: [],
+  noUncheckedIndexedAccess: true,
+  exactOptionalPropertyTypes: true,
+  strict: true,
+  jsx: ts.JsxEmit.ReactJSX,
+  verbatimModuleSyntax: true,
+  isolatedModules: true,
+  noUncheckedSideEffectImports: true,
+  moduleDetection: ts.ModuleDetectionKind.Force,
+  skipLibCheck: true,
+};
+
+const DEFAULT_OPTIONS: ts.CompilerOptions = {
+  strict: true,
+  target: ts.ScriptTarget.ES2022,
+  module: ts.ModuleKind.ESNext,
+  moduleResolution: ts.ModuleResolutionKind.Bundler,
+  skipLibCheck: true,
+};
+
+const PROFILES: ReadonlyArray<readonly [string, ts.CompilerOptions]> = [
+  ["defaults", DEFAULT_OPTIONS],
+  ["tsc --init", TSC_INIT_OPTIONS],
+];
+
 describe("codegen-compile conformance — the shared fitness corpus", () => {
-  // `exactOptionalPropertyTypes` is compiled BOTH ways. A fresh `tsc --init` turns it on
-  // (and the getting-started page tells adopters to run `tsc --init`), and under it an
-  // optional property typed `x?: T` refuses `x: T | undefined` — which is exactly what a
-  // Zod `.optional()` output carries. 1.0.8 shipped a response parser that failed TS2375
-  // there while this gate, compiling only the default, stayed green.
-  for (const [dialect, exactOptionalPropertyTypes] of [
-    ["postgres", false],
-    ["sqlite", false],
-    ["postgres", true],
-    ["sqlite", true],
-  ] as const) {
-    test(`${dialect}${exactOptionalPropertyTypes ? " + exactOptionalPropertyTypes" : ""}: every generated module compiles with zero diagnostics`, async () => {
+  for (const dialect of ["postgres", "sqlite"] as const) {
+    for (const [profile, options] of PROFILES) {
+    test(`${dialect} [${profile}]: every generated module compiles with zero diagnostics`, async () => {
       const root = await loadCorpus();
       const dir = mkdtempSync(join(import.meta.dir, `tmp-codegen-compile-${dialect}-`));
       try {
@@ -104,7 +141,10 @@ describe("codegen-compile conformance — the shared fitness corpus", () => {
           loadedRoot: root,
           matches: (e) => generator.filter?.(e) ?? true,
           projectRoot: dir,
-          config: { outDir: dir, extStyle: "none", dbImport: "~/db", dialect } as never,
+          // extStyle "js" — the runner's default, and the only style NodeNext resolution
+          // (the `tsc --init` profile) accepts. It must agree with the render context's
+          // (also "js" by default): a mismatch emits half the tree extension-less.
+          config: { outDir: dir, extStyle: "js", dbImport: "~/db", dialect } as never,
           renderContext,
           warn: () => {},
         });
@@ -149,20 +189,22 @@ describe("codegen-compile conformance — the shared fitness corpus", () => {
         ]) {
           expect([...emitted]).toContain(expected);
         }
+        // A value object NESTING another (`ProgramBrief.weekLabels: WeekLabel[]`) is the
+        // shape whose type import shipped as a value import (TS1484 under the `tsc --init`
+        // profile). Pin that the corpus still carries it, so an edit dropping the nesting
+        // cannot quietly retire this gate's coverage of it.
+        const brief = files.find((f) => f.path === "ProgramBrief.ts");
+        expect(brief?.content).toMatch(/import \{[^}]*\bWeekLabel\b[^}]*\} from "\.\/WeekLabel\.js"/);
         for (const f of files) writeFileSync(join(dir, f.path), f.content);
+        // NodeNext resolution reads the nearest package.json to decide ESM vs CJS, and an
+        // adopter's generated tree sits in an ESM package (`meta init` writes
+        // `"type": "module"`). Harmless under the Bundler profile.
+        writeFileSync(join(dir, "package.json"), JSON.stringify({ type: "module" }));
 
-        const program = ts.createProgram(
-          files.map((f) => join(dir, f.path)),
-          {
-            strict: true,
-            noEmit: true,
-            target: ts.ScriptTarget.ES2022,
-            module: ts.ModuleKind.ESNext,
-            moduleResolution: ts.ModuleResolutionKind.Bundler,
-            skipLibCheck: true,
-            exactOptionalPropertyTypes,
-          },
-        );
+        const program = ts.createProgram(files.map((f) => join(dir, f.path)), {
+          ...options,
+          noEmit: true,
+        });
         const diagnostics = ts.getPreEmitDiagnostics(program).map((d) => {
           const where =
             d.file && d.start !== undefined
@@ -177,5 +219,6 @@ describe("codegen-compile conformance — the shared fitness corpus", () => {
         rmSync(dir, { recursive: true, force: true });
       }
     });
+    }
   }
 });

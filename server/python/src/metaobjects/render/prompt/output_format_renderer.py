@@ -193,8 +193,17 @@ def _json_value(
 
 
 def _json_leaf(field: PromptField, overrides: PromptOverrides, mode: str) -> str:
+    # A number or boolean is shown UNQUOTED wherever the skeleton holds a placeholder for
+    # it -- the inline hint ({Integer 1-5.}, true | false) and the no-example fallback
+    # ({averageRating}). A quoted placeholder taught the model to answer a number as a
+    # JSON string, which the generated response parser then rejected. Only STRING / ENUM
+    # values (and OBJECT past the depth guard) are quoted.
+    unquoted = field.kind in _NUMERIC_KINDS
     if mode == _MODE_INLINE:
-        return '"' + _escape_json(_inline_content(field, overrides)) + '"'
+        content = _inline_content(field, overrides)
+        return content if unquoted else '"' + _escape_json(content) + '"'
+    if unquoted and _example_value_if_declared(field, overrides) is None:
+        return "{" + field.name + "}"
     value = _example_value(field, overrides)
     if _is_numeric_or_boolean(field.kind, value):
         return value

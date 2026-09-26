@@ -1,0 +1,10 @@
+{
+  "summary": "{summary}",
+  "averageRating": {averageRating},
+  "count": {count},
+  "total": {total},
+  "resolved": {resolved},
+  "scores": [
+    {scores}
+  ]
+}

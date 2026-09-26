@@ -22,7 +22,7 @@ import {
 import { renderEntityConstants } from "./entity-constants.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
-import { GENERATED_HEADER, sidecarLine } from "../constants.js";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants.js";
 import { namesRef, namesConstArg } from "../names.js";
 
 export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: RenderContext): string {
@@ -82,7 +82,7 @@ export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: Ren
   // even for a collision-qualified value object. Byte-identical (bare) otherwise.
   const emittedName = ctx ? ctx.valueObjectEmittedName(obj) : obj.name;
   const header =
-    `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${obj.name} (${obj.fqn()})\n` +
     sidecarLine(`${emittedName}.extra.ts`);
   return header + body;

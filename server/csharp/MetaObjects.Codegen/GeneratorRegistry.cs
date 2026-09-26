@@ -172,7 +172,7 @@ public static class GeneratorRegistry
             ["output-parser"] = new()
             {
                 Name = "output-parser",
-                Description = "Per-template tolerant output parser (recover-on-receipt).",
+                Description = "Per-template response parser: a strict Parse/TryParse that rejects a reply not matching the @responseRef shape, plus a tolerant, never-throwing ExtractLenient.",
                 Tier = GeneratorTier.Native,
                 Layer = GeneratorLayer.Capability,
                 Factory = _ => new OutputParserGenerator(),
@@ -184,7 +184,7 @@ public static class GeneratorRegistry
             ["extractor"] = new()
             {
                 Name = "extractor",
-                Description = "Per-template typed Extract<Name> helper (strict payload extraction).",
+                Description = "Per-template typed Extract<Name> helper: tolerant recovery of the typed response from dirty model text; throws only when a @required field is lost.",
                 Tier = GeneratorTier.Native,
                 Layer = GeneratorLayer.Capability,
                 Factory = _ => new ExtractorGenerator(),

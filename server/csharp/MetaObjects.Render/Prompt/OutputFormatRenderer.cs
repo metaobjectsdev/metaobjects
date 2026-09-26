@@ -158,10 +158,21 @@ public static class OutputFormatRenderer
         return JsonLeaf(field, overrides, mode);
     }
 
+    // A number or boolean is shown UNQUOTED wherever the skeleton holds a placeholder for it
+    // -- the inline hint ({Integer 1-5.}, true | false) and the no-example fallback
+    // ({averageRating}). A quoted placeholder taught the model to answer a number as a JSON
+    // string, which the generated response parser then rejected. Only string / enum values
+    // (and an object past the depth guard) are quoted.
     private static string JsonLeaf(PromptField field, PromptOverrides overrides, SkelMode mode)
     {
+        bool unquoted = NumericKinds.Contains(field.Kind);
         if (mode == SkelMode.Inline)
-            return "\"" + EscapeJson(InlineContent(field, overrides)) + "\"";
+        {
+            string content = InlineContent(field, overrides);
+            return unquoted ? content : "\"" + EscapeJson(content) + "\"";
+        }
+        if (unquoted && ExampleValueIfDeclared(field, overrides) == null)
+            return "{" + field.Name + "}";
         string value = ExampleValue(field, overrides);
         return IsNumericOrBoolean(field.Kind, value)
             ? value

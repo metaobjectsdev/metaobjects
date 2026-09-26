@@ -15,7 +15,7 @@
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
     "output-parser": {
-      "concept": "Per-template tolerant output parser (recover-on-receipt).",
+      "concept": "Per-template response parser: a strict parse that rejects a reply not matching the @responseRef shape, plus a tolerant, never-throwing lenient extract.",
       "tier": "native",
       "layer": "capability",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
@@ -33,7 +33,7 @@
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
     "extractor": {
-      "concept": "Per-template strict typed extract<Name> helper (strict payload extraction).",
+      "concept": "Per-template typed extract<Name> helper: tolerant recovery of the typed response from dirty model text; throws only when a @required field is lost.",
       "tier": "native",
       "layer": "capability",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]

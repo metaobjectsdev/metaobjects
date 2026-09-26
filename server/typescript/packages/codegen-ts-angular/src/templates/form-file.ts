@@ -24,7 +24,7 @@ import {
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_BOOLEAN,
 } from "@metaobjectsdev/metadata";
-import { type RenderContext, GENERATED_HEADER, entityModuleSpecifier,
+import { type RenderContext, GENERATED_HEADER, GENERATED_EDIT_NOTE, entityModuleSpecifier,
   effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 
@@ -173,7 +173,7 @@ void __ensureValidatorsImport__;
 `;
 
   const header =
-    `// ${GENERATED_HEADER}-angular — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER}-angular — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${entityName} (${entity.fqn()})\n`;
   return header + literalImports.toString() + body.toString() + validatorsAnchor.toString();
 }

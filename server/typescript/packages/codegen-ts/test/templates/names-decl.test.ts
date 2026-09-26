@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource, type MetaObject } from "@metaobjectsdev/metadata";
 import { renderNamesDecl } from "../../src/templates/names-decl.js";
-import { GENERATED_HEADER } from "../../src/constants.js";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../../src/constants.js";
 
 async function subscriber(): Promise<MetaObject> {
   const json = JSON.stringify({
@@ -83,7 +83,7 @@ describe("renderNamesDecl", () => {
   // marker still reads as hand-written to anyone who opens it.
   test("carries the @generated header as line 1", async () => {
     const out = renderNamesDecl(await subscriber(), "snake_case");
-    expect(out.split("\n")[0]).toBe(`// ${GENERATED_HEADER} — DO NOT EDIT.`);
+    expect(out.split("\n")[0]).toBe(`// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`);
   });
 
   test("omits schema entirely when undeclared, rather than emitting undefined", async () => {

@@ -312,7 +312,11 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
       const moduleSpec = ctx
         ? valueObjectModuleSpecifier(refName, ctx.packageOf, entityPkg, ctx.outputLayout, ctx.extStyle)
         : `./${refName}.js`;
-      const refImp = imp(`${refName}@${moduleSpec}`);
+      // `t:` — the interface is a TYPE. Without it ts-poet merges it with the Zod
+      // `<Ref>InsertSchema` VALUE from the same module into one value import, which is
+      // TS1484 under `verbatimModuleSyntax` (on in a fresh `tsc --init`). Same rule as
+      // the shared-enum branch below (#341).
+      const refImp = imp(`t:${refName}@${moduleSpec}`);
       return field.resolvedIsArray() ? code`${refImp}[]` : code`${refImp}`;
     }
     return field.resolvedIsArray() ? code`unknown[]` : code`unknown`;
@@ -327,7 +331,7 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
       const moduleSpec = ctx
         ? valueObjectModuleSpecifier(refName, ctx.packageOf, entityPkg, ctx.outputLayout, ctx.extStyle)
         : `./${refName}.js`;
-      const refImp = imp(`${refName}@${moduleSpec}`);
+      const refImp = imp(`t:${refName}@${moduleSpec}`);
       return code`Record<string, ${refImp}>`;
     }
     const vt = field.attr(FIELD_ATTR_VALUE_TYPE);

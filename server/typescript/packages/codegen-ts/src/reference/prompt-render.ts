@@ -42,6 +42,7 @@ import {
   valueObjectImportLines,
   type ValueObjectImport,
   GENERATED_HEADER,
+  GENERATED_EDIT_NOTE,
 } from "@metaobjectsdev/codegen-ts";
 
 export interface PromptRenderOpts {
@@ -87,7 +88,7 @@ export const promptRender = function promptRender(opts?: PromptRenderOpts): Gene
       if (handles.length === 0) return [];
 
       const content = [
-        `// ${GENERATED_HEADER} — DO NOT EDIT.`,
+        `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`,
         "",
         RENDER_IMPORT,
         ...valueObjectImportLines(imports),

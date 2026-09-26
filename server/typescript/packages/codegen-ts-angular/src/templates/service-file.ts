@@ -16,6 +16,7 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   type RenderContext,
   GENERATED_HEADER,
+  GENERATED_EDIT_NOTE,
   entityModuleSpecifier,
   effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
@@ -104,7 +105,7 @@ export class ${entityName}Service {
   void _;
 
   const header =
-    `// ${GENERATED_HEADER}-angular — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER}-angular — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${entityName} (${entity.fqn()})\n`;
   return header + literalImports.toString() + body.toString();
 }

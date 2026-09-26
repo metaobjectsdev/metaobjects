@@ -15,6 +15,7 @@ import {
 import type { RenderContext } from "@metaobjectsdev/codegen-ts";
 import {
   GENERATED_HEADER,
+  GENERATED_EDIT_NOTE,
   entityModuleSpecifier,
   viewForContext,
   VIEW_CONTEXT_GRID,
@@ -181,7 +182,7 @@ ${columnsLiteral},
   void _;
 
   const header =
-    `// ${GENERATED_HEADER}-angular — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER}-angular — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${entityName} (${entity.fqn()})\n`;
   return header + literalImports.toString() + body.toString();
 }

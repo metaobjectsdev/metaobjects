@@ -94,7 +94,7 @@ async function setupRepo(): Promise<string> {
 function editOwnedGenerator(root: string, marker: string): void {
   const p = join(root, EJECTED);
   const src = readFileSync(p, "utf8");
-  const anchor = "`// ${GENERATED_HEADER} — DO NOT EDIT.\\n` +";
+  const anchor = "`// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\\n` +";
   if (!src.includes(anchor)) {
     throw new Error("the ejected entity template no longer has the header line this test edits");
   }

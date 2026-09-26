@@ -126,14 +126,14 @@ function viewColumnLine(
   } else if (dtr?.kind === "objectRef") {
     // #228 — emitted name + module resolved together (lock-step) from the field's ref.
     const vo = opts.voRef(f);
-    const voTypeSym = imp(`${vo.name}@${vo.module}`);
+    const voTypeSym = imp(`t:${vo.name}@${vo.module}`);
     dollarType = dtr.array ? code`.$type<${voTypeSym}[]>()` : code`.$type<${voTypeSym}>()`;
   } else if (dtr?.kind === "map") {
     if ("scalar" in dtr.value) {
       dollarType = `.$type<Record<string, ${dtr.value.scalar}>>()`;
     } else {
       const vo = opts.voRef(f);
-      dollarType = code`.$type<Record<string, ${imp(`${vo.name}@${vo.module}`)}>>()`;
+      dollarType = code`.$type<Record<string, ${imp(`t:${vo.name}@${vo.module}`)}>>()`;
     }
   }
   // A6 — reference the constant whenever the artifact is in the run AND carries this

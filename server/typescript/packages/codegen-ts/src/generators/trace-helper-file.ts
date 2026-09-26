@@ -40,7 +40,7 @@ import {
   perEntity,
 } from "../generator.js";
 import { valueObjectImport, valueObjectImportLines } from "../templates/value-object-import.js";
-import { GENERATED_HEADER } from "../constants.js";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import { tphDiscriminatorPin } from "../templates/zod-validators.js";
 
 /** This generator's stable name — the key a library manifest declares its anchor under. */
@@ -236,7 +236,7 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
       }
 
       const lines: string[] = [
-        `// ${GENERATED_HEADER} — DO NOT EDIT.`,
+        `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`,
         ``,
         ...importLines,
         ``,

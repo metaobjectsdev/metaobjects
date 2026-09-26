@@ -18,7 +18,7 @@
  *     spread the WHOLE super, so the table name is stated once, on the base.
  */
 import type { ColumnNamingStrategy, MetaObject } from "@metaobjectsdev/metadata";
-import { GENERATED_HEADER } from "../constants.js";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import { PHYSICAL_NAME_ATTR_BY_KIND, primaryRdbSource } from "@metaobjectsdev/metadata";
 
 /** The physical-name alias keys, in the metamodel's own order. */
@@ -121,7 +121,7 @@ export function renderNamesDecl(
   const indexesBlock = collection("indexes", n.indexes, n.ownIndexes, renderKey);
 
   const header =
-    `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${obj.name}\n` +
     (superSym === undefined ? "" : `import { ${superSym} } from ${q(o.superSpecifier as string)};\n\n`);
 

@@ -26,6 +26,7 @@ import {
   barrelModuleSpecifier,
   formatTs,
   GENERATED_HEADER,
+  GENERATED_EDIT_NOTE,
   effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 
@@ -45,7 +46,7 @@ function renderBarrel(
   const exports = sorted
     .map((e) => `export * from ${JSON.stringify(barrelModuleSpecifier(selfTarget, entityModuleTarget, e.package, e.name, extStyle))};`)
     .join("\n");
-  return `// ${GENERATED_HEADER} — DO NOT EDIT.\n${exports}\n`;
+  return `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n${exports}\n`;
 }
 
 export interface BarrelOpts {

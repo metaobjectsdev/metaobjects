@@ -22,16 +22,18 @@ provider/LLM-call layer — you compose the call yourself.
 ```ts
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// The entity trio + barrel come from the OWNED copies `meta init` scaffolded into
-// ./codegen/generators/ (ADR-0034). Importing them from the package instead is the
-// deprecated path, and quietly hands their shape back to the package — so keep these
-// lines as `meta init` wrote them and add only the prompt pair below.
+// `meta init` scaffolds ./codegen/generators/ EMPTY (ADR-0034 Amendment 2). The entity
+// generators arrive by `meta eject entity queries barrel`, which copies each into that
+// directory as a file you own and prints the import to add — these three lines. They
+// have no package import: the old `@metaobjectsdev/codegen-ts/generators` re-export of
+// them was removed at 1.0. The parser's reply type is the @responseRef value object's
+// own interface, which `entity` emits, so `entity` has to be in the run.
 import { entityFile } from "./codegen/generators/entity.js";
 import { queriesFile } from "./codegen/generators/queries.js";
 import { barrel } from "./codegen/generators/barrel.js";
 // promptRender / outputParser can be imported from the package (below) OR owned:
-// `meta eject prompt-render output-parser` copies them into ./codegen/generators/ like the
-// entity trio. Either way the render and parse ENGINES they call stay in the package.
+// `meta eject prompt-render output-parser` copies them into ./codegen/generators/ the
+// same way. Either way the render and parse ENGINES they call stay in the package.
 import { promptRender, outputParser } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
@@ -50,44 +52,47 @@ options.
 ## What it emits
 
 Per responding `template.prompt` (say named `NpcReview`, `@responseRef:
-"NpcResponse"`), `meta gen` writes a self-contained `NpcReview.response.ts` with a Zod
-schema + a dual API. The strict tier is JSON-only — an `@responseFormat: xml` reply gets
-the tolerant `extract` and no `parse`/`safeParse`:
+"NpcResponse"`), `meta gen` writes `NpcReview.response.ts` with a Zod schema + a dual
+API, named after the TEMPLATE. The strict tier is JSON-only — an `@responseFormat: xml`
+reply gets the tolerant `extract` and no `parse`/`safeParse`:
 
 ```ts
 import { z } from "zod";
+import type { NpcResponse } from "./NpcResponse.js";   // the value object's own interface (entityFile)
 
-const NpcResponseOutputSchema = z.object({
+const NpcReviewSchema = z.object({
   name: z.string(),
   level: z.number().int(),
-  role: z.unknown(),   // field.enum is not value-constrained in the strict parser → z.unknown()
+  role: z.enum(["tank", "healer", "dps"]),   // field.enum → its declared members
+  notes: z.string().optional(),              // not @required → .optional()
 });
 
-export type NpcResponseOutputData = z.infer<typeof NpcResponseOutputSchema>;
-export type NpcResponseOutputValidationError = z.ZodError;
+export type NpcReviewValidationError = z.ZodError;
 
 /** Throws ZodError on bad input. */
-export function parseNpcResponseOutput(text: string): NpcResponseOutputData { /* ... */ }
+export function parseNpcReview(text: string): NpcResponse { /* ... */ }
 
 /** Result-style; never throws. */
-export function safeParseNpcResponseOutput(text: string):
-  | { success: true; data: NpcResponseOutputData }
-  | { success: false; error: NpcResponseOutputValidationError } { /* ... */ }
+export function safeParseNpcReview(text: string):
+  | { success: true; data: NpcResponse }
+  | { success: false; error: NpcReviewValidationError } { /* ... */ }
 ```
 
 The dual API mirrors Zod's idiomatic shape: `parse*` throws a `ZodError`,
-`safeParse*` returns a discriminated union. The emitted `<Name>Data` type is
-structurally identical to the `promptRender()` payload VO, so you can pass values
-between the render and parse sides interchangeably.
+`safeParse*` returns a discriminated union. Both return the `@responseRef` value
+object's OWN interface — the one `entityFile()` declares in `NpcResponse.ts` (ADR-0056)
+— so the parser declares no type of its own. The same file also exports a tolerant,
+never-throwing `extractLenientNpcReview…` for replies that need recovering rather
+than rejecting.
 
-Field-type → Zod mapping: `field.string` → `z.string()`; `field.int`/`long`
+Field-type → Zod mapping: `field.string` → `z.string()`; `field.int`/`long`/`currency`
 → `z.number().int()`; `field.double`/`float` → `z.number()`; `field.boolean` →
-`z.boolean()`; `field.object` (with `@objectRef`) → a nested `z.object({...})`;
-`isArray: true` → wrapped in `z.array(...)`. Any subtype outside this scalar set —
-including `field.enum` — falls through to `z.unknown()` in the strict
-`parse*`/`safeParse*` schema (the value-constrained `z.enum([...])` form is emitted
-in the entity insert/update schemas, not in this output parser; the lenient extract
-path carries the enum-as-string handling).
+`z.boolean()`; `field.enum` → `z.enum([...])` over its declared `@values`;
+`field.uuid` → `z.string().uuid()`; `field.decimal` and the temporal subtypes →
+`z.string()` (their JSON wire form); `field.object` (with `@objectRef`) → a nested
+`z.object({...})`; `isArray: true` → wrapped in `z.array(...)`; a field that is not
+`@required` → `.optional()`. Only a subtype outside that set, or a self-referencing
+`@objectRef`, falls through to `z.unknown()`.
 
 ## The response-format prompt fragment (FR-010)
 
@@ -99,9 +104,11 @@ answer like this" fragment you splice into the prompt text so the model returns 
 shape the parser above expects:
 
 ```ts
-// metaobjects.config.ts
-import { entityFile, queriesFile, barrel, promptRender, outputParser, outputPrompt }
-  from "@metaobjectsdev/codegen-ts/generators";
+// metaobjects.config.ts — the same owned entity trio as above, plus outputPrompt
+import { entityFile } from "./codegen/generators/entity.js";
+import { queriesFile } from "./codegen/generators/queries.js";
+import { barrel } from "./codegen/generators/barrel.js";
+import { promptRender, outputParser, outputPrompt } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   outDir: "src/generated",
@@ -133,17 +140,17 @@ here) → parse the response with the generated parser:
 // lives on `@metaobjectsdev/render/providers`. `lobby/welcome` → ./prompts/lobby/welcome.mustache.
 import { FilesystemProvider } from "@metaobjectsdev/render/providers";
 import { renderNpcReview } from "./generated/prompts";
-import { parseNpcResponseOutput, safeParseNpcResponseOutput } from "./generated/NpcReview.response";
+import { parseNpcReview, safeParseNpcReview } from "./generated/NpcReview.response";
 
 const textProvider = new FilesystemProvider("./prompts");
 const promptText  = renderNpcReview(payload, textProvider);
 const llmResponse = await myLlmProvider.call(promptText);   // YOUR code — no generated provider
 
 // Throwing path:
-const npc = parseNpcResponseOutput(llmResponse);
+const npc = parseNpcReview(llmResponse);
 
 // Result-style:
-const r = safeParseNpcResponseOutput(llmResponse);
+const r = safeParseNpcReview(llmResponse);
 if (!r.success) log.warn("malformed LLM payload", r.error);
 else handle(r.data);
 ```

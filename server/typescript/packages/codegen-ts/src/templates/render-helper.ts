@@ -52,7 +52,7 @@ import {
   type VerifyError,
 } from "@metaobjectsdev/render";
 import { templateSymbolBase } from "../naming.js";
-import { GENERATED_HEADER } from "../constants.js";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import type { ExtStyle } from "../metaobjects-config.js";
 import type { RenderContext } from "../render-context.js";
 import { valueObjectImport } from "./value-object-import.js";
@@ -79,7 +79,7 @@ function findTemplate(root: MetaData, name: string): MetaData | undefined {
  * the module entityFile() declares it in (`payloadSpecifier`).
  */
 function renderHelperHeader(typeImports: string, payloadTypeName: string, payloadSpecifier: string): string {
-  return `// ${GENERATED_HEADER} — DO NOT EDIT.
+  return `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}
 import { render } from "@metaobjectsdev/render";
 import type { ${typeImports} } from "@metaobjectsdev/render";
 import type { ${payloadTypeName} } from ${JSON.stringify(payloadSpecifier)};`;

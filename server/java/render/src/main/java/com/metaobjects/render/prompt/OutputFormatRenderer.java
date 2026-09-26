@@ -151,9 +151,19 @@ public final class OutputFormatRenderer {
         return jsonLeaf(field, overrides, mode);
     }
 
+    // A number or boolean is shown UNQUOTED wherever the skeleton holds a placeholder for it
+    // -- the inline hint ({Integer 1-5.}, true | false) and the no-example fallback
+    // ({averageRating}). A quoted placeholder taught the model to answer a number as a JSON
+    // string, which the generated response parser then rejected. Only STRING / ENUM values
+    // (and OBJECT past the depth guard) are quoted.
     private static String jsonLeaf(PromptField field, PromptOverrides overrides, SkelMode mode) {
+        boolean unquoted = NUMERIC_KINDS.contains(field.kind());
         if (mode == SkelMode.INLINE) {
-            return "\"" + Escapers.escape(Escapers.FORMAT_JSON, inlineContent(field, overrides)) + "\"";
+            String content = inlineContent(field, overrides);
+            return unquoted ? content : "\"" + Escapers.escape(Escapers.FORMAT_JSON, content) + "\"";
+        }
+        if (unquoted && exampleValueIfDeclared(field, overrides) == null) {
+            return "{" + field.name() + "}";
         }
         String value = exampleValue(field, overrides);
         return isNumericOrBoolean(field.kind(), value)

@@ -34,7 +34,7 @@ describe("FR-012 nested expansion", () => {
   });
   test("nested object — inline json", () => {
     expect(renderOutputFormat(review(Format.JSON), { ...NONE, style: PromptStyle.INLINE })).toBe(
-      `{\n  "summary": "{One sentence.}",\n  "meta": {\n    "score": "{1-5.}"\n  }\n}`,
+      `{\n  "summary": "{One sentence.}",\n  "meta": {\n    "score": {1-5.}\n  }\n}`,
     );
   });
   test("nested object — guide json", () => {
