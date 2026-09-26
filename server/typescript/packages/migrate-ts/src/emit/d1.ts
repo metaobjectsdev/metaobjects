@@ -19,7 +19,7 @@ export function renderD1(
   /** The actual (introspected) DB schema — enables the #241 FK-cascade rebuild. */
   actualSchema?: SchemaSnapshot,
 ): EmitResult {
-  const sqliteResult = renderSqlite(changes, expectedSchema, actualMeta);
+  const sqliteResult = renderSqlite(changes, expectedSchema, actualMeta, actualSchema);
 
   // Trigger detection: is any recreated table the target of a foreign key in the
   // expected OR actual schema (a self-reference counts)? Only such rebuilds are
@@ -89,7 +89,7 @@ export function renderD1(
     if (vn !== undefined && handledViews.has(vn)) return false;
     return true;
   });
-  const rest = renderSqlite(nonAffected, expectedSchema, actualMeta);
+  const rest = renderSqlite(nonAffected, expectedSchema, actualMeta, actualSchema);
 
   const up = [cascadeUp, rest.up].filter((s) => s.length > 0).join("\n\n");
   const down = [rest.down, downWarning].filter((s) => s.length > 0).join("\n\n");

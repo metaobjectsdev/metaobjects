@@ -1,6 +1,6 @@
 import type {
   Change, EmitResult, ColumnDescriptor, IndexDescriptor,
-  TableDescriptor, SchemaSnapshot, SnapshotMeta, ColumnDefault, ViewDescriptor,
+  TableDescriptor, SchemaSnapshot, SnapshotMeta, ColumnDefault, ViewDescriptor, FkDescriptor,
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 
@@ -68,6 +68,12 @@ export function renderSqlite(
   changes: readonly Change[],
   expectedSchema?: SchemaSnapshot,
   actualMeta?: SnapshotMeta,
+  /**
+   * The schema the migration starts from (introspected, or the offline snapshot). A
+   * rebuilt table's down rebuilds it back to its descriptor here; without it the down
+   * can only say which changes it cannot reverse.
+   */
+  actualSchema?: SchemaSnapshot,
 ): EmitResult {
   const version = parseVersion(actualMeta?.sqliteVersion);
   const SUPPORTS_DROP = compareVersions(version, [3, 35, 0]) >= 0;
@@ -116,7 +122,8 @@ export function renderSqlite(
       const tableChanges = sorted.filter((x) => changeTable(x) === t);
       const newTable = expectedSchema!.tables.find((tt) => tt.name === t);
       if (!newTable) throw new Error(`expectedSchema missing table "${t}" needed for recreate`);
-      const { up, down } = renderRecreate(t, tableChanges, newTable);
+      const oldTable = previousTableShape(t, sorted, actualSchema);
+      const { up, down } = renderRecreate(t, tableChanges, newTable, oldTable);
       upStmts.push(up);
       downStmts.push(down);
       handledRecreate.add(t);
@@ -173,47 +180,186 @@ export function computeCarryColumns(tableChanges: Change[], newTable: TableDescr
   return { insertCols: carry.map((c) => c.name), selectCols: carry.map((c) => renamesReverse.get(c.name) ?? c.name) };
 }
 
-function renderRecreate(
+/**
+ * The shape `table` (keyed by its post-migration name) had BEFORE this migration, from the
+ * actual schema — looked up under its old name when the same migration renames it.
+ */
+function previousTableShape(
   table: string,
-  tableChanges: Change[],
-  newTable: TableDescriptor,
-): { up: string; down: string } {
-  const { insertCols, selectCols } = computeCarryColumns(tableChanges, newTable);
+  changes: readonly Change[],
+  actualSchema: SchemaSnapshot | undefined,
+): TableDescriptor | undefined {
+  if (actualSchema === undefined) return undefined;
+  const renamed = changes.find(
+    (c): c is Extract<Change, { kind: "rename-table" }> => c.kind === "rename-table" && c.to === table,
+  );
+  const oldName = renamed?.from ?? table;
+  return actualSchema.tables.find((t) => t.name === oldName);
+}
 
-  // Build the new-table CREATE using temp name.
-  const tmp = `__new_${table}`;
-  const tmpDescriptor: TableDescriptor = { ...newTable, name: tmp };
-  const createNew = renderCreateTable(tmpDescriptor);
-  const indexes = newTable.indexes;     // recreated post-rename
+/** The temp-table prefix of the FORWARD rebuild (the new shape being built). */
+const NEW_TABLE_PREFIX = "__new_";
+/** The temp-table prefix of the REVERSE rebuild (the previous shape being restored). */
+const OLD_TABLE_PREFIX = "__old_";
 
+/**
+ * The rebuild recipe: build `target` under a temp name, copy the carried rows, drop the
+ * live table, rename the temp one into place, recreate its indexes. Used in both
+ * directions — the down is the same recipe aimed at the previous shape.
+ */
+function renderRebuild(
+  table: string,
+  target: TableDescriptor,
+  tempPrefix: string,
+  carry: CarryColumns,
+): string {
+  const tmp = `${tempPrefix}${table}`;
   const lines: string[] = [];
   lines.push("PRAGMA foreign_keys = OFF;");
   lines.push("BEGIN TRANSACTION;");
   lines.push("");
-  lines.push(createNew);
-  if (insertCols.length > 0) {
+  lines.push(renderCreateTable({ ...target, name: tmp }));
+  if (carry.insertCols.length > 0) {
     lines.push(
-      `INSERT INTO ${quote(tmp)} (${insertCols.map(quote).join(", ")}) ` +
-      `SELECT ${selectCols.map(quote).join(", ")} FROM ${quote(table)};`,
+      `INSERT INTO ${quote(tmp)} (${carry.insertCols.map(quote).join(", ")}) ` +
+      `SELECT ${carry.selectCols.map(quote).join(", ")} FROM ${quote(table)};`,
     );
   }
   lines.push(`DROP TABLE ${quote(table)};`);
   lines.push(`ALTER TABLE ${quote(tmp)} RENAME TO ${quote(table)};`);
-  for (const ix of indexes) lines.push(renderCreateIndex(table, ix));
+  for (const ix of target.indexes) lines.push(renderCreateIndex(table, ix));
   lines.push("");
   lines.push("COMMIT;");
   lines.push("PRAGMA foreign_keys = ON;");
   lines.push("PRAGMA foreign_key_check;");
+  return lines.join("\n");
+}
 
-  // Down: best-effort. Without the actual snapshot we can't perfectly restore,
-  // so emit a WARNING comment block.
-  const down = [
-    `-- WARNING: SQLite recreate-and-copy down migration is best-effort.`,
-    `-- Reverse the column type/nullable/default changes by hand if needed.`,
-    `-- Dropped data cannot be restored.`,
+function renderRecreate(
+  table: string,
+  tableChanges: Change[],
+  newTable: TableDescriptor,
+  oldTable: TableDescriptor | undefined,
+): { up: string; down: string } {
+  const up = renderRebuild(table, newTable, NEW_TABLE_PREFIX, computeCarryColumns(tableChanges, newTable));
+  const down = oldTable === undefined
+    ? renderUnreversibleRebuildDown(table, tableChanges)
+    : renderReverseRebuild(table, tableChanges, newTable, oldTable);
+  return { up, down };
+}
+
+/**
+ * The down of a rebuild: the same recipe aimed at the PREVIOUS shape — its columns, types,
+ * nullability, defaults, CHECKs, FKs and indexes — copying every surviving row back under
+ * its old column names. What this cannot give back is named in a NOTE above it, with why.
+ */
+function renderReverseRebuild(
+  table: string,
+  tableChanges: Change[],
+  newTable: TableDescriptor,
+  oldTable: TableDescriptor,
+): string {
+  // Old column name → the column that holds its values now.
+  const renamedTo = new Map<string, string>();
+  for (const c of tableChanges) if (c.kind === "rename-column") renamedTo.set(c.from, c.to);
+  const renamedFrom = new Map([...renamedTo].map(([from, to]) => [to, from]));
+  const newByName = new Map(newTable.columns.map((c) => [c.name, c]));
+
+  const insertCols: string[] = [];
+  const selectCols: string[] = [];
+  const notes: string[] = [];
+  const restoredFrom = new Set<string>();
+  for (const oc of oldTable.columns) {
+    const now = newByName.get(renamedTo.get(oc.name) ?? oc.name);
+    if (now === undefined) {
+      const failsOnRows = !oc.nullable && oc.default === undefined && oc.identity === undefined;
+      notes.push(
+        `${quote(oc.name)} was dropped by this migration; its values cannot be restored and the ` +
+        `column comes back empty` +
+        (failsOnRows ? ` (NOT NULL with no default, so this down fails while ${quote(table)} has rows).` : "."),
+      );
+      continue;
+    }
+    restoredFrom.add(now.name);
+    insertCols.push(oc.name);
+    selectCols.push(now.name);
+    if (!oc.nullable && now.nullable) {
+      notes.push(
+        `${quote(oc.name)} becomes NOT NULL again: a NULL written to ${quote(now.name)} since this ` +
+        `migration makes the copy back fail.`,
+      );
+    }
+  }
+  for (const nc of newTable.columns) {
+    if (!restoredFrom.has(nc.name)) {
+      notes.push(`${quote(nc.name)} did not exist before this migration; the down drops it with the values written to it.`);
+    }
+  }
+  // A CHECK carries across the migration when its body is the same once the renamed
+  // columns are mapped back (the derived `<table>_<col>_chk` follows its column's rename).
+  const toOldNames = (expr: string): string => {
+    let out = expr;
+    for (const [to, from] of renamedFrom) out = out.split(quote(to)).join(quote(from));
+    return out;
+  };
+  const carriedChecks = new Set(newTable.checks.map((c) => toOldNames(c.expression)));
+  for (const chk of oldTable.checks) {
+    if (!carriedChecks.has(chk.expression)) {
+      notes.push(
+        `CHECK ${quote(chk.name)} is restored: a row written since this migration that violates ` +
+        `it makes the copy back fail.`,
+      );
+    }
+  }
+  const fkKey = (cols: readonly string[], fk: FkDescriptor): string =>
+    `${cols.join(",")}->${fk.refTable}(${fk.refColumns.join(",")})`;
+  const carriedFks = new Set(
+    newTable.foreignKeys.map((fk) => fkKey(fk.columns.map((c) => renamedFrom.get(c) ?? c), fk)),
+  );
+  for (const fk of oldTable.foreignKeys) {
+    if (!carriedFks.has(fkKey(fk.columns, fk))) {
+      notes.push(
+        `FOREIGN KEY (${fk.columns.map(quote).join(", ")}) to ${quote(fk.refTable)} is restored: a row ` +
+        `written since this migration that it rejects fails the foreign_key_check after the copy back.`,
+      );
+    }
+  }
+
+  const header = [`-- Reverses the rebuild of ${quote(table)}: restores its previous shape and copies the rows back.`];
+  for (const n of notes) header.push(`-- NOTE: ${n}`);
+  const recipe = renderRebuild(table, { ...oldTable, name: table }, OLD_TABLE_PREFIX, { insertCols, selectCols });
+  return `${header.join("\n")}\n${recipe}`;
+}
+
+/**
+ * Without the previous shape (no actual schema reached the emitter) the down cannot be a
+ * reverse rebuild. Say so, and name every change it leaves in place — never a generic
+ * "best-effort" that reads as if part of it were handled.
+ */
+function renderUnreversibleRebuildDown(table: string, tableChanges: Change[]): string {
+  return [
+    `-- WARNING: this down does NOT reverse the rebuild of ${quote(table)}: the table's`,
+    `-- pre-migration shape was not available when it was generated. Reverse by hand:`,
+    ...tableChanges.map((c) => `--   ${c.kind}${describeChangeTarget(c)}`),
   ].join("\n");
+}
 
-  return { up: lines.join("\n"), down };
+function describeChangeTarget(c: Change): string {
+  switch (c.kind) {
+    case "add-column":    return ` ${quote(c.column.name)}`;
+    case "rename-column": return ` ${quote(c.from)} to ${quote(c.to)}`;
+    case "drop-column":
+    case "change-column-type":
+    case "change-column-nullable":
+    case "change-column-default": return ` ${quote(c.column)}`;
+    case "add-check":     return ` ${quote(c.check.name)}`;
+    case "drop-check":    return ` ${quote(c.check)}`;
+    case "add-fk":        return ` ${quote(c.fk.name)}`;
+    case "drop-fk":       return ` ${quote(c.fk)}`;
+    case "add-index":     return ` ${quote(c.index.name)}`;
+    case "drop-index":    return ` ${quote(c.index)}`;
+    default:              return "";
+  }
 }
 
 /**
@@ -307,9 +453,27 @@ function renderDownNative(c: Change): string {
       // recreate-triggering kind like the others).
       throw new Error(`renderDownNative: ${c.kind} should have been handled by recreate bundler`);
     case "create-view":   return `DROP VIEW IF EXISTS ${quote(c.view.name)};`;
-    case "drop-view":     return `-- WARNING: down migration cannot restore the original view definition`;
-    case "replace-view":  return `-- WARNING: down migration cannot restore the original view definition`;
+    // The view as the DB held it (`restore`) is a valid restore payload: a view dropped
+    // around a table rebuild must come back on rollback, or the schema is not what it was.
+    case "drop-view":
+      return c.restore !== undefined && hasViewBody(c.restore)
+        ? renderRestoreView(c.restore)
+        : `-- WARNING: down migration cannot restore the original view definition`;
+    case "replace-view":
+      return c.restore !== undefined && hasViewBody(c.restore)
+        ? `DROP VIEW IF EXISTS ${quote(c.view.name)};\n${renderRestoreView(c.restore)}`
+        : `-- WARNING: down migration cannot restore the original view definition`;
   }
+}
+
+function hasViewBody(v: ViewDescriptor): boolean {
+  return v.sql !== undefined && v.sql.trim().length > 0;
+}
+
+/** SQLite introspection captures the whole `CREATE VIEW … AS …` statement; the expected side a bare body. */
+function renderRestoreView(v: ViewDescriptor): string {
+  const body = (v.sql ?? "").trim().replace(/;\s*$/, "");
+  return /^CREATE\s/i.test(body) ? `${body};` : renderCreateView(v);
 }
 
 export function renderCreateTable(t: TableDescriptor): string {

@@ -20,7 +20,10 @@ export interface EmitOptions {
    * fall back to recreate-and-copy. Unknown/absent version → assume modern.
    */
   actualMeta?: SnapshotMeta;
-  /** Used by the d1 cascade emitter to build the actual∪expected FK graph. */
+  /**
+   * The schema the migration starts from. SQLite/D1: a rebuilt table's down rebuilds it
+   * back to this shape; D1 also builds its actual-and-expected FK graph from it.
+   */
   actualSchema?: SchemaSnapshot;
 }
 
@@ -30,7 +33,7 @@ export function emit(changes: Change[], opts: EmitOptions): EmitResult {
 
   switch (opts.dialect) {
     case "postgres": return renderPostgres(changes);
-    case "sqlite":   return renderSqlite(changes, opts.expectedSchema, opts.actualMeta);
+    case "sqlite":   return renderSqlite(changes, opts.expectedSchema, opts.actualMeta, opts.actualSchema);
     case "d1":       return renderD1(changes, opts.expectedSchema, opts.actualMeta, opts.actualSchema);
   }
 }
