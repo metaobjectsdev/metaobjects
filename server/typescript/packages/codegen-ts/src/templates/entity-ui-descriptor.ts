@@ -39,6 +39,8 @@ import {
   VIEW_SUBTYPE_HIDDEN,
   VIEW_SUBTYPE_DROPDOWN,
   VIEW_SUBTYPE_RADIO,
+  FIELD_SUBTYPE_TIME,
+  FIELD_SUBTYPE_TIMESTAMP,
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
   VALIDATOR_SUBTYPE_REGEX,
@@ -173,13 +175,19 @@ export function restPath(entity: MetaObject): string {
  * unreachable and this mapping was always the answer. A consumer needing a different
  * `type=` edits the emitted `<Entity>.meta.ts`, whose hand edits the merge preserves.
  */
-function htmlTypeFromView(view: string): string | undefined {
+function htmlTypeFromView(view: string, fieldSubType: string): string | undefined {
   switch (view) {
     case VIEW_SUBTYPE_TEXT:
       return "text";
     case VIEW_SUBTYPE_NUMBER:
       return "number";
     case VIEW_SUBTYPE_DATE:
+      // The `date` VIEW is the default for all three calendar/clock subtypes, but only a
+      // calendar date fits `<input type="date">`: a timestamp needs a time as well and a
+      // time of day has no date at all. Same mapping as the nested sub-form's
+      // `htmlTypeForSubType` in codegen-ts-react, so the two form tiers agree.
+      if (fieldSubType === FIELD_SUBTYPE_TIMESTAMP) return "datetime-local";
+      if (fieldSubType === FIELD_SUBTYPE_TIME) return "time";
       return "date";
     case VIEW_SUBTYPE_PASSWORD:
       return "password";
@@ -284,7 +292,7 @@ export function buildUiFieldDescriptor(field: MetaField, root?: MetaRoot): UiFie
     name: field.name,
     label: labelFor(field, VIEW_CONTEXT_FORM),
     view,
-    htmlType: htmlTypeFromView(view),
+    htmlType: htmlTypeFromView(view, field.subType),
     rules: buildFieldRules(field),
     currency: currencyMeta === null
       ? undefined

@@ -95,6 +95,22 @@ describe("Hono mountCrudRoutes — list", () => {
     expect((r.body as unknown[]).length).toBe(3);
   });
 
+  test("a bare ?<filterableField>= parameter → 400 naming filter[<field>][eq]=", async () => {
+    const r = await get("/subscribers?firstName=Alice");
+    expect(r.status).toBe(400);
+    expect(r.body).toEqual({
+      error: "filter.bare_field",
+      field: "firstName",
+      expected: "filter[firstName][eq]=Alice",
+    });
+  });
+
+  test("other unknown parameters are still ignored (cache-busters are legitimate)", async () => {
+    const r = await get("/subscribers?_=1727350000&cb=x&id=1");
+    expect(r.status).toBe(200);
+    expect((r.body as unknown[]).length).toBe(3);
+  });
+
   test("filter by exact match", async () => {
     const r = await get("/subscribers?filter[firstName]=Alice");
     expect(r.status).toBe(200);

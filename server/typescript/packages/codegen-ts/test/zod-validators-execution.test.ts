@@ -38,7 +38,8 @@ import {
   IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
   FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET,
-  FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_VALUES,
+  FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP,
+  FIELD_ATTR_REQUIRED, FIELD_ATTR_DEFAULT, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_VALUES,
   FIELD_ATTR_LENIENT, FIELD_ATTR_STRING_FORMAT,
   STRING_FORMAT_EMAIL, STRING_FORMAT_HOSTNAME,
   VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
@@ -95,6 +96,12 @@ function validator(subType: string, name: string, attrs: Record<string, AttrValu
 async function insertSchemaOf(entity: MetaObject): Promise<GeneratedModule[string]> {
   const mod = await executeGenerated(renderZodValidators(entity).toString());
   return mod[`${entity.name}InsertSchema`];
+}
+
+/** Render `entity` and return its executed `<Name>UpdateSchema` (the PATCH body). */
+async function updateSchemaOf(entity: MetaObject): Promise<GeneratedModule[string]> {
+  const mod = await executeGenerated(renderZodValidators(entity).toString());
+  return mod[`${entity.name}UpdateSchema`];
 }
 
 const accepts = (schema: GeneratedModule[string], value: unknown) =>
@@ -349,5 +356,94 @@ describe("numeric and array bound chains", () => {
     // The bounds are on the array, so a long single element is fine — this is
     // the distinction a `.min(1).max(3)` text match cannot make.
     expect(accepts(schema, { tags: ["x".repeat(500)] })).toBe(true);
+  });
+});
+
+describe("field.date / field.time / field.timestamp — ISO shapes only, never free text", () => {
+  // 1.0.8 emitted a bare z.string() for all three, so `{"dueDate": "next tuesday"}` was a
+  // 201 and the garbage reached the column. Every value the RUNTIME itself writes or reads
+  // back must still pass, or the fix breaks round-trips: `new Date().toISOString()` (the
+  // @autoSet stamp), SQLite's CURRENT_TIMESTAMP text (`YYYY-MM-DD HH:MM:SS`), Postgres'
+  // string-mode output (`YYYY-MM-DD HH:MM:SS.ffffff+00`), and an `<input
+  // type="datetime-local">` value (`YYYY-MM-DDTHH:MM`, no seconds, no zone).
+  test("field.date accepts YYYY-MM-DD and rejects everything else", async () => {
+    const due = metaField(FIELD_SUBTYPE_DATE, "due");
+    const schema = await insertSchemaOf(entityWith("Task", due));
+    for (const ok of ["2026-09-26", "1999-12-31", "2024-02-29"]) {
+      expect(accepts(schema, { due: ok })).toBe(true);
+    }
+    for (const bad of ["next tuesday", "", "2026-9-26", "26-09-2026", "2026-13-01", "2026-09-32",
+      "2026-09-26T10:00:00Z", "2026/09/26", " 2026-09-26"]) {
+      expect(accepts(schema, { due: bad })).toBe(false);
+    }
+  });
+
+  test("field.time accepts HH:MM[:SS[.fff]][zone] and rejects free text", async () => {
+    const at = metaField(FIELD_SUBTYPE_TIME, "at");
+    const schema = await insertSchemaOf(entityWith("Alarm", at));
+    for (const ok of ["09:30", "09:30:15", "23:59:59.123456", "09:30:00+02", "09:30:00Z", "09:30:00-05:30"]) {
+      expect(accepts(schema, { at: ok })).toBe(true);
+    }
+    for (const bad of ["noon", "", "9:30", "24:00", "09:60", "09:30 PM", "2026-09-26"]) {
+      expect(accepts(schema, { at: bad })).toBe(false);
+    }
+  });
+
+  test("field.timestamp accepts every ISO/SQL spelling the runtime produces, rejects free text", async () => {
+    const seenAt = metaField(FIELD_SUBTYPE_TIMESTAMP, "seenAt");
+    const schema = await insertSchemaOf(entityWith("Visit", seenAt));
+    for (const ok of [
+      new Date().toISOString(),          // the @autoSet stamp / JSON.stringify(Date)
+      "2026-09-26T10:00:00Z",
+      "2026-09-26T10:00:00.123+02:00",
+      "2026-09-26 10:00:00",             // SQLite CURRENT_TIMESTAMP
+      "2026-09-26 10:00:00.123456+00",   // Postgres timestamptz string mode
+      "2026-09-26T10:00",                // <input type="datetime-local">
+      "2026-09-26",                      // a date-only ISO instant (midnight)
+    ]) {
+      expect(accepts(schema, { seenAt: ok })).toBe(true);
+    }
+    for (const bad of ["next tuesday", "", "yesterday at 5", "2026-09-26T25:00:00Z", "10:00:00",
+      "Sat, 26 Sep 2026 10:00:00 GMT"]) {
+      expect(accepts(schema, { seenAt: bad })).toBe(false);
+    }
+  });
+
+  test("the PATCH shape carries the same check", async () => {
+    const due = metaField(FIELD_SUBTYPE_DATE, "due");
+    const schema = await updateSchemaOf(entityWith("Task", due));
+    expect(accepts(schema, { due: "2026-09-26" })).toBe(true);
+    expect(accepts(schema, { due: "next tuesday" })).toBe(false);
+    // Non-required: an explicit null still clears it (FR-035).
+    expect(accepts(schema, { due: null })).toBe(true);
+  });
+});
+
+describe("PATCH never nulls a @required field (FR-035)", () => {
+  test("a @required enum — with or without a @default — rejects an explicit null on PATCH", async () => {
+    const priority = metaField(FIELD_SUBTYPE_ENUM, "priority");
+    priority.setAttr(FIELD_ATTR_REQUIRED, true);
+    priority.setAttr(FIELD_ATTR_VALUES, ["low", "high"]);
+    const status = metaField(FIELD_SUBTYPE_ENUM, "status");
+    status.setAttr(FIELD_ATTR_REQUIRED, true);
+    status.setAttr(FIELD_ATTR_VALUES, ["open", "done"]);
+    status.setAttr(FIELD_ATTR_DEFAULT, "open");
+    const title = metaField(FIELD_SUBTYPE_STRING, "title");
+    title.setAttr(FIELD_ATTR_REQUIRED, true);
+    const schema = await updateSchemaOf(entityWith("Ticket", priority, status, title));
+
+    expect(accepts(schema, {})).toBe(true);
+    expect(accepts(schema, { priority: "high", status: "done" })).toBe(true);
+    expect(accepts(schema, { priority: null })).toBe(false);
+    expect(accepts(schema, { status: null })).toBe(false);
+    expect(accepts(schema, { title: null })).toBe(false);
+  });
+
+  test("a NON-required enum with a @default stays clearable — the model does not mark it required", async () => {
+    const priority = metaField(FIELD_SUBTYPE_ENUM, "priority");
+    priority.setAttr(FIELD_ATTR_VALUES, ["low", "high"]);
+    priority.setAttr(FIELD_ATTR_DEFAULT, "low");
+    const schema = await updateSchemaOf(entityWith("Ticket", priority));
+    expect(accepts(schema, { priority: null })).toBe(true);
   });
 });

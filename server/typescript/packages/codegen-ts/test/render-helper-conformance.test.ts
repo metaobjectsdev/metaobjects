@@ -213,8 +213,8 @@ describe("render-helper conformance — shared cross-port corpus", () => {
     // Neither collision member is emitted under the bare, collision-losing name.
     expect(byPath.has("Note.ts")).toBe(false);
     // Digest's own fields point at the qualified names; the helper imports Digest's OWN module.
-    expect(byPath.get("Digest.ts")).toContain("fromAlpha?: AcmeAlphaNote;");
-    expect(byPath.get("Digest.ts")).toContain("fromBeta?: AcmeBetaNote;");
+    expect(byPath.get("Digest.ts")).toContain("fromAlpha?: AcmeAlphaNote | undefined;");
+    expect(byPath.get("Digest.ts")).toContain("fromBeta?: AcmeBetaNote | undefined;");
     expect(src).toContain(`import type { Digest } from "./Digest.js";`);
 
     const dir = mkdtempSync(join(import.meta.dir, "rh-conf-xpkg-"));

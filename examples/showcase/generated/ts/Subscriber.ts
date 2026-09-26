@@ -55,7 +55,12 @@ export const SubscriberInsertPreservingSchema = z.object({
   email: z.string().min(1).max(320),
   name: z.string().optional(),
   status: z.enum(["active", "paused", "cancelled"]),
-  createdAt: z.string().optional(),
+  createdAt: z
+    .string()
+    .regex(
+      /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+    )
+    .optional(),
 });
 /**
  * Metadata constants for Subscriber.
@@ -106,7 +111,7 @@ export const Subscriber = {
     name: "createdAt",
     label: "Created At",
     view: "date",
-    htmlType: "date",
+    htmlType: "datetime-local",
   },
 } as const;
 import type { FilterAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";

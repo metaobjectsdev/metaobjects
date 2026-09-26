@@ -5,8 +5,8 @@ import { z } from "zod";
 
 export interface InstructorProfile {
   displayName: string;
-  bio?: string;
-  credentialsSummary?: string;
+  bio?: string | undefined;
+  credentialsSummary?: string | undefined;
 }
 export const InstructorProfileInsertSchema = z.object({
   displayName: z.string().min(1).max(120),

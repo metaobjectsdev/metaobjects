@@ -37,7 +37,37 @@ export class FilterParseError extends Error {
 const DEFAULT_MAX_NESTING = 5;
 const DEFAULT_MAX_IN_LIST = 100;
 
+/** Top-level list-query parameters this parser (or the mount around it) reads. A
+ *  filterable field that happens to share one of these names is addressed only through
+ *  `filter[<name>]`, so the bare-field check below never claims them. */
+const RESERVED_LIST_PARAMS: ReadonlySet<string> = new Set([
+  "filter", "sort", "limit", "offset", "search", "withCount",
+]);
+
+/**
+ * `?priority=low` on a list whose allowlist has `priority` is almost always a caller who
+ * meant `?filter[priority][eq]=low` — and silently ignoring it returns EVERY row, which
+ * reads as "the filter matched everything". Refuse it, naming the syntax that works.
+ *
+ * Only a bare name that IS a filterable field is refused. Any other unknown parameter —
+ * a cache-buster, a tracking tag, a param some proxy appends — is left alone, as before.
+ * TS-only (the other ports ignore unknown parameters): see docs/features/api-contract.md,
+ * "TS-only filter extensions".
+ */
+function rejectBareFieldParams(query: Record<string, unknown>, allowlist: FilterAllowlist): void {
+  for (const [key, value] of Object.entries(query)) {
+    if (RESERVED_LIST_PARAMS.has(key) || !Object.hasOwn(allowlist, key)) continue;
+    const shown = typeof value === "string" ? value : "<value>";
+    throw new FilterParseError(
+      "filter.bare_field",
+      `"${key}" is a filterable field, but a bare ?${key}= parameter is not a filter. Use filter[${key}][eq]=${shown}.`,
+      { field: key, expected: `filter[${key}][eq]=${shown}` },
+    );
+  }
+}
+
 export function parseFilterParams(opts: ParseFilterOpts): ParseFilterResult {
+  rejectBareFieldParams(opts.query, opts.allowlist);
   const result: ParseFilterResult = {};
 
   const limit = opts.query.limit;

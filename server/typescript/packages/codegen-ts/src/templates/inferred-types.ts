@@ -370,10 +370,17 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
 /**
  * Emit a structural `interface <Name> { ... }` for a value-only object.
  *
- * Optional fields use `name?: T` (matching the Zod `.optional()` inference
- * `T | undefined`) instead of `name?: T | null`. Value objects never round-
- * trip through Drizzle nullable columns, so the null-bridge is unnecessary
- * here — and forces consumers into a residual cast at the call site.
+ * Optional fields use `name?: T | undefined` (exactly the Zod `.optional()`
+ * inference) instead of `name?: T | null`. Value objects never round-trip
+ * through Drizzle nullable columns, so the null-bridge is unnecessary here —
+ * and forces consumers into a residual cast at the call site.
+ *
+ * The explicit `| undefined` is load-bearing under `exactOptionalPropertyTypes`
+ * (on in a fresh `tsc --init`): there a bare `name?: T` refuses the
+ * `name?: T | undefined` a Zod `.optional()` output carries, so the generated
+ * response parser (which returns this interface from `schema.parse(...)`) and a
+ * jsonb column typed `$type<ThisInterface>()` fail TS2375. Without the option the
+ * two spellings are the same type, so nothing else changes.
  */
 export function renderValueObjectInterface(entity: MetaObject, ctx?: RenderContext): Code {
   const docs = renderDocsFor(entity);
@@ -387,13 +394,14 @@ export function renderValueObjectInterface(entity: MetaObject, ctx?: RenderConte
   for (const field of entity.fields()) {
     const required = field.attr(FIELD_ATTR_REQUIRED) === true;
     const optional = required ? "" : "?";
+    const undefinedArm = required ? "" : " | undefined";
     const tsType = valueObjectFieldType(entity, field, ctx);
     // A TPH subtype's read schema accepts `null` for a column that is NULL on a
     // sibling subtype's row; the declared type has to admit the same values, or
     // `parse<Base>()` returns something this interface rejects. One predicate
     // answers it for both emitters (ADR-style single source, see its docblock).
     const nullable = isTphReadNullTolerant(entity, field) ? " | null" : "";
-    lines.push(code`  ${field.name}${optional}: ${tsType}${nullable};`);
+    lines.push(code`  ${field.name}${optional}: ${tsType}${nullable}${undefinedArm};`);
   }
 
   // joinCode with "\n" interpolates each Code segment on its own line and

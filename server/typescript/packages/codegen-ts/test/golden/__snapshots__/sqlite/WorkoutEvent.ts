@@ -44,14 +44,24 @@ export type WorkoutEventUpdate = Partial<WorkoutEventInsert>;
 export const WorkoutEventInsertSchema = z.object({
   subscriberId: z.number().int(),
   workoutId: z.number().int(),
-  completedAt: z.string().optional(),
+  completedAt: z
+    .string()
+    .regex(
+      /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+    )
+    .optional(),
   durationMinutes: z.number().int().optional(),
 });
 
 export const WorkoutEventUpdateSchema = z.object({
   subscriberId: z.number().int().optional(),
   workoutId: z.number().int().optional(),
-  completedAt: z.string().optional(),
+  completedAt: z
+    .string()
+    .regex(
+      /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+    )
+    .optional(),
   durationMinutes: z.number().int().optional().nullable(),
 });
 
@@ -103,7 +113,7 @@ export const WorkoutEvent = {
     name: "completedAt",
     label: "Completed At",
     view: "date",
-    htmlType: "date",
+    htmlType: "datetime-local",
     rules: { required: "Completed At is required" },
   },
   durationMinutes: {

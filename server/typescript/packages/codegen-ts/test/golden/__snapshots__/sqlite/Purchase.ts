@@ -45,14 +45,24 @@ export const PurchaseInsertSchema = z.object({
   subscriberId: z.number().int(),
   programId: z.number().int(),
   amountCents: z.number().int(),
-  purchasedAt: z.string().optional(),
+  purchasedAt: z
+    .string()
+    .regex(
+      /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+    )
+    .optional(),
 });
 
 export const PurchaseUpdateSchema = z.object({
   subscriberId: z.number().int().optional(),
   programId: z.number().int().optional(),
   amountCents: z.number().int().optional(),
-  purchasedAt: z.string().optional(),
+  purchasedAt: z
+    .string()
+    .regex(
+      /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+    )
+    .optional(),
 });
 
 /** Typed patch shape for Purchase: every settable field, optional (FR-035 PATCH). A
@@ -110,7 +120,7 @@ export const Purchase = {
     name: "purchasedAt",
     label: "Purchased At",
     view: "date",
-    htmlType: "date",
+    htmlType: "datetime-local",
     rules: { required: "Purchased At is required" },
   },
 } as const;

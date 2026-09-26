@@ -35,7 +35,12 @@ export const ProgramInsertSchema = z.object({
   description: z.string().optional(),
   priceCents: z.number().int(),
   isPublished: z.boolean().optional(),
-  createdAt: z.string().optional(),
+  createdAt: z
+    .string()
+    .regex(
+      /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+    )
+    .optional(),
 });
 
 export const ProgramUpdateSchema = z.object({
@@ -44,7 +49,12 @@ export const ProgramUpdateSchema = z.object({
   description: z.string().optional().nullable(),
   priceCents: z.number().int().optional(),
   isPublished: z.boolean().optional(),
-  createdAt: z.string().optional(),
+  createdAt: z
+    .string()
+    .regex(
+      /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+    )
+    .optional(),
 });
 
 /** Typed patch shape for Program: every settable field, optional (FR-035 PATCH). A
@@ -121,7 +131,7 @@ export const Program = {
     name: "createdAt",
     label: "Created At",
     view: "date",
-    htmlType: "date",
+    htmlType: "datetime-local",
     rules: { required: "Created At is required" },
   },
 } as const;
