@@ -179,7 +179,16 @@ class JsonForgivingReader:
 
     def _read_bare_scalar(self) -> object | None:
         start = self._i
-        while self._i < len(self._s) and self._s[self._i] not in ",}]":
+        # A comment after an unquoted value (`7 // good`) ends it; `http://x` does not.
+        while (
+            self._i < len(self._s)
+            and self._s[self._i] not in ",}]"
+            and not (
+                self._i > start
+                and self._s[self._i - 1].isspace()
+                and comment_opens_at(self._s, self._i)
+            )
+        ):
             self._i += 1
         result = self._s[start : self._i].strip()
         if not result:
@@ -189,8 +198,35 @@ class JsonForgivingReader:
         return result
 
     def _ws(self) -> None:
-        while self._i < len(self._s) and self._s[self._i].isspace():
-            self._i += 1
+        """Skip whitespace AND ``//`` / ``/* */`` comments. Only ever called between tokens,
+        so a comment marker inside a string literal is never reached here."""
+        while True:
+            while self._i < len(self._s) and self._s[self._i].isspace():
+                self._i += 1
+            end = comment_end(self._s, self._i)
+            if end < 0:
+                return
+            self._i = end
+
+
+def comment_opens_at(s: str, i: int) -> bool:
+    """True when a ``//`` or ``/*`` comment opens at ``i``."""
+    return i + 1 < len(s) and s[i] == "/" and s[i + 1] in "/*"
+
+
+def comment_end(s: str, i: int) -> int:
+    """Models write JSONC: ``{"score": 7, // good`` drops every field after it in a strict
+    reader. When a comment opens at ``i``, the index just past it (a line comment runs to the
+    end of its line, a block comment to its ``*/`` or the end of the text); otherwise -1."""
+    if not comment_opens_at(s, i):
+        return -1
+    if s[i + 1] == "/":
+        j = i + 2
+        while j < len(s) and s[j] not in "\n\r":
+            j += 1
+        return j
+    close = s.find("*/", i + 2)
+    return len(s) if close < 0 else close + 2
 
 
 def _unescape(c: str) -> str:

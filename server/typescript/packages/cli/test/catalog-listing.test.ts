@@ -12,8 +12,9 @@ import { join } from "node:path";
 import { loadMemory } from "@metaobjectsdev/sdk";
 import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import { genCommand } from "../src/commands/gen.js";
+import { ejectGenerator } from "../src/commands/eject.js";
 import {
-  buildCatalogListing, wiredGeneratorNames, renderCatalogText,
+  buildCatalogListing, wiredGeneratorNames, ownedGeneratorNames, renderCatalogText,
   type GeneratorCatalogRow, type LibraryCatalogRow,
 } from "../src/lib/catalog-listing.js";
 import { composeCatalog } from "../src/lib/catalog.js";
@@ -288,6 +289,53 @@ describe("--probe — what would this emit for MY model", () => {
   test("`wired` reflects the config's own generator list", async () => {
     const rows = await probeRows();
     expect(rows.find((r) => r.name === "entity")!.project!.wired).toBe(false);
+  });
+});
+
+describe("--list marks wired and owned correctly for owned copies", () => {
+  // An owned copy wired from `./codegen/generators/entity` is a constructed generator that
+  // calls itself by its IMPLEMENTATION name (`entity-file`), not the catalog key. Only the
+  // generators whose two names coincide (`barrel`, `names`) used to read as WIRED.
+  test("a generator wired by its implementation name is WIRED under its catalog name", () => {
+    const catalog = composeCatalog();
+    const names = ["entity", "queries", "routes", "barrel", "names"];
+    const config: MetaobjectsGenConfig = { ...baseConfig, generators: names.map((n) => catalog[n]!.factory()) };
+    expect(config.generators!.map((g) => (typeof g === "string" ? g : g.name))).toContain("entity-file");
+    const wired = wiredGeneratorNames(config);
+    for (const n of names) expect(wired.has(n)).toBe(true);
+    expect(wired.has("routes-hono")).toBe(false);
+  });
+
+  test("an owned adapter copy is attributed only to the generator that was ejected", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "catalog-owned-runtime-"));
+    try {
+      writeFileSync(join(tmp, "package.json"), PROJECT_PACKAGE_JSON);
+      await ejectGenerator({ cwd: tmp, name: "routes" });
+      const config: MetaobjectsGenConfig = { ...baseConfig, generators: [composeCatalog()["routes"]!.factory()] };
+      const rows = (await buildCatalogListing({
+        project: {
+          projectRoot: tmp,
+          config,
+          wiredNames: wiredGeneratorNames(config),
+          ownedNames: ownedGeneratorNames(tmp),
+          declaredDeps: undefined,
+        },
+      })).filter((r): r is GeneratorCatalogRow => r.kind === "generator");
+      const routes = rows.find((r) => r.name === "routes")!;
+      const hono = rows.find((r) => r.name === "routes-hono")!;
+      expect(routes.project?.wired).toBe(true);
+      expect(routes.source.owned).toBe(true);
+      expect(routes.source.runtimeCopy?.length ?? 0).toBeGreaterThan(0);
+      expect(hono.source.owned).toBe(false);
+      expect(hono.source.runtimeCopy).toBeUndefined();
+      const text = renderCatalogText(rows, false);
+      const honoLine = text.split("\n").find((l) => l.trimStart().startsWith("routes-hono "))!;
+      expect(honoLine).not.toContain("owned");
+      const routesLine = text.split("\n").find((l) => l.trimStart().startsWith("routes "))!;
+      expect(routesLine).toContain("WIRED");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
 

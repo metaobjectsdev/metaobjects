@@ -76,6 +76,13 @@ public static class Locate
                 else if (c == '"') inStr = false;
                 continue;
             }
+            // Comment-aware: a brace or quote inside `// good } really` must not close the
+            // object early. Only after whitespace or a separator, so `http://x` is no comment.
+            if (i > open && (char.IsWhiteSpace(s[i - 1]) || s[i - 1] is ',' or '{' or '['))
+            {
+                int end = JsonForgivingReader.CommentEnd(s, i);
+                if (end >= 0) { i = end - 1; continue; }
+            }
             if (c == '"') inStr = true;
             else if (c == '{') depth++;
             else if (c == '}') { depth--; if (depth == 0) return i; }

@@ -63,6 +63,8 @@ function blockedReasonFor(
     case "drop-check":
       // Carried through a rename-column: the same rule over the same data — nothing is lost.
       if (c.carriedByRename === true) return null;
+      // Re-spelled for older SQLite: the same rule comes straight back.
+      if (c.respelled === true) return null;
       return allow.dropCheck ? null : "destructive: drop-check not allowed (pass allow.dropCheck)";
     case "drop-view": {
       // A drop that would destroy relations we do NOT manage is gated INDEPENDENTLY of

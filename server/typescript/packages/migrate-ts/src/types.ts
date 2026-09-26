@@ -291,6 +291,8 @@ export type Change =
       kind: "add-check"; table: string; schema?: string; check: CheckDescriptor;
       /** Carried through a `rename-column` — see `drop-check`'s `carriedByRename`. */
       carriedByRename?: true;
+      /** Re-spelled for older SQLite — see `drop-check`'s `respelled`. */
+      respelled?: true;
       status: ChangeStatus;
     }
   | {
@@ -303,6 +305,12 @@ export type Change =
        * rename-column's `constraintRenames` instead.
        */
       carriedByRename?: true;
+      /**
+       * One half of a CHECK re-spelled for older SQLite (see `checkExprRespelledNullSafe`):
+       * the same rule over the same data, so the drop is not gated and the add raises no
+       * data hazard. sqlite/d1 only.
+       */
+      respelled?: true;
       status: ChangeStatus;
     }
   // Declared for v0.3, never produced in v0.1:

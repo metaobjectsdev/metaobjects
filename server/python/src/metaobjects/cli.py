@@ -57,7 +57,7 @@ from pathlib import Path
 from typing import Callable
 
 from metaobjects import MetaDataLoader
-from metaobjects.errors import ParseError
+from metaobjects.errors import ErrorCode, MetaError, ParseError
 from metaobjects.config.dependencies import (
     Collection,
     imported_from,
@@ -276,8 +276,13 @@ def _load_root(
     strict: bool = False,
     providers: list[object] | None = None,
     libraries: list[str] | None = None,
+    unknown_attr_out: list[str] | None = None,
 ) -> tuple[MetaData | None, list[str]]:
     """Load metadata; return ``(root, error_messages)``. ``root`` is None on error.
+
+    ``unknown_attr_out`` — when given on a LENIENT load, a second strict load of the
+    same metadata is run and its ``ERR_UNKNOWN_ATTR`` findings are appended, formatted,
+    so ``gen`` can warn about what ``verify`` would reject instead of staying silent.
 
     ``strict`` (ADR-0023, #96) — when True, an undeclared own ``@attr`` →
     ``ERR_UNKNOWN_ATTR``. Defaults False so ``gen`` / ``docs`` keep the legacy
@@ -312,20 +317,24 @@ def _load_root(
         return None, [f"{exc.code}: {exc}"]
     all_libraries = _merge_libraries(neutral.libraries if neutral is not None else None, libraries)
 
-    try:
+    def load(strict_load: bool) -> LoadResult:
         if providers:
             from metaobjects.core_types import core_providers
 
-            result = MetaDataLoader.from_directory(
+            return MetaDataLoader.from_directory(
                 metadata_dir,
                 providers=[*core_providers, *providers],
-                strict=strict,
+                strict=strict_load,
                 libraries=all_libraries,
             )
-        else:
-            result = MetaDataLoader.from_directory(
-                metadata_dir, strict=strict, libraries=all_libraries
-            )
+        return MetaDataLoader.from_directory(
+            metadata_dir, strict=strict_load, libraries=all_libraries
+        )
+
+    try:
+        result = load(strict)
+        if unknown_attr_out is not None and not strict and not result.errors:
+            unknown_attr_out.extend(_unknown_attr_findings(load(True)))
     except OSError as e:
         # `DirectorySource.expand()` walks via `iterdir()` (not `rglob()`, so it
         # can follow a symlinked subdirectory — the I1 fix) and raises a plain
@@ -416,6 +425,7 @@ def _load_root_from_collection(
     strict: bool = False,
     providers: list[object] | None = None,
     libraries: list[str] | None = None,
+    unknown_attr_out: list[str] | None = None,
 ) -> tuple[MetaData | None, list[str]]:
     """Load a resolved `Collection` — the source-resolution ladder's
     ``.metaobjects/config.json`` rung (:func:`resolve_metadata_location`), which
@@ -432,7 +442,56 @@ def _load_root_from_collection(
     if result.errors:
         msgs = [f"{e.code}: {e.message}" for e in result.errors]
         return None, msgs
+    if unknown_attr_out is not None and not strict:
+        # See `_load_root`: what a strict load (`verify`) would reject, for `gen` to warn.
+        try:
+            strict_result = _load_collection_result(
+                collection, strict=True, providers=providers, libraries=libraries
+            )
+        except ParseError:
+            strict_result = None
+        if strict_result is not None:
+            unknown_attr_out.extend(_unknown_attr_findings(strict_result))
     return result.root, []
+
+
+#: Trailing advice after ``gen``'s unknown-attribute warnings. ``gen`` has no strict
+#: flag of its own; ``verify`` is the strict door (ADR-0023), so that is what it names.
+UNKNOWN_ATTR_GEN_ADVICE = (
+    "metaobjects gen loads leniently and generated anyway, but `metaobjects verify` "
+    "rejects this metadata (ADR-0023): fix or remove the attribute - a typo'd one "
+    "(`isAbstrakt`, `requird`) silently changes what is generated."
+)
+
+
+def _format_unknown_attr(err: MetaError) -> str:
+    """One ``gen`` warning: code + message (naming attribute and node), then the file."""
+    env = getattr(err, "envelope", None)
+    files = [f for f in (getattr(env, "files", None) or ()) if f]
+    json_path = getattr(env, "json_path", None)
+    where = " ".join(
+        p for p in (", ".join(files) if files else None, f"at {json_path}" if json_path else None) if p
+    )
+    head = f"{err.code.value if hasattr(err.code, 'value') else err.code}: {err.message}"
+    return f"{head}\n  in {where}" if where else head
+
+
+def _unknown_attr_findings(result: LoadResult) -> list[str]:
+    """The ERR_UNKNOWN_ATTR findings of a STRICT load, formatted for ``gen``."""
+    return [
+        _format_unknown_attr(e) for e in result.errors
+        if (e.code.value if hasattr(e.code, "value") else e.code) == ErrorCode.ERR_UNKNOWN_ATTR.value
+    ]
+
+
+def _print_unknown_attr_warnings(findings: list[str]) -> None:
+    """``gen`` loads leniently; an unknown attribute ``verify`` would reject is named here
+    as a warning (attribute, node, file). Advisory only: the exit code is unchanged."""
+    if not findings:
+        return
+    for f in findings:
+        print(f"warning: {f}", file=sys.stderr)
+    print(f"warning: {UNKNOWN_ATTR_GEN_ADVICE}", file=sys.stderr)
 
 
 def _strict_load_hint() -> str:
@@ -1099,12 +1158,16 @@ def _cmd_gen(args: argparse.Namespace) -> int:
         return 1
     # Load the metadata ONCE; both the default suite and the (optional)
     # --template-spec pass run against this single loaded root.
-    root, load_errors = _load_root(args.metadata_dir, providers=providers)
+    unknown_attrs: list[str] = []
+    root, load_errors = _load_root(
+        args.metadata_dir, providers=providers, unknown_attr_out=unknown_attrs
+    )
     if root is None:
         print("error: failed to load metadata:", file=sys.stderr)
         for msg in load_errors:
             print(f"  {msg}", file=sys.stderr)
         return 1
+    _print_unknown_attr_warnings(unknown_attrs)
     gen_state = gen_state_dir_for(args.metadata_dir)
     # Same anchor the manifest itself uses. Both passes below key against it, so a
     # `--template-spec` artifact and a default-suite artifact land in one key space.
@@ -1368,14 +1431,17 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
     if collection is None:
         return 1
 
+    unknown_attrs: list[str] = []
     root, load_errors = _load_root_from_collection(
-        collection, providers=providers, libraries=config.libraries
+        collection, providers=providers, libraries=config.libraries,
+        unknown_attr_out=unknown_attrs,
     )
     if root is None:
         print("error: failed to load metadata:", file=sys.stderr)
         for msg in load_errors:
             print(f"  {msg}", file=sys.stderr)
         return 1
+    _print_unknown_attr_warnings(unknown_attrs)
 
     for t in targets:
         imported_refusal = _refuse_imported_entities(t.entities, root, collection)

@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import re
 
+from metaobjects.render.extract.json_forgiving_reader import comment_end
+
 
 def json(text: str | None) -> str | None:
     """First balanced ``{...}``; if none closes, first ``{`` to end; ``None`` if no ``{``."""
@@ -46,11 +48,16 @@ def json_candidates(text: str | None) -> list[str]:
 
 
 def _scan_balanced(s: str, open_idx: int) -> int:
-    """Return index of the matching ``}``, or -1 if unterminated. String-aware."""
+    """Return index of the matching ``}``, or -1 if unterminated. String-aware, and
+    comment-aware: a ``//`` / ``/* */`` comment opening after whitespace or a separator is
+    skipped, so a brace or quote inside it cannot close the object early (``http://x`` is
+    not a comment)."""
     depth = 0
     in_str = False
     esc = False
-    for i in range(open_idx, len(s)):
+    i = open_idx - 1
+    while i + 1 < len(s):
+        i += 1
         c = s[i]
         if in_str:
             if esc:
@@ -60,6 +67,11 @@ def _scan_balanced(s: str, open_idx: int) -> int:
             elif c == '"':
                 in_str = False
             continue
+        if i > open_idx and (s[i - 1].isspace() or s[i - 1] in ",{["):
+            end = comment_end(s, i)
+            if end >= 0:
+                i = end - 1
+                continue
         if c == '"':
             in_str = True
         elif c == "{":

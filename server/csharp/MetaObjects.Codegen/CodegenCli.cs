@@ -14,6 +14,7 @@
 using System.Text.Json;
 using MetaObjects.Codegen.TemplateCodegen;
 using MetaObjects.Config;
+using MetaObjects.Source;
 using MetaObjects.Loader;
 using MetaObjects.Render;
 
@@ -102,6 +103,56 @@ public static class CodegenCli
         Console.Error.WriteLine(generatorFailed
             ? $"{command}: FAILED (a generator threw — see the error above)"
             : $"{command}: FAILED (metadata did not load cleanly)");
+    }
+
+    /// <summary>Trailing advice after <c>gen</c>'s unknown-attribute warnings. <c>gen</c> has
+    /// no strict flag of its own; <c>verify</c> is the strict door (ADR-0023).</summary>
+    public const string UnknownAttrGenAdvice =
+        "gen loads leniently and generated anyway, but `dotnet meta verify` rejects this metadata " +
+        "(ADR-0023): fix or remove the attribute - a typo'd one (`isAbstrakt`, `requird`) silently " +
+        "changes what is generated.";
+
+    /// <summary>
+    /// The ADR-0023 unknown-attribute findings a STRICT load of <paramref name="meta"/>
+    /// raises, formatted for a lenient <c>gen</c> to print as warnings: code + message
+    /// (naming the attribute and the node), then the file and JSON path. <c>gen</c> used to
+    /// accept a typo'd attribute without a word while <c>verify</c> rejected the same file.
+    /// Advisory only; empty for a clean model.
+    /// </summary>
+    public static IReadOnlyList<string> UnknownAttrWarnings(ResolvedMetadata meta)
+    {
+        LoadResult strictLoad;
+        try { strictLoad = meta.Load(strict: true); }
+        catch (Exception ex) when (ex is MetaModelException or IOException) { return []; }
+        return [.. strictLoad.Errors
+            .Where(e => e.Code == ErrorCode.ERR_UNKNOWN_ATTR)
+            .Select(FormatUnknownAttr)];
+    }
+
+    /// <summary>Print <see cref="UnknownAttrWarnings"/> to stderr, then the advice once.</summary>
+    public static void WarnUnknownAttrs(ResolvedMetadata meta)
+    {
+        var warnings = UnknownAttrWarnings(meta);
+        if (warnings.Count == 0) return;
+        foreach (var w in warnings) Console.Error.WriteLine($"warning: {w}");
+        Console.Error.WriteLine($"warning: {UnknownAttrGenAdvice}");
+    }
+
+    private static string FormatUnknownAttr(MetaError e)
+    {
+        var (files, jsonPath) = e.Envelope switch
+        {
+            JsonSource j => (j.Files, j.JsonPath),
+            YamlSource y => (y.Files, y.JsonPath),
+            _ => (e.Source is { Length: > 0 } src ? (IReadOnlyList<string>)[src] : [], e.Path),
+        };
+        var where = string.Join(" ", new[]
+        {
+            files.Count > 0 ? string.Join(", ", files) : null,
+            string.IsNullOrEmpty(jsonPath) ? null : $"at {jsonPath}",
+        }.Where(p => p is not null));
+        var head = $"{e.Code}: {e.Message}";
+        return where.Length > 0 ? $"{head}\n  in {where}" : head;
     }
 
     public sealed record GenOutcome(IReadOnlyList<string> LoadErrors, CodegenRunner.RunResult? Result)
@@ -363,6 +414,7 @@ public static class CodegenCli
             return 1;
         }
 
+        WarnUnknownAttrs(meta);
         var outcome = RunGen(meta.Load(), a.OutDir, a.Namespace, a.EmitAbstractShapes, suite, projectRoot, columnNaming, a.Baseline);
         if (!outcome.Ok)
         {

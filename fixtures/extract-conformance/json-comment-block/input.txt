@@ -1,0 +1,1 @@
+{ /* the verdict */ "score": 7 /* out of 10 */, "recommendation": /* after much thought */ "accept" }

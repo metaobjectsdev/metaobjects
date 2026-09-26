@@ -75,8 +75,24 @@ describe("e2e: entity-scoped cross-field validators", () => {
     const t = buildExpectedSchema(await load(ENTITY), { dialect: "sqlite" }).tables[0]!;
     const c = checksByName(t);
     expect(c.get("subscriptions_used_at_presentiff_chk"))
-      .toBe(`("used_at" IS NOT NULL) = ("is_used" IS NOT DISTINCT FROM 1)`);
+      .toBe(`("used_at" IS NOT NULL) = ("is_used" IS 1)`);
   });
+
+  // SQLite parses `IS [NOT] DISTINCT FROM` only from 3.39, and an unparseable CHECK makes
+  // an older engine refuse to open the WHOLE database. sqlite/d1 spell it `IS NOT` / `IS`.
+  for (const dialect of ["sqlite", "d1"] as const) {
+    test(`${dialect}: null-safe (in)equality uses SQLite's own IS NOT / IS, never DISTINCT FROM`, async () => {
+      const t = buildExpectedSchema(await load(ENTITY), { dialect }).tables[0]!;
+      const c = checksByName(t);
+      expect(c.get("subscriptions_resolved_at_reqwhen_chk"))
+        .toBe(`("status" IS NOT 'RESOLVED') OR ("resolved_at" IS NOT NULL)`);
+      expect(c.get("subscriptions_used_at_presentiff_chk"))
+        .toBe(`("used_at" IS NOT NULL) = ("is_used" IS 1)`);
+      const r = await diff({ expected: buildExpectedSchema(await load(ENTITY), { dialect }), actual: { tables: [], views: [] }, dialect });
+      const { up } = emit(r.changes, { dialect });
+      expect(up).not.toMatch(/DISTINCT\s+FROM/i);
+    });
+  }
 
   test("a missing referenced field skips the check rather than emitting bad SQL", async () => {
     const bad = JSON.stringify({

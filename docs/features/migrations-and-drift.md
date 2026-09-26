@@ -332,6 +332,31 @@ meta migrate --db postgresql://... --slug initial   # emit migration SQL
 meta migrate --db postgresql://... --apply          # apply pending migrations
 ```
 
+## SQLite version floor
+
+SQLite parses every `CREATE TABLE` / `CREATE VIEW` in `sqlite_master` when a database is
+OPENED, so one statement an engine cannot parse makes the whole file unopenable there
+(`malformed database schema (<name>) - near "…"`) — not just that table. What `meta migrate`
+emits for `sqlite` / `d1` is therefore held to a floor:
+
+| Construct | Needs | Emitted when |
+|---|---|---|
+| `ALTER TABLE … DROP COLUMN` | 3.35 | a column is dropped (`--allow drop-column`) |
+| `ALTER TABLE … RENAME COLUMN` | 3.25 | a declared column rename |
+| aggregate `FILTER (WHERE …)`, `NULLS LAST` | 3.30 | a projection view with `origin.*` scoping / ordering |
+| in-aggregate `ORDER BY` (`json_group_array(x ORDER BY …)`) | **3.44** | a projection view using `origin.collect` |
+
+**The floor for tables and their constraints is SQLite 3.35** (Ubuntu 22.04 ships 3.37.2;
+D1's baseline is 3.44). A database whose views use `origin.collect` needs **3.44** to open.
+
+Null-safe (in)equality in a derived CHECK (`validator.requiredWhen`, `validator.presentIff`)
+is spelled with SQLite's own `IS NOT` / `IS`, which every version parses. Up to 1.0.8 it was
+the standard `IS [NOT] DISTINCT FROM`, which needs SQLite 3.39: such a database cannot be
+opened by an older SQLite (Python 3.10's stdlib, Ubuntu 22.04's `sqlite3`). The next
+`meta migrate` against it re-spells those CHECKs ONCE — a table rebuild that is not gated
+behind `--allow drop-check` and raises no data hazard, because the rule is the same — and
+the re-diff is empty afterwards. Postgres keeps `IS [NOT] DISTINCT FROM`.
+
 ## Drift verify commands per port
 
 | Port | Command | What it does |

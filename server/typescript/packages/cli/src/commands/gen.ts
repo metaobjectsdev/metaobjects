@@ -22,6 +22,7 @@ import { packageOfResolutionKey } from "@metaobjectsdev/metadata";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
 import type { Collection } from "@metaobjectsdev/sdk";
 import { reportLoadError } from "../lib/load-error.js";
+import { UNKNOWN_ATTR_GEN_ADVICE, unknownAttrWarnings } from "../lib/unknown-attr-warnings.js";
 import {
   buildCatalogListing, renderCatalogText, wiredGeneratorNames, ownedGeneratorNames,
   declaredDepsOf,
@@ -140,15 +141,26 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   }
 
   let metadata;
+  const loadOptions = {
+    ...collectionLoadOptions(genCollection),
+    ...loadMemoryOptionsFrom(forgeConfig),
+  };
   try {
-    metadata = await loadMemory(genCollection.configDir, {
-      ...collectionLoadOptions(genCollection),
-      ...loadMemoryOptionsFrom(forgeConfig),
-    });
+    metadata = await loadMemory(genCollection.configDir, loadOptions);
   } catch (err) {
     reportLoadError(log, "failed to load metadata", err);
     return 2;
   }
+
+  // ADR-0023: gen loads leniently, so an unknown attribute (`isAbstrakt: true`, a
+  // misspelt `@required`) used to pass without a word while `meta verify` rejected the
+  // same file — and the typo changed what was generated. Say so, naming attribute, node
+  // and file. Advisory: the exit code is unchanged.
+  const unknownAttrFindings = await unknownAttrWarnings(genCollection.configDir, loadOptions, projectRoot);
+  const unknownAttrs = unknownAttrFindings.length > 0
+    ? [...unknownAttrFindings, UNKNOWN_ATTR_GEN_ADVICE]
+    : [];
+  for (const w of unknownAttrs) log.warn(`warning: ${w}`);
 
   // FR-023 §11.1 item 2 — refuse a positional that names ONLY objects imported
   // from a dependency and excluded from output by the default exclusion rule.
@@ -252,7 +264,8 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     outDir: targetDirs.length > 1 ? targetDirs.join(", ") : forgeConfig.outDir,
     dialect: forgeConfig.dialect,
     dryRun: cliConfig.dryRun,
-    warnings: [],
+    // Text mode already printed these to stderr above; the structured forms carry them.
+    warnings: fmt === "text" ? [] : unknownAttrs,
     antiPatterns,
     generatorCount: forgeConfig.generators?.length ?? 0,
     ...(migrateAdvice !== undefined ? { migrateAdvice } : {}),

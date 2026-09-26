@@ -880,6 +880,23 @@ function buildChecks(
   return checks;
 }
 
+/**
+ * Null-safe (in)equality, spelled per dialect. Postgres has only the standard
+ * `IS [NOT] DISTINCT FROM`. SQLite parses that spelling only from 3.39.0 (2022-06), and a
+ * CHECK it cannot parse does not merely fail — `sqlite_master` is parsed on open, so an
+ * older engine (Ubuntu 22.04's 3.37.2, the stdlib `sqlite3` of the Pythons it ships)
+ * refuses the WHOLE database: `malformed database schema (<table>) - near "DISTINCT"`.
+ * SQLite's own `IS NOT` / `IS` mean exactly the same thing, on every version, so the
+ * sqlite/d1 DDL uses them. The migrate DDL floor is SQLite 3.35 (`ALTER TABLE … DROP
+ * COLUMN`); see docs/features/migrations-and-drift.md → "SQLite version floor".
+ */
+function nullSafeDistinctOp(dialect: Dialect | undefined): string {
+  return dialect === "sqlite" || dialect === "d1" ? "IS NOT" : "IS DISTINCT FROM";
+}
+function nullSafeEqualOp(dialect: Dialect | undefined): string {
+  return dialect === "sqlite" || dialect === "d1" ? "IS" : "IS NOT DISTINCT FROM";
+}
+
 const COMPARISON_SQL_OP: Record<string, string> = {
   gt: ">", gte: ">=", lt: "<", lte: "<=", ne: "<>", eq: "=",
 };
@@ -943,7 +960,7 @@ function crossFieldCheck(
       const fc = resolveColumnName(target.field, strategy);
       return {
         name: `${tableName}_${fc}_reqwhen_chk`,
-        expression: `(${when.qcol} IS DISTINCT FROM ${lit}) OR (${target.qcol} IS NOT NULL)`,
+        expression: `(${when.qcol} ${nullSafeDistinctOp(dialect)} ${lit}) OR (${target.qcol} IS NOT NULL)`,
       };
     }
     case VALIDATOR_SUBTYPE_PRESENT_IFF: {
@@ -955,7 +972,7 @@ function crossFieldCheck(
       const fc = resolveColumnName(target.field, strategy);
       return {
         name: `${tableName}_${fc}_presentiff_chk`,
-        expression: `(${target.qcol} IS NOT NULL) = (${when.qcol} IS NOT DISTINCT FROM ${lit})`,
+        expression: `(${target.qcol} IS NOT NULL) = (${when.qcol} ${nullSafeEqualOp(dialect)} ${lit})`,
       };
     }
     case VALIDATOR_SUBTYPE_AT_LEAST_ONE: {
