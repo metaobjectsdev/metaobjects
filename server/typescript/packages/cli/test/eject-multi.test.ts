@@ -237,6 +237,10 @@ describe("the install summary is the union of the per-generator lines", () => {
     const m = /npm i -D ([^&]+)/.exec(line);
     return m === null ? [] : m[1]!.trim().split(/\s+/);
   }
+  function runtimeSpecsIn(line: string): string[] {
+    const m = /(?:^|&& )npm i (?!-D)(.+)$/.exec(line.trim());
+    return m === null ? [] : m[1]!.trim().split(/\s+/);
+  }
 
   test("text: every package a per-file line names is in the summary line", async () => {
     const dir = tmp();
@@ -248,11 +252,15 @@ describe("the install summary is the union of the per-generator lines", () => {
       const summary = logged[idx + 1]!;
       const perFile = logged.slice(0, idx).filter((l) => l.trim().startsWith("npm i -D"));
       expect(perFile.length).toBeGreaterThan(0);
-      const summaryDev = new Set(devSpecsIn(summary));
+      // Either half of the summary satisfies a per-file line: since the entity and routes
+      // generators also hand over the adapter source (ADR-0034 Amendment 3), whose copy
+      // imports `@metaobjectsdev/metadata` at RUNTIME, that package moves to the `npm i`
+      // half — which installs it for the build as well.
+      const summarySpecs = new Set([...devSpecsIn(summary), ...runtimeSpecsIn(summary)]);
       for (const spec of perFile.flatMap(devSpecsIn)) {
-        expect(summaryDev.has(spec), `summary names ${spec}`).toBe(true);
+        expect(summarySpecs.has(spec), `summary names ${spec}`).toBe(true);
       }
-      expect(summaryDev.has(`@metaobjectsdev/metadata@^${cliVersion()}`)).toBe(true);
+      expect(summarySpecs.has(`@metaobjectsdev/metadata@^${cliVersion()}`)).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -262,8 +270,13 @@ describe("the install summary is the union of the per-generator lines", () => {
     const dir = tmp();
     try {
       expect(await ejectCommand(["entity"], dir, "json")).toBe(0);
-      expect(payload().install.dev).toContain(`@metaobjectsdev/metadata@^${cliVersion()}`);
-      expect(payload().install.dev).toContain(`@metaobjectsdev/codegen-ts@^${cliVersion()}`);
+      // `entity` also hands over the allowlist-type source, which imports the core
+      // `@metaobjectsdev/metadata` at runtime — so it lands in the runtime half.
+      const { dev, runtime } = payload().install;
+      expect([...dev, ...runtime]).toContain(`@metaobjectsdev/metadata@^${cliVersion()}`);
+      expect(dev).toContain(`@metaobjectsdev/codegen-ts@^${cliVersion()}`);
+      // ...and the generated entity module no longer needs the runtime package at all.
+      expect(runtime.some((s: string) => s.startsWith("@metaobjectsdev/runtime-ts@"))).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -89,6 +89,39 @@ type Filter =
 
 `$or` and nested operators are not yet shipped.
 
+## What is core here, and what `meta eject` hands you
+
+This package has two tiers, and only the first is a MetaObjects guarantee
+([ADR-0034 Amendment 3](https://github.com/metaobjectsdev/metaobjects/blob/main/spec/decisions/ADR-0034-codegen-scaffold-and-own.md)):
+
+| Entry | Tier | What it is |
+|---|---|---|
+| `.` and `./drivers` | **Core** | The metadata-driven runtime: `ObjectManager`, the query builder, the validator runner, the relation / M:N / TPH resolvers, type coercion, the constraint-error mapping, `extractObject`. Conformance-gated; a defect here is a MetaObjects bug. |
+| `./drizzle-fastify`, `./hono`, `./fastify` | **Helper** | The HTTP adapters that mount CRUD on a web framework: the mount helpers, the filter/sort parser, the error envelopes, pagination. Reference code, not a promise. |
+
+Generated route files are the only callers of the helper tier, and they are yours once
+you run `meta eject routes` (or `routes-hono`, or `entity` for the allowlist types). Eject
+copies the adapter **source** the generated code calls — verbatim, from this package's
+`src/` — into your repo at `codegen/runtime/`, and the ejected generators point their
+output there. After that your generated and copied code import nothing from this package;
+you install what the copy imports instead (`qs`, the framework, `@metaobjectsdev/metadata`).
+Fix an adapter defect in your copy without waiting for a release.
+
+To take a later upstream fix into your copy, compare the file with the version you have
+installed and apply what you want:
+
+```bash
+meta eject --list        # marks each codegen/runtime/ file identical to / DIFFERING from this package
+diff -u node_modules/@metaobjectsdev/runtime-ts/src/route-errors.ts codegen/runtime/route-errors.ts
+```
+
+A file you never changed can be refreshed wholesale with `meta eject routes --force`
+(which also replaces the generator — commit first). A project that has not ejected keeps
+importing `@metaobjectsdev/runtime-ts/drizzle-fastify` and `/hono` exactly as before. The
+`./fastify` entry (the `ObjectManager`-backed mount) has no generator calling it, so eject
+never copies it; it is still helper-tier, so copy it by hand if you mount it and want to
+own it.
+
 ## Driver compatibility note
 
 Generated CRUD uses Kysely's `.returning()` API. Works on:

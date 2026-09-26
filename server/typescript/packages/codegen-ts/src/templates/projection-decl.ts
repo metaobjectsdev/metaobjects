@@ -223,7 +223,7 @@ ${joinCode(constFieldLines, { on: "\n" })}
 } as const;
 `,
     ...(allowlists
-      ? [renderFilterAllowlist(projection, undefined, ctx), renderSortAllowlist(projection)]
+      ? [renderFilterAllowlist(projection, undefined, ctx), renderSortAllowlist(projection, undefined, ctx)]
       : []),
     renderFilterType(projection),
   ];

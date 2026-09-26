@@ -19,7 +19,7 @@ import { join, resolve } from "node:path";
 import ts from "typescript";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
-import { runGen, defineConfig } from "../src/index.js";
+import { runGen, defineConfig, HTTP_RUNTIME_PACKAGE } from "../src/index.js";
 import type { Generator } from "../src/index.js";
 import { entityFile as currentEntity } from "../src/reference/entity.js";
 import { queriesFile as currentQueries } from "../src/reference/queries.js";
@@ -30,7 +30,7 @@ const FIXTURES = ["autoset-timestamps.json", "extends-chain.json", "two-entities
 
 const MIXES: Array<{ label: string; generators: () => Generator[] }> = [
   { label: "1.0.8 entity + 1.0.8 queries", generators: () => [ownedEntity108(), ownedQueries108()] },
-  { label: "current entity + 1.0.8 queries", generators: () => [currentEntity(), ownedQueries108()] },
+  { label: "current entity + 1.0.8 queries", generators: () => [currentEntity({ runtimeImport: HTTP_RUNTIME_PACKAGE }), ownedQueries108()] },
   { label: "1.0.8 entity + current queries", generators: () => [ownedEntity108(), currentQueries()] },
 ];
 

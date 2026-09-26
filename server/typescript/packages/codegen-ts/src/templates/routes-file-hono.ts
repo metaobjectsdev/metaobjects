@@ -32,6 +32,7 @@ import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import { authSeamJsDoc, type CrudVerb, exposeLine } from "../routes-expose.js";
 import { effectivePackage } from "../docs-paths.js";
+import { httpRuntimeSpecifier } from "../owned-runtime.js";
 
 export function renderRoutesFileHono(
   entity: MetaObject,
@@ -55,6 +56,9 @@ export function renderRoutesFileHono(
     ctx.extStyle,
   );
 
+  // Where the mount helpers come from: the package, or an owned copy (owned-runtime.ts).
+  const runtimeSpec = httpRuntimeSpecifier("hono", ctx, effectivePackage(entity));
+
   const header =
     `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${entityName} (${entity.fqn()})\n` +
@@ -74,9 +78,7 @@ export function renderRoutesFileHono(
   if (isProjection(entity)) {
     const camelName = entityName.charAt(0).toLowerCase() + entityName.slice(1);
     const HonoSym = imp("t:Hono@hono");
-    const mountReadOnlyCrudRoutesSym = imp(
-      "mountReadOnlyCrudRoutes@@metaobjectsdev/runtime-ts/hono",
-    );
+    const mountReadOnlyCrudRoutesSym = imp(`mountReadOnlyCrudRoutes@${runtimeSpec}`);
 
     const literalImports = code`
 import {
@@ -93,7 +95,7 @@ import {
  *
  * Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.
  * Customize: register this as-is, or import individual route helpers from
- * @metaobjectsdev/runtime-ts/hono.
+ * ${runtimeSpec}.
 ${authSeamJsDoc({ framework: "hono", handlerName, mountPathExpr: authPathExpr, narrowable: false })}
  */
 // biome-ignore lint/suspicious/noExplicitAny: consumer-defined Hono bindings/variables
@@ -128,7 +130,7 @@ export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unkno
   const exposeLineHono = exposeLine(expose, "    ");
 
   const HonoSym = imp("t:Hono@hono");
-  const mountCrudRoutesSym = imp("mountCrudRoutes@@metaobjectsdev/runtime-ts/hono");
+  const mountCrudRoutesSym = imp(`mountCrudRoutes@${runtimeSpec}`);
 
   const literalImports = code`
 import {
@@ -147,7 +149,7 @@ import {
  *
  * Customize: register this as-is for stock CRUD, OR import the per-verb
  * helpers (mountListRoute, mountGetRoute, ...) from
- * @metaobjectsdev/runtime-ts/hono and mix with your own handlers
+ * ${runtimeSpec} and mix with your own handlers
  * (auth, side effects, etc.).
 ${authSeamJsDoc({ framework: "hono", handlerName, mountPathExpr: authPathExpr, narrowable: true })}
  */

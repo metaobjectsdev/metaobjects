@@ -220,7 +220,7 @@ ${docsPrefix}export type ${entity.name} = ${z}.infer<typeof ${entity.name}Schema
     ...(enumAliases !== null ? [enumAliases] : []),
     renderZodValidators(entity, ctx),
     renderEntityConstants(entity, ctx.apiPrefix, namesConstArg(constantsNames)),
-    ...(allowlists ? [renderFilterAllowlist(entity, undefined, ctx), renderSortAllowlist(entity)] : []),
+    ...(allowlists ? [renderFilterAllowlist(entity, undefined, ctx), renderSortAllowlist(entity, undefined, ctx)] : []),
     renderFilterType(entity),
     ...(tphBlock !== null ? [tphBlock] : []),
   ];

@@ -22,6 +22,12 @@
 // customize:     reorder/drop sections in `sections` below; change the header; swap a sub-renderer
 //                for your own (each render* is an engine primitive you call). To deeply own one
 //                section (e.g. the Drizzle emit), copy/replace that sub-render call with your code.
+// owns:          the allowlist TYPES too. `<Entity>FilterAllowlist` / `<Entity>SortAllowlist`
+//                are typed by `FilterAllowlist` / `SortAllowlist`, which `meta eject entity`
+//                copies into `codegen/runtime/drizzle-fastify/filter-allowlist.ts`; the emitted
+//                type import points there, not at `@metaobjectsdev/runtime-ts`.
+//                `runtimeImport` moves it; `runtimeImport: "@metaobjectsdev/runtime-ts"`
+//                goes back to the package.
 // composes-with: queries.ts, routes.ts, barrel.ts (they import the files this emits).
 //
 // The composition (`renderEntity`) is the relocated body of the built-in entity composer —
@@ -66,6 +72,7 @@ import {
   renderEntityFile,
   // engine plumbing:
   formatTs,
+  ownedRuntimeImport,
   entityOutputPath,
   namesRef,
   namesConstArg,
@@ -137,7 +144,7 @@ function renderEntity(entity: MetaObject, ctx: RenderContext, opts?: RenderEntit
     ...(enumAliases !== null ? [enumAliases] : []),
     renderZodValidators(entity, ctx),
     renderEntityConstants(entity, ctx.apiPrefix, namesConstArg(constantsNames)),
-    ...(allowlists ? [renderFilterAllowlist(entity, undefined, ctx), renderSortAllowlist(entity)] : []),
+    ...(allowlists ? [renderFilterAllowlist(entity, undefined, ctx), renderSortAllowlist(entity, undefined, ctx)] : []),
     renderFilterType(entity),
     ...(tphBlock !== null ? [tphBlock] : []),
   ];
@@ -153,6 +160,13 @@ export interface EntityFileOpts {
   filter?: (entity: MetaObject) => boolean;
   target?: string;
   allowlists?: boolean;
+  /**
+   * Where the emitted allowlist TYPES are imported from. Absent: the copy `meta eject
+   * entity` placed in `codegen/runtime/`, by a path computed from the target's output
+   * directory. A relative value is relative to the output root (like `dbImport`);
+   * `"@metaobjectsdev/runtime-ts"` imports the package instead.
+   */
+  runtimeImport?: string;
 }
 
 export const entityFile = function entityFile(opts?: EntityFileOpts): Generator {
@@ -164,9 +178,14 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
     if (isAbstract(entity) && !ctx.renderContext.emitAbstractShapes) {
       return [];
     }
+    const renderContext: RenderContext = {
+      ...ctx.renderContext,
+      httpRuntimeImport: opts?.runtimeImport
+        ?? ownedRuntimeImport(ctx.projectRoot ?? ".", ctx.renderContext.selfTarget.outDir),
+    };
     return {
       path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.ts`),
-      content: await formatTs(renderEntity(entity, ctx.renderContext, { allowlists })),
+      content: await formatTs(renderEntity(entity, renderContext, { allowlists })),
     };
   });
 

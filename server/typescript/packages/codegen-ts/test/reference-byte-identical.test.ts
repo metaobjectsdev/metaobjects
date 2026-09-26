@@ -6,7 +6,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, readdirSync, readFileSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { runGen, defineConfig, REFERENCE_GENERATOR_NAMES } from "../src/index.js";
+import { runGen, defineConfig, REFERENCE_GENERATOR_NAMES, HTTP_RUNTIME_PACKAGE, OWNED_RUNTIME_DIR } from "../src/index.js";
 import type { ReferenceGeneratorName, Generator } from "../src/index.js";
 import { routesFileHono as builtinRoutesHono, namesFile as builtinNames } from "../src/generators/index.js";
 import { barrel as builtinBarrel } from "../src/generators/barrel.js";
@@ -58,6 +58,13 @@ const FIXTURES = [
   "autoset-timestamps.json",
 ];
 
+// The route COMPOSITION moved into the reference (it used to call the engine's
+// `renderRoutesFile`), so every branch of it now has two copies that must agree — and not
+// one fixture above carries a projection, a write-through entity, an M:N navigation or a
+// TPH hierarchy. These are the api-contract corpora whose GENERATED lane boots exactly
+// those shapes, reused rather than re-modelled so the gate covers what that lane serves.
+const ROUTE_SHAPE_CORPORA = ["projection", "write-through", "m2m", "tph", "jsonb"] as const;
+
 let tmp: string;
 beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "codegen-ref-")); });
 afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
@@ -88,11 +95,18 @@ async function gen(
 // its pair is supplied, and the pair IS the wiring. A hand-maintained `COVERED` array
 // could be satisfied by editing one line without adding any verification — proving the
 // list was touched, not that the generator was tested.
+//
+// The three references whose OUTPUT imports the HTTP-adapter tier (ADR-0034 Amendment 3,
+// 2026-09-24) default to the adapter copy `meta eject` places in `codegen/runtime/`. The
+// built-ins import the package, so the pairing binds each reference to the package through
+// its `runtimeImport` option: what this gate compares is the COMPOSITION. The local-copy
+// spelling is gated separately below, as "the same bytes with the import moved".
+const PKG = { runtimeImport: HTTP_RUNTIME_PACKAGE };
 const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () => Generator }> = {
-  entity: { builtin: builtinEntity, ref: refEntity },
+  entity: { builtin: builtinEntity, ref: () => refEntity(PKG) },
   queries: { builtin: builtinQueries, ref: refQueries },
-  routes: { builtin: builtinRoutes, ref: refRoutes },
-  "routes-hono": { builtin: builtinRoutesHono, ref: refRoutesHono },
+  routes: { builtin: builtinRoutes, ref: () => refRoutes(PKG) },
+  "routes-hono": { builtin: builtinRoutesHono, ref: () => refRoutesHono(PKG) },
   barrel: { builtin: builtinBarrel, ref: refBarrel },
   names: { builtin: builtinNames, ref: refNames },
   "prompt-render": { builtin: builtinPromptRender, ref: refPromptRender },
@@ -154,6 +168,90 @@ describe("ADR-0034 — reference templates are byte-identical to built-ins", () 
       } finally {
         rmSync(aDir, { recursive: true, force: true });
         rmSync(bDir, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
+async function loadFiles(files: string[]) {
+  const result = await new MetaDataLoader().load(files.map((f) => new FileSource(f)));
+  expect(result.errors).toEqual([]);
+  return result.root;
+}
+
+describe("ADR-0034 — the route composition, over every shape it dispatches on", () => {
+  for (const corpus of ROUTE_SHAPE_CORPORA) {
+    test(`api-contract ${corpus} corpus`, async () => {
+      const root = await loadFiles([join(REPO_FIXTURES, "api-contract-conformance", corpus, "meta.json")]);
+      const aDir = mkdtempSync(join(tmpdir(), "codegen-builtin-"));
+      const bDir = mkdtempSync(join(tmpdir(), "codegen-reference-"));
+      try {
+        const names = ["entity", "routes", "routes-hono"] as const;
+        const a = await gen(aDir, names.map((n) => PAIRS[n].builtin()), root);
+        const b = await gen(bDir, names.map((n) => PAIRS[n].ref()), root);
+        const aKeys = Object.keys(a).sort();
+        expect(aKeys.filter((k) => k.endsWith(".routes.ts")).length).toBeGreaterThan(0);
+        expect(Object.keys(b).sort()).toEqual(aKeys);
+        for (const k of aKeys) expect(`${k}:\n${b[k]}`).toBe(`${k}:\n${a[k]}`);
+      } finally {
+        rmSync(aDir, { recursive: true, force: true });
+        rmSync(bDir, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
+describe("ADR-0034 Amendment 3 — an ejected generator's output imports the OWNED adapter copy", () => {
+  // Default options, as `meta eject` leaves them: the output must be the built-in's bytes
+  // with ONLY the adapter import moved to the copy — and must name the package nowhere.
+  const LOCAL: Record<string, { builtin: () => Generator; ref: () => Generator }> = {
+    entity: { builtin: builtinEntity, ref: () => refEntity() },
+    routes: { builtin: builtinRoutes, ref: () => refRoutes() },
+    "routes-hono": { builtin: builtinRoutesHono, ref: () => refRoutesHono() },
+  };
+
+  for (const corpus of ROUTE_SHAPE_CORPORA) {
+    test(`api-contract ${corpus} corpus`, async () => {
+      const root = await loadFiles([join(REPO_FIXTURES, "api-contract-conformance", corpus, "meta.json")]);
+      const projectRoot = mkdtempSync(join(tmpdir(), "codegen-owned-runtime-"));
+      const aDir = join(projectRoot, "builtin", "gen");
+      const bDir = join(projectRoot, "src", "gen");
+      try {
+        const a = await gen(aDir, Object.values(LOCAL).map((p) => p.builtin()), root, projectRoot);
+        const b = await gen(bDir, Object.values(LOCAL).map((p) => p.ref()), root, projectRoot);
+        // outDir is `<root>/src/gen`, the copy is `<root>/codegen/runtime` — two levels up.
+        const local = `../../${OWNED_RUNTIME_DIR}`;
+        const moved = (src: string) =>
+          src
+            .replaceAll(`"${HTTP_RUNTIME_PACKAGE}/drizzle-fastify"`, "@@ADAPTER@@")
+            .replaceAll(`"${HTTP_RUNTIME_PACKAGE}/hono"`, "@@ADAPTER@@")
+            .replaceAll(`${HTTP_RUNTIME_PACKAGE}/drizzle-fastify`, "@@ADAPTER_DOC@@")
+            .replaceAll(`${HTTP_RUNTIME_PACKAGE}/hono`, "@@ADAPTER_DOC@@");
+        const localized = (src: string) =>
+          src
+            .replaceAll(`"${local}/drizzle-fastify/index"`, "@@ADAPTER@@")
+            .replaceAll(`"${local}/hono/index"`, "@@ADAPTER@@")
+            .replaceAll(`"${local}/drizzle-fastify/filter-allowlist"`, "@@ADAPTER@@")
+            .replaceAll(`${local}/drizzle-fastify/index`, "@@ADAPTER_DOC@@")
+            .replaceAll(`${local}/hono/index`, "@@ADAPTER_DOC@@");
+        // The formatter orders a package import and a relative one differently, so the moved
+        // import may change places in the import block. Compare that block as a SET of
+        // statements (none carries a `;` before its end) and everything after it exactly.
+        const IMPORT_RE = /^import [^;]*;\n/gm;
+        const importsAsSet = (src: string) =>
+          [...(src.match(IMPORT_RE) ?? [])].sort().join("") + src.replace(IMPORT_RE, "");
+        const keys = Object.keys(a).sort();
+        expect(Object.keys(b).sort()).toEqual(keys);
+        let importing = 0;
+        for (const k of keys) {
+          expect(b[k]).not.toContain(HTTP_RUNTIME_PACKAGE);
+          if (b[k] !== a[k]) importing++;
+          expect(`${k}:\n${importsAsSet(localized(b[k]!))}`).toBe(`${k}:\n${importsAsSet(moved(a[k]!))}`);
+        }
+        // Vacuity guard: the corpus must actually exercise the moved import.
+        expect(importing).toBeGreaterThan(0);
+      } finally {
+        rmSync(projectRoot, { recursive: true, force: true });
       }
     });
   }

@@ -25,7 +25,12 @@ import { log } from "../lib/log.js";
 import { declaredDependencyNames, readPackageManifest } from "../lib/package-manifest.js";
 import { compareOwnedCopy, type OwnedComparison } from "../lib/owned-copy.js";
 import { composeCatalog, packageOf } from "../lib/catalog.js";
-import { installSetFor, type InstallSet } from "../lib/install-set.js";
+import { installSetFor, type InstallSet, type OwnedRuntimeInstall } from "../lib/install-set.js";
+import {
+  ejectRuntime, ejectsRuntime, runtimeCopyStatus, runtimeDiffCommand, runtimeInstall,
+  type RuntimeEjectResult, type RuntimeFileResult,
+} from "../lib/runtime-eject.js";
+import { HTTP_RUNTIME_PACKAGE, OWNED_RUNTIME_DIR } from "@metaobjectsdev/codegen-ts";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
 import {
   ejectLibrary, ejectableLibraryNames, isLibraryName, libraryStaleness,
@@ -159,6 +164,12 @@ export interface EjectResult {
    * cheapest thing that makes that condition observable.
    */
   comparison?: OwnedComparison | undefined;
+  /**
+   * ADR-0034 Amendment 3 (2026-09-24): the HTTP-adapter source this generator's OUTPUT
+   * imports, copied into `codegen/runtime/` so the adopter owns that too. Absent for a
+   * generator whose output imports no adapter.
+   */
+  runtime?: RuntimeEjectResult | undefined;
 }
 
 /** The `@metaobjectsdev/*` packages an ejected template imports, read from the file
@@ -241,8 +252,15 @@ export async function ejectGenerator(opts: EjectOptions): Promise<EjectResult> {
   const comparison =
     existing === undefined ? undefined : await compareOwnedCopy(existing, templateSource);
 
+  // The adapter source the OUTPUT imports is part of what is handed over — copied whether
+  // or not the generator file itself was already here, and under the same never-clobber
+  // rule, so re-running eject fills in a missing copy without touching a kept one.
+  const runtime = ejectsRuntime(opts.name)
+    ? await ejectRuntime(opts.cwd, [opts.name], opts.force === true)
+    : undefined;
+
   if (!opts.force && existing !== undefined) {
-    return { ...common, status: "preserved", comparison };
+    return { ...common, status: "preserved", comparison, runtime };
   }
 
   await mkdir(join(opts.cwd, OWNED_GENERATORS_DIR), { recursive: true });
@@ -251,7 +269,43 @@ export async function ejectGenerator(opts: EjectOptions): Promise<EjectResult> {
     ...common,
     status: existing === undefined ? "created" : "replaced",
     comparison,
+    runtime,
   };
+}
+
+/**
+ * The owned HTTP-adapter copy under `codegen/runtime/`, file by file, against the installed
+ * `@metaobjectsdev/runtime-ts` it was copied from. Shared by `meta eject --list` and
+ * `meta gen --list`. Empty when the project owns no adapter copy.
+ *
+ * `identical` says an upgrade can be taken by re-copying (`meta eject <name> --force`);
+ * `DIFFERS` says the copy is yours in a way the package is not — your fix, or upstream's —
+ * and names the diff that tells which.
+ */
+export async function runtimeCopyLines(cwd: string): Promise<string[]> {
+  const rows = await runtimeCopyStatus(cwd);
+  if (rows.length === 0) return [];
+  const lines: string[] = [
+    `HTTP adapter source this project owns (${OWNED_RUNTIME_DIR}/), against the installed ${HTTP_RUNTIME_PACKAGE}:`,
+  ];
+  const differing: string[] = [];
+  for (const r of rows) {
+    if (r.verdict === "identical") lines.push(`  ${r.path}  [identical to the package]`);
+    else if (r.verdict === "reformatted") lines.push(`  ${r.path}  [same content as the package, your formatting]`);
+    else if (r.verdict === "not-in-package") lines.push(`  ${r.path}  [not in the package — yours, or removed upstream]`);
+    else {
+      differing.push(r.path);
+      lines.push(
+        `  ${r.path}  [DIFFERS: ${r.referenceOnly} line(s) only in the package, ${r.localOnly} line(s) only in yours]`,
+      );
+    }
+  }
+  if (differing.length > 0) {
+    lines.push("  See the difference (upstream fix, or your own?) before taking an upgrade:");
+    for (const p of differing) lines.push(`    ${runtimeDiffCommand(p)}`);
+  }
+  lines.push("");
+  return lines;
 }
 
 /**
@@ -315,6 +369,7 @@ async function listOutput(cwd: string): Promise<string> {
     );
     lines.push("");
   }
+  lines.push(...(await runtimeCopyLines(cwd)));
   // FR-043 — the shipped libraries, and how far this project's copies have drifted.
   lines.push("Shipped libraries (copy one into your own sources and own it):");
   for (const name of ejectableLibraryNames()) lines.push(`  ${name}`);
@@ -369,6 +424,8 @@ interface EjectedRow {
   /** The two edits an adopter makes in `metaobjects.config.ts`. */
   wire: { import: string; entry: string };
   requires: readonly string[];
+  /** The adapter source copied beside it (ADR-0034 Amendment 3). Absent when none. */
+  runtime?: RuntimeFileResult[];
 }
 
 interface EjectPayload {
@@ -518,6 +575,33 @@ function reportOne(result: EjectResult, name: string): void {
     "AND the entry.",
   );
   for (const line of result.dependencyNotes) log.info(line);
+  if (result.runtime !== undefined && result.runtime.files.length > 0) reportRuntime(result.runtime.files);
+}
+
+/** What the adapter copy handed over, and how the emitted code reaches it. */
+function reportRuntime(files: readonly RuntimeFileResult[]): void {
+  const written = files.filter((f) => f.status !== "preserved");
+  // A kept file that already matches the package is not news (ejecting `entity routes`
+  // copies the shared allowlist file once, then finds it) — only a kept file that differs is.
+  const kept = files.filter((f) => f.status === "preserved" && f.comparison?.verdict !== "identical");
+  log.info(
+    `The code this generator emits imports its HTTP adapter from ${OWNED_RUNTIME_DIR}/, not from ` +
+      `${HTTP_RUNTIME_PACKAGE}: the adapter, filter parser, error envelopes and pagination are yours too.`,
+  );
+  if (written.length > 0) {
+    log.info(`  Copied ${written.length} file(s) into ${OWNED_RUNTIME_DIR}/ (verbatim from the installed package).`);
+  }
+  const keptDiffering = kept.filter((f) => f.comparison?.verdict === "differs");
+  if (kept.length > 0) {
+    log.info(
+      `  ${kept.length} file(s) were already there and were left untouched` +
+        (keptDiffering.length > 0 ? `, ${keptDiffering.length} of them differing from the package` : "") +
+        " (--force replaces them). `meta eject --list` compares each one.",
+    );
+  }
+  log.info(
+    `  To import the package instead, pass \`runtimeImport: "${HTTP_RUNTIME_PACKAGE}"\` to the generator.`,
+  );
 }
 
 export async function ejectCommand(
@@ -575,6 +659,9 @@ export async function ejectCommand(
   const rows: EjectedRow[] = [];
   const libraries: LibraryEjectResult[] = [];
   const templatePackages = new Set<string>();
+  // ADR-0034 Amendment 3: the generators whose adapter source was copied, and what it imports.
+  const runtimeGenerators = new Set<string>();
+  const runtimePackages = new Set<string>();
   try {
     for (const name of flags.names) {
       if (isLibraryName(name)) {
@@ -585,12 +672,17 @@ export async function ejectCommand(
       }
       const result = await ejectGenerator({ cwd, name, force: flags.force });
       for (const p of result.templatePackages) templatePackages.add(p);
+      if (result.runtime !== undefined) {
+        runtimeGenerators.add(name);
+        for (const p of result.runtime.packages) runtimePackages.add(p);
+      }
       rows.push({
         name,
         path: result.path,
         status: result.status,
         wire: { import: result.importLine, entry: `${result.exportName}()` },
         requires: catalog[name]?.requires ?? [],
+        ...(result.runtime !== undefined ? { runtime: result.runtime.files } : {}),
       });
       if (fmt === "text") reportOne(result, name);
     }
@@ -610,7 +702,15 @@ export async function ejectCommand(
     .filter((n) => !isLibraryName(n))
     .map((n) => catalog[n])
     .filter((e) => e !== undefined);
-  const install = installSetFor(entries, [...templatePackages]);
+  // The copied adapter source imports its own dependencies (qs, the framework, the core
+  // `@metaobjectsdev/metadata`), and the generated code no longer imports the runtime
+  // package — so the install line trades one for the other.
+  let ownedRuntime: OwnedRuntimeInstall | undefined;
+  if (runtimeGenerators.size > 0) {
+    const { runtime, dev } = runtimeInstall([...runtimePackages]);
+    ownedRuntime = { generators: runtimeGenerators, runtime, dev };
+  }
+  const install = installSetFor(entries, [...templatePackages], ownedRuntime);
   const configKeys = [...new Set(entries.flatMap((e) => e.configKeys ?? []))].sort();
 
   if (fmt === "text") {

@@ -10,15 +10,15 @@ import {
   LessonSortAllowlist,
   LessonUpdateSchema,
 } from "./Lesson";
-import { mountCrudRoutes } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
 import type { FastifyInstance } from "fastify";
+import { mountCrudRoutes } from "../../codegen/runtime/drizzle-fastify/index";
 
 /**
  * Mount the 5 standard REST endpoints for Lesson using Drizzle directly.
  *
  * Customize: register this as-is for stock CRUD, OR import the per-verb
  * helpers (mountListRoute, mountGetRoute, ...) from
- * @metaobjectsdev/runtime-ts/drizzle-fastify and mix with your own handlers
+ * ../../codegen/runtime/drizzle-fastify/index and mix with your own handlers
  * (auth, side effects, etc.).
  *
  * Auth: these endpoints are unauthenticated. Register this inside a scope that

@@ -57,3 +57,39 @@ describe("owned reference-template copies are byte-identical to the shipped temp
     }
   }
 });
+
+// ADR-0034 Amendment 3 (2026-09-24): an example that owns `entity` / `routes` also owns the
+// HTTP-adapter source their output imports, under `codegen/runtime/`, copied verbatim from
+// `@metaobjectsdev/runtime-ts/src`. Same blindness, same gate: a stale adapter copy would let
+// an example keep "working" on code no adopter would get from `meta eject` today.
+// Re-sync with `bun scripts/sync-owned-template-copies.ts`.
+const RUNTIME_SRC = join(REPO_ROOT, "server", "typescript", "packages", "runtime-ts", "src");
+
+function tsUnder(dir: string): string[] {
+  return readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile() && e.name.endsWith(".ts"))
+    .map((e) => join(e.parentPath, e.name));
+}
+
+describe("owned HTTP-adapter copies in the examples are byte-identical to runtime-ts/src", () => {
+  const examples = join(REPO_ROOT, "examples");
+  const roots = existsSync(examples)
+    ? readdirSync(examples, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => join(examples, e.name, "codegen", "runtime"))
+      .filter((d) => existsSync(d))
+    : [];
+
+  test("the scan finds at least one example's adapter copy", () => {
+    expect(roots.length).toBeGreaterThan(0);
+  });
+
+  for (const root of roots) {
+    for (const file of tsUnder(root)) {
+      const rel = relative(root, file);
+      test(`${relative(REPO_ROOT, file)}`, () => {
+        expect(readFileSync(file, "utf8")).toBe(readFileSync(join(RUNTIME_SRC, rel), "utf8"));
+      });
+    }
+  }
+});

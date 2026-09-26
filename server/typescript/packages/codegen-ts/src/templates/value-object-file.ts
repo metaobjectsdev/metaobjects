@@ -55,7 +55,7 @@ export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: Ren
   // filterable fields. Drives the per-subtype REST routes' filter layer.
   const discField = tphSubtype ? tphDiscriminatorPin(obj)?.fieldName : undefined;
   const tphFilterAllowlist = tphSubtype ? renderFilterAllowlist(obj, discField, ctx) : null;
-  const tphSortAllowlist = tphSubtype ? renderSortAllowlist(obj, discField) : null;
+  const tphSortAllowlist = tphSubtype ? renderSortAllowlist(obj, discField, ctx) : null;
   // FR-017 Tier 3: the per-subtype CLIENT filter type, discriminator-excluded —
   // kept in lockstep with the per-subtype allowlist above so a typed
   // `<Sub>Filter` can't express a filter the server allowlist would 400.

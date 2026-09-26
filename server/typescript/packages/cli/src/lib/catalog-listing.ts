@@ -34,6 +34,11 @@ import {
   type LibraryCatalogRow, type LibraryProjectContext,
 } from "./library-listing.js";
 import { installSetFor } from "./install-set.js";
+import {
+  RUNTIME_ENTRIES, resolveRuntimePackage, runtimeClosure, runtimeCopyStatus, runtimeInstall,
+  type RuntimeCopyRow,
+} from "./runtime-eject.js";
+import { OWNED_RUNTIME_DIR } from "@metaobjectsdev/codegen-ts";
 import { readPackageManifest, declaredDependencyNames } from "./package-manifest.js";
 
 /**
@@ -67,6 +72,13 @@ export interface GeneratorCatalogRow {
     ejectable: boolean;
     /** Whether this project already owns a copy. `null` with no project. */
     owned: boolean | null;
+    /**
+     * ADR-0034 Amendment 3 (2026-09-24): the HTTP-adapter source this generator's output
+     * imports, as far as the project owns a copy of it under `codegen/runtime/` — each
+     * file compared to the installed runtime package. Absent when the generator's output
+     * imports no adapter, or the project owns none of it.
+     */
+    runtimeCopy?: RuntimeCopyRow[];
   };
   project?: {
     /** Wired in this project's `generators: [...]`. */
@@ -237,12 +249,37 @@ const PROBE_DB_IMPORT_PLACEHOLDER = "./db";
 // the listing
 // ---------------------------------------------------------------------------
 
+/** Per generator that hands over adapter source, the project's copies of the files it reaches. */
+async function ownedRuntimeByGenerator(
+  projectRoot: string,
+): Promise<Map<string, { files: RuntimeCopyRow[]; packages: string[] }>> {
+  const out = new Map<string, { files: RuntimeCopyRow[]; packages: string[] }>();
+  const status = await runtimeCopyStatus(projectRoot);
+  if (status.length === 0) return out;
+  const { srcRoot } = resolveRuntimePackage();
+  for (const [name, modules] of Object.entries(RUNTIME_ENTRIES)) {
+    const closure = runtimeClosure(srcRoot, modules);
+    const reached = new Set(closure.files.map((f) => `${OWNED_RUNTIME_DIR}/${f}`));
+    const files = status.filter((r) => reached.has(r.path));
+    if (files.length > 0) out.set(name, { files, packages: closure.packages });
+  }
+  return out;
+}
+
 export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promise<CatalogRow[]> {
   const rows: CatalogRow[] = [];
+  const runtimeCopies = opts.project === undefined
+    ? new Map<string, { files: RuntimeCopyRow[]; packages: string[] }>()
+    : await ownedRuntimeByGenerator(opts.project.projectRoot);
 
   for (const entry of listCatalog()) {
     const template = entry.ejectable ? readTemplate(entry.name) : undefined;
-    const install = installSetFor([entry]);
+    // A project that owns this generator's adapter copy installs what the COPY imports,
+    // not the runtime package — the same trade `meta eject` prints.
+    const owned = runtimeCopies.get(entry.name);
+    const install = owned === undefined
+      ? installSetFor([entry])
+      : installSetFor([entry], [], { generators: new Set([entry.name]), ...runtimeInstall(owned.packages) });
     const pkg = packageOf(entry.name) ?? "";
 
     const row: GeneratorCatalogRow = {
@@ -266,6 +303,7 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
         kind: entry.ejectable ? "reference-template" : "package-only",
         ejectable: entry.ejectable,
         owned: opts.project === undefined ? null : opts.project.ownedNames.has(entry.name),
+        ...(owned !== undefined ? { runtimeCopy: owned.files } : {}),
       },
     };
 
@@ -408,6 +446,15 @@ export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
     if (!r.source.ejectable) marks.push("package-only");
     if (r.project?.wired) marks.push("WIRED");
     if (r.source.owned) marks.push("owned");
+    if (r.source.runtimeCopy !== undefined) {
+      // The adapter source this generator's output imports, compared to the package.
+      const differing = r.source.runtimeCopy.filter((c) => c.verdict === "differs").length;
+      marks.push(
+        differing === 0
+          ? "owned runtime: identical to the package"
+          : `owned runtime: ${differing} file(s) DIFFER from the package — meta eject --list`,
+      );
+    }
     if (probed && r.project?.wouldEmit !== null && r.project?.wouldEmit !== undefined) {
       const needs = r.project.needsConfig;
       marks.push(

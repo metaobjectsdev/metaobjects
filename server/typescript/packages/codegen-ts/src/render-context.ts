@@ -115,6 +115,15 @@ export interface RenderContext {
    *  (`@provided: true` declarations). Undefined when unset — referencing a
    *  provided enum without it is a codegen-time error. */
   providedEnumModule?: string;
+  /**
+   * Where the HTTP-adapter tier (`drizzle-fastify` / `hono` mounts and the allowlist
+   * types) is imported from — see `owned-runtime.ts`. Undefined = the
+   * `@metaobjectsdev/runtime-ts` package, which is what the runner always builds, so
+   * output is byte-identical for every project that has not ejected. An owned generator
+   * sets it (`{ ...ctx.renderContext, httpRuntimeImport }`) to point its output at the
+   * adapter copy `meta eject` placed in the repo.
+   */
+  httpRuntimeImport?: string;
 }
 
 /** Optional shape — `extStyle`, `omImport`, `columnNamingStrategy`, `apiPrefix`, `outputLayout`, and `packageOf` default if omitted. `packageOf` defaults to an empty Map (correct for flat layout; `runGen` always provides the real map). `collectionName` is built from `pluralizeCollections` + `collectionNameOverrides` (both default to always-pluralize). */

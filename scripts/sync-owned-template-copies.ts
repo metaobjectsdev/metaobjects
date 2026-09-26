@@ -68,6 +68,32 @@ for (const dir of ownedCopyDirs()) {
   }
 }
 
+// ADR-0034 Amendment 3 (2026-09-24): an example owning `entity` / `routes` also owns the
+// HTTP-adapter source their output imports, under `codegen/runtime/`, verbatim from
+// runtime-ts/src. Same rule as above — only files that already exist are re-synced.
+const RUNTIME_SRC = join(REPO_ROOT, "server/typescript/packages/runtime-ts/src");
+const examplesDir = join(REPO_ROOT, "examples");
+if (existsSync(examplesDir)) {
+  for (const e of readdirSync(examplesDir, { withFileTypes: true })) {
+    const root = join(examplesDir, e.name, "codegen", "runtime");
+    if (!e.isDirectory() || !existsSync(root)) continue;
+    for (const f of readdirSync(root, { recursive: true, withFileTypes: true })) {
+      if (!f.isFile() || !f.name.endsWith(".ts")) continue;
+      const path = join(f.parentPath, f.name);
+      const upstream = join(RUNTIME_SRC, relative(root, path));
+      if (!existsSync(upstream)) continue;
+      const shipped = readFileSync(upstream, "utf8");
+      checked++;
+      if (readFileSync(path, "utf8") === shipped) continue;
+      stale.push(relative(REPO_ROOT, path));
+      if (!CHECK) {
+        writeFileSync(path, shipped);
+        written++;
+      }
+    }
+  }
+}
+
 // A run that matched nothing would report success having done nothing — the same
 // vacuous-pass shape the gate itself guards against.
 if (checked === 0) {

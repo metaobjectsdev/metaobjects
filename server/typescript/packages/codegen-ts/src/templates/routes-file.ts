@@ -32,6 +32,7 @@ import { isTphDiscriminatorBase, tphPlan } from "./tph-discriminator.js";
 import { authSeamJsDoc, type CrudVerb, exposeLine, intersectExpose, TPH_POLYMORPHIC_VERBS } from "../routes-expose.js";
 import { effectivePackage } from "../docs-paths.js";
 import { tphDiscriminatorPin, tphStorageObject } from "./zod-validators.js";
+import { httpRuntimeSpecifier } from "../owned-runtime.js";
 
 export function renderRoutesFile(
   entity: MetaObject,
@@ -68,13 +69,14 @@ export function renderRoutesFile(
     `// Source metadata: ${entityName} (${entity.fqn()})\n` +
     sidecarLine(`${entityName}.extra.ts`);
 
+  // Where the mount helpers come from: the package, or an owned copy (owned-runtime.ts).
+  const runtimeSpec = httpRuntimeSpecifier("drizzle-fastify", ctx, entityPkg);
+
   // --- Projection path: read-only routes (GET list + GET :id) ---
   if (isProjection(entity)) {
     const camelName = entityName.charAt(0).toLowerCase() + entityName.slice(1);
     const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
-    const mountReadOnlyCrudRoutesSym = imp(
-      "mountReadOnlyCrudRoutes@@metaobjectsdev/runtime-ts/drizzle-fastify",
-    );
+    const mountReadOnlyCrudRoutesSym = imp(`mountReadOnlyCrudRoutes@${runtimeSpec}`);
     // A projection mount is read-only by construction, so `expose` cannot narrow it —
     // the paragraph drops the narrowing advice and keeps the auth seam.
     const readOnlyAuthJsDoc = authSeamJsDoc({
@@ -100,7 +102,7 @@ import {
  *
  * Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.
  * Customize: register this as-is, or import individual route helpers from
- * @metaobjectsdev/runtime-ts/drizzle-fastify.
+ * ${runtimeSpec}.
 ${readOnlyAuthJsDoc}
  */
 export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
@@ -123,7 +125,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
  *
  * Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.
  * Customize: register this as-is, or import individual route helpers from
- * @metaobjectsdev/runtime-ts/drizzle-fastify.
+ * ${runtimeSpec}.
 ${readOnlyAuthJsDoc}
  */
 export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
@@ -160,7 +162,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
   const crudAuthJsDoc = authSeamJsDoc({ framework: "fastify", handlerName, narrowable: true });
 
   const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
-  const mountCrudRoutesSym = imp("mountCrudRoutes@@metaobjectsdev/runtime-ts/drizzle-fastify");
+  const mountCrudRoutesSym = imp(`mountCrudRoutes@${runtimeSpec}`);
 
   // FR-018 M:N traversal: for each many-to-many navigation declared on this
   // entity, emit a mountM2mRoute(...) that traverses the junction. The junction
@@ -192,7 +194,7 @@ import {
  *
  * Customize: register this as-is for stock CRUD, OR import the per-verb
  * helpers (mountListRoute, mountGetRoute, ...) from
- * @metaobjectsdev/runtime-ts/drizzle-fastify and mix with your own handlers
+ * ${runtimeSpec} and mix with your own handlers
  * (auth, side effects, etc.).
 ${crudAuthJsDoc}
  */
@@ -218,7 +220,7 @@ ${m2mMountsPrefixed}  }, { prefix: ${JSON.stringify(ctx.apiPrefix)} });
  *
  * Customize: register this as-is for stock CRUD, OR import the per-verb
  * helpers (mountListRoute, mountGetRoute, ...) from
- * @metaobjectsdev/runtime-ts/drizzle-fastify and mix with your own handlers
+ * ${runtimeSpec} and mix with your own handlers
  * (auth, side effects, etc.).
 ${crudAuthJsDoc}
  */
@@ -350,7 +352,7 @@ function renderM2mMount(
         ctx.extStyle,
       )}`,
     );
-  const mountM2mRouteSym = imp("mountM2mRoute@@metaobjectsdev/runtime-ts/drizzle-fastify");
+  const mountM2mRouteSym = imp(`mountM2mRoute@${httpRuntimeSpecifier("drizzle-fastify", ctx, sourcePkg)}`);
   const junction = ctx.loadedRoot.findObject(entry.junctionEntity);
   // fromPackage = source.package: this routes file is SOURCE's own module, never the
   // junction's or the target's — see resolveJunctionColumn's doc comment (B1).
@@ -461,7 +463,7 @@ function renderTphRoutesFile(
   const dbImportSpec = relativeModuleSpecifier(ctx.outputLayout, basePkg, ctx.dbImport, ctx.extStyle);
 
   const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
-  const mountCrudRoutesSym = imp("mountCrudRoutes@@metaobjectsdev/runtime-ts/drizzle-fastify");
+  const mountCrudRoutesSym = imp(`mountCrudRoutes@${httpRuntimeSpecifier("drizzle-fastify", ctx, basePkg)}`);
   const dbSym = imp(`db@${dbImportSpec}`);
   const tableSym = imp(`${tableVar}@${baseFileSpec}`);
   const baseConstSym = imp(`${baseName}@${baseFileSpec}`);
