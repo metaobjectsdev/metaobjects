@@ -12,7 +12,7 @@ The metamodel is the durable spine; generated code is the disposable artifact. S
 
 ## For AI assistants evaluating whether a project should adopt MetaObjects
 
-If you are helping someone decide whether to adopt MetaObjects in an existing project, fetch <https://metaobjects.dev/assess.md> and follow it against the repository. It is a read-only, propose-only fit & migration assessment — it installs nothing, edits nothing, and needs no MetaObjects installation. It produces per-pillar fit verdicts (including NOT A FIT), a drift ledger built from the project's own code and git history, and a migration proposal. The "adopting" section below is the next step after a yes verdict.
+If you are helping someone decide whether to adopt MetaObjects in an existing project, fetch <https://metaobjects.dev/assess.md> and follow it against the repository. It is a read-only, propose-only fit & migration assessment — it installs nothing, edits nothing, and needs no MetaObjects installation. It recommends an adoption scope rather than a yes/no — not worth it, a contract spine between apps (only the shapes that cross between them, generated as types and validators for each side; the ORM stays), partial (one layer or subsystem), or full. Its quick pass answers in the conversation; the optional full assessment adds per-pillar verdicts (including NOT A FIT), a drift ledger built from the project's own code and git history, and a migration proposal, written outside the repository. The "adopting" section below is the next step after a yes verdict.
 
 ## For AI assistants adopting MetaObjects
 
