@@ -9,6 +9,14 @@ to wire instead.
 
 A copy imports the same ``metaobjects.codegen.*`` module paths the packaged generator
 does. Those module paths are the documented surface an owned generator builds on.
+
+What the copy's OUTPUT imports is a different question. A generator whose generated code
+imports helper runtime (``routes``: ``filter_parser``, ``constraint_errors``) lists it on
+its registry entry, and eject hands that over too: the runtime source lands in
+``codegen/runtime/`` and the copy's ``OWNED_RUNTIME`` switch is flipped, so the owned
+generator emits that source into the generated package and its output imports the local
+copy. Core modules (loader, registry, render, extract, ``ObjectManager``) stay package
+imports. An existing runtime copy is never overwritten, even with ``--force``.
 """
 from __future__ import annotations
 
@@ -30,6 +38,14 @@ from metaobjects.codegen.generator_registry import (
 #: Where an owned copy lands, relative to the project root. Mirrors the TS layout.
 OWNED_DIR = Path("codegen") / "generators"
 
+#: Where the helper runtime an owned generator's output depends on lands. A sibling of
+#: :data:`OWNED_DIR`, which is where the owned router reads it from.
+RUNTIME_DIR = Path("codegen") / "runtime"
+
+#: The switch an owned copy flips to emit and import its runtime locally.
+_RUNTIME_SWITCH_OFF = "OWNED_RUNTIME = False"
+_RUNTIME_SWITCH_ON = "OWNED_RUNTIME = True"
+
 
 def owned_stem(name: str) -> str:
     """The module name of an owned copy: the stable name with ``-`` as ``_``."""
@@ -50,6 +66,32 @@ def packaged_source(entry: GeneratorEntry) -> str:
     module = importlib.import_module(entry.source_module)
     assert module.__file__ is not None
     return Path(module.__file__).read_text(encoding="utf-8")
+
+
+def ejected_source(entry: GeneratorEntry) -> str:
+    """What ``eject`` writes for *entry*: the packaged source, with the runtime switch on
+    when its output imports helper runtime. This is the reference an owned copy is
+    compared against."""
+    source = packaged_source(entry)
+    if not entry.runtime:
+        return source
+    if source.count(_RUNTIME_SWITCH_OFF) != 1:
+        raise RuntimeError(
+            f"{entry.source_module} must carry exactly one {_RUNTIME_SWITCH_OFF!r} line "
+            "for eject to hand its runtime over"
+        )
+    return source.replace(_RUNTIME_SWITCH_OFF, _RUNTIME_SWITCH_ON)
+
+
+def packaged_runtime_path(module: str) -> Path:
+    """The installed source of helper runtime *module*."""
+    package = importlib.import_module("metaobjects.codegen.runtime")
+    assert package.__file__ is not None
+    return Path(package.__file__).parent / f"{module}.py"
+
+
+def runtime_path(root: Path, module: str) -> Path:
+    return root / RUNTIME_DIR / f"{module}.py"
 
 
 def ejectable() -> list[GeneratorEntry]:
@@ -88,9 +130,19 @@ def eject(names: list[str], root: Path, *, force: bool = False) -> EjectResult:
     for n in names:
         entry = known[n]
         target = owned_path(root, n)
-        target.write_text(packaged_source(entry), encoding="utf-8")
+        target.write_text(ejected_source(entry), encoding="utf-8")
         out.append(f"ejected {n} -> {target.relative_to(root)}")
         out.append(f"  wire it: replace \"{n}\" in `generators` with {owned_token(entry)}")
+        for module in entry.runtime:
+            rt = runtime_path(root, module)
+            rel = rt.relative_to(root)
+            if rt.exists():
+                out.append(f"  runtime {rel}: kept your copy (eject never overwrites runtime)")
+                continue
+            rt.parent.mkdir(parents=True, exist_ok=True)
+            rt.write_text(packaged_runtime_path(module).read_text(encoding="utf-8"),
+                          encoding="utf-8")
+            out.append(f"  runtime {rel}: copied — its generated output imports this copy")
     out.append("")
     out.append(
         "The copies are yours: edit them freely. Keep only one of the packaged name and your "
@@ -112,13 +164,34 @@ def owned_status(root: Path, entry: GeneratorEntry) -> str | None:
     path = owned_path(root, entry.name)
     if entry.source is None or not path.exists():
         return None
-    mine = _normalised(path.read_text(encoding="utf-8"))
-    ref = _normalised(packaged_source(entry))
+    return _compare(path.read_text(encoding="utf-8"), ejected_source(entry))
+
+
+def _compare(mine_text: str, ref_text: str) -> str:
+    mine = _normalised(mine_text)
+    ref = _normalised(ref_text)
     behind = sum((ref - mine).values())
     own = sum((mine - ref).values())
     if behind == 0 and own == 0:
         return "identical"
     return f"DIFFERS: {behind} behind, {own} of your own"
+
+
+def runtime_status(root: Path) -> list[tuple[Path, str]]:
+    """``(relative path, status)`` for each owned runtime copy, against the installed one.
+
+    Same verdict shape as :func:`owned_status`, so ``--list`` can say when an upgrade
+    changed runtime you own."""
+    modules = sorted({m for e in ejectable() for m in e.runtime})
+    rows: list[tuple[Path, str]] = []
+    for module in modules:
+        path = runtime_path(root, module)
+        if path.exists():
+            rows.append((path.relative_to(root), _compare(
+                path.read_text(encoding="utf-8"),
+                packaged_runtime_path(module).read_text(encoding="utf-8"),
+            )))
+    return rows
 
 
 def build_owned(spec: str, root: Path, ctx: GeneratorBuildContext) -> tuple[Generator | None, str | None]:

@@ -40,7 +40,10 @@ from metaobjects.codegen.generators.output_prompt_generator import (
 from metaobjects.codegen.generators.render_helper_generator import (
     render_helper_generator,
 )
-from metaobjects.codegen.generators.router_generator import router_generator
+from metaobjects.codegen.generators.router_generator import (
+    RUNTIME_MODULES as _ROUTER_RUNTIME,
+    router_generator,
+)
 from metaobjects.codegen.generators.template_generator import template_generator
 from metaobjects.codegen.generators.trace_helper_generator import trace_helper_generator
 from metaobjects.render.verify import InMemoryProvider
@@ -113,6 +116,13 @@ class GeneratorEntry:
     #: symbol the copy is wired by. ``None`` = not ejectable (the ``template`` primitive
     #: has no emit logic of its own to own).
     source: Callable[..., Generator] | None = None
+    #: Helper runtime modules (under ``metaobjects.codegen.runtime``) the generator's
+    #: OUTPUT imports. ``metaobjects eject`` copies their source into the adopter's
+    #: ``codegen/runtime/`` beside the owned generator, and the owned copy's output imports
+    #: that copy instead of the installed package (ADR-0034 Amendment 3: the adopter owns
+    #: every helper line its generated code depends on). Core modules — loader, registry,
+    #: render, extract, ``ObjectManager`` — are never listed here: they stay package imports.
+    runtime: tuple[str, ...] = ()
 
     @property
     def source_module(self) -> str | None:
@@ -186,6 +196,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         # generated package fails at import (ModuleNotFoundError).
         requires=("entity", "filter-allowlist"),
         source=router_generator,
+        runtime=_ROUTER_RUNTIME,
     ),
     "output-parser": GeneratorEntry(
         name="output-parser",

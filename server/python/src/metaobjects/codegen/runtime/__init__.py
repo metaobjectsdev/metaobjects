@@ -1,6 +1,9 @@
 """Runtime helpers shipped alongside generated routers.
 
-Generated code imports from this package directly — the helpers are part of
-the public surface of `metaobjects.codegen`. Keep imports here minimal and
-substrate-neutral (no FastAPI / SQLAlchemy / pg8000 dependencies).
+Generated code from the PACKAGED ``routes`` generator imports from this package directly.
+These modules are helper tier, not core (ADR-0034 Amendment 3): ``metaobjects eject
+routes`` copies their source into the adopter's ``codegen/runtime/``, and the owned
+generator's output imports that copy instead. So each module must stay self-contained —
+standard library only, no ``metaobjects`` import and no FastAPI / SQLAlchemy / pg8000
+dependency — or the copy would not run on its own.
 """

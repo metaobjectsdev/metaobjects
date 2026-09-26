@@ -492,6 +492,18 @@ each as `<Name>.py`. So the prompt+parse story is two generators:
 `module:symbol` in place of its name. See
 [Own your codegen → Python](../features/own-your-codegen.md#python-metaobjects-eject).
 
+Ejecting `routes` also hands over the helper runtime the generated routers call:
+`filter_parser` and `constraint_errors` are copied into `codegen/runtime/`, and the owned
+generator emits them into the generated package as `_runtime/` and imports them from
+there (`from ._runtime.filter_parser import ...`). Fix a helper bug by editing
+`codegen/runtime/<module>.py` and running `metaobjects gen`, with no upstream release
+involved. `verify --codegen` never treats `codegen/runtime/` as drift. It does report a
+`_runtime/` copy that is older than its source, as it would any stale generated file. The
+core stays a package import in every output: the loader, registry, `render`, `extract`
+and `ObjectManager`. A project that has not ejected `routes` keeps importing
+`metaobjects.codegen.runtime`. The steps for pulling an upstream fix into your copy are in
+[Own your codegen → The runtime your generated code imports comes with it](../features/own-your-codegen.md#the-runtime-your-generated-code-imports-comes-with-it).
+
 Every template-tier generator that imports a model (`output-parser`, `extractor`,
 `render-helper`) needs `entity` in the same run: `metaobjects gen --list` marks them
 `(requires: entity)`, and `--generators` warns when `entity` is missing.
