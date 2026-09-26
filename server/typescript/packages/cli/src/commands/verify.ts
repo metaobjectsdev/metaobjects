@@ -7,7 +7,7 @@
 // silently break a prompt" guarantee, enforced at the last fixed point before
 // the text ships. Required-slot misses are warnings (don't fail the build).
 
-import { join, resolve as resolvePath } from "node:path";
+import { join, relative, resolve as resolvePath } from "node:path";
 import { parseVerifyArgs, type MigrateFlags } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
@@ -23,7 +23,7 @@ import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
 import { scanForMissingBaseUrl, type BaseUrlFinding } from "../lib/base-url-advisory.js";
 import { scanForRemovedProps, type RemovedPropFinding } from "../lib/removed-prop-advisory.js";
 import { replayRemedy } from "../lib/replay-remedy.js";
-import { FileProvider } from "../lib/file-provider.js";
+import { FileProvider, mustacheTagLine } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenCollection, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
@@ -998,12 +998,22 @@ export async function verifyCommand(
         }
         const drift = verify(text, fieldTree, { provider, requiredSlots, requiredTags });
         anyBodyChecked = true;
+        // WHERE to look. The {code, path} diagnostic is pinned by the cross-port verify
+        // corpus, so the location is added here, in the display only: the body's file
+        // (project-relative) and the line the variable's tag first appears on, when the
+        // tag is in this body rather than a partial.
+        const bodyFile = provider.pathOf(ref);
+        const where = (varPath: string): string => {
+          if (bodyFile === undefined) return "";
+          const line = mustacheTagLine(text, varPath);
+          return ` (${relative(projectRoot, bodyFile)}${line !== undefined ? `:${line}` : ""})`;
+        };
         for (const e of drift) {
           if (e.code === ERR_REQUIRED_SLOT_UNUSED) {
-            log.warn(`[${tmpl.name}] (${label}) ${e.code}: ${e.path}`);
+            log.warn(`[${tmpl.name}] (${label}) ${e.code}: ${e.path}${where(e.path)}`);
             warnCount++;
           } else {
-            log.error(`[${tmpl.name}] (${label}) ${e.code}: ${e.path}`);
+            log.error(`[${tmpl.name}] (${label}) ${e.code}: ${e.path}${where(e.path)}`);
             errorCount++;
             anyErrorHere = true;
           }

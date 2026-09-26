@@ -97,6 +97,22 @@ describe("meta verify", () => {
     }
   });
 
+  // The diagnostic itself ({code, path}) is pinned by the cross-port verify corpus, so the
+  // location is added by the CLI's display only: the template FILE (project-relative) and the
+  // line the variable first appears on, so the reader can open it without hunting.
+  test("the drift line names the template file and line", async () => {
+    const tmp = scaffold("Hi {{displayName}},\nyou have\n  {{ notARealField }}.");
+    try {
+      expect(await run(["verify", "--cwd", tmp])).toBe(1);
+      const line = [...out, ...err].find((l) => l.includes("ERR_VAR_NOT_ON_PAYLOAD"));
+      expect(line).toBeDefined();
+      expect(line).toContain(join("prompts", "prompt", "strategy.mustache") + ":3");
+      expect(line).not.toContain(tmp);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   test("exit 1 when a template's @textRef cannot be resolved by the provider", async () => {
     const tmp = scaffold(undefined); // no prompt file written
     try {
