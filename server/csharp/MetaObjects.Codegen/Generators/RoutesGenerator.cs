@@ -23,9 +23,11 @@
 // generated list handler calls FilterParser.Parse against the per-entity
 // <Entity>FilterAllowlist (emitted by FilterAllowlistGenerator), then
 // dispatches the resulting predicates onto the IQueryable<T> via
-// EfCoreFilterDispatch.ApplyFilter. Both helpers live in
-// MetaObjects.Codegen.Runtime — consumers reference the codegen assembly
-// at runtime in their ASP.NET host.
+// EfCoreFilterDispatch.ApplyFilter. Those helpers (and ValueObjectValidator,
+// ConstraintErrors) live in the namespace HelperRuntimeNamespace names: the
+// package's MetaObjects.Codegen.Runtime for the packaged generator, the adopter's
+// own codegen/runtime/ copy (Codegen.Runtime) once `dotnet meta eject routes` has
+// copied both — see MetaObjects.Codegen.HelperRuntime.
 
 using System.Text;
 using MetaObjects.Meta;
@@ -37,6 +39,12 @@ namespace MetaObjects.Codegen.Generators;
 public class RoutesGenerator : PerEntityGenerator
 {
     public override string Name => "routes-generator";
+
+    // Where the emitted routes import FilterParser / EfCoreFilterDispatch /
+    // ValueObjectValidator / ConstraintErrors from. `dotnet meta eject routes` rewrites
+    // this one line to "Codegen.Runtime" and copies those helpers' source into
+    // codegen/runtime/, so an owned copy's output binds to code the adopter owns.
+    private const string HelperRuntimeNamespace = "MetaObjects.Codegen.Runtime";
 
     public override bool Filter(MetaObject entity) =>
         (entity.IsEntity() || entity.DbView is not null) && InstanceArtifacts.EmitsInstanceArtifacts(entity);
@@ -158,7 +166,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("using Microsoft.AspNetCore.Http;");
         sb.AppendLine("using Microsoft.AspNetCore.Routing;");
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
-        sb.AppendLine("using MetaObjects.Codegen.Runtime;");
+        sb.AppendLine($"using {HelperRuntimeNamespace};");
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
@@ -428,7 +436,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("using Microsoft.AspNetCore.Http;");
         sb.AppendLine("using Microsoft.AspNetCore.Routing;");
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
-        sb.AppendLine("using MetaObjects.Codegen.Runtime;");
+        sb.AppendLine($"using {HelperRuntimeNamespace};");
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();

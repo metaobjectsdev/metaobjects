@@ -252,8 +252,23 @@ app.Run();
 EF Core does the rest — the generated entities and `AppDbContext` are plain EF Core with
 no MetaObjects types in them. Note the one exception: generated **routes** emit
 `using MetaObjects.Codegen.Runtime;` for the shared filter/sort helpers, so a project that
-generates routes references `MetaObjects.Codegen` at runtime. Entities-and-DbContext-only
-projects do not.
+generates routes with the packaged generator references `MetaObjects.Codegen` at runtime.
+Entities-and-DbContext-only projects do not.
+
+**Owning the routes, helpers included.** `dotnet meta eject routes` copies the routes
+generator into `codegen/generators/` AND the helper source its output calls into
+`codegen/runtime/`: `FilterParser`, `FilterParseResult`, `FilterPredicate`,
+`EfCoreFilterDispatch`, `ValueObjectValidator`, `ConstraintErrors` and
+`Iso8601TimestampConverter`, each under the namespace `Codegen.Runtime`. The owned
+generator's output imports `Codegen.Runtime` instead of the package. Compile the folder into
+your app (`<Compile Include="../codegen/runtime/**/*.cs" />`) and the generated routes need
+no `MetaObjects.Codegen` reference; a fix to the filter parser is then an edit in your repo,
+not a wait for a release. What stays in the package is core: `ExtractObject` (the reply
+parser the prompt tier calls) and `M2MResolver` (metadata-driven M:N traversal), plus the
+loader, registry, render and verify. `dotnet meta gen --list` reports the copy `identical`
+or per-file `DIFFERS`, `verify --codegen` does not treat it as drift, and
+[Own your codegen → C#](../features/own-your-codegen.md#ejecting-routes-hands-over-the-helper-runtime-too)
+has the diff recipe for pulling an upstream fix into it.
 
 **Consumer dependencies.** The generated `AppDbContext` and the `Program.cs`
 wiring above use EF Core (`AddDbContext`, `DbContext`, `UseNpgsql`), which

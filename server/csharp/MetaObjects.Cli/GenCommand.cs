@@ -188,10 +188,13 @@ public static class GenCommand
     /// The lines `dotnet meta gen --list` prints: one `&lt;stable-name&gt; — &lt;description&gt;`
     /// per registered generator, native first, marked `[owned — identical]` / `[owned —
     /// DIFFERS: N behind, M of your own]` when <paramref name="cwd"/> already has an
-    /// ejected copy (<see cref="OwnedCopy.Status"/>). Pure (no console I/O) for testing.
+    /// ejected copy (<see cref="OwnedCopy.Status"/>), plus one line for an owned helper
+    /// runtime copy (<see cref="OwnedCopy.RuntimeStatus"/>) when there is one. Pure (no
+    /// console I/O) for testing.
     /// </summary>
-    public static IReadOnlyList<string> ListLines(string cwd) =>
-        GeneratorRegistry.List()
+    public static IReadOnlyList<string> ListLines(string cwd)
+    {
+        var lines = GeneratorRegistry.List()
             .Select(e =>
             {
                 var owned = OwnedCopy.Status(cwd, e);
@@ -200,4 +203,11 @@ public static class GenCommand
                 return $"  {e.Name} — {e.Description}" + requires + (e.Note is not null ? $" [{e.Note}]" : "") + ownedMark;
             })
             .ToList();
+        // The helper runtime an ejected routes generator brought with it is owned code too,
+        // so it gets the same identical/DIFFERS verdict as the generator copies.
+        if (OwnedCopy.RuntimeStatus(cwd) is { } runtime)
+            lines.Add($"  ({HelperRuntime.OwnedDirectory}/) — helper runtime your generated routes call, " +
+                      $"copied by eject [owned — {runtime}]");
+        return lines;
+    }
 }

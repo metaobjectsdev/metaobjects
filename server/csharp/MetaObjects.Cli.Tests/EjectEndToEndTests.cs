@@ -54,7 +54,12 @@ public sealed class EjectEndToEndTests : IDisposable
 
     /// <summary>Run <paramref name="args"/> against the ejected codegen project and
     /// return (exitCode, combined stdout+stderr).</summary>
-    private (int ExitCode, string Output) RunCodegenProject(params string[] args)
+    private (int ExitCode, string Output) RunCodegenProject(params string[] args) =>
+        RunProject(Path.Combine(_root, "codegen"), args);
+
+    /// <summary><c>dotnet run --project <paramref name="project"/> -- args</c>, returning
+    /// (exitCode, combined stdout+stderr).</summary>
+    private (int ExitCode, string Output) RunProject(string project, params string[] args)
     {
         var psi = new ProcessStartInfo("dotnet")
         {
@@ -72,7 +77,7 @@ public sealed class EjectEndToEndTests : IDisposable
         psi.Environment["UseSharedCompilation"] = "false";
         psi.ArgumentList.Add("run");
         psi.ArgumentList.Add("--project");
-        psi.ArgumentList.Add(Path.Combine(_root, "codegen"));
+        psi.ArgumentList.Add(project);
         psi.ArgumentList.Add("--");
         foreach (var a in args) psi.ArgumentList.Add(a);
 
@@ -90,7 +95,7 @@ public sealed class EjectEndToEndTests : IDisposable
         if (!exited)
         {
             try { proc.Kill(entireProcessTree: true); } catch { /* best effort */ }
-            throw new TimeoutException($"`dotnet run --project codegen -- {string.Join(' ', args)}` did not exit within 5 minutes.");
+            throw new TimeoutException($"`dotnet run --project {project} -- {string.Join(' ', args)}` did not exit within 5 minutes.");
         }
         return (proc.ExitCode, output[0] + output[1]);
     }
@@ -174,5 +179,125 @@ public sealed class EjectEndToEndTests : IDisposable
             "--generators", "entity,names");
         Assert.True(verifyExit == 0, $"verify --codegen failed (exit {verifyExit}):\n{verifyOutput}");
         Assert.Contains("OK", verifyOutput);
+    }
+
+    /// <summary>Swap the scaffold's MetaObjects.Codegen PackageReference for a
+    /// ProjectReference to this checkout (see the header comment).</summary>
+    private void PointScaffoldAtThisCheckout(string repoRoot)
+    {
+        var codegenProjPath = Path.Combine(repoRoot, "server", "csharp", "MetaObjects.Codegen", "MetaObjects.Codegen.csproj");
+        var rewritten = System.Text.RegularExpressions.Regex.Replace(
+            File.ReadAllText(CodegenCsproj),
+            "<PackageReference Include=\"MetaObjects.Codegen\"[^/]*/>",
+            $"<ProjectReference Include=\"{codegenProjPath}\" />");
+        Assert.DoesNotContain("PackageReference", rewritten);
+        File.WriteAllText(CodegenCsproj, rewritten);
+    }
+
+    /// <summary>
+    /// The helper runtime an ejected routes generator brings with it (ADR-0034 Amendment 3):
+    /// eject routes, generate through the owned project, and build + RUN a real ASP.NET Core
+    /// app that compiles the generated output together with codegen/runtime/ and references
+    /// NO MetaObjects package at all. Then prove the copy is the code that runs: an edit to
+    /// the owned FilterParser changes the error body a live request gets back. Also proves
+    /// `verify --codegen` reads the owned runtime as owned code, not as drift.
+    /// </summary>
+    [Fact]
+    public void Ejected_routes_run_on_the_owned_helper_runtime_with_no_MetaObjects_reference()
+    {
+        var repoRoot = RepoRoot();
+        Directory.CreateDirectory(MetadataDir);
+        File.WriteAllText(Path.Combine(MetadataDir, "meta.acme.json"), """
+        { "metadata.root": { "package": "acme::widgets", "children": [
+          { "object.entity": { "name": "Widget", "children": [
+            { "source.rdb": { "@table": "widgets" } },
+            { "field.uuid":   { "name": "id", "@required": true } },
+            { "field.string": { "name": "label", "@required": true, "@maxLength": 80 } },
+            { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "uuid" } }
+          ]}}
+        ]}}
+        """);
+
+        const string selection = "entity,names,db-context,filter-allowlist,routes";
+        var eject = EjectCommand.Run(["entity", "names", "db-context", "filter-allowlist", "routes"], _root, force: false);
+        Assert.Equal(0, eject.ExitCode);
+        var runtimeDir = Path.Combine(_root, "codegen", "runtime");
+        Assert.True(File.Exists(Path.Combine(runtimeDir, "FilterParser.cs")));
+        PointScaffoldAtThisCheckout(repoRoot);
+
+        var (genExit, genOutput) = RunCodegenProject(
+            "gen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated", "--generators", selection);
+        Assert.True(genExit == 0, $"gen failed (exit {genExit}):\n{genOutput}");
+
+        var generated = Directory.GetFiles(OutDir, "*.cs", SearchOption.AllDirectories);
+        var routesFile = Assert.Single(generated, f => File.ReadAllText(f).Contains("MapWidgetRoutes"));
+        var routesText = File.ReadAllText(routesFile);
+        Assert.Contains("using Codegen.Runtime;", routesText);
+        Assert.DoesNotContain(generated, f => File.ReadAllText(f).Contains("MetaObjects.Codegen"));
+
+        // verify --codegen: the owned runtime lives outside --out and is never drift.
+        var (verifyExit, verifyOutput) = RunCodegenProject(
+            "verify", "--codegen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated", "--generators", selection);
+        Assert.True(verifyExit == 0, $"verify --codegen failed (exit {verifyExit}):\n{verifyOutput}");
+
+        // The adopter's fix, made in their own copy.
+        var parserPath = Path.Combine(runtimeDir, "FilterParser.cs");
+        var parser = File.ReadAllText(parserPath);
+        Assert.Contains("\"invalid_filter_field\"", parser);
+        File.WriteAllText(parserPath, parser.Replace("\"invalid_filter_field\"", "\"invalid_filter_field_OWNED_EDIT\""));
+
+        // The same verify stays clean after the edit: the runtime copy is owned code.
+        var (verify2Exit, verify2Output) = RunCodegenProject(
+            "verify", "--codegen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated", "--generators", selection);
+        Assert.True(verify2Exit == 0, $"verify --codegen after a runtime edit failed (exit {verify2Exit}):\n{verify2Output}");
+
+        // A real web app: generated output + the owned runtime, EF Core + SQLite, and no
+        // MetaObjects reference of any kind.
+        var appDir = Path.Combine(_root, "app");
+        Directory.CreateDirectory(appDir);
+        File.WriteAllText(Path.Combine(appDir, "App.csproj"), """
+        <Project Sdk="Microsoft.NET.Sdk.Web">
+          <PropertyGroup>
+            <TargetFramework>net8.0</TargetFramework>
+            <ImplicitUsings>enable</ImplicitUsings>
+            <Nullable>enable</Nullable>
+          </PropertyGroup>
+          <ItemGroup>
+            <Compile Include="../out/**/*.cs" />
+            <Compile Include="../codegen/runtime/**/*.cs" />
+          </ItemGroup>
+          <ItemGroup>
+            <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
+            <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.10" />
+          </ItemGroup>
+        </Project>
+        """);
+        var route = System.Text.RegularExpressions.Regex.Match(routesText, "prefix \\+ \"(/[^\"/{]+)\"").Groups[1].Value;
+        Assert.False(string.IsNullOrEmpty(route), "could not find the collection route in the generated routes file");
+        File.WriteAllText(Path.Combine(appDir, "Program.cs"), $$"""
+        using Acme.Generated;
+        using Codegen.Runtime;
+        using Microsoft.EntityFrameworkCore;
+
+        var builder = WebApplication.CreateBuilder(args);
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Logging.ClearProviders();
+        builder.Services.AddDbContext<AppDbContext>(o => o.UseSqlite("Data Source=:memory:"));
+        builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new Iso8601TimestampConverter()));
+        var app = builder.Build();
+        app.MapWidgetRoutes();
+        await app.StartAsync();
+        using var http = new HttpClient { BaseAddress = new Uri(app.Urls.First()) };
+        var resp = await http.GetAsync("/api{{route}}?filter[nope][eq]=1");
+        Console.WriteLine($"STATUS={(int)resp.StatusCode}");
+        Console.WriteLine($"BODY={await resp.Content.ReadAsStringAsync()}");
+        await app.StopAsync();
+        """);
+
+        var (appExit, appOutput) = RunProject(appDir);
+        Assert.True(appExit == 0, $"the app did not build or run (exit {appExit}):\n{appOutput}");
+        Assert.DoesNotContain("MetaObjects", File.ReadAllText(Path.Combine(appDir, "App.csproj")));
+        Assert.Contains("STATUS=400", appOutput);
+        Assert.Contains("invalid_filter_field_OWNED_EDIT", appOutput);
     }
 }

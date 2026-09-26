@@ -60,7 +60,7 @@ public static class EjectableGenerators
     private const string PackagedNamespaceDecl = "namespace MetaObjects.Codegen.Generators;";
 
     /// <summary>
-    /// The one edit <c>dotnet meta eject</c> makes to a generator's embedded source
+    /// The edits <c>dotnet meta eject</c> makes to a generator's embedded source
     /// before writing it into an adopter's repo: rename its namespace from the packaged
     /// <c>MetaObjects.Codegen.Generators</c> to <c>Codegen.Generators</c> (the adopter's
     /// own <c>codegen/</c> project — matching its directory, <c>codegen/generators/</c>),
@@ -72,8 +72,14 @@ public static class EjectableGenerators
     /// <c>A</c>, then globally — so <c>MetaObjects.Codegen.Generators</c> reaches
     /// <c>MetaObjects.Codegen</c> AND top-level <c>MetaObjects</c> unqualified);
     /// <c>Codegen.Generators</c> is an unrelated tree and gets none of that fallback, so
-    /// the copy needs all three directives spelled out. Every other line is untouched —
-    /// this is the ONLY edit eject makes.
+    /// the copy needs all three directives spelled out.
+    /// <para>
+    /// The SECOND and last edit applies only to a generator whose output imports the helper
+    /// runtime (<see cref="HelperRuntime.UsedBy"/> — today, routes): its
+    /// <c>HelperRuntimeNamespace</c> constant moves from <c>MetaObjects.Codegen.Runtime</c>
+    /// to <c>Codegen.Runtime</c>, the owned copy eject writes beside it
+    /// (<see cref="HelperRuntime"/>). Every other line is untouched.
+    /// </para>
     /// <para>
     /// WHY A RENAME AT ALL. An ejected copy compiles into the ADOPTER's own assembly
     /// (<c>codegen/Codegen.csproj</c>), which also references the packaged
@@ -101,6 +107,7 @@ public static class EjectableGenerators
             "using MetaObjects.Codegen.Generators;\n" +
             "\n" +
             "namespace Codegen.Generators;";
-        return source[..idx] + replacement + source[(idx + PackagedNamespaceDecl.Length)..];
+        return HelperRuntime.RewriteGeneratorForEject(
+            source[..idx] + replacement + source[(idx + PackagedNamespaceDecl.Length)..]);
     }
 }

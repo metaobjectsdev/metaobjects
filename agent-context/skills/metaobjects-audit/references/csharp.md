@@ -57,18 +57,20 @@ rejected (exit 2).
 
 ## Owned generators
 
-C# does not scaffold-and-own generators — the generators are provided by
-`MetaObjects.Codegen` and are not meant to be copied into the consumer project.
-There is no analog to the TS `codegen/generators/*.ts` pattern here. Generator
-selection uses stable names via `dotnet meta gen --generators <names>`, over a
-**closed built-in registry** — there is no seam to register a generator of your own.
+`dotnet meta eject <name>...` copies a reference generator into `codegen/generators/`
+and scaffolds an owned `codegen/` console project; once `codegen/Codegen.csproj` exists,
+`dotnet meta gen` and `dotnet meta verify --codegen` hand off to it. Ejecting `routes` also
+copies the helper runtime the generated routes call (`FilterParser`, `EfCoreFilterDispatch`,
+`ValueObjectValidator`, `ConstraintErrors`, `Iso8601TimestampConverter`) into
+`codegen/runtime/` under the namespace `Codegen.Runtime`. That folder is owned code, not a
+hand-rolled filter parser: do not flag it. `dotnet meta gen --list` marks each owned copy
+`identical` or `DIFFERS`.
 
-**So do not score a C# project down for "not owning its generators", and do not
-recommend writing one.** The customization path here is the **declarative template**:
-`dotnet meta gen --template-spec <json> --template-root <dir>`, whose entries append to
-your `--generators` selection. A finding of the form "the built-ins do not emit the shape this
-project needs" resolves to a template-spec, not to generator code. Worked example with
-the full JSON: `docs/ports/csharp.md`.
+A project that has not ejected is not a finding either: running the packaged generators by
+name is a supported choice. For a shape no built-in emits, the lighter path is a
+**declarative template**: `dotnet meta gen --template-spec <json> --template-root <dir>`,
+whose entries append to your `--generators` selection. Worked example with the full JSON:
+`docs/ports/csharp.md`.
 
 To re-scaffold the agent-context into a C# project, use the Node `meta` CLI (the
 single agent-docs assembler per ADR-0033):
