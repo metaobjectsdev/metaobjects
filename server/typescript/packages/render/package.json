@@ -10,6 +10,11 @@
       "bun": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./providers": {
+      "bun": "./src/providers.ts",
+      "types": "./dist/providers.d.ts",
+      "default": "./dist/providers.js"
     }
   },
   "files": [

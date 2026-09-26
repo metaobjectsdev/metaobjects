@@ -24,7 +24,7 @@ import { parseEjectArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { declaredDependencyNames, readPackageManifest } from "../lib/package-manifest.js";
 import { compareOwnedCopy, type OwnedComparison } from "../lib/owned-copy.js";
-import { composeCatalog } from "../lib/catalog.js";
+import { composeCatalog, packageOf } from "../lib/catalog.js";
 import { installSetFor, type InstallSet } from "../lib/install-set.js";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
 import {
@@ -55,9 +55,11 @@ interface TemplateSource {
 // runtime by selecting this entry via `names.includes(name)`. Reading from the root
 // deletes that machinery without weakening anything: membership is still checked, once,
 // where the untrusted value enters.
+const CORE_CODEGEN_PACKAGE = "@metaobjectsdev/codegen-ts";
+
 const SOURCES: TemplateSource[] = [
   {
-    packageName: "@metaobjectsdev/codegen-ts",
+    packageName: CORE_CODEGEN_PACKAGE,
     names: coreTpl.REFERENCE_GENERATOR_NAMES,
     root: coreTpl.resolveReferenceRoot,
   },
@@ -417,6 +419,13 @@ function reportLibrary(result: LibraryEjectResult): void {
  * already-copied half as "preserved" and the adopter cannot tell what happened.
  * Returns the unknown names, or an empty array.
  */
+/** Where a package-only generator's factory is imported from. The core package serves
+ *  its generator factories from the `/generators` subpath; the UI packages from the root. */
+function packageFactoryPath(name: string): string {
+  const pkg = packageOf(name) ?? "";
+  return pkg === CORE_CODEGEN_PACKAGE ? `${pkg}/generators` : pkg;
+}
+
 function unknownNames(names: readonly string[]): string[] {
   return names.filter((n) => resolveSource(n) === undefined && !isLibraryName(n));
 }
@@ -535,7 +544,19 @@ export async function ejectCommand(
   }
 
   // All-or-nothing on the names, BEFORE any write — see unknownNames().
-  const unknown = unknownNames(flags.names);
+  const unmatched = unknownNames(flags.names);
+  // A catalog entry with no reference template is PACKAGE-ONLY, not a typo — say so,
+  // and say where it is imported from instead.
+  const packageOnly = unmatched.filter((n) => packageOf(n) !== undefined);
+  const unknown = unmatched.filter((n) => packageOf(n) === undefined);
+  if (packageOnly.length > 0) {
+    log.error(
+      `package-only generator(s): ${packageOnly.map((n) => `${n} (${packageFactoryPath(n)})`).join(", ")}. ` +
+        "No reference template ships for them, so they cannot be ejected: import the factory " +
+        "from the package named beside each one and wire it in `generators: [...]`. " +
+        "Nothing was ejected.",
+    );
+  }
   if (unknown.length > 0) {
     log.error(
       `unknown name(s): ${unknown.join(", ")}. Nothing was ejected. ` +
@@ -543,8 +564,8 @@ export async function ejectCommand(
         `Shipped libraries: ${ejectableLibraryNames().join(", ")}. ` +
         "Run `meta eject --list` to see them grouped.",
     );
-    return 2;
   }
+  if (unmatched.length > 0) return 2;
 
   const catalog = composeCatalog();
   const rows: EjectedRow[] = [];

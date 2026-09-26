@@ -258,6 +258,16 @@ export type { JoinNode, JoinTree, SelectColumn, SelectSpec, ViewSpec } from "./p
 // way a template-tier generator imports that interface:
 export { valueObjectImport, valueObjectImportLines } from "./templates/value-object-import.js";
 export type { ValueObjectImport } from "./templates/value-object-import.js";
+// ADR-0034 Amendment 3 — the prompt-tier composition helpers, public so the prompt-tier
+// reference generators (src/reference/prompt-render.ts, output-parser.ts, extractor.ts,
+// output-prompt.ts, render-helper.ts) import only this package once an adopter ejects them.
+export { findTemplates } from "./templates/find-templates.js";
+export { inboundTemplates, responseShape } from "./templates/find-inbound.js";
+export { templateSymbolBase } from "./naming.js";
+export { renderOutputParser } from "./templates/output-parser.js";
+export { renderExtractor } from "./templates/extractor.js";
+export { renderOutputPrompt } from "./templates/output-prompt.js";
+export { renderRenderHelper } from "./templates/render-helper.js";
 
 // Template-driven codegen (rc.12). Factory + framework Provider for adopters
 // who want to wire their own templateGenerator instances. The default

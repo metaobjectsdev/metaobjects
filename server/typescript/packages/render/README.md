@@ -14,6 +14,10 @@ npm install @metaobjectsdev/render
 
 - **`render()`** — render a MetaObjects `template.output` / `template.prompt` against a typed payload. Deterministic and cache-stable (no whitespace drift that would silently break exact-prefix prompt-cache hits), so output is snapshot-testable.
 - **Provider-resolved partials + format-driven escaping** (text / html / xml / csv / json / markdown).
+- **Providers** — `InMemoryProvider` (root entry, browser-safe) and `FilesystemProvider`
+  (Node-only, on the `@metaobjectsdev/render/providers` subpath so the root entry never
+  pulls in `node:fs`). `new FilesystemProvider("./prompts").resolve("lobby/welcome")` reads
+  `./prompts/lobby/welcome.mustache`, exactly as the C#, Java and Python ports do.
 - **`verify()`** — a build-time drift check that every `{{field}}` referenced by a template resolves to a field on its payload value-object; a renamed field fails the build instead of silently degrading a prompt.
 
 This engine backs the prompt-construction pillar — the generated `render<Name>()` helpers emitted by `@metaobjectsdev/codegen-ts` wrap it. See the **metaobjects-prompts** skill and the repo `docs/` for authoring `template.*` and payload VOs.

@@ -74,6 +74,23 @@ describe("meta eject takes many names", () => {
     }
   });
 
+  test("a package-only generator is named as such, not as unknown", async () => {
+    // `callable` is a real catalog entry with no reference template. Calling it
+    // "unknown" sends the reader looking for a typo that is not there.
+    const dir = tmp();
+    try {
+      expect(await ejectCommand(["callable"], dir, "text")).toBe(2);
+      const err = erred.join("\n");
+      expect(err).toContain("package-only");
+      expect(err).toContain("callable");
+      expect(err).not.toContain("unknown name(s): callable");
+      expect(err).toContain("@metaobjectsdev/codegen-ts");
+      expect(err).toContain("Nothing was ejected");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("a repeated name is a usage error, not a silent second write", async () => {
     const dir = tmp();
     try {

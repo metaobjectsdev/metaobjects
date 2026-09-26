@@ -88,4 +88,23 @@ describe("meta gen --list (ADR-0021 D3)", () => {
       rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  test("marks each generator that ships no reference copy as package-only, and says why", async () => {
+    // The note above says `meta eject` copies a generator; for an entry with no
+    // reference template that is false, so the row has to say so where it is read.
+    const tmp = mkdtempSync(join(tmpdir(), "meta-gen-list-"));
+    try {
+      await genCommand(["--list"], tmp);
+      const text = out();
+      const line = (name: string) => text.split("\n").find((l) => l.startsWith(`  ${name} `)) ?? "";
+      expect(line("callable")).toContain("package-only");
+      expect(line("template")).toContain("package-only");
+      // An ejectable entry is never marked.
+      expect(line("prompt-render")).not.toContain("package-only");
+      expect(line("entity")).not.toContain("package-only");
+      expect(text).toContain("package-only = no reference template ships");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
