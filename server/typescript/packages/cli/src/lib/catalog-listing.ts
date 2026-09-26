@@ -21,6 +21,7 @@ import { join } from "node:path";
 import type { MetaData } from "@metaobjectsdev/metadata";
 import {
   runGen,
+  stableNameIndex,
   type GeneratorRegistryEntry,
   type Layer,
   type MetaobjectsGenConfig,
@@ -28,7 +29,7 @@ import {
 import * as coreTpl from "@metaobjectsdev/codegen-ts";
 import * as reactTpl from "@metaobjectsdev/codegen-ts-react";
 import * as tanstackTpl from "@metaobjectsdev/codegen-ts-tanstack";
-import { listCatalog, packageOf } from "./catalog.js";
+import { composeCatalog, listCatalog, packageOf } from "./catalog.js";
 import {
   buildLibraryRows, renderLibraryText,
   type LibraryCatalogRow, type LibraryProjectContext,
@@ -249,15 +250,22 @@ const PROBE_DB_IMPORT_PLACEHOLDER = "./db";
 // the listing
 // ---------------------------------------------------------------------------
 
-/** Per generator that hands over adapter source, the project's copies of the files it reaches. */
+/**
+ * Per EJECTED generator that hands over adapter source, the project's copies of the files
+ * it reaches. Only generators the project owns a copy of: `routes` and `routes-hono`
+ * reach overlapping adapter files, so attributing by reach alone reported "owned runtime"
+ * on `routes-hono` in a project that had only ever ejected `routes`.
+ */
 async function ownedRuntimeByGenerator(
   projectRoot: string,
+  ownedNames: ReadonlySet<string>,
 ): Promise<Map<string, { files: RuntimeCopyRow[]; packages: string[] }>> {
   const out = new Map<string, { files: RuntimeCopyRow[]; packages: string[] }>();
   const status = await runtimeCopyStatus(projectRoot);
   if (status.length === 0) return out;
   const { srcRoot } = resolveRuntimePackage();
   for (const [name, modules] of Object.entries(RUNTIME_ENTRIES)) {
+    if (!ownedNames.has(name)) continue;
     const closure = runtimeClosure(srcRoot, modules);
     const reached = new Set(closure.files.map((f) => `${OWNED_RUNTIME_DIR}/${f}`));
     const files = status.filter((r) => reached.has(r.path));
@@ -270,7 +278,7 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
   const rows: CatalogRow[] = [];
   const runtimeCopies = opts.project === undefined
     ? new Map<string, { files: RuntimeCopyRow[]; packages: string[] }>()
-    : await ownedRuntimeByGenerator(opts.project.projectRoot);
+    : await ownedRuntimeByGenerator(opts.project.projectRoot, opts.project.ownedNames);
 
   for (const entry of listCatalog()) {
     const template = entry.ejectable ? readTemplate(entry.name) : undefined;
@@ -362,16 +370,22 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
  * The stable names wired in a config.
  *
  * `generators: [...]` holds constructed Generator objects (and, since ADR-0021 #1,
- * bare stable-name strings). A constructed generator carries its own kebab-case `name`,
- * which IS the stable name for every catalog entry — the registry's factory is what
- * produced it. A generator whose name is not a catalog key is an owned or third-party
- * one and simply contributes nothing here.
+ * bare stable-name strings). A constructed generator calls itself by its IMPLEMENTATION
+ * name (`entity-file`, `routes-file`), which is not the catalog key (`entity`,
+ * `routes`) — so an owned copy wired from `./codegen/generators/entity` used to read as
+ * not wired while `barrel` and `names`, whose two names coincide, did. Resolved through
+ * `stableNameIndex`, the same impl-name → stable-name map the `requires` gate uses. A
+ * generator whose name maps to no catalog entry is somebody's own and contributes nothing.
  */
 export function wiredGeneratorNames(config: MetaobjectsGenConfig): Set<string> {
+  const index = stableNameIndex(composeCatalog());
   const names = new Set<string>();
   for (const spec of config.generators ?? []) {
     if (typeof spec === "string") names.add(spec);
-    else if (typeof spec?.name === "string") names.add(spec.name);
+    else if (typeof spec?.name === "string") {
+      const stable = index.get(spec.name);
+      if (stable !== undefined) names.add(stable);
+    }
   }
   return names;
 }
