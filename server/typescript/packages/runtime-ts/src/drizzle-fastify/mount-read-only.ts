@@ -224,7 +224,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   });
 
   // ── Mutations explicitly rejected (405) ───────────────────────────────────
-  // PUT is here because the WRITABLE mount serves it (a full-replace update), so a
+  // PUT is here because the WRITABLE mount serves it (an alias of PATCH), so a
   // projection must reject it the same way the other three are rejected. Omitting it
   // left `PUT /<collection>/:id` falling through to Fastify's 404 — telling a caller
   // the resource does not exist when it plainly does and answers GET.

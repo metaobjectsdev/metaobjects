@@ -70,7 +70,15 @@ app's job — see the policy section below.
 | `GET`    | `/<apiPrefix>/<entity>/:id` | Get by id |
 | `POST`   | `/<apiPrefix>/<entity>` | Create |
 | `PATCH`  | `/<apiPrefix>/<entity>/:id` | Update (partial) |
-| `PUT`    | `/<apiPrefix>/<entity>/:id` | Update (replace) — optional; same body shape as `PATCH` |
+| `PUT`    | `/<apiPrefix>/<entity>/:id` | **An alias of `PATCH`** — same handler, same partial semantics, in every port (see below) |
+
+**`PUT` is not a full replace.** Every port routes `PUT` to the same update handler as
+`PATCH`, so a field the body omits keeps its stored value under either verb, and an
+explicit `null` clears it under either verb. The contract has always meant it that way
+(the `update-patch-and-put` scenario gates that both verbs reach the update path); only
+this table's wording used to say "replace". A client that wants replace semantics sends
+every field. The TS mounts can restrict the update to one verb with
+`updateMethod: "patch" | "put"`.
 | `DELETE` | `/<apiPrefix>/<entity>/:id` | Delete |
 
 ### Other endpoints
@@ -182,10 +190,10 @@ feature demand (it is a consistency/safety divergence, not a capability).
 ### TS-only error responses (not part of the cross-port contract)
 
 The TypeScript mount helpers (`@metaobjectsdev/runtime-ts/drizzle-fastify`,
-`/fastify` and `/hono`) pin three responses the contract leaves open — HTTP 5xx is
-implementation-defined below, and no corpus scenario sends a malformed body or a
-malformed page bound. All three use the contract's `{ "error": "<code>" }` envelope,
-and all three are scoped to the
+`/fastify` and `/hono`) pin four responses the contract leaves open — HTTP 5xx is
+implementation-defined below, and no corpus scenario sends a malformed body, a write the database rejects, or a
+malformed page bound. All four use the contract's `{ "error": "<code>" }` envelope,
+and all four are scoped to the
 routes the helpers mount: an adopter's own routes, and a Fastify `setErrorHandler`
 or Hono `onError` the adopter installed, answer exactly as they did before.
 
@@ -193,6 +201,7 @@ or Hono `onError` the adopter installed, answer exactly as they did before.
 |---|---|
 | malformed JSON body | a `POST`/`PATCH`/`PUT` body that does not parse as JSON (an empty body sent as `application/json` included) → HTTP 400 `{ "error": "invalid_json" }`. Before, Fastify answered its own `{ "statusCode": 400, "code": "FST_ERR_CTP_INVALID_JSON_BODY", … }` and Hono a Zod `validation` error about a missing object |
 | malformed page bound | a `?limit=` or `?offset=` that is not a non-negative integer (`abc`, `-5`, `1.5`, an empty value) → HTTP 400 `{ "error": "pagination.invalid_value", "param": "limit", "value": "abc", "expected": "a non-negative integer (0 or more)" }`. Before, a non-numeric bound was dropped (every row came back) and a negative or fractional one reached SQL. There is no page-size maximum on an entity or a projection with declared columns; an opaque view (no declared columns, served by raw SQL) pages to at most 1000 rows, so there a `limit` above 1000 is refused too, with `"expected": "an integer from 0 to 1000"` (it used to be clamped silently). The same answer comes from the Drizzle mounts and the ObjectManager Fastify mount. No corpus scenario sends a malformed bound; the other ports answer it as their framework does |
+| database constraint violation | a write the database itself rejects → `{ "error": "constraint_violation", "constraint": "<kind>" }`, HTTP **409** for `unique` and `foreign_key` (a conflict with another row) and HTTP **400** for `check` and `not_null` (the request's own value), per the status rule under "Error response". The body names the constraint KIND only — never the SQL, the table or the bound values. A `CHECK` the model derives (an enum, a `validator.numeric`/`length`/`regex` range) is normally refused earlier by the route's own validation, as the corpus's `{ "error": "validation" }` 400; this row is the database's backstop |
 | unexpected server error | anything that is not a filter, validation, not-found or constraint answer — a query against a column the database no longer has, a driver failure → HTTP 500 `{ "error": "internal" }`, the code the cross-port reference servers already use. The body names no SQL, table, column or bound parameter; the full error goes to the server log (`console.error`). Before, Fastify's default handler echoed the driver message, which for Drizzle is the query text and its parameter values |
 
 How each framework scopes it: on Fastify, the helpers pass a **route-level**
@@ -226,6 +235,17 @@ each handler they register instead; an `HTTPException` is rethrown to your
 - `limit=N` — page size.
 - `offset=N` — page offset. Both are non-negative integers; the TS mounts refuse
   anything else with a 400 (see "TS-only error responses").
+- **No page-size maximum, and the default is per port.** The contract pins what
+  an explicit `limit`/`offset` returns (`list-with-pagination`); it does not pin a
+  default or a ceiling, and the ports differ. With `limit` **omitted**, the
+  TypeScript mounts and the C# routes return **every** matching row, while the
+  Java, Kotlin and Python controllers return the first **50**. No port caps an
+  explicit `limit` on an entity — `limit=100000` is honoured as asked — except
+  the TS opaque-view route, which refuses a `limit` above 1000 (see "TS-only
+  error responses"). A list over a large table should therefore always send a
+  `limit`. A default page size is deliberately not introduced in a patch release:
+  it would silently truncate the lists of every existing client that relies on
+  the unpaged answer.
 - `withCount=1` — opt-in flag that switches the list response from
   `[<row>...]` to `{ rows: [<row>...], total: <N> }` (needed for grid
   pagination). The grid hook always sends `withCount=1`.
@@ -326,7 +346,7 @@ Non-2xx responses MUST return:
 
 - HTTP 400 — validation and filter/sort-parser errors.
 - HTTP 404 — `{ "error": "not_found" }`.
-- HTTP 409 — a declared constraint conflicting with existing state (a uniqueness or referential violation); a constraint rejecting the request's own value stays a 400.
+- HTTP 409 — a declared constraint conflicting with existing state (a uniqueness or referential violation); a constraint rejecting the request's own value — a `CHECK` or `NOT NULL` violation — stays a 400, because resending the same body can never succeed while a 409 can clear once the other row changes (the TS body is under "TS-only error responses").
 - HTTP 5xx — implementation-defined (the TS mount helpers answer
   `{ "error": "internal" }` and nothing more — see "TS-only error responses").
 
