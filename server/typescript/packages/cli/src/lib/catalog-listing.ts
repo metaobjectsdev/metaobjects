@@ -77,6 +77,9 @@ export interface GeneratorCatalogRow {
     wouldEmit: number | null;
     /** Why `wouldEmit` is null despite --probe. Absent when it is a number. */
     probeError?: string;
+    /** Config keys this project leaves unset that the generator needs before `meta gen`
+     *  can run it. `wouldEmit` was counted with a placeholder for each. Absent when none. */
+    needsConfig?: string[];
   };
 }
 
@@ -180,20 +183,43 @@ async function probeOne(
   project: CatalogProject,
   metadata: MetaData,
   scope: ((fqn: string) => boolean) | undefined,
-): Promise<{ count: number } | { error: string }> {
-  try {
+): Promise<{ count: number; needsConfig?: string[] } | { error: string }> {
+  const count = async (config: MetaobjectsGenConfig): Promise<number> => {
     const result = await runGen({
-      config: { ...project.config, generators: [entry.factory()] },
+      config: { ...config, generators: [entry.factory()] },
       metadata,
       projectRoot: project.projectRoot,
       dryRun: true,
       ...(scope !== undefined ? { scope } : {}),
     });
-    return { count: result.files.length };
+    return result.files.length;
+  };
+  try {
+    return { count: await count(project.config) };
   } catch (err) {
+    // A generator that emits `import { db } from …` (the Fastify `routes`, `queries`)
+    // refuses to run while `dbImport` is unset — which it is in a freshly initialised
+    // project, exactly when `--probe` is being asked "what would this emit?". The path
+    // changes one import line, never the file count, so count with a placeholder and
+    // report the key as needed rather than dropping the count: the listing used to show
+    // `routes … [fastify]` beside `routes-hono … [hono, would emit 3]` with no reason.
+    // Only a retry that SUCCEEDS with the key supplied attributes the failure to it.
+    if (project.config.dbImport === undefined) {
+      try {
+        return {
+          count: await count({ ...project.config, dbImport: PROBE_DB_IMPORT_PLACEHOLDER }),
+          needsConfig: ["dbImport"],
+        };
+      } catch {
+        // Fall through: the original error is the one worth reporting.
+      }
+    }
     return { error: (err as Error).message };
   }
 }
+
+/** Stand-in `dbImport` for a probe. Never written anywhere — `dryRun` touches no file. */
+const PROBE_DB_IMPORT_PLACEHOLDER = "./db";
 
 // ---------------------------------------------------------------------------
 // the listing
@@ -241,10 +267,13 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
 
       let wouldEmit: number | null = null;
       let probeError: string | undefined;
+      let needsConfig: string[] | undefined;
       if (opts.probe !== undefined) {
         const outcome = await probeOne(entry, project, opts.probe.metadata, opts.probe.scope);
-        if ("count" in outcome) wouldEmit = outcome.count;
-        else probeError = outcome.error;
+        if ("count" in outcome) {
+          wouldEmit = outcome.count;
+          needsConfig = outcome.needsConfig;
+        } else probeError = outcome.error;
       }
 
       row.project = {
@@ -252,6 +281,7 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
         frameworkDetected,
         wouldEmit,
         ...(probeError !== undefined ? { probeError } : {}),
+        ...(needsConfig !== undefined ? { needsConfig } : {}),
       };
     }
 
@@ -361,7 +391,16 @@ export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
     if (r.project?.wired) marks.push("WIRED");
     if (r.source.owned) marks.push("owned");
     if (probed && r.project?.wouldEmit !== null && r.project?.wouldEmit !== undefined) {
-      marks.push(`would emit ${r.project.wouldEmit}`);
+      const needs = r.project.needsConfig;
+      marks.push(
+        needs !== undefined && needs.length > 0
+          ? `would emit ${r.project.wouldEmit} once ${needs.join(", ")} is set`
+          : `would emit ${r.project.wouldEmit}`,
+      );
+    } else if (probed && r.project?.probeError !== undefined) {
+      // Say that the probe could not count it, not nothing: a missing count read as
+      // "emits nothing" beside a sibling that showed one.
+      marks.push("probe failed — see --format json");
     }
     const suffix = marks.length > 0 ? `  [${marks.join(", ")}]` : "";
     lines.push(`  ${r.name.padEnd(width)}  —  ${r.description}${suffix}`);
