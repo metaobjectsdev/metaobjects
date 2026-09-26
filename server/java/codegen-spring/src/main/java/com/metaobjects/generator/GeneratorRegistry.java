@@ -15,6 +15,7 @@ import com.metaobjects.generator.spring.SpringValueObjectGenerator;
 import com.metaobjects.generator.template.TemplateScopeGenerator;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -90,10 +91,16 @@ public final class GeneratorRegistry {
         private final Tier tier;
         private final Layer layer;
         private final String ejectResourcePath;
+        private final List<String> ejectRuntime;
 
         public GeneratorInfo(String stableName, String classname, String description,
                              Tier tier, Layer layer) {
             this(stableName, classname, description, tier, layer, null);
+        }
+
+        public GeneratorInfo(String stableName, String classname, String description,
+                             Tier tier, Layer layer, String ejectResourcePath) {
+            this(stableName, classname, description, tier, layer, ejectResourcePath, List.of());
         }
 
         /**
@@ -106,15 +113,22 @@ public final class GeneratorRegistry {
          *      eject design} for why some registered generators (the "extractor" that is
          *      fused into "entity"; "template", a generic declarative primitive with no
          *      emit logic to own) deliberately carry no eject source.
+         * @param ejectRuntime simple names of the helper-runtime classes this generator's
+         *      OUTPUT imports (from {@link #RUNTIME_PACKAGE}), closed over their own references
+         *      to each other. {@code mvn metaobjects:eject} copies their source (shipped under
+         *      {@link #EJECT_RUNTIME_RESOURCE_ROOT}) into the adopter's module with the
+         *      generator, so the owned output depends on owned code only.
          */
         public GeneratorInfo(String stableName, String classname, String description,
-                             Tier tier, Layer layer, String ejectResourcePath) {
+                             Tier tier, Layer layer, String ejectResourcePath,
+                             List<String> ejectRuntime) {
             this.stableName = stableName;
             this.classname = classname;
             this.description = description;
             this.tier = tier;
             this.layer = layer;
             this.ejectResourcePath = ejectResourcePath;
+            this.ejectRuntime = List.copyOf(ejectRuntime);
         }
 
         /** Canonical cross-port stable name (the manifest key). */
@@ -148,6 +162,12 @@ public final class GeneratorRegistry {
             return ejectResourcePath;
         }
 
+        /** Simple names of the helper-runtime classes this generator's output imports — the
+         *  source {@code mvn metaobjects:eject} hands over with it (see the constructor). */
+        public List<String> ejectRuntime() {
+            return ejectRuntime;
+        }
+
         @Override
         public String toString() {
             return "GeneratorInfo{" + stableName + " -> " + classname
@@ -155,12 +175,28 @@ public final class GeneratorRegistry {
         }
     }
 
+    /** What the generated controller imports — the whole filter pipeline, the patch and
+     *  constraint error mapping, and the record-component escape. Declared before
+     *  {@code REGISTRY}: static initializers run in order. */
+    private static final List<String> ROUTES_RUNTIME = List.of(
+            "ConstraintErrors", "FilterParseResult", "FilterParser", "FilterPredicate",
+            "PatchValidationException", "RecordComponentNames");
+
     private static final Map<String, GeneratorInfo> REGISTRY = buildRegistry();
 
     /** Classpath root every ejectable Java generator's reference source is shipped under
      *  (FR — eject in every port, JVM section). A generator's resource lives at {@code
      *  <this>/<SimpleClassName>.java}, inside whichever {@code codegen-*} jar owns it. */
     public static final String EJECT_RESOURCE_ROOT = "META-INF/metaobjects/reference/java/";
+
+    /** The package generated Spring code imports its helper runtime from when nothing is
+     *  ejected: {@code FilterParser}, {@code PatchValidationException}, {@code
+     *  ConstraintErrors} and friends. These are HELPERS (ADR-0034 Amendment 3), not core. */
+    public static final String RUNTIME_PACKAGE = "com.metaobjects.generator.spring.runtime";
+
+    /** Classpath root the helper-runtime sources are shipped under, one {@code
+     *  <SimpleName>.java} per class, for {@code mvn metaobjects:eject} to copy. */
+    public static final String EJECT_RUNTIME_RESOURCE_ROOT = EJECT_RESOURCE_ROOT + "runtime/";
 
     private GeneratorRegistry() {
     }
@@ -185,7 +221,7 @@ public final class GeneratorRegistry {
                 "Per-entity Java model/class (table-backed or value object).", Tier.NATIVE, Layer.MODEL);
         register(m, "routes", SpringControllerGenerator.class.getName(),
                 "Per-entity Spring @RestController endpoint surface.", Tier.NATIVE, Layer.API,
-                ejectPath(SpringControllerGenerator.class));
+                ejectPath(SpringControllerGenerator.class), ROUTES_RUNTIME);
         register(m, "output-parser", SpringOutputParserGenerator.class.getName(),
                 "Per-template response parser: a strict parse that rejects a reply not matching the "
                     + "@responseRef shape, plus a tolerant, never-throwing extractLenient. [Emitted code imports "
@@ -218,10 +254,10 @@ public final class GeneratorRegistry {
                 ejectPath(SpringFilterAllowlistGenerator.class));
         register(m, "repository", SpringRepositoryGenerator.class.getName(),
                 "Per-entity Spring Data repository.", Tier.NATIVE, Layer.PERSISTENCE,
-                ejectPath(SpringRepositoryGenerator.class));
+                ejectPath(SpringRepositoryGenerator.class), List.of("FilterPredicate"));
         register(m, "dto", SpringDtoGenerator.class.getName(),
                 "Per-entity Spring DTO record.", Tier.NATIVE, Layer.MODEL,
-                ejectPath(SpringDtoGenerator.class));
+                ejectPath(SpringDtoGenerator.class), List.of("PatchValidationException"));
         register(m, "value-object", SpringValueObjectGenerator.class.getName(),
                 "Per-value-object Spring record with jakarta constraints — the typed "
                     + "component the DTO/Patch bind for a field.object @storage:jsonb column, "
@@ -246,8 +282,14 @@ public final class GeneratorRegistry {
     private static void register(Map<String, GeneratorInfo> m, String stableName,
                                  String classname, String description, Tier tier, Layer layer,
                                  String ejectResourcePath) {
+        register(m, stableName, classname, description, tier, layer, ejectResourcePath, List.of());
+    }
+
+    private static void register(Map<String, GeneratorInfo> m, String stableName,
+                                 String classname, String description, Tier tier, Layer layer,
+                                 String ejectResourcePath, List<String> ejectRuntime) {
         if (m.put(stableName, new GeneratorInfo(stableName, classname, description, tier, layer,
-                ejectResourcePath)) != null) {
+                ejectResourcePath, ejectRuntime)) != null) {
             throw new IllegalStateException("duplicate generator stable name: " + stableName);
         }
     }

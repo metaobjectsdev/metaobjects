@@ -1,5 +1,6 @@
 package com.metaobjects.mojo;
 
+import com.metaobjects.generator.GeneratorRegistry;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -39,6 +40,16 @@ import java.util.stream.Collectors;
  * codegen/src/main/(java|kotlin)/<package path>/}. On first use it also writes {@code
  * codegen/pom.xml}.
  *
+ * <p><b>The helper runtime comes too.</b> The Java controller, DTO and repository output
+ * imports helper classes ({@code FilterParser}, {@code PatchValidationException},
+ * {@code ConstraintErrors}, …) that are not core (ADR-0034 Amendment 3). Ejecting such a
+ * generator copies the source of every class its output imports into the module that
+ * compiles the generated code — {@code src/main/java/<runtimePackage>/}, default
+ * {@code <groupId>.runtime} — and points the owned generator's {@code RUNTIME_PACKAGE} at it,
+ * so the owned output imports owned code and a helper bug can be fixed without an upstream
+ * release. Each copy's first line is {@link EjectSupport#OWNED_RUNTIME_MARKER}, which is how
+ * {@code metaobjects:verify} knows it is owned code rather than stale output.
+ *
  * <p><b>What it never does.</b> It never edits the calling project's own {@code pom.xml} —
  * it PRINTS the {@code <module>}, the plugin {@code <dependency>}, and the {@code
  * <generator><classname>} change instead, the same reporting-not-editing stance ADR-0034 §3(c)
@@ -77,6 +88,18 @@ public class MetaDataEjectMojo extends AbstractMojo {
      *  ejecting. */
     @Parameter(property = "list", defaultValue = "false")
     boolean list;
+
+    /** Package the owned helper runtime is written under. Defaults to
+     *  {@code <project.groupId>.runtime}. */
+    @Parameter(property = "runtimePackage")
+    String runtimePackage;
+
+    /** Source root the owned helper runtime is written under — the one the generated code
+     *  compiles in. Defaults to this module's {@code src/main/java}; in an aggregator
+     *  ({@code pom} packaging) to the {@code src/main/java} of the one child module that
+     *  configures {@code metaobjects-maven-plugin}. */
+    @Parameter(property = "runtimeDir")
+    String runtimeDir;
 
     private static final String CODEGEN_DIR = "codegen";
 
@@ -128,6 +151,15 @@ public class MetaDataEjectMojo extends AbstractMojo {
         Set<EjectSupport.Port> portsTouched = new LinkedHashSet<>();
         List<String> classnameChanges = new ArrayList<>();
 
+        List<EjectSupport.Entry> entries = new ArrayList<>();
+        for (EjectSupport.Resolution r : resolved) entries.add(r.entry);
+        List<String> runtime = EjectSupport.runtimeFor(entries);
+        String runtimePkg = (runtimePackage == null || runtimePackage.isBlank())
+                ? project.getGroupId() + ".runtime" : runtimePackage.trim();
+        // Resolved before anything is written, for the same reason names are: an aggregator
+        // with no single obvious app module fails the whole call, not half of it.
+        Path runtimeRoot = runtime.isEmpty() ? null : resolveRuntimeRoot();
+
         for (EjectSupport.Resolution r : resolved) {
             EjectSupport.Entry e = r.entry;
             portsTouched.add(e.port);
@@ -141,6 +173,9 @@ public class MetaDataEjectMojo extends AbstractMojo {
                             + "resource " + e.resourcePath, ex);
             }
             String rewritten = EjectSupport.rewritePackage(reference, pkg);
+            if (!e.runtime.isEmpty()) {
+                rewritten = EjectSupport.rewriteRuntimePackage(rewritten, runtimePkg);
+            }
 
             String langDir = e.port == EjectSupport.Port.KOTLIN ? "kotlin" : "java";
             Path pkgDir = codegenRoot.resolve("src/main/" + langDir).resolve(pkg.replace('.', '/'));
@@ -153,7 +188,122 @@ public class MetaDataEjectMojo extends AbstractMojo {
 
         boolean pomWritten = writeCodegenPomIfNeeded(codegenRoot, pkg, portsTouched);
 
+        if (!runtime.isEmpty()) {
+            ejectRuntime(runtime, runtimeRoot, runtimePkg);
+        }
+
         printWiring(pomWritten, classnameChanges);
+        if (!runtime.isEmpty()) {
+            printRuntimeWiring(runtimeRoot, runtimePkg, requested, codegenRoot);
+        }
+    }
+
+    // ------------------------------------------------------------------------------------
+    // helper runtime
+    // ------------------------------------------------------------------------------------
+
+    /** Where the owned runtime goes — see {@link #runtimeDir}. */
+    private Path resolveRuntimeRoot() throws MojoFailureException {
+        Path base = project.getBasedir().toPath();
+        if (runtimeDir != null && !runtimeDir.isBlank()) {
+            return base.resolve(runtimeDir.trim());
+        }
+        if (!"pom".equals(project.getPackaging())) {
+            return base.resolve("src/main/java");
+        }
+        // An aggregator compiles nothing itself. The generated code compiles in the child that
+        // runs metaobjects:generate, so the runtime belongs there — found by the one child pom
+        // that names this plugin. Zero or several such children is a question only the
+        // adopter can answer.
+        List<String> candidates = new ArrayList<>();
+        for (String module : project.getModules() == null ? List.<String>of() : project.getModules()) {
+            Path childPom = base.resolve(module).resolve("pom.xml");
+            try {
+                if (Files.isRegularFile(childPom)
+                        && Files.readString(childPom, StandardCharsets.UTF_8).contains("metaobjects-maven-plugin")) {
+                    candidates.add(module);
+                }
+            } catch (IOException ex) {
+                throw new MojoFailureException("Could not read " + childPom, ex);
+            }
+        }
+        if (candidates.size() == 1) {
+            return base.resolve(candidates.get(0)).resolve("src/main/java");
+        }
+        throw new MojoFailureException(
+                "Nothing was ejected: the generators named import helper runtime classes, which "
+                    + "eject copies into the module that compiles the generated code, and this "
+                    + "aggregator has " + (candidates.isEmpty() ? "no child module" : "several child modules "
+                    + candidates) + " configuring metaobjects-maven-plugin. Pass "
+                    + "-DruntimeDir=<module>/src/main/java.");
+    }
+
+    private void ejectRuntime(List<String> runtime, Path runtimeRoot, String runtimePkg)
+            throws MojoExecutionException {
+        Path dir = runtimeRoot.resolve(runtimePkg.replace('.', '/'));
+        for (String simpleName : runtime) {
+            String resource = GeneratorRegistry.EJECT_RUNTIME_RESOURCE_ROOT + simpleName + ".java";
+            String reference;
+            try {
+                reference = readResource(resource);
+            } catch (IOException ex) {
+                throw new MojoExecutionException(
+                        "Could not read reference runtime source \"" + simpleName + "\" at classpath "
+                            + "resource " + resource, ex);
+            }
+            String owned = EjectSupport.ownedRuntimeSource(reference, simpleName, runtimePkg);
+            Path target = dir.resolve(simpleName + ".java");
+            WriteStatus status = write(dir, target, owned, force);
+            switch (status) {
+                case CREATED:
+                    getLog().info("Copied runtime " + simpleName + " -> " + target + ". You own it now.");
+                    break;
+                case REPLACED:
+                    getLog().info("Copied runtime " + simpleName + " -> " + target
+                            + ", REPLACING the file that was there (-Dforce=true).");
+                    break;
+                case PRESERVED:
+                    getLog().info(target + " already exists — " + describeOwned(target, owned)
+                            + " Left untouched (-Dforce=true replaces it).");
+                    break;
+            }
+        }
+    }
+
+    private String describeOwned(Path target, String reference) throws MojoExecutionException {
+        try {
+            EjectSupport.Comparison cmp = EjectSupport.compare(
+                    Files.readString(target, StandardCharsets.UTF_8), reference);
+            return cmp.verdict == EjectSupport.Verdict.IDENTICAL
+                    ? "IDENTICAL to the reference."
+                    : "DIFFERS from the reference (" + cmp.behind + " line(s) behind, "
+                        + cmp.ownedOnly + " line(s) of your own).";
+        } catch (IOException ex) {
+            throw new MojoExecutionException("Could not read existing " + target, ex);
+        }
+    }
+
+    /**
+     * Name the packaged generators that still import the reference runtime. A split is not
+     * always a compile error: an owned DTO throwing the owned {@code PatchValidationException}
+     * past a packaged controller catching the reference one compiles and answers 500.
+     */
+    private void printRuntimeWiring(Path runtimeRoot, String runtimePkg, List<String> requested,
+                                    Path codegenRoot) {
+        getLog().info("The helper runtime the owned output imports is now yours, in "
+                + runtimeRoot.resolve(runtimePkg.replace('.', '/'))
+                + ". It compiles with the generated code; nothing regenerates it.");
+        List<String> stillPackaged = new ArrayList<>();
+        for (EjectSupport.Entry e : EjectSupport.allEntries()) {
+            if (e.port != EjectSupport.Port.JAVA || e.runtime.isEmpty()) continue;
+            if (requested.contains(e.stableName) || ownedStaleness(codegenRoot, e) != null) continue;
+            stillPackaged.add(e.stableName);
+        }
+        if (!stillPackaged.isEmpty()) {
+            getLog().info("If <generators> also runs the PACKAGED " + String.join(", ", stillPackaged)
+                    + ", give each the same runtime so every generated file uses one copy:");
+            getLog().info("  <args><runtimePackage>" + runtimePkg + "</runtimePackage></args>");
+        }
     }
 
     // ------------------------------------------------------------------------------------
@@ -353,7 +503,55 @@ public class MetaDataEjectMojo extends AbstractMojo {
                 sb.append('\n');
             }
         }
+        String runtimeRows = ownedRuntimeRows();
+        if (!runtimeRows.isEmpty()) {
+            sb.append("\nOwned helper runtime (copied by eject with routes/dto/repository):\n")
+              .append(runtimeRows);
+        }
         sb.append("\nRun: mvn metaobjects:eject -Dnames=<name>[,<name>...]");
+        return sb.toString();
+    }
+
+    /** One row per owned runtime file found under this module's (or, in an aggregator, its
+     *  children's) {@code src/main/java}, recognised by its ownership marker. */
+    private String ownedRuntimeRows() {
+        if (project == null || project.getBasedir() == null) return "";
+        StringBuilder sb = new StringBuilder();
+        Path base = project.getBasedir().toPath();
+        List<Path> roots = new ArrayList<>();
+        roots.add(base.resolve("src/main/java"));
+        if (project.getModules() != null) {
+            for (String module : project.getModules()) roots.add(base.resolve(module).resolve("src/main/java"));
+        }
+        try {
+            List<Path> owned = new ArrayList<>();
+            for (Path root : roots) {
+                if (!Files.isDirectory(root)) continue;
+                try (var walk = Files.walk(root)) {
+                    walk.filter(p -> p.getFileName().toString().endsWith(".java")).sorted().forEach(owned::add);
+                }
+            }
+            for (Path p : owned) {
+                String content = Files.readString(p, StandardCharsets.UTF_8);
+                if (!EjectSupport.isOwnedRuntime(content)) continue;
+                String simple = p.getFileName().toString().replaceFirst("\\.java$", "");
+                String verdict;
+                try {
+                    String reference = readResource(
+                            GeneratorRegistry.EJECT_RUNTIME_RESOURCE_ROOT + simple + ".java");
+                    EjectSupport.Comparison cmp = EjectSupport.compare(content, reference);
+                    verdict = cmp.verdict == EjectSupport.Verdict.IDENTICAL
+                            ? "[owned — identical]"
+                            : "[owned — DIFFERS: " + cmp.behind + " behind, " + cmp.ownedOnly + " of your own]";
+                } catch (IOException ex) {
+                    verdict = "[owned — no reference of that name ships in this version]";
+                }
+                sb.append("  ").append(simple).append("  ").append(verdict).append("  ")
+                  .append(project.getBasedir().toPath().relativize(p)).append('\n');
+            }
+        } catch (IOException ex) {
+            return "  (could not scan for owned runtime: " + ex.getMessage() + ")\n";
+        }
         return sb.toString();
     }
 

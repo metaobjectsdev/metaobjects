@@ -190,4 +190,43 @@ public class EjectSupportTest {
         assertEquals(1, cmp.behind);     // "int y;" — the reference has it, the copy doesn't
         assertEquals(1, cmp.ownedOnly);  // "int z;" — the copy's own edit
     }
+
+    // --- helper runtime ----------------------------------------------------------------
+
+    private static final String GEN = "package com.metaobjects.generator.spring;\n\n"
+            + "public class G {\n"
+            + "    public static final String RUNTIME_PACKAGE = \"com.metaobjects.generator.spring.runtime\";\n"
+            + "}\n";
+
+    @Test
+    public void rewriteRuntimePackageRewritesOnlyTheDeclaration() {
+        String out = EjectSupport.rewriteRuntimePackage(GEN, "com.acme.runtime");
+        assertTrue(out.contains("RUNTIME_PACKAGE = \"com.acme.runtime\";"));
+        assertEquals(GEN.replace("com.metaobjects.generator.spring.runtime", "com.acme.runtime"), out);
+        String none = "package p;\nclass X {}\n";
+        assertEquals(none, EjectSupport.rewriteRuntimePackage(none, "com.acme.runtime"));
+    }
+
+    @Test
+    public void eachEjectEditIsNotDrift() {
+        String owned = EjectSupport.rewriteRuntimePackage(
+                EjectSupport.rewritePackage(GEN, "com.acme.codegen"), "com.acme.runtime");
+        assertEquals(EjectSupport.Verdict.IDENTICAL, EjectSupport.compare(owned, GEN).verdict);
+
+        String ref = "package com.metaobjects.generator.spring.runtime;\n\npublic final class R {}\n";
+        String ownedRuntime = EjectSupport.ownedRuntimeSource(ref, "R", "com.acme.runtime");
+        assertTrue(EjectSupport.isOwnedRuntime(ownedRuntime));
+        assertFalse(EjectSupport.isOwnedRuntime(ref));
+        assertTrue(ownedRuntime.contains("\npackage com.acme.runtime;\n"));
+        assertEquals(EjectSupport.Verdict.IDENTICAL, EjectSupport.compare(ownedRuntime, ref).verdict);
+    }
+
+    @Test
+    public void onlyTheJavaWebTierCarriesRuntime() {
+        for (EjectSupport.Entry e : EjectSupport.allEntries()) {
+            boolean expected = e.port == EjectSupport.Port.JAVA
+                    && List.of("routes", "dto", "repository").contains(e.stableName);
+            assertEquals(e.port.id + " " + e.stableName, expected, !e.runtime.isEmpty());
+        }
+    }
 }

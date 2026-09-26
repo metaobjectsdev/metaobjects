@@ -6,8 +6,11 @@ import java.util.Set;
  * The names Java will not accept where a generator wants to put a metadata field name, and
  * the escape for them. <b>One definition, for every Java emitter in every module</b> — the
  * POJO/interface writer in this module and the record-based Spring emitters in
- * {@code codegen-spring}, which reach it through
- * {@code com.metaobjects.generator.spring.runtime.RecordComponentNames}.
+ * {@code codegen-spring} (through {@code SpringNaming}). Generated code needs the member rule
+ * again at RUN time and reads it from {@code com.metaobjects.generator.spring.runtime.
+ * RecordComponentNames}, which spells the sets out itself so it depends on the JDK alone and
+ * can be handed to an adopter by {@code mvn metaobjects:eject};
+ * {@code RecordComponentNamesParityTest} (codegen-spring) fails the build if the two differ.
  *
  * <p>The sets are separate because the two restrictions are, and an emitter needs different
  * ones depending on where the name lands:

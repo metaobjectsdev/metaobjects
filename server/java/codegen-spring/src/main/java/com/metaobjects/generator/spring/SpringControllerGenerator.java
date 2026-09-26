@@ -91,9 +91,26 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
  * <p>Args:</p>
  * <ul>
  *   <li>{@code outputDir} (required): output directory root.</li>
+ *   <li>{@code runtimePackage} (optional): package the output imports its helper runtime
+ *       from; defaults to {@link #RUNTIME_PACKAGE}.</li>
  * </ul>
  */
 public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<MetaObject> {
+
+    /**
+     * The package the emitted code imports its helper runtime from ({@code FilterParser},
+     * {@code PatchValidationException}, …). {@code mvn metaobjects:eject} copies that runtime
+     * into the adopter's module and rewrites THIS line of the ejected copy to name it, so an
+     * owned generator's output imports the owned runtime. Keep it on one line.
+     */
+    public static final String RUNTIME_PACKAGE = "com.metaobjects.generator.spring.runtime";
+
+    /** Generator arg overriding {@link #RUNTIME_PACKAGE} — for a packaged generator whose
+     *  output must use the same owned runtime copy as an ejected neighbour. */
+    public static final String ARG_RUNTIME_PACKAGE = "runtimePackage";
+
+    /** The runtime package this run's output imports ({@link #ARG_RUNTIME_PACKAGE}). */
+    private String runtimePackage = RUNTIME_PACKAGE;
 
     private static final Logger LOG = LoggerFactory.getLogger(SpringControllerGenerator.class);
 
@@ -107,6 +124,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
     @Override
     public void execute(MetaDataLoader loader) {
         parseArgs();
+        runtimePackage = getArg(ARG_RUNTIME_PACKAGE, RUNTIME_PACKAGE);
         this.loader = loader;
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         for (MetaObject entity : loader.getMetaObjects()) {
@@ -195,11 +213,11 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         }
         src.append("import com.fasterxml.jackson.databind.JsonNode;\n");
         src.append("import com.fasterxml.jackson.databind.ObjectMapper;\n");
-        src.append("import com.metaobjects.generator.spring.runtime.ConstraintErrors;\n");
-        src.append("import com.metaobjects.generator.spring.runtime.PatchValidationException;\n");
+        src.append("import ").append(runtimePackage).append(".ConstraintErrors;\n");
+        src.append("import ").append(runtimePackage).append(".PatchValidationException;\n");
         // The escape the PATCH loop applies to each assigned key before naming a Bean
         // Validation property — see RecordComponentNames for why it is needed at run time.
-        src.append("import com.metaobjects.generator.spring.runtime.RecordComponentNames;\n");
+        src.append("import ").append(runtimePackage).append(".RecordComponentNames;\n");
         src.append("import org.springframework.http.HttpStatus;\n");
         src.append("import org.springframework.http.ResponseEntity;\n");
         src.append("import org.springframework.web.bind.annotation.DeleteMapping;\n");
@@ -211,9 +229,9 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("import org.springframework.web.bind.annotation.RequestMethod;\n");
         src.append("import org.springframework.web.bind.annotation.RequestParam;\n");
         src.append("import org.springframework.web.bind.annotation.RestController;\n");
-        src.append("import com.metaobjects.generator.spring.runtime.FilterParseResult;\n");
-        src.append("import com.metaobjects.generator.spring.runtime.FilterParser;\n");
-        src.append("import com.metaobjects.generator.spring.runtime.FilterPredicate;\n");
+        src.append("import ").append(runtimePackage).append(".FilterParseResult;\n");
+        src.append("import ").append(runtimePackage).append(".FilterParser;\n");
+        src.append("import ").append(runtimePackage).append(".FilterPredicate;\n");
         src.append("import jakarta.servlet.http.HttpServletRequest;\n");
         src.append("import jakarta.validation.Validator;\n");
         src.append("import java.util.List;\n");
@@ -548,9 +566,9 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         }
         src.append("import org.springframework.web.bind.annotation.RequestParam;\n");
         src.append("import org.springframework.web.bind.annotation.RestController;\n");
-        src.append("import com.metaobjects.generator.spring.runtime.FilterParseResult;\n");
-        src.append("import com.metaobjects.generator.spring.runtime.FilterParser;\n");
-        src.append("import com.metaobjects.generator.spring.runtime.FilterPredicate;\n");
+        src.append("import ").append(runtimePackage).append(".FilterParseResult;\n");
+        src.append("import ").append(runtimePackage).append(".FilterParser;\n");
+        src.append("import ").append(runtimePackage).append(".FilterPredicate;\n");
         src.append("import jakarta.servlet.http.HttpServletRequest;\n");
         src.append("import java.util.List;\n");
         src.append("import java.util.Map;\n");
@@ -791,11 +809,11 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // exactly the vanilla update handler's dependency set.
         src.append("import com.fasterxml.jackson.databind.JsonNode;\n");
         src.append("import com.fasterxml.jackson.databind.ObjectMapper;\n");
-        src.append("import com.metaobjects.generator.spring.runtime.ConstraintErrors;\n");
-        src.append("import com.metaobjects.generator.spring.runtime.PatchValidationException;\n");
+        src.append("import ").append(runtimePackage).append(".ConstraintErrors;\n");
+        src.append("import ").append(runtimePackage).append(".PatchValidationException;\n");
         // The escape the PATCH loop applies to each assigned key before naming a Bean
         // Validation property — see RecordComponentNames for why it is needed at run time.
-        src.append("import com.metaobjects.generator.spring.runtime.RecordComponentNames;\n");
+        src.append("import ").append(runtimePackage).append(".RecordComponentNames;\n");
         src.append("import org.springframework.http.HttpStatus;\n");
         src.append("import org.springframework.http.ResponseEntity;\n");
         src.append("import org.springframework.web.bind.annotation.DeleteMapping;\n");
@@ -807,9 +825,9 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("import org.springframework.web.bind.annotation.RequestMethod;\n");
         src.append("import org.springframework.web.bind.annotation.RequestParam;\n");
         src.append("import org.springframework.web.bind.annotation.RestController;\n");
-        src.append("import com.metaobjects.generator.spring.runtime.FilterParseResult;\n");
-        src.append("import com.metaobjects.generator.spring.runtime.FilterParser;\n");
-        src.append("import com.metaobjects.generator.spring.runtime.FilterPredicate;\n");
+        src.append("import ").append(runtimePackage).append(".FilterParseResult;\n");
+        src.append("import ").append(runtimePackage).append(".FilterParser;\n");
+        src.append("import ").append(runtimePackage).append(".FilterPredicate;\n");
         src.append("import jakarta.servlet.http.HttpServletRequest;\n");
         src.append("import jakarta.validation.Validator;\n");
         src.append("import java.util.List;\n");

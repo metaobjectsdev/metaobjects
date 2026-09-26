@@ -54,9 +54,26 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
  * <p>Args:</p>
  * <ul>
  *   <li>{@code outputDir} (required): output directory root.</li>
+ *   <li>{@code runtimePackage} (optional): package the output imports its helper runtime
+ *       from; defaults to {@link #RUNTIME_PACKAGE}.</li>
  * </ul>
  */
 public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<MetaObject> {
+
+    /**
+     * The package the emitted code imports its helper runtime from ({@code FilterParser},
+     * {@code PatchValidationException}, …). {@code mvn metaobjects:eject} copies that runtime
+     * into the adopter's module and rewrites THIS line of the ejected copy to name it, so an
+     * owned generator's output imports the owned runtime. Keep it on one line.
+     */
+    public static final String RUNTIME_PACKAGE = "com.metaobjects.generator.spring.runtime";
+
+    /** Generator arg overriding {@link #RUNTIME_PACKAGE} — for a packaged generator whose
+     *  output must use the same owned runtime copy as an ejected neighbour. */
+    public static final String ARG_RUNTIME_PACKAGE = "runtimePackage";
+
+    /** The runtime package this run's output imports ({@link #ARG_RUNTIME_PACKAGE}). */
+    private String runtimePackage = RUNTIME_PACKAGE;
 
     @Override
     protected Class<MetaObject> getFilterClass() {
@@ -68,6 +85,7 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
     @Override
     public void execute(MetaDataLoader loader) {
         parseArgs();
+        runtimePackage = getArg(ARG_RUNTIME_PACKAGE, RUNTIME_PACKAGE);
         this.loader = loader;
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         for (MetaObject entity : loader.getMetaObjects()) {
@@ -108,7 +126,7 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         if (!pkg.isEmpty()) {
             src.append("package ").append(pkg).append(";\n\n");
         }
-        src.append("import com.metaobjects.generator.spring.runtime.FilterPredicate;\n");
+        src.append("import ").append(runtimePackage).append(".FilterPredicate;\n");
         src.append("import java.util.List;\n");
         src.append("import java.util.Optional;\n\n");
         src.append("/**\n");
@@ -215,7 +233,7 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         if (!pkg.isEmpty()) {
             src.append("package ").append(pkg).append(";\n\n");
         }
-        src.append("import com.metaobjects.generator.spring.runtime.FilterPredicate;\n");
+        src.append("import ").append(runtimePackage).append(".FilterPredicate;\n");
         src.append("import java.util.List;\n");
         if (hasItem) {
             src.append("import java.util.Optional;\n");
@@ -272,7 +290,7 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
 
         StringBuilder src = new StringBuilder();
         if (!pkg.isEmpty()) src.append("package ").append(pkg).append(";\n\n");
-        src.append("import com.metaobjects.generator.spring.runtime.FilterPredicate;\n");
+        src.append("import ").append(runtimePackage).append(".FilterPredicate;\n");
         src.append("import java.util.List;\n");
         src.append("import java.util.Optional;\n\n");
         src.append("/**\n");

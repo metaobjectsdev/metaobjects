@@ -98,6 +98,25 @@ public class MetaDataVerifyMojoTest {
         }
     }
 
+    /**
+     * Helper runtime copied by {@code mvn metaobjects:eject} is owned code. When it shares a
+     * directory with generated output (an {@code outputDir} of {@code src/main/java} is legal)
+     * no generator produces it, and without the ownership marker every verify would call it
+     * stale. A marker-less file in the same place still fails, as above.
+     */
+    @Test
+    public void verifyIgnoresOwnedRuntimeInTheOutputDir() throws Exception {
+        Path runtimeDir = committedDir.resolve("com/acme/runtime");
+        Files.createDirectories(runtimeDir);
+        Files.writeString(runtimeDir.resolve("FilterParser.java"),
+                EjectSupport.OWNED_RUNTIME_MARKER + " — copied by eject.\npackage com.acme.runtime;\n"
+                    + "public final class FilterParser {}\n", StandardCharsets.UTF_8);
+
+        MetaDataVerifyMojo verify = new MetaDataVerifyMojo();
+        configure(verify, committedDir);
+        verify.execute();
+    }
+
     @Test
     public void verifyFailsOnMissingCommittedFile() throws Exception {
         Path someKt = firstKtFile(committedDir);

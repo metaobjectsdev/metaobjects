@@ -131,6 +131,29 @@
             <version>3.3.3</version>
             <scope>test</scope>
         </dependency>
+        <!-- EjectRuntimeRoundTripTest compiles the output of EJECTED Spring generators — the
+             controller included — together with the owned runtime copy eject writes. These
+             supply the framework types that output names (annotations, ResponseEntity,
+             HttpServletRequest, Bean Validation); nothing boots. Same versions as
+             codegen-spring's own compile-and-run tests. -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+            <version>6.2.11</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <version>6.0.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.validation</groupId>
+            <artifactId>jakarta.validation-api</artifactId>
+            <version>3.0.2</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.apache.derby</groupId>
             <artifactId>derby</artifactId>
