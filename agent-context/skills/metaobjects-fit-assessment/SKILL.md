@@ -1,6 +1,6 @@
 ---
 name: metaobjects-fit-assessment
-description: Use BEFORE adopting MetaObjects — assess whether a not-yet-adopted project is a fit, what would migrate, the end-state, and the drift-protection payoff; produces a decision-grade, evidence-cited report. Read-only, propose-only.
+description: Use BEFORE adopting MetaObjects — assess how much of it a not-yet-adopted project should adopt (not worth it / contract spine between apps / partial / full), where it would pay off, what would migrate, and the drift-protection payoff; a quick pass gives a first verdict, the full assessment an evidence-cited report. Read-only, propose-only.
 scaffold: false
 ---
 
@@ -64,461 +64,439 @@ R0 verdict line: no verdict may turn on it.
 
 # MetaObjects Fit & Migration Assessment
 
-_Assessment prompt v1 (post-Phase-0 refinement). Body originally grounded against MetaObjects
-npm `0.17.x` / Maven `7.9.x`; capability claims re-swept against npm `0.24.x` / Maven `7.24.x`
-on 2026-08-25, but not every line has been re-derived since — verify every capability claim
-against the current release before asserting it._
+_Assessment prompt v2. Capability claims below were checked against the MetaObjects source at
+release **1.0.8** (npm `1.0.8`, Maven `8.0.7`, PyPI `1.0.8`, NuGet `1.0.8`) on 2026-09-26. If
+the current release is newer, the § Capability sheet may be behind it: check anything
+load-bearing against the published sources named in M3._
+
+**What this costs you.** It runs in your coding agent, on your tokens.
+
+- **Quick pass** (the default, next section): roughly 5–30 minutes of agent time, depending on
+  the agent and the repository, longer on a large monorepo. It prints a first verdict in the
+  conversation and writes nothing.
+- **Full assessment** (optional depth, after the quick pass): an hour or more of agent time,
+  and a large repository makes for a large token bill. It produces the evidence-cited report
+  and its JSON twin.
+
+It is not a two-minute check. Say so if anyone promised you one.
+
+**Read-only, for real.** Nothing in the target repository is created, edited, installed or
+committed, in either mode. The quick pass answers in the conversation. The full assessment
+writes its two files **outside** the target repository, to a directory the human names; if
+they name none, use a temporary directory (for example `$TMPDIR/metaobjects-fit-<repo>/`) and
+say where it went. Never create `.metaobjects/` anywhere: that directory marks an adopted
+project.
 
 You are an AI assistant running a **pre-adoption fit assessment** for MetaObjects
-(https://github.com/metaobjectsdev/metaobjects — the cross-language metadata standard:
-typed entity metadata as the durable spine; generated code as the disposable artifact;
-four pillars: codegen, runtime metadata, drift detection, prompt construction; five ports:
-TypeScript, C#, Java, Kotlin, Python).
+(https://github.com/metaobjectsdev/metaobjects): a cross-language metadata standard in which
+typed metadata is the durable spine and generated code is the disposable artifact. It is
+assessed here on four pillars (codegen, runtime metadata, drift detection, prompt
+construction) across five ports (TypeScript, C#, Java, Kotlin, Python). You are sitting in a
+project that has **not** adopted it.
 
-You are sitting inside a target project that has **not adopted MetaObjects**. Produce a
-decision-grade report answering: is this project a fit, what would migrate, what does the
-after-state look like, what are the benefits — with **drift protection as the centerpiece** —
-and which metadata vocabulary the project isn't asking for but would profit from.
+The question is not "fit or not fit". It is **how much of MetaObjects this project should
+adopt, where, and whether any of it is worth the tooling**. Adoption is a spectrum:
 
----
+| Scope | What MetaObjects owns | What stays exactly as it is |
+|---|---|---|
+| **NOT WORTH IT** | nothing | everything |
+| **CONTRACT SPINE** | the shapes that cross a boundary between apps, services or languages (shared entity shapes, API payloads, event and message bodies, prompt payloads), declared once; each side generates only the types, DTOs and validators it compiles against; `verify --codegen` fails the build of any side whose copy is stale | the ORM, the migrations, the routes, all hand-written code |
+| **PARTIAL** | one layer or one subsystem: e.g. the schema drift gate on a set of Postgres tables, the prompt layer, or the whole stack of one new service | everything outside that layer or subsystem |
+| **FULL** | the model: DDL via `meta migrate`, generated entities/ORM wiring, routes, validators, UI tier where the port has one | business logic, auth, irreducible SQL |
 
-## Inputs — elicit if absent
+**The size-and-shape rule** (a product ruling; apply it, do not relitigate it):
 
-1. Repo access (required). For monorepos: which subdirectory/service to scope to.
-2. Stack confirmation (detect, then confirm): language(s), DB, ORM, web framework.
-3. **Trajectory — you MUST ask; it is NOT in the code (see M8).** Is this system expected to
-   **grow** (more entities, a second language or service, an LLM surface, a team beyond one
-   person), or is it feature-complete and stable at its current size? Is it long-lived, or
-   disposable? A repo that will triple and a repo that is finished look **identical in git** —
-   and this is the single fact that decides the size-based verdict. If the human doesn't
-   answer, do not guess: state the assumption you made and mark the verdict conditional on it.
-4. Whether an LLM/prompt surface exists (scopes pillar 4).
-5. Org constraints that gate verdicts: who owns the schema (DBA-gated?); is generated
-   code in the repo acceptable?
-6. Where to write output. Default: `metaobjects-fit/` at the target repo root.
-   **Never create `.metaobjects/`** — that directory is the marker of an adopted project.
-
-No secrets, no live-DB connection. You read code and migrations only; `verify --db` is
-*described* in the report, never executed.
-
-## Deliverables
-
-- `metaobjects-fit/fit-assessment.md` — the human report (§ Report contract).
-- `metaobjects-fit/fit-assessment.json` — the machine twin (§ JSON contract). Every
-  prediction in the prose must have a JSON twin; a claim that can't be expressed as a
-  typed, checkable finding is hand-waving — cut it or fix it.
+- **Greenfield or early projects** on a stack a reference generator targets → **FULL** is the
+  natural scope. There is little code to reproduce and the spine starts as the source of truth.
+- **Large existing projects, especially estates where several apps and services depend on each
+  other** → the value is usually a **CONTRACT SPINE** on the seams between them, not replacing
+  anyone's ORM. The payoff is proportional to how many consumers compile against one shape and
+  how often that shape has drifted. PARTIAL adoption per service can follow later, one service
+  at a time.
+- **Small, finished, single-app projects** → **NOT WORTH IT**. Say so plainly. (Whether a small
+  app is *finished* is not in the code: see M8.)
+- A **single large app** on an ORM no reference generator targets sits between these: it has no
+  inter-app seam for a contract spine to protect, and FULL means rewriting its data layer. It is
+  usually NOT WORTH IT unless it has a real boundary (a public API with typed clients in another
+  language or repository, an LLM prompt surface, a schema shared with another team) — then that
+  boundary is the PARTIAL or CONTRACT-SPINE candidate, and you name it.
 
 ---
 
-## Non-negotiable method rules
+## Quick pass (default — do this first, and stop here unless asked for more)
 
-**M1 — Read-only, propose-only.** Never edit code, never author metadata files, never
-install anything. Every `metadata_sketch` is a read-only proposal. The bridge to action
-is `meta init` + the adoption skills — point there at the end.
+Budget: read manifests, the schema, a sample of the code at each seam, and targeted `git log`
+searches. Do not read the whole repository. The quick pass needs only this section, the scope
+table above and § Capability sheet at the end; skip everything in between.
 
-**M2 — Evidence discipline.** Every claim about the target cites `file:line` or
-`commit-sha`. Read the code behind every grep hit before citing it — a "duplicate"
-validator's *divergence* is the finding, not the grep hit. An ambiguous archaeology hit
-is dropped, not stretched.
+1. **Stack.** Languages, DB(s), ORM, migration tool, web framework, LLM SDKs. Look up the
+   port's row in § Capability sheet.
+2. **Shape.** Is this one app, or several apps/services/packages that exchange data? List every
+   **seam**: a shape produced on one side and consumed on another (an API response a separate
+   client or SDK consumes, a queue/event payload, a table two services read, a shared-types
+   package, a prompt payload, an export format). Monorepo workspaces, `packages/*-types`,
+   generated or hand-copied API clients, OpenAPI/JSON Schema files and message schemas are the
+   tells.
+3. **Existing gates.** What already keeps the seams in sync (OpenAPI generation and checks, a
+   shared-types package, a schema registry, `prisma migrate diff`, contract tests)? A seam that
+   is already gated is not a MetaObjects opportunity; say so.
+4. **Drift evidence, cheaply.** `git log --oneline -i --grep` for `sync|mismatch|out of date|
+   forgot|keep in sync|to match`, plus grep for comments like `keep in sync with` / `mirrors
+   the`. Read the two or three best hits and confirm each is a real divergence between two
+   copies of one shape. One confirmed incident beats ten grep hits.
+5. **Trajectory.** Ask the human (Input 3). If there is nobody to ask, say what you assumed.
+6. **Verdict**, in the conversation, in this shape:
 
-**M3 — Ground every capability claim.** Before asserting MetaObjects can generate/gate/
-model something, confirm it against the MetaObjects repo: the registry manifest
-(`fixtures/registry-conformance/expected-registry.json` — the closed vocabulary),
-`docs/features/*.md`, and the actual generator source for the target's port
-(`server/typescript/packages/codegen-ts*`, `server/java/codegen-spring`,
-`server/java/codegen-kotlin` (KotlinPoet generators), `server/csharp/*Codegen*`,
-`server/python/`). A capability you cannot point at in that repo does not go in the
-report. Never cite an unregistered subtype or attribute (ADR-0023: the registry is
-sealed; invented attrs fail load with `ERR_UNKNOWN_ATTR`).
+```text
+Recommended scope: NOT WORTH IT | CONTRACT SPINE | PARTIAL (<which layer/subsystem>) | FULL
+Confidence: high | medium | low (and what would change it)
+Why, in three facts: <fact, cited file:line or commit>, <fact>, <fact>
+Seams where it would pay off: <seam — both sides, cited — the gate that would close it>
+   (or "none found" — which is itself the finding for a single app)
+Where it would not pay off: <e.g. "the ORM layer: Prisma, which no generator targets">
+What you would not get: <the two or three § Capability sheet limits that bite here>
+Next step: <"stop here" | "run the full assessment on <scope>" | the first-week wedge>
+```
 
-**M4 — Not a brochure.** Bias to under-flagging on drift findings (>15% false positives
-kills the assessment). The mandatory "what you will NOT get" section and the per-port
-calibration caps are structural: never promise a capability the target's port lacks.
-
-**M5 — Metadata follows the code.** The migration you propose authors metadata to
-REPRODUCE the existing tables, names, types, and nullability exactly. No renames, no
-cleanups, no change-metadata→regen→fix-working-code. Ambiguity goes to the human as a
-marked decision point. Parity-gate every wave before deleting hand-written code.
-
-**M6 — Author from the live schema, not the ORM annotations.** Where a live schema (or
-its migration history) and ORM annotations disagree, the schema is the truth — the
-annotations lie (that disagreement is itself a drift finding). State this rule in the
-migration plan.
-
-**M7 — Floor and ceiling, both labeled (anti-under-promise guard).** Phase-0 calibration
-showed the failure mode is conservative UNDER-prediction, not over-promising. Your
-verdicts, plan, and benefit numbers stay on the **floor** (the conservative,
-metadata-follows-the-code path). But you must ALSO name the **deep-adoption ceiling**
-for the target's port (§ P5-b) in one clearly-labeled paragraph, tagged
-`horizon: "later"` in JSON and never counted in the benefit numbers. Omitting a real
-option a deep adopter would take is a scored defect, just like inventing one.
-
-**M8 — The verdict-deciding fact is not always in the code. Size you can count;
-TRAJECTORY you cannot.** The honest NOT-A-FIT splits in two, and only one half is
-observable:
-- **Structural disqualifiers ARE in the repo** — language outside the five ports, no
-  relational store, a non-entity-shaped domain, a DBA-gated schema. Read them, cite them,
-  rule on them. These are the only grounds on which you may write a flat `NOT A FIT`.
-- **The economic disqualifier is NOT in the repo.** "Too small for the tooling to pay"
-  depends on whether the system will **grow** — and a 3-entity app that will become 90 is
-  byte-identical in git to a 3-entity app that is finished forever. **Never infer "this will
-  never grow" from a small codebase.** Absence of growth-so-far is not evidence of
-  no-growth-to-come (a young repo is small *because it is young*). This is the one place your
-  evidence discipline (M2) actively misleads you: there is no `file:line` for intent.
-
-So: **ask** (Input 3). If answered, rule on it and say whose answer it was. If unanswered,
-do NOT pick a side — emit **both branches** explicitly, e.g.: *"At 4 entities today the
-spine's leverage does not repay the tooling — if this system is done, don't adopt. If you
-expect it to grow past ~10 entities, add a second language, or add an LLM surface, adopt at
-that point; and note adoption gets more expensive later, because you will be retrofitting a
-spine onto more drift, not less."* Tag such claims `confidence: low` and
-`checkable: false` — they are conditional on a fact you were not given.
-
-Corollary for scoring/QA: a "negative control" for this assessment cannot be *any small
-repo* — it must be one whose trajectory is **known** (e.g. retrospectively: it stayed small
-for years). Anything else tests a fact the code does not contain.
+Every fact is cited or it is cut. The quick pass may say NOT WORTH IT; it must not say
+"not a fit" about MetaObjects as a whole when a narrower scope was never considered. Work the
+scope table top to bottom and say why each wider scope was rejected.
 
 ---
 
-## The passes — run all of these BEFORE writing the report
+## Full assessment (optional depth)
+
+Run the passes below only when the human asks for it, or when the quick pass verdict is
+CONTRACT SPINE, PARTIAL or FULL and they want the plan. **Scope the full passes to the
+recommended scope**: a CONTRACT SPINE assessment censuses the seams and the shapes that cross
+them, not every table in the monolith.
+
+### Inputs — elicit if absent
+
+1. Repo access. For monorepos: which services/packages are in scope.
+2. Stack confirmation (detect, then confirm).
+3. **Trajectory — you MUST ask; it is NOT in the code (see M8).** Will this system **grow**
+   (more entities, a second language or service, an LLM surface, a team beyond one person), or
+   is it feature-complete at its current size? Long-lived or disposable? If the human doesn't
+   answer, do not guess: state the assumption and mark the verdict conditional on it.
+4. Whether an LLM/prompt surface exists (scopes the prompt pillar).
+5. Org constraints: who owns the schema (DBA-gated?); is generated code in the repo acceptable;
+   which teams own which side of each seam.
+6. Where to write output (outside the target repo; see the top of this file).
+
+No secrets, no live-DB connection. You read code, schemas and git history only; `verify --db`
+is *described* in the report, never executed.
+
+### Deliverables
+
+- `fit-assessment.md` — the human report (§ Report contract).
+- `fit-assessment.json` — the machine twin (§ JSON contract). Every prediction in the prose has
+  a JSON twin; a claim that can't be expressed as a typed, checkable finding is hand-waving.
+
+### Method rules
+
+**M1 — Read-only, propose-only.** Never edit the target, never author metadata files in it,
+never install anything into it. Every `metadata_sketch` is a proposal. The bridge to action is
+`meta init` + the adoption skills, named at the end.
+
+**M2 — Evidence discipline.** Every claim about the target cites `file:line` or a commit.
+Read the code behind every grep hit before citing it; a "duplicate" validator's *divergence*
+is the finding, not the grep hit. An ambiguous archaeology hit is dropped, not stretched.
+
+**M3 — Ground every capability claim, without cloning anything.** First source: the
+§ Capability sheet in this file. For anything it does not cover, the published sources:
+`https://metaobjects.dev/llms-full.txt` (the reference corpus), the closed vocabulary at
+`https://raw.githubusercontent.com/metaobjectsdev/metaobjects/main/fixtures/registry-conformance/expected-registry.json`,
+and the feature pages under `https://github.com/metaobjectsdev/metaobjects/tree/main/docs/features`.
+Reading the generator source is optional depth, not a prerequisite. A capability you cannot
+point at in one of those does not go in the report. Never cite an unregistered subtype or
+attribute: the registry is sealed, and an invented attribute fails load with
+`ERR_UNKNOWN_ATTR`.
+
+**M4 — Not a brochure.** Bias to under-flagging drift (more than 15% false positives kills the
+assessment). The "what you will NOT get" section and the per-port caps are structural. Never
+promise a capability the target's port lacks.
+
+**M5 — Metadata follows the code.** Proposed metadata REPRODUCES the existing tables, names,
+types, nullability and wire field names exactly. No renames, no cleanups. Ambiguity goes to the
+human as a marked decision point. Parity-gate every wave before deleting hand-written code.
+
+**M6 — Author from the live schema, not the ORM annotations.** Where a schema (or its migration
+history) and the ORM model disagree, the schema is the truth, and the disagreement is itself a
+drift finding. For a CONTRACT SPINE, author from what actually crosses the wire (the serialized
+payload, the published client type), not from either side's internal model.
+
+**M7 — Floor and ceiling, both labeled.** Verdicts, plan and benefit numbers stay on the
+**floor** (the conservative, metadata-follows-the-code path at the recommended scope). Also name
+the **ceiling** — the next wider scope and the port's deep-adoption lane (P5-b) — in one
+clearly labeled paragraph, tagged `horizon: "later"` in JSON and never counted in benefits.
+Omitting a real option is a scored defect, just like inventing one.
+
+**M8 — The verdict-deciding fact is not always in the code.** Size you can count; trajectory
+you cannot.
+- **Structural disqualifiers ARE in the repo**: language outside the five ports, no
+  entity-shaped data at all, a DBA-gated schema. Cite them. They rule out scopes, not the whole
+  spectrum: a Go estate has no port, but a TypeScript web client on the other side of it may
+  still have a seam worth a contract.
+- **The economic disqualifier is NOT in the repo.** "Too small to pay" depends on whether the
+  system will grow, and a 3-entity app that will become 90 is byte-identical in git to one that
+  is finished. **Never infer "this will never grow" from a small codebase.** Ask (Input 3). If
+  unanswered, emit **both branches** ("if this is done, NOT WORTH IT; if it will grow past ~10
+  entities, add a service, a language or an LLM surface, adopt at that point, and adopting later
+  costs more"), tagged `confidence: low`, `checkable: false`.
+
+A negative control for this assessment must be a repo whose trajectory is **known**, not any
+small repo.
 
 ### P1 — Stack detection + calibration lock-in
 
-Detect language(s), DB, ORM, migration tool, web framework, LLM SDKs. Immediately look
-up the target port's row in the § Calibration table and treat it as a hard cap on every
-promise in the rest of the report.
+Detect languages, DBs, ORMs, migration tools, web frameworks, LLM SDKs, and every **seam**
+(quick-pass step 2). Look up the port rows in § Capability sheet and treat them as hard caps.
 
-### P2 — Census (the denominator for everything)
+### P2 — Census (the denominator)
 
-Count, with locations:
+**P2-a — Table-first entity census.** The spine models the **database, not the ORM**:
 
-**P2-a — Table-first entity census (mandatory reconciliation).**
-The spine models the **database, not the ORM layer**. Real migrations model every live
-table — including junction tables, operational tables (audit logs, queues, tokens), and
-tables the ORM never mapped (touched only by hand SQL/DAOs). An entity-count prediction
-that equals the ORM-class count is a known under-prediction mode. So:
-
-1. Reconstruct the **live table set**: walk the migration history (`CREATE TABLE` minus
-   `DROP TABLE`) or the checked-in schema; count tables.
-2. Count **ORM/model classes on every lane** — not just the primary one: JPA `@Entity`
-   PLUS `@MappedSuperclass`/`@Embeddable`; secondary mapping layers (e.g. a Spring-Data-
-   JDBC shadow set); Drizzle tables AND Zod schemas; Pydantic/dataclass models; EF Core
-   entity classes. Multiple lanes mapping one table = a drift finding (P3), not double
+1. Reconstruct the live table set (migration walk `CREATE TABLE` minus `DROP TABLE`, or the
+   checked-in schema) — per database, including any the schema pillar cannot reach (MySQL,
+   ClickHouse, …), listed separately.
+2. Count ORM/model classes on **every** lane (JPA `@Entity` + `@MappedSuperclass`/`@Embeddable`;
+   secondary mapping layers; Drizzle tables AND Zod schemas; Prisma models; Pydantic/dataclass
+   models; EF Core classes). Several lanes mapping one table is a drift finding, not double
    counting.
-3. Count **read-model shapes**: list/summary DTOs, hand `SELECT` with joins/GROUP BY
-   feeding a DTO, hand-written SQL views → future `object.projection`.
-4. Count **payload/value shapes**: JSON/JSONB column shapes (P2-b), embedded/owned
-   types, LLM payload dicts → future `object.value`.
+3. Read-model shapes (list/summary DTOs, hand `SELECT`s feeding a DTO, hand views) → future
+   `object.projection`.
+4. Payload/value shapes (JSON/JSONB column shapes, embedded types, event bodies, LLM payload
+   dicts) → future `object.value`.
+5. **Seam shapes** (for CONTRACT SPINE): each shape that crosses a boundary, with its producer,
+   its consumers, and every declaration of it on each side.
 
-Then emit the **reconciliation block** (mandatory in report AND in JSON):
+Emit the reconciliation block (report AND JSON): live tables, ORM classes (all lanes), predicted
+`object.entity` (≈ live tables in scope; state the delta), predicted `object.projection`,
+predicted `object.value`, and seam shapes. The spine's object count is normally LARGER than the
+ORM-class count, because read models and payloads become their own objects. For a CONTRACT
+SPINE, the entity count may be near zero: contracts are usually sourceless `object.value` /
+`object.entity` declarations that generate types and no table.
 
-| Quantity | Count | Basis |
-|---|---|---|
-| Live tables | N | migration walk |
-| ORM/model classes (all lanes) | N | annotation/class census |
-| → predicted `object.entity` | ≈ live tables (state the delta and why) | every live table incl. junctions + ORM-less tables |
-| → predicted `object.projection` | N | read models, list DTOs, hand views |
-| → predicted `object.value` | N | JSONB shapes, owned types, prompt payloads |
+**P2-b — Opaque-payload hunt (mandatory; do not fold into "misc").** Every opaque JSON/JSONB
+column and schema-in-code-only payload: `jsonb`/`json` DDL; Java/Kotlin `ObjectMapper.readValue`,
+`Map<String,Object>` fields, `@JdbcTypeCode(SqlTypes.JSON)`; TS `JSON.parse` + `as`/`any`,
+`z.unknown()`/`z.record()` on a column, untyped Drizzle `jsonb(...)`, Prisma `Json`; Python
+`dict` fields, untyped SQLAlchemy `JSON`; C# `JsonDocument`/`JObject`. Each hit is a candidate
+`object.value` + `field.object @objectRef @storage: jsonb` (+`@isArray`). Classify: (a) a typed
+declaration exists somewhere (a drifting duplicate, or already the single source — say which),
+or (b) fully opaque (the shape lives only in scattered reader/writer call sites). Report counts;
+carry the modeling as a named wave item. (`field.map` is the legal form for a genuinely open
+bag; a bag with known keys is a value object.)
 
-Name explicitly that read models and payloads become their **own** objects — the spine's
-object count is normally LARGER than the ORM-class count.
+**P2-c — UI-surface census (renderer-agnostic).** Every list/table/grid or form with a column
+set, sort, filter or page size — server-rendered templates, admin frameworks and report output
+included. The UI verdict is **two lines**: *UI metadata* (`layout.dataGrid` `@columns`,
+`@defaultSortField`, `@defaultSortOrder`, `@pageSize` — registry vocabulary on every port; cheap
+fact capture, but nothing generates a server-rendered template from it) and *UI codegen +
+runtime* (TS/React/TanStack only). Only the second line may say "nothing migrates" on a non-TS
+front end. Skip P2-c for a CONTRACT SPINE unless a seam feeds a UI.
 
-**P2-b — Opaque-payload hunt (mandatory pass; do not fold into "misc").**
-Hunt every opaque JSON/JSONB column and schema-in-code-only payload:
-
-- DDL/migrations: `jsonb`, `json` column types.
-- Java/Kotlin: `ObjectMapper.readValue`/`writeValue`, `Map<String,Object>` fields,
-  `jsonb_set` in SQL strings, `@JdbcTypeCode(SqlTypes.JSON)`.
-- TS: `JSON.parse` + `as`/`any`, `z.unknown()`/`z.record()` on a column, Drizzle
-  `jsonb(...)` without a typed `$type`.
-- Python: `dict` fields, `json.loads` on a column, SQLAlchemy `JSON`/`JSONB` untyped.
-- C#: `JsonDocument`/`JObject` columns, string columns holding serialized JSON.
-
-Each hit is a candidate **`object.value` + `field.object @objectRef @storage: jsonb`**
-(+`@isArray` for arrays; typed single- and array-of-VO jsonb round-trip codecs are
-conformance-gated in every port). Classify each column: (a) a typed class exists
-somewhere for it (a drifting duplicate — ledger row), or (b) fully opaque — the shape
-exists only as N implicit declarations scattered across reader/writer call sites and
-zero checkable ones (drift signature 6 with implicit copies — often the WORST drift
-exposure in the repo, because nothing can even diff it). Report the counts; carry the
-modeling work as a **named migration-wave item**, not a footnote. (`field.map` is the
-legal interim form for a genuinely open bag; a bag with known keys is a value object.)
-
-**P2-c — UI-surface census (renderer-agnostic).**
-A UI surface = any list/table/grid or form with a column set, sort order, filter, or
-page size — **including server-rendered templates** (Thymeleaf/JSP/Razor/ERB/Django),
-admin frameworks, and report/CLI table output. Count them all; do not scope this hunt
-to React. Each grid-shaped surface's column/sort/pagination facts are candidates for
-`layout.dataGrid` (`@columns`, `@defaultSortField`, `@defaultSortOrder`, `@pageSize`).
-
-The UI verdict is **two lines, never one**:
-- **UI metadata** — `layout.dataGrid` is cross-port registry vocabulary; authoring it is
-  cheap on ANY port and moves the column/sort/page-size facts into the spine even while
-  today's renderer is server-side (honest caveat: nothing generates the server-rendered
-  template from it — the fact capture and any future web client are the payoff).
-- **UI codegen + runtime** — grid/form/hook generation and the runtime components are
-  TS/React/TanStack only. Only THIS line may say "nothing migrates" on a non-TS front end.
-
-**P2-d — The rest of the census:** route/handler count (CRUD-shaped vs bespoke);
-validation schemas and where they live; enums vs `CHECK` constraints; migration tooling
-and count; LLM prompt-construction sites (builders, inline strings, parsers — with LOC);
-test posture; out-of-tree consumers of the schema (scripts, sibling services, other
-languages).
+**P2-d — The rest:** route/handler count (CRUD-shaped vs bespoke); validation schemas and where
+they live; enums vs `CHECK` constraints; migration tooling; LLM prompt sites (builders, inline
+strings, reply parsers, with LOC); test posture; out-of-tree consumers of each shape.
 
 ### P3 — Drift ledger + git archaeology (the centerpiece)
 
-For each drift exposure, a ledger row: **sources of truth** (each copy at `file:line`) →
-**divergence today** (field-by-field diff — a live, current divergence is the money
-finding) → **historical evidence** (archaeology) → **the gate that closes it** → the
-signature class. Hunt all ten classes:
+One ledger row per exposure: **sources of truth** (each copy at `file:line`) → **divergence
+today** (field by field; a live divergence is the money finding) → **historical evidence** →
+**the gate that closes it** → signature class. Hunt:
 
 1. Hand validators shadowing the persistence model.
 2. Field-by-field DTO↔model/row mappers.
 3. camelCase↔snake_case body↔column maps.
-4. Drift-admitting comments (`"keep in sync with"`, `"mirrors the"`, `"matching the"`).
-5. Runtime schema patching (`ALTER TABLE IF NOT EXISTS`, `_ensure_schema()`) — N schema owners.
-6. N declarations of one shape (the headline class) — **including the implicit-copy
-   variant from P2-b** (an opaque JSON column whose shape lives only in scattered
-   readValue/parse call sites).
-7. *(n/a pre-adoption — `own*()` is a MetaObjects-internal discipline.)*
-8. Hand-written `CREATE VIEW` / read-only SQL mirroring a read model. Run the
-   **necessity test**: expressible when every output column is a passthrough
-   (`origin.passthrough @from/@via`), a count/sum/avg/min/max (`origin.aggregate
-   @agg/@of/@via`, row-scoped with `@filter`), a predicate quantifier (`origin.aggregate
-   @agg: any|all`), an array rollup (`origin.aggregate @agg: collect` — with `@of`
-   naming one column, or `@of` OMITTED since 0.24.1 to collect each related row as the
-   carrying field's declared value object, which is the `json_agg(row_to_json(...))` shape),
-   a non-aggregate derived scalar (`origin.computed @expr`), an argmax-style "one related
-   row's column" pick (`origin.first @via` — covers the common `DISTINCT ON` / lateral-join
-   shape), a soft-delete/status/type row-scope (an object-level `@filter` on
-   `object.projection`), or `extends`-borrowed — and joins
-   follow declared relationships/`identity.reference` FKs. Expressible → projection
-   candidate (note: an unmodeled hand view is *unmanaged* — invisible to `verify --db`;
-   modeling it is what makes it gateable). `DISTINCT ON` and lateral join are **not**
-   automatic BESPOKE justifications — check `origin.first` first; they earn BESPOKE only
-   when the pick can't collapse to one argmax over one `@via` path (a multi-column
-   tiebreak, or a lateral doing more than pick-one-row). Not expressible → BESPOKE with a
-   NAMED construct (recursive CTE, window fn, set op, a `DISTINCT ON`/lateral join
-   `origin.first` genuinely can't express). "It's an aggregation" is not a justification.
-   BESPOKE has a better ending than "hand-write it outside the tool": if the body is
-   irreducible but still **yours** to own, carry it in the `source.rdb` **`@sql`** escape
-   (#208, ADR-0043) — a hand-written view/proc body the tool registers, fingerprints, and
-   drift-checks (adopt a pre-existing view with `meta migrate --allow adopt-view`, no
-   rewrite needed); if the object is owned **elsewhere** (Flyway, another team's
-   migration), mark its source `@unmanaged: true` so `verify --db` reports it as an
-   external, declared object instead of silently missing it.
-9. A closed variant-set hand-modeled per instance (N sibling modules on one payload
-   shape) → VOCAB CANDIDATE (advisory only; ADR-0037 ordered test).
-10. One prompt's text/payload/parse scattered across services — a renamed field silently
-    degrades the prompt with no build-time signal.
+4. Drift-admitting comments (`keep in sync with`, `mirrors the`, `matching the`).
+5. Runtime schema patching (`ALTER TABLE IF NOT EXISTS`, `_ensure_schema()`): N schema owners.
+6. N declarations of one shape (the headline class), including P2-b's implicit copies and
+   **the same shape declared on both sides of a seam** (producer type vs consumer type, API
+   response vs client type, event producer vs consumer).
+7. *(n/a pre-adoption.)*
+8. Hand `CREATE VIEW` / read-only SQL mirroring a read model. **Necessity test**: expressible
+   when every output column is a passthrough (`origin.passthrough @from/@via`), an aggregate
+   (`origin.aggregate @agg: count|sum|avg|min|max`, row-scoped with `@filter`; `any|all`
+   quantifiers; `collect` rollups, with `@of` naming a column or omitted to collect each related
+   row as the field's value object), a derived scalar (`origin.computed @expr`), an argmax pick
+   (`origin.first @via` — the usual `DISTINCT ON`/lateral case), a row-scope (object-level
+   `@filter` on `object.projection`), or `extends`-borrowed; joins follow declared relationships.
+   Not expressible → BESPOKE with a NAMED construct (recursive CTE, window function, set op, a
+   multi-column tiebreak). An irreducible body you still own can be carried in `source.rdb
+   @sql` (fingerprinted and drift-checked; adopt an existing view with `meta migrate --allow
+   adopt-view`); an object another team owns is declared `@unmanaged: true`.
+9. A closed variant-set hand-modeled per instance → VOCAB CANDIDATE (advisory only).
+10. One prompt's text/payload/parse scattered across services.
 
-**Archaeology (prove it already drifted — "it will drift" lands 10× harder as "it
-already did, twice"):**
-- fix commits that patched ONE copy of a duplicated shape (a later commit patching the
-  other copy is the smoking gun);
-- migrations whose titles/headers are drift confessions (`"to match entity"`, `"fix
-  ... constraint"`, quoted production errors);
-- bug-fix messages with `sync` / `mismatch` / `out of date` / `forgot to update` / `bit-rot`;
-- prompt-string edits with no corresponding payload/parser change (and vice versa);
-- orphaned externalization attempts (config/template files nothing loads).
+**Archaeology** — "it will drift" lands harder as "it already did": fix commits that patched
+ONE copy of a duplicated shape (a later commit patching the other copy is the smoking gun);
+migrations titled like confessions (`to match entity`, `fix ... constraint`); messages with
+`sync` / `mismatch` / `out of date` / `forgot to update`; prompt edits with no payload/parser
+change; orphaned externalization attempts.
 
-**Cost-of-change exhibit (mandatory when findable):** locate one representative
-field-addition commit and quantify its fan-out (`git show --stat`): N files, M modules,
-which duplicate layers it had to touch. This single exhibit is the drift surface made
-concrete — lead with it.
+**Cost-of-change exhibit (mandatory when findable):** one representative field-addition commit,
+`git show --stat`: N files, M modules, which duplicate layers it touched, and **which of those
+layers MetaObjects could actually own on this stack** (a layer it cannot model — another
+database engine, an unsupported ORM — stays in the fan-out after adoption; say so).
 
-**Gate mapping** — every ledger row names its closing mechanism:
+**Gate mapping** — every row names its closing mechanism:
 
 | Exposure | Closing gate |
 |---|---|
-| model↔validator↔DTO duplicates (1,2,3,6) | one authored `object.entity`; copies become `@generated`; **`meta verify --codegen`** (TS) / **`mvn metaobjects:verify -Dmeta.verify.mode=codegen`** (JVM) / **`dotnet meta verify`** (C#) / **`metaobjects verify`** (Python) in CI |
-| schema vs model (5 + the DDL copy in 6) | spine owns DDL via `meta migrate`; **`meta verify --db`** (Node `meta` only; PG/SQLite/D1) |
-| opaque JSON columns (6-implicit) | `object.value` + `field.object @storage: jsonb` — the shape gets ONE checkable declaration + generated codecs |
-| read-model SQL (8) | `object.projection` + `origin.*` generate the view DDL |
-| scattered prompts (10) | `template.prompt` + typed payload VO + external text; **`meta verify --templates`** / `Renderer.verify` fails when a `{{field}}` no longer matches the payload; a **responding** `template.prompt` — one carrying `@responseRef` — generates parser-on-receipt (FR-006) plus the output-format fragment and tolerant `extract` (FR-010), i.e. both sides of the tag contract. A `template.output` is **outbound only** and emits no parser (ADR-0052, 0.24.0) |
-| the metadata itself | strict provenance (ADR-0023): unknown attrs fail load |
+| duplicates across a seam (6, cross-boundary) | one declared shape; each side generates its types/DTOs/validators; codegen drift gate in each side's CI (§ Capability sheet); the consumer's compiler fails where its code no longer matches |
+| model↔validator↔DTO duplicates in one app (1,2,3,6) | one `object.entity`; copies become `@generated`; codegen drift gate in CI |
+| schema vs model (5 + the DDL copy in 6) | `meta migrate` owns DDL, or the tables are modeled read-only; **`meta verify --db`** (Node `meta`; Postgres/SQLite/D1 only) |
+| opaque JSON columns (6-implicit) | `object.value` + `field.object @storage: jsonb` |
+| read-model SQL (8) | `object.projection` + `origin.*` |
+| scattered prompts (10) | `template.prompt` + typed payload + external text; `verify --templates` fails when a `{{field}}` no longer matches the payload; a responding `template.prompt` (`@responseRef`) generates the reply parser. `template.output` is outbound only and emits no parser |
+| the metadata itself | strict provenance: unknown attributes fail load |
 
-State the honest limits in the same section: `verify` cannot catch semantic mismodeling
-(a uuid modeled as string passes `--db`), cannot see a genuinely unmodeled DB object
-(nothing ever declared it), and `--templates` coverage depends on CLI version. Name the
-two declared middle states before writing something off as unmodeled: an
-irreducible-but-owned view/proc registered via `source.rdb @sql` (#208) IS fingerprinted
-and drift-checked, and an object owned by another team's tooling can be declared
-`@unmanaged: true` so `verify --db` reports it as external rather than missing it
-silently — "unmodeled" applies only to what was never declared at all. A gate, not a
-proof system.
+State the honest limits in the same section: `verify` cannot catch semantic mismodeling (a uuid
+modeled as a string passes); it cannot see what was never declared; a codegen drift gate proves
+the generated files match the metadata, and **it is the consumer's own compiler or type checker
+that catches code which no longer matches them** — so hand-written code that never references
+the generated types (an ORM model beside them) is not checked against them unless the adopter
+adds the assignment or test that makes it so. A gate, not a proof system.
 
-### P4 — Fit rubric (worked, not vibes)
+### P4 — Scope rubric (worked, not vibes)
 
-Positive signals (cite each): backend in one of the five ports; relational persistence
-(especially PG/SQLite); ≥ ~5 entity-shaped things with CRUD-ish surfaces; the same shape
-declared ≥2× today (the strongest predictor — it IS drift exposure); LLM prompt sites
-(any count); >1 language consuming one model; existing/planned admin grids or forms.
+**Signals for each scope** (cite each):
+- CONTRACT SPINE: ≥2 independently built consumers of one shape (apps, services, a published
+  client/SDK, another language); the same shape declared on both sides of a seam today;
+  archaeology showing a seam broke; no existing gate on that seam.
+- PARTIAL: a Postgres/SQLite/D1 schema with drift incidents and the team willing to model it
+  (`verify --db`); an LLM prompt surface; a new subsystem or service starting now.
+- FULL: greenfield or early; backend on a reference-generator stack; the same shape declared ≥2×
+  inside the app; admin grids/forms on the TS/React lane.
+- NOT WORTH IT: one app, no seam, no prompt surface, drift already gated or absent, and
+  (per the human) finished at this size.
 
-Disqualifier table — **every row answered, not just failing ones** (a verdict without
-this table worked row-by-row is invalid output):
+**Disqualifier table — every row answered** (a verdict without this table worked row by row is
+invalid output). Each row rules out *scopes*, not MetaObjects wholesale:
 
 | Check | Consequence |
 |---|---|
-| Backend language outside TS/Java/Kotlin/C#/Python | NOT A FIT (codegen/runtime); prompt pillar only if a portable sidecar makes sense — usually no |
-| No relational store | persistence + `--db` N/A; assess prompt + value/projection pillars on their own merits |
-| DB not Postgres/SQLite/D1 | schema pillar (`migrate`, `verify --db`) OUT — say so plainly; data-access unaffected |
-| Non-entity-shaped domain (no persistent typed records to speak of) | NOT A FIT — structural, and visible in the code |
-| Few entities today (< ~5) | **NOT a flat verdict — this is the M8 trap.** Small-today ≠ small-forever, and git cannot tell you which. Use the trajectory answer (Input 3): *done at this size* → MARGINAL/NOT A FIT (say so plainly — the leverage won't repay the tooling); *expected to grow / add a language / add an LLM surface* → FIT, and note adopting later costs more (you'd retrofit a spine onto more drift). **Unanswered → emit both branches, never guess.** |
-| Schema owned by another team (DBA-gated) | migrate pillar restricted; model read-only ("metadata follows the schema"); objects that stay owned by that team's own tooling can be declared `source.rdb @unmanaged: true` instead of silently excluded; flag the org constraint |
-| Deep hand-tuned ORM investment | churn warning, not a disqualifier: the plan must reproduce those mappings (`@column`/`@table`/`@dbColumnType`) and price it |
-| Team rejects generated code in the repo | flag; regen-every-build works but `verify --codegen` semantics differ — call the tradeoff |
+| Backend language outside TS/Java/Kotlin/C#/Python | no codegen or runtime for that side; a seam to a supported-language consumer can still take a contract, generated for that side only |
+| No relational store | schema pillar N/A; contracts, value objects and prompts assessed on their own |
+| DB not Postgres/SQLite/D1 (MySQL, ClickHouse, SQL Server, …) | `meta migrate` / `verify --db` OUT for that database — say so; types and data access unaffected |
+| ORM no reference generator targets (Prisma, TypeORM, Sequelize, SQLAlchemy ORM, Django ORM, Hibernate-only entities on the Java lane) | FULL means replacing the data layer — price it as such; CONTRACT SPINE and PARTIAL leave it untouched |
+| No seam (single app, no second consumer of any shape) | CONTRACT SPINE has nothing to protect |
+| Seams already gated (OpenAPI generation + check, shared-types package, schema registry) | that seam is not an opportunity; do not count it |
+| Few entities today (< ~5) | **not a flat verdict — the M8 trap.** Done at this size → NOT WORTH IT; expected to grow → FULL (adopt early); unanswered → both branches |
+| Schema owned by another team (DBA-gated) | migrate pillar out; model read-only or declare `source.rdb @unmanaged: true`; flag it |
+| Team rejects generated code in the repo | flag; regenerate-every-build works, but the codegen drift gate's meaning changes — call the tradeoff |
 
-### P5 — Migration plan
+### P5 — Migration plan (at the recommended scope)
 
-**P5-a — Waves (the floor).** Wave 0: wedge — a handful of highest-churn tables authored
-from the live schema (M6) + the drift gate (`verify --db` where the DB qualifies) wired
-in CI, expected day-one catches named from the ledger; zero generated code, zero app
-churn. Wave 1: retire the clearest deletable duplicate layer + generate the DTO/API
-surface the port offers; codegen-drift gate in CI. Wave 2: full entity spine + schema
-ownership handover (or read-only modeling), relationships (`identity.reference`,
-FR-018 `@through` junctions), **the P2-b value-object modeling as a named item**.
-Wave 3: UI metadata (P2-c) where surfaces exist; UI codegen only on TS/web. Wave 4:
-prompts, wedge-first per site, parity-gated byte-compare against existing outputs.
-Each wave: scope, LOC retired, effort band, parity gate, the adoption skill that
-executes it (`metaobjects-authoring` / `-codegen` / `-runtime-ui` / `-prompts` /
-`-verify`).
+**P5-a — Waves (the floor).**
+- *CONTRACT SPINE:* Wave 0 — declare the two or three most-churned seam shapes, reproducing
+  today's wire field names exactly (M5, M6); generate the types/validators into ONE consumer and
+  make that consumer compile against them; codegen drift gate in its CI. Wave 1 — the other side
+  of each seam generates from the same declaration (one metadata directory in a monorepo, or a
+  published model: § Capability sheet, "Sharing a model"); delete the hand copies. Wave 2 — the
+  rest of the seam inventory; value objects for opaque payloads that cross a seam.
+- *PARTIAL / FULL:* Wave 0 — a handful of highest-churn tables authored from the live schema +
+  `verify --db` in CI where the DB qualifies; zero generated code. Wave 1 — retire the clearest
+  duplicate layer and generate what the port offers; codegen drift gate. Wave 2 — the full entity
+  spine and schema-ownership handover (or read-only modeling), relationships, the P2-b value
+  objects. Wave 3 — UI metadata; UI codegen only on TS/web. Wave 4 — prompts, parity-gated
+  byte-compare against existing outputs.
 
-**P5-b — The deep-adoption ceiling (one labeled paragraph; `horizon: "later"`).** Name
-what the port's maximal lane looks like for adopters who go all the way, without
-promising it or counting it in benefits:
-- **JVM**: the stock Java/Spring lane keeps hand-written entities (generates DTO records,
-  controllers, filter allowlists, repository interfaces) — but the Kotlin lane
-  (`codegen-kotlin`) generates the entity + Exposed table + validators themselves
-  (generated-base + hand-written-subclass ownership), and OMDB offers metadata-driven
-  data access; a deep JVM adopter can end with the ORM layer itself generated/replaced.
-- **TS**: full stack (Drizzle schema + Zod + routes + hooks + grids) — the floor is
-  already near the ceiling.
-- **C#**: generated EF Core entities + `AppDbContext` + minimal-API routes; EF Core stays
-  the runtime.
-- **Python**: generated Pydantic + `APIRouter` + `ObjectManager` runtime data access.
-- All ports: **scaffold-and-own (ADR-0034)** means adopters own and extend generators —
-  the stock generator set is the starting point, not the cap on what can become
-  `@generated`. When a large hand-written layer is metadata-derivable but no stock
-  generator emits it, say so: "an owned generator can retire this" (honest effort tag).
+Each wave: scope, LOC retired, effort band, parity gate, and the adoption skill that executes it
+(`metaobjects-authoring` / `-codegen` / `-runtime-ui` / `-prompts` / `-verify`).
+
+**P5-b — The ceiling (one labeled paragraph; `horizon: "later"`).** The next wider scope, and
+the port's deep lane: JVM — the Kotlin lane generates entity + Exposed table + validators, and
+OMDB offers metadata-driven data access; TS — Drizzle + Zod + routes + hooks + grids; C# —
+generated EF Core entities + `AppDbContext` + minimal-API routes; Python — Pydantic + router +
+`ObjectManager`. Every generator is a reference helper the adopter can eject (`meta eject`,
+`metaobjects eject`, `mvn metaobjects:eject`, `dotnet meta eject`) and retarget, so a layer no
+stock generator emits can still become generated: say "an owned generator can retire this", with
+an honest effort tag.
 
 ### P6 — End-state projection
 
-- **Spine size — derive from DDL richness, not a flat guess.** Real spines carry the
-  full physical structure: identities, `identity.reference` per FK, `identity.secondary`
-  per unique constraint, `index.lookup` per performance index, enums, validators. Count
-  per-table indexes + uniques + FKs + enum-CHECKs in the DDL and pick the lines-per-
-  entity band accordingly: ~25–40 only for bare tables; index/FK-rich schemas run
-  ~80–120 lines/entity. Multiply by the **reconciled** object count from P2-a (entities
-  + projections + values), not the ORM-class count. Give a range.
-- **Generated surface**: files + LOC per the port's actual generators (read them — M3).
-- **Leverage ratio** = `generated_lines / (metadata_lines + owned_generator_lines)`;
-  give a band, note it excludes the drift-gate value (the real prize, not
-  line-denominated).
-- **Stays-hand-written table**: every surface predicted to remain bespoke, each with a
-  NAMED justification (recursive CTE, window fn, auth, business logic, transports).
+- **Spine size from DDL richness**, not a flat guess: ~25–40 lines per bare table; ~80–120 for
+  index/FK/enum-rich schemas; value objects and contracts are usually small. Multiply by the
+  reconciled object count, give a range.
+- **Generated surface**: files + LOC per the port's generators at the recommended scope.
+- **Leverage ratio** = `generated_lines / (metadata_lines + owned_generator_lines)`, as a band;
+  it excludes the drift-gate value, which is the real prize.
+- **Stays-hand-written table**: every surface that stays bespoke, each with a named reason.
 
-### P7 — Beyond-the-ask vocabulary hunt (apply the ADR-0037 ordered test to each)
+### P7 — Beyond-the-ask vocabulary hunt (ADR-0037's ordered test for each)
 
-- money as float / hand `*100` → `field.currency` (+`view.currency @locale`) — but NOT
-  for non-ISO-4217 quantities (game gold, points): those are `field.int`/`field.long`.
-- string-union / `CHECK IN (...)` / int-flag discriminators → `field.enum @values`
-  (plain value-set enums only; enums carrying behavior stay code, or split value-set
-  from behavior).
-- UUIDs as bare strings → `field.uuid` (never `field.string` + `@dbColumnType: uuid`).
-- hand `COUNT/SUM` subqueries, read-model SQL → `object.projection` + `origin.passthrough`
-  / `origin.aggregate` (`count`/`sum`/`avg`/`min`/`max`, +`@filter` for scoped
-  aggregates, +`any`/`all` predicate quantifiers, +`collect` array rollups) /
-  `origin.computed` (a non-aggregate derived scalar) /
-  `origin.first` (an argmax-style "one related row's column" pick — the usual
-  `DISTINCT ON`/lateral-join case) — plus a soft-delete/status/type view via the
-  object-level `@filter` on `object.projection` instead of a hand `WHERE`.
-  **Calibration: most projection fields in real spines are passthrough/`extends`
-  re-exposures; aggregates are the minority — lead with passthrough.**
-- a hand-maintained denormalized/computed column kept in sync by app code (an "update
-  the other row on write" helper mirroring a joined value onto the entity's own row) →
-  an **entity read-view** on the same `object.entity` before reaching for a projection:
-  keep the writable `table` source, add a non-primary read-only `view` source, and
-  declare the extra as a derived `origin.*` field — writes still target the table,
-  reads route through the view and re-read by PK (#214; see `docs/features/source-kinds.md`
-  "entity read-view vs projection" for when to use which).
-- hand junction joins → `relationship @cardinality: many @through` (junction declares
-  two `identity.reference` children; FR-018).
+- money as float / hand `*100` → `field.currency` (+`view.currency @locale`); not for non-ISO
+  quantities (points, game gold): those are `field.int`/`field.long`.
+- string unions / `CHECK IN (...)` / int flags → `field.enum @values` (value sets only).
+- UUIDs as bare strings → `field.uuid`.
+- hand `COUNT/SUM` subqueries, read-model SQL → `object.projection` + `origin.*` (lead with
+  passthrough: most projection fields in real spines are passthroughs, aggregates the minority);
+  a soft-delete/status view → object-level `@filter`.
+- a denormalized column kept in sync by app code → an entity read-view (a non-primary read-only
+  `view` source on the same `object.entity`) before reaching for a projection.
+- hand junction joins → `relationship @cardinality: many @through`.
 - copy-pasted base-field blocks → abstract base + `extends`.
-- unique business keys / lookup indexes living only in DDL → `identity.secondary` /
-  `index.lookup` (these are usually the single largest invisible-structure class —
-  count them).
+- unique keys / lookup indexes living only in DDL → `identity.secondary` / `index.lookup`
+  (usually the largest invisible-structure class — count them).
 - email/URL/IP regexes → `@stringFormat: email` / `field.uri` / `field.inet`.
-- opaque JSON columns → `object.value` + `field.object @storage: jsonb` (from P2-b).
-- inline prompts / ad-hoc payload dicts → `template.prompt` / `template.toolcall`; a
-  hand-rolled regex or JSON-scrape of an LLM **reply** → a *responding* `template.prompt`
-  (one carrying `@responseRef`), never `template.output` — the subtype's axis is DIRECTION
-  and an output is outbound only (ADR-0052). Rendered emails / documents / config exports
-  are what `template.output` is for.
-- doc comments hand-written in migrations (`COMMENT ON`) → the common `description` attr.
-- a recurring closed variant-set as N sibling modules → project-registered provider
-  subtype — VOCAB CANDIDATE, advisory only, never load-bearing for the verdict.
+- opaque JSON columns → `object.value` + `field.object @storage: jsonb`.
+- inline prompts / payload dicts → `template.prompt` / `template.toolcall`; a hand-parsed LLM
+  reply → a responding `template.prompt` (`@responseRef`), never `template.output` (outbound
+  only: rendered emails, documents, exports).
+- `COMMENT ON` doc comments → the common `description` attribute.
+- a recurring closed variant-set as N sibling modules → a project-registered provider subtype;
+  VOCAB CANDIDATE, advisory, never load-bearing for the verdict.
 
-Each suggestion: `metadata_sketch` + honest effort. Bias to under-flagging, but note:
-under-suggestion is also scored — if a hunt line above has hits, it must appear.
+Each suggestion: `metadata_sketch` + honest effort. If a hunt line has hits, it must appear.
 
 ### P8 — Limits (feeds §R7)
 
-Work the § Calibration table for the target's port. Non-negotiable inclusions: schema
-migration is Node-`meta`-only (PG/SQLite/D1); filter-operator route codegen full only in
-TS; C# has no ObjectManager tier; Python hand-wires the FastAPI router; business logic /
-irreducible SQL / auth / bespoke viz stay hand-written; generated code runs without
-MetaObjects at runtime (local-first) but adopting means owning a codegen step; metadata
-authoring debt is real — price the wave-0 reconciliation; early `verify --db` runs will
-surface legacy oddities — triage as findings, not noise.
-
-**State this limit explicitly in §R7 (M8):** *this assessment can read your code, not your
-roadmap.* It counts what exists; it cannot see whether the system will grow, and growth is
-what decides the size-based verdict. Where the trajectory answer was given, name who gave it;
-where it wasn't, say which branch you assumed. An assessment that quietly converts "small
-today" into "not worth it, ever" is exactly the false negative this section exists to prevent.
+Work § Capability sheet for the target's ports. Always include: the schema pillar is Node-`meta`
+only and Postgres/SQLite/D1 only; business logic, irreducible SQL, auth and bespoke
+visualisation stay hand-written; adopting means owning a codegen step; metadata authoring debt
+is real — price it; early `verify --db` runs surface legacy oddities, which are findings, not
+noise. And, explicitly: *this assessment can read your code, not your roadmap* — name who gave
+the trajectory answer, or which branch you assumed.
 
 ---
 
 ## Report contract — `fit-assessment.md`, sections in this order
 
-**§R0 — Verdict block.** Per-pillar verdicts (codegen / runtime metadata / drift
-detection / prompt construction): `STRONG FIT` / `FIT` / `MARGINAL` / `NOT A FIT` /
-`N/A`, one decisive fact each (pillar-scoped because real projects are lopsided).
-Overall verdict + confidence + the three decisive facts. The disqualifier table, worked.
-The one-line wedge recommendation. **The UI pillar line follows the P2-c two-line split.**
+**§R0 — Verdict.** The **recommended scope** (NOT WORTH IT / CONTRACT SPINE / PARTIAL: which
+layer or subsystem / FULL), confidence, and the three decisive facts. Then **why each wider
+scope was rejected**, one line each. The **seams** where it would pay off (both sides cited, the
+closing gate) and the places it would not. Per-pillar verdicts (codegen / runtime metadata /
+drift detection / prompt construction: `STRONG FIT` / `FIT` / `MARGINAL` / `NOT A FIT` / `N/A`,
+one decisive fact each), read **at the recommended scope**. The disqualifier table, worked. The
+one-line wedge. The UI line follows the P2-c split.
 
-**§R1 — Drift exposure today** (the centerpiece; immediately after the verdict): the
-cost-of-change exhibit, then the ledger (sources → divergence-today → archaeology →
-gate → class), then the gate-mapping table + honest limits, then a ledger summary line
-(N classes; N with documented past incidents; N divergent right now).
+**§R1 — Drift exposure today** (the centerpiece): the cost-of-change exhibit, the ledger, the
+gate mapping + honest limits, and a summary line (N classes; N with documented past incidents;
+N divergent right now).
 
-**§R2 — Census** — including the **P2-a reconciliation block**, the **P2-b opaque-payload
-counts**, and the renderer-agnostic UI-surface counts, with a coverage column (what
-MetaObjects can model/generate against vs what it will never touch).
+**§R2 — Census**: the P2-a reconciliation block (with seam shapes), P2-b counts, UI-surface
+counts, and a coverage column (what MetaObjects can model/generate vs what it will never touch).
 
-**§R3 — Migration plan** — waves per P5-a, governed by metadata-follows-the-code +
-author-from-live-schema, **plus the single labeled deep-adoption-ceiling paragraph
-(P5-b)**.
+**§R3 — Migration plan** at the recommended scope (P5-a), plus the labeled ceiling paragraph
+(P5-b).
 
-**§R4 — End-state projection** — spine estimate (DDL-richness-derived band × reconciled
-object count), generated surface, leverage ratio band, stays-hand-written table.
+**§R4 — End-state projection** (P6).
 
-**§R5 — Benefits, quantified and tagged** — LOC eliminated by class; drift classes
-closed (cross-referenced to §R1 rows); incident prevention where archaeology shows past
-production errors; cross-language reuse only if genuinely multi-language; prompt wins
-(byte-stable renders, payload-as-diff, build-time template verify). Each tagged
-`checkable: true/false`; uncheckable benefits allowed but labeled.
+**§R5 — Benefits, quantified and tagged** `checkable: true/false`: LOC eliminated by class;
+drift classes closed (cross-referenced to §R1); incidents that the gate would have stopped;
+cross-language reuse only if genuinely multi-language; prompt wins.
 
-**§R6 — Beyond-the-ask vocabulary opportunities** (P7 output, each with sketch + effort).
+**§R6 — Beyond-the-ask vocabulary opportunities** (P7).
 
-**§R7 — What you will NOT get** (P8 output; mandatory).
+**§R7 — What you will NOT get** (P8; mandatory).
 
-**§R8 — First-week wedge plan.** One real entity-set end-to-end: author metadata
-reproducing the existing shape from the live schema → wire the drift gate into CI in
-week one (the earliest, cheapest payoff) → name the expected day-one catches from the
-ledger → one generated vertical + one deleted duplicate as the codegen proof. Then point
-at `meta init` + the adoption skills.
+**§R8 — First-week wedge**: the smallest end-to-end slice at the recommended scope — for a
+CONTRACT SPINE, one seam shape declared, generated into one consumer, drift gate in CI, one
+hand copy deleted; for PARTIAL/FULL, one entity set authored from the live schema with the drift
+gate in CI and one generated vertical. Then point at `meta init` + the adoption skills.
 
 ---
 
@@ -526,39 +504,54 @@ at `meta init` + the adoption skills.
 
 ```jsonc
 {
-  "assessed_project": "<path or name>",
-  "assessment_version": "v1",
+  "assessed_project": "<name or remote URL — not a local path>",
+  "assessment_version": "v2",
   "date": "YYYY-MM-DD",
+  "mode": "quick | full",
   "verdicts": {
-    "overall": "ADOPT | ADOPT-STAGED | MARGINAL | NOT-A-FIT",
+    "recommended_scope": "not-worth-it | contract-spine | partial | full",
+    "partial_target": "optional — the layer or subsystem, when scope is partial",
     "confidence": "high | medium | low",
+    "rejected_wider_scopes": [{ "scope": "full", "reason": "..." }],
     "pillars": { "codegen": "...", "runtime": "...", "drift": "...", "prompts": "..." }
   },
-  "census_reconciliation": {              // mandatory — makes entity-count claims scoreable
+  "seams": [
+    {
+      "id": "kebab-stable-id",
+      "shape": "what crosses the boundary",
+      "producer": "file:line",
+      "consumers": ["file:line"],
+      "existing_gate": "none | <what already checks it>",
+      "closing_gate": "the MetaObjects gate, per § Capability sheet",
+      "worth_it": true
+    }
+  ],
+  "census_reconciliation": {
     "live_tables": 0,
     "orm_model_classes_all_lanes": 0,
     "predicted_object_entity": 0,
     "predicted_object_projection": 0,
     "predicted_object_value": 0,
+    "seam_shapes": 0,
     "opaque_json_columns": 0,
-    "ui_surfaces_total": 0,               // renderer-agnostic count (P2-c)
+    "ui_surfaces_total": 0,
     "prompt_sites": 0
   },
   "claims": [
     {
       "id": "kebab-stable-id",
-      "claim_type": "fit | census | drift | migrates | stays-bespoke | leverage | benefit | vocab | limit | wedge",
+      "claim_type": "fit | scope | census | drift | migrates | stays-bespoke | leverage | benefit | vocab | limit | wedge",
       "claim": "one-sentence prediction",
       "pillar": "codegen | runtime | drift | prompt | n/a",
-      "surface": "entity | dto | validator | repository | route | view | ui | prompt | migration | schema | payload",
-      "capability": "the registry capability this maps to (e.g. field.enum, origin.passthrough, template.output)",
+      "surface": "entity | dto | validator | repository | route | view | ui | prompt | migration | schema | payload | contract",
+      "capability": "the registry capability or generator this maps to",
       "locations": ["file:line", "commit-sha"],
       "evidence": "what was read/verified",
       "impact": "LOC / call-sites / risk",
       "effort": "trivial | small | medium | large",
       "confidence": "high | medium | low",
       "checkable": true,
-      "horizon": "now | later",           // "later" = deep-adoption ceiling; never counted in benefits
+      "horizon": "now | later",
       "metadata_sketch": "optional — read-only proposal",
       "parity_gate": "optional — the check proving behavior-equivalence"
     }
@@ -566,64 +559,95 @@ at `meta init` + the adoption skills.
 }
 ```
 
-Every prose prediction gets a claim. Ceiling statements (P5-b) MUST carry
-`horizon: "later"`. Drift-ledger rows MUST carry `checkable: true` with real locations.
+Every prose prediction gets a claim. Ceiling statements carry `horizon: "later"`. Drift rows
+carry `checkable: true` with real locations. The quick pass emits no JSON unless asked.
 
 ---
 
-## Calibration — per-port caps (never promise across these lines)
+## Capability sheet — what each port ships at 1.0.8 (never promise across these lines)
 
-- **Schema pillar** (`meta migrate`, `verify --db`): Node `meta` CLI only; Postgres,
-  SQLite, D1 only. Any other DB or a no-Node shop: the schema pillar is out — data
-  access still works; say it plainly.
-- **TS**: full stack — Drizzle/Zod/Fastify codegen, filter-operator routes, TanStack/React
-  UI runtime, migrations. The only port with UI codegen + runtime.
-- **Java/Spring**: generated DTO records, controllers (parse + validate the full FR-009
-  filter-op grammar via the generated `FilterAllowlist` + the `FilterParser` runtime
-  helper — per-field op allowlist, `in`-list cap, `eq` sugar; api-contract is 20/20 both
-  lanes), filter + sort allowlists (pagination/sort), repository *interfaces* (consumer
-  implements — existing ORM sits behind unchanged; the consumer's repository impl
-  translates the returned predicates to its persistence DSL), payload records, output
-  parsers hand-write the Jackson one-liner; entities stay hand-written on this lane;
-  Maven `mvn metaobjects:generate` / `mvn metaobjects:verify` (`codegen`/`templates`
-  modes — no live-DB mode).
-- **Kotlin/JVM**: `codegen-kotlin` generates entity + Exposed table + Spring controller +
-  payload + relations + filter allowlist + validators + output parsers (runs via Maven
-  `mvn metaobjects:generate`).
-- **C#**: generated EF Core entities + `AppDbContext` + CRUD minimal-API routes +
-  render/payload/verify via `dotnet meta gen`/`verify`; no ObjectManager runtime tier;
-  no migrate surface (TS-owned).
-- **Python**: generated Pydantic + `APIRouter` + payload/parsers + `ObjectManager`
-  runtime; consumer hand-wires the FastAPI router + repository impl; `metaobjects`
-  console script `gen`/`verify` (no migrate).
-- **Prompt pillar** (all five ports): render + payload-VO codegen + `verify` templates +
-  parser-on-receipt for a **responding `template.prompt`** (FR-006) + output-format fragment
-  & tolerant `extract` (FR-010). Since 0.24.0 that whole inbound tier keys off `@responseRef`
-  on a `template.prompt`; a `template.output` is outbound-only and emits none of it
-  (ADR-0052) — do not promise a parser for one. MCP exposure of declared
-  prompts/tools: not shipped — never promise it.
-- **Not shipped, never promise**: `api.*`/`operation.*`/`binding.*` declared-API surface;
-  the cut `byte`/`short`/`class` field stubs (non-functional, removed from the registry);
-  `index.fulltext`/`vector`/`spatial` (reserved, unregistered); native PG enums /
-  int-backed enums (deferred).
+Paths are relative to the MetaObjects repository on GitHub.
+
+**Contract-only generation (types, DTOs, validators; no ORM, no routes)** — the CONTRACT SPINE
+building block. Every generator is a reference helper an adopter selects, ejects and owns
+(`docs/features/own-your-codegen.md`); none is run unless wired.
+
+| Port | Select | Emits for a contract | Source |
+|---|---|---|---|
+| TypeScript | the `entity` reference generator in a target with `runtime: false` | Zod schemas + inferred TS types; no `drizzle-orm`, no `runtime-ts` import, for entities, value objects and projections alike | `server/typescript/packages/codegen-ts/src/metaobjects-config.ts` (`TargetConfig.runtime`), `.../src/templates/entity-file.ts` |
+| Java | `SpringDtoGenerator` (a record per concrete entity or projection, whatever its source, with jakarta validation annotations) and `SpringValueObjectGenerator` (a record per value object) | Java 21 records; your JPA/JDBC entity stays hand-written | `server/java/codegen-spring/src/main/java/com/metaobjects/generator/spring/` |
+| Kotlin | `KotlinEntityGenerator` (+ `KotlinValidatorGenerator`) | plain Jackson-compatible data classes per entity and value object | `server/java/codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/` |
+| C# | `EntityGenerator`, with the contract declared **sourceless** | a POCO with DataAnnotations and no EF mapping (a sourced entity gets `[Table]`/`[Key]`/`[Column]`) | `server/csharp/MetaObjects.Codegen/Generators/EntityGenerator.cs` |
+| Python | the `entity` generator | Pydantic models (no ORM of any kind) | `server/python/src/metaobjects/codegen/generator_registry.py` |
+
+- **A sourceless object is shape only.** Declared without a `source.rdb`, an object generates its
+  type and nothing else: no table, no migration, no routes (#248; `docs/features/libraries.md`).
+  A TypeScript model of only value objects and sourceless projections needs no `dialect`
+  (`server/typescript/packages/codegen-ts/src/db-emitting.ts`).
+- **The drift gate per port** — regenerate into a temp tree and diff: `meta verify --codegen`
+  (TS); `mvn metaobjects:verify` (Java/Kotlin; `codegen` is the default mode); `dotnet meta
+  verify --codegen` (C#; bare `verify` means `--templates` there); `metaobjects verify` (Python;
+  `--codegen` is the default). Source: `docs/features/cli.md`.
+- **Generated code compiles**: a codegen-compile gate compiles every port's emitted model tier
+  with its real compiler in CI (`docs/CONFORMANCE.md`, "Split coverage").
+- **Sharing a model** (`docs/features/metadata-dependencies.md`): in one repository, every port
+  reads the same metadata directory (`sources`), so a TS service and a Java, C# or Python
+  service can generate from one declaration today. **Across repositories**, a published model
+  with a hash-locked snapshot and `meta verify --deps` works for **TypeScript publishers and
+  TypeScript/Python consumers only**; Java, Kotlin and C# neither publish nor consume one yet
+  (Phase 2) and must share by monorepo or a vendored copy (`docs/features/metadata-sources.md`,
+  "Vendoring"), which carries no upstream hash check.
+- **Libraries** (`docs/features/libraries.md`): `iam` (preview) and `ai` (stable) ship as
+  declared designs; the core layer is sourceless and adds no tables. Mention one only when the
+  target is hand-building the same design.
+
+**Contract-only cannot** (say so when it matters):
+- generate a Prisma schema or client, TypeORM entities, SQLAlchemy/Django models, or JPA
+  entities on the Java lane — alongside those ORMs, the contract is Zod/TS types, records,
+  POCOs or Pydantic models *next to* the ORM model, not the ORM model itself;
+- emit OpenAPI, AsyncAPI or JSON Schema documents, or bind a shape to a queue, topic or
+  transport (`api.*`, `operation.*`, `binding.*` are not shipped);
+- reach a consumer outside the five ports (Go, Rust, Ruby, PHP, Swift…);
+- promise byte-identical JSON from type-only output: field-name casing on the wire follows each
+  consumer's serializer settings (the byte-identical REST wire is a property of the *generated
+  routes*, gated by `fixtures/api-contract-conformance/`). Check it in the wedge.
+
+**Full-stack caps per port:**
+- **Schema pillar** (`meta migrate`, `verify --db`): Node `meta` CLI only; Postgres, SQLite, D1
+  only. Any other database: out for that database; data access unaffected.
+- **TS**: Drizzle/Zod + Fastify or Hono routes with the filter-operator grammar, TanStack/React UI
+  codegen + runtime, migrations. The only port with UI codegen + runtime.
+- **Java/Spring**: DTO records, controllers (full filter grammar via the generated allowlist +
+  `FilterParser`), filter/sort allowlists, repository *interfaces* (the consumer implements them;
+  the existing ORM sits behind unchanged), payload records, output parsers. Entities stay
+  hand-written on this lane. `mvn metaobjects:generate` / `:verify` (no live-DB mode).
+- **Kotlin/JVM**: entity + Exposed table + Spring controller + payload + relations + filter
+  allowlist + validators + output parsers.
+- **C#**: EF Core entities + `AppDbContext` + CRUD minimal-API routes + render/payload/verify via
+  `dotnet meta`; no metadata-driven runtime tier; no migrate surface.
+- **Python**: Pydantic + router + payload/parsers + `ObjectManager` runtime; the consumer wires the
+  FastAPI router and repository; `metaobjects gen`/`verify` (no migrate).
+- **Prompt pillar** (all five ports): render + payload codegen + `verify` templates + the reply
+  parser for a responding `template.prompt` (`@responseRef`) + the output-format fragment and
+  tolerant `extract`. `template.output` emits no parser. MCP exposure of declared prompts/tools
+  is not shipped.
+- **Not shipped, never promise**: the `api.*`/`operation.*`/`binding.*` declared-API surface;
+  the cut `byte`/`short`/`class` field stubs; `index.fulltext`/`vector`/`spatial`; native PG enums
+  and int-backed enums.
 
 ---
 
-## Final self-check before writing
+## Final self-check before answering
 
-0. **Trajectory (M8): did you ASK, or did you infer "won't grow" from a small repo?** A flat
-   NOT-A-FIT is legal ONLY on a structural disqualifier. If the size row is doing the work and
-   the trajectory answer is missing, you must show both branches — not a verdict.
-1. Disqualifier table worked row-by-row? (Invalid output otherwise.)
-2. Census reconciliation block present, with predicted `object.entity` anchored to live
-   tables, not ORM classes?
-3. Opaque-payload hunt run and reported, with the value-object modeling in a named wave?
-4. UI verdict split into metadata-authoring vs codegen/runtime lines, with
-   server-rendered surfaces counted?
-5. Spine estimate derived from DDL richness × reconciled object count?
-6. Deep-adoption ceiling paragraph present, labeled, `horizon: "later"`?
-7. Every drift row: real `file:line`, real commits, a named gate? (>15% false positives
-   is fatal.)
-8. Every capability claim traceable to the registry/docs/generator source?
-9. "What you will NOT get" complete for this port?
-10. Every prose prediction has a JSON twin?
+0. **Scope, not fit.** Did you work the scope table top to bottom and say why each wider scope
+   was rejected? Is NOT WORTH IT backed by facts, not by "the ORM isn't supported"?
+1. **Seams.** Did you look for boundaries between apps, services, packages and languages — and
+   for gates that already cover them?
+2. **Trajectory (M8).** Asked, or both branches shown? A NOT WORTH IT that rests on "small" needs
+   the human's answer.
+3. **Read-only.** Nothing written inside the target repository?
+4. Every capability claim traceable to § Capability sheet or a published source (M3)?
+5. Every drift row: real `file:line`, real commits, a named gate? (>15% false positives is fatal.)
+6. *(Full only)* Disqualifier table worked row by row; reconciliation block present; P2-b run;
+   ceiling paragraph labeled `horizon: "later"`; "What you will NOT get" complete; every prose
+   prediction has a JSON twin.

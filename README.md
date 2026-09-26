@@ -60,10 +60,20 @@ underneath.
 
 MetaObjects ships a hosted **fit & migration assessment**: one Markdown prompt your
 coding agent runs against your existing repo. It is **read-only and propose-only** —
-it installs nothing, edits nothing, and needs no database connection and no signup.
-Your agent reads the code, the migrations, and the git history, then writes a
-decision-grade report
-(`metaobjects-fit/fit-assessment.md` plus a machine-readable JSON twin).
+it installs nothing, edits nothing in your repository, and needs no database
+connection and no signup. Your agent reads the code, the migrations, and the git
+history. A **quick pass** (the default) answers in the conversation with a
+recommended adoption scope; the optional **full assessment** writes a decision-grade
+report (`fit-assessment.md` plus a machine-readable JSON twin) to a directory
+outside your repository.
+
+The answer is a scope, not a yes/no: **not worth it**, a **contract spine** (declare
+only the shapes that cross between your apps and services, generate just the
+types, DTOs and validators each side compiles against, and fail the build of any side
+that drifts, with your ORM and migrations left alone), **partial** (one layer or
+subsystem), or **full**. Full adoption suits greenfield and early projects; large
+estates of interdependent apps usually get the most from a contract spine; a small,
+finished, single app usually isn't worth it, and the assessment says so.
 
 The centerpiece is a **drift ledger built from your own history**: every shape your
 repo declares more than once, whether the copies disagree *today*, the past commits
@@ -91,12 +101,15 @@ repository."* The prompt is one Markdown file
 ([source](agent-context/skills/metaobjects-fit-assessment/SKILL.md)); read it first
 if you like — you should never point your agent at a prompt you haven't vetted.
 
-The catch, stated plainly: it runs in **your** agent on **your** tokens (minutes of
-agent time, none of yours); findings vary by model and repo size; and every claim is
+The catch, stated plainly: it runs in **your** agent on **your** tokens. The quick
+pass takes roughly 5–30 minutes of agent time, depending on the agent and the
+repository, and the full assessment an hour or more. Findings vary by model and repo
+size, and every claim is
 cited to a `file:line` or a commit precisely so you can check it. Nothing is sent to
-us — there is no signup, and the report stays in your repo.
+us — there is no signup, and the report stays on your machine.
 
-The report is built to say **no**: per-pillar verdicts include `NOT A FIT`, every
+The report is built to say **no**: the scope can be `NOT WORTH IT`, per-pillar
+verdicts include `NOT A FIT`, every
 capability claim is capped to what your language's port actually ships, and a
 "what you will NOT get" section is mandatory. If the verdict is yes, it ends with a
 first-week wedge plan — and `meta init` picks up from there.
