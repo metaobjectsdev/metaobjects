@@ -15,8 +15,10 @@ import {
   antiPatternRows, missingBaseUrlRows, removedPropRows, ranSection, skippedSection, warnCapped,
   type AdvisoryDiagnosticRow, type AdvisoryFindingRow, type AdvisorySection,
   libraryPrefixRows,
+  unindexedFkRows,
 } from "../lib/advisory.js";
 import { scanForUnprovenancedLibraryPrefix } from "../lib/library-prefix-advisory.js";
+import { scanForUnindexedForeignKeys, type UnindexedFkFinding } from "../lib/fk-index-advisory.js";
 import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
@@ -850,11 +852,28 @@ export async function verifyCommand(
       // Same discipline as its siblings: an advisory scan never breaks verify.
     }
 
+    // Foreign keys migrate emits with no index on the referencing columns. Advisory: an
+    // automatic index would propose a migration to every existing adopter, so this names
+    // each one and says how to declare it (`index.lookup`) instead. Read off the SAME
+    // expected schema `meta migrate` builds, so "covered" means covered in its DDL.
+    let unindexedFks: UnindexedFkFinding[] = [];
+    try {
+      unindexedFks = scanForUnindexedForeignKeys(root, {
+        dialect: flags.dialect ?? forgeConfig?.dialect ?? "postgres",
+        columnNamingStrategy: forgeConfig?.columnNamingStrategy ?? "snake_case",
+        skip: collection.imported,
+      });
+    } catch {
+      // Same discipline as its siblings: an advisory scan never breaks verify. A model the
+      // schema builder refuses is migrate's to report, with its own message.
+    }
+
     antiPatternSection = ranSection([
       ...antiPatternRows(findings),
       ...missingBaseUrlRows(baseUrl),
       ...removedPropRows(removedProps),
       ...libraryPrefixRows(libraryPrefix),
+      ...unindexedFkRows(unindexedFks),
     ]);
     if (findings.length > 0) {
       log.warn(
@@ -876,6 +895,13 @@ export async function verifyCommand(
           `renamed away (advisory — does not fail the build, but the runtime will):`,
       );
       warnCapped(removedProps.map((f) => `  ${f.message}`), flags.limit, { structured });
+    }
+    if (unindexedFks.length > 0) {
+      log.warn(
+        `meta verify — ${unindexedFks.length} foreign key(s) with no index on the referencing ` +
+          `column(s) (advisory — does not fail the build):`,
+      );
+      warnCapped(unindexedFks.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
     if (libraryPrefix.length > 0) {
       log.warn(

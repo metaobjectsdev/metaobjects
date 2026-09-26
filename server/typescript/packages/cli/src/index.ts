@@ -324,6 +324,8 @@ FLAGS:
 A bare 'meta verify' also runs an ADVISORY anti-pattern pass: it scans your authored
 source for hand-rolled aggregates, money-as-float, and CHECK-IN enums and points you
 at the construct that models them (origin.aggregate / field.currency / field.enum).
+The same pass names every foreign key with no index on its referencing column(s)
+and the index.lookup that would cover it (migrate never adds one on its own).
 Warnings only — it never fails the build. Opt out with --no-antipatterns or
 META_NO_ANTIPATTERNS=1.
 

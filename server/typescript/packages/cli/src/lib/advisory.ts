@@ -163,6 +163,23 @@ export function libraryPrefixRows(
   }));
 }
 
+/**
+ * Unindexed foreign keys in the same row shape. `construct` is `<entity FQN>.<reference>`,
+ * the node the author edits to declare the index. There is no line: the finding is about the
+ * loaded model, which does not carry source positions.
+ */
+export function unindexedFkRows(
+  findings: readonly { file: string; construct: string; message: string }[],
+): AdvisoryFindingRow[] {
+  return findings.map((f) => ({
+    file: f.file,
+    line: 0,
+    rule: "unindexed-foreign-key",
+    construct: f.construct,
+    message: f.message,
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // text output
 // ---------------------------------------------------------------------------
