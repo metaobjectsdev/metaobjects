@@ -13,7 +13,7 @@ import {
   FIELD_ATTR_OBJECT_REF, stripPackage, resolveColumnName, resolveTableSchema,
 } from "@metaobjectsdev/metadata";
 import { projectionViewName } from "../projection/extract-view-spec.js";
-import { GENERATED_HEADER } from "../constants.js";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 import { valueObjectModuleSpecifier } from "../import-path.js";
@@ -230,7 +230,7 @@ ${joinCode(constFieldLines, { on: "\n" })}
 
   const body = joinCode(sections, { on: "\n" }).toString();
   const header =
-    `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${projName} (${projection.fqn()})\n`;
   return header + body;
 }

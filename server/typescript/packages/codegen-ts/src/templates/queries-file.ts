@@ -22,7 +22,7 @@ import {
   getPkFields,
 } from "./queries.js";
 import { pluralize, findByIdFnName, listFnName, createFnName, insertPreservingFnName, updateFnName } from "../naming.js";
-import { GENERATED_HEADER, sidecarLine } from "../constants.js";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants.js";
 import { isTphDiscriminatorBase, tphConcreteSubtypes } from "./tph-discriminator.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import { hasAutoSetFields } from "./zod-validators.js";
@@ -145,7 +145,7 @@ import { ${varName}, type ${entityName}, type ${entityName}Patch, ${entityName}I
   // at line 1 ahead of any imports.
   const body = joinCode(sections, { on: "\n" }).toString();
   const header =
-    `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${entityName} (${obj.fqn()})\n` +
     sidecarLine(`${entityName}.extra.ts`);
   return header + body;
@@ -194,7 +194,7 @@ export async function ${listFnName(entityName)}(db: Db, opts?: { limit?: number;
 
   const body = joinCode([literalImports, reads], { on: "\n" }).toString();
   const header =
-    `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${entityName} (${obj.fqn()}) — projection (read-only)\n` +
     sidecarLine(`${entityName}.extra.ts`);
   return header + body;
@@ -284,7 +284,7 @@ export async function ${updateFnName(entityName)}(db: Db, ${pkField}: ${pkType},
 
   const body = joinCode(sections, { on: "\n" }).toString();
   const header =
-    `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${entityName} (${obj.fqn()}) — write-through entity read-view (reads → view, writes → table)\n` +
     sidecarLine(`${entityName}.extra.ts`);
   return header + body;
@@ -394,7 +394,7 @@ ${dbTypeAlias}
 
   const body = joinCode([literalImports, polymorphic, ...subtypeSections], { on: "\n" }).toString();
   const header =
-    `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${baseName} (${base.fqn()}) — TPH discriminator base\n` +
     sidecarLine(`${baseName}.extra.ts`);
   return header + body;

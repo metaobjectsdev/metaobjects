@@ -23,7 +23,7 @@ function metaModuleOf(entityModule: string): string {
     : `${entityModule}.meta`;
 }
 
-import { GENERATED_HEADER, entityModuleSpecifier, siblingSpecifier,
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE, entityModuleSpecifier, siblingSpecifier,
   effectivePackage, resolveGridDefaultSort, type GridDefaultSort,
 } from "@metaobjectsdev/codegen-ts";
 
@@ -163,7 +163,7 @@ export function ${hookName}() {
   });
 
   const header =
-    `// ${GENERATED_HEADER}-tanstack — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER}-tanstack — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${entityName} (${entity.fqn()})\n`;
 
   const body = joinCode(sections, { on: "\n" });

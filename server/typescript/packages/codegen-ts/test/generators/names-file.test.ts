@@ -11,7 +11,7 @@ import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig } from "../../src/index.js";
 import { entityFile } from "../../src/generators/entity-file.js";
 import { namesFile } from "../../src/generators/names-file.js";
-import { GENERATED_HEADER } from "../../src/constants.js";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../../src/constants.js";
 
 let tmp: string;
 beforeEach(() => {
@@ -96,7 +96,7 @@ describe("namesFile() generator", () => {
     expect(content).toContain("export const AuthorNames = {");
     // Every other generator's output carries the @generated header as line 1;
     // names.ts was the one exception until this test.
-    expect(content.split("\n")[0]).toBe(`// ${GENERATED_HEADER} — DO NOT EDIT.`);
+    expect(content.split("\n")[0]).toBe(`// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`);
   });
 
   test("a sourceless object.value emits no names file (#248)", async () => {

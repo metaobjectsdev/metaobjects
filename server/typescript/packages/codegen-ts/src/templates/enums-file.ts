@@ -12,7 +12,7 @@
 
 import { code, imp, joinCode, type Code } from "ts-poet";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
-import { GENERATED_HEADER } from "../constants.js";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import { materializedSharedEnums, type SharedEnum } from "../enum-shared.js";
 import { enumUnionString } from "./inferred-types.js";
 
@@ -55,7 +55,7 @@ export function renderSharedEnumsFile(
 
   const body = joinCode(enums.map(renderOneSharedEnum), { on: "\n" }).toString();
   const header =
-    `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
     `// Shared enum types (FR-019): one declaration per reused package-level enum.\n`;
   return header + body;
 }

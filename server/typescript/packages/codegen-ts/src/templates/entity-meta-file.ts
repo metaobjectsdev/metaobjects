@@ -22,7 +22,7 @@
 
 import { code, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { GENERATED_HEADER } from "../constants.js";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import { renderEntityConstants } from "./entity-constants.js";
 
 /** File name (no directory) of an entity's DB-free descriptor module. */
@@ -50,7 +50,7 @@ export function renderEntityMetaFile(
   names?: { readonly name: string; readonly symbol: Code } | undefined,
 ): string {
   const body = code`
-// ${GENERATED_HEADER} — DO NOT EDIT.
+// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}
 // Source metadata: ${entity.name}
 //
 // Browser-safe: this module contains ONLY the entity descriptor — plain data, no

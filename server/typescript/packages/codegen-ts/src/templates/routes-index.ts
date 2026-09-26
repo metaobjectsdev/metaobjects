@@ -9,7 +9,7 @@
 // (`routesHandlerName` for Fastify, `register<Entity>Routes` for Hono), so a rename there
 // breaks this file's imports at compile time instead of drifting silently.
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { GENERATED_HEADER } from "../constants.js";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import { effectivePackage } from "../docs-paths.js";
 import { barrelEntrySpecifier } from "../import-path.js";
 import { routesHandlerName } from "../naming.js";
@@ -42,7 +42,7 @@ export function renderRoutesIndex(
     return `import { ${handler(e)} } from ${JSON.stringify(spec)};`;
   });
 
-  const lines: string[] = [`// ${GENERATED_HEADER} — DO NOT EDIT.`];
+  const lines: string[] = [`// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`];
   if (flavor === "hono") {
     lines.push(
       `import type { Hono } from "hono";`,

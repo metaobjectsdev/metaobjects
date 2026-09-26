@@ -28,7 +28,7 @@ import { code, imp } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
 import { entityModuleSpecifier } from "../import-path.js";
-import { GENERATED_HEADER, sidecarLine } from "../constants.js";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import { authSeamJsDoc, type CrudVerb, exposeLine } from "../routes-expose.js";
 import { effectivePackage } from "../docs-paths.js";
@@ -56,7 +56,7 @@ export function renderRoutesFileHono(
   );
 
   const header =
-    `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${entityName} (${entity.fqn()})\n` +
     sidecarLine(`${entityName}.extra.ts`);
 

@@ -56,6 +56,7 @@ import {
   formatTs,
   entityOutputPath,
   GENERATED_HEADER,
+  GENERATED_EDIT_NOTE,
   sidecarLine,
 } from "@metaobjectsdev/codegen-ts";
 
@@ -128,7 +129,7 @@ import { ${varName}, type ${entityName}, type ${entityName}Patch, ${entityName}I
 
   const body = joinCode(sections, { on: "\n" }).toString();
   const header =
-    `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${entityName} (${obj.fqn()})\n${sidecarLine(`${entityName}.extra.ts`)}`;
   return header + body;
 }

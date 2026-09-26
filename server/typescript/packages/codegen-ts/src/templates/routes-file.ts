@@ -24,7 +24,7 @@ import {
 import { type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier, entityModuleSpecifier, relativeModuleSpecifier } from "../import-path.js";
 import { namesRef, columnExpr } from "../names.js";
-import { GENERATED_HEADER, sidecarLine } from "../constants.js";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants.js";
 import { routesHandlerName } from "../naming.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import type { RelationEntry } from "../relation-resolver.js";
@@ -64,7 +64,7 @@ export function renderRoutesFile(
   const dbImportSpec = relativeModuleSpecifier(ctx.outputLayout, entityPkg, ctx.dbImport, ctx.extStyle);
 
   const header =
-    `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${entityName} (${entity.fqn()})\n` +
     sidecarLine(`${entityName}.extra.ts`);
 
@@ -592,7 +592,7 @@ ${mounts}
 `;
 
   const header =
-    `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${baseName} (${base.fqn()}) — TPH discriminator base\n` +
     sidecarLine(`${baseName}.extra.ts`);
   return header + fn.toString();

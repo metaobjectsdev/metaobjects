@@ -14,6 +14,7 @@ function metaModuleOf(entityModule: string): string {
 
 import {
   GENERATED_HEADER,
+  GENERATED_EDIT_NOTE,
   isProjection,
   pluralize,
   entityModuleSpecifier,
@@ -230,7 +231,7 @@ export function use${entityNamePlural}(
   const body: Code = joinCode(m2mHooks ? [queryKeys, queries, m2mHooks] : [queryKeys, queries], { on: "\n" });
 
   const header =
-    `// ${GENERATED_HEADER}-tanstack — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER}-tanstack — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${entityName} (${entity.fqn()})\n`;
   return header + entityImports.toString() + body.toString();
 }
@@ -370,7 +371,7 @@ export function useDelete${entityName}(
   );
 
   const header =
-    `// ${GENERATED_HEADER}-tanstack — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER}-tanstack — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${entityName} (${entity.fqn()})\n`;
   return header + entityImports.toString() + body.toString();
 }
@@ -552,7 +553,7 @@ export function useDelete${subName}(
 
   const body: Code = joinCode([queryKeys, polymorphic, ...subtypeSections], { on: "\n" });
   const header =
-    `// ${GENERATED_HEADER}-tanstack — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER}-tanstack — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${baseName} (${base.fqn()}) — TPH discriminator base\n`;
   return header + entityImports.toString() + body.toString();
 }

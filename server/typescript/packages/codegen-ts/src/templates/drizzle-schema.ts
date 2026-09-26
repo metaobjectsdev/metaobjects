@@ -680,7 +680,7 @@ function renderColumn(
     const emitted = typeof refRaw === "string"
       ? ctx.resolveValueObjectName(refRaw, fieldDeclaringPackage(field, entityPackage))
       : name;
-    return imp(`${emitted}@${valueObjectModuleSpecifier(emitted, ctx.packageOf, entityPackage, ctx.outputLayout, ctx.extStyle)}`);
+    return imp(`t:${emitted}@${valueObjectModuleSpecifier(emitted, ctx.packageOf, entityPackage, ctx.outputLayout, ctx.extStyle)}`);
   };
 
   let dollarTypeSegment: Code | string = "";

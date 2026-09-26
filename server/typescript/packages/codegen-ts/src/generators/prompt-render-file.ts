@@ -28,7 +28,7 @@ import {
 } from "../generator.js";
 import { templateSymbolBase } from "../naming.js";
 import { valueObjectImport, valueObjectImportLines, type ValueObjectImport } from "../templates/value-object-import.js";
-import { GENERATED_HEADER } from "../constants.js";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 
 export interface PromptRenderOpts {
   /** Output file path relative to the target's outDir. Default: "prompts.ts". */
@@ -76,7 +76,7 @@ export const promptRender = function promptRender(opts?: PromptRenderOpts): Gene
       if (handles.length === 0) return [];
 
       const content = [
-        `// ${GENERATED_HEADER} — DO NOT EDIT.`,
+        `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`,
         "",
         RENDER_IMPORT,
         ...valueObjectImportLines(imports),

@@ -12,6 +12,7 @@ import {
 import type { RenderContext } from "@metaobjectsdev/codegen-ts";
 import {
   GENERATED_HEADER,
+  GENERATED_EDIT_NOTE,
   entityModuleSpecifier,
   isTphDiscriminatorBase,
   collectTphSubtypeFields,
@@ -245,7 +246,7 @@ export const ${filterConstName}: ${entityName}Filter = ${JSON.stringify(grid.fil
   });
 
   const header =
-    `// ${GENERATED_HEADER}-tanstack — DO NOT EDIT.\n` +
+    `// ${GENERATED_HEADER}-tanstack — ${GENERATED_EDIT_NOTE}\n` +
     `// Source metadata: ${entityName} (${entity.fqn()})\n`;
 
   // Import the entity's own file. Same target → relative "./Entity"; cross
