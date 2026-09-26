@@ -74,6 +74,37 @@ A `metaobjects:verify` Maven goal exists for **codegen-drift** (re-generate and 
 committed output). Schema migration and live-DB drift are NOT Java goals — they run
 through the Node `meta` tool (see the migration reference).
 
+## Write your own generator
+
+For any output the model describes and no reference emits, extend `FileEmittingGenerator`
+(return the files; it writes them under `outputDir`) and read the model through
+`ModelWalk` — both in `metaobjects-codegen-base`:
+
+```java
+public class FieldListGenerator extends FileEmittingGenerator {
+    @Override
+    protected List<EmittedFile> generate(MetaDataLoader loader) {
+        List<EmittedFile> out = new ArrayList<>();
+        for (MetaObject o : ModelWalk.concreteObjects(loader)) {        // abstract bases skipped
+            String body = ModelWalk.fields(o).stream()                   // inherited fields included
+                .map(f -> f.getName() + ": " + f.getSubType() + (ModelWalk.isArray(f) ? "[]" : ""))
+                .collect(Collectors.joining("\n"));
+            out.add(new EmittedFile("field-list/" + ModelWalk.name(o) + ".txt", body + "\n"));
+        }
+        return out;
+    }
+}
+```
+
+Put it in a codegen module the plugin can load (the one `mvn metaobjects:eject` scaffolds
+works) and wire it: `<generator><classname>com.acme.codegen.FieldListGenerator</classname>
+<args><outputDir>…</outputDir></args></generator>`. Extra `<args>` reach it through
+`getArg(name, default)`. `mvn metaobjects:verify` gates it with nothing to register.
+`ModelWalk` closes three traps: `getName()` is the FQN (use `ModelWalk.name`), `isArray()`
+and `getMetaAttr(n, false)` are own-only. `ModelWalk.fields` lists own fields before
+inherited ones. Build output with `LinkedHashMap`, never `Map.of`, whose order changes
+between JVM runs.
+
 ## When a generator's output is wrong — own the generator
 
 A generator named in `<classname>` is one you chose to run, and its output for your model

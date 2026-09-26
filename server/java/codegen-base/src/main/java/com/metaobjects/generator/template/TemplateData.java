@@ -3,10 +3,10 @@ package com.metaobjects.generator.template;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.identity.MetaIdentity;
+import com.metaobjects.generator.ModelWalk;
 import com.metaobjects.generator.util.GeneratorUtil;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.relationship.MetaRelationship;
-import com.metaobjects.validator.MetaValidator;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -28,7 +28,6 @@ public final class TemplateData {
     private TemplateData() {}
 
     private static final String SUBTYPE_ENUM = "enum";
-    private static final String VALIDATOR_REQUIRED = "required";
 
     /** Bare object name — {@code getName()} returns the FQN ({@code shop::Product}),
      *  but the dict's {@code name} is the bare leaf ({@code Product}). */
@@ -49,35 +48,20 @@ public final class TemplateData {
         return !GeneratorUtil.isAbstract(o);
     }
 
-    private static boolean isRequired(MetaField f) {
-        if (f.hasMetaAttr(MetaField.ATTR_REQUIRED, false)
-            && "true".equals(f.getMetaAttr(MetaField.ATTR_REQUIRED, false).getValueAsString())) {
-            return true;
-        }
-        for (MetaValidator v : f.getChildren(MetaValidator.class)) {
-            if (VALIDATOR_REQUIRED.equals(v.getSubType())) return true;
-        }
-        return false;
-    }
-
     private static Map<String, Object> fieldData(MetaField f) {
         Map<String, Object> d = new LinkedHashMap<>();
         d.put("name", f.getName());
         d.put("type", f.getSubType());
-        d.put("required", isRequired(f));
-        d.put("isArray", f.isArrayType());
-        if (f.hasMetaAttr(MetaField.ATTR_MAX_LENGTH, false)) {
-            d.put("maxLength", Integer.valueOf(f.getMetaAttr(MetaField.ATTR_MAX_LENGTH, false).getValueAsString()));
-        }
+        // ADR-0039: RESOLVING, through the same ModelWalk a hand-written generator uses. These
+        // two were own-only reads (`getMetaAttr(name, false)`), so a field inheriting
+        // @required or @maxLength from an abstract base lost it here while the TS, Python and
+        // C# template data kept it.
+        d.put("required", ModelWalk.isRequired(f));
+        d.put("isArray", ModelWalk.isArray(f));
+        Integer maxLength = ModelWalk.maxLength(f);
+        if (maxLength != null) d.put("maxLength", maxLength);
         if (SUBTYPE_ENUM.equals(f.getSubType()) && f.hasMetaAttr(EnumField.ATTR_VALUES)) {
-            Object raw = f.getMetaAttr(EnumField.ATTR_VALUES).getValue();
-            List<String> values = new ArrayList<>();
-            if (raw instanceof List<?> list) {
-                for (Object v : list) values.add(String.valueOf(v));
-            } else if (raw instanceof Object[] arr) {
-                for (Object v : arr) values.add(String.valueOf(v));
-            }
-            d.put("enumValues", values);
+            d.put("enumValues", ModelWalk.enumValues(f));
         }
         return d;
     }

@@ -57,18 +57,16 @@ rejected (exit 2).
 
 ## Owned generators
 
-C# does not scaffold-and-own generators — the generators are provided by
-`MetaObjects.Codegen` and are not meant to be copied into the consumer project.
-There is no analog to the TS `codegen/generators/*.ts` pattern here. Generator
-selection uses stable names via `dotnet meta gen --generators <names>`, over a
-**closed built-in registry** — there is no seam to register a generator of your own.
+C# generators are owned in the console project `codegen/` (`codegen/Codegen.csproj` +
+`codegen/Program.cs`), which `dotnet meta gen` / `verify --codegen` hand off to whenever it
+exists. `dotnet meta eject <name>` copies a reference generator there, and a generator the
+project WRITES is an `IGenerator` listed in `Program.cs` the same way.
 
-**So do not score a C# project down for "not owning its generators", and do not
-recommend writing one.** The customization path here is the **declarative template**:
-`dotnet meta gen --template-spec <json> --template-root <dir>`, whose entries append to
-your `--generators` selection. A finding of the form "the built-ins do not emit the shape this
-project needs" resolves to a template-spec, not to generator code. Worked example with
-the full JSON: `docs/ports/csharp.md`.
+**A finding of the form "the built-ins do not emit the shape this project needs", or a
+hand-written layer the model fully describes, resolves to a generator the project writes**
+(ADR-0034 Amendment 4), or to a declarative template (`dotnet meta gen --template-spec
+<json> --template-root <dir>`) where the shape is what matters. Recommend it; it is the
+primary path. Worked template example: `docs/ports/csharp.md`.
 
 To re-scaffold the agent-context into a C# project, use the Node `meta` CLI (the
 single agent-docs assembler per ADR-0033):

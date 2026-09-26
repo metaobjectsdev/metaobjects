@@ -65,14 +65,16 @@ public class TemplateDataTest extends MetaDataLoaderTestBase {
     }
 
     /**
-     * The data dict is a byte-gated cross-port contract: object {@code abstract}
-     * and field {@code @required}/{@code @maxLength} must be read OWN-ONLY (matching
-     * the TS oracle's {@code ownAttr}), never walking the super-chain. A concrete
-     * entity that {@code extends} an abstract base must NOT inherit the base's
-     * abstract flag (else it is silently dropped from model output), and a field
-     * that {@code extends} a base field must NOT reflect the base's inherited attrs.
+     * The data dict is a byte-gated cross-port contract. Object {@code abstract} is read
+     * OWN-ONLY — a concrete entity that {@code extends} an abstract base must NOT inherit
+     * the flag (else it is silently dropped from model output). Field
+     * {@code @required}/{@code @maxLength} RESOLVE (ADR-0039): a field that {@code extends}
+     * a base field keeps what it inherits. This test used to pin those two as own-only,
+     * "matching the TS oracle's ownAttr" — but #138 moved the TS, Python and C# template
+     * data to resolving reads, and this port's test kept pinning the old contract, so the
+     * JVM alone dropped an inherited @required from every template it rendered.
      */
-    @Test public void abstractAndFieldAttrsAreOwnOnly() throws Exception {
+    @Test public void abstractIsOwnOnlyFieldAttrsResolve() throws Exception {
         String json = "{\n"
             + "  \"metadata.root\": {\n"
             + "    \"package\": \"inh\",\n"
@@ -105,14 +107,14 @@ public class TemplateDataTest extends MetaDataLoaderTestBase {
             assertTrue(TemplateData.isConcrete(obj(loader, "Widget")));
             assertFalse(TemplateData.isConcrete(obj(loader, "Base")));
 
-            // A field that extends a base field carrying @required/@maxLength must NOT
-            // reflect those inherited attrs (own-only, matching TS ownAttr).
+            // A field that extends a base field carrying @required/@maxLength keeps them
+            // (resolving, as the TS, Python and C# template data do).
             Map<String, Object> widget = TemplateData.entity(obj(loader, "Widget"));
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> fields = (List<Map<String, Object>>) widget.get("fields");
             Map<String, Object> label = fields.stream().filter(f -> f.get("name").equals("label")).findFirst().orElseThrow();
-            assertEquals(Boolean.FALSE, label.get("required"));
-            assertFalse(label.containsKey("maxLength"));
+            assertEquals(Boolean.TRUE, label.get("required"));
+            assertEquals(50, ((Number) label.get("maxLength")).intValue());
         } finally {
             Files.deleteIfExists(file);
         }

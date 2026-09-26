@@ -102,6 +102,15 @@ export { warnRetiredCodegenAttrs } from "./retired-codegen-attrs.js";
 export { formatTs } from "./format.js";
 
 export { pluralize, columnNameFromField, tableNameFromEntity, viewNameFromProjection, routesHandlerName } from "./naming.js";
+// ADR-0034 Amendment 4 — what a generator written FROM SCRATCH needs beyond the node
+// accessors: the engine's own case helpers, the enum members, the package-aware target of an
+// `@objectRef`, and the served REST address. Each answer here is a rule the engine already
+// owns; without the export an author re-derives it, and a re-derivation is where it drifts.
+// Gated by test/model-walk-exports.test.ts.
+export { toCamelCase, toPascalCase, toSnakeCase } from "./naming.js";
+export { enumValues } from "./enum-meta.js";
+export { objectRefTarget } from "./model-walk.js";
+export { servedPath } from "./api-surface.js";
 // routesHandlerName is public for the same reason the routes-expose members below are: the
 // routes reference template tells an adopter retargeting to another HTTP framework to copy
 // `renderRoutesFile`'s body out of the package source, and that body names this. See the

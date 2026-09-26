@@ -114,6 +114,13 @@ export default defineConfig({
   // \`meta gen\` runs — and prints the import line to add here, the entry to add below,
   // what to install, and any config keys those generators read (\`dbImport\`,
   // \`apiPrefix\`, \`extStyle\`, …). Add them here as you go.
+  //
+  // Need an output nothing in that catalog emits — OpenAPI, JSON Schema, a client, a
+  // service layer, docs? Write your own generator; that is the normal path:
+  //
+  //   meta generator new openapi --scope model
+  //
+  // writes a working, commented generator into ./codegen/generators/ and adds it here.
   generators: [],
 
   docs: {
@@ -145,7 +152,9 @@ Next steps:
   3. meta eject <name>...       # take the ones you want — copies them into
                                 #   codegen/generators/ (yours to edit) and prints the
                                 #   import, the entry to wire, and what to install
-  4. meta gen                   # generate from exactly what you wired
+     meta generator new <name>  # an output no reference emits? write your own — this
+                                #   scaffolds a working one and wires it
+  4. meta gen                  # generate from exactly what you wired
   5. meta docs                  # neutral model + API docs (on by default)
   6. Create your tables: meta migrate --from-db --db file:dev.sqlite --dialect sqlite --slug init --apply
 `;

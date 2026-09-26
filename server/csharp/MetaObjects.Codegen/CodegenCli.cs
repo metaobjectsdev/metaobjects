@@ -78,6 +78,32 @@ public static class CodegenCli
             : LegacyTemplatesDir;
 
     /// <summary>The outcome of a gen run: pure data, no console I/O.</summary>
+    /// <summary>The prefixes <see cref="RunGen(LoadResult, string, string, bool, IReadOnlyList{IGenerator}, string?, ColumnNamingStrategy, string)"/>
+    /// puts on a GENERATOR's failure, as opposed to a metadata load error.</summary>
+    public const string GeneratorFailedPrefix = "codegen failed: ";
+    public const string RenderFailedPrefix = "template render failed: ";
+
+    /// <summary>True when an entry of <see cref="GenOutcome.LoadErrors"/> is a generator that
+    /// threw, not metadata that failed to load.</summary>
+    public static bool IsGeneratorFailure(string entry) =>
+        entry.StartsWith(GeneratorFailedPrefix, StringComparison.Ordinal) ||
+        entry.StartsWith(RenderFailedPrefix, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Print a failed outcome to stderr, naming the right culprit. A generator of the
+    /// adopter's own that throws used to be reported as "load error … metadata did not load
+    /// cleanly", which sends its author to the metadata instead of to the line that threw.
+    /// </summary>
+    public static void ReportFailure(GenOutcome outcome, string command)
+    {
+        var generatorFailed = outcome.LoadErrors.Any(IsGeneratorFailure);
+        foreach (var e in outcome.LoadErrors)
+            Console.Error.WriteLine(IsGeneratorFailure(e) ? $"  error: {e}" : $"  load error: {e}");
+        Console.Error.WriteLine(generatorFailed
+            ? $"{command}: FAILED (a generator threw — see the error above)"
+            : $"{command}: FAILED (metadata did not load cleanly)");
+    }
+
     public sealed record GenOutcome(IReadOnlyList<string> LoadErrors, CodegenRunner.RunResult? Result)
     {
         public bool Ok => LoadErrors.Count == 0 && Result is not null;
@@ -159,13 +185,13 @@ public static class CodegenCli
         catch (RenderException ex)
         {
             // A bad template ref / wrong --template-root surfaces as a clean error, not a stack trace.
-            return new GenOutcome([$"template render failed: {ex.Message}"], null);
+            return new GenOutcome([$"{RenderFailedPrefix}{ex.Message}"], null);
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
             // An output-pattern error or a duplicate output-path collision surfaces lazily
             // during the walk — a clean error, not a stack trace.
-            return new GenOutcome([$"codegen failed: {ex.Message}"], null);
+            return new GenOutcome([$"{GeneratorFailedPrefix}{ex.Message}"], null);
         }
         return new GenOutcome(loadErrors, result);
     }
@@ -340,8 +366,7 @@ public static class CodegenCli
         var outcome = RunGen(meta.Load(), a.OutDir, a.Namespace, a.EmitAbstractShapes, suite, projectRoot, columnNaming, a.Baseline);
         if (!outcome.Ok)
         {
-            foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
-            Console.Error.WriteLine("codegen (owned) gen: FAILED (metadata did not load cleanly)");
+            ReportFailure(outcome, "codegen (owned) gen");
             return 1;
         }
         foreach (var f in outcome.Result!.Files) Console.WriteLine($"  {f.Status}: {f.Path}");

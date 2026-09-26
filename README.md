@@ -17,7 +17,7 @@ model. Your hand-written logic stays yours.
 supposed to do — that your agent reads and writes. Two things happen to it:
 
 - **Generate.** The boring parts are derived from it, in TypeScript, Java, Kotlin, C#
-  and Python — at build time by reference generators you copy into your repo and own,
+  and Python — at build time by generators you write or copy into your repo and own,
   or at runtime from the live model. Nothing proprietary in the output.
 - **Verify.** The build fails when generated code drifts from the model and when a
   prompt's payload no longer matches what it's told — and it fails or warns when a
@@ -183,7 +183,7 @@ MetaObjects has two layers, and only the first is a promise
 
 | | Core — guaranteed | Helpers — yours |
 |---|---|---|
-| **What** | The metamodel, loader, canonical format and registry; runtime metadata access (the `ObjectManager`, not the HTTP adapters that mount it); schema migrations (`meta migrate`); the drift gates (`meta verify`); prompt render and the reply parser | Every generator that writes application code into your repo: routes, controllers, ORM wiring, DTOs, forms, grids, hooks |
+| **What** | The metamodel, loader, canonical format and registry; runtime metadata access (the `ObjectManager`, not the HTTP adapters that mount it); schema migrations (`meta migrate`); the drift gates (`meta verify`); prompt render and the reply parser | Every generator that writes code into your repo — the ones you write for the outputs you need, and the reference routes, controllers, ORM wiring, DTOs, forms, grids and hooks you copy |
 | **Promise** | Conformance-gated, the same behaviour in every port that ships it, covered by the [compatibility policy](docs/compatibility-policy.md) | Reference starting points that compile and pass their reference fixtures. Copy one with `meta eject` and change it freely |
 | **A defect is** | A MetaObjects bug, fixed in a release | A bug in the reference, fixed there; your copy is yours |
 
@@ -202,12 +202,17 @@ complete in all five ports; MCP exposure of declared prompts/tools is the one re
 roadmap item. The fifth has been dogfooded on maintainer-owned projects only, and the
 sixth ships two libraries at their own stability labels:
 
-1. **Codegen** *(reference generators you own, ejectable in every port)* — starting points that emit per-language
-   code (Drizzle/Zod + Fastify for TS, Spring REST + DTO + repository for Java,
-   `data class` + Exposed for Kotlin, EF Core record + ASP.NET routes for C#, Pydantic +
-   FastAPI for Python). Copy the ones you need, change them, and regenerate with
-   hand-edit-preserving three-way merge. The engine that runs them is core; their output
-   is yours.
+1. **Codegen** *(generators you write and own, in every port)* — on the core, you build
+   the generators your application needs: OpenAPI, JSON Schema, Zod, DTOs, a client,
+   docs — anything the model describes. A generator is a name plus a function from the
+   model to files, and `verify` gates it with nothing to register; `meta generator new
+   <name>` scaffolds a working one on TypeScript, and
+   [Write your own generator](docs/recipes/write-your-own-generator.md) has every port's
+   20-line shape plus JSON Schema and OpenAPI examples to copy. The reference generators
+   (Drizzle/Zod + Fastify for TS, Spring REST + DTO + repository for Java, `data class` +
+   Exposed for Kotlin, EF Core record + ASP.NET routes for C#, Pydantic + FastAPI for
+   Python) are starting points: eject the one that is close, change it, and regenerate.
+   The engine that runs generators is core; their output is yours.
 2. **Runtime metadata** — load metadata at runtime, drive behavior dynamically
    (CRUD, validation, relationships, dynamic admin UIs; typed tool payloads are
    declared today, with MCP exposure on the roadmap).

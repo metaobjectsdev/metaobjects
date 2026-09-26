@@ -130,9 +130,13 @@ def run_gen(
     # to out_dir). The generated modules use package-relative imports, so without
     # this a consumer can't import them. A generator-emitted __init__.py wins; a
     # hand-authored one is left untouched by the overwrite policy below.
+    #
+    # Only directories that hold a generated PYTHON module: an adopter's own generator
+    # emitting JSON Schema or OpenAPI into `schemas/` is not writing a package, and an
+    # `__init__.py` there is litter that makes the tree look importable.
     if config.emit_package_init:
         pkg_rel_dirs: set[str] = set()
-        for full in list(emitted):
+        for full in [p for p in emitted if p.endswith(".py")]:
             d = os.path.dirname(os.path.relpath(full, config.out_dir))
             while True:
                 pkg_rel_dirs.add(d)

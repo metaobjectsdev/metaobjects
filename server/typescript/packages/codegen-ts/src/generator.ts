@@ -8,7 +8,9 @@ import { effectivePackage } from "./docs-paths.js";
 export interface EmittedFile {
   /** Path relative to ResolvedGenConfig.outDir. */
   path: string;
-  /** Final TypeScript source (formatted by the generator itself). */
+  /** The file's final contents, in any format — TypeScript, JSON, YAML, SQL, Markdown.
+   *  The runner writes it as given: it neither formats it nor adds a header, so a
+   *  generator that wants either does it itself (`formatTs`, `GENERATED_HEADER`). */
   content: string;
   /** Set by the runner from generator.name — generators should not set this. */
   generatedBy?: string;
@@ -32,10 +34,12 @@ export interface GenContext {
    *  node is in scope, byte-identical to a project with no `scope` declared. */
   select?: (fqn: string) => boolean;
   config: ResolvedGenConfig;
-  /** Pre-built by the runner for built-in generators that wrap existing
-   *  templates. Third-party generators typically don't need this. Always
-   *  present at run time when invoked via runGen(); optional in the type
-   *  so tests and custom callers don't need a placeholder. */
+  /** Pre-built by the runner: the resolved config keys that are not on `config` —
+   *  `apiPrefix`, `columnNamingStrategy`, `collectionName`, `timestampMode` — plus the
+   *  precomputed pk/relation maps the built-in templates use. A generator of your own
+   *  reads it for those keys (`ctx.renderContext?.apiPrefix ?? ""`). Always present at
+   *  run time when invoked via runGen(); optional in the type so tests and custom
+   *  callers don't need a placeholder. */
   renderContext?: RenderContext;
   /** Resolved absolute project root — what the runner derives from
    *  `opts.projectRoot` (the directory holding `.metaobjects/config.json`).

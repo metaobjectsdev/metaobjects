@@ -13,6 +13,7 @@ migration reference).
 - Maven coordinates
 - Plugin config in `pom.xml`
 - Run
+- Write your own generator
 - When a generator's output is wrong — own the generator
 - `codegen-kotlin` generators
 
@@ -88,6 +89,29 @@ mvn compile                # also runs it (the goal is bound to generate-sources
 A `metaobjects:verify` Maven goal exists for **codegen-drift** (re-generate and diff
 vs committed output). Schema migration and live-DB drift are NOT JVM goals — they run
 through the Node `meta` tool (see the migration reference).
+
+## Write your own generator
+
+For any output the model describes and no reference emits, write one on the same SPI as
+Java — extend `FileEmittingGenerator`, read through `ModelWalk` (both in
+`metaobjects-codegen-base`):
+
+```kotlin
+class KtFieldListGenerator : FileEmittingGenerator() {
+    override fun generate(loader: MetaDataLoader): List<EmittedFile> =
+        ModelWalk.concreteObjects(loader).map { o ->                  // abstract bases skipped
+            val body = ModelWalk.fields(o).joinToString("\n") { f ->   // inherited fields included
+                "${f.name}: ${f.subType}${if (ModelWalk.isArray(f)) "[]" else ""}"
+            }
+            EmittedFile("field-list/${ModelWalk.name(o)}.txt", "$body\n")
+        }
+}
+```
+
+Build it in a module with `kotlin-maven-plugin` that the metaobjects plugin can load, and
+wire `<classname>` plus `<args><outputDir>`; `mvn metaobjects:verify` gates it. Use
+`ModelWalk.name(o)`, not `o.name` (the FQN), and `ModelWalk.isArray(f)`, not `f.isArray`
+(the own flag).
 
 ## When a generator's output is wrong — own the generator
 

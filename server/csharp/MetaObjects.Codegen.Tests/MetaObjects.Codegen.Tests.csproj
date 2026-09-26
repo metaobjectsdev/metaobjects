@@ -22,4 +22,9 @@
          reason this reference exists — see CodegenDriftTests.cs). -->
     <ProjectReference Include="../MetaObjects.Cli/MetaObjects.Cli.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The example generators the docs tell adopters to copy, compiled here verbatim so they
+         cannot rot against the public API (RecipeGeneratorTests runs them end to end). -->
+    <Compile Include="../../../docs/recipes/generators/csharp/*.cs" Link="Recipes/%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

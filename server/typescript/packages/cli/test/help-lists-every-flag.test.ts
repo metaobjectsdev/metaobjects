@@ -36,6 +36,7 @@ import { COMMAND_HELP } from "../src/index.js";
 // COMMAND_HELP — it intercepts --help before the shared dispatch. The gate has to
 // read the text the user actually sees, so it reads that one from its real home.
 import { MIGRATE_HELP_TEXT } from "../src/commands/migrate.js";
+import { GENERATOR_OPTIONS } from "../src/commands/generator-help.js";
 
 /** command name in COMMAND_HELP → the flag table its parser is called with. */
 const HELP_FOR: Readonly<Record<string, string | undefined>> = {
@@ -53,6 +54,7 @@ const COMMANDS: ReadonlyArray<readonly [string, Readonly<Record<string, unknown>
   ["migrate", MIGRATE_OPTIONS],
   ["eject", EJECT_OPTIONS],
   ["deps", DEPS_OPTIONS],
+  ["generator", GENERATOR_OPTIONS],
 ];
 
 describe("every accepted flag appears in its command's --help", () => {

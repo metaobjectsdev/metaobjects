@@ -1,6 +1,6 @@
 ---
 name: metaobjects-codegen
-description: Use when configuring or running MetaObjects code generation — generators/targets/dialect config, the gen command, and hand-edit-preserving regeneration.
+description: Use when you need ANY output derived from the MetaObjects model — write your own generator (OpenAPI, JSON Schema, Zod, DTOs, a client, docs, anything) or eject a reference one — and when configuring or running code generation, generators/targets/dialect config, the gen command, and hand-edit-preserving regeneration.
 ---
 
 # MetaObjects code generation
@@ -13,17 +13,94 @@ proprietary runtime**: entity and model code imports nothing from MetaObjects, a
 REST, prompt and client tiers import ordinary Apache-2.0 packages you can vendor or
 replace — if the libraries disappeared tomorrow, you keep working code.
 
-**Generators are reference helpers, not guarantees** (ADR-0034 Amendment 3). The core —
-metamodel, loader, `migrate`, `verify`, prompt render — is what MetaObjects guarantees.
-A generator is a starting point that compiles and passes its reference fixtures; the
-adopter copies it with `meta eject` and owns the copy. When a generated file is wrong,
-fix the adopter's own generator — do not hand-edit around it, and do not treat it as a
-broken core guarantee. Every port can eject: `meta eject` (TypeScript), `metaobjects eject` (Python),
-`mvn metaobjects:eject` (Java/Kotlin) and `dotnet meta eject` (C#).
+**MetaObjects is the core; the generators are yours** (ADR-0034 Amendments 3 and 4). The
+core — model, loader, registry, `verify`, `migrate`, prompt render and reply extract — is
+what MetaObjects guarantees. On it, you build the generators the application needs. The
+generators MetaObjects ships are reference examples: copy one with `eject` when it is
+close to what you need, and write your own when it is not. When a generated file is
+wrong, fix the generator that emitted it — do not hand-edit around it, and do not treat it
+as a broken core guarantee.
 
 This skill is the port-agnostic procedure. The exact config file, generator names,
 and command for *this* project's server language live in a reference fragment
 (pointed to at the bottom).
+
+## Need an output? Write the generator — this is the primary path
+
+**When.** You need an output the model fully describes and no reference generator emits —
+or none emits it the way this application needs it. OpenAPI, JSON Schema, Zod schemas,
+DTOs or a client for a framework nothing here ships, a service layer in the house style,
+a data dictionary, a search-index mapping, test fixtures. That is a generator, and you
+write it now, in this change. Do not hand-write the output (it drifts the day the model
+changes and nothing notices), do not wait for MetaObjects to ship it, and do not ask
+permission: a generator in this repo is ordinary source you own.
+
+**How — the shape is about 20 lines in every port.** A generator is a `name` plus a
+function from the loaded model to a list of `{ path, content }` files:
+
+```ts
+import { isAbstract, perEntity, type Generator } from "@metaobjectsdev/codegen-ts";
+
+export function fieldListGenerator(): Generator {
+  return {
+    name: "field-list",                          // shows in diagnostics
+    filter: (obj) => !isAbstract(obj),           // ctx.entities has EVERY object, abstract ones too
+    generate: perEntity((obj) => ({              // perPackage / perModel for other scopes
+      path: `field-list/${obj.name}.txt`,        // relative to outDir
+      content: obj.fields()                      // fields() includes inherited fields
+        .map((f) => `${f.name}: ${f.subType}${f.resolvedIsArray() ? "[]" : ""}${f.isRequired ? "" : "?"}`)
+        .join("\n") + "\n",
+    })),
+  };
+}
+```
+
+**Start from the scaffold (TypeScript):** `meta generator new <name> [--scope
+entity|package|model]` writes a working, commented generator into `codegen/generators/`
+and wires it into `metaobjects.config.ts`. `meta gen` runs it straight away. Then change
+what it emits.
+
+**Register it** — the one step per port:
+
+| Port | Registration | Model helpers |
+|---|---|---|
+| TypeScript | import it in `metaobjects.config.ts`, add it to `generators: [...]` (the scaffold does both) | `@metaobjectsdev/codegen-ts`: `objectRefTarget`, `enumValues`, `effectivePackage`, `packageToPath`, `servedPath`, `toCamelCase`/`toPascalCase`/`toSnakeCase`/`pluralize`, `isAbstract`, `hasAnyRdbSource`, `servesReadApi`/`servesWriteApi` |
+| Python | a `module:symbol` entry in `--generators` or a target's `generators` in `metaobjects.config.yaml`; the symbol is an instance or a function returning one, never the class | `metaobjects.codegen.model_walk` |
+| C# | `new YourGenerator()` in the owned `codegen/Program.cs`; `dotnet meta gen` / `verify --codegen` hand off to `codegen/` whenever `codegen/Codegen.csproj` exists | node accessors, `ValueObjectNames.ResolveFieldRef`, `CSharpNaming.RoutePath` |
+| Java / Kotlin | `<generator><classname>` plus `<args><outputDir>`, from a module on the plugin's classpath; extend `FileEmittingGenerator` | `com.metaobjects.generator.ModelWalk` |
+
+**Verify it** — nothing to register. `verify --codegen` (`mvn metaobjects:verify` on the
+JVM) re-runs the same generator list and fails when committed output is stale. Typecheck
+a TypeScript generator with `npx tsc -p tsconfig.codegen.json`: `meta gen` loads it
+without typechecking, so a wrong accessor runs silently.
+
+**Read the model correctly — the rules that make a generator right:**
+
+- **Which objects.** The runner hands you every object — entities, value objects,
+  projections and abstract bases. Filter: abstract bases only contribute fields to what
+  `extends` them.
+- **Resolving accessors, always (ADR-0039).** `fields()`, `attr()`, `isRequired`,
+  `resolvedIsArray()` see what a field or object inherits through `extends`; the `own*()`
+  forms and the raw `isArray` flag do not, and the output is silently wrong on any model
+  that uses inheritance. In Python `attr()` is the OWN read — use `model_walk` or
+  `attrs().get()`. On the JVM `getName()` is the fully-qualified name — use
+  `ModelWalk.name`. Full table below.
+- **Names from the model, resolved by the engine's rules.** An `@objectRef` resolves
+  package-locally through the port's helper (`objectRefTarget` and its equivalents),
+  never by matching a short name. A REST address is `servedPath` / `route_path` /
+  `RoutePath` / `ModelWalk.collectionSegment`, the same rule the reference routes use.
+- **Any format.** `content` is written as given — no port formats it or adds a header.
+  Make it deterministic: the same model must give the same bytes, or verify reports drift.
+
+Every port's minimal generator (each run through gen, verify and a convicted model
+change) and two worked examples to copy — JSON Schema and OpenAPI 3.1, examples and not a
+product surface — are in the guide "Write your own generator":
+<https://github.com/metaobjectsdev/metaobjects/blob/main/docs/recipes/write-your-own-generator.md>.
+
+**Eject instead** only when a reference generator already emits something close to what
+you need: `meta gen --list --probe` is the catalog, `meta eject <name>` copies one in.
+**Hand-write** only what the model cannot express — business logic, calls to other
+systems — and have it import the generated types.
 
 ## What codegen does
 
@@ -71,7 +148,9 @@ like any hand-written module.
 
 ## The `@generated` header + hand-edit-preserving regen
 
-Every emitted file carries a `@generated` header. This is load-bearing:
+Every file a reference generator emits carries a `@generated` header (a generator you
+write adds one only if it chooses to — the runner adds none, and JSON cannot hold one).
+Treat any generated file this way:
 
 - **Never hand-edit a file with a `@generated` header for a change you want to
   keep.** The next `gen` run overwrites it. If you need different output, change the
@@ -133,7 +212,7 @@ it there, in the same change, and keep going:
 |---|---|
 | **TypeScript** | Your ejected copy under `codegen/generators/`. If you are running a generator you never ejected, `meta eject <name>` it first. A generator that `meta eject --list` does not name (the prompt tier, for one) has no reference template yet: replace it in `generators` with your own `Generator`, starting from its source in the installed package. |
 | **Java / Kotlin** | Your own generator class. Subclass the reference generator and override the `protected` method that emits the wrong piece; when that piece is `private`, copy the reference generator's source (Apache-2.0) into your own package and edit it. Put the class in a codegen module that the module running `metaobjects:generate` depends on — the plugin loads `<classname>` from that module's compile classpath, and `provided` scope keeps it out of your packaged app — then point `<classname>` at it. Full steps: the Java and Kotlin references. |
-| **C# / Python** | Your template spec (`--template-spec`): stop selecting the built-in generator for that artifact and emit it from your own template instead. These two ports have no generator-registration seam, so a template is the whole path. |
+| **C# / Python** | Your owned copy (`dotnet meta eject <name>` / `metaobjects eject <name>`, then edit it), or a generator of your own that replaces the artifact — an `IGenerator` in `codegen/Program.cs` on C#, a `module:symbol` entry on Python — or a template spec (`--template-spec`). |
 
 Then do **not**:
 
@@ -157,10 +236,9 @@ you will actually consume. Decide per generator, narrow one with its own `filter
 own the ones you keep — an emitted file nobody imports still reads as an invitation to
 adopt the surface you decided against.
 
-How you get a generator's source differs per port — a copy command on TypeScript,
-implementing the port's generator interface elsewhere. Your language reference has the
-mechanism; see also "The commands and config keys that implement the steps above differ
-per port" below.
+Every port gets a reference generator's source the same way — its `eject` command — and
+writes a new one against the same small interface (the top of this skill). Your language
+reference has the per-port mechanics.
 
 ## Selecting generators — NOTHING is generated until you choose it
 
@@ -350,54 +428,19 @@ you're deleting behind a parity gate). If matching the existing shape would requ
 hacky generator contortion, that is the moment to **ask the human** which side should give —
 don't silently churn the existing code.
 
-## Write your own generators — the built-ins rarely fit an app exactly
+## A generator of your own beside the references
 
-The built-in generators (entity, queries, routes, routes-hono, barrel, form, hooks,
-grid, grid-hook) cover the common shape, but **real apps routinely need output the
-built-ins don't emit as-is** — a bespoke REST contract, custom DTO/response shapes,
-an app-specific service or repository layer, a UI the defaults don't produce. When
-that happens the model-first move is **not** to abandon metadata and hand-write the
-layer. Write a **custom generator** that reads the same metadata and emits *your*
-app's shape.
+Real apps routinely need output no reference emits as-is — a bespoke REST contract, custom
+DTO or response shapes, an app-specific service layer, a document for another team. The
+answer is the section at the top of this skill: **write the generator**, in the same
+`generators` list as any reference you ejected. It runs in the same pass, writes under the
+same target rules, and is drift-gated the same way. The runner adds no header to its output;
+on TypeScript, C# and Python none is needed, because the hash manifest records what was
+written.
 
-Treat this as a first-class, expected activity — not an escape hatch. A custom
-generator is still model-first: it derives from the metadata spine, so it
-regenerates on change and stays consistent across every entity — the leverage you'd
-forfeit by hand-writing. Hand-rolling *away from* metadata is the anti-pattern;
-generating *your own shape from* metadata is the point.
-
-This is for when the *shape* itself needs to change. If a built-in's shape is
-already right and only the *target* is wrong — a different framework than the
-shipped reference emits for — take ownership of that generator instead of writing
-one from scratch; see "Your framework isn't the default" below, and your language
-reference for the command that does it.
-
-The plugin interface is small (`@metaobjectsdev/codegen-ts`): a `Generator` is
-`{ name, filter?, generate }`, where `generate(ctx)` returns `EmittedFile[]`
-(`{ path, content }`). `perEntity` / `oncePerRun` wrap the common cases:
-
-```ts
-import { perEntity } from "@metaobjectsdev/codegen-ts";
-import type { Generator } from "@metaobjectsdev/codegen-ts";
-
-// One file per entity, in YOUR shape — reads the loaded metadata, emits your code.
-export function serviceFile(): Generator {
-  return {
-    name: "service-file",                      // kebab-case; shows in `meta gen --list`
-    filter: (e) => e.isEntity,                 // which nodes it applies to
-    generate: perEntity((entity, ctx) => ({
-      path: `${entity.name}.service.ts`,
-      content: renderYourService(entity.fields(), ctx),  // walk the typed metadata
-    })),
-  };
-}
-```
-
-`ctx` gives you `entities`, the `loadedRoot`, and `config`; `oncePerRun((entities,
-ctx) => …)` is the one-shot variant (a barrel, an app-config). Add your generator to
-the `generators` array in `metaobjects.config.ts` next to the built-ins — it runs in
-the same pass, writes under the same target rules, and carries the `@generated`
-header so it round-trips like any other.
+Write a new generator when the *shape* needs to change. When a reference's shape is right
+and only its *target* is wrong — a different framework than the reference emits for — eject
+that generator and retarget it instead; see the next section.
 
 ## Your framework isn't the default — the retargeting procedure
 
@@ -451,10 +494,10 @@ attribute is `@dbColumnType` — a physical column-type override that is never i
 
 | Port | Resolving (default — use this) | Own-only (avoid unless emitting a subclass's own members) |
 |---|---|---|
-| TypeScript | `attr(name)`, `children()`, `fields()` | `ownAttr(name)`, `ownChildren()`, `ownFields()`, the raw `isArray` field flag |
-| Python | `attrs().get(name)`, `children()`, `fields()` | `attr(name)` **(own!)**, `own_children()`, `own_fields()` |
-| Java / Kotlin | `getMetaAttr(name)`, resolving `getChildren()` | `getMetaAttr(name, false)`, own-only child walks |
-| C# | resolving attr/`Children`/`Fields` accessors | `IsArray` native flag, `OwnChildren()`, own attr reads |
+| TypeScript | `attr(name)`, `children()`, `fields()`, `isRequired`, `resolvedIsArray()` | `ownAttr(name)`, `ownChildren()`, `ownFields()`, the raw `isArray` field flag |
+| Python | `metaobjects.codegen.model_walk`, `attrs().get(name)`, `children()`, `fields()` | `attr(name)` **(own!)**, `own_children()`, `own_fields()`, the raw `is_array` |
+| Java / Kotlin | `ModelWalk.*`, `getMetaAttr(name)`, `getMetaFields()`, `isArrayType()` | `getMetaAttr(name, false)`, `isArray()`, own-only child walks (and `getName()` is the FQN — `ModelWalk.name` is the bare name) |
+| C# | `Attr(name)`, `Children()`, `Fields()`, `ResolvedIsArray()`, `EffectiveEnumValues` | `IsArray` native flag, `OwnChildren()`, `OwnAttr(name)`, `EnumValues` |
 
 **Naming inversion — the trap:** the *default-named* accessor is NOT consistently the
 safe one. **TS `attr()` RESOLVES; Python `attr()` is OWN** (own-only). In Python you
@@ -468,10 +511,11 @@ edits on regen), or customize the template a built-in renders from. Reach for a
 custom generator when you want the change applied **consistently across every
 entity** (the scale win); a one-off edit when it's genuinely one file.
 
-**The decision ladder:** a built-in fits → use it · close → customize the
-output/template · doesn't fit → write a generator that emits your shape *from the
-metadata* · only the genuinely un-modelable (business algorithms, external calls) is
-hand-written outside codegen — and it still imports the generated types.
+**The decision ladder:** an output the model describes that no reference emits → write
+a generator (the top of this skill) · a reference is close → eject it and customize the
+copy · a reference fits → use it · only the genuinely un-modelable (business algorithms,
+external calls) is hand-written outside codegen — and it still imports the generated
+types.
 
 ## Two ways to author a generator — pick deliberately
 
@@ -503,11 +547,12 @@ above.
 **A template is not limited to documents.** It emits source as readily as docs — that is
 what the neutral data dict is for.
 
-### Which is available to you depends on the port — check before you plan
+### Both are available in every port
 
-**TypeScript** has both, and the whole programmatic procedure is documented: `meta eject`,
-the `metaobjects.config.ts` keys, the exported `render*` functions — see this skill's
-`references/typescript.md`. The declarative path is declared in the SAME config: call
+**TypeScript** has both, and the whole programmatic procedure is documented: `meta
+generator new`, `meta eject`, the `metaobjects.config.ts` keys, the exported `render*`
+functions — see this skill's `references/typescript.md`. The declarative path is declared
+in the SAME config: call
 `templateGenerator()` in `generators`, or spread a parsed JSON spec with
 `templateSpecToGenerators(parseTemplateSpec(...))` to reuse one written for C#/Python.
 **There is no `--template-spec` flag on `meta gen` and its absence is not a gap** — the
@@ -516,7 +561,8 @@ config takes generator values, and keeping the declaration there is what keeps
 
 **Java / Kotlin** have both, and both are ownable. `mvn metaobjects:eject -Dnames=<name,...>`
 copies a reference generator into a `codegen/` Maven module you own and edit. A new
-programmatic generator means implementing `com.metaobjects.generator.Generator` and naming
+programmatic generator extends `com.metaobjects.generator.FileEmittingGenerator` (return
+the files; it writes them under `outputDir`) and reads the model through `ModelWalk`; name
 your class in the Maven `<generator>` element, which the plugin loads from the project
 classpath. The declarative
 path is `TemplateScopeGenerator`, wired the same way with `<template>` / `<scope>` /
@@ -524,14 +570,14 @@ path is `TemplateScopeGenerator`, wired the same way with `<template>` / `<scope
 covers Java and Kotlin alike. No `--template-spec` flag here either, for the same reason:
 `<generator>` already loads a consumer class from the project classpath.
 
-**C# and Python: the declarative path is your only option, and it is a real one.** Their
-generator sets are **closed built-in registries** — `--generators` *selects* from what
-ships, and there is no seam to register a `Generator` of your own. (Python's
-`--provider module:symbol` registers **metamodel vocabulary**, not a generator; do not
-reach for it here.) Use `--template-spec <json>` — plus `--templates <dir>` on Python or
+**C# and Python** have both. Programmatic: on C#, an `IGenerator` listed in the owned
+`codegen/Program.cs` (which `dotnet meta gen` / `verify --codegen` hand off to); on Python,
+a `module:symbol` entry in `--generators` or in `metaobjects.config.yaml`. (Python's
+`--provider module:symbol` registers **metamodel vocabulary**, not a generator.)
+Declarative: `--template-spec <json>` — plus `--templates <dir>` on Python or
 `--template-root <dir>` on C# — and your entries are appended to your `--generators`
-selection. Worked
-examples with the full JSON: `docs/ports/python.md` and `docs/ports/csharp.md`.
+selection. Worked examples with the full JSON: `docs/ports/python.md` and
+`docs/ports/csharp.md`.
 
 **The spec is auto-discovered, and that is load-bearing.** With no `--template-spec`, both
 ports read `<projectRoot>/template-spec.json` — projectRoot being the metadata dir's parent.
@@ -539,8 +585,8 @@ Keep it there: `verify --codegen` accepts no `--template-spec` flag, so the conv
 is how the drift gate learns your template generators exist. Put the spec somewhere else and
 reach it only by flag, and `verify` regenerates without it and reports its output as stale.
 
-So on C#/Python, "I need a shape the built-ins do not emit" is answered by a template, not
-by writing generator code. Do not conclude the port cannot be customized.
+So on every port, "I need a shape the built-ins do not emit" is answered by a generator of
+your own or a template. Do not conclude the port cannot be customized.
 
 Each port's `references/` fragment documents what its built-ins emit, which is what you
 compare your own emit against; they do not carry a step-by-step retargeting procedure.

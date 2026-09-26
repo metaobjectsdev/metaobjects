@@ -3,6 +3,7 @@ import { log } from "./lib/log.js";
 import { cliVersion } from "./lib/version.js";
 import { resolveFormat, isValidFormat, VALID_FORMATS, type OutputFormat } from "./lib/format.js";
 import { resolveCollection } from "@metaobjectsdev/sdk";
+import { GENERATOR_HELP } from "./commands/generator-help.js";
 export { defineConfig } from "@metaobjectsdev/codegen-ts";
 export type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 
@@ -30,6 +31,8 @@ COMMANDS:
   init --config-only    Write only .metaobjects/config.json — for a Maven- or pip-rooted project
   agent-docs            Scaffold only the agent-context (.metaobjects/ + .claude/skills/) — canonical redirect target for all language ports
   gen [<entity>...]     Codegen TS targets from your declared metadata
+  generator new <name>  Write a generator of your own into codegen/generators/ and wire it — the
+                        way to get any output MetaObjects does not ship (OpenAPI, JSON Schema, …)
   eject <generator>     Copy a reference generator into codegen/generators/ to own it (any time after init)
   eject --list          List every ejectable generator name, grouped by package
   deps sync [<name>...] Resolve declared dependencies (path transport): sync the committed
@@ -158,6 +161,7 @@ See https://metaobjects.com for docs.
 
 /** Focused per-subcommand usage slices shown by `<cmd> --help`. */
 export const COMMAND_HELP: Record<string, string> = {
+  generator: GENERATOR_HELP,
   gen: `meta gen — codegen TS targets from your declared metadata
 
 USAGE:
@@ -612,6 +616,10 @@ export async function run(argv: string[]): Promise<number> {
     case "gen": {
       const { genCommand } = await import("./commands/gen.js");
       return genCommand(rest, cwd, fmt);
+    }
+    case "generator": {
+      const { generatorCommand } = await import("./commands/generator.js");
+      return generatorCommand(rest, cwd);
     }
     case "eject": {
       const { ejectCommand } = await import("./commands/eject.js");

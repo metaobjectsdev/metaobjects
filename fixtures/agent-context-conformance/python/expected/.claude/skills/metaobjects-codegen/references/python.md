@@ -51,6 +51,45 @@ metaobjects docs ./metadata --out ./docs   # Python: the METADATA dir
 meta docs --out ./docs                     # Node: run from the PROJECT ROOT (no positional)
 ```
 
+## Write your own generator
+
+For any output the model describes and no reference emits, write one. A generator is an
+object with a `name` and `generate(ctx) -> list[EmittedFile]`, plus an optional
+`filter(obj)` the runner applies as `ctx.matches`:
+
+```python
+# codegen/generators/field_list.py  (codegen/ and codegen/generators/ each need an __init__.py)
+from metaobjects.codegen.model_walk import EmittedFile, field_is_array, is_abstract, is_required, per_entity
+
+
+class FieldList:
+    name = "field-list"
+
+    def filter(self, obj):  # ctx.entities is EVERY object, abstract bases included
+        return not is_abstract(obj)
+
+    def generate(self, ctx):
+        def one(obj, _ctx):
+            lines = [f"{f.name}: {f.sub_type}{'[]' if field_is_array(f) else ''}{'' if is_required(f) else '?'}"
+                     for f in obj.fields()]  # fields() RESOLVES: inherited fields included
+            return EmittedFile(path=f"field-list/{obj.name}.txt", content="\n".join(lines) + "\n")
+
+        return per_entity(one)(ctx)
+
+
+def field_list():  # the module:symbol target: an instance, or a function returning one — never the class
+    return FieldList()
+```
+
+Wire it as `codegen.generators.field_list:field_list` in `--generators` (beside any stable
+names) or in a target's `generators` in `metaobjects.config.yaml`; `metaobjects verify
+--codegen` with the same selection gates it. Read the model through
+`metaobjects.codegen.model_walk` (`is_required`, `max_length`, `field_is_array`,
+`enum_values`, `object_ref_target`, `description`, `primary_key_fields`, `package_of`,
+`route_path`, `per_entity` / `per_package` / `per_model`) — never through a field's `attr(n)`,
+which is OWN-ONLY in Python and drops what a field inherits. Output can be any format; an
+`__init__.py` is added only beside generated `.py` files.
+
 ## Generators
 
 Wire generators by their stable name — **`--generators <names>` is REQUIRED**. There is

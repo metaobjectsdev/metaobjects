@@ -108,6 +108,41 @@ persistence layer (EF Core), and the minimal-API routes mount on your `WebApplic
 There is no runtime "ObjectManager" layer to wire — the generated EF Core code is
 what runs. (The other ports leave a repository seam; C# does not.)
 
+## Write your own generator
+
+For any output the model describes and no reference emits, write an `IGenerator` in the
+owned console project `codegen/`. `dotnet meta gen` and `dotnet meta verify --codegen`
+hand off to it whenever `codegen/Codegen.csproj` exists; `dotnet meta eject <name>`
+scaffolds that project (or write `Codegen.csproj` — an `Exe` referencing
+`MetaObjects.Codegen` at your tool's version — and `Program.cs` yourself).
+
+```csharp
+// codegen/generators/FieldListGenerator.cs
+using MetaObjects.Codegen;
+
+namespace Codegen.Generators;
+
+public sealed class FieldListGenerator : IGenerator
+{
+    public string Name => "field-list";
+
+    public IEnumerable<EmittedFile> Generate(GenContext ctx) =>
+        ctx.Entities.Where(o => !o.IsAbstract)          // EVERY object arrives, abstract bases included
+            .Select(o => new EmittedFile(
+                $"field-list/{o.Name}.txt",
+                string.Join("\n", o.Fields().Select(f => $"{f.Name}: {f.SubType}{(f.ResolvedIsArray() ? "[]" : "")}")) + "\n"));
+}
+```
+
+List it in `codegen/Program.cs` — `IReadOnlyList<IGenerator> generators = [new
+FieldListGenerator()]; return CodegenCli.Run(args, generators);`. An owned generator the
+`--generators` selection does not name still runs. Model reads: `Fields()`, `Attr(n)`,
+`ResolvedIsArray()`, `EffectiveEnumValues`, `MaxLength` resolve; `IsArray`, `OwnAttr`,
+`EnumValues` do not. `ValueObjectNames.ResolveFieldRef(field, ctx.Root)` resolves an
+`@objectRef`; `CSharpNaming.RoutePath(obj)` is the REST segment; constants come from
+`using static MetaObjects.Core.Field.FieldConstants;`. A generator that throws is reported
+as the generator, with its message.
+
 ## Extending the generators (open-for-extension, ADR-0002)
 
 The generators are subclassable: the per-class emit methods are `protected virtual`,

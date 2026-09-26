@@ -1,0 +1,22 @@
+{
+  "metadata": {
+    "package": "shop",
+    "children": [
+      { "object.value": { "name": "Address", "children": [
+        { "field.string": { "name": "city", "@required": true } }
+      ]}},
+      { "object.entity": { "name": "BaseEntity", "abstract": true, "children": [
+        { "field.long": { "name": "id" } },
+        { "field.timestamp": { "name": "createdAt", "@required": true } },
+        { "field.string": { "name": "labels", "isArray": true, "@maxLength": 40 } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+      ]}},
+      { "object.entity": { "name": "PostCategory", "extends": "BaseEntity", "@description": "A category.", "children": [
+        { "source.rdb": { "@table": "post_categories" } },
+        { "field.string": { "name": "title", "@required": true } },
+        { "field.object": { "name": "shipping", "@objectRef": "Address", "@storage": "jsonb" } },
+        { "field.enum": { "name": "tier", "@values": ["free", "paid"] } }
+      ]}}
+    ]
+  }
+}
