@@ -10,6 +10,10 @@ here.**
 
 ## [Unreleased]
 
+## [1.0.8] — 2026-09-25
+
+_npm `1.0.8` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
 ### Fixed
 
 - **A generator selected without the generators its output references now warns, in C#
