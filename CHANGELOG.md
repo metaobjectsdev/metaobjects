@@ -67,8 +67,41 @@ date/time validators and form input types (see Fixed).
   `meta eject` names them as package-only instead of "unknown". ADR-0034 Amendment 3 carries a
   dated correction: those eight generators are not ejectable.
 
+- **Generated TypeScript imports value-object types type-only**, so a value object nesting
+  another compiles under `verbatimModuleSyntax` (a fresh `tsc --init`; it failed with TS1484).
+  The codegen-compile gate now builds under exactly the options `tsc --init` writes.
+- **The response-format prompt fragment shows number and boolean placeholders unquoted, in
+  every port** (`"averageRating": {averageRating}`). A model following it answered numbers as
+  strings, which the generated parser then rejected. Generated prompt text changes; the
+  `output-prompt-conformance` corpus pins the new form.
+- **An unexpected error on a `runtime-ts` route answers `500 {"error": "internal"}`** and logs the
+  detail server-side. Fastify's default body echoed the failed SQL, its column names and bound
+  parameters to the client.
+- **A malformed JSON body answers `400 {"error": "invalid_json"}`** on the `runtime-ts` Fastify
+  and Hono mounts, scoped to the routes they mount, instead of each framework's own shape.
+- **A filter value that cannot be the field's type answers `400 invalid_filter_value`** with
+  `field`, `op` and `expected` (`filter[publishedOn][gte]=notadate` returned `[]`). The generated
+  `FilterAllowlist` gains `format` and `enumValues`; run `meta gen` to pick them up.
+- **`meta migrate --rename-column` carries a column's CHECK and FK constraints across** instead of
+  asking for `--allow drop-check` / `--allow drop-fk`: Postgres renames the constraint, SQLite
+  and D1 rebuild the table with it under the new name. Blocked-change messages are plain text,
+  never a JSON dump.
+- **A child-side relationship silently overriding a parent-side one is reported.** When both
+  sides of a 1:N are declared with different referential actions (a parent `composition` =
+  cascade, a child `association` = restrict), the child's wins, by design (ADR-0047). `meta
+  verify` now names it (`overridden-referential-action`) and `meta migrate` warns, with the fix:
+  `@onDelete` on the `identity.reference`. The DDL is unchanged.
+- **`meta gen --list` describes `output-parser` and `extractor` correctly in every port**: the
+  parser is a strict parse plus a tolerant `extractLenient`, the extractor is tolerant recovery.
+  The descriptions had them the other way round.
+
 ### Changed
 
+- **The generated TypeScript file header no longer says `DO NOT EDIT`.** Hand edits are kept by a
+  three-way merge on regeneration, and the header now says so, and that `meta verify --codegen`
+  checks only the generated parts. Regenerating rewrites line 1 of every generated file.
+- **The fit assessment's maintainer notes moved to the end of the file**, and the site copy strips
+  them, so a reader of `assess.md` meets the prompt first.
 - **Docs: enums sort by their stored value, not by declared order** (a stated known limit in
   `docs/features/api-contract.md`).
 
