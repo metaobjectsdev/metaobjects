@@ -97,6 +97,20 @@ describe("snapshot stability", () => {
     expect(normalized).toMatchSnapshot();
   });
 
+  test("help names no command that does not exist", async () => {
+    const captured: string[] = [];
+    const origLog = console.log;
+    console.log = (msg: string) => { captured.push(msg); };
+    try {
+      await run(["--help"]);
+    } finally {
+      console.log = origLog;
+    }
+    const help = captured.join("\n");
+    expect(help).not.toMatch(/sub-project/i);
+    expect(help).not.toMatch(/\b(ingest|install-hooks)\b/);
+  });
+
   test("version output is a valid semver", async () => {
     const captured: string[] = [];
     const origLog = console.log;

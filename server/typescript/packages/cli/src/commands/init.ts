@@ -148,9 +148,6 @@ Next steps:
   4. meta gen                   # generate from exactly what you wired
   5. meta docs                  # neutral model + API docs (on by default)
   6. Create your tables: meta migrate --from-db --db file:dev.sqlite --dialect sqlite --slug init --apply
-
-Ship in later sub-projects: meta ingest (propose entities from existing code),
-meta serve (local viewer), meta install-hooks (MCP server + Claude Code hooks).
 `;
 
 export interface InitOptions {

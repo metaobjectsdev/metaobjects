@@ -68,6 +68,16 @@ describe("init() — next-steps message (S1)", () => {
     expect(block).not.toMatch(/later sub-projects[\s\S]*meta docs\b/);
   });
 
+  // A first-run user read "Ship in later sub-projects: meta ingest … meta serve …" as
+  // commands to try. None of them exists; internal roadmap names do not belong in output.
+  test("names no command that does not exist", () => {
+    const block = nextStepsBlock();
+    expect(block).not.toMatch(/sub-project/i);
+    for (const unshipped of ["meta ingest", "meta serve", "meta install-hooks", "meta mcp"]) {
+      expect(block).not.toContain(unshipped);
+    }
+  });
+
   // The block once took a `dbStubWritten` flag, because the scaffold wrote a throwing
   // `src/db.ts` on some runs and not others while a static string claimed it on every
   // one. Nothing is wired now, so there is no `dbImport` and no stub — the message is

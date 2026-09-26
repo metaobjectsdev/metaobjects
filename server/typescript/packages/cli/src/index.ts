@@ -153,8 +153,7 @@ MIGRATE FLAGS:
   --yes                 Skip the --remote --apply confirmation pause
   --dry-run             Print SQL to stdout, don't write
 
-Other commands (ingest, mcp, serve, install-hooks, audit, capture, promote)
-ship in later sub-projects. See https://metaobjects.com for docs.
+See https://metaobjects.com for docs.
 `;
 
 /** Focused per-subcommand usage slices shown by `<cmd> --help`. */
