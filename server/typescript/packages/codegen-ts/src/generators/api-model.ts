@@ -507,8 +507,9 @@ function dataAccessSymbols(
   }
 
   // Create/update payload shapes — the EXACT InsertSchema/UpdateSchema field sets
-  // (api-field-shape reuses the zod emitter's own walk), so `data: unknown`'s
-  // real shape is documented + gate-verified against the emitted schema.
+  // (api-field-shape reuses the zod emitter's own walk), so the typed
+  // `data: <Name>Create` / `patch: <Name>Patch` shapes are documented + gate-verified
+  // against the emitted schema.
   const createShape = createFieldShapes(obj);
   const updateShape = updateFieldShapes(obj);
 
@@ -518,8 +519,8 @@ function dataAccessSymbols(
       name: create,
       kind: "data-access",
       importPath: mod,
-      signature: `${create}(db: Db, data: unknown): Promise<${name}>`,
-      params: [`db: Db`, `data: unknown`],
+      signature: `${create}(db: Db, data: ${name}Create): Promise<${name}>`,
+      params: [`db: Db`, `data: ${name}Create`],
       returns: `Promise<${name}>`,
       throws: `ZodError when data fails ${name}InsertSchema validation.`,
       usage: `Validate (via ${name}InsertSchema) and insert a new ${name}.`,

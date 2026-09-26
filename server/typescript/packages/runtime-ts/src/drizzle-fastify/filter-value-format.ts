@@ -62,6 +62,31 @@ export function matchesFormat(format: FilterValueFormat, s: string): boolean {
   return CHECKS[format](s);
 }
 
+/** A timestamp with a time part AND an explicit zone (`Z` or `±HH[[:]MM]`). */
+const ZONED_TIMESTAMP_RE =
+  /^(\d{4}-\d{2}-\d{2})[Tt ](\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?(?:([Zz])|([+-]\d{2}):?(\d{2})?)$/;
+
+/**
+ * A zoned timestamp bound rewritten to its instant's `toISOString()` spelling; any other
+ * value (a naive timestamp, a date-only bound) is returned unchanged.
+ *
+ * The generated insert/update schemas store every zoned `field.timestamp` value in that
+ * same fixed-width UTC form, because SQLite and D1 compare the TEXT column as text: a row
+ * sent as `2026-09-21T01:00:00+05:00` (20:00Z) and a bound of `2026-09-20T21:00:00+00:00`
+ * only order correctly once both are spelled in UTC. A naive value names no zone, so it is
+ * never guessed at. Postgres compares timestamptz instants and reads either spelling the
+ * same way. The rebuilt string is the ECMAScript date-time format `Date.parse` must accept,
+ * so this does not rely on an engine reading `+05` or a six-digit fraction.
+ */
+export function utcIsoIfZoned(s: string): string {
+  const m = ZONED_TIMESTAMP_RE.exec(s);
+  if (m === null) return s;
+  const [, date, hm, sec, frac, z, oh, om] = m;
+  const ms = (frac ?? "").slice(0, 3).padEnd(3, "0");
+  const t = Date.parse(`${date}T${hm}:${sec ?? "00"}.${ms}${z === undefined ? `${oh}:${om ?? "00"}` : "Z"}`);
+  return Number.isNaN(t) ? s : new Date(t).toISOString();
+}
+
 /** For a `datetime` rule with no `format` (generated before it existed): any of the three. */
 export function matchesAnyTemporal(s: string): boolean {
   return isCalendarDate(s) || CHECKS[FIELD_SUBTYPE_TIME](s) || isTimestamp(s);

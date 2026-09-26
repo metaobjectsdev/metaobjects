@@ -23,6 +23,11 @@ export const CustomerUpdateSchema = z.object({
   email: z.string().min(1).max(255).optional(),
 });
 
+/** Typed create shape for Customer: the insert schema's INPUT (pre-transform) type. A
+ * renamed/dropped/misspelt field is a compile error at every `createCustomer` call site;
+ * the schema still validates at runtime. */
+export type CustomerCreate = z.input<typeof CustomerInsertSchema>;
+
 /** Typed patch shape for Customer: every settable field, optional (FR-035 PATCH). A
  * renamed/dropped field is a compile error at every `updateCustomer` call site. */
 export type CustomerPatch = z.input<typeof CustomerUpdateSchema>;

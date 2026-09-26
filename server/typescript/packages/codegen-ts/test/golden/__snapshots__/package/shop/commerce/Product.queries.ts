@@ -12,6 +12,7 @@ type Db = BaseSQLiteDatabase<
 
 import {
   type Product,
+  type ProductCreate,
   ProductInsertSchema,
   type ProductPatch,
   products,
@@ -41,7 +42,10 @@ export async function listProducts(
   }
   return q;
 }
-export async function createProduct(db: Db, data: unknown): Promise<Product> {
+export async function createProduct(
+  db: Db,
+  data: ProductCreate,
+): Promise<Product> {
   const validated = ProductInsertSchema.parse(data);
   const [product] = await db.insert(products).values(validated).returning();
   return product!;

@@ -24,6 +24,7 @@
 import type { Hono, Context } from "hono";
 import { classifyConstraintError, RedactedDatabaseError, logAndRedact } from "../constraint-errors.js";
 import type { ZodTypeAny } from "zod";
+import { validationErrorBody } from "../route-errors.js";
 import { eq, count, and } from "drizzle-orm";
 import qs from "qs";
 import { contractErrorCode } from "../drizzle-fastify/util.js";
@@ -260,7 +261,7 @@ export function mountCreateRoute(opts: VerbOptions): void {
     if (!read.ok) return read.response;
     const parsed = opts.insertSchema.safeParse(read.body);
     if (!parsed.success) {
-      return c.json({ error: "validation", issues: parsed.error.issues }, 400);
+      return c.json(validationErrorBody(parsed.error.issues), 400);
     }
     // Same redaction contract as the Fastify mount: a constraint the DB enforces must not
     // come back as a 500 carrying the SQL and its bound parameters. Both mounts are
@@ -287,7 +288,7 @@ export function mountUpdateRoute(opts: VerbOptions): void {
     if (!read.ok) return read.response;
     const parsed = opts.updateSchema.safeParse(read.body);
     if (!parsed.success) {
-      return c.json({ error: "validation", issues: parsed.error.issues }, 400);
+      return c.json(validationErrorBody(parsed.error.issues), 400);
     }
     // An empty patch is a no-op update, answered as a read — the Fastify mount's
     // rule; its block in drizzle-fastify/index.ts carries the full rationale.

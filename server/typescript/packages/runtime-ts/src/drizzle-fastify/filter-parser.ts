@@ -10,7 +10,8 @@ import { FilterParseError, parsePageBound, SORT_EXPECTED } from "./list-params.j
 // Re-exported so existing importers keep one door; the definitions live in the
 // drizzle-free list-params module, which the ObjectManager Fastify mount also uses.
 export { FilterParseError, parsePageBound, PAGINATION_EXPECTED, RAW_VIEW_MAX_LIMIT, SORT_EXPECTED } from "./list-params.js";
-import { ANY_TEMPORAL_EXPECTED, FORMAT_EXPECTED, matchesAnyTemporal, matchesFormat } from "./filter-value-format.js";
+import { ANY_TEMPORAL_EXPECTED, FORMAT_EXPECTED, matchesAnyTemporal, matchesFormat, utcIsoIfZoned } from "./filter-value-format.js";
+import { FIELD_SUBTYPE_TIMESTAMP } from "@metaobjectsdev/metadata";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user's Drizzle table
 type AnyTable = any;
@@ -309,6 +310,12 @@ function coerce(value: unknown, rule: FilterFieldRule, col: unknown, field: stri
   if (value === null || value === undefined) return null;
   const s = typeof value === "string" ? value : String(value);
   assertWellFormed(s, rule, col, field, op);
+  // A zoned timestamp bound is compared in the same UTC spelling the generated schemas
+  // store (see utcIsoIfZoned): on SQLite/D1 the column is TEXT and compares as text. A
+  // Date-bound (`dateValues`) column parses the instant itself and is left alone.
+  if (rule.format === FIELD_SUBTYPE_TIMESTAMP && rule.dateValues !== true) {
+    return coerceAs(utcIsoIfZoned(s), rule.subType, field, op, rule.dateValues);
+  }
   return coerceAs(s, rule.subType, field, op, rule.dateValues);
 }
 

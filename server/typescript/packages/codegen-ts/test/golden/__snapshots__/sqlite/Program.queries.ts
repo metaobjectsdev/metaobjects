@@ -12,6 +12,7 @@ type Db = BaseSQLiteDatabase<
 
 import {
   type Program,
+  type ProgramCreate,
   ProgramInsertSchema,
   type ProgramPatch,
   programs,
@@ -41,7 +42,10 @@ export async function listPrograms(
   }
   return q;
 }
-export async function createProgram(db: Db, data: unknown): Promise<Program> {
+export async function createProgram(
+  db: Db,
+  data: ProgramCreate,
+): Promise<Program> {
   const validated = ProgramInsertSchema.parse(data);
   const [program] = await db.insert(programs).values(validated).returning();
   return program!;

@@ -30,6 +30,7 @@ import { parseFilterParams, parsePageBound, FilterParseError } from "./filter-pa
 import { isTruthyFlag, contractErrorCode, coerceIdForColumn, firstRow } from "./util.js";
 import { timestampWire } from "../timestamp-wire.js";
 import { withContractErrorHandler } from "./route-error-handler.js";
+import { validationErrorBody } from "../route-errors.js";
 export { isTruthyFlag, contractErrorCode, parseId, coerceIdForColumn } from "./util.js";
 export { timestampWire, canonicalTimestamp } from "../timestamp-wire.js";
 
@@ -270,7 +271,7 @@ export function mountCreateRoute(opts: VerbOptions): void {
   opts.fastify.post(opts.path, routeOpts(opts), async (req, reply) => {
     const parsed = opts.insertSchema.safeParse(req.body);
     if (!parsed.success) {
-      return reply.code(400).send({ error: "validation", issues: parsed.error.issues });
+      return reply.code(400).send(validationErrorBody(parsed.error.issues));
     }
     // FR-017 TPH: the body omits the discriminator (the URL names the subtype);
     // inject it server-side so the row lands tagged with the right subtype.
@@ -303,7 +304,7 @@ export function mountUpdateRoute(opts: VerbOptions): void {
     const { id } = req.params as { id: string };
     const parsed = opts.updateSchema.safeParse(req.body);
     if (!parsed.success) {
-      return reply.code(400).send({ error: "validation", issues: parsed.error.issues });
+      return reply.code(400).send(validationErrorBody(parsed.error.issues));
     }
     const discCond = discriminatorCond(opts);
     // FR-017 TPH: a row's subtype is immutable — strip the discriminator from

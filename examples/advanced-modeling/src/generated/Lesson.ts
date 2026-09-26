@@ -35,6 +35,11 @@ export const LessonUpdateSchema = z.object({
   position: z.number().int().optional(),
 });
 
+/** Typed create shape for Lesson: the insert schema's INPUT (pre-transform) type. A
+ * renamed/dropped/misspelt field is a compile error at every `createLesson` call site;
+ * the schema still validates at runtime. */
+export type LessonCreate = z.input<typeof LessonInsertSchema>;
+
 /** Typed patch shape for Lesson: every settable field, optional (FR-035 PATCH). A
  * renamed/dropped field is a compile error at every `updateLesson` call site. */
 export type LessonPatch = z.input<typeof LessonUpdateSchema>;

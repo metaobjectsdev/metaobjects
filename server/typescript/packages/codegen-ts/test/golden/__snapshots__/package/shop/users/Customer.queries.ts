@@ -12,6 +12,7 @@ type Db = BaseSQLiteDatabase<
 
 import {
   type Customer,
+  type CustomerCreate,
   CustomerInsertSchema,
   type CustomerPatch,
   customers,
@@ -41,7 +42,10 @@ export async function listCustomers(
   }
   return q;
 }
-export async function createCustomer(db: Db, data: unknown): Promise<Customer> {
+export async function createCustomer(
+  db: Db,
+  data: CustomerCreate,
+): Promise<Customer> {
   const validated = CustomerInsertSchema.parse(data);
   const [customer] = await db.insert(customers).values(validated).returning();
   return customer!;

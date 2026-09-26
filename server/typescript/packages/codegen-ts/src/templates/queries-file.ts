@@ -110,7 +110,9 @@ export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
   // #203 — an @autoSet entity additionally imports its preserving-shape schema
   // and emits the `insertPreserving<Entity>` escape hatch after `create<Entity>`.
   const autoSet = hasAutoSetFields(obj);
-  const preservingImport = autoSet ? `, ${entityName}InsertPreservingSchema` : "";
+  const preservingImport = autoSet
+    ? `, type ${entityName}CreatePreserving, ${entityName}InsertPreservingSchema`
+    : "";
 
   // Literal imports (Db type + entity types) live in a code block so they sort
   // alongside ts-poet's hoisted imp() imports at the top of the body.
@@ -118,7 +120,7 @@ export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
 ${dbTypeImport}
 ${dbTypeAlias}
 
-import { ${varName}, type ${entityName}, type ${entityName}Patch, ${entityName}InsertSchema${preservingImport}, ${entityName}UpdateSchema } from ${JSON.stringify(entityFileName)};
+import { ${varName}, type ${entityName}, type ${entityName}Create, type ${entityName}Patch, ${entityName}InsertSchema${preservingImport}, ${entityName}UpdateSchema } from ${JSON.stringify(entityFileName)};
 `;
 
   const sections: Code[] = [
@@ -226,12 +228,14 @@ function renderWriteThroughQueriesFile(obj: MetaObject, ctx: RenderContext): str
 
   const { import: dbTypeImport, alias: dbTypeAlias } = dbTypeBlock(ctx.dialect);
 
-  const preservingImport = autoSet ? `, ${entityName}InsertPreservingSchema` : "";
+  const preservingImport = autoSet
+    ? `, type ${entityName}CreatePreserving, ${entityName}InsertPreservingSchema`
+    : "";
   const literalImports = code`
 ${dbTypeImport}
 ${dbTypeAlias}
 
-import { ${viewVar}, ${tableVar}, type ${entityName}, type ${entityName}Patch, ${entityName}InsertSchema${preservingImport}, ${entityName}UpdateSchema } from ${JSON.stringify(entityFileName)};
+import { ${viewVar}, ${tableVar}, type ${entityName}, type ${entityName}Create, type ${entityName}Patch, ${entityName}InsertSchema${preservingImport}, ${entityName}UpdateSchema } from ${JSON.stringify(entityFileName)};
 `;
 
   // The view re-read predicate keyed on ALL primary-key columns of `source` (the
@@ -245,8 +249,8 @@ import { ${viewVar}, ${tableVar}, type ${entityName}, type ${entityName}Patch, $
 
   // A create/insertPreserving writes the table, then reads the persisted row back
   // through the view so the returned <Entity> carries the derived fields.
-  const insertReturningView = (fnName: string, schemaName: string): Code => code`
-export async function ${fnName}(db: Db, data: unknown): Promise<${entityName}> {
+  const insertReturningView = (fnName: string, schemaName: string, inputType: string): Code => code`
+export async function ${fnName}(db: Db, data: ${inputType}): Promise<${entityName}> {
   const validated = ${schemaName}.parse(data);
   const [${singularVar}] = await db.insert(${tableVar}).values(validated).returning();
   const [row] = await db.select().from(${viewVar}).where(${viewByAllPk(`${singularVar}!`)}).limit(1);
@@ -272,8 +276,14 @@ export async function ${updateFnName(entityName)}(db: Db, ${pkField}: ${pkType},
     renderFindByIdFn(obj, ctx, viewVar),
     renderListFn(obj, ctx, viewVar),
     // Writes target the table (create/update re-read through the view; delete is boolean).
-    insertReturningView(createFnName(entityName), `${entityName}InsertSchema`),
-    ...(autoSet ? [insertReturningView(insertPreservingFnName(entityName), `${entityName}InsertPreservingSchema`)] : []),
+    insertReturningView(createFnName(entityName), `${entityName}InsertSchema`, `${entityName}Create`),
+    ...(autoSet
+      ? [insertReturningView(
+          insertPreservingFnName(entityName),
+          `${entityName}InsertPreservingSchema`,
+          `${entityName}CreatePreserving`,
+        )]
+      : []),
     updateFn,
     renderDeleteByIdFn(obj, ctx),
   ];
@@ -348,6 +358,9 @@ export async function list${pluralize(baseName)}(db: Db, opts?: { limit?: number
     const subTypeSym = imp(`t:${sub.name}@${subFileSpec}`);
     const subSchemaSym = imp(`${sub.name}Schema@${subFileSpec}`);
     const subInsertSym = imp(`${sub.name}InsertSchema@${subFileSpec}`);
+    // Typed write inputs (the subtype's insert-schema INPUT type): a misspelt field is a
+    // compile error at the call site; the schema still parses at runtime.
+    const subCreateSym = imp(`t:${sub.name}Create@${subFileSpec}`);
 
     subtypeSections.push(code`
 export async function list${pluralize(sub.name)}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${subTypeSym}[]> {
@@ -364,13 +377,13 @@ export async function find${sub.name}ById(db: Db, ${pkField}: ${pkType}): Promis
   return row ? ${subSchemaSym}.parse(row) : null;
 }
 
-export async function create${sub.name}(db: Db, data: unknown): Promise<${subTypeSym}> {
+export async function create${sub.name}(db: Db, data: ${subCreateSym}): Promise<${subTypeSym}> {
   const validated = ${subInsertSym}.parse(data);
   const [row] = await db.insert(${tableSym}).values({ ...validated, ${discField}: ${valueLit} }).returning();
   return ${subSchemaSym}.parse(row!);
 }
 
-export async function update${sub.name}ById(db: Db, ${pkField}: ${pkType}, data: unknown): Promise<${subTypeSym} | null> {
+export async function update${sub.name}ById(db: Db, ${pkField}: ${pkType}, data: Partial<${subCreateSym}>): Promise<${subTypeSym} | null> {
   const validated = ${subInsertSym}.partial().parse(data) as Record<string, unknown>;
   // The discriminator is immutable — a ${sub.name} can never become another subtype.
   const { [${JSON.stringify(discField)}]: _disc, ...safe } = validated;

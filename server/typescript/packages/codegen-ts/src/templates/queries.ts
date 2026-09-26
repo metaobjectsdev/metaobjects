@@ -88,8 +88,11 @@ export function renderCreateFn(entity: MetaObject, ctx: RenderContext): Code {
   const fnName = createFnName(entityName);
   const schemaName = `${entityName}InsertSchema`;
 
+  // Typed with the insert schema's INPUT type (`<Entity>Create`, emitted beside it) so a
+  // renamed/misspelt field is a compile error at the call site, as `<Entity>Patch` is for
+  // update. The schema still parses at runtime (a caller holding `unknown` casts).
   return code`
-export async function ${fnName}(db: Db, data: unknown): Promise<${entityName}> {
+export async function ${fnName}(db: Db, data: ${entityName}Create): Promise<${entityName}> {
   const validated = ${schemaName}.parse(data);
   const [${singularVar}] = await db.insert(${varName}).values(validated).returning();
   return ${singularVar}!;
@@ -114,7 +117,7 @@ export function renderInsertPreservingFn(entity: MetaObject, ctx: RenderContext)
   const schemaName = `${entityName}InsertPreservingSchema`;
 
   return code`
-export async function ${fnName}(db: Db, data: unknown): Promise<${entityName}> {
+export async function ${fnName}(db: Db, data: ${entityName}CreatePreserving): Promise<${entityName}> {
   const validated = ${schemaName}.parse(data);
   const [${singularVar}] = await db.insert(${varName}).values(validated).returning();
   return ${singularVar}!;

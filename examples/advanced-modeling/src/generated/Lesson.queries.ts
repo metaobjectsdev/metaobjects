@@ -8,6 +8,7 @@ type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;
 
 import {
   type Lesson,
+  type LessonCreate,
   LessonInsertSchema,
   type LessonPatch,
   lessons,
@@ -37,7 +38,10 @@ export async function listLessons(
   }
   return q;
 }
-export async function createLesson(db: Db, data: unknown): Promise<Lesson> {
+export async function createLesson(
+  db: Db,
+  data: LessonCreate,
+): Promise<Lesson> {
   const validated = LessonInsertSchema.parse(data);
   const [lesson] = await db.insert(lessons).values(validated).returning();
   return lesson!;

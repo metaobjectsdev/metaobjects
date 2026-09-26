@@ -50,6 +50,11 @@ export const ExerciseUpdateSchema = z.object({
   notes: z.string().optional().nullable(),
 });
 
+/** Typed create shape for Exercise: the insert schema's INPUT (pre-transform) type. A
+ * renamed/dropped/misspelt field is a compile error at every `createExercise` call site;
+ * the schema still validates at runtime. */
+export type ExerciseCreate = z.input<typeof ExerciseInsertSchema>;
+
 /** Typed patch shape for Exercise: every settable field, optional (FR-035 PATCH). A
  * renamed/dropped field is a compile error at every `updateExercise` call site. */
 export type ExercisePatch = z.input<typeof ExerciseUpdateSchema>;
