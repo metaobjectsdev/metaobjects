@@ -270,6 +270,10 @@ FLAGS:
                         An <Entity>.names.ts artifact is the exception: it must match a
                         fresh regen exactly — a hand edit in it is itself the defect.
                         Needs metaobjects.config.ts; exit 2 if absent.
+                        Every generated file that carries a hand edit is still LISTED
+                        (a notice, exit code unchanged), so an edit is never invisible.
+  --forbid-hand-edits   With --codegen: fail (exit 1) on ANY hand edit inside generated
+                        code, for teams that want generated files untouchable.
   --docs                Docs drift — run 'meta docs' to a temp dir and diff docs.outDir
                         Needs metaobjects.config.ts; exit 2 if absent. A page the
                         project GIT-IGNORES is exempt (docs.outDir is a directory, not

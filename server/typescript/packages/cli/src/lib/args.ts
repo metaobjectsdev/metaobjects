@@ -280,6 +280,14 @@ export interface VerifyFlags {
   /** Run the codegen-drift gate: is the GENERATED contribution of each file current? */
   codegen: boolean;
   /**
+   * With `--codegen`: fail the build on any hand edit inside a generated file, for teams
+   * that want generated code untouchable. Off by default, because hand edits are the
+   * documented workflow (`meta gen` three-way-merges them) — without it they are
+   * reported as a notice and never change the exit code. Refused without `--codegen`:
+   * it modifies that gate and would otherwise parse cleanly and do nothing.
+   */
+  forbidHandEdits: boolean;
+  /**
    * Run the docs-drift gate: regenerate the `meta docs` surfaces into a temp dir and diff
    * them against the committed docs tree.
    *
@@ -370,6 +378,7 @@ export const VERIFY_OPTIONS = {
   "skip-schema": { type: "boolean", default: false },
   templates: { type: "boolean", default: false },
   codegen: { type: "boolean", default: false },
+  "forbid-hand-edits": { type: "boolean", default: false },
   docs: { type: "boolean", default: false },
   deps: { type: "boolean", default: false },
   replay: { type: "boolean", default: false },
@@ -427,6 +436,12 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
 
   const templates = !!values.templates;
   const codegen = !!values.codegen;
+  const forbidHandEdits = !!values["forbid-hand-edits"];
+  if (forbidHandEdits && !codegen) {
+    throw new Error(
+      "--forbid-hand-edits only applies to the codegen gate. Run: meta verify --codegen --forbid-hand-edits",
+    );
+  }
   const docs = !!values.docs;
   const deps = !!values.deps;
   const replay = !!values.replay;
@@ -448,6 +463,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     skipSchema: !!values["skip-schema"],
     templates,
     codegen,
+    forbidHandEdits,
     docs,
     deps,
     replay,

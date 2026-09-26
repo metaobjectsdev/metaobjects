@@ -70,4 +70,19 @@ describe("meta verify — a partial run names the gates that did not run", () =>
     expect(line).toContain("schema (--db <url>)");
     expect(line).not.toContain("templates");
   });
+
+  test("a BARE run on a model with no templates names every gate it did not run; exit unchanged", async () => {
+    // A cold review wired bare `meta verify` into CI: "nothing to check", exit 0. The bare
+    // default stands (templates only) — the output now says what it did NOT check.
+    const root = await project();
+    const { code, out } = await capture(() => verifyCommand([], root));
+    expect(code).toBe(0);
+    expect(out).toContain("the template gate had nothing to check");
+    const line = out.split("\n").find((l) => l.includes("not run:"));
+    expect(line).toBeDefined();
+    for (const gate of ["codegen (--codegen)", "docs (--docs)", "schema (--db <url>)", "deps (--deps)", "replay (--replay)"]) {
+      expect(line).toContain(gate);
+    }
+    expect(line).toContain("a bare 'meta verify' runs only the template gate");
+  });
 });

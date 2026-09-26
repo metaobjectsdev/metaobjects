@@ -117,7 +117,9 @@ describe("meta verify --codegen — hand-edited generated output", () => {
 
       out = []; err = [];
       const exit = await run(["verify", "--cwd", root, "--codegen"]);
-      expect(all()).not.toContain("User.ts");
+      // Not drift — but LISTED, as a notice (see the "hand edits are visible" block).
+      expect(all()).not.toContain("codegen drift (");
+      expect(all()).toContain("1 generated file(s) carry hand edits");
       expect(exit).toBe(0);
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -337,4 +339,119 @@ describe("meta verify --codegen — hand-edited generated output", () => {
   // The orphan branch ("committed but regen would not emit it") is pinned in
   // verify-codegen-foreign-files.test.ts: it convicts a path we RECORDED writing
   // and now no longer emit, and leaves files MetaObjects never wrote alone.
+});
+
+/**
+ * A cold review weakened a validator inside a generated file (`.min(1).max(1000)` →
+ * nothing), committed it, and `verify --codegen` answered "every file's generated
+ * contribution is current" with exit 0 — on a fresh clone too. The exemption above is
+ * the design and stays; what changed is that an edit is never INVISIBLE, and a team that
+ * wants generated code untouchable can say so with `--forbid-hand-edits`.
+ */
+describe("meta verify --codegen — hand edits are visible", () => {
+  /** The reviewer's move: weaken a generated validator. */
+  function weakenValidator(root: string): void {
+    const path = join(root, USER_TS);
+    const before = readFileSync(path, "utf8");
+    const after = before.replace(".max(255)", "");
+    expect(after).not.toBe(before);
+    writeFileSync(path, after);
+  }
+
+  test("a weakened validator is listed with a count, the path and how to see it; exit 0", async () => {
+    const root = setupRepo();
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      weakenValidator(root);
+
+      out = []; err = [];
+      const exit = await run(["verify", "--cwd", root, "--codegen", "--format", "text"]);
+      const report = all();
+      expect(exit).toBe(0);
+      expect(report).toContain("1 generated file(s) carry hand edits");
+      expect(report).toContain("does not fail the build");
+      expect(report).toContain("--forbid-hand-edits");
+      expect(report).toMatch(/\s generated\/User\.ts$/m);
+      expect(report).toContain("git diff -R -- <file>");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("--forbid-hand-edits turns the same edit into a failure", async () => {
+    const root = setupRepo();
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      weakenValidator(root);
+
+      out = []; err = [];
+      const exit = await run(["verify", "--cwd", root, "--codegen", "--forbid-hand-edits"]);
+      expect(exit).toBe(1);
+      expect(all()).toContain("--forbid-hand-edits is set");
+      expect(all()).toContain("User.ts");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("--forbid-hand-edits passes a project with no hand edits", async () => {
+    const root = setupRepo();
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen", "--forbid-hand-edits"])).toBe(0);
+      expect(all()).not.toContain("carry hand edits");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a fresh clone (hashes committed, snapshot bodies gitignored) still sees the edit", async () => {
+    const root = setupRepo();
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      weakenValidator(root);
+      // Simulate the clone: keep only the committed half of .gen-state.
+      const genState = join(root, ".metaobjects", ".gen-state");
+      const hashes = readFileSync(join(genState, ".hashes.json"), "utf8");
+      rmSync(genState, { recursive: true, force: true });
+      mkdirSync(genState, { recursive: true });
+      writeFileSync(join(genState, ".hashes.json"), hashes);
+
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(0);
+      expect(all()).toContain("1 generated file(s) carry hand edits");
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen", "--forbid-hand-edits"])).toBe(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("the printed recipe works: deleting the file and re-running gen restores the pristine generation", async () => {
+    const root = setupRepo();
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      const pristine = readFileSync(join(root, USER_TS), "utf8");
+      weakenValidator(root);
+      rmSync(join(root, USER_TS));
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      expect(readFileSync(join(root, USER_TS), "utf8")).toBe(pristine);
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen", "--forbid-hand-edits"])).toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("--forbid-hand-edits without --codegen is refused, not silently ignored", async () => {
+    const root = setupRepo();
+    try {
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--forbid-hand-edits"])).toBe(2);
+      expect(all()).toContain("--codegen");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

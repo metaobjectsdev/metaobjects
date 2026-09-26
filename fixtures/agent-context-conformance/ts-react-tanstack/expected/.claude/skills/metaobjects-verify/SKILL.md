@@ -97,6 +97,10 @@ only `--templates`; Java/Python's bare default runs only `--codegen` — either 
 paired with the advisory anti-pattern pass above, never all three subverbs. Treat a
 bare run as a smoke test: the real done-check is running the subverbs your project
 uses explicitly — `verify --codegen`, and, where a DB exists, `verify --db <url>`.
+The Node `meta verify` ends every run, bare or not, with a `not run:` line naming
+each gate it skipped and the flag that selects it; on a model with no templates a
+bare run checks nothing but the requirement ledger and still exits 0, so never
+wire a bare `meta verify` into CI as the whole gate.
 
 ## Requirements are checked on every run
 
@@ -143,9 +147,18 @@ with `ERR_DEPENDENCY_SNAPSHOT_STALE` naming the fix: run `meta deps sync`.
   gate, for every port.
 
 - **`--codegen`** — regeneration drift. Re-runs generation and diffs the result
-  against the committed generated files; a non-empty diff means someone edited
-  generated code or skipped a regen. Wire it into CI so a stale `@generated` file
-  fails the build.
+  against the committed generated files; a stale generated part (someone skipped a
+  regen) fails the build. Wire it into CI so a stale `@generated` file fails.
+  **A hand edit inside a generated file is NOT drift** — `meta gen` three-way-merges
+  hand edits by design, and the Node gate judges the *generated contribution* against
+  the committed `.metaobjects/.gen-state/.hashes.json`, not the bytes. So a weakened
+  validator passes this gate. The Node `meta verify --codegen` therefore LISTS every
+  generated file carrying a hand edit (count + paths, a notice that does not change
+  the exit code), and `--forbid-hand-edits` turns any hand edit into a failure for a
+  team that wants generated code untouchable. Read that list at review time. To see
+  one edit: delete the file, run `meta gen` (it re-emits the pristine generation),
+  then `git diff -R -- <file>`; `git checkout -- <file>` restores it. The one
+  exception is an `<Entity>.names.ts` artifact: a hand edit there always fails.
 
 - **`--templates`** — prompt/payload drift. For every `template.prompt` /
   `template.output`, resolves the text, parses each `{{...}}` reference, and fails

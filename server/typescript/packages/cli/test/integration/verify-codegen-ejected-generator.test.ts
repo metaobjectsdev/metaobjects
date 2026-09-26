@@ -164,7 +164,9 @@ describe("meta verify --codegen — an ejected (adopter-owned) generator", () =>
 
       const verified = await meta(root, "verify", "--codegen");
       expect(verified).toMatchObject({ exit: 0 });
-      expect(verified.output).not.toContain("User.ts");
+      // Not drift — the preserved hand edit is LISTED as a notice, never as drift.
+      expect(verified.output).not.toContain("codegen drift (");
+      expect(verified.output).toContain("1 generated file(s) carry hand edits");
 
       // Both contracts hold together: the generator change landed, the hand edit stayed.
       const emitted = readFileSync(join(root, USER_TS), "utf8");

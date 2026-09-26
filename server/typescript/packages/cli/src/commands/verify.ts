@@ -416,12 +416,12 @@ export async function verifyCommand(
 
   // Naming a gate runs ONLY the gates named (ADR-0021 D2), so `verify --codegen --db <url>`
   // exits 0 without ever looking at the prompt templates. A green partial run must not read
-  // as a full one: say which gates did not run and how to select each. A bare `verify` has
-  // already said so in its default note above.
-  if (flags.anyExplicit) {
-    const note = notRunNote(gates);
-    if (note !== undefined) say(note);
-  }
+  // as a full one: say which gates did not run and how to select each. The BARE run says so
+  // too, at the END where the verdict is read: its opening note scrolls past, and on a model
+  // with no templates the only other line was "nothing to check" over a green exit — easy to
+  // wire into CI believing it guards everything. Never changes the exit code.
+  const note = notRunNote(gates, { bare: !flags.anyExplicit });
+  if (note !== undefined) say(note);
 
   if (structured) {
     emitStructured(
@@ -937,7 +937,9 @@ export async function verifyCommand(
     // ADR-0039: effective children — resolve rather than rely on root being unextended.
     const templates = root.children().filter((c) => c.type === TYPE_TEMPLATE);
     if (templates.length === 0) {
-      say("meta verify — no template.* nodes found; nothing to check.");
+      // Names the GATE that had nothing to check — "nothing to check" alone read as a
+      // verdict on the whole project.
+      say("meta verify — no template.* nodes found; the template gate had nothing to check.");
       return 0;
     }
 
@@ -1450,13 +1452,19 @@ export async function verifyCommand(
       return 2;
     }
 
+    // Hand edits are not drift, but they must never be INVISIBLE: a validator weakened
+    // inside a generated file used to pass this gate with "every file's generated
+    // contribution is current" and nothing else. Reported on every run; fails the build
+    // only under --forbid-hand-edits.
+    const handEditExit = reportHandEdits(result.handEdited);
+
     if (result.clean) {
       // Says what it CHECKED, not more. Since 0.24.3 this gate asks whether each file's
       // GENERATED contribution is current — a hand edit `meta gen` preserves is exempt —
       // so "output is in sync with the metadata" claimed a stronger property than it had
       // verified, and did so over a file whose committed content contradicted the model.
       say("meta verify — every file's generated contribution is current (no codegen drift).");
-      return 0;
+      return handEditExit;
     }
 
     log.error(
@@ -1479,6 +1487,23 @@ export async function verifyCommand(
       );
     }
     return 1;
+  }
+
+  /** Print the hand-edit notice (or failure, under --forbid-hand-edits); return its exit code. */
+  function reportHandEdits(handEdited: readonly string[]): number {
+    if (handEdited.length === 0) return 0;
+    const [header, ...rest] = handEditNotice(handEdited, flags.forbidHandEdits);
+    const paths = rest.slice(0, handEdited.length);
+    const footer = rest.slice(handEdited.length);
+    if (flags.forbidHandEdits) {
+      // A failure lists every path: truncating the list a build failed on hides the cause.
+      for (const line of [header!, ...paths, ...footer]) log.error(line);
+      return 1;
+    }
+    log.warn(header!);
+    warnCapped(paths, flags.limit, { structured });
+    for (const line of footer) log.warn(line);
+    return 0;
   }
 
   // -- docs drift -------------------------------------------------------------
@@ -1683,6 +1708,30 @@ interface VerifyGateRow {
   ok: boolean;
 }
 
+/**
+ * The hand-edit report for `verify --codegen`: a header with the count, one indented line
+ * per path, then how to see an edit. Exported for its test.
+ *
+ * The recipe regenerates rather than diffing against `.gen-state`, because the snapshot
+ * BODIES are gitignored — on a fresh clone or a CI runner only the hashes exist, which
+ * prove a file was edited but cannot show the edit. Deleting a generated file and
+ * re-running `meta gen` re-emits its pristine generation; git then shows the difference.
+ */
+export function handEditNotice(paths: readonly string[], forbidden: boolean): string[] {
+  const header = forbidden
+    ? `meta verify — ${paths.length} generated file(s) carry hand edits, and --forbid-hand-edits is set:`
+    : `meta verify — ${paths.length} generated file(s) carry hand edits ` +
+      `(notice — 'meta gen' preserves them by design; does not fail the build — ` +
+      `pass --forbid-hand-edits to make it):`;
+  return [
+    header,
+    ...paths.map((p) => `  ${p}`),
+    "To see an edit: delete the file and run 'meta gen' (it re-emits the pristine generation), " +
+      "then 'git diff -R -- <file>' shows the edit and 'git checkout -- <file>' restores it" +
+      (forbidden ? "; to drop the edit, commit the regenerated file instead." : "."),
+  ];
+}
+
 /** The flag that selects each gate, for the "not run" note. `requirements` always runs. */
 const GATE_SELECTOR: Record<string, string> = {
   templates: "--templates",
@@ -1697,14 +1746,21 @@ const GATE_SELECTOR: Record<string, string> = {
  * One line naming every gate this run did NOT run, each with the flag that selects it —
  * undefined when every gate ran. Exported for its test.
  */
-export function notRunNote(gates: readonly VerifyGateRow[]): string | undefined {
+export function notRunNote(
+  gates: readonly VerifyGateRow[],
+  opts: { bare?: boolean } = {},
+): string | undefined {
   const skipped = gates.filter((g) => !g.ran);
   if (skipped.length === 0) return undefined;
   const named = skipped.map((g) => {
     const flag = GATE_SELECTOR[g.gate];
     return flag !== undefined ? `${g.gate} (${flag})` : g.gate;
   });
-  return `meta verify — not run: ${named.join(", ")}`;
+  const tail = opts.bare === true
+    ? " — a bare 'meta verify' runs only the template gate (plus the requirement ledger); " +
+      "name each gate to run it"
+    : "";
+  return `meta verify — not run: ${named.join(", ")}${tail}`;
 }
 
 /**

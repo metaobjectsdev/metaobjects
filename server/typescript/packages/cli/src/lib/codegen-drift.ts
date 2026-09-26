@@ -68,6 +68,16 @@ export interface CodegenDriftResult {
    * to end. Two doors asking one question must not answer it twice.
    */
   handEditedNames: string[];
+  /**
+   * Project-relative paths of generated files that carry a PRESERVED hand edit, sorted:
+   * the generated contribution is current (a fresh regen hashes to what we recorded
+   * writing) but the committed file differs from it. Not drift — `meta gen` keeps these
+   * edits by design — so they never set `clean` to false. Reported so the edits are
+   * VISIBLE: a validator weakened inside a generated file used to pass this gate in
+   * silence. The command decides whether they fail the build (`--forbid-hand-edits`).
+   * Never overlaps `driftedFiles`.
+   */
+  handEdited: string[];
   /** Set when the gate could not run (e.g. no outDir to compare against). */
   error?: string;
 }
@@ -138,6 +148,7 @@ export async function computeCodegenDrift(
       driftedFiles: [],
       lines: [],
       handEditedNames: [],
+      handEdited: [],
       error:
         "verify --codegen: no outDir configured — cannot locate the committed " +
         "generated output to diff against. Set 'outDir' (and/or per-target " +
@@ -207,6 +218,7 @@ export async function computeCodegenDrift(
     const driftedFiles = new Set<string>();
     const lines: string[] = [];
     const handEditedNames = new Set<string>();
+    const handEdited = new Set<string>();
 
     // Whether we have any record of what we wrote here. With records, the orphan
     // branch below can scope itself to our own output; with none, it cannot tell
@@ -286,6 +298,10 @@ export async function computeCodegenDrift(
               // nothing is proven, so the old byte verdict stands.
               driftedFiles.add(relKey);
               lines.push(`~ ${relKey} (committed content differs from a fresh regen)`);
+            } else {
+              // The generated contribution is current and the bytes still differ: a
+              // hand edit `meta gen` preserved. Not drift, but never silent either.
+              handEdited.add(relKey);
             }
           }
         }
@@ -298,6 +314,7 @@ export async function computeCodegenDrift(
       driftedFiles: sorted,
       lines,
       handEditedNames: [...handEditedNames].sort(),
+      handEdited: [...handEdited].sort(),
     };
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
