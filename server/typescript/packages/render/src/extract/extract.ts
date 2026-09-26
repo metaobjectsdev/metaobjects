@@ -116,7 +116,7 @@ function extractFields(
     }
     if (present === TRUNCATED) {
       // present-but-garbled (empty/cut-off value)
-      report.set(path, FieldExtraction.MALFORMED);
+      markMalformed(report, path, f);
       continue;
     }
     if (present === NULL_LITERAL) {
@@ -152,23 +152,34 @@ function extractFields(
       // Cross-port contract: a MALFORMED array still places its successfully-coerced
       // elements into data (partial extraction), UNLIKE a MALFORMED scalar which is absent.
       data[f.name] = out;
-      report.set(path, anyMalformed ? FieldExtraction.MALFORMED : FieldExtraction.EXTRACTED);
+      if (anyMalformed) markMalformed(report, path, f);
+      else report.set(path, FieldExtraction.EXTRACTED);
       continue;
     }
     if (Array.isArray(present)) {
       // a list where a singular value was expected
-      report.set(path, FieldExtraction.MALFORMED);
+      markMalformed(report, path, f);
       continue;
     }
     const v = extractValue(f, present, path, report, o, ci);
     if (v === MALFORMED) {
-      report.set(path, FieldExtraction.MALFORMED);
+      markMalformed(report, path, f);
     } else {
       data[f.name] = v;
       // FR-011: a value reached via @coerceDefault (or @default) is DEFAULTED, not EXTRACTED.
       report.set(path, classifyCoerced(path, report));
     }
   }
+}
+
+/**
+ * Classify a present-but-unusable field MALFORMED. A `@required` one is also recorded in
+ * `malformedRequired()` — its value is missing from `data` just as a lost field's is, so the
+ * strict gate must fail on it (the extract-conformance corpus pins the set in every port).
+ */
+function markMalformed(report: ExtractionReport, path: string, f: FieldSpec): void {
+  report.set(path, FieldExtraction.MALFORMED);
+  if (f.required) report.markMalformedRequired(path);
 }
 
 /**

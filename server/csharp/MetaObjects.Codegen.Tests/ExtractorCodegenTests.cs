@@ -313,6 +313,30 @@ public sealed class ExtractorCodegenTests
     }
 
     [Fact]
+    public void Generated_extract_throws_on_malformed_required()
+    {
+        var root = Load(Model);
+        var asm = Compile(root);
+
+        var extractorType = asm.GetType("Acme.Generated.OrderOutExtractor")!;
+        var extract = extractorType.GetMethod("Extract", new[] { typeof(MetaObject), typeof(string) })!;
+        MetaObject orderMo = root.FindObject("Order")!;
+
+        // The REQUIRED enum priority answered with an undeclared member: MALFORMED, not lost.
+        // It must throw rather than reach Enum.Parse on a null or return a half-built payload.
+        const string reply =
+            "{ \"orderId\": \"A-7\", \"customer\": { \"name\": \"Ada\" }," +
+            "  \"lines\": [ { \"sku\": \"A\", \"qty\": 1 } ], \"tags\": [\"a\"], \"scores\": [1]," +
+            "  \"quantities\": [1], \"weights\": [1.0], \"flagsArr\": [true], \"priority\": \"MAYBE\"," +
+            "  \"labels\": [\"A\"] }";
+        var ex = Assert.Throws<TargetInvocationException>(() =>
+            extract.Invoke(null, new object?[] { orderMo, reply }));
+        var inner = Assert.IsType<MetaObjects.Render.Extract.ExtractException>(ex.InnerException);
+        Assert.Equal(new[] { "priority" }, inner.MalformedRequired);
+        Assert.Empty(inner.LostRequired);
+    }
+
+    [Fact]
     public void Re_exposed_extract_never_throws_on_clean_input()
     {
         var root = Load(Model);

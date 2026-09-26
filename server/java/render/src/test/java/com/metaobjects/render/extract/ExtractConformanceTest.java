@@ -82,6 +82,13 @@ public class ExtractConformanceTest {
         states.fieldNames().forEachRemaining(expectedStateKeys::add);
         assertEquals(dir + " state key set", expectedStateKeys, out.report().states().keySet());
 
+        // The required MALFORMED subset — the strict gate's second half (absent key = none).
+        Set<String> expectedMalformedRequired = new java.util.TreeSet<>();
+        JsonNode mr = expected.get("malformedRequired");
+        if (mr != null) mr.forEach(n -> expectedMalformedRequired.add(n.asText()));
+        assertEquals(dir + " malformedRequired", expectedMalformedRequired,
+                new java.util.TreeSet<>(out.report().malformedRequired()));
+
         Set<String> expectedDataKeys = new LinkedHashSet<>();
         data.fieldNames().forEachRemaining(expectedDataKeys::add);
         assertEquals(dir + " data key set", expectedDataKeys, actualLeaves.keySet());

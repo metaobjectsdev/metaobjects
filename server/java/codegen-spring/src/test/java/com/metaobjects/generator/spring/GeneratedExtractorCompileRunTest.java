@@ -289,6 +289,25 @@ public class GeneratedExtractorCompileRunTest {
                 assertTrue("lostRequired() must name `title` (flavor=" + flavor + "); got " + lost,
                         lost.contains("title"));
             }
+
+            // --- extract(loader, malformedRequired) — present but unusable also fires the gate ---
+            // The required `title` answered with a list where a scalar belongs: MALFORMED, not lost.
+            // The strict gate must fail on it rather than return a typed object missing the field.
+            String malformedRequired = "{\"title\":[\"a\",\"b\"],\"count\":3,"
+                    + "\"address\":{\"city\":\"Austin\",\"zip\":\"78701\"},"
+                    + "\"items\":[{\"sku\":\"A1\",\"qty\":2}]}";
+            try {
+                extract.invoke(null, loader, malformedRequired);
+                fail("extract(...) must throw when a required field is malformed (flavor=" + flavor + ")");
+            } catch (java.lang.reflect.InvocationTargetException ite) {
+                Throwable cause = ite.getCause();
+                assertSame("malformed-required cause must be ExtractException (flavor=" + flavor + ")",
+                        extractExceptionCls, cause.getClass());
+                @SuppressWarnings("unchecked")
+                List<String> malformed = (List<String>) cause.getClass().getMethod("malformedRequired").invoke(cause);
+                assertEquals("malformedRequired() must name `title` (flavor=" + flavor + ")",
+                        List.of("title"), malformed);
+            }
         }
     }
 }

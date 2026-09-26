@@ -1,1 +1,1 @@
-{ "empty": false, "states": { "status": "EXTRACTED", "phase": "MALFORMED" }, "data": { "status": "IN_PROGRESS" } }
+{ "empty": false, "states": { "status": "EXTRACTED", "phase": "MALFORMED" }, "malformedRequired": [], "data": { "status": "IN_PROGRESS" } }

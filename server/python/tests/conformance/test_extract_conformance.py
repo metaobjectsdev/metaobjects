@@ -60,7 +60,7 @@ def _cases() -> list[str]:
 def test_discovers_all_extract_conformance_cases() -> None:
     """FR-011: lock the corpus size so a deleted fixture fails CI rather than
     silently reducing coverage. Mirrors the TS / Java / C# count guards."""
-    assert len(_cases()) == 41
+    assert len(_cases()) == 42
 
 
 _NORMALIZE_MODES = {"none", "collapse", "strip"}
@@ -177,6 +177,11 @@ def test_classification_and_canonical_value_match(case_name: str) -> None:
     actual_states = {k: v.value for k, v in outcome.report.states().items()}
     expected_states = {str(k): str(v) for k, v in expected["states"].items()}
     assert actual_states == expected_states, f"{case_name}: states mismatch"
+
+    # the required MALFORMED subset — the strict gate's second half (absent key = none)
+    assert sorted(outcome.report.malformed_required()) == sorted(
+        expected.get("malformedRequired", [])
+    ), f"{case_name}: malformedRequired mismatch"
 
     # Data is compared as a flat DOTTED-LEAF map (mirroring states): nested objects and arrays
     # are flattened to leaf paths (meta.score, items[0].label, tags[0], …) and every leaf VALUE

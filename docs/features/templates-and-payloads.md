@@ -486,8 +486,18 @@ Parsing a model's answer is best-effort, so the parser returns a value **and** a
 | `LOST_REQUIRED` | absent, no default, and **required** |
 | `MALFORMED` | present but unusable |
 
-The generated failure signal keys on `hasLostRequired()` — the generated extractor throws
-on it, and Java's `ExtractionResult.dataOrThrow()` throws iff it is true.
+The strict gate fails when a `@required` field is **unusable** — `LOST_REQUIRED`, or
+`MALFORMED` (the model answered it, but with a value that could not be coerced: an enum
+member the field does not declare, `"high"` for an int, a cut-off value). Both leave the
+field without a value, so neither may come back as `null` in a payload typed non-null. The
+report names the two sets separately — `lostRequired()` and `malformedRequired()` (with
+`hasLostRequired()` / `hasMalformedRequired()`) — and the generated extractor, the trace
+helper, and every port's `orThrow` / `dataOrThrow` fail on either. A malformed **optional**
+field is only noted in `malformed()`; the lenient tier (`extractLenient…`) never throws, and
+its all-nullable mirror carries `null` for any unusable field. The accessors are
+`malformedRequired()` / `hasMalformedRequired()` in TS, Java/Kotlin and C#
+(`MalformedRequired()` / `HasMalformedRequired()`), and `malformed_required()` /
+`has_malformed_required()` in Python; the thrown error carries both lists.
 
 > **A `@default` satisfies `@required`.** An absent field carrying a `@default` is filled
 > and classified `DEFAULTED` — so it is **never** `LOST_REQUIRED`, and it can never make

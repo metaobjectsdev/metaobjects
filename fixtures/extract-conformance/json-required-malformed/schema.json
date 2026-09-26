@@ -1,0 +1,7 @@
+{ "format": "JSON", "rootName": "verdict", "fields": [
+  { "name": "verdict", "kind": "ENUM", "required": true, "enumValues": ["RELEASE","AGE_MORE","DUMP"] },
+  { "name": "summary", "kind": "STRING", "required": false },
+  { "name": "confidence", "kind": "INT", "required": true },
+  { "name": "rationale", "kind": "STRING", "required": true },
+  { "name": "abv", "kind": "DOUBLE", "required": false },
+  { "name": "grades", "kind": "ENUM", "required": true, "array": true, "enumValues": ["A","B","C"] } ] }

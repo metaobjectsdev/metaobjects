@@ -105,7 +105,7 @@ def _extract(
             )
             continue
         if present is TRUNCATED:  # present-but-garbled (empty/cut-off value)
-            report.set(path, FieldExtraction.MALFORMED)
+            _mark_malformed(report, path, f)
             continue
         if present is NULL_LITERAL:
             # The JSON null literal is the caller's explicit "no value": leave the field null
@@ -144,21 +144,31 @@ def _extract(
             # elements into data (partial extraction), UNLIKE a MALFORMED scalar which is
             # absent from data.
             data[f.name] = out
-            report.set(
-                path, FieldExtraction.MALFORMED if any_malformed else FieldExtraction.EXTRACTED
-            )
+            if any_malformed:
+                _mark_malformed(report, path, f)
+            else:
+                report.set(path, FieldExtraction.EXTRACTED)
             continue
         if isinstance(present, list):  # a list where a singular value was expected
-            report.set(path, FieldExtraction.MALFORMED)
+            _mark_malformed(report, path, f)
             continue
         v = _extract_value(f, present, path, report, o, ci)
         if v is MALFORMED:
-            report.set(path, FieldExtraction.MALFORMED)
+            _mark_malformed(report, path, f)
         else:
             data[f.name] = v
             # FR-011: a value reached via @coerceDefault (or @default) is DEFAULTED,
             # not EXTRACTED.
             report.set(path, _classify_coerced(path, report))
+
+
+def _mark_malformed(report: ExtractionReport, path: str, f: FieldSpec) -> None:
+    """Classify a present-but-unusable field MALFORMED. A ``@required`` one is also recorded
+    in ``malformed_required()`` — its value is missing from data just as a lost field's is, so
+    the strict gate must fail on it (the extract-conformance corpus pins the set in every port)."""
+    report.set(path, FieldExtraction.MALFORMED)
+    if f.required:
+        report.mark_malformed_required(path)
 
 
 def _classify_coerced(path: str, report: ExtractionReport) -> FieldExtraction:

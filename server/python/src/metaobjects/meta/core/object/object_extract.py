@@ -65,22 +65,37 @@ MAX_NEST_DEPTH = 8
 
 
 class ExtractError(Exception):
-    """Raised by :func:`or_throw` when a extraction lost one or more ``@required``
-    fields. ``lost_required`` lists the field paths that were absent/uncoercible."""
+    """Raised by :func:`or_throw` when an extraction lost, or could not use, one or more
+    ``@required`` fields. ``lost_required`` lists the absent paths, ``malformed_required``
+    the paths present in the reply but unusable (MALFORMED)."""
 
-    def __init__(self, lost_required: list[str]) -> None:
+    def __init__(
+        self, lost_required: list[str], malformed_required: list[str] | None = None
+    ) -> None:
         self.lost_required = list(lost_required)
-        joined = ", ".join(self.lost_required)
-        super().__init__(f"extract lost required field(s): {joined}")
+        self.malformed_required = list(malformed_required or [])
+        parts: list[str] = []
+        if self.lost_required:
+            parts.append("extract lost required field(s): " + ", ".join(self.lost_required))
+        if self.malformed_required:
+            prefix = (
+                "malformed required field(s): "
+                if parts
+                else "extract got malformed required field(s): "
+            )
+            parts.append(prefix + ", ".join(self.malformed_required))
+        super().__init__("; ".join(parts))
 
 
 def or_throw(result: ExtractionResult[object]) -> object:
     """Opt into strictness: return ``result.data`` iff no ``@required`` field was
-    lost, else raise :class:`ExtractError`. Mirrors the cross-port ``ExtractionResult.
-    orThrow()`` / TS free ``orThrow``. Extract itself NEVER raises — this is the
-    explicit gate a caller reaches for when a lost-required field should fail."""
-    if result.report.has_lost_required():
-        raise ExtractError(result.report.lost_required())
+    lost or malformed, else raise :class:`ExtractError`. Mirrors the cross-port
+    ``ExtractionResult.orThrow()`` / TS free ``orThrow``. Extract itself NEVER raises —
+    this is the explicit gate a caller reaches for when an unusable required field should
+    fail."""
+    report = result.report
+    if report.has_lost_required() or report.has_malformed_required():
+        raise ExtractError(report.lost_required(), report.malformed_required())
     return result.data
 
 

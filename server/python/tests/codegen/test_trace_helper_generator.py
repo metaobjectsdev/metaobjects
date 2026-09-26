@@ -168,8 +168,10 @@ def test_render_emits_record_fn_and_schema_and_persist() -> None:
     assert "persist_llm_call_row(recorder, row, redact)" in out
     assert 'row["voResponse"] = outcome.data' in out
     assert 'row["voRequest"] = input.llm_request' in out
-    # lost-required gate drives status/error_detail.
+    # the unusable-required gate (lost OR malformed) drives status/error_detail.
     assert "outcome.report.has_lost_required()" in out
+    assert "outcome.report.has_malformed_required()" in out
+    assert "failed = bool(unusable)" in out
 
 
 # ---------------------------------------------------------------------------

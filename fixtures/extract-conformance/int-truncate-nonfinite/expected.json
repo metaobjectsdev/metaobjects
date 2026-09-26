@@ -1,1 +1,1 @@
-{ "empty": false, "states": { "score": "EXTRACTED", "delta": "EXTRACTED", "over": "MALFORMED" }, "data": { "score": 42, "delta": -3 } }
+{ "empty": false, "states": { "score": "EXTRACTED", "delta": "EXTRACTED", "over": "MALFORMED" }, "malformedRequired": ["over"], "data": { "score": 42, "delta": -3 } }

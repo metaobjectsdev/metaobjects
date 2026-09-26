@@ -300,6 +300,7 @@ class ExtractionReport:
         self._states: dict[str, FieldExtraction] = {}
         self._coercions: list[Coercion] = []
         self._defaulted_required: list[str] = []
+        self._malformed_required: list[str] = []
         self._empty: bool = False
 
     def set(self, field_path: str, state: FieldExtraction) -> None:
@@ -328,6 +329,23 @@ class ExtractionReport:
 
     def has_lost_required(self) -> bool:
         return len(self.lost_required()) > 0
+
+    def malformed_required(self) -> list[str]:
+        """The ``@required`` fields the document DID answer, but with a value that could not be
+        used (an undeclared enum member, text where a number belongs, a truncated value, a
+        malformed array element) — classified MALFORMED, so they are NOT in
+        :meth:`lost_required`. Their value is absent from ``data`` exactly as a lost field's is,
+        so the strict gate (the generated extractor, :func:`or_throw`) fails on these too.
+        """
+        return list(self._malformed_required)
+
+    def has_malformed_required(self) -> bool:
+        return len(self._malformed_required) > 0
+
+    def mark_malformed_required(self, field_path: str) -> None:
+        """Called by extract when a **required** field is classified MALFORMED."""
+        if field_path not in self._malformed_required:
+            self._malformed_required.append(field_path)
 
     def mark_defaulted_required(self, field_path: str) -> None:
         """Called by extract when an absent **required** field is filled from its ``@default``."""

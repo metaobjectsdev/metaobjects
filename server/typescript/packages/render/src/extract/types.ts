@@ -290,30 +290,45 @@ export interface ExtractionResult<T> {
 }
 
 /**
- * Thrown by {@link orThrow} when a {@link ExtractionResult} lost a `@required` field. Mirrors
- * Java's `ExtractException`. Carries the list of lost-required field paths.
+ * Thrown by {@link orThrow} when a {@link ExtractionResult} lost a `@required` field or got
+ * one it could not use. Mirrors Java's `ExtractException`. Carries both lists of field paths.
  */
 export class ExtractError extends Error {
   readonly lostRequired: readonly string[];
-  constructor(lostRequired: readonly string[]) {
-    super(`extract: required field(s) lost: ${lostRequired.join(", ")}`);
+  /** Required fields present in the reply but unusable (classified MALFORMED). */
+  readonly malformedRequired: readonly string[];
+  constructor(lostRequired: readonly string[], malformedRequired: readonly string[] = []) {
+    super(describeUnusableRequired(lostRequired, malformedRequired));
     this.name = "ExtractError";
     this.lostRequired = [...lostRequired];
+    this.malformedRequired = [...malformedRequired];
   }
 }
 
 /**
+ * The strict gate's message: which `@required` fields were lost and which were malformed.
+ * A lost-only failure keeps its historical wording.
+ */
+function describeUnusableRequired(lost: readonly string[], malformed: readonly string[]): string {
+  const parts: string[] = [];
+  if (lost.length > 0) parts.push(`required field(s) lost: ${lost.join(", ")}`);
+  if (malformed.length > 0) parts.push(`required field(s) malformed: ${malformed.join(", ")}`);
+  return `extract: ${parts.join("; ")}`;
+}
+
+/**
  * Opt-in strictness over a never-throwing {@link ExtractionResult}. Mirrors Java
- * `ExtractionResult.orThrow()`. Throws a {@link ExtractError} iff the report has a lost
- * `@required` field; otherwise returns `result.data`.
+ * `ExtractionResult.orThrow()`. Throws a {@link ExtractError} iff the report has a `@required`
+ * field that was lost OR malformed (present but unusable); otherwise returns `result.data`.
  *
  * <p>TS divergence from Java (documented): `ExtractionResult` is a plain interface (the generated
  * output-parsers build it as an object literal), so `orThrow` is a free function rather than a
  * method on the result. Semantics are identical.</p>
  */
 export function orThrow<T>(result: ExtractionResult<T>): T | null {
-  if (result.report.hasLostRequired()) {
-    throw new ExtractError(result.report.lostRequired());
+  const { report } = result;
+  if (report.hasLostRequired() || report.hasMalformedRequired()) {
+    throw new ExtractError(report.lostRequired(), report.malformedRequired());
   }
   return result.data;
 }
@@ -324,6 +339,7 @@ export class ExtractionReport {
   private readonly _states = new Map<string, FieldExtraction>();
   private readonly _coercions: Coercion[] = [];
   private readonly _defaultedRequired = new Set<string>();
+  private readonly _malformedRequired = new Set<string>();
   private _empty = false;
 
   set(fieldPath: string, state: FieldExtraction): void {
@@ -360,6 +376,27 @@ export class ExtractionReport {
 
   hasLostRequired(): boolean {
     return this.lostRequired().length > 0;
+  }
+
+  /**
+   * The `@required` fields the document DID answer, but with a value that could not be used
+   * (an undeclared enum member, text where a number belongs, a truncated value, a malformed
+   * array element) — classified MALFORMED, so they are NOT in `lostRequired()`. Their value is
+   * absent from `data` exactly as a lost field's is, so the strict gate (the generated
+   * extractor, `orThrow`) fails on these too: a required field never comes back null in a
+   * type that says it is present.
+   */
+  malformedRequired(): string[] {
+    return [...this._malformedRequired];
+  }
+
+  hasMalformedRequired(): boolean {
+    return this._malformedRequired.size > 0;
+  }
+
+  /** Called by extract when a **required** field is classified MALFORMED. */
+  markMalformedRequired(fieldPath: string): void {
+    this._malformedRequired.add(fieldPath);
   }
 
   /** Every field the document did not answer, whose value came from its `@default`. */

@@ -208,7 +208,7 @@ def test_render_emits_extract_and_extract_and_mappers() -> None:
     # extract.
     assert "def extract_order_prompt(root, text, opts=None) -> Order:" in out
     assert "extract_lenient_order_prompt_with_loader(root, text, opts)" in out
-    assert "if r.report.has_lost_required():" in out
+    assert "if r.report.has_lost_required() or r.report.has_malformed_required():" in out
     # re-exposed extract under the public name, delegating to the nested-capable path.
     assert "def extract_lenient_order_prompt(root, text, opts=None):" in out
     # imports the strict response graph + the with-loader extract.
@@ -417,6 +417,34 @@ def test_extract_raises_on_lost_required(tmp_path, monkeypatch) -> None:
     # missing the required `customer` (and tags) → lost-required → raises.
     with pytest.raises(ValueError, match="lost required"):
         ex.extract_order_prompt(root, '{ "lines": [] }')
+
+
+def test_extract_raises_on_malformed_required(tmp_path, monkeypatch) -> None:
+    """A required field PRESENT but unusable (an undeclared enum member) is MALFORMED, not
+    lost — the strict extractor must raise rather than build the payload with it missing."""
+    from importlib import import_module
+
+    root = _order_root()
+    pkg_dir = _materialize_package(_all_files(root), tmp_path)
+    _import_package(pkg_dir, monkeypatch)
+    ex = import_module("_gen_pkg.order_prompt_extractor")
+
+    reply = json.dumps(
+        {
+            "customer": {"name": "Ada"},
+            "lines": [{"sku": "A", "qty": 2}],
+            "tags": ["x"],
+            "scores": [3],
+            "priority": "MAYBE",
+            "labels": ["A"],
+        }
+    )
+    with pytest.raises(ValueError, match=r"malformed required field\(s\): priority"):
+        ex.extract_order_prompt(root, reply)
+    # the lenient tier never raises; its report names the unusable required field
+    r = ex.extract_lenient_order_prompt(root, reply)
+    assert r.data.priority is None
+    assert r.report.malformed_required() == ["priority"]
 
 
 def test_extract_reexposed_never_raises_and_no_lost_required(tmp_path, monkeypatch) -> None:

@@ -9,6 +9,8 @@ import { entityFile } from "../src/generators/entity-file.js";
 import { queriesFile } from "../src/generators/queries-file.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "@metaobjectsdev/migrate-ts";
+import { extract, Format, FieldKind, scalar } from "@metaobjectsdev/render";
+import ts from "typescript";
 
 const STI_MODEL = JSON.stringify({ "metadata.root": { package: "t::ai", children: [
   { "object.value": { name: "ClassifyReq", children: [{ "field.string": { name: "text" } }] } },
@@ -68,6 +70,44 @@ describe("ai-trace #1c — STI callType stamping", () => {
     const { summarize } = await genTrace();
     expect(summarize).toContain('callType: "summarize"');
     expect(summarize).not.toContain('callType: "SummarizeCall"');
+  });
+});
+
+describe("ai-trace — a malformed required response field fails the call", () => {
+  // A required field present but unusable (MALFORMED) is missing from `outcome.data` just as a
+  // lost one is, so the typed helpers must not hand it back typed as the response VO.
+  test("both helpers route through unusableRequired, which fails on lost AND malformed", async () => {
+    const { summarize } = await genTrace();
+    expect(summarize).toContain("const errorDetail = unusableRequired(outcome.report);");
+    expect(summarize).toContain("const unusable = unusableRequired(outcome.report);");
+    expect(summarize).not.toContain("outcome.report.hasLostRequired()");
+
+    // EXECUTE the emitted helper against real engine reports.
+    const fnSrc = summarize.slice(
+      summarize.indexOf("function unusableRequired("),
+      summarize.indexOf("// ---- Record helper"),
+    );
+    const js = ts.transpileModule(`${fnSrc}\nexport { unusableRequired };`, {
+      compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    const dir = mkdtempSync(join(tmpdir(), "ai-trace-unusable-"));
+    const modPath = join(dir, "unusable.mjs");
+    writeFileSync(modPath, js);
+    const mod = (await import(modPath)) as { unusableRequired: (r: unknown) => string | null };
+    rmSync(dir, { recursive: true, force: true });
+
+    const schema = {
+      format: Format.JSON,
+      rootName: "r",
+      fields: [scalar("summary", FieldKind.STRING, true), scalar("score", FieldKind.INT, true)],
+    };
+    expect(mod.unusableRequired(extract('{"summary":"ok","score":3}', schema).report)).toBeNull();
+    expect(mod.unusableRequired(extract('{"summary":"ok","score":"high"}', schema).report)).toBe(
+      "malformed required: score",
+    );
+    expect(mod.unusableRequired(extract('{"score":"high"}', schema).report)).toBe(
+      "lost required: summary; malformed required: score",
+    );
   });
 });
 
