@@ -10,6 +10,68 @@ here.**
 
 ## [Unreleased]
 
+Found by a cold external review of 1.0.8: a reviewer ran the getting-started page, the drift
+demo and the fit assessment from public sources only, then built a small app of their own.
+
+**Upgrading: run `meta gen`.** Generated TypeScript changes: value-object interfaces,
+date/time validators and form input types (see Fixed).
+
+### Added
+
+- **`FilesystemProvider` for TypeScript prompt rendering**, on the Node-only
+  `@metaobjectsdev/render/providers` subpath. `lobby/welcome` resolves to
+  `<root>/lobby/welcome.mustache`, as in C#, Java and Python. The package's root entry stays
+  browser-safe. The docs already imported it from that path; it did not exist.
+- **`meta eject` covers the prompt generators**: `prompt-render`, `output-parser`,
+  `extractor`, `output-prompt` and `render-helper`. Each reference copy is held byte-identical
+  to the built-in by a test.
+- **`meta verify` advises on foreign keys with no covering index**, naming each one and the
+  `index.lookup` to declare. Advisory only: it never fails the build, and no index is generated
+  automatically.
+- **The fit assessment (`assess.md`) recommends an adoption scope** instead of fit / not fit:
+  not worth it, contract spine (declare only the shapes crossing between apps and services,
+  generate the types, DTOs and validators each consumer compiles against, keep the ORM),
+  partial, or full, and it names the seams where adoption would pay off. A quick pass answers
+  in the conversation and writes nothing; the full assessment writes outside the target
+  repository. Its capability claims are re-checked against 1.0.8 and cite published sources,
+  so no clone of this repository is needed.
+
+### Fixed
+
+- **`meta migrate` no longer steers a column rename toward data loss.** A rename the diff
+  cannot pair (`title` → `summary`) arrives as a blocked drop plus an add, and the hint said
+  `--allow drop-column`, which deletes the column's data. Every hint on that shape now
+  recommends `--rename-column <table>.<old>=<new>` first, with the real names, and shows
+  `--allow drop-column` only as the option that deletes the data.
+- **Generated TypeScript compiles under `exactOptionalPropertyTypes`**, which recent
+  `tsc --init` turns on. Value-object interfaces declared `x?: T` where Zod infers
+  `x?: T | undefined`, so a response parser or a jsonb query over an optional field failed
+  with TS2375. The codegen-compile gate now compiles with the option both off and on.
+- **Generated Zod for `field.date`, `field.time` and string-mode `field.timestamp` rejects
+  free text.** `"next tuesday"` was a valid date. Every format the runtime writes still passes.
+- **A list request with a bare field parameter answers 400.** `GET /issues?priority=low`
+  ignored `priority` and returned every row. The runtime-ts list routes now answer
+  `400 {"error": "filter.bare_field", "field": "priority", "expected": "filter[priority][eq]=low"}`
+  when the bare name is a filterable field; other unknown parameters are still ignored.
+  TypeScript helpers only.
+- **Form descriptors give `field.timestamp` a `datetime-local` input** (and `field.time` a
+  `time` input); a timestamp got a date picker.
+- **`<Entity>Filter` types an enum's filter value as the member union**, so a misspelt member
+  fails to compile.
+- **`meta verify` says which gates a partial run did not run**, with the flag that selects
+  each, so `meta verify --codegen --db` is not mistaken for a full run.
+- **A template drift names its file and line**: `ERR_VAR_NOT_ON_PAYLOAD: question
+  (prompts/…/brik-user.mustache:3)`. The cross-port diagnostic itself is unchanged.
+- **`meta init` and `meta --help` no longer list commands that do not exist.**
+- **`meta gen --list` marks the generators with no reference copy as `package-only`**, and
+  `meta eject` names them as package-only instead of "unknown". ADR-0034 Amendment 3 carries a
+  dated correction: those eight generators are not ejectable.
+
+### Changed
+
+- **Docs: enums sort by their stored value, not by declared order** (a stated known limit in
+  `docs/features/api-contract.md`).
+
 ## [1.0.8] — 2026-09-25
 
 _npm `1.0.8` (all 14 `@metaobjectsdev/*` packages in lockstep), PyPI `1.0.8` and NuGet `1.0.8`.
