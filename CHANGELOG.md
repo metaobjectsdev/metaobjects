@@ -12,7 +12,13 @@ here.**
 
 ## [1.0.8] — 2026-09-25
 
-_npm `1.0.8` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+_npm `1.0.8` (all 14 `@metaobjectsdev/*` packages in lockstep), PyPI `1.0.8` and NuGet `1.0.8`.
+Maven Central has no product change and stays at `8.0.7` (convergent publishing). `metamodelVersion`
+stays `1.0`. Gated by `1.0.8-rc.1` on the adopter estate: `rc-gate.sh` 7/7, contract suite 43/43 in
+all five ports._
+
+**Upgrading: nothing to regenerate.** Generated output is unchanged; the fixes are in the C# and
+Python CLIs (warnings, template-spec selection) and in the docs.
 
 ### Fixed
 
