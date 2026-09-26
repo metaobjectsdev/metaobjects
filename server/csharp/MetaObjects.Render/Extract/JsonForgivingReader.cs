@@ -146,15 +146,48 @@ public sealed class JsonForgivingReader
     private object? ReadBareScalar()
     {
         int start = _i;
-        while (_i < _s.Length && ",}]".IndexOf(_s[_i]) < 0) _i++;
+        // A comment after an unquoted value (`7 // good`) ends it; `http://x` does not.
+        while (_i < _s.Length && ",}]".IndexOf(_s[_i]) < 0
+               && !(_i > start && char.IsWhiteSpace(_s[_i - 1]) && CommentOpensAt(_s, _i))) _i++;
         string result = _s[start.._i].Trim();
         if (result.Length == 0) return null;            // no token read (zero-width)
         if (result == "null") return NullLiteral;       // JSON null literal → explicit null, NOT the string "null"
         return result;
     }
 
+    /// <summary>Skip whitespace AND <c>//</c> / <c>/* */</c> comments. Only ever called between
+    /// tokens, so a comment marker inside a string literal is never reached here.</summary>
     private void Ws()
     {
-        while (_i < _s.Length && char.IsWhiteSpace(_s[_i])) _i++;
+        while (true)
+        {
+            while (_i < _s.Length && char.IsWhiteSpace(_s[_i])) _i++;
+            int end = CommentEnd(_s, _i);
+            if (end < 0) return;
+            _i = end;
+        }
+    }
+
+    /// <summary>True when a <c>//</c> or <c>/*</c> comment opens at <paramref name="at"/>.</summary>
+    internal static bool CommentOpensAt(string s, int at) =>
+        at + 1 < s.Length && s[at] == '/' && (s[at + 1] == '/' || s[at + 1] == '*');
+
+    /// <summary>
+    /// Models write JSONC: <c>{"score": 7, // good</c> drops every field after it in a strict
+    /// reader. When a comment opens at <paramref name="at"/>, the index just past it (a line
+    /// comment runs to the end of its line, a block comment to its close or the end of the
+    /// text); otherwise -1.
+    /// </summary>
+    internal static int CommentEnd(string s, int at)
+    {
+        if (!CommentOpensAt(s, at)) return -1;
+        if (s[at + 1] == '/')
+        {
+            int j = at + 2;
+            while (j < s.Length && s[j] != '\n' && s[j] != '\r') j++;
+            return j;
+        }
+        int close = s.IndexOf("*/", at + 2, StringComparison.Ordinal);
+        return close < 0 ? s.Length : close + 2;
     }
 }

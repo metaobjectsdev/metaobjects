@@ -64,3 +64,9 @@ text under `#text`, so a scalar field reads the prose), `xml-element-into-scalar
 (an element with only child elements is `MALFORMED` for a scalar field, never a stringified
 map), and `xml-unclosed-stray-close-tag` (an unclosed element's body ends at a close tag of
 another element, which models often write instead of the right one).
+
+The three `json-comment-*` cases pin comments in a JSON reply (models write JSONC): a `//`
+line comment or a `/* */` block comment outside a string literal is skipped, including one
+that holds a brace or a quote (`json-comment-line`), so no field after it is lost; comment
+markers INSIDE a string literal are kept verbatim (`json-comment-markers-in-string`). The
+strict parser does not change: only the tolerant recovery reads past comments.

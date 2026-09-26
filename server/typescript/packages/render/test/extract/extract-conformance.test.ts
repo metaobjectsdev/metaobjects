@@ -190,7 +190,7 @@ describe("extract-conformance corpus", () => {
     .filter((n) => existsSync(join(corpus, n, "schema.json")))
     .sort();
 
-  expect(cases.length).toBe(42);
+  expect(cases.length).toBe(45);
 
   for (const caseName of cases) {
     test(caseName, () => {

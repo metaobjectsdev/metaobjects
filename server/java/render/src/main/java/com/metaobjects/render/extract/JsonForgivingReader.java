@@ -124,12 +124,44 @@ public final class JsonForgivingReader {
 
     private Object readBareScalar() {
         int start = i;
-        while (i < s.length() && ",}]".indexOf(s.charAt(i)) < 0) i++;
+        // A comment after an unquoted value (`7 // good`) ends it; `http://x` does not.
+        while (i < s.length() && ",}]".indexOf(s.charAt(i)) < 0
+                && !(i > start && Character.isWhitespace(s.charAt(i - 1)) && commentOpensAt(s, i))) i++;
         String result = s.substring(start, i).trim();
         if (result.isEmpty()) return null;                  // no token read (zero-width)
         if (result.equals("null")) return NULL_LITERAL;     // JSON null literal → explicit null, NOT the string "null"
         return result;
     }
 
-    private void ws() { while (i < s.length() && Character.isWhitespace(s.charAt(i))) i++; }
+    /** Skip whitespace AND line / block comments. Only ever called between
+     *  tokens, so a comment marker inside a string literal is never reached here. */
+    private void ws() {
+        while (true) {
+            while (i < s.length() && Character.isWhitespace(s.charAt(i))) i++;
+            int end = commentEnd(s, i);
+            if (end < 0) return;
+            i = end;
+        }
+    }
+
+    /** True when a {@code //} or {@code /*} comment opens at {@code at}. */
+    static boolean commentOpensAt(String s, int at) {
+        return at + 1 < s.length() && s.charAt(at) == '/' && (s.charAt(at + 1) == '/' || s.charAt(at + 1) == '*');
+    }
+
+    /**
+     * Models write JSONC: {@code {"score": 7, // good} drops every field after it in a strict
+     * reader. When a comment opens at {@code at}, the index just past it (a line comment runs to
+     * the end of its line, a block comment to its close or the end of the text); otherwise -1.
+     */
+    static int commentEnd(String s, int at) {
+        if (!commentOpensAt(s, at)) return -1;
+        if (s.charAt(at + 1) == '/') {
+            int j = at + 2;
+            while (j < s.length() && s.charAt(j) != '\n' && s.charAt(j) != '\r') j++;
+            return j;
+        }
+        int close = s.indexOf("*/", at + 2);
+        return close < 0 ? s.length() : close + 2;
+    }
 }

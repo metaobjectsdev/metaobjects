@@ -142,16 +142,49 @@ class Reader {
 
   private readBareScalar(): string | null | typeof NULL_LITERAL {
     const start = this.i;
-    while (this.i < this.s.length && ",}]".indexOf(this.s.charAt(this.i)) < 0) this.i++;
+    while (
+      this.i < this.s.length
+      && ",}]".indexOf(this.s.charAt(this.i)) < 0
+      // A comment after an unquoted value (`7 // good`) ends it; `http://x` does not.
+      && !(this.i > start && isWhitespace(this.s.charAt(this.i - 1)) && commentOpensAt(this.s, this.i))
+    ) this.i++;
     const result = this.s.substring(start, this.i).trim();
     if (result.length === 0) return null; // no token read (zero-width)
     if (result === "null") return NULL_LITERAL; // JSON null literal → explicit null, NOT the string "null"
     return result;
   }
 
+  /** Skip whitespace AND `//` / `/* *\/` comments — only ever called between tokens, so a
+   *  comment marker inside a string literal is never reached here. */
   private ws(): void {
-    while (this.i < this.s.length && isWhitespace(this.s.charAt(this.i))) this.i++;
+    for (;;) {
+      while (this.i < this.s.length && isWhitespace(this.s.charAt(this.i))) this.i++;
+      const end = commentEnd(this.s, this.i);
+      if (end < 0) return;
+      this.i = end;
+    }
   }
+}
+
+/** True when a `//` or `/*` comment opens at `i`. */
+export function commentOpensAt(s: string, i: number): boolean {
+  return s.charAt(i) === "/" && (s.charAt(i + 1) === "/" || s.charAt(i + 1) === "*");
+}
+
+/**
+ * Models write JSONC: `{"score": 7, // good` drops every field after it in a strict reader.
+ * When a comment opens at `i`, the index just past it (a line comment runs to the end of
+ * its line, a block comment to its `*\/` or the end of the text); otherwise -1.
+ */
+export function commentEnd(s: string, i: number): number {
+  if (!commentOpensAt(s, i)) return -1;
+  if (s.charAt(i + 1) === "/") {
+    let j = i + 2;
+    while (j < s.length && s.charAt(j) !== "\n" && s.charAt(j) !== "\r") j++;
+    return j;
+  }
+  const close = s.indexOf("*/", i + 2);
+  return close < 0 ? s.length : close + 2;
 }
 
 function unescape(c: string): string {

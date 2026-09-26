@@ -2,6 +2,11 @@
 // JSON: Extract picks among jsonCandidates by the schema (fenced first, first object carrying a
 // declared field); locateJson (first-closed-else-first-open) is its fallback. Mirrors Java Locate.
 
+import { commentEnd } from "./json-forgiving-reader.js";
+
+/** The characters a JSON comment may follow: whitespace or a structural separator. */
+const COMMENT_MAY_FOLLOW = /[\s,{[]/;
+
 /** Escape regex metacharacters (equivalent of Java Pattern.quote). */
 function quote(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -44,7 +49,12 @@ export function jsonCandidates(text: string | null | undefined): string[] {
   return out;
 }
 
-/** Returns index of the matching '}', or -1 if unterminated. String-aware. */
+/**
+ * Returns index of the matching '}', or -1 if unterminated. String-aware, and comment-aware:
+ * a `//` or `/* *\/` comment that opens after whitespace or a separator is skipped, so a brace
+ * or quote inside it (`// good } really`) cannot close the object early. `http://x` (after a
+ * colon or a letter) is not a comment.
+ */
 function scanBalanced(s: string, open: number): number {
   let depth = 0;
   let inStr = false;
@@ -56,6 +66,13 @@ function scanBalanced(s: string, open: number): number {
       else if (c === "\\") esc = true;
       else if (c === '"') inStr = false;
       continue;
+    }
+    if (i > open && COMMENT_MAY_FOLLOW.test(s.charAt(i - 1))) {
+      const end = commentEnd(s, i);
+      if (end >= 0) {
+        i = end - 1;
+        continue;
+      }
     }
     if (c === '"') inStr = true;
     else if (c === "{") depth++;

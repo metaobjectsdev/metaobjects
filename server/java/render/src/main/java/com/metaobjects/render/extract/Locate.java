@@ -47,6 +47,11 @@ public final class Locate {
         return out;
     }
 
+    /** The characters a JSON comment may follow: whitespace or a structural separator. */
+    private static boolean isCommentLead(char c) {
+        return Character.isWhitespace(c) || c == ',' || c == '{' || c == '[';
+    }
+
     private static int scanBalanced(String s, int open) {
         int depth = 0;
         boolean inStr = false;
@@ -58,6 +63,12 @@ public final class Locate {
                 else if (c == '\\') esc = true;
                 else if (c == '"') inStr = false;
                 continue;
+            }
+            // Comment-aware: a brace or quote inside `// good } really` must not close the
+            // object early. Only after whitespace or a separator, so `http://x` is no comment.
+            if (i > open && isCommentLead(s.charAt(i - 1))) {
+                int end = JsonForgivingReader.commentEnd(s, i);
+                if (end >= 0) { i = end - 1; continue; }
             }
             if (c == '"') inStr = true;
             else if (c == '{') depth++;
