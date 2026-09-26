@@ -26,7 +26,7 @@ import { eq, count, and, asc } from "drizzle-orm";
 import qs from "qs";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 export type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
-import { parseFilterParams, FilterParseError } from "./filter-parser.js";
+import { parseFilterParams, parsePageBound, FilterParseError } from "./filter-parser.js";
 import { isTruthyFlag, contractErrorCode, coerceIdForColumn, firstRow } from "./util.js";
 import { timestampWire } from "../timestamp-wire.js";
 import { withContractErrorHandler } from "./route-error-handler.js";
@@ -215,11 +215,12 @@ export function mountListRoute(opts: VerbOptions): void {
       } else {
         // Legacy path — no allowlists configured. Only limit/offset (+ the TPH
         // discriminator predicate when subtype-scoped).
-        const { limit, offset } = req.query as { limit?: string; offset?: string };
+        const limit = parsePageBound(qsParsed, "limit");
+        const offset = parsePageBound(qsParsed, "offset");
         if (discCond) { q = q.where(discCond); where = discCond; }
         if (src.id !== undefined) q = q.orderBy(asc(src.id));
-        if (limit  !== undefined) q = q.limit(Number(limit));
-        if (offset !== undefined) q = q.offset(Number(offset));
+        if (limit  !== undefined) q = q.limit(limit);
+        if (offset !== undefined) q = q.offset(offset);
       }
 
       // Await the query directly rather than calling `.all()`: the

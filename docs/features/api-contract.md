@@ -159,7 +159,7 @@ added cross-port later as a purely additive, non-breaking change):
 | `filter[or][N]` / `filter[and][N]` | boolean combinators (recursive nesting) |
 | leading-wildcard gating | a `like` pattern starting with `%` → HTTP 400 (`filter.leading_wildcard_disallowed`) |
 | filter nesting-depth cap | rejects deeply-nested `or`/`and` (tied to the combinators) |
-| bare filterable-field parameter | `?priority=low` where `priority` is in the allowlist → HTTP 400 `{ "error": "filter.bare_field", "field": "priority", "expected": "filter[priority][eq]=low" }` instead of silently returning every row. Any other unknown parameter (a cache-buster, a tracking tag) is still ignored, and the reserved list parameters (`filter`, `sort`, `limit`, `offset`, `search`, `withCount`) are never claimed |
+| bare field parameter | `?priority=low` where `priority` is in the allowlist → HTTP 400 `{ "error": "filter.bare_field", "field": "priority", "expected": "filter[priority][eq]=low" }` instead of silently returning every row. A bare parameter named after a field of the entity that is NOT filterable (a column of the table or view the mount reads, off the allowlist) → HTTP 400 `{ "error": "filter.bare_field", "field": "kind", "filterable": false, "expected": "a filterable field — \"kind\" is not @filterable", "allowed": [<the filterable fields>] }` — declare `@filterable: true` on the field to filter by it. Any other unknown parameter (a cache-buster, a tracking tag) is still ignored, and the reserved list parameters (`filter`, `sort`, `limit`, `offset`, `search`, `withCount`) are never claimed |
 | filter-value format check | a comparison value (`eq`/`ne`/`gt`/`gte`/`lt`/`lte`, and every element of an `in` list) that cannot be the field's type → HTTP 400 `{ "error": "invalid_filter_value", "field": "publishedOn", "op": "gte", "expected": "date (YYYY-MM-DD)" }` instead of reaching SQL, where SQLite compared the text and silently returned `[]` and Postgres failed the cast. Checked per field: `field.date` (a real calendar day), `field.time` (`HH:MM[:SS[.fff]]`), `field.timestamp` (a date, optionally with a time and a `Z`/offset), `field.uuid` (`8-4-4-4-12` hex), `field.enum` (a declared member — the response adds `allowed`), numbers (an empty value is not `0`) and booleans. The generated `<Entity>FilterAllowlist` carries the `format` / `enumValues` this needs; an allowlist generated before them still has a temporal value checked against all three temporal formats and an enum checked against the Drizzle column's own members. The envelope is the cross-port one; what is TS-only is refusing a malformed comparison value — the other ports pass it through to the database and only the `isNull` value is corpus-gated |
 
 **Leading-wildcard gating is fail-closed with no metadata opt-in.** The
@@ -182,15 +182,17 @@ feature demand (it is a consistency/safety divergence, not a capability).
 ### TS-only error responses (not part of the cross-port contract)
 
 The TypeScript mount helpers (`@metaobjectsdev/runtime-ts/drizzle-fastify`,
-`/fastify` and `/hono`) pin two responses the contract leaves open — HTTP 5xx is
-implementation-defined below, and no corpus scenario sends a malformed body. Both
-use the contract's `{ "error": "<code>" }` envelope, and both are scoped to the
+`/fastify` and `/hono`) pin three responses the contract leaves open — HTTP 5xx is
+implementation-defined below, and no corpus scenario sends a malformed body or a
+malformed page bound. All three use the contract's `{ "error": "<code>" }` envelope,
+and all three are scoped to the
 routes the helpers mount: an adopter's own routes, and a Fastify `setErrorHandler`
 or Hono `onError` the adopter installed, answer exactly as they did before.
 
 | Response | When |
 |---|---|
 | malformed JSON body | a `POST`/`PATCH`/`PUT` body that does not parse as JSON (an empty body sent as `application/json` included) → HTTP 400 `{ "error": "invalid_json" }`. Before, Fastify answered its own `{ "statusCode": 400, "code": "FST_ERR_CTP_INVALID_JSON_BODY", … }` and Hono a Zod `validation` error about a missing object |
+| malformed page bound | a `?limit=` or `?offset=` that is not a non-negative integer (`abc`, `-5`, `1.5`, an empty value) → HTTP 400 `{ "error": "pagination.invalid_value", "param": "limit", "value": "abc", "expected": "a non-negative integer (0 or more)" }`. Before, a non-numeric bound was dropped (every row came back) and a negative or fractional one reached SQL. There is no page-size maximum on an entity or a projection with declared columns; an opaque view (no declared columns, served by raw SQL) pages to at most 1000 rows, so there a `limit` above 1000 is refused too, with `"expected": "an integer from 0 to 1000"` (it used to be clamped silently). The same answer comes from the Drizzle mounts and the ObjectManager Fastify mount. No corpus scenario sends a malformed bound; the other ports answer it as their framework does |
 | unexpected server error | anything that is not a filter, validation, not-found or constraint answer — a query against a column the database no longer has, a driver failure → HTTP 500 `{ "error": "internal" }`, the code the cross-port reference servers already use. The body names no SQL, table, column or bound parameter; the full error goes to the server log (`console.error`). Before, Fastify's default handler echoed the driver message, which for Drizzle is the query text and its parameter values |
 
 How each framework scopes it: on Fastify, the helpers pass a **route-level**
@@ -222,7 +224,8 @@ each handler they register instead; an `HTTPException` is rethrown to your
   sorts by its mapped integers. To sort by declared order, back the enum with
   an `@intValueMap` whose integers follow that order.
 - `limit=N` — page size.
-- `offset=N` — page offset.
+- `offset=N` — page offset. Both are non-negative integers; the TS mounts refuse
+  anything else with a 400 (see "TS-only error responses").
 - `withCount=1` — opt-in flag that switches the list response from
   `[<row>...]` to `{ rows: [<row>...], total: <N> }` (needed for grid
   pagination). The grid hook always sends `withCount=1`.
@@ -347,7 +350,9 @@ nesting depth or in-list size) carries no `field`, and those guards are outside
 this contract: a port may emit them under its own code.
 
 Responses may carry additional diagnostic members beyond `field` (TS adds `op`,
-`expected` and the allowlist); a consumer must tolerate them. Gated by
+`expected` and the allowlist — an `invalid_sort` answer carries
+`"expected": "sort=<field>:asc|desc"` and `allowed`, the sortable fields, so a
+`?sort=-createdAt` names the spelling that works); a consumer must tolerate them. Gated by
 `fixtures/api-contract-conformance/scenarios/filter-invalid-*.yaml` and
 `invalid-sort-400.yaml` in both the reference and generated lanes of every port.
 

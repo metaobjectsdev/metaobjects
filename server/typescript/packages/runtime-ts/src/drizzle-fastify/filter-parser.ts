@@ -1,9 +1,15 @@
 import {
+  is, Column, SQL as DrizzleSQL,
   eq, ne, gt, gte, lt, lte, inArray, like, ilike, isNull, not, and, or, asc, desc, sql,
   type SQL, type SQLWrapper,
 } from "drizzle-orm";
 import type { FilterAllowlist, FilterOp, FilterFieldRule, SortAllowlist } from "./filter-allowlist.js";
 import { sortOrderSpec } from "./filter-allowlist.js";
+import { FilterParseError, parsePageBound, SORT_EXPECTED } from "./list-params.js";
+
+// Re-exported so existing importers keep one door; the definitions live in the
+// drizzle-free list-params module, which the ObjectManager Fastify mount also uses.
+export { FilterParseError, parsePageBound, PAGINATION_EXPECTED, RAW_VIEW_MAX_LIMIT, SORT_EXPECTED } from "./list-params.js";
 import { ANY_TEMPORAL_EXPECTED, FORMAT_EXPECTED, matchesAnyTemporal, matchesFormat } from "./filter-value-format.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user's Drizzle table
@@ -28,12 +34,6 @@ export interface ParseFilterResult {
   searchWhere?: SQL;
 }
 
-export class FilterParseError extends Error {
-  constructor(public readonly code: string, message: string, public readonly details?: Record<string, unknown>) {
-    super(message);
-    this.name = "FilterParseError";
-  }
-}
 
 const DEFAULT_MAX_NESTING = 5;
 const DEFAULT_MAX_IN_LIST = 100;
@@ -50,37 +50,58 @@ const RESERVED_LIST_PARAMS: ReadonlySet<string> = new Set([
  * meant `?filter[priority][eq]=low` — and silently ignoring it returns EVERY row, which
  * reads as "the filter matched everything". Refuse it, naming the syntax that works.
  *
- * Only a bare name that IS a filterable field is refused. Any other unknown parameter —
- * a cache-buster, a tracking tag, a param some proxy appends — is left alone, as before.
+ * A bare name that is a field of the entity but NOT on the filter allowlist is refused
+ * too — the caller plainly meant that field — saying it is not filterable and listing
+ * the fields that are. Any other unknown parameter — a cache-buster, a tracking tag, a
+ * param some proxy appends — is left alone, as before.
  * TS-only (the other ports ignore unknown parameters): see docs/features/api-contract.md,
  * "TS-only filter extensions".
  */
-function rejectBareFieldParams(query: Record<string, unknown>, allowlist: FilterAllowlist): void {
+function rejectBareFieldParams(query: Record<string, unknown>, allowlist: FilterAllowlist, table: AnyTable): void {
   for (const [key, value] of Object.entries(query)) {
-    if (RESERVED_LIST_PARAMS.has(key) || !Object.hasOwn(allowlist, key)) continue;
-    const shown = typeof value === "string" ? value : "<value>";
-    throw new FilterParseError(
-      "filter.bare_field",
-      `"${key}" is a filterable field, but a bare ?${key}= parameter is not a filter. Use filter[${key}][eq]=${shown}.`,
-      { field: key, expected: `filter[${key}][eq]=${shown}` },
-    );
+    if (RESERVED_LIST_PARAMS.has(key)) continue;
+    if (Object.hasOwn(allowlist, key)) {
+      const shown = typeof value === "string" ? value : "<value>";
+      throw new FilterParseError(
+        "filter.bare_field",
+        `"${key}" is a filterable field, but a bare ?${key}= parameter is not a filter. Use filter[${key}][eq]=${shown}.`,
+        { field: key, expected: `filter[${key}][eq]=${shown}` },
+      );
+    }
+    if (isEntityColumn(table, key)) {
+      const allowed = Object.keys(allowlist);
+      throw new FilterParseError(
+        "filter.bare_field",
+        `"${key}" is a field of this entity, but it is not @filterable, so it cannot be filtered on` +
+          (allowed.length > 0 ? ` (filterable: ${allowed.join(", ")}).` : " (no field is filterable)."),
+        { field: key, filterable: false, expected: `a filterable field — "${key}" is not @filterable`, allowed },
+      );
+    }
   }
 }
 
+/** Is `key` one of the table's (or view's) own columns? A Drizzle table exposes each
+ *  column as a property keyed by its field name; anything else found there (a function,
+ *  a symbol-backed config, a proxy that throws on an unknown key) is not a field. */
+function isEntityColumn(table: AnyTable, key: string): boolean {
+  if (table === null || typeof table !== "object") return false;
+  try {
+    const v: unknown = table[key];
+    return is(v, Column) || is(v, DrizzleSQL.Aliased);
+  } catch {
+    return false;
+  }
+}
+
+
 export function parseFilterParams(opts: ParseFilterOpts): ParseFilterResult {
-  rejectBareFieldParams(opts.query, opts.allowlist);
+  rejectBareFieldParams(opts.query, opts.allowlist, opts.table);
   const result: ParseFilterResult = {};
 
-  const limit = opts.query.limit;
-  if (limit !== undefined) {
-    const n = Number(limit);
-    if (Number.isFinite(n)) result.limit = n;
-  }
-  const offset = opts.query.offset;
-  if (offset !== undefined) {
-    const n = Number(offset);
-    if (Number.isFinite(n)) result.offset = n;
-  }
+  const limit = parsePageBound(opts.query, "limit");
+  if (limit !== undefined) result.limit = limit;
+  const offset = parsePageBound(opts.query, "offset");
+  if (offset !== undefined) result.offset = offset;
 
   if (opts.query.filter && typeof opts.query.filter === "object") {
     const where = parseNode(
@@ -351,7 +372,11 @@ function parseSort(spec: string, table: AnyTable, sortAllowlist: SortAllowlist):
   const colonIdx = spec.indexOf(":");
   const field = colonIdx === -1 ? spec : spec.slice(0, colonIdx);
   if (!sortAllowlist[field]) {
-    throw new FilterParseError("sort.unknown_field", `Unknown sort field "${field}".`, { field, allowed: Object.keys(sortAllowlist) });
+    throw new FilterParseError(
+      "sort.unknown_field",
+      `Unknown sort field "${field}". The syntax is ${SORT_EXPECTED}.`,
+      { field, expected: SORT_EXPECTED, allowed: Object.keys(sortAllowlist) },
+    );
   }
   // `?sort=field` with no `:order` takes the field's DECLARED default order.
   //
@@ -373,7 +398,11 @@ function parseSort(spec: string, table: AnyTable, sortAllowlist: SortAllowlist):
   );
   const order = orderRaw.toLowerCase();
   if (order !== "asc" && order !== "desc") {
-    throw new FilterParseError("sort.invalid_order", `Sort order must be asc|desc, got "${orderRaw}".`, { field, expected: "asc | desc" });
+    throw new FilterParseError(
+      "sort.invalid_order",
+      `Sort order must be asc|desc, got "${orderRaw}". The syntax is ${SORT_EXPECTED}.`,
+      { field, expected: SORT_EXPECTED, allowed: Object.keys(sortAllowlist) },
+    );
   }
   const col = table[field];
   return [order === "asc" ? asc(col as any) : desc(col as any)];

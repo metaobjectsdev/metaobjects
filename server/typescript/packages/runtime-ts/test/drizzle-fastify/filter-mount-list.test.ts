@@ -40,6 +40,11 @@ beforeAll(async () => {
   await app.ready();
 });
 
+async function GET(url: string): Promise<{ status: number; body: unknown }> {
+  const r = await app.inject({ method: "GET", url });
+  return { status: r.statusCode, body: JSON.parse(r.body) };
+}
+
 describe("mountListRoute with filter+sort allowlists", () => {
   test("no filter returns all rows", async () => {
     const r = await app.inject({ method: "GET", url: "/subscribers" });
@@ -61,9 +66,72 @@ describe("mountListRoute with filter+sort allowlists", () => {
   });
 
   test("other unknown parameters are still ignored (cache-busters are legitimate)", async () => {
-    const r = await app.inject({ method: "GET", url: "/subscribers?_=1727350000&cb=x&id=1" });
+    const r = await app.inject({ method: "GET", url: "/subscribers?_=1727350000&cb=x&utm_source=mail" });
     expect(r.statusCode).toBe(200);
     expect(JSON.parse(r.body).length).toBe(3);
+  });
+
+  // A bare parameter named after a field that is NOT filterable used to be ignored the
+  // same way — 200 with every row. It is a field of the entity, so the caller plainly
+  // meant it; say it cannot be filtered on, and which fields can.
+  test("a bare ?<nonFilterableField>= parameter → 400 saying the field is not filterable", async () => {
+    const r = await GET("/subscribers?id=1");
+    expect(r.status).toBe(400);
+    expect(r.body).toEqual({
+      error: "filter.bare_field",
+      field: "id",
+      filterable: false,
+      expected: "a filterable field — \"id\" is not @filterable",
+      allowed: ["email", "firstName", "subscribed"],
+    });
+  });
+
+  // `?limit=abc` and `?limit=-5` were dropped silently (every row came back), and a
+  // fractional limit reached SQL. A page bound that is not a non-negative integer is
+  // refused, naming the parameter and the range.
+  for (const [param, value] of [
+    ["limit", "abc"], ["limit", "-5"], ["limit", "1.5"], ["limit", ""], ["limit", "1e3"],
+    ["offset", "abc"], ["offset", "-1"], ["offset", " 2"],
+  ] as const) {
+    test(`?${param}=${JSON.stringify(value)} → 400 pagination.invalid_value`, async () => {
+      const r = await GET(`/subscribers?${param}=${encodeURIComponent(value)}`);
+      expect(r.status).toBe(400);
+      expect(r.body).toEqual({
+        error: "pagination.invalid_value",
+        param,
+        value,
+        expected: "a non-negative integer (0 or more)",
+      });
+    });
+  }
+
+  test("?limit=0 and ?offset=0 are valid page bounds", async () => {
+    const r = await GET("/subscribers?limit=0&offset=0");
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual([]);
+  });
+
+  // `?sort=-firstName` (the JSON:API spelling) answered `invalid_sort` with no hint.
+  test("an unknown sort spec → invalid_sort naming the syntax and the allowed fields", async () => {
+    const r = await GET("/subscribers?sort=-firstName");
+    expect(r.status).toBe(400);
+    expect(r.body).toEqual({
+      error: "invalid_sort",
+      field: "-firstName",
+      expected: "sort=<field>:asc|desc",
+      allowed: ["email", "firstName"],
+    });
+  });
+
+  test("a bad sort order → invalid_sort naming the syntax", async () => {
+    const r = await GET("/subscribers?sort=firstName:down");
+    expect(r.status).toBe(400);
+    expect(r.body).toEqual({
+      error: "invalid_sort",
+      field: "firstName",
+      expected: "sort=<field>:asc|desc",
+      allowed: ["email", "firstName"],
+    });
   });
 
   test("filter by exact match returns only matching rows", async () => {
