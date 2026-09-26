@@ -90,7 +90,7 @@ public final class GeneratedFileWriter {
         "^[ \\t]*(?://+|/\\*+|\\*+)[ \\t]*" + GENERATED_MARKER + "\\b", Pattern.MULTILINE);
 
     /** Whether {@code content} carries this toolchain's generated-file header. */
-    static boolean looksGenerated(String content) {
+    public static boolean looksGenerated(String content) {
         return GENERATED_HEADER.matcher(content).find();
     }
 

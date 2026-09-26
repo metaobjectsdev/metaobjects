@@ -1,0 +1,109 @@
+package com.metaobjects.generator;
+
+import com.metaobjects.field.MetaField;
+import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.loader.MetaDataLoaderTestBase;
+import com.metaobjects.object.MetaObject;
+import org.junit.Test;
+
+import java.net.URISyntaxException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import static org.junit.Assert.*;
+
+/**
+ * ADR-0034 Amendment 4 — writing a generator from scratch on the JVM. {@link ModelWalk} must
+ * answer each model question the way the engine does, INHERITANCE INCLUDED (the obvious
+ * spellings on the node API — {@code getName()}, {@code isArray()}, {@code getMetaAttr(n,
+ * false)} — do not), and {@link FileEmittingGenerator} must write what a generator returns,
+ * including formats that cannot carry the GENERATED header, on EVERY run rather than only the
+ * first.
+ */
+public class GeneratorAuthoringTest extends MetaDataLoaderTestBase {
+
+    private MetaDataLoader load() throws URISyntaxException {
+        return initLoader(List.of(getClass().getResource("/generator-authoring/meta.shop.json").toURI()));
+    }
+
+    private static MetaObject byName(MetaDataLoader loader, String name) {
+        return loader.getMetaObjects().stream().filter(o -> ModelWalk.name(o).equals(name)).findFirst().orElseThrow();
+    }
+
+    @Test public void modelWalkResolvesThroughExtends() throws Exception {
+        MetaDataLoader loader = load();
+        assertEquals(List.of("Address", "PostCategory"),
+            ModelWalk.concreteObjects(loader).stream().map(ModelWalk::name).sorted().collect(Collectors.toList()));
+
+        MetaObject cat = byName(loader, "PostCategory");
+        assertEquals("shop", ModelWalk.packageOf(cat));
+        assertEquals("A category.", ModelWalk.description(cat));
+        Map<String, MetaField> fields = ModelWalk.fields(cat).stream()
+            .collect(Collectors.toMap(MetaField::getName, f -> f));
+        assertTrue("inherited field present", fields.containsKey("createdAt"));
+        assertTrue("inherited @required", ModelWalk.isRequired(fields.get("createdAt")));
+        assertTrue("inherited isArray", ModelWalk.isArray(fields.get("labels")));
+        assertEquals(Integer.valueOf(40), ModelWalk.maxLength(fields.get("labels")));
+        assertEquals(List.of("free", "paid"), ModelWalk.enumValues(fields.get("tier")));
+        assertEquals("Address", ModelWalk.name(ModelWalk.objectRefTarget(fields.get("shipping"))));
+        assertNull(ModelWalk.objectRefTarget(fields.get("title")));
+        assertEquals(List.of("id"), ModelWalk.primaryKeyFields(cat));
+        assertTrue(ModelWalk.hasSource(cat));
+        assertFalse(ModelWalk.hasSource(byName(loader, "Address")));
+        assertEquals("post_categories", ModelWalk.collectionSegment(cat));
+    }
+
+    /** A minimal generator: one JSON file per concrete object. */
+    public static class FieldList extends FileEmittingGenerator {
+        @Override
+        protected List<EmittedFile> generate(MetaDataLoader loader) {
+            List<EmittedFile> out = new ArrayList<>();
+            for (MetaObject o : ModelWalk.concreteObjects(loader)) {
+                String names = ModelWalk.fields(o).stream().map(f -> "\"" + f.getName() + "\"")
+                    .collect(Collectors.joining(", "));
+                out.add(new EmittedFile("fields/" + ModelWalk.name(o) + ".json", "[" + names + "]\n"));
+            }
+            return out;
+        }
+    }
+
+    @Test public void fileEmittingGeneratorWritesEveryRunIncludingHeaderlessFormats() throws Exception {
+        MetaDataLoader loader = load();
+        Path out = Files.createTempDirectory("mo-authoring");
+        Generator gen = new FieldList().setArgs(Map.of(GeneratorBase.ARG_OUTPUTDIR, out.toString()));
+
+        gen.execute(loader);
+        Path file = out.resolve("fields/PostCategory.json");
+        // JVM order: the object's OWN fields, then inherited ones (TS/C#/Python list inherited first).
+        assertEquals("[\"title\", \"shipping\", \"tier\", \"id\", \"createdAt\", \"labels\"]\n", Files.readString(file));
+
+        // A JSON file cannot carry the GENERATED header. The second run must still rewrite it,
+        // not refuse it as hand-owned — otherwise output freezes after run 1.
+        Files.writeString(file, "stale\n");
+        gen.execute(loader);
+        assertTrue(Files.readString(file).startsWith("[\"title\""));
+    }
+
+    @Test public void aFileWithAGeneratedHeaderKeepsTheOwnershipGuard() throws Exception {
+        MetaDataLoader loader = load();
+        Path out = Files.createTempDirectory("mo-authoring-guard");
+        FileEmittingGenerator gen = new FileEmittingGenerator() {
+            @Override protected List<EmittedFile> generate(MetaDataLoader l) {
+                return List.of(new EmittedFile("Hello.java", "// GENERATED by a test\nclass Hello {}\n"));
+            }
+        };
+        gen.setArgs(Map.of(GeneratorBase.ARG_OUTPUTDIR, out.toString()));
+        Files.writeString(out.resolve("Hello.java"), "// mine now\nclass Hello { int x; }\n");
+        gen.execute(loader);
+        assertEquals("// mine now\nclass Hello { int x; }\n", Files.readString(out.resolve("Hello.java")));
+    }
+
+    @Test(expected = GeneratorException.class)
+    public void missingOutputDirIsAClearError() throws Exception {
+        new FieldList().execute(load());
+    }
+}

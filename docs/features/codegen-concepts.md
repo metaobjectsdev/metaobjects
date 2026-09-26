@@ -24,10 +24,20 @@ derived/aggregate read model is an [`object.projection`](source-kinds.md) whose
 is drift, and because an unmodeled view is *unmanaged*, `meta verify --db` can't
 even see it.
 
-## 2. You own your codegen (scaffold-and-own)
+## 2. You write the generators you need — and own the ones you copy
 
-The library ships the **engine** + a documented **template library**; you copy
-templates into your repo and own them. A single standard template set has never fit
+The product is the **core** — model, loader, registry, `verify`, `migrate`, render and
+extract. On it, **you build the generators your application needs**: an output the model
+fully describes and no reference emits (OpenAPI, JSON Schema, Zod, DTOs, a client, docs)
+is a generator you write, not a layer you hand-write and not a feature you wait for
+([ADR-0034 Amendment 4](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md#amendment-4-2026-09-26--write-your-own-generator-is-the-primary-path)).
+A generator is a name plus a function from the model to files, and `verify --codegen`
+gates it with nothing to register. `meta generator new <name>` scaffolds a working one on
+TypeScript; every port's shape and two worked examples are in
+[Write your own generator](../recipes/write-your-own-generator.md).
+
+The library also ships a documented **template library** of reference generators; when
+one is close to what you need, you copy it into your repo and own it. A single standard template set has never fit
 across projects — framework conventions, naming, structure, and business patterns are
 per-project. Don't fight a black-box generator; own a starting point and edit it.
 Choosing and adapting a starting template is a **human/Claude judgment call**, not a

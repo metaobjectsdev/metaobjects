@@ -59,18 +59,17 @@ regardless of server language — see the migration reference.
 
 ## Owned generators
 
-Python does not scaffold-and-own generators — they are provided by the `metaobjects`
-package and selected by stable name via `--generators`, over a **closed built-in
-registry**. There is no analog to the TS `codegen/generators/*.ts` pattern here, and no
-seam to register a generator of your own. (`--provider module:symbol` registers
-**metamodel vocabulary**, not a generator — do not read it as one.)
+Python generators are owned the same way as on every port. `metaobjects eject <name>`
+copies a reference into `codegen/generators/`, and a generator the project WRITES is wired
+the same way — a `module:symbol` entry in `--generators` or in `metaobjects.config.yaml`,
+reading the model through `metaobjects.codegen.model_walk`. (`--provider module:symbol`
+registers **metamodel vocabulary**, not a generator — do not read it as one.)
 
-**So do not score a Python project down for "not owning its generators", and do not
-recommend writing one.** The customization path here is the **declarative template**:
-`metaobjects gen --template-spec <json> --templates <dir>`, whose entries append to your
-`--generators` selection. A finding of the form "the built-ins do not emit the shape this project
-needs" resolves to a template-spec, not to generator code. Worked example with the full
-JSON: `docs/ports/python.md`.
+**A finding of the form "the built-ins do not emit the shape this project needs", or a
+hand-written layer the model fully describes, resolves to a generator the project writes**
+(ADR-0034 Amendment 4), or to a declarative template (`metaobjects gen --template-spec
+<json> --templates <dir>`) where the shape is what matters. Recommend it; it is the
+primary path. Worked template example: `docs/ports/python.md`.
 
 To re-scaffold the agent-context into a Python project, use the Node `meta` CLI (the
 single agent-docs assembler per ADR-0033):

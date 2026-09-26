@@ -64,13 +64,14 @@ copies the helper runtime the generated routes call (`FilterParser`, `EfCoreFilt
 `ValueObjectValidator`, `ConstraintErrors`, `Iso8601TimestampConverter`) into
 `codegen/runtime/` under the namespace `Codegen.Runtime`. That folder is owned code, not a
 hand-rolled filter parser: do not flag it. `dotnet meta gen --list` marks each owned copy
-`identical` or `DIFFERS`.
+`identical` or `DIFFERS`. A generator the project WRITES is an `IGenerator` listed in
+`codegen/Program.cs` the same way.
 
-A project that has not ejected is not a finding either: running the packaged generators by
-name is a supported choice. For a shape no built-in emits, the lighter path is a
-**declarative template**: `dotnet meta gen --template-spec <json> --template-root <dir>`,
-whose entries append to your `--generators` selection. Worked example with the full JSON:
-`docs/ports/csharp.md`.
+**A finding of the form "the built-ins do not emit the shape this project needs", or a
+hand-written layer the model fully describes, resolves to a generator the project writes**
+(ADR-0034 Amendment 4), or to a declarative template (`dotnet meta gen --template-spec
+<json> --template-root <dir>`) where the shape is what matters. Recommend it; it is the
+primary path. Worked template example: `docs/ports/csharp.md`.
 
 To re-scaffold the agent-context into a C# project, use the Node `meta` CLI (the
 single agent-docs assembler per ADR-0033):

@@ -12,11 +12,22 @@ that writes application code into your repo is a starting point: it compiles and
 its reference fixtures, and you copy it and own it. A defect in the reference is fixed
 there; your copy is yours.
 
-"Own your codegen" means two related things:
+**Need an output nothing here emits? Write the generator.** That is the primary path, not
+an escape hatch ([ADR-0034 Amendment 4](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md#amendment-4-2026-09-26--write-your-own-generator-is-the-primary-path)):
+OpenAPI, JSON Schema, a client, a DTO or service layer, docs — anything the model
+describes. A generator is a name plus a function from the model to files; `verify
+--codegen` gates it with nothing to register. On TypeScript, `meta generator new <name>`
+scaffolds a working one and wires it. Every port's 20-line shape, run end to end, plus
+JSON Schema and OpenAPI 3.1 examples to copy:
+[Write your own generator](../recipes/write-your-own-generator.md). Eject a reference
+(below) only when one already emits something close to what you want.
+
+"Own your codegen" means three related things:
 
 1. **You own the invocation** — codegen runs through your own build, on your terms,
    in every port.
-2. **You own the templates** — `meta eject <name>...` copies the reference generators
+2. **You write the generators you need** — see above.
+3. **You own the templates** — `meta eject <name>...` copies the reference generators
    *into your repo* so you can edit them (ADR-0034 scaffold-and-own). **Every port
    can eject** — see [Python](#python-metaobjects-eject),
    [Java and Kotlin](#java-and-kotlin-mvn-metaobjectseject) and
@@ -271,20 +282,22 @@ those verbs and narrow the generated file around them.
 
 ## Per port
 
-Every port offers the **declarative** path — a Mustache template plus a scope, no
-generator code. Every port ALSO offers a **programmatic** path: own a copy of a reference
-generator and edit its code. How you get that copy differs per port.
+Every port offers both paths: the **programmatic** one — a generator of your own, in the
+port's language — and the **declarative** one — a Mustache template plus a scope, no
+generator code. The 20-line programmatic shape for each port is in
+[Write your own generator](../recipes/write-your-own-generator.md).
 
 | Port | Invocation | Programmatic — write a `Generator` | Declarative — template + scope |
 |---|---|---|---|
-| **TypeScript** | `meta init` → `meta gen --list --probe` → `meta eject <names...>` → `meta gen` (Bun/Node CLI) | **Yes — scaffold-and-own.** `meta init` scaffolds the LAYOUT and an empty selection (ADR-0034 Amendment 2); `meta eject <name>...` copies each generator you choose into `codegen/generators/*.ts` (and, for `routes` / `routes-hono` / `entity`, the HTTP-adapter source their output calls into `codegen/runtime/` — see [above](#what-meta-eject-hands-over-and-what-stays-core-typescript)) and prints the import to add to `metaobjects.config.ts`. Edit them freely. The prompt tier (`prompt-render`, `output-parser`, `extractor`, `output-prompt`, `render-helper`) ejects like the rest: you own which templates get a module and where it lands, while the render and extract engines those modules call stay in the package. Not every registered generator is ejectable: `callable`, `trace-helper`, `requirement-tests`, the `template` primitive, the docs tier (`docs`, `api-docs`, `mermaid-er`, whose door is `meta docs`) and `shared-model` ship no reference template, so they are **package-only** — `meta gen --list` marks them so and `meta eject` names them as such. `shared-model` (FR-023's publisher generator) stays package-only deliberately, since it emits a hash-pinned cross-port contract artifact. | **Yes** — `templateGenerator({ template, scope, outputPattern })` in the config's `generators: [...]`. No CLI flag: the config already takes generator values. |
-| **Java / Kotlin** | `mvn metaobjects:generate` / `mvn metaobjects:verify` (`metaobjects-maven-plugin`) | **Yes.** Every generator — built-in or your own — is named in `<generator><classname>` and loaded from the project classpath: one seam, not two. There is no default suite, so `<generators>` is the complete list. Kotlin runs through the same goal. | **Yes** — `TemplateScopeGenerator` wired as an ordinary `<generator>`. No CLI flag: `<generator>` is already the seam. |
-| **C#** | `dotnet meta gen` / `dotnet meta verify` (.NET tool) | **Yes — scaffold-and-own.** `dotnet meta eject <name>...` copies a reference generator into `codegen/generators/` and scaffolds an owned `codegen/` console project that `gen` and `verify --codegen` hand off to. Ejecting `routes` also copies the helper runtime its output calls into `codegen/runtime/` ([below](#ejecting-routes-hands-over-the-helper-runtime-too)). | **Yes** — `dotnet meta gen --template-spec <json> --template-root <dir>`. |
-| **Python** | `metaobjects gen` / `metaobjects verify` (console-script) | **Yes.** `metaobjects eject <name>...` copies a reference generator into `codegen/generators/`; wire the copy as `module:symbol` ([below](#python-metaobjects-eject)). (`--provider module:symbol` registers **metamodel vocabulary**, not a generator — do not reach for it here.) | **Yes** — `metaobjects gen --template-spec <json> --templates <dir>`. |
+| **TypeScript** | `meta init` → `meta gen --list --probe` → `meta eject <names...>` → `meta gen` (Bun/Node CLI) | **Yes.** `meta generator new <name>` writes a working generator of your own into `codegen/generators/` and wires it — the first move for an output nothing ships. To start from a reference instead: `meta init` scaffolds the LAYOUT and an empty selection (ADR-0034 Amendment 2); `meta eject <name>...` copies each generator you choose into `codegen/generators/*.ts` and prints the import to add to `metaobjects.config.ts`. Edit them freely. The prompt tier (`prompt-render`, `output-parser`, `extractor`, `output-prompt`, `render-helper`) ejects like the rest: you own which templates get a module and where it lands, while the render and extract engines those modules call stay in the package. Not every registered generator is ejectable: `callable`, `trace-helper`, `requirement-tests`, the `template` primitive, the docs tier (`docs`, `api-docs`, `mermaid-er`, whose door is `meta docs`) and `shared-model` ship no reference template, so they are **package-only** — `meta gen --list` marks them so and `meta eject` names them as such. `shared-model` (FR-023's publisher generator) stays package-only deliberately, since it emits a hash-pinned cross-port contract artifact. | **Yes** — `templateGenerator({ template, scope, outputPattern })` in the config's `generators: [...]`. No CLI flag: the config already takes generator values. |
+| **Java / Kotlin** | `mvn metaobjects:generate` / `mvn metaobjects:verify` (`metaobjects-maven-plugin`) | **Yes.** Extend `FileEmittingGenerator` and read the model through `ModelWalk` (both in `metaobjects-codegen-base`) for one of your own. Every generator — built-in or your own — is named in `<generator><classname>` and loaded from the project classpath: one seam, not two. There is no default suite, so `<generators>` is the complete list. Kotlin runs through the same goal. | **Yes** — `TemplateScopeGenerator` wired as an ordinary `<generator>`. No CLI flag: `<generator>` is already the seam. |
+| **C#** | `dotnet meta gen` / `dotnet meta verify` (.NET tool) | **Yes.** Implement `IGenerator` in the owned console project `codegen/` and list it in `codegen/Program.cs`; `dotnet meta gen` / `verify --codegen` hand off to that project whenever `codegen/Codegen.csproj` exists. `dotnet meta eject <name>` scaffolds the project, or write its two files by hand. An owned generator the `--generators` selection does not name still runs. | **Yes** — `dotnet meta gen --template-spec <json> --template-root <dir>`. |
+| **Python** | `metaobjects gen` / `metaobjects verify` (console-script) | **Yes.** Name your generator as `module:symbol` in `--generators` or a target's `generators` in `metaobjects.config.yaml`; the symbol is an instance or a function returning one. Read the model through `metaobjects.codegen.model_walk`. (`--provider module:symbol` registers **metamodel vocabulary**, not a generator.) | **Yes** — `metaobjects gen --template-spec <json> --templates <dir>`. |
 
-So "I need a shape the built-ins do not emit" has two answers on **every** port. A
-template is a real path, not a consolation prize: it renders against the same neutral,
-byte-gated data dict every port shares, so one template emits identically on all five.
+So "I need a shape the built-ins do not emit" has an answer on **every** port, in code or
+in a template. A template is a real path, not a consolation prize: it renders against the
+same neutral, byte-gated data dict every port shares, so one template emits identically on
+all five.
 
 ### When a generator's output is wrong, the fix is yours
 
@@ -298,11 +311,12 @@ yours. Fix it in your build, in the same change, and keep going:
 - **Java / Kotlin:** subclass the reference generator, or copy its source (Apache-2.0,
   in the `-sources` jar) into a codegen module the generating module depends on. Point
   `<classname>` at your class. The plugin loads it from that module's compile classpath.
-- **C#:** edit your ejected copy (`dotnet meta eject <name>` first). A defect in the
-  filter parser, filter dispatch, value-object validator or constraint mapping that
-  generated routes call is fixed in your `codegen/runtime/` copy the same way.
-- **Python:** edit your ejected copy (`metaobjects eject <name>` first), or emit that
-  artifact from your own template spec instead of the built-in.
+- **C#:** edit your ejected copy (`dotnet meta eject <name>` first), or replace the
+  artifact with a generator of your own or a template spec. A defect in the filter
+  parser, filter dispatch, value-object validator or constraint mapping that generated
+  routes call is fixed in your `codegen/runtime/` copy the same way.
+- **Python:** edit your ejected copy (`metaobjects eject <name>` first), or replace the
+  artifact with a generator of your own or a template spec.
 
 Do not file it upstream, pin or wait for a MetaObjects release, or patch a clone of this
 repository. The reference generators are conformance-gated so that the copy you start

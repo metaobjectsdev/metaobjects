@@ -183,8 +183,7 @@ static int RunGen(string[] rest)
     }
     if (!outcome.Ok)
     {
-        foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
-        Console.Error.WriteLine("dotnet meta gen: FAILED (metadata did not load cleanly)");
+        CodegenCli.ReportFailure(new CodegenCli.GenOutcome(outcome.LoadErrors, null), "dotnet meta gen");
         return 1;
     }
     foreach (var f in outcome.Result!.Files) Console.WriteLine($"  {f.Status}: {f.Path}");

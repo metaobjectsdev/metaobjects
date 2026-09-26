@@ -269,3 +269,78 @@ three UI templates, and every capability-tier generator was package-only. Two th
 
 The "condition this depends on" paragraph above is also out of date: every port now has an
 eject command (`docs/features/own-your-codegen.md`, "Per port").
+
+### Amendment 4 (2026-09-26) — write-your-own generator is the primary path
+
+**Ruling (maintainer).** MetaObjects is a solid core — the typed model, loader, registry,
+`verify`, `migrate`, prompt render and reply extract — and on that core **adopters build
+their own code generators** for whatever they need: OpenAPI, JSON Schema, Zod, DTOs,
+clients, docs, anything. The reference generators are examples and starting points to
+eject and modify, not the product. Skills, docs and agent context PUSH people and their
+coding agents to write a generator whenever they need an output nothing ships, and make
+that feel easy.
+
+**Supersedes** the ordering in Decision 2 and Amendments 1–3, which taught ejecting a
+reference as the way in. The order is now: **write the generator you need; eject a
+reference only when one is already close; hand-write only what the model cannot express.**
+
+**Measured before the ruling was applied (2026-09-26).** A JSON Schema and an OpenAPI 3.1
+generator were written from scratch in every port against the public API, wired the
+documented way, and run through `gen` and `verify --codegen`. It worked everywhere — the
+engine already ran arbitrary generators, and `verify` already gated them with nothing to
+register — but each port had obstacles, and most were in the guidance rather than the code:
+
+- **The guidance denied working seams.** The codegen skill and `own-your-codegen.md` said
+  C# and Python have "no generator-registration seam" and that a template spec is "the
+  whole path". Both have one: Python resolves a `module:symbol` entry in `--generators` /
+  `metaobjects.config.yaml`, and C# runs any `IGenerator` listed in an owned
+  `codegen/Program.cs`, which `dotnet meta gen` / `verify --codegen` hand off to.
+- **The one TypeScript example in the skill did not typecheck** (`filter: (e) => e.isEntity`
+  passes a method, always truthy), and `meta gen` loads generators without typechecking, so
+  it silently generated for abstract bases. The skill also claimed a custom generator "carries
+  the `@generated` header" — the runner adds none.
+- **Model-walking answers were internal or scattered.** TypeScript did not export
+  `enumValues`, the case helpers or `servedPath`, and had no package-aware `@objectRef`
+  resolver; the config's `apiPrefix` reached a generator only through `renderContext`, which
+  `GenContext`'s doc told third-party generators they did not need. Python's helpers were
+  spread over five internal modules (one private), with the own-only `attr()` as the obvious
+  spelling. The JVM had no emit-files base (a generator implemented four SPI methods and
+  wrote files itself) and three wrong obvious spellings (`getName()` is the FQN, `isArray()`
+  and `getMetaAttr(n, false)` are own-only).
+- **Port defects a from-scratch generator hit.** The JVM template data read `@required` /
+  `@maxLength` own-only, pinned by a test that still claimed the TS oracle did — #138 had
+  moved TS, Python and C# to resolving reads. The JVM ownership guard would freeze a
+  comment-less format (JSON) after run 1. Python emitted `__init__.py` into JSON-only output
+  directories. C# reported a throwing generator as "metadata did not load cleanly".
+- **Discoverability.** `meta init`'s scaffolded config and next steps named only the catalog
+  and eject.
+
+**What changed with this amendment.**
+
+1. `meta generator new <name> [--scope entity|package|model]` (TypeScript) writes a working,
+   commented generator into `codegen/generators/` and wires it into `metaobjects.config.ts`,
+   so an author starts from something that runs and is drift-gated. Tested end to end
+   (scaffold → gen → verify clean → model change convicted). It is a new command beside
+   `eject`, not a change to it.
+2. Model-walking exports: TypeScript `objectRefTarget`, `enumValues`, `toCamelCase` /
+   `toPascalCase` / `toSnakeCase`, `servedPath`; Python `metaobjects.codegen.model_walk`;
+   JVM `com.metaobjects.generator.ModelWalk` and `FileEmittingGenerator` in
+   `metaobjects-codegen-base`.
+3. The port defects above are fixed.
+4. JSON Schema and OpenAPI 3.1 generators ship as **examples to copy** in
+   `docs/recipes/generators/<port>/`, each exercised by a test in its port. They are not a
+   product surface and nothing promises their output.
+5. The codegen skill, the always-on agent context, `own-your-codegen.md`,
+   `codegen-concepts.md` and the README lead with writing your own generator.
+
+**What does not change.** The core/helper line of Amendment 3, `eject`, and the engine's
+contract. A generator an adopter writes is theirs exactly as an ejected one is.
+
+**Known gaps.** `meta generator new` is TypeScript-only; the other ports document a
+copy-paste minimal generator that was run end to end. C# has no command that scaffolds the
+owned `codegen/` project without ejecting a reference; the guide gives the two files. A
+Python `module:symbol` that names a generator CLASS is taken as the generator itself and
+fails at call time (the resolver sits in the eject module, which this change did not touch);
+the guide says to name an instance or a factory function.
+
+Guide: `docs/recipes/write-your-own-generator.md`.

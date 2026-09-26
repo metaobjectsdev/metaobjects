@@ -24,7 +24,14 @@ interface Generator {
 }
 ```
 
-Helpers `perEntity()` and `oncePerRun()` cover the common "file per entity" / "one-shot" cases.
+Helpers `perEntity()`, `perPackage()` and `perModel()` cover the per-object / per-package /
+whole-model scopes (`oncePerRun()` is the deprecated alias of `perModel()`).
+
+**Writing a generator of your own is the primary path** (ADR-0034 Amendment 4): `meta
+generator new <name> [--scope entity|package|model]` writes a working one into
+`codegen/generators/` and wires it into the config. Model reads an owned generator needs
+are exported from the package root (`objectRefTarget`, `enumValues`, `servedPath`, the case
+helpers); the guide and every port's shape are in `docs/recipes/write-your-own-generator.md`.
 
 **Built-in factories**: `entityFile`, `queriesFile`, `routesFile`, `formFile`, `barrel`. Per ADR-0034 (scaffold-and-own) and its Amendment 2 (opt-in codegen), `meta init` scaffolds `codegen/generators/` EMPTY with `generators: []`; `meta gen --list --probe` is the catalog, and `meta eject <name>...` copies each chosen reference template into the consumer repo at `codegen/generators/*.ts` and prints the import and entry to wire. The owned copy is the ONLY import path for `entityFile`/`queriesFile`/`routesFile`/`barrel`: the deprecated `@metaobjectsdev/codegen-ts/generators` re-export of them was **removed at the 1.0 cut**.
 

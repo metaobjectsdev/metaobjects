@@ -5,6 +5,7 @@ packages. Codegen runs through the Node `meta` CLI (`@metaobjectsdev/cli`, binar
 `meta`).
 
 ## Contents
+- Write your own generator
 - Install
 - `metaobjects.config.ts`
 - The generators
@@ -13,6 +14,31 @@ packages. Codegen runs through the Node `meta` CLI (`@metaobjectsdev/cli`, binar
 - Multiple output targets
 - Field subtype → column mapping
 - Retargeting to another framework — the TypeScript procedure
+
+## Write your own generator
+
+For any output the model describes and no reference emits, start here:
+
+```bash
+meta generator new openapi --scope model   # entity (default) | package | model
+meta gen                                   # runs it — it already emits JSON per unit
+meta verify --codegen                      # gates it; nothing to register
+npx tsc -p tsconfig.codegen.json           # typecheck it; meta gen loads it untyped
+```
+
+`meta generator new <name>` writes `codegen/generators/<name>.ts` — a working, commented
+generator exporting `<camelName>Generator()` — and adds its import and entry to
+`metaobjects.config.ts` (when the config has one literal `generators: [...]`; otherwise it
+prints the two lines to add). It refuses a reference generator's name (eject that one
+instead) and never overwrites your file without `--force`. Then edit the emit.
+
+Everything a generator reads comes from `@metaobjectsdev/codegen-ts`: `perEntity` /
+`perPackage` / `perModel`, `isAbstract`, `hasAnyRdbSource`, `isProjection`,
+`servesReadApi` / `servesWriteApi`, `objectRefTarget`, `enumValues`, `effectivePackage`,
+`packageToPath`, `servedPath`, `toCamelCase` / `toPascalCase` / `toSnakeCase` /
+`pluralize`, and `formatTs` for TypeScript output. The config's `apiPrefix` is
+`ctx.renderContext?.apiPrefix`. Worked JSON Schema and OpenAPI 3.1 generators to copy:
+`docs/recipes/generators/typescript/` in the MetaObjects repository.
 
 ## Install
 
