@@ -62,7 +62,7 @@ function renderHandle(tmpl: MetaData, payloadType: string): string {
   return [
     `export function ${fn}(payload: ${payloadType}, provider: Provider): string {`,
     `  return render({ ref: ${JSON.stringify(textRef)}, payload, format: ${JSON.stringify(format)}, provider });`,
-    `}`,
+    "}",
   ].join("\n");
 }
 
