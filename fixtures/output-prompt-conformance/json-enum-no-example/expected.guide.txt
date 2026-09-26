@@ -1,0 +1,12 @@
+Fill in each field as described below:
+- urgency (required)
+    one of low, medium, high
+- advice (required)
+- seeVetToday (required)
+
+Respond exactly like this:
+{
+  "urgency": "low | medium | high",
+  "advice": "{advice}",
+  "seeVetToday": {seeVetToday}
+}

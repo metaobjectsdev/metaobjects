@@ -1,0 +1,5 @@
+{
+  "urgency": "low | medium | high",
+  "advice": "{advice}",
+  "seeVetToday": true | false
+}

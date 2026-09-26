@@ -1,0 +1,6 @@
+{ "format": "xml", "rootName": "TriageResult", "roundTrip": false,
+  "fields": [
+    { "name": "urgency", "kind": "ENUM", "required": true,
+      "enumValues": ["low", "medium", "high"] },
+    { "name": "advice", "kind": "STRING", "required": true },
+    { "name": "seeVetToday", "kind": "BOOLEAN", "required": true } ] }

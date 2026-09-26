@@ -256,12 +256,15 @@ public static class OutputFormatRenderer
     private static string? ExampleValueIfDeclared(PromptField field, PromptOverrides overrides) =>
         overrides.Examples.TryGetValue(field.Name, out string? ov) ? ov : field.Example;
 
+    // An enum with no declared example shows its allowed MEMBERS ("low | medium | high",
+    // the inline style's spelling), never one pre-filled member: a model shown a filled-in
+    // value copies it. Declaring @example is how an author asks for a concrete value.
     internal static string ExampleValue(PromptField field, PromptOverrides overrides)
     {
         if (overrides.Examples.TryGetValue(field.Name, out string? ov)) return ov;
         if (field.Example != null) return field.Example;
         if (field.Kind == FieldKind.Enum && field.EnumValues is { Count: > 0 } values)
-            return values[0];
+            return string.Join(" | ", values);
         return "{" + field.Name + "}";
     }
 

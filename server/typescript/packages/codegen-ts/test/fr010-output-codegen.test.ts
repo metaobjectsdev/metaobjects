@@ -258,9 +258,10 @@ describe("FR-010 codegen — import-and-RUN proof (bun dynamic import)", () => {
     expect(fragment).toContain("one of LOW, HIGH");
     expect(fragment).toContain("HIGH = needs attention now");
     expect(fragment).toContain("Respond exactly like this:");
-    // guide skeleton uses the declared example for subject + first enum value for priority
+    // guide skeleton uses the declared example for subject; priority declares no example, so
+    // it shows its allowed members — never a pre-filled first member a model would copy.
     expect(fragment).toContain('"subject": "Cannot log in"');
-    expect(fragment).toContain('"priority": "LOW"');
+    expect(fragment).toContain('"priority": "LOW | HIGH"');
     // no source-comment leakage into the fragment
     expect(fragment).not.toContain("//");
     expect(fragment).not.toContain("/*");

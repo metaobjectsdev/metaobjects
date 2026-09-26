@@ -39,7 +39,7 @@ class OutputPromptConformanceTest {
     private val json = ObjectMapper()
 
     /** Count guard: a port silently skipping cases must fail. Bump when adding cases. */
-    private val expectedCaseCount = 15
+    private val expectedCaseCount = 17
 
     private data class StyleSpec(val key: String, val style: PromptStyle)
 

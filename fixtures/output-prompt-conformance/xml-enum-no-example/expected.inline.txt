@@ -1,0 +1,5 @@
+<TriageResult>
+  <urgency>low | medium | high</urgency>
+  <advice>{advice}</advice>
+  <seeVetToday>true | false</seeVetToday>
+</TriageResult>
