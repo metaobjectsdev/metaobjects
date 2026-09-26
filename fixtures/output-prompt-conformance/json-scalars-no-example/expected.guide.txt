@@ -1,0 +1,19 @@
+Fill in each field as described below:
+- summary (required)
+- averageRating (optional)
+- count (required)
+- total (optional)
+- resolved (required)
+- scores (optional)
+
+Respond exactly like this:
+{
+  "summary": "{summary}",
+  "averageRating": {averageRating},
+  "count": {count},
+  "total": {total},
+  "resolved": {resolved},
+  "scores": [
+    {scores}
+  ]
+}

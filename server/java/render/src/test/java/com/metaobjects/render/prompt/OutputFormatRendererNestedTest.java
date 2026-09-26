@@ -60,7 +60,7 @@ public class OutputFormatRendererNestedTest {
     @Test
     public void nestedObjectInlineJson() {
         assertEquals(
-                "{\n  \"summary\": \"{One sentence.}\",\n  \"meta\": {\n    \"score\": \"{1-5.}\"\n  }\n}",
+                "{\n  \"summary\": \"{One sentence.}\",\n  \"meta\": {\n    \"score\": {1-5.}\n  }\n}",
                 render(review(Format.JSON), PromptStyle.INLINE));
     }
 

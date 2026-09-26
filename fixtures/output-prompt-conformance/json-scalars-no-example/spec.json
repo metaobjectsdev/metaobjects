@@ -1,0 +1,8 @@
+{ "format": "json", "rootName": "Digest", "roundTrip": false,
+  "fields": [
+    { "name": "summary", "kind": "STRING", "required": true },
+    { "name": "averageRating", "kind": "DOUBLE", "required": false },
+    { "name": "count", "kind": "INT", "required": true },
+    { "name": "total", "kind": "LONG", "required": false },
+    { "name": "resolved", "kind": "BOOLEAN", "required": true },
+    { "name": "scores", "kind": "INT", "required": false, "array": true } ] }

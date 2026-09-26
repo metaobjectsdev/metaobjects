@@ -7,7 +7,8 @@
 //
 // Cross-port INVARIANT: the rendered text is byte-identical to the Java/C#/Kotlin
 // reference (com.metaobjects.render.prompt.OutputFormatRenderer). Do not change
-// the verbatim prose, skeleton shapes, or numeric-vs-quoted decision.
+// the verbatim prose, skeleton shapes, or numeric-vs-quoted decision (a number /
+// boolean is never quoted, placeholder or not).
 
 import { ESCAPERS } from "../escapers.js";
 import { FieldKind, Format } from "../extract/types.js";
@@ -160,8 +161,18 @@ function jsonValue(
   return jsonLeaf(field, overrides, mode);
 }
 
+// A number or boolean is shown UNQUOTED wherever the skeleton holds a placeholder for it
+// — the inline hint (`{Integer 1-5.}`, `true | false`) and the no-example fallback
+// (`{averageRating}`). A quoted placeholder taught the model to answer a number as a
+// JSON string, which the generated response parser then rejected. Only STRING / ENUM
+// values (and OBJECT past the depth guard) are quoted.
 function jsonLeaf(field: PromptField, overrides: PromptOverrides, mode: SkelMode): string {
-  if (mode === "inline") return `"${escapeJson(inlineContent(field, overrides))}"`;
+  const unquoted = NUMERIC_KINDS.has(field.kind);
+  if (mode === "inline") {
+    const content = inlineContent(field, overrides);
+    return unquoted ? content : `"${escapeJson(content)}"`;
+  }
+  if (unquoted && exampleValueIfDeclared(field, overrides) == null) return `{${field.name}}`;
   const value = exampleValue(field, overrides);
   return isNumericOrBoolean(field.kind, value) ? value : `"${escapeJson(value)}"`;
 }
