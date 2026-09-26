@@ -95,6 +95,32 @@ date/time validators and form input types (see Fixed).
   parser is a strict parse plus a tolerant `extractLenient`, the extractor is tolerant recovery.
   The descriptions had them the other way round.
 
+- **`meta migrate --rollback` no longer fails with "SQLITE_OK: not an error"** when a down
+  migration ends in comments. Comment-only statements are never sent to the database, on any
+  dialect, and a down made only of comments is refused rather than recorded as reversed.
+- **The down migration of a SQLite / D1 table rebuild restores the previous table**: its
+  columns, CHECKs, foreign keys and indexes, with the rows copied back under the old column
+  names, and it names anything it cannot restore. It used to reverse only simple renames.
+- **An index-name collision is reported as one**, naming both declarations and the fix, as a
+  normal CLI error. Index names are not prefixed with their table.
+- **`meta gen` gives migrate advice in the project's own dialect** (D1 included), and only when
+  the change can affect the schema.
+- **More silent query parameters answer 400 on the `runtime-ts` list routes**: a bare parameter
+  naming any column (`filter.bare_field`, with `filterable: false` and the filterable fields
+  when it is not filterable), and a `limit` or `offset` that is not a non-negative integer
+  (`pagination.invalid_value`). An opaque view refuses a `limit` over 1000 instead of clamping.
+  `invalid_sort` names `sort=<field>:asc|desc` and the allowed fields.
+- **Date validators reject impossible calendar days** (`2020-02-30`, `2023-02-29`) for
+  `field.date` and the date part of timestamps. Generated output changes.
+- **The response-format fragment shows an enum with no `@example` as its members**
+  (`"low | medium | high"`), in every port, instead of pre-filling the first member, which models
+  copied.
+- **The tolerant parser is documented as it is emitted**: `extractLenient<Name>WithLoader(root,
+  text)`, which never throws on a bad reply and throws only when `root` lacks the response value
+  object. The docs say which parser takes a raw model reply.
+- **`meta eject`'s install summary lists every package the ejected files import**, and `meta gen
+  --list --probe` counts the Fastify `routes` generator before `dbImport` is set.
+
 ### Changed
 
 - **The generated TypeScript file header no longer says `DO NOT EDIT`.** Hand edits are kept by a
