@@ -1,6 +1,7 @@
 import { relative } from "node:path";
 import { parseGenArgs } from "../lib/args.js";
-import { resolveGenConfig } from "../lib/config.js";
+import { resolveGenConfig, resolveMigrateDefaults } from "../lib/config.js";
+import { genMigrateAdvice } from "../lib/gen-migrate-advice.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenCollection, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { formatGenResult, formatGenResultToon, type GenFileEntry, type GenFileStatus } from "../lib/output.js";
@@ -34,6 +35,9 @@ import { composeCatalog } from "../lib/catalog.js";
  * `err.message` five commands used to print. See `lib/load-error.ts`.
  */
 
+
+/** Write outcomes that change a file on disk — the ones that can carry a schema change. */
+const CHANGED_STATUSES: ReadonlySet<WriteStatus> = new Set<WriteStatus>(["new", "overwrite", "merged", "conflict", "removed"]);
 
 export function mapStatus(s: WriteStatus): GenFileStatus {
   switch (s) {
@@ -232,6 +236,17 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   const antiPatterns = runAntiPatternScan(
     projectRoot, cliConfig.dryRun, flags.noAntipatterns, forgeConfig.verify?.antiPatternIgnore);
 
+  const migrateDefaults = await resolveMigrateDefaults(projectRoot);
+  const migrateAdvice = await genMigrateAdvice({
+    metadata,
+    dialect: forgeConfig.dialect,
+    migrateDialect: migrateDefaults.dialect,
+    columnNamingStrategy: forgeConfig.columnNamingStrategy,
+    projectRoot,
+    migrateOutDir: migrateDefaults.outDir,
+    changedFiles: result.files.filter((f) => CHANGED_STATUSES.has(f.status)).map((f) => f.path),
+  });
+
   const genResult = {
     files,
     outDir: targetDirs.length > 1 ? targetDirs.join(", ") : forgeConfig.outDir,
@@ -240,6 +255,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     warnings: [],
     antiPatterns,
     generatorCount: forgeConfig.generators?.length ?? 0,
+    ...(migrateAdvice !== undefined ? { migrateAdvice } : {}),
   };
   const output =
     fmt === "toon" ? formatGenResultToon(genResult)
