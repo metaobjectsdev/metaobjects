@@ -149,6 +149,20 @@ bad reply.
   "nothing to check".
 - **`meta gen --list --probe` counts `shared-model`** instead of reporting a failed probe.
 
+- **Timestamps: a value already in UTC `Z` form is stored as sent; a zoneless value is read as
+  UTC and a date alone as midnight UTC**, on write and in filters (`@localTime` unchanged), per
+  the api-contract rule that a timestamp is always UTC. Rewritten values use the canonical wire
+  form (no `.000`). A zoneless or date-only value was stored verbatim and broke filters.
+- **SQLite / D1 jsonb value-object columns are typed on read** (`.$type<VO>()`); reading
+  `address.city` from a generated finder failed with TS2339.
+- **Generated create inputs are typed as `z.input<typeof <Entity>InsertSchema>`**, so a project
+  that ejected the queries generator before 1.0.9 keeps compiling.
+- **An empty-body DELETE sent with `content-type: application/json` is accepted**; fractional
+  values on integer filters answer `invalid_filter_value`; an unencoded `+` offset in a
+  timestamp filter gets a hint to encode it.
+- **`meta verify` labels each advisory kind separately**; unindexed foreign keys were reported as
+  "hand-rolled".
+
 ### Changed
 
 - **The generated TypeScript file header no longer says `DO NOT EDIT`.** Hand edits are kept by a
