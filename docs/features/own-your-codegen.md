@@ -372,6 +372,65 @@ can see when an upgrade changed the generator you copied. A copy imports the sam
 `metaobjects.codegen.*` modules the packaged one does, and those module paths are the
 surface an owned generator builds on.
 
+### The runtime your generated code imports comes with it
+
+Owning a generator only helps if you also own the helper code its **output** calls.
+The generated FastAPI routers call two helper modules: `filter_parser` (the FR-009
+`filter[<field>][<op>]` grammar and its 400 envelopes) and `constraint_errors` (a
+database constraint violation mapped to a 409 or 400). Ejecting `routes` hands both over:
+
+```text
+codegen/
+  generators/routes.py            # the owned generator (OWNED_RUNTIME = True)
+  runtime/filter_parser.py        # helper runtime, now your code
+  runtime/constraint_errors.py
+src/gen/                          # a target's outDir
+  author_router.py                # from ._runtime.filter_parser import ...
+  _runtime/filter_parser.py       # emitted from codegen/runtime/ on every gen
+  _runtime/constraint_errors.py
+```
+
+The copy eject writes differs from the packaged generator in one line, `OWNED_RUNTIME =
+True`. With it on, the owned generator emits `codegen/runtime/*.py` into each target's
+generated package as `_runtime/` and imports that copy package-relatively, so the
+generated package runs without `metaobjects.codegen.runtime` and needs no extra
+`sys.path` setup. To fix a helper bug, edit `codegen/runtime/<module>.py` and run
+`metaobjects gen`. Do not edit the emitted `_runtime/` copy, which is generated output
+like the rest of the package.
+
+- **What stays core.** Nothing else is copied. The loader, registry, `render`, `extract`
+  and the `ObjectManager` runtime (`metaobjects.meta…`, `metaobjects.render…`,
+  `metaobjects.runtime`) remain package imports in every generator's output, because
+  MetaObjects guarantees them. The `entity`, `names` and `filter-allowlist` outputs import
+  no helper runtime at all, so ejecting them copies only the generator.
+- **What `verify` sees.** `codegen/runtime/` is owned source. It sits outside every
+  outDir, so `verify --codegen` never reports it as drift. The emitted `_runtime/` copy
+  is generated output: edit `codegen/runtime/` without regenerating and `verify
+  --codegen` reports the stale `_runtime/` file until you run `gen`. That is the right
+  answer, because the committed package is out of date.
+- **Eject never overwrites your runtime.** An existing `codegen/runtime/<module>.py` is
+  kept, even with `--force`, and eject says so. `metaobjects gen --list` marks each
+  runtime copy `identical` or `DIFFERS: N behind, M of your own` against the installed
+  one.
+- **A project that has not ejected `routes` is unchanged.** The packaged generator still
+  imports `metaobjects.codegen.runtime.*` and emits no `_runtime/`.
+
+**Pulling an upstream fix into your copy.** When `--list` says your runtime is behind,
+diff it against the installed version and apply the hunks you want:
+
+```bash
+RT="$(python -c 'import metaobjects.codegen.runtime as r; print(r.__path__[0])')"
+diff -u codegen/runtime/filter_parser.py "$RT/filter_parser.py" > upstream.patch
+# Delete the hunks that would undo your own changes, then apply the rest:
+patch codegen/runtime/filter_parser.py < upstream.patch
+metaobjects gen && metaobjects verify --codegen
+```
+
+If you have not changed the file, copy it over instead (`cp "$RT/filter_parser.py"
+codegen/runtime/`). The same recipe covers the generator itself: `metaobjects eject
+routes` into a scratch directory gives you the new reference to diff your
+`codegen/generators/routes.py` against.
+
 ## Java and Kotlin: `mvn metaobjects:eject`
 
 ```bash

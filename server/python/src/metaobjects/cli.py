@@ -1005,6 +1005,8 @@ def _cmd_list(_args: argparse.Namespace) -> int:
         status = owned.owned_status(root, entry)
         mark = f" [owned — {status}]" if status is not None else ""
         print(f"{entry.name} — {entry.description}{requires}{mark}")
+    for path, status in owned.runtime_status(root):
+        print(f"runtime {path.as_posix()} [owned — {status}]")
     return 0
 
 

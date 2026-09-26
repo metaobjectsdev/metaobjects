@@ -39,11 +39,12 @@ pick their preferred persistence layer.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from metaobjects.apidocs.naming import route_path as _route_path
 from metaobjects.apidocs.naming import reverse_finder_fn, reverse_finder_in_fn
 from metaobjects.apidocs.naming import snake_case as _snake_case
-from metaobjects.codegen.constants import generated_header
+from metaobjects.codegen.constants import GENERATED_MARKER, generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.fr010_field_mapping import is_required
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
@@ -80,6 +81,61 @@ from metaobjects.meta.persistence.source.source_constants import (
 from metaobjects.naming import DEFAULT_COLUMN_NAMING
 from metaobjects.shared.base_types import TYPE_IDENTITY
 from metaobjects.shared.separators import PACKAGE_SEP
+
+#: Where the emitted router imports its helper runtime (``filter_parser``,
+#: ``constraint_errors``) from. ``False`` — the packaged generator — imports the copy
+#: installed with ``metaobjects``: ``from metaobjects.codegen.runtime.<m> import ...``.
+#: ``metaobjects eject routes`` flips this line to ``True`` in the owned copy, which then
+#: EMITS that runtime's source from ``codegen/runtime/`` (the directory beside the owned
+#: generators, :data:`RUNTIME_SOURCE_DIR`) into the generated package as ``_runtime/`` and
+#: imports it package-relatively. The runtime is then code the adopter owns: edit
+#: ``codegen/runtime/<m>.py``, regenerate, and the generated package carries the change.
+OWNED_RUNTIME = False
+
+#: The helper runtime modules the emitted router imports (ADR-0034 Amendment 3: helper
+#: tier, not core). Listed on the registry entry too, which is what ``eject`` copies.
+RUNTIME_MODULES: tuple[str, ...] = ("constraint_errors", "filter_parser")
+
+#: The generated subpackage an owned router emits the runtime into.
+RUNTIME_SUBPACKAGE = "_runtime"
+
+#: Where an owned router reads the runtime source it emits. The packaged generator and an
+#: ejected copy sit at the same depth relative to their ``runtime/`` sibling
+#: (``metaobjects/codegen/generators`` vs ``codegen/generators``), so one expression
+#: serves both.
+RUNTIME_SOURCE_DIR = Path(__file__).resolve().parent.parent / "runtime"
+
+
+def _runtime_module(module: str) -> str:
+    """The module path an emitted router imports runtime *module* from."""
+    if OWNED_RUNTIME:
+        return f".{RUNTIME_SUBPACKAGE}.{module}"
+    return f"metaobjects.codegen.runtime.{module}"
+
+
+def _owned_runtime_files() -> list[EmittedFile]:
+    """The runtime source an owned router emits beside itself, marked as generated."""
+    files = [EmittedFile(
+        path=f"{RUNTIME_SUBPACKAGE}/__init__.py",
+        content=f"# {GENERATED_MARKER} — DO NOT EDIT.\n"
+        f"# Helper runtime for the generated routers. Its source is codegen/runtime/.\n",
+    )]
+    for module in RUNTIME_MODULES:
+        src = RUNTIME_SOURCE_DIR / f"{module}.py"
+        if not src.is_file():
+            raise FileNotFoundError(
+                f"the owned routes generator emits its runtime from {src}, which does not "
+                f"exist. Copy {module}.py back from the installed package's "
+                "metaobjects/codegen/runtime/ directory (`python -c \"import "
+                "metaobjects.codegen.runtime as r; print(r.__path__[0])\"` prints it)."
+            )
+        files.append(EmittedFile(
+            path=f"{RUNTIME_SUBPACKAGE}/{module}.py",
+            content=f"# {GENERATED_MARKER} — DO NOT EDIT. Copied from "
+            f"codegen/runtime/{module}.py: edit that file and regenerate.\n"
+            + src.read_text(encoding="utf-8"),
+        ))
+    return files
 
 
 def _effective_fqn(entity: MetaObject) -> str:
@@ -928,10 +984,10 @@ class RouterGenerator:
         parts.append("from fastapi.responses import JSONResponse")
         parts.append("from pydantic import BaseModel, ValidationError")
         parts.append("")
-        parts.append("from metaobjects.codegen.runtime.constraint_errors import (")
+        parts.append(f"from {_runtime_module('constraint_errors')} import (")
         parts.append("    classify_constraint_error,")
         parts.append(")")
-        parts.append("from metaobjects.codegen.runtime.filter_parser import (")
+        parts.append(f"from {_runtime_module('filter_parser')} import (")
         parts.append("    FilterPredicate,")
         parts.append("    parse_filter,")
         parts.append(")")
@@ -1280,10 +1336,10 @@ class RouterGenerator:
         parts.append("from fastapi.responses import JSONResponse")
         parts.append("from pydantic import BaseModel, ValidationError")
         parts.append("")
-        parts.append("from metaobjects.codegen.runtime.constraint_errors import (")
+        parts.append(f"from {_runtime_module('constraint_errors')} import (")
         parts.append("    classify_constraint_error,")
         parts.append(")")
-        parts.append("from metaobjects.codegen.runtime.filter_parser import (")
+        parts.append(f"from {_runtime_module('filter_parser')} import (")
         parts.append("    FilterPredicate,")
         parts.append("    parse_filter,")
         parts.append(")")
@@ -1447,7 +1503,7 @@ class RouterGenerator:
         parts.append("from fastapi.responses import JSONResponse")
         parts.append("from pydantic import BaseModel")
         parts.append("")
-        parts.append("from metaobjects.codegen.runtime.filter_parser import (")
+        parts.append(f"from {_runtime_module('filter_parser')} import (")
         parts.append("    FilterPredicate,")
         parts.append("    parse_filter,")
         parts.append(")")
@@ -1528,7 +1584,10 @@ class RouterGenerator:
                 )
             ]
 
-        return per_entity(emit)(ctx)
+        files = per_entity(emit)(ctx)
+        if OWNED_RUNTIME and files:
+            files.extend(_owned_runtime_files())
+        return files
 
 
 def render_router(
