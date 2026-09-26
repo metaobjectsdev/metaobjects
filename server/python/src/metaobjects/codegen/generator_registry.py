@@ -189,7 +189,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
     ),
     "output-parser": GeneratorEntry(
         name="output-parser",
-        description="Per-template tolerant output parser (recover-on-receipt).",
+        description="Per-template response parser: a strict parse that rejects a reply not matching the @responseRef shape, plus a tolerant, never-raising extract_lenient.",
         tier="native",
         layer="capability",
         factory=lambda _ctx: output_parser_generator(),
@@ -215,7 +215,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
     ),
     "extractor": GeneratorEntry(
         name="extractor",
-        description="Per-template strict typed extract<Name> helper (strict payload extraction).",
+        description="Per-template typed extract<Name> helper: tolerant recovery of the typed response from dirty model text; raises only when a @required field is lost.",
         tier="native",
         layer="capability",
         factory=lambda _ctx: extractor_generator(),

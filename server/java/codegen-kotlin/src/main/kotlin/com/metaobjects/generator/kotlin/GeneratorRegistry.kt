@@ -133,7 +133,8 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
     ),
     "output-parser" to GeneratorInfo(
         name = "output-parser",
-        description = "Per-template tolerant output parser (recover-on-receipt). [Emitted code " +
+        description = "Per-template response parser: a strict parse that rejects a reply not matching " +
+            "the @responseRef shape, plus a tolerant, never-throwing extractLenient. [Emitted code " +
             "imports com.metaobjects.object.extract, so the consuming module needs a " +
             "`metaobjects-om` dependency — without it the generated parser does not compile " +
             "and nothing in the build says why.]",
@@ -160,7 +161,8 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
     ),
     "extractor" to GeneratorInfo(
         name = "extractor",
-        description = "Per-template strict typed extract<Name> helper (strict payload extraction).",
+        description = "Per-template typed extract<Name> helper: tolerant recovery of the typed response " +
+            "from dirty model text; throws only when a @required field is lost.",
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.CAPABILITY,
         factory = ::KotlinExtractorGenerator,
