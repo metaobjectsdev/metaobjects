@@ -260,7 +260,7 @@ for (const dialect of ["postgres", "sqlite"] as const) {
       expect(entry(read, "customerName")).toBe("customerName: z.string().optional().nullable()");
       // ...and the interface says the same thing.
       const iface = /export interface Carrier \{(.*?)\}/.exec(carrier)?.[1];
-      expect(iface).toContain("customerName?: string | null;");
+      expect(iface).toContain("customerName?: string | null | undefined;");
     });
 
     test("the emitted read schema parses a raw base-table row with no derived key", async () => {

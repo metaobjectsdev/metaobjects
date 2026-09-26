@@ -5,8 +5,8 @@ import { z } from "zod";
 
 export interface ProgramDescriptionPayload {
   title: string;
-  summary?: string;
-  authorName?: string;
-  lessonCount?: number;
+  summary?: string | undefined;
+  authorName?: string | undefined;
+  lessonCount?: number | undefined;
 }
 export const ProgramDescriptionPayloadInsertSchema = z.object({});

@@ -5,7 +5,7 @@ import { z } from "zod";
 
 export interface SyllabusSection {
   heading: string;
-  summary?: string;
+  summary?: string | undefined;
   orderIndex: number;
 }
 export const SyllabusSectionInsertSchema = z.object({

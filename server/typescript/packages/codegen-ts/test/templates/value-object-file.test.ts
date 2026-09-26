@@ -53,7 +53,7 @@ describe("renderValueObjectFile", () => {
     // Optional field MUST be `name?: T` — not `name?: T | null`. The Zod
     // .optional() inference is `T | undefined`; matching that in the interface
     // lets the residual null-bridge cast in consumer orchestrators collapse.
-    expect(out).toMatch(/citations\?:\s*SourceLens\[\];/);
+    expect(out).toMatch(/citations\?:\s*SourceLens\[\] \| undefined;/);
     expect(out).not.toMatch(/citations\?:\s*SourceLens\[\] \| null/);
 
     // What is NOT emitted (the whole point of the value-only path)
@@ -79,7 +79,7 @@ describe("renderValueObjectFile", () => {
     wo.addChild(citations);
 
     const out = renderValueObjectFile(wo);
-    expect(out).toMatch(/citations\?:\s*SourceLens\[\];/);
+    expect(out).toMatch(/citations\?:\s*SourceLens\[\] \| undefined;/);
     expect(out).toContain("SourceLensInsertSchema");
     expect(out).not.toContain("acme::ai::");
   });

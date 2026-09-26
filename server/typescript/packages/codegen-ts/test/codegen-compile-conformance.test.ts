@@ -70,8 +70,18 @@ async function loadCorpus(): Promise<MetaRoot> {
 }
 
 describe("codegen-compile conformance — the shared fitness corpus", () => {
-  for (const dialect of ["postgres", "sqlite"] as const) {
-    test(`${dialect}: every generated module compiles with zero diagnostics`, async () => {
+  // `exactOptionalPropertyTypes` is compiled BOTH ways. A fresh `tsc --init` turns it on
+  // (and the getting-started page tells adopters to run `tsc --init`), and under it an
+  // optional property typed `x?: T` refuses `x: T | undefined` — which is exactly what a
+  // Zod `.optional()` output carries. 1.0.8 shipped a response parser that failed TS2375
+  // there while this gate, compiling only the default, stayed green.
+  for (const [dialect, exactOptionalPropertyTypes] of [
+    ["postgres", false],
+    ["sqlite", false],
+    ["postgres", true],
+    ["sqlite", true],
+  ] as const) {
+    test(`${dialect}${exactOptionalPropertyTypes ? " + exactOptionalPropertyTypes" : ""}: every generated module compiles with zero diagnostics`, async () => {
       const root = await loadCorpus();
       const dir = mkdtempSync(join(import.meta.dir, `tmp-codegen-compile-${dialect}-`));
       try {
@@ -150,6 +160,7 @@ describe("codegen-compile conformance — the shared fitness corpus", () => {
             module: ts.ModuleKind.ESNext,
             moduleResolution: ts.ModuleResolutionKind.Bundler,
             skipLibCheck: true,
+            exactOptionalPropertyTypes,
           },
         );
         const diagnostics = ts.getPreEmitDiagnostics(program).map((d) => {

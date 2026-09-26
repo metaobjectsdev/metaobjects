@@ -129,7 +129,7 @@ describe("entity tier — ADR-0044 cross-package value-object short-name collisi
     // inferred-types field.object reference (VO -> VO) uses the qualified name +
     // imports the qualified module — NOT the bare `Note`.
     const alphaWrap = files.get("AlphaWrap.ts")!;
-    expect(alphaWrap).toMatch(/inner\?:\s*AcmeAlphaNote;/);
+    expect(alphaWrap).toMatch(/inner\?:\s*AcmeAlphaNote \| undefined;/);
     expect(alphaWrap).not.toMatch(/inner\?:\s*Note;/);
     expect(alphaWrap).toContain("./AcmeAlphaNote.js");
 
@@ -283,7 +283,7 @@ describe("entity tier — ADR-0044 cross-package value-object short-name collisi
     expect(widget).toContain("export const WidgetInsertSchema");
 
     const wrap = files.get("Wrap.ts")!;
-    expect(wrap).toMatch(/w\?:\s*Widget;/);
+    expect(wrap).toMatch(/w\?:\s*Widget \| undefined;/);
     expect(wrap).toContain("./Widget.js");
 
     const host = files.get("Host.ts")!;

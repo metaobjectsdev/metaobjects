@@ -4,7 +4,7 @@
 import { z } from "zod";
 
 export interface SubscriberBlurbPayload {
-  name?: string;
+  name?: string | undefined;
   status: Status;
 }
 export type Status = "active" | "paused" | "cancelled";
