@@ -7,12 +7,31 @@
  *
  * Returned statements are trimmed and DO NOT include the trailing `;`
  * separator; callers that need a terminator re-add one.
+ *
+ * A fragment made only of comments and whitespace is NOT a statement and is dropped
+ * by default. Handing one to a driver is not harmless: libsql reports the empty
+ * prepare as the error `SQLITE_OK: not an error`, which is how a generated down.sql
+ * ending in a `-- WARNING…` block failed every rollback. A comment that LEADS a real
+ * statement stays attached to it. Re-emitters that must preserve the prose (the D1
+ * safety pass rewrites a file it does not execute) pass `keepCommentOnly`.
  */
-export function splitSqlStatements(text: string): string[] {
+export interface SplitSqlOptions {
+  /** Keep comment-only fragments in the result (re-emitters only — never execute them). */
+  keepCommentOnly?: boolean;
+}
+
+export function splitSqlStatements(text: string, opts: SplitSqlOptions = {}): string[] {
   const statements: string[] = [];
   let start = 0;
   let i = 0;
   const n = text.length;
+  // Whether the current fragment holds anything besides comments and whitespace.
+  let hasCode = false;
+  const pushFragment = (fragment: string): void => {
+    const stmt = fragment.trim();
+    if (stmt.length === 0) return;
+    if (hasCode || opts.keepCommentOnly === true) statements.push(stmt);
+  };
 
   while (i < n) {
     const ch = text[i];
@@ -32,6 +51,8 @@ export function splitSqlStatements(text: string): string[] {
       i += 2; // consume the closing */ (clamped by the while below)
       continue;
     }
+
+    if (ch !== ";" && !/\s/.test(ch as string)) hasCode = true;
 
     // Single-quoted literal: consume to the closing quote, treating '' as escape.
     if (ch === "'") {
@@ -87,8 +108,8 @@ export function splitSqlStatements(text: string): string[] {
 
     // Statement separator (only reached when in no special state).
     if (ch === ";") {
-      const stmt = text.slice(start, i).trim();
-      if (stmt.length > 0) statements.push(stmt);
+      pushFragment(text.slice(start, i));
+      hasCode = false;
       i++;
       start = i;
       continue;
@@ -97,9 +118,30 @@ export function splitSqlStatements(text: string): string[] {
     i++;
   }
 
-  const tail = text.slice(start).trim();
-  if (tail.length > 0) statements.push(tail);
+  pushFragment(text.slice(start));
   return statements;
+}
+
+/**
+ * The statement with any leading `--` / block comments and whitespace removed, for
+ * callers that classify a statement by its first keyword.
+ */
+export function stripLeadingComments(stmt: string): string {
+  let i = 0;
+  const n = stmt.length;
+  for (;;) {
+    while (i < n && /\s/.test(stmt[i] as string)) i++;
+    if (stmt.startsWith("--", i)) {
+      while (i < n && stmt[i] !== "\n") i++;
+      continue;
+    }
+    if (stmt.startsWith("/*", i)) {
+      const end = stmt.indexOf("*/", i + 2);
+      i = end === -1 ? n : end + 2;
+      continue;
+    }
+    return stmt.slice(i);
+  }
 }
 
 /**

@@ -1,4 +1,4 @@
-import { splitSqlStatements } from "../sql/split-statements.js";
+import { splitSqlStatements, stripLeadingComments } from "../sql/split-statements.js";
 
 /**
  * Adapt a migration file's statements for execution INSIDE the apply runner's own
@@ -92,22 +92,25 @@ export function prepareForRunnerTransaction(sqlText: string): RunnerTransactionP
   let requiresForeignKeysOff = false;
 
   for (const stmt of splitSqlStatements(sqlText)) {
-    if (TRANSACTION_CONTROL.test(stmt)) {
+    // Classify on the statement's SQL, not its prose: a rebuild down leads with a comment
+    // header, and `^\s*PRAGMA` never matched a statement that started with one.
+    const code = stripLeadingComments(stmt);
+    if (TRANSACTION_CONTROL.test(code)) {
       notes.push(`dropped transaction control (runner owns the transaction): ${firstWords(stmt)}`);
       continue;
     }
-    if (FK_OFF.test(stmt)) {
+    if (FK_OFF.test(code)) {
       // Hand the INTENT to the caller rather than executing it here. The pragma is a
       // no-op inside a transaction, and deferral is not a substitute for this recipe.
       requiresForeignKeysOff = true;
       notes.push("lifted `PRAGMA foreign_keys = OFF` out of the transaction (it is a no-op inside one)");
       continue;
     }
-    if (FK_ON.test(stmt)) {
+    if (FK_ON.test(code)) {
       notes.push("dropped `PRAGMA foreign_keys = ON` (the caller restores what the caller disabled)");
       continue;
     }
-    if (FK_CHECK.test(stmt)) {
+    if (FK_CHECK.test(code)) {
       postTransactionChecks.push(stmt);
       notes.push("deferred `PRAGMA foreign_key_check` to after commit (its rows are discarded inside a transaction)");
       continue;
