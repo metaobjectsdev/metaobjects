@@ -33,6 +33,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { enumValues, zodEnumExpr } from "../enum-meta.js";
 import { ZOD_INET_EXPR } from "./net-regex.js";
+import { ZOD_DATE_EXPR, ZOD_TIME_EXPR, ZOD_TIMESTAMP_EXPR } from "./date-time-regex.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { sharedEnumForField } from "../enum-shared.js";
 import { sharedEnumImportSpecifier } from "../enum-import.js";
@@ -220,7 +221,7 @@ export function renderTphSubtypeReadSchema(obj: MetaObject, ctx?: RenderContext)
     // the bare base table — so its key is genuinely absent from every parsed row and
     // it alone keeps `.optional()`, matching the interface's `?: T | null`.
     // Null-tolerance is added below, from the column, by isTphReadNullTolerant.
-    const expr = zodFieldExpr(child, obj, ctx, !child.isDerived());
+    const expr = zodFieldExpr(child, obj, ctx, !child.isDerived(), true);
     fieldLines.push(
       isTphReadNullTolerant(obj, child)
         ? code`  ${child.name}: ${expr}.nullable()`
@@ -625,7 +626,11 @@ function zodScalarFor(subType: string): string {
   if (subType === FIELD_SUBTYPE_INT || subType === FIELD_SUBTYPE_LONG || subType === FIELD_SUBTYPE_CURRENCY) return "z.number().int()";
   if (subType === FIELD_SUBTYPE_DOUBLE || subType === FIELD_SUBTYPE_FLOAT) return "z.number()";
   if (subType === FIELD_SUBTYPE_BOOLEAN) return "z.boolean()";
-  return "z.string()"; // string/uuid/date/time/timestamp/decimal/enum on the wire
+  // A map value is JSON in a jsonb column — always the ISO string, never a Date.
+  if (subType === FIELD_SUBTYPE_DATE) return ZOD_DATE_EXPR;
+  if (subType === FIELD_SUBTYPE_TIME) return ZOD_TIME_EXPR;
+  if (subType === FIELD_SUBTYPE_TIMESTAMP) return ZOD_TIMESTAMP_EXPR;
+  return "z.string()"; // string/uuid/decimal/enum on the wire
 }
 
 function zodFieldExpr(
@@ -636,6 +641,10 @@ function zodFieldExpr(
    *  assigned PK (see assignedPkFieldNames) and by the TPH read shape, where every
    *  column is a present key. The UPDATE shape must stay optional (PATCH semantics). */
   forceRequired = false,
+  /** The TPH READ shape parses rows the database already holds, so it keeps the
+   *  calendar/clock subtypes a bare `z.string()`: a row written before the write-side
+   *  format check existed must still read back. Every other caller builds a WRITE shape. */
+  readShape = false,
 ): Code {
   // `@dbColumnType: jsonb` on a scalar (legal only on field.string) is the
   // sanctioned "open JSON bag" escape hatch — a genuinely untyped JSON column
@@ -715,9 +724,14 @@ function zodFieldExpr(
     case FIELD_SUBTYPE_BOOLEAN:
       baseStr = "z.boolean()";
       break;
+    // Calendar date / time-of-day — always ISO-string-shaped, not governed by
+    // timestampMode. A WRITE shape checks that shape (date-time-regex.ts); the TPH
+    // READ shape keeps a bare string, so a row that predates the check still parses.
     case FIELD_SUBTYPE_DATE:
+      baseStr = readShape ? "z.string()" : ZOD_DATE_EXPR;
+      break;
     case FIELD_SUBTYPE_TIME:
-      baseStr = "z.string()"; // calendar date / time-of-day — always ISO-string-shaped, not governed by timestampMode
+      baseStr = readShape ? "z.string()" : ZOD_TIME_EXPR;
       break;
     case FIELD_SUBTYPE_TIMESTAMP: {
       // Must agree with column-mapper.ts's mapColumnType, which already honors
@@ -737,7 +751,9 @@ function zodFieldExpr(
       // rows (already a `Date` under pg date mode — z.coerce.date() passes a
       // Date through unchanged) while insert/update/preserving parse wire JSON
       // (an ISO string — z.coerce.date() parses it; z.date() would reject it).
-      baseStr = ctx?.timestampMode === "date" && !voHosted ? "z.coerce.date()" : "z.string()";
+      baseStr = ctx?.timestampMode === "date" && !voHosted
+        ? "z.coerce.date()"
+        : readShape ? "z.string()" : ZOD_TIMESTAMP_EXPR;
       break;
     }
     case FIELD_SUBTYPE_ENUM: {

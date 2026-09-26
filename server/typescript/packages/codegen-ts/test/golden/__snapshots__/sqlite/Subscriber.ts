@@ -23,7 +23,12 @@ export const SubscriberInsertSchema = z.object({
   firstName: z.string().min(1).max(100),
   lastName: z.string().max(100).optional(),
   subscribed: z.boolean().optional(),
-  createdAt: z.string().optional(),
+  createdAt: z
+    .string()
+    .regex(
+      /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+    )
+    .optional(),
 });
 
 export const SubscriberUpdateSchema = z.object({
@@ -31,7 +36,12 @@ export const SubscriberUpdateSchema = z.object({
   firstName: z.string().min(1).max(100).optional(),
   lastName: z.string().max(100).optional().nullable(),
   subscribed: z.boolean().optional(),
-  createdAt: z.string().optional(),
+  createdAt: z
+    .string()
+    .regex(
+      /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+    )
+    .optional(),
 });
 
 /** Typed patch shape for Subscriber: every settable field, optional (FR-035 PATCH). A

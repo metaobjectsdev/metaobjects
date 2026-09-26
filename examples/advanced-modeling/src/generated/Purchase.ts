@@ -46,14 +46,25 @@ export const PurchaseInsertSchema = z.object({
   programId: z.string(),
   amountCents: z.number().int().optional(),
   status: z.enum(["pending", "completed", "refunded"]).optional(),
-  purchasedAt: z.string().optional(),
+  purchasedAt: z
+    .string()
+    .regex(
+      /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+    )
+    .optional(),
 });
 
 export const PurchaseUpdateSchema = z.object({
   programId: z.string().optional(),
   amountCents: z.number().int().optional().nullable(),
   status: z.enum(["pending", "completed", "refunded"]).optional().nullable(),
-  purchasedAt: z.string().optional().nullable(),
+  purchasedAt: z
+    .string()
+    .regex(
+      /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+    )
+    .optional()
+    .nullable(),
 });
 
 /** Typed patch shape for Purchase: every settable field, optional (FR-035 PATCH). A

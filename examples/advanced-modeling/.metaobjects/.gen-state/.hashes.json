@@ -22,7 +22,7 @@
   "src/generated/Purchase.form.tsx": "d0cc5d82e13477ed1c1e9636212dbc5cf368a2e90a42bb2b65ff688b2a0453d5",
   "src/generated/Purchase.queries.ts": "d347ddf3960fd1725e421de798d11f17bc58606a3a7753112db1d9d0a8f1e96c",
   "src/generated/Purchase.routes.ts": "fd93a50609205bce5172f633de91d6ec30fed5f72f3a40beb7216390be340c5d",
-  "src/generated/Purchase.ts": "b56544198c92d3c2fe1271ecba505a0c712e4b300a7f4b55b34ef12eb05d3e2a",
+  "src/generated/Purchase.ts": "3d0837c9993d4d0a20719edc7901310403932ed1f078e31fab6a1e51a5b6f91f",
   "src/generated/SyllabusSection.ts": "97ee4969d6883ada0da5043e5f4bbf313ae8c0d0733d3da643afb1b45360a1aa",
   "src/generated/index.ts": "0f7e35f89de3edcb69227aec7341fdf400f8627799fe562d52d4f8cb8ce8451f"
 }
