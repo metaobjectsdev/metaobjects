@@ -3,7 +3,7 @@
 // The reference generators import only "@metaobjectsdev/codegen-ts" (the public engine);
 // if this passes, a consumer can copy them out and own them with no behavior change.
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, readdirSync, readFileSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { runGen, defineConfig, REFERENCE_GENERATOR_NAMES } from "../src/index.js";
@@ -19,10 +19,22 @@ import { routesFile as refRoutes } from "../src/reference/routes.js";
 import { routesFileHono as refRoutesHono } from "../src/reference/routes-hono.js";
 import { barrel as refBarrel } from "../src/reference/barrel.js";
 import { namesFile as refNames } from "../src/reference/names.js";
+import { promptRender as builtinPromptRender } from "../src/generators/prompt-render-file.js";
+import { outputParser as builtinOutputParser } from "../src/generators/output-parser-file.js";
+import { extractor as builtinExtractor } from "../src/generators/extractor-file.js";
+import { outputPrompt as builtinOutputPrompt } from "../src/generators/output-prompt-file.js";
+import { renderHelper as builtinRenderHelper } from "../src/generators/render-helper-file.js";
+import { promptRender as refPromptRender } from "../src/reference/prompt-render.js";
+import { outputParser as refOutputParser } from "../src/reference/output-parser.js";
+import { extractor as refExtractor } from "../src/reference/extractor.js";
+import { outputPrompt as refOutputPrompt } from "../src/reference/output-prompt.js";
+import { renderHelper as refRenderHelper } from "../src/reference/render-helper.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 
 const FIXTURE_DIR = resolve(import.meta.dir, "fixtures");
+// test → codegen-ts → packages → typescript → server → repo root
+const REPO_FIXTURES = resolve(import.meta.dir, "..", "..", "..", "..", "..", "fixtures");
 const FIXTURES = [
   "single-entity.json",
   "two-entities-fk.json",
@@ -50,13 +62,23 @@ let tmp: string;
 beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "codegen-ref-")); });
 afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
 
-async function gen(dir: string, generators: ReturnType<typeof builtinEntity>[], root: Parameters<typeof runGen>[0]["metadata"]) {
+async function gen(
+  dir: string,
+  generators: ReturnType<typeof builtinEntity>[],
+  root: Parameters<typeof runGen>[0]["metadata"],
+  projectRoot?: string,
+) {
   await runGen({
     config: defineConfig({ outDir: dir, extStyle: "none", dbImport: "~/server/db", dialect: "sqlite", generators }),
     metadata: root,
+    ...(projectRoot !== undefined ? { projectRoot } : {}),
   });
   const out: Record<string, string> = {};
-  for (const f of readdirSync(dir)) out[f] = readFileSync(join(dir, f), "utf-8");
+  for (const f of readdirSync(dir, { recursive: true, withFileTypes: true })) {
+    if (!f.isFile()) continue;
+    const abs = join(f.parentPath, f.name);
+    out[abs.slice(dir.length + 1)] = readFileSync(abs, "utf-8");
+  }
   return out;
 }
 
@@ -73,7 +95,32 @@ const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () 
   "routes-hono": { builtin: builtinRoutesHono, ref: refRoutesHono },
   barrel: { builtin: builtinBarrel, ref: refBarrel },
   names: { builtin: builtinNames, ref: refNames },
+  "prompt-render": { builtin: builtinPromptRender, ref: refPromptRender },
+  "output-parser": { builtin: builtinOutputParser, ref: refOutputParser },
+  extractor: { builtin: builtinExtractor, ref: refExtractor },
+  "output-prompt": { builtin: builtinOutputPrompt, ref: refOutputPrompt },
+  "render-helper": { builtin: builtinRenderHelper, ref: refRenderHelper },
 };
+
+// The prompt tier emits nothing for the entity-shaped fixtures above — none declares a
+// template — so a pair there is compared over two empty sets. These corpora carry the
+// nodes the prompt generators key on: the fitness corpus a RESPONDING template.prompt,
+// the template.output corpus documents + emails with their Mustache files under
+// `<projectRoot>/templates/`, which is where render-helper's gen-time drift gate reads.
+// `templatesDir` is COPIED into a scratch project root rather than pointed at in place:
+// runGen writes `.metaobjects/.gen-state/` under its projectRoot, and a shared fixture
+// directory must not collect that state.
+const PROMPT_TIER_CORPORA: ReadonlyArray<{ label: string; files: string[]; templatesDir?: string }> = [
+  {
+    label: "persistence-conformance fitness corpus (template.prompt + @responseRef)",
+    files: [join(REPO_FIXTURES, "persistence-conformance", "canonical", "meta.fitness.json")],
+  },
+  {
+    label: "template-output-render corpus (template.output documents + emails)",
+    files: [join(REPO_FIXTURES, "template-output-render-conformance", "meta.json")],
+    templatesDir: join(REPO_FIXTURES, "template-output-render-conformance", "templates"),
+  },
+];
 
 describe("ADR-0034 — reference templates are byte-identical to built-ins", () => {
   // The gate has to notice its own coverage shrinking. FR-040 added `routes-hono`
@@ -107,6 +154,47 @@ describe("ADR-0034 — reference templates are byte-identical to built-ins", () 
       } finally {
         rmSync(aDir, { recursive: true, force: true });
         rmSync(bDir, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
+describe("ADR-0034 — the prompt-tier reference templates over corpora that declare templates", () => {
+  const PROMPT_TIER = ["prompt-render", "output-parser", "extractor", "output-prompt", "render-helper"] as const;
+
+  for (const corpus of PROMPT_TIER_CORPORA) {
+    test(corpus.label, async () => {
+      const loader = new MetaDataLoader();
+      const result = await loader.load(corpus.files.map((f) => new FileSource(f)));
+      expect(result.errors).toEqual([]);
+
+      const aDir = mkdtempSync(join(tmpdir(), "codegen-builtin-"));
+      const bDir = mkdtempSync(join(tmpdir(), "codegen-reference-"));
+      const projectRoot = mkdtempSync(join(tmpdir(), "codegen-project-"));
+      if (corpus.templatesDir !== undefined) {
+        cpSync(corpus.templatesDir, join(projectRoot, "templates"), { recursive: true });
+      }
+      try {
+        // entity rides along because every prompt-tier module imports a value object's
+        // interface from the module entity emits.
+        const pick = (side: "builtin" | "ref") => [
+          PAIRS.entity[side](),
+          ...PROMPT_TIER.map((n) => PAIRS[n][side]()),
+        ];
+        const a = await gen(aDir, pick("builtin"), result.root, projectRoot);
+        const b = await gen(bDir, pick("ref"), result.root, projectRoot);
+        const aKeys = Object.keys(a).sort();
+        // A gate over an empty emit passes trivially — assert the prompt tier produced files.
+        expect(aKeys.filter((k) => /(\.(response|responseFormat|extractor|render)|^prompts)\.ts$/.test(k)).length)
+          .toBeGreaterThan(0);
+        expect(Object.keys(b).sort()).toEqual(aKeys);
+        for (const k of aKeys) {
+          expect(`${k}:\n${b[k]}`).toBe(`${k}:\n${a[k]}`);
+        }
+      } finally {
+        rmSync(aDir, { recursive: true, force: true });
+        rmSync(bDir, { recursive: true, force: true });
+        rmSync(projectRoot, { recursive: true, force: true });
       }
     });
   }

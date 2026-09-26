@@ -7,11 +7,13 @@
 // remain in this directory as the engine's internal composers and as the oracle the
 // byte-identity gate holds each reference template to — they are no longer public API.
 //
-// The factories BELOW are not deprecated and this subpath is their supported public home:
-// the prompt/output tier (`promptRender`, `outputParser`, `outputPrompt`, `extractor`,
-// `renderHelper`, `traceHelperFile`) is upstream-owned and has no ownable copy — the CLI's
-// own prompt-gate warning names this import path — and `routesFileHono` / `namesFile` /
-// `callableFile` are stock generators a consumer wires directly.
+// The factories BELOW are not deprecated and this subpath is a supported public home for
+// them. The prompt/output tier (`promptRender`, `outputParser`, `outputPrompt`,
+// `extractor`, `renderHelper`) ALSO ships a reference template, so `meta eject <name>`
+// can copy one to own (ADR-0034 Amendment 3); importing it from here is the un-owned
+// path, and the CLI's prompt-gate warning names it. `traceHelperFile`, `callableFile` and
+// the docs/primitive entries are package-only: no reference copy ships, so this subpath
+// is their only home. `routesFileHono` / `namesFile` are wired directly or ejected.
 // See spec/decisions/ADR-0034-codegen-scaffold-and-own.md.
 
 export { callableFile, type CallableFileOpts } from "./callable-file.js";

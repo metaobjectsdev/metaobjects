@@ -232,3 +232,25 @@ reference is scaffolding; this amendment stops describing it as anything else.
   are pinned by `api-contract-conformance` in every port. An adapter can be replaced; it
   cannot silently change that contract.
 
+
+**Correction made under this amendment (2026-09-26): "every generator" is not every
+generator.** The ruling above reads as though every TypeScript generator can be copied with
+`meta eject`. It could not: the TypeScript ejectable set was the entity/CRUD tier plus the
+three UI templates, and every capability-tier generator was package-only. Two things change.
+
+- **The prompt tier now ejects.** `prompt-render`, `output-parser`, `extractor`,
+  `output-prompt` and `render-helper` ship reference templates, byte-identity-gated like the
+  rest (`codegen-ts/test/reference-byte-identical.test.ts`, over two template corpora). The
+  C# and Python ports already ejected their equivalents. What an adopter owns is the thin
+  generator — which templates get a module, and where it lands; the module body comes from a
+  public `render*` composer, and the render and extract ENGINES it calls stay core.
+- **What is still package-only says so.** `callable`, `trace-helper`, `requirement-tests`,
+  the `template` primitive, the docs tier (`docs`, `api-docs`, `mermaid-er`) and
+  `shared-model` ship no TypeScript reference template. `meta gen --list` marks each
+  `package-only`, its JSON row carries `source.kind: "package-only"`, and `meta eject` names
+  such an entry as package-only rather than as an unknown name. They remain helpers in the
+  sense of this amendment — what they write is not a guarantee — but "copy it and own it" is
+  not available for them until a reference template ships.
+
+The "condition this depends on" paragraph above is also out of date: every port now has an
+eject command (`docs/features/own-your-codegen.md`, "Per port").

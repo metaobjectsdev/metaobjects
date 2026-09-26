@@ -29,8 +29,9 @@ import { defineConfig } from "@metaobjectsdev/cli";
 import { entityFile } from "./codegen/generators/entity.js";
 import { queriesFile } from "./codegen/generators/queries.js";
 import { barrel } from "./codegen/generators/barrel.js";
-// promptRender / outputParser are NOT in the ownable set — the render and parse engines
-// are upstream-owned, so importing them from the package is the supported pattern.
+// promptRender / outputParser can be imported from the package (below) OR owned:
+// `meta eject prompt-render output-parser` copies them into ./codegen/generators/ like the
+// entity trio. Either way the render and parse ENGINES they call stay in the package.
 import { promptRender, outputParser } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
@@ -128,10 +129,14 @@ Render the prompt → call your LLM client (provider-agnostic; nothing is genera
 here) → parse the response with the generated parser:
 
 ```ts
-import { renderNpcPrompt } from "./generated/prompts";
-import { parseNpcResponseOutput, safeParseNpcResponseOutput } from "./generated/NpcResponseOutput.output";
+// Node-only subpath: the package ROOT stays browser-safe, so the filesystem provider
+// lives on `@metaobjectsdev/render/providers`. `lobby/welcome` → ./prompts/lobby/welcome.mustache.
+import { FilesystemProvider } from "@metaobjectsdev/render/providers";
+import { renderNpcReview } from "./generated/prompts";
+import { parseNpcResponseOutput, safeParseNpcResponseOutput } from "./generated/NpcReview.response";
 
-const promptText  = renderNpcPrompt(payload, textProvider);
+const textProvider = new FilesystemProvider("./prompts");
+const promptText  = renderNpcReview(payload, textProvider);
 const llmResponse = await myLlmProvider.call(promptText);   // YOUR code — no generated provider
 
 // Throwing path:

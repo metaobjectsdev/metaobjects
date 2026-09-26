@@ -92,10 +92,12 @@ Server-side, framework-neutral. **None is wired by default** — `meta init` wri
 ownable ones into your repo, imported from `./codegen/generators/*` (ADR-0034); 1.0
 REMOVED their `@metaobjectsdev/codegen-ts/generators` export, so an owned copy is the only
 path for those. The engine primitives come from the package main entry,
-`@metaobjectsdev/codegen-ts`. The `/generators` subpath itself is NOT deprecated: it is the
-supported home of the generators with no ownable copy — `promptRender`, `outputParser`,
-`outputPrompt`, `extractor`, `renderHelper`, `traceHelperFile`, `namesFile`,
-`callableFile`, `requirementTests`.
+`@metaobjectsdev/codegen-ts`. The `/generators` subpath itself is NOT deprecated. It
+exports the prompt tier (`promptRender`, `outputParser`, `outputPrompt`, `extractor`,
+`renderHelper`) and `namesFile`, which you may import from there OR eject to own, and it is
+the only home of the package-only generators — `traceHelperFile`, `callableFile`,
+`requirementTests` — which ship no reference template (`meta gen --list` marks them
+`package-only`).
 
 The table below is a per-emission reference, NOT the selection surface. Select with
 `meta gen --list --format json --probe`, which is generated from the live registry and

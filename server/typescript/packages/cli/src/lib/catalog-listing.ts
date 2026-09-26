@@ -334,6 +334,11 @@ export const REFERENCE_HELPER_NOTE: readonly string[] = [
   "render) is not a generator and is not listed here.",
 ];
 
+/** The footer line explaining the `package-only` row mark. */
+export const PACKAGE_ONLY_NOTE =
+  "package-only = no reference template ships for it yet, so `meta eject` cannot copy it; " +
+  "import it from its package instead.";
+
 /** The human rendering: grouped by layer, because layer is the axis you select by. */
 export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
   const lines: string[] = [];
@@ -352,6 +357,7 @@ export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
     const marks: string[] = [];
     if (r.framework !== undefined) marks.push(r.framework);
     if (r.tier === "neutral") marks.push("neutral");
+    if (!r.source.ejectable) marks.push("package-only");
     if (r.project?.wired) marks.push("WIRED");
     if (r.source.owned) marks.push("owned");
     if (probed && r.project?.wouldEmit !== null && r.project?.wouldEmit !== undefined) {
@@ -372,6 +378,7 @@ export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
   lines.push("");
   lines.push("`meta eject <name...>` copies a generator into codegen/generators/ and prints");
   lines.push("the import to add, the entry to wire, and what to install.");
+  if (generators.some((r) => !r.source.ejectable)) lines.push(PACKAGE_ONLY_NOTE);
   if (!probed) {
     lines.push("Add --probe to see how many files each would emit for YOUR model.");
   }

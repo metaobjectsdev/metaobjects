@@ -130,10 +130,15 @@ table/key, collection/document). The prompt text itself **never lives in
 metadata** — at runtime a configured **provider** resolves the reference to the
 actual Mustache text:
 
-- a filesystem provider (L1 = folder, L2 = file) — the dev default;
-- an in-memory provider (a string map) — tests;
+- a filesystem provider (L1 = folder, L2 = file) — the dev default:
+  `lobby/welcome` → `<root>/lobby/welcome.mustache`. It is `FilesystemProvider` in every
+  port; in TypeScript it is Node-only and imported from a subpath so the package root
+  stays browser-safe — `import { FilesystemProvider } from "@metaobjectsdev/render/providers"`
+  (Python `metaobjects.render`, C# `MetaObjects.Render`, JVM `com.metaobjects.render`);
+- an in-memory provider (a string map) — tests (`InMemoryProvider`, from the package root);
 - a classpath/resource provider on the JVM;
-- or a consumer-supplied provider (RDB / vector store / …).
+- or a consumer-supplied provider (RDB / vector store / …) — implement `Provider`'s one
+  `resolve(ref)` method.
 
 Locale, A/B, dynamic, and evolutionary prompt variants all live behind the
 provider seam without touching metadata.

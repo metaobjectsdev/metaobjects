@@ -87,9 +87,11 @@ import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/cod
 ```
 
 **Do NOT flag the subpath itself.** `@metaobjectsdev/codegen-ts/generators` is the supported,
-non-deprecated home of the generators that have no ownable copy — the prompt/output tier
-(`promptRender`, `outputParser`, `outputPrompt`, `extractor`, `renderHelper`,
-`traceHelperFile`) plus `routesFileHono`, `namesFile` and `callableFile`. The CLI's own
+non-deprecated home of the generators it still exports — the prompt/output tier
+(`promptRender`, `outputParser`, `outputPrompt`, `extractor`, `renderHelper`),
+`traceHelperFile`, `routesFileHono`, `namesFile` and `callableFile`. The prompt tier can
+also be ejected (`meta eject prompt-render`), but owning it is optional; `traceHelperFile`
+and `callableFile` are package-only and this subpath is their only home. The CLI's own
 prompt-gate warning tells adopters to import `promptRender` from exactly this path. A
 project importing those from it is CORRECT, and reporting it as un-adopted scaffold-and-own
 is a false finding.
