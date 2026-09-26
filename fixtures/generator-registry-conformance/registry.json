@@ -15,7 +15,7 @@
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
     "output-parser": {
-      "concept": "Per-template response parser: a strict parse that rejects a reply not matching the @responseRef shape, plus a tolerant, never-throwing lenient extract.",
+      "concept": "Per-template response parser: a strict parse that rejects a reply not matching the @responseRef shape, plus a tolerant lenient extract for a raw model reply, which reports per field instead of throwing on a bad reply.",
       "tier": "native",
       "layer": "capability",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]

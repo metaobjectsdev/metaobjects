@@ -403,6 +403,19 @@ forgiving one) but because strict all-or-nothing semantics layered over a REPAIR
 parser is incoherent: it would raise or accept based on how much repair happened, which
 is not a contract anyone can reason about.
 
+**A raw model reply goes to the tolerant extract, not the strict parse.** The strict
+parse expects the reply to BE the JSON document, so a chat reply that wraps it — `Sure!`
+followed by a fenced JSON block — fails it (TypeScript: `invalid JSON: Unexpected token
+'S'`). Keep the strict parse for a provider's structured-output / JSON mode. The tolerant
+extract strips the prose and fences, repairs what it can, and returns the recovered data
+with a per-field report rather than throwing on a bad reply. It reads the live metadata, so
+it takes a loaded root as well as the text: in TypeScript it is
+`extractLenient<Name>WithLoader(root, text, opts?)` → `ExtractionResult<<Vo>Extracted>`
+(there is no text-only `extractLenient<Name>(text)`), and it throws only when `root` does
+not declare the response value object — a setup error, not a reply error. `orThrow(result)`
+from `@metaobjectsdev/render` turns a lost `@required` field into an `ExtractError`. The
+other ports' names are in the prompts skill's per-language references.
+
 ### Consumer-side usage (Kotlin example)
 
 ```kotlin

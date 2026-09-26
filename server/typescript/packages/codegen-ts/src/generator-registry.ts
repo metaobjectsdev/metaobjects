@@ -322,7 +322,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     name: "output-parser",
     kind: "generator",
     layer: "capability",
-    description: "Per-template response parser: a strict parse<Name> that throws on a reply not matching the @responseRef shape, plus a tolerant, never-throwing extractLenient<Name>.",
+    description: "Per-template response parser: a strict parse<Name> / safeParse<Name> for a reply that is bare JSON in the @responseRef shape, plus a tolerant extractLenient<Name>WithLoader(root, text) for a raw model reply (prose, code fences) that reports per field instead of throwing on a bad reply; it throws only when root does not declare the response value object.",
     tier: "native",
     factory: () => outputParser(),
     options: "filter?, target?",
