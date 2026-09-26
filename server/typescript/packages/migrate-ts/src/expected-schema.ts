@@ -67,6 +67,8 @@ import { viewFingerprint } from "./view-fingerprint.js";
 import { resolveViewColumns, type ExpectedViewColumnInput } from "./view-column-types.js";
 import {
   resolveReferentialActions,
+  findReferentialActionConflict,
+  type ReferentialActionConflict,
   validateSetNullNullability,
   readIdentityFields,
   findField,
@@ -101,6 +103,13 @@ export interface BuildExpectedSchemaOptions {
    * expected tables and computes the view's fingerprint.
    */
   views?: readonly ExpectedViewInput[];
+  /**
+   * Receives each foreign key whose two sides declare relationships that disagree on
+   * its referential action (see `findReferentialActionConflict`). Called from the very
+   * walk that emits the FK, so a report always names a constraint the DDL contains.
+   * Advisory: the schema built is the same with or without it.
+   */
+  onReferentialActionConflict?: (conflict: ReferentialActionConflict) => void;
 }
 
 /**
@@ -279,7 +288,9 @@ export function buildExpectedSchemaWithProvenance(
   // Schema is resolved here (not stored in Pass 1) to avoid exactOptionalPropertyTypes
   // issues with `string | undefined` vs `schema?: string`.
   const tables: TableDescriptor[] = entities.map(({ entity, tableName }) => {
-    const t = buildTable(entity, tableName, resolveTargetTable, root as MetaRoot, strategy, dialect);
+    const t = buildTable(
+      entity, tableName, resolveTargetTable, root as MetaRoot, strategy, dialect, opts?.onReferentialActionConflict,
+    );
     const schema = resolveTableSchema(entity);
     if (schema !== undefined) t.schema = schema;
     provenance.set(qualifiedDbName(t), entity.resolutionKey());
@@ -519,6 +530,7 @@ function buildTable(
   root: MetaRoot,
   strategy: ColumnNamingStrategy,
   dialect: Dialect | undefined,
+  onConflict?: (conflict: ReferentialActionConflict) => void,
 ): TableDescriptor {
   // Use effective accessors so inherited fields/identities (from `extends:` /
   // abstract bases like BaseEntity) are included.
@@ -601,7 +613,7 @@ function buildTable(
     name: tableName,
     columns,
     indexes: buildSecondaryIndexes(entity, tableName, strategy),
-    foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root, strategy),
+    foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root, strategy, onConflict),
     checks: buildChecks(entity, tableName, strategy, dialect),
     primaryKey,
   };
@@ -958,6 +970,7 @@ function buildForeignKeys(
   resolveTargetTable: (targetRef: string, referrerKey: string) => string | undefined,
   root: MetaRoot,
   strategy: ColumnNamingStrategy,
+  onConflict?: (conflict: ReferentialActionConflict) => void,
 ): FkDescriptor[] {
   const fks: FkDescriptor[] = [];
   // FR-017 TPH: a discriminator base's table also carries every concrete subtype's
@@ -1019,6 +1032,10 @@ function buildForeignKeys(
     });
 
     const { onDelete, onUpdate } = resolveReferentialActions(holder, refChild);
+    if (onConflict !== undefined) {
+      const conflict = findReferentialActionConflict(holder, refChild);
+      if (conflict !== undefined) onConflict(conflict);
+    }
     // An explicit @constraintName adopts an existing FK name (e.g. a database
     // created by another toolchain); absent → the auto-derived default.
     // ADR-0039: effective attr — @constraintName may be inherited via the identity's extends.

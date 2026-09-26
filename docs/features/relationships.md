@@ -136,6 +136,18 @@ action, highest first:
 4. None of the above → the FK is emitted with no `ON DELETE` / `ON UPDATE`
    clause (SQL `NO ACTION`).
 
+**Declaring both sides.** A 1:N can be declared on the parent (`Author` →
+`posts`), on the FK-owning child (`Post` → `author`), or on both. When both are
+declared, tier 2 beats tier 3: the **child's** relationship sets the FK's actions
+and the parent's has no effect on the constraint. That matters when the subtypes
+disagree. A parent-side `relationship.composition` (cascade) paired with a
+child-side `relationship.association` (restrict) emits `ON DELETE RESTRICT`, so
+deleting a parent that still has children is refused. `meta verify` names each such
+foreign key in its advisory tier (rule `overridden-referential-action`) and
+`meta migrate` warns while writing it. Settle it on the foreign key: declare
+`@onDelete` on the `identity.reference` (tier 1 overrides both), or make the two
+subtypes agree.
+
 Prefer declaring the action on the relationship (the subtype carries the
 semantics and the default); reach for the reference-level attr only when no
 relationship exists or a single FK needs to deviate. The values are
@@ -413,7 +425,14 @@ declared, which is #174 and not specific to M:N.
 ### TypeScript
 
 `@metaobjectsdev/codegen-ts` emits Drizzle `references()` on the FK column and (with
-`queriesFile()`) a typed finder for the relationship.
+`queriesFile()`) typed reverse finders over the FK. The Drizzle `references()` call
+carries no referential action; the action lives in the DDL `meta migrate` writes.
+A `@cardinality: many` relationship declared on the parent generates no Drizzle
+`many()` member of its own: reverse navigation is the finder pair
+`find<ChildPlural>By<Fk>` / `…In` on the child's queries module
+([ADR-0038](../../spec/decisions/ADR-0038-reverse-navigation-via-explicit-finders.md)).
+The child's `@cardinality: one` relationship is what emits the Drizzle `one()`
+relation.
 
 ```ts
 // generated/acme/blog/Post.ts
@@ -425,11 +444,11 @@ export const post = pgTable(PostNames.sources.primary.table, {
   title:    varchar(PostNames.fields.title.column, { length: 255 }).notNull(),
   authorId: bigint(PostNames.fields.authorId.column, { mode: "number" })
               .notNull()
-              .references((): AnyPgColumn => author.id, { onDelete: "cascade" }),
+              .references((): AnyPgColumn => author.id),
 });
 
-// generated/acme/blog/Author.queries.ts (excerpt)
-export async function findPostsForAuthor(db: Db, authorId: number): Promise<Post[]> {
+// generated/acme/blog/Post.queries.ts (excerpt; findPostsByAuthorIn batches it)
+export async function findPostsByAuthor(db: Db, authorId: number): Promise<Post[]> {
   return db.select().from(post).where(eq(post.authorId, authorId));
 }
 ```

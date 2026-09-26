@@ -180,6 +180,22 @@ export function unindexedFkRows(
   }));
 }
 
+/**
+ * Relationships on both sides of one FK that disagree on its referential action, in the
+ * same row shape. `construct` is `<entity FQN>.<reference>` — the FK, where the fix goes.
+ */
+export function referentialActionConflictRows(
+  findings: readonly { file: string; construct: string; message: string }[],
+): AdvisoryFindingRow[] {
+  return findings.map((f) => ({
+    file: f.file,
+    line: 0,
+    rule: "overridden-referential-action",
+    construct: f.construct,
+    message: f.message,
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // text output
 // ---------------------------------------------------------------------------

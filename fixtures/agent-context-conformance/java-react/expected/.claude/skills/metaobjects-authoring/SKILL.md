@@ -767,6 +767,19 @@ subtype** as in the table; `@onUpdate` defaults to `cascade` on every subtype.
 { "relationship.association": { "name": "author",  "@objectRef": "User", "@cardinality": "one" } }
 ```
 
+**A 1:N declared on both sides: the FK-owning side governs.** The parent-side form
+(`Author` → `posts`, `@cardinality: many`) and the child-side form (`Post` → `author`,
+`@cardinality: one`) are both supported, and the FK is always derived from the child's
+`identity.reference`. When both are declared, the **child's** relationship sets the FK's
+actions and the parent's has no effect on the constraint. So a parent `composition` plus a
+child `association` gives `ON DELETE RESTRICT`, not cascade, and deleting a parent that has
+children is refused. `meta verify` flags that pair (rule `overridden-referential-action`) and
+`meta migrate` warns. To get the cascade, put it on the FK itself:
+`"@onDelete": "cascade"` on the child's `identity.reference` (it overrides both sides), or
+make the child's relationship agree. In TypeScript a parent-side `many` relationship emits
+no Drizzle `many()` member; reverse navigation is the generated finder
+`find<ChildPlural>By<Fk>` (and its batched `…In`) on the child's queries module.
+
 **Many-to-many (FR-018) — `@through` a junction entity.** Model an M:N link with
 `@cardinality: "many"` + `@objectRef` (the target) + **`@through`** (the junction
 entity). The junction MUST declare **two `identity.reference` children**, one per FK
