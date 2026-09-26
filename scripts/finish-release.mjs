@@ -229,6 +229,9 @@ if (wrong.length > 0) {
 } else {
   ok(`payload states all four coordinates: npm ${r.npm} · PyPI ${r.pypi} · NuGet ${r.nuget} · Maven ${r.maven}`);
 }
+// The Maven coordinate this release actually ships: the derived one, unless Maven sat out,
+// in which case its previous coordinate is still the current one. Gates 5 and 7 name it.
+const MAVEN_SHIPPED = satOut.get("maven") ?? MAVEN_VERSION;
 
 // ── 4. the injector and the payload are both IN the tree being tagged ────────
 // The deploy runs the injector FROM the tag. A tag without it takes the skip branch in
@@ -289,7 +292,7 @@ for (const rel of ["docs/llms/llms.txt", "docs/llms/llms-full.txt"]) {
   }
   const missing = [
     ...(summary.includes(VERSION) ? [] : [`npm ${VERSION}`]),
-    ...(summary.includes(MAVEN_VERSION) ? [] : [`Maven ${MAVEN_VERSION}`]),
+    ...(summary.includes(MAVEN_SHIPPED) ? [] : [`Maven ${MAVEN_SHIPPED}`]),
   ];
   if (missing.length > 0) {
     die(`${rel}'s summary line does not name ${missing.join(" or ")} — refresh the mirrors ` +
@@ -320,7 +323,10 @@ for (const rel of ["docs/llms/llms.txt", "docs/llms/llms-full.txt"]) {
   // mirrors name no third-party version anywhere, so the only three-part strings in them
   // are MetaObjects' own coordinates, and a claim line may only name what shipped.
   const VER = /\b\d+\.\d+\.\d+\b/g;
-  const SHIPPED = new Set([VERSION, MAVEN_VERSION]);
+  // MAVEN_SHIPPED, not the derived coordinate: a sat-out Maven's unmoved number is what
+  // ships. Safe unscoped, unlike the per-registry excuse below: the Maven line runs seven
+  // majors ahead of the others, so no other registry can share its number.
+  const SHIPPED = new Set([VERSION, MAVEN_SHIPPED]);
   // ...plus a registry that SAT OUT, which still ships its previous coordinate: the mirror
   // saying PyPI `1.0.1` at the 1.0.2 cut is right, and refusing it left no way through but
   // making the mirror lie. The excuse is scoped to where the line ATTRIBUTES the number to
@@ -379,7 +385,7 @@ ok(`the site deploy will resolve ${tag}`);
 if (CHECK_ONLY) { ok("--check: gates passed; no tag cut"); process.exit(0); }
 
 // ── 7. cut it ────────────────────────────────────────────────────────────────
-execSync(`git tag -a ${tag} -m "metaobjects ${VERSION} / ${MAVEN_VERSION}"`, { cwd: REPO, stdio: "inherit" });
+execSync(`git tag -a ${tag} -m "metaobjects ${VERSION} / ${MAVEN_SHIPPED}"`, { cwd: REPO, stdio: "inherit" });
 execSync(`git push origin ${tag}`, { cwd: REPO, stdio: "inherit" });
 ok(`cut and pushed ${tag}`);
 console.log(`\n  Next: \`gh release create ${tag}\` with the CHANGELOG section as the body.`);

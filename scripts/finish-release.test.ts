@@ -442,6 +442,26 @@ describe("finish-release gate 5: the llms mirrors state this release", () => {
     expect(r.out).toContain("does not name Maven 7.24.6");
   });
 
+  // Maven sat out 1.0.8 at 8.0.7. Gate 5 checked the summary for the DERIVED 8.0.8 anyway, so
+  // a correct mirror was refused, and the only way through was to make the mirror lie.
+  test("a summary naming a SAT-OUT Maven's unmoved coordinate passes", () => {
+    const r = makeRepo({
+      payload: { maven: "7.24.5" }, manifest: { maven: "7.24.5" },
+      llms: llms({ ...SHIPPED, maven: "7.24.5" }),
+    }).run(RELEASE, "--sat-out", "maven", "--check");
+    expect(r.out).toContain("the llms mirrors state this release");
+    expect(r.code).toBe(0);
+  });
+
+  test("a sat-out Maven does not excuse a summary naming neither coordinate", () => {
+    const r = makeRepo({
+      payload: { maven: "7.24.5" }, manifest: { maven: "7.24.5" },
+      llms: llms({ ...SHIPPED, maven: "7.24.4" }),
+    }).run(RELEASE, "--sat-out", "maven", "--check");
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain("does not name Maven 7.24.5");
+  });
+
   test("a mirror with no summary line at all is refused", () => {
     const r = makeRepo({ llms: "# MetaObjects\n\nno summary here\n" }).run(RELEASE, "--check");
     expect(r.code).not.toBe(0);
