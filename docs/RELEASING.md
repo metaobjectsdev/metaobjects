@@ -599,7 +599,7 @@ How to publish the `MetaObjects*` C# packages to nuget.org. We use **Trusted Pub
 
 ## What gets published
 
-Four packages, version-locked at the C# port version (currently `1.0.7`):
+Four packages, version-locked at the C# port version (currently `1.0.8`):
 
 | Package | Contents |
 |---|---|
@@ -700,7 +700,7 @@ a pre-release you have not committed.
 ## What gets published
 
 One package, `metaobjects` (version in [`server/python/pyproject.toml`](../server/python/pyproject.toml),
-currently `1.0.7`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
+currently `1.0.8`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
 
 ## How we publish: a tag-triggered workflow (API token)
 

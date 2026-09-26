@@ -22,7 +22,7 @@ The first four ship per-language today across the five ports (TS / C# / Java / P
 
 ## Status
 
-_Last refreshed 2026-09-24._
+_Last refreshed 2026-09-25._
 
 **1.0 gating — the quiet period is RETIRED (2026-09-06).** `docs/1.0-readiness.md` §G3 no
 longer asks for "one coordinated release with no metamodel-breaking change." It measured a
@@ -39,11 +39,12 @@ because a conformance corpus gates the ports against each other and never agains
 in ADR-0035 **Amendment 3**. Do not reintroduce a waiting gate in any form.
 
 
-**Where the versions are.** `latest` is **`1.0.7`** on npm, **`8.0.7`** on Maven Central,
-**`1.0.7`** on PyPI and **`1.0.7`** on NuGet (the Maven major is always **npm major + 7**, so
-1.0.7 is 8.0.7). All four moved at 1.0.7. Maven alone took 1.0.6 (8.0.6), a plugin fix, and the
-other three skipped that number, which is the convergent-publishing rule working as intended. **1.0 is CUT**: the `1.0.0-rc.5` through `rc.8` candidates, 1.0.4's `rc.1`,
-1.0.5's `rc.1` through `rc.11` and 1.0.7's `rc.1` are
+**Where the versions are.** `latest` is **`1.0.8`** on npm, **`8.0.7`** on Maven Central,
+**`1.0.8`** on PyPI and **`1.0.8`** on NuGet (the Maven major is always **npm major + 7**, so
+1.0.7 is 8.0.7). All four moved at 1.0.7; Maven sat out 1.0.8 (no JVM product change), and
+earlier Maven alone took 1.0.6 (8.0.6) while the other three skipped that number. Both are the
+convergent-publishing rule working as intended. **1.0 is CUT**: the `1.0.0-rc.5` through `rc.8` candidates, 1.0.4's `rc.1`,
+1.0.5's `rc.1` through `rc.11`, and 1.0.7's and 1.0.8's `rc.1` are
 superseded, and npm's `next` tag is REPOINTED onto each release — not deleted, because
 `dist-tag rm` 403s for every token we hold (`docs/RELEASING.md` §4).
 `metamodelVersion` reads **`1.0`**, frozen — C4 landed and G4 shipped it, and no 1.0.x patch
@@ -82,7 +83,7 @@ PyPI has had no product change since `0.25.0` — nothing is broken.
 
 **Key cross-language features shipped:** FR5 family (a/b/c/d/e + WARN envelope-shape — actionable loader errors per ADR-0009); FR-003 (Java RDB runtime persistence + projections; schema migrations are TS-only — the Java migration engine was removed); FR-006 (template.output parser-on-receipt codegen per ADR-0010 in all 5 ports); FR-008 + FR-009 (cross-port REST API contract + the nine filter operators); FR-018 (M:N relationship codegen in all 5 ports — entity navigation + idiomatic ORM wiring [Drizzle m2m / EF Core `UsingEntity` / Spring repo+JPA / Exposed / Pydantic+route as the SQLAlchemy-secondary equivalent] + REST traversal `GET /<source-plural>/{id}/<relation>` + Tier-2 docs, gated by the shared api-contract m2m corpus in both lanes + persistence-conformance; the TanStack M:N client hook is a deferred client-ergonomics follow-up); SP-H (field-subtype end-to-end hardening: every concrete `field.*` subtype write+read round-trips cross-port via the persistence `op: roundtrip` gate; cut `field.byte`/`field.short`/`field.class` non-functional stubs; cross-port filter-op reconciliation for uuid/currency); source v2 paradigm (ADR-0007); metadata-ktx Kotlin facade; per-target output directories (TS codegen).
 
-**Latest release: 1.0.7** (2026-09-24) — npm `1.0.7`, Maven Central `8.0.7`, PyPI `1.0.7`, NuGet `1.0.7`; a coordinated PATCH with changed product code in every port, gated by `1.0.7-rc.1` on the adopter estate (`rc-gate.sh` 7/7, contract suite 43/43 in all five ports). Carries the XML and JSON `extract` fixes in every port (an XML string field no longer receives a stringified map; a fenced answer is no longer discarded for an earlier object, #363), `meta migrate --rename-column`/`--rename-table` plus populated-table hazard warnings, `routesFile({ registerAll: true })`, and an "unauthenticated" doc comment on the generated routes in C#, Java, Kotlin and Python (#367). The route comment is the only generated-output change: adopters with committed generated code see a comment-only diff on the next `gen`. The previous release, 1.0.5 (2026-09-23), carried the **core vs helpers** reframe (ADR-0034 Amendment 3 — **eject ships in every port**) and renamed the REST collection URL to the entity name.
+**Latest release: 1.0.8** (2026-09-25) — npm `1.0.8`, PyPI `1.0.8`, NuGet `1.0.8`; Maven Central sat out at `8.0.7`. A PATCH gated by `1.0.8-rc.1` on the adopter estate (`rc-gate.sh` 7/7, contract suite 43/43 in all five ports). C# gains the `requires` warnings TS and Python had, Python `routes` declares its dependencies, a template spec alone counts as a generator selection in C# and Python, and the docs say "no proprietary runtime" instead of "no MetaObjects dependency". No generated-output change. The previous release, 1.0.7 (2026-09-24), carried the `extract` fixes, `meta migrate` declared renames and `routesFile({ registerAll })`.
 
 See `spec/roadmap.md` for the active + planned work picture.
 

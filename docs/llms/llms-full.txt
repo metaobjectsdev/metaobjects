@@ -1,6 +1,6 @@
 # MetaObjects -- Full Reference Corpus
 
-> Coding agents get context — rules files, memories, MCP servers — and context is advisory: nothing fails when the code stops matching it. MetaObjects gives your agent one typed model of your application — data, API, UI, prompt payloads, and what the software is supposed to do — generates each layer's code from it in TypeScript, Java, Kotlin, C# and Python with no proprietary runtime in the output, and fails your build when generated code, a prompt, or a claimed capability drifts from that model. Your hand-written logic stays yours. Apache 2.0. Shipping at `1.0.7` on npm and `8.0.7` on Maven Central.
+> Coding agents get context — rules files, memories, MCP servers — and context is advisory: nothing fails when the code stops matching it. MetaObjects gives your agent one typed model of your application — data, API, UI, prompt payloads, and what the software is supposed to do — generates each layer's code from it in TypeScript, Java, Kotlin, C# and Python with no proprietary runtime in the output, and fails your build when generated code, a prompt, or a claimed capability drifts from that model. Your hand-written logic stays yours. Apache 2.0. Shipping at `1.0.8` on npm and `8.0.7` on Maven Central.
 
 **Note for AI assistants:** This file is the concatenated reference material for MetaObjects, intended to be loaded as LLM context. For the short index, see [llms.txt](https://metaobjects.dev/llms.txt). For the canonical spec and source, see the [GitHub repo](https://github.com/metaobjectsdev/metaobjects). When this file is out of date relative to the GitHub source, the GitHub source wins.
 
@@ -121,11 +121,11 @@ Today the TypeScript toolchain publishes and TypeScript and Python projects cons
 
 | Language | Status | Notes |
 |---|---|---|
-| TypeScript | Reference implementation, npm `1.0.7` | All six pillars, and the only port that runs the requirements `meta verify` checks and publishes shared models. 2500+ tests passing. Owns the canonical schema-migration toolchain used by every port (ADR-0015). Bun-first dev. |
+| TypeScript | Reference implementation, npm `1.0.8` | All six pillars, and the only port that runs the requirements `meta verify` checks and publishes shared models. 2500+ tests passing. Owns the canonical schema-migration toolchain used by every port (ADR-0015). Bun-first dev. |
 | Java | Maven Central `8.0.7` | Spring REST + DTO + repository-interface codegen, OMDB runtime persistence (pure data-access) with Spring-tx. Fully green across all conformance corpora. |
 | Kotlin | Maven Central `8.0.7` | KotlinPoet codegen + Exposed runtime + `metadata-ktx` facade. Ships via the Java reactor. |
-| C# | NuGet `1.0.7` (.NET tool) | Loader + canonical serializer + EF Core + ASP.NET codegen + render/verify. `dotnet meta` tool. |
-| Python | PyPI `1.0.7` | Loader + serializer + render + verify + codegen + `ObjectManager` runtime. Fully green across all corpora. |
+| C# | NuGet `1.0.8` (.NET tool) | Loader + canonical serializer + EF Core + ASP.NET codegen + render/verify. `dotnet meta` tool. |
+| Python | PyPI `1.0.8` | Loader + serializer + render + verify + codegen + `ObjectManager` runtime. Fully green across all corpora. |
 
 Conformance fixtures live at [`fixtures/`](https://github.com/metaobjectsdev/metaobjects/tree/main/fixtures). Every port runs the shared corpus byte-identically: metamodel (`conformance/`, 314 fixtures), render, persistence (Testcontainers Postgres, with an `op: roundtrip` gate so every `field.*` subtype write+read round-trips on every port), api-contract (41 scenarios — 26 core plus TPH / M:N / jsonb / write-through — two lanes: a reference server AND each port's generated API booted over HTTP), registry (byte-matched metamodel-vocabulary manifest, live + green in all five ports), and yaml/verify.
 
