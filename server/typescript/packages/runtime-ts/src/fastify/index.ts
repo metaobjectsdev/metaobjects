@@ -26,6 +26,7 @@ import type { RouteShorthandOptions } from "fastify";
 import type { SortAllowlist } from "../drizzle-fastify/filter-allowlist.js";
 import { sortOrderSpec } from "../drizzle-fastify/filter-allowlist.js";
 import { isTruthyFlag, contractErrorCode } from "../drizzle-fastify/util.js";
+import { withContractErrorHandler } from "../drizzle-fastify/route-error-handler.js";
 
 // ---------------------------------------------------------------------------
 // Public surface
@@ -107,12 +108,14 @@ export function mountCrudRoutes(opts: CrudRoutesOptions): void {
 type SingleVerbOptions = Omit<CrudRoutesOptions, "expose">;
 
 /**
- * Build the route options Fastify wants. Just the consumer's routeOptions
- * (typed loosely to avoid Fastify's elaborate route-options union here).
- * Returns an empty object if nothing was provided.
+ * Build the route options Fastify wants: the consumer's routeOptions plus the
+ * route-scoped contract error handler shared with drizzle-fastify (an unexpected
+ * error answers `500 { error: "internal" }` instead of Fastify's default, which
+ * echoes the driver message; a malformed JSON body answers
+ * `400 { error: "invalid_json" }`). A consumer-supplied `errorHandler` wins.
  */
 function routeOpts(opts: SingleVerbOptions): RouteShorthandOptions {
-  return opts.routeOptions ?? {};
+  return withContractErrorHandler(opts.routeOptions);
 }
 
 export function mountListRoute(opts: SingleVerbOptions): void {
@@ -304,7 +307,7 @@ export interface MetaRouteOptions {
  */
 export function mountMetaRoute(opts: MetaRouteOptions): void {
   const path = `${opts.prefix ?? ""}${META_ROUTE_PATH}`;
-  opts.fastify.get(path, async (_req, reply) => {
+  opts.fastify.get(path, withContractErrorHandler(undefined), async (_req, reply) => {
     return reply
       .code(200)
       .header("content-type", META_CONTENT_TYPE)

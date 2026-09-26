@@ -178,6 +178,29 @@ safety limit, not a feature — TS enforces it, the other ports currently do not
 Unifying that cap cross-port is the one item here worth doing regardless of
 feature demand (it is a consistency/safety divergence, not a capability).
 
+### TS-only error responses (not part of the cross-port contract)
+
+The TypeScript mount helpers (`@metaobjectsdev/runtime-ts/drizzle-fastify`,
+`/fastify` and `/hono`) pin two responses the contract leaves open — HTTP 5xx is
+implementation-defined below, and no corpus scenario sends a malformed body. Both
+use the contract's `{ "error": "<code>" }` envelope, and both are scoped to the
+routes the helpers mount: an adopter's own routes, and a Fastify `setErrorHandler`
+or Hono `onError` the adopter installed, answer exactly as they did before.
+
+| Response | When |
+|---|---|
+| malformed JSON body | a `POST`/`PATCH`/`PUT` body that does not parse as JSON (an empty body sent as `application/json` included) → HTTP 400 `{ "error": "invalid_json" }`. Before, Fastify answered its own `{ "statusCode": 400, "code": "FST_ERR_CTP_INVALID_JSON_BODY", … }` and Hono a Zod `validation` error about a missing object |
+| unexpected server error | anything that is not a filter, validation, not-found or constraint answer — a query against a column the database no longer has, a driver failure → HTTP 500 `{ "error": "internal" }`, the code the cross-port reference servers already use. The body names no SQL, table, column or bound parameter; the full error goes to the server log (`console.error`). Before, Fastify's default handler echoed the driver message, which for Drizzle is the query text and its parameter values |
+
+How each framework scopes it: on Fastify, the helpers pass a **route-level**
+`errorHandler` in the options of each route they register (Fastify applies it to
+that route only). A deliberate 4xx raised on such a route — an auth `preHandler`'s
+401, schema validation, 413, 415 — is rethrown to the enclosing scope's handler
+untouched, and an `errorHandler` you pass in `routeOptions` replaces the helpers'
+own. Hono has no per-route handler (`app.onError` is app-wide), so the helpers wrap
+each handler they register instead; an `HTTPException` is rethrown to your
+`onError`.
+
 ### Sort + pagination
 
 - `sort=<field>:asc|desc` — single sort key (multi-sort not in the
@@ -300,7 +323,8 @@ Non-2xx responses MUST return:
 - HTTP 400 — validation and filter/sort-parser errors.
 - HTTP 404 — `{ "error": "not_found" }`.
 - HTTP 409 — a declared constraint conflicting with existing state (a uniqueness or referential violation); a constraint rejecting the request's own value stays a 400.
-- HTTP 5xx — implementation-defined.
+- HTTP 5xx — implementation-defined (the TS mount helpers answer
+  `{ "error": "internal" }` and nothing more — see "TS-only error responses").
 
 #### Filter and sort errors name the field
 
