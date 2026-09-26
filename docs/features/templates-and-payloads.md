@@ -217,11 +217,16 @@ For the `lobby/welcome` template:
 shared with the projection codegen path (the payload is an `object.value` or a
 sourceless `object.projection`, #210).
 
+`FilesystemProvider` is Node-only, so it lives on the `@metaobjectsdev/render/providers`
+subpath; the package root (`render`, `verify`, `InMemoryProvider`, `extract`) stays
+browser-safe.
+
 ```ts
 import { render } from "@metaobjectsdev/render";
 import { FilesystemProvider } from "@metaobjectsdev/render/providers";
 
-const out: string = await render({
+// "lobby/welcome" → ./prompts/lobby/welcome.mustache
+const out: string = render({
   ref: "lobby/welcome",
   payload: { displayName: "Ada", postCount: 12, posts: [{ title: "Hello" }] },
   provider: new FilesystemProvider("./prompts"),
