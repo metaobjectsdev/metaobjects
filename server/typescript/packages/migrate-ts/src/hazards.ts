@@ -22,6 +22,8 @@ export function dataHazardOf(c: Change): DataHazard | undefined {
     case "add-check":
       // Carried through a rename-column: the rows already satisfy the very same rule.
       if (c.carriedByRename === true) return undefined;
+      // Re-spelled for older SQLite: the rows already satisfy the very same rule.
+      if (c.respelled === true) return undefined;
       return {
         kind: "add-check", table: c.table, ...schemaSpread(c.schema),
         check: c.check.name, expression: c.check.expression,

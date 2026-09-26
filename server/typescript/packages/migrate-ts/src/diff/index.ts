@@ -12,7 +12,7 @@ import { PrimaryKeyChangeError } from "../errors.js";
 import { detectColumnRenames, detectTableRenames } from "./rename-heuristic.js";
 import { viewSqlEquals } from "../view-sql-compare.js";
 import { viewReplaceIsLegal } from "../view-column-types.js";
-import { checkExprEquals, normalizeCheckExpr, renameExprIdentifiers } from "../check-expr-compare.js";
+import { checkExprEquals, checkExprRespelledNullSafe, normalizeCheckExpr, renameExprIdentifiers } from "../check-expr-compare.js";
 import { isPgAutoSequenceDefault } from "../pg-identity-default.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 import { qualifiedDbName } from "../qualified-name.js";
@@ -796,6 +796,11 @@ function diffTableForeignKeys(
   }
 }
 
+/** `{ respelled: true }` when `actual` is `expected` in the pre-1.0.9 null-safe spelling. */
+function respelledSpread(expected: CheckDescriptor, actual: CheckDescriptor): { respelled?: true } {
+  return checkExprRespelledNullSafe(expected.expression, actual.expression) ? { respelled: true } : {};
+}
+
 function diffTableChecks(
   expected: TableDescriptor,
   actual: TableDescriptor,
@@ -822,14 +827,24 @@ function diffTableChecks(
     if (ac) {
       consumed.add(ac);
       if (!checkExprEquals(ec.expression, ac.expression)) {
-        changes.push({ kind: "drop-check", table: expected.name, ...sx, check: ec.name, restore: ac, status: ALLOWED });
-        changes.push({ kind: "add-check", table: expected.name, ...sx, check: ec, status: ALLOWED });
+        const respelled = respelledSpread(ec, ac);
+        changes.push({ kind: "drop-check", table: expected.name, ...sx, check: ec.name, restore: ac, ...respelled, status: ALLOWED });
+        changes.push({ kind: "add-check", table: expected.name, ...sx, check: ec, ...respelled, status: ALLOWED });
       }
       continue;
     }
     if (exprFallback) {
       const match = actual.checks.find((a) => !consumed.has(a) && checkExprEquals(ec.expression, a.expression));
       if (match) { consumed.add(match); continue; }
+      // An anonymous/name-mismatched check in the pre-1.0.9 null-safe spelling: the same
+      // rule, re-spelled once so an older SQLite can open the database.
+      const legacy = actual.checks.find((a) => !consumed.has(a) && checkExprRespelledNullSafe(ec.expression, a.expression));
+      if (legacy) {
+        consumed.add(legacy);
+        changes.push({ kind: "drop-check", table: expected.name, ...sx, check: legacy.name, restore: legacy, respelled: true, status: ALLOWED });
+        changes.push({ kind: "add-check", table: expected.name, ...sx, check: ec, respelled: true, status: ALLOWED });
+        continue;
+      }
     }
     changes.push({ kind: "add-check", table: expected.name, ...sx, check: ec, status: ALLOWED });
   }

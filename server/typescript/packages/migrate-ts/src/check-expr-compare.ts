@@ -265,6 +265,37 @@ export function checkExprEquals(a: string | undefined, b: string | undefined): b
 }
 
 /**
+ * True when two NORMALIZED-UNEQUAL CHECK expressions differ only in how they spell
+ * null-safe (in)equality: the standard `IS [NOT] DISTINCT FROM` versus SQLite's own
+ * `IS NOT` / `IS`. On SQLite those are the same operator — so the rule the database
+ * enforces is identical — but the standard spelling only parses from SQLite 3.39, and
+ * migrate emitted it for `validator.requiredWhen` / `presentIff` until 1.0.9. A CHECK in
+ * the old spelling is therefore MIGRATED to the new one (a one-time rebuild that the diff
+ * marks `respelled`, so it is neither gated as destructive nor flagged as a data hazard)
+ * rather than read as equal: reading it as equal would leave every database created
+ * before the fix unopenable on an older SQLite forever.
+ *
+ * Rewrites only OUTSIDE single-quoted literals, like the rest of this file.
+ */
+export function checkExprRespelledNullSafe(a: string | undefined, b: string | undefined): boolean {
+  if (a === undefined || b === undefined) return false;
+  const na = normalizeCheckExpr(a);
+  const nb = normalizeCheckExpr(b);
+  if (na === nb) return false;
+  return sqliteNullSafeSpelling(na) === sqliteNullSafeSpelling(nb);
+}
+
+/** `is not distinct from` → `is`, `is distinct from` → `is not`, outside '…' literals. */
+function sqliteNullSafeSpelling(normalized: string): string {
+  return normalized
+    .split(/('(?:[^']|'')*')/)
+    .map((part, i) => (i % 2 === 1
+      ? part
+      : part.replace(/\bis not distinct from\b/g, "is").replace(/\bis distinct from\b/g, "is not")))
+    .join("");
+}
+
+/**
  * `CHECK (<expr>)` → `<expr>` (balanced outer wrapper); returns input unchanged
  * if there is no CHECK wrapper. Tolerates a trailing constraint modifier suffix
  * (`pg_get_constraintdef` can return `CHECK (<expr>) NOT VALID`) so the wrapper
