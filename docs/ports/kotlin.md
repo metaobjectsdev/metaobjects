@@ -153,6 +153,8 @@ Maven wiring:
 
 **Own a generator.** `mvn metaobjects:eject -Dnames=<name,...>` copies a reference generator into a `codegen/` Maven module under your own package, and prints the module, dependency and `<classname>` to wire. See [Own your codegen → Java and Kotlin](../features/own-your-codegen.md#java-and-kotlin-mvn-metaobjectseject).
 
+**Nothing else to hand over.** Unlike the Java `routes`/`dto`/`repository` output, no Kotlin generator's output imports helper runtime. The generated controller declares its filter parser, constraint mapping and patch handling inline, per file, and the rest imports only core: render and extract, the loader, and `metadata-ktx`. So an ejected Kotlin generator's output depends on nothing you do not own beyond the core. `EjectRuntimeRoundTripTest` in the Maven plugin checks this against every Kotlin generator's real output. `com.metaobjects.generator.kotlin.runtime.M2mJoinResolver` is a helper you may call from hand-written traversal code. No generated file imports it, so eject does not copy it; copy it yourself if you use it and want to own it.
+
 ### Declarative template-codegen (`TemplateScopeGenerator`)
 
 The 15 generators above are a starting point, not the ceiling. When you need a shape

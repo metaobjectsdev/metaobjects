@@ -1,8 +1,9 @@
 package com.metaobjects.generator.spring.runtime;
 
 /**
- * A single parsed + validated filter predicate produced by
- * {@link FilterParser#parse}. Carries the field name, the operator (one of
+ * A single parsed + validated filter predicate produced by {@code FilterParser.parse}
+ * (named in prose, not linked: a repository needs this record alone, and eject copies it
+ * alone). Carries the field name, the operator (one of
  * the 9 cross-port FR-009 ops: {@code eq, ne, gt, gte, lt, lte, in, like,
  * isNull}), and the coerced value (a {@code String} for the scalar ops, a
  * {@code List<String>} for {@code in}, a {@code Boolean} for {@code isNull}).

@@ -5,7 +5,7 @@ import com.metaobjects.generator.util.RouteNaming;
 import com.metaobjects.MetaData;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
-import com.metaobjects.generator.spring.runtime.RecordComponentNames;
+import com.metaobjects.generator.util.JavaIdentifiers;
 import com.metaobjects.source.RdbSource;
 
 /**
@@ -337,12 +337,14 @@ public final class SpringNaming {
     /**
      * Whether a record component named {@code fieldName} would fail to compile (JLS 8.10.3).
      *
-     * <p>The set itself lives in {@link RecordComponentNames}, in the runtime package, because
-     * the generated PATCH handler needs the same rule at RUN time to name a Bean Validation
-     * property. One definition, so the two times cannot disagree.
+     * <p>The set lives in {@link JavaIdentifiers}. The generated PATCH handler needs the same
+     * rule at RUN time to name a Bean Validation property, and gets it from the runtime
+     * {@code RecordComponentNames} — a JDK-only class an adopter can own after
+     * {@code mvn metaobjects:eject}. {@code RecordComponentNamesParityTest} keeps the two
+     * answers identical.
      */
     public static boolean isIllegalRecordComponent(String fieldName) {
-        return RecordComponentNames.isReserved(fieldName);
+        return JavaIdentifiers.isIllegalMemberName(fieldName);
     }
 
     /**
@@ -359,7 +361,7 @@ public final class SpringNaming {
      * generated Patch compiles and silently overrides {@code Object.toString()}.
      */
     public static String recordComponentName(String fieldName) {
-        return RecordComponentNames.escape(fieldName);
+        return JavaIdentifiers.escapeMember(fieldName);
     }
 
     /**

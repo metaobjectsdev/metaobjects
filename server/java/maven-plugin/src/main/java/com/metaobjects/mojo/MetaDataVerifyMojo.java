@@ -14,6 +14,7 @@ import org.apache.maven.plugins.annotations.ResolutionScope;
 import java.nio.file.Paths;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.io.UncheckedIOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -281,6 +282,10 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
             if (inGen && !inCommitted) {
                 drift.add("[missing-from-repo] " + committedFile + " (generator produces it; not committed)");
             } else if (!inGen && inCommitted) {
+                // Helper runtime copied by `mvn metaobjects:eject` is owned code, not output:
+                // no generator produces it, so an output dir that also holds it (outputDir =
+                // src/main/java is legal) would otherwise report it stale forever.
+                if (isOwnedRuntime(committedFile)) continue;
                 drift.add("[stale-in-repo] " + committedFile + " (committed; generator no longer produces it)");
             } else {
                 // Present in both — compare bytes.
@@ -310,6 +315,16 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
             throw new MojoExecutionException("Could not walk directory [" + root + "]", e);
         }
         return out;
+    }
+
+    /** Whether {@code file} carries {@link EjectSupport#OWNED_RUNTIME_MARKER}. */
+    private static boolean isOwnedRuntime(Path file) throws MojoExecutionException {
+        if (!file.getFileName().toString().endsWith(".java")) return false;
+        try {
+            return EjectSupport.isOwnedRuntime(Files.readString(file, StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            throw new MojoExecutionException("Could not read [" + file + "]", e);
+        }
     }
 
     private boolean contentEquals(Path a, Path b) throws MojoExecutionException {

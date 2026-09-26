@@ -393,6 +393,81 @@ that runs `metaobjects:generate`, and the new `<classname>` for each `<generator
 never overwrites a copy without `-Dforce`, and `-Dlist` marks each owned copy `identical`
 or `DIFFERS: N behind, M of your own`.
 
+### What eject hands over, and what stays core
+
+An owned generator is only yours if the code its output depends on is yours too. The Java
+`routes`, `dto` and `repository` output imports helper classes that are not core:
+
+| Ejecting | Also copies |
+|---|---|
+| `routes` | `ConstraintErrors`, `FilterParseResult`, `FilterParser`, `FilterPredicate`, `PatchValidationException`, `RecordComponentNames` |
+| `dto` | `PatchValidationException` |
+| `repository` | `FilterPredicate` |
+| any other Java generator, every Kotlin generator | nothing: its output imports only core |
+
+`M2mJoinResolver`, in both ports, is not copied. No generated file imports it; it is a helper
+for traversal code you write by hand. If you call it and want to own it, copy it yourself.
+
+Eject writes their source to `src/main/java/<runtimePackage>/` of the module that compiles
+the generated code (`-DruntimePackage`, default `<groupId>.runtime`). In an aggregator
+(`pom` packaging) that is the one child module whose pom configures
+`metaobjects-maven-plugin`. If there is not exactly one, eject stops before writing
+anything and asks for `-DruntimeDir=<module>/src/main/java`. The package line is the only
+change, plus a first line `// metaobjects:owned-runtime …` naming the class it came from.
+The owned generator's `RUNTIME_PACKAGE` constant is rewritten to the same package, so its
+output imports `<runtimePackage>.FilterParser` and never
+`com.metaobjects.generator.spring.runtime`. The copies depend on the JDK alone; the owned
+web tier builds with no MetaObjects artifact on its classpath.
+
+A runtime file that already exists is left alone unless you pass `-Dforce`, including when a
+later eject of another generator needs the same class. `-Dlist` lists each owned runtime
+file as `identical` or `DIFFERS`, the same as owned generators. `mvn metaobjects:verify`
+does not report an owned runtime file as stale output, even when it sits in a generator's
+`outputDir`. It recognises the file by that first line, so keep the line if you move the
+file.
+
+If you eject `dto` but keep the packaged `routes`, the two would import different
+`PatchValidationException` classes. That still compiles, and a PATCH then answers 500
+instead of 400. Eject prints which packaged generators still import the reference runtime.
+Give each of them the same package:
+
+```xml
+<generator>
+  <classname>com.metaobjects.generator.spring.SpringControllerGenerator</classname>
+  <args><runtimePackage>com.acme.runtime</runtimePackage></args>
+</generator>
+```
+
+**`RecordComponentNames` has a twin.** The generator picks each record component's Java
+name at generation time, and the generated PATCH handler maps a wire name back to that
+component at run time through your copy. If you change the escape rule in your copy, make
+the same change in your generator, or PATCH answers 500 for the renamed fields.
+
+**What stays core** and stays a dependency: the loader and registry, render and extract
+(`com.metaobjects.render.*`, used by the prompt tier), the OMDB runtime
+(`com.metaobjects.manager.*`, used by `trace-helper`), `metaobjects-om`, and
+`metadata-ktx`. The generator engine your owned generator extends (`codegen-base`,
+`codegen-spring`, `codegen-kotlin`) is still a dependency of your `codegen/` module, but
+not of your application.
+
+**Pulling an upstream fix into your copy.** Each copy names its reference in its first line.
+Extract the new reference from the jar and diff it against your copy, ignoring the package
+line:
+
+```bash
+V=<new MetaObjects Maven version>
+mvn dependency:copy -Dartifact=com.metaobjects:metaobjects-codegen-spring:$V -DoutputDirectory=/tmp/mo
+unzip -o -q /tmp/mo/metaobjects-codegen-spring-$V.jar 'META-INF/metaobjects/reference/java/*' -d /tmp/mo
+diff -u -I '^package ' -I '^// metaobjects:owned-runtime' \
+  /tmp/mo/META-INF/metaobjects/reference/java/runtime/FilterParser.java \
+  app/src/main/java/com/acme/runtime/FilterParser.java
+```
+
+Apply the hunks you want by hand. For a generator, diff `reference/java/<Generator>.java`
+against `codegen/src/main/java/<package>/<Generator>.java` the same way, and also ignore
+`RUNTIME_PACKAGE`. Or, if you have no edits of your own (`-Dlist` says `identical`),
+re-eject with `-Dforce`.
+
 `-Dport` is needed only when a name exists in both ports and your project's dependencies
 do not say which. Every Kotlin generator is ejectable. In Java, `entity`, `extractor` and
 `template` are not: `entity` shares internal writer classes with `extractor`, and

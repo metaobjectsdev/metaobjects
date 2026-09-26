@@ -170,6 +170,34 @@
                             </resources>
                         </configuration>
                     </execution>
+                    <!-- The helper runtime the generated controller / DTO / repository import
+                         (GeneratorRegistry.RUNTIME_PACKAGE). Eject copies the classes a
+                         generator's GeneratorInfo.ejectRuntime() names into the adopter's module
+                         beside the generator, so an owned generator's output never imports this
+                         jar. M2mJoinResolver is not here: no generated file imports it. -->
+                    <execution>
+                        <id>ship-eject-runtime-source</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/META-INF/metaobjects/reference/java/runtime</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>src/main/java/com/metaobjects/generator/spring/runtime</directory>
+                                    <includes>
+                                        <include>ConstraintErrors.java</include>
+                                        <include>FilterParseResult.java</include>
+                                        <include>FilterParser.java</include>
+                                        <include>FilterPredicate.java</include>
+                                        <include>PatchValidationException.java</include>
+                                        <include>RecordComponentNames.java</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
         </plugins>

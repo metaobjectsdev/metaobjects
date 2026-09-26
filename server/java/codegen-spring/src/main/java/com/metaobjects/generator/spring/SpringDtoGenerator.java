@@ -68,9 +68,26 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
  * <p>Args:</p>
  * <ul>
  *   <li>{@code outputDir} (required): output directory root.</li>
+ *   <li>{@code runtimePackage} (optional): package the output imports its helper runtime
+ *       from; defaults to {@link #RUNTIME_PACKAGE}.</li>
  * </ul>
  */
 public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject> {
+
+    /**
+     * The package the emitted code imports its helper runtime from ({@code FilterParser},
+     * {@code PatchValidationException}, …). {@code mvn metaobjects:eject} copies that runtime
+     * into the adopter's module and rewrites THIS line of the ejected copy to name it, so an
+     * owned generator's output imports the owned runtime. Keep it on one line.
+     */
+    public static final String RUNTIME_PACKAGE = "com.metaobjects.generator.spring.runtime";
+
+    /** Generator arg overriding {@link #RUNTIME_PACKAGE} — for a packaged generator whose
+     *  output must use the same owned runtime copy as an ejected neighbour. */
+    public static final String ARG_RUNTIME_PACKAGE = "runtimePackage";
+
+    /** The runtime package this run's output imports ({@link #ARG_RUNTIME_PACKAGE}). */
+    private String runtimePackage = RUNTIME_PACKAGE;
 
     /**
      * FR-019 per-port config for resolving {@code @provided} enum namespaces, parsed from the
@@ -90,6 +107,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
     @Override
     public void execute(MetaDataLoader loader) {
         parseArgs();
+        runtimePackage = getArg(ARG_RUNTIME_PACKAGE, RUNTIME_PACKAGE);
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         fr019Config = Fr019SharedEnum.ProvidedEnumConfig.of(
             getArg("providedEnumNamespace"), getArg("providedEnumPackages"));
@@ -266,7 +284,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         src.append("import com.fasterxml.jackson.core.type.TypeReference;\n");
         src.append("import com.fasterxml.jackson.databind.JsonNode;\n");
         src.append("import com.fasterxml.jackson.databind.ObjectMapper;\n");
-        src.append("import com.metaobjects.generator.spring.runtime.PatchValidationException;\n");
+        src.append("import ").append(runtimePackage).append(".PatchValidationException;\n");
         src.append("import java.util.LinkedHashMap;\n");
         src.append("import java.util.Map;\n");
         src.append("import java.util.Set;\n\n");
