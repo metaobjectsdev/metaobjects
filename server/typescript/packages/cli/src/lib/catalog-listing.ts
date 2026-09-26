@@ -167,7 +167,17 @@ export interface CatalogProject {
 export interface CatalogListingOpts {
   project?: CatalogProject;
   /** Run every generator in memory and report a real file count. Needs `project` + `metadata`. */
-  probe?: { metadata: MetaData; scope?: (fqn: string) => boolean };
+  probe?: {
+    metadata: MetaData;
+    scope?: (fqn: string) => boolean;
+    /**
+     * The collection's OWN source files — the same list `meta gen` threads onto
+     * `ctx.sourceFiles`. `shared-model` loads them standalone to build its artifact, so
+     * without them the probe asked it to publish nothing and reported the refusal as
+     * "probe failed" on every fresh project, for a generator that would in fact run.
+     */
+    sourceFiles?: readonly string[];
+  };
 }
 
 /**
@@ -183,6 +193,7 @@ async function probeOne(
   project: CatalogProject,
   metadata: MetaData,
   scope: ((fqn: string) => boolean) | undefined,
+  sourceFiles: readonly string[] | undefined,
 ): Promise<{ count: number; needsConfig?: string[] } | { error: string }> {
   const count = async (config: MetaobjectsGenConfig): Promise<number> => {
     const result = await runGen({
@@ -191,6 +202,7 @@ async function probeOne(
       projectRoot: project.projectRoot,
       dryRun: true,
       ...(scope !== undefined ? { scope } : {}),
+      ...(sourceFiles !== undefined ? { sourceFiles } : {}),
     });
     return result.files.length;
   };
@@ -269,7 +281,13 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
       let probeError: string | undefined;
       let needsConfig: string[] | undefined;
       if (opts.probe !== undefined) {
-        const outcome = await probeOne(entry, project, opts.probe.metadata, opts.probe.scope);
+        const outcome = await probeOne(
+          entry,
+          project,
+          opts.probe.metadata,
+          opts.probe.scope,
+          opts.probe.sourceFiles,
+        );
         if ("count" in outcome) {
           wouldEmit = outcome.count;
           needsConfig = outcome.needsConfig;

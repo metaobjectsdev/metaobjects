@@ -428,7 +428,9 @@ async function listCatalogCommand(
         // codegen config it was moved out of.
         libraries: genCollection.libraries,
       },
-      probe: { metadata, scope: genCollection.inScope },
+      // The collection's own files, exactly as `meta gen` supplies them below —
+      // `shared-model` cannot be counted without them.
+      probe: { metadata, scope: genCollection.inScope, sourceFiles: genCollection.ownFiles },
     };
   } else {
     // No probe: still report `wired` / `owned` when a project happens to be here, since

@@ -6,7 +6,7 @@
 //     catalog generator, so it needs one and says so when there isn't one.
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadMemory } from "@metaobjectsdev/sdk";
@@ -47,9 +47,17 @@ const baseConfig: MetaobjectsGenConfig = {
   generators: [],
 };
 
-async function allProbeRows(config: MetaobjectsGenConfig = baseConfig, libraries: string[] = []) {
+const PROJECT_PACKAGE_JSON = JSON.stringify({ name: "probe-app", version: "1.0.0", type: "module" });
+
+async function allProbeRows(
+  config: MetaobjectsGenConfig = baseConfig,
+  libraries: string[] = [],
+  sourceFiles?: readonly string[],
+) {
   const metadata = await loadMemory(FIXTURE, { libraries });
   const tmp = mkdtempSync(join(tmpdir(), "catalog-probe-"));
+  // A project has a package.json; `shared-model` reads its version (as `npm init` writes it).
+  writeFileSync(join(tmp, "package.json"), PROJECT_PACKAGE_JSON);
   try {
     return await buildCatalogListing({
       project: {
@@ -60,7 +68,7 @@ async function allProbeRows(config: MetaobjectsGenConfig = baseConfig, libraries
         declaredDeps: undefined,
         libraries,
       },
-      probe: { metadata },
+      probe: { metadata, ...(sourceFiles !== undefined ? { sourceFiles } : {}) },
     });
   } finally {
     rmSync(tmp, { recursive: true, force: true });
@@ -208,6 +216,39 @@ describe("--probe — what would this emit for MY model", () => {
     // ...and everything else still answered.
     expect(rows.filter((r) => typeof r.project!.wouldEmit === "number").length)
       .toBeGreaterThan(rows.length - 4);
+  });
+
+  test("given the collection's own files, as `meta gen` supplies them, shared-model COUNTS", async () => {
+    // `meta gen --list --probe` on a fresh project printed `shared-model … [probe failed]`:
+    // the probe never passed the source files `meta gen` hands every generator as
+    // `ctx.sourceFiles`, so shared-model was asked to publish nothing. The CLI passes
+    // them now; this is the listing's half of that contract.
+    const own = [join(FIXTURE, "metaobjects", "meta.shop.yaml")];
+    const rows = (await allProbeRows(baseConfig, [], own))
+      .filter((r): r is GeneratorCatalogRow => r.kind === "generator");
+    const p = rows.find((r) => r.name === "shared-model")!.project!;
+    expect(p.probeError).toBeUndefined();
+    expect(p.wouldEmit).toBeGreaterThan(0);
+    expect(renderCatalogText(rows, true)).toMatch(/\n\s+shared-model\s+—.*would emit \d+\]/);
+  });
+
+  test("`meta gen --list --probe` on a project passes its own files, so shared-model counts", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "catalog-probe-cli-"));
+    try {
+      cpSync(FIXTURE, tmp, { recursive: true });
+      writeFileSync(join(tmp, "package.json"), PROJECT_PACKAGE_JSON);
+      writeFileSync(
+        join(tmp, "metaobjects.config.ts"),
+        'export default { outDir: "src/generated", dialect: "sqlite", extStyle: "js", generators: [] };\n',
+      );
+      expect(await genCommand(["--list", "--probe"], tmp, "json")).toBe(0);
+      const rows = JSON.parse(logged.join("\n")) as GeneratorCatalogRow[];
+      const p = rows.find((r) => r.name === "shared-model")!.project!;
+      expect(p.probeError).toBeUndefined();
+      expect(p.wouldEmit).toBeGreaterThan(0);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 
   test("a config that omits dbImport still COUNTS routes, and names the key it needs", async () => {
