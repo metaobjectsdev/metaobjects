@@ -192,6 +192,11 @@ feature demand (it is a consistency/safety divergence, not a capability).
   (`fixtures/api-contract-conformance/scenarios/`), whose three arms cover the
   declared field, an explicit order beating it, and an undeclared field falling
   back to `asc`.
+- **Known limit — enums sort by stored value, not declared order.** A
+  string-backed `field.enum` sorts alphabetically (`high` < `low` < `medium`
+  < `urgent`), not in `@values` order; an int-backed (`@intValueMap`) enum
+  sorts by its mapped integers. To sort by declared order, back the enum with
+  an `@intValueMap` whose integers follow that order.
 - `limit=N` — page size.
 - `offset=N` — page offset.
 - `withCount=1` — opt-in flag that switches the list response from
