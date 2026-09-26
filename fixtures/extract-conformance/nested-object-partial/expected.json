@@ -1,1 +1,1 @@
-{ "empty": false, "states": { "meta": "EXTRACTED", "meta.score": "MALFORMED", "meta.label": "EXTRACTED" }, "data": { "meta.label": "alpha" } }
+{ "empty": false, "states": { "meta": "EXTRACTED", "meta.score": "MALFORMED", "meta.label": "EXTRACTED" }, "malformedRequired": ["meta.score"], "data": { "meta.label": "alpha" } }

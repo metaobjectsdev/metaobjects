@@ -1,1 +1,1 @@
-{ "empty": false, "states": { "text": "EXTRACTED", "confidence": "MALFORMED", "note": "LOST_OPTIONAL" }, "data": { "text": "hi" } }
+{ "empty": false, "states": { "text": "EXTRACTED", "confidence": "MALFORMED", "note": "LOST_OPTIONAL" }, "malformedRequired": ["confidence"], "data": { "text": "hi" } }

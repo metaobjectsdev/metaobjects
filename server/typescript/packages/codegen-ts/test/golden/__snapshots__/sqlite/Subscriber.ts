@@ -18,6 +18,24 @@ export const subscribers = sqliteTable("subscribers", {
 export type Subscriber = InferSelectModel<typeof subscribers>;
 export type SubscriberInsert = InferInsertModel<typeof subscribers>;
 export type SubscriberUpdate = Partial<SubscriberInsert>;
+/** A zoned field.timestamp value in its instant's toISOString() spelling; a naive one as sent.
+ *  SQLite/D1 compare timestamps as text, so zoned values are stored in UTC. Generated. */
+function utcIsoTimestamp(v: string): string {
+  const m =
+    /^(\d{4}-\d{2}-\d{2})[Tt ](\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?(?:([Zz])|([+-]\d{2}):?(\d{2})?)$/.exec(
+      v,
+    );
+  if (m === null) {
+    return v;
+  }
+  const t = Date.parse(
+    `${m[1]}T${m[2]}:${m[3] ?? "00"}.${(m[4] ?? "").slice(0, 3).padEnd(3, "0")}${
+      m[5] === undefined ? `${m[6]}:${m[7] ?? "00"}` : "Z"
+    }`,
+  );
+  return Number.isNaN(t) ? v : new Date(t).toISOString();
+}
+
 export const SubscriberInsertSchema = z.object({
   email: z.string().min(1).max(255),
   firstName: z.string().min(1).max(100),
@@ -27,7 +45,9 @@ export const SubscriberInsertSchema = z.object({
     .string()
     .regex(
       /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+      "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
     )
+    .transform(utcIsoTimestamp)
     .optional(),
 });
 
@@ -40,9 +60,16 @@ export const SubscriberUpdateSchema = z.object({
     .string()
     .regex(
       /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+      "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
     )
+    .transform(utcIsoTimestamp)
     .optional(),
 });
+
+/** Typed create shape for Subscriber: the insert schema's INPUT (pre-transform) type. A
+ * renamed/dropped/misspelt field is a compile error at every `createSubscriber` call site;
+ * the schema still validates at runtime. */
+export type SubscriberCreate = z.input<typeof SubscriberInsertSchema>;
 
 /** Typed patch shape for Subscriber: every settable field, optional (FR-035 PATCH). A
  * renamed/dropped field is a compile error at every `updateSubscriber` call site. */

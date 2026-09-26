@@ -8,6 +8,7 @@ type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;
 
 import {
   type Author,
+  type AuthorCreate,
   AuthorInsertSchema,
   type AuthorPatch,
   authors,
@@ -37,7 +38,10 @@ export async function listAuthors(
   }
   return q;
 }
-export async function createAuthor(db: Db, data: unknown): Promise<Author> {
+export async function createAuthor(
+  db: Db,
+  data: AuthorCreate,
+): Promise<Author> {
   const validated = AuthorInsertSchema.parse(data);
   const [author] = await db.insert(authors).values(validated).returning();
   return author!;

@@ -12,6 +12,7 @@ type Db = BaseSQLiteDatabase<
 
 import {
   type Tag,
+  type TagCreate,
   TagInsertSchema,
   type TagPatch,
   tags,
@@ -34,7 +35,7 @@ export async function listTags(
   }
   return q;
 }
-export async function createTag(db: Db, data: unknown): Promise<Tag> {
+export async function createTag(db: Db, data: TagCreate): Promise<Tag> {
   const validated = TagInsertSchema.parse(data);
   const [tag] = await db.insert(tags).values(validated).returning();
   return tag!;

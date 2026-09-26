@@ -9,7 +9,7 @@ arrays-of-objects populated) in ONE call:
 
     extract_<snake>(root, text, opts=None) -> <Vo>
         r = extract_lenient_<snake>_with_loader(root, text, opts)  # nested-capable extract
-        if r.report.has_lost_required(): raise ValueError(...)
+        if r.report.has_lost_required() or r.report.has_malformed_required(): raise ValueError(...)
         return _to_strict_<vo>(r.data)                             # mirror -> strict mapper
 
 Why the loaded ``root``: the SELF-CONTAINED ``extract_<snake>(text)`` leaves nested
@@ -173,16 +173,23 @@ def render_extractor(
     lines.append("    value-object). Runs the tolerant nested-capable extract, then maps the")
     lines.append("    extracted mirror graph onto the strict Pydantic payload graph.")
     lines.append("")
-    lines.append("    :raises ValueError: iff a ``@required`` field was lost (the strict gate).")
+    lines.append("    :raises ValueError: iff a ``@required`` field was lost, or present but")
+    lines.append("        unusable (MALFORMED: an undeclared enum member, text for a number).")
     lines.append('    """')
     lines.append(f"    r = {extract_lenient_with_fn}(root, text, opts)")
-    lines.append("    if r.report.has_lost_required():")
-    lines.append("        raise ValueError(")
+    lines.append("    if r.report.has_lost_required() or r.report.has_malformed_required():")
+    lines.append("        unusable = []")
+    lines.append("        if r.report.has_lost_required():")
     lines.append(
-        f'            "{extract_fn}: lost required field(s): "'
+        '            unusable.append("lost required field(s): "'
+        ' + ", ".join(r.report.lost_required()))'
     )
-    lines.append('            + ", ".join(r.report.lost_required())')
-    lines.append("        )")
+    lines.append("        if r.report.has_malformed_required():")
+    lines.append(
+        '            unusable.append("malformed required field(s): "'
+        ' + ", ".join(r.report.malformed_required()))'
+    )
+    lines.append(f'        raise ValueError("{extract_fn}: " + "; ".join(unusable))')
     lines.append(f"    return {root_mapper}(r.data)")
     lines.append("")
     lines.append("")

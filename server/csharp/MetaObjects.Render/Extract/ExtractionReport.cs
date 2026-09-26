@@ -9,6 +9,7 @@ public sealed class ExtractionReport
     private readonly Dictionary<string, FieldExtraction> _states = new(StringComparer.Ordinal);
     private readonly List<Coercion> _coercions = [];
     private readonly List<string> _defaultedRequired = [];
+    private readonly List<string> _malformedRequired = [];
     private bool _empty;
 
     /// <summary>Record the extraction classification for a field path.</summary>
@@ -38,6 +39,24 @@ public sealed class ExtractionReport
 
     /// <summary>True if any field was classified as <see cref="FieldExtraction.LOST_REQUIRED"/>.</summary>
     public bool HasLostRequired() => LostRequired().Count > 0;
+
+    /// <summary>Called by the engine when a <b>required</b> field is classified MALFORMED.</summary>
+    public void MarkMalformedRequired(string path)
+    {
+        if (!_malformedRequired.Contains(path)) _malformedRequired.Add(path);
+    }
+
+    /// <summary>
+    /// The <c>@required</c> fields the document DID answer, but with a value that could not be used
+    /// (an undeclared enum member, text where a number belongs, a truncated value, a malformed array
+    /// element) — classified MALFORMED, so they are NOT in <see cref="LostRequired"/>. Their value
+    /// is absent from data exactly as a lost field's is, so the strict gate (the generated extractor,
+    /// <see cref="ExtractionResult{T}.OrThrow"/>) fails on these too.
+    /// </summary>
+    public IReadOnlyList<string> MalformedRequired() => _malformedRequired.AsReadOnly();
+
+    /// <summary>True if any <c>@required</c> field was present but unusable.</summary>
+    public bool HasMalformedRequired() => _malformedRequired.Count > 0;
 
     /// <summary>Called by the engine when an absent <b>required</b> field is filled from its <c>@default</c>.</summary>
     public void MarkDefaultedRequired(string path)

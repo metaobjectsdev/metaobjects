@@ -76,7 +76,7 @@ public final class Extract {
                 continue;
             }
             if (present == JsonForgivingReader.TRUNCATED) {   // present-but-garbled (empty/cut-off value)
-                report.set(path, FieldExtraction.MALFORMED);
+                markMalformed(report, path, f);
                 continue;
             }
             if (present == JsonForgivingReader.NULL_LITERAL) {  // explicit JSON null → field is null
@@ -113,22 +113,33 @@ public final class Extract {
                 // elements into data (partial extraction), UNLIKE a MALFORMED scalar which is absent from
                 // data. Consumers branching on state must account for partial array data.
                 data.put(f.name(), out);
-                report.set(path, anyMalformed ? FieldExtraction.MALFORMED : FieldExtraction.EXTRACTED);
+                if (anyMalformed) markMalformed(report, path, f);
+                else report.set(path, FieldExtraction.EXTRACTED);
                 continue;
             }
             if (present instanceof List<?>) {           // a list where a singular value was expected
-                report.set(path, FieldExtraction.MALFORMED);
+                markMalformed(report, path, f);
                 continue;
             }
             Object v = extractValue(f, present, path, report, o, ci);
             if (v == Coerce.MALFORMED) {
-                report.set(path, FieldExtraction.MALFORMED);
+                markMalformed(report, path, f);
             } else {
                 data.put(f.name(), v);
                 // FR-011: a value reached via @coerceDefault (or @default) is DEFAULTED, not EXTRACTED.
                 report.set(path, classifyCoerced(path, report));
             }
         }
+    }
+
+    /**
+     * Classify a present-but-unusable field MALFORMED. A {@code @required} one is also recorded in
+     * {@code malformedRequired()} — its value is missing from data just as a lost field's is, so
+     * the strict gate must fail on it (the extract-conformance corpus pins the set in every port).
+     */
+    private static void markMalformed(ExtractionReport report, String path, FieldSpec f) {
+        report.set(path, FieldExtraction.MALFORMED);
+        if (f.required()) report.markMalformedRequired(path);
     }
 
     /**

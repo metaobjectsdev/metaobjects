@@ -87,6 +87,13 @@ export async function updateAuthor(db: Db, id: number, patch: AuthorPatch): Prom
 await updateAuthor(db, 42, { bio: "…" });   // writes ONE column; a renamed field is a compile error
 ```
 
+The create side is typed the same way: `create<Entity>(db, data: <Entity>Create)`, where
+`<Entity>Create` is `z.input<typeof <Entity>InsertSchema>` (and `insertPreserving<Entity>`
+takes `<Entity>CreatePreserving`; a TPH subtype's `create<Sub>` / `update<Sub>ById` take
+`<Sub>Create` / `Partial<<Sub>Create>`). A misspelt or missing field is a compile error at
+the call site, and the schema still validates at runtime, so a caller holding an untyped
+request body casts it (`body as AuthorCreate`) and relies on that parse.
+
 **Kotlin** — the generated repository ships both a full `update(id, dto)` and a
 `patch` that takes the Exposed statement lambda, so a renamed/dropped column is a
 compile error at the call site:

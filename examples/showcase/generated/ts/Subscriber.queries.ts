@@ -12,6 +12,8 @@ type Db = BaseSQLiteDatabase<
 
 import {
   type Subscriber,
+  type SubscriberCreate,
+  type SubscriberCreatePreserving,
   SubscriberInsertPreservingSchema,
   SubscriberInsertSchema,
   type SubscriberPatch,
@@ -44,7 +46,7 @@ export async function listSubscribers(
 }
 export async function createSubscriber(
   db: Db,
-  data: unknown,
+  data: SubscriberCreate,
 ): Promise<Subscriber> {
   const validated = SubscriberInsertSchema.parse(data);
   const [subscriber] = await db
@@ -55,7 +57,7 @@ export async function createSubscriber(
 }
 export async function insertPreservingSubscriber(
   db: Db,
-  data: unknown,
+  data: SubscriberCreatePreserving,
 ): Promise<Subscriber> {
   const validated = SubscriberInsertPreservingSchema.parse(data);
   const [subscriber] = await db

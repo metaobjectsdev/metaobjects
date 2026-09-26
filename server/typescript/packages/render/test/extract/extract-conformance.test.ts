@@ -39,6 +39,7 @@ function corpusRoot(): string {
 interface ExpectedJson {
   empty: boolean;
   states: Record<string, string>;
+  malformedRequired?: string[];
   data: Record<string, unknown>;
 }
 
@@ -189,7 +190,7 @@ describe("extract-conformance corpus", () => {
     .filter((n) => existsSync(join(corpus, n, "schema.json")))
     .sort();
 
-  expect(cases.length).toBe(41);
+  expect(cases.length).toBe(42);
 
   for (const caseName of cases) {
     test(caseName, () => {
@@ -216,6 +217,9 @@ describe("extract-conformance corpus", () => {
 
       // states key-set exhaustive (no extras, none missing)
       expect([...actualStates.keys()].sort()).toEqual(Object.keys(expected.states).sort());
+
+      // the required MALFORMED subset — the strict gate's second half (absent key = none)
+      expect(outcome.report.malformedRequired().sort()).toEqual([...(expected.malformedRequired ?? [])].sort());
 
       // Data is compared as a flat DOTTED-LEAF map (mirroring states): nested objects and
       // arrays are flattened to leaf paths (meta.score, items[0].label, tags[0], …) and every

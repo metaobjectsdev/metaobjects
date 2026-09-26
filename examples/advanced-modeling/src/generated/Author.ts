@@ -31,6 +31,11 @@ export const AuthorUpdateSchema = z.object({
   bio: z.string().max(500).optional().nullable(),
 });
 
+/** Typed create shape for Author: the insert schema's INPUT (pre-transform) type. A
+ * renamed/dropped/misspelt field is a compile error at every `createAuthor` call site;
+ * the schema still validates at runtime. */
+export type AuthorCreate = z.input<typeof AuthorInsertSchema>;
+
 /** Typed patch shape for Author: every settable field, optional (FR-035 PATCH). A
  * renamed/dropped field is a compile error at every `updateAuthor` call site. */
 export type AuthorPatch = z.input<typeof AuthorUpdateSchema>;

@@ -1,0 +1,12 @@
+{ "empty": false,
+  "states": {
+    "verdict": "MALFORMED",
+    "summary": "LOST_OPTIONAL",
+    "confidence": "MALFORMED",
+    "rationale": "EXTRACTED",
+    "abv": "MALFORMED",
+    "grades": "MALFORMED",
+    "grades[0]": "EXTRACTED",
+    "grades[1]": "MALFORMED" },
+  "malformedRequired": ["verdict", "confidence", "grades"],
+  "data": { "rationale": "?", "grades[0]": "A" } }

@@ -8,6 +8,7 @@ type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;
 
 import {
   type Week,
+  type WeekCreate,
   WeekInsertSchema,
   type WeekPatch,
   weeks,
@@ -30,7 +31,7 @@ export async function listWeeks(
   }
   return q;
 }
-export async function createWeek(db: Db, data: unknown): Promise<Week> {
+export async function createWeek(db: Db, data: WeekCreate): Promise<Week> {
   const validated = WeekInsertSchema.parse(data);
   const [week] = await db.insert(weeks).values(validated).returning();
   return week!;

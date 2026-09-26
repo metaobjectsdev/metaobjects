@@ -12,6 +12,7 @@ type Db = BaseSQLiteDatabase<
 
 import {
   type Order,
+  type OrderCreate,
   OrderInsertSchema,
   type OrderPatch,
   orders,
@@ -38,7 +39,7 @@ export async function listOrders(
   }
   return q;
 }
-export async function createOrder(db: Db, data: unknown): Promise<Order> {
+export async function createOrder(db: Db, data: OrderCreate): Promise<Order> {
   const validated = OrderInsertSchema.parse(data);
   const [order] = await db.insert(orders).values(validated).returning();
   return order!;

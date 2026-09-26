@@ -46,7 +46,7 @@ public class ExtractConformanceTests
     {
         // FR-011: lock the corpus size so a deleted fixture fails CI rather than
         // silently reducing coverage. Mirrors the TS / Java / Python count guards.
-        Assert.Equal(41, Cases().Count());
+        Assert.Equal(42, Cases().Count());
     }
 
     [Theory]
@@ -100,6 +100,15 @@ public class ExtractConformanceTests
             foreach (JsonProperty p in expectedStates.EnumerateObject()) expectedKeys.Add(p.Name);
             var actualKeys = new HashSet<string>(outcome.Report.States().Keys, StringComparer.Ordinal);
             Assert.Equal(expectedKeys, actualKeys);
+        }
+
+        // Assert: the required MALFORMED subset — the strict gate's second half (absent key = none)
+        {
+            var expectedMalformedRequired = new SortedSet<string>(StringComparer.Ordinal);
+            if (expected.TryGetProperty("malformedRequired", out JsonElement mr))
+                foreach (JsonElement e in mr.EnumerateArray()) expectedMalformedRequired.Add(e.GetString()!);
+            var actualMalformedRequired = new SortedSet<string>(outcome.Report.MalformedRequired(), StringComparer.Ordinal);
+            Assert.Equal(expectedMalformedRequired, actualMalformedRequired);
         }
 
         // Assert: data as a flat DOTTED-LEAF map (mirroring states). Nested objects and arrays

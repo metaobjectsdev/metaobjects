@@ -74,6 +74,11 @@ export const ProgramUpdateSchema = z.object({
   instructorProfile: InstructorProfileInsertSchema.optional().nullable(),
 });
 
+/** Typed create shape for Program: the insert schema's INPUT (pre-transform) type. A
+ * renamed/dropped/misspelt field is a compile error at every `createProgram` call site;
+ * the schema still validates at runtime. */
+export type ProgramCreate = z.input<typeof ProgramInsertSchema>;
+
 /** Typed patch shape for Program: every settable field, optional (FR-035 PATCH). A
  * renamed/dropped field is a compile error at every `updateProgram` call site. */
 export type ProgramPatch = z.input<typeof ProgramUpdateSchema>;

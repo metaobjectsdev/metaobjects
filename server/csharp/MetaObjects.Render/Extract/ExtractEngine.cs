@@ -99,7 +99,7 @@ public static class ExtractEngine
 
             if (ReferenceEquals(present, JsonForgivingReader.Truncated))
             {
-                report.Set(path, FieldExtraction.MALFORMED);
+                MarkMalformed(report, path, f);
                 continue;
             }
 
@@ -147,21 +147,22 @@ public static class ExtractEngine
                 // elements into data (partial extraction), UNLIKE a MALFORMED scalar which is absent from
                 // data. Consumers branching on state must account for partial array data.
                 data[f.Name] = outList;
-                report.Set(path, anyMalformed ? FieldExtraction.MALFORMED : FieldExtraction.EXTRACTED);
+                if (anyMalformed) MarkMalformed(report, path, f);
+                else report.Set(path, FieldExtraction.EXTRACTED);
                 continue;
             }
 
             if (present is List<object?>)
             {
                 // a list where a singular value was expected
-                report.Set(path, FieldExtraction.MALFORMED);
+                MarkMalformed(report, path, f);
                 continue;
             }
 
             object? val = ExtractValue(f, present, path, report, o, ci);
             if (ReferenceEquals(val, Coerce.Malformed))
             {
-                report.Set(path, FieldExtraction.MALFORMED);
+                MarkMalformed(report, path, f);
             }
             else
             {
@@ -170,6 +171,18 @@ public static class ExtractEngine
                 report.Set(path, ClassifyCoerced(path, report));
             }
         }
+    }
+
+    /// <summary>
+    /// Classify a present-but-unusable field MALFORMED. A <c>@required</c> one is also recorded in
+    /// <see cref="ExtractionReport.MalformedRequired"/> — its value is missing from data just as a
+    /// lost field's is, so the strict gate must fail on it (the extract-conformance corpus pins the
+    /// set in every port).
+    /// </summary>
+    private static void MarkMalformed(ExtractionReport report, string path, FieldSpec f)
+    {
+        report.Set(path, FieldExtraction.MALFORMED);
+        if (f.Required) report.MarkMalformedRequired(path);
     }
 
     /// <summary>

@@ -20,7 +20,7 @@ import {
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_ARRAY,
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
-  FIELD_ATTR_STRING_FORMAT, FIELD_ATTR_LENIENT, STRING_FORMAT_EMAIL, STRING_FORMAT_HOSTNAME,
+  FIELD_ATTR_STRING_FORMAT, FIELD_ATTR_LENIENT, FIELD_ATTR_LOCAL_TIME, STRING_FORMAT_EMAIL, STRING_FORMAT_HOSTNAME,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
   FIELD_ATTR_AUTO_SET, FIELD_ATTR_OBJECT_REF, FIELD_ATTR_VALUE_TYPE,
   isReadOnlyMutability, isWriteOnceMutability,
@@ -33,7 +33,24 @@ import {
 } from "@metaobjectsdev/metadata";
 import { enumValues, zodEnumExpr } from "../enum-meta.js";
 import { ZOD_INET_EXPR } from "./net-regex.js";
-import { ZOD_DATE_EXPR, ZOD_TIME_EXPR, ZOD_TIMESTAMP_EXPR } from "./date-time-regex.js";
+import {
+  UTC_TIMESTAMP_HELPER_DECL,
+  ZOD_DATE_EXPR,
+  ZOD_TIME_EXPR,
+  ZOD_TIMESTAMP_EXPR,
+  ZOD_TIMESTAMP_UTC_EXPR,
+} from "./date-time-regex.js";
+
+// Counts emissions of ZOD_TIMESTAMP_UTC_EXPR. A schema emitter compares it before and after
+// building its field lines to learn whether its module needs the local normalizer —
+// exactly when a line references it, so the helper is never emitted unused. (Rendering is
+// synchronous; each module is rendered by exactly one schema emitter.)
+let utcTimestampUses = 0;
+
+/** The normalizer's declaration when `since` is behind the running count, else nothing. */
+function utcTimestampHelperSince(since: number): string {
+  return utcTimestampUses > since ? `${UTC_TIMESTAMP_HELPER_DECL}\n\n` : "";
+}
 import { renderDocsFor } from "./jsdoc.js";
 import { sharedEnumForField } from "../enum-shared.js";
 import { sharedEnumImportSpecifier } from "../enum-import.js";
@@ -319,6 +336,7 @@ function isInsertRequiredPk(field: MetaField, assignedPk: Set<string>): boolean 
  */
 export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Code {
   const z = imp("z@zod");
+  const utcUsesBefore = utcTimestampUses;
   const autoGenPkFields = autoGenPkFieldNames(obj);
   const assignedPkFields = assignedPkFieldNames(obj);
   const tphPin = tphDiscriminatorPin(obj);
@@ -370,7 +388,7 @@ export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Co
   const docsPrefix = docs ? `${docs}\n` : "";
 
   return code`
-${docsPrefix}export const ${insertSchemaName} = ${z}.object({
+${utcTimestampHelperSince(utcUsesBefore)}${docsPrefix}export const ${insertSchemaName} = ${z}.object({
 ${joinCode(insertFieldLines, { on: ",\n" })}
 });
 `;
@@ -477,6 +495,7 @@ export function updateSchemaFields(obj: MetaObject): SchemaFieldShape[] {
 
 export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code {
   const z = imp("z@zod");
+  const utcUsesBefore = utcTimestampUses;
   const autoGenPkFields = autoGenPkFieldNames(obj);
   const pkFields = primaryKeyFieldNames(obj);
   const assignedPkFields = assignedPkFieldNames(obj);
@@ -592,17 +611,25 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
  * (no create-time now() stamp) so the caller's original values are preserved. */
 export const ${preservingSchemaName} = ${z}.object({
 ${joinCode(preservingFieldLines, { on: ",\n" })}
-});`
+});
+
+/** Typed input of \`insertPreserving${objName}\` — ${preservingSchemaName}'s pre-transform shape. */
+export type ${objName}CreatePreserving = ${z}.input<typeof ${preservingSchemaName}>;`
     : code``;
 
   return code`
-${docsPrefix}export const ${insertSchemaName} = ${z}.object({
+${utcTimestampHelperSince(utcUsesBefore)}${docsPrefix}export const ${insertSchemaName} = ${z}.object({
 ${joinCode(insertFieldLines, { on: ",\n" })}
 });
 
 ${docsPrefix}export const ${updateSchemaName} = ${z}.object({
 ${joinCode(updateFieldLines, { on: ",\n" })}
 });
+
+/** Typed create shape for ${objName}: the insert schema's INPUT (pre-transform) type. A
+ * renamed/dropped/misspelt field is a compile error at every \`create${objName}\` call site;
+ * the schema still validates at runtime. */
+export type ${objName}Create = ${z}.input<typeof ${insertSchemaName}>;
 
 /** Typed patch shape for ${objName}: every settable field, optional (FR-035 PATCH). A
  * renamed/dropped field is a compile error at every \`update${objName}\` call site. */
@@ -751,9 +778,13 @@ function zodFieldExpr(
       // rows (already a `Date` under pg date mode — z.coerce.date() passes a
       // Date through unchanged) while insert/update/preserving parse wire JSON
       // (an ISO string — z.coerce.date() parses it; z.date() would reject it).
+      // A WRITE shape rewrites a zoned value to UTC (date-time-regex.ts) — except on an
+      // @localTime field, which is a wall clock: shifting it would change its meaning.
+      const localTime = field.attr(FIELD_ATTR_LOCAL_TIME) === true;
       baseStr = ctx?.timestampMode === "date" && !voHosted
         ? "z.coerce.date()"
-        : readShape ? "z.string()" : ZOD_TIMESTAMP_EXPR;
+        : readShape ? "z.string()" : localTime ? ZOD_TIMESTAMP_EXPR : ZOD_TIMESTAMP_UTC_EXPR;
+      if (baseStr === ZOD_TIMESTAMP_UTC_EXPR) utcTimestampUses++;
       break;
     }
     case FIELD_SUBTYPE_ENUM: {

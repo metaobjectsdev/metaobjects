@@ -5,13 +5,13 @@ import com.metaobjects.render.extract.ExtractMap
 
 /**
  * All-nullable mirror of [Greeting] for tolerant extraction: a partial model
- * reply still maps. [toStrict] converts it once no `@required` field was lost.
+ * reply still maps. [toStrict] converts it once no `@required` field was lost or malformed.
  */
 data class GreetingExtracted(
     val text: String? = null,
 ) {
 
-    /** The strict [Greeting]. Call only once the extract report shows no lost required field. */
+    /** The strict [Greeting]. Call only once the extract report shows no lost or malformed required field. */
     fun toStrict(): Greeting = Greeting(
         text = text,
     )

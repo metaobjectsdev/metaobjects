@@ -158,7 +158,7 @@ function strictArg(field: MetaData, root: MetaData, ownerName: string, ctx?: Ren
   // ENUM scalar: the mirror member is a plain `string`, but the strict payload types it as the
   // closed `<Alias>` union — assigning `string` into `<Alias>` is a `tsc --strict` TS2322 error.
   // So the value is CAST to `<Alias>`. Sound for the same reason as enum arrays above: the engine
-  // already validated membership (or extract throws on a lost required field).
+  // already validated membership (or extract throws on a lost or malformed required field).
   if (alias !== undefined) {
     return required ? `m.${name}! as ${alias}` : `(m.${name} ?? undefined) as ${alias} | undefined`;
   }
@@ -353,8 +353,7 @@ export function renderExtractor(
     .map((g) => `import type { ${g.types.join(", ")} } from ${JSON.stringify(g.specifier)};`)
     .join("\n");
 
-  const lostMsg =
-    `${extractName}: lost required field(s): `;
+  const failPrefix = `${extractName}: `;
 
   return (
     `// GENERATED — extractor for "${templateName}".\n` +
@@ -373,19 +372,23 @@ export function renderExtractor(
     ` * declare the "${strictType}" payload value-object). Runs the tolerant extract, then maps the\n` +
     ` * extracted mirror onto the strict payload.\n` +
     ` *\n` +
-    ` * @throws Error iff a \`@required\` field was lost (the strict opt-in gate).\n` +
+    ` * @throws Error iff a \`@required\` field was lost, or was present but unusable (MALFORMED —\n` +
+    ` *         an undeclared enum member, text where a number belongs): the strict opt-in gate.\n` +
     ` */\n` +
     `export function ${extractName}(root: MetaRoot, text: string): ${strictType} {\n` +
     `  const r = ${extractLenientWithName}(root, text);\n` +
-    `  if (r.report.hasLostRequired()) {\n` +
-    `    throw new Error(${JSON.stringify(lostMsg)} + r.report.lostRequired().join(", "));\n` +
+    `  if (r.report.hasLostRequired() || r.report.hasMalformedRequired()) {\n` +
+    `    const unusable: string[] = [];\n` +
+    `    if (r.report.hasLostRequired()) unusable.push("lost required field(s): " + r.report.lostRequired().join(", "));\n` +
+    `    if (r.report.hasMalformedRequired()) unusable.push("malformed required field(s): " + r.report.malformedRequired().join(", "));\n` +
+    `    throw new Error(${JSON.stringify(failPrefix)} + unusable.join("; "));\n` +
     `  }\n` +
     `  return ${rootMapper}(r.data!);\n` +
     `}\n` +
     `\n` +
     `/**\n` +
     ` * Extract a \`${strictType}\` from dirty \`text\` using the loaded \`root\`, never throwing.\n` +
-    ` * Re-exposes the nested-capable extract; inspect \`report\` for lost/defaulted fields.\n` +
+    ` * Re-exposes the nested-capable extract; inspect \`report\` for lost/malformed/defaulted fields.\n` +
     ` */\n` +
     `export function ${extractLenientPublic}(root: MetaRoot, text: string): ExtractionResult<${rootMirror}> {\n` +
     `  return ${extractLenientWithName}(root, text);\n` +

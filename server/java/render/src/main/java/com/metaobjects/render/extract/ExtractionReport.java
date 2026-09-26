@@ -12,6 +12,7 @@ public final class ExtractionReport {
     private final Map<String, FieldExtraction> states = new LinkedHashMap<>();
     private final List<Coercion> coercions = new ArrayList<>();
     private final Set<String> defaultedRequired = new LinkedHashSet<>();
+    private final Set<String> malformedRequired = new LinkedHashSet<>();
     private boolean empty = false;
 
     public void set(String fieldPath, FieldExtraction state) { states.put(fieldPath, state); }
@@ -21,6 +22,9 @@ public final class ExtractionReport {
     /** Called by Extract when an absent <b>required</b> field is filled from its {@code @default}. */
     public void markDefaultedRequired(String fieldPath) { defaultedRequired.add(fieldPath); }
 
+    /** Called by Extract when a <b>required</b> field is classified MALFORMED. */
+    public void markMalformedRequired(String fieldPath) { malformedRequired.add(fieldPath); }
+
     public boolean isEmpty() { return empty; }
     public Map<String, FieldExtraction> states() { return Map.copyOf(states); }
     public List<Coercion> coercions() { return List.copyOf(coercions); }
@@ -28,6 +32,17 @@ public final class ExtractionReport {
     public List<String> lostRequired() { return byState(FieldExtraction.LOST_REQUIRED); }
     public List<String> malformed() { return byState(FieldExtraction.MALFORMED); }
     public boolean hasLostRequired() { return !lostRequired().isEmpty(); }
+
+    /**
+     * The {@code @required} fields the document DID answer, but with a value that could not be
+     * used (an undeclared enum member, text where a number belongs, a truncated value, a malformed
+     * array element) — classified MALFORMED, so they are NOT in {@link #lostRequired()}. Their
+     * value is absent from data exactly as a lost field's is, so the strict gate (the generated
+     * extractor, {@link ExtractionResult#orThrow()}) fails on these too.
+     */
+    public List<String> malformedRequired() { return List.copyOf(malformedRequired); }
+
+    public boolean hasMalformedRequired() { return !malformedRequired.isEmpty(); }
 
     /** Every field the document did not answer, whose value came from its {@code @default}. */
     public List<String> defaulted() { return byState(FieldExtraction.DEFAULTED); }

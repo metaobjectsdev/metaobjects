@@ -3,7 +3,15 @@
 Each `<case>/` has:
 - `schema.json` — serialized ExtractSchema (format, rootName, fields[])
 - `input.txt`    — the raw (deliberately dirty) model response
-- `expected.json` — { empty, states{path:FieldExtraction}, data{field:canonicalValue} }
+- `expected.json` — { empty, states{path:FieldExtraction}, malformedRequired?, data{field:canonicalValue} }
+
+`malformedRequired` lists the `@required` fields (dotted paths, any order) whose state is
+`MALFORMED` — present in the reply, but unusable. Every runner asserts it, and an absent key
+means the empty list. It is the second half of the strict gate: a generated extractor, and
+every port's `orThrow` / `dataOrThrow`, fail when `lostRequired` OR `malformedRequired` is
+non-empty, so a garbled required value can never come back as `null` in a type that says it
+is present. Array elements (`tags[0]`) carry no requiredness of their own; a `@required` array
+with a malformed element is itself listed (`json-required-malformed`).
 
 Every port's `extract` runs this corpus — with the JVM nuance that Kotlin does not
 ship a separate extract engine: it drives the shared Java one (`metadata-ktx`), so a

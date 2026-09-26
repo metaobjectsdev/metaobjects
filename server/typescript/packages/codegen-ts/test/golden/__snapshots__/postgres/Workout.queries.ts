@@ -8,6 +8,7 @@ type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;
 
 import {
   type Workout,
+  type WorkoutCreate,
   WorkoutInsertSchema,
   type WorkoutPatch,
   workouts,
@@ -37,7 +38,10 @@ export async function listWorkouts(
   }
   return q;
 }
-export async function createWorkout(db: Db, data: unknown): Promise<Workout> {
+export async function createWorkout(
+  db: Db,
+  data: WorkoutCreate,
+): Promise<Workout> {
   const validated = WorkoutInsertSchema.parse(data);
   const [workout] = await db.insert(workouts).values(validated).returning();
   return workout!;

@@ -1,1 +1,1 @@
-{ "empty": false, "states": { "narrative": "MALFORMED", "mood": "EXTRACTED" }, "data": { "mood": "calm" } }
+{ "empty": false, "states": { "narrative": "MALFORMED", "mood": "EXTRACTED" }, "malformedRequired": ["narrative"], "data": { "mood": "calm" } }

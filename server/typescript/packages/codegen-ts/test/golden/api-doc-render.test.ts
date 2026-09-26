@@ -149,7 +149,7 @@ List Product rows with optional limit/offset paging.
 import { listProducts } from "./Product.queries"
 \`\`\`
 
-### \`createProduct(db: Db, data: unknown): Promise<Product>\`
+### \`createProduct(db: Db, data: ProductCreate): Promise<Product>\`
 
 Validate (via ProductInsertSchema) and insert a new Product.
 

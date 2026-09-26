@@ -8,6 +8,7 @@ type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;
 
 import {
   type Purchase,
+  type PurchaseCreate,
   PurchaseInsertSchema,
   type PurchasePatch,
   purchases,
@@ -37,7 +38,10 @@ export async function listPurchases(
   }
   return q;
 }
-export async function createPurchase(db: Db, data: unknown): Promise<Purchase> {
+export async function createPurchase(
+  db: Db,
+  data: PurchaseCreate,
+): Promise<Purchase> {
   const validated = PurchaseInsertSchema.parse(data);
   const [purchase] = await db.insert(purchases).values(validated).returning();
   return purchase!;

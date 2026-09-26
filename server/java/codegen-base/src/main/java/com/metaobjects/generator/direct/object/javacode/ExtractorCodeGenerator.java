@@ -122,7 +122,7 @@ public class ExtractorCodeGenerator {
         sb.append("     * Extract a fully-typed {@code ").append(className)
           .append("} from dirty {@code text}.\n");
         sb.append("     *\n");
-        sb.append("     * @throws com.metaobjects.render.extract.ExtractException iff a required field was lost\n");
+        sb.append("     * @throws com.metaobjects.render.extract.ExtractException iff a required field was lost or malformed\n");
         sb.append("     */\n");
         sb.append("    public static ").append(className).append(" extract(")
           .append(LOADER_FQN).append(" loader, String text) {\n");
@@ -140,7 +140,7 @@ public class ExtractorCodeGenerator {
         sb.append("     * Extract a {@code ").append(className)
           .append("} from dirty {@code text}, never throwing.\n");
         sb.append("     *\n");
-        sb.append("     * @return the typed result; inspect {@code report()} for lost/defaulted fields\n");
+        sb.append("     * @return the typed result; inspect {@code report()} for lost/malformed/defaulted fields\n");
         sb.append("     */\n");
         sb.append("    @SuppressWarnings(\"unchecked\")\n");
         sb.append("    public static ").append(EXTRACTION_RESULT_FQN).append("<").append(className)

@@ -47,6 +47,11 @@ export const WorkoutUpdateSchema = z.object({
   durationMinutes: z.number().int().optional().nullable(),
 });
 
+/** Typed create shape for Workout: the insert schema's INPUT (pre-transform) type. A
+ * renamed/dropped/misspelt field is a compile error at every `createWorkout` call site;
+ * the schema still validates at runtime. */
+export type WorkoutCreate = z.input<typeof WorkoutInsertSchema>;
+
 /** Typed patch shape for Workout: every settable field, optional (FR-035 PATCH). A
  * renamed/dropped field is a compile error at every `updateWorkout` call site. */
 export type WorkoutPatch = z.input<typeof WorkoutUpdateSchema>;

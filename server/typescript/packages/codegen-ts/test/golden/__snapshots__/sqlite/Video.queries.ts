@@ -12,6 +12,7 @@ type Db = BaseSQLiteDatabase<
 
 import {
   type Video,
+  type VideoCreate,
   VideoInsertSchema,
   type VideoPatch,
   videos,
@@ -38,7 +39,7 @@ export async function listVideos(
   }
   return q;
 }
-export async function createVideo(db: Db, data: unknown): Promise<Video> {
+export async function createVideo(db: Db, data: VideoCreate): Promise<Video> {
   const validated = VideoInsertSchema.parse(data);
   const [video] = await db.insert(videos).values(validated).returning();
   return video!;

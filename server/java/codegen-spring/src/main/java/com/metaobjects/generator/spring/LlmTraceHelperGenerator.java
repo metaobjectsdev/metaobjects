@@ -253,12 +253,15 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
         src.append("            ").append(META_OBJECT_EXTRACT_FQN)
            .append(".extract(responseMo, input.llmResponseText(), ")
            .append(formatEnum).append(");\n");
-        src.append("        boolean failed = outcome.report().hasLostRequired();\n");
+        // A required field that is lost OR malformed (present but unusable) has no value, so
+        // either fails the call — the response is never handed back typed as the VO.
+        src.append("        java.util.List<String> unusable = new java.util.ArrayList<>();\n");
+        src.append("        if (outcome.report().hasLostRequired()) unusable.add(\"lost required: \" + String.join(\", \", outcome.report().lostRequired()));\n");
+        src.append("        if (outcome.report().hasMalformedRequired()) unusable.add(\"malformed required: \" + String.join(\", \", outcome.report().malformedRequired()));\n");
+        src.append("        boolean failed = !unusable.isEmpty();\n");
         src.append("        String status = failed ? ").append(CALL_INPUT_FQN).append(".STATUS_ERROR : ")
            .append(CALL_INPUT_FQN).append(".STATUS_OK;\n");
-        src.append("        String errorDetail = failed\n");
-        src.append("            ? \"lost required: \" + String.join(\", \", outcome.report().lostRequired())\n");
-        src.append("            : null;\n");
+        src.append("        String errorDetail = failed ? String.join(\"; \", unusable) : null;\n");
         // Rebuild the input with derived status/errorDetail (extraction owns them).
         src.append("        ").append(CALL_INPUT_FQN).append(" effective = new ")
            .append(CALL_INPUT_FQN).append("(\n");

@@ -116,8 +116,8 @@ describe("renderCreateFn", () => {
     const post = makePost();
     const ctx = makeCtx(post);
     const out = renderCreateFn(post, ctx).toString();
-    // Signature: createPost(db: Db, data: unknown)
-    expect(out).toMatch(/createPost\(\s*db:\s*Db\s*,\s*data:\s*unknown\s*\)/);
+    // Signature: createPost(db: Db, data: PostCreate) — typed with the insert input, like the patch.
+    expect(out).toMatch(/createPost\(\s*db:\s*Db\s*,\s*data:\s*PostCreate\s*\)/);
   });
 });
 

@@ -50,6 +50,11 @@ export const VideoUpdateSchema = z.object({
   durationSeconds: z.number().int().optional().nullable(),
 });
 
+/** Typed create shape for Video: the insert schema's INPUT (pre-transform) type. A
+ * renamed/dropped/misspelt field is a compile error at every `createVideo` call site;
+ * the schema still validates at runtime. */
+export type VideoCreate = z.input<typeof VideoInsertSchema>;
+
 /** Typed patch shape for Video: every settable field, optional (FR-035 PATCH). A
  * renamed/dropped field is a compile error at every `updateVideo` call site. */
 export type VideoPatch = z.input<typeof VideoUpdateSchema>;

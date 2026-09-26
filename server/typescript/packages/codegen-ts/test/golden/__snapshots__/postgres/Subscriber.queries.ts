@@ -8,6 +8,7 @@ type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;
 
 import {
   type Subscriber,
+  type SubscriberCreate,
   SubscriberInsertSchema,
   type SubscriberPatch,
   subscribers,
@@ -39,7 +40,7 @@ export async function listSubscribers(
 }
 export async function createSubscriber(
   db: Db,
-  data: unknown,
+  data: SubscriberCreate,
 ): Promise<Subscriber> {
   const validated = SubscriberInsertSchema.parse(data);
   const [subscriber] = await db

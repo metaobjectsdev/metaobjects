@@ -19,6 +19,7 @@
 import type { FastifyInstance } from "fastify";
 import { withConstraintMapping } from "../constraint-errors.js";
 import type { ZodTypeAny } from "zod";
+import { validationErrorBody } from "../route-errors.js";
 import qs from "qs";
 import type { ObjectManager } from "../object-manager.js";
 import type { Row } from "../persistence-driver.js";
@@ -202,7 +203,7 @@ export function mountCreateRoute(opts: SingleVerbOptions): void {
   opts.fastify.post(opts.path, routeOpts(opts), async (req, reply) => {
     const parsed = opts.insertSchema.safeParse(req.body);
     if (!parsed.success) {
-      return reply.code(400).send({ error: "validation", issues: parsed.error.issues });
+      return reply.code(400).send(validationErrorBody(parsed.error.issues));
     }
     // Zod returns `unknown` for parsed.data; the schema is authored from the
     // same metadata that drives ObjectManager, so the shape is guaranteed
@@ -229,7 +230,7 @@ export function mountUpdateRoute(opts: SingleVerbOptions): void {
     const { id } = req.params as { id: string };
     const parsed = opts.updateSchema.safeParse(req.body);
     if (!parsed.success) {
-      return reply.code(400).send({ error: "validation", issues: parsed.error.issues });
+      return reply.code(400).send(validationErrorBody(parsed.error.issues));
     }
     // Use ifMissing: "ignore" so the helper itself owns the 404 mapping
     // (consistent with mountDeleteRoute). ObjectManager's default behavior

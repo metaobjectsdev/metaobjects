@@ -96,22 +96,22 @@ public class ExtractorGenerator : IGenerator
         sb.AppendLine($"    /// <summary>Extract a fully-typed <see cref=\"{strictType}\"/> from dirty <paramref name=\"text\"/> using");
         sb.AppendLine($"    /// the runtime <paramref name=\"mo\"/> (the loaded value object). Runs the tolerant extract, then maps");
         sb.AppendLine($"    /// the extracted mirror onto the value object.</summary>");
-        sb.AppendLine($"    /// <exception cref=\"ExtractException\">iff a <c>@required</c> field was lost (the strict opt-in gate).</exception>");
+        sb.AppendLine($"    /// <exception cref=\"ExtractException\">iff a <c>@required</c> field was lost or malformed (the strict opt-in gate).</exception>");
         sb.AppendLine($"    public static {strictType} Extract(global::MetaObjects.Meta.MetaObject mo, string text)");
         sb.AppendLine("    {");
         sb.AppendLine($"        var r = {parserClass}.ExtractLenient(mo, text);");
-        sb.AppendLine("        if (r.Report.HasLostRequired())");
+        sb.AppendLine("        if (r.Report.HasLostRequired() || r.Report.HasMalformedRequired())");
         sb.AppendLine("            throw new ExtractException(r.Report);");
         sb.AppendLine($"        return {rootMapper}(r.Data!);");
         sb.AppendLine("    }");
         sb.AppendLine();
 
         sb.AppendLine($"    /// <summary>Extract with explicit <see cref=\"ExtractOptions\"/>.</summary>");
-        sb.AppendLine($"    /// <exception cref=\"ExtractException\">iff a <c>@required</c> field was lost.</exception>");
+        sb.AppendLine($"    /// <exception cref=\"ExtractException\">iff a <c>@required</c> field was lost or malformed.</exception>");
         sb.AppendLine($"    public static {strictType} Extract(global::MetaObjects.Meta.MetaObject mo, string text, ExtractOptions opts)");
         sb.AppendLine("    {");
         sb.AppendLine($"        var r = {parserClass}.ExtractLenient(mo, text, opts);");
-        sb.AppendLine("        if (r.Report.HasLostRequired())");
+        sb.AppendLine("        if (r.Report.HasLostRequired() || r.Report.HasMalformedRequired())");
         sb.AppendLine("            throw new ExtractException(r.Report);");
         sb.AppendLine($"        return {rootMapper}(r.Data!);");
         sb.AppendLine("    }");

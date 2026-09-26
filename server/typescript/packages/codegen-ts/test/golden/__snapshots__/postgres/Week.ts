@@ -47,6 +47,11 @@ export const WeekUpdateSchema = z.object({
   title: z.string().min(1).max(200).optional(),
 });
 
+/** Typed create shape for Week: the insert schema's INPUT (pre-transform) type. A
+ * renamed/dropped/misspelt field is a compile error at every `createWeek` call site;
+ * the schema still validates at runtime. */
+export type WeekCreate = z.input<typeof WeekInsertSchema>;
+
 /** Typed patch shape for Week: every settable field, optional (FR-035 PATCH). A
  * renamed/dropped field is a compile error at every `updateWeek` call site. */
 export type WeekPatch = z.input<typeof WeekUpdateSchema>;

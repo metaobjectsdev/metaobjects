@@ -5,7 +5,7 @@ import com.metaobjects.render.extract.ExtractMap
 
 /**
  * All-nullable mirror of [OpinionOutputPayload] for tolerant extraction: a partial model
- * reply still maps. [toStrict] converts it once no `@required` field was lost.
+ * reply still maps. [toStrict] converts it once no `@required` field was lost or malformed.
  */
 data class OpinionOutputPayloadExtracted(
     val text: String? = null,
@@ -13,7 +13,7 @@ data class OpinionOutputPayloadExtracted(
     val note: String? = null,
 ) {
 
-    /** The strict [OpinionOutputPayload]. Call only once the extract report shows no lost required field. */
+    /** The strict [OpinionOutputPayload]. Call only once the extract report shows no lost or malformed required field. */
     fun toStrict(): OpinionOutputPayload = OpinionOutputPayload(
         text = text!!,
         confidence = acme.ai.OpinionOutputPayloadConfidence.valueOf(confidence!!),

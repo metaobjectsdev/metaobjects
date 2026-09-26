@@ -40,7 +40,7 @@ import {
   FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET,
   FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_DEFAULT, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_VALUES,
-  FIELD_ATTR_LENIENT, FIELD_ATTR_STRING_FORMAT,
+  FIELD_ATTR_LENIENT, FIELD_ATTR_STRING_FORMAT, FIELD_ATTR_LOCAL_TIME,
   STRING_FORMAT_EMAIL, STRING_FORMAT_HOSTNAME,
   VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_ARRAY,
@@ -440,6 +440,107 @@ describe("field.date / field.time / field.timestamp — ISO shapes only, never f
     expect(accepts(schema, { due: "next tuesday" })).toBe(false);
     // Non-required: an explicit null still clears it (FR-035).
     expect(accepts(schema, { due: null })).toBe(true);
+  });
+});
+
+// The generated module runs on either Zod major (peer range `>=3.23 <5`). This package's
+// dev dependency is Zod 3, whose 3.25 line also ships the Zod 4 API at `zod/v4` — so
+// executing the SAME rendered source against both proves the expression is Zod-3-and-4-safe.
+const ZOD_MAJORS = [
+  { label: "zod 3", rewrite: (src: string) => src },
+  { label: "zod 4", rewrite: (src: string) => src.replace(/from "zod";/g, 'from "zod/v4";') },
+] as const;
+
+describe("temporal validators answer with a short message, not the regex source", () => {
+  // Zod 4's default `.regex()` message is "Invalid string: must match pattern /…/", which
+  // put the ~300-character calendar regex into every API 400 for a bad date.
+  for (const { label, rewrite } of ZOD_MAJORS) {
+    test(`${label}: date / time / timestamp messages are short and name the format`, async () => {
+      const obj = entityWith(
+        "Visit",
+        metaField(FIELD_SUBTYPE_DATE, "due"),
+        metaField(FIELD_SUBTYPE_TIME, "at"),
+        metaField(FIELD_SUBTYPE_TIMESTAMP, "seenAt"),
+      );
+      const mod = await executeGenerated(rewrite(renderZodValidators(obj).toString()));
+      const r = mod["VisitInsertSchema"].safeParse({ due: "tomorrow", at: "noon", seenAt: "later" });
+      expect(r.success).toBe(false);
+      const byField = new Map<string, string>(
+        r.error.issues.map((i: { path: unknown[]; message: string }) => [String(i.path[0]), i.message]),
+      );
+      expect(byField.get("due")).toBe("must be an ISO date (YYYY-MM-DD)");
+      expect(byField.get("at")).toBe("must be a time of day (HH:MM[:SS[.fff]], optional offset)");
+      expect(byField.get("seenAt")).toBe("must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])");
+      for (const m of byField.values()) {
+        expect(m).not.toContain("pattern");
+        expect(m.length).toBeLessThan(90);
+      }
+    });
+  }
+});
+
+describe("field.timestamp values with an offset are stored as UTC (toISOString form)", () => {
+  // SQLite / D1 keep a timestamp as TEXT and compare it as text. `…01:00:00+05:00` (20:00Z)
+  // stored verbatim sorts AFTER `…21:00:00Z`, so `filter[tastedAt][gt]=2026-09-20T21:00:00Z`
+  // returned it. Normalizing every zoned value to the fixed-width `toISOString()` spelling
+  // on write makes text order equal instant order; the filter parser does the same to the
+  // bound (runtime-ts filter-parser).
+  for (const { label, rewrite } of ZOD_MAJORS) {
+    test(`${label}: insert, update and preserving shapes normalize zoned values`, async () => {
+      const obj = entityWith("Note", metaField(FIELD_SUBTYPE_TIMESTAMP, "tastedAt"));
+      const mod = await executeGenerated(rewrite(renderZodValidators(obj).toString()));
+      const cases: Array<[string, string]> = [
+        ["2026-09-21T01:00:00+05:00", "2026-09-20T20:00:00.000Z"],
+        ["2026-09-20T21:00:00Z", "2026-09-20T21:00:00.000Z"],
+        ["2026-09-20t21:00:00z", "2026-09-20T21:00:00.000Z"],
+        ["2026-09-20 16:30:00.123456-04:30", "2026-09-20T21:00:00.123Z"],
+        ["2026-09-21 01:00:00+05", "2026-09-20T20:00:00.000Z"],   // Postgres string-mode output
+        ["2026-09-21T01:00+0530", "2026-09-20T19:30:00.000Z"],
+        ["2024-02-29T00:30:00+01:00", "2024-02-28T23:30:00.000Z"],
+      ];
+      for (const schemaName of ["NoteInsertSchema", "NoteUpdateSchema"]) {
+        for (const [sent, stored] of cases) {
+          expect(mod[schemaName].parse({ tastedAt: sent }).tastedAt).toBe(stored);
+        }
+      }
+    });
+  }
+
+  test("a value with no offset is left exactly as sent (no guessed zone)", async () => {
+    const obj = entityWith("Note", metaField(FIELD_SUBTYPE_TIMESTAMP, "tastedAt"));
+    const mod = await executeGenerated(renderZodValidators(obj).toString());
+    for (const naive of ["2026-09-26 10:00:00", "2026-09-26T10:00", "2026-09-26"]) {
+      expect(mod["NoteInsertSchema"].parse({ tastedAt: naive }).tastedAt).toBe(naive);
+    }
+  });
+
+  test("an @localTime timestamp is a wall clock and is never shifted", async () => {
+    const f = metaField(FIELD_SUBTYPE_TIMESTAMP, "opensAt");
+    f.setAttr(FIELD_ATTR_LOCAL_TIME, true);
+    const mod = await executeGenerated(renderZodValidators(entityWith("Shop", f)).toString());
+    expect(mod["ShopInsertSchema"].parse({ opensAt: "2026-09-21T01:00:00+05:00" }).opensAt).toBe(
+      "2026-09-21T01:00:00+05:00",
+    );
+  });
+
+  test("the module-local normalizer is declared once, and only when a schema uses it", () => {
+    const two = entityWith("Note", metaField(FIELD_SUBTYPE_TIMESTAMP, "a"), metaField(FIELD_SUBTYPE_TIMESTAMP, "b"));
+    const src = renderZodValidators(two).toString();
+    expect(src.split("function utcIsoTimestamp(").length - 1).toBe(1);
+    expect(src.split(".transform(utcIsoTimestamp)").length - 1).toBe(4); // insert + update, x2 fields
+    const local = metaField(FIELD_SUBTYPE_TIMESTAMP, "opensAt");
+    local.setAttr(FIELD_ATTR_LOCAL_TIME, true);
+    for (const obj of [entityWith("Shop", local), entityWith("Task", metaField(FIELD_SUBTYPE_DATE, "due"))]) {
+      expect(renderZodValidators(obj).toString()).not.toContain("utcIsoTimestamp");
+    }
+  });
+
+  test("text order of normalized values equals instant order", async () => {
+    const obj = entityWith("Note", metaField(FIELD_SUBTYPE_TIMESTAMP, "tastedAt"));
+    const mod = await executeGenerated(renderZodValidators(obj).toString());
+    const stored = mod["NoteInsertSchema"].parse({ tastedAt: "2026-09-21T01:00:00+05:00" }).tastedAt;
+    const bound = mod["NoteInsertSchema"].parse({ tastedAt: "2026-09-20T21:00:00Z" }).tastedAt;
+    expect(stored > bound).toBe(false); // 20:00Z is NOT after 21:00Z
   });
 });
 

@@ -88,14 +88,14 @@ object KotlinExtractSchemaEmitter {
             append("import com.metaobjects.render.extract.ExtractMap\n\n")
             append("/**\n")
             append(" * All-nullable mirror of [").append(short).append("] for tolerant extraction: a partial model\n")
-            append(" * reply still maps. [toStrict] converts it once no `@required` field was lost.\n")
+            append(" * reply still maps. [toStrict] converts it once no `@required` field was lost or malformed.\n")
             append(" */\n")
             append("data class ").append(mirror).append("(\n")
             for (field in fields) {
                 append("    val ").append(field.name).append(": ").append(mirrorPropertyType(field)).append(" = null,\n")
             }
             append(") {\n\n")
-            append("    /** The strict [").append(short).append("]. Call only once the extract report shows no lost required field. */\n")
+            append("    /** The strict [").append(short).append("]. Call only once the extract report shows no lost or malformed required field. */\n")
             append("    fun toStrict(): ").append(short).append(" = ").append(short).append("(\n")
             for (field in fields) {
                 append("        ").append(field.name).append(" = ").append(strictArg(field, vo)).append(",\n")

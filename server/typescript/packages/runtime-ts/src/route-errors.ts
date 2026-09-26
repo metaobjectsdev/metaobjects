@@ -38,6 +38,28 @@ export interface ErrorEnvelope {
 }
 
 export const INTERNAL_ERROR_BODY: ErrorEnvelope = Object.freeze({ error: ERROR_CODE_INTERNAL });
+
+/** Wire code for a request body that failed its schema. */
+export const ERROR_CODE_VALIDATION = "validation";
+
+/**
+ * The 400 body for a body that failed its Zod schema: every issue as Zod reported it,
+ * minus `pattern`. Zod 4 attaches the regex SOURCE to a failed `.regex()` check, and for a
+ * generated `field.date` / `field.timestamp` check that is a ~300-character calendar regex
+ * (an authored `validator.regex` pattern is likewise the server's own business). The
+ * issue's `message` already names the expected format. Shared by every mount.
+ */
+export function validationErrorBody<T extends object>(
+  issues: readonly T[],
+): { readonly error: string; readonly issues: Omit<T, "pattern">[] } {
+  return {
+    error: ERROR_CODE_VALIDATION,
+    issues: issues.map((issue) => {
+      const { pattern: _pattern, ...rest } = issue as T & { pattern?: unknown };
+      return rest;
+    }),
+  };
+}
 export const INVALID_JSON_BODY: ErrorEnvelope = Object.freeze({ error: ERROR_CODE_INVALID_JSON });
 
 /**

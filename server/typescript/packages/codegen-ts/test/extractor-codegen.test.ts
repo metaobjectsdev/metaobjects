@@ -310,6 +310,20 @@ describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () =
       /lost required field\(s\):.*customer/,
     );
 
+    // A required field that is PRESENT but unusable (an undeclared enum member, text for an
+    // int) is MALFORMED, not lost — and must throw too, never come back null in the strict
+    // payload. The reviewer's case: required enum "MAYBE", required int "high".
+    const malformed =
+      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": "lots" } ], "tags": ["x"], "priority": "MAYBE", "labels": ["A"] }';
+    expect(() => ex.extractOrderOut(root, malformed)).toThrow(
+      /malformed required field\(s\):.*priority/,
+    );
+    expect(() => ex.extractOrderOut(root, malformed)).toThrow(/lines\[0\]\.qty/);
+    // the lenient tier still never throws; the report names the unusable required fields
+    const lenientMalformed = ex.extractLenientOrderOut(root, malformed);
+    expect(lenientMalformed.data.priority).toBeNull();
+    expect(lenientMalformed.report.hasMalformedRequired()).toBe(true);
+
     // extract re-exposed (nested-capable): clean JSON → no lost-required
     const clean =
       '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ], "tags": ["x"], "priority": "LOW", "labels": ["A"] }';

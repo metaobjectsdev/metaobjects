@@ -218,6 +218,25 @@ class KotlinExtractorCompilesTest {
                     "unwrapped cause must be a RuntimeException (ExtractException); got ${e.cause}")
             }
 
+            // ---- malformed-required path: a required enum answered with an undeclared member is
+            // MALFORMED, not lost, and must throw too — never reach toStrict() and valueOf(null) ----
+            val malformed = "{\"customer\":{\"name\":\"Ada\"}," +
+                "\"lines\":[{\"sku\":\"A\",\"qty\":1}]," +
+                "\"tags\":[\"x\"],\"scores\":[3],\"ratings\":[1.5]," +
+                "\"counts\":[10],\"weights\":[1.25],\"active\":[true],\"flags\":[\"A\"]," +
+                "\"priority\":\"MAYBE\",\"labels\":[\"A\"]}"
+            try {
+                extractMethod.invoke(extractorInstance, loader, malformed)
+                fail("extract must throw when a required field is malformed")
+            } catch (e: InvocationTargetException) {
+                val cause = e.cause!!
+                assertEquals("com.metaobjects.render.extract.ExtractException", cause.javaClass.name,
+                    "unwrapped cause must be ExtractException; got $cause")
+                @Suppress("UNCHECKED_CAST")
+                val malformedRequired = cause.javaClass.getMethod("malformedRequired").invoke(cause) as List<String>
+                assertEquals(listOf("priority"), malformedRequired, "ExtractException must name `priority`")
+            }
+
             // ---- re-exposed extractLenient(loader, clean): never throws, no lost-required ----
             val extractLenientMethod = extractorClass.getDeclaredMethod("extractLenient", loaderClass, String::class.java)
             val clean = "{\"customer\":{\"name\":\"Ada\"}," +
