@@ -131,7 +131,7 @@ C# generators run from an owned console project, `codegen/`. `dotnet meta gen` a
   </PropertyGroup>
   <ItemGroup>
     <!-- the version of your `dotnet meta` tool -->
-    <PackageReference Include="MetaObjects.Codegen" Version="1.0.8" />
+    <PackageReference Include="MetaObjects.Codegen" Version="1.0.*" />
   </ItemGroup>
 </Project>
 ```

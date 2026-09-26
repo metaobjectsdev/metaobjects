@@ -543,13 +543,24 @@ building block. Every generator is a reference helper an adopter selects, ejects
   declared designs; the core layer is sourceless and adds no tables. Mention one only when the
   target is hand-building the same design.
 
-**Contract-only cannot** (say so when it matters):
-- generate a Prisma schema or client, TypeORM entities, SQLAlchemy/Django models, or JPA
-  entities on the Java lane — alongside those ORMs, the contract is Zod/TS types, records,
-  POCOs or Pydantic models *next to* the ORM model, not the ORM model itself;
-- emit OpenAPI, AsyncAPI or JSON Schema documents, or bind a shape to a queue, topic or
-  transport (`api.*`, `operation.*`, `binding.*` are not shipped);
-- reach a consumer outside the five ports (Go, Rust, Ruby, PHP, Swift…);
+**Out of the box, contract-only does not** (say so when it matters, and say the fix):
+- ship a generator for a Prisma schema, TypeORM entities, SQLAlchemy/Django models or JPA
+  entities — alongside those ORMs the shipped contract is Zod/TS types, records, POCOs or
+  Pydantic models *next to* the ORM model;
+- ship an OpenAPI, AsyncAPI or JSON Schema generator;
+- reach a consumer outside the five ports (Go, Rust, Ruby, PHP, Swift…) directly.
+
+**Each of those is a generator the project writes**, and that is the primary codegen path, not
+a workaround: a generator is a function from the loaded model to files, a few dozen lines, and
+`verify --codegen` gates its output like any other. `meta generator new <name>` scaffolds one in
+TypeScript; `docs/recipes/write-your-own-generator.md` shows every port and ships JSON Schema and
+OpenAPI 3.1 example generators to copy. An OpenAPI or JSON Schema generator also reaches the
+languages outside the five ports through their own generators. Price it in the wedge (a day or
+two for a first generator), and do not report it as impossible.
+
+**Contract-only cannot** bind a shape to a queue, topic or transport as declared vocabulary
+(`api.*`, `operation.*`, `binding.*` are not shipped); a generator can still emit per-transport
+code from the shapes.
 - promise byte-identical JSON from type-only output: field-name casing on the wire follows each
   consumer's serializer settings (the byte-identical REST wire is a property of the *generated
   routes*, gated by `fixtures/api-contract-conformance/`). Check it in the wedge.
