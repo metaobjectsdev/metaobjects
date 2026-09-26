@@ -34,6 +34,7 @@ import type { FastifyInstance, RouteShorthandOptions } from "fastify";
 import { and, eq, or, inArray } from "drizzle-orm";
 import { coerceIdForColumn } from "./util.js";
 import { timestampWire } from "../timestamp-wire.js";
+import { withContractErrorHandler } from "./route-error-handler.js";
 
 // Loose Drizzle types — the helper works across libsql / better-sqlite3 / pg.
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user's Drizzle instance
@@ -84,7 +85,8 @@ export interface M2mRouteOptions {
 export function mountM2mRoute(opts: M2mRouteOptions): void {
   const targetPk = opts.targetPkColumn ?? "id";
   const route = `${opts.path}/:id/${opts.relationName}`;
-  const ro = opts.routeOptions ?? {};
+  // Route-scoped contract error handler — see route-error-handler.ts.
+  const ro = withContractErrorHandler(opts.routeOptions);
   const toWire = timestampWire(opts.targetTable);
 
   opts.fastify.get(route, ro, async (req, reply) => {

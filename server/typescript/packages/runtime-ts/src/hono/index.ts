@@ -42,6 +42,10 @@ export type {
 } from "../drizzle-fastify/filter-allowlist.js";
 import { isTruthyFlag, coerceIdForColumn, firstRow } from "../drizzle-fastify/util.js";
 import { timestampWire } from "../timestamp-wire.js";
+// Every handler below is wrapped in guardRoute (an unexpected error answers
+// `500 { error: "internal" }`, logged server-side) and reads its body through
+// readJsonBody (a malformed body answers `400 { error: "invalid_json" }`).
+import { guardRoute, readJsonBody } from "./route-guard.js";
 // Back-compat re-export — the unsafe local copy was consolidated onto the one
 // shared (deprecated) helper so the three adapters can't silently diverge.
 export { parseId } from "../drizzle-fastify/util.js";
@@ -175,7 +179,7 @@ async function reReadThroughView(
 
 export function mountListRoute(opts: VerbOptions): void {
   const toWire = readWire(opts);
-  opts.app.get(opts.path, async (c) => {
+  opts.app.get(opts.path, guardRoute(async (c) => {
     try {
       const listSrc = readSource(opts);
       let q = opts.db.select().from(listSrc).$dynamic();
@@ -230,12 +234,12 @@ export function mountListRoute(opts: VerbOptions): void {
       }
       throw err;
     }
-  });
+  }));
 }
 
 export function mountGetRoute(opts: VerbOptions): void {
   const toWire = readWire(opts);
-  opts.app.get(`${opts.path}/:id`, async (c) => {
+  opts.app.get(`${opts.path}/:id`, guardRoute(async (c) => {
     const id = c.req.param("id") ?? "";
     // Compare against the PK's real type — a numeric-LOOKING id on a TEXT pk
     // must stay a string ('0123' ≠ '123'), or affinity matches the WRONG row.
@@ -244,14 +248,15 @@ export function mountGetRoute(opts: VerbOptions): void {
     if (idValue === undefined) return c.json({ error: "invalid_id" }, 400);
     const row = await firstRow(opts.db, getSrc, eq(getSrc.id, idValue));
     return row ? c.json(toWire(row)) : c.json({ error: "not_found" }, 404);
-  });
+  }));
 }
 
 export function mountCreateRoute(opts: VerbOptions): void {
   const toWire = echoWire(opts);
-  opts.app.post(opts.path, async (c) => {
-    const body = await c.req.json().catch(() => undefined);
-    const parsed = opts.insertSchema.safeParse(body);
+  opts.app.post(opts.path, guardRoute(async (c) => {
+    const read = await readJsonBody(c);
+    if (!read.ok) return read.response;
+    const parsed = opts.insertSchema.safeParse(read.body);
     if (!parsed.success) {
       return c.json({ error: "validation", issues: parsed.error.issues }, 400);
     }
@@ -269,15 +274,16 @@ export function mountCreateRoute(opts: VerbOptions): void {
     const row = (result as unknown[])[0];
     // Echo the row through the replica view so derived columns are present (#214).
     return c.json(toWire(await reReadThroughView(opts, row)), 201);
-  });
+  }));
 }
 
 export function mountUpdateRoute(opts: VerbOptions): void {
   const toWire = echoWire(opts);
-  const handler = async (c: Context) => {
+  const handler = guardRoute(async (c: Context) => {
     const id = c.req.param("id") ?? "";
-    const body = await c.req.json().catch(() => undefined);
-    const parsed = opts.updateSchema.safeParse(body);
+    const read = await readJsonBody(c);
+    if (!read.ok) return read.response;
+    const parsed = opts.updateSchema.safeParse(read.body);
     if (!parsed.success) {
       return c.json({ error: "validation", issues: parsed.error.issues }, 400);
     }
@@ -308,7 +314,7 @@ export function mountUpdateRoute(opts: VerbOptions): void {
     }
     const row = (result as unknown[])[0];
     return row ? c.json(toWire(await reReadThroughView(opts, row))) : c.json({ error: "not_found" }, 404);
-  };
+  });
   const path = `${opts.path}/:id`;
   // Cross-port REST contract (FR-008): the update verb is reachable via BOTH PATCH
   // and PUT, each routed to the same handler — as the drizzle-fastify flavor and
@@ -325,7 +331,7 @@ export function mountUpdateRoute(opts: VerbOptions): void {
 }
 
 export function mountDeleteRoute(opts: VerbOptions): void {
-  opts.app.delete(`${opts.path}/:id`, async (c) => {
+  opts.app.delete(`${opts.path}/:id`, guardRoute(async (c) => {
     const id = c.req.param("id") ?? "";
     // Compare against the PK's real type (see mountGetRoute) — a numeric-
     // LOOKING id on a TEXT pk would otherwise DELETE the wrong row (data loss).
@@ -346,7 +352,7 @@ export function mountDeleteRoute(opts: VerbOptions): void {
       return c.body(null, 204);
     }
     return c.json({ error: "not_found" }, 404);
-  });
+  }));
 }
 
 function extractRowCount(result: unknown): number {
@@ -387,7 +393,7 @@ export interface HonoMetaRouteOptions {
  */
 export function mountMetaRouteHono(opts: HonoMetaRouteOptions): void {
   const path = `${opts.prefix ?? ""}${META_ROUTE_PATH}`;
-  opts.app.get(path, (c) =>
+  opts.app.get(path, guardRoute((c) =>
     c.body(metaJson(opts.root), 200, { "content-type": META_CONTENT_TYPE }),
-  );
+  ));
 }

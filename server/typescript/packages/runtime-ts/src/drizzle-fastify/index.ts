@@ -29,6 +29,7 @@ export type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 import { parseFilterParams, FilterParseError } from "./filter-parser.js";
 import { isTruthyFlag, contractErrorCode, coerceIdForColumn, firstRow } from "./util.js";
 import { timestampWire } from "../timestamp-wire.js";
+import { withContractErrorHandler } from "./route-error-handler.js";
 export { isTruthyFlag, contractErrorCode, parseId, coerceIdForColumn } from "./util.js";
 export { timestampWire, canonicalTimestamp } from "../timestamp-wire.js";
 
@@ -161,8 +162,11 @@ export function mountCrudRoutes(opts: CrudRoutesOptions): void {
 
 type VerbOptions = Omit<CrudRoutesOptions, "expose">;
 
+/** The adopter's route options plus the route-scoped contract error handler (an
+ *  unexpected error answers `500 { error: "internal" }`, a malformed JSON body
+ *  `400 { error: "invalid_json" }`) — see route-error-handler.ts. */
 function routeOpts(opts: VerbOptions): RouteShorthandOptions {
-  return opts.routeOptions ?? {};
+  return withContractErrorHandler(opts.routeOptions);
 }
 
 export function mountListRoute(opts: VerbOptions): void {

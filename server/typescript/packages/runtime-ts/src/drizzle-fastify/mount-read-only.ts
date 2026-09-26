@@ -5,6 +5,7 @@ import { parseFilterParams, FilterParseError } from "./filter-parser.js";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 import { isTruthyFlag, contractErrorCode, coerceIdForColumn, rawIdLiteral, viewBaseConfig } from "./util.js";
 import { timestampWire } from "../timestamp-wire.js";
+import { withContractErrorHandler } from "./route-error-handler.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user-supplied views
 type AnyView = any;
@@ -118,7 +119,9 @@ async function rawRows(db: any, dialect: string | undefined, query: unknown): Pr
 export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   const { fastify, path, db, view, filterAllowlist, sortAllowlist, dialect } = opts;
   const idCol = opts.idColumn ?? "id";
-  const ro = opts.routeOptions ?? {};
+  // Route-scoped contract error handler: an unexpected error answers
+  // `500 { error: "internal" }` rather than Fastify's default (which echoes the SQL).
+  const ro = withContractErrorHandler(opts.routeOptions);
 
   const viewName = resolveViewName(view);
   const useRawSql = isEmptyColumnView(view) && !!viewName;

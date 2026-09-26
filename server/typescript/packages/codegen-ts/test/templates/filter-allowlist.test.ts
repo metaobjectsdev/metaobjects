@@ -37,6 +37,24 @@ describe("renderFilterAllowlist", () => {
     expect(out).not.toContain("internalNote");
   });
 
+  // The coarse subType ("datetime", "string") cannot tell the runtime a date from a
+  // time, or a uuid or enum from free text — so a malformed bound reached SQL and
+  // matched nothing. The rule now carries the exact wire format / enum members, and
+  // runtime-ts's parser answers `invalid_filter_value` for a value that does not fit
+  // (runtime-ts test/drizzle-fastify/filter-value-format.test.ts pins that half).
+  test("carries the wire format for date/time/timestamp/uuid and the members of an enum", async () => {
+    const out = renderFilterAllowlist(await loadEntity("Book")).toString();
+    expect(out).toMatch(/publishedOn:\s*\{[^}]*format: "date"/);
+    expect(out).toMatch(/opensAt:\s*\{[^}]*format: "time"/);
+    expect(out).toMatch(/updatedAt:\s*\{[^}]*format: "timestamp"/);
+    expect(out).toMatch(/externalId:\s*\{[^}]*format: "uuid"/);
+    expect(out).toMatch(/genre:\s*\{[^}]*enumValues: \["fiction", "poetry"\]/);
+    // An int-backed enum is filtered by MEMBER name too (the column codec maps it).
+    expect(out).toMatch(/priority:\s*\{[^}]*enumValues: \["low", "high"\]/);
+    // A plain string carries neither.
+    expect(out).not.toMatch(/title:\s*\{[^}]*(format|enumValues)/);
+  });
+
   test("entity with no filterable fields emits empty allowlist", async () => {
     const { root } = await new MetaDataLoader().load([new FileSource(FIXTURE)]);
     const subscriber = root.objects().find((c) => c.name === "Subscriber")!;

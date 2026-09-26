@@ -12,6 +12,8 @@ import type {
 } from "../drizzle-fastify/filter-allowlist.js";
 import { isTruthyFlag, coerceIdForColumn, rawIdLiteral, contractErrorCode, viewBaseConfig } from "../drizzle-fastify/util.js";
 import { timestampWire } from "../timestamp-wire.js";
+// An unexpected error on a mounted route answers `500 { error: "internal" }`.
+import { guardRoute } from "./route-guard.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user-supplied views
 type AnyView = any;
@@ -107,7 +109,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   const toWire = timestampWire(view);
 
   // ── List ──────────────────────────────────────────────────────────────────
-  app.get(path, async (c) => {
+  app.get(path, guardRoute(async (c) => {
     try {
       if (useRawSql) {
         const url = c.req.url;
@@ -175,10 +177,10 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       }
       throw err;
     }
-  });
+  }));
 
   // ── Get by ID ─────────────────────────────────────────────────────────────
-  app.get(`${path}/:id`, async (c) => {
+  app.get(`${path}/:id`, guardRoute(async (c) => {
     const id = c.req.param("id") ?? "";
     if (useRawSql) {
       // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
@@ -202,7 +204,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       .limit(1);
     const row = (rows as unknown[])[0];
     return row ? c.json(toWire(row)) : c.json({ error: "not_found" }, 404);
-  });
+  }));
 
   // ── Mutations explicitly rejected (405) ───────────────────────────────────
   const reject = (c: { req: { method: string }; json: (body: unknown, status: number) => unknown }) =>

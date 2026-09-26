@@ -10,11 +10,29 @@ import {
   FILTER_OPS,
   OPS_BY_SUBTYPE,
   opsForSubType,
+  FIELD_SUBTYPE_DATE,
+  FIELD_SUBTYPE_TIME,
+  FIELD_SUBTYPE_TIMESTAMP,
+  FIELD_SUBTYPE_UUID,
   type FilterOp,
 } from "@metaobjectsdev/metadata";
 export { FILTER_OPS, OPS_BY_SUBTYPE, opsForSubType, type FilterOp };
 
 export type FilterSubType = "string" | "number" | "boolean" | "datetime";
+
+/**
+ * The wire formats a filter value can be checked against, beyond the coarse
+ * `FilterSubType`. Each is the `field.*` subtype whose Tier-1 wire encoding
+ * (docs/features/api-contract.md, "Type encodings") the value must match — so the
+ * values ARE the metamodel subtype names, not a second vocabulary.
+ */
+export const FILTER_VALUE_FORMATS = [
+  FIELD_SUBTYPE_DATE,
+  FIELD_SUBTYPE_TIME,
+  FIELD_SUBTYPE_TIMESTAMP,
+  FIELD_SUBTYPE_UUID,
+] as const;
+export type FilterValueFormat = (typeof FILTER_VALUE_FORMATS)[number];
 
 export interface FilterFieldRule {
   readonly ops: readonly FilterOp[];
@@ -32,6 +50,21 @@ export interface FilterFieldRule {
    * both as strings under every dialect, so they are not governed by `timestampMode`.
    */
   readonly dateValues?: boolean;
+  /**
+   * The field's exact wire format, set by codegen for `field.date` / `field.time` /
+   * `field.timestamp` / `field.uuid`. The filter parser rejects a value that does not
+   * match it with `invalid_filter_value` instead of binding it — on SQLite a malformed
+   * date compared as text and silently matched nothing; on Postgres it was a driver
+   * error. Absent (an allowlist generated before this existed), a `datetime` value is
+   * still checked against the union of the three temporal formats.
+   */
+  readonly format?: FilterValueFormat;
+  /**
+   * The declared members of a `field.enum` (`@values`), set by codegen. A value that is
+   * not a member is rejected with `invalid_filter_value`. Absent, the parser falls back
+   * to the Drizzle column's own `enumValues` when it has them.
+   */
+  readonly enumValues?: readonly string[];
 }
 
 export type FilterAllowlist = Readonly<Record<string, FilterFieldRule>>;
