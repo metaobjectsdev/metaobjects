@@ -24,7 +24,7 @@ namespace MetaObjects.Codegen.Tests;
 
 public class EjectedGeneratorCompileTests
 {
-    private static MetaRoot LoadCorpus()
+    internal static MetaRoot LoadCorpus()
     {
         var result = new MetaDataLoader().Load([new FileSource(CorpusPaths.FitnessMetadata)]);
         Assert.True(
@@ -72,7 +72,7 @@ public class EjectedGeneratorCompileTests
         "global using global::System.Threading;\n" +
         "global using global::System.Threading.Tasks;\n";
 
-    private static IGenerator CompileAndInstantiate(string stableName, string className, object?[] ctorArgs)
+    internal static IGenerator CompileAndInstantiate(string stableName, string className, object?[] ctorArgs)
     {
         var source = EjectableGenerators.RewriteForEject(EjectableGenerators.ReadSource(stableName)!);
         var tree = CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.CSharp12), path: className + ".cs");
@@ -139,9 +139,32 @@ public class EjectedGeneratorCompileTests
         // (CodegenCompileConformanceTests already covers "does this corpus exercise the
         // generator at all"). Equal empty lists still proves the ejected copy behaves
         // identically to the packaged one for this input.
+        //
+        // The ONE documented difference: a generator whose output imports the helper runtime
+        // (routes) imports the adopter's owned copy once ejected — `using Codegen.Runtime;`
+        // where the packaged output says `using MetaObjects.Codegen.Runtime;`. Nothing else.
+        var usesRuntime = HelperRuntime.UsedBy(EjectableGenerators.ReadSource(stableName)!);
+        string Expected(string packagedContent) => usesRuntime
+            ? packagedContent.Replace(
+                $"using {HelperRuntime.PackagedNamespace};", $"using {HelperRuntime.OwnedNamespace};", StringComparison.Ordinal)
+            : packagedContent;
+
         Assert.Equal(packagedFiles.Select(f => f.Path), ejectedFiles.Select(f => f.Path));
         for (int i = 0; i < packagedFiles.Count; i++)
-            Assert.Equal(packagedFiles[i].Content, ejectedFiles[i].Content);
+            Assert.Equal(Expected(packagedFiles[i].Content), ejectedFiles[i].Content);
+
+        // And an ejected copy's output reaches into the package's runtime namespace ONLY for
+        // core: ExtractObject, the reply parser the prompt tier delegates to. Every helper
+        // type it calls is the adopter's own copy.
+        var packageRuntimeLines = ejectedFiles
+            .SelectMany(f => f.Content.Split('\n').Select(l => (f.Path, Line: l)))
+            .Where(x => x.Line.Contains(HelperRuntime.PackagedNamespace, StringComparison.Ordinal)
+                        && !x.Line.Contains("ExtractObject", StringComparison.Ordinal))
+            .Select(x => $"{x.Path}: {x.Line.Trim()}")
+            .ToList();
+        Assert.True(packageRuntimeLines.Count == 0,
+            $"ejected \"{stableName}\" output still references a helper in {HelperRuntime.PackagedNamespace}:\n" +
+            string.Join("\n", packageRuntimeLines));
     }
 
     [Fact]

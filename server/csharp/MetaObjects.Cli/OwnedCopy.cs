@@ -72,4 +72,33 @@ public static class OwnedCopy
             ? "identical"
             : $"DIFFERS: {cmp.Behind} behind, {cmp.OfYourOwn} of your own";
     }
+
+    /// <summary>
+    /// How the owned helper runtime (codegen/runtime/, written by ejecting a generator whose
+    /// output imports it) compares to what eject would write today: <c>"identical"</c>, or
+    /// one <c>"&lt;file&gt; DIFFERS: N behind, M of your own"</c> / <c>"&lt;file&gt;
+    /// missing"</c> clause per file that is not, joined with <c>"; "</c>. <c>null</c> when
+    /// nothing is owned there. The comparison is against the REWRITTEN reference, so the
+    /// namespace line eject itself changes never reads as your edit. A file you added
+    /// yourself is yours and is not reported.
+    /// </summary>
+    public static string? RuntimeStatus(string root)
+    {
+        var dir = Path.Combine(root, MetaObjects.Codegen.HelperRuntime.OwnedDirectory);
+        if (!Directory.Exists(dir)) return null;
+        var clauses = new List<string>();
+        foreach (var file in MetaObjects.Codegen.HelperRuntime.Files)
+        {
+            var path = Path.Combine(dir, file);
+            if (!File.Exists(path))
+            {
+                clauses.Add($"{file} missing");
+                continue;
+            }
+            var cmp = Compare(File.ReadAllText(path), MetaObjects.Codegen.HelperRuntime.OwnedReference(file));
+            if (cmp.Verdict == Verdict.Differs)
+                clauses.Add($"{file} DIFFERS: {cmp.Behind} behind, {cmp.OfYourOwn} of your own");
+        }
+        return clauses.Count == 0 ? "identical" : string.Join("; ", clauses);
+    }
 }

@@ -5,7 +5,7 @@
 //   1. the embedded copy is byte-identical to its Generators/<file> source (drift gate);
 //   2. the embedded RESOURCE SET matches exactly the registry's ejectable entries (so a
 //      new ejectable generator can't ship without its embed, and vice versa).
-// Also covers the one deliberate edit `RewriteForEject` makes (the namespace rename —
+// Also covers the deliberate edit `RewriteForEject` makes (the namespace rename —
 // see its own doc comment for why one is needed at all).
 
 using System.Reflection;

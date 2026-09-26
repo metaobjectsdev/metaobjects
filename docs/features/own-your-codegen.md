@@ -221,20 +221,19 @@ those verbs and narrow the generated file around them.
 ## Per port
 
 Every port offers the **declarative** path — a Mustache template plus a scope, no
-generator code. Two ports ALSO offer a **programmatic** path, and two do not. Which
-you get is the first thing to establish, because it changes what you can plan.
+generator code. Every port ALSO offers a **programmatic** path: own a copy of a reference
+generator and edit its code. How you get that copy differs per port.
 
 | Port | Invocation | Programmatic — write a `Generator` | Declarative — template + scope |
 |---|---|---|---|
 | **TypeScript** | `meta init` → `meta gen --list --probe` → `meta eject <names...>` → `meta gen` (Bun/Node CLI) | **Yes — scaffold-and-own.** `meta init` scaffolds the LAYOUT and an empty selection (ADR-0034 Amendment 2); `meta eject <name>...` copies each generator you choose into `codegen/generators/*.ts` and prints the import to add to `metaobjects.config.ts`. Edit them freely. The prompt tier (`prompt-render`, `output-parser`, `extractor`, `output-prompt`, `render-helper`) ejects like the rest: you own which templates get a module and where it lands, while the render and extract engines those modules call stay in the package. Not every registered generator is ejectable: `callable`, `trace-helper`, `requirement-tests`, the `template` primitive, the docs tier (`docs`, `api-docs`, `mermaid-er`, whose door is `meta docs`) and `shared-model` ship no reference template, so they are **package-only** — `meta gen --list` marks them so and `meta eject` names them as such. `shared-model` (FR-023's publisher generator) stays package-only deliberately, since it emits a hash-pinned cross-port contract artifact. | **Yes** — `templateGenerator({ template, scope, outputPattern })` in the config's `generators: [...]`. No CLI flag: the config already takes generator values. |
 | **Java / Kotlin** | `mvn metaobjects:generate` / `mvn metaobjects:verify` (`metaobjects-maven-plugin`) | **Yes.** Every generator — built-in or your own — is named in `<generator><classname>` and loaded from the project classpath: one seam, not two. There is no default suite, so `<generators>` is the complete list. Kotlin runs through the same goal. | **Yes** — `TemplateScopeGenerator` wired as an ordinary `<generator>`. No CLI flag: `<generator>` is already the seam. |
-| **C#** | `dotnet meta gen` / `dotnet meta verify` (.NET tool) | **No.** `GeneratorRegistry` is a closed built-in registry; `--generators` *selects* from what ships. There is no registration seam. | **Yes, and it is your only path** — `dotnet meta gen --template-spec <json> --template-root <dir>`. |
-| **Python** | `metaobjects gen` / `metaobjects verify` (console-script) | **No.** `GENERATOR_REGISTRY` is a closed built-in registry, same as C#. (`--provider module:symbol` registers **metamodel vocabulary**, not a generator — do not reach for it here.) | **Yes, and it is your only path** — `metaobjects gen --template-spec <json> --templates <dir>`. |
+| **C#** | `dotnet meta gen` / `dotnet meta verify` (.NET tool) | **Yes — scaffold-and-own.** `dotnet meta eject <name>...` copies a reference generator into `codegen/generators/` and scaffolds an owned `codegen/` console project that `gen` and `verify --codegen` hand off to. Ejecting `routes` also copies the helper runtime its output calls into `codegen/runtime/` ([below](#ejecting-routes-hands-over-the-helper-runtime-too)). | **Yes** — `dotnet meta gen --template-spec <json> --template-root <dir>`. |
+| **Python** | `metaobjects gen` / `metaobjects verify` (console-script) | **Yes.** `metaobjects eject <name>...` copies a reference generator into `codegen/generators/`; wire the copy as `module:symbol` ([below](#python-metaobjects-eject)). (`--provider module:symbol` registers **metamodel vocabulary**, not a generator — do not reach for it here.) | **Yes** — `metaobjects gen --template-spec <json> --templates <dir>`. |
 
-So "I need a shape the built-ins do not emit" has an answer on **every** port. On C# and
-Python that answer is a template, not generator code — which is a real path, not a
-consolation prize: it renders against the same neutral, byte-gated data dict every port
-shares, so one template emits identically on all five.
+So "I need a shape the built-ins do not emit" has two answers on **every** port. A
+template is a real path, not a consolation prize: it renders against the same neutral,
+byte-gated data dict every port shares, so one template emits identically on all five.
 
 ### When a generator's output is wrong, the fix is yours
 
@@ -247,8 +246,11 @@ yours. Fix it in your build, in the same change, and keep going:
 - **Java / Kotlin:** subclass the reference generator, or copy its source (Apache-2.0,
   in the `-sources` jar) into a codegen module the generating module depends on. Point
   `<classname>` at your class. The plugin loads it from that module's compile classpath.
-- **C# / Python:** emit that artifact from your own template spec instead of the
-  built-in.
+- **C#:** edit your ejected copy (`dotnet meta eject <name>` first). A defect in the
+  filter parser, filter dispatch, value-object validator or constraint mapping that
+  generated routes call is fixed in your `codegen/runtime/` copy the same way.
+- **Python:** edit your ejected copy (`metaobjects eject <name>` first), or emit that
+  artifact from your own template spec instead of the built-in.
 
 Do not file it upstream, pin or wait for a MetaObjects release, or patch a clone of this
 repository. The reference generators are conformance-gated so that the copy you start
@@ -409,7 +411,8 @@ The .NET tool ships compiled, so there is no generator source on disk to copy. E
 ejectable generator's `.cs` file ships embedded in `MetaObjects.Codegen`, and a test keeps it
 byte-identical to the file the package compiles. Eject writes it to
 `codegen/generators/<Name>Generator.cs`, renaming its namespace to `Codegen.Generators` and
-adding the `using` lines that rename needs; nothing else changes.
+adding the `using` lines that rename needs; nothing else changes, except in `routes` (see
+[below](#ejecting-routes-hands-over-the-helper-runtime-too)).
 
 On first use eject also writes `codegen/Codegen.csproj`, a console project referencing
 `MetaObjects.Codegen` at the tool's version, and `codegen/Program.cs`, which lists your
@@ -427,4 +430,79 @@ not the other eight. The owned project finds metadata exactly as the tool does, 
 `.metaobjects/config.json`'s `sources` and `libraries`. Eject never overwrites a copy without `--force`, and
 `dotnet meta gen --list` marks owned copies `identical` or `DIFFERS: N behind, M of your
 own`. The `template` primitive is not ejectable; it has no emit logic of its own.
+
+### Ejecting routes hands over the helper runtime too
+
+Generated routes call a handful of helpers: the filter parser, the EF Core filter
+dispatch, the value-object validator and the constraint-error mapping. In the package they
+live in `MetaObjects.Codegen.Runtime`. They are helpers, not core, because nothing but
+generated routes calls them, so an owned routes generator comes with owned copies of them.
+Otherwise a bug in the filter parser would still mean waiting for a MetaObjects release.
+
+`dotnet meta eject routes` therefore also writes their source to `codegen/runtime/`:
+`FilterParser.cs`, `FilterParseResult.cs`, `FilterPredicate.cs`,
+`EfCoreFilterDispatch.cs`, `ValueObjectValidator.cs`, `ConstraintErrors.cs` and
+`Iso8601TimestampConverter.cs`, the converter your host registers for the api contract's
+timestamp spelling. Each file is the packaged source with one change: its namespace becomes
+`Codegen.Runtime`, matching the folder the way `codegen/generators/` matches
+`Codegen.Generators`. The ejected `RoutesGenerator.cs` differs from the reference in one
+more line, its `HelperRuntimeNamespace` constant, so its output says
+`using Codegen.Runtime;`. Ejecting a generator whose output uses none of these, such as
+`entity` or `filter-allowlist`, copies nothing extra.
+
+Wire it in two places:
+
+```xml
+<!-- the project that compiles your generated code -->
+<Compile Include="../codegen/runtime/**/*.cs" />
+```
+
+```csharp
+// your host, if it registers the timestamp converter
+using Codegen.Runtime;
+builder.Services.ConfigureHttpJsonOptions(o =>
+    o.SerializerOptions.Converters.Add(new Iso8601TimestampConverter()));
+```
+
+The generated routes then compile against your copy, and the app needs no
+`MetaObjects.Codegen` reference for them. A `codegen/Codegen.csproj` scaffolded by this
+version already excludes `runtime/**` from the codegen tool's own build. If yours predates
+it, add `<Compile Remove="runtime/**" />`. The tool builds either way, but the runtime
+belongs to your app, not to the generator.
+
+A runtime file that already exists is yours and eject keeps it. `--force` replaces it with
+the reference, as it replaces the generator copy. `dotnet meta gen --list` adds a
+`(codegen/runtime/)` line marked `identical`, or naming each file that `DIFFERS: N behind,
+M of your own` or is `missing`. `dotnet meta verify --codegen` never reads the folder: it
+compares `--out` against a fresh regen, and your runtime copy is owned code, not generated
+output.
+
+What stays in the package is core: `ExtractObject`, the reply parser the prompt-tier
+modules delegate to, and `M2MResolver`, the metadata-driven M:N traversal. The loader,
+registry, render and verify stay package dependencies too.
+
+**Pulling an upstream fix into your copy.** When `dotnet meta gen --list` shows your copy
+`behind`, diff the reference you ejected from against the current one, then apply that
+patch to your copy. The version you ejected from is the one `codegen/Codegen.csproj` pins
+`MetaObjects.Codegen` to:
+
+```bash
+tmp=$(mktemp -d)
+dotnet tool install MetaObjects.Cli --version <version-you-ejected-from> --tool-path "$tmp/old-tool"
+dotnet tool install MetaObjects.Cli --version <new-version> --tool-path "$tmp/new-tool"
+"$tmp/old-tool/dotnet-meta" eject routes --root "$tmp/old"
+"$tmp/new-tool/dotnet-meta" eject routes --root "$tmp/new"
+(cd "$tmp" && for d in generators runtime; do diff -ruN old/codegen/$d new/codegen/$d; done) > upstream.patch
+patch -p1 --dry-run < upstream.patch && patch -p1 < upstream.patch   # from your project root
+```
+
+The patch holds only what upstream changed, so it applies around your own edits and reports
+a conflict only where upstream and you changed the same lines. The same recipe covers the
+generator copies. Afterwards, bump the version in `codegen/Codegen.csproj` so the next
+diff starts from the right place.
+
+A copy of `RoutesGenerator.cs` ejected before this change still emits
+`using MetaObjects.Codegen.Runtime;` and keeps working against the package. To move it over,
+run the recipe above: the patch carries the `HelperRuntimeNamespace` line and adds
+`codegen/runtime/`.
 

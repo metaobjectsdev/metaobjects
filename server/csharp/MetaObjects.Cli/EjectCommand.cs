@@ -4,8 +4,11 @@
 // project (Codegen.csproj + Program.cs) that `dotnet meta gen` / `dotnet meta verify
 // --codegen` hand off to (see Program.cs's RunGen/RunVerify). Mirrors the TypeScript
 // `meta eject` / Python `metaobjects eject` contract:
-//   - the copy is verbatim, module the ONE edit RewriteForEject makes (the namespace
-//     rename forced by ejecting into a COMPILED adopter assembly — see its doc comment);
+//   - the copy is verbatim, modulo the namespace edits RewriteForEject makes (the rename
+//     forced by ejecting into a COMPILED adopter assembly — see its doc comment);
+//   - a generator whose OUTPUT imports the helper runtime (routes) brings that runtime's
+//     source with it, into codegen/runtime/ (see MetaObjects.Codegen.HelperRuntime), so
+//     the adopter owns every line their generated routes call;
 //   - an existing copy is NEVER overwritten without --force;
 //   - every name is validated BEFORE anything is written (a partial eject — some names
 //     copied, one refused — is worse than refusing the whole call);
@@ -41,6 +44,11 @@ public static class EjectCommand
           </PropertyGroup>
           <ItemGroup>
             <PackageReference Include="MetaObjects.Codegen" Version="{VERSION}" />
+          </ItemGroup>
+          <!-- runtime/ is the helper runtime your GENERATED code compiles with (your app
+               project includes it); it is not part of this codegen tool. -->
+          <ItemGroup>
+            <Compile Remove="runtime/**" />
           </ItemGroup>
         </Project>
 
@@ -153,6 +161,10 @@ public static class EjectCommand
             File.WriteAllText(dest, rewritten);
             outLines.Add($"ejected \"{name}\" -> codegen/generators/{file} [{status}]");
         }
+        var runtimeUsers = names.Where(n => HelperRuntime.UsedBy(EjectableGenerators.ReadSource(n)!)).ToList();
+        if (runtimeUsers.Count > 0)
+            outLines.AddRange(EjectRuntime(root, runtimeUsers, force));
+
         outLines.Add("");
         outLines.Add(
             "The copies are yours: edit them freely. `dotnet meta gen --list` reports how far " +
@@ -184,5 +196,48 @@ public static class EjectCommand
         }
 
         return new Outcome(0, outLines, []);
+    }
+
+    /// <summary>
+    /// Copy the helper runtime (<see cref="HelperRuntime"/>) into codegen/runtime/ for the
+    /// ejected generator(s) <paramref name="users"/> whose output imports it. A file that
+    /// already exists is the adopter's and is kept — possibly edited, possibly shared with a
+    /// generator ejected earlier — unless <paramref name="force"/>, which replaces it with
+    /// the reference exactly as it replaces the generator copy.
+    /// </summary>
+    private static List<string> EjectRuntime(string root, IReadOnlyList<string> users, bool force)
+    {
+        var dir = Path.Combine(root, HelperRuntime.OwnedDirectory);
+        Directory.CreateDirectory(dir);
+        var lines = new List<string>
+        {
+            "",
+            $"{string.Join(", ", users.Select(u => $"\"{u}\""))} output imports the helper runtime; " +
+            $"copied its source so you own it too (namespace {HelperRuntime.OwnedNamespace}):",
+        };
+        foreach (var file in HelperRuntime.Files)
+        {
+            var dest = Path.Combine(dir, file);
+            string status;
+            if (!File.Exists(dest)) status = "created";
+            else if (force) status = "replaced";
+            else
+            {
+                lines.Add($"  {HelperRuntime.OwnedDirectory}/{file} [kept — already yours]");
+                continue;
+            }
+            File.WriteAllText(dest, HelperRuntime.OwnedReference(file));
+            lines.Add($"  {HelperRuntime.OwnedDirectory}/{file} [{status}]");
+        }
+        lines.Add(
+            $"Compile {HelperRuntime.OwnedDirectory}/ into the project that compiles your generated " +
+            "code, e.g. in its .csproj:");
+        lines.Add($"  <Compile Include=\"<path-to-project-root>/{HelperRuntime.OwnedDirectory}/**/*.cs\" />");
+        lines.Add(
+            $"and register the timestamp converter from `{HelperRuntime.OwnedNamespace}` rather than " +
+            $"`{HelperRuntime.PackagedNamespace}`. The generated routes then need no MetaObjects.Codegen " +
+            "reference. codegen/Codegen.csproj must not compile runtime/ " +
+            "(`<Compile Remove=\"runtime/**\" />`; a scaffold written by this version already has it).");
+        return lines;
     }
 }
