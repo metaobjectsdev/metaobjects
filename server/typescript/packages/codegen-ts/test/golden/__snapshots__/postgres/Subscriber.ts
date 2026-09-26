@@ -122,7 +122,7 @@ export const Subscriber = {
     name: "createdAt",
     label: "Created At",
     view: "date",
-    htmlType: "date",
+    htmlType: "datetime-local",
     rules: { required: "Created At is required" },
   },
 } as const;

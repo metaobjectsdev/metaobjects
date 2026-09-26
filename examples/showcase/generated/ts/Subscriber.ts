@@ -111,7 +111,7 @@ export const Subscriber = {
     name: "createdAt",
     label: "Created At",
     view: "date",
-    htmlType: "date",
+    htmlType: "datetime-local",
   },
 } as const;
 import type { FilterAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";

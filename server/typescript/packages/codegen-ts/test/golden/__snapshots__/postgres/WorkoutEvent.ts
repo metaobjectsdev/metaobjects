@@ -117,7 +117,7 @@ export const WorkoutEvent = {
     name: "completedAt",
     label: "Completed At",
     view: "date",
-    htmlType: "date",
+    htmlType: "datetime-local",
     rules: { required: "Completed At is required" },
   },
   durationMinutes: {

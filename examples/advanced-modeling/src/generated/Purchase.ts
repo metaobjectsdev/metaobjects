@@ -121,7 +121,7 @@ export const Purchase = {
     name: "purchasedAt",
     label: "Purchased At",
     view: "date",
-    htmlType: "date",
+    htmlType: "datetime-local",
   },
 } as const;
 import type { FilterAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";

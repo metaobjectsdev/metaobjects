@@ -120,7 +120,7 @@ export const Purchase = {
     name: "purchasedAt",
     label: "Purchased At",
     view: "date",
-    htmlType: "date",
+    htmlType: "datetime-local",
     rules: { required: "Purchased At is required" },
   },
 } as const;
