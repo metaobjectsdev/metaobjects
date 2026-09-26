@@ -227,3 +227,45 @@ describe("text output", () => {
     }
   });
 });
+
+// Each ejected file printed its own install line naming `@metaobjectsdev/metadata` (the
+// reference templates import it at gen time), while the consolidated summary — built
+// from the catalog alone — left it out, so an adopter who ran only the summary line got
+// TS2307 on the files they had just been told they own.
+describe("the install summary is the union of the per-generator lines", () => {
+  function devSpecsIn(line: string): string[] {
+    const m = /npm i -D ([^&]+)/.exec(line);
+    return m === null ? [] : m[1]!.trim().split(/\s+/);
+  }
+
+  test("text: every package a per-file line names is in the summary line", async () => {
+    const dir = tmp();
+    try {
+      writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "x", type: "module" }));
+      expect(await ejectCommand(["entity", "queries", "routes"], dir, "text")).toBe(0);
+      const idx = logged.findIndex((l) => l.includes("Install what the ejected generators"));
+      expect(idx).toBeGreaterThan(-1);
+      const summary = logged[idx + 1]!;
+      const perFile = logged.slice(0, idx).filter((l) => l.trim().startsWith("npm i -D"));
+      expect(perFile.length).toBeGreaterThan(0);
+      const summaryDev = new Set(devSpecsIn(summary));
+      for (const spec of perFile.flatMap(devSpecsIn)) {
+        expect(summaryDev.has(spec), `summary names ${spec}`).toBe(true);
+      }
+      expect(summaryDev.has(`@metaobjectsdev/metadata@^${cliVersion()}`)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("json: install.dev carries the packages the ejected templates import", async () => {
+    const dir = tmp();
+    try {
+      expect(await ejectCommand(["entity"], dir, "json")).toBe(0);
+      expect(payload().install.dev).toContain(`@metaobjectsdev/metadata@^${cliVersion()}`);
+      expect(payload().install.dev).toContain(`@metaobjectsdev/codegen-ts@^${cliVersion()}`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
