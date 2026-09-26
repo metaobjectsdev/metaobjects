@@ -12,7 +12,9 @@ here.**
 
 ## [1.0.9] — 2026-09-26
 
-_npm `1.0.9` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+_npm `1.0.9` (all 14 `@metaobjectsdev/*` packages in lockstep), PyPI `1.0.9`, NuGet `1.0.9` and
+Maven Central `8.0.9`. `metamodelVersion` stays `1.0`. Gated by `1.0.9-rc.6` on the adopter estate:
+`rc-gate.sh` 7/7, contract suite 43/43 in all five ports._
 
 Found by a cold external review of 1.0.8: a reviewer ran the getting-started page, the drift
 demo and the fit assessment from public sources only, then built a small app of their own.
