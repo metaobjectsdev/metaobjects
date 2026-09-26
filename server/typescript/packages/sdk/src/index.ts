@@ -99,7 +99,7 @@ export type { ForgeType, ForgeAttr } from "./forge-types.js";
 // Memory loader — read a project's resolved metadata into a MetaData tree.
 // Where those files come from is `resolveCollection`'s decision (below), which
 // `loadMemory` calls when the caller supplies no explicit file set.
-export { loadMemory, defaultLoadMemoryProviders } from "./memory.js";
+export { loadMemory, unknownAttributeFindings, defaultLoadMemoryProviders } from "./memory.js";
 export type { LoadMemoryOptions } from "./memory.js";
 
 // Default project layout — the DEFAULT value of `sources` (applied by

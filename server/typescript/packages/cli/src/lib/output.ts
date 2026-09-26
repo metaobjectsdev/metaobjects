@@ -261,6 +261,7 @@ export function genResultToData(result: GenResultShape): {
   summary: string;
   help: string[];
   antiPatterns: AdvisorySection<AdvisoryFindingRow>;
+  warnings?: string[];
 } {
   const counts = result.files.reduce<Record<GenFileStatus, number>>(
     (a, f) => ((a[f.status] = (a[f.status] ?? 0) + 1), a),
@@ -308,6 +309,8 @@ export function genResultToData(result: GenResultShape): {
     summary,
     help,
     antiPatterns,
+    // Present only when there is something to say, so a clean run's payload is unchanged.
+    ...(result.warnings.length > 0 ? { warnings: result.warnings } : {}),
   };
 }
 

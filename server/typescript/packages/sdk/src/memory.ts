@@ -7,6 +7,10 @@ import {
   ParseError,
   TYPE_OBJECT,
   type ErrorSource,
+  type LoaderError,
+  type LoadResult,
+  type TypeRegistry,
+  validateAttrSchema,
   type MetaDataTypeProvider,
   type MetaRoot,
 } from "@metaobjectsdev/metadata";
@@ -155,6 +159,84 @@ export async function loadMemory(
   repoRoot: string,
   options?: LoadMemoryOptions,
 ): Promise<MetaRoot> {
+  const { result, importedPackages, importedNodes, libraries } =
+    await loadCollectionRaw(repoRoot, options, options?.strict === true);
+
+  if (result.errors.length > 0) {
+    const first = result.errors[0]!;
+    throw first;
+  }
+
+  // AFTER the loader's own errors, never before — the ordering is the whole
+  // mechanism. A local `overlay: true` whose target the upstream removed fails
+  // during load with ERR_OVERLAY_NO_TARGET, and the merged tree drops the
+  // overlay flag, so this walk cannot tell an overlay from a new declaration.
+  // Only an UNFLAGGED new declaration survives to here.
+  refuseUnownedPackages(result.root, importedPackages, importedNodes);
+  // FR-043 §3.4 / §3.5 — the same rule for a shipped LIBRARY's package, where the two
+  // ways to get it wrong are opposite: a node the library also declares (an ejected
+  // copy, still opted in) and one it does not (a new node in someone else's package).
+  refuseLibraryPackageMisuse(result.root, libraries);
+
+  return result.root;
+}
+
+/** The ADR-0009 code a strict load raises for an authored attribute no provider declares. */
+const ERR_UNKNOWN_ATTR = "ERR_UNKNOWN_ATTR";
+
+/**
+ * The ADR-0023 unknown-attribute findings a STRICT load of the same collection raises —
+ * for a command that loads LENIENTLY (`meta gen`) and must not stay silent about them.
+ *
+ * A lenient load accepts `@requird: true` or a bare `isAbstrakt: true` without a word,
+ * while `meta verify` rejects the very same file with `ERR_UNKNOWN_ATTR`; the typo then
+ * quietly changes what is generated (an abstract base gets a table). This runs the load
+ * again with `strict: true` and returns only those findings, each with the loader's own
+ * envelope (message naming the attribute and node, `source.files`, `jsonPath`), so the
+ * caller can print them as warnings. It never throws for them; a load that fails for any
+ * OTHER reason has already been reported by the caller's own lenient load, so every other
+ * error is ignored here.
+ */
+export async function unknownAttributeFindings(
+  repoRoot: string,
+  options?: LoadMemoryOptions,
+): Promise<readonly (Error & LoaderError)[]> {
+  // Two passes, because a strict load stops at the first door it fails. An unknown BARE
+  // key (`isAbstrakt`) is refused while PARSING, and a parse error ends the load before
+  // the attribute-schema pass — so the strict load alone would hide every misspelt
+  // `@attr` behind the first bare-key typo. The second pass runs that attribute-schema
+  // check, strictly, over the lenient tree, where both kinds of typo are still present.
+  const strictRun = await loadCollectionRaw(repoRoot, options, true);
+  const lenientRun = await loadCollectionRaw(repoRoot, options, false);
+  const found = [
+    ...strictRun.result.errors,
+    ...validateAttrSchema(lenientRun.result.root, lenientRun.registry, true).errors,
+  ].filter(isUnknownAttrError);
+  const seen = new Set<string>();
+  return found.filter((e) => {
+    const key = `${e.message}\u0000${JSON.stringify(e.source)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function isUnknownAttrError(e: Error): e is Error & LoaderError {
+  return (e as { code?: unknown }).code === ERR_UNKNOWN_ATTR;
+}
+
+/** The shared load behind {@link loadMemory} and {@link unknownAttributeFindings}. */
+async function loadCollectionRaw(
+  repoRoot: string,
+  options: LoadMemoryOptions | undefined,
+  strict: boolean,
+): Promise<{
+  result: LoadResult;
+  registry: TypeRegistry;
+  importedPackages: readonly string[] | undefined;
+  importedNodes: ReadonlySet<string> | undefined;
+  libraries: readonly string[] | undefined;
+}> {
   const extra = options?.providers ?? [];
   let providers: readonly MetaDataTypeProvider[];
   if (options?.replaceDefaults === true) {
@@ -202,7 +284,7 @@ export async function loadMemory(
 
   const loader = new MetaDataLoader({
     registry,
-    ...(options?.strict === true ? { strict: true } : {}),
+    ...(strict ? { strict: true } : {}),
   });
 
   // Library sources are imported lazily and only when asked for — the same reason
@@ -223,24 +305,7 @@ export async function loadMemory(
       return id === undefined ? new FileSource(p) : new FileSource(p, { id });
     }),
   ]);
-
-  if (result.errors.length > 0) {
-    const first = result.errors[0]!;
-    throw first;
-  }
-
-  // AFTER the loader's own errors, never before — the ordering is the whole
-  // mechanism. A local `overlay: true` whose target the upstream removed fails
-  // during load with ERR_OVERLAY_NO_TARGET, and the merged tree drops the
-  // overlay flag, so this walk cannot tell an overlay from a new declaration.
-  // Only an UNFLAGGED new declaration survives to here.
-  refuseUnownedPackages(result.root, importedPackages, importedNodes);
-  // FR-043 §3.4 / §3.5 — the same rule for a shipped LIBRARY's package, where the two
-  // ways to get it wrong are opposite: a node the library also declares (an ejected
-  // copy, still opted in) and one it does not (a new node in someone else's package).
-  refuseLibraryPackageMisuse(result.root, libraries);
-
-  return result.root;
+  return { result, registry, importedPackages, importedNodes, libraries };
 }
 
 /** Every source file that contributed to a node, across the envelope variants that

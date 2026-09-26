@@ -171,6 +171,8 @@ static int RunGen(string[] rest)
         foreach (var w in GeneratorRegistry.UnsatisfiedRequires(selectedNames))
             Console.Error.WriteLine($"warning: {w}");
 
+    // ADR-0023: gen loads leniently; name what `verify` would reject instead of staying silent.
+    CodegenCli.WarnUnknownAttrs(resolvedMeta);
     var load = resolvedMeta.Load();
     var outcome = GenCommand.Run(
         load, outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath, projectRoot,
