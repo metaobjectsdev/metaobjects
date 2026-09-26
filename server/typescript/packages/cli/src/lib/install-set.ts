@@ -20,7 +20,7 @@
 import { createRequire } from "node:module";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { GeneratorRegistryEntry } from "@metaobjectsdev/codegen-ts";
+import { HTTP_RUNTIME_PACKAGE, type GeneratorRegistryEntry } from "@metaobjectsdev/codegen-ts";
 import { cliVersion } from "./version.js";
 import { packageOf } from "./catalog.js";
 import type { PackageManifest } from "./package-manifest.js";
@@ -61,6 +61,13 @@ export function peerRangesOf(packageName: string): Record<string, string> {
   } catch {
     return {};
   }
+}
+
+/** What an owned adapter copy changes about the install set — see `installSetFor`. */
+export interface OwnedRuntimeInstall {
+  generators: ReadonlySet<string>;
+  runtime: ReadonlyMap<string, string | undefined>;
+  dev: ReadonlyMap<string, string | undefined>;
 }
 
 export interface InstallSet {
@@ -114,6 +121,10 @@ export function installSetFor(
    *  catalog does not know them). Build-time, so dev — unless the runtime set already
    *  installs the package, which satisfies the build too. */
   templatePackages: readonly string[] = [],
+  /** ADR-0034 Amendment 3 (2026-09-24): generators whose adapter SOURCE was copied into the
+   *  project, and what that copy imports. Their output no longer imports the runtime package,
+   *  so it is not installed on their account; the copy's own imports are, instead. */
+  ownedRuntime?: OwnedRuntimeInstall,
 ): InstallSet {
   const version = cliVersion();
   const dev = new Map<string, string | undefined>();
@@ -123,7 +134,10 @@ export function installSetFor(
     const pkg = packageOf(entry.name);
     if (pkg !== undefined) addPackage(dev, pkg, `^${version}`);
 
-    for (const rt of entry.runtimePackages ?? []) addPackage(runtime, rt, `^${version}`);
+    for (const rt of entry.runtimePackages ?? []) {
+      if (ownedRuntime?.generators.has(entry.name) && rt === HTTP_RUNTIME_PACKAGE) continue;
+      addPackage(runtime, rt, `^${version}`);
+    }
 
     if (entry.runtimePeers !== undefined && entry.runtimePeers.length > 0) {
       // Ranges come from whichever runtime package declares these as peers — the union
@@ -136,6 +150,9 @@ export function installSetFor(
       for (const peer of entry.runtimePeers) addPackage(runtime, peer, ranges[peer]);
     }
   }
+
+  for (const [name, range] of ownedRuntime?.runtime ?? []) addPackage(runtime, name, range);
+  for (const [name, range] of ownedRuntime?.dev ?? []) addPackage(dev, name, range);
 
   for (const p of templatePackages) {
     if (!runtime.has(p)) addPackage(dev, p, `^${version}`);

@@ -8,15 +8,15 @@ import {
   ProgramSummarySortAllowlist,
   programSummaryView,
 } from "./ProgramSummary";
-import { mountReadOnlyCrudRoutes } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
 import type { FastifyInstance } from "fastify";
+import { mountReadOnlyCrudRoutes } from "../../codegen/runtime/drizzle-fastify/index";
 
 /**
  * Mount read-only REST endpoints for ProgramSummary (projection — view-backed, no writes).
  *
  * Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.
  * Customize: register this as-is, or import individual route helpers from
- * @metaobjectsdev/runtime-ts/drizzle-fastify.
+ * ../../codegen/runtime/drizzle-fastify/index.
  *
  * Auth: these endpoints are unauthenticated. Register this inside a scope that
  * carries your hook and every verb below is guarded — routes outside that scope

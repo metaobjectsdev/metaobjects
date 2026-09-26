@@ -131,7 +131,7 @@ it there, in the same change, and keep going:
 
 | Port | Where the fix goes |
 |---|---|
-| **TypeScript** | Your ejected copy under `codegen/generators/`. If you are running a generator you never ejected, `meta eject <name>` it first. A generator that `meta eject --list` does not name (the prompt tier, for one) has no reference template yet: replace it in `generators` with your own `Generator`, starting from its source in the installed package. |
+| **TypeScript** | Your ejected copy under `codegen/generators/` — and, for routes, the HTTP adapter it calls: `meta eject routes` / `routes-hono` / `entity` also copy that adapter's source (mount helpers, filter parser, error envelopes, pagination) into `codegen/runtime/`, and the ejected output imports it from there, so a bug in a route's behaviour is fixed in that copy. If you are running a generator you never ejected, `meta eject <name>` it first. A generator that `meta eject --list` does not name (the prompt tier, for one) has no reference template yet: replace it in `generators` with your own `Generator`, starting from its source in the installed package. |
 | **Java / Kotlin** | Your own generator class. Subclass the reference generator and override the `protected` method that emits the wrong piece; when that piece is `private`, copy the reference generator's source (Apache-2.0) into your own package and edit it. Put the class in a codegen module that the module running `metaobjects:generate` depends on — the plugin loads `<classname>` from that module's compile classpath, and `provided` scope keeps it out of your packaged app — then point `<classname>` at it. Full steps: the Java and Kotlin references. |
 | **C# / Python** | Your template spec (`--template-spec`): stop selecting the built-in generator for that artifact and emit it from your own template instead. These two ports have no generator-registration seam, so a template is the whole path. |
 
@@ -148,9 +148,11 @@ your model is yours, exactly as if you had written it.
 
 **What is legitimately upstream** is only what you cannot own: the **loader and
 metamodel** (valid metadata rejected, invalid metadata accepted, a wrong resolution), the
-**runtime packages** your app imports, the **codegen engine itself** (the runner, the
-three-way merge, `verify`), and **`meta migrate`**. The test is mechanical: if changing
-a generator fixes it, it is yours.
+**core runtime** your app imports (the metadata-driven `ObjectManager`, prompt render, the
+reply parser — not an HTTP adapter you ejected, which is yours), the **codegen engine
+itself** (the runner, the three-way merge, `verify`), and **`meta migrate`**. The test is
+mechanical: if changing a generator — or a file eject copied beside it — fixes it, it is
+yours.
 
 **The converse, so ownership does not become sprawl:** wire a generator only for output
 you will actually consume. Decide per generator, narrow one with its own `filter`, and
@@ -198,7 +200,10 @@ they emit.
      intended composition, not a conflict.
 5. **`meta eject <names...> --format json`** — copies each into `codegen/generators/`
    (yours to edit), and reports the import line, the entry to add to `generators`, one
-   consolidated install command, and any config keys those generators read.
+   consolidated install command, and any config keys those generators read. On
+   TypeScript, a generator whose output calls an HTTP adapter (`routes`, `routes-hono`,
+   `entity`) also gets that adapter's source copied into `codegen/runtime/`, and each JSON
+   row lists those files under `runtime`.
 6. **`meta gen`** — read its warnings, then typecheck.
 
 A library row also carries `provides` (what is in the box) and, under `--probe`, a

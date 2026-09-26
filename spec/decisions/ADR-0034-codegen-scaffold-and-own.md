@@ -226,6 +226,21 @@ reference is scaffolding; this amendment stops describing it as anything else.
   framework-specific traps. They stay in the package and keep their tests and the
   api-contract lanes, but they are not a promise. An adopter who ejects the route
   generator owns the call into them and can mount routes by hand instead.
+- **Ejecting a helper hands over ALL of its code (follow-through, 2026-09-26).** "An adopter
+  who ejects the route generator owns the call into them" was half of owning it: the
+  output still imported the adapter from the package, so an adapter defect still waited on
+  a release. `meta eject routes` / `routes-hono` / `entity` now also copy the adapter
+  source their output imports — the transitive closure of relative imports from
+  `drizzle-fastify/index.ts`, `hono/index.ts` or `drizzle-fastify/filter-allowlist.ts`,
+  verbatim from the package's `src/` — into `codegen/runtime/`, and the ejected generators
+  point their emitted imports there (`runtimeImport` overrides; the package name opts back
+  in). The routes templates carry the whole route composition rather than calling
+  `renderRoutesFile`, byte-gated against the built-in over the api-contract projection,
+  write-through, M:N, TPH and jsonb corpora. Core imports (`@metaobjectsdev/metadata`,
+  `render`, the reply parser) stay package imports. `meta eject --list` / `meta gen --list`
+  mark each copied file identical to or differing from the installed package;
+  `meta verify --codegen` never judges it, because `meta gen` never wrote it. The engine's
+  built-in generators, and every project that has not ejected, still import the package.
 - **The wire contract is the guarantee, not the adapter.** `./fastify` mounts
   `ObjectManager`; `./hono` and `./drizzle-fastify` call Drizzle directly and touch the
   runtime not at all. Either way, the status codes and error bodies a mount must answer with

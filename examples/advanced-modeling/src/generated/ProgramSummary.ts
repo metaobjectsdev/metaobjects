@@ -63,11 +63,11 @@ export const ProgramSummary = {
     dbCol: "has_cover_art",
   },
 } as const;
-import type { FilterAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
+import type { FilterAllowlist } from "../../codegen/runtime/drizzle-fastify/filter-allowlist";
 
 export const ProgramSummaryFilterAllowlist =
   {} as const satisfies FilterAllowlist;
-import type { SortAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
+import type { SortAllowlist } from "../../codegen/runtime/drizzle-fastify/filter-allowlist";
 
 export const ProgramSummarySortAllowlist = {} as const satisfies SortAllowlist;
 export type ProgramSummaryFilter = {

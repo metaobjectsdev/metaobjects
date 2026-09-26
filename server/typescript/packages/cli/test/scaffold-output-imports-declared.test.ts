@@ -168,16 +168,26 @@ describe("meta eject declares what meta gen's output imports", () => {
       expect(await genCommand([], dir)).toBe(0);
 
       const outDir = join(dir, "src", "generated");
-      const emitted = readdirSync(outDir).filter((f) => f.endsWith(".ts"));
+      const emitted = readdirSync(outDir)
+        .filter((f) => f.endsWith(".ts"))
+        .map((f) => join(outDir, f));
       expect(emitted.length).toBeGreaterThan(0);
+      // ADR-0034 Amendment 3: the generated routes import the HTTP-adapter source eject
+      // copied into codegen/runtime/, so what THAT imports is part of what gen's output
+      // needs — `qs` above all, which nothing else in the tree imports.
+      const runtimeDir = join(dir, "codegen", "runtime");
+      const ownedRuntime = readdirSync(runtimeDir, { recursive: true, withFileTypes: true })
+        .filter((e) => e.isFile() && e.name.endsWith(".ts"))
+        .map((e) => join(e.parentPath, e.name));
+      expect(ownedRuntime.length).toBeGreaterThan(0);
 
       const declared = declaredDependencyNames(
         JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as PackageManifest,
       );
       const undeclared: string[] = [];
-      for (const file of emitted) {
-        for (const spec of bareImports(readFileSync(join(outDir, file), "utf8"))) {
-          if (!declared.has(spec)) undeclared.push(`${file} imports ${spec}`);
+      for (const file of [...emitted, ...ownedRuntime]) {
+        for (const spec of bareImports(readFileSync(file, "utf8"))) {
+          if (!declared.has(spec)) undeclared.push(`${file.slice(dir.length + 1)} imports ${spec}`);
         }
       }
       // Named individually: the failure an adopter sees is a list of TS2307s, and the
@@ -186,10 +196,12 @@ describe("meta eject declares what meta gen's output imports", () => {
 
       // ...and the specifiers that caused this test to exist are really present in the
       // output, so a regression that stops EMITTING them cannot make it pass vacuously.
-      const all = new Set(emitted.flatMap((f) => [...bareImports(readFileSync(join(outDir, f), "utf8"))]));
-      for (const required of ["drizzle-orm", "zod", "fastify", "@metaobjectsdev/runtime-ts"]) {
+      const all = new Set([...emitted, ...ownedRuntime].flatMap((f) => [...bareImports(readFileSync(f, "utf8"))]));
+      for (const required of ["drizzle-orm", "zod", "fastify", "qs", "@metaobjectsdev/metadata"]) {
         expect([...all]).toContain(required);
       }
+      // The ejected output owns its adapter: nothing imports the runtime package any more.
+      expect([...all]).not.toContain("@metaobjectsdev/runtime-ts");
     } finally {
       console.log = origLog;
       rmSync(dir, { recursive: true, force: true });

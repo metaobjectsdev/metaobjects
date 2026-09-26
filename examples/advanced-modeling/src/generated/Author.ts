@@ -98,10 +98,10 @@ export const Author = {
     },
   },
 } as const;
-import type { FilterAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
+import type { FilterAllowlist } from "../../codegen/runtime/drizzle-fastify/filter-allowlist";
 
 export const AuthorFilterAllowlist = {} as const satisfies FilterAllowlist;
-import type { SortAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
+import type { SortAllowlist } from "../../codegen/runtime/drizzle-fastify/filter-allowlist";
 
 export const AuthorSortAllowlist = {} as const satisfies SortAllowlist;
 export type AuthorFilter = {

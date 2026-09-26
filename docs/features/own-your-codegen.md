@@ -26,7 +26,58 @@ there; your copy is yours.
    intentional; Amendment 3 supersedes that, because subclassing and selection do not let
    an adopter own a generator's emit logic.)
 
-Either way, hand-edits inside a generated file survive regeneration — but *how* they
+## What `meta eject` hands over, and what stays core (TypeScript)
+
+Owning a generator means owning the code it writes **and the code that code calls**,
+when that code is a helper. On TypeScript the generated routes call an HTTP adapter —
+the mount helpers, the filter/sort parser, the error envelopes, pagination — and that
+adapter is where most route defects have lived. So ejecting a generator whose output
+calls it copies the adapter's source too:
+
+| `meta eject …` | Copies into `codegen/generators/` | Also copies into `codegen/runtime/` (verbatim from `@metaobjectsdev/runtime-ts/src`) |
+|---|---|---|
+| `routes` | `routes.ts` — the whole route composition (CRUD, read-only projections, M:N traversal, TPH per-subtype sets), not a call into the engine | `drizzle-fastify/*` (mounts, filter parser, list params, M:N and read-only mounts, error handler), `route-errors.ts`, `constraint-errors.ts`, `timestamp-wire.ts` |
+| `routes-hono` | `routes-hono.ts`, likewise self-contained | `hono/*`, plus the shared parser, allowlist, envelope and timestamp files it reaches |
+| `entity` | `entity.ts` | `drizzle-fastify/filter-allowlist.ts` — the `FilterAllowlist` / `SortAllowlist` types the entity module's allowlists are typed by |
+
+The ejected generators point their output at that copy
+(`import { mountCrudRoutes } from "../../codegen/runtime/drizzle-fastify/index.js"`), so
+after ejecting, **nothing generated or copied imports `@metaobjectsdev/runtime-ts`**. The
+install line eject prints trades that package for what the copy imports: `qs` (and
+`@types/qs`), the framework, `drizzle-orm`, `zod`, and the core `@metaobjectsdev/metadata`.
+A project that has not ejected keeps importing the package exactly as before.
+
+What stays a package import is **core**, because MetaObjects guarantees it:
+`@metaobjectsdev/metadata` (loader, vocabulary, the filter-op table), `@metaobjectsdev/render`,
+the reply parser (`extractObject`), and the metadata-driven `ObjectManager`. The
+`./fastify` entry — the `ObjectManager`-backed mount — is helper-tier but no generator
+calls it, so eject does not copy it.
+
+Each ejected generator takes `runtimeImport` to move the copy (relative to the output root,
+like `dbImport`, or a path alias) or, with `runtimeImport: "@metaobjectsdev/runtime-ts"`,
+to go back to the package. `meta verify --codegen` never reports the copy as drift: it
+judges only files `meta gen` wrote.
+
+### Taking an upstream fix into your copy
+
+`meta eject --list` and `meta gen --list` compare every file under `codegen/runtime/` with
+the installed `@metaobjectsdev/runtime-ts` (the same formatting-blind comparison used for
+owned generators) and mark it `identical`, `DIFFERS`, or `not in the package`. After
+upgrading the package:
+
+```bash
+meta eject --list                       # which copied files differ from the new version
+diff -u node_modules/@metaobjectsdev/runtime-ts/src/drizzle-fastify/filter-parser.ts \
+        codegen/runtime/drizzle-fastify/filter-parser.ts
+```
+
+A file that differs only because upstream moved (you never edited it) can be refreshed
+with `meta eject routes --force`, which rewrites the generator and every adapter file —
+commit first and check `git diff`. A file you did edit is merged the same way as an owned
+generator: `git merge-file --diff3 <your copy> <the version you copied from> <the new version>`,
+where the version you copied from is the one in your git history.
+
+Whatever you own, hand-edits inside a generated file survive regeneration — but *how* they
 survive depends on what the toolchain can see, and it is worth knowing which case you
 are in:
 
@@ -226,7 +277,7 @@ you get is the first thing to establish, because it changes what you can plan.
 
 | Port | Invocation | Programmatic — write a `Generator` | Declarative — template + scope |
 |---|---|---|---|
-| **TypeScript** | `meta init` → `meta gen --list --probe` → `meta eject <names...>` → `meta gen` (Bun/Node CLI) | **Yes — scaffold-and-own.** `meta init` scaffolds the LAYOUT and an empty selection (ADR-0034 Amendment 2); `meta eject <name>...` copies each generator you choose into `codegen/generators/*.ts` and prints the import to add to `metaobjects.config.ts`. Edit them freely. The prompt tier (`prompt-render`, `output-parser`, `extractor`, `output-prompt`, `render-helper`) ejects like the rest: you own which templates get a module and where it lands, while the render and extract engines those modules call stay in the package. Not every registered generator is ejectable: `callable`, `trace-helper`, `requirement-tests`, the `template` primitive, the docs tier (`docs`, `api-docs`, `mermaid-er`, whose door is `meta docs`) and `shared-model` ship no reference template, so they are **package-only** — `meta gen --list` marks them so and `meta eject` names them as such. `shared-model` (FR-023's publisher generator) stays package-only deliberately, since it emits a hash-pinned cross-port contract artifact. | **Yes** — `templateGenerator({ template, scope, outputPattern })` in the config's `generators: [...]`. No CLI flag: the config already takes generator values. |
+| **TypeScript** | `meta init` → `meta gen --list --probe` → `meta eject <names...>` → `meta gen` (Bun/Node CLI) | **Yes — scaffold-and-own.** `meta init` scaffolds the LAYOUT and an empty selection (ADR-0034 Amendment 2); `meta eject <name>...` copies each generator you choose into `codegen/generators/*.ts` (and, for `routes` / `routes-hono` / `entity`, the HTTP-adapter source their output calls into `codegen/runtime/` — see [above](#what-meta-eject-hands-over-and-what-stays-core-typescript)) and prints the import to add to `metaobjects.config.ts`. Edit them freely. The prompt tier (`prompt-render`, `output-parser`, `extractor`, `output-prompt`, `render-helper`) ejects like the rest: you own which templates get a module and where it lands, while the render and extract engines those modules call stay in the package. Not every registered generator is ejectable: `callable`, `trace-helper`, `requirement-tests`, the `template` primitive, the docs tier (`docs`, `api-docs`, `mermaid-er`, whose door is `meta docs`) and `shared-model` ship no reference template, so they are **package-only** — `meta gen --list` marks them so and `meta eject` names them as such. `shared-model` (FR-023's publisher generator) stays package-only deliberately, since it emits a hash-pinned cross-port contract artifact. | **Yes** — `templateGenerator({ template, scope, outputPattern })` in the config's `generators: [...]`. No CLI flag: the config already takes generator values. |
 | **Java / Kotlin** | `mvn metaobjects:generate` / `mvn metaobjects:verify` (`metaobjects-maven-plugin`) | **Yes.** Every generator — built-in or your own — is named in `<generator><classname>` and loaded from the project classpath: one seam, not two. There is no default suite, so `<generators>` is the complete list. Kotlin runs through the same goal. | **Yes** — `TemplateScopeGenerator` wired as an ordinary `<generator>`. No CLI flag: `<generator>` is already the seam. |
 | **C#** | `dotnet meta gen` / `dotnet meta verify` (.NET tool) | **No.** `GeneratorRegistry` is a closed built-in registry; `--generators` *selects* from what ships. There is no registration seam. | **Yes, and it is your only path** — `dotnet meta gen --template-spec <json> --template-root <dir>`. |
 | **Python** | `metaobjects gen` / `metaobjects verify` (console-script) | **No.** `GENERATOR_REGISTRY` is a closed built-in registry, same as C#. (`--provider module:symbol` registers **metamodel vocabulary**, not a generator — do not reach for it here.) | **Yes, and it is your only path** — `metaobjects gen --template-spec <json> --templates <dir>`. |
@@ -243,7 +294,8 @@ defect in the generator that emitted it. Once you run that generator in your bui
 yours. Fix it in your build, in the same change, and keep going:
 
 - **TypeScript:** edit your ejected copy (`meta eject <name>` first if you never ejected
-  it).
+  it) — or, when the defect is in how a route behaves at request time (a filter, an error
+  body, pagination), the adapter copy eject placed beside it in `codegen/runtime/`.
 - **Java / Kotlin:** subclass the reference generator, or copy its source (Apache-2.0,
   in the `-sources` jar) into a codegen module the generating module depends on. Point
   `<classname>` at your class. The plugin loads it from that module's compile classpath.
@@ -254,8 +306,10 @@ Do not file it upstream, pin or wait for a MetaObjects release, or patch a clone
 repository. The reference generators are conformance-gated so that the copy you start
 from is correct. That gate does not make your project's output the library's
 responsibility. What *is* upstream is only what you cannot own: the loader and metamodel,
-the runtime packages, the codegen engine itself (runner, merge, `verify`), and `meta
-migrate`. The test is mechanical: if changing a generator fixes it, it is yours.
+the core runtime (the metadata-driven `ObjectManager`, render, the reply parser — not an
+HTTP adapter you ejected), the codegen engine itself (runner, merge, `verify`), and `meta
+migrate`. The test is mechanical: if changing a generator, or a file eject copied beside
+it, fixes it, it is yours.
 
 **Choosing between the two paths** where you have both: reach for a template when the
 output *shape* is what you are iterating on, or when you want the same output across

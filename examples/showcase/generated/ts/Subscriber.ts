@@ -150,10 +150,10 @@ export const Subscriber = {
     htmlType: "datetime-local",
   },
 } as const;
-import type { FilterAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
+import type { FilterAllowlist } from "../../codegen/runtime/drizzle-fastify/filter-allowlist";
 
 export const SubscriberFilterAllowlist = {} as const satisfies FilterAllowlist;
-import type { SortAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
+import type { SortAllowlist } from "../../codegen/runtime/drizzle-fastify/filter-allowlist";
 
 export const SubscriberSortAllowlist = {} as const satisfies SortAllowlist;
 export type SubscriberFilter = {

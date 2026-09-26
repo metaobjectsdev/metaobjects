@@ -20,6 +20,20 @@ import {
 import { enumValues } from "../enum-meta.js";
 import { sortableFields, declaredSortDefaultOrder } from "./filter-shared.js";
 import type { RenderContext } from "../render-context.js";
+import { httpRuntimeSpecifier } from "../owned-runtime.js";
+import { effectivePackage } from "../docs-paths.js";
+
+/**
+ * Where the allowlist TYPES are imported from — the package, unless an owned generator
+ * pointed its render context at the adapter copy `meta eject` placed in the repo
+ * (`owned-runtime.ts`). Absent `ctx`, or with no `httpRuntimeImport`, the package: the
+ * byte-identical default.
+ */
+const PACKAGE_DEFAULT = { outputLayout: "flat", extStyle: "none" } as const;
+
+function allowlistTypesFrom(entity: MetaObject, ctx: RenderContext | undefined): string {
+  return httpRuntimeSpecifier("allowlists", ctx ?? PACKAGE_DEFAULT, effectivePackage(entity));
+}
 
 const NUMBER_SUBTYPES = new Set<string>([
   FIELD_SUBTYPE_INT,
@@ -116,7 +130,7 @@ export function renderFilterAllowlist(entity: MetaObject, exclude?: string, ctx?
   const fields = filterableFields(entity, exclude);
   if (fields.length === 0) {
     return code`
-import type { FilterAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
+import type { FilterAllowlist } from ${JSON.stringify(allowlistTypesFrom(entity, ctx))};
 
 export const ${entity.name}FilterAllowlist = {} as const satisfies FilterAllowlist;
 `;
@@ -136,7 +150,7 @@ export const ${entity.name}FilterAllowlist = {} as const satisfies FilterAllowli
     })
     .join(",\n");
   return code`
-import type { FilterAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
+import type { FilterAllowlist } from ${JSON.stringify(allowlistTypesFrom(entity, ctx))};
 
 export const ${entity.name}FilterAllowlist = {
 ${rows}
@@ -144,7 +158,7 @@ ${rows}
 `;
 }
 
-export function renderSortAllowlist(entity: MetaObject, exclude?: string): Code {
+export function renderSortAllowlist(entity: MetaObject, exclude?: string, ctx?: RenderContext): Code {
   // Sortable = explicit @sortable === true, OR (no @sortable AND @filterable === true).
   // @sortable: false explicitly opts out.
   // Uses shared isSortableField predicate — must stay in sync with renderFilterType.
@@ -152,7 +166,7 @@ export function renderSortAllowlist(entity: MetaObject, exclude?: string): Code 
   const sortable = sortableFields(entity).filter((f) => f.name !== exclude);
   if (sortable.length === 0) {
     return code`
-import type { SortAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
+import type { SortAllowlist } from ${JSON.stringify(allowlistTypesFrom(entity, ctx))};
 
 export const ${entity.name}SortAllowlist = {} as const satisfies SortAllowlist;
 `;
@@ -172,7 +186,7 @@ export const ${entity.name}SortAllowlist = {} as const satisfies SortAllowlist;
     })
     .join(",\n");
   return code`
-import type { SortAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
+import type { SortAllowlist } from ${JSON.stringify(allowlistTypesFrom(entity, ctx))};
 
 export const ${entity.name}SortAllowlist = {
 ${rows}

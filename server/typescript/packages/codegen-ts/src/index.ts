@@ -229,6 +229,13 @@ export type { CrudVerb, ExposeOption } from "./routes-expose.js";
 export { renderRoutesFile } from "./templates/routes-file.js";
 export { renderRoutesFileHono } from "./templates/routes-file-hono.js";
 export { renderRoutesIndex, routesIndexFileName, type RoutesIndexFlavor } from "./templates/routes-index.js";
+// ADR-0034 Amendment 3 (2026-09-24) — where generated code imports the HTTP-adapter tier
+// from: the package, or the copy `meta eject` places in the repo. Public because the
+// owned routes/entity generators compute the same specifier the engine does.
+export {
+  HTTP_RUNTIME_PACKAGE, OWNED_RUNTIME_DIR, HTTP_RUNTIME_MODULES, httpRuntimeSpecifier, ownedRuntimeImport,
+} from "./owned-runtime.js";
+export type { HttpRuntimeModule, HttpRuntimeSpecifierCtx } from "./owned-runtime.js";
 export { renderValueObjectFile } from "./templates/value-object-file.js";
 export { renderNamesDecl } from "./templates/names-decl.js";
 export type { NamesDeclOpts } from "./templates/names-decl.js";

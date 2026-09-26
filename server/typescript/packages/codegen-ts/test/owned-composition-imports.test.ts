@@ -3,55 +3,45 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * A reference template that says "copy this body out of the package source" is making a promise
- * the exports map has to keep.
+ * A composition an adopter OWNS may only call what the package exports.
  *
- * ADR-0034 gives an adopter an ownable copy of each generator, and most tiers relocate the whole
- * composition into that copy — `entity.ts` and `queries.ts` carry the composer's body verbatim, so
- * every primitive they call is public by construction. The routes tier does NOT: its composition
- * (M:N junction traversal, TPH per-subtype route sets) stays in the engine as `renderRoutesFile`,
- * and the template's `customize:` note tells an adopter retargeting to another HTTP framework to
- * copy that body out of the package source.
+ * ADR-0034 gives an adopter an ownable copy of each generator, and the reference templates
+ * carry their composer's body verbatim — so every engine primitive the body calls must be
+ * reachable from `@metaobjectsdev/codegen-ts`, or the file an adopter was handed does not
+ * compile.
  *
- * That instruction was UNTRUE. Measured 2026-09-07 against the published surface: of the sixteen
- * symbols `renderRoutesFile`'s body imports from inside the package, fourteen resolved from
- * `@metaobjectsdev/codegen-ts` and two did not — `routesHandlerName` and `TPH_POLYMORPHIC_VERBS`,
- * both `TS2305: has no exported member`. So the documented escape ended in a file that does not
- * compile, on the ONE tier every adopter outside Fastify and Hono has to retarget. The whole
- * ownership story is what the project offers instead of a codegen package per framework (FR-040),
- * and it was load-bearing exactly where it was broken.
+ * History, because it is why this gate exists. The routes tier used to keep its composition
+ * (M:N junction traversal, TPH per-subtype route sets) in the engine as `renderRoutesFile`,
+ * and the template told an adopter retargeting to another HTTP framework to copy that body
+ * out of the package source. Measured 2026-09-07, two of the sixteen symbols that body
+ * imported — `routesHandlerName` and `TPH_POLYMORPHIC_VERBS` — were not exported, so the
+ * documented escape ended in `TS2305: has no exported member`. Since ADR-0034 Amendment 3's
+ * 2026-09-24 ruling the composition IS in the template (`renderRoutes` / `renderRoutesHono`),
+ * so the question moved from "is the body copyable" to "does the copied body import only
+ * public names" — the same defect, asked of the file the adopter now actually has.
  *
- * This gate DERIVES the required set from the body rather than restating it, because a hand-kept
- * list is the same defect one level up: `renderRoutesFile` gains an import, nobody re-reads this
- * file, and the escape silently breaks again.
- *
- * It is deliberately scoped to the compositions a template tells you to copy. A body nobody is
- * invited to copy owes nothing.
+ * The required set is DERIVED from each template's own import statement rather than listed
+ * here: a hand-kept list is the same defect one level up.
  */
 
 const PKG = join(import.meta.dir, "..");
 
-/** Compositions a reference template instructs an adopter to copy out of the package source. */
-const COPYABLE_COMPOSITIONS = [
-  {
-    body: "src/templates/routes-file.ts",
-    invitedBy: "src/reference/routes.ts",
-    // The sentence in that template that makes the promise. Matched on the fragment that fits
-    // one line, because the header is comment-wrapped and the full sentence spans two. If it is
-    // reworded, this test's premise changed and the pairing has to be re-read rather than the
-    // string patched.
-    promise: "copy `renderRoutesFile`'s body out",
-  },
+/** The reference templates whose composition is the relocated engine body. */
+const OWNED_COMPOSITIONS = [
+  "src/reference/routes.ts",
+  "src/reference/routes-hono.ts",
+  "src/reference/entity.ts",
+  "src/reference/queries.ts",
 ] as const;
 
-/** Named imports a module takes from paths INSIDE the package (relative specifiers). */
-function internalNamedImports(source: string): string[] {
+/** Named imports a module takes from `@metaobjectsdev/codegen-ts` — multi-line bodies included. */
+function engineNamedImports(source: string): string[] {
   const names = new Set<string>();
-  // `import { a, type B, c as d } from "./x.js"` / "../y.js" — multi-line bodies included.
-  const re = /import\s*(?:type\s+)?\{([^}]*)\}\s*from\s*"(\.[^"]*)"/g;
+  const re = /import\s*(?:type\s+)?\{([^}]*)\}\s*from\s*"@metaobjectsdev\/codegen-ts"/g;
   for (const m of source.matchAll(re)) {
-    for (const raw of m[1]!.split(",")) {
+    for (const raw of m[1]!.replace(/\/\/[^\n]*/g, "").split(",")) {
       const name = raw
+        .replace(/\/\/[^\n]*/g, "")
         .replace(/^\s*type\s+/, "")
         .split(/\s+as\s+/)[0]!
         .trim();
@@ -68,8 +58,9 @@ function publicSurface(): Set<string> {
   for (const m of index.matchAll(
     /export\s*(?:type\s+)?\{([^}]*)\}\s*from\s*"[^"]*"/g,
   )) {
-    for (const raw of m[1]!.split(",")) {
-      const part = raw.replace(/^\s*type\s+/, "").trim();
+    for (const raw of m[1]!.replace(/\/\/[^\n]*/g, "").split(",")) {
+      // Line comments inside an export list are prose, not names.
+      const part = raw.replace(/\/\/[^\n]*/g, "").replace(/^\s*type\s+/, "").trim();
       // `a as b` re-exports under b — the name an adopter can import.
       const name = (part.includes(" as ") ? part.split(/\s+as\s+/)[1] : part)?.trim();
       if (name) names.add(name);
@@ -83,19 +74,20 @@ function publicSurface(): Set<string> {
   return names;
 }
 
-describe("a composition an adopter is told to copy imports only public API", () => {
+describe("a composition an adopter owns imports only public API", () => {
   const surface = publicSurface();
 
-  for (const { body, invitedBy, promise } of COPYABLE_COMPOSITIONS) {
-    test(`${body} — every internal import is reachable from the package entry`, () => {
-      const template = readFileSync(join(PKG, invitedBy), "utf8");
-      // The premise: the reference template really does invite the copy. If this fails, the
-      // instruction moved or was withdrawn — decide which before touching the assertion below.
-      expect(template).toContain(promise);
+  test("the routes templates carry the composition, not a call into the engine", () => {
+    // The premise of the 2026-09-24 ruling: owning `routes` means owning what it emits. A
+    // template that went back to delegating would pass the import check below vacuously.
+    expect(readFileSync(join(PKG, "src/reference/routes.ts"), "utf8")).not.toMatch(/\brenderRoutesFile\(/);
+    expect(readFileSync(join(PKG, "src/reference/routes-hono.ts"), "utf8")).not.toMatch(/\brenderRoutesFileHono\(/);
+  });
 
-      const required = internalNamedImports(readFileSync(join(PKG, body), "utf8"));
+  for (const template of OWNED_COMPOSITIONS) {
+    test(`${template} — every engine import is reachable from the package entry`, () => {
+      const required = engineNamedImports(readFileSync(join(PKG, template), "utf8"));
       expect(required.length).toBeGreaterThan(0);
-
       const missing = required.filter((n) => !surface.has(n));
       expect(missing).toEqual([]);
     });
