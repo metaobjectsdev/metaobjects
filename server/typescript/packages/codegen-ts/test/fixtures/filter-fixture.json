@@ -35,6 +35,30 @@
             { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
+      },
+      {
+        "object.entity": {
+          "name": "Book",
+          "children": [
+            { "source.rdb": { "@table": "books" } },
+            { "field.long": { "name": "id" } },
+            { "field.date": { "name": "publishedOn", "@filterable": true } },
+            { "field.time": { "name": "opensAt", "@filterable": true } },
+            { "field.timestamp": { "name": "updatedAt", "@filterable": true } },
+            { "field.uuid": { "name": "externalId", "@filterable": true } },
+            { "field.enum": { "name": "genre", "@filterable": true, "@values": ["fiction", "poetry"] } },
+            {
+              "field.enum": {
+                "name": "priority",
+                "@filterable": true,
+                "@values": ["low", "high"],
+                "@intValueMap": { "low": 1, "high": 2 }
+              }
+            },
+            { "field.string": { "name": "title", "@filterable": true } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
       }
     ]
   }

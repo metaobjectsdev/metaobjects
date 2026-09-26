@@ -103,7 +103,7 @@ function releaseLogs(): void {
 }
 
 describe("drizzle-fastify — an unexpected error answers 500 { error: \"internal\" } and leaks nothing", () => {
-  const cases: Array<{ name: string; method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE"; url: string; payload?: unknown }> = [
+  const cases: Array<{ name: string; method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE"; url: string; payload?: Record<string, unknown> }> = [
     { name: "list",        method: "GET",    url: "/readers" },
     { name: "get",         method: "GET",    url: "/readers/1" },
     { name: "create",      method: "POST",   url: "/readers", payload: { displayName: "Bo" } },

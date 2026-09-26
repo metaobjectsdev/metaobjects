@@ -131,12 +131,16 @@ describe('default "string" mode is unchanged', () => {
     expect(params).toEqual(["2026-06-03T14:30:00.123Z"]);
   });
 
-  test("a value string mode would accept is not newly rejected", () => {
-    // String mode does no well-formedness check — that stays true, so an allowlist
-    // generated before `dateValues` existed behaves exactly as it did.
-    const params = boundParams(stringModeTable, stringModeAllowlist, {
-      filter: { occurredAt: { eq: "whatever-the-db-wants" } },
-    });
-    expect(params).toEqual(["whatever-the-db-wants"]);
+  test("a value no temporal type accepts is rejected, even with no `format` on the rule", () => {
+    // This used to pin the opposite ("string mode does no well-formedness check") — and
+    // that was the defect: a malformed bound compared as text on SQLite and silently
+    // matched nothing, or failed the cast on Postgres as a 500. A rule generated before
+    // `format` existed is now checked against the union of the temporal wire formats
+    // (test/drizzle-fastify/filter-value-format.test.ts covers the per-format checks).
+    expect(() =>
+      boundParams(stringModeTable, stringModeAllowlist, {
+        filter: { occurredAt: { eq: "whatever-the-db-wants" } },
+      }),
+    ).toThrow(FilterParseError);
   });
 });

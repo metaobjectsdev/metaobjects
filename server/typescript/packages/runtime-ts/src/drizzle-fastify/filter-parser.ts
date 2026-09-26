@@ -4,6 +4,7 @@ import {
 } from "drizzle-orm";
 import type { FilterAllowlist, FilterOp, FilterFieldRule, SortAllowlist } from "./filter-allowlist.js";
 import { sortOrderSpec } from "./filter-allowlist.js";
+import { ANY_TEMPORAL_EXPECTED, FORMAT_EXPECTED, matchesAnyTemporal, matchesFormat } from "./filter-value-format.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user's Drizzle table
 type AnyTable = any;
@@ -184,14 +185,14 @@ function compileOp(
     throw new FilterParseError("filter.unsupported_op", `Op "${op}" not supported for field "${field}".`, { field, op, allowed: rule.ops });
   }
   switch (op as FilterOp) {
-    case "eq":  return eq(col as any, coerce(value, rule.subType, field, op, rule.dateValues));
-    case "ne":  return ne(col as any, coerce(value, rule.subType, field, op, rule.dateValues));
-    case "gt":  return gt(col as any, coerce(value, rule.subType, field, op, rule.dateValues));
-    case "gte": return gte(col as any, coerce(value, rule.subType, field, op, rule.dateValues));
-    case "lt":  return lt(col as any, coerce(value, rule.subType, field, op, rule.dateValues));
-    case "lte": return lte(col as any, coerce(value, rule.subType, field, op, rule.dateValues));
+    case "eq":  return eq(col as any, coerce(value, rule, col, field, op));
+    case "ne":  return ne(col as any, coerce(value, rule, col, field, op));
+    case "gt":  return gt(col as any, coerce(value, rule, col, field, op));
+    case "gte": return gte(col as any, coerce(value, rule, col, field, op));
+    case "lt":  return lt(col as any, coerce(value, rule, col, field, op));
+    case "lte": return lte(col as any, coerce(value, rule, col, field, op));
     case "in": {
-      const list = String(value).split(",").map((v) => coerce(v.trim(), rule.subType, field, op, rule.dateValues));
+      const list = String(value).split(",").map((v) => coerce(v.trim(), rule, col, field, op));
       if (list.length > maxInList) {
         throw new FilterParseError("filter.in_too_large", `In-list size ${list.length} exceeds limit ${maxInList}.`, { field, limit: maxInList });
       }
@@ -216,7 +217,7 @@ function compileOp(
       // isNull's value is always coerced as boolean (true/false), regardless of the
       // field's declared subType — the operator is "is the value null?", not "is X
       // equal to null?". Field subtype is irrelevant.
-      const b = coerce(value, "boolean", field, op) as boolean;
+      const b = coerceAs(value, "boolean", field, op) as boolean;
       return b ? isNull(col as any) : not(isNull(col as any));
     }
   }
@@ -243,7 +244,54 @@ export function likePatternToGlob(pattern: string): string {
   return out;
 }
 
-function coerce(value: unknown, subType: string, field: string, op: string, dateValues?: boolean): unknown {
+function invalidValue(
+  field: string,
+  op: string,
+  s: string,
+  expected: string,
+  extra: Record<string, unknown> = {},
+): FilterParseError {
+  return new FilterParseError(
+    "filter.invalid_value",
+    `Field "${field}" op "${op}" requires ${expected}, got "${s}".`,
+    { field, op, expected, ...extra },
+  );
+}
+
+/** A Drizzle column's own enum members (`text(..., { enum })`, `pgEnum`), if it has them. */
+function columnEnumValues(col: unknown): readonly string[] | undefined {
+  const v = (col as { enumValues?: unknown } | null | undefined)?.enumValues;
+  return Array.isArray(v) && v.length > 0 && v.every((m) => typeof m === "string") ? (v as string[]) : undefined;
+}
+
+/**
+ * Refuse a value that cannot be the field's type BEFORE it is bound. Without this a
+ * malformed date on SQLite compared as text and silently matched nothing (200 `[]`),
+ * and on Postgres the driver refused the cast (a 500) — either way the caller could not
+ * tell a typo from an empty result. The envelope is the cross-port `invalid_filter_value`,
+ * carrying `op` and `expected` as the number/boolean checks already did.
+ */
+function assertWellFormed(s: string, rule: FilterFieldRule, col: unknown, field: string, op: string): void {
+  const members = rule.enumValues ?? columnEnumValues(col);
+  if (members !== undefined && !members.includes(s)) {
+    throw invalidValue(field, op, s, `one of: ${members.join(", ")}`, { allowed: [...members] });
+  }
+  if (rule.format !== undefined) {
+    if (!matchesFormat(rule.format, s)) throw invalidValue(field, op, s, FORMAT_EXPECTED[rule.format]);
+  } else if (rule.subType === "datetime" && !matchesAnyTemporal(s)) {
+    throw invalidValue(field, op, s, ANY_TEMPORAL_EXPECTED);
+  }
+}
+
+/** Check a comparison value against the field's rule, then coerce it for binding. */
+function coerce(value: unknown, rule: FilterFieldRule, col: unknown, field: string, op: string): unknown {
+  if (value === null || value === undefined) return null;
+  const s = typeof value === "string" ? value : String(value);
+  assertWellFormed(s, rule, col, field, op);
+  return coerceAs(s, rule.subType, field, op, rule.dateValues);
+}
+
+function coerceAs(value: unknown, subType: string, field: string, op: string, dateValues?: boolean): unknown {
   if (value === null || value === undefined) return null;
   const s = typeof value === "string" ? value : String(value);
   switch (subType) {
@@ -254,7 +302,8 @@ function coerce(value: unknown, subType: string, field: string, op: string, date
       throw new FilterParseError("filter.invalid_value", `Field "${field}" op "${op}" requires boolean, got "${s}".`, { field, op, expected: "boolean" });
     }
     case "number":   {
-      const n = Number(s);
+      // `Number("")` and `Number(" ")` are 0 — an empty bound is not the number zero.
+      const n = s.trim() === "" ? Number.NaN : Number(s);
       if (!Number.isFinite(n)) {
         throw new FilterParseError("filter.invalid_value", `Field "${field}" op "${op}" requires number, got "${s}".`, { field, op, expected: "number" });
       }

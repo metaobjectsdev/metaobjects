@@ -12,8 +12,11 @@ import {
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_CURRENCY,
+  FIELD_SUBTYPE_UUID,
+  FIELD_SUBTYPE_ENUM,
   opsForField,
 } from "@metaobjectsdev/metadata";
+import { enumValues } from "../enum-meta.js";
 import { sortableFields, declaredSortDefaultOrder } from "./filter-shared.js";
 import type { RenderContext } from "../render-context.js";
 
@@ -39,6 +42,38 @@ function filterSubTypeFor(fieldSubType: string): "string" | "number" | "boolean"
   if (NUMBER_SUBTYPES.has(fieldSubType)) return "number";
   if (DATETIME_SUBTYPES.has(fieldSubType)) return "datetime";
   return "string";
+}
+
+/**
+ * Field subtypes whose filter values have an exact wire format the coarse FilterSubType
+ * cannot express ("datetime" is three formats; a uuid is a "string"). The emitted
+ * `format` value IS the subtype name — runtime-ts keys its checks on the same constants.
+ */
+const VALUE_FORMAT_SUBTYPES = new Set<string>([
+  FIELD_SUBTYPE_DATE,
+  FIELD_SUBTYPE_TIME,
+  FIELD_SUBTYPE_TIMESTAMP,
+  FIELD_SUBTYPE_UUID,
+]);
+
+/**
+ * The `format` / `enumValues` members of a rule, so runtime-ts's filter parser can refuse
+ * a value that cannot be the field's type (`invalid_filter_value`) instead of binding it —
+ * a malformed date compared as text on SQLite and silently matched nothing. Scalar fields
+ * only: an array field's filter value is not one element of the declared type.
+ */
+function valueShape(f: MetaField): string {
+  if (f.resolvedIsArray()) return "";
+  if (VALUE_FORMAT_SUBTYPES.has(f.subType)) return `, format: ${JSON.stringify(f.subType)} as const`;
+  if (f.subType === FIELD_SUBTYPE_ENUM) {
+    // Member SYMBOLS for string- and int-backed enums alike: an int-backed column's codec
+    // maps the symbol to its integer when the value is bound.
+    const members = enumValues(f);
+    if (members !== undefined && members.length > 0) {
+      return `, enumValues: [${members.map((m) => JSON.stringify(m)).join(", ")}] as const`;
+    }
+  }
+  return "";
 }
 
 function filterableFields(entity: MetaObject, exclude?: string): MetaField[] {
@@ -80,7 +115,7 @@ export const ${entity.name}FilterAllowlist = {} as const satisfies FilterAllowli
       const dateValues = ctx?.timestampMode === "date" && f.subType === FIELD_SUBTYPE_TIMESTAMP
         ? ", dateValues: true as const"
         : "";
-      return `  ${f.name}: { ops: [${ops}] as const, subType: ${JSON.stringify(sub)} as const, leadingWildcard: false${dateValues} }`;
+      return `  ${f.name}: { ops: [${ops}] as const, subType: ${JSON.stringify(sub)} as const, leadingWildcard: false${dateValues}${valueShape(f)} }`;
     })
     .join(",\n");
   return code`

@@ -146,7 +146,7 @@ or use the TS-only `?search` extension, which IS case-insensitive.
 
 ### TS-only filter extensions (not part of the cross-port contract)
 
-The TypeScript runtime parser ships six filter behaviors beyond the nine
+The TypeScript runtime parser ships seven filter behaviors beyond the nine
 operators. They are **NOT part of the cross-port REST contract** — the other
 ports (Java, Kotlin, Python, C#) do not implement them, and a relying adopter
 must not assume them on a non-TS backend. They are deliberately deferred until
@@ -160,6 +160,7 @@ added cross-port later as a purely additive, non-breaking change):
 | leading-wildcard gating | a `like` pattern starting with `%` → HTTP 400 (`filter.leading_wildcard_disallowed`) |
 | filter nesting-depth cap | rejects deeply-nested `or`/`and` (tied to the combinators) |
 | bare filterable-field parameter | `?priority=low` where `priority` is in the allowlist → HTTP 400 `{ "error": "filter.bare_field", "field": "priority", "expected": "filter[priority][eq]=low" }` instead of silently returning every row. Any other unknown parameter (a cache-buster, a tracking tag) is still ignored, and the reserved list parameters (`filter`, `sort`, `limit`, `offset`, `search`, `withCount`) are never claimed |
+| filter-value format check | a comparison value (`eq`/`ne`/`gt`/`gte`/`lt`/`lte`, and every element of an `in` list) that cannot be the field's type → HTTP 400 `{ "error": "invalid_filter_value", "field": "publishedOn", "op": "gte", "expected": "date (YYYY-MM-DD)" }` instead of reaching SQL, where SQLite compared the text and silently returned `[]` and Postgres failed the cast. Checked per field: `field.date` (a real calendar day), `field.time` (`HH:MM[:SS[.fff]]`), `field.timestamp` (a date, optionally with a time and a `Z`/offset), `field.uuid` (`8-4-4-4-12` hex), `field.enum` (a declared member — the response adds `allowed`), numbers (an empty value is not `0`) and booleans. The generated `<Entity>FilterAllowlist` carries the `format` / `enumValues` this needs; an allowlist generated before them still has a temporal value checked against all three temporal formats and an enum checked against the Drizzle column's own members. The envelope is the cross-port one; what is TS-only is refusing a malformed comparison value — the other ports pass it through to the database and only the `isNull` value is corpus-gated |
 
 **Leading-wildcard gating is fail-closed with no metadata opt-in.** The
 generated `<Entity>FilterAllowlist` hardcodes `leadingWildcard: false` on every
@@ -515,9 +516,10 @@ codegen status" above and "Verified by" below, and
 
 What's still genuinely open:
 
-- The six **TS-only filter extensions** (`?search=`, `filter[or]` /
+- The seven **TS-only filter extensions** (`?search=`, `filter[or]` /
   `filter[and]` nesting, leading-wildcard gating, the nesting-depth cap,
-  the `in`-list size cap, and the bare filterable-field 400) — see "TS-only filter extensions" above.
+  the `in`-list size cap, the bare filterable-field 400, and the
+  filter-value format check) — see "TS-only filter extensions" above.
   None touch the metamodel vocabulary, so any of them can be promoted
   cross-port later as a purely additive, non-breaking change if real
   consumer demand shows up.
