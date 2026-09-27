@@ -26,7 +26,9 @@ export const purchases = sqliteTable("purchases", {
     .notNull()
     .references((): AnySQLiteColumn => programs.id),
   amountCents: integer("amount_cents").notNull(),
-  purchasedAt: text("purchased_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  purchasedAt: text("purchased_at")
+    .notNull()
+    .default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ','now'))`),
 });
 export const purchasesRelations = relations(purchases, ({ one }) => ({
   subscriber: one(subscribers, {

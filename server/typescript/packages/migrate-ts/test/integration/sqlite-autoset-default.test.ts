@@ -91,12 +91,27 @@ describe("SQLite @autoSet — real-engine apply + value semantics + idempotence"
       .raw(`SELECT "created_at" AS c, "updated_at" AS u FROM "events" WHERE "id" = 1`)
       .execute(k)).rows[0] as { c: unknown; u: unknown };
 
-    // CURRENT_TIMESTAMP stores 'YYYY-MM-DD HH:MM:SS' text — a real datetime value,
-    // not NULL and not the literal string "now()".
+    // A timestamp column defaults to the ISO UTC form generated code writes — the exact
+    // shape of Date.toISOString(), not CURRENT_TIMESTAMP's 'YYYY-MM-DD HH:MM:SS', and not
+    // NULL or the literal string "now()".
     for (const v of [row.c, row.u]) {
       expect(typeof v).toBe("string");
-      expect(v as string).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
+      expect(v as string).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date(v as string).toISOString()).toBe(v as string);
     }
+  });
+
+  test("an EXISTING CURRENT_TIMESTAMP column is not rebuilt to change the spelling", async () => {
+    // A table created before the ISO default: same columns, the old default spelling.
+    await applyRaw(`CREATE TABLE "events" (
+      "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+      "title" TEXT NOT NULL,
+      "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updated_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`);
+    const root = (await new MetaDataLoader().load([new InMemoryStringSource(META)])).root;
+    const d = await diff(buildExpectedSchema(root, { dialect: "sqlite" }), await introspectSqlite(k));
+    expect(d.changes).toEqual([]);
   });
 
   test("IDEMPOTENCE: re-diff against the live DB after apply is empty", async () => {

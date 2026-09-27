@@ -82,6 +82,23 @@ describe("emit sqlite — literal defaults are rendered per the column's SQL typ
     expect(sql).toContain("DEFAULT CURRENT_TIMESTAMP");
   });
 
+  test("a function-call expr default is wrapped in parentheses, as SQLite requires", () => {
+    const sql = ddl({
+      name: "created_at", sqlType: { kind: "timestamp", withTimezone: false }, nullable: false,
+      default: { kind: "expr", value: "strftime('%Y-%m-%dT%H:%M:%fZ','now')" },
+    });
+    expect(sql).toContain("DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))");
+  });
+
+  test("an already-parenthesized expr default is not wrapped twice", () => {
+    const sql = ddl({
+      name: "created_at", sqlType: { kind: "timestamp", withTimezone: false }, nullable: false,
+      default: { kind: "expr", value: "(datetime('now'))" },
+    });
+    expect(sql).toContain("DEFAULT (datetime('now'))");
+    expect(sql).not.toContain("((");
+  });
+
   test("defensive: a non-numeric literal on a numeric column falls back to quoting (never emit bare garbage)", () => {
     const sql = ddl({
       name: "weird", sqlType: { kind: "integer", bits: 64 }, nullable: true,

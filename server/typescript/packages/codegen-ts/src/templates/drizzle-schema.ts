@@ -10,6 +10,7 @@ import {
   GENERATION_INCREMENT, GENERATION_UUID,
   FIELD_ATTR_AUTO_SET,
   FIELD_ATTR_OBJECT_REF,
+  FIELD_SUBTYPE_TIMESTAMP,
 } from "@metaobjectsdev/metadata";
 import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier, valueObjectModuleSpecifier } from "../import-path.js";
@@ -484,6 +485,10 @@ function inlineObjectLiteral(obj: Record<string, unknown>): string {
 }
 
 /** Render one column line (field name + Drizzle column expression). */
+/** SQLite "now" for a timestamp column, spelled like Date.toISOString(). Must stay
+ *  byte-identical to migrate-ts `SQLITE_ISO_NOW`, which owns the DDL (ADR-0015). */
+const SQLITE_ISO_NOW = "strftime('%Y-%m-%dT%H:%M:%fZ','now')";
+
 function renderColumn(
   spec: ColumnSpec,
   // §A6 — the column's physical name as an EXPRESSION: either the `<Entity>Names` constant
@@ -597,7 +602,11 @@ function renderColumn(
     if (spec.defaultExpr.kind === "now") {
       if (ctx.dialect === "sqlite") {
         const sqlSym = imp("sql@drizzle-orm");
-        sqlDefaultSegment = code`.default(${sqlSym}\`CURRENT_TIMESTAMP\`)`;
+        // A timestamp column defaults to the ISO UTC form generated code writes, the same
+        // expression `meta migrate` puts in the DDL (migrate-ts SQLITE_ISO_NOW).
+        sqlDefaultSegment = field.subType === FIELD_SUBTYPE_TIMESTAMP
+          ? code`.default(${sqlSym}\`(${SQLITE_ISO_NOW})\`)`
+          : code`.default(${sqlSym}\`CURRENT_TIMESTAMP\`)`;
       } else {
         modifiersStr += `.defaultNow()`;
       }

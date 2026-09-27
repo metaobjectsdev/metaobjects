@@ -64,6 +64,7 @@ import type {
   CheckDescriptor, ViewDescriptor,
 } from "./types.js";
 import { qualifiedDbName } from "./qualified-name.js";
+import { SQLITE_ISO_NOW } from "./column-default.js";
 import { viewFingerprint } from "./view-fingerprint.js";
 import { resolveViewColumns, type ExpectedViewColumnInput } from "./view-column-types.js";
 import {
@@ -329,8 +330,20 @@ export function buildExpectedSchemaWithProvenance(
         // token verbatim, and introspection reads back the identical expr,
         // keeping the re-diff empty (an emit-only mapping would report
         // change-column-default forever → recreate-and-copy on every run).
-        if (col.default?.kind === "expr" && /^now\(\)$/i.test(col.default.value.trim())) {
-          col.default = { kind: "expr", value: "CURRENT_TIMESTAMP" };
+        //
+        // A TIMESTAMP column takes the ISO form instead (SQLITE_ISO_NOW), so a
+        // database-defaulted row is spelled like the `…T…Z` value generated code
+        // writes. An authored CURRENT_TIMESTAMP on a timestamp column means the same
+        // thing and gets the same spelling. Existing CURRENT_TIMESTAMP columns do not
+        // churn: columnDefaultsEqual treats the two as equal.
+        if (col.default?.kind === "expr") {
+          const value = col.default.value.trim();
+          const isNow = /^now\(\)$/i.test(value);
+          if (kindBefore === "timestamp" && (isNow || /^current_timestamp$/i.test(value))) {
+            col.default = { kind: "expr", value: SQLITE_ISO_NOW };
+          } else if (isNow) {
+            col.default = { kind: "expr", value: "CURRENT_TIMESTAMP" };
+          }
         }
       }
       // `@using` names a Postgres index access method (gin/gist/hash/…).

@@ -569,7 +569,10 @@ const NUMERIC_LITERAL = /^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?$/;
  * emitting bare invalid SQL — the loader should reject it long before here.
  */
 function renderDefault(d: ColumnDefault, t: SqlType): string {
-  if (d.kind === "expr") return d.value;
+  // SQLite accepts a bare keyword (CURRENT_TIMESTAMP) as a default, but a function call
+  // only inside parentheses — `DEFAULT strftime(…)` is a syntax error. It reads the
+  // expression back without them, which is how the expected snapshot spells it.
+  if (d.kind === "expr") return d.value.includes("(") && !/^\(.*\)$/s.test(d.value) ? `(${d.value})` : d.value;
   const quoted = `'${d.value.replace(/'/g, "''")}'`;
   switch (t.kind) {
     case "boolean":

@@ -14,7 +14,9 @@ export const programs = sqliteTable("programs", {
   isPublished: integer("is_published", { mode: "boolean" })
     .notNull()
     .default(false),
-  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ','now'))`),
 });
 export type Program = InferSelectModel<typeof programs>;
 export type ProgramInsert = InferInsertModel<typeof programs>;

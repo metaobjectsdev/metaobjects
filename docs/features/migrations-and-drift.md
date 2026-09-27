@@ -344,10 +344,21 @@ emits for `sqlite` / `d1` is therefore held to a floor:
 | `ALTER TABLE … DROP COLUMN` | 3.35 | a column is dropped (`--allow drop-column`) |
 | `ALTER TABLE … RENAME COLUMN` | 3.25 | a declared column rename |
 | aggregate `FILTER (WHERE …)`, `NULLS LAST` | 3.30 | a projection view with `origin.*` scoping / ordering |
-| in-aggregate `ORDER BY` (`json_group_array(x ORDER BY …)`) | **3.44** | a projection view using `origin.collect` |
+| `json_each`, `json_group_array` (JSON1) | 3.35 in practice (JSON1 built in since 3.38; earlier builds usually enable it) | a projection view using `origin.collect` |
 
-**The floor for tables and their constraints is SQLite 3.35** (Ubuntu 22.04 ships 3.37.2;
-D1's baseline is 3.44). A database whose views use `origin.collect` needs **3.44** to open.
+**The floor is SQLite 3.35, for tables and views alike** (Ubuntu 22.04 ships 3.37.2; D1's
+baseline is 3.44). Up to 1.0.9 a view using `origin.collect` ordered its elements with an
+in-aggregate `ORDER BY` (`json_group_array(x ORDER BY …)`), which needs SQLite 3.44. A
+collect column is now built in two steps: the grouped query gathers each element together
+with its sort keys, and an outer query sorts them, which every SQLite from 3.35 runs. The
+next `meta migrate` against a database made before that change replaces such views once;
+the re-diff is empty afterwards.
+
+A `field.timestamp` whose default is "now" (`@autoSet`, or `@default: "now"`) defaults to
+`strftime('%Y-%m-%dT%H:%M:%fZ','now')`, the same ISO UTC form generated code writes, rather
+than `CURRENT_TIMESTAMP`'s `YYYY-MM-DD HH:MM:SS`. A column that already defaults to
+`CURRENT_TIMESTAMP` is not rebuilt for the spelling: the two are treated as the same default,
+and the ISO one arrives the next time something else rebuilds that table.
 
 Null-safe (in)equality in a derived CHECK (`validator.requiredWhen`, `validator.presentIff`)
 is spelled with SQLite's own `IS NOT` / `IS`, which every version parses. Up to 1.0.8 it was

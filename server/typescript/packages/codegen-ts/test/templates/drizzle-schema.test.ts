@@ -164,7 +164,8 @@ describe("renderDrizzleSchema — SQLite", () => {
     // Use renderEntityFile to get the full file output including resolved imports
     const out = renderEntityFile(post, ctx);
     // Verify the sql tag is emitted on the column
-    expect(out).toContain("sql`CURRENT_TIMESTAMP`");
+    // A timestamp column: the ISO UTC default generated code also writes, not CURRENT_TIMESTAMP.
+    expect(out).toContain("sql`(strftime('%Y-%m-%dT%H:%M:%fZ','now'))`");
     // Verify `sql` is imported from "drizzle-orm" (not missing)
     expect(out).toMatch(/import\s*\{[^}]*\bsql\b[^}]*\}\s*from\s*"drizzle-orm"/);
   });

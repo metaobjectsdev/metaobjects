@@ -10,6 +10,34 @@ here.**
 
 ## [Unreleased]
 
+### Changed
+
+- **SQLite: projection views that use `origin.collect` now open on SQLite 3.35.** They used an
+  in-aggregate `ORDER BY` (`json_group_array(x ORDER BY …)`), which needs 3.44, so a database
+  holding one could not be opened by Ubuntu 22.04's SQLite 3.37 or Python 3.10's stdlib. A
+  collect column is now built in two steps: the grouped query gathers each element with its
+  sort keys, and an outer query sorts them. Element order and empty-set results are
+  unchanged, and whole-object collects still return objects. The floor is now 3.35 for tables
+  and views alike. **Upgrading:** the next `meta migrate` against a SQLite or D1 database with
+  such a view replaces the view once.
+- **SQLite: a timestamp column that defaults to "now" uses the ISO UTC form generated code
+  writes.** `@autoSet` and `@default: "now"` on a `field.timestamp` emit
+  `DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))` (`2026-09-26T14:08:05.053Z`) instead of
+  `DEFAULT CURRENT_TIMESTAMP` (`2026-09-26 14:08:05`), so database-defaulted rows and
+  application-written rows share one spelling that sorts and compares correctly. The generated
+  Drizzle schema carries the same default. **Upgrading:** existing `CURRENT_TIMESTAMP` columns
+  are not rebuilt for this: migrate treats the two as the same default. Rows already stored keep
+  their old spelling. Regenerate with `meta gen` to pick up the Drizzle default.
+- **SQLite: a function-call column default is wrapped in parentheses** when emitted, as SQLite
+  requires (`DEFAULT (expr)`). Before, an authored expression default such as
+  `datetime('now')` produced a `CREATE TABLE` that did not parse.
+- **Agent context: hand-built LLM prompts** (#389). The always-on context installed by
+  `meta init` gains a rule: once a project declares any `template.prompt`, every LLM prompt is
+  one, replies are read through a response model, and changing a hand-built prompt means
+  migrating it first. The `metaobjects-prompts` skill now triggers on code that builds text for
+  an LLM or parses its reply, and has a migration procedure; the `metaobjects-audit` prompt
+  census covers every module. Refresh with `meta init --refresh-docs`.
+
 ## [1.0.9] — 2026-09-26
 
 _npm `1.0.9` (all 14 `@metaobjectsdev/*` packages in lockstep), PyPI `1.0.9`, NuGet `1.0.9` and

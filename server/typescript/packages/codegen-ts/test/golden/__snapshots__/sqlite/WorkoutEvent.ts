@@ -25,7 +25,9 @@ export const workoutEvents = sqliteTable("workout_events", {
   workoutId: integer("workout_id")
     .notNull()
     .references((): AnySQLiteColumn => workouts.id),
-  completedAt: text("completed_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  completedAt: text("completed_at")
+    .notNull()
+    .default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ','now'))`),
   durationMinutes: integer("duration_minutes"),
 });
 export const workoutEventsRelations = relations(workoutEvents, ({ one }) => ({
