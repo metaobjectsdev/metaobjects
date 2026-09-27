@@ -37,6 +37,7 @@ import {
   UTC_TIMESTAMP_HELPER_DECL,
   ZOD_DATE_EXPR,
   ZOD_TIME_EXPR,
+  ZOD_TIME_NO_OFFSET_EXPR,
   ZOD_TIMESTAMP_EXPR,
   ZOD_TIMESTAMP_UTC_EXPR,
 } from "./date-time-regex.js";
@@ -757,9 +758,13 @@ function zodFieldExpr(
     case FIELD_SUBTYPE_DATE:
       baseStr = readShape ? "z.string()" : ZOD_DATE_EXPR;
       break;
-    case FIELD_SUBTYPE_TIME:
-      baseStr = readShape ? "z.string()" : ZOD_TIME_EXPR;
+    case FIELD_SUBTYPE_TIME: {
+      // A MySQL TIME column refuses an offset (date-time-regex.ts). A value object's member
+      // is JSON, which stores any string, so it keeps the portable check.
+      const mysqlColumn = ctx?.dialect === "mysql" && owner?.subType !== OBJECT_SUBTYPE_VALUE;
+      baseStr = readShape ? "z.string()" : mysqlColumn ? ZOD_TIME_NO_OFFSET_EXPR : ZOD_TIME_EXPR;
       break;
+    }
     case FIELD_SUBTYPE_TIMESTAMP: {
       // Must agree with column-mapper.ts's mapColumnType, which already honors
       // ctx.timestampMode for the Drizzle column itself — z.string() here regardless would

@@ -47,8 +47,11 @@ import {
   VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_PATTERN,
 } from "@metaobjectsdev/metadata";
 import type { AttrValue, MetaField, MetaObject } from "@metaobjectsdev/metadata";
-import { meta, metaObject, metaField } from "./_meta-build.js";
+import { meta, metaObject, metaField, metaRoot } from "./_meta-build.js";
 import { renderZodValidators } from "../src/templates/zod-validators.js";
+import { makeRenderContext } from "../src/render-context.js";
+import { buildPkMap } from "../src/pk-resolver.js";
+import { buildRelationMap } from "../src/relation-resolver.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamically imported generated module — no static shape
 type GeneratedModule = Record<string, any>;
@@ -387,6 +390,34 @@ describe("field.date / field.time / field.timestamp — ISO shapes only, never f
     for (const bad of ["noon", "", "9:30", "24:00", "09:60", "09:30 PM", "2026-09-26"]) {
       expect(accepts(schema, { at: bad })).toBe(false);
     }
+  });
+
+  // MySQL's TIME has no zone: `INSERT … VALUES ('12:30:00+05:00')` is ERROR 1292
+  // (Incorrect time value), so a body the Postgres-shaped check let through became a 500.
+  // On MySQL a column-backed field.time refuses the offset at the API boundary. A value
+  // object's member is JSON, where any string is storable, and keeps the portable check.
+  test("on MySQL a field.time column refuses a UTC offset; a value-object member keeps it", async () => {
+    const alarm = entityWith("Alarm", metaField(FIELD_SUBTYPE_TIME, "at"));
+    const vo = metaObject(OBJECT_SUBTYPE_VALUE, "Window");
+    vo.addChild(metaField(FIELD_SUBTYPE_TIME, "opensAt"));
+    const root = metaRoot();
+    root.addChild(alarm);
+    root.addChild(vo);
+    const ctx = makeRenderContext({
+      dialect: "mysql", loadedRoot: root,
+      outDir: "/x", dbImport: "~/db", pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+    });
+    const alarmMod = await executeGenerated(renderZodValidators(alarm, ctx).toString());
+    for (const schemaName of ["AlarmInsertSchema", "AlarmUpdateSchema"]) {
+      for (const ok of ["09:30", "09:30:15", "23:59:59.123456"]) {
+        expect(accepts(alarmMod[schemaName], { at: ok })).toBe(true);
+      }
+      for (const bad of ["09:30:00+02", "09:30:00Z", "09:30:00-05:30", "noon"]) {
+        expect(accepts(alarmMod[schemaName], { at: bad })).toBe(false);
+      }
+    }
+    const voMod = await executeGenerated(renderZodValidators(vo, ctx).toString());
+    expect(accepts(voMod["WindowInsertSchema"], { opensAt: "09:30:00+02" })).toBe(true);
   });
 
   test("field.timestamp accepts every ISO/SQL spelling the runtime produces, rejects free text", async () => {

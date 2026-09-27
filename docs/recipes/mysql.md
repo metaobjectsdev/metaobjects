@@ -87,7 +87,10 @@ generated code and both runtimes quote identifiers themselves.
   (`2026-05-28T20:26:40.002Z` is `ERROR 1292`). The generated Zod schema coerces the ISO string
   to a `Date`, Drizzle stores the UTC wall clock, and the JSON response carries ISO with `Z`.
   The `timestampMode` setting has no effect on MySQL.
-- **`TIME` values cannot carry a UTC offset.** MySQL rejects them, so send `HH:MM:SS[.fff]`.
+- **`TIME` values cannot carry a UTC offset.** MySQL rejects them (`ERROR 1292`), so the
+  generated write schema for a `field.time` column accepts `HH:MM[:SS[.fff]]` only and answers
+  an offset with a 400. A `field.time` inside a value object is stored as JSON and still
+  accepts an offset.
 - **Index options.** MySQL has no partial indexes, so `@where` is not emitted. `@using` is not
   emitted either, because MySQL's index types are not access methods. Expression indexes
   (`@expr`) are emitted.

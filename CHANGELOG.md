@@ -37,6 +37,8 @@ here.**
   behaviour:
   - `like` stays case-sensitive (ADR-0049) through `COLLATE utf8mb4_bin`;
   - timestamps use Drizzle's `date` mode and store the UTC wall clock in `DATETIME(3)`;
+  - a `field.time` column's write schema refuses a UTC offset, which MySQL's `TIME` rejects
+    with `ERROR 1292` (a value object's `field.time` is JSON and keeps the offset);
   - identifiers are backtick-quoted;
   - constraint errors map to 409/400 as on the other dialects.
 

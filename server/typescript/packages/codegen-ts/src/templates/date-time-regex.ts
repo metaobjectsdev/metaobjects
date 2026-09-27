@@ -52,6 +52,13 @@ export const ZOD_DATE_EXPR =
 export const ZOD_TIME_EXPR =
   `z.string().regex(/^${TIME_OF_DAY}${UTC_OFFSET}$/, ${JSON.stringify(TIME_FORMAT_MESSAGE)})`;
 
+/** `field.time` on a MySQL column — a time of day with NO offset. MySQL's `TIME` has no
+ *  zone and refuses one (`'12:30:00+05:00'` is ERROR 1292, Incorrect time value), so the
+ *  portable check above would pass a body the database then rejects with a 500. */
+export const TIME_NO_OFFSET_FORMAT_MESSAGE = "must be a time of day (HH:MM[:SS[.fff]]), without an offset";
+export const ZOD_TIME_NO_OFFSET_EXPR =
+  `z.string().regex(/^${TIME_OF_DAY}$/, ${JSON.stringify(TIME_NO_OFFSET_FORMAT_MESSAGE)})`;
+
 /** `field.timestamp` (string mode) — an ISO 8601 / SQL timestamp: a calendar date,
  *  optionally followed by `T` or a space, a time of day, and a UTC offset. */
 export const ZOD_TIMESTAMP_EXPR =
