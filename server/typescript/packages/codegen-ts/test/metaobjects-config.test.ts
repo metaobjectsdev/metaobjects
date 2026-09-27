@@ -1,5 +1,5 @@
 import { describe, test, expect, expectTypeOf } from "bun:test";
-import { defineConfig, normalizeConfig, resolveTargets, DEFAULT_TARGET_NAME, type MetaobjectsGenConfig, type ResolvedGenConfig, type Dialect } from "../src/metaobjects-config.js";
+import { defineConfig, normalizeConfig, resolveTargets, DEFAULT_TARGET_NAME, type MetaobjectsGenConfig, type ResolvedGenConfig, type Dialect, type ExtStyle } from "../src/metaobjects-config.js";
 import type { Generator } from "../src/generator.js";
 
 describe("resolveTargets", () => {
@@ -69,8 +69,11 @@ describe("defineConfig", () => {
 
   test("type-level: MetaobjectsGenConfig embeds ResolvedGenConfig's non-DB fields exactly (#194 — dbImport/dialect are OPTIONAL here, filled by the runner)", () => {
     // Everything except dbImport/dialect matches ResolvedGenConfig field-for-field.
-    expectTypeOf<Pick<MetaobjectsGenConfig, "outDir" | "extStyle" | "outputLayout" | "includeHonoRoutes" | "includeNames" | "includeUiTier" | "providedEnumModule">>()
-      .toEqualTypeOf<Omit<ResolvedGenConfig, "dbImport" | "dialect">>();
+    expectTypeOf<Pick<MetaobjectsGenConfig, "outDir" | "outputLayout" | "includeHonoRoutes" | "includeNames" | "includeUiTier" | "providedEnumModule">>()
+      .toEqualTypeOf<Omit<ResolvedGenConfig, "dbImport" | "dialect" | "extStyle">>();
+    // extStyle is OPTIONAL too: the config `meta init` scaffolds omits it and must still
+    // typecheck; the runner fills DEFAULT_EXT_STYLE.
+    expectTypeOf<MetaobjectsGenConfig["extStyle"]>().toEqualTypeOf<ExtStyle | undefined>();
     // dbImport/dialect are OPTIONAL on the user config (a value-object-only project omits
     // them); ResolvedGenConfig (what generators consume) keeps them required.
     expectTypeOf<MetaobjectsGenConfig["dbImport"]>().toEqualTypeOf<string | undefined>();

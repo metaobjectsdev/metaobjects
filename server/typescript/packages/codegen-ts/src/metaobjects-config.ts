@@ -84,6 +84,8 @@ export interface ResolvedGenConfig {
  *  would generate DB code is required to set them explicitly (see `runGen`'s guard). */
 export const DEFAULT_DIALECT: Dialect = "sqlite";
 export const DEFAULT_DB_IMPORT = "./db";
+/** Import-specifier suffix when the config names none: `./x.js`, right for Node ESM + tsc. */
+export const DEFAULT_EXT_STYLE: ExtStyle = "js";
 
 /**
  * The user-facing codegen config. `dbImport` / `dialect` are OPTIONAL here (unlike the
@@ -93,9 +95,13 @@ export const DEFAULT_DB_IMPORT = "./db";
  * fills inert defaults when they are absent AND the model emits no DB artifacts, and
  * throws a clear error when they are absent but the model DOES emit DB code (#194).
  */
-export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport" | "dialect"> {
+export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport" | "dialect" | "extStyle"> {
   dbImport?: string;
   dialect?: Dialect;
+  /** Import-specifier suffix in generated code. Defaults to `"js"` (`./x.js`), which is
+   *  right for Node ESM + tsc. Optional because `meta init` scaffolds a config without it,
+   *  and that config must pass the scaffolded `tsconfig.codegen.json`. */
+  extStyle?: ExtStyle;
   /**
    * Generators to run. Each entry is either a typed generator factory result
    * (`entityFile()`) or a stable-name string (`"entity"`) resolved via the
@@ -205,10 +211,11 @@ export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport"
  *  TargetConfig to the fully-resolved ResolvedTarget (incompatible under
  *  exactOptionalPropertyTypes otherwise). */
 export interface NormalizedMetaobjectsGenConfig
-  extends Omit<MetaobjectsGenConfig, "targets" | "generators" | "dbImport" | "dialect"> {
+  extends Omit<MetaobjectsGenConfig, "targets" | "generators" | "dbImport" | "dialect" | "extStyle"> {
   /** Resolved to a concrete value (the user's, else the inert default). */
   dbImport: string;
   dialect: Dialect;
+  extStyle: ExtStyle;
   /** Fully resolved — every string spec has been mapped to its factory result. */
   generators: Generator[];
   columnNamingStrategy: ColumnNamingStrategy;
@@ -393,6 +400,7 @@ export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobj
     ...config,
     dbImport: config.dbImport ?? DEFAULT_DB_IMPORT,
     dialect,
+    extStyle: config.extStyle ?? DEFAULT_EXT_STYLE,
     generators: resolveGenerators(config.generators),
     columnNamingStrategy: config.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY,
     pluralizeCollections: config.pluralizeCollections ?? true,

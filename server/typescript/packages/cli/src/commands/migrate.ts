@@ -895,6 +895,14 @@ export async function migrateCommand(
       if (exitCode === 0 && emitted) {
         if (config.slug === undefined) {
           log.error(`migrate: --slug <name> required when there are changes (e.g., --slug add-user-shipping)`);
+          // The common way to land here is a NEW database (a fresh clone, CI, another
+          // environment) whose migrations are already committed: the diff against an empty
+          // database is every table, so it asks to author a new migration. That database
+          // needs the committed chain replayed, not a new migration.
+          log.error(
+            `  New database, migrations already committed? Apply them instead: ` +
+            `meta migrate apply-pending --db <url>`,
+          );
           await kysely.close();
           return 2;
         }

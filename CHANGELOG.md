@@ -31,6 +31,23 @@ here.**
 - **SQLite: a function-call column default is wrapped in parentheses** when emitted, as SQLite
   requires (`DEFAULT (expr)`). Before, an authored expression default such as
   `datetime('now')` produced a `CREATE TABLE` that did not parse.
+- **`meta init`'s config passes its own typecheck.** `extStyle` was required by the config
+  type but absent from the scaffolded `metaobjects.config.ts`, so
+  `npx tsc -p tsconfig.codegen.json --noEmit` failed with `Property 'extStyle' is missing`
+  on a fresh project. It is optional now and defaults to `"js"`, which every generator
+  already assumed.
+- **`dbImport` is demanded only by a generator whose output imports `db`.** The reference
+  `entity`, `routes` and `routes-hono` generators (the copies `meta eject` hands over) copy
+  the render context with an object spread, and the demand fired on that read, so
+  `meta eject entity` alone failed with `codegen config is missing dbImport` in a project
+  whose queries take `db` as a parameter. The runner now checks the emitted output instead,
+  which also fixes copies already ejected.
+- **A new database is pointed at `meta migrate apply-pending`.** `meta init`'s next steps
+  name it, and `meta migrate --db <url> --apply` against an empty database with committed
+  migrations now says to replay them rather than only asking for `--slug`.
+- **`meta verify` names the prompt file it could not find.** `ERR_PARTIAL_UNRESOLVED` now
+  says which file to create (`prompts/<ref>.mustache` or `.txt`) and that `--prompts` moves
+  the root, instead of only naming the directory it searched.
 - **Agent context: hand-built LLM prompts** (#389). The always-on context installed by
   `meta init` gains a rule: once a project declares any `template.prompt`, every LLM prompt is
   one, replies are read through a response model, and changing a hand-built prompt means

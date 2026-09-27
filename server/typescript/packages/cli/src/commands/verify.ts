@@ -1039,7 +1039,8 @@ export async function verifyCommand(
         const text = provider.resolve(ref);
         if (text === undefined) {
           log.error(
-            `[${tmpl.name}] (${label}) ${ERR_PARTIAL_UNRESOLVED}: ref "${ref}" did not resolve under ${promptsDir}`,
+            `[${tmpl.name}] (${label}) ${ERR_PARTIAL_UNRESOLVED}: ref "${ref}" did not resolve under ${promptsDir}` +
+              ` — create ${join(promptsDir, `${ref}.mustache`)} (or .txt), or point --prompts at the directory that holds it`,
           );
           errorCount++;
           anyErrorHere = true;

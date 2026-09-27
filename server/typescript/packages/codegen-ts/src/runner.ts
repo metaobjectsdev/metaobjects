@@ -263,6 +263,10 @@ export function shouldNoteNamesArtifactAbsent(
   return versionBefore(was, since);
 }
 
+/** What a generator reads as `dbImport` when the config declares none. Emitting it means the
+ *  generator needed a db module path; the runner then fails naming that generator. */
+const DB_IMPORT_UNSET = "__METAOBJECTS_DB_IMPORT_UNSET__";
+
 export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   const warnings: string[] = [];
   const strategy = opts.mergeStrategy ?? "overwrite";
@@ -725,23 +729,17 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       warn: (msg) => warnings.push(`[${generator.name}] ${msg}`),
     };
 
-    // The point of USE for an undeclared dbImport (see the guard above). Reading
-    // it is what proves this generator emits a db-singleton import, so reading is
-    // what asks for it; a generator that never touches it never demands it. The
-    // throw travels through the `[${generator.name}]` wrapper below, so the message
-    // names the generator that wants the path. Both surfaces are covered because a
-    // generator may read either.
-    if (dbImportUndeclaredFor(selfTarget.name)) {
-      const demand = (): never => {
-        throw new Error(
-          `codegen config is missing dbImport — this generator emits ` +
-            `\`import { db } from …\` and needs the module to import it from. Set dbImport in ` +
-            `metaobjects.config.ts (or on this generator's target). A project whose generated ` +
-            `queries take \`db\` as a parameter never needs it.`,
-        );
-      };
-      Object.defineProperty(renderContext, "dbImport", { get: demand, configurable: true });
-      Object.defineProperty(ctx.config, "dbImport", { get: demand, configurable: true });
+    // The point of USE for an undeclared dbImport (see the guard above). The value a
+    // generator reads is a MARKER, and the demand fires only if the marker reaches the
+    // OUTPUT — that is what proves this generator emits a db-singleton import. It used to
+    // be a throwing getter, which fired on any read: the reference generators copy the
+    // render context with an object spread, and a spread reads every property, so
+    // `entityFile()` demanded a dbImport it never emits. A marker survives the spread
+    // (and any path arithmetic, being a bare specifier) and is checked after generate.
+    const dbImportUndeclared = dbImportUndeclaredFor(selfTarget.name);
+    if (dbImportUndeclared) {
+      Object.defineProperty(renderContext, "dbImport", { value: DB_IMPORT_UNSET, configurable: true, enumerable: true, writable: true });
+      Object.defineProperty(ctx.config, "dbImport", { value: DB_IMPORT_UNSET, configurable: true, enumerable: true, writable: true });
     }
 
     let files: EmittedFile[];
@@ -758,6 +756,14 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       // not five. Emitting nothing is often CORRECT — a form generator on a model
       // with no forms — so this reports, it never fails.
       if (files.length === 0) emptyGenerators.add(generator.name);
+      if (dbImportUndeclared && files.some((f) => f.content.includes(DB_IMPORT_UNSET) || f.path.includes(DB_IMPORT_UNSET))) {
+        throw new Error(
+          `codegen config is missing dbImport — this generator emits ` +
+            `\`import { db } from …\` and needs the module to import it from. Set dbImport in ` +
+            `metaobjects.config.ts (or on this generator's target). A project whose generated ` +
+            `queries take \`db\` as a parameter never needs it.`,
+        );
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       // `cause` preserves the original throw. Without it a `runGen` caller sees a

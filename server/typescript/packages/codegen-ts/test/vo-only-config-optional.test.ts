@@ -18,6 +18,7 @@ import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen } from "../src/runner.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import { routesFile } from "../src/generators/routes-file.js";
+import { entityFile as referenceEntityFile } from "../src/reference/entity.js";
 import type { MetaobjectsGenConfig } from "../src/metaobjects-config.js";
 
 let tmp: string;
@@ -101,6 +102,20 @@ describe("#194 item 3 — dbImport/dialect optional for value-object-only and so
     // dbImport, so nothing may demand it.
     const root = await load(ENTITY);
     const cfg = { ...configNoDb(), dialect: "sqlite" as const } as MetaobjectsGenConfig;
+    const result = await runGen({ config: cfg, metadata: root, projectRoot: tmp });
+    expect(result.files.length).toBeGreaterThan(0);
+  });
+
+  test("the REFERENCE entity generator (what `meta eject entity` copies) does not demand dbImport", async () => {
+    // It copies the render context with an object spread, which reads every property.
+    // When the demand was a throwing getter, that read alone convicted a generator whose
+    // output never imports `db`.
+    const root = await load(ENTITY);
+    const cfg = {
+      ...configNoDb(),
+      dialect: "sqlite" as const,
+      generators: [referenceEntityFile()],
+    } as MetaobjectsGenConfig;
     const result = await runGen({ config: cfg, metadata: root, projectRoot: tmp });
     expect(result.files.length).toBeGreaterThan(0);
   });

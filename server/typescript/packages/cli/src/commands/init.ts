@@ -157,6 +157,8 @@ Next steps:
   4. meta gen                  # generate from exactly what you wired
   5. meta docs                  # neutral model + API docs (on by default)
   6. Create your tables: meta migrate --from-db --db file:dev.sqlite --dialect sqlite --slug init --apply
+     A new database later (a fresh clone, CI, tests) replays the committed migrations:
+       meta migrate apply-pending --db file:other.sqlite
 `;
 
 export interface InitOptions {
