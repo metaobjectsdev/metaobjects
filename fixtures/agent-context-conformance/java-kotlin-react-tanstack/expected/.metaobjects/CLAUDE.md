@@ -57,7 +57,11 @@ MetaObjects ships as separate packages per language on DIFFERENT version lines (
 ## Going deeper (Claude Code)
 For authoring, codegen, runtime/UI, prompts, verify, or adoption-audit work, use the
 matching `metaobjects-*` skill — its body links the `references/<lang>.md` fragment
-installed for this project's stack.
+installed for this project's stack. Read only the skill your task needs, and inside it the
+`SKILL.md` plus the reference file it points you to; the other `references/` files are topics
+to open when they come up, not reading to do up front. A skill that `meta init` wrote during
+the current session may not load by name until the next one; read
+`.claude/skills/<name>/SKILL.md` directly.
 
 ## Refreshing / customizing this generated context
 This file and the `metaobjects-*` skills are **generated** by MetaObjects for this project's

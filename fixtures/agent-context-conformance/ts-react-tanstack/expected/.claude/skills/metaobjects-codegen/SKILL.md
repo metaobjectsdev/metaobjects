@@ -23,7 +23,21 @@ as a broken core guarantee.
 
 This skill is the port-agnostic procedure. The exact config file, generator names,
 and command for *this* project's server language live in a reference fragment
-(pointed to at the bottom).
+(see the table below).
+
+## Reference files — open only the one your task needs
+
+Your server language's file (`references/typescript.md`, `references/java.md`, …) has the
+exact config, generator names and commands for this project; read it. The other files in
+`references/` are topics — open one when its row matches what you are doing.
+
+| File | Open it when |
+|---|---|
+| `references/owning-generators.md` | generated output is wrong; your framework is not the one a reference emits for; you write or review a generator (the `own*()` accessor table) |
+| `references/choosing-layers.md` | the generated API does not fit, you need joined or derived data, or you are adopting onto existing code |
+| `references/template-or-code.md` | choosing between a code generator and a Mustache template |
+| `references/physical-names.md` | before you write a table, column or index name as a string |
+| `references/dependencies-and-shared-models.md` | the project consumes or publishes metadata across projects |
 
 ## Need an output? Write the generator — this is the primary path
 
@@ -84,7 +98,7 @@ without typechecking, so a wrong accessor runs silently.
   forms and the raw `isArray` flag do not, and the output is silently wrong on any model
   that uses inheritance. In Python `attr()` is the OWN read — use `model_walk` or
   `attrs().get()`. On the JVM `getName()` is the fully-qualified name — use
-  `ModelWalk.name`. Full table below.
+  `ModelWalk.name`. Full table: `references/owning-generators.md`.
 - **Names from the model, resolved by the engine's rules.** An `@objectRef` resolves
   package-locally through the port's helper (`objectRefTarget` and its equivalents),
   never by matching a short name. A REST address is `servedPath` / `route_path` /
@@ -169,11 +183,11 @@ hand-write in a non-generated file.** FK columns, CRUD, validator chains,
 type-safe finders, `relations()` blocks — all derived, never hand-coded. What you
 hand-write is what metadata genuinely can't express: regex from outside metadata and
 domain logic. Most views are NOT irreducible — model them as an `object.projection`
-and the view DDL is generated (see the projection bullet below); a hand-written view
+and the view DDL is generated (see `references/choosing-layers.md`); a hand-written view
 for a shape origins can express is drift the drift gate can't even see. A genuinely
 *irreducible* view body (recursive CTE, window function, set op) isn't hand-written
 loose either — it goes in the `source.rdb` **`@sql`** escape (#208, ADR-0043) so the
-tool still registers, fingerprints, and drift-checks it (see the projection bullet).
+tool still registers, fingerprints, and drift-checks it.
 
 ## Your generators are yours — editing one needs no permission
 
@@ -202,45 +216,15 @@ shape is wrong, the generator is the file to open, and you do not need to ask fi
 
 Hand-writing something the metadata already describes is step 3 used as step 1.
 
-### A defect in generated code is a defect in your generator
+**A defect in generated code is a defect in your generator.** When generated output does not
+compile, has the wrong shape, or collides with your code, fix the generator that emitted it (or
+the runtime file `eject` copied beside it) in the same change. Do not file an issue upstream,
+pin an older release, or patch a clone of MetaObjects for it. What is legitimately upstream is
+only what you cannot own: the loader and metamodel, the core runtime, the codegen engine, and
+`meta migrate`. Per-port steps: `references/owning-generators.md`.
 
-When generated output does not compile, has the wrong shape, or collides with code you
-wrote, the defect is in the generator that emitted it — and that generator is yours. Fix
-it there, in the same change, and keep going:
-
-| Port | Where the fix goes |
-|---|---|
-| **TypeScript** | Your ejected copy under `codegen/generators/` — and, for routes, the HTTP adapter it calls: `meta eject routes` / `routes-hono` / `entity` also copy that adapter's source (mount helpers, filter parser, error envelopes, pagination) into `codegen/runtime/`, and the ejected output imports it from there, so a bug in a route's behaviour is fixed in that copy. If you are running a generator you never ejected, `meta eject <name>` it first. A generator that `meta eject --list` does not name (the prompt tier, for one) has no reference template yet: replace it in `generators` with your own `Generator`, starting from its source in the installed package. |
-| **Java / Kotlin** | Your own generator class. Subclass the reference generator and override the `protected` method that emits the wrong piece; when that piece is `private`, copy the reference generator's source (Apache-2.0) into your own package and edit it. Put the class in a codegen module that the module running `metaobjects:generate` depends on — the plugin loads `<classname>` from that module's compile classpath, and `provided` scope keeps it out of your packaged app — then point `<classname>` at it. Full steps: the Java and Kotlin references. |
-| **C# / Python** | Your owned copy (`dotnet meta eject <name>` / `metaobjects eject <name>`, then edit it), or a generator of your own that replaces the artifact — an `IGenerator` in `codegen/Program.cs` on C#, a `module:symbol` entry on Python — or a template spec (`--template-spec`). |
-
-Then do **not**:
-
-- file an issue against MetaObjects for it, or draft one "for upstream";
-- pin an older MetaObjects release, or wait for a newer one, to get past it;
-- branch, patch, or rebuild a clone of the MetaObjects repository.
-
-The reference generators are starting points you take a copy of. They are
-conformance-gated so the copy starts out correct — not so that each project's output
-becomes the library's problem. Once you run a generator in your build, what it emits for
-your model is yours, exactly as if you had written it.
-
-**What is legitimately upstream** is only what you cannot own: the **loader and
-metamodel** (valid metadata rejected, invalid metadata accepted, a wrong resolution), the
-**core runtime** your app imports (the metadata-driven `ObjectManager`, prompt render, the
-reply parser — not an HTTP adapter you ejected, which is yours), the **codegen engine
-itself** (the runner, the three-way merge, `verify`), and **`meta migrate`**. The test is
-mechanical: if changing a generator — or a file eject copied beside it — fixes it, it is
-yours.
-
-**The converse, so ownership does not become sprawl:** wire a generator only for output
-you will actually consume. Decide per generator, narrow one with its own `filter`, and
-own the ones you keep — an emitted file nobody imports still reads as an invitation to
-adopt the surface you decided against.
-
-Every port gets a reference generator's source the same way — its `eject` command — and
-writes a new one against the same small interface (the top of this skill). Your language
-reference has the per-port mechanics.
+**Wire a generator only for output you will consume.** An emitted file nobody imports still
+reads as an invitation to adopt the surface you decided against.
 
 ## Selecting generators — NOTHING is generated until you choose it
 
@@ -312,390 +296,36 @@ that follows, for your model.
 
 An abstract entity never emits instance/write artifacts regardless of what is wired.
 
-## A dependency's metadata is load-only by default — codegen excludes it
-
-A project may declare `dependencies` in `.metaobjects/config.json` and `meta deps
-sync` a publisher's metadata into a committed snapshot (TypeScript + Python,
-Phase 1a). That snapshot's nodes load so your own model can resolve against them
-(`extends`, `overlay: true`, plain FQN references) — but codegen (and `verify
---codegen`, and the requirements ledger's denominator) **excludes them by
-default**. A node is "imported" when its metadata *package* is one a dependency
-owns; an imported node is generated only when your own `scope.include` names that
-package **literally** (`acme::common::**` or `acme::common::Address` name
-`acme::common`; a bare `acme::**` or `**` do not — they match the package's nodes,
-which is weaker than naming it). Naming the package in `scope.include` (and, if
-you own its tables, `migrate.scope`) is how a consumer takes over a shared model —
-the "I instantiate this metadata myself" case, no separate mode needed.
-
-Running `meta gen <Name>` (or a Python `entities: [...]`) on a name that resolves
-to nothing but excluded imports is refused by name (exit 2) rather than silently
-generating nothing — the message names the dependency and the `scope.include` fix.
-
-## Publishing a shared model: `sharedModelFile()`
-
-The other side of the same feature: `@metaobjectsdev/codegen-ts` ships
-`sharedModelFile({ name, include, exclude?, files?, version?, target? })`, a
-generator a publisher wires to select a subset of its own metadata (by the same
-scope-pattern grammar as `scope`) and emit it as one canonical-JSON artifact +
-manifest — the thing a consumer's `meta deps sync` copies. It closure-checks the
-selection (every reference from a selected node must resolve to another selected
-node, or the build fails naming the pair) and re-loads the emitted artifact with
-core providers only, so a Phase 1a export needing non-core vocabulary fails at
-publish time. It is registered and shows up in `meta gen --list` like any other
-generator — but **it is deliberately not offered by `meta eject --list`** (unlike
-the four ADR-0034 scaffold-and-own generators). The artifact is a contract whose
-bytes a cross-port corpus pins and whose hash consumers verify; a user-owned,
-editable copy would invite an artifact that silently stops matching what
-consumers expect. Only TypeScript can run it in Phase 1a. **Phase 1a is TypeScript and Python
-only, full stop** — TypeScript and Python are the only two ports that can
-*consume* a dependency at all today, and only the TypeScript toolchain can
-*publish* one; Java, Kotlin, and C# do not read `dependencies` yet (Phase 2).
-Full detail: `docs/features/metadata-dependencies.md`.
+**A dependency's metadata is load-only by default:** codegen excludes nodes from a package a
+dependency owns unless `scope.include` names that package literally. See
+`references/dependencies-and-shared-models.md`, which also covers publishing with
+`sharedModelFile()`.
 
 ## You don't have to generate everything — pick your layers
 
-Codegen is **granular and à la carte, not all-or-nothing.** The most powerful
-pattern when an app's API doesn't match generated CRUD: **generate the data layer,
-hand-write only the API layer** — never abandon codegen wholesale and hand-write
-the data access too.
+Codegen is à la carte. When the app's API does not match generated CRUD, **generate the data
+layer and hand-write only the routes**, calling the generated queries — never abandon codegen
+for the data access too. An entity's own columns plus a joined extra is an **entity read-view**,
+not a projection; derived or aggregate data is a projection whose generated query you call.
+Details and the adoption rules: `references/choosing-layers.md`.
 
-- **Generate the data layer, skip the routes.** Omit `routesFile()` from the
-  `generators` array (keep `entityFile()` + `queriesFile()` + `barrel()`): you get
-  the typed entity/table, schemas, and query/finder helpers, then write your own
-  routes by hand — *calling the generated queries*. Do this whenever the API shape
-  (custom paths, HTML responses, nested payloads) doesn't fit generated REST CRUD.
-- **Mix generated and hand-written routes.** Even with custom paths, mount the
-  standard verbs with the runtime helpers and hand-write only the custom ones (see
-  the runtime skill's `mountCrudRoutes` / `mount<Verb>Route` / `expose`). You are
-  never forced into all-generated or all-hand-written.
-- **Entity's OWN columns + a joined extra → an entity read-view, NOT a projection.**
-  The most common legacy view is `SELECT o.*, c.name AS customer_name FROM orders o
-  JOIN customers c …` — the entity *with a read route*, not an independent exposure.
-  Reach for an **entity read-view** first: keep the entity's writable `table` source
-  and add a **non-primary** read-only source (`source.rdb` `@role: replica`
-  `@kind: view`), declaring only the *extra* as a derived (`origin.*`) field — the
-  entity's own field set already covers `o.*`, so you re-state nothing but the extra.
-  Codegen then routes **reads** to the view and **writes** to the table (derived
-  fields don't exist there and are excluded from the write codecs); a create/update
-  re-reads the row through the view by primary key, so the returned value carries the
-  derived columns (read-your-writes). Shipped all five ports (#213 write half + #214
-  read half). Reach for a **projection** (below) instead only when it is an
-  independent exposure contract — a subset, renamed base columns, a versioned/external
-  shape, or a row-filtered view. See `docs/features/source-kinds.md`.
-- **Derived/aggregate data → declare a projection, then USE its generated query.**
-  Don't hand-write a join or an `AVG()`/`COUNT()`. Declare an `object.projection`
-  with `origin.*` children — `origin.passthrough` (a forwarded column),
-  `origin.aggregate` (`@agg` `count`/`sum`/`avg`/`min`/`max`, plus the #195
-  `any`/`all` predicate quantifiers over a `@filter` and `collect` array-rollup with
-  optional `@distinct`/`@orderBy`; any aggregate may be row-scoped with `@filter`),
-  `origin.computed` (a row-level `@expr`), and
-  `origin.first` (one related row's column along `@via`/`@of`/`@orderBy`) — **and a
-  read-only `source.rdb` `@kind: view` child** (codegen detects a projection by that
-  read-only source, not by the subtype alone — omit it and nothing is generated).
-  `meta gen` emits a read-only query for it (and `meta migrate` its DB view), and you
-  **call that generated query from your route**. Declaring the projection is only half
-  the win — *consuming* its generated query is the other half.
-  - **Row-filtered views are a projection `@filter`, not hand-written SQL.** An
-    object-level `@filter` on `object.projection` (the same `attr.filter` shape as a
-    preset filter) scopes the whole view's rows — it lowers to the view's outer
-    `WHERE` (#207). This is the metadata-managed way to author a soft-delete / status
-    / type view without hand-writing SQL.
-  - **Never hand-author the view SQL for a shape origins can express.** The
-    `CREATE VIEW` body is emitted by the Node `meta migrate` from the projection's
-    `origin.*` children — hand-writing it is a second source of truth that drifts
-    silently, because an unmodeled DB view is *unmanaged*: `meta verify --db` never
-    flags it. For a genuinely irreducible body (recursive CTE, window function, set
-    op) that origins can't express, carry it in the `source.rdb` **`@sql`** escape
-    (#208, ADR-0043) — a hand-written body the tool registers, fingerprints, and
-    drift-checks (adopt a pre-existing view with `meta migrate --allow adopt-view`) —
-    rather than a hand-edited migration file where it goes accidentally unmanaged.
-    For a DB object owned entirely elsewhere (Flyway), mark its source
-    **`@unmanaged: true`** (view or table); migrate/verify then never touch it.
-    `@sql` and `@unmanaged` are mutually exclusive.
+## Two ways to author a generator
 
-`meta gen --list` prints every generator by stable name (add `--probe` for a file count
-against your own model); the `generators` array in `metaobjects.config.ts` is where you
-opt each one in. It starts empty.
+A generator is **programmatic** (code that builds the output) or **declarative** (a Mustache
+template plus a `scope` and an `outputPattern`). Both ship in every port. Use programmatic code
+when the logic is involved; use a template when the shape is what you are iterating on, or you
+want one output across languages. The per-port wiring is in
+`references/template-or-code.md`. Whether a base/extension split or a write-if-absent
+file exists is answered in `docs/features/codegen-concepts.md` §5-§7: MetaObjects ships one
+hand-edit strategy, and no shipped generator emits either.
 
-### Adopting onto existing code — make codegen match the code, not the code match codegen
+## Never hand-write a physical name
 
-On a **brownfield adoption** (existing working code / live schema — see
-`metaobjects-authoring` → "Adopting onto an existing codebase"), the goal of codegen is to
-**reproduce the shape the code already has** so the generated output drops in with minimal
-churn. When generated output doesn't match — different names, file layout, imports, or
-signatures than the existing code — **customize the codegen to match the existing code first**,
-using the à-la-carte layers, `outputPattern`/target layout, naming strategy, template
-customization, and owned/custom generators described here. That is the intended adoption path,
-**not a hack** — the whole point of owned generators + three-way merge is to shape output to
-your codebase. Reshaping working call sites to fit the generator's defaults is the **last**
-resort, and only for the layer codegen is actually replacing (the hand-rolled CRUD/DTO/mapper
-you're deleting behind a parity gate). If matching the existing shape would require a genuinely
-hacky generator contortion, that is the moment to **ask the human** which side should give —
-don't silently churn the existing code.
-
-## A generator of your own beside the references
-
-Real apps routinely need output no reference emits as-is — a bespoke REST contract, custom
-DTO or response shapes, an app-specific service layer, a document for another team. The
-answer is the section at the top of this skill: **write the generator**, in the same
-`generators` list as any reference you ejected. It runs in the same pass, writes under the
-same target rules, and is drift-gated the same way. The runner adds no header to its output;
-on TypeScript, C# and Python none is needed, because the hash manifest records what was
-written.
-
-Write a new generator when the *shape* needs to change. When a reference's shape is right
-and only its *target* is wrong — a different framework than the reference emits for — eject
-that generator and retarget it instead; see the next section.
-
-## Your framework isn't the default — the retargeting procedure
-
-If the shipped templates do not emit for your stack, retargeting is the **normal first
-move** — not a workaround and not a sign of a bug. Owning a generator is the supported
-path to any framework; MetaObjects does not ship a codegen package per framework and is
-not waiting to.
-
-The doctrine, in order of what to try:
-
-1. **Check config first.** Several apparent codegen failures are one config value
-   (module-specifier style, output directory, dialect, API prefix). Change it and retest
-   before writing any code.
-2. **Own the generator, not the renderer.** Take a copy of the reference template for the
-   artifact that is wrong and edit the one step your framework disagrees about. Each
-   template's header names what its emit is coupled to and which call to swap.
-3. **Compose, do not fork.** Call the exported render function and wrap its result where
-   you can, so you keep receiving upstream fixes. Forking a whole renderer is the thing
-   to avoid — not owning the generator.
-4. **Server-tier output is usually already portable.** The entity module and the query
-   helpers carry no HTTP-framework coupling; retargeting is usually only needed at the
-   routes and UI tiers.
-
-Hand-rolling *away from* metadata is the anti-pattern. Generating *your own shape from*
-metadata is the point.
-
-### Never read metadata through an `own*()` accessor (ADR-0039) — top bug source
-
-When writing OR reviewing a generator, **read every field/node property and iterate
-every member set through the resolving/effective accessor — never the `own*()` form.**
-`extends` is a **super-reference, not a flatten**: a concrete field/entity that
-`extends` an abstract parent keeps its inherited attributes and members physically on
-the parent, reachable only through the *resolving* accessor. An `own*()` read of an
-effective property (`isArray`, `subType`, `maxLength`, `precision`/`scale`, `default`,
-the physical column name, `objectRef`, `storage`, `required`, …) or an own-only member
-iteration **silently drops everything inherited via `extends`** — the classic symptom
-was a concrete field that inherited `isArray: true` from an abstract parent generating
-a *scalar* column. These reads compile and pass every fixture that never exercises
-`extends`, so they are a latent, cross-port top bug source.
-
-**The one legitimate `own*()` use:** a generator emitting a generated **subclass** that
-`extends` a generated base iterates **own members** (`ownFields()`) so the inherited
-members are **not re-emitted** — the generated base class already declares them (the
-`class Sub extends Base` / TPH pattern). Everywhere else, resolve. (The own-mode
-canonical serializer and overlay-merge are the only other sanctioned own reads, and
-they are library-internal, not app-generator concerns.) The one deliberately-own
-attribute is `@dbColumnType` — a physical column-type override that is never inherited.
-
-**Per-port own↔resolving mapping** (reach for the resolving column; comment any
-`own*()` call with the sanctioned case it is):
-
-| Port | Resolving (default — use this) | Own-only (avoid unless emitting a subclass's own members) |
-|---|---|---|
-| TypeScript | `attr(name)`, `children()`, `fields()`, `isRequired`, `resolvedIsArray()` | `ownAttr(name)`, `ownChildren()`, `ownFields()`, the raw `isArray` field flag |
-| Python | `metaobjects.codegen.model_walk`, `attrs().get(name)`, `children()`, `fields()` | `attr(name)` **(own!)**, `own_children()`, `own_fields()`, the raw `is_array` |
-| Java / Kotlin | `ModelWalk.*`, `getMetaAttr(name)`, `getMetaFields()`, `isArrayType()` | `getMetaAttr(name, false)`, `isArray()`, own-only child walks (and `getName()` is the FQN — `ModelWalk.name` is the bare name) |
-| C# | `Attr(name)`, `Children()`, `Fields()`, `ResolvedIsArray()`, `EffectiveEnumValues` | `IsArray` native flag, `OwnChildren()`, `OwnAttr(name)`, `EnumValues` |
-
-**Naming inversion — the trap:** the *default-named* accessor is NOT consistently the
-safe one. **TS `attr()` RESOLVES; Python `attr()` is OWN** (own-only). In Python you
-must call `attrs().get(name)` to get the inherited value — a bare `attr(name)` is the
-own read that drops inheritance. When you review or port a generator, check the port's
-convention, not the method name.
-
-**Close but not exact?** You don't always need a new generator — a generated file is
-a normal source file. Copy it and customize the copy (three-way merge preserves your
-edits on regen), or customize the template a built-in renders from. Reach for a
-custom generator when you want the change applied **consistently across every
-entity** (the scale win); a one-off edit when it's genuinely one file.
-
-**The decision ladder:** an output the model describes that no reference emits → write
-a generator (the top of this skill) · a reference is close → eject it and customize the
-copy · a reference fits → use it · only the genuinely un-modelable (business algorithms,
-external calls) is hand-written outside codegen — and it still imports the generated
-types.
-
-## Two ways to author a generator — pick deliberately
-
-A generator can be **programmatic** (code that builds the output) or **declarative** (a
-Mustache template plus a scope). Both are first-class, both ship in every port, and they
-are good at different things.
-
-| | Programmatic | Declarative template |
-|---|---|---|
-| What you write | a `Generator` in the port's language, using its AST builder (ts-poet, KotlinPoet, …) | a `.mustache` file + `{ template, scope, outputPattern, format? }` |
-| Output shape | expressed in code | **is the file you are editing** |
-| Cross-language | per-port by construction | one template emits for any language — it renders against the neutral, byte-gated data dict |
-| Logic | any | what a template can express: sections, iteration, presence flags |
-
-**The rule:** reach for **programmatic** when the logic is gnarly or the run is hot; reach
-for a **template** when the *shape* is what you are iterating on, or when you want the same
-output across languages. `scope` is `perEntity` / `perPackage` / `perModel` — the walk you
-would otherwise hand-write — and `outputPattern` is the output path per item, with
-`{name}` / `{Name}` / `{package}` placeholders (e.g. `"{package}/{Name}Service.java"`).
-Full tradeoff table and the data dict: `docs/features/codegen-concepts.md` §3 and §10.
-**Asking whether a base/extension split or a write-if-absent file exists? That's §5-§7, not
-here.** §5 (*Preserving hand edits*) states MetaObjects ships exactly one hand-edit strategy —
-no shipped generator on any port emits a generated-base + hand-owned-concrete pair, or a
-write-if-absent file; §6 names the `skip-existing` merge strategy `runGen` accepts for
-building that pair yourself, reachable only from a programmatic caller (no CLI flag selects
-it); §7 (*Safety*) is the per-port write-decision mechanism behind "What codegen does" step 4
-above.
-
-**A template is not limited to documents.** It emits source as readily as docs — that is
-what the neutral data dict is for.
-
-### Both are available in every port
-
-**TypeScript** has both, and the whole programmatic procedure is documented: `meta
-generator new`, `meta eject`, the `metaobjects.config.ts` keys, the exported `render*`
-functions — see this skill's `references/typescript.md`. The declarative path is declared
-in the SAME config: call
-`templateGenerator()` in `generators`, or spread a parsed JSON spec with
-`templateSpecToGenerators(parseTemplateSpec(...))` to reuse one written for C#/Python.
-**There is no `--template-spec` flag on `meta gen` and its absence is not a gap** — the
-config takes generator values, and keeping the declaration there is what keeps
-`meta verify --codegen` regenerating with it.
-
-**Java / Kotlin** have both, and both are ownable. `mvn metaobjects:eject -Dnames=<name,...>`
-copies a reference generator into a `codegen/` Maven module you own and edit. A new
-programmatic generator extends `com.metaobjects.generator.FileEmittingGenerator` (return
-the files; it writes them under `outputDir`) and reads the model through `ModelWalk`; name
-your class in the Maven `<generator>` element, which the plugin loads from the project
-classpath. The declarative
-path is `TemplateScopeGenerator`, wired the same way with `<template>` / `<scope>` /
-`<outputPattern>` / `<format>` / `<templatesDir>` (plus the standard `<outputDir>`), and
-covers Java and Kotlin alike. No `--template-spec` flag here either, for the same reason:
-`<generator>` already loads a consumer class from the project classpath.
-
-**C# and Python** have both. Programmatic: on C#, an `IGenerator` listed in the owned
-`codegen/Program.cs` (which `dotnet meta gen` / `verify --codegen` hand off to); on Python,
-a `module:symbol` entry in `--generators` or in `metaobjects.config.yaml`. (Python's
-`--provider module:symbol` registers **metamodel vocabulary**, not a generator.)
-Declarative: `--template-spec <json>` — plus `--templates <dir>` on Python or
-`--template-root <dir>` on C# — and your entries are appended to your `--generators`
-selection. Worked examples with the full JSON: `docs/ports/python.md` and
-`docs/ports/csharp.md`.
-
-**The spec is auto-discovered, and that is load-bearing.** With no `--template-spec`, both
-ports read `<projectRoot>/template-spec.json` — projectRoot being the metadata dir's parent.
-Keep it there: `verify --codegen` accepts no `--template-spec` flag, so the conventional path
-is how the drift gate learns your template generators exist. Put the spec somewhere else and
-reach it only by flag, and `verify` regenerates without it and reports its output as stale.
-
-So on every port, "I need a shape the built-ins do not emit" is answered by a generator of
-your own or a template. Do not conclude the port cannot be customized.
-
-Each port's `references/` fragment documents what its built-ins emit, which is what you
-compare your own emit against; they do not carry a step-by-step retargeting procedure.
-
-## Never hand-write a physical name — the generator emits them
-
-A table name, a column name, a schema — these are declared in metadata and derived by the
-same resolver the migration and the runtime use. A string literal for one is a magic string
-that no compiler checks and no gate catches, and it goes wrong silently: `@column` is
-free-form, so a field named `callPurpose` may map to a column named `purpose_code`, which is
-neither the field name nor any transformation of it. A consumer deriving the column as
-`to_snake_case(<the field's name>)` gets that case wrong and never finds out.
-
-Every port emits a per-object names artifact. Reference it:
-
-```ts
-import { ProgramNames } from "./generated/Program.names.js";
-
-ProgramNames.name                          // "Program"        — the OBJECT's name
-ProgramNames.sources.primary.table         // "programs"       — physical table
-ProgramNames.sources.primary.kind          // "table"          — table | view | proc | …
-ProgramNames.fields.createdAt.name         // "createdAt"      — logical / wire name
-ProgramNames.fields.createdAt.column       // "created_at"     — physical column
-ProgramNames.indexes.ix_prog_owner.index   // "ix_prog_owner"  — database index name
-```
-
-The artifact mirrors the metadata tree: every node carries its own `type`, `subType` and
-`name`, and a physical name sits under the key that says **what kind of database object it
-is**. A view is `sources.primary.view`, a stored proc `sources.primary.proc`, and a
-write-through entity's read view `sources.replica.view` — so `sources.replica.table` is a
-compile error rather than a wrong answer. There is no `readOnly`: it was derived from
-`kind`, never declared, so ask `kind`.
-
-The artifact is per-object and the shape is per-language; the guarantee is the same
-everywhere — **each physical name is spelled once, and generated code references it**:
-
-| Port | Artifact | Reads as |
-|---|---|---|
-| TypeScript | `<Entity>.names.ts` | `ProgramNames.fields.createdAt.column` |
-| C# | `<Entity>Names.g.cs` | `ProgramNames.CreatedAtColumn` |
-| Java | `<Entity>Names.java` | `ProgramNames.CREATED_AT_COLUMN` |
-| Kotlin | `<Entity>Names.kt` | `ProgramNames.CREATED_AT_COLUMN` |
-| Python | `<entity_snake>_names.py` | `PROGRAM_CREATED_AT_COLUMN` |
-
-**Check that it is actually wired before you reference it — on ALL FIVE ports a project
-emits none until it asks for it.** ADR-0034 Amendment 2 made codegen opt-in everywhere: no
-port ships a default suite, so there is no port on which upgrading the package starts
-emitting this artifact. "Wired" is the only fact there is.
-
-| Port | Where the selection is declared | An existing project upgrading gets it? |
-|---|---|---|
-| C# | `--generators <names>` on `dotnet meta gen` — required, no default | **No** — name `names` |
-| Python | `--generators <names>` on `metaobjects gen` — required, no default | **No** — name `names` |
-| TypeScript | `metaobjects.config.ts` `generators: [...]` — the complete list | **No** — add `namesFile()` |
-| Java / Kotlin | the pom's `<generators>` — the complete list | **No** — add `SpringNamesGenerator` / `KotlinNamesGenerator` |
-
-`meta init` scaffolds `generators: []` and an empty `codegen/generators/`, so even a
-project *initialized* at 1.0 has to choose this one — the scaffold is deliberately not a
-default by another name. To wire it into a TS project:
-
-```ts
-import { namesFile } from "./codegen/generators/names.js";   // after `meta eject names`
-export default defineConfig({ generators: [entityFile(), queriesFile(), namesFile(), barrel()] });
-```
-
-`meta eject names` copies the owned generator in; `namesFile` is also importable from
-`@metaobjectsdev/codegen-ts/generators` if you would rather not own it. Once it is present,
-the entity generator and the Exposed / Drizzle table bindings switch to referencing the
-constants instead of embedding the physical names a second time — so wiring it changes
-generated output, and that diff is the point.
-
-**It follows `extends`.** An object that extends another does not restate what it
-inherits: C# and Java use real class inheritance (`class CopayAuthNames extends
-AuthNames`), TypeScript spreads (`...AuthNames.fields`), and Kotlin and Python re-export
-the parent's constants by reference. An abstract base a persisted object extends gets an
-artifact of its own — columns only, no table name, because it has none. So if you are
-reading a subtype's artifact and its table name is not there, it is on the base, which is
-where it belongs.
-
-**Where generated code consumes it, and where it does not.** TypeScript, C# and Kotlin
-bind an ORM (Drizzle, EF Core, Exposed) and so must spell physical names — their generated
-code references these constants, and a cross-port gate proves no generated file spells one
-literally. **Java and Python generate no SQL at all**: their DTOs and models carry logical
-names, and persistence is the repository interface/`Protocol` you implement. There the
-artifact exists *for your code*, which is the only place a physical name appears.
-
-Two categories stay literal, deliberately, and the gate pins them as such rather than
-exempting them:
-
-- a **flattened value-object column** (`@storage: flattened`) is a composite —
-  `<owner field column>_<member column>` — belonging to no single field of either object,
-  so there is no one constant to reference;
-- a **write-through entity's replica view name**: the artifact holds the object's PRIMARY
-  source's name (its table), and a write-through entity has two physical names.
-
-**But prefer a typed handle where one exists — this rule has a real limit.** If the ORM
-gives you a type-checked object for the same thing, use that. Replacing a Drizzle column
-object (`programs.createdAt`, checked against the schema at compile time) with a string
-constant makes the code **worse**: it trades an error the compiler catches for one the
-database raises at runtime. The constants are for the places with no typed handle — raw
-SQL, migration scripts, log lines, an external system's column mapping, a port whose
-generated model carries no persistence binding at all.
-
-The rule is *don't invent the string*, not *replace every name with a constant*.
+A table, column, schema or index name is declared in metadata. Every port can emit a per-object
+names artifact (`<Entity>.names.ts`, `<Entity>Names.java`, …) — **but only when you wire the
+`names` generator**, since no port generates it by default. Reference its constants from raw SQL,
+migration scripts and external mappings; prefer the ORM's typed column handle where one exists.
+Details: `references/physical-names.md`.
 
 ## Dialects
 
@@ -705,6 +335,8 @@ Generated DB schema/DDL targets a SQL **dialect**:
 - `sqlite` — supported; rejects non-default DB schemas.
 - `d1` (Cloudflare D1) — **TypeScript-only**. It is SQLite at the SQL level; the
   non-TS server ports have no analogue, so it never appears in their config.
+- `mysql` — **TypeScript codegen and runtime only.** `meta migrate` does not own a MySQL
+  schema and refuses `--dialect mysql`; you keep the DDL yourself.
 
 Set the dialect once in the project's codegen config. Field subtypes map to the
 dialect's column types deterministically (`field.string` + `@maxLength` →
@@ -713,8 +345,8 @@ Postgres, `field.enum` → `varchar` + `CHECK`, etc.).
 
 Codegen only ever maps the **shapes you authored** — so author them right. If you
 find the generator emitting the wrong column type, the fix is the field shape, not a
-template hack. See "Choosing the right shape — the general decision procedure" in the
-**`metaobjects-authoring`** skill for the ordered derive→`@dbColumnType`→subtype/
+template hack. See the decision procedure in the **`metaobjects-authoring`** skill
+(`references/choosing-a-shape.md`) for the ordered derive→`@dbColumnType`→subtype/
 `@kind`/attribute routing (ADR-0037) — e.g. arrays are `isArray: true` (never an
 array column type) and a native UUID is `field.uuid` (not a string + `@dbColumnType`).
 When you register custom vocabulary for a custom generator, the same ADR-0037
@@ -741,4 +373,6 @@ specific entity names to scope a run to those entities.
 
 ---
 
-For this project's server-language codegen specifics, read every `references/*.md` file in this skill's directory (one per server language in this project's stack).
+For this project's codegen specifics, read the `references/<language>.md` file for each server
+language in this project's stack (only those are installed). Open the topic files in
+`references/` only when the table at the top points you to one.

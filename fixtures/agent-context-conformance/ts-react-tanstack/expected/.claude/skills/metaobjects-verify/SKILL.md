@@ -269,7 +269,8 @@ What this means in practice:
   reading the same. Do **not** run `meta migrate baseline` on a database that does
   not exist yet; see `references/migration.md`.
 
-- Dialects: `postgres` (default), `sqlite`, and `d1` (Cloudflare D1, TS-only).
+- Dialects: `postgres` (default), `sqlite`, and `d1` (Cloudflare D1, TS-only). MySQL is a
+  codegen and runtime dialect only: `meta migrate --dialect mysql` is refused, and you own the DDL.
 - The JVM and Python ports have **no** migration command of their own — their
   former migrate goals/modules were removed, and (ADR-0015 Decision 2) the JVM
   runtime's own dev/test schema auto-create path
