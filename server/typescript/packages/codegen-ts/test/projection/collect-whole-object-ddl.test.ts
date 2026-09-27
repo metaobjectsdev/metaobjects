@@ -56,17 +56,18 @@ describe("emitViewDdl — #335 whole-object collect", () => {
     );
   });
 
-  // SQLite needs the json_each re-wrap. Measured on 3.44.0: the in-aggregate ORDER BY
-  // destroys the JSON subtype, so json_group_array(json_object(...) ORDER BY ...) returns
-  // an array of QUOTED STRINGS — and a json() wrapper on the argument does not survive it
-  // either. json_each iterates in array order, so re-wrapping element-by-element restores
-  // the objects while keeping the ordering. Found by the real-engine probe.
-  test("sqlite: the ordered array is re-wrapped through json_each so elements stay OBJECTS", () => {
+  // SQLite collects each row as [sort keys…, object] UNSORTED in the grouped query, then
+  // sorts in an outer query and re-wraps each object with json(). No in-aggregate ORDER BY:
+  // it needs SQLite 3.44, and on 3.44 it also turned the objects into quoted strings.
+  test("sqlite: objects are collected unsorted with their PK key, then sorted and re-wrapped", () => {
     const sql = emitViewDdl(wholeObject(), { dialect: "sqlite", ...OPTS });
     expect(sql).toContain(
-      "(SELECT json_group_array(json(mo_je.value)) FROM json_each(" +
-      "COALESCE(json_group_array(json_object('id', s.id, 'name', s.supplier_name) ORDER BY s.id ASC) " +
-      "FILTER (WHERE s.id IS NOT NULL), json_array())) mo_je) AS supplier_briefs",
+      "COALESCE(json_group_array(json_array(s.id, json_object('id', s.id, 'name', s.supplier_name))) " +
+      "FILTER (WHERE s.id IS NOT NULL), json_array()) AS supplier_briefs",
+    );
+    expect(sql).toContain(
+      "(SELECT json_group_array(json(mo_s.v)) FROM (SELECT json_extract(mo_je.value, '$[1]') AS v " +
+      "FROM json_each(mo_g.supplier_briefs) mo_je ORDER BY json_extract(mo_je.value, '$[0]') ASC) mo_s) AS supplier_briefs",
     );
   });
 
@@ -124,9 +125,11 @@ describe("emitViewDdl — #335 no-churn pin on the SCALAR collect arm", () => {
     );
   });
 
-  test("sqlite: json_group_array / json_array() — unchanged", () => {
-    expect(emitViewDdl(scalar(false, []), { dialect: "sqlite", ...opts })).toContain(
-      "COALESCE(json_group_array(i.category ORDER BY i.category ASC) FILTER (WHERE i.id IS NOT NULL), json_array()) AS categories",
+  test("sqlite: the scalar arm orders by the value, with no PK tie-break", () => {
+    const sql = emitViewDdl(scalar(false, []), { dialect: "sqlite", ...opts });
+    expect(sql).toContain(
+      "COALESCE(json_group_array(json_array(i.category, i.category)) FILTER (WHERE i.id IS NOT NULL), json_array()) AS categories",
     );
+    expect(sql).toContain("ORDER BY json_extract(mo_je.value, '$[0]') ASC) mo_s) AS categories");
   });
 });

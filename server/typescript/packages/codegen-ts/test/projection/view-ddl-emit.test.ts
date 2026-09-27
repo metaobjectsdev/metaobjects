@@ -230,11 +230,36 @@ describe("emitViewDdl — #195 array rollup (collect)", () => {
     );
   });
 
-  test("sqlite → json_group_array coalesced to json_array()", () => {
+  // SQLite before 3.44 has no in-aggregate ORDER BY, so the grouped query collects the
+  // elements unsorted and an outer query over it sorts them (the floor is 3.35).
+  test("sqlite → unsorted json_group_array in the grouped query, sorted in the outer one", () => {
     const sql = emitViewDdl(collect(true, []), { dialect: "sqlite", baseTableName: "orders", joinTables: { Item: "items" } });
     expect(sql).toContain(
-      "COALESCE(json_group_array(DISTINCT i.category ORDER BY i.category ASC) FILTER (WHERE i.id IS NOT NULL), json_array()) AS categories",
+      "COALESCE(json_group_array(DISTINCT i.category) FILTER (WHERE i.id IS NOT NULL), json_array()) AS categories",
     );
+    expect(sql).toContain(
+      "(SELECT json_group_array(mo_s.v) FROM (SELECT mo_je.value AS v FROM json_each(mo_g.categories) mo_je" +
+      " ORDER BY mo_je.value ASC) mo_s) AS categories",
+    );
+  });
+
+  test("sqlite: an explicit @orderBy key travels with the element and sorts in the outer query", () => {
+    const sql = emitViewDdl(collect(false, [{ column: "created_at", dir: "desc" }]),
+      { dialect: "sqlite", baseTableName: "orders", joinTables: { Item: "items" } });
+    expect(sql).toContain(
+      "COALESCE(json_group_array(json_array(i.created_at, i.category)) FILTER (WHERE i.id IS NOT NULL), json_array()) AS categories",
+    );
+    expect(sql).toContain(
+      "(SELECT json_group_array(mo_s.v) FROM (SELECT json_extract(mo_je.value, '$[1]') AS v FROM json_each(mo_g.categories) mo_je" +
+      " ORDER BY json_extract(mo_je.value, '$[0]') DESC NULLS LAST) mo_s) AS categories",
+    );
+  });
+
+  test("sqlite: no aggregate carries an in-aggregate ORDER BY (it needs SQLite 3.44)", () => {
+    for (const spec of [collect(true, []), collect(false, []), collect(false, [{ column: "created_at", dir: "desc" }])]) {
+      const sql = emitViewDdl(spec, { dialect: "sqlite", baseTableName: "orders", joinTables: { Item: "items" } });
+      expect(sql).not.toMatch(/json_group_array\([^()]*(\([^()]*\)[^()]*)*ORDER BY/);
+    }
   });
 });
 

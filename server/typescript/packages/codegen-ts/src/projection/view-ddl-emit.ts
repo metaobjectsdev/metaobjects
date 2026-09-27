@@ -68,9 +68,9 @@ function renderFilterCond(clause: ViewFilterClause, dialect: EmitOptions["dialec
   return `${lhs} ${op} ${sqlLiteral(clause.value, dialect)}`;
 }
 
-/** Subquery alias for the json_each re-wrap in the SQLite whole-object collect. Scoped to
- *  its own scalar subquery, so it cannot collide with a JOIN-tree alias; named distinctly
- *  anyway so it is obvious in emitted DDL where it came from. */
+/** Alias of the json_each table that a SQLite collect column sorts its elements over.
+ *  Scoped to its own scalar subquery, so it cannot collide with a JOIN-tree alias; named
+ *  distinctly anyway so it is obvious in emitted DDL where it came from. */
 const JSON_EACH_ALIAS = "mo_je";
 
 /**
@@ -146,6 +146,95 @@ function renderFirst(
   );
 }
 
+type CollectColumn = Extract<SelectColumn, { kind: "collectAgg" | "collectObjectAgg" }>;
+
+/** Alias of the grouped inner query in a two-level SQLite view. */
+const GROUPED_ALIAS = "mo_g";
+/** Alias of the sorted element subquery in a SQLite collect column. */
+const SORTED_ALIAS = "mo_s";
+
+/**
+ * How a SQLite collect column orders its elements. Each element is stored as a JSON array
+ * `[key1, …, keyN, payload]`, or as the bare value when `bare` is set (a `@distinct`
+ * collect orders by the value itself).
+ */
+interface SqliteCollectLayout {
+  readonly keys: readonly { readonly expr: string; readonly order: string }[];
+  readonly payload: string;
+  readonly bare: boolean;
+  /** Wrap each element in json() when re-aggregating — true for a JSON object payload. */
+  readonly json: boolean;
+}
+
+function sqliteCollectLayout(c: CollectColumn): SqliteCollectLayout {
+  const col = (name: string): string => `${c.sourceAlias}.${quoteIfNeeded(name)}`;
+  const orderKeys = c.orderBy.map((k) => ({ expr: col(k.column), order: `${k.dir.toUpperCase()} NULLS LAST` }));
+  if (c.kind === "collectObjectAgg") {
+    const pairs = c.members.map((m) => `'${m.memberName}', ${col(m.sourceColumn)}`).join(", ");
+    // Default element order is the related entity's PK; an explicit @orderBy leads with the
+    // PK appended as a tie-break, so equal-order rows stay byte-deterministic.
+    return {
+      keys: [...orderKeys, { expr: col(c.joinedPkColumn), order: "ASC" }],
+      payload: `json_object(${pairs})`,
+      bare: false,
+      json: true,
+    };
+  }
+  const src = col(c.sourceColumn);
+  // @distinct always orders by the value; otherwise an explicit @orderBy, else value ascending.
+  if (c.distinct) return { keys: [], payload: src, bare: true, json: false };
+  return {
+    keys: orderKeys.length > 0 ? orderKeys : [{ expr: src, order: "ASC" }],
+    payload: src,
+    bare: false,
+    json: false,
+  };
+}
+
+/**
+ * SQLite collect, inner half: the grouped query aggregates the related rows UNSORTED, each
+ * element carrying its sort keys. Ordering happens in the outer query
+ * ({@link sqliteCollectOuter}).
+ *
+ * Why two levels. The ordered aggregate `json_group_array(x ORDER BY …)` needs SQLite 3.44,
+ * and a database holding such a view will not open on anything older (Ubuntu 22.04 ships
+ * 3.37). Before 3.44 the only way to order an aggregate's input is to aggregate over a
+ * sorted subquery — and a subquery cannot read an aggregate of the query around it
+ * ("misuse of aggregate function"), so the sort has to sit one query further out, reading
+ * the grouped result as a plain column. Measured on SQLite 3.35.5, 3.37.2, 3.44 and 3.53.
+ *
+ * This also keeps whole-object elements as JSON objects: without an in-aggregate ORDER BY
+ * `json_group_array(json_array(…, json_object(…)))` nests correctly, where on 3.44
+ * `json_group_array(json_object(…) ORDER BY …)` returned an array of quoted strings.
+ */
+function sqliteCollectInner(c: CollectColumn): string {
+  const layout = sqliteCollectLayout(c);
+  const guard = `${c.sourceAlias}.${quoteIfNeeded(c.joinedPkColumn)} IS NOT NULL`;
+  const element = layout.bare
+    ? `DISTINCT ${layout.payload}`
+    : `json_array(${[...layout.keys.map((k) => k.expr), layout.payload].join(", ")})`;
+  return `COALESCE(json_group_array(${element}) FILTER (WHERE ${guard}), json_array())`;
+}
+
+/** SQLite collect, outer half: sort the grouped column's elements and re-aggregate them. */
+function sqliteCollectOuter(c: CollectColumn): string {
+  const layout = sqliteCollectLayout(c);
+  const grouped = `${GROUPED_ALIAS}.${quoteIfNeeded(c.dbColAlias)}`;
+  const at = (i: number): string => `json_extract(${JSON_EACH_ALIAS}.value, '$[${i}]')`;
+  const value = layout.bare ? `${JSON_EACH_ALIAS}.value` : at(layout.keys.length);
+  const orderBy = layout.bare
+    ? `${JSON_EACH_ALIAS}.value ASC`
+    : layout.keys.map((k, i) => `${at(i)} ${k.order}`).join(", ");
+  const element = layout.json ? `json(${SORTED_ALIAS}.v)` : `${SORTED_ALIAS}.v`;
+  return (
+    `(SELECT json_group_array(${element}) FROM (SELECT ${value} AS v FROM json_each(${grouped}) ${JSON_EACH_ALIAS}` +
+    ` ORDER BY ${orderBy}) ${SORTED_ALIAS}) AS ${quoteIfNeeded(c.dbColAlias)}`
+  );
+}
+
+const isCollect = (c: SelectColumn): c is CollectColumn =>
+  c.kind === "collectAgg" || c.kind === "collectObjectAgg";
+
 function renderColumn(c: SelectColumn, options: EmitOptions, baseAlias: string): string {
   const dialect = options.dialect;
   const alias = quoteIfNeeded(c.dbColAlias);
@@ -200,12 +289,18 @@ function renderColumn(c: SelectColumn, options: EmitOptions, baseAlias: string):
       ? `ORDER BY ${renderOrderKeys(c.orderBy, c.sourceAlias)}`
       : `ORDER BY ${src} ASC`;
     if (dialect === "sqlite") {
-      return `COALESCE(json_group_array(${distinctKw}${src} ${orderClause}) FILTER (WHERE ${guard}), json_array()) AS ${alias}`;
+      // Unsorted here; the outer query of the two-level SQLite view sorts it (see
+      // sqliteCollectInner / sqliteCollectOuter).
+      return `${sqliteCollectInner(c)} AS ${alias}`;
     }
     return `COALESCE(array_agg(${distinctKw}${src} ${orderClause}) FILTER (WHERE ${guard}), '{}') AS ${alias}`;
   }
 
   if (c.kind === "collectObjectAgg") {
+    if (dialect === "sqlite") {
+      // SQLite: unsorted here; the outer query of the two-level view sorts it.
+      return `${sqliteCollectInner(c)} AS ${alias}`;
+    }
     // #335 whole-object rollup. jsonb, not json: PG's `json` has neither an equality
     // nor an ordering operator, so `json_agg(json_build_object(…) ORDER BY …)` does not
     // run — verified against a real PG 15.
@@ -224,31 +319,6 @@ function renderColumn(c: SelectColumn, options: EmitOptions, baseAlias: string):
     const pairs = c.members
       .map((m) => `'${m.memberName}', ${c.sourceAlias}.${quoteIfNeeded(m.sourceColumn)}`)
       .join(", ");
-    // In-aggregate ORDER BY needs SQLite >= 3.44 — not a new constraint: the scalar
-    // collect above already emits it, and D1's baseline is pinned at 3.44.0.
-    if (dialect === "sqlite") {
-      // SQLite cannot do BOTH in-aggregate ORDER BY and JSON nesting in one call.
-      // Measured on SQLite 3.44.0, D1's pinned baseline:
-      //
-      //   json_group_array(json_object(…))                   -> nests correctly
-      //   json_group_array(json_object(…) ORDER BY …)        -> array of QUOTED STRINGS
-      //   json_group_array(json(json_object(…)) ORDER BY …)  -> array of QUOTED STRINGS
-      //
-      // The ORDER BY clause itself destroys the JSON subtype, and a json() wrapper on the
-      // argument does not survive it. Dropping ORDER BY is not an option: element order
-      // would stop being deterministic and an author's @orderBy would silently do nothing.
-      //
-      // So build the ordered array first (elements quoted), then re-wrap element by
-      // element through json_each — which iterates in ARRAY ORDER, so the ordering
-      // survives while json(value) restores each element's JSON subtype. Still a grouped
-      // LEFT JOIN: unlike origin.first this needs no correlation info, so a multi-hop
-      // @via lowers here exactly as a single-hop one does.
-      //
-      // Found by the real-engine probe in integration-tests. Emitted SQL text cannot show
-      // this, which is exactly why golden SQL is not evidence for new DDL.
-      const ordered = `COALESCE(json_group_array(json_object(${pairs}) ${orderClause}) FILTER (WHERE ${guard}), json_array())`;
-      return `(SELECT json_group_array(json(${JSON_EACH_ALIAS}.value)) FROM json_each(${ordered}) ${JSON_EACH_ALIAS}) AS ${alias}`;
-    }
     // PG's jsonb_build_object already yields real jsonb, so jsonb_agg nests it correctly
     // with no wrapper — verified against a real engine, not assumed by symmetry.
     return `COALESCE(jsonb_agg(jsonb_build_object(${pairs}) ${orderClause}) FILTER (WHERE ${guard}), '[]'::jsonb) AS ${alias}`;
@@ -314,9 +384,22 @@ export function emitViewDdl(spec: ViewSpec, options: EmitOptions): string {
       ? `\n  GROUP BY ${spec.groupBy.map(quoteRef).join(", ")}`
       : "";
 
-  const body = `  SELECT
+  const grouped = `  SELECT
 ${cols}
 ${fromClause}${joinsClause ? "\n" + joinsClause : ""}${whereClause}${groupByClause}`;
+
+  // SQLite orders collect elements in an outer query over the grouped one — see
+  // sqliteCollectInner for why. Every other column passes straight through.
+  const collects = options.dialect === "sqlite" && spec.selectSpec.columns.some(isCollect);
+  const body = !collects ? grouped : `  SELECT
+${spec.selectSpec.columns
+  .map((c) => "    " + (isCollect(c)
+    ? sqliteCollectOuter(c)
+    : `${GROUPED_ALIAS}.${quoteIfNeeded(c.dbColAlias)} AS ${quoteIfNeeded(c.dbColAlias)}`))
+  .join(",\n")}
+  FROM (
+${grouped}
+  ) ${GROUPED_ALIAS}`;
 
   if (options.bodyOnly) return body;
   return `CREATE VIEW ${quoteIfNeeded(spec.viewName)} AS

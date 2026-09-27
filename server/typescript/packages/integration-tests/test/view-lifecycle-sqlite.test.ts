@@ -112,11 +112,14 @@ describe("view value-probe — real SQLite (#195 origins)", () => {
     // SQLite lowers collect to json_group_array (a JSON string), any/all to MAX/MIN over 1/0.
     expect(up).toContain(`CREATE VIEW "v_program_summary" AS`);
     expect(up).toContain("json_group_array");
-    // #335 whole-object rollup: json_object per row, related-PK ascending, [] on empty.
-    // #335 whole-object rollup: an ordered json_object array re-wrapped through json_each
-    // (SQLite's in-aggregate ORDER BY destroys the JSON subtype — see view-ddl-emit).
-    expect(up).toContain("json_group_array(json_object('id', w.id, 'label', w.label) ORDER BY w.id ASC)");
-    expect(up).toContain("SELECT json_group_array(json(mo_je.value)) FROM json_each(");
+    // Collect is two-level on SQLite: the grouped query gathers [sort keys…, value] unsorted,
+    // an outer query sorts. No in-aggregate ORDER BY, which needs SQLite 3.44 — the floor
+    // for every view is 3.35 (see view-ddl-emit).
+    expect(up).toContain("json_group_array(json_array(w.id, json_object('id', w.id, 'label', w.label)))");
+    expect(up).toContain(") mo_g;");
+    for (const line of up.split("\n").filter((l) => l.includes("FILTER (WHERE"))) {
+      expect(line).not.toContain("ORDER BY");
+    }
     expect(up).toMatch(/COALESCE\(MAX\(CASE WHEN[^)]*\)[^,]*, 0\) AS "anyLongWeek"/);
     expect(up).toMatch(/COALESCE\(MIN\(CASE WHEN[^)]*\)[^,]*, 1\) AS "allLongWeeks"/);
     await applyRaw(up);
@@ -133,8 +136,8 @@ describe("view value-probe — real SQLite (#195 origins)", () => {
     await sql.raw(`INSERT INTO "programs" ("id","status") VALUES (1,'PUBLISHED'),(2,'DRAFT')`).execute(k);
     await sql.raw(
       `INSERT INTO "weeks" ("id","programId","label","durationMinutes","createdAt") VALUES
-         (1, 1, 'A', 30, '2026-01-01T00:00:00Z'),
-         (2, 1, 'B', 90, '2026-02-01T00:00:00Z')`,
+         (1, 1, 'B', 30, '2026-01-01T00:00:00Z'),
+         (2, 1, 'A', 90, '2026-02-01T00:00:00Z')`,
     ).execute(k);
 
     const rows = await sql.raw(
@@ -152,15 +155,17 @@ describe("view value-probe — real SQLite (#195 origins)", () => {
     const full = byId.get("1")!;
     expect(full.anyLongWeek).toBe(1);                    // 90 > 60
     expect(full.allLongWeeks).toBe(0);                   // 30 is NOT > 60
+    // Labels sort by label, briefs by id — deliberately OPPOSITE orders over the same rows,
+    // so neither can pass by returning the rows in scan order.
     expect(JSON.parse(full.weekLabels)).toEqual(["A", "B"]);
     // #335 — the DECLARED members only, in related-PK order. Week also has programId /
     // durationMinutes / createdAt; if any of those appear the "declared VO IS the
     // exposure" guarantee (#270) has broken at the SQL tier.
     expect(JSON.parse(full.weekBriefs)).toEqual([
-      { id: 1, label: "A" },
-      { id: 2, label: "B" },
+      { id: 1, label: "B" },
+      { id: 2, label: "A" },
     ]);
-    expect(full.latestWeekLabel).toBe("B");              // most recent by createdAt
+    expect(full.latestWeekLabel).toBe("A");              // most recent by createdAt
     expect(full.isPublished).toBe(1);                    // status = 'PUBLISHED'
 
     // Empty (id 2): ZERO weeks — the empty-set pins.
