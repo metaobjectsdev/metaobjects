@@ -317,7 +317,11 @@ export async function typesCommand(args: string[], fmt: OutputFormat = "text"): 
   const shown = capped ? matches.slice(0, f.limit) : matches;
 
   if (f.detail) {
+    // A subtype's block lists its @attrs with their full descriptions, so an attr row
+    // whose owner subtype is also shown would print the same text a second time.
+    const shownSubtypes = new Set(shown.filter((e) => e.kind === "subtype").map((e) => e.owner));
     for (const e of shown) {
+      if (e.kind === "attr" && shownSubtypes.has(e.owner)) continue;
       log.info(`\n${e.name}  (${e.kind})`);
       if (e.description) log.info(`  ${e.description}`);
       if (e.sharedRoot)

@@ -299,3 +299,22 @@ describe("meta types --format", () => {
     expect(calls.join("\n")).toContain("meta types [QUERY]");
   });
 });
+
+describe("--detail prints each attr once", () => {
+  // A subtype's detail block already lists every @attr with its full description. The
+  // same attrs also match the query as their own rows, and each used to print again as a
+  // separate `(attr)` block with the identical text, so `field.string --detail` was about
+  // twice its content (9.7KB). A cold agent that ran it for eleven types read 63KB.
+  test("a subtype's attrs are not repeated as separate (attr) blocks", async () => {
+    const out = await run(["field.string", "--detail"]);
+    expect(out).toContain("field.string  (subtype)");
+    expect(out).toContain("@maxLength  int");
+    expect(out).not.toContain("field.string @maxLength  (attr)");
+    expect(out.split("Maximum character length for string-typed fields").length - 1).toBe(1);
+  });
+
+  test("an attr asked for on its own still prints its block", async () => {
+    const out = await run(["field.string @maxLength", "--detail"]);
+    expect(out).toContain("field.string @maxLength  (attr)");
+  });
+});

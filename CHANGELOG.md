@@ -55,6 +55,12 @@ here.**
 
 ### Fixed
 
+- **`meta types <subtype> --detail` printed every attribute twice.** The subtype's block lists
+  its `@attrs` with full descriptions, and each attr then printed again as its own `(attr)` block
+  with the same text. It now prints once, which halves the output (`field.string`: 9.7KB to
+  4.9KB). Asking for one attr (`meta types "field.string @maxLength" --detail`) still prints its
+  block.
+
 - **TypeScript `ObjectManager`: scalar array fields can be written.** A
   `field.string isArray` (or any scalar array) was type-checked as a single string, so every
   create or update carrying one failed validation (`tags: type`) on every dialect. Each element
