@@ -108,7 +108,7 @@ export function runValidators(
     if (field.subType === FIELD_SUBTYPE_OBJECT) {
       const vo = resolveVoRef(field);
       if (vo !== undefined) {
-        if (field.isArray && !Array.isArray(value)) {
+        if (field.resolvedIsArray() && !Array.isArray(value)) {
           errors.push({
             field: field.name, rule: "type",
             message: `'${field.name}' must be an array of ${vo.name}`,
@@ -116,7 +116,7 @@ export function runValidators(
           });
           continue;
         }
-        const elements: unknown[] = field.isArray ? (value as unknown[]) : [value];
+        const elements: unknown[] = field.resolvedIsArray() ? (value as unknown[]) : [value];
         elements.forEach((el, i) => {
           if (typeof el !== "object" || el === null || Array.isArray(el)) {
             errors.push({
@@ -131,7 +131,7 @@ export function runValidators(
             for (const e of sub.errors) {
               errors.push({
                 ...e,
-                field: field.isArray ? `${field.name}[${i}].${e.field}` : `${field.name}.${e.field}`,
+                field: field.resolvedIsArray() ? `${field.name}[${i}].${e.field}` : `${field.name}.${e.field}`,
               });
             }
           }
@@ -140,78 +140,26 @@ export function runValidators(
       continue;
     }
 
-    const typeError = checkType(field.subType, value);
-    if (typeError !== null) {
-      errors.push({
-        field: field.name,
-        rule: "type",
-        message: typeError,
-        expected: field.subType,
-        received: typeof value,
+    // A scalar array (`field.string isArray`, …) — stored as a native array or a JSON array.
+    // Each element is checked against the element rules; an element error names its index,
+    // as the value-object branch above does. ADR-0039: resolving `isArray`.
+    if (field.resolvedIsArray()) {
+      if (!Array.isArray(value)) {
+        errors.push({
+          field: field.name, rule: "type",
+          message: `'${field.name}' must be an array`,
+          expected: "array", received: typeof value,
+        });
+        continue;
+      }
+      value.forEach((el, i) => {
+        if (el === null || el === undefined) return;
+        errors.push(...scalarErrors(field, el, false, `${field.name}[${i}]`));
       });
       continue;
     }
 
-    const maxLen = resolveMaxLength(field);
-    const minLen = resolveMinLength(field);
-    if (typeof value === "string") {
-      if (maxLen !== undefined && value.length > maxLen) {
-        errors.push({
-          field: field.name,
-          rule: "length",
-          message: `'${field.name}' must be at most ${maxLen} chars (got ${value.length})`,
-          expected: { max: maxLen },
-          received: value.length,
-        });
-      }
-      // FR-036 Pin 1: a @required string is non-empty. The effective floor is
-      // max(@min, 1) so the runtime OM rejects "" for a required string exactly as
-      // the generated Zod InsertSchema (.min(1)) does — the two enforcement surfaces
-      // stay in lockstep. A non-required field keeps its authored @min.
-      const effectiveMin = Math.max(minLen ?? 0, required ? 1 : 0);
-      if (effectiveMin > 0 && value.length < effectiveMin) {
-        errors.push({
-          field: field.name,
-          rule: "length",
-          message: `'${field.name}' must be at least ${effectiveMin} chars (got ${value.length})`,
-          expected: { min: effectiveMin },
-          received: value.length,
-        });
-      }
-    }
-
-    // ADR-0039: effective children — a validator may be inherited via extends.
-    for (const child of field.children()) {
-      if (child.type !== TYPE_VALIDATOR) continue;
-      if (child.subType !== VALIDATOR_SUBTYPE_REGEX) continue;
-      // ADR-0039: effective attr — @pattern may be inherited.
-      const pattern = child.attr(VALIDATOR_ATTR_PATTERN);
-      if (typeof pattern !== "string") continue;
-      if (typeof value !== "string") continue;
-      let regex: RegExp;
-      try {
-        // FR-036 Pin 2: validator.regex @pattern is FULL-MATCH — anchor as ^(?:…)$
-        // so the runtime OM matches the generated Zod schema's full-match semantic.
-        regex = new RegExp(`^(?:${pattern})$`);
-      } catch {
-        errors.push({
-          field: field.name,
-          rule: "regex",
-          message: `'${field.name}' has an invalid validator pattern: ${pattern}`,
-          expected: pattern,
-        });
-        continue;
-      }
-      if (!regex.test(value)) {
-        errors.push({
-          field: field.name,
-          rule: "regex",
-          message: `'${field.name}' does not match required pattern`,
-          expected: pattern,
-          received: value,
-        });
-      }
-    }
+    errors.push(...scalarErrors(field, value, required, field.name));
   }
 
   return errors.length === 0 ? { ok: true } : { ok: false, errors };
@@ -287,4 +235,86 @@ function checkType(subType: string, value: unknown): string | null {
     if (typeof value !== "boolean") return `expected boolean`;
   }
   return null;
+}
+
+/**
+ * The type, length and regex errors for one scalar value of `field` — the whole field
+ * value, or one element of a scalar array (then `required` is false: element presence is not
+ * the field's `@required`, and `label` is `name[i]`).
+ */
+function scalarErrors(field: MetaData, value: unknown, required: boolean, label: string): ValidationFailure[] {
+  const errors: ValidationFailure[] = [];
+  const typeError = checkType(field.subType, value);
+  if (typeError !== null) {
+    errors.push({
+      field: label,
+      rule: "type",
+      message: typeError,
+      expected: field.subType,
+      received: typeof value,
+    });
+    return errors;
+  }
+
+  const maxLen = resolveMaxLength(field);
+  const minLen = resolveMinLength(field);
+  if (typeof value === "string") {
+    if (maxLen !== undefined && value.length > maxLen) {
+      errors.push({
+        field: label,
+        rule: "length",
+        message: `'${label}' must be at most ${maxLen} chars (got ${value.length})`,
+        expected: { max: maxLen },
+        received: value.length,
+      });
+    }
+    // FR-036 Pin 1: a @required string is non-empty. The effective floor is
+    // max(@min, 1) so the runtime OM rejects "" for a required string exactly as
+    // the generated Zod InsertSchema (.min(1)) does — the two enforcement surfaces
+    // stay in lockstep. A non-required field keeps its authored @min.
+    const effectiveMin = Math.max(minLen ?? 0, required ? 1 : 0);
+    if (effectiveMin > 0 && value.length < effectiveMin) {
+      errors.push({
+        field: label,
+        rule: "length",
+        message: `'${label}' must be at least ${effectiveMin} chars (got ${value.length})`,
+        expected: { min: effectiveMin },
+        received: value.length,
+      });
+    }
+  }
+
+  // ADR-0039: effective children — a validator may be inherited via extends.
+  for (const child of field.children()) {
+    if (child.type !== TYPE_VALIDATOR) continue;
+    if (child.subType !== VALIDATOR_SUBTYPE_REGEX) continue;
+    // ADR-0039: effective attr — @pattern may be inherited.
+    const pattern = child.attr(VALIDATOR_ATTR_PATTERN);
+    if (typeof pattern !== "string") continue;
+    if (typeof value !== "string") continue;
+    let regex: RegExp;
+    try {
+      // FR-036 Pin 2: validator.regex @pattern is FULL-MATCH — anchor as ^(?:…)$
+      // so the runtime OM matches the generated Zod schema's full-match semantic.
+      regex = new RegExp(`^(?:${pattern})$`);
+    } catch {
+      errors.push({
+        field: label,
+        rule: "regex",
+        message: `'${label}' has an invalid validator pattern: ${pattern}`,
+        expected: pattern,
+      });
+      continue;
+    }
+    if (!regex.test(value)) {
+      errors.push({
+        field: label,
+        rule: "regex",
+        message: `'${label}' does not match required pattern`,
+        expected: pattern,
+        received: value,
+      });
+    }
+  }
+  return errors;
 }

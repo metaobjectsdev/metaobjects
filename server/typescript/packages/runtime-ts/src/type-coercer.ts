@@ -1,7 +1,8 @@
 // Read/write value coercion at the persistence boundary.
 //
 //  - SQLite has no native boolean: booleans are stored as 0/1 ints, so we map
-//    boolean↔int on the way in/out for that dialect only.
+//    boolean↔int on the way in/out. MySQL's BOOLEAN is TINYINT(1) and mysql2 reads it
+//    back as 0/1, so it takes the same mapping.
 //  - JSONB-backed object/map fields: the driver (node-postgres) does NOT
 //    serialize a plain JS object to a jsonb column — it must arrive as a JSON
 //    string, or the write fails / writes "[object Object]". A `field.object`
@@ -19,6 +20,7 @@ import {
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_OBJECT,
+  FIELD_SUBTYPE_TIMESTAMP,
   FIELD_ATTR_STORAGE,
   FIELD_ATTR_DB_COLUMN_TYPE,
   FIELD_ATTR_INT_VALUE_MAP,
@@ -29,9 +31,9 @@ import {
 import type { Dialect, Row } from "./persistence-driver.js";
 
 export function coerceRowOnRead(entity: MetaData, row: Row, dialect: Dialect): Row {
-  const hydrated = deserializeJsonbObjectFields(entity, row);
+  const hydrated = parseJsonTextArrays(entity, deserializeJsonbObjectFields(entity, row));
   const decoded = decodeIntBackedEnums(entity, hydrated);
-  if (dialect !== "sqlite") return decoded;
+  if (dialect !== "sqlite" && dialect !== "mysql") return decoded;
   return mapBooleansFromInt(entity, decoded);
 }
 
@@ -133,6 +135,7 @@ export function coerceRowOnWrite(entity: MetaData, row: Row, dialect: Dialect): 
   // (SQLite has one integer storage class), so the symbol→int encode is not gated
   // on the dialect the way the boolean mapping below is.
   const encoded = encodeIntBackedEnums(entity, jsonbColumned);
+  if (dialect === "mysql") return mapBooleansToInt(entity, isoTimestampsToDates(entity, encoded));
   if (dialect !== "sqlite") return encoded;
   return mapBooleansToInt(entity, encoded);
 }
@@ -226,4 +229,53 @@ function mapBooleansToInt(entity: MetaData, row: Row): Row {
     else if (v === false) out[child.name] = 0;
   }
   return out;
+}
+
+/**
+ * MySQL: a `DATETIME` rejects the ISO wire form (`…T…Z` is ERROR 1292), so a
+ * `field.timestamp` string is handed to the driver as a `Date`. mysql2 writes it in the
+ * pool's `timezone` and reads it back the same way, so the instant round-trips; create the
+ * pool with `timezone: "Z"` to store the UTC wall clock, as the generated Drizzle tier and
+ * the Java port do.
+ */
+function isoTimestampsToDates(entity: MetaData, row: Row): Row {
+  let out: Row | null = null;
+  // ADR-0039: resolving — a timestamp may be inherited from a base via extends.
+  for (const child of entity.children()) {
+    if (child.type !== TYPE_FIELD || child.subType !== FIELD_SUBTYPE_TIMESTAMP) continue;
+    if (!(child.name in row)) continue;
+    const v = row[child.name];
+    if (typeof v !== "string") continue;
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) continue;
+    out ??= { ...row };
+    out[child.name] = d;
+  }
+  return out ?? row;
+}
+
+/**
+ * A scalar array (`field.string isArray`, …) read back as JSON TEXT — SQLite's JSON-in-TEXT
+ * column through a driver that does not parse it (Kysely) — becomes the array again. A
+ * value that is already an array (Postgres native arrays, mysql2's parsed JSON, Drizzle's
+ * JSON column modes) passes through.
+ */
+function parseJsonTextArrays(entity: MetaData, row: Row): Row {
+  let out: Row | null = null;
+  // ADR-0039: resolving — an array field may be inherited via extends.
+  for (const child of entity.children()) {
+    if (child.type !== TYPE_FIELD || child.subType === FIELD_SUBTYPE_OBJECT) continue;
+    if (!child.resolvedIsArray()) continue;
+    const v = row[child.name];
+    if (typeof v !== "string" || !v.startsWith("[")) continue;
+    try {
+      const parsed: unknown = JSON.parse(v);
+      if (!Array.isArray(parsed)) continue;
+      out ??= { ...row };
+      out[child.name] = parsed;
+    } catch {
+      // Not JSON: leave the stored text as it is.
+    }
+  }
+  return out ?? row;
 }

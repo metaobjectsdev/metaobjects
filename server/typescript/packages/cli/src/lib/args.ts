@@ -198,6 +198,23 @@ const DIALECTS = ["sqlite", "postgres", "d1"] as const;
 type Dialect = (typeof DIALECTS)[number];
 
 /**
+ * `--dialect` names a database whose schema `meta migrate` / `meta verify --db` OWN. MySQL is
+ * a codegen + runtime dialect (`dialect: "mysql"` in metaobjects.config.ts) and is refused
+ * here by name, so the message says what to do instead of only listing the others.
+ */
+function assertSchemaDialect(dialect: string | undefined): void {
+  if (dialect === undefined || DIALECTS.includes(dialect as Dialect)) return;
+  if (dialect === "mysql") {
+    throw new Error(
+      "invalid --dialect 'mysql': MetaObjects does not own a MySQL schema. " +
+        `Write the DDL yourself; \`dialect: "mysql"\` in metaobjects.config.ts is for generated code. ` +
+        `Schema dialects: ${DIALECTS.join(", ")}`,
+    );
+  }
+  throw new Error(`invalid --dialect '${dialect}'; expected: ${DIALECTS.join(", ")}`);
+}
+
+/**
  * #192 — migration output-format adapters. Orthogonal to dialect: a Flyway shop
  * is still on postgres or sqlite. "default" is the homegrown
  * `<ts>-<slug>/up.sql` layout; "flyway" is the `V<N>__`/`U<N>__` envelope.
@@ -428,9 +445,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
   });
 
   const dialect = values.dialect as string | undefined;
-  if (dialect !== undefined && !DIALECTS.includes(dialect as Dialect)) {
-    throw new Error(`invalid --dialect '${dialect}'; expected: ${DIALECTS.join(", ")}`);
-  }
+  assertSchemaDialect(dialect);
 
   const allowTokens = parseAllowTokens(values.allow as string | string[] | undefined);
 
@@ -588,9 +603,7 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
   }
 
   const dialect = values.dialect as string | undefined;
-  if (dialect !== undefined && !DIALECTS.includes(dialect as Dialect)) {
-    throw new Error(`invalid --dialect '${dialect}'; expected: ${DIALECTS.join(", ")}`);
-  }
+  assertSchemaDialect(dialect);
 
   // NOTE: the flag is --migration-format, not --format: `--format` is already a
   // GLOBAL cli flag selecting output rendering (toon|json|text), consumed in index.ts.

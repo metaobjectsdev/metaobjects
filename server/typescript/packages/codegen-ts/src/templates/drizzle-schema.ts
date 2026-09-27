@@ -11,6 +11,7 @@ import {
   FIELD_ATTR_AUTO_SET,
   FIELD_ATTR_OBJECT_REF,
   FIELD_SUBTYPE_TIMESTAMP,
+  FIELD_SUBTYPE_DATE,
 } from "@metaobjectsdev/metadata";
 import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier, valueObjectModuleSpecifier } from "../import-path.js";
@@ -19,6 +20,7 @@ import {
   type ColumnSpec, type EnumIntCustomType,
 } from "../column-mapper.js";
 import { tableNameFromEntity } from "../naming.js";
+import { dialectModule } from "../dialect-module.js";
 import {
   namesRef, physicalNameExpr, sourceSchemaExpr, indexNameExpr, columnExpr,
 } from "../names.js";
@@ -51,8 +53,7 @@ export function renderDrizzleSchema(
   declaredEnumIntCodecs?: Set<string>,
 ): Code {
   const dialect = ctx.dialect;
-  const tableFn = dialect === "sqlite" ? "sqliteTable" : "pgTable";
-  const importModule = dialect === "sqlite" ? "drizzle-orm/sqlite-core" : "drizzle-orm/pg-core";
+  const { tableFn, core: importModule } = dialectModule(dialect);
   const tableFnSym = imp(`${tableFn}@${importModule}`);
 
   const tableName = obj.dbTable ?? tableNameFromEntity(obj.name, ctx.columnNamingStrategy);
@@ -92,7 +93,7 @@ export function renderDrizzleSchema(
     : sourceSchemaExpr(names) ?? code`${JSON.stringify(tableSchema)}`;
   const tableCall: Code = schemaExpr === undefined
     ? code`${tableFnSym}`
-    : code`${imp(`pgSchema@${importModule}`)}(${schemaExpr}).table`;
+    : code`${imp(`${dialect === "mysql" ? "mysqlSchema" : "pgSchema"}@${importModule}`)}(${schemaExpr}).table`;
   // A column's constant, on the same terms — but resolved against the entity that DECLARES
   // the field, which is not always `obj`. Under TPH the fold below emits a subtype's own
   // columns into this base's table, and those columns live in the SUBTYPE's names artifact;
@@ -314,9 +315,10 @@ export function renderDrizzleSchema(
     if (expr !== undefined && dialect === "sqlite") return undefined;
 
     // @using selects the access method and takes the columns itself, so it REPLACES .on().
-    // Postgres-only: SQLite has no USING clause. migrate omits a `btree` value as the
-    // default, and so does this — emitting it would be a spurious difference.
-    const using = dialect === "sqlite" ? undefined : str(IDENTITY_ATTR_USING);
+    // Postgres-only: SQLite has no USING clause, and MySQL's (btree/hash) is an index
+    // option rather than an access method taking the columns. migrate omits a `btree`
+    // value as the default, and so does this — emitting it would be a spurious difference.
+    const using = dialect === "postgres" ? str(IDENTITY_ATTR_USING) : undefined;
     const target: Code =
       expr !== undefined ? code`${sqlSym}\`${expr}\``
       : code`${colRefs.join(", ")}`;
@@ -333,8 +335,10 @@ export function renderDrizzleSchema(
         ? code`${indexSym}(${indexName}).using(${JSON.stringify(using)}, ${target})`
         : code`${indexSym}(${indexName}).on(${target})`;
 
-    // @where — the partial-index predicate, available on both dialects.
-    const where = str(IDENTITY_ATTR_WHERE);
+    // @where — the partial-index predicate, on Postgres and SQLite. MySQL has no partial
+    // indexes, so there the index is declared over the whole table; the adopter's DDL
+    // cannot say otherwise either.
+    const where = dialect === "mysql" ? undefined : str(IDENTITY_ATTR_WHERE);
     return where === undefined ? head : code`${head}.where(${sqlSym}\`${where}\`)`;
   };
 
@@ -530,6 +534,10 @@ function renderColumn(
       if (ctx.dialect === "sqlite") {
         // Composite PKs don't use .primaryKey() per-column; table callback owns it.
         pkSuffix = isComposite ? "" : ".primaryKey({ autoIncrement: true })";
+      } else if (ctx.dialect === "mysql") {
+        // MySQL: an AUTO_INCREMENT column. The generated writes read the new key back
+        // with Drizzle's `$returningId()` (MySQL has no RETURNING).
+        pkSuffix = isComposite ? ".autoincrement()" : ".primaryKey().autoincrement()";
       } else {
         // Postgres: the column KEEPS the type the column-mapper derived and
         // GAINS the identity clause. It does not get a second spelling.
@@ -567,9 +575,10 @@ function renderColumn(
     } else if (pkGeneration === GENERATION_UUID) {
       pkSuffix = isComposite
         ? ""
-        : ctx.dialect === "sqlite"
-          ? ".primaryKey().$defaultFn(() => crypto.randomUUID())"
-          : ".primaryKey().defaultRandom()";
+        : ctx.dialect === "postgres"
+          ? ".primaryKey().defaultRandom()"
+          // SQLite and MySQL have no uuid default: the id is minted client-side.
+          : ".primaryKey().$defaultFn(() => crypto.randomUUID())";
     } else {
       // No generation: natural PK. Composite hands off to table callback.
       pkSuffix = isComposite ? "" : ".primaryKey()";
@@ -607,6 +616,15 @@ function renderColumn(
         sqlDefaultSegment = field.subType === FIELD_SUBTYPE_TIMESTAMP
           ? code`.default(${sqlSym}\`(${SQLITE_ISO_NOW})\`)`
           : code`.default(${sqlSym}\`CURRENT_TIMESTAMP\`)`;
+      } else if (ctx.dialect === "mysql") {
+        // MySQL's datetime builder has no defaultNow(); spell the expression default,
+        // at the column's millisecond precision.
+        const sqlSym = imp("sql@drizzle-orm");
+        sqlDefaultSegment = field.subType === FIELD_SUBTYPE_TIMESTAMP
+          ? code`.default(${sqlSym}\`(CURRENT_TIMESTAMP(3))\`)`
+          : field.subType === FIELD_SUBTYPE_DATE
+            ? code`.default(${sqlSym}\`(CURRENT_DATE)\`)`
+            : code`.default(${sqlSym}\`(CURRENT_TIME)\`)`;
       } else {
         modifiersStr += `.defaultNow()`;
       }
@@ -614,7 +632,11 @@ function renderColumn(
       // isArray field: Drizzle's .array().default(x) (postgres) and
       // .$type<E[]>().default(x) (sqlite json) want a JS array literal, not the
       // raw @default string. Elements are pre-rendered TS source literals.
-      modifiersStr += `.default([${spec.defaultExpr.elements.join(", ")}])`;
+      // MySQL cannot give a JSON column a literal DEFAULT, so there the array is filled in
+      // client-side on insert.
+      modifiersStr += ctx.dialect === "mysql"
+        ? `.$defaultFn(() => [${spec.defaultExpr.elements.join(", ")}])`
+        : `.default([${spec.defaultExpr.elements.join(", ")}])`;
     } else if (spec.defaultExpr.kind === "sqlExpr") {
       const sqlSym = imp("sql@drizzle-orm");
       // Raw SQL keyword/expression — emit as sql`<raw>` for both dialects. This
@@ -637,7 +659,7 @@ function renderColumn(
     // because it does not have a type annotation and is referenced … in its own
     // initializer") under `strict`. The annotation is a harmless explicit supertype
     // for acyclic FKs, so emitting it unconditionally is safe.
-    const anyColType = ctx.dialect === "sqlite" ? "AnySQLiteColumn" : "AnyPgColumn";
+    const anyColType = dialectModule(ctx.dialect).anyColumn;
     // Used only as a return-type annotation → type-only import (t:) so it emits
     // `import type` and doesn't fail tsc under `verbatimModuleSyntax` (TS1484). (#165)
     const anyColSym = imp(`t:${anyColType}@${spec.importModule}`);

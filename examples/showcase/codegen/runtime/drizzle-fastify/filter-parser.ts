@@ -3,6 +3,7 @@ import {
   eq, ne, gt, gte, lt, lte, inArray, like, ilike, isNull, not, and, or, asc, desc, sql,
   type SQL, type SQLWrapper,
 } from "drizzle-orm";
+import type { SqlDialect } from "../sql-dialect.js";
 import type { FilterAllowlist, FilterOp, FilterFieldRule, SortAllowlist } from "./filter-allowlist.js";
 import { sortOrderSpec } from "./filter-allowlist.js";
 import { FilterParseError, parsePageBound, SORT_EXPECTED } from "./list-params.js";
@@ -24,7 +25,7 @@ export interface ParseFilterOpts {
   table: AnyTable;
   allowlist: FilterAllowlist;
   sortAllowlist: SortAllowlist;
-  dialect: "sqlite" | "postgres";
+  dialect: SqlDialect;
   maxNesting?: number;
   maxInListSize?: number;
 }
@@ -132,9 +133,13 @@ export function parseFilterParams(opts: ParseFilterOpts): ParseFilterResult {
       // deliberately case-INSENSITIVE — it is a human search box, not the
       // contract's `like` operator (which is case-sensitive SQL LIKE, ADR-0049).
       // Postgres uses ILIKE; SQLite's native LIKE folds ASCII case by default,
-      // which is the intended behavior here.
-      const matcher = opts.dialect === "postgres" ? ilike : like;
-      const parts = stringCols.map((col) => matcher(col, term));
+      // which is the intended behavior here. MySQL's LIKE follows the column's
+      // collation, which is case-insensitive by default and case-sensitive on a
+      // `_bin` column, so it folds both sides explicitly.
+      const parts = stringCols.map((col) =>
+        opts.dialect === "postgres" ? ilike(col, term)
+        : opts.dialect === "mysql" ? sql`LOWER(${col}) LIKE LOWER(${term})`
+        : like(col, term));
       // or() is defined as returning SQL | undefined but will always return
       // SQL when given a non-empty array. parts[0] is always defined here
       // because stringCols.length > 0 guarantees at least one element.
@@ -150,7 +155,7 @@ function parseNode(
   node: Record<string, unknown>,
   table: AnyTable,
   allowlist: FilterAllowlist,
-  dialect: "sqlite" | "postgres",
+  dialect: SqlDialect,
   maxNesting: number,
   maxInList: number,
   depth: number,
@@ -203,7 +208,7 @@ function compileOp(
   field: string,
   op: string,
   value: unknown,
-  dialect: "sqlite" | "postgres",
+  dialect: SqlDialect,
   maxInList: number,
 ): SQL | undefined {
   if (!rule.ops.includes(op as FilterOp)) {
@@ -234,9 +239,13 @@ function compileOp(
       // default (and `PRAGMA case_sensitive_like` is connection-global on a
       // consumer-owned connection), so the sqlite branch lowers to GLOB with
       // an exactly-translated pattern instead.
+      // MySQL's LIKE follows the column's collation, which is case-INSENSITIVE by
+      // default, so the pattern carries an explicit binary collation.
       return dialect === "postgres"
         ? like(col as any, s)
-        : sql`${col} GLOB ${likePatternToGlob(s)}`;
+        : dialect === "mysql"
+          ? sql`${col} LIKE ${s} COLLATE utf8mb4_bin`
+          : sql`${col} GLOB ${likePatternToGlob(s)}`;
     }
     case "isNull": {
       // isNull's value is always coerced as boolean (true/false), regardless of the

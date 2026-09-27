@@ -52,7 +52,9 @@ meta migrate --dry-run        # preview without writing
 meta migrate --dialect d1     # Cloudflare D1 dialect (TS-only)
 ```
 
-Dialects: `postgres` (default), `sqlite`, `d1`. Output lands under the path
+Dialects: `postgres` (default), `sqlite`, `d1`. MySQL is a code generation and runtime
+dialect only; `meta migrate --dialect mysql` is refused with that explanation, and the DDL is
+yours (`docs/recipes/mysql.md`). Output lands under the path
 configured in `metaobjects.config.ts` (typically `./migrations/<timestamp>__<slug>.sql`).
 
 **`meta migrate apply-pending`** replays the committed migration files against `--db`

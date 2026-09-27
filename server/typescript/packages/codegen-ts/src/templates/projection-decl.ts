@@ -17,6 +17,7 @@ import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 import { valueObjectModuleSpecifier } from "../import-path.js";
+import type { Dialect } from "../metaobjects-config.js";
 import { physicalNameExpr, sourceSchemaExpr, type ObjectNames } from "../names.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
@@ -31,7 +32,7 @@ import { effectivePackage } from "../docs-paths.js";
 
 export interface ProjectionDeclOpts {
   readonly columnNamingStrategy: ColumnNamingStrategy;
-  readonly dialect: "postgres" | "sqlite";
+  readonly dialect: Dialect;
   /**
    * @deprecated Accepted and IGNORED — a projection's descriptor no longer carries the
    * API base URL, same as an entity's. Kept on the options object because removing a

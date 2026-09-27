@@ -234,3 +234,38 @@ describe("runValidators — multiple failures", () => {
     }
   });
 });
+
+// A scalar array (`field.string isArray`) was type-checked as ONE string, so every write of a
+// string/number array through the ObjectManager failed `tags: type` on every dialect. Each
+// element is now checked against the element rules, and an element error names its index.
+describe("runValidators — scalar arrays", () => {
+  const load = async () => {
+    const { MetaDataLoader, InMemoryStringSource } = await import("@metaobjectsdev/metadata");
+    const r = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify({
+      "metadata.root": { package: "p", children: [{ "object.entity": { name: "A", children: [
+        { "field.string": { name: "tags", isArray: true, "@maxLength": 3 } },
+        { "field.int": { name: "scores", isArray: true } },
+      ] } }] },
+    }))]);
+    expect(r.errors).toEqual([]);
+    return r.root.objects()[0]!;
+  };
+
+  test("an array of valid elements passes", async () => {
+    expect(runValidators(await load(), { tags: ["a", "bc"], scores: [1, 2] })).toEqual({ ok: true });
+  });
+
+  test("a non-array value is a type error", async () => {
+    const r = runValidators(await load(), { tags: "a" });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors[0]).toMatchObject({ field: "tags", rule: "type", expected: "array" });
+  });
+
+  test("an element error names its index", async () => {
+    const r = runValidators(await load(), { tags: ["ok", "toolong"], scores: [1, "x"] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.errors.map((e) => `${e.field}:${e.rule}`)).toEqual(["tags[1]:length", "scores[1]:type"]);
+    }
+  });
+});

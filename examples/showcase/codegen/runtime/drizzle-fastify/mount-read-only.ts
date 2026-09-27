@@ -1,4 +1,5 @@
 import type { FastifyInstance, RouteShorthandOptions } from "fastify";
+import { quoteIdent, type SqlDialect } from "../sql-dialect.js";
 import { sql, eq, and, count } from "drizzle-orm";
 import qs from "qs";
 import { parseFilterParams, parsePageBound, RAW_VIEW_MAX_LIMIT, FilterParseError } from "./filter-parser.js";
@@ -18,7 +19,7 @@ export interface MountReadOnlyOptions {
   readonly view: AnyView;
   readonly filterAllowlist: FilterAllowlist;
   readonly sortAllowlist: SortAllowlist;
-  readonly dialect: "postgres" | "sqlite";
+  readonly dialect: SqlDialect;
   /** Override default ID column name (defaults to "id"). */
   readonly idColumn?: string;
   /**
@@ -113,6 +114,11 @@ async function rawRows(db: any, dialect: string | undefined, query: unknown): Pr
     if (Array.isArray(res)) return res as Record<string, unknown>[];
     return (res as { rows?: Record<string, unknown>[] } | null)?.rows ?? [];
   }
+  if (dialect === "mysql") {
+    // mysql2 answers `[rows, fields]`.
+    const [rows] = (await db.execute(query)) as [Record<string, unknown>[], unknown];
+    return rows;
+  }
   return (await db.all(query)) as Record<string, unknown>[];
 }
 
@@ -145,11 +151,11 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
         const offsetVal = parsePageBound(parsed, "offset") ?? 0;
         const withCount = isTruthyFlag(parsed["withCount"]);
         // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
-        const rows = await rawRows(db, dialect, sql.raw(`SELECT * FROM "${viewName}" LIMIT ${limitVal} OFFSET ${offsetVal}`)) as any[];
+        const rows = await rawRows(db, dialect, sql.raw(`SELECT * FROM ${quoteIdent(dialect, viewName)} LIMIT ${limitVal} OFFSET ${offsetVal}`)) as any[];
         const camelRows = rows.map((r: Record<string, unknown>) => camelizeRow(r));
         if (!withCount) return camelRows;
         // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
-        const countRows = await rawRows(db, dialect, sql.raw(`SELECT COUNT(*) AS c FROM "${viewName}"`)) as any[];
+        const countRows = await rawRows(db, dialect, sql.raw(`SELECT COUNT(*) AS c FROM ${quoteIdent(dialect, viewName)}`)) as any[];
         const total: number = Number(countRows[0]?.c ?? 0);
         return { rows: camelRows, total };
       }
@@ -204,7 +210,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
     const { id } = req.params as { id: string };
     if (useRawSql) {
       // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
-      const rows = await rawRows(db, dialect, sql.raw(`SELECT * FROM "${viewName}" WHERE "${idCol}" = ${rawIdLiteral(id)} LIMIT 1`)) as any[];
+      const rows = await rawRows(db, dialect, sql.raw(`SELECT * FROM ${quoteIdent(dialect, viewName)} WHERE ${quoteIdent(dialect, idCol)} = ${rawIdLiteral(id)} LIMIT 1`)) as any[];
       const row = rows[0] ? camelizeRow(rows[0]) : undefined;
       return row ?? reply.code(404).send({ error: "not_found" });
     }

@@ -3,6 +3,7 @@ import type { Generator } from "./generator.js";
 import type { ExtStyle } from "./render-context.js";
 import type { OutputLayout, ResolvedTarget } from "./import-path.js";
 import { generatorRegistry } from "./generator-registry.js";
+import { normalizeTimestampMode } from "./dialect-module.js";
 
 /**
  * A config `generators` entry. Either a typed generator (the primary, fully
@@ -16,7 +17,11 @@ import { generatorRegistry } from "./generator-registry.js";
  */
 export type GeneratorSpec = Generator | string;
 
-export type Dialect = "sqlite" | "postgres";
+/**
+ * The SQL dialect generated code targets. `mysql` is codegen + runtime only: `meta migrate`
+ * does not own a MySQL schema (ADR-0015), so the adopter writes the DDL.
+ */
+export type Dialect = "sqlite" | "postgres" | "mysql";
 /** Re-exported from metadata so codegen-ts consumers see one canonical type. */
 export type { ColumnNamingStrategy, MetaDataTypeProvider } from "@metaobjectsdev/metadata";
 export type { ExtStyle };
@@ -82,7 +87,7 @@ export interface ResolvedGenConfig {
 /** Default dialect / entity-import when a value-object-only project omits them.
  *  Inert — they are only ever read when DB code is generated, and a project that
  *  would generate DB code is required to set them explicitly (see `runGen`'s guard). */
-export const DEFAULT_DIALECT: Dialect = "sqlite";
+export const DEFAULT_DIALECT = "sqlite" satisfies Dialect;
 export const DEFAULT_DB_IMPORT = "./db";
 /** Import-specifier suffix when the config names none: `./x.js`, right for Node ESM + tsc. */
 export const DEFAULT_EXT_STYLE: ExtStyle = "js";
@@ -408,7 +413,8 @@ export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobj
     // "date" mode is Postgres-only (see the doc comment on timestampMode above) —
     // normalize to "string" on sqlite/D1 at this one choke point so the option
     // can never silently emit a non-compiling column + a disagreeing Zod schema.
-    timestampMode: dialect === "sqlite" ? "string" : (config.timestampMode ?? "string"),
+    // MySQL is the reverse: always "date" (see normalizeTimestampMode).
+    timestampMode: normalizeTimestampMode(dialect, config.timestampMode),
     clientDirective: config.clientDirective ?? false,
     apiPrefix: config.apiPrefix ?? "",
     emitAbstractShapes: config.emitAbstractShapes ?? true,

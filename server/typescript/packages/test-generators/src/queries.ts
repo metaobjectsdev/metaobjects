@@ -37,6 +37,7 @@ import {
   type Generator,
   type GeneratorFactory,
   type RenderContext,
+  dbTypeBlock,
   entityModuleSpecifier,
   renderFindByIdFn,
   renderListFn,
@@ -88,14 +89,8 @@ function renderQueries(obj: MetaObject, ctx: RenderContext): string {
   // Drizzle's own `TFullSchema extends …` bound, NOT its `Record<string, never>` default)
   // have been re-pinned once already; do not narrow either again. A schema-carrying
   // `drizzle(client, { schema })` must assign, and so must a schema-less `drizzle(client)`.
-  const dbTypeImport =
-    ctx.dialect === "postgres"
-      ? `import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";`
-      : `import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";`;
-  const dbTypeAlias =
-    ctx.dialect === "postgres"
-      ? "type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;"
-      : `type Db = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;`;
+  // `dbTypeBlock` spells it per dialect (Postgres, SQLite/D1, MySQL).
+  const { import: dbTypeImport, alias: dbTypeAlias } = dbTypeBlock(ctx.dialect);
 
   // #203 — an @autoSet entity additionally imports its preserving-shape schema and emits
   // the `insertPreserving<Entity>` escape hatch after `create<Entity>`. OWNED: drop both

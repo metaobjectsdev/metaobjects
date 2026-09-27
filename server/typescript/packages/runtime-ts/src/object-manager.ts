@@ -10,7 +10,7 @@ import type {
 } from "./persistence-driver.js";
 import {
   buildSelectSpec, buildCountSpec, buildInsertSpec, buildUpdateSpec, buildDeleteSpec,
-  resolvePkFields, compileFilter,
+  resolvePkFields, compileFilter, primaryKeyColumns,
   type Filter, type QueryOpts, type DiscriminatorScope,
 } from "./query-builder.js";
 import { tphSubtypeOf, type TphSubtype } from "./tph.js";
@@ -263,6 +263,7 @@ export class ObjectManager {
       table: resolveTableName(entity),
       rows: validatedRows.map((r) => this.toDbRow(entity, coerceRowOnWrite(entity, r, driver.dialect))),
       returning: this.allDbColumns(entity),
+      key: primaryKeyColumns(entity, this.columnNamingStrategy),
     };
     // Wrap the batch in a transaction so a driver-level constraint failure on row N
     // rolls back rows 1..N-1. Caller-supplied opts.tx already provides this.

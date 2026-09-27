@@ -99,7 +99,8 @@ Targets Cloudflare D1 via the wrangler CLI. Connection is read from `wrangler.to
 
 - Triggers, generated columns, exclusion constraints.
   (Partial/expression/ordered indexes and CHECK constraints ARE covered: `@where`/`@expr`/`@orders` emit + introspect on postgres AND sqlite; enum/validator-derived CHECKs evolve via ALTER on postgres and recreate-and-copy on sqlite.)
-- MySQL.
+- MySQL. Generated code and the runtime support MySQL (`dialect: "mysql"`); the schema is
+  yours to write. See [`docs/recipes/mysql.md`](../../../../docs/recipes/mysql.md).
 - Data migrations (column-type changes that need data transformation: error with hint).
 - Multi-step migration scaffolding (add nullable → backfill → set notnull).
 

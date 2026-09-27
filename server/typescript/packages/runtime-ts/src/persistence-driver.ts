@@ -2,7 +2,7 @@
 // The driver IS the unit of transaction — transaction(fn) yields a tx-scoped sub-driver.
 // Java analog: ObjectConnection.
 
-export type Dialect = "sqlite" | "postgres" | "memory";
+export type Dialect = "sqlite" | "postgres" | "mysql" | "memory";
 
 export type PrimitiveValue = string | number | boolean;
 
@@ -42,12 +42,19 @@ export interface InsertSpec {
   values: Row;
   /** Columns to return — driver handles RETURNING / lastInsertId per dialect. */
   returning: string[];
+  /**
+   * The primary-key columns. A dialect without RETURNING (MySQL) reads the inserted row
+   * back by them; the others ignore it.
+   */
+  key?: string[];
 }
 
 export interface InsertManySpec {
   table: string;
   rows: Row[];
   returning: string[];
+  /** As {@link InsertSpec.key}. */
+  key?: string[];
 }
 
 export interface UpdateSpec {

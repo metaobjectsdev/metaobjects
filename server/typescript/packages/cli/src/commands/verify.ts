@@ -481,8 +481,15 @@ export async function verifyCommand(
     // .metaobjects/config.json — the spelling a TypeScript project is least likely
     // to have. migrate's own resolution still WINS where it has an answer, because
     // it is the more specific statement about the chain being replayed.
+    if (flags.dialect === undefined && migrateConfig.dialect === undefined && forgeConfig?.dialect === "mysql") {
+      log.error(
+        "meta verify --replay: MetaObjects does not own a MySQL schema, so there is no migration chain to replay.",
+      );
+      return 2;
+    }
+    const configuredDialect = forgeConfig?.dialect === "mysql" ? undefined : forgeConfig?.dialect;
     const dialect: Dialect | undefined =
-      flags.dialect ?? migrateConfig.dialect ?? forgeConfig?.dialect;
+      flags.dialect ?? migrateConfig.dialect ?? configuredDialect;
     if (dialect === undefined) {
       log.error(
         `meta verify --replay: no dialect — pass --dialect <postgres|sqlite>, ` +
@@ -860,12 +867,17 @@ export async function verifyCommand(
     // each one and says how to declare it (`index.lookup`) instead. Read off the SAME
     // expected schema `meta migrate` builds, so "covered" means covered in its DDL.
     let unindexedFks: UnindexedFkFinding[] = [];
+    // Skipped on MySQL: MetaObjects emits no DDL there, and InnoDB indexes every foreign
+    // key itself.
+    const scanDialect = flags.dialect ?? forgeConfig?.dialect ?? "postgres";
     try {
-      unindexedFks = scanForUnindexedForeignKeys(root, {
-        dialect: flags.dialect ?? forgeConfig?.dialect ?? "postgres",
-        columnNamingStrategy: forgeConfig?.columnNamingStrategy ?? "snake_case",
-        skip: collection.imported,
-      });
+      if (scanDialect !== "mysql") {
+        unindexedFks = scanForUnindexedForeignKeys(root, {
+          dialect: scanDialect,
+          columnNamingStrategy: forgeConfig?.columnNamingStrategy ?? "snake_case",
+          skip: collection.imported,
+        });
+      }
     } catch {
       // Same discipline as its siblings: an advisory scan never breaks verify. A model the
       // schema builder refuses is migrate's to report, with its own message.

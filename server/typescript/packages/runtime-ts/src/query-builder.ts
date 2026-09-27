@@ -232,7 +232,16 @@ export function buildInsertSpec(
     table: resolveTableName(entity),
     values,
     returning: allFields.map((f) => resolveColumnName(getField(entity, f), strategy)),
+    key: primaryKeyColumns(entity, strategy),
   };
+}
+
+/** The primary-key COLUMN names (a driver without RETURNING reads an insert back by them). */
+export function primaryKeyColumns(
+  entity: MetaData,
+  strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
+): string[] {
+  return resolvePkFields(entity).map((f) => resolveColumnName(getField(entity, f), strategy));
 }
 
 /**

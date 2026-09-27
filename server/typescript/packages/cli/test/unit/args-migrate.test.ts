@@ -112,7 +112,11 @@ describe("parseMigrateArgs (d1 flags)", () => {
   });
 
   test("rejects unknown dialect", () => {
-    expect(() => parseMigrateArgs(["--dialect", "mysql"])).toThrow(/invalid --dialect/);
+    expect(() => parseMigrateArgs(["--dialect", "mssql"])).toThrow(/invalid --dialect 'mssql'; expected/);
+  });
+
+  test("refuses mysql by name: a codegen dialect, not a schema dialect", () => {
+    expect(() => parseMigrateArgs(["--dialect", "mysql"])).toThrow(/does not own a MySQL schema/);
   });
 
   test("--rename-table and --rename-column, repeatable, with optional schema", () => {

@@ -116,7 +116,9 @@ const PROFILES: ReadonlyArray<readonly [string, ts.CompilerOptions]> = [
 ];
 
 describe("codegen-compile conformance — the shared fitness corpus", () => {
-  for (const dialect of ["postgres", "sqlite"] as const) {
+  // mysql: a codegen + runtime dialect (MetaObjects does not own a MySQL schema), so its
+  // generated tree must compile against drizzle-orm/mysql-core exactly like the other two.
+  for (const dialect of ["postgres", "sqlite", "mysql"] as const) {
     for (const [profile, options] of PROFILES) {
     test(`${dialect} [${profile}]: every generated module compiles with zero diagnostics`, async () => {
       const root = await loadCorpus();

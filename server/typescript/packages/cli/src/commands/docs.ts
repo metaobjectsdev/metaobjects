@@ -286,6 +286,12 @@ function buildAgentSchemaInput(
     );
     return undefined;
   }
+  // MySQL: MetaObjects does not own the schema, so there is no migrate-built schema to
+  // describe. The generated Drizzle tables are the description.
+  if (configured === "mysql") {
+    log.warn("docs: agent/schema.md skipped — MetaObjects does not own a MySQL schema (the generated Drizzle tables describe it).");
+    return undefined;
+  }
   const dialect = configured ?? DEFAULT_DIALECT;
   try {
     const built = buildExpectedSchemaWithProvenance(root, {

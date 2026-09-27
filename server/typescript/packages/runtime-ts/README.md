@@ -62,7 +62,7 @@ const reloaded = await om.load(ref);
 
 Two drivers ship today:
 
-- **`kyselyDriver({ db, dialect })`** — real DBs (SQLite via libsql/Turso, Postgres via node-postgres or Neon). User provides a Kysely instance.
+- **`kyselyDriver({ db, dialect })`** — real DBs (SQLite via libsql/Turso, Postgres via node-postgres or Neon, MySQL via Kysely's `MysqlDialect` over a mysql2 pool created with `timezone: "Z"`). User provides a Kysely instance. MySQL: see `docs/recipes/mysql.md`.
 - **`inMemoryDriver({ seed?, pkFields? })`** — Map-backed; useful for unit tests, prototyping, and MCP tool sandboxing where data shouldn't persist.
 
 ```typescript

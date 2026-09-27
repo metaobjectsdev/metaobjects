@@ -27,8 +27,9 @@ import qs from "qs";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 export type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 import { parseFilterParams, parsePageBound, FilterParseError } from "./filter-parser.js";
-import { isTruthyFlag, contractErrorCode, coerceIdForColumn, firstRow } from "./util.js";
+import { isTruthyFlag, contractErrorCode, coerceIdForColumn, firstRow, extractRowCount } from "./util.js";
 import { timestampWire } from "../timestamp-wire.js";
+import { supportsReturning, type SqlDialect } from "../sql-dialect.js";
 import { withContractErrorHandler } from "./route-error-handler.js";
 import { validationErrorBody } from "../route-errors.js";
 export { isTruthyFlag, contractErrorCode, parseId, coerceIdForColumn } from "./util.js";
@@ -84,7 +85,7 @@ export interface CrudRoutesOptions {
   filterAllowlist?: FilterAllowlist;
   sortAllowlist?:   SortAllowlist;
   /** Dialect — required if filterAllowlist or sortAllowlist is set (for dialect-specific `like` lowering: SQLite lowers to GLOB to stay case-sensitive; ADR-0049). */
-  dialect?: "sqlite" | "postgres";
+  dialect?: SqlDialect;
   /**
    * FR-017 TPH — scope this route set to a single subtype of a single-table-
    * inheritance base. When set:
@@ -280,15 +281,23 @@ export function mountCreateRoute(opts: VerbOptions): void {
       : parsed.data;
     // A constraint the DB enforces (a foreign key from identity.reference, a unique
     // index) must not surface as a 500 echoing the SQL and its bound parameters.
-    let result: unknown;
+    let row: unknown;
     try {
-      result = await opts.db.insert(opts.table).values(values).returning();
+      if (supportsReturning(opts.dialect)) {
+        row = ((await opts.db.insert(opts.table).values(values).returning()) as unknown[])[0];
+      } else {
+        // MySQL has no RETURNING: take the key from the body (an assigned key) or from
+        // `$returningId()` (AUTO_INCREMENT / `$defaultFn`), then read the row back.
+        const [inserted] = (await opts.db.insert(opts.table).values(values).$returningId()) as
+          Array<Record<string, unknown> | undefined>;
+        const key = (values as Record<string, unknown>).id ?? inserted?.id;
+        row = key === undefined ? undefined : await firstRow(opts.db, opts.table, eq(opts.table.id, key));
+      }
     } catch (e) {
       const f = classifyConstraintError(e);
       if (f === undefined) { logAndRedact(e); throw new RedactedDatabaseError(); }
       return reply.code(f.status).send(f.body);
     }
-    const row = (result as unknown[])[0];
     // #214 — read-your-writes: re-read through the replica view so the response
     // carries derived (origin.passthrough) columns the base table excludes.
     return reply.code(201).send(toWire(await reReadThroughView(opts, row)));
@@ -341,19 +350,21 @@ export function mountUpdateRoute(opts: VerbOptions): void {
       return reply.code(400).send({ error: "invalid_id" });
     }
     const idCond = eq(opts.table.id, idValue);
-    let result: unknown;
+    const cond = discCond ? and(idCond, discCond) : idCond;
+    let row: unknown;
     try {
-      result = await opts.db
-        .update(opts.table)
-        .set(data)
-        .where(discCond ? and(idCond, discCond) : idCond)
-        .returning();
+      if (supportsReturning(opts.dialect)) {
+        row = ((await opts.db.update(opts.table).set(data).where(cond).returning()) as unknown[])[0];
+      } else {
+        // MySQL has no RETURNING: update, then read the row back (absent → 404).
+        await opts.db.update(opts.table).set(data).where(cond);
+        row = await firstRow(opts.db, opts.table, cond);
+      }
     } catch (e) {
       const f = classifyConstraintError(e);
       if (f === undefined) { logAndRedact(e); throw new RedactedDatabaseError(); }
       return reply.code(f.status).send(f.body);
     }
-    const row = (result as unknown[])[0];
     if (row == null) return reply.code(404).send({ error: "not_found" });
     // #214 — re-read through the replica view so the response carries derived columns.
     return toWire(await reReadThroughView(opts, row));
@@ -406,20 +417,6 @@ export function mountDeleteRoute(opts: VerbOptions): void {
       ? reply.code(204).send()
       : reply.code(404).send({ error: "not_found" });
   });
-}
-
-function extractRowCount(result: unknown): number {
-  if (typeof result === "number") return result;
-  if (Array.isArray(result)) return result.length;
-  if (result && typeof result === "object") {
-    const obj = result as { rowsAffected?: number | bigint; rowCount?: number; changes?: number };
-    if (typeof obj.rowsAffected === "number") return obj.rowsAffected;
-    if (typeof obj.rowsAffected === "bigint") return Number(obj.rowsAffected);
-    if (typeof obj.rowCount === "number") return obj.rowCount;
-    // bun:sqlite / better-sqlite3 run() result shape.
-    if (typeof obj.changes === "number") return obj.changes;
-  }
-  return 0;
 }
 
 export { mountReadOnlyCrudRoutes, type MountReadOnlyOptions } from "./mount-read-only.js";

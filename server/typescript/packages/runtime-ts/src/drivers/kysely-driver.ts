@@ -4,6 +4,7 @@ import type {
   UpdateSpec, UpdateManySpec, DeleteSpec, DeleteManySpec, WhereClause, Row,
 } from "../persistence-driver.js";
 import { ConstraintViolationError } from "../errors.js";
+import { arraysAsJsonText, insertedKey, mysqlConstraintKind } from "./mysql-support.js";
 
 // Kysely's fluent builder is heavily generic on the database schema, but this driver
 // is metadata-driven and accepts any table name at runtime. Confine the schema-agnostic
@@ -17,7 +18,9 @@ type AnyQuery = SelectQueryBuilder<any, any, any>;
 
 export interface KyselyDriverOptions {
   db: Kysely<Record<string, Row>>;
-  dialect: "sqlite" | "postgres";
+  /** `mysql`: build the Kysely instance with `MysqlDialect` over a mysql2 pool created with
+   *  `timezone: "Z"` (DATETIME then holds the UTC wall clock). */
+  dialect: "sqlite" | "postgres" | "mysql";
 }
 
 export interface KyselyDriverPublic extends PersistenceDriver {
@@ -31,8 +34,24 @@ export function kyselyDriver(opts: KyselyDriverOptions): KyselyDriverPublic {
 
 function makeKyselyDriver(
   db: Kysely<Record<string, Row>>,
-  dialect: "sqlite" | "postgres",
+  dialect: "sqlite" | "postgres" | "mysql",
 ): KyselyDriverPublic {
+  // Neither SQLite nor MySQL has an array type: a scalar array is bound as JSON text.
+  const bindable = (values: Row): Row => (dialect === "postgres" ? values : arraysAsJsonText(values));
+
+  // MySQL has no RETURNING: insert, then read the row back by its key.
+  async function insertAndReadBack(table: string, values: Row, returning: string[], key: string[] | undefined): Promise<Row> {
+    const result = await (db as RawKysely).insertInto(table).values(bindable(values)).executeTakeFirst() as
+      { insertId?: bigint | number } | undefined;
+    const keyValues = key !== undefined && key.length > 0 ? insertedKey(key, values, result?.insertId) : undefined;
+    if (keyValues === undefined) {
+      throw new Error(`kyselyDriver.insert: cannot read back the row inserted into '${table}' (no primary-key value)`);
+    }
+    let q = (db as RawKysely).selectFrom(table).select(returning);
+    for (const [col, v] of Object.entries(keyValues)) q = q.where(col, "=", v);
+    return (await q.executeTakeFirstOrThrow()) as Row;
+  }
+
   return {
     db,
     dialect,
@@ -62,9 +81,10 @@ function makeKyselyDriver(
 
     async insert(spec: InsertSpec): Promise<Row> {
       try {
+        if (dialect === "mysql") return await insertAndReadBack(spec.table, spec.values, spec.returning, spec.key);
         const result = await (db as RawKysely)
           .insertInto(spec.table)
-          .values(spec.values)
+          .values(bindable(spec.values))
           .returning(spec.returning)
           .executeTakeFirstOrThrow();
         return result as Row;
@@ -75,9 +95,14 @@ function makeKyselyDriver(
 
     async insertMany(spec: InsertManySpec): Promise<Row[]> {
       try {
+        if (dialect === "mysql") {
+          const out: Row[] = [];
+          for (const row of spec.rows) out.push(await insertAndReadBack(spec.table, row, spec.returning, spec.key));
+          return out;
+        }
         const rows = await (db as RawKysely)
           .insertInto(spec.table)
-          .values(spec.rows)
+          .values(spec.rows.map(bindable))
           .returning(spec.returning)
           .execute();
         return rows as Row[];
@@ -88,8 +113,14 @@ function makeKyselyDriver(
 
     async update(spec: UpdateSpec): Promise<Row | null> {
       try {
-        let q = (db as RawKysely).updateTable(spec.table).set(spec.values);
+        let q = (db as RawKysely).updateTable(spec.table).set(bindable(spec.values));
         q = applyWhere(q, spec.where);
+        if (dialect === "mysql") {
+          await q.execute();
+          let s = (db as RawKysely).selectFrom(spec.table).select(spec.returning);
+          s = applyWhere(s, spec.where);
+          return ((await s.executeTakeFirst()) as Row | undefined) ?? null;
+        }
         const rows = await q.returning(spec.returning).execute();
         return ((rows as Row[])[0]) ?? null;
       } catch (err) {
@@ -99,7 +130,7 @@ function makeKyselyDriver(
 
     async updateMany(spec: UpdateManySpec): Promise<number> {
       try {
-        let q = (db as RawKysely).updateTable(spec.table).set(spec.values);
+        let q = (db as RawKysely).updateTable(spec.table).set(bindable(spec.values));
         q = applyWhere(q, spec.where);
         const result = await q.executeTakeFirst() as { numUpdatedRows?: bigint | number } | undefined;
         return Number(result?.numUpdatedRows ?? 0);
@@ -185,10 +216,15 @@ function applyOrderLimit(
   return out;
 }
 
-function mapDriverError(err: unknown, table: string, dialect: "sqlite" | "postgres"): unknown {
+function mapDriverError(err: unknown, table: string, dialect: "sqlite" | "postgres" | "mysql"): unknown {
   if (!(err instanceof Error)) return err;
   const msg = err.message;
   const code = (err as { code?: string }).code;
+
+  if (dialect === "mysql") {
+    const kind = mysqlConstraintKind(err);
+    return kind === null ? err : new ConstraintViolationError(msg, { kind, table, cause: err });
+  }
 
   if (dialect === "sqlite") {
     const kind = sqliteConstraintKind(code, msg);

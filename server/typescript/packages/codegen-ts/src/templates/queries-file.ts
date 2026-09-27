@@ -8,6 +8,7 @@ import {
   OBJECT_ATTR_DISCRIMINATOR_VALUE,
 } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
+import { dbTypeBlock, supportsReturning } from "../dialect-module.js";
 import { entityModuleSpecifier } from "../import-path.js";
 import {
   renderFindByIdFn,
@@ -53,18 +54,6 @@ import { effectivePackage } from "../docs-paths.js";
  *     (`TFullSchema extends Record<string, unknown>`), so it admits both a schema-carrying
  *     and a schema-less db without reaching for `any`.
  */
-function dbTypeBlock(dialect: "postgres" | "sqlite"): { import: string; alias: string } {
-  return dialect === "postgres"
-    ? {
-        import: `import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";`,
-        alias: `type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;`,
-      }
-    : {
-        import: `import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";`,
-        alias: `type Db = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;`,
-      };
-}
-
 export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
   // FR-017 Tier 2 — a TPH discriminator base gets a polymorphic queries file:
   // base reads dispatch through parse<Base>, and per-subtype CRUD targets the
@@ -248,11 +237,23 @@ import { ${viewVar}, ${tableVar}, type ${entityName}, type ${entityName}Patch, $
 
   // A create/insertPreserving writes the table, then reads the persisted row back
   // through the view so the returned <Entity> carries the derived fields.
-  const insertReturningView = (fnName: string, schemaName: string): Code => code`
+  //
+  // Without RETURNING (MySQL) the written key is the validated row's assigned key columns
+  // plus whatever `$returningId()` reports (AUTO_INCREMENT / `$defaultFn`).
+  const returning = supportsReturning(ctx.dialect);
+  const insertReturningView = (fnName: string, schemaName: string): Code => returning ? code`
 export async function ${fnName}(db: Db, data: ${schemaInputType(schemaName)}): Promise<${entityName}> {
   const validated = ${schemaName}.parse(data);
   const [${singularVar}] = await db.insert(${tableVar}).values(validated).returning();
   const [row] = await db.select().from(${viewVar}).where(${viewByAllPk(`${singularVar}!`)}).limit(1);
+  return row!;
+}
+` : code`
+export async function ${fnName}(db: Db, data: ${schemaInputType(schemaName)}): Promise<${entityName}> {
+  const validated = ${schemaName}.parse(data);
+  const [inserted] = await db.insert(${tableVar}).values(validated).$returningId();
+  const written = { ...validated, ...inserted } as Record<string, unknown>;
+  const [row] = await db.select().from(${viewVar}).where(${viewByAllPk("written")}).limit(1);
   return row!;
 }
 `;
@@ -262,8 +263,10 @@ export async function ${updateFnName(entityName)}(db: Db, ${pkField}: ${pkType},
   const validated = ${entityName}UpdateSchema.parse(patch);
   // PATCH-5: an empty patch is a no-op — return the current (view) row.
   if (Object.keys(validated).length === 0) return ${findByIdFnName(entityName)}(db, ${pkField});
-  const updated = await db.update(${tableVar}).set(validated).where(${eqSym}(${tableVar}.${pkField}, ${pkField})).returning();
-  if (updated.length === 0) return null;
+  ${returning
+    ? code`const updated = await db.update(${tableVar}).set(validated).where(${eqSym}(${tableVar}.${pkField}, ${pkField})).returning();
+  if (updated.length === 0) return null;`
+    : code`await db.update(${tableVar}).set(validated).where(${eqSym}(${tableVar}.${pkField}, ${pkField}));`}
   const [row] = await db.select().from(${viewVar}).where(${eqSym}(${viewVar}.${pkField}, ${pkField})).limit(1);
   return row ?? null;
 }
@@ -374,7 +377,7 @@ export async function find${sub.name}ById(db: Db, ${pkField}: ${pkType}): Promis
   return row ? ${subSchemaSym}.parse(row) : null;
 }
 
-export async function create${sub.name}(db: Db, data: ${subCreateSym}): Promise<${subTypeSym}> {
+${supportsReturning(ctx.dialect) ? code`export async function create${sub.name}(db: Db, data: ${subCreateSym}): Promise<${subTypeSym}> {
   const validated = ${subInsertSym}.parse(data);
   const [row] = await db.insert(${tableSym}).values({ ...validated, ${discField}: ${valueLit} }).returning();
   return ${subSchemaSym}.parse(row!);
@@ -393,7 +396,32 @@ export async function delete${sub.name}ById(db: Db, ${pkField}: ${pkType}): Prom
   const deleted = await db.delete(${tableSym})
     .where(${andSym}(${eqSym}(${tableSym}.${pkField}, ${pkField}), ${eqSym}(${tableSym}.${discField}, ${valueLit}))).returning();
   return deleted.length > 0;
+}` : code`// No RETURNING on this dialect: each write reads the row back by key.
+export async function create${sub.name}(db: Db, data: ${subCreateSym}): Promise<${subTypeSym}> {
+  const validated = ${subInsertSym}.parse(data);
+  const [inserted] = await db.insert(${tableSym}).values({ ...validated, ${discField}: ${valueLit} }).$returningId();
+  const key = (validated as { ${pkField}?: ${pkType} }).${pkField} ?? (inserted as { ${pkField}?: ${pkType} } | undefined)?.${pkField};
+  if (key === undefined) throw new Error("${sub.name}: the insert produced no ${pkField}");
+  return (await find${sub.name}ById(db, key))!;
 }
+
+export async function update${sub.name}ById(db: Db, ${pkField}: ${pkType}, data: Partial<${subCreateSym}>): Promise<${subTypeSym} | null> {
+  const validated = ${subInsertSym}.partial().parse(data) as Record<string, unknown>;
+  // The discriminator is immutable — a ${sub.name} can never become another subtype.
+  const { [${JSON.stringify(discField)}]: _disc, ...safe } = validated;
+  if (Object.keys(safe).length > 0) {
+    await db.update(${tableSym}).set(safe)
+      .where(${andSym}(${eqSym}(${tableSym}.${pkField}, ${pkField}), ${eqSym}(${tableSym}.${discField}, ${valueLit})));
+  }
+  return find${sub.name}ById(db, ${pkField});
+}
+
+export async function delete${sub.name}ById(db: Db, ${pkField}: ${pkType}): Promise<boolean> {
+  if ((await find${sub.name}ById(db, ${pkField})) === null) return false;
+  await db.delete(${tableSym})
+    .where(${andSym}(${eqSym}(${tableSym}.${pkField}, ${pkField}), ${eqSym}(${tableSym}.${discField}, ${valueLit})));
+  return true;
+}`}
 `);
   }
 

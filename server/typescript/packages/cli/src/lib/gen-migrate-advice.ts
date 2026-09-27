@@ -40,7 +40,7 @@ const VIEW_CHANGE_KINDS: ReadonlySet<Change["kind"]> = new Set(["create-view", "
 export interface GenMigrateAdviceInput {
   metadata: MetaRoot;
   /** `metaobjects.config.ts` `dialect` — undefined when no DB code is generated. */
-  dialect: "sqlite" | "postgres" | undefined;
+  dialect: "sqlite" | "postgres" | "mysql" | undefined;
   /** `.metaobjects/config.json` `migrate.dialect`, when set (may say `d1`). */
   migrateDialect: "sqlite" | "postgres" | "d1" | undefined;
   columnNamingStrategy: "snake_case" | "literal" | "kebab-case" | undefined;
@@ -54,6 +54,8 @@ export interface GenMigrateAdviceInput {
 /** The next-step line, or undefined when this run cannot have changed the schema. */
 export async function genMigrateAdvice(input: GenMigrateAdviceInput): Promise<string | undefined> {
   if (input.dialect === undefined || input.changedFiles.length === 0) return undefined;
+
+  if (input.dialect === "mysql") return mysqlAdvice(input);
 
   const d1 = d1BindingFor(input);
   const schemaDialect = d1 !== undefined ? "d1" : input.dialect;
@@ -92,6 +94,27 @@ export async function genMigrateAdvice(input: GenMigrateAdviceInput): Promise<st
   return snapshot === null
     ? `create your database tables with \`meta migrate --from-db --db <url> --dialect ${input.dialect} --slug init --apply\``
     : `migrate the schema change with \`meta migrate --db <url> --dialect ${input.dialect} --slug <name> --apply\``;
+}
+
+/**
+ * MySQL: `meta migrate` does not own the schema, so there is no migration to write. When the
+ * run touched a table-backed object, say that the adopter's DDL has to follow. The provenance
+ * (which generated file belongs to which table-backed object) does not depend on the dialect,
+ * so it is read through the Postgres expected-schema builder.
+ */
+function mysqlAdvice(input: GenMigrateAdviceInput): string | undefined {
+  let provenance: ReadonlyMap<string, string>;
+  try {
+    provenance = buildExpectedSchemaWithProvenance(input.metadata, {
+      dialect: "postgres",
+      ...(input.columnNamingStrategy !== undefined ? { columnNamingStrategy: input.columnNamingStrategy } : {}),
+    }).provenance;
+  } catch {
+    return undefined;
+  }
+  if (!touchesTableBackedObject(input.changedFiles, provenance)) return undefined;
+  return "MetaObjects does not manage a MySQL schema: apply the matching change to your MySQL DDL " +
+    "(the generated Drizzle tables describe the columns it must have)";
 }
 
 /** The project's D1 binding when it migrates through D1, else undefined. */

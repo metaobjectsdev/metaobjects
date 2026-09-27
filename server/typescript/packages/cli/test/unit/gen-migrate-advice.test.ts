@@ -65,6 +65,17 @@ describe("genMigrateAdvice", () => {
     expect(await genMigrateAdvice(input({ metadata, projectRoot: project(), changedFiles: [] }))).toBeUndefined();
   });
 
+  test("mysql: no migrate command — the adopter's DDL has to follow a table-backed change", async () => {
+    const metadata = await load([PET, PAYLOAD]);
+    const advice = await genMigrateAdvice(input({ metadata, projectRoot: project(), dialect: "mysql" }));
+    expect(advice).toContain("does not manage a MySQL schema");
+    expect(advice).not.toContain("meta migrate");
+    // A value object is not a table: nothing to say.
+    expect(await genMigrateAdvice(input({
+      metadata, projectRoot: project(), dialect: "mysql", changedFiles: ["src/generated/TriagePayload.ts"],
+    }))).toBeUndefined();
+  });
+
   test("no snapshot yet: an entity file changed → greenfield advice in the CONFIGURED dialect", async () => {
     const metadata = await load([PET]);
     const advice = await genMigrateAdvice(input({ metadata, projectRoot: project(), dialect: "postgres" }));

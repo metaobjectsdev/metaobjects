@@ -114,3 +114,26 @@ export async function firstRow(db: unknown, src: unknown, cond: unknown): Promis
   const rows: unknown = await (db as any).select().from(src).where(cond).limit(1);
   return (rows as unknown[])[0];
 }
+
+/**
+ * Rows a DELETE/UPDATE affected, across the driver result shapes: libsql `rowsAffected`,
+ * node-postgres `rowCount`, bun:sqlite / better-sqlite3 `changes`, and mysql2's
+ * `[ResultSetHeader, fields]` tuple.
+ */
+export function extractRowCount(result: unknown): number {
+  if (typeof result === "number") return result;
+  // mysql2: `[ResultSetHeader, fields]`, the count on the header.
+  if (Array.isArray(result) && typeof (result[0] as { affectedRows?: unknown } | undefined)?.affectedRows === "number") {
+    return (result[0] as { affectedRows: number }).affectedRows;
+  }
+  if (Array.isArray(result)) return result.length;
+  if (result && typeof result === "object") {
+    const obj = result as { rowsAffected?: number | bigint; rowCount?: number; changes?: number };
+    if (typeof obj.rowsAffected === "number") return obj.rowsAffected;
+    if (typeof obj.rowsAffected === "bigint") return Number(obj.rowsAffected);
+    if (typeof obj.rowCount === "number") return obj.rowCount;
+    // bun:sqlite / better-sqlite3 run() result shape.
+    if (typeof obj.changes === "number") return obj.changes;
+  }
+  return 0;
+}

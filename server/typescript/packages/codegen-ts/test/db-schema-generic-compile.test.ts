@@ -105,6 +105,7 @@ function compile(dir: string, files: string[]): string[] {
 const PROXY_IMPORT: Record<Dialect, string> = {
   postgres: `import { drizzle } from "drizzle-orm/pg-proxy";`,
   sqlite: `import { drizzle } from "drizzle-orm/sqlite-proxy";`,
+  mysql: `import { drizzle } from "drizzle-orm/mysql-proxy";`,
 };
 
 /** A consumer module: builds a db the way the docs tell you to, then calls a helper. */
@@ -158,7 +159,7 @@ async function genAndCompile(dialect: Dialect, withSchema: boolean): Promise<str
 }
 
 describe("generated `Db` alias accepts a schema-carrying Drizzle database (TS2345 guard)", () => {
-  for (const dialect of ["postgres", "sqlite"] as const) {
+  for (const dialect of ["postgres", "sqlite", "mysql"] as const) {
     // The defect. `drizzle(client, { schema })` is the idiomatic setup and the one the
     // pinned `Record<string, never>` schema parameter rejected.
     test(`${dialect}: drizzle(client, { schema }) assigns to the generated Db`, async () => {

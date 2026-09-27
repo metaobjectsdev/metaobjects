@@ -42,7 +42,8 @@ export type {
   FilterAllowlist,
   SortAllowlist,
 } from "../drizzle-fastify/filter-allowlist.js";
-import { isTruthyFlag, coerceIdForColumn, firstRow } from "../drizzle-fastify/util.js";
+import { isTruthyFlag, coerceIdForColumn, firstRow, extractRowCount } from "../drizzle-fastify/util.js";
+import { supportsReturning, type SqlDialect } from "../sql-dialect.js";
 import { timestampWire } from "../timestamp-wire.js";
 // Every handler below is wrapped in guardRoute (an unexpected error answers
 // `500 { error: "internal" }`, logged server-side) and reads its body through
@@ -104,7 +105,7 @@ export interface CrudRoutesOptions {
   filterAllowlist?: FilterAllowlist;
   sortAllowlist?:   SortAllowlist;
   /** Dialect — required if filterAllowlist or sortAllowlist is set (for dialect-specific `like` lowering: SQLite lowers to GLOB to stay case-sensitive; ADR-0049). */
-  dialect?: "sqlite" | "postgres";
+  dialect?: SqlDialect;
 }
 
 const ALL_VERBS: readonly CrudVerb[] = ["list", "get", "create", "update", "delete"];
@@ -266,15 +267,23 @@ export function mountCreateRoute(opts: VerbOptions): void {
     // Same redaction contract as the Fastify mount: a constraint the DB enforces must not
     // come back as a 500 carrying the SQL and its bound parameters. Both mounts are
     // required to emit byte-identical responses (docs/features/api-contract.md).
-    let result: unknown;
+    let row: unknown;
     try {
-      result = await opts.db.insert(opts.table).values(parsed.data).returning();
+      if (supportsReturning(opts.dialect)) {
+        row = ((await opts.db.insert(opts.table).values(parsed.data).returning()) as unknown[])[0];
+      } else {
+        // MySQL has no RETURNING — the Fastify mount's rule; see drizzle-fastify/index.ts.
+        const values = parsed.data as Record<string, unknown>;
+        const [inserted] = (await opts.db.insert(opts.table).values(values).$returningId()) as
+          Array<Record<string, unknown> | undefined>;
+        const key = values.id ?? inserted?.id;
+        row = key === undefined ? undefined : await firstRow(opts.db, opts.table, eq(opts.table.id, key));
+      }
     } catch (err) {
       const f = classifyConstraintError(err);
       if (f === undefined) { logAndRedact(err); throw new RedactedDatabaseError(); }
       return c.json(f.body, f.status as 400 | 409);
     }
-    const row = (result as unknown[])[0];
     // Echo the row through the replica view so derived columns are present (#214).
     return c.json(toWire(await reReadThroughView(opts, row)), 201);
   }));
@@ -303,19 +312,19 @@ export function mountUpdateRoute(opts: VerbOptions): void {
     // LOOKING id on a TEXT pk would otherwise UPDATE the wrong row.
     const idValue = coerceIdForColumn(opts.table.id, id);
     if (idValue === undefined) return c.json({ error: "invalid_id" }, 400);
-    let result: unknown;
+    let row: unknown;
     try {
-      result = await opts.db
-        .update(opts.table)
-        .set(parsed.data)
-        .where(eq(opts.table.id, idValue))
-        .returning();
+      if (supportsReturning(opts.dialect)) {
+        row = ((await opts.db.update(opts.table).set(parsed.data).where(eq(opts.table.id, idValue)).returning()) as unknown[])[0];
+      } else {
+        await opts.db.update(opts.table).set(parsed.data).where(eq(opts.table.id, idValue));
+        row = await firstRow(opts.db, opts.table, eq(opts.table.id, idValue));
+      }
     } catch (err) {
       const f = classifyConstraintError(err);
       if (f === undefined) { logAndRedact(err); throw new RedactedDatabaseError(); }
       return c.json(f.body, f.status as 400 | 409);
     }
-    const row = (result as unknown[])[0];
     return row ? c.json(toWire(await reReadThroughView(opts, row))) : c.json({ error: "not_found" }, 404);
   });
   const path = `${opts.path}/:id`;
@@ -356,20 +365,6 @@ export function mountDeleteRoute(opts: VerbOptions): void {
     }
     return c.json({ error: "not_found" }, 404);
   }));
-}
-
-function extractRowCount(result: unknown): number {
-  if (typeof result === "number") return result;
-  if (Array.isArray(result)) return result.length;
-  if (result && typeof result === "object") {
-    const obj = result as { rowsAffected?: number | bigint; rowCount?: number; changes?: number };
-    if (typeof obj.rowsAffected === "number") return obj.rowsAffected;
-    if (typeof obj.rowsAffected === "bigint") return Number(obj.rowsAffected);
-    if (typeof obj.rowCount === "number") return obj.rowCount;
-    // bun:sqlite / better-sqlite3 run() result shape.
-    if (typeof obj.changes === "number") return obj.changes;
-  }
-  return 0;
 }
 
 export { mountReadOnlyCrudRoutes, type MountReadOnlyOptions } from "./mount-read-only.js";

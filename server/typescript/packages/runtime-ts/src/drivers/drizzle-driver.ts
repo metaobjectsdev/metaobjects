@@ -41,10 +41,11 @@ import type {
   UpdateManySpec,
   DeleteSpec,
   DeleteManySpec,
-  WhereClause,
+  WhereClause, PrimitiveValue,
   Row,
 } from "../persistence-driver.js";
 import { ConstraintViolationError } from "../errors.js";
+import { insertedKey, mysqlConstraintKind } from "./mysql-support.js";
 
 // ---------------------------------------------------------------------------
 // Public surface
@@ -71,7 +72,8 @@ export interface DrizzleDriverOptions {
    * JS variable name doesn't have to match the SQL table name.
    */
   schema: Record<string, unknown>;
-  dialect: "sqlite" | "postgres";
+  /** `mysql`: a `drizzle-orm/mysql2` instance. */
+  dialect: "sqlite" | "postgres" | "mysql";
 }
 
 export interface DrizzleDriverPublic extends PersistenceDriver {
@@ -116,7 +118,7 @@ function isDrizzleTable(v: unknown): boolean {
 function makeDrizzleDriver(
   db: AnyDrizzleDB,
   tables: TableIndex,
-  dialect: "sqlite" | "postgres",
+  dialect: "sqlite" | "postgres" | "mysql",
 ): DrizzleDriverPublic {
   function requireTable(name: string): AnyTable {
     const t = tables.get(name);
@@ -207,6 +209,24 @@ function makeDrizzleDriver(
     return out;
   }
 
+  // MySQL has no RETURNING: insert, then read the row back by its key.
+  async function insertAndReadBack(table: AnyTable, tableName: string, values: Row, returning: string[], key: string[] | undefined): Promise<Row> {
+    const result = await db.insert(table).values(toJsValues(table, values));
+    const header = (Array.isArray(result) ? result[0] : result) as { insertId?: number | bigint } | undefined;
+    const keyValues = key !== undefined && key.length > 0 ? insertedKey(key, values, header?.insertId) : undefined;
+    if (keyValues === undefined) {
+      throw new Error(`drizzleDriver.insert: cannot read back the row inserted into '${tableName}' (no primary-key value)`);
+    }
+    const where: WhereClause = {
+      kind: "and",
+      clauses: Object.entries(keyValues).map(([column, value]) => ({ kind: "eq" as const, column, value: value as PrimitiveValue })),
+    };
+    const selectArg = buildSelectMap(table, returning);
+    const rows = (await db.select(selectArg).from(table).where(applyWhere(table, where, table)).limit(1)) as Row[];
+    if (!rows[0]) throw new Error(`drizzleDriver.insert: no row found after insert into '${tableName}'`);
+    return toDbKeyedRow(table, jsKeyedFromSelect(rows[0], selectArg));
+  }
+
   return {
     db,
     dialect,
@@ -250,6 +270,7 @@ function makeDrizzleDriver(
     async insert(spec: InsertSpec): Promise<Row> {
       const table = requireTable(spec.table);
       try {
+        if (dialect === "mysql") return await insertAndReadBack(table, spec.table, spec.values, spec.returning, spec.key);
         const result = await db
           .insert(table)
           .values(toJsValues(table, spec.values))
@@ -267,6 +288,11 @@ function makeDrizzleDriver(
     async insertMany(spec: InsertManySpec): Promise<Row[]> {
       const table = requireTable(spec.table);
       try {
+        if (dialect === "mysql") {
+          const out: Row[] = [];
+          for (const row of spec.rows) out.push(await insertAndReadBack(table, spec.table, row, spec.returning, spec.key));
+          return out;
+        }
         const values = spec.rows.map((r) => toJsValues(table, r));
         const rows = (await db
           .insert(table)
@@ -286,6 +312,14 @@ function makeDrizzleDriver(
         let q = db.update(table).set(toJsValues(table, spec.values));
         const w = applyWhere(table, spec.where, table);
         if (w !== undefined) q = q.where(w);
+        if (dialect === "mysql") {
+          await q;
+          const selectArg = buildSelectMap(table, spec.returning);
+          let s = db.select(selectArg).from(table);
+          if (w !== undefined) s = s.where(w);
+          const found = ((await s.limit(1)) as Row[])[0];
+          return found ? toDbKeyedRow(table, jsKeyedFromSelect(found, selectArg)) : null;
+        }
         const rows = (await q.returning(buildSelectMap(table, spec.returning))) as Row[];
         const first = rows[0];
         return first
@@ -378,6 +412,10 @@ function extractRowCount(result: unknown): number {
   // Drizzle's update/delete return shape varies by backend. We support the
   // common shapes; unknown shapes fall through to 0.
   if (typeof result === "number") return result;
+  // mysql2: `[ResultSetHeader, fields]`, the count on the header.
+  if (Array.isArray(result) && typeof (result[0] as { affectedRows?: unknown } | undefined)?.affectedRows === "number") {
+    return (result[0] as { affectedRows: number }).affectedRows;
+  }
   if (Array.isArray(result)) return result.length;
   if (result && typeof result === "object") {
     const obj = result as { rowsAffected?: number | bigint; rowCount?: number };
@@ -427,10 +465,15 @@ function buildExpression(w: WhereClause, cols: Map<string, AnyColumn>): unknown 
 // type regardless of which driver they wired up.
 // ---------------------------------------------------------------------------
 
-function mapDriverError(err: unknown, table: string, dialect: "sqlite" | "postgres"): unknown {
+function mapDriverError(err: unknown, table: string, dialect: "sqlite" | "postgres" | "mysql"): unknown {
   if (!(err instanceof Error)) return err;
   const msg = err.message;
   const code = (err as { code?: string }).code;
+
+  if (dialect === "mysql") {
+    const kind = mysqlConstraintKind(err);
+    return kind === null ? err : new ConstraintViolationError(msg, { kind, table, cause: err });
+  }
 
   if (dialect === "sqlite") {
     const kind = sqliteConstraintKind(code, msg);

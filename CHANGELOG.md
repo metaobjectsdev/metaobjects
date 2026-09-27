@@ -29,6 +29,22 @@ here.**
   `InstanceArtifacts.IsSourcelessEntity` (C#). Value objects are unchanged, since ADR-0028
   forbids them an identity. **Upgrading:** run `meta gen` (or the port's `gen`). A project
   with such an entity gets the new symbols and files. No existing symbol changes.
+- **MySQL as a TypeScript codegen and runtime dialect.** Set `dialect: "mysql"`, and the
+  generated tier targets `drizzle-orm/mysql-core`: `mysqlTable` entities, and queries and
+  Fastify/Hono routes that read rows back after a write (MySQL has no `RETURNING`). The
+  runtime's generated routes, and the `ObjectManager` over `kyselyDriver` (Kysely
+  `MysqlDialect`) or `drizzleDriver` (`drizzle-orm/mysql2`), run on MySQL. MySQL-specific
+  behaviour:
+  - `like` stays case-sensitive (ADR-0049) through `COLLATE utf8mb4_bin`;
+  - timestamps use Drizzle's `date` mode and store the UTC wall clock in `DATETIME(3)`;
+  - identifiers are backtick-quoted;
+  - constraint errors map to 409/400 as on the other dialects.
+
+  MetaObjects does not own a MySQL schema. `meta migrate --dialect mysql` is refused with that
+  explanation, `meta gen` tells you to update your DDL instead of pointing at `migrate`, and
+  `agent/schema.md` is skipped. See `docs/recipes/mysql.md`. Covered against MySQL 8.4 by
+  `mysql-generated-app.test.ts` and `mysql-object-manager.test.ts`, and the MySQL dialect
+  joins the codegen-compile gate.
 - **Recipe: MongoDB, Cassandra, Neo4j and other unmanaged stores**
   (`docs/recipes/document-graph-and-wide-column-stores.md`). It shows how to model the records
   and what each port generates. It includes a MongoDB repository generator
@@ -37,6 +53,14 @@ here.**
 
 ### Fixed
 
+- **TypeScript `ObjectManager`: scalar array fields can be written.** A
+  `field.string isArray` (or any scalar array) was type-checked as a single string, so every
+  create or update carrying one failed validation (`tags: type`) on every dialect. Each element
+  is now checked, and an element error names its index (`tags[1]`). The Kysely driver binds a
+  scalar array as JSON text on SQLite and MySQL, and a JSON-text array reads back as an array.
+  Before, libsql could not bind the array at all and mysql2 expanded it into a value list.
+  The value-object branch of the validator also reads the resolving `isArray`, not the
+  own-only flag (ADR-0039).
 - **Java: OMDB's `MySQLDriver` works against a MySQL server.** It had never been run
   against one, and it failed on the first insert:
   - `@generation: increment` keys threw "This should not get called". They are now read

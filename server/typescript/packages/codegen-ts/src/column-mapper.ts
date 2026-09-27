@@ -1,7 +1,8 @@
 // Field-type → Drizzle column type mapping. Per design §6.
 // Uses the typed MetaField.validators() accessor (effective — includes inherited) for all validator checks.
 
-import type { MetaField } from "@metaobjectsdev/metadata";
+import type { MetaField, MetaObject } from "@metaobjectsdev/metadata";
+import { isMetaObject } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,
@@ -49,6 +50,7 @@ import { columnNameFromField } from "./naming.js";
 import { enumValues, intValueMapOf, intValueForMember } from "./enum-meta.js";
 import { DEFAULT_COLUMN_NAMING_STRATEGY, stripPackage } from "@metaobjectsdev/metadata";
 import type { Dialect, ColumnNamingStrategy } from "./metaobjects-config.js";
+import { dialectModule } from "./dialect-module.js";
 
 export type { Dialect };
 
@@ -258,7 +260,7 @@ export interface ColumnSpec {
   modifiers: string[];
   /** Default expression for the column — dialect-specific emission handled by the template. */
   defaultExpr?: DefaultExpr;
-  /** Drizzle import module: "drizzle-orm/sqlite-core" or "drizzle-orm/pg-core". */
+  /** Drizzle import module: "drizzle-orm/{sqlite,pg,mysql}-core". */
   importModule: string;
   /** Optional leading line-comment for the generated column (e.g., type-fallback notice). */
   leadingComment?: string;
@@ -446,6 +448,107 @@ export const PG_IDENTITY_CAPABLE_FNS: ReadonlySet<string> = new Set([
   "smallint",
 ]);
 
+/**
+ * MySQL column mapping. MetaObjects does not own a MySQL schema (the adopter writes the DDL),
+ * so this is the Drizzle declaration that matches the DDL a MySQL user would write for the
+ * same model:
+ *
+ * - A string with no `@maxLength` is `TEXT`, except where MySQL requires a length: a key or
+ *   indexed column (primary/secondary/reference identity, `index.lookup`, `@unique`) or one
+ *   with a `@default` (a `TEXT` column cannot take a literal default). Those are
+ *   `VARCHAR(255)`.
+ * - `field.uuid` is `VARCHAR(36)` and `field.inet` `VARCHAR(45)`: MySQL has neither type.
+ * - A string enum is `VARCHAR(n)`, `n` the longest member, typed as the member union.
+ * - `field.timestamp` is `DATETIME(3)` in Drizzle's "date" mode (see normalizeTimestampMode).
+ * - Arrays, `field.object`, `field.map` and `@dbColumnType: jsonb` are `JSON`.
+ */
+function mapMysqlColumn(
+  field: MetaField,
+  timestampMode: "date" | "string",
+): { fnName: string; fnOptions?: Record<string, unknown>; enumIntCustomType?: EnumIntCustomType } {
+  if (field.resolvedIsArray() || field.attr(FIELD_ATTR_DB_COLUMN_TYPE) === DB_COLUMN_TYPE_JSONB) {
+    return { fnName: "json" };
+  }
+  const varchar = (length: number) => ({ fnName: "varchar", fnOptions: { length } as Record<string, unknown> });
+  const stringColumn = () => {
+    const maxLen = getMaxLength(field);
+    if (maxLen !== undefined) return varchar(maxLen);
+    return needsMysqlLength(field) ? varchar(MYSQL_KEY_VARCHAR_LENGTH) : { fnName: "text" };
+  };
+  switch (field.subType) {
+    case FIELD_SUBTYPE_BOOLEAN:
+      return { fnName: "boolean" };
+    case FIELD_SUBTYPE_INT:
+      return { fnName: "int" };
+    case FIELD_SUBTYPE_CURRENCY:
+    case FIELD_SUBTYPE_LONG:
+      return { fnName: "bigint", fnOptions: { mode: "number" } };
+    case FIELD_SUBTYPE_DOUBLE:
+      return { fnName: "double" };
+    case FIELD_SUBTYPE_FLOAT:
+      return { fnName: "float" };
+    case FIELD_SUBTYPE_DECIMAL: {
+      // MySQL DECIMAL reads back as a string (precision-exact), like Postgres numeric.
+      const precision = field.attr(FIELD_ATTR_PRECISION);
+      const scale = field.attr(FIELD_ATTR_SCALE);
+      if (typeof precision === "number" && typeof scale === "number") return { fnName: "decimal", fnOptions: { precision, scale } };
+      if (typeof precision === "number") return { fnName: "decimal", fnOptions: { precision } };
+      return { fnName: "decimal", fnOptions: { precision: 19, scale: 4 } };
+    }
+    case FIELD_SUBTYPE_DATE:
+      return { fnName: "date", fnOptions: { mode: "string" } };
+    case FIELD_SUBTYPE_TIME:
+      return { fnName: "time", fnOptions: { fsp: 3 } };
+    case FIELD_SUBTYPE_TIMESTAMP:
+      return { fnName: "datetime", fnOptions: { mode: timestampMode, fsp: 3 } };
+    case FIELD_SUBTYPE_UUID:
+      return varchar(36);
+    case FIELD_SUBTYPE_INET:
+      return varchar(45);
+    case FIELD_SUBTYPE_OBJECT:
+    case FIELD_SUBTYPE_MAP:
+      return { fnName: "json" };
+    case FIELD_SUBTYPE_ENUM: {
+      const im = intValueMapOf(field);
+      if (im !== undefined) {
+        const t = buildEnumIntCustomType(field, im);
+        return t !== undefined ? { fnName: t.fnConstName, enumIntCustomType: t } : { fnName: "int" };
+      }
+      const values = enumValues(field) ?? [];
+      const longest = values.reduce((n, v) => Math.max(n, v.length), 1);
+      return varchar(longest);
+    }
+    case FIELD_SUBTYPE_STRING:
+    case FIELD_SUBTYPE_URI:
+    default:
+      return stringColumn();
+  }
+}
+
+/** The VARCHAR length MySQL gets where a `TEXT` column is not allowed and no `@maxLength` says otherwise. */
+export const MYSQL_KEY_VARCHAR_LENGTH = 255;
+
+/**
+ * Whether MySQL needs a bounded type for this string column: it is part of a key or an index
+ * (MySQL cannot key a `TEXT` column without a prefix length), or it has a `@default` (a `TEXT`
+ * column cannot take a literal default). Read against the object that declares the field; an
+ * identity or index declared on a subclass over an inherited field is not seen, which is the
+ * `@maxLength` case — declare one.
+ */
+function needsMysqlLength(field: MetaField): boolean {
+  if (field.attr(FIELD_ATTR_UNIQUE) === true || field.attr(FIELD_ATTR_DEFAULT) !== undefined) return true;
+  const owner = field.parent;
+  if (owner === undefined || !isMetaObject(owner)) return false;
+  const obj = owner as MetaObject;
+  const keyed = new Set<string>([
+    ...(obj.primaryIdentity()?.fields ?? []),
+    ...obj.secondaryIdentities().flatMap((i) => i.fields),
+    ...obj.referenceIdentities().flatMap((i) => i.fields),
+    ...obj.lookupIndexes().flatMap((i) => i.fields()),
+  ]);
+  return keyed.has(field.name);
+}
+
 export function mapColumnType(
   field: MetaField,
   dialect: Dialect,
@@ -453,7 +556,7 @@ export function mapColumnType(
   timestampMode: "date" | "string" = "string",
 ): ColumnSpec {
   const dbName = field.column ?? columnNameFromField(field.name, strategy);
-  const importModule = dialect === "sqlite" ? "drizzle-orm/sqlite-core" : "drizzle-orm/pg-core";
+  const importModule = dialectModule(dialect).core;
   const subType = field.subType;
   const isArray = field.resolvedIsArray();
 
@@ -549,6 +652,11 @@ export function mapColumnType(
           break;
       }
     }
+  } else if (dialect === "mysql") {
+    const m = mapMysqlColumn(field, timestampMode);
+    fnName = m.fnName;
+    fnOptions = m.fnOptions;
+    enumIntCustomType = m.enumIntCustomType;
   } else {
     // A physical @dbColumnType override wins over the subtype default (Postgres
     // only; SQLite has no native analogue and falls through above). Resolved
@@ -690,7 +798,7 @@ export function mapColumnType(
   // arrays use { mode: "json" }, and the enum members go through Zod
   // validation at the Insert/Update layer instead. Mirrors the Zod
   // emission, which already uses z.enum([...]).
-  if (subType === FIELD_SUBTYPE_ENUM && !isArray && fnName === "text") {
+  if (subType === FIELD_SUBTYPE_ENUM && !isArray && (fnName === "text" || (dialect === "mysql" && fnName === "varchar"))) {
     const values = enumValues(field);
     if (values !== undefined && values.length > 0) {
       fnOptions = { ...(fnOptions ?? {}), enum: values };
@@ -794,7 +902,8 @@ export function mapColumnType(
       const scalar = typeof vt === "string" ? sqliteJsonArrayElementTsType(vt) : undefined;
       dollarTypeRef = { kind: "map", value: { scalar: (scalar ?? "string") as "string" | "number" | "boolean" } };
     }
-  } else if (dialect === "sqlite" && isArray) {
+  } else if (dialect !== "postgres" && isArray) {
+    // SQLite (JSON-in-text) and MySQL (json) both hold an array in one JSON column.
     if (subType === FIELD_SUBTYPE_OBJECT) {
       const base = objectRefBaseName(field);
       if (base !== undefined) {

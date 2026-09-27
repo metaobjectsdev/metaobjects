@@ -8,6 +8,8 @@
 // SAME declaration shape, so it lives here once (extracted from projection-decl).
 
 import { code, imp, joinCode, type Code } from "ts-poet";
+import { dialectModule } from "../dialect-module.js";
+import type { Dialect } from "../metaobjects-config.js";
 import {
   type MetaField, FIELD_SUBTYPE_OBJECT, FIELD_ATTR_OBJECT_REF,
 } from "@metaobjectsdev/metadata";
@@ -18,7 +20,7 @@ import { zodTypeFor } from "./field-meta.js";
 import { columnExpr, type ObjectNames } from "../names.js";
 
 export interface ViewDeclOpts {
-  readonly dialect: "postgres" | "sqlite";
+  readonly dialect: Dialect;
   readonly columnNamingStrategy: ColumnNamingStrategy;
   /** Drives the timestamp column TS type (Date vs string) in the view declaration. */
   readonly timestampMode: "date" | "string";
@@ -159,8 +161,7 @@ export function renderExistingViewDecl(
   viewVar: string,
   opts: ViewDeclOpts,
 ): Code {
-  const viewFn = opts.dialect === "postgres" ? "pgView" : "sqliteView";
-  const viewModule = opts.dialect === "postgres" ? "drizzle-orm/pg-core" : "drizzle-orm/sqlite-core";
+  const { viewFn, core: viewModule } = dialectModule(opts.dialect);
   const viewSym = imp(`${viewFn}@${viewModule}`);
   const enumIntTypes = new Map<string, EnumIntCustomType>();
   const viewColumnLines = fields.map((f) => viewColumnLine(f, opts, enumIntTypes));
@@ -173,12 +174,12 @@ export function renderExistingViewDecl(
   // — PgSchema carries `view` alongside `table`. sqlite is excluded for the same reason as
   // there: no schema concept, and migrate refuses a non-default @schema on that dialect.
   const viewSchemaExpr: Code | undefined =
-    opts.dialect !== "postgres" || opts.schema === undefined ? undefined
+    opts.dialect === "sqlite" || opts.schema === undefined ? undefined
     : typeof opts.schema === "string" ? code`${JSON.stringify(opts.schema)}`
     : opts.schema;
   const viewCall: Code = viewSchemaExpr === undefined
     ? code`${viewSym}`
-    : code`${imp(`pgSchema@${viewModule}`)}(${viewSchemaExpr}).view`;
+    : code`${imp(`${opts.dialect === "mysql" ? "mysqlSchema" : "pgSchema"}@${viewModule}`)}(${viewSchemaExpr}).view`;
   // Int-backed enum codecs are declared BEFORE the view that references them, sorted
   // by const name so output is deterministic regardless of field order — the same
   // contract the table template holds.

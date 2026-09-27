@@ -3,6 +3,7 @@
 import type { MetaRoot, MetaData, MetaField } from "@metaobjectsdev/metadata";
 import { resolveObjectRef, stripPackage } from "@metaobjectsdev/metadata";
 import type { Dialect } from "./column-mapper.js";
+import { normalizeTimestampMode } from "./dialect-module.js";
 import type { PkInfo } from "./pk-resolver.js";
 import type { RelationMap } from "./relation-resolver.js";
 import type { ColumnNamingStrategy } from "./metaobjects-config.js";
@@ -211,7 +212,7 @@ export function makeRenderContext(opts: RenderContextInput): RenderContext {
     // (the OTHER choke point besides normalizeConfig; a bare-context caller, e.g.
     // a unit test or a generator invoked outside `runGen`, must get the same
     // safe-no-op guarantee). See MetaobjectsGenConfig.timestampMode's doc comment.
-    timestampMode: opts.dialect === "sqlite" ? "string" : (opts.timestampMode ?? "string"),
+    timestampMode: normalizeTimestampMode(opts.dialect, opts.timestampMode),
     clientDirective: opts.clientDirective ?? false,
     apiPrefix: opts.apiPrefix ?? "",
     emitAbstractShapes: opts.emitAbstractShapes ?? true,

@@ -5,6 +5,7 @@ import { code, imp, type Code } from "ts-poet";
 import { type MetaObject, stripPackage } from "@metaobjectsdev/metadata";
 import { IDENTITY_ATTR_FIELDS } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "../render-context.js";
+import { supportsReturning } from "../dialect-module.js";
 import {
   findByIdFnName,
   listFnName,
@@ -94,6 +95,20 @@ export function schemaInputType(schema: string | Code | ReturnType<typeof imp>):
   return code`${imp("t:z@zod")}.input<typeof ${schema}>`;
 }
 
+/**
+ * The INSERT body for a dialect without `RETURNING` (MySQL): insert, take the key from the
+ * validated row (an assigned key) or from `$returningId()` (an AUTO_INCREMENT or
+ * `$defaultFn` key), and read the row back by it.
+ */
+function insertThenReadBack(entity: MetaObject, ctx: RenderContext, varName: string): string {
+  const { fieldName: pkField, tsType: pkType } = getPkInfo(entity, ctx);
+  const findByIdFn = findByIdFnName(entity.name);
+  return `  const [inserted] = await db.insert(${varName}).values(validated).$returningId();
+  const key = (validated as { ${pkField}?: ${pkType} }).${pkField} ?? (inserted as { ${pkField}?: ${pkType} } | undefined)?.${pkField};
+  if (key === undefined) throw new Error("${entity.name}: the insert produced no ${pkField}");
+  return (await ${findByIdFn}(db, key))!;`;
+}
+
 export function renderCreateFn(entity: MetaObject, ctx: RenderContext): Code {
   const varName = ctx.collectionName(entity.name);
   const entityName = entity.name;
@@ -105,6 +120,14 @@ export function renderCreateFn(entity: MetaObject, ctx: RenderContext): Code {
   // `<Entity>Create`) so a renamed/misspelt field is a compile error at the call site, as
   // `<Entity>Patch` is for update. The schema still parses at runtime (a caller holding
   // `unknown` casts). Spelled via the schema, not the alias — see schemaInputType.
+  if (!supportsReturning(ctx.dialect)) {
+    return code`
+export async function ${fnName}(db: Db, data: ${schemaInputType(schemaName)}): Promise<${entityName}> {
+  const validated = ${schemaName}.parse(data);
+${insertThenReadBack(entity, ctx, varName)}
+}
+`;
+  }
   return code`
 export async function ${fnName}(db: Db, data: ${schemaInputType(schemaName)}): Promise<${entityName}> {
   const validated = ${schemaName}.parse(data);
@@ -130,6 +153,14 @@ export function renderInsertPreservingFn(entity: MetaObject, ctx: RenderContext)
   const fnName = insertPreservingFnName(entityName);
   const schemaName = `${entityName}InsertPreservingSchema`;
 
+  if (!supportsReturning(ctx.dialect)) {
+    return code`
+export async function ${fnName}(db: Db, data: ${schemaInputType(schemaName)}): Promise<${entityName}> {
+  const validated = ${schemaName}.parse(data);
+${insertThenReadBack(entity, ctx, varName)}
+}
+`;
+  }
   return code`
 export async function ${fnName}(db: Db, data: ${schemaInputType(schemaName)}): Promise<${entityName}> {
   const validated = ${schemaName}.parse(data);
@@ -162,8 +193,12 @@ export async function ${fnName}(db: Db, ${pkField}: ${pkType}, patch: ${patchTyp
   // PATCH-5: an empty patch is a no-op — return the current row rather than let
   // Drizzle throw on an empty SET clause.
   if (Object.keys(validated).length === 0) return ${findByIdFn}(db, ${pkField});
-  const [${singularVar}] = await db.update(${varName}).set(validated).where(${eqSym}(${varName}.${pkField}, ${pkField})).returning();
-  return ${singularVar} ?? null;
+  ${supportsReturning(ctx.dialect)
+    ? code`const [${singularVar}] = await db.update(${varName}).set(validated).where(${eqSym}(${varName}.${pkField}, ${pkField})).returning();
+  return ${singularVar} ?? null;`
+    : code`// No RETURNING on this dialect: update, then read the row back (null when absent).
+  await db.update(${varName}).set(validated).where(${eqSym}(${varName}.${pkField}, ${pkField}));
+  return ${findByIdFn}(db, ${pkField});`}
 }
 `;
 }
@@ -175,6 +210,18 @@ export function renderDeleteByIdFn(entity: MetaObject, ctx: RenderContext): Code
   const fnName = deleteByIdFnName(entityName);
   const eqSym = imp("eq@drizzle-orm");
 
+  if (!supportsReturning(ctx.dialect)) {
+    const findByIdFn = findByIdFnName(entityName);
+    return code`
+export async function ${fnName}(db: Db, ${pkField}: ${pkType}): Promise<boolean> {
+  // No RETURNING on this dialect, and the affected-row count's shape is driver-specific:
+  // report whether the row existed, then delete it.
+  if ((await ${findByIdFn}(db, ${pkField})) === null) return false;
+  await db.delete(${varName}).where(${eqSym}(${varName}.${pkField}, ${pkField}));
+  return true;
+}
+`;
+  }
   return code`
 export async function ${fnName}(db: Db, ${pkField}: ${pkType}): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)

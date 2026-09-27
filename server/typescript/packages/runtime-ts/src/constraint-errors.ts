@@ -63,11 +63,12 @@ export function classifyConstraintError(err: unknown): ConstraintFailure | undef
   // Postgres SQLSTATE 23xxx — integrity constraint violation.
   const kind: ConstraintKind | undefined =
     haystack.includes("23503") ||
-    haystack.includes("FOREIGN KEY") ||
+    haystack.includes("FOREIGN KEY") ||             // also MySQL 1451/1452 message text
     haystack.includes("SQLITE_CONSTRAINT_FOREIGNKEY")   // extended code: no space
       ? "foreign_key"
       : haystack.includes("23505") ||
           haystack.includes("SQLITE_CONSTRAINT_UNIQUE") ||
+          haystack.includes("ER_DUP_ENTRY") ||            // MySQL 1062
           haystack.includes("UNIQUE CONSTRAINT")
         ? "unique"
         : haystack.includes("23514") ||
@@ -76,6 +77,7 @@ export function classifyConstraintError(err: unknown): ConstraintFailure | undef
           ? "check"
           : haystack.includes("23502") ||
               haystack.includes("SQLITE_CONSTRAINT_NOTNULL") ||
+              haystack.includes("ER_BAD_NULL_ERROR") ||   // MySQL 1048
               haystack.includes("NOT NULL")
             ? "not_null"
             : undefined;

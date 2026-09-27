@@ -170,6 +170,7 @@ export type { SortOrder, GridDefaultSort } from "./templates/filter-shared.js";
 // entity/queries composers use; the reference templates relocate that assembly.
 export { renderTphDiscriminatorUnion } from "./templates/tph-discriminator.js";
 export { hasWritableRdbSource, hasAnyRdbSource, isSourcelessEntity } from "./source-detect.js";
+export { dialectModule, dbTypeBlock, supportsReturning, normalizeTimestampMode, type DialectModule } from "./dialect-module.js";
 export { renderSharedEnumsFile, SHARED_ENUMS_BASENAME } from "./templates/enums-file.js";
 
 // ADR-0034 scaffold-and-own — reader for the copyable reference generators in

@@ -47,8 +47,9 @@ export interface GenFileEntry {
 export interface GenResultShape {
   files: GenFileEntry[];
   outDir: string;
-  /** Absent for a value-object-only project (no DB code generated → no dialect used). */
-  dialect: Dialect | undefined;
+  /** Absent for a value-object-only project (no DB code generated → no dialect used). The
+   *  CODEGEN dialect, which may be `mysql` (a dialect `meta migrate` does not speak). */
+  dialect: Dialect | "mysql" | undefined;
   dryRun: boolean;
   warnings: string[];
   /**
