@@ -112,8 +112,22 @@ public final class Extract {
                 // NOTE (cross-port contract): a MALFORMED array still places its successfully-coerced
                 // elements into data (partial extraction), UNLIKE a MALFORMED scalar which is absent from
                 // data. Consumers branching on state must account for partial array data.
+                // validator.array bounds. Too many: NORMAL/LOOSE keep the first maxItems (a
+                // "truncate" coercion, like a numeric clamp); STRICT rejects. Too few: nothing can
+                // repair it, so it is MALFORMED under every tolerance.
+                boolean outOfBounds = false;
+                if (!anyMalformed && f.maxItems() != null && out.size() > f.maxItems()) {
+                    if (o.tolerance() == Tolerance.STRICT) {
+                        outOfBounds = true;
+                    } else {
+                        report.addCoercion(new Coercion(path, String.valueOf(out.size()),
+                                String.valueOf(f.maxItems()), "truncate"));
+                        out = new ArrayList<>(out.subList(0, f.maxItems()));
+                    }
+                }
+                if (!anyMalformed && f.minItems() != null && out.size() < f.minItems()) outOfBounds = true;
                 data.put(f.name(), out);
-                if (anyMalformed) markMalformed(report, path, f);
+                if (anyMalformed || outOfBounds) markMalformed(report, path, f);
                 else report.set(path, FieldExtraction.EXTRACTED);
                 continue;
             }

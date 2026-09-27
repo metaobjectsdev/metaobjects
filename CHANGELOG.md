@@ -12,6 +12,16 @@ here.**
 
 ### Changed
 
+- **Behaviour change in `extract`, every port: `validator.array` bounds are enforced.** An
+  array field's `validator.array` (`@min`/`@max`) now reaches the extract engine. A reply with
+  more elements than `@max` keeps the first `@max` (a `truncate` coercion, like a numeric clamp)
+  under the default tolerance and is `MALFORMED` under `STRICT`; a reply with fewer than `@min`
+  is `MALFORMED` under every tolerance, so `orThrow` fails on a `@required` one and
+  `malformedRequired()` names it. The TypeScript generated `parse<Name>` / `safeParse<Name>`
+  Zod schema carries the same bounds (`z.array(…).min(n).max(m)`). Before, the bounds were
+  declared and ignored, so code re-checked the count by hand. The extract-conformance corpus
+  gains three cases (48 in all), a `minItems`/`maxItems` schema key and an optional per-case
+  `tolerance`, run by every port.
 - **SQLite: projection views that use `origin.collect` now open on SQLite 3.35.** They used an
   in-aggregate `ORDER BY` (`json_group_array(x ORDER BY …)`), which needs 3.44, so a database
   holding one could not be opened by Ubuntu 22.04's SQLite 3.37 or Python 3.10's stdlib. A

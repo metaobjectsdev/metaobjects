@@ -1,0 +1,4 @@
+{ "empty": false,
+  "states": { "tags": "MALFORMED", "note": "EXTRACTED" },
+  "malformedRequired": ["tags"],
+  "data": { "tags[0]": "fantasy", "tags[1]": "epic", "note": "two" } }

@@ -54,6 +54,7 @@ import {
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_XML_TEXT,
   VALIDATOR_SUBTYPE_NUMERIC,
+  VALIDATOR_SUBTYPE_ARRAY,
   NORMALIZE_DEFAULT,
   type NormalizeMode,
 } from "@metaobjectsdev/metadata";
@@ -64,6 +65,7 @@ import {
   scalar,
   range,
   textContentField,
+  withItemBounds,
   enumField,
   enumArray,
   object,
@@ -138,6 +140,22 @@ function extractSchemaForInner(
 }
 
 function fieldSpecFor(
+  field: MetaField,
+  owner: MetaObject,
+  format: Format,
+  visited: Set<MetaObject>,
+  depth: number,
+): FieldSpec {
+  const spec = fieldShapeFor(field, owner, format, visited, depth);
+  if (!field.resolvedIsArray()) return spec;
+  // Element-count bounds: the field's array validator (@min/@max) is the single source of
+  // truth, as the numeric validator is for a scalar's range.
+  const bounds = field.validators().find((v) => v.subType === VALIDATOR_SUBTYPE_ARRAY);
+  if (bounds === undefined) return spec;
+  return withItemBounds(spec, bounds.min ?? null, bounds.max ?? null);
+}
+
+function fieldShapeFor(
   field: MetaField,
   owner: MetaObject,
   format: Format,

@@ -25,6 +25,7 @@ import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.validator.ArrayValidator;
 import com.metaobjects.validator.MetaValidator;
 import com.metaobjects.validator.NumericValidator;
 import com.metaobjects.render.extract.FieldKind;
@@ -175,6 +176,22 @@ public final class MetaObjectExtractor {
 
     private static FieldSpec fieldSpecFor(MetaField<?> field, MetaObject owner, Format format,
                                           Set<MetaObject> visited, int depth) {
+        FieldSpec spec = fieldShapeFor(field, owner, format, visited, depth);
+        if (!field.isArrayType()) return spec;
+        // Element-count bounds: the field's ArrayValidator (@min/@max) is the single source of
+        // truth, as the NumericValidator is for a scalar's range.
+        for (MetaValidator v : field.getValidators()) {
+            if (v instanceof ArrayValidator av) {
+                Integer min = av.hasMetaAttr(ArrayValidator.ATTR_MIN) ? av.getMinSize() : null;
+                Integer max = av.hasMaxSize() ? av.getMaxSize() : null;
+                return spec.withItemBounds(min, max);
+            }
+        }
+        return spec;
+    }
+
+    private static FieldSpec fieldShapeFor(MetaField<?> field, MetaObject owner, Format format,
+                                           Set<MetaObject> visited, int depth) {
         String name = field.getName();
         boolean required = isRequired(field);
 

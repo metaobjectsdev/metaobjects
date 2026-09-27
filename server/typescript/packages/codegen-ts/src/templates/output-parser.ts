@@ -19,6 +19,7 @@ import {
   FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_OBJECT_REF,
   TEMPLATE_ATTR_RESPONSE_REF,
+  VALIDATOR_SUBTYPE_ARRAY,
   RESPONSE_FORMAT_XML,
   resolveObjectRef,
 } from "@metaobjectsdev/metadata";
@@ -134,7 +135,13 @@ function fieldZod(field: MetaData, root: MetaData, seen: ReadonlySet<string>, de
   } else {
     base = SCALAR_ZOD[field.subType] ?? "z.unknown()";
   }
-  const shaped = isArray ? `z.array(${base})` : base;
+  // validator.array bounds the element count. This is the STRICT tier, so a reply outside
+  // them fails, as it does under the extract engine's STRICT tolerance.
+  const bounds = isArray
+    ? (field as MetaField).validators().find((v) => v.subType === VALIDATOR_SUBTYPE_ARRAY)
+    : undefined;
+  const count = `${bounds?.min !== undefined ? `.min(${bounds.min})` : ""}${bounds?.max !== undefined ? `.max(${bounds.max})` : ""}`;
+  const shaped = isArray ? `z.array(${base})${count}` : base;
   // `.optional()` wraps the ARRAY, not its element: an absent list and a list of
   // absent things are different claims.
   return isRequired(field) ? shaped : `${shaped}.optional()`;

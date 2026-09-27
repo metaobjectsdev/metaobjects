@@ -46,7 +46,7 @@ public class ExtractConformanceTests
     {
         // FR-011: lock the corpus size so a deleted fixture fails CI rather than
         // silently reducing coverage. Mirrors the TS / Java / Python count guards.
-        Assert.Equal(45, Cases().Count());
+        Assert.Equal(48, Cases().Count());
     }
 
     [Theory]
@@ -73,6 +73,17 @@ public class ExtractConformanceTests
             && rootlessEl.ValueKind == JsonValueKind.True)
         {
             opts = opts.WithRootless(true);
+        }
+        // Optional per-fixture tolerance (default NORMAL).
+        if (schemaDoc.RootElement.TryGetProperty("tolerance", out JsonElement tolEl))
+        {
+            opts = opts.WithTolerance(tolEl.GetString() switch
+            {
+                "STRICT" => Tolerance.Strict,
+                "NORMAL" => Tolerance.Normal,
+                "LOOSE"  => Tolerance.Loose,
+                var t    => throw new ArgumentException($"Unknown tolerance: {t}"),
+            });
         }
 
         // Run the engine
@@ -225,6 +236,14 @@ public class ExtractConformanceTests
 
     private static FieldSpec ParseField(JsonElement f)
     {
+        // validator.array element-count bounds (array fields only).
+        int? minItems = f.TryGetProperty("minItems", out JsonElement mi) ? mi.GetInt32() : null;
+        int? maxItems = f.TryGetProperty("maxItems", out JsonElement ma) ? ma.GetInt32() : null;
+        return ParseFieldShape(f).WithItemBounds(minItems, maxItems);
+    }
+
+    private static FieldSpec ParseFieldShape(JsonElement f)
+    {
         string name = f.GetProperty("name").GetString()!;
         FieldKind kind = ParseFieldKind(f.GetProperty("kind").GetString()!);
         bool required = f.TryGetProperty("required", out JsonElement reqProp) && reqProp.GetBoolean();
@@ -274,6 +293,12 @@ public class ExtractConformanceTests
             double? min = f.TryGetProperty("min", out JsonElement minEl2) ? minEl2.GetDouble() : (double?)null;
             double? max = f.TryGetProperty("max", out JsonElement maxEl2) ? maxEl2.GetDouble() : (double?)null;
             return FieldSpec.Range(name, kind, required, min, max);
+        }
+
+        // A scalar array (`tags: ["a", "b"]`): each element coerced to kind.
+        if (f.TryGetProperty("array", out JsonElement sa) && sa.GetBoolean())
+        {
+            return FieldSpec.ScalarArray(name, kind, required);
         }
 
         // @xmlText: a scalar field that receives its element's text content (the #text sentinel).

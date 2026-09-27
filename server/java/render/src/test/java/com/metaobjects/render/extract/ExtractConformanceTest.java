@@ -58,6 +58,10 @@ public class ExtractConformanceTest {
         if (schemaNode.has("rootless") && schemaNode.get("rootless").asBoolean()) {
             opts = opts.withRootless(true);
         }
+        // Optional per-fixture tolerance (default NORMAL).
+        if (schemaNode.has("tolerance")) {
+            opts = opts.withTolerance(Tolerance.valueOf(schemaNode.get("tolerance").asText()));
+        }
         ExtractionOutcome out = Extract.extract(input, schema, opts);
 
         assertEquals(dir + " empty flag", expected.get("empty").asBoolean(), out.report().isEmpty());
@@ -133,6 +137,13 @@ public class ExtractConformanceTest {
     }
 
     private static FieldSpec parseField(JsonNode f) {
+        // validator.array element-count bounds (array fields only).
+        Integer minItems = f.has("minItems") ? f.get("minItems").asInt() : null;
+        Integer maxItems = f.has("maxItems") ? f.get("maxItems").asInt() : null;
+        return parseFieldShape(f).withItemBounds(minItems, maxItems);
+    }
+
+    private static FieldSpec parseFieldShape(JsonNode f) {
         String name = f.get("name").asText();
         FieldKind kind = FieldKind.valueOf(f.get("kind").asText());
         boolean req = f.has("required") && f.get("required").asBoolean();
@@ -167,6 +178,10 @@ public class ExtractConformanceTest {
             Double min = f.has("min") ? f.get("min").asDouble() : null;
             Double max = f.has("max") ? f.get("max").asDouble() : null;
             return FieldSpec.range(name, kind, req, min, max);
+        }
+        // A scalar array (`tags: ["a", "b"]`): each element coerced to kind.
+        if (f.has("array") && f.get("array").asBoolean()) {
+            return FieldSpec.scalarArray(name, kind, req, null);
         }
         // @xmlText: a scalar field that receives its element's text content (the #text sentinel).
         if (f.has("textContent") && f.get("textContent").asBoolean()) {

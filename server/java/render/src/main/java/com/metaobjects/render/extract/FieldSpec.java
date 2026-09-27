@@ -34,7 +34,33 @@ public record FieldSpec(
         String coerceDefault,
         String defaultValue,
         String normalize,
-        boolean textContent) {
+        boolean textContent,
+        Integer minItems,
+        Integer maxItems) {
+
+    /**
+     * The pre-bounds shape: an unbounded field. {@code minItems}/{@code maxItems} are the
+     * {@code validator.array} element-count bounds of an ARRAY field (see {@link #withItemBounds}).
+     */
+    public FieldSpec(String name, FieldKind kind, boolean required, boolean array,
+                     List<String> enumValues, Map<String, String> enumAlias, Double min, Double max,
+                     ExtractSchema nested, String coerceDefault, String defaultValue, String normalize,
+                     boolean textContent) {
+        this(name, kind, required, array, enumValues, enumAlias, min, max, nested, coerceDefault,
+                defaultValue, normalize, textContent, null, null);
+    }
+
+    /**
+     * This field with {@code validator.array} element-count bounds ({@code null} = unbounded).
+     * Under NORMAL/LOOSE tolerance a list longer than {@code maxItems} keeps its first
+     * {@code maxItems} elements (a "truncate" coercion, the array analogue of a numeric clamp);
+     * under STRICT it is MALFORMED. A list shorter than {@code minItems} is MALFORMED under every
+     * tolerance: there is nothing to repair it with.
+     */
+    public FieldSpec withItemBounds(Integer minItems, Integer maxItems) {
+        return new FieldSpec(name, kind, required, array, enumValues, enumAlias, min, max, nested,
+                coerceDefault, defaultValue, normalize, textContent, minItems, maxItems);
+    }
 
     public static FieldSpec scalar(String name, FieldKind kind, boolean required) {
         return scalar(name, kind, required, null);

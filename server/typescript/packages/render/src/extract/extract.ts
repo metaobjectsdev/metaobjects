@@ -149,10 +149,23 @@ function extractFields(
           if (enumElements) report.set(elemPath, classifyCoerced(elemPath, report));
         }
       }
+      // validator.array bounds. Too many: NORMAL/LOOSE keep the first maxItems (a
+      // "truncate" coercion, like a numeric clamp); STRICT rejects. Too few: nothing can
+      // repair it, so it is MALFORMED under every tolerance.
+      let outOfBounds = false;
+      if (!anyMalformed && f.maxItems != null && out.length > f.maxItems) {
+        if (o.tolerance === Tolerance.STRICT) {
+          outOfBounds = true;
+        } else {
+          report.addCoercion({ fieldPath: path, from: String(out.length), to: String(f.maxItems), kind: "truncate" });
+          out.length = f.maxItems;
+        }
+      }
+      if (!anyMalformed && f.minItems != null && out.length < f.minItems) outOfBounds = true;
       // Cross-port contract: a MALFORMED array still places its successfully-coerced
       // elements into data (partial extraction), UNLIKE a MALFORMED scalar which is absent.
       data[f.name] = out;
-      if (anyMalformed) markMalformed(report, path, f);
+      if (anyMalformed || outOfBounds) markMalformed(report, path, f);
       else report.set(path, FieldExtraction.EXTRACTED);
       continue;
     }

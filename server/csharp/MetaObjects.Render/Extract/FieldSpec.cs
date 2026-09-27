@@ -21,8 +21,20 @@ public sealed record FieldSpec(
     string? CoerceDefault = null,
     string? DefaultValue = null,
     NormalizeMode Normalize = NormalizeMode.Strip,
-    bool TextContent = false)
+    bool TextContent = false,
+    int? MinItems = null,
+    int? MaxItems = null)
 {
+    /// <summary>
+    /// This field with <c>validator.array</c> element-count bounds (<c>null</c> = unbounded).
+    /// Under NORMAL/LOOSE tolerance a list longer than <see cref="MaxItems"/> keeps its first
+    /// <see cref="MaxItems"/> elements (a "truncate" coercion, the array analogue of a numeric
+    /// clamp); under STRICT it is MALFORMED. A list shorter than <see cref="MinItems"/> is
+    /// MALFORMED under every tolerance: there is nothing to repair it with.
+    /// </summary>
+    public FieldSpec WithItemBounds(int? minItems, int? maxItems) =>
+        this with { MinItems = minItems, MaxItems = maxItems };
+
     /// <summary>Build a plain scalar field (string / int / long / double / boolean).</summary>
     public static FieldSpec Scalar(string name, FieldKind kind, bool required) =>
         new(name, kind, required, false, null, null, null, null, null);

@@ -23,6 +23,7 @@ from metaobjects.render.extract import (
     FieldSpec,
     Format,
     ExtractSchema,
+    Tolerance,
     extract,
 )
 
@@ -60,7 +61,7 @@ def _cases() -> list[str]:
 def test_discovers_all_extract_conformance_cases() -> None:
     """FR-011: lock the corpus size so a deleted fixture fails CI rather than
     silently reducing coverage. Mirrors the TS / Java / C# count guards."""
-    assert len(_cases()) == 45
+    assert len(_cases()) == 48
 
 
 _NORMALIZE_MODES = {"none", "collapse", "strip"}
@@ -76,6 +77,13 @@ def _parse_normalize(s: object) -> str:
 
 
 def _parse_field(f: dict[str, object]) -> FieldSpec:
+    # validator.array element-count bounds (array fields only).
+    min_items = int(f["minItems"]) if "minItems" in f else None  # type: ignore[arg-type]
+    max_items = int(f["maxItems"]) if "maxItems" in f else None  # type: ignore[arg-type]
+    return _parse_field_shape(f).with_item_bounds(min_items, max_items)
+
+
+def _parse_field_shape(f: dict[str, object]) -> FieldSpec:
     name = str(f["name"])
     kind = _KINDS[str(f["kind"])]
     required = bool(f.get("required", False))
@@ -115,6 +123,10 @@ def _parse_field(f: dict[str, object]) -> FieldSpec:
         min_v = float(f["min"]) if "min" in f else None  # type: ignore[arg-type]
         max_v = float(f["max"]) if "max" in f else None  # type: ignore[arg-type]
         return FieldSpec.range_(name, kind, required, min_v, max_v)
+
+    # A scalar array (`tags: ["a", "b"]`): each element coerced to kind.
+    if bool(f.get("array", False)):
+        return FieldSpec.scalar_array(name, kind, required)
 
     # @xmlText: a scalar field that receives its element's text content (the #text sentinel).
     if bool(f.get("textContent", False)):
@@ -165,6 +177,9 @@ def test_classification_and_canonical_value_match(case_name: str) -> None:
     opts = ExtractOptions.defaults()
     if bool(schema_node.get("rootless", False)):
         opts = opts.with_rootless(True)
+    # Optional per-fixture tolerance (default NORMAL).
+    if "tolerance" in schema_node:
+        opts = opts.with_tolerance(Tolerance[str(schema_node["tolerance"])])
 
     outcome = extract(text, schema, opts)
 

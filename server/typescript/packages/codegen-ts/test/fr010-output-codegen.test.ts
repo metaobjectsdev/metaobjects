@@ -267,3 +267,33 @@ describe("FR-010 codegen — import-and-RUN proof (bun dynamic import)", () => {
     expect(fragment).not.toContain("/*");
   });
 });
+
+describe("validator.array bounds on a response array — both tiers honour them", () => {
+  const MODEL_BOUNDED = [
+    { "object.value": { name: "Tagged", children: [
+      { "field.string": { name: "tags", isArray: true, "@required": true, children: [
+        { "validator.array": { name: "threeTags", "@min": 3, "@max": 3 } },
+      ] } },
+    ] } },
+    { "template.prompt": { name: "TagOut", "@payloadRef": "Tagged", "@responseRef": "Tagged", "@textRef": "out/tag" } },
+  ];
+
+  test("strict parse rejects a count outside the bounds; tolerant extract keeps the first @max", async () => {
+    const root = await loadRoot(MODEL_BOUNDED);
+    const src = renderOutputParser(root, "TagOut");
+    expect(src).toContain("tags: z.array(z.string()).min(3).max(3),");
+
+    const dir = mkdtempSync(join(import.meta.dir, "array-bounds-emit-"));
+    TEMP_DIRS.push(dir);
+    writeFileSync(join(dir, "TagOut.output.ts"), src);
+    const parser = await import(join(dir, "TagOut.output.ts"));
+
+    expect(parser.parseTagOut('{"tags":["a","b","c"]}').tags).toEqual(["a", "b", "c"]);
+    expect(parser.safeParseTagOut('{"tags":["a","b","c","d"]}').success).toBe(false);
+    expect(parser.safeParseTagOut('{"tags":["a","b"]}').success).toBe(false);
+
+    const { data, report } = parser.extractLenientTagOutWithLoader(root, '{"tags":["a","b","c","d","e"]}');
+    expect(data.tags).toEqual(["a", "b", "c"]);
+    expect(report.states().get("tags")).toBe("EXTRACTED");
+  });
+});

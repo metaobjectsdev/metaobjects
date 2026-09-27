@@ -11,6 +11,8 @@ runner maps the schema-json tokens onto these enums.
 """
 from __future__ import annotations
 
+import dataclasses
+
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, Generic, TypeVar
@@ -115,6 +117,17 @@ class FieldSpec:
     # reads it from the ``#text`` sentinel the lenient XML reader carries when an element has
     # both attributes and a text body, instead of a same-named child. False for normal/JSON.
     text_content: bool = False
+    # Element-count bounds for an ARRAY field, from its ``validator.array`` (``@min``/``@max``).
+    # None = unbounded. Under NORMAL/LOOSE tolerance a list longer than ``max_items`` keeps its
+    # first ``max_items`` elements (a "truncate" coercion, the array analogue of a numeric
+    # clamp); under STRICT it is MALFORMED. A list shorter than ``min_items`` is MALFORMED under
+    # every tolerance: there is nothing to repair it with.
+    min_items: int | None = None
+    max_items: int | None = None
+
+    def with_item_bounds(self, min_items: int | None, max_items: int | None) -> "FieldSpec":
+        """This field with ``validator.array`` element-count bounds (None = unbounded)."""
+        return dataclasses.replace(self, min_items=min_items, max_items=max_items)
 
     @staticmethod
     def scalar(

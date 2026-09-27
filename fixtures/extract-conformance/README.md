@@ -40,6 +40,14 @@ Each `fields[]` entry: `name`, `kind` (`STRING|INT|LONG|DOUBLE|BOOLEAN|ENUM|OBJE
 > and the gate fails if one appears.
 
 - `INT|LONG|DOUBLE` — optional `min` / `max` (clamp range).
+- any kind with `array: true` — optional `minItems` / `maxItems`, the `validator.array`
+  element-count bounds. A list longer than `maxItems` keeps its first `maxItems` elements under
+  NORMAL/LOOSE tolerance (a `truncate` coercion, like a numeric clamp) and is `MALFORMED` under
+  STRICT; a list shorter than `minItems` is `MALFORMED` under every tolerance. A scalar kind
+  (`STRING`, `INT`, …) with `array: true` is a scalar array: each element is coerced to `kind`.
+
+A schema may also carry a top-level `tolerance` (`STRICT|NORMAL|LOOSE`, default `NORMAL`);
+every runner passes it to the engine.
 - `ENUM` — `enumValues` (member symbols) plus the FR-011 coercion-pipeline keys:
   - `enumAlias` — `{ synonym: MEMBER }` (FR-010); keys matched under the field's mode.
   - `normalize` — `none | collapse | strip` (default `strip`). `strip` = ASCII case-fold +
@@ -70,3 +78,7 @@ line comment or a `/* */` block comment outside a string literal is skipped, inc
 that holds a brace or a quote (`json-comment-line`), so no field after it is lost; comment
 markers INSIDE a string literal are kept verbatim (`json-comment-markers-in-string`). The
 strict parser does not change: only the tolerant recovery reads past comments.
+
+The three `json-array-*-items-*` cases pin `validator.array` bounds: too many elements truncated
+under NORMAL, too many rejected under STRICT, too few rejected (and listed in
+`malformedRequired`) under any tolerance.

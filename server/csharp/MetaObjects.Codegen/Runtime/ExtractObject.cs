@@ -100,6 +100,17 @@ public static class ExtractObject
     private static FieldSpec FieldSpecFor(MetaField field, MetaObject owner, Format format,
         HashSet<MetaObject> visited, int depth)
     {
+        FieldSpec spec = FieldShapeFor(field, owner, format, visited, depth);
+        if (!IsArrayType(field)) return spec;
+        // Element-count bounds: the field's array validator (@min/@max) is the single source of
+        // truth, as the numeric validator is for a scalar's range.
+        var bounds = field.Validators().OfType<MetaArrayValidator>().FirstOrDefault();
+        return bounds is null ? spec : spec.WithItemBounds((int?)bounds.Min, (int?)bounds.Max);
+    }
+
+    private static FieldSpec FieldShapeFor(MetaField field, MetaObject owner, Format format,
+        HashSet<MetaObject> visited, int depth)
+    {
         string name = field.Name;
         bool required = field.IsRequired;
 

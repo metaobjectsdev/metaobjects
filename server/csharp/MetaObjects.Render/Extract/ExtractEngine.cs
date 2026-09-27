@@ -146,8 +146,26 @@ public static class ExtractEngine
                 // NOTE (cross-port contract): a MALFORMED array still places its successfully-coerced
                 // elements into data (partial extraction), UNLIKE a MALFORMED scalar which is absent from
                 // data. Consumers branching on state must account for partial array data.
+                // validator.array bounds. Too many: NORMAL/LOOSE keep the first MaxItems (a
+                // "truncate" coercion, like a numeric clamp); STRICT rejects. Too few: nothing can
+                // repair it, so it is MALFORMED under every tolerance.
+                bool outOfBounds = false;
+                if (!anyMalformed && f.MaxItems is int maxItems && outList.Count > maxItems)
+                {
+                    if (o.Tolerance == Tolerance.Strict)
+                    {
+                        outOfBounds = true;
+                    }
+                    else
+                    {
+                        report.AddCoercion(new Coercion(path, outList.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                            maxItems.ToString(System.Globalization.CultureInfo.InvariantCulture), "truncate"));
+                        outList.RemoveRange(maxItems, outList.Count - maxItems);
+                    }
+                }
+                if (!anyMalformed && f.MinItems is int minItems && outList.Count < minItems) outOfBounds = true;
                 data[f.Name] = outList;
-                if (anyMalformed) MarkMalformed(report, path, f);
+                if (anyMalformed || outOfBounds) MarkMalformed(report, path, f);
                 else report.Set(path, FieldExtraction.EXTRACTED);
                 continue;
             }

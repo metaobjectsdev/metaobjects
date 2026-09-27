@@ -92,6 +92,15 @@ export interface FieldSpec {
    * text body, instead of a same-named child. Absent/false for normal fields and for JSON.
    */
   readonly textContent?: boolean;
+  /**
+   * Element-count bounds for an ARRAY field, from its `validator.array` (`@min`/`@max`).
+   * Absent = unbounded. Under NORMAL/LOOSE tolerance a list longer than `maxItems` keeps its
+   * first `maxItems` elements (recorded as a "truncate" coercion) — the array analogue of a
+   * numeric clamp; under STRICT it is MALFORMED. A list shorter than `minItems` is MALFORMED
+   * under every tolerance: there is nothing to repair it with.
+   */
+  readonly minItems?: number;
+  readonly maxItems?: number;
 }
 
 /**
@@ -128,6 +137,15 @@ export function scalar(
  */
 export function textContentField(name: string, kind: FieldKind, required: boolean): FieldSpec {
   return { ...scalar(name, kind, required), textContent: true };
+}
+
+/** An array field with `validator.array` element-count bounds (see {@link FieldSpec.minItems}). */
+export function withItemBounds(spec: FieldSpec, minItems: number | null, maxItems: number | null): FieldSpec {
+  return {
+    ...spec,
+    ...(minItems != null && { minItems }),
+    ...(maxItems != null && { maxItems }),
+  };
 }
 
 export function enumField(

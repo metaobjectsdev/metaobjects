@@ -11,6 +11,8 @@ import {
   range,
   object,
   textContentField,
+  withItemBounds,
+  Tolerance,
   type FieldSpec,
   type ExtractSchema,
 } from "../../src/extract/types.js";
@@ -90,6 +92,9 @@ interface RawFieldJson {
   max?: number;
   // @xmlText: scalar field that receives its element's text content (the #text sentinel).
   textContent?: boolean;
+  // validator.array element-count bounds (array fields only).
+  minItems?: number;
+  maxItems?: number;
   // FR-011: nested-object sub-fields (present only for kind === "OBJECT").
   fields?: RawFieldJson[];
 }
@@ -108,6 +113,10 @@ function parseNormalize(s: string | undefined): NormalizeMode {
 }
 
 function parseField(f: RawFieldJson): FieldSpec {
+  return withItemBounds(parseFieldShape(f), f.minItems ?? null, f.maxItems ?? null);
+}
+
+function parseFieldShape(f: RawFieldJson): FieldSpec {
   const name = f.name;
   const kind = parseFieldKind(f.kind);
   const required = f.required === true;
@@ -134,6 +143,8 @@ function parseField(f: RawFieldJson): FieldSpec {
   if (f.min !== undefined || f.max !== undefined) {
     return range(name, kind, required, f.min ?? null, f.max ?? null);
   }
+  // A scalar array (`tags: ["a", "b"]`): each element coerced to kind.
+  if (f.array === true) return { ...scalar(name, kind, required), array: true };
   // @xmlText: a scalar field that receives its element's text content (the #text sentinel).
   if (f.textContent === true) return textContentField(name, kind, required);
   // Phase B (generalized @default): a scalar `default` key fills an absent field, coerced to kind.
@@ -145,6 +156,8 @@ interface RawSchemaJson {
   rootName: string;
   // Optional per-fixture parse option: rootless XML (the response has no wrapper root element).
   rootless?: boolean;
+  // Optional per-fixture tolerance (default NORMAL).
+  tolerance?: "STRICT" | "NORMAL" | "LOOSE";
   fields: RawFieldJson[];
 }
 
@@ -190,7 +203,7 @@ describe("extract-conformance corpus", () => {
     .filter((n) => existsSync(join(corpus, n, "schema.json")))
     .sort();
 
-  expect(cases.length).toBe(45);
+  expect(cases.length).toBe(48);
 
   for (const caseName of cases) {
     test(caseName, () => {
@@ -203,7 +216,10 @@ describe("extract-conformance corpus", () => {
       // Optional per-fixture parse option: "rootless": true → the XML response has no wrapper root
       // element (the payload's fields ARE the top-level elements). Mirrors the Java/Python runners.
       // JSON fixtures ignore it.
-      const outcome = extract(input, schema, schemaNode.rootless === true ? { rootless: true } : null);
+      const outcome = extract(input, schema, {
+        ...(schemaNode.rootless === true && { rootless: true }),
+        ...(schemaNode.tolerance !== undefined && { tolerance: Tolerance[schemaNode.tolerance] }),
+      });
 
       // empty flag
       expect(outcome.report.isEmpty()).toBe(expected.empty);

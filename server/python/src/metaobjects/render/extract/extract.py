@@ -143,8 +143,22 @@ def _extract(
             # Cross-port contract: a MALFORMED array still places its successfully-coerced
             # elements into data (partial extraction), UNLIKE a MALFORMED scalar which is
             # absent from data.
+            # validator.array bounds. Too many: NORMAL/LOOSE keep the first max_items (a
+            # "truncate" coercion, like a numeric clamp); STRICT rejects. Too few: nothing can
+            # repair it, so it is MALFORMED under every tolerance.
+            out_of_bounds = False
+            if not any_malformed and f.max_items is not None and len(out) > f.max_items:
+                if o.tolerance == Tolerance.STRICT:
+                    out_of_bounds = True
+                else:
+                    report.add_coercion(
+                        Coercion(path, str(len(out)), str(f.max_items), "truncate")
+                    )
+                    out = out[: f.max_items]
+            if not any_malformed and f.min_items is not None and len(out) < f.min_items:
+                out_of_bounds = True
             data[f.name] = out
-            if any_malformed:
+            if any_malformed or out_of_bounds:
                 _mark_malformed(report, path, f)
             else:
                 report.set(path, FieldExtraction.EXTRACTED)

@@ -159,6 +159,31 @@ def _field_spec_for(
     visited: set[int],
     depth: int,
 ) -> FieldSpec:
+    spec = _field_shape_for(field, owner, format, visited, depth)
+    if not _is_array(field):
+        return spec
+    # Element-count bounds: the field's array validator (@min/@max) is the single source of
+    # truth, as the numeric validator is for a scalar's range.
+    for c in field.children():
+        if c.type == TYPE_VALIDATOR and c.sub_type == vc.VALIDATOR_SUBTYPE_ARRAY:
+            # ADR-0039 sanctioned own: a validator's @min/@max are its own declared bounds,
+            # read exactly as _numeric_bound reads the numeric validator's.
+            lo = c.attr(vc.VALIDATOR_ATTR_MIN)
+            hi = c.attr(vc.VALIDATOR_ATTR_MAX)
+            return spec.with_item_bounds(
+                lo if isinstance(lo, int) and not isinstance(lo, bool) else None,
+                hi if isinstance(hi, int) and not isinstance(hi, bool) else None,
+            )
+    return spec
+
+
+def _field_shape_for(
+    field: MetaField,
+    owner: MetaObject,
+    format: Format,
+    visited: set[int],
+    depth: int,
+) -> FieldSpec:
     name = field.name
     required = _is_required(field)
     array = _is_array(field)
