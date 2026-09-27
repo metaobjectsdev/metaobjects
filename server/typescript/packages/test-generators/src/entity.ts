@@ -17,8 +17,10 @@
 //                generated <Entity>.ts (the Drizzle table, Zod schemas, inferred types,
 //                constants, filter allowlists). Start here and adapt the assembly.
 // emits:         <target>/<Entity>.ts per concrete object — and the shared-enums module once.
-//                Dispatches: abstract/value → interface + Zod; projection → read-only view decl;
-//                write-through entity → full Drizzle table path.
+//                Dispatches: abstract/value → interface + Zod; sourceless entity (identity, no
+//                source — a MongoDB/Cassandra/Neo4j record) → interface + create/PATCH Zod +
+//                allowlists; projection → read-only view decl; write-through entity → full
+//                Drizzle table path.
 // customize:     reorder/drop sections in `sections` below; change the header; swap a sub-renderer
 //                for your own (each render* is an engine primitive you call). To deeply own one
 //                section (e.g. the Drizzle emit), copy/replace that sub-render call with your code.

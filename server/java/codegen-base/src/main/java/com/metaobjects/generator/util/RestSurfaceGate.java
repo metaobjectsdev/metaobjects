@@ -124,4 +124,29 @@ public final class RestSurfaceGate {
         }
         return false;
     }
+
+    /**
+     * True iff {@code obj} is a record whose store MetaObjects does not manage: a concrete
+     * object with a primary identity and no {@code source.*} at all, declared or inherited
+     * (a MongoDB collection, a Cassandra table, a Neo4j node, a remote API). It gets NO REST
+     * surface (#248 — no controller or repository), but it keeps its wire contract, because
+     * the identity makes it addressable: the DTO, a {@code <E>Patch} and the filter allowlist
+     * for the endpoint its adopter writes. Nothing generated references those, so the trio
+     * rule in the class comment is not at stake.
+     *
+     * <p>Keyed on the identity rather than the object subtype (#248): ADR-0028 forbids a
+     * value object any identity. The projection exclusion is ADR-0028's own rule — a
+     * projection is read-only because of its subtype. Mirrors TypeScript's
+     * {@code isSourcelessEntity} and Python's {@code is_sourceless_entity}.</p>
+     */
+    public static boolean isSourcelessEntity(MetaObject obj) {
+        if (GeneratorUtil.isAbstract(obj)) return false;
+        if (MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType())) return false;
+        boolean identified = false;
+        // ADR-0039: resolving — an identity or a source inherited through `extends` counts.
+        for (MetaIdentity identity : obj.getIdentities(true)) {
+            if (identity.isPrimary()) { identified = true; break; }
+        }
+        return identified && obj.getSources(true).isEmpty();
+    }
 }

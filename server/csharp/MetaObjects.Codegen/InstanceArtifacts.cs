@@ -23,6 +23,7 @@
 // so the invariant holds in exactly one place.
 
 using MetaObjects.Meta;
+using static MetaObjects.Core.Object.ObjectConstants;
 using static MetaObjects.Persistence.Source.SourceConstants;
 
 namespace MetaObjects.Codegen;
@@ -56,4 +57,23 @@ public static class InstanceArtifacts
     /// </summary>
     public static bool EmitsInstanceArtifacts(MetaObject entity) =>
         !entity.IsAbstract && HasAnyRdbSource(entity);
+
+    /// <summary>
+    /// True iff <paramref name="entity"/> is a record whose store MetaObjects does not
+    /// manage: concrete, with a primary identity and no <c>source.*</c> at all, declared or
+    /// inherited (a MongoDB collection, a Cassandra table, a Neo4j node, a remote API). It
+    /// gets no EF mapping, DbSet or routes (#248); the adopter owns the data access. It
+    /// keeps its wire contract, because the identity makes it addressable: the entity class
+    /// and the filter allowlist for the list endpoint the adopter writes.
+    /// <para>
+    /// Keyed on the identity rather than the object subtype (#248): ADR-0028 forbids a value
+    /// object any identity. The projection exclusion is ADR-0028's own rule — a projection
+    /// is read-only because of its subtype. Mirrors TypeScript's <c>isSourcelessEntity</c>.
+    /// </para>
+    /// </summary>
+    public static bool IsSourcelessEntity(MetaObject entity) =>
+        !entity.IsAbstract
+        && entity.SubType != OBJECT_SUBTYPE_PROJECTION
+        && entity.PrimaryIdentity() is not null
+        && entity.Sources().Count == 0;
 }

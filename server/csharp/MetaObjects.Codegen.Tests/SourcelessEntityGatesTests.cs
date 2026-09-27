@@ -6,7 +6,8 @@
 // `object.entity` that declares no source at all — which the loader accepts with
 // zero errors — got a fabricated `[Table("Ledger")]`, a `DbSet<Ledger>`, CRUD
 // routes and a filter allowlist against a table that does not exist and that
-// `meta migrate` will never create.
+// `meta migrate` will never create. (The filter allowlist was later given back to an
+// IDENTIFIED sourceless entity — see gate 5.)
 //
 // Four of the five route through `InstanceArtifacts.EmitsInstanceArtifacts`, so
 // the source check lives THERE (mirroring the TS reference's
@@ -223,16 +224,35 @@ public class SourcelessEntityGatesTests
     }
 
     // ---- gate 5: FilterAllowlistGenerator ------------------------------------
+    //
+    // INVERTED for an IDENTIFIED sourceless entity. Ledger has an identity.primary and no
+    // source: a record in a store MetaObjects does not manage (a document DB, a graph, a
+    // remote API). The adopter writes its list endpoint, and that endpoint needs the
+    // allowlist to validate a query. An allowlist is query validation, not a DB artifact,
+    // and nothing generated references it, so emitting it fabricates nothing. The #248 fix
+    // above is intact: still no [Table], no DbSet, no routes.
+    //
+    // An UNIDENTIFIED sourceless entity (Sourceless) is not addressable and still gets none.
 
     [Fact]
-    public void Gate5_the_sourceless_entity_gets_no_filter_allowlist()
+    public void Gate5_an_identified_sourceless_entity_gets_a_filter_allowlist_and_nothing_else()
     {
         var ctx = Ctx();
-        Assert.False(FilterAllowlistGenerator.AppliesTo(Obj(ctx, "Ledger")));
+        Assert.True(InstanceArtifacts.IsSourcelessEntity(Obj(ctx, "Ledger")));
+        Assert.False(InstanceArtifacts.IsSourcelessEntity(Obj(ctx, "Sourceless")));
+        Assert.False(InstanceArtifacts.IsSourcelessEntity(Obj(ctx, "Booking")));
+        Assert.False(InstanceArtifacts.IsSourcelessEntity(Obj(ctx, "AbstractBase")));
+
+        Assert.True(FilterAllowlistGenerator.AppliesTo(Obj(ctx, "Ledger")));
+        Assert.False(FilterAllowlistGenerator.AppliesTo(Obj(ctx, "Sourceless")));
         Assert.True(FilterAllowlistGenerator.AppliesTo(Obj(ctx, "Booking")));
 
-        var paths = new FilterAllowlistGenerator().Generate(ctx).Select(f => f.Path).ToList();
-        Assert.DoesNotContain(paths, p => p.StartsWith("Ledger", StringComparison.Ordinal));
-        Assert.Contains(paths, p => p.StartsWith("Booking", StringComparison.Ordinal));
+        var files = new FilterAllowlistGenerator().Generate(ctx).ToList();
+        var ledger = Assert.Single(files, f => f.Path.StartsWith("Ledger", StringComparison.Ordinal)).Content;
+        Assert.Contains("\"note\"", ledger);
+        Assert.DoesNotContain(files, f => f.Path.StartsWith("Sourceless", StringComparison.Ordinal));
+
+        var errors = CompileTogether(files);
+        Assert.True(errors.Count == 0, "generated allowlists must compile:\n" + string.Join("\n", errors));
     }
 }

@@ -4,6 +4,11 @@
 // Drizzle table, no Infer*Model aliases, no filter allowlists, no constants
 // object.
 //
+// Two objects land here that are more than a value: a TPH subtype (it shares the
+// base's table) and a SOURCELESS ENTITY (identity, no source: a record in a store
+// MetaObjects does not manage — see isSourcelessEntity). Both get the create + PATCH
+// schemas and the filter/sort allowlists on top of the interface.
+//
 // Dispatch: entity-file.ts routes here when hasWritableRdbSource(entity) is
 // false. The entity may still have read-only source.* children (those are
 // handled by the projection path before this one is reached).
@@ -24,6 +29,7 @@ import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.j
 import { renderFilterType } from "./filter-type.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants.js";
 import { namesRef, namesConstArg } from "../names.js";
+import { isSourcelessEntity } from "../source-detect.js";
 
 export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: RenderContext): string {
   const enumAliases = renderEnumTypeAliases(obj, ctx);
@@ -60,6 +66,11 @@ export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: Ren
   // kept in lockstep with the per-subtype allowlist above so a typed
   // `<Sub>Filter` can't express a filter the server allowlist would 400.
   const tphFilterType = tphSubtype ? renderFilterType(obj, discField) : null;
+  // A sourceless entity's wire contract: create + PATCH schemas, allowlists, filter type.
+  // No constants object — it names a table and a route this object does not have. The
+  // allowlists import runtime types, so a contract-only target (runtime: false) skips them.
+  const sourceless = !tphSubtype && isSourcelessEntity(obj);
+  const sourcelessAllowlists = sourceless && ctx?.selfTarget.runtime !== false;
   const sections: Code[] = [
     renderValueObjectInterface(obj, ctx),
     ...(enumAliases !== null ? [enumAliases] : []),
@@ -70,11 +81,13 @@ export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: Ren
     // (.nullable() for non-required). renderZodValidators emits <Sub>InsertSchema +
     // <Sub>UpdateSchema (the update omits the pinned discriminator). A pure value
     // object stays insert-only (no PATCH semantics — an UpdateSchema would mislead).
-    tphSubtype ? renderZodValidators(obj, ctx) : renderInsertSchemaOnly(obj, ctx),
+    tphSubtype || sourceless ? renderZodValidators(obj, ctx) : renderInsertSchemaOnly(obj, ctx),
     ...(tphConstants !== null ? [tphConstants] : []),
     ...(tphFilterAllowlist !== null ? [tphFilterAllowlist] : []),
     ...(tphSortAllowlist !== null ? [tphSortAllowlist] : []),
     ...(tphFilterType !== null ? [tphFilterType] : []),
+    ...(sourcelessAllowlists ? [renderFilterAllowlist(obj, undefined, ctx), renderSortAllowlist(obj, undefined, ctx)] : []),
+    ...(sourceless ? [renderFilterType(obj)] : []),
   ];
   const body = joinCode(sections, { on: "\n" }).toString();
   // ADR-0044/#228 — the hand-edit sidecar name follows this value object's EMITTED

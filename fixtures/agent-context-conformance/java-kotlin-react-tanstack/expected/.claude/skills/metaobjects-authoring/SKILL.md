@@ -892,6 +892,23 @@ mapping by derivation, and the constant is what carries it. (See `metaobjects-co
 **An entity's PRIMARY source must be writable** (`table`) — read-only kinds are
 legal only in non-primary roles.
 
+### A store MetaObjects does not manage — MongoDB, Cassandra, Neo4j, an API
+
+`source.rdb` is the only registered source. A record kept in a document, wide-column or
+graph store, or behind a remote API, is an `object.entity` with an `identity.primary` and
+**no `source.*` child**: a *sourceless entity*. Do not invent a document or graph source
+subtype, or a `@collection` attr: ADR-0007 designs them but registers only `rdb`, so the
+loader refuses them. Put
+store settings in your own property bag instead: any `@name` whose value is a JSON object is
+a registered `attr.properties` bag, for example `"@mongo": { "collection": "orders" }`.
+
+A sourceless entity gets no table, queries, routes or migration. It still gets its wire
+contract in every port: the create and PATCH schemas and the filter allowlist. Keep the
+`identity.primary`, because it is what makes the record addressable. Without it the object
+is a shape only. The data access layer is a generator the adopter owns. The recipe, with a
+MongoDB repository generator run end to end, is
+<https://github.com/metaobjectsdev/metaobjects/blob/main/docs/recipes/document-graph-and-wide-column-stores.md>.
+
 ### Derived/computed columns: reach for an ENTITY READ-VIEW first
 
 **Do not default to `object.projection` for a list screen, grid, or "one extra

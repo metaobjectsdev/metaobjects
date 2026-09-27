@@ -39,6 +39,7 @@ from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, pe
 from metaobjects.codegen.generators.m2m_codegen import build_object_index
 from metaobjects.codegen.generators.router_generator import emits_router
 from metaobjects.codegen.generators.tph_plan import tph_plan_for
+from metaobjects.codegen.instance_artifacts import is_sourceless_entity
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -179,7 +180,9 @@ class FilterAllowlistGenerator:
 
     Skips entities without a ``source.rdb`` child and read-only kinds
     (view / materializedView / storedProc / tableFunction) — same gate as
-    ``RouterGenerator``, so the two generators emit in lock-step.
+    ``RouterGenerator``, so the two generators emit in lock-step. The exception is a
+    sourceless entity (``is_sourceless_entity``): no router, but an allowlist for the
+    adopter's own endpoint.
     """
 
     name = "filter-allowlist-generator"
@@ -271,7 +274,12 @@ class FilterAllowlistGenerator:
         # again at F22 when the router learned to serve view-only projections and
         # this module did not — the emitted router imported an allowlist nothing
         # had generated.
-        if not emits_router(entity):
+        #
+        # The one addition: a sourceless entity (identity, no source — a record in a store
+        # MetaObjects does not manage) gets no router but does get the allowlist, for the
+        # list endpoint its adopter writes. Nothing generated imports it, so the lock-step
+        # rule above is not at stake.
+        if not emits_router(entity) and not is_sourceless_entity(entity):
             return None
 
         short_name = entity.name

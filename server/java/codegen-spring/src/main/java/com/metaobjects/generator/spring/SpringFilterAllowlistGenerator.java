@@ -90,9 +90,13 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
      * because the controller's list handler READS this allowlist by name. A read-only
      * view-kind {@code object.projection} (F22) has a list route, so it has an
      * allowlist; the filter grammar does not care that the source cannot be written.
+     *
+     * <p>Also a sourceless entity ({@link RestSurfaceGate#isSourcelessEntity}): no controller,
+     * but an allowlist for the list endpoint its adopter writes over a store MetaObjects does
+     * not manage.</p>
      */
     public static boolean appliesTo(MetaObject entity) {
-        return RestSurfaceGate.emitsRestSurface(entity);
+        return RestSurfaceGate.emitsRestSurface(entity) || RestSurfaceGate.isSourcelessEntity(entity);
     }
 
     /**

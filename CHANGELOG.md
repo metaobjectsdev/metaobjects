@@ -10,6 +10,46 @@ here.**
 
 ## [Unreleased]
 
+### Added
+
+- **Records in a store MetaObjects does not manage keep their wire contract, in every port.**
+  A *sourceless entity* is an `object.entity` with an `identity.primary` and no `source.*`:
+  a record kept in MongoDB, Cassandra, Neo4j or behind an API. It still gets no table,
+  queries, routes or migration (#248). It now gets the create and PATCH schemas and the filter
+  allowlist that the adopter's own endpoint needs. Before, it was treated like a value
+  object.
+  - TypeScript: `<E>UpdateSchema`, `<E>Patch`, `<E>FilterAllowlist`, `<E>SortAllowlist` and
+    `<E>Filter` beside the interface and `<E>InsertSchema`.
+  - Python: `<e>_filter_allowlist.py`. `<E>Create` / `<E>Patch` were already emitted.
+  - Java: `<E>Patch` and `<E>FilterAllowlist` beside `<E>Dto`.
+  - Kotlin and C#: `<E>FilterAllowlist`.
+
+  One predicate per port picks these objects: `isSourcelessEntity` (TS),
+  `is_sourceless_entity` (Python), `RestSurfaceGate.isSourcelessEntity` (JVM) and
+  `InstanceArtifacts.IsSourcelessEntity` (C#). Value objects are unchanged, since ADR-0028
+  forbids them an identity. **Upgrading:** run `meta gen` (or the port's `gen`). A project
+  with such an entity gets the new symbols and files. No existing symbol changes.
+- **Recipe: MongoDB, Cassandra, Neo4j and other unmanaged stores**
+  (`docs/recipes/document-graph-and-wide-column-stores.md`). It shows how to model the records
+  and what each port generates. It includes a MongoDB repository generator
+  (`docs/recipes/generators/typescript/mongo-repository.ts`), run end to end against MongoDB 7
+  and copied into a fresh project by the `document-store-recipe` integration test.
+
+### Fixed
+
+- **Java: OMDB's `MySQLDriver` works against a MySQL server.** It had never been run
+  against one, and it failed on the first insert:
+  - `@generation: increment` keys threw "This should not get called". They are now read
+    back with `LAST_INSERT_ID()`.
+  - Timestamp and uuid values were bound with JDBC types Connector/J rejects
+    ("Unsupported SQL type"). A timestamp is now stored in a `DATETIME` as the UTC wall
+    clock of the instant, whatever the JVM zone. A uuid is stored as text.
+  - Identifiers are backtick-quoted, so a column named after a reserved word (`rank`) works.
+
+  `MySqlObjectManagerTest` covers insert, read, filtered and paged queries, update and
+  delete against MySQL 8.4. MetaObjects still does not own a MySQL schema: write the DDL
+  yourself.
+
 ### Changed
 
 - **Behaviour change in `extract`, every port: `validator.array` bounds are enforced.** An

@@ -161,4 +161,38 @@ class KotlinFilterAllowlistGeneratorTest {
             outDir.toFile().deleteRecursively()
         }
     }
+
+    /**
+     * A sourceless entity (identity, no source: a record in a store MetaObjects does not
+     * manage) gets no controller but does get an allowlist for the list endpoint its adopter
+     * writes. A value object still gets none. Mirrors the Java SpringSourcelessEntityTest.
+     */
+    @Test fun sourcelessEntityGetsAnAllowlistValueObjectDoesNot() {
+        val fixture = """{
+          "metadata.root": { "package": "acme::shop", "children": [
+            { "object.value": { "name": "LineItem", "children": [
+                { "field.string": { "name": "sku", "@filterable": true } }
+            ] } },
+            { "object.entity": { "name": "Order", "children": [
+                { "field.string": { "name": "id" } },
+                { "field.string": { "name": "customerEmail", "@filterable": true } },
+                { "identity.primary": { "@fields": ["id"] } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("fa-sourceless-")
+        try {
+            val gen = KotlinFilterAllowlistGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("fa-sourceless", fixture))
+
+            val allowlist = outDir.resolve("acme/shop/OrderFilterAllowlist.kt")
+            assertTrue(Files.exists(allowlist), "expected $allowlist for the sourceless entity")
+            assertTrue("\"customerEmail\"" in Files.readString(allowlist))
+            assertFalse(Files.exists(outDir.resolve("acme/shop/LineItemFilterAllowlist.kt")),
+                "a value object gets no allowlist")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
 }

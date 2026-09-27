@@ -76,7 +76,11 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
             // a write-through entity detected order-independently — NEVER firstRdbSource, which
             // would skip a view-source-first one) AND, since F22, the read-only arm: a view-kind
             // object.projection has a list route, so it filters.
-            if (!RestSurfaceGate.emitsRestSurface(entity)) continue
+            //
+            // The one addition: a sourceless entity (identity, no source — a record in a store
+            // MetaObjects does not manage) gets no controller, but does get an allowlist for the
+            // list endpoint its adopter writes. Nothing generated references it.
+            if (!RestSurfaceGate.emitsRestSurface(entity) && !RestSurfaceGate.isSourcelessEntity(entity)) continue
             emit(entity, outRoot, loader)
         }
     }

@@ -321,7 +321,7 @@ invalid output). Each row rules out *scopes*, not MetaObjects wholesale:
 | Check | Consequence |
 |---|---|
 | Backend language outside TS/Java/Kotlin/C#/Python | no codegen or runtime for that side; a seam to a supported-language consumer can still take a contract, generated for that side only |
-| No relational store | schema pillar N/A; contracts, value objects and prompts assessed on their own |
+| No relational store (MongoDB, Cassandra, Neo4j, a remote API) | schema pillar N/A; model the stored records as sourceless entities (`identity.primary`, no `source.*`) — types, create/PATCH schemas, filter allowlists, `verify` and prompts IN; data access is a generator the adopter owns (`docs/recipes/document-graph-and-wide-column-stores.md`) |
 | DB not Postgres/SQLite/D1 (MySQL, ClickHouse, SQL Server, …) | `meta migrate` / `verify --db` OUT for that database — say so; types and data access unaffected |
 | ORM no reference generator targets (Prisma, TypeORM, Sequelize, SQLAlchemy ORM, Django ORM, Hibernate-only entities on the Java lane) | FULL means replacing the data layer — price it as such; CONTRACT SPINE and PARTIAL leave it untouched |
 | No seam (single app, no second consumer of any shape) | CONTRACT SPINE has nothing to protect |

@@ -21,6 +21,9 @@ emits it**, or none emits it the way your application needs it:
 - code derived from the model: a DTO or client layer for a framework nothing here ships,
   a service or repository layer in your house style, validators in another library, test
   fixtures, seed data shapes;
+- data access for a store MetaObjects does not manage: MongoDB, Cassandra, Neo4j, an API
+  ([the recipe](document-graph-and-wide-column-stores.md) has a MongoDB repository
+  generator);
 - config derived from the model: a search-index mapping, a permissions matrix, an
   analytics event catalog.
 

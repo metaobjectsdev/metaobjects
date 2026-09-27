@@ -23,6 +23,7 @@ import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.generator.util.GeneratorUtil;
+import com.metaobjects.generator.util.RestSurfaceGate;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.identity.PrimaryIdentity;
 import com.metaobjects.loader.MetaDataLoader;
@@ -137,7 +138,9 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             // from THIS generator (which every consumer already runs) so a re-run of an
             // existing <generators> config that omits a separate patch generator cannot
             // produce a controller/repository that references a missing <Entity>Patch.
-            if (SpringRepositoryGenerator.appliesTo(entity)
+            // A sourceless entity (identity, no source — a record in a store MetaObjects does
+            // not manage) gets the same <Entity>Patch for the PATCH endpoint its adopter writes.
+            if ((SpringRepositoryGenerator.appliesTo(entity) || RestSurfaceGate.isSourcelessEntity(entity))
                     && !TphPlan.isTphBase(entity, loader)
                     && !TphPlan.isTphSubtype(entity)) {
                 emitPatch(entity, outRoot);

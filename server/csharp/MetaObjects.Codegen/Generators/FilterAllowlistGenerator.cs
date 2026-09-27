@@ -46,10 +46,16 @@ public class FilterAllowlistGenerator : PerEntityGenerator
     /// them from having their own routes FILE): the base's routes file references a
     /// per-subtype allowlist for each of them.
     /// </para>
+    /// <para>
+    /// Also a sourceless entity (<see cref="InstanceArtifacts.IsSourcelessEntity"/>): no
+    /// routes, but an allowlist for the list endpoint its adopter writes over a store
+    /// MetaObjects does not manage. Nothing generated references it.
+    /// </para>
     /// </summary>
     public static bool AppliesTo(MetaObject entity) =>
-        (entity.IsEntity() || entity.DbView is not null)
-        && InstanceArtifacts.EmitsInstanceArtifacts(entity);
+        ((entity.IsEntity() || entity.DbView is not null)
+            && InstanceArtifacts.EmitsInstanceArtifacts(entity))
+        || InstanceArtifacts.IsSourcelessEntity(entity);
 
     protected override EmittedFile GenerateOne(MetaObject entity, GenContext ctx)
     {

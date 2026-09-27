@@ -14,7 +14,12 @@
 // it and nothing errors. Mechanism and blast radius: metadata's
 // shared/node-guards.ts. Gated by test/source-detect.test.ts ("survives a split
 // @metaobjectsdev/metadata tree").
-import { SOURCE_SUBTYPE_RDB, isMetaSource, isWritableSource } from "@metaobjectsdev/metadata";
+import {
+  OBJECT_SUBTYPE_PROJECTION,
+  SOURCE_SUBTYPE_RDB,
+  isMetaSource,
+  isWritableSource,
+} from "@metaobjectsdev/metadata";
 import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
 
 /** True when the child is a source.rdb node (subType-scoped — the rdb paradigm only). */
@@ -55,4 +60,27 @@ export function hasAnyRdbSource(entity: MetaObject): boolean {
     if (isRdbSource(child)) return true;
   }
   return false;
+}
+
+/**
+ * True for a record whose store MetaObjects does not manage: a concrete object with a primary
+ * identity and no `source.*` at all, declared or inherited. A MongoDB collection, a Cassandra
+ * table, a Neo4j node or a remote API is modelled this way. #248 gives it no table, queries,
+ * routes or migration; the adopter owns its data access.
+ *
+ * It still has a wire contract, because it is addressable: the identity is what makes a record
+ * something a client can create, fetch and PATCH. So the entity module gives it the create and
+ * update schemas and the filter/sort allowlists, and no table.
+ *
+ * Keyed on the identity, not on `object.entity` (#248 removed subtype checks from this
+ * decision): ADR-0028 forbids a value object any identity, so values are excluded by
+ * construction. The one subtype read is the projection exclusion, and it is ADR-0028's own
+ * rule: a projection is read-only because of its subtype, so it has no PATCH surface even when
+ * it borrows an identity.
+ */
+export function isSourcelessEntity(obj: MetaObject): boolean {
+  if (obj.isAbstract === true || obj.subType === OBJECT_SUBTYPE_PROJECTION) return false;
+  if (obj.primaryIdentity() === undefined) return false;
+  // ADR-0039: resolving — a source inherited through extends makes the object persistable.
+  return !obj.children().some(isMetaSource);
 }
