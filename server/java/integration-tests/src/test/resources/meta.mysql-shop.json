@@ -1,0 +1,24 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Product",
+          "children": [
+            { "source.rdb": { "@table": "products" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "title", "@required": true, "@maxLength": 200 } },
+            { "field.int": { "name": "rank", "@required": true } },
+            { "field.boolean": { "name": "active", "@required": true } },
+            { "field.decimal": { "name": "price", "@precision": 10, "@scale": 2 } },
+            { "field.timestamp": { "name": "createdAt", "@required": true } },
+            { "field.timestamp": { "name": "localAt", "@localTime": true } },
+            { "field.uuid": { "name": "externalId" } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+          ]
+        }
+      }
+    ]
+  }
+}

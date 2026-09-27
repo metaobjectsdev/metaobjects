@@ -131,6 +131,15 @@
       <scope>test</scope>
     </dependency>
 
+    <!-- MySQL JDBC, for MySqlObjectManagerTest (OMDB's MySQLDriver). Same docker-CLI
+         container approach as Postgres (see MySqlContainer.java). -->
+    <dependency>
+      <groupId>com.mysql</groupId>
+      <artifactId>mysql-connector-j</artifactId>
+      <version>9.1.0</version>
+      <scope>test</scope>
+    </dependency>
+
     <!-- JUnit 5 (parameterized tests) -->
     <dependency>
       <groupId>org.junit.jupiter</groupId>
