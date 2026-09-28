@@ -107,6 +107,29 @@ describe("assemble", () => {
     }
   });
 
+  test("a `<token>-<topic>.md` fragment is scoped by its token, like `<token>.md`", () => {
+    // A language reference too long to read whole splits into `typescript.md` plus topic
+    // files such as `typescript-retargeting.md`. Without this rule a hyphenated name is not
+    // a stack token, so it installed into every stack: TypeScript prose in a Java project.
+    const root = mkdtempSync(join(tmpdir(), "assemble-scoped-topic-"));
+    try {
+      cpSync(CONTENT_ROOT, root, { recursive: true });
+      const refs = join(root, "skills", "metaobjects-codegen", "references");
+      writeFileSync(join(refs, "typescript-zz-topic.md"), "# ts topic\n");
+      writeFileSync(join(refs, "zz-universal-topic.md"), "# universal\n");
+      const ts = paths(assemble({ contentRoot: root, stack: makeStack(["typescript"], []) }));
+      const java = paths(assemble({ contentRoot: root, stack: makeStack(["java"], []) }));
+      const topic = ".claude/skills/metaobjects-codegen/references/typescript-zz-topic.md";
+      const universal = ".claude/skills/metaobjects-codegen/references/zz-universal-topic.md";
+      expect(ts).toContain(topic);
+      expect(java).not.toContain(topic);
+      expect(ts).toContain(universal);
+      expect(java).toContain(universal);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("a java-only stack gets its java references, not other languages or unused clients", () => {
     const p = paths(assemble({ contentRoot: CONTENT_ROOT, stack: makeStack(["java"], []) }));
     expect(p).toContain(".claude/skills/metaobjects-codegen/references/java.md");

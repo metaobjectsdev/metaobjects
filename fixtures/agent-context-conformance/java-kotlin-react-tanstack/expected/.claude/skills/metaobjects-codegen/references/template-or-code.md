@@ -34,7 +34,8 @@ what the neutral data dict is for.
 
 **TypeScript** has both, and the whole programmatic procedure is documented: `meta
 generator new`, `meta eject`, the `metaobjects.config.ts` keys, the exported `render*`
-functions — see this skill's `references/typescript.md`. The declarative path is declared
+functions — see this skill's `references/typescript.md` (and `references/typescript-templates.md`
+for the declarative path). The declarative path is declared
 in the SAME config: call
 `templateGenerator()` in `generators`, or spread a parsed JSON spec with
 `templateSpecToGenerators(parseTemplateSpec(...))` to reuse one written for C#/Python.

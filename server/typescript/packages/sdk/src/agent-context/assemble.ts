@@ -4,11 +4,24 @@ import {
   SKILL_NAMES, SERVER_LANGS, CLIENT_FRAMEWORKS, CONCERN_TOKENS, type AssembledFile, type Stack,
 } from "./types.js";
 
-// Language/framework/concern reference fragments are stack-scoped; any other
-// fragment (e.g. capability-checklist) is universal and always installs. Adding a
+// Language/framework/concern reference fragments are stack-scoped, and so is a
+// `<token>-<topic>.md` split out of one; any other fragment (e.g. capability-checklist)
+// is universal and always installs. Adding a
 // future concern token to CONCERN_TOKENS (types.ts) is all that's needed to gate
 // its matching references/<token>.md fragment here.
 const SCOPED_FRAGMENT_TOKENS = new Set<string>([...SERVER_LANGS, ...CLIENT_FRAMEWORKS, ...CONCERN_TOKENS]);
+
+/**
+ * The stack token a fragment is scoped by, or undefined for a universal fragment.
+ * `typescript.md` and a topic split out of it, `typescript-retargeting.md`, are both scoped
+ * by `typescript`; `capability-checklist.md` names no token and always installs.
+ */
+function fragmentScope(name: string): string | undefined {
+  if (SCOPED_FRAGMENT_TOKENS.has(name)) return name;
+  const dash = name.indexOf("-");
+  const prefix = dash > 0 ? name.slice(0, dash) : undefined;
+  return prefix !== undefined && SCOPED_FRAGMENT_TOKENS.has(prefix) ? prefix : undefined;
+}
 
 interface ServerMeta {
   displayName: string;
@@ -152,7 +165,8 @@ export function assemble(opts: { contentRoot: string; stack: Stack }): Assembled
         .map((f) => f.replace(/\.md$/, ""))
         .sort();
       for (const token of refs) {
-        if (SCOPED_FRAGMENT_TOKENS.has(token) && !stack.tokens.has(token)) continue;
+        const scope = fragmentScope(token);
+        if (scope !== undefined && !stack.tokens.has(scope)) continue;
         out.push({
           path: `.claude/skills/${skill}/references/${token}.md`,
           contents: readFileSync(join(refDir, `${token}.md`), "utf8"),
