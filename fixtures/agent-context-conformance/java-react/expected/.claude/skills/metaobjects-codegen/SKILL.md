@@ -33,6 +33,7 @@ exact config, generator names and commands for this project; read it. The other 
 
 | File | Open it when |
 |---|---|
+| `references/any-stack.md` | **the database, data store, HTTP framework or UI framework is not one a reference generator targets** — MySQL, MongoDB, DynamoDB, Express, NestJS, Next.js, Vue, … |
 | `references/owning-generators.md` | generated output is wrong; your framework is not the one a reference emits for; you write or review a generator (the `own*()` accessor table) |
 | `references/choosing-layers.md` | the generated API does not fit, you need joined or derived data, or you are adopting onto existing code |
 | `references/template-or-code.md` | choosing between a code generator and a Mustache template |

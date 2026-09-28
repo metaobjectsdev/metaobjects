@@ -58,6 +58,8 @@ that generator and retarget it instead; see "Your framework isn't the default" b
 
 ## Your framework isn't the default — the retargeting procedure
 
+(Database or store not built in either? `any-stack.md` covers persistence, API and client together.)
+
 If the shipped templates do not emit for your stack, retargeting is the **normal first
 move** — not a workaround and not a sign of a bug. Owning a generator is the supported
 path to any framework; MetaObjects does not ship a codegen package per framework and is

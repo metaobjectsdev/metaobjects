@@ -14,9 +14,11 @@ packages. Codegen runs through the Node `meta` CLI (`@metaobjectsdev/cli`, binar
 - Field subtype → column mapping
 
 Topic files beside this one, to open when they come up:
-`typescript-templates.md` (declarative Mustache template-codegen),
-`typescript-docs.md` (`meta docs`), and `typescript-retargeting.md` (a framework other than
-Fastify, Hono or React).
+`typescript-mysql.md` (a MySQL database), `typescript-document-store.md` (MongoDB or any
+store MetaObjects does not manage, with a tested repository generator),
+`typescript-retargeting.md` (a framework other than Fastify, Hono or React),
+`typescript-templates.md` (declarative Mustache template-codegen) and `typescript-docs.md`
+(`meta docs`). The procedure for any unsupported stack is `any-stack.md`.
 
 ## Write your own generator
 

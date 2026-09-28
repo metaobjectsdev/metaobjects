@@ -432,6 +432,9 @@ export const REFERENCE_HELPER_NOTE: readonly string[] = [
   "Each generator is a reference helper, not a guarantee: `meta eject <name>` copies it into",
   "your repo and the copy is yours to change. What MetaObjects guarantees (migrate, verify,",
   "render) is not a generator and is not listed here.",
+  "Your database, store or framework is not listed (MongoDB, DynamoDB, Express, NestJS, Vue, …)?",
+  "Model it anyway and write or retarget a generator: the metaobjects-codegen skill's",
+  "references/any-stack.md has the procedure. MySQL is `dialect: \"mysql\"`.",
 ];
 
 /** The footer line explaining the `package-only` row mark. */

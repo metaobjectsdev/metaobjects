@@ -1,32 +1,14 @@
-# MySQL
+# MySQL on TypeScript
 
-> The sections from "TypeScript setup" on are shipped verbatim in the `metaobjects-codegen`
-> skill as `references/typescript-mysql.md`; change them here and copy them there (a test
-> compares the two).
+> Part of the `metaobjects-codegen` skill's TypeScript reference. Read it when the app's
+> database is MySQL (or MariaDB / PlanetScale).
 
-MySQL is a **code generation and runtime** target. It is not a schema target:
-
-- `meta gen` generates code for MySQL.
-- The TypeScript and Java runtimes read and write MySQL.
-- `meta migrate` does not own a MySQL schema. It supports Postgres, SQLite and D1 only
-  (ADR-0015). You write and evolve the MySQL DDL yourself.
-
-## What works on MySQL
-
-| Tier | TypeScript | Java |
-|---|---|---|
-| Generated code | `dialect: "mysql"`: Drizzle `mysqlTable` entities, Zod schemas, queries, Fastify/Hono routes | DTOs, controllers and repository interfaces are dialect-neutral |
-| Runtime | the generated routes (`runtime-ts`); `ObjectManager` over `kyselyDriver` (Kysely `MysqlDialect`) or `drizzleDriver` (`drizzle-orm/mysql2`) | OMDB `MySQLDriver` |
-| Schema | you own it: no `meta migrate`, `meta verify --db` or `--replay`, and no `agent/schema.md` page | you own it |
-| Drift gates | `meta verify --codegen`, `--templates`, `--docs` work as on any dialect | `mvn metaobjects:verify` (codegen drift) |
-
-These tests exercise the whole list against a real MySQL 8.4 server:
-
-- `mysql-generated-app.test.ts`: the generated tier;
-- `mysql-object-manager.test.ts`: both TypeScript ObjectManager drivers;
-- `MySqlObjectManagerTest`: the Java OMDB driver.
-
-Python, C# and Kotlin have no MySQL-specific code, and nothing tests them on MySQL yet.
+MySQL is a **code generation and runtime** dialect. `meta gen` generates Drizzle
+`mysqlTable` entities, Zod schemas, queries and Fastify/Hono routes for it, and the
+`ObjectManager` reads and writes it. **`meta migrate` does not own a MySQL schema** — it
+refuses `--dialect mysql` — so you write and evolve the DDL yourself, and `meta verify --db`,
+`--replay` and the `agent/schema.md` docs page do not apply. `meta verify --codegen`,
+`--templates` and `--docs` work as on any dialect.
 
 ## TypeScript setup
 

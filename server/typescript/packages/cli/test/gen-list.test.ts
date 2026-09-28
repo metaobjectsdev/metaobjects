@@ -84,6 +84,9 @@ describe("meta gen --list (ADR-0021 D3)", () => {
       const text = out();
       expect(text).toContain("reference helper, not a guarantee");
       expect(text).toContain("`meta eject <name>`");
+      // An agent whose store or framework is not in this list must learn here that it is a
+      // supported path, not a dead end — many never open the skills before deciding.
+      expect(text).toContain("references/any-stack.md");
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

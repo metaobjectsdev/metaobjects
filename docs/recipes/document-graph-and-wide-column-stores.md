@@ -60,6 +60,10 @@ Each port's generators recognize a sourceless entity through one shared predicat
 
 ## Generate the data access
 
+The generator below is also shipped, verbatim, in the `metaobjects-codegen` skill as
+`references/typescript-document-store.md`, so an agent in your project has it without this
+repository. A test keeps the two identical.
+
 [`generators/typescript/mongo-repository.ts`](generators/typescript/mongo-repository.ts) is
 a complete example for the MongoDB Node driver. Copy it into `codegen/generators/`, then wire
 it next to the entity generator:

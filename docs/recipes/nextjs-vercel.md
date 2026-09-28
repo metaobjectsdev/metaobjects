@@ -3,8 +3,9 @@
 **This is a convenience path, not a capability.** Nothing in it is Next.js support in
 any `@metaobjectsdev/*` package — every step below is something the general retargeting
 procedure already produces, and that procedure is the thing to learn: it lives in the
-`metaobjects-codegen` skill (`SKILL.md` → *"Your framework isn't the default"*, with the
-per-knob detail in `references/typescript.md`). Read this page as a shortcut past
+`metaobjects-codegen` skill (`references/any-stack.md`, then `references/owning-generators.md` →
+*"Your framework isn't the default"*, with the per-knob detail in
+`references/typescript-retargeting.md`). Read this page as a shortcut past
 reasoning you could have done yourself, and reach for the skill the moment your stack
 stops matching the table below. Deleting this file would cost convenience and nothing
 else.

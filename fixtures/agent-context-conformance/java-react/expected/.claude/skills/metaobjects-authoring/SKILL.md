@@ -579,9 +579,14 @@ a registered `attr.properties` bag, for example `"@mongo": { "collection": "orde
 A sourceless entity gets no table, queries, routes or migration. It still gets its wire
 contract in every port: the create and PATCH schemas and the filter allowlist. Keep the
 `identity.primary`, because it is what makes the record addressable. Without it the object
-is a shape only. The data access layer is a generator the adopter owns. The recipe, with a
-MongoDB repository generator run end to end, is
-<https://github.com/metaobjectsdev/metaobjects/blob/main/docs/recipes/document-graph-and-wide-column-stores.md>.
+is a shape only. The data access layer is a generator you own: the procedure is in the
+`metaobjects-codegen` skill, `references/any-stack.md`, and on TypeScript
+`references/typescript-document-store.md` carries a complete, tested MongoDB repository
+generator to copy.
+
+**The database dialect is codegen config, not metadata.** MySQL, Postgres, SQLite and D1
+entities are all modeled with `source.rdb`; `dialect` in the codegen config picks the target.
+Do not encode the database in the model.
 
 ### Derived/computed columns: reach for an ENTITY READ-VIEW first
 
