@@ -41,6 +41,7 @@ import {
 } from "./runtime-eject.js";
 import { OWNED_RUNTIME_DIR } from "@metaobjectsdev/codegen-ts";
 import { readPackageManifest, declaredDependencyNames } from "./package-manifest.js";
+import { describeError } from "./error-text.js";
 
 /**
  * One `--list` row. The cross-port subset is name / layer / tier / description.
@@ -239,7 +240,7 @@ async function probeOne(
         // Fall through: the original error is the one worth reporting.
       }
     }
-    return { error: (err as Error).message };
+    return { error: describeError(err) };
   }
 }
 

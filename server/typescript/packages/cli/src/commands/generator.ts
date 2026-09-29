@@ -24,6 +24,7 @@ import {
   OWNED_GENERATORS_DIR,
   type GeneratorScope,
 } from "./generator-help.js";
+import { describeError } from "../lib/error-text.js";
 
 export { GENERATOR_HELP, GENERATOR_OPTIONS, GENERATOR_SCOPES, OWNED_GENERATORS_DIR } from "./generator-help.js";
 export type { GeneratorScope } from "./generator-help.js";
@@ -334,7 +335,7 @@ export async function generatorCommand(args: string[], cwd: string): Promise<num
   try {
     ({ values, positionals } = parseArgs({ args, options: GENERATOR_OPTIONS, strict: true, allowPositionals: true }));
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 2;
   }
   const [sub, name, ...extra] = positionals;
@@ -358,7 +359,7 @@ export async function generatorCommand(args: string[], cwd: string): Promise<num
       wire: values["no-wire"] !== true,
     });
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 2;
   }
 

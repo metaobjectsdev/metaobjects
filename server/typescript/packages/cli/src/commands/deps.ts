@@ -26,6 +26,7 @@ import {
   planSync,
   readLockOrThrow,
 } from "../lib/dependency-sync.js";
+import { describeError } from "../lib/error-text.js";
 
 /** The declared `dependencies` for the config governing `cwd` — read
  *  DIRECTLY via `loadConfig`, never through `resolveCollection`/`Collection`:
@@ -50,7 +51,7 @@ async function runSync(configDir: string, specs: readonly DependencySpec[], flag
     // Same convention as `depsCommand`'s `declaredDependencies` catch below: a
     // committed project file that fails to parse is a config-class problem,
     // exit 2 — distinct from the exit-1 a `sync` verdict failure gets.
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 2;
   }
 
@@ -58,7 +59,7 @@ async function runSync(configDir: string, specs: readonly DependencySpec[], flag
   try {
     plan = await planSync(configDir, specs, lock, flags.names);
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 1;
   }
 
@@ -66,7 +67,7 @@ async function runSync(configDir: string, specs: readonly DependencySpec[], flag
   try {
     applied = await applySync(configDir, plan, { dryRun: flags.dryRun });
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 1;
   }
 
@@ -100,7 +101,7 @@ async function runSync(configDir: string, specs: readonly DependencySpec[], flag
   try {
     collection = await resolveCollection(configDir);
   } catch (err) {
-    log.error(`meta deps sync: the updated dependency set does not resolve: ${(err as Error).message}`);
+    log.error(`meta deps sync: the updated dependency set does not resolve: ${describeError(err)}`);
     return 1;
   }
   try {
@@ -118,7 +119,7 @@ async function runList(configDir: string, fmt: OutputFormat): Promise<number> {
   try {
     lock = await readLockOrThrow(configDir);
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 2;
   }
   const entries = Object.entries(lock?.dependencies ?? {});
@@ -159,7 +160,7 @@ async function runCheck(
   try {
     lock = await readLockOrThrow(configDir);
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 2;
   }
 
@@ -201,7 +202,7 @@ export async function depsCommand(args: string[], cwd: string, fmt: OutputFormat
   try {
     flags = parseDepsArgs(args);
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 2;
   }
 
@@ -216,7 +217,7 @@ export async function depsCommand(args: string[], cwd: string, fmt: OutputFormat
     // failure (gen.ts, migrate.ts, docs.ts) — distinct from the exit 1 a
     // dependency-resolution failure gets below, because this is a config
     // problem, not a `sync` verdict.
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 2;
   }
 

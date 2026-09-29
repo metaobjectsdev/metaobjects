@@ -14,6 +14,7 @@ import { log } from "../lib/log.js";
 import { cliVersion } from "../lib/version.js";
 import { findWranglerConfig, parseWranglerConfig } from "@metaobjectsdev/migrate-ts";
 import { DEFAULT_DOCS_DIR } from "@metaobjectsdev/codegen-ts";
+import { describeError } from "../lib/error-text.js";
 
 // ADR-0034 scaffold-and-own — `meta init` copies the codegen reference templates into
 // the consumer's repo so they OWN them; metaobjects.config.ts imports them locally.
@@ -863,7 +864,7 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
     // init failure gets. `init()` refuses it too, which is what covers every other door.
     assertKnownStackValues({ servers: flags.servers ?? [], clients: flags.clients ?? [] });
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 2;
   }
 
@@ -925,7 +926,7 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
     }
     return 0;
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 1;
   }
 }

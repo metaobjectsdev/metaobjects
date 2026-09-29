@@ -36,6 +36,7 @@ import {
   ejectLibrary, ejectableLibraryNames, isLibraryName, libraryStaleness,
   type LibraryEjectResult,
 } from "../lib/library-eject.js";
+import { describeError } from "../lib/error-text.js";
 
 // Mirrors `OWNED_GENERATORS_DIR` in init.ts's `writeOwnedGenerators` — same directory,
 // same never-clobber-without-consent contract. Kept as its own local constant rather
@@ -613,7 +614,7 @@ export async function ejectCommand(
   try {
     flags = parseEjectArgs(args);
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 2;
   }
 
@@ -687,7 +688,7 @@ export async function ejectCommand(
       if (fmt === "text") reportOne(result, name);
     }
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 1;
   }
 

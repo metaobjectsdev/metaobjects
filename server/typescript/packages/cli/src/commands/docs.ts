@@ -56,6 +56,7 @@ import {
 } from "@metaobjectsdev/migrate-ts";
 import type { AgentSchemaInput, SchemaColumnLike } from "@metaobjectsdev/codegen-ts";
 import { reportLoadError } from "../lib/load-error.js";
+import { describeError } from "../lib/error-text.js";
 
 /**
  * Print a load failure with everything the loader's ADR-0009 envelope carried — the stable
@@ -319,7 +320,7 @@ function buildAgentSchemaInput(
     // agent pages still emit.
     log.warn(
       `docs: agent/schema.md skipped — the expected schema could not be built ` +
-        `(${(err as Error).message}). Run 'meta migrate' for the full diagnosis.`,
+        `(${describeError(err)}). Run 'meta migrate' for the full diagnosis.`,
     );
     return undefined;
   }
@@ -337,7 +338,7 @@ export async function docsCommand(
   try {
     flags = parseDocsArgs(args, cwd);
   } catch (err) {
-    log.error(`docs: ${(err as Error).message}`);
+    log.error(`docs: ${describeError(err)}`);
     return 2;
   }
 
@@ -424,7 +425,7 @@ export async function docsCommand(
       flags.projectRootProvided ? { explicitDir: metaRoot } : undefined,
     );
   } catch (err) {
-    log.error(`docs: ${(err as Error).message}`);
+    log.error(`docs: ${describeError(err)}`);
     return 2;
   }
 
@@ -474,7 +475,7 @@ export async function docsCommand(
       configLoadOptions = loadMemoryOptionsFrom(loadedConfig);
     } catch (err) {
       log.warn(
-        `docs: metaobjects.config.ts failed to load (${(err as Error).message}); ` +
+        `docs: metaobjects.config.ts failed to load (${describeError(err)}); ` +
           `generating docs without its providers`,
       );
       loadedConfig = undefined;
@@ -564,7 +565,7 @@ export async function docsCommand(
     suite = resolveGenerators(loadedConfig?.generators ?? []);
   } catch (err) {
     log.warn(
-      `docs: could not resolve the generator suite (${(err as Error).message}) — the agent ` +
+      `docs: could not resolve the generator suite (${describeError(err)}) — the agent ` +
         `pages fall back to the generators declared as values, so a tier wired by name may ` +
         `be missing from them.`,
     );
@@ -624,7 +625,7 @@ export async function docsCommand(
     try {
       modelFiles = await docsFile(modelOpts).generate(ctx);
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = describeError(err);
       // Duplicate output path (silent-overwrite backstop): the generator already
       // names both colliding FQNs + the path and starts with "docs:". Surface it
       // verbatim as a clean non-zero exit (no double prefix, no stack trace).
@@ -680,7 +681,7 @@ export async function docsCommand(
           );
         }
       } catch (err) {
-        const msg = (err as Error).message;
+        const msg = describeError(err);
         if (msg.startsWith("docs: duplicate output path")) {
           log.error(msg);
           return 1;
@@ -743,7 +744,7 @@ export async function docsCommand(
       await writeFile(path, f.content, "utf8");
     }
   } catch (err) {
-    log.error(`docs: failed to write pages: ${(err as Error).message}`);
+    log.error(`docs: failed to write pages: ${describeError(err)}`);
     return 1;
   }
 
@@ -812,7 +813,7 @@ async function scaffoldSiteCommand(projectRoot: string): Promise<number> {
       created.push(rel);
     }
   } catch (err) {
-    log.error(`docs: failed to scaffold site templates: ${(err as Error).message}`);
+    log.error(`docs: failed to scaffold site templates: ${describeError(err)}`);
     return 1;
   }
   log.info(
@@ -919,7 +920,7 @@ async function emitSite(
     log.info(`meta docs --site — wrote ${r.pages.length} page(s) → ${siteOutDir}`);
     return 0;
   } catch (err) {
-    log.error(`docs: failed to generate site: ${(err as Error).message}`);
+    log.error(`docs: failed to generate site: ${describeError(err)}`);
     return 1;
   }
 }
@@ -937,7 +938,7 @@ async function metamodelDocsCommand(cwd: string, out: string): Promise<number> {
   try {
     docs = renderCoreMetamodelDocs(composeRegistry(coreProviders));
   } catch (err) {
-    log.error(`docs: failed to render metamodel docs: ${(err as Error).message}`);
+    log.error(`docs: failed to render metamodel docs: ${describeError(err)}`);
     return 1;
   }
   try {
@@ -948,7 +949,7 @@ async function metamodelDocsCommand(cwd: string, out: string): Promise<number> {
       await writeFile(path, content, "utf8");
     }
   } catch (err) {
-    log.error(`docs: failed to write metamodel pages: ${(err as Error).message}`);
+    log.error(`docs: failed to write metamodel pages: ${describeError(err)}`);
     return 1;
   }
   log.info(`meta docs --metamodel — wrote ${docs.size} page(s) → ${outDir}`);

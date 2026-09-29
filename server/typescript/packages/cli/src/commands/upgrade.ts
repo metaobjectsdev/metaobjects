@@ -29,6 +29,7 @@ import {
   retirementSuggestions,
 } from "@metaobjectsdev/metadata";
 import { log } from "../lib/log.js";
+import { describeError } from "../lib/error-text.js";
 
 /** YAML authoring (ADR-0006). Rewritten by the `yaml`-backed arm, loaded on demand below. */
 const YAML_EXTENSIONS = new Set([".yaml", ".yml"]);
@@ -61,7 +62,7 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
   try {
     flags = parseArgs(args);
   } catch (err) {
-    if ((err as Error).message === "__help__") {
+    if (describeError(err) === "__help__") {
       log.info(
         "meta upgrade [<project>] [--to <version>] [--apply]\n\n" +
           "  Rewrites metadata the current loader no longer accepts, in JSON and YAML alike:\n" +
@@ -72,7 +73,7 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
       );
       return 0;
     }
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 2;
   }
 
@@ -82,7 +83,7 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
   try {
     files = (await resolveCollection(projectRoot)).files;
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 1;
   }
 

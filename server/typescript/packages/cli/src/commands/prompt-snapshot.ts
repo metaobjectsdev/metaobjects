@@ -20,6 +20,7 @@ import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
 import { TYPE_TEMPLATE, TEMPLATE_ATTR_TEXT_REF, TEMPLATE_ATTR_FORMAT } from "@metaobjectsdev/metadata";
 import { render, ESCAPERS, type RenderFormat } from "@metaobjectsdev/render";
+import { describeError } from "../lib/error-text.js";
 
 const DEFAULT_PROMPTS_DIR = "prompts";
 
@@ -28,7 +29,7 @@ export async function promptSnapshotCommand(args: string[], cwd: string): Promis
   try {
     flags = parsePromptSnapshotArgs(args);
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 2;
   }
 
@@ -44,7 +45,7 @@ export async function promptSnapshotCommand(args: string[], cwd: string): Promis
   try {
     collection = await resolveCollection(cwd);
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 2;
   }
 
@@ -117,7 +118,7 @@ export async function promptSnapshotCommand(args: string[], cwd: string): Promis
     try {
       payload = JSON.parse(readFileSync(payloadPath, "utf8"));
     } catch (err) {
-      log.error(`[${tmpl.name}] invalid payload.json: ${(err as Error).message}`);
+      log.error(`[${tmpl.name}] invalid payload.json: ${describeError(err)}`);
       errorCount++;
       continue;
     }
@@ -135,7 +136,7 @@ export async function promptSnapshotCommand(args: string[], cwd: string): Promis
     try {
       rendered = render({ ref: textRef, payload, provider, ...(format ? { format } : {}) });
     } catch (err) {
-      log.error(`[${tmpl.name}] render failed: ${(err as Error).message}`);
+      log.error(`[${tmpl.name}] render failed: ${describeError(err)}`);
       errorCount++;
       continue;
     }

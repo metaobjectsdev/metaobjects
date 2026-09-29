@@ -55,6 +55,12 @@ here.**
 
 ### Fixed
 
+- **CLI errors no longer print an empty reason.** A refused Postgres connection on a dual-stack
+  host rejects with an `AggregateError` whose own message is empty, so `meta migrate
+  apply-pending` printed `apply failed: ` and nothing else. Every CLI command now prints the
+  inner errors instead (`connect ECONNREFUSED 127.0.0.1:55440; …`), or the error's code or name
+  when it carries no message.
+
 - **`meta verify` counts only requirement gaps a `@disposition` could settle.** The "recorded
   gap(s) with no @disposition" line counted every `partial` / `planned` requirement without a
   disposition, including roll-up parents that are `partial` only because a descendant is. On one

@@ -65,6 +65,7 @@ import { tokensToAllowOptions, blockedEntriesFor, blockedHintLines } from "../li
 import { reportLoadError } from "../lib/load-error.js";
 import { scanForReferentialActionConflicts } from "../lib/referential-action-advisory.js";
 import type { MetaData } from "@metaobjectsdev/metadata";
+import { describeError } from "../lib/error-text.js";
 
 /**
  * Print a load failure with everything the loader's ADR-0009 envelope carried — the stable
@@ -498,7 +499,7 @@ export async function migrateCommand(
   try {
     flags = parseMigrateArgs(args);
   } catch (err) {
-    const msg = (err as Error).message;
+    const msg = describeError(err);
     log.error(`migrate: ${msg}`);
     emitStructuredError(`migrate: ${msg}`, "run `meta migrate --help` for usage", fmt);
     return 2;
@@ -692,7 +693,7 @@ export async function migrateCommand(
   try {
     collection = await resolveCollection(metaRoot);
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 2;
   }
 
@@ -712,7 +713,7 @@ export async function migrateCommand(
   try {
     kysely = await buildKyselyFromUrl(config.databaseUrl, config.dialect);
   } catch (err) {
-    log.error(`migrate: ${(err as Error).message}`);
+    log.error(`migrate: ${describeError(err)}`);
     return 2;
   }
 
@@ -758,7 +759,7 @@ export async function migrateCommand(
     try {
       actual = await introspect(kysely.db, kysely.dialect);
     } catch (err) {
-      log.error(`migrate: failed to connect to ${kysely.displayUrl}: ${(err as Error).message}`);
+      log.error(`migrate: failed to connect to ${kysely.displayUrl}: ${describeError(err)}`);
       await kysely.close();
       return 2;
     }
@@ -801,7 +802,7 @@ export async function migrateCommand(
       }
       // diff() throws when onAmbiguous returns "abort" — surface as exit 1
       // with the collected ambiguity list.
-      if ((err as Error).message.includes("aborted by onAmbiguous")) {
+      if (describeError(err).includes("aborted by onAmbiguous")) {
         ambiguous = ambiguousToEntries(collectedAmbiguous);
         const migrateResult = {
           dialect: kysely.dialect,
@@ -944,7 +945,7 @@ export async function migrateCommand(
         });
         appliedNames = [...result.applied];
       } catch (err) {
-        log.error(`migrate: apply failed: ${(err as Error).message}`);
+        log.error(`migrate: apply failed: ${describeError(err)}`);
         exitCode = 1;
         applyFailed = true;
       }
@@ -1000,7 +1001,7 @@ export async function migrateCommand(
       } catch (err) {
         // The migration itself is written (and possibly applied) — report the
         // bookkeeping failure for what it is rather than as an unexpected error.
-        log.error(`migrate: failed to write the schema snapshot: ${(err as Error).message}`);
+        log.error(`migrate: failed to write the schema snapshot: ${describeError(err)}`);
         exitCode = 1;
       }
     }
@@ -1008,7 +1009,7 @@ export async function migrateCommand(
     try {
       await kysely.close();
     } catch (err) {
-      log.warn(`migrate: failed to close DB cleanly: ${(err as Error).message}`);
+      log.warn(`migrate: failed to close DB cleanly: ${describeError(err)}`);
     }
   }
 
@@ -1046,7 +1047,7 @@ export async function migrateCommand(
     // A metadata defect, not a tool failure: two declarations generate one database name.
     if (isDuplicateSqlNameError(err)) return refuseEngineError(err, DUPLICATE_SQL_NAME_HINT, fmt);
     // Unexpected error: emit structured error on stdout in the active format, then exit 1.
-    const msg = (err as Error).message ?? String(err);
+    const msg = describeError(err) ?? String(err);
     log.error(`migrate: unexpected error: ${msg}`);
     emitStructuredError(`migrate: unexpected error: ${msg}`, "run `meta migrate --help` for usage", fmt);
     return 1;
@@ -1084,7 +1085,7 @@ export async function runBaseline(
     try {
       kysely = await buildKyselyFromUrl(config.databaseUrl, config.dialect);
     } catch (err) {
-      log.error(`migrate baseline: ${(err as Error).message}`);
+      log.error(`migrate baseline: ${describeError(err)}`);
       return 2;
     }
     try {
@@ -1191,7 +1192,7 @@ export async function runApplyPending(
   try {
     kysely = await buildKyselyFromUrl(config.databaseUrl, config.dialect);
   } catch (err) {
-    log.error(`migrate apply-pending: ${(err as Error).message}`);
+    log.error(`migrate apply-pending: ${describeError(err)}`);
     return 2;
   }
 
@@ -1207,13 +1208,13 @@ export async function runApplyPending(
     pendingNames = [...result.pending];
     appliedNames = [...result.applied];
   } catch (err) {
-    log.error(`migrate apply-pending: apply failed: ${(err as Error).message}`);
+    log.error(`migrate apply-pending: apply failed: ${describeError(err)}`);
     exitCode = 1;
   } finally {
     try {
       await kysely.close();
     } catch (err) {
-      log.warn(`migrate apply-pending: failed to close DB cleanly: ${(err as Error).message}`);
+      log.warn(`migrate apply-pending: failed to close DB cleanly: ${describeError(err)}`);
     }
   }
   if (exitCode !== 0) return exitCode;
@@ -1312,7 +1313,7 @@ export async function runOfflineGenerate(
   try {
     snapshot = await readSnapshot(path);
   } catch (err) {
-    log.error(`migrate: cannot read schema snapshot at ${path}: ${(err as Error).message}`);
+    log.error(`migrate: cannot read schema snapshot at ${path}: ${describeError(err)}`);
     return 2;
   }
   if (snapshot === null) {
@@ -1360,7 +1361,7 @@ export async function runOfflineGenerate(
     // #258 — a primary-key move has no expressible migration; refuse loudly.
     if (isPrimaryKeyChangeError(err)) return refuseEngineError(err, PK_CHANGE_HINT, fmt);
     if (isDeclaredRenameError(err)) return refuseEngineError(err, DECLARED_RENAME_HINT, fmt);
-    if ((err as Error).message.includes("aborted by onAmbiguous")) {
+    if (describeError(err).includes("aborted by onAmbiguous")) {
       log.error(`migrate: ambiguous rename/drop detected; re-run with --on-ambiguous rename|drop-add`);
       return 1;
     }
@@ -1446,7 +1447,7 @@ async function runRollback(
   try {
     kysely = await buildKyselyFromUrl(databaseUrl, config.dialect);
   } catch (err) {
-    log.error(`migrate: ${(err as Error).message}`);
+    log.error(`migrate: ${describeError(err)}`);
     return 2;
   }
   // kysely.dialect is "sqlite" | "postgres" here — d1 is rejected upstream.
@@ -1464,13 +1465,13 @@ async function runRollback(
     }
     return 0;
   } catch (err) {
-    log.error(`migrate: rollback failed: ${(err as Error).message}`);
+    log.error(`migrate: rollback failed: ${describeError(err)}`);
     return 1;
   } finally {
     try {
       await kysely.close();
     } catch (err) {
-      log.warn(`migrate: failed to close DB cleanly: ${(err as Error).message}`);
+      log.warn(`migrate: failed to close DB cleanly: ${describeError(err)}`);
     }
   }
 }
@@ -1504,7 +1505,7 @@ async function runD1Migrate(
     try {
       binding = resolveD1Binding(parsed.d1Bindings, config.d1.binding);
     } catch (err) {
-      log.error(`migrate: ${(err as Error).message}`);
+      log.error(`migrate: ${describeError(err)}`);
       return 2;
     }
   } else {
@@ -1546,7 +1547,7 @@ async function runD1Migrate(
   try {
     collection = await resolveCollection(metaRoot);
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 2;
   }
 
@@ -1587,7 +1588,7 @@ async function runD1Migrate(
       configPath: wranglerConfigPath,
     });
   } catch (err) {
-    log.error(`migrate: failed to introspect D1: ${(err as Error).message}`);
+    log.error(`migrate: failed to introspect D1: ${describeError(err)}`);
     return 2;
   }
 
@@ -1620,7 +1621,7 @@ async function runD1Migrate(
     // #258 — a primary-key move has no expressible migration; refuse loudly.
     if (isPrimaryKeyChangeError(err)) return refuseEngineError(err, PK_CHANGE_HINT, fmt);
     if (isDeclaredRenameError(err)) return refuseEngineError(err, DECLARED_RENAME_HINT, fmt);
-    if ((err as Error).message.includes("aborted by onAmbiguous")) {
+    if (describeError(err).includes("aborted by onAmbiguous")) {
       const entries = ambiguousToEntries(collectedAmbiguous);
       for (const e of entries) {
         log.error(`  ambiguous ${e.kind}: ${e.description}${e.hint ? ` [${e.hint}]` : ""}`);
@@ -1716,7 +1717,7 @@ async function runWranglerApply(
   return await new Promise<number>((resolve) => {
     const child = spawn("wrangler", applyArgs, { stdio: "inherit" });
     child.on("error", (err) => {
-      log.error(`migrate: failed to run wrangler: ${(err as Error).message}`);
+      log.error(`migrate: failed to run wrangler: ${describeError(err)}`);
       resolve(2);
     });
     child.on("close", (code) => resolve(code ?? 1));

@@ -24,6 +24,7 @@ import { composeRegistry, buildVocabularyCatalog } from "@metaobjectsdev/metadat
 import { defaultLoadMemoryProviders } from "@metaobjectsdev/sdk";
 import { log } from "../lib/log.js";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
+import { describeError } from "../lib/error-text.js";
 
 interface TypesFlags {
   query: string | null;
@@ -210,7 +211,7 @@ export async function typesCommand(args: string[], fmt: OutputFormat = "text"): 
   try {
     f = parse(args);
   } catch (err) {
-    const msg = (err as Error).message;
+    const msg = describeError(err);
     log.error(msg);
     // A structured caller gets a structured refusal — exiting 2 with an EMPTY stdout is
     // the same silence a `| jq` cannot tell from "no results". Mirrors verify.ts.

@@ -106,6 +106,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { verify, ERR_REQUIRED_SLOT_UNUSED, ERR_PARTIAL_UNRESOLVED } from "@metaobjectsdev/render";
 import { describeLoadError, reportLoadError } from "../lib/load-error.js";
+import { describeError } from "../lib/error-text.js";
 
 const DEFAULT_PROMPTS_DIR = "prompts";
 
@@ -162,7 +163,7 @@ export async function verifyCommand(
   try {
     flags = parseVerifyArgs(args);
   } catch (err) {
-    const msg = (err as Error).message;
+    const msg = describeError(err);
     log.error(msg);
     // A structured caller gets a structured refusal. Exiting 2 with an EMPTY stdout
     // is the same silence this command is being fixed for, one level up.
@@ -206,7 +207,7 @@ export async function verifyCommand(
   try {
     collection = await resolveCollection(cwd);
   } catch (err) {
-    const msg = (err as Error).message;
+    const msg = describeError(err);
     log.error(msg);
     emitStructured({ error: msg, hint: "declare metadata `sources` in .metaobjects/config.json, or run `meta init`" }, fmt);
     return 2;
@@ -274,7 +275,7 @@ export async function verifyCommand(
       strict: !flags.lax,
     });
   } catch (err) {
-    const msg = (err as Error).message;
+    const msg = describeError(err);
     // Everything the loader's envelope carried, not just the message: the stable code a
     // CI job keys on, and the FILE + json path the message itself can never name.
     const report = describeLoadError(err);
@@ -512,7 +513,7 @@ export async function verifyCommand(
     } catch (err) {
       // A missing optional driver lands here, and its message already carries the
       // install hint. Operational, not drift.
-      log.error(`meta verify --replay: ${(err as Error).message}`);
+      log.error(`meta verify --replay: ${describeError(err)}`);
       return 2;
     }
 
@@ -521,7 +522,7 @@ export async function verifyCommand(
       try {
         applied = await applyPending(engine.db, dir, { dryRun: false, dialect });
       } catch (err) {
-        log.error(`meta verify --replay: ${(err as Error).message}`);
+        log.error(`meta verify --replay: ${describeError(err)}`);
         for (const line of replayRemedy(err)) log.error(`meta verify --replay: ${line}`);
         return 1;
       }
@@ -794,7 +795,7 @@ export async function verifyCommand(
       findings = await lintOverlays(collection, (path) => new FileSource(path));
     } catch (err) {
       // Never let an advisory scan break verify — and never report it as clean.
-      overlaySection = skippedSection(`the overlay lint failed: ${(err as Error).message}`);
+      overlaySection = skippedSection(`the overlay lint failed: ${describeError(err)}`);
       return;
     }
     overlaySection = ranSection(findings.map((d) => toDiagnosticRow(d, "lint")));
@@ -826,7 +827,7 @@ export async function verifyCommand(
       findings = scanSourceForAntiPatterns(projectRoot, ignore !== undefined ? { ignore } : undefined);
     } catch (err) {
       // Never let an advisory scan break verify — and never report it as clean.
-      antiPatternSection = skippedSection(`the scan failed: ${(err as Error).message}`);
+      antiPatternSection = skippedSection(`the scan failed: ${describeError(err)}`);
       return;
     }
     // F52 — the one gate that can see a provider silently missing its base. Folded into
@@ -1157,7 +1158,7 @@ export async function verifyCommand(
     try {
       kysely = await buildKyselyFromUrl(flags.db as string, flags.dialect as Dialect | undefined);
     } catch (err) {
-      log.error(`verify: ${(err as Error).message}`);
+      log.error(`verify: ${describeError(err)}`);
       return 1;
     }
 
@@ -1183,7 +1184,7 @@ export async function verifyCommand(
           ...importedOption(collection),
         });
       } catch (err) {
-        log.error(`verify: failed to introspect ${kysely.displayUrl}: ${(err as Error).message}`);
+        log.error(`verify: failed to introspect ${kysely.displayUrl}: ${describeError(err)}`);
         return 1;
       }
 
@@ -1197,7 +1198,7 @@ export async function verifyCommand(
       try {
         await kysely.close();
       } catch (err) {
-        log.warn(`verify: failed to close DB cleanly: ${(err as Error).message}`);
+        log.warn(`verify: failed to close DB cleanly: ${describeError(err)}`);
       }
     }
   }
@@ -1230,7 +1231,7 @@ export async function verifyCommand(
       try {
         binding = resolveD1Binding(parsed.d1Bindings, d1Config.binding);
       } catch (err) {
-        log.error(`verify: ${(err as Error).message}`);
+        log.error(`verify: ${describeError(err)}`);
         return 2;
       }
     } else {
@@ -1254,7 +1255,7 @@ export async function verifyCommand(
     try {
       actual = await introspectD1({ runner: d1Runner, binding: binding.binding, remote, configPath: wranglerConfigPath });
     } catch (err) {
-      log.error(`verify: failed to introspect D1 binding '${binding.binding}': ${(err as Error).message}`);
+      log.error(`verify: failed to introspect D1 binding '${binding.binding}': ${describeError(err)}`);
       return 1;
     }
 
@@ -1271,7 +1272,7 @@ export async function verifyCommand(
         ...importedOption(collection),
       });
     } catch (err) {
-      log.error(`verify: ${(err as Error).message}`);
+      log.error(`verify: ${describeError(err)}`);
       return 1;
     }
 
@@ -1457,7 +1458,7 @@ export async function verifyCommand(
     try {
       result = await computeCodegenDrift(forgeConfig, codegenRoot, genConfigDir, genCollection.inScope);
     } catch (err) {
-      log.error(`verify --codegen: regeneration failed: ${(err as Error).message}`);
+      log.error(`verify --codegen: regeneration failed: ${describeError(err)}`);
       return 1;
     }
 
@@ -1554,7 +1555,7 @@ export async function verifyCommand(
         cwd: genConfigDir,
       });
     } catch (err) {
-      log.error(`verify --docs: regeneration failed: ${(err as Error).message}`);
+      log.error(`verify --docs: regeneration failed: ${describeError(err)}`);
       return 1;
     }
 
@@ -1630,7 +1631,7 @@ export async function verifyCommand(
     try {
       lock = await readLockOrThrow(collection.configDir);
     } catch (err) {
-      log.error(`verify --deps: ${(err as Error).message}`);
+      log.error(`verify --deps: ${describeError(err)}`);
       return 2;
     }
 

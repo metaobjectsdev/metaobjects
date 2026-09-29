@@ -17,6 +17,7 @@
 
 import { spawnSync } from "node:child_process";
 import { toPosix } from "./rel-posix.js";
+import { describeError } from "./error-text.js";
 
 /** Ignored paths, or the reason the question could not be asked. */
 export type GitIgnoreResult =
@@ -75,7 +76,7 @@ export function gitIgnored(
   try {
     res = spawnSync(gitBin, args, { encoding: "utf-8", input });
   } catch (err) {
-    return { unavailable: `git could not be run (${(err as Error).message})` };
+    return { unavailable: `git could not be run (${describeError(err)})` };
   }
   if (res.error !== undefined) {
     return { unavailable: "git is not on PATH" };

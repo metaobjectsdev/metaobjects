@@ -4,6 +4,7 @@ import { cliVersion } from "./lib/version.js";
 import { resolveFormat, isValidFormat, VALID_FORMATS, type OutputFormat } from "./lib/format.js";
 import { resolveCollection } from "@metaobjectsdev/sdk";
 import { GENERATOR_HELP } from "./commands/generator-help.js";
+import { describeError } from "./lib/error-text.js";
 export { defineConfig } from "@metaobjectsdev/codegen-ts";
 export type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 
@@ -591,7 +592,7 @@ export async function run(argv: string[]): Promise<number> {
       try {
         flags = parseAgentDocsArgs(rest);
       } catch (err) {
-        log.error((err as Error).message);
+        log.error(describeError(err));
         return 2;
       }
       const targetCwd = flags.out !== undefined ? resolve(cwd, flags.out) : cwd;
@@ -609,7 +610,7 @@ export async function run(argv: string[]): Promise<number> {
         log.info("Re-run agent-docs to update; --no-wire-root to skip the root CLAUDE.md @import.");
         return 0;
       } catch (err) {
-        log.error((err as Error).message);
+        log.error(describeError(err));
         return 1;
       }
     }

@@ -6,13 +6,14 @@ import { FileSource } from "@metaobjectsdev/metadata/core";
 import { TypeRegistry, registerCoreTypes, MetaDataLoader, canonicalSerialize } from "@metaobjectsdev/metadata";
 import { registerForgeTypes, resolveCollection } from "@metaobjectsdev/sdk";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
+import { describeError } from "../lib/error-text.js";
 
 export async function exportCommand(args: string[], cwd: string): Promise<number> {
   let flags;
   try {
     flags = parseExportArgs(args);
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 2;
   }
 
@@ -34,7 +35,7 @@ export async function exportCommand(args: string[], cwd: string): Promise<number
   try {
     collection = await resolveCollection(projectRoot);
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 1;
   }
 

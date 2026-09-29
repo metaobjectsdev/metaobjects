@@ -37,6 +37,7 @@ import {
   type Lock,
   type LockEntry,
 } from "@metaobjectsdev/sdk";
+import { describeError } from "./error-text.js";
 
 /** `dependency-sync.ts`'s own `ParseError` factory for every
  *  `ERR_DEPENDENCY_MANIFEST_INVALID` case (DESIGN §4.1 step 2 and step 4):
@@ -128,7 +129,7 @@ export async function readManifestDir(dir: string, name: string): Promise<Manife
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
-    manifestInvalid(name, "readManifestDir", `${manifestPath} is not valid JSON: ${(err as Error).message}`);
+    manifestInvalid(name, "readManifestDir", `${manifestPath} is not valid JSON: ${describeError(err)}`);
   }
 
   const result = DependencyManifestSchema.safeParse(parsed);
@@ -491,7 +492,7 @@ export async function readLockOrThrow(configDir: string): Promise<Lock | undefin
     return await readLock(configDir);
   } catch (err) {
     throw new Error(
-      `${DEFAULT_METAOBJECTS_DIR}/${LOCK_FILE} is corrupted and could not be read: ${(err as Error).message}. ` +
+      `${DEFAULT_METAOBJECTS_DIR}/${LOCK_FILE} is corrupted and could not be read: ${describeError(err)}. ` +
         "Fix it by hand, or delete it and re-run `meta deps sync` to regenerate it.",
     );
   }
@@ -613,7 +614,7 @@ export async function checkDependencies(
         lockIntegrity: lockEntry?.integrity,
         installedVersion: undefined,
         installedIntegrity: undefined,
-        detail: stripDependencyPrefix(name, (err as Error).message),
+        detail: stripDependencyPrefix(name, describeError(err)),
       });
     }
   }

@@ -29,6 +29,7 @@ import {
 } from "../lib/catalog-listing.js";
 import { emitStructured } from "../lib/format.js";
 import { composeCatalog } from "../lib/catalog.js";
+import { describeError } from "../lib/error-text.js";
 
 /**
  * Print a load failure with everything the loader's ADR-0009 envelope carried — the stable
@@ -65,7 +66,7 @@ export function mapStatus(s: WriteStatus): GenFileStatus {
 export async function genCommand(args: string[], cwd: string, fmt: OutputFormat = "text"): Promise<number> {
   let flags;
   try { flags = parseGenArgs(args); }
-  catch (err) { log.error((err as Error).message); return 2; }
+  catch (err) { log.error(describeError(err)); return 2; }
 
   // ADR-0021 D3 — `meta gen --list`: print the generator CATALOG and exit 0 WITHOUT
   // running codegen. No project is required (like `meta types`): "what can this engine
@@ -97,7 +98,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   try {
     collection = await resolveCollection(cwd);
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 2;
   }
   // ...but `metaobjects.config.ts` is not named by the metadata: it is this
@@ -136,7 +137,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   try {
     forgeConfig = await loadMetaobjectsConfig(projectRoot);
   } catch (err) {
-    log.error((err as Error).message);
+    log.error(describeError(err));
     return 2;
   }
 
@@ -204,7 +205,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       ...(cliConfig.entities.length > 0 ? { entityFilter: cliConfig.entities } : {}),
     });
   } catch (err) {
-    log.error(`gen failed: ${(err as Error).message}`);
+    log.error(`gen failed: ${describeError(err)}`);
     return 1;
   }
 
@@ -369,7 +370,7 @@ function runAntiPatternScan(
       projectRoot, ignore !== undefined ? { ignore } : undefined)));
   } catch (err) {
     // Never let an advisory scan break gen — but never claim it found nothing either.
-    return skippedSection(`the scan failed: ${(err as Error).message}`);
+    return skippedSection(`the scan failed: ${describeError(err)}`);
   }
 }
 
@@ -402,7 +403,7 @@ async function listCatalogCommand(
       collection = await resolveCollection(cwd);
     } catch (err) {
       log.error(
-        `meta gen --list --probe needs a project to probe: ${(err as Error).message}\n` +
+        `meta gen --list --probe needs a project to probe: ${describeError(err)}\n` +
           "Run `meta gen --list` (no --probe) for the catalog on its own.",
       );
       return 2;
@@ -414,7 +415,7 @@ async function listCatalogCommand(
     try {
       forgeConfig = await loadMetaobjectsConfig(projectRoot);
     } catch (err) {
-      log.error((err as Error).message);
+      log.error(describeError(err));
       return 2;
     }
 
