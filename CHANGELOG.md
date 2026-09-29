@@ -10,6 +10,10 @@ here.**
 
 ## [Unreleased]
 
+## [1.0.10] — 2026-09-29
+
+_npm `1.0.10` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
 ### Added
 
 - **Records in a store MetaObjects does not manage keep their wire contract, in every port.**
