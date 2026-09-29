@@ -136,6 +136,19 @@ here.**
 - **`meta verify` names the prompt file it could not find.** `ERR_PARTIAL_UNRESOLVED` now
   says which file to create (`prompts/<ref>.mustache` or `.txt`) and that `--prompts` moves
   the root, instead of only naming the directory it searched.
+- **Agent context: an agent can work out any database, store or framework.** The skills
+  `meta init` installs now carry a playbook for a stack no reference generator targets
+  (`metaobjects-codegen/references/any-stack.md`): MySQL is a `dialect`; MongoDB, DynamoDB,
+  Cassandra, Neo4j or an API are sourceless entities plus a repository generator you own;
+  other HTTP and UI frameworks are mounted, retargeted or generated. TypeScript projects also
+  get the MySQL guide and the tested MongoDB repository generator. The always-on context and
+  the `meta gen --list` header point at it. In cold runs, a fresh agent built a MongoDB app
+  this way with no hints.
+- **Agent context: the skills are split into a short `SKILL.md` plus topic files.** The
+  authoring skill went from 75KB to 40KB, codegen from 49KB to 23KB, and the TypeScript codegen
+  reference from 30KB to 17KB. Each `SKILL.md` opens with a table of its `references/` files and
+  when to open each. A reference named `<language>-<topic>.md` installs only for that language.
+  Run `meta init --refresh-docs` to take the new files.
 - **Agent context: hand-built LLM prompts** (#389). The always-on context installed by
   `meta init` gains a rule: once a project declares any `template.prompt`, every LLM prompt is
   one, replies are read through a response model, and changing a hand-built prompt means
