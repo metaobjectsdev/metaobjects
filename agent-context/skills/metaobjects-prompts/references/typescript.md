@@ -103,6 +103,12 @@ and `data` holds what was recovered (every field of the `<Vo>Extracted` mirror i
 nullable). It throws only when `root` does not declare the response value object, which is
 a setup error.
 
+Wiring the `extractor` generator as well adds `<Name>.extractor.ts` with two more entry
+points over the same call: `extract<Name>(root, text)` returns the strict response type and
+throws when a `@required` field is lost or malformed, and `extractLenient<Name>(root, text)`
+re-exports the tolerant call above. `extractLenient<Name>WithLoader` itself is exported
+only from `<Name>.response.ts`.
+
 Field-type → Zod mapping: `field.string` → `z.string()`; `field.int`/`long`/`currency`
 → `z.number().int()`; `field.double`/`float` → `z.number()`; `field.boolean` →
 `z.boolean()`; `field.enum` → `z.enum([...])` over its declared `@values`;
