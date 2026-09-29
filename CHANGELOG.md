@@ -55,6 +55,12 @@ here.**
 
 ### Fixed
 
+- **`meta verify` counts only requirement gaps a `@disposition` could settle.** The "recorded
+  gap(s) with no @disposition" line counted every `partial` / `planned` requirement without a
+  disposition, including roll-up parents that are `partial` only because a descendant is. On one
+  adopter ledger it read 19 where 7 were actionable. A requirement is now counted only when no
+  descendant also carries outstanding work.
+
 - **`meta types <subtype> --detail` printed every attribute twice.** The subtype's block lists
   its `@attrs` with full descriptions, and each attr then printed again as its own `(attr)` block
   with the same text. It now prints once, which halves the output (`field.string`: 9.7KB to
