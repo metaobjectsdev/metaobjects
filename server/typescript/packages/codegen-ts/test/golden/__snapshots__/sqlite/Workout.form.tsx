@@ -6,6 +6,7 @@ import type { Workout as WorkoutRow } from "./Workout";
 import { useEntityForm } from "@metaobjectsdev/react";
 import type { ReactElement } from "react";
 import type { SubmitHandler } from "react-hook-form";
+import { z } from "zod";
 
 const BLANK_OPTIONAL_FIELDS = ["durationMinutes"] as const;
 
@@ -49,7 +50,10 @@ export interface WorkoutFormProps {
 export function WorkoutForm(props: WorkoutFormProps): ReactElement {
   const form = useEntityForm(
     Workout,
-    props.defaultValues !== undefined ? WorkoutUpdateSchema : WorkoutInsertSchema,
+    z.preprocess(
+      (v) => normalizeBlankOptionals(v as Record<string, unknown>, props.defaultValues !== undefined),
+      props.defaultValues !== undefined ? WorkoutUpdateSchema : WorkoutInsertSchema,
+    ),
     props.defaultValues !== undefined ? { defaultValues: props.defaultValues } : {},
   );
   return (

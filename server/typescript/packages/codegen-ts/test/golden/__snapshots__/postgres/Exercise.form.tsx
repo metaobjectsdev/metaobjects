@@ -6,6 +6,7 @@ import type { Exercise as ExerciseRow } from "./Exercise";
 import { useEntityForm } from "@metaobjectsdev/react";
 import type { ReactElement } from "react";
 import type { SubmitHandler } from "react-hook-form";
+import { z } from "zod";
 
 const BLANK_OPTIONAL_FIELDS = ["sets", "reps", "notes"] as const;
 
@@ -49,7 +50,10 @@ export interface ExerciseFormProps {
 export function ExerciseForm(props: ExerciseFormProps): ReactElement {
   const form = useEntityForm(
     Exercise,
-    props.defaultValues !== undefined ? ExerciseUpdateSchema : ExerciseInsertSchema,
+    z.preprocess(
+      (v) => normalizeBlankOptionals(v as Record<string, unknown>, props.defaultValues !== undefined),
+      props.defaultValues !== undefined ? ExerciseUpdateSchema : ExerciseInsertSchema,
+    ),
     props.defaultValues !== undefined ? { defaultValues: props.defaultValues } : {},
   );
   return (

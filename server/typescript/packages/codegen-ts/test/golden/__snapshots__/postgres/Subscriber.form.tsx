@@ -6,6 +6,7 @@ import type { Subscriber as SubscriberRow } from "./Subscriber";
 import { useEntityForm } from "@metaobjectsdev/react";
 import type { ReactElement } from "react";
 import type { SubmitHandler } from "react-hook-form";
+import { z } from "zod";
 
 const BLANK_OPTIONAL_FIELDS = ["lastName"] as const;
 
@@ -49,7 +50,10 @@ export interface SubscriberFormProps {
 export function SubscriberForm(props: SubscriberFormProps): ReactElement {
   const form = useEntityForm(
     Subscriber,
-    props.defaultValues !== undefined ? SubscriberUpdateSchema : SubscriberInsertSchema,
+    z.preprocess(
+      (v) => normalizeBlankOptionals(v as Record<string, unknown>, props.defaultValues !== undefined),
+      props.defaultValues !== undefined ? SubscriberUpdateSchema : SubscriberInsertSchema,
+    ),
     props.defaultValues !== undefined ? { defaultValues: props.defaultValues } : {},
   );
   return (

@@ -6,6 +6,7 @@ import type { Video as VideoRow } from "./Video";
 import { useEntityForm } from "@metaobjectsdev/react";
 import type { ReactElement } from "react";
 import type { SubmitHandler } from "react-hook-form";
+import { z } from "zod";
 
 const BLANK_OPTIONAL_FIELDS = ["title", "durationSeconds"] as const;
 
@@ -49,7 +50,10 @@ export interface VideoFormProps {
 export function VideoForm(props: VideoFormProps): ReactElement {
   const form = useEntityForm(
     Video,
-    props.defaultValues !== undefined ? VideoUpdateSchema : VideoInsertSchema,
+    z.preprocess(
+      (v) => normalizeBlankOptionals(v as Record<string, unknown>, props.defaultValues !== undefined),
+      props.defaultValues !== undefined ? VideoUpdateSchema : VideoInsertSchema,
+    ),
     props.defaultValues !== undefined ? { defaultValues: props.defaultValues } : {},
   );
   return (
