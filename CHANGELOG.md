@@ -12,6 +12,11 @@ here.**
 
 ### Fixed
 
+- **The "agent context is out of date" hint no longer strips a mixed stack.** Python, C# and
+  Java `gen` / `verify` told you to run `npx meta agent-docs --server <lang>`. An explicit
+  `--server` replaces the stack recorded in `.metaobjects/`, so on a project that is also
+  TypeScript (or Kotlin, or has a React client) following the hint dropped those references.
+  The hint is now `npx meta agent-docs`, which keeps the recorded stack.
 - **TanStack hooks and grid hooks import `<Entity>.meta` from beside themselves.** The UI
   generators write the DB-free `<Entity>.meta.ts` into their own target, but the generated
   `import { Program } from …` pointed at the entity module's path plus `.meta`. On a

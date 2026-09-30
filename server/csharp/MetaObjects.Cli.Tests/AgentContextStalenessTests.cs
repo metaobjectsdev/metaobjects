@@ -42,7 +42,8 @@ public sealed class AgentContextStalenessTests
         Assert.NotNull(msg);
         Assert.Contains("1.0.0", msg);
         Assert.Contains("2.0.0", msg);
-        Assert.Contains("npx meta agent-docs --server csharp", msg);
+        Assert.Contains("npx meta agent-docs", msg);
+        Assert.DoesNotContain("--server", msg); // an explicit --server replaces the recorded stack
     }
 
     [Fact]
@@ -53,7 +54,8 @@ public sealed class AgentContextStalenessTests
         Assert.NotNull(msg);
         Assert.Contains("an older MetaObjects", msg);
         Assert.Contains("2.0.0", msg);
-        Assert.Contains("npx meta agent-docs --server csharp", msg);
+        Assert.Contains("npx meta agent-docs", msg);
+        Assert.DoesNotContain("--server", msg); // an explicit --server replaces the recorded stack
     }
 
     // Even a prerelease/build-metadata difference nudges (exact equality, not semver).
