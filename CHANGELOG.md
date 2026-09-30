@@ -10,6 +10,17 @@ here.**
 
 ## [Unreleased]
 
+### Fixed
+
+- **TanStack hooks and grid hooks import `<Entity>.meta` from beside themselves.** The UI
+  generators write the DB-free `<Entity>.meta.ts` into their own target, but the generated
+  `import { Program } from …` pointed at the entity module's path plus `.meta`. On a
+  multi-target project that is another package's `importBase`
+  (`@acme/db/generated/…/Program.meta`), where no such file exists, so the web target only
+  compiled with a hand-written `tsconfig` alias. It is now a sibling import
+  (`./Program.meta`). **Upgrading:** run `meta gen`; an alias added to work around it can be
+  removed.
+
 ## [1.0.10] — 2026-09-29
 
 _npm `1.0.10` (all 14 `@metaobjectsdev/*` packages in lockstep), PyPI `1.0.10`, NuGet `1.0.10` and

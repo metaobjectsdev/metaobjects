@@ -13,14 +13,13 @@ import type { MetaObject, MetaLayout } from "@metaobjectsdev/metadata";
 import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts";
 
-/** The DB-free descriptor sibling of an entity module: `./Author` → `./Author.meta`,
- *  `./Author.js` → `./Author.meta.js`. The UI files take the `<Entity>` descriptor
- *  from there so a browser bundle never pulls the Drizzle table in — it is the ONLY
- *  value they import from the entity module; everything else is `import type`. */
-function metaModuleOf(entityModule: string): string {
-  return entityModule.endsWith(".js")
-    ? `${entityModule.slice(0, -3)}.meta.js`
-    : `${entityModule}.meta`;
+/** The DB-free `<Entity>.meta` descriptor. The UI generator writes it into ITS OWN target,
+ *  beside this file, so it is always a sibling import — never the entity module's path,
+ *  which on a multi-target project is another package's importBase. The UI files take the
+ *  `<Entity>` descriptor from there so a browser bundle never pulls the Drizzle table in —
+ *  it is the ONLY value they import from the entity module; everything else is `import type`. */
+function metaModuleOf(entity: MetaObject, ctx: RenderContext): string {
+  return siblingSpecifier(ctx.selfTarget, effectivePackage(entity), `${entity.name}.meta`, ctx.extStyle);
 }
 
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE, entityModuleSpecifier, siblingSpecifier,
@@ -84,7 +83,7 @@ export function renderGridHookFile(entity: MetaObject, ctx: RenderContext): stri
   const buildFilterQsSym    = imp("buildFilterQs@@metaobjectsdev/runtime-web");
 
   const entityImports: Code = code`
-import { ${entityName} } from ${JSON.stringify(metaModuleOf(entityModule))};
+import { ${entityName} } from ${JSON.stringify(metaModuleOf(entity, ctx))};
 import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityModule)};
 `;
 
