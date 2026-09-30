@@ -6,6 +6,7 @@ import type { Author as AuthorRow } from "./Author";
 import { useEntityForm } from "@metaobjectsdev/react";
 import type { ReactElement } from "react";
 import type { SubmitHandler } from "react-hook-form";
+import { z } from "zod";
 
 const BLANK_OPTIONAL_FIELDS = ["bio"] as const;
 
@@ -49,7 +50,10 @@ export interface AuthorFormProps {
 export function AuthorForm(props: AuthorFormProps): ReactElement {
   const form = useEntityForm(
     Author,
-    props.defaultValues !== undefined ? AuthorUpdateSchema : AuthorInsertSchema,
+    z.preprocess(
+      (v) => normalizeBlankOptionals(v as Record<string, unknown>, props.defaultValues !== undefined),
+      props.defaultValues !== undefined ? AuthorUpdateSchema : AuthorInsertSchema,
+    ),
     props.defaultValues !== undefined ? { defaultValues: props.defaultValues } : {},
   );
   return (

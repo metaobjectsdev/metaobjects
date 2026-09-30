@@ -6,6 +6,7 @@ import type { Purchase as PurchaseRow } from "./Purchase";
 import { useEntityForm } from "@metaobjectsdev/react";
 import type { ReactElement } from "react";
 import type { SubmitHandler } from "react-hook-form";
+import { z } from "zod";
 
 const BLANK_OPTIONAL_FIELDS = ["amountCents", "status", "purchasedAt"] as const;
 
@@ -49,7 +50,10 @@ export interface PurchaseFormProps {
 export function PurchaseForm(props: PurchaseFormProps): ReactElement {
   const form = useEntityForm(
     Purchase,
-    props.defaultValues !== undefined ? PurchaseUpdateSchema : PurchaseInsertSchema,
+    z.preprocess(
+      (v) => normalizeBlankOptionals(v as Record<string, unknown>, props.defaultValues !== undefined),
+      props.defaultValues !== undefined ? PurchaseUpdateSchema : PurchaseInsertSchema,
+    ),
     props.defaultValues !== undefined ? { defaultValues: props.defaultValues } : {},
   );
   return (

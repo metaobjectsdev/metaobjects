@@ -31,7 +31,7 @@ export const reactGeneratorRegistry: Record<string, GeneratorRegistryEntry> = {
     framework: "react",
     requires: ["entity"],
     runtimePackages: ["@metaobjectsdev/react"],
-    runtimePeers: ["react", "react-hook-form"],
+    runtimePeers: ["react", "react-hook-form", "zod"],
     configKeys: ["extStyle", "clientDirective"],
     ejectable: ejectable("form"),
   },

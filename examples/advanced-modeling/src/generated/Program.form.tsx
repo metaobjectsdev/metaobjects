@@ -9,6 +9,7 @@ import type { Program as ProgramRow } from "./Program";
 import { useEntityForm } from "@metaobjectsdev/react";
 import type { ReactElement } from "react";
 import type { SubmitHandler } from "react-hook-form";
+import { z } from "zod";
 
 const BLANK_OPTIONAL_FIELDS = ["status", "summary", "priceCents"] as const;
 
@@ -52,7 +53,10 @@ export interface ProgramFormProps {
 export function ProgramForm(props: ProgramFormProps): ReactElement {
   const form = useEntityForm(
     Program,
-    props.defaultValues !== undefined ? ProgramUpdateSchema : ProgramInsertSchema,
+    z.preprocess(
+      (v) => normalizeBlankOptionals(v as Record<string, unknown>, props.defaultValues !== undefined),
+      props.defaultValues !== undefined ? ProgramUpdateSchema : ProgramInsertSchema,
+    ),
     props.defaultValues !== undefined ? { defaultValues: props.defaultValues } : {},
   );
   const syllabusArray = useFieldArray({ control: form.control, name: "syllabus" as never });
