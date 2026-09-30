@@ -173,3 +173,40 @@ describe("generated form — blank optional fields are tristate-aware (#223)", (
     expect(src).toContain("form.handleSubmit(props.onSubmit as never)");
   });
 });
+
+// 1.0.9 made `field.date` / `field.timestamp` validate their shape, so `""` now FAILS the
+// schema. react-hook-form runs the Zod resolver on the RAW values before the submit
+// callback, and the normalizer above ran only inside that callback — so a create form with
+// a blank optional date showed "must be an ISO date (YYYY-MM-DD)", handleSubmit never
+// fired, and Create silently did nothing (found upgrading an adopter's admin UI to 1.0.10).
+// The normalizer must run BEFORE validation: the resolver's schema is preprocessed by it.
+describe("generated form — blanks are normalized before validation, not after", () => {
+  test("the schema handed to useEntityForm is preprocessed by the normalizer", async () => {
+    const src = await formFor([OPTIONAL_DATE, REQUIRED_TEXT]);
+    expect(src).toMatch(/z\.preprocess\(\s*\(v\) => normalizeBlankOptionals\(/);
+  });
+
+  test("a blank optional date passes the real date check on create and on edit", async () => {
+    // zod from the runtime package the generated form runs with (this package has none).
+    const { createRequire } = await import("node:module");
+    const { resolve } = await import("node:path");
+    // The slice of zod this test touches, typed locally: this package has no zod types.
+    interface Schema { safeParse(v: unknown): { success: boolean }; optional(): Schema; nullable(): Schema; min(n: number): Schema; regex(r: RegExp): Schema }
+    interface Zod { object(shape: Record<string, Schema>): Schema; string(): Schema; preprocess(fn: (v: unknown) => unknown, s: Schema): Schema }
+    const { z } = createRequire(resolve(import.meta.dir, "../../../../../client/web/packages/react/package.json"))("zod") as { z: Zod };
+    const normalize = emittedNormalizer(await formFor([OPTIONAL_DATE, REQUIRED_TEXT]));
+    const insert = z.object({ title: z.string().min(1), startsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
+    const update = z.object({ title: z.string().min(1).optional(), startsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable() });
+    const create = z.preprocess((v: unknown) => normalize(v as Record<string, unknown>, false), insert);
+    const edit = z.preprocess((v: unknown) => normalize(v as Record<string, unknown>, true), update);
+    expect(create.safeParse({ title: "Trip", startsOn: "" }).success).toBe(true);
+    expect(edit.safeParse({ title: "Trip", startsOn: "" }).success).toBe(true);
+    // and a genuinely bad value is still refused
+    expect(create.safeParse({ title: "Trip", startsOn: "next tuesday" }).success).toBe(false);
+  });
+
+  test("an all-required form keeps the plain schema — no preprocess, no zod import", async () => {
+    const src = await formFor([REQUIRED_TEXT]);
+    expect(src).not.toContain("z.preprocess");
+  });
+});

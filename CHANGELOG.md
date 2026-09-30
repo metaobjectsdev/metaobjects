@@ -12,6 +12,13 @@ here.**
 
 ### Fixed
 
+- **A generated form with a blank optional date submits again.** 1.0.9 made `field.date` and
+  `field.timestamp` schemas reject `""`, and react-hook-form validates the RAW values before the
+  submit callback, where the blank-field normalizer ran. A create form with a blank optional
+  date therefore showed `must be an ISO date (YYYY-MM-DD)` and never called `onSubmit`: Create
+  did nothing. The form's schema is now preprocessed by the same create/edit rule (a blank is
+  omitted on create, `null` on edit) before validation. **Upgrading:** run `meta gen`; an owned
+  copy of the `form` generator takes it from `meta eject form`.
 - **The "agent context is out of date" hint no longer strips a mixed stack.** Python, C# and
   Java `gen` / `verify` told you to run `npx meta agent-docs --server <lang>`. An explicit
   `--server` replaces the stack recorded in `.metaobjects/`, so on a project that is also

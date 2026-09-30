@@ -24,7 +24,7 @@
 // (ERR_UNKNOWN_ATTR); the doc line here used to claim it turned generation ON,
 // while the filter beside it read it as an opt-OUT. Neither is true now.
 
-import { code, imp } from "ts-poet";
+import { code, imp, type Code } from "ts-poet";
 import { MetaField, MetaObject, MetaView } from "@metaobjectsdev/metadata";
 import {
   IDENTITY_SUBTYPE_PRIMARY,
@@ -397,6 +397,14 @@ function ${BLANK_NORMALIZER}(values: Record<string, unknown>, isEdit: boolean): 
   return out;
 }
 `;
+  // Blanks are normalized BEFORE validation too. react-hook-form runs the resolver on the
+  // raw values ahead of the submit callback, and since 1.0.9 a date/timestamp schema
+  // rejects `""` — so normalizing only in the callback left a blank optional date failing
+  // validation and the submit never firing. The resolver's schema is preprocessed by the
+  // same tristate rule; the callback's pass below is then a no-op kept for safety.
+  const resolverSchema: Code | string = blankFields.length === 0
+    ? formSchema
+    : code`${imp("z@zod")}.preprocess(\n      (v) => ${BLANK_NORMALIZER}(v as Record<string, unknown>, props.defaultValues !== undefined),\n      ${formSchema},\n    )`;
   // The cast chain is unchanged in spirit from the previous `props.onSubmit as never`:
   // RHF's SubmitHandler is generic over the form's own inferred shape, which is not the
   // Row type this component's prop is declared against.
@@ -574,7 +582,7 @@ export interface ${entityName}FormProps {
 export function ${entityName}Form(props: ${entityName}FormProps): ${ReactElementSym} {
   const form = ${useEntityFormSym}(
     ${entityName},
-    ${formSchema},
+    ${resolverSchema},
     props.defaultValues !== undefined ? { defaultValues: props.defaultValues } : {},
   );${hookSection}
   return (
