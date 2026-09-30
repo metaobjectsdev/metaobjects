@@ -1418,6 +1418,7 @@ export async function runOfflineGenerate(
       );
   await writeSnapshot(path, nextSnapshot);
   log.info(`migrate: wrote ${res.upPath}`);
+  log.info(`migrate: wrote ${res.downPath}`);
   return 0;
 }
 

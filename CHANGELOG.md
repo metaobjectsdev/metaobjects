@@ -17,6 +17,7 @@ here.**
   `--server` replaces the stack recorded in `.metaobjects/`, so on a project that is also
   TypeScript (or Kotlin, or has a React client) following the hint dropped those references.
   The hint is now `npx meta agent-docs`, which keeps the recorded stack.
+- **`meta migrate --slug` reports the `down.sql` it writes.** It printed only the `up.sql` path.
 - **TanStack hooks and grid hooks import `<Entity>.meta` from beside themselves.** The UI
   generators write the DB-free `<Entity>.meta.ts` into their own target, but the generated
   `import { Program } from …` pointed at the entity module's path plus `.meta`. On a
