@@ -256,7 +256,12 @@ export async function ejectGenerator(opts: EjectOptions): Promise<EjectResult> {
   // The adapter source the OUTPUT imports is part of what is handed over — copied whether
   // or not the generator file itself was already here, and under the same never-clobber
   // rule, so re-running eject fills in a missing copy without touching a kept one.
-  const runtime = ejectsRuntime(opts.name)
+  // Except when the KEPT copy predates that hand-over (1.0.9): with no `runtimeImport`
+  // option its output imports the published package, so the copy would be dead code —
+  // a Drizzle adapter, and its dependencies, in a project that may have no database.
+  const keptCopyImportsPackage =
+    existing !== undefined && !opts.force && !existing.includes("runtimeImport");
+  const runtime = ejectsRuntime(opts.name) && !keptCopyImportsPackage
     ? await ejectRuntime(opts.cwd, [opts.name], opts.force === true)
     : undefined;
 

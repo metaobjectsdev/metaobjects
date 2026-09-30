@@ -268,3 +268,28 @@ describe("meta eject reports how the owned copy compares to the reference", () =
     expect(r.comparison).toBeUndefined();
   });
 });
+
+describe("meta eject over an owned copy that predates the runtime hand-over", () => {
+  // Since 1.0.9 an ejected entity/routes generator points its output at an owned copy of
+  // the HTTP adapter in codegen/runtime/, and eject copies that source. An owned copy
+  // from before then has no `runtimeImport` option — its output imports the published
+  // @metaobjectsdev/runtime-ts — so copying the adapter beside it (and asking for its
+  // dependencies) handed a project with no database a Drizzle adapter it never imports.
+  test("a kept pre-1.0.9 copy gets no codegen/runtime/ files", async () => {
+    await mkdir(join(cwd, "codegen/generators"), { recursive: true });
+    await writeFile(join(cwd, "codegen/generators/entity.ts"), "// my 1.0.0 entity generator\n", "utf8");
+    const r = await ejectGenerator({ cwd, name: "entity" });
+    expect(r.status).toBe("preserved");
+    expect(r.runtime?.files ?? []).toEqual([]);
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(join(cwd, "codegen/runtime"))).toBe(false);
+  });
+
+  test("a kept copy that already supports runtimeImport still gets a missing runtime copy", async () => {
+    await mkdir(join(cwd, "codegen/generators"), { recursive: true });
+    await writeFile(join(cwd, "codegen/generators/entity.ts"), "// mine\nconst runtimeImport = undefined;\n", "utf8");
+    const r = await ejectGenerator({ cwd, name: "entity" });
+    expect(r.status).toBe("preserved");
+    expect((r.runtime?.files ?? []).length).toBeGreaterThan(0);
+  });
+});

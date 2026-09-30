@@ -17,6 +17,17 @@ here.**
   `--server` replaces the stack recorded in `.metaobjects/`, so on a project that is also
   TypeScript (or Kotlin, or has a React client) following the hint dropped those references.
   The hint is now `npx meta agent-docs`, which keeps the recorded stack.
+- **`meta eject` no longer copies the HTTP adapter beside an owned generator that predates it.**
+  Since 1.0.9, ejecting `entity` / `routes` / `routes-hono` also copies the adapter source into
+  `codegen/runtime/`, and re-running it fills in a missing copy. Over an owned copy from before
+  1.0.9, which has no `runtimeImport` option and whose output imports the published package,
+  that copy was dead code, and could be a Drizzle adapter in a project with no database. It is
+  now skipped for such a copy.
+- **`meta gen` warns when generated code reaches the owned adapter from outside its workspace
+  package.** In a monorepo whose output sits in `apps/api/…`, the relative import of
+  `codegen/runtime/` leaves that package and its build fails (`TS6059 … is not under
+  'rootDir'`). The warning names the package and the two fixes: pass
+  `runtimeImport: "@metaobjectsdev/runtime-ts"`, or move the copy inside the package.
 - **`meta migrate --slug` reports the `down.sql` it writes.** It printed only the `up.sql` path.
 - **TanStack hooks and grid hooks import `<Entity>.meta` from beside themselves.** The UI
   generators write the DB-free `<Entity>.meta.ts` into their own target, but the generated

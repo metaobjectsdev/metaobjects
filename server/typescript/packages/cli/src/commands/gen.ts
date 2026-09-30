@@ -30,6 +30,7 @@ import {
 import { emitStructured } from "../lib/format.js";
 import { composeCatalog } from "../lib/catalog.js";
 import { describeError } from "../lib/error-text.js";
+import { findRuntimeBoundaryCrossings, runtimeBoundaryWarnings } from "../lib/runtime-boundary-advisory.js";
 
 /**
  * Print a load failure with everything the loader's ADR-0009 envelope carried — the stable
@@ -234,6 +235,14 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     status: mapStatus(f.status),
     info: "",
   }));
+
+  // Advisory: generated code importing the owned adapter copy from outside its own
+  // workspace package (a monorepo) will not build. Warning only.
+  if (!cliConfig.dryRun) {
+    for (const w of runtimeBoundaryWarnings(
+      findRuntimeBoundaryCrossings(projectRoot, result.files.map((f) => f.path)),
+    )) log.warn(`warning: ${w}`);
+  }
 
   const targetDirs = Array.from(new Set(
     (forgeConfig.targets ? Object.values(forgeConfig.targets).map((t) => t.outDir) : [])
