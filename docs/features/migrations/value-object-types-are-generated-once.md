@@ -112,6 +112,10 @@ The tolerant tier's all-nullable mirror is named after the value object too: `<V
 - Models come from the `entity` generator's `<Name>.py`. A value object whose short name
   another top-level object shares — a second value object, or an entity — is now
   package-qualified (`AcmeAlphaNote.py`); before, both wrote the same module.
+- A field with a `default:` is typed as its plain type with that default (`user_id: str = ""`),
+  where the copy typed it `str | None = None`. Passing `None` to it now fails validation: a
+  caller that relied on `None` must pass a value, or the field must drop its `default:` so it
+  is optional. Found upgrading an adopter, whose tests caught one such call.
 - The request model no longer sets `extra="forbid"`, so a mistyped keyword argument is ignored
   rather than rejected. The model does carry the value object's declared validators
   (`validator.*`, `@maxLength`), which the copy did not, so construction enforces them.

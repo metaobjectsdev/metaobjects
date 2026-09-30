@@ -495,3 +495,22 @@ def test_prompts_and_templates_root_are_the_same_flag(tmp_path: Path) -> None:
     rc = main(["verify", "--codegen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
                "--prompts", str(root / "no-such-dir")])
     assert rc != 0, "--prompts value was ignored — a missing dir still regenerated the spec files"
+
+
+# `verify --codegen` with no --generators used to print a note and exit 0. Since 1.0.4
+# there is no default suite, so a CI step written before then — naming no generators
+# because the default used to be implied — regenerated nothing and passed while the
+# committed output went unchecked (found upgrading an adopter: 159 generated files, gate
+# green). With committed generated output present and nothing selected, it now fails.
+def test_verify_without_generators_fails_when_committed_output_would_go_unchecked(tmp_path: Path) -> None:
+    meta_dir = _meta_dir(tmp_path)
+    out = tmp_path / "out"
+    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
+    assert main(["verify", meta_dir, "--out", str(out)]) != 0
+
+
+def test_verify_without_generators_still_passes_with_no_generated_output(tmp_path: Path) -> None:
+    meta_dir = _meta_dir(tmp_path)
+    out = tmp_path / "out"
+    out.mkdir()
+    assert main(["verify", meta_dir, "--out", str(out)]) == 0

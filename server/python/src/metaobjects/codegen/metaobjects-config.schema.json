@@ -38,7 +38,7 @@
           "generators": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "Stable generator names (see `metaobjects gen --list`). Omit to run the default suite."
+            "description": "Stable generator names (see `metaobjects gen --list`). Required: there is no default suite, so a target that names none generates nothing and `verify --codegen` checks nothing."
           },
           "entities": {
             "type": "array",

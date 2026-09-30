@@ -21,6 +21,12 @@ here.**
 
 ### Fixed
 
+- **Python `verify --codegen` no longer passes while checking nothing.** With no
+  `--generators` it printed a note and exited 0. Since 1.0.4 there is no default suite, so a CI
+  step written before then regenerated nothing and passed over committed output (one adopter's
+  gate covered 159 generated files this way). It now fails when `--out` holds generated files
+  and nothing is selected, and still passes when there is no generated output. The config
+  schema and the C# `verify` help no longer mention a default suite.
 - **TypeScript `meta gen` regenerates output written outside the project root.** Since 1.0.5 such
   files (a monorepo target at `../shared/src/generated`, say) are not recorded, and the next run
   REFUSED every one whose content had changed, as "no record of generating this file", though

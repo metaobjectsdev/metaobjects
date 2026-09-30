@@ -1612,6 +1612,32 @@ def _diff_report(
     return 1
 
 
+
+def _no_generators_selected(out_dir: str) -> int:
+    """``verify --codegen`` with nothing selected: pass only if nothing would go unchecked.
+
+    There is no default suite (1.0.4), so with no ``--generators`` nothing is regenerated.
+    If ``out_dir`` already holds generated files, reporting success would be a false green
+    — a gate written before 1.0.4, relying on the default, silently stopped checking
+    anything. That is an error; an empty or absent ``out_dir`` is not.
+    """
+    committed = [p for p in Path(out_dir).rglob("*.py") if p.name != "__init__.py"] if Path(out_dir).is_dir() else []
+    if committed:
+        print(
+            f"error: verify --codegen: no generators selected, but {out_dir} holds "
+            f"{len(committed)} generated file(s) that would go unchecked. There is no "
+            "default suite: pass --generators <a,b,c> naming the same suite `gen` ran "
+            "(metaobjects gen --list is the catalog).",
+            file=sys.stderr,
+        )
+        return 1
+    print(
+        "verify --codegen: no generators selected and no generated output to check. "
+        "Pass --generators <a,b,c> naming the same suite `gen` ran "
+        "(metaobjects gen --list is the catalog).",
+    )
+    return 0
+
 def _verify_codegen(args: argparse.Namespace) -> int:
     """``verify --codegen`` — regenerate to a temp dir + diff vs committed ``--out``.
 
@@ -1676,12 +1702,7 @@ def _verify_codegen(args: argparse.Namespace) -> int:
                 print(f"  {msg}", file=sys.stderr)
             return 1
     elif not spec_gens:
-        print(
-            "verify --codegen: no generators selected, so there is no generated output "
-            "to check. Pass --generators <a,b,c> naming the same suite `gen` ran "
-            "(metaobjects gen --list is the catalog).",
-        )
-        return 0
+        return _no_generators_selected(args.out)
 
     with tempfile.TemporaryDirectory() as tmp:
         entities = _parse_entities(getattr(args, "entities", None))
@@ -1767,12 +1788,7 @@ def _verify_codegen_neutral_fallback(args: argparse.Namespace) -> int:
     # Same rule as _verify_codegen: the selection must be named, because there is no
     # default suite to regenerate and diff against.
     if not getattr(args, "generators", None):
-        print(
-            "verify --codegen: no generators selected, so there is no generated output "
-            "to check. Pass --generators <a,b,c> naming the same suite `gen` ran "
-            "(metaobjects gen --list is the catalog).",
-        )
-        return 0
+        return _no_generators_selected(args.out)
     selection, gen_errors = _resolve_generators(
         args.generators, GeneratorBuildContext(_template_root_for(args)))
     if gen_errors:

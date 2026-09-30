@@ -108,7 +108,7 @@ public static class VerifyCommand
         /// <c>--codegen</c> runs, the namespace is inferred from the committed output so a
         /// regen matches output generated with any namespace (avoids spurious drift).</summary>
         public bool NamespaceExplicit { get; init; }
-        /// <summary>Optional generator selection for the <c>--codegen</c> regen (else the default suite).</summary>
+        /// <summary>Generator selection for the <c>--codegen</c> regen. There is no default suite: name the ones <c>gen</c> ran.</summary>
         public IReadOnlyList<string>? Generators { get; init; }
         /// <summary>Template root for render-helper/template generators in the codegen regen.</summary>
         public string? TemplateRoot { get; init; }
