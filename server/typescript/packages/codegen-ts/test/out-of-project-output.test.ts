@@ -11,7 +11,7 @@
 // no manifest key, no snapshot under the project, and one warning saying so.
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, readdirSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, readdirSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
@@ -69,4 +69,19 @@ describe("output outside the project root", () => {
     expect(keys.length).toBeGreaterThan(0);
     expect(keys.every((k) => k.startsWith("generated/"))).toBe(true);
   });
+
+  // Untracked means NO record — so the second run found an existing file it had "no record
+  // of generating" and REFUSED it, while the warning above promised the opposite ("a later
+  // run overwrites them without checking for edits"). An adopter whose shared-types target
+  // sits at `../shared/src/generated` could not regenerate at all without --baseline=fresh.
+  test("a later run overwrites it, as the warning says, instead of refusing", async () => {
+    const out = join(elsewhere, "shared");
+    await genInto(out);
+    const file = join(out, readdirSync(out).find((f) => f.endsWith(".ts"))!);
+    writeFileSync(file, "// stale output from an older generator\n");
+    const again = await genInto(out);
+    expect(again.files.filter((f) => f.status === "refused")).toEqual([]);
+    expect(readFileSync(file, "utf-8")).not.toContain("stale output");
+  });
 });
+

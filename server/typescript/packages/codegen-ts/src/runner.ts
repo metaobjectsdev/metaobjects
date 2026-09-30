@@ -3,8 +3,9 @@ import { warnMissingPromptGenerators } from "./prompt-generator-gate.js";
 import { runEmitsHonoRoutes, runEmitsUiTier, warnUnmarkedUiGenerators } from "./ui-tier-gate.js";
 import { warnRetiredCodegenAttrs } from "./retired-codegen-attrs.js";
 import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
 import {
   isMetaRoot, OBJECT_SUBTYPE_VALUE, FIELD_SUBTYPE_TIMESTAMP, FIELD_ATTR_FILTERABLE,
@@ -293,7 +294,10 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // body — stored at `<gen-state>/<key>` — would walk out of `.gen-state/` and land a second
   // copy of the output in the project tree. Such files get the process-isolated state a run
   // with no project gets: written, never recorded.
-  const untrackedGenStateDir = join(tmpdir(), `meta-gen-state-${process.pid}`);
+  // Unique to THIS run, not just this process: a second runGen in one process (an embedder,
+  // a watch loop, a test) would otherwise find the first run's snapshot and three-way merge,
+  // which is exactly the record-keeping an untracked file does not have.
+  const untrackedGenStateDir = join(tmpdir(), `meta-gen-untracked-${process.pid}-${randomUUID()}`);
   const outsideProject = (fullPath: string): boolean => {
     if (projectRoot === undefined) return false;
     const rel = relative(projectRoot, fullPath);
@@ -303,13 +307,19 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   const policyFor = (fullPath: string): DecideAndWriteOpts => {
     if (outsideProject(fullPath)) {
       untrackedCount++;
-      return { strategy, genStateDir: untrackedGenStateDir, baseline };
+      // With no record to consult, the default baseline REFUSES any existing file that
+      // differs from fresh output — so a second run over its own earlier output refused
+      // every changed file, the opposite of the warning below. Such a file is overwritten
+      // unchecked ("fresh"), as that warning says; --baseline=adopt keeps its meaning.
+      return { strategy, genStateDir: untrackedGenStateDir, baseline: baseline === "adopt" ? "adopt" : "fresh" };
     }
     const o: DecideAndWriteOpts = { strategy, genStateDir, baseline };
     if (projectRoot !== undefined) o.outputRelPath = relative(projectRoot, fullPath);
     return o;
   };
   const noteUntracked = (): void => {
+    // The per-run state held nothing anyone reads again; do not leave it in the tmpdir.
+    rmSync(untrackedGenStateDir, { recursive: true, force: true });
     if (untrackedCount === 0) return;
     warnings.push(
       `${untrackedCount} generated file(s) were written outside the project root and are not ` +

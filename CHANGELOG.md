@@ -10,8 +10,22 @@ here.**
 
 ## [Unreleased]
 
+### Docs
+
+- **A 1.0.x → 1.0.x upgrade guide** (`docs/features/migrations/upgrading-within-1.0.md`), written
+  from nine adopter upgrades to 1.0.10: resync owned generators (`meta eject --list`; a plain
+  `meta gen` keeps the logic you ejected), the monorepo `runtimeImport` case, the 1.0.5 projection
+  URL and percent-encoded filter changes, 1.0.9 date validation, and the 1.0.4 view-join change.
+  The always-on agent context links it, and now says a project that deliberately owns its schema
+  outside MetaObjects follows its own migration rule.
+
 ### Fixed
 
+- **TypeScript `meta gen` regenerates output written outside the project root.** Since 1.0.5 such
+  files (a monorepo target at `../shared/src/generated`, say) are not recorded, and the next run
+  REFUSED every one whose content had changed, as "no record of generating this file", though
+  its own warning said a later run overwrites them unchecked. They are now overwritten
+  unchecked, as the warning says; `--baseline=adopt` keeps its meaning.
 - **A generated form with a blank optional date submits again.** 1.0.9 made `field.date` and
   `field.timestamp` schemas reject `""`, and react-hook-form validates the RAW values before the
   submit callback, where the blank-field normalizer ran. A create form with a blank optional
