@@ -22,7 +22,7 @@ The first four ship per-language today across the five ports (TS / C# / Java / P
 
 ## Status
 
-_Last refreshed 2026-09-29._
+_Last refreshed 2026-10-01._
 
 **1.0 gating — the quiet period is RETIRED (2026-09-06).** `docs/1.0-readiness.md` §G3 no
 longer asks for "one coordinated release with no metamodel-breaking change." It measured a
@@ -39,9 +39,9 @@ because a conformance corpus gates the ports against each other and never agains
 in ADR-0035 **Amendment 3**. Do not reintroduce a waiting gate in any form.
 
 
-**Where the versions are.** `latest` is **`1.0.10`** on npm, **`8.0.10`** on Maven Central,
-**`1.0.10`** on PyPI and **`1.0.10`** on NuGet (the Maven major is always **npm major + 7**, so
-1.0.10 is 8.0.10). All four moved at 1.0.10 and at 1.0.9 (Maven skipped 8.0.8); Maven sat out 1.0.8 (no JVM
+**Where the versions are.** `latest` is **`1.0.11`** on npm, **`8.0.11`** on Maven Central,
+**`1.0.11`** on PyPI and **`1.0.11`** on NuGet (the Maven major is always **npm major + 7**, so
+1.0.11 is 8.0.11). All four moved at 1.0.11, 1.0.10 and 1.0.9 (Maven skipped 8.0.8); Maven sat out 1.0.8 (no JVM
 product change), and earlier Maven alone took 1.0.6 (8.0.6) while the other three skipped that
 number. Both are the convergent-publishing rule working as intended. **1.0 is CUT**: the `1.0.0-rc.5` through `rc.8` candidates, 1.0.4's `rc.1`,
 1.0.5's `rc.1` through `rc.11`, 1.0.7's and 1.0.8's `rc.1`, and 1.0.9's `rc.1` through `rc.6` are
@@ -83,7 +83,7 @@ PyPI has had no product change since `0.25.0` — nothing is broken.
 
 **Key cross-language features shipped:** FR5 family (a/b/c/d/e + WARN envelope-shape — actionable loader errors per ADR-0009); FR-003 (Java RDB runtime persistence + projections; schema migrations are TS-only — the Java migration engine was removed); FR-006 (template.output parser-on-receipt codegen per ADR-0010 in all 5 ports); FR-008 + FR-009 (cross-port REST API contract + the nine filter operators); FR-018 (M:N relationship codegen in all 5 ports — entity navigation + idiomatic ORM wiring [Drizzle m2m / EF Core `UsingEntity` / Spring repo+JPA / Exposed / Pydantic+route as the SQLAlchemy-secondary equivalent] + REST traversal `GET /<source-plural>/{id}/<relation>` + Tier-2 docs, gated by the shared api-contract m2m corpus in both lanes + persistence-conformance; the TanStack M:N client hook is a deferred client-ergonomics follow-up); SP-H (field-subtype end-to-end hardening: every concrete `field.*` subtype write+read round-trips cross-port via the persistence `op: roundtrip` gate; cut `field.byte`/`field.short`/`field.class` non-functional stubs; cross-port filter-op reconciliation for uuid/currency); source v2 paradigm (ADR-0007); metadata-ktx Kotlin facade; per-target output directories (TS codegen).
 
-**Latest release: 1.0.10** (2026-09-29) — npm `1.0.10`, PyPI `1.0.10`, NuGet `1.0.10`, Maven Central `8.0.10`. A PATCH gated by a private `1.0.10-rc.5` build of the release commit on the adopter estate (`rc-gate.sh` 7/7) and a full local CI run. Sourceless entities keep their create/PATCH schemas and filter allowlists in every port (the MongoDB-and-friends path); MySQL is a TypeScript codegen and runtime dialect; `validator.array` bounds are enforced by `extract` in every port; and the scaffolded skills are split into short `SKILL.md` files plus topic references, with an `any-stack.md` playbook for databases, stores and frameworks no reference generator targets. The previous release, 1.0.9 (2026-09-26), made strict `extract` fail on a malformed required field.
+**Latest release: 1.0.11** (2026-10-01) — npm `1.0.11`, PyPI `1.0.11`, NuGet `1.0.11`, Maven Central `8.0.11`. A PATCH gated by a private `1.0.11-rc.1` build on the adopter estate (`rc-gate.sh` 7/7) and a full local CI run. Fixes found upgrading nine adopter projects: generated forms with a blank optional date submit again, D1 DELETE routes answer 204 instead of 404, TS `meta gen` regenerates output outside the project root, Python `verify --codegen` no longer passes while checking nothing, TanStack hooks import `.meta` from their own target, and the FK-index advisory suggests table-unique names; plus a 1.0.x upgrade guide. The previous release, 1.0.10 (2026-09-29), added sourceless entities in every port and MySQL as a TS dialect.
 
 See `spec/roadmap.md` for the active + planned work picture.
 
