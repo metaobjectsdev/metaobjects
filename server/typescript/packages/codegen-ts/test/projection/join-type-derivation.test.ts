@@ -21,7 +21,7 @@ async function load(children: unknown[]) {
 // Order --belongs-to--> Customer (FK `customerId` on Order). A projection passes
 // through Customer.name via the single-hop `customer` relationship, forcing a join
 // from orders to customers.
-const belongsToModel = (customerIdRequired: boolean) => [
+const belongsToModel = (customerIdRequired: boolean, enforce = true) => [
   { "object.entity": { name: "Customer", children: [
     { "source.rdb": { "@table": "customers" } },
     { "field.long": { name: "id" } },
@@ -33,7 +33,7 @@ const belongsToModel = (customerIdRequired: boolean) => [
     { "field.long": { name: "id" } },
     { "field.long": { name: "customerId", ...(customerIdRequired ? { "@required": true } : {}) } },
     { "identity.primary": { name: "pk", "@fields": "id" } },
-    { "identity.reference": { name: "ref_customer", "@fields": "customerId", "@references": "Customer" } },
+    { "identity.reference": { name: "ref_customer", "@fields": "customerId", "@references": "Customer", ...(enforce ? {} : { "@enforce": false }) } },
     { "relationship.association": { name: "customer", "@objectRef": "Customer", "@cardinality": "one" } },
   ] } },
   { "object.projection": { name: "OrderView", children: [
@@ -50,6 +50,17 @@ describe("#209 — belongs-to join type derived from FK optionality", () => {
     const [v] = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
     expect(v!.sql).toContain("INNER JOIN customers");
     expect(v!.sql).not.toContain("LEFT OUTER JOIN customers");
+  });
+
+  // INNER is lossless only when every base row HAS a match — which only a database-enforced
+  // reference guarantees. `@enforce: false` declares a logical reference with no FK
+  // constraint, so a row may name a target that does not exist (an adopter's account
+  // `ref_id` holds a user id OR a group id). INNER dropped those rows from the view.
+  test("required but UNENFORCED FK → LEFT OUTER JOIN (no constraint guarantees the match)", async () => {
+    const root = await load(belongsToModel(true, false));
+    const [v] = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    expect(v!.sql).toContain("LEFT OUTER JOIN customers");
+    expect(v!.sql).not.toContain("INNER JOIN customers");
   });
 
   test("nullable FK → LEFT OUTER JOIN (preserved)", async () => {

@@ -911,9 +911,14 @@ function buildJoinTree(
         // for (and keeps `verify --db` fingerprints aligned). A nullable belongs-to
         // FK, or ANY has-many hop (FK on the child — a base row may have zero
         // children), stays LEFT OUTER so no base row is dropped.
+        // And only for an ENFORCED reference: `@enforce: false` declares a logical reference
+        // with no FK constraint, so a NOT NULL column can still name a row that does not
+        // exist, and INNER would silently drop that base row (an adopter's account `ref_id`
+        // holds a user id OR a group id). Unenforced stays LEFT OUTER.
         const fkFieldObj = (fkHolder as MetaObject).findField(fkField);
         const selfInner =
-          referenceHolder === "source" && fkFieldObj !== undefined && isRequired(fkFieldObj);
+          referenceHolder === "source" && fkFieldObj !== undefined && isRequired(fkFieldObj) &&
+          ref.referenceIdentity.enforce;
         // Nested-chain safety: joins render flat + left-associative, so an INNER hop
         // BELOW any LEFT ancestor drops the base row (its ON references a column the
         // LEFT ancestor NULLed). An INNER only survives when the ENTIRE ancestor chain
