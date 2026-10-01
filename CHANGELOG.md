@@ -10,6 +10,10 @@ here.**
 
 ## [Unreleased]
 
+## [1.0.11] — 2026-10-01
+
+_npm `1.0.11` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
 ### Docs
 
 - **A 1.0.x → 1.0.x upgrade guide** (`docs/features/migrations/upgrading-within-1.0.md`), written
