@@ -12,7 +12,9 @@ here.**
 
 ## [1.0.11] — 2026-10-01
 
-_npm `1.0.11` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+_npm `1.0.11` (all 14 `@metaobjectsdev/*` packages in lockstep), PyPI `1.0.11`, NuGet `1.0.11` and
+Maven Central `8.0.11`. `metamodelVersion` stays `1.0`. Gated by a private `1.0.11-rc.1` build of the
+release commit on the adopter estate (`rc-gate.sh` 7/7) and a full local CI run on that commit._
 
 ### Docs
 
