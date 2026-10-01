@@ -136,3 +136,38 @@ describe("meta verify — unindexed foreign keys (advisory)", () => {
     expect(help).not.toContain("hand-roll");
   });
 });
+
+// The suggested name was `by<Field>`. Postgres index names are schema-wide, so two entities
+// with the same FK field were both told `byAuditEntryId`, and taking the advice verbatim made
+// `meta migrate` fail with ERR_DUPLICATE_SQL_NAME (found applying the advisory on an adopter).
+// The suggestion names the entity too.
+describe("meta verify — the suggested FK index name is unique per table", () => {
+  test("two entities with the same FK field get different suggested names", async () => {
+    const root = await mkdtemp(join(tmpdir(), "verify-fk-index-names-"));
+    dirs.push(root);
+    await mkdir(join(root, "metaobjects"), { recursive: true });
+    const entity = (name: string, table: string) => ({ "object.entity": { name, children: [
+      { "source.rdb": { "@table": table } },
+      { "field.long": { name: "id" } },
+      { "field.long": { name: "auditEntryId", "@required": true } },
+      { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
+      { "identity.reference": { name: "fkAudit", "@fields": ["auditEntryId"], "@references": "AuditEntry" } },
+    ] } });
+    await writeFile(join(root, "metaobjects", "meta.audit.json"), JSON.stringify({ "metadata.root": {
+      package: "audit",
+      children: [
+        { "object.entity": { name: "AuditEntry", children: [
+          { "source.rdb": { "@table": "audit_entries" } },
+          { "field.long": { name: "id" } },
+          { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
+        ] } },
+        entity("Citation", "citations"),
+        entity("Approval", "approvals"),
+      ],
+    } }), "utf8");
+    const { out } = await capture(() => verifyCommand([], root));
+    expect(out).toContain("name: citationByAuditEntryId");
+    expect(out).toContain("name: approvalByAuditEntryId");
+    expect(out).not.toContain("name: byAuditEntryId");
+  });
+});

@@ -21,6 +21,11 @@ here.**
 
 ### Fixed
 
+- **The missing-FK-index advisory suggests a name unique to the table.** It suggested
+  `by<Field>`, so two entities with the same FK field (`Citation.auditEntryId`,
+  `Approval.auditEntryId`) were both told `byAuditEntryId`. Postgres index names are schema-wide,
+  and applying the advice verbatim failed `meta migrate` with `ERR_DUPLICATE_SQL_NAME`. The
+  suggestion is now `<entity>By<Field>` (`citationByAuditEntryId`).
 - **Python `verify --codegen` no longer passes while checking nothing.** With no
   `--generators` it printed a note and exited 0. Since 1.0.4 there is no default suite, so a CI
   step written before then regenerated nothing and passed over committed output (one adopter's

@@ -96,7 +96,10 @@ export function scanForUnindexedForeignKeys(root: MetaData, opts: UnindexedFkOpt
       });
       const fields = ref !== undefined ? ref.fields : fk.columns;
       const label = ref !== undefined ? `${entity.name}.${ref.name}` : `${entity.name} (${fk.name})`;
-      const indexName = `by${fields.map(pascal).join("")}`;
+      // Entity-prefixed: an index name is schema-wide in Postgres, so a bare `by<Field>`
+      // suggested the SAME name to every entity sharing the FK field, and applying the advice
+      // verbatim failed `meta migrate` with ERR_DUPLICATE_SQL_NAME.
+      const indexName = `${entity.name.charAt(0).toLowerCase()}${entity.name.slice(1)}By${fields.map(pascal).join("")}`;
       const fieldList = fields.length === 1 ? fields[0]! : `[${fields.join(", ")}]`;
       out.push({
         file: files[0] ?? "",
