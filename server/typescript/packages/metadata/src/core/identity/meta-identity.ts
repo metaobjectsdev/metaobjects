@@ -94,9 +94,8 @@ export class MetaReferenceIdentity extends MetaIdentity {
    * Whether the reference is physically enforced by the backend.
    * Default true (hard FK constraint emitted). Explicit `@enforce: false`
    * marks the reference as logical-only — drizzle-schema skips `.references()`
-   * and migrate-ts's expected schema omits the FK descriptor. The relations()
-   * block is unaffected; projection JOIN inference keeps an unenforced required
-   * belongs-to hop LEFT OUTER, since no constraint guarantees the target row.
+   * and migrate-ts's expected schema omits the FK descriptor. relations()
+   * block and projection JOIN inference are unaffected.
    */
   get enforce(): boolean {
     // ADR-0039: resolving — @enforce may be inherited via extends.

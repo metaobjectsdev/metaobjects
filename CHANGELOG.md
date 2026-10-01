@@ -10,16 +10,6 @@ here.**
 
 ## [Unreleased]
 
-### Fixed
-
-- **A projection view keeps rows whose unenforced reference has no target.** A belongs-to hop
-  whose FK field is `@required` was joined `INNER`, on the reasoning that every row has a
-  match. That holds only for an enforced reference: under `@enforce: false` there is no FK
-  constraint, and a row can name a target that does not exist, so `INNER` dropped it from the
-  view. Such a hop is now `LEFT OUTER`. **Upgrading:** the next `meta migrate` rewrites any
-  view that joins through an unenforced required reference; review it — the view returns the
-  rows it had been dropping.
-
 ## [1.0.11] — 2026-10-01
 
 _npm `1.0.11` (all 14 `@metaobjectsdev/*` packages in lockstep), PyPI `1.0.11`, NuGet `1.0.11` and

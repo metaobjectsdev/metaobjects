@@ -52,15 +52,15 @@ describe("#209 — belongs-to join type derived from FK optionality", () => {
     expect(v!.sql).not.toContain("LEFT OUTER JOIN customers");
   });
 
-  // INNER is lossless only when every base row HAS a match — which only a database-enforced
-  // reference guarantees. `@enforce: false` declares a logical reference with no FK
-  // constraint, so a row may name a target that does not exist (an adopter's account
-  // `ref_id` holds a user id OR a group id). INNER dropped those rows from the view.
-  test("required but UNENFORCED FK → LEFT OUTER JOIN (no constraint guarantees the match)", async () => {
+  // `@enforce: false` removes the FK constraint, not the INNER join. An unenforced required
+  // reference can name a missing row, and INNER then drops that base row — which is what the
+  // hand-written view it reproduces does (a legacy account view excludes accounts whose
+  // `ref_id` holds a group id this way). Pinned because LEFT OUTER was tried and reverted.
+  test("required but UNENFORCED FK → INNER JOIN (reproduces the hand-written view)", async () => {
     const root = await load(belongsToModel(true, false));
     const [v] = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
-    expect(v!.sql).toContain("LEFT OUTER JOIN customers");
-    expect(v!.sql).not.toContain("INNER JOIN customers");
+    expect(v!.sql).toContain("INNER JOIN customers");
+    expect(v!.sql).not.toContain("LEFT OUTER JOIN customers");
   });
 
   test("nullable FK → LEFT OUTER JOIN (preserved)", async () => {

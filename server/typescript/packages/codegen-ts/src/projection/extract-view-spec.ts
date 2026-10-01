@@ -911,14 +911,15 @@ function buildJoinTree(
         // for (and keeps `verify --db` fingerprints aligned). A nullable belongs-to
         // FK, or ANY has-many hop (FK on the child — a base row may have zero
         // children), stays LEFT OUTER so no base row is dropped.
-        // And only for an ENFORCED reference: `@enforce: false` declares a logical reference
-        // with no FK constraint, so a NOT NULL column can still name a row that does not
-        // exist, and INNER would silently drop that base row (an adopter's account `ref_id`
-        // holds a user id OR a group id). Unenforced stays LEFT OUTER.
+        // `@enforce: false` does NOT change this. An unenforced NOT NULL reference can name a
+        // row that does not exist, so INNER filters that base row out — and that filter is
+        // what the hand-written view did: a legacy account view joins `ref_id` INNER to the
+        // user table precisely to exclude the accounts whose `ref_id` holds a group id. Making
+        // the hop LEFT OUTER (tried, then reverted before release) silently changed which rows
+        // such views return. To keep unmatched rows, make the FK field nullable.
         const fkFieldObj = (fkHolder as MetaObject).findField(fkField);
         const selfInner =
-          referenceHolder === "source" && fkFieldObj !== undefined && isRequired(fkFieldObj) &&
-          ref.referenceIdentity.enforce;
+          referenceHolder === "source" && fkFieldObj !== undefined && isRequired(fkFieldObj);
         // Nested-chain safety: joins render flat + left-associative, so an INNER hop
         // BELOW any LEFT ancestor drops the base row (its ON references a column the
         // LEFT ancestor NULLed). An INNER only survives when the ENTIRE ancestor chain
