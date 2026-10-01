@@ -45,6 +45,13 @@ here.**
 
 ### Fixed
 
+- **Generated DELETE routes on Cloudflare D1 answer 204, not 404.** The affected-row count
+  read libsql, Postgres, bun:sqlite and mysql2 result shapes, but not D1's
+  `{ meta: { changes } }`, so every D1 delete counted 0 rows and the route answered 404 after
+  deleting the row (an admin panel showed an error and kept the row on screen). The drizzle
+  ObjectManager driver had its own copy of the same count and now shares the fixed one.
+  **Upgrading:** a project with an ejected adapter copy under `codegen/runtime/` takes it with
+  `meta eject routes-hono --force` (or merges the one-line change by hand).
 - **The missing-FK-index advisory suggests a name unique to the table.** It suggested
   `by<Field>`, so two entities with the same FK field (`Citation.auditEntryId`,
   `Approval.auditEntryId`) were both told `byAuditEntryId`. Postgres index names are schema-wide,

@@ -117,8 +117,9 @@ export async function firstRow(db: unknown, src: unknown, cond: unknown): Promis
 
 /**
  * Rows a DELETE/UPDATE affected, across the driver result shapes: libsql `rowsAffected`,
- * node-postgres `rowCount`, bun:sqlite / better-sqlite3 `changes`, and mysql2's
- * `[ResultSetHeader, fields]` tuple.
+ * node-postgres `rowCount`, bun:sqlite / better-sqlite3 `changes`, Cloudflare D1's
+ * `{ meta: { changes } }`, and mysql2's `[ResultSetHeader, fields]` tuple. The one place
+ * this is decided — the routes and the drizzle driver both call it.
  */
 export function extractRowCount(result: unknown): number {
   if (typeof result === "number") return result;
@@ -134,6 +135,11 @@ export function extractRowCount(result: unknown): number {
     if (typeof obj.rowCount === "number") return obj.rowCount;
     // bun:sqlite / better-sqlite3 run() result shape.
     if (typeof obj.changes === "number") return obj.changes;
+    // Cloudflare D1 (drizzle-orm/d1): `{ success, meta: { changes, … }, results }`. Missing
+    // it read every D1 delete as 0 rows, and the generated DELETE answered 404 after
+    // deleting the row.
+    const meta = (result as { meta?: { changes?: unknown } }).meta;
+    if (meta !== undefined && typeof meta.changes === "number") return meta.changes;
   }
   return 0;
 }

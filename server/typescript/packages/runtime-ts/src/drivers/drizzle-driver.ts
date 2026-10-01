@@ -31,6 +31,7 @@ import {
   getTableColumns,
   type SQL,
 } from "drizzle-orm";
+import { extractRowCount } from "../drizzle-fastify/util.js";
 import type {
   PersistenceDriver,
   SelectSpec,
@@ -408,23 +409,6 @@ function jsKeyedFromSelect(row: Row, _selectMap: Record<string, AnyColumn>): Row
   return row;
 }
 
-function extractRowCount(result: unknown): number {
-  // Drizzle's update/delete return shape varies by backend. We support the
-  // common shapes; unknown shapes fall through to 0.
-  if (typeof result === "number") return result;
-  // mysql2: `[ResultSetHeader, fields]`, the count on the header.
-  if (Array.isArray(result) && typeof (result[0] as { affectedRows?: unknown } | undefined)?.affectedRows === "number") {
-    return (result[0] as { affectedRows: number }).affectedRows;
-  }
-  if (Array.isArray(result)) return result.length;
-  if (result && typeof result === "object") {
-    const obj = result as { rowsAffected?: number | bigint; rowCount?: number };
-    if (typeof obj.rowsAffected === "number") return obj.rowsAffected;
-    if (typeof obj.rowsAffected === "bigint") return Number(obj.rowsAffected);
-    if (typeof obj.rowCount === "number") return obj.rowCount;
-  }
-  return 0;
-}
 
 function buildExpression(w: WhereClause, cols: Map<string, AnyColumn>): unknown {
   switch (w.kind) {
