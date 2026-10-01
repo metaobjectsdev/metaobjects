@@ -127,6 +127,8 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
   --no-requirement-lint Suppress the advisory requirement AUTHORING lint (not the gate)
   --no-overlay-lint     Suppress the advisory overlay-redeclaration AUTHORING lint
                         (never a gate — this lint can't fail the build)
+  --no-name-lint        Suppress the advisory node-name AUTHORING lint (whitespace
+                        in a name; never a gate — this lint can't fail the build)
   --limit <n|all>       How many advisory lines TEXT output prints per section before
                         it truncates (default 20). Never applies to --format
                         toon/json, which carry every finding and every diagnostic.
@@ -320,6 +322,8 @@ FLAGS:
   --no-requirement-lint Suppress the advisory requirement AUTHORING lint (not the gate)
   --no-overlay-lint     Suppress the advisory overlay-redeclaration AUTHORING lint —
                         never a gate; this lint can't fail the build
+  --no-name-lint        Suppress the advisory node-name AUTHORING lint (whitespace in
+                        a name) — never a gate; this lint can't fail the build
   --limit <n|all>       Advisory lines TEXT output prints PER SECTION before truncating
                         (default 20; per-section so the authoring lint can never push
                         the gate's own warnings off the end)
@@ -350,6 +354,13 @@ redeclaration lacks 'overlay: true' — today's default merge rule reuses it
 silently, but the same unflagged redeclaration silently becomes a NEW object
 the day the target is renamed or removed upstream. Warnings only — it can
 never fail the build. Opt out with --no-overlay-lint or META_NO_OVERLAY_LINT=1.
+
+verify also prints an ADVISORY node-name authoring lint, in its own section: any
+node (object, field, identity, relationship, ...) whose name contains whitespace.
+Leading or trailing whitespace is almost certainly a copy-paste accident — rename
+the node, and pin @column on a field whose physical column must keep its name.
+Requirement names are left to the requirement lint above. Warnings only — it can
+never fail the build. Opt out with --no-name-lint or META_NO_NAME_LINT=1.
 `,
   export: `meta export — flatten loaded metadata to one canonical JSON artifact
 

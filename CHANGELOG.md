@@ -19,6 +19,30 @@ here.**
   The always-on agent context links it, and now says a project that deliberately owns its schema
   outside MetaObjects follows its own migration rule.
 
+### Changed
+
+- **`meta verify` warns about whitespace in a node's `name`.** The loader accepts any
+  string as a name, in every port. An adopter's metadata, copied from legacy XML, had a field
+  named `"defaultCurrencyId "` (trailing space) and an identity named
+  `"account_defaultCurrencyId _fk"`, and both loaded with no error. A new advisory section,
+  `names`, reports every object, field, identity, relationship, validator, view, template or
+  other named node whose name contains whitespace (the ECMAScript `\s` class, so a pasted
+  no-break space counts). Leading or trailing whitespace gets `WARN_NAME_SURROUNDING_WHITESPACE`,
+  which says it is almost certainly unintended. Whitespace inside a name gets the plainer
+  `WARN_NAME_INTERNAL_WHITESPACE`. A name inherited through `extends` is reported once, where
+  it is declared. Requirement names are left to the requirement lint, which already reports
+  leading or trailing whitespace and still does not report a short multi-word label such as
+  `"Order Recording"`. Like the other authoring lints it **never fails the build**. It appears
+  in text output and as `names` in `--format json|toon`, and can be muted with
+  `--no-name-lint` or `META_NO_NAME_LINT=1`.
+  **Why a warning and not a load error:** refusing these names does not pass the correction
+  bar in `docs/compatibility-policy.md`. They work on the core path: `meta migrate` quotes the
+  column (`"default_currency_id "`) and the ObjectManager reads and writes the key. Multi-word
+  requirement names are documented to load. So rejecting them would break metadata that does
+  what its author declared. **Upgrading:** nothing stops loading. To clear a finding, rename
+  the node. On a field whose physical column must keep its current name, pin `@column` when
+  you rename it.
+
 ### Fixed
 
 - **The missing-FK-index advisory suggests a name unique to the table.** It suggested

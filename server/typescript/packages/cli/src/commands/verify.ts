@@ -39,6 +39,7 @@ import {
 } from "../lib/requirement-check.js";
 import { lintRequirements } from "../lib/requirement-lint.js";
 import { lintOverlays } from "../lib/overlay-lint.js";
+import { lintNodeNames } from "../lib/name-lint.js";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import { resolveD1Config, resolveMigrateConfig } from "../lib/config.js";
 import {
@@ -350,6 +351,11 @@ export async function verifyCommand(
   // way every other advisory pass does.
   let overlaySection: AdvisorySection<AdvisoryDiagnosticRow> =
     skippedSection("the overlay lint did not run");
+  // The node-name authoring lint — its own section for the same reason: a model
+  // carrying a few hundred legacy names must not push another section's findings
+  // off the end of a capped run.
+  let nameSection: AdvisorySection<AdvisoryDiagnosticRow> =
+    skippedSection("the name lint did not run");
   // The ledger counts `meta verify` prints on every run. Undefined for a project
   // declaring no requirement.* node at all (opt-in by declaration) — the payload
   // then omits the block rather than reporting zeroes that would read as an empty
@@ -385,6 +391,10 @@ export async function verifyCommand(
   // redeclaration is a risk regardless of which drift gates were selected).
   // Warnings ONLY — never changes the exit code.
   await runOverlayLintAdvisory();
+
+  // Whitespace in a node's `name` — loads clean on every port, almost never meant.
+  // Runs on every `meta verify`; warnings ONLY, never changes the exit code.
+  runNameLintAdvisory();
 
   // Advisory verify-as-teacher pass: surface hand-rolled work the metadata could
   // model. Warnings ONLY — never changes the exit code (bias to under-flagging).
@@ -434,6 +444,7 @@ export async function verifyCommand(
         requirementCounts,
         antiPatterns: antiPatternSection,
         overlays: overlaySection,
+        names: nameSection,
       }),
       fmt,
     );
@@ -802,6 +813,29 @@ export async function verifyCommand(
     if (findings.length > 0) {
       log.warn(
         `meta verify — overlays: ${findings.length} unflagged cross-file redeclaration(s) ` +
+          `(advisory — does not fail the build):`,
+      );
+      warnCapped(findings.map(formatDiagnostic), flags.limit, { structured });
+    }
+  }
+
+  // -- node-name authoring lint (advisory) -----------------------------------
+  // Reads the LOADED model (see name-lint.ts). Its own section, its own cap, and
+  // a skip that carries its reason rather than looking like a clean scan.
+  function runNameLintAdvisory(): void {
+    if (flags.noNameLint) {
+      nameSection = skippedSection("suppressed by --no-name-lint");
+      return;
+    }
+    if (process.env.META_NO_NAME_LINT === "1") {
+      nameSection = skippedSection("suppressed by META_NO_NAME_LINT=1");
+      return;
+    }
+    const findings = lintNodeNames(root);
+    nameSection = ranSection(findings.map((d) => toDiagnosticRow(d, "lint")));
+    if (findings.length > 0) {
+      log.warn(
+        `meta verify — names: ${findings.length} authoring warning(s) ` +
           `(advisory — does not fail the build):`,
       );
       warnCapped(findings.map(formatDiagnostic), flags.limit, { structured });
@@ -1821,6 +1855,7 @@ function buildVerifyPayload(input: {
   requirementCounts: RequirementCounts | undefined;
   antiPatterns: AdvisorySection<AdvisoryFindingRow>;
   overlays: AdvisorySection<AdvisoryDiagnosticRow>;
+  names: AdvisorySection<AdvisoryDiagnosticRow>;
 }): Record<string, unknown> {
   const ran = input.gates.filter((g) => g.ran);
   const failed = ran.filter((g) => !g.ok);
@@ -1840,6 +1875,9 @@ function buildVerifyPayload(input: {
   if (input.overlays.status === "ran" && input.overlays.total > 0) {
     parts.push(`${input.overlays.total} overlay authoring finding(s)`);
   }
+  if (input.names.status === "ran" && input.names.total > 0) {
+    parts.push(`${input.names.total} name authoring finding(s)`);
+  }
 
   const help: string[] = [];
   if (failed.length > 0) {
@@ -1855,11 +1893,17 @@ function buildVerifyPayload(input: {
       `${input.overlays.total} unflagged cross-file redeclaration(s) — see overlays.rows[]; add overlay: true so a renamed or removed target fails loudly instead of silently becoming a new object`,
     );
   }
+  if (input.names.total > 0) {
+    help.push(
+      `${input.names.total} node name(s) containing whitespace — see names.rows[]; rename each node, and pin @column on a field whose physical column must keep its name`,
+    );
+  }
   if (
     failed.length === 0 &&
     input.antiPatterns.total === 0 &&
     input.requirements.total === 0 &&
-    input.overlays.total === 0
+    input.overlays.total === 0 &&
+    input.names.total === 0
   ) {
     help.push("no drift and nothing advisory to answer — nothing to do");
   }
@@ -1872,6 +1916,7 @@ function buildVerifyPayload(input: {
     antiPatterns: input.antiPatterns,
     requirements: input.requirements,
     overlays: input.overlays,
+    names: input.names,
     ...(input.requirementCounts !== undefined ? { requirementCounts: input.requirementCounts } : {}),
     // The honest boundary. Everything named here is REACHABLE — it is printed as
     // text on stderr — but it is not in this document, and a reader must not have

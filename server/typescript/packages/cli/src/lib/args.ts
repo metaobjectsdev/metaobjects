@@ -363,6 +363,13 @@ export interface VerifyFlags {
    */
   noOverlayLint: boolean;
   /**
+   * Suppress the advisory node-NAME authoring lint — whitespace in a node's
+   * `name` (a trailing space copied from legacy XML loads clean on every port).
+   * Advisory only, like its siblings: it has no gate half and can never fail
+   * the build.
+   */
+  noNameLint: boolean;
+  /**
    * ADR-0023 strict-attr load opt-OUT (#96). `verify` is strict-by-default — an
    * undeclared/typo'd own `@attr` fails verify (ERR_UNKNOWN_ATTR). `--lax`
    * restores the legacy open-attr load (today's behavior). Default false (strict).
@@ -403,6 +410,7 @@ export const VERIFY_OPTIONS = {
   "no-antipatterns": { type: "boolean", default: false },
   "no-requirement-lint": { type: "boolean", default: false },
   "no-overlay-lint": { type: "boolean", default: false },
+  "no-name-lint": { type: "boolean", default: false },
   lax: { type: "boolean", default: false },
   "d1": { type: "string" },
   "remote": { type: "boolean", default: false },
@@ -487,6 +495,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     noAntipatterns: !!values["no-antipatterns"],
     noRequirementLint: !!values["no-requirement-lint"],
     noOverlayLint: !!values["no-overlay-lint"],
+    noNameLint: !!values["no-name-lint"],
     lax: !!values.lax,
     d1: values.d1 as string | undefined,
     remote: !!values.remote,

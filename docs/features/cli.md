@@ -102,6 +102,14 @@ Rules of the contract:
   lacks `overlay: true`. Advisory only, like the anti-pattern pass below — it never
   changes the exit code — and is muted the same way: `--no-overlay-lint` or
   `META_NO_OVERLAY_LINT=1`. See [`metadata-dependencies.md`](metadata-dependencies.md).
+- **The node-name authoring lint also runs on every `meta verify`.** It reports any
+  named node except a requirement whose `name` contains whitespace (the ECMAScript `\s`
+  class). The loader accepts these names on every port. `WARN_NAME_SURROUNDING_WHITESPACE`
+  flags leading or trailing whitespace, which is almost certainly unintended: rename the
+  node, and on a field pin `@column` if the physical column must keep its name.
+  `WARN_NAME_INTERNAL_WHITESPACE` flags whitespace inside a name. Requirement names
+  belong to the requirement lint. This lint is advisory only, appears as `names` in
+  `--format json|toon`, and is muted with `--no-name-lint` or `META_NO_NAME_LINT=1`.
 
 ### The prompt directory: `--prompts` everywhere (F101)
 
