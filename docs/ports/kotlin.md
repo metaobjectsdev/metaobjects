@@ -207,6 +207,59 @@ mechanism; the
 [`../features/extending-with-providers.md`](../features/extending-with-providers.md)
 reference covers the cross-port contract.
 
+### Exposed 1.x output (`exposedApi`)
+
+Every generator above that emits Exposed code reads one shared `exposedApi` arg:
+
+```xml
+<generator>
+  <classname>com.metaobjects.generator.kotlin.KotlinExposedTableGenerator</classname>
+  <args>
+    <outputDir>${project.build.directory}/generated-sources/kotlin</outputDir>
+    <exposedApi>1</exposedApi>
+  </args>
+</generator>
+```
+
+- **`0`** (default, unset) — Exposed 0.x (`org.jetbrains.exposed.sql.*`). Byte-identical to
+  every release before this arg existed; omit it and nothing changes.
+- **`1`** — Exposed 1.x (`org.jetbrains.exposed.v1.*`). Set it on every generator you wire
+  that touches Exposed — `KotlinExposedTableGenerator`, `KotlinRepositoryGenerator`,
+  `KotlinRelationsGenerator`, `KotlinSpringControllerGenerator`, `KotlinStoredProcGenerator`,
+  `KotlinSpringConfigGenerator`, `KotlinValidatorGenerator` — a run that sets it on some but
+  not others emits a mix of `org.jetbrains.exposed.sql.*` and `.v1.*` imports that cannot
+  compile together.
+
+**Why 1.x.** Exposed 0.x shares one `IdentifierManagerApi` per `Database` across all
+threads, and its identifier caches are plain `LinkedHashMap`s mutated on every query —
+under concurrent load they corrupt (`ClassCastException`, or a thread spinning forever
+inside `HashMap`). Upstream fixed this only in **Exposed 1.3.0** (JetBrains/Exposed
+PR #2783). 0.x output can never reach that fix; `exposedApi=1` is the migration path.
+
+**The floor this implies**, per the [official 1.0 migration
+guide](https://www.jetbrains.com/help/exposed/migration-guide-1-0-0.html) and Exposed
+1.3.1's own published POM (checked directly — its `kotlin-stdlib` dependency is
+**2.3.20**): your project's own Kotlin compiler must be **>= 2.2** to read Exposed 1.3.x's
+metadata; `exposed-spring-boot-starter` 1.3.0 is built against **Spring 6.2 / Boot 3.5**.
+`codegen-kotlin` itself stays on Kotlin 2.0.21 — it only emits text (see this file's
+production vs. helper note at the top of the repo's `CLAUDE.md`) — so this floor applies to
+the CONSUMER project wiring `exposedApi=1`, never to the generator module.
+
+**One silent trap the migration guide calls out by name:** `Table.uuid()` binds
+`kotlin.uuid.Uuid` under 1.x, not `java.util.UUID` — it still compiles, it just changes the
+Kotlin type. Every `field.uuid` column (and the `field.string @dbColumnType=uuid` escape
+hatch) emits `javaUUID(col)` under `exposedApi=1`, never bare `uuid(col)`, so the entity's
+`java.util.UUID` property and its Exposed column always agree.
+
+**Proof, not aspiration.** `server/java/codegen-kotlin-exposed1x-check` (excluded from the
+default reactor — same docker-only reasoning as `integration-tests-kotlin`; run via
+`mvn -f server/java/codegen-kotlin-exposed1x-check/pom.xml test` or
+`scripts/integration-test.sh kotlin`) compiles the full shared fitness corpus under
+`exposedApi=1` against the real Exposed 1.3.x jars, and round-trips the three hand-rolled
+`Meta*ColumnType` support classes (`MetaInstantWithTimeZoneColumnType`, `MetaUriColumnType`,
+`MetaInetColumnType`) through a real Postgres — the generated `readObject(rs: RowApi, …)`
+signature 1.x requires, not just a compile check.
+
 ## Generate
 
 ```bash
@@ -535,6 +588,10 @@ validity; an end-to-end test exercises the full loop including the Java
 `Renderer`. Persistence-conformance + the cross-port API contract run in
 `integration-tests-kotlin` (33 / 33 — 12 persistence + 20 api-contract + 1
 codegen-matches-reference, all runnable via `scripts/integration-test.sh kotlin`).
+`codegen-kotlin-exposed1x-check` (same command) adds the `exposedApi=1` compile check
+(the full fitness corpus against Exposed 1.3.x) and a real-Postgres round-trip of the
+three custom column types — see [Exposed 1.x output](#exposed-1x-output-exposedapi)
+above.
 
 ## See also
 
