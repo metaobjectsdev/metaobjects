@@ -1,10 +1,14 @@
 # MetaObjects Roadmap
 
-_Last refreshed 2026-09-09 — the 1.0 / 8.0 cut shipped; the 1.0-promotion and
-website-self-updating-codegen programs moved from Active to Shipped._
-
-> **This file is the single source of truth for the roadmap.** GitHub Milestones + Issues +
-> the Project board mirror it. Keeping them in sync: `docs/ROADMAP-PROCESS.md`.
+> **Status, priority and target release live in GitHub, not in this file** (since 2026-10-02).
+> - **Features:** issues labelled [`FR`](https://github.com/metaobjectsdev/metaobjects/issues?q=is%3Aissue+label%3AFR).
+>   An issue with no milestone is untriaged.
+> - **Releases:** [milestones](https://github.com/metaobjectsdev/metaobjects/milestones) (`1.1`, `1.2`, … `1.x (later)`).
+> - **The roadmap view:** the **MetaObjects Roadmap** project board (all `FR` issues, grouped by milestone).
+>
+> This file keeps what an issue tracker does not: the release direction, the index from FR
+> numbers to issues and design specs, future themes, and the history. Process:
+> [`docs/ROADMAP-PROCESS.md`](../docs/ROADMAP-PROCESS.md).
 
 ## 1.1 direction
 
@@ -13,7 +17,103 @@ generators that target established libraries, a generator catalog to start from,
 of Atlas as the migrate diff backend, and continued investment in the prompt tier. Plan and the
 evidence behind it: [`docs/superpowers/specs/2026-09-26-1.1-core-and-generators-plan.md`](../docs/superpowers/specs/2026-09-26-1.1-core-and-generators-plan.md).
 
-## FR registry
+## Feature index
+
+FR numbers are kept for features with a design spec. The issue is where status lives;
+the spec is where the design lives. FRs shipped before issues were kept have no issue.
+
+| FR | Title | Issue | Design |
+|---|---|---|---|
+| FR-002 | Client/web package split | — (shipped before issues were kept) | [spec](../docs/superpowers/specs/2026-05-21-fr-002-phase-2-client-web-split-design.md) |
+| FR-003 | Java RDB persistence & projections | — (shipped before issues were kept) | [spec](../docs/superpowers/specs/2026-05-22-fr-003-omdb-persistence-schema-migration-projections-design.md) |
+| FR-004 | Cross-language prompt construction | [#18](https://github.com/metaobjectsdev/metaobjects/issues/18) | [spec](../docs/superpowers/specs/2026-05-22-fr-004-cross-language-prompt-construction-design.md) |
+| FR-005 | Actionable loader errors (FR5 a–e) | — (shipped before issues were kept) | — |
+| FR-006 | `template.output` parser-on-receipt | — (shipped before issues were kept) | — |
+| FR-007 | Codegen conformance corpus | — (shipped before issues were kept) | [spec](../docs/superpowers/specs/2026-05-25-fr-007-codegen-conformance-corpus-design.md) |
+| FR-008 | Universal REST API contract | — (shipped before issues were kept) | [spec](../docs/superpowers/specs/2026-05-26-fr-008-universal-react-ui-hookup.md) |
+| FR-009 | Filter operators per port | — (shipped before issues were kept) | [spec](../docs/superpowers/specs/2026-05-26-fr-009-filter-operators-per-port.md) |
+| FR-010 | Output-format prompt + tolerant extract | — (shipped before issues were kept) | [spec](../docs/superpowers/specs/2026-05-29-fr-010-output-format-prompt-and-tolerant-parsing-design.md) |
+| FR-011 | Extract hardening (enum coercion + nesting) | — (shipped before issues were kept) | [spec](../docs/superpowers/specs/2026-05-30-fr-011-recover-hardening-design.md) |
+| FR-012 | Nested-object prompt expansion | — (shipped before issues were kept) | [spec](../docs/superpowers/specs/2026-05-30-fr-012-nested-object-prompt-expansion-design.md) |
+| FR-013 | Field read-only | — (shipped before issues were kept) | [spec](../docs/superpowers/specs/2026-05-28-fr-013-field-read-only-design.md) |
+| FR-014 | TPH discriminator | — (shipped before issues were kept) | [spec](../docs/superpowers/specs/2026-05-28-fr-014-tph-discriminator-design.md) |
+| FR-015 | Source parameter-ref | — (shipped before issues were kept) | [spec](../docs/superpowers/specs/2026-05-28-fr-015-source-parameter-ref-design.md) |
+| FR-016 | `source.rdb` name/kind aliases | — (shipped before issues were kept) | [spec](../docs/superpowers/specs/2026-05-28-fr-016-source-rdb-name-and-kind-aliases-design.md) |
+| FR-017 | TPH polymorphic codegen | — (shipped before issues were kept) | [spec](../docs/superpowers/specs/2026-06-02-fr-017-tph-polymorphic-codegen-design.md) |
+| FR-018 | Many-to-many relationships | — (shipped before issues were kept) | [spec](../docs/superpowers/specs/2026-06-02-fr-018-many-to-many-relationship-design.md) |
+| FR-019 | Shared / externally-provided enums | [#5](https://github.com/metaobjectsdev/metaobjects/issues/5) | [spec](../docs/superpowers/specs/2026-06-06-fr-019-shared-and-provided-enums-design.md) |
+| FR-020 | `@inheritance` joined strategy | [#6](https://github.com/metaobjectsdev/metaobjects/issues/6) | [spec](../docs/superpowers/specs/2026-06-07-fr-020-inheritance-strategy-design.md) |
+| FR-021 | api metadata + contract projections | [#7](https://github.com/metaobjectsdev/metaobjects/issues/7) | [spec](../docs/superpowers/specs/2026-06-11-fr-021-api-metadata-and-contract-projections-design.md) |
+| FR-022 | Contract emitters (JSON Schema/OpenAPI/protobuf) | [#8](https://github.com/metaobjectsdev/metaobjects/issues/8) | [spec](../docs/superpowers/specs/2026-06-11-fr-022-contract-emitters-design.md) |
+| FR-023 | Metadata dependencies (cross-repo sharing) | [#9](https://github.com/metaobjectsdev/metaobjects/issues/9) | [spec](../docs/superpowers/specs/2026-06-11-fr-023-metadata-packages-design.md) |
+| FR-024 | Entity surfaces (projection/value + declared API) | [#10](https://github.com/metaobjectsdev/metaobjects/issues/10) | [spec](../docs/superpowers/specs/2026-06-12-fr-024-entity-surfaces-projections-design.md) |
+| FR-025 | Cross-port package-binding codegen config | [#11](https://github.com/metaobjectsdev/metaobjects/issues/11) | [spec](../docs/superpowers/specs/2026-06-08-fr-025-cross-port-package-binding-config-design.md) |
+| FR-026 | Forms completeness (edit forms + view parity) | [#12](https://github.com/metaobjectsdev/metaobjects/issues/12) | — |
+| FR-027 | DataGrid downloads (CSV/XLSX/PDF/TXT) | [#13](https://github.com/metaobjectsdev/metaobjects/issues/13) | — |
+| FR-028 | Strict serializer parity + `meta export` CLI parity | [#14](https://github.com/metaobjectsdev/metaobjects/issues/14) | — |
+| FR-029 | Metadata API + runtime-driven UI | [#15](https://github.com/metaobjectsdev/metaobjects/issues/15) | [spec](../docs/superpowers/specs/2026-09-20-fr-029-metadata-api-and-browser-read-model-design.md) |
+| FR-030 | Runtime serializers (SPI/XML/binary/round-trip) | [#16](https://github.com/metaobjectsdev/metaobjects/issues/16) | — |
+| FR-031 | MetaData read-path caching + perf | [#17](https://github.com/metaobjectsdev/metaobjects/issues/17) | — |
+| FR-032 | Canonical FQN refs (YAML-only relative paths) | [#21](https://github.com/metaobjectsdev/metaobjects/issues/21) | [spec](../docs/superpowers/specs/2026-06-13-fr-032-canonical-fqn-refs-design.md) |
+| FR-033 | Provider definitions as declarative data + metamodel docs for LLMs | [#23](https://github.com/metaobjectsdev/metaobjects/issues/23) | — |
+| FR-034 | Ecosystem tier — connected systems (`system`/`container`/`surface`/`environment`) | [#392](https://github.com/metaobjectsdev/metaobjects/issues/392) | [spec](../docs/superpowers/specs/2026-07-10-fr-034-ecosystem-tier-connected-systems-design.md) |
+| FR-035 | Present-key PATCH tristate (mutation surface) | — (shipped before issues were kept) | [spec](../docs/superpowers/specs/2026-07-14-fr-036-constraint-validation-enforcement-and-fr-035-release-gaps.md) |
+| FR-036 | Constraint-validation enforcement + semantic pins | — (shipped before issues were kept) | [spec](../docs/superpowers/specs/2026-07-14-fr-036-constraint-validation-enforcement-and-fr-035-release-gaps.md) |
+| FR-037 | Projection expressiveness (`origin.rank`) + field write-access modes (`@mutability`) | [#335](https://github.com/metaobjectsdev/metaobjects/issues/335) (R1/R2, closed) · [#393](https://github.com/metaobjectsdev/metaobjects/issues/393) (R3–R5) | [spec](../docs/superpowers/specs/2026-08-10-fr-037-projection-expressiveness-and-write-once-design.md) |
+| FR-038 | Requirement-derived test stubs (inverts `@verifiedBy`) | — (shipped before issues were kept) | [spec](../docs/superpowers/specs/2026-08-15-fr-038-requirement-derived-test-stubs-design.md) |
+| FR-039 | Retired requirement status + restore | — (shipped) | [spec](../docs/superpowers/specs/2026-08-26-fr-039-retired-status-restore-design.md) |
+| FR-040 | Framework-agnostic codegen ownership (`meta eject`) | — (shipped) | [spec](../docs/superpowers/specs/2026-08-29-fr-040-framework-agnostic-codegen-ownership-design.md) |
+| FR-041 | Public A/B drift benchmark | [#394](https://github.com/metaobjectsdev/metaobjects/issues/394) | [spec](../docs/superpowers/specs/2026-09-11-fr-041-drift-ab-benchmark-design.md) |
+| FR-042 | First-touch positioning — one typed model, two verbs (README, llms, sites) | — (shipped before issues were kept) | [spec](../docs/superpowers/specs/2026-09-11-fr-042-first-touch-positioning-design.md) |
+| FR-043 | Libraries | — (shipped before issues were kept) | [spec](../docs/superpowers/specs/2026-09-13-fr-043-feature-and-nfr-packages-design.md) |
+| FR-044 | Core reporting | [#391](https://github.com/metaobjectsdev/metaobjects/issues/391) | [spec](../docs/superpowers/specs/2026-10-02-fr-044-core-reporting-design.md) |
+
+## Future (sketched)
+
+Candidate directions, not actively tracked — pulled up into Planned only when scheduled.
+
+- **Database-source metadata loader** — load the metamodel itself from a database (a metaobjects-table schema + a loader that reads it) instead of JSON/YAML files, for a central / runtime-editable metadata registry. FR5e already reserves the `format: "database"` error envelope (table + id + optional jsonPath), so the error contract is in place; the loader itself is unbuilt.
+- Date / case transforms.
+- Materialized views, federated entities, search-index sources.
+
+### Theme — metadata as the substrate for LLM-*authored* software
+
+A forward-looking cluster: today the LLM is a *consumer* of metaobjects (it reads the model, proposes metadata, writes against generated code). The next inflection is the LLM as **author of the model** — it emits typed metadata (the durable spine), `verify` gates it *before* it runs, codegen produces disposable per-language code, and escape hatches cover what metadata can't express. This sits in the seam between "the LLM writes the code" (maximally expressive, opaque, ungovernable output) and "the LLM writes config/flows" (safe but locked to a fixed node/component vocabulary). The same typed-payload + declarative-template + `verify` mechanism already describes the data model **and** prompts — extending it to the **UI** makes the model the single spine an LLM authors across all three render targets. These build on shipped primitives + the planned FRs noted; none are scheduled yet.
+
+- **Declared LLM-operation** — a metadata node binding a complete I/O unit (input payload VO + prompt template + output VO + parse strategy) as one codegen'd, runtime-resolvable, `verify`-able unit. The pieces exist separately today (payload, template, render, output parser); this composes them. Completes the prompt pillar; relates to the MCP-exposure item above.
+- **Bindable view/layout fields + UI action model** — a binding attr (literal / data-pointer path / function-call) on `view.*`/`layout.*` nodes, with pointer-resolution validated in `verify` exactly as a `{{slot}}` is validated against a prompt payload; plus a typed UI **action/event** output VO — the UI's response contract, peer to a prompt's output VO. Makes metadata-driven UI symmetric with metadata-driven prompts. Builds on FR-026/FR-029.
+- **Generative-UI interop** — emit a declarative generative-UI catalog (e.g. the [A2UI](https://github.com/google/A2UI) shape: catalog + components + dynamic binding) *from* native `view`/`layout` metadata, and import external catalogs — a standards-interop codegen target alongside Drizzle / EF Core / Pydantic. Builds on FR-022 (contract emitters) machinery.
+- **Portable model interchange** — a vendor-neutral, diffable export/import for a whole declared model (data VOs + prompts + UI + actions), building on the canonical serializer (FR-028/FR-030) and metadata packages (FR-023). The fragmentation evidence is real: declarative-flow/agent platforms each ship their own JSON and none interoperate. A neutral interchange for declared app/agent metadata is unclaimed ground.
+- **Runtime model authoring loop** — dynamic VO instantiation from a field tree with no regen step, pluggable template providers (filesystem / database / custom) behind the `render` resolver, and `verify` promoted to a first-class *runtime* gate (validate an LLM-authored-or-mutated template/model before persisting or rendering). Overlaps FR-029's runtime mode; the authoring-gate framing is the new piece.
+
+(Forms codegen revival has been promoted to **FR-026** in Planned.)
+
+---
+
+## Note on H4 ("TS-codegen Java target") — retired
+
+An earlier version of this roadmap listed **H4 — TS codegen Java target** as a 2-3 week project to refactor `codegen-ts` into pluggable targets so a Java target could emit Spring code from TS. **That framing is obsolete and retired.**
+
+The pattern that has actually shipped across all four language ports is: **each port has its own codegen layer in its host language**.
+
+| Port    | Codegen module          | Emits                                                 |
+|---------|-------------------------|-------------------------------------------------------|
+| TS      | `codegen-ts`            | TS entities, Drizzle, Zod, Fastify routes             |
+| C#      | `MetaObjects.Codegen`   | EF Core entities, `AppDbContext`, ASP.NET routes, Postgres DDL |
+| Java    | `codegen-spring`        | Spring `@RestController`, DTO records, repositories, filter allowlists |
+| Kotlin  | `codegen-kotlin`        | KotlinPoet output: Exposed tables, Spring controllers, payload VOs, output parsers, stored procs |
+| Python  | `metaobjects.codegen`   | Pydantic models, FastAPI routes, output parsers       |
+
+A polyglot codegen engine in TS would have meant forcing every Java consumer to install Node/bun just to generate Java — and the C# / Kotlin / Python ports already proved this isn't necessary. Java's `codegen-spring` is real, shipped, and emits the full cross-port surface (FR-006 / FR-008 / FR-009 / FR-010) alongside the other ports; there is no remaining per-port codegen gap.
+
+## Archive — the file-based roadmap, frozen 2026-10-02
+
+> Kept verbatim for design history. **Statuses below are stale and are not maintained**;
+> where this section and GitHub disagree, GitHub is right. A 2026-10-02 audit found, for
+> example, FR-019, FR-033, FR-038, FR-039, FR-040 and FR-043 shipped while rows here said
+> otherwise.
+
+### FR registry
 
 Every feature request, its status, target release, and tracking issue. Shipped FRs are detailed
 under **Shipped**; planned FRs under **Planned** + the **Release plan**. ✅ shipped · 🔵 active · 📋 planned.
@@ -66,9 +166,9 @@ under **Shipped**; planned FRs under **Planned** + the **Release plan**. ✅ shi
 _(FR-001 was the original metamodel foundation — pre-dates the FR-numbered tracking.)_
 _(FR-032 was developed under the working number "FR-026" — see commit history; renumbered to avoid the FR-026=Forms collision. Design: `docs/superpowers/specs/2026-06-13-fr-032-canonical-fqn-refs-design.md`, ADR-0032.)_
 
-## Shipped
+### Shipped
 
-### 1.0 / 8.0 — the stable release (2026-09-09)
+#### 1.0 / 8.0 — the stable release (2026-09-09)
 
 - **The cut.** npm / PyPI / NuGet to `1.0.0`, Maven Central to `8.0.0` — the decoupled-major
   scheme of ADR-0035 §2 (the JVM major is permanently npm major + 7; Maven cannot move
@@ -107,7 +207,7 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
   port can agree perfectly on a contract that is wrong in practice. Independent adoption is
   the untested axis, and it is tracked below as work outside this repo.
 
-### Website self-updating codegen — the site publishes generated output, gated (2026-08-29 → 2026-09-09)
+#### Website self-updating codegen — the site publishes generated output, gated (2026-08-29 → 2026-09-09)
 
 - **Complete and deployed** — metaobjects.dev serves 1.0.0 / 8.0.0 with no hand-maintained
   version byte. (Verified from the site repo's history and the live deploy, not from the
@@ -144,7 +244,7 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
   it selects a stale answer. The same defect was later found and fixed in
   `scripts/finish-release.mjs`, the gate that mirrors this selector.
 
-### Capability requirements (2026-08-12, unreleased)
+#### Capability requirements (2026-08-12, unreleased)
 
 - **`requirement.functional` / `requirement.architectural`** — capabilities as registered
   metamodel vocabulary in all five ports. Opt-in by declaration: a model with no
@@ -159,7 +259,7 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
   attributes) and [ADR-0051](decisions/ADR-0051-extension-is-registration.md) (extension is
   registration), both surfaced by building it.
 
-### Codegen authoring paths — SP-3 (2026-08-31, unreleased)
+#### Codegen authoring paths — SP-3 (2026-08-31, unreleased)
 
 - **The shipped agent context taught ONE way to author a generator; there are two, and on
   two ports only one exists.** A generator can be **programmatic** (a `Generator` in the
@@ -216,7 +316,7 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
   never wrote — the pre-`0.24.3` behaviour, not introduced by this work, and a change that
   would alter `verify`'s verdict for every existing C# adopter.
 
-### Foundation
+#### Foundation
 
 - **H1 — Polyglot monorepo migration** (2026-05-14)
   TS code consolidated under `server/typescript/`; package names normalized to `@metaobjectsdev/*`; CLI binary renamed to `meta`; config file `metaobjects.config.ts`; tool-state dir `.metaobjects/`.
@@ -227,7 +327,7 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
 - **H8 — First TS consumer on published packages** (2026-05-23)
   A real TS consumer migrated off `link:` filesystem deps onto the published packages and builds clean end-to-end — validating the published dist, `.d.ts` types, and runtime imports through a real pnpm install.
 
-### Per-port ports + codegen layers
+#### Per-port ports + codegen layers
 
 - **TypeScript** — `@metaobjectsdev/metadata` + `codegen-ts` (Vite-style plugins) + `runtime-ts` + `migrate-ts` + the universal web client packages (`runtime-web`, `react`, `tanstack`). The reference port for everything cross-language.
 - **C# full-stack target** — `MetaObjects` (loader + canonical serializer + conformance) + `MetaObjects.Render` (Mustache + payload-VO codegen + `verify`) + `MetaObjects.Codegen` (EF Core entities + `AppDbContext`/owned-types via `OwnsOne` + CRUD minimal-API routes). Schema migrations are TS-owned (ADR-0015) — the C# migrate engine and its `--from-db` CLI surface were removed; the `dotnet meta` CLI is `gen`/`verify` only.
@@ -235,7 +335,7 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
 - **Kotlin** — `codegen-kotlin` (KotlinPoet on JVM): entity + Exposed table + Spring controller + Spring config + payload + relations + filter allowlist + validator + stored-proc + output-parser generators; `integration-tests-kotlin` runs the persistence-conformance corpus through Exposed against Testcontainers Postgres.
 - **Python port** — `metaobjects` (metadata loader + canonical serializer + conformance) + `ObjectManager` runtime + render (Mustache) + codegen (Pydantic + FastAPI, output parsers). The `migrate` module was removed when schema consolidated onto the TS toolchain (ADR-0015).
 
-### Cross-port conformance corpora (every port runs the shared corpus)
+#### Cross-port conformance corpora (every port runs the shared corpus)
 
 - **Metamodel conformance** — `fixtures/conformance/` (270 fixtures + CAPABILITIES + ERROR-CODES manifests). TS / C# / Java / Python all green; Kotlin inherits via `metadata-ktx`. Per-corpus counts: `docs/CONFORMANCE.md`.
 - **Render conformance** — `fixtures/render-conformance/`. TS / C# / Java / Kotlin / Python byte-identical.
@@ -246,7 +346,7 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
 - **Object-model conformance** — `fixtures/object-model-conformance/` (7 scenarios). Pins the cross-port runtime object model: `newInstance` factory (map-backed `ValueObject` default, or a self-registered code-generated type), instance→MetaObject back-reference (`MetaObjectAware`), nested-object + array-of-objects field IO, overflow, and the codegen'd-or-not invariant. All 5 ports 7/7 (Java reference + reconcile; Kotlin over the JVM model; TS/Python/C# native, reflection-free). ADR-0017. (Phase A; metadata-driven extract + generalized `@default` build on it next.)
 - **YAML / verify** corpora — green across the ports that ship those layers.
 
-### Key cross-language features
+#### Key cross-language features
 
 - **Source v2 paradigm** — `source.rdb` + `@kind: table|view|materializedView|storedProc|tableFunction`; multi-source via `@role`. ADR-0007.
 - **FR-003 — Java RDB persistence & projections** (Plans 1/2/3/4a + Plan 4): port of `dynamic`/`om`/`omdb` onto current core; build-time FQN-keyed binding registry + typed jsonb value-objects + Spring-tx connection; `source.*`+`origin.*` metamodel registered in Java; OMDB engine-debt remediation (atomic mapping cache, JDBC codec registry per ADR-0002, `inTransaction` template). The diff-and-converge schema-migration engine that originally shipped under FR-003 (`SchemaMigrationEngine` + introspector + emitter + the `meta:migrate` goal) was **removed** when schema migrations consolidated onto the TS toolchain (`@metaobjectsdev/cli migrate`); the Java port retains runtime persistence only — per ADR-0015 Decision 2 the dev/test runtime auto-create path (`MetaClassDBValidatorService` + the drivers' DDL) was removed too, so OMDB is pure data-access.
@@ -279,11 +379,11 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
 - **Per-target output directories (TS codegen).** Each generator routes to a named output target (`{ outDir, importBase?, outputLayout?, dbImport? }`).
 - **0.6.x → 0.7.0 consumer-friction batch.** Stock `promptRender()` generator; `db`-parameter generated repo helpers (ADR-0008); Cloudflare Workers deploy recipe; CHANGELOG.md backfill + camelCase ↔ snake_case docs. (Shipped; long since superseded — the current published line is npm / PyPI / NuGet `0.20.15` and Maven Central `7.20.15`.)
 
-## Active
+### Active
 
 - **AI LLM-call trace persistence — cross-port rollout.** A metaobjects-native typed-trace store: each LLM call is persisted in the adopter's own DB with request/response as **typed value objects** (the same payload projection the prompt pillar declares + drift-checks), the one thing blob-only observability tools (Langfuse/Helicone/OTel) structurally can't do. **Scope locked by [ADR-0024](decisions/ADR-0024-ai-trace-scope-and-llm-caller-boundary.md):** MetaObjects owns the typed trace + recorder seam + the vendor-NEUTRAL call glue; the provider call + pricing are **bring-your-own** (plug the stack's LLM library — Vercel AI SDK / LiteLLM / Spring AI — behind the one-method `LlmClient`). **Shipped in TypeScript** (the reference port): shipped `library/ai/llm-call.yaml` (`LlmCallBase`) + opt-in `libraries` loader; the recorder (`recordLlmCall`, never-throws, redaction seam) + `buildLlmCallRow` whose key set is gated == `LlmCallBase`'s fields; `deriveTraceFields` (typed `voRequest`/`voResponse` jsonb columns derived from a nested `template.prompt`'s `@payloadRef`/`@responseRef`); generated `record<Entity>`/`call<Entity>` (extract + persist base + typed in one row); `@metaobjectsdev/ai-runtime` (`LlmClient` seam, `runLlmCall`, `callLlm`, `CompositeRecorder` + optional `LangfuseRecorder`/`OtelRecorder` exporters); shared-table STI (`@discriminator`/`@discriminatorValue`, reuses FR-017 TPH). **Cross-port (P3) in progress, JVM first:** the Java metamodel slice shipped (`@responseRef` on `template.prompt` + `template.*` admitted as `object.entity` children + a `TS_PILOT_VOCAB` registry-manifest exclusion; `ai-trace-prompt-nested` + `ai-trace-sti` un-ledgered in Java). Remaining: the Java recording half (OMDB recorder + the `deriveTraceFields` loader pre-pass + `record<Entity>` Spring codegen + a persistence round-trip), then Python → C# → Kotlin, then the **atomic carve-out close** (register `@responseRef` in every port + remove `TsPilotVocab` from all ports + add it to `expected-registry.json`). Phased plan: `docs/superpowers/plans/2026-06-06-ai-trace-descope-and-cross-port.md`.
 
-## Planned
+### Planned
 
 - **#195 follow-ups — projection read-model origins.** The four capabilities (`origin.aggregate @agg:any|all|collect`, `origin.computed @expr`, `origin.first`) shipped (validate + type in all 5 ports; TS `meta migrate` view synthesis; see `CHANGELOG.md` [Unreleased] + `docs/superpowers/specs/2026-07-15-issue-195-projection-readmodel-origins-design.md`). Remaining as fast-follows: (a) the **"not-migrate-managed" escape valve** — now tracked as **#208** in the projection/view-materialization epic below (an `@sqlView`-style attribute carrying hand-written view DDL PLUS a distinct "managed elsewhere" marker, generalizing to **any** DB object, so a genuinely-irreducible view no longer aborts the whole `meta migrate` run); (b) a **`collect` native-array persistence roundtrip** gate (Postgres `text[]` vs SQLite `json_group_array` → same wire) in `fixtures/persistence-conformance/`. The TS-side real-engine value gate now EXISTS (`integration-tests/test/view-lifecycle-{pg,sqlite}.test.ts` value-probe all four #195 origin kinds — any/all/collect/computed/first — incl. the empty-set pins `any=false`/`all=true`/`collect=[]`/`first=null` on real PG *and* real SQLite). The remaining work is the CROSS-PORT persistence-conformance scenario (a projection with a `collect` array column read by all 5 ports' runtimes), which is blocked on per-port native-array read support: **TS + Python already read a `text[]` → JSON array** (native driver decode + a list branch in each normalizer); **C#** needs an array/`IEnumerable` case in `MetaObjects.Conformance` `Normalization.NormalizeValue` (emit a `JsonArray`) + a generated/mapped `ProgramInsights` EF entity; **Java** needs an OMDB JDBC array-read codec (`java.sql.Array` → `List`) for `field.string @isArray` (its `Normalization` already has a `List` branch, but `JdbcCodecs` never produces a `List`); **Kotlin** needs a `ProgramInsightsView` Exposed table with a native-array column type registered in `QueryScenarioRunner.tableFor` (+ its `DEFERRED_SCENARIOS` skip valve in the interim). Note the ports pure-glob-discover `queries/*.yaml` (Java/Python/C# have no skip mechanism), so the scenario cannot land until C#/Java array reads exist. `normalization.md` will gain the "SQL array → JSON array (empty `{}`→`[]`, NULL→`null`)" contract when it lands. (c) **#204 — SHIPPED** (`codegen-ts` `projection-decl` now carries a projection field's `isArray`/`storage:jsonb` through `extends` into both the Drizzle view column and the Zod read schema, so `collect → T[]` types correctly; TS-only, pending the next npm release). `origin.computed`'s expression grammar is designed so **#159**'s arithmetic / `case` / `@via`-joined refs slot in as additive node kinds.
 - **Projection / view-materialization epic (#206–212).** Follow-ons from #195 + adopter feedback on migrating legacy SQL-view-heavy schemas. Grouped by effort × 1.0-timing; **Group A is TS-`meta migrate`-owned (schema is TS-only per ADR-0015 → single-port, no 5-port fan-out).**
@@ -341,14 +441,14 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
 
 - **FR-031 — MetaData read-path caching (general; serialization is the example).** Repeatedly walking the MetaData tree for field/attr/validator/view/children lookups is a hot path for **every** consumer — codegen, runtime, the UI, and (as the headline example) serializing 100k+ large objects re-queries the tree per object. The MetaData read-model is **immutable after load**, so memoize these lookups on the MetaData class once. Deliberately **not** serialization-specific: it's a general read-path cache that any processing benefits from, validated by a throughput **benchmark gate** (process 100k+ objects, cached-vs-uncached delta) per port, using serialization as the example workload. Low effort, high leverage. *(The serialization-specific perf — a per-MetaObject compiled plan + streaming large sets — rides with FR-030, building on this cache.)* Detail: §"Theme 4" of the gap doc.
 
-### Tracked outside this library repo (not roadmap work here)
+#### Tracked outside this library repo (not roadmap work here)
 
 These are exercised in adopter projects on top of the shipped per-port primitives, and are deliberately **not** tracked as open items in this repo:
 
 - **Consumer-adoption validation** — downstream consumers migrating onto metaobjects-emitted code across the language paths (the former H5 / H9 / H10). The library surface they exercise (`codegen-spring`, `MetaObjects.Codegen`, the web-client packages, etc.) already ships.
 - **Application-level prompt-pillar consolidation** — the end-to-end declared-prompt orchestration and prompt eval harness that sit on top of the per-port primitives (the former H6, **minus** MCP exposure, which remains a library item above).
 
-## Release plan (1.0 → 1.x)
+### Release plan (1.0 → 1.x)
 
 Grouping of the Planned work into releases. Multiple items per release is fine.
 
@@ -362,7 +462,7 @@ and a change to the metadata contract moves `metamodelVersion` and must say so i
 CHANGELOG (ADR-0035 Amendment 2). The `### Before 1.0` heading below is kept as the dated
 adjudication record it was, not as pending work.
 
-### Before 1.0 — adjudicated 2026-08-05: nothing here blocks the promotion
+#### Before 1.0 — adjudicated 2026-08-05: nothing here blocks the promotion
 
 - **[SHIPPED] FR-031 — MetaData read-path caching** + throughput benchmark. Low effort, high
   leverage, benefits everything; serialization is the example, not the only consumer.
@@ -402,7 +502,7 @@ adjudication record it was, not as pending work.
   read the source / watch the drift gate catch a rename); (3) keep it ≤ one published line behind —
   fold "bump the reference app" into the release checklist so it never lags.
 
-### The coordinated pre-1.0 breaking MINOR — SHIPPED as `0.24.0` (2026-08-21)
+#### The coordinated pre-1.0 breaking MINOR — SHIPPED as `0.24.0` (2026-08-21)
 
 **STATUS: LANDED.** All four chartered retirements are in `0.24.0` / Maven `7.24.0`
 (unreleased at time of writing; the cut was held for this batch). `metamodelVersion` moved
@@ -434,7 +534,7 @@ remain 1.1 work, and all of them are additive — none needs a breaking slot.
 optional) was the designated re-entry shape for the capability `origin.collection` named, and
 **shipped in `0.24.1`** — see the section below.
 
-### `0.24.1` (2026-08-24) — the re-entry shape lands, and a G3 question opens
+#### `0.24.1` (2026-08-24) — the re-entry shape lands, and a G3 question opens
 
 Coordinated PATCH across all four registries (npm / PyPI / NuGet `0.24.1`, Maven `7.24.1`).
 Headline is **[#335](https://github.com/metaobjectsdev/metaobjects/issues/335), the whole-object
@@ -459,7 +559,7 @@ meaning may stop loading in a PATCH, explicitly NOT covering the retirement of v
 worked. Both `0.24.1` corrections (#342, #335) meet that bar, and both are written up in
 [`0.x-to-1.0.md`](../docs/features/migrations/0.x-to-1.0.md) §9.
 
-### What the window carried, and why it precedes GA
+#### What the window carried, and why it precedes GA
 
 `0.21.0` was **a** pre-1.0 breaking slot, not **the** one: ADR-0035 §3 charters "the next one or
 two releases as the window to land every breaking change we still want, then freeze", and
@@ -533,7 +633,7 @@ taken, because 1.0 was not in fact scheduled imminently and deferring would have
 one of these a major-version event. What was never available, and still is not, is targeting
 the breaking half at `1.1`.
 
-### 1.1 — Serialization foundation + connected-systems tier
+#### 1.1 — Serialization foundation + connected-systems tier
 
 - **FR-024 declared-API surface** — the deferred half of FR-024: `api.base`/`api.operational`,
   `operation.query|command`, `binding.rest`, `inputRef`/`outputRef`/`many`; loader ref-resolution +
@@ -569,26 +669,26 @@ the breaking half at `1.1`.
   round-trip** conformance. Realizes ADR-0031.
 - **FR-030 serialization perf** — per-MetaObject compiled plan + streaming (on FR-031's cache).
 
-### 1.2 — DataGrid downloads
+#### 1.2 — DataGrid downloads
 
 - **FR-027** — client export (CSV/XLSX/PDF/TXT) + server bulk-export endpoint (all backends) +
   JSON/XML download via the 1.1 serializer & field-subset + export conformance + the secondary
   grid gaps (column width/visibility/selection, consistent server `search`).
 
-### 1.3 — Binary protocols + contract emitters
+#### 1.3 — Binary protocols + contract emitters
 
 - **FR-030 binary** — protobuf / MessagePack / CBOR over the SPI → completes the
   **json → xml → binary → json** no-data-loss round-trip gate.
 - **FR-022 — contract emitters** (JSON Schema / OpenAPI / protobuf) — overlaps the protobuf
   serializer (shared `wireId`/type mapping); do together.
 
-### 1.4 — Metadata API + runtime-driven UI
+#### 1.4 — Metadata API + runtime-driven UI
 
 - **FR-029** — metadata API endpoint (all backends) → browser runtime metadata loader →
   runtime-driven dataGrid + create/edit forms → both-ways (codegen vs runtime) demo →
   backend-agnostic verification (the TS UI against all 5 backends).
 
-### 1.x / later
+#### 1.x / later
 
 - **FR-023 — metadata dependencies, remaining phases** (Phase 1a — TS + Python —
   shipped; Phase 1b bindings/docs-badge, and Phase 2 — Java/Kotlin/C# + the
@@ -596,41 +696,3 @@ the breaking half at `1.1`.
 - **FR-020 — `@inheritance` joined strategy** (additive; pairs with a persistence release).
 - **MCP exposure** (if not pulled earlier — see below).
 - **Database-source metadata loader** (currently Future).
-
-## Future (sketched)
-
-Candidate directions, not actively tracked — pulled up into Planned only when scheduled.
-
-- **Database-source metadata loader** — load the metamodel itself from a database (a metaobjects-table schema + a loader that reads it) instead of JSON/YAML files, for a central / runtime-editable metadata registry. FR5e already reserves the `format: "database"` error envelope (table + id + optional jsonPath), so the error contract is in place; the loader itself is unbuilt.
-- Date / case transforms.
-- Materialized views, federated entities, search-index sources.
-
-### Theme — metadata as the substrate for LLM-*authored* software
-
-A forward-looking cluster: today the LLM is a *consumer* of metaobjects (it reads the model, proposes metadata, writes against generated code). The next inflection is the LLM as **author of the model** — it emits typed metadata (the durable spine), `verify` gates it *before* it runs, codegen produces disposable per-language code, and escape hatches cover what metadata can't express. This sits in the seam between "the LLM writes the code" (maximally expressive, opaque, ungovernable output) and "the LLM writes config/flows" (safe but locked to a fixed node/component vocabulary). The same typed-payload + declarative-template + `verify` mechanism already describes the data model **and** prompts — extending it to the **UI** makes the model the single spine an LLM authors across all three render targets. These build on shipped primitives + the planned FRs noted; none are scheduled yet.
-
-- **Declared LLM-operation** — a metadata node binding a complete I/O unit (input payload VO + prompt template + output VO + parse strategy) as one codegen'd, runtime-resolvable, `verify`-able unit. The pieces exist separately today (payload, template, render, output parser); this composes them. Completes the prompt pillar; relates to the MCP-exposure item above.
-- **Bindable view/layout fields + UI action model** — a binding attr (literal / data-pointer path / function-call) on `view.*`/`layout.*` nodes, with pointer-resolution validated in `verify` exactly as a `{{slot}}` is validated against a prompt payload; plus a typed UI **action/event** output VO — the UI's response contract, peer to a prompt's output VO. Makes metadata-driven UI symmetric with metadata-driven prompts. Builds on FR-026/FR-029.
-- **Generative-UI interop** — emit a declarative generative-UI catalog (e.g. the [A2UI](https://github.com/google/A2UI) shape: catalog + components + dynamic binding) *from* native `view`/`layout` metadata, and import external catalogs — a standards-interop codegen target alongside Drizzle / EF Core / Pydantic. Builds on FR-022 (contract emitters) machinery.
-- **Portable model interchange** — a vendor-neutral, diffable export/import for a whole declared model (data VOs + prompts + UI + actions), building on the canonical serializer (FR-028/FR-030) and metadata packages (FR-023). The fragmentation evidence is real: declarative-flow/agent platforms each ship their own JSON and none interoperate. A neutral interchange for declared app/agent metadata is unclaimed ground.
-- **Runtime model authoring loop** — dynamic VO instantiation from a field tree with no regen step, pluggable template providers (filesystem / database / custom) behind the `render` resolver, and `verify` promoted to a first-class *runtime* gate (validate an LLM-authored-or-mutated template/model before persisting or rendering). Overlaps FR-029's runtime mode; the authoring-gate framing is the new piece.
-
-(Forms codegen revival has been promoted to **FR-026** in Planned.)
-
----
-
-## Note on H4 ("TS-codegen Java target") — retired
-
-An earlier version of this roadmap listed **H4 — TS codegen Java target** as a 2-3 week project to refactor `codegen-ts` into pluggable targets so a Java target could emit Spring code from TS. **That framing is obsolete and retired.**
-
-The pattern that has actually shipped across all four language ports is: **each port has its own codegen layer in its host language**.
-
-| Port    | Codegen module          | Emits                                                 |
-|---------|-------------------------|-------------------------------------------------------|
-| TS      | `codegen-ts`            | TS entities, Drizzle, Zod, Fastify routes             |
-| C#      | `MetaObjects.Codegen`   | EF Core entities, `AppDbContext`, ASP.NET routes, Postgres DDL |
-| Java    | `codegen-spring`        | Spring `@RestController`, DTO records, repositories, filter allowlists |
-| Kotlin  | `codegen-kotlin`        | KotlinPoet output: Exposed tables, Spring controllers, payload VOs, output parsers, stored procs |
-| Python  | `metaobjects.codegen`   | Pydantic models, FastAPI routes, output parsers       |
-
-A polyglot codegen engine in TS would have meant forcing every Java consumer to install Node/bun just to generate Java — and the C# / Kotlin / Python ports already proved this isn't necessary. Java's `codegen-spring` is real, shipped, and emits the full cross-port surface (FR-006 / FR-008 / FR-009 / FR-010) alongside the other ports; there is no remaining per-port codegen gap.

@@ -92,7 +92,7 @@ this tree is documentation, not the source of truth.
 ## See also
 
 - Root [`README.md`](../README.md) — capability matrix and project status across ports
-- [`../spec/roadmap.md`](../spec/roadmap.md) — current + planned work
+- [`../spec/roadmap.md`](../spec/roadmap.md) — release direction and the feature index (status lives in GitHub issues labelled `FR`; see [`ROADMAP-PROCESS.md`](ROADMAP-PROCESS.md))
 - [`../spec/decisions/`](../spec/decisions/) — ADRs for cross-cutting contracts
 - [`../fixtures/`](../fixtures/) — cross-language conformance corpora (metamodel,
   YAML, render, verify, persistence)

@@ -1,81 +1,64 @@
-# Roadmap process — keeping GitHub in sync with the roadmap
+# Roadmap process — GitHub is the source of truth
 
-How we track planned work, and how the GitHub surfaces stay in sync with the canonical roadmap.
+How we track features and releases. **Changed 2026-10-02:** status, priority and target release
+moved from `spec/roadmap.md` into GitHub. The file-based registry had drifted from both the code
+and the issues (an audit that day found six FRs shipped while the file still listed them as
+planned or active, and eight live FRs with no issue at all). One place to update is the fix.
 
-## The model: one source of truth, mirrored
+## Where each fact lives
 
-**`spec/roadmap.md` is the single source of truth.** It holds the **FR registry** (every feature
-request + status + target release + tracking issue), the **Shipped / Active / Planned** detail, and
-the **Release plan (1.0 → 1.x)**. Every roadmap fact lives here; the GitHub surfaces *mirror* it.
-
-Three GitHub surfaces mirror the roadmap, each with one job:
-
-| Surface | Role | Maps to |
+| Fact | Lives in | Not in |
 |---|---|---|
-| **Milestones** | the releases | `1.0` `1.1` `1.2` `1.3` `1.4` `1.x (later)` (= the Release plan) |
-| **Issues** | one per FR (execution unit) | a row in the FR registry; label `FR` + an `area:*` label; milestone = target release; body links the design spec |
-| **Project board** | a saved view (Now / Next / Later, grouped by milestone) | a view over the `FR`-labelled issues |
+| A feature exists, its scope summary, its status | the GitHub **issue**, labelled `FR` | `spec/roadmap.md` |
+| Target release | the issue's **milestone** (`1.1`, `1.2`, `1.3`, `1.4`, `1.x (later)`) | `spec/roadmap.md` |
+| Work in progress | the **MetaObjects Roadmap** project board's `Status` field (Todo / In progress / Done) | — |
+| The design (why and how) | `docs/superpowers/specs/*`, ADRs in `spec/decisions/*` — linked from the issue, never copied into it | the issue body |
+| Release direction, FR number → issue → spec index, future themes, history | `spec/roadmap.md` | — |
+| What shipped in which version | `CHANGELOG.md` | — |
 
-Design depth (the *why* and *how*) lives in `docs/superpowers/specs/*` and ADRs in
-`spec/decisions/*` — issues link to these, they are not duplicated into issues.
+**An issue labelled `FR` with no milestone is untriaged.** Triage means giving it a milestone or
+closing it.
 
-## Current GitHub state (bootstrapped 2026-06-13)
+## FR numbers
 
-- **Milestones:** `1.0`(#1) `1.1`(#2) `1.2`(#3) `1.3`(#4) `1.4`(#5) `1.x (later)`(#6).
-- **Labels:** `FR`, `area:metamodel`, `area:serializers`, `area:ui`, `area:grid`, `area:perf`,
-  `area:tooling`, `area:codegen`.
-- **Issues:** one per planned FR — FR-019→#5, FR-020→#6, FR-021→#7, FR-022→#8, FR-023→#9,
-  FR-024→#10, FR-025→#11, FR-026→#12, FR-027→#13, FR-028→#14, FR-029→#15, FR-030→#16,
-  FR-031→#17, MCP→#18.
+A feature gets an `FR-0NN` number when it gets a design spec, because the number names the spec
+file and is cited across docs. Small feature requests can stay as plain `FR`-labelled issues
+with no number. Allocate the next number as the highest in `spec/roadmap.md`'s feature index + 1.
 
-## Sync rules (do these together, in the same change)
+## The rules
 
-1. **Adding an FR.** Allocate the next FR number (highest in the registry + 1 — currently the next
-   is **FR-032**). In the *same* PR: add a registry row + a `## Planned` entry + a Release-plan
-   slot in `spec/roadmap.md`, write/locate the design spec under `docs/superpowers/specs/`, and
-   create the issue:
+1. **New feature.** Create the issue first, labelled `FR` plus an `area:*` label, with a
+   milestone if one is known:
    ```sh
-   gh issue create --title "FR-0NN — <title>" \
-     --body "<one-line summary>
-
-   **Spec / design:** <blob URL of the spec>
-   **Target release:** <milestone>
-
-   _Tracked in spec/roadmap.md (FR registry); status lives there._" \
-     --milestone "<1.x>" --label "FR,area:<x>"
+   gh issue create -R metaobjectsdev/metaobjects \
+     --title "FR-0NN — <title>" --label "FR,area:<x>" --milestone "<1.x>" \
+     --body-file <file>   # one-paragraph summary, then the spec link and the target release
    ```
-   Put the issue number back into the registry row.
+   If it has a spec, add one row to the **feature index** in `spec/roadmap.md`
+   (FR | title | issue | spec) in the same change that adds the spec. The index has no status
+   column on purpose.
+2. **Status or target release changes.** Change the issue (milestone, board `Status`, a comment
+   saying what changed and why). Nothing to edit in the repo.
+3. **Shipping.** Close the issue with a comment naming the version and the commit or PR. Partial
+   delivery: comment what shipped and what remains, and keep it open (or split the remainder into
+   a new issue and close the original).
+4. **Cutting a release.** Every issue in the milestone is closed or moved to a later one, then the
+   milestone is closed. `CHANGELOG.md` remains the record of what shipped.
+5. **When the spec and the issue disagree about status, the issue wins.** Specs are design
+   records; they are not kept current with delivery.
 
-2. **Changing status or target release.** Update the registry row (status/release) **and** move the
-   issue's milestone (`gh issue edit <n> --milestone "<new>"`). The roadmap row is authoritative; if
-   the two disagree, the roadmap wins and the issue is corrected.
+## The project board
 
-3. **Shipping an FR.** Move it from Planned → Shipped in `spec/roadmap.md` (with the ship note), flip
-   the registry status to ✅, and `gh issue close <n>` with a comment linking the shipping commit/PR.
+"MetaObjects Roadmap", owned by the `metaobjectsdev` organisation:
+- a built-in **Auto-add** workflow adds every issue in this repo labelled `FR`;
+- the default view is grouped **by milestone** (the release columns);
+- a `Status` single-select (Todo / In progress / Done).
 
-4. **Cutting a release.** Close the milestone when its issues are done; bump the registry rows to ✅.
-
-**Rule of thumb:** a PR that changes an FR's existence, status, or release **must** edit
-`spec/roadmap.md`. The GitHub change (issue/milestone) accompanies it but is never the only record.
-
-## Project board — one-time setup (manual)
-
-The board could not be created via API from CI: the available token has
-`repo`/`admin:org`/`workflow` scopes but **not `project`** (Projects v2 mutations require the
-`project` scope). To create + auto-populate it once:
-
-1. (If scripting later) grant the scope: `gh auth refresh -s project,read:project`.
-2. In the org → **Projects → New project → Board**, name it **"MetaObjects Roadmap"**.
-3. Add a built-in **workflow → "Auto-add to project"** filtering `repo:metaobjectsdev/metaobjects
-   is:issue label:FR` — every `FR` issue then flows in automatically (no per-issue wiring, and new
-   FR issues self-add).
-4. Group the board **by Milestone** (gives the Now/Next/Later release columns) and add a `Status`
-   single-select (Todo / In progress / Done) if desired.
-
-Because the board auto-adds by the `FR` label, the **issues are the durable record** and the board
-is a disposable view — losing/recreating it costs nothing.
+The board is a view over the issues, so losing or rebuilding it costs nothing. Creating or
+scripting it needs the token's `project` scope: `gh auth refresh -s project,read:project`.
 
 ## Public roadmap (website)
 
-A curated, adopter-facing roadmap on `metaobjects.dev/roadmap` (Now / Next / Later) is summarized
-**from** this file — it is not a separate source of truth. Refresh it when the Release plan changes.
+The adopter-facing roadmap on `metaobjects.dev/roadmap` (Now / Next / Later) is summarised from
+the milestones: Now = the next minor's open `FR` issues, Next = the one after, Later =
+`1.x (later)`. Refresh it when a milestone's contents change.

@@ -85,7 +85,7 @@ PyPI has had no product change since `0.25.0` — nothing is broken.
 
 **Latest release: 1.0.11** (2026-10-01) — npm `1.0.11`, PyPI `1.0.11`, NuGet `1.0.11`, Maven Central `8.0.11`. A PATCH gated by a private `1.0.11-rc.1` build on the adopter estate (`rc-gate.sh` 7/7) and a full local CI run. Fixes found upgrading nine adopter projects: generated forms with a blank optional date submit again, D1 DELETE routes answer 204 instead of 404, TS `meta gen` regenerates output outside the project root, Python `verify --codegen` no longer passes while checking nothing, TanStack hooks import `.meta` from their own target, and the FK-index advisory suggests table-unique names; plus a 1.0.x upgrade guide. The previous release, 1.0.10 (2026-09-29), added sourceless entities in every port and MySQL as a TS dialect.
 
-See `spec/roadmap.md` for the active + planned work picture.
+Active and planned work lives in GitHub: issues labelled `FR`, milestones for releases, and the MetaObjects Roadmap project board. `spec/roadmap.md` keeps the release direction and the FR → issue → spec index. Process: `docs/ROADMAP-PROCESS.md`.
 
 ## Public repository hygiene
 
@@ -480,7 +480,7 @@ package off the lockstep line must be declared source-only).
 
 ## Roadmap pointer
 
-See `spec/roadmap.md` for current and planned library work. (Consumer-adoption validation and the application-level prompt-pillar consolidation are pursued in adopter projects, not tracked in this repo.)
+Current and planned library work is tracked as GitHub issues labelled `FR` (status and target release live there, since 2026-10-02); `spec/roadmap.md` holds the direction and the FR index. (Consumer-adoption validation and the application-level prompt-pillar consolidation are pursued in adopter projects, not tracked in this repo.)
 
 ## Open questions
 

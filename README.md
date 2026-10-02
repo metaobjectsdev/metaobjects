@@ -340,7 +340,7 @@ first to discuss the approach.
 
 ## Roadmap
 
-[`spec/roadmap.md`](spec/roadmap.md) for current + planned work.
+Current + planned work is tracked as [GitHub issues labelled `FR`](https://github.com/metaobjectsdev/metaobjects/issues?q=is%3Aissue+label%3AFR), with [milestones](https://github.com/metaobjectsdev/metaobjects/milestones) for releases. [`spec/roadmap.md`](spec/roadmap.md) holds the release direction and the index of feature specs.
 
 ## Releasing
 

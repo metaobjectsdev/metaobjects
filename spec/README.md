@@ -32,7 +32,7 @@ Each implementation passes the same conformance fixtures under [`fixtures/confor
 | [`metamodel.md`](metamodel.md) | The 11-type vocabulary, structural keys, subtypes, fused-key node encoding. The normative type system. |
 | [`wire-format.md`](wire-format.md) | JSON shape, body-key order, package resolution, overlay merging, attribute value rules. The normative serialization contract. |
 | [`conformance-tests.md`](conformance-tests.md) | How to run cross-language conformance fixtures. The contract every implementation passes. |
-| [`roadmap.md`](roadmap.md) | Shipped milestones per port, active work, and the planned path to the 1.0 metamodel line. |
+| [`roadmap.md`](roadmap.md) | Release direction, the FR → issue → spec index, and roadmap history. Status and target releases live in GitHub issues labelled `FR`. |
 | [`design-docs/`](design-docs/) | Project design documents -- historical context and current in-flight design decisions. |
 | [`cross-language-metadata-spike-findings.md`](cross-language-metadata-spike-findings.md) | The initial multi-language spike that informed the standard. |
 
