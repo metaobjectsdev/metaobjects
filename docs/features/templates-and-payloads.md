@@ -548,9 +548,11 @@ already covers it.
 
 `onLocate` and `onField` both return `null`/`None` to mean "fall through to the default
 behavior" — `onLocate` to the shipped locator (#363's fenced-then-first-object-with-a-declared-field
-rule), `onField` to the default scalar/enum coercion. **A hook that throws propagates** — it
-is not swallowed, so a bug in your hook surfaces as a thrown error rather than a silently
-degraded extraction.
+rule), `onField` to the default scalar/enum coercion. **Neither hook has a reject channel**: `null`
+always means "fall through", never "this is invalid, don't fall back" — there is no way for
+`onLocate` to say "I looked, there is no payload here" short of returning a span that extracts to
+nothing. **A hook that throws propagates** — it is not swallowed, so a bug in your hook surfaces
+as a thrown error rather than a silently degraded extraction.
 
 `onLocate(text, format)` is the newest of the three and the only **document-level** one: it
 runs once, before the default locator, receiving the full raw reply and the schema's declared
@@ -561,6 +563,13 @@ synthesize it, e.g. to paper over a reply shape no fixed rule should special-cas
 it when the reply's envelope is unusual in a way the generic locator can't know about — a
 custom wrapper key, a non-fenced delimiter convention, or choosing among several well-formed
 objects by a rule specific to your prompt.
+
+An empty (or all-whitespace) returned span is itself a valid answer — "there was nothing to
+extract" — and is treated exactly like an empty reply: the report's `isEmpty()` is set and every
+field classifies `LOST_REQUIRED`/`LOST_OPTIONAL`, the same as if the hook had never run. The
+audit entry records only the located span's **length** in `to` (and leaves `from` empty) rather
+than copying the span's text into the report — the report stays cheap to hold even when the
+reply itself is large.
 
 TypeScript:
 
