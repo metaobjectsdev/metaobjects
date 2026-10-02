@@ -212,6 +212,52 @@ describe("deprecated-reference lint — @references", () => {
     expect(refFinding!.path).toBe("acme::Match.homeTeamRef");
     expect(refFinding!.message).toContain("references (@references) deprecated object.entity acme::Team");
   });
+
+  // #305 review: the dotted explicit-field form of `@references` ("Entity.field",
+  // same shape fixtures/conformance/relationship-one-two-refs-dotted-references/
+  // gates) was resolved down to its entity HEAD only, so a deprecated TARGET
+  // FIELD named by the dotted form was invisible to this lint.
+  test("an identity.reference with a DOTTED @references targeting a deprecated FIELD warns, naming the field (entity is fine)", async () => {
+    const findings = await lint([
+      {
+        "object.entity": {
+          name: "Team",
+          children: [
+            { "source.rdb": { "@table": "teams" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "code", "@deprecated": "codes are being retired" } },
+            { "identity.primary": { name: "pk", "@fields": ["id"] } },
+            { "identity.secondary": { name: "codeIdx", "@fields": ["code"] } },
+          ],
+        },
+      },
+      {
+        "object.entity": {
+          name: "Match",
+          children: [
+            { "source.rdb": { "@table": "matches" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "homeTeamCode" } },
+            {
+              "identity.reference": {
+                name: "homeTeamRef",
+                "@fields": ["homeTeamCode"],
+                "@references": "Team.code",
+              },
+            },
+            { "identity.primary": { name: "pk", "@fields": ["id"] } },
+          ],
+        },
+      },
+    ]);
+    const refFinding = findings.find((d) => d.message.includes("@references"));
+    expect(refFinding).toBeDefined();
+    expect(refFinding!.path).toBe("acme::Match.homeTeamRef");
+    expect(refFinding!.message).toContain("references (@references) deprecated field.string acme::Team.code");
+    expect(refFinding!.message).toContain("codes are being retired");
+    // The entity itself is fine — only the field-level finding fires.
+    expect(findings.filter((d) => d.message.includes("@references"))).toHaveLength(1);
+  });
 });
 
 describe("deprecated-reference lint — origin @from (passthrough)", () => {
@@ -481,5 +527,69 @@ describe("deprecated-reference lint — self-reference is not a finding", () => 
       },
     ]);
     expect(findings).toEqual([]);
+  });
+
+  // #305 review: self-reference is the LITERAL case (same node, or one of the
+  // node's own ancestors) — NOT "shares an entity with". A passthrough field
+  // reading a DIFFERENT, deprecated SIBLING field on its own entity is a real
+  // cross-node dependency and must still warn.
+  test("a passthrough field reading a DIFFERENT deprecated sibling field on its OWN entity still warns", async () => {
+    const findings = await lint([
+      {
+        "object.entity": {
+          name: "Widget",
+          children: [
+            { "source.rdb": { "@table": "widgets" } },
+            { "source.rdb": { "@kind": "view", "@view": "v_widget", "@role": "replica" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "legacyName", "@deprecated": "renamed to displayName" } },
+            {
+              "field.string": {
+                name: "displayName",
+                children: [{ "origin.passthrough": { "@from": "acme::Widget.legacyName" } }],
+              },
+            },
+            { "identity.primary": { name: "pk", "@fields": ["id"] } },
+          ],
+        },
+      },
+    ]);
+    expect(codes(findings)).toEqual([WARN_DEPRECATED_REFERENCE]);
+    expect(findings[0]!.path).toBe("acme::Widget.displayName");
+    expect(findings[0]!.message).toContain("origin.passthrough @from references deprecated field.string acme::Widget.legacyName");
+    expect(findings[0]!.message).toContain("renamed to displayName");
+  });
+});
+
+describe("deprecated-reference lint — presence of @deprecated, not truthiness", () => {
+  // #305 review: the registry contract is "Presence ⇒ deprecated" (and
+  // codegen-ts's jsdoc.ts reads it via `!== undefined`, not truthiness) — an
+  // empty-string reason must still count, just without a reason clause.
+  test("an empty-string @deprecated still warns, with no dangling reason clause", async () => {
+    const findings = await lint([
+      {
+        "object.entity": {
+          name: "Base",
+          abstract: true,
+          "@deprecated": "",
+          children: [{ "field.long": { name: "id" } }],
+        },
+      },
+      {
+        "object.entity": {
+          name: "Concrete",
+          extends: "Base",
+          children: [
+            { "source.rdb": { "@table": "concretes" } },
+            { "identity.primary": { name: "pk", "@fields": ["id"] } },
+          ],
+        },
+      },
+    ]);
+    expect(codes(findings)).toEqual([WARN_DEPRECATED_REFERENCE]);
+    const d = findings[0]!;
+    expect(d.message).toBe("extends deprecated object.entity acme::Base");
+    expect(d.message).not.toContain(": "); // no dangling "<address>: " reason-clause separator
+    expect(d.message).not.toContain("undefined");
   });
 });

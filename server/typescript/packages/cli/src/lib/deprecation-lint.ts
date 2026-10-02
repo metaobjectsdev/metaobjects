@@ -16,11 +16,14 @@
 // escalates warn -> error once passed, and per-finding suppressions with a
 // recorded reason (#302) — both need their own design.
 //
-// SELF-REFERENCE IS NOT A FINDING. A node referencing itself, or an ancestor
-// referencing one of its own descendants (the common case: a recursive FK like
-// `Category.parentId -> Category`, or a passthrough field reading a sibling
-// field on its OWN entity), is not "depending on" a different deprecated thing —
-// it IS the deprecated thing. Guarded by `isSelfReference` below.
+// SELF-REFERENCE IS NOT A FINDING, but ONLY the literal case: the same node, or
+// one of the node's own ANCESTORS (the recursive-FK shape: `Category.parentId`
+// is a child of `Category` and points back at `Category` itself — not a
+// dependency on a different thing, it IS the deprecated thing). A DIFFERENT
+// node that merely happens to live under the same entity — e.g. a passthrough
+// field reading a DEPRECATED SIBLING field on its own entity — is a real
+// cross-node dependency and DOES warn; sharing an ancestor is not sharing an
+// identity. Guarded by `isSelfReference` below.
 //
 // Resolution reads the LOADED, FROZEN model only, via the RESOLVING accessors
 // (ADR-0039: `attr()`, `children()`, `superData`) — so a target that inherits
@@ -98,12 +101,16 @@ function isAncestorOf(maybeAncestor: MetaData, node: MetaData): boolean {
 }
 
 /**
- * True when `target` is not really an OTHER node from `referrer`'s point of view:
- * the same node, an ancestor of it (the referrer's own enclosing object/field —
- * the recursive-FK / same-entity-passthrough shape), or a descendant of it.
+ * True when `target` is not really an OTHER node from `referrer`'s point of
+ * view: the same node, or an ANCESTOR of it (the referrer's own enclosing
+ * object/field — the recursive-FK shape). Deliberately NOT symmetric: a
+ * DESCENDANT of `referrer` is a real, different thing to depend on (and no
+ * call site here ever resolves a target nested inside the specific referrer
+ * node anyway — a sibling field, the common case, is nested in the shared
+ * parent ENTITY, not in the referrer).
  */
 function isSelfReference(referrer: MetaData, target: MetaData): boolean {
-  return referrer === target || isAncestorOf(target, referrer) || isAncestorOf(referrer, target);
+  return referrer === target || isAncestorOf(target, referrer);
 }
 
 // ---------------------------------------------------------------------------
@@ -115,15 +122,20 @@ function isSelfReference(referrer: MetaData, target: MetaData): boolean {
  *  less-specific one (its entity): only when the specific one was silent. */
 function considerTarget(referrer: MetaData, referrerPath: string, verb: string, target: MetaData, out: Diagnostic[]): boolean {
   if (isSelfReference(referrer, target)) return false;
+  // Registry contract (documentation-definition.embedded.ts): "Presence ⇒
+  // deprecated" — an empty-string reason still means deprecated (codegen-ts's
+  // jsdoc.ts reads it the same way, via `!== undefined`, not a truthiness
+  // check). Only an ABSENT attr (undefined) means "not deprecated".
   const reason = target.attr(DOC_ATTR_DEPRECATED);
-  if (typeof reason !== "string" || reason === "") return false;
+  if (typeof reason !== "string") return false;
   const replacedByRaw = target.attr(DOC_ATTR_REPLACED_BY);
   const replacedBy = typeof replacedByRaw === "string" && replacedByRaw !== "" ? replacedByRaw : undefined;
   const targetKind = `${target.type}.${target.subType}`;
+  const reasonClause = reason !== "" ? `: ${reason}` : "";
   out.push(
     warn(
       referrerPath,
-      `${verb} deprecated ${targetKind} ${addressOf(target)}: ${reason}` +
+      `${verb} deprecated ${targetKind} ${addressOf(target)}${reasonClause}` +
         (replacedBy !== undefined ? ` Replaced by ${replacedBy}.` : ""),
     ),
   );
@@ -163,17 +175,22 @@ function hopTargetRef(hop: MetaData): string | undefined {
 }
 
 /**
- * Check an origin `@from` / `@of` dotted "Entity.field" reference. The field is
- * the more specific target (checked first); the entity is checked independently
- * so a field on an otherwise-fine entity, OR a whole deprecated entity, each warn.
- * Resolution failure (either half) is silent — bias to under-flagging, the same
- * stance every sibling advisory pass in this directory takes.
+ * Check a dotted "Entity" or "Entity.field" reference — shared by origin
+ * `@from`/`@of` AND identity.reference's `@references` (ADR-0042 §5: the
+ * dotted form is not origin-specific; `Team.code` names an explicit FK target
+ * field exactly the way `Country.name` names a passthrough source field — see
+ * `fixtures/conformance/relationship-one-two-refs-dotted-references/`). The
+ * field is the more specific target (checked first); the entity is checked
+ * independently so a field on an otherwise-fine entity, OR a whole deprecated
+ * entity, each warn. Resolution failure (either half) is silent — bias to
+ * under-flagging, the same stance every sibling advisory pass in this
+ * directory takes.
  */
 function checkEntityFieldPath(
   root: MetaData,
-  origin: MetaData,
+  referrer: MetaData,
   referrerPath: string,
-  verbPrefix: string,
+  verb: string,
   raw: string,
   referrerPkg: string,
   out: Diagnostic[],
@@ -183,10 +200,10 @@ function checkEntityFieldPath(
   if (entity === undefined) return;
   const fieldName = raw.slice(head.length + 1);
   const field = fieldName !== "" ? entity.fields().find((f) => f.name === fieldName) : undefined;
-  if (field !== undefined && considerTarget(origin, referrerPath, `${verbPrefix} references`, field, out)) {
+  if (field !== undefined && considerTarget(referrer, referrerPath, verb, field, out)) {
     return; // the field itself is the deprecated thing — don't ALSO warn about its (fine) entity.
   }
-  considerTarget(origin, referrerPath, `${verbPrefix} references`, entity, out);
+  considerTarget(referrer, referrerPath, verb, entity, out);
 }
 
 /**
@@ -200,7 +217,7 @@ function checkViaPath(
   root: MetaData,
   origin: MetaData,
   referrerPath: string,
-  verbPrefix: string,
+  verb: string,
   via: string,
   referrerPkg: string,
   out: Diagnostic[],
@@ -210,16 +227,16 @@ function checkViaPath(
   if (headSegment === undefined || headSegment === "") return;
   let current = resolveEntityRef(root, headSegment, referrerPkg);
   if (current === undefined) return;
-  considerTarget(origin, referrerPath, `${verbPrefix} references`, current, out);
+  considerTarget(origin, referrerPath, verb, current, out);
   for (const hopName of segments.slice(1)) {
     const hop = findHop(current, hopName);
     if (hop === undefined) return;
-    considerTarget(origin, referrerPath, `${verbPrefix} references`, hop, out);
+    considerTarget(origin, referrerPath, verb, hop, out);
     const targetRef = hopTargetRef(hop);
     if (targetRef === undefined) return;
     const next = resolveEntityRef(root, targetRef, packageOf(current));
     if (next === undefined) return;
-    considerTarget(origin, referrerPath, `${verbPrefix} references`, next, out);
+    considerTarget(origin, referrerPath, verb, next, out);
     current = next;
   }
 }
@@ -235,15 +252,15 @@ function checkOrigin(root: MetaData, origin: MetaData, referrerPath: string, out
   // same stance every origin accessor in meta-origin.ts takes).
   const from = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_FROM);
   if (typeof from === "string" && from !== "") {
-    checkEntityFieldPath(root, origin, referrerPath, `${subtypeLabel} @from`, from, referrerPkg, out);
+    checkEntityFieldPath(root, origin, referrerPath, `${subtypeLabel} @from references`, from, referrerPkg, out);
   }
   const of_ = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_OF);
   if (typeof of_ === "string" && of_ !== "") {
-    checkEntityFieldPath(root, origin, referrerPath, `${subtypeLabel} @of`, of_, referrerPkg, out);
+    checkEntityFieldPath(root, origin, referrerPath, `${subtypeLabel} @of references`, of_, referrerPkg, out);
   }
   const via = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_VIA);
   if (typeof via === "string" && via !== "") {
-    checkViaPath(root, origin, referrerPath, `${subtypeLabel} @via`, via, referrerPkg, out);
+    checkViaPath(root, origin, referrerPath, `${subtypeLabel} @via references`, via, referrerPkg, out);
   }
 }
 
@@ -264,14 +281,17 @@ function checkNode(root: MetaData, node: MetaData, path: string, out: Diagnostic
     }
   }
 
-  // @references — identity.reference's FK target (possibly dotted "Entity.field";
-  // only the entity head is a deprecation-relevant target).
+  // @references — identity.reference's FK target. May be bare ("Entity",
+  // defaulting to the primary identity) or dotted ("Entity.field" /
+  // "Entity.fieldA,fieldB", an explicit field/compound target) — the dotted
+  // field half is a deprecation-relevant target in its own right (#305 review:
+  // `@references: "Team.code"` where only `code` is `@deprecated` was missed
+  // when this checked the entity head alone).
   if (node.type === TYPE_IDENTITY && node.subType === IDENTITY_SUBTYPE_REFERENCE) {
     const raw = node.attr(IDENTITY_REFERENCE_ATTR_REFERENCES);
     if (typeof raw === "string" && raw !== "") {
       const owner = owningObject(node);
-      const target = resolveEntityRef(root, headOf(raw), owner !== undefined ? packageOf(owner) : "");
-      if (target !== undefined) considerTarget(node, path, "references (@references)", target, out);
+      checkEntityFieldPath(root, node, path, "references (@references)", raw, owner !== undefined ? packageOf(owner) : "", out);
     }
   }
 
