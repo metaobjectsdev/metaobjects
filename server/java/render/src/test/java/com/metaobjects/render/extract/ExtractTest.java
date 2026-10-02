@@ -134,6 +134,17 @@ public class ExtractTest {
     }
 
     @Test
+    public void onLocateEmptySpanReportsEmptyLikeAnEmptyReply() {
+        // The ORIGINAL reply is non-blank — only onLocate's chosen region is empty. The empty
+        // flag must key off what onLocate selected, not off the original text.
+        ExtractOptions opts = ExtractOptions.defaults().withOnLocate((text, format) -> "");
+        ExtractionOutcome o = Extract.extract("some reply text that is not empty", jsonAnswer(), opts);
+        assertTrue(o.report().isEmpty());
+        assertTrue(o.report().lostRequired().contains("text"));
+        assertTrue(o.report().lostRequired().contains("confidence"));
+    }
+
+    @Test
     public void onLocateThrowingPropagates() {
         ExtractOptions opts = ExtractOptions.defaults().withOnLocate((text, format) -> {
             throw new RuntimeException("boom");

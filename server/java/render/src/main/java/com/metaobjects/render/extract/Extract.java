@@ -29,6 +29,14 @@ public final class Extract {
         // directly. Otherwise locate the <rootName> span as before. JSON is unaffected.
         String span;
         Map<String, Object> raw;
+        // Whether the SELECTED region (not the original reply) was itself empty/blank — the
+        // signal markEmpty() keys on below. For the default path this is the pre-existing
+        // "nothing to parse" test (stripped.isEmpty() || span == null); for onLocate it must be
+        // judged against the hook's OWN return, not the original text — otherwise an empty
+        // located span (e.g. the hook deliberately returning "") reports "not empty" while every
+        // field is LOST, because the original reply was non-blank even though the thing onLocate
+        // chose to parse was.
+        boolean regionBlank;
         if (located != null) {
             span = located;
             if (schema.format() == Format.JSON) {
@@ -38,19 +46,28 @@ public final class Extract {
             } else {
                 raw = new XmlForgivingReader().read(located, ci);
             }
+            // `from` is deliberately left empty rather than the original text: a document-level
+            // audit entry that copied the whole raw reply (which can be arbitrarily large) into
+            // the report on every call would make the report itself heavy for no benefit `to`'s
+            // length doesn't already give. `to` is the located span's LENGTH, not the span text,
+            // for the same reason.
             report.addCoercion(new Coercion("", "", String.valueOf(located.length()), "onLocate"));
+            regionBlank = located.trim().isEmpty();
         } else if (schema.format() == Format.JSON) {
             span = selectJson(text, stripped, schema.fields(), ci);
             raw = span == null ? Map.of() : new JsonForgivingReader().read(span);
+            regionBlank = stripped.isEmpty() || span == null;
         } else if (o.rootless()) {
             span = stripped.isEmpty() ? null : stripped;
             raw = span == null ? Map.of() : new XmlForgivingReader().readRootless(stripped, ci);
+            regionBlank = stripped.isEmpty() || span == null;
         } else {
             span = Locate.xml(stripped, schema.rootName(), ci);
             raw = span == null ? Map.of() : new XmlForgivingReader().read(span, ci);
+            regionBlank = stripped.isEmpty() || span == null;
         }
 
-        if (raw.isEmpty() && (stripped.isEmpty() || span == null)) {
+        if (raw.isEmpty() && regionBlank) {
             report.markEmpty();
         }
 
