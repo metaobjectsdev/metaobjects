@@ -764,9 +764,11 @@ versioned on its own major line — npm major + 7, so `7.x` while npm was `0.x` 
 
 ## Procedure
 
-1. **Bump** the version in **all** poms — parent + reactor modules **and the two
-   reactor-EXCLUDED integration-test modules** (`server/java/integration-tests/pom.xml`,
-   `server/java/integration-tests-kotlin/pom.xml`). Use the tree-wide `grep`, NOT
+1. **Bump** the version in **all** poms — parent + reactor modules **and the three
+   reactor-EXCLUDED modules** (`server/java/integration-tests/pom.xml`,
+   `server/java/integration-tests-kotlin/pom.xml`, and — issue #390, excluded for a
+   different reason (a newer Kotlin compiler than the reactor's, not docker) —
+   `server/java/codegen-kotlin-exposed1x-check/pom.xml`). Use the tree-wide `grep`, NOT
    `mvn versions:set`: `versions:set` only walks the reactor and silently leaves the
    excluded modules behind, so their `<parent><version>` lags and the next tag fails
    `release-gate (java|kotlin)` with "Non-resolvable parent POM".

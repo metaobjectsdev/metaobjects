@@ -2,14 +2,18 @@
 #
 # Guard: every reactor-EXCLUDED pom must carry the SAME MetaObjects version as the
 # reactor root (server/java/pom.xml) — whether it names it as a <parent><version>
-# (the integration-test modules) or as a <metaobjects.version> property (a project
-# that merely CONSUMES the published artifacts, like the website showcase).
+# (the three reactor-excluded Java/Kotlin modules below) or as a
+# <metaobjects.version> property (a project that merely CONSUMES the published
+# artifacts, like the website showcase).
 #
-# Why this exists: integration-tests + integration-tests-kotlin are intentionally
-# NOT listed in the parent reactor's <modules> (they need docker; `mvn test` stays
-# docker-free — see scripts/integration-test.sh). Because they are outside the
-# reactor, `mvn versions:set` during a release bumps every reactor module but
-# SILENTLY SKIPS these two. Their <parent><version> then lags (e.g. reactor at
+# Why this exists: integration-tests, integration-tests-kotlin, and (issue #390)
+# codegen-kotlin-exposed1x-check are intentionally NOT listed in the parent
+# reactor's <modules> (they need docker, or in the third's case a newer Kotlin
+# compiler than the reactor's — `mvn test` stays docker-free and codegen-kotlin
+# stays on Kotlin 2.0.21; see scripts/integration-test.sh and that module's pom).
+# Because they are outside the reactor, `mvn versions:set` during a release bumps
+# every reactor module but SILENTLY SKIPS these three. Their <parent><version> then
+# lags (e.g. reactor at
 # 7.5.1-SNAPSHOT, these stuck at 7.4.4-SNAPSHOT), so `../pom.xml` no longer matches
 # the declared parent → Maven rejects relativePath, falls back to repos, the
 # SNAPSHOT isn't there, and `release-gate (java|kotlin)` fails with
@@ -34,6 +38,7 @@ fi
 EXCLUDED_POMS=(
   "server/java/integration-tests/pom.xml"
   "server/java/integration-tests-kotlin/pom.xml"
+  "server/java/codegen-kotlin-exposed1x-check/pom.xml"
 )
 
 # Poms with NO <parent> that consume the published artifacts through a
