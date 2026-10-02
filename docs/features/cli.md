@@ -580,7 +580,11 @@ and requires both that it loads with no errors and that the reloaded model's
 canonical serialization is byte-identical to the untouched baseline. A file
 that fails this check is left exactly as it was and reported as an error —
 never partially written, never silently corrupted. `--check` runs the exact
-same decision and never writes anything, successful or not.
+same decision and never writes anything, successful or not. TS, C# and Python
+substitute the candidate via an in-memory source, never touching disk until
+the check passes; the Java/Kotlin Maven goal writes the candidate, reloads,
+and reverts the write immediately if the check fails (or always, under
+`-Dmeta.fmt.check=true`) — a different mechanism, the identical guarantee.
 
 **Per-port surface differences (documented, not gaps).** Every port shares the
 single-file formatting contract and the safety check; the CLI SURFACE varies
