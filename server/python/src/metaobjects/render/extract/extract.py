@@ -38,13 +38,29 @@ def extract(
     stripped = _strip.strip(text)
     ci = o.tolerance != Tolerance.STRICT
 
+    # FR-364: the document-level on_locate hook runs BEFORE the default locator. A non-None
+    # return is the payload span, fed into the same format-specific forgiving reader a
+    # default-located span would be — tolerance/coercion/normalizers/on_field downstream are
+    # unaffected. A None return (or no hook) falls through to the default locate strategy
+    # unchanged. A raised exception propagates (not swallowed), matching on_field.
+    located: str | None = None if o.on_locate is None else o.on_locate(text if text is not None else "", schema.format)
+
     # XML rootless (opts.rootless): the payload's fields ARE the top-level elements — there
     # is no enclosing root to locate — so parse the whole stripped text's top-level elements
     # directly. Otherwise locate the <rootName> span as before. JSON is unaffected. Mirrors
     # Java Extract.extract.
     span: str | None
     raw: dict[str, object]
-    if schema.format == Format.JSON:
+    if located is not None:
+        span = located
+        if schema.format == Format.JSON:
+            raw = JsonForgivingReader().read(located)
+        elif o.rootless:
+            raw = XmlForgivingReader().read_rootless(located, ci)
+        else:
+            raw = XmlForgivingReader().read(located, ci)
+        report.add_coercion(Coercion("", "", str(len(located)), "onLocate"))
+    elif schema.format == Format.JSON:
         span = _select_json(text, stripped, schema.fields, ci)
         raw = {} if span is None else JsonForgivingReader().read(span)
     elif o.rootless:

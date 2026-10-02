@@ -18,6 +18,7 @@ Java ``ExtractorCodeGenerator``.
 from __future__ import annotations
 
 import json
+import re
 
 import metaobjects.core_types  # noqa: F401 — side-effect: registers attr classes
 import pytest
@@ -445,6 +446,46 @@ def test_extract_raises_on_malformed_required(tmp_path, monkeypatch) -> None:
     r = ex.extract_lenient_order_prompt(root, reply)
     assert r.data.priority is None
     assert r.report.malformed_required() == ["priority"]
+
+
+def test_extract_lenient_threads_opts_on_locate_to_the_engine(tmp_path, monkeypatch) -> None:
+    """#364: the generated extract_lenient_<name>(root, text, opts) parameter is
+    ExtractOptions untouched — this proves the document-level on_locate hook reaches the
+    engine THROUGH the generated parser, not just the hand-called render-package
+    ``extract()`` tested in tests/render/extract/test_extract.py."""
+    from importlib import import_module
+
+    from metaobjects.render.extract import ExtractOptions
+
+    root = _order_root()
+    pkg_dir = _materialize_package(_all_files(root), tmp_path)
+    _import_package(pkg_dir, monkeypatch)
+    ex = import_module("_gen_pkg.order_prompt_extractor")
+
+    # The default locator would pick the FIRST fenced block (it carries declared fields,
+    # #363). on_locate picks the SECOND one instead, proving the option flowed all the way
+    # through generated code into the render-package engine.
+    draft = json.dumps({"lines": []})
+    real = json.dumps(
+        {
+            "customer": {"name": "Ada"},
+            "lines": [{"sku": "A", "qty": 2}],
+            "tags": ["x"],
+            "scores": [3],
+            "priority": "HIGH",
+            "labels": ["A"],
+        }
+    )
+    dirty = f"```json\n{draft}\n```\nOn second thought:\n```json\n{real}\n```"
+
+    def on_locate(text: str, fmt) -> str | None:
+        blocks = re.findall(r"```json\s*\n([\s\S]*?)\n```", text)
+        return blocks[1] if len(blocks) > 1 else None
+
+    opts = ExtractOptions(on_locate=on_locate)
+    r = ex.extract_lenient_order_prompt(root, dirty, opts)
+    assert r.data.customer.name == "Ada"
+    assert any(c.kind == "onLocate" for c in r.report.coercions())
 
 
 def test_extract_reexposed_never_raises_and_no_lost_required(tmp_path, monkeypatch) -> None:

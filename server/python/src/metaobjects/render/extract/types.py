@@ -27,6 +27,17 @@ T = TypeVar("T")
 OnField = Callable[[str, str, "FieldSpec"], object | None]
 Normalizer = Callable[[str], object | None]
 
+# FR-364: the document-level locate hook: (text, format) -> payload substring | None.
+# Receives the RAW reply text (never None; an absent document is normalized to ``""``
+# before the hook runs) and the schema's declared ``Format``. Returning ``None`` falls
+# back to the default locator (the fenced-then-first-object rule #363 fixed). A non-None
+# return is parsed by the normal pipeline exactly like a default-located span —
+# tolerance, coercion, ``normalizers``, and ``on_field`` downstream are unaffected — so
+# this hook only decides WHICH text is the payload, never how it is parsed. The returned
+# text need not be a literal substring of the input (the hook may synthesize it). A
+# raised exception propagates (it is not swallowed), matching ``on_field``.
+OnLocate = Callable[[str, "Format"], "str | None"]
+
 
 class Format(Enum):
     """Document format the extract pipeline targets."""
@@ -248,7 +259,8 @@ class ExtractOptions:
     """Bounded runtime override surface (the "20%").
 
     ``aliases``/``normalizers`` are MERGED with the schema's, runtime winning on key
-    conflict. ``on_field`` is the single bespoke-coercion hook.
+    conflict. ``on_field`` is the single per-field bespoke-coercion hook; ``on_locate``
+    is the single document-level (payload-location) hook.
 
     ``rootless`` (XML only): when ``True``, the input has NO enclosing root element —
     the payload's fields ARE the top-level elements (a flat sequence like
@@ -259,6 +271,7 @@ class ExtractOptions:
     aliases: dict[str, str] = field(default_factory=dict)
     normalizers: dict[str, Normalizer] = field(default_factory=dict)
     on_field: OnField | None = None
+    on_locate: OnLocate | None = None
     rootless: bool = False
 
     @staticmethod
@@ -271,6 +284,19 @@ class ExtractOptions:
             aliases=dict(self.aliases),
             normalizers=dict(self.normalizers),
             on_field=self.on_field,
+            on_locate=self.on_locate,
+            rootless=self.rootless,
+        )
+
+    def with_on_locate(self, hook: OnLocate | None) -> "ExtractOptions":
+        """The single document-level locate hook. See ``OnLocate``. Returns a copy
+        with ``on_locate`` set."""
+        return ExtractOptions(
+            tolerance=self.tolerance,
+            aliases=dict(self.aliases),
+            normalizers=dict(self.normalizers),
+            on_field=self.on_field,
+            on_locate=hook,
             rootless=self.rootless,
         )
 
@@ -282,6 +308,7 @@ class ExtractOptions:
             aliases=dict(self.aliases),
             normalizers=dict(self.normalizers),
             on_field=self.on_field,
+            on_locate=self.on_locate,
             rootless=r,
         )
 
