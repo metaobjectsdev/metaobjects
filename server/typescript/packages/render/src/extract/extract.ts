@@ -40,6 +40,13 @@ export function extract(
   // Otherwise locate the <rootName> span as before. JSON is unaffected. Mirrors Java Extract.
   let span: string | null;
   let raw: Record<string, unknown>;
+  // Whether the SELECTED region (not the original reply) was itself empty/blank — the signal
+  // markEmpty() keys on below. For the default path this is the pre-existing "nothing to parse"
+  // test (stripped.length === 0 || span == null); for onLocate it must be judged against the
+  // hook's OWN return, not the original text — otherwise an empty located span (e.g. the hook
+  // deliberately returning "") reports "not empty" while every field is LOST, because the
+  // original reply was non-blank even though the thing onLocate chose to parse was.
+  let regionBlank: boolean;
   if (located != null) {
     span = located;
     raw =
@@ -48,18 +55,26 @@ export function extract(
         : o.rootless
           ? readXmlRootless(located, ci)
           : readXml(located, ci);
+    // `from` is deliberately left empty rather than the original text: a document-level audit
+    // entry that copied the whole raw reply (which can be arbitrarily large) into the report on
+    // every call would make the report itself heavy for no benefit `to`'s length doesn't already
+    // give. `to` is the located span's LENGTH, not the span text, for the same reason.
     report.addCoercion({ fieldPath: "", from: "", to: String(located.length), kind: "onLocate" });
+    regionBlank = located.trim().length === 0;
   } else if (schema.format === Format.JSON) {
     ({ span, raw } = selectJson(text, stripped, schema.fields, ci));
+    regionBlank = stripped.length === 0 || span == null;
   } else if (o.rootless) {
     span = stripped.length === 0 ? null : stripped;
     raw = span == null ? {} : readXmlRootless(stripped, ci);
+    regionBlank = stripped.length === 0 || span == null;
   } else {
     span = locateXml(stripped, schema.rootName, ci);
     raw = span == null ? {} : readXml(span, ci);
+    regionBlank = stripped.length === 0 || span == null;
   }
 
-  if (isEmptyRecord(raw) && (stripped.length === 0 || span == null)) {
+  if (isEmptyRecord(raw) && regionBlank) {
     report.markEmpty();
   }
 

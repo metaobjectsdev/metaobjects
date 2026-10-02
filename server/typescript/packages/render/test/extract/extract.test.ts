@@ -246,6 +246,17 @@ describe("extract pipeline", () => {
       expect(o.report.states().get("confidence")).toBe(FieldExtraction.EXTRACTED);
     });
 
+    test("an empty located span reports empty, exactly as an empty reply does", () => {
+      // The ORIGINAL reply is non-blank — only onLocate's chosen region is empty. The empty
+      // flag must key off what onLocate selected, not off the original text.
+      const o = extract("some reply text that is not empty", jsonAnswer(), {
+        onLocate: () => "",
+      });
+      expect(o.report.isEmpty()).toBe(true);
+      expect(o.report.lostRequired()).toContain("text");
+      expect(o.report.lostRequired()).toContain("confidence");
+    });
+
     test("a thrown error propagates rather than being swallowed", () => {
       expect(() =>
         extract("anything", jsonAnswer(), {
