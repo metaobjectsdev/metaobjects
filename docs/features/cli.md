@@ -582,6 +582,20 @@ that fails this check is left exactly as it was and reported as an error —
 never partially written, never silently corrupted. `--check` runs the exact
 same decision and never writes anything, successful or not.
 
+**Per-port surface differences (documented, not gaps).** Every port shares the
+single-file formatting contract and the safety check; the CLI SURFACE varies
+exactly as each port's existing `gen`/`verify` surface already does:
+
+- **C#** takes the same optional `<metadataDir>` positional `gen`/`verify`/`docs`
+  do (falling back to the `.metaobjects/config.json` ladder) rather than a list
+  of individual files — this port's loader has always resolved a directory, not
+  a file set, and `fmt` does not add a second kind of positional. The narrowing
+  capability exists in `FmtCommand.Run`'s `explicitFiles` parameter for an
+  embedder, just not on the CLI.
+- **Java/Kotlin** takes Maven parameters, not flags: `-Dmeta.fmt.check=true` /
+  `-Dmeta.fmt.files=<csv>`, mirroring `-Dmeta.verify.mode`.
+- **Python** mirrors the Node reference exactly: `metaobjects fmt [<file>...] [--check]`.
+
 **Fixture corpus.** `fixtures/fmt-conformance/` (see its README) pins the
 single-file contract above across all five ports: given one file's raw
 content, every port must produce the same canonical bytes, or classify the
