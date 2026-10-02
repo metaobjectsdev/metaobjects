@@ -65,6 +65,10 @@
     <exposed1x.kotlin.stdlib.version>2.3.20</exposed1x.kotlin.stdlib.version>
     <jackson.version>2.18.2</jackson.version>
     <postgres.jdbc.version>42.7.4</postgres.jdbc.version>
+    <!-- Controller-tier compile pass (issue #390 review fix) — the SAME version
+         integration-tests-kotlin's SP-F lane already compiles the 0.x generated controller
+         against, so "compatible with Spring 6.2 / Boot 3.5" is proven by precedent, not guessed. -->
+    <spring.version>6.2.11</spring.version>
     <maven.compiler.release>21</maven.compiler.release>
   </properties>
 
@@ -188,6 +192,33 @@
       <groupId>org.glassfish.expressly</groupId>
       <artifactId>expressly</artifactId>
       <version>5.0.0</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Controller-tier compile pass (issue #390 review fix): KotlinSpringControllerGenerator's
+         output imports org.springframework.web.bind.annotation.* / org.springframework.http.* (all
+         in spring-web, brought in transitively by spring-webmvc — same artifact
+         integration-tests-kotlin's SP-F lane already uses to compile the 0.x generated controller)
+         and jakarta.servlet.http.HttpServletRequest. REAL dependencies, not stubs, per the review:
+         a stub risks hiding the exact "does the real symbol resolve" question this pass exists to
+         answer. jackson-module-kotlin + jackson-datatype-jsr310 (above) are the controller's own
+         ObjectMapper/TypeReference imports for the per-field PATCH bind. -->
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-webmvc</artifactId>
+      <version>${spring.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>jakarta.servlet</groupId>
+      <artifactId>jakarta.servlet-api</artifactId>
+      <version>6.0.0</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.module</groupId>
+      <artifactId>jackson-module-kotlin</artifactId>
+      <version>${jackson.version}</version>
       <scope>test</scope>
     </dependency>
 
