@@ -194,4 +194,129 @@ public class ExtractTests
         Assert.Equal(FieldExtraction.MALFORMED, o.Report.States()["tones"]);
         Assert.Equal(new List<object?> { "HIGH" }, o.Data["tones"]);  // valid element retained
     }
+
+    // ---- #364: document-level OnLocate hook ----
+
+    [Fact]
+    public void OnLocateOverridesDefaultLocatorChoice()
+    {
+        string dirty = "```json\n{\"text\":\"draft\",\"confidence\":\"HIGH\"}\n```\n"
+            + "Actually, here is the real answer:\n"
+            + "```json\n{\"text\":\"final\",\"confidence\":\"HIGH\"}\n```";
+        // The default locator would pick the FIRST fenced block (it already carries a declared
+        // field, #363). This hook picks the LAST fenced block instead.
+        OnLocate onLocate = (text, format) =>
+        {
+            Assert.Equal(Format.Json, format);
+            var matches = System.Text.RegularExpressions.Regex.Matches(text, "```json\\s*\\n([\\s\\S]*?)\\n```");
+            return matches.Count > 0 ? matches[^1].Groups[1].Value : null;
+        };
+        var opts = ExtractOptions.Defaults() with { OnLocate = onLocate };
+
+        ExtractionOutcome o = ExtractEngine.Run(dirty, JsonAnswer(), opts);
+
+        Assert.Equal("final", o.Data["text"]);
+    }
+
+    [Fact]
+    public void OnLocateNullFallsBackToDefaultLocator()
+    {
+        string dirty = "Sure!\n```json\n{\"text\":\"hi\",\"confidence\":\"HIGH\"}\n```\nDone.";
+        var opts = ExtractOptions.Defaults() with { OnLocate = (text, format) => null };
+
+        ExtractionOutcome o = ExtractEngine.Run(dirty, JsonAnswer(), opts);
+
+        Assert.Equal("hi", o.Data["text"]);
+    }
+
+    [Fact]
+    public void OnLocateIsAuditedAsOnLocateCoercionOnDocumentPath()
+    {
+        const string located = "{\"text\":\"hi\",\"confidence\":\"HIGH\"}";
+        var opts = ExtractOptions.Defaults() with { OnLocate = (text, format) => located };
+
+        ExtractionOutcome o = ExtractEngine.Run($"noise before {located} noise after", JsonAnswer(), opts);
+
+        Coercion? entry = o.Report.Coercions().FirstOrDefault(c => c.Kind == "onLocate");
+        Assert.NotNull(entry);
+        Assert.Equal("", entry!.FieldPath);
+        Assert.Equal(located.Length.ToString(System.Globalization.CultureInfo.InvariantCulture), entry.To);
+    }
+
+    [Fact]
+    public void OnLocatedTextStillRunsThroughNormalPipeline()
+    {
+        var opts = ExtractOptions.Defaults() with
+        {
+            OnLocate = (text, format) => "{\"text\":\"hi\",\"confidence\":\"medium\"}",
+        };
+
+        ExtractionOutcome o = ExtractEngine.Run("ignored prose", JsonAnswer(), opts);
+
+        // JsonAnswer()'s confidence field declares @enumAlias medium -> OK.
+        Assert.Equal("OK", o.Data["confidence"]);
+        Assert.Equal(FieldExtraction.EXTRACTED, o.Report.States()["confidence"]);
+    }
+
+    [Fact]
+    public void OnLocateEmptySpanReportsEmptyLikeAnEmptyReply()
+    {
+        // The ORIGINAL reply is non-blank — only OnLocate's chosen region is empty. The empty
+        // flag must key off what OnLocate selected, not off the original text.
+        var opts = ExtractOptions.Defaults() with { OnLocate = (text, format) => "" };
+
+        ExtractionOutcome o = ExtractEngine.Run("some reply text that is not empty", JsonAnswer(), opts);
+
+        Assert.True(o.Report.IsEmpty);
+        Assert.Contains("text", o.Report.LostRequired());
+        Assert.Contains("confidence", o.Report.LostRequired());
+    }
+
+    [Fact]
+    public void OnLocateThrowingPropagates()
+    {
+        var opts = ExtractOptions.Defaults() with
+        {
+            OnLocate = (text, format) => throw new InvalidOperationException("boom"),
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(() => ExtractEngine.Run("anything", JsonAnswer(), opts));
+        Assert.Equal("boom", ex.Message);
+    }
+
+    [Fact]
+    public void OnLocateDrivesXmlExtractionWithXmlFormat()
+    {
+        var xml = new ExtractSchema(Format.Xml, "answer",
+            new List<FieldSpec> { FieldSpec.Scalar("text", FieldKind.String, required: true) });
+        Format? seenFormat = null;
+        var opts = ExtractOptions.Defaults() with
+        {
+            OnLocate = (text, format) =>
+            {
+                seenFormat = format;
+                var m = System.Text.RegularExpressions.Regex.Match(text, "<answer>[\\s\\S]*</answer>");
+                return m.Success ? m.Value : null;
+            },
+        };
+
+        ExtractionOutcome o = ExtractEngine.Run(
+            "prose <wrapper><answer><text>hi</text></answer></wrapper> trailing", xml, opts);
+
+        Assert.Equal(Format.Xml, seenFormat);
+        Assert.Equal("hi", o.Data["text"]);
+    }
+
+    [Fact]
+    public void OnLocateMaySynthesizeTextNotInInput()
+    {
+        var opts = ExtractOptions.Defaults() with
+        {
+            OnLocate = (text, format) => "{\"text\":\"synthesized\",\"confidence\":\"HIGH\"}",
+        };
+
+        ExtractionOutcome o = ExtractEngine.Run("totally unrelated noise", JsonAnswer(), opts);
+
+        Assert.Equal("synthesized", o.Data["text"]);
+    }
 }

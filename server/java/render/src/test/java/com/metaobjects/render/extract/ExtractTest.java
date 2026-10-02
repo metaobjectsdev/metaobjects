@@ -79,6 +79,109 @@ public class ExtractTest {
         assertTrue(o.report().isEmpty());
     }
 
+    // ---- #364: document-level onLocate hook ----
+
+    @Test
+    public void onLocateOverridesDefaultLocatorChoice() {
+        String dirty = "```json\n{\"text\":\"draft\",\"confidence\":\"HIGH\"}\n```\n"
+                + "Actually, here is the real answer:\n"
+                + "```json\n{\"text\":\"final\",\"confidence\":\"HIGH\"}\n```";
+        // The default locator would pick the FIRST fenced block (it already carries a declared
+        // field, #363). This hook picks the LAST fenced block instead.
+        ExtractOptions.OnLocate onLocate = (text, format) -> {
+            assertEquals(Format.JSON, format);
+            java.util.regex.Matcher m =
+                    java.util.regex.Pattern.compile("```json\\s*\\n([\\s\\S]*?)\\n```").matcher(text);
+            String last = null;
+            while (m.find()) last = m.group(1);
+            return last;
+        };
+        ExtractOptions opts = ExtractOptions.defaults().withOnLocate(onLocate);
+        ExtractionOutcome o = Extract.extract(dirty, jsonAnswer(), opts);
+        assertEquals("final", o.data().get("text"));
+    }
+
+    @Test
+    public void onLocateNullFallsBackToDefaultLocator() {
+        String dirty = "Sure!\n```json\n{\"text\":\"hi\",\"confidence\":\"HIGH\"}\n```\nDone.";
+        ExtractOptions opts = ExtractOptions.defaults().withOnLocate((text, format) -> null);
+        ExtractionOutcome o = Extract.extract(dirty, jsonAnswer(), opts);
+        assertEquals("hi", o.data().get("text"));
+    }
+
+    @Test
+    public void onLocateIsAuditedAsOnLocateCoercionOnDocumentPath() {
+        String located = "{\"text\":\"hi\",\"confidence\":\"HIGH\"}";
+        ExtractOptions opts = ExtractOptions.defaults().withOnLocate((text, format) -> located);
+        ExtractionOutcome o = Extract.extract("noise before " + located + " noise after", jsonAnswer(), opts);
+        Coercion entry = o.report().coercions().stream()
+                .filter(c -> "onLocate".equals(c.kind()))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(entry);
+        assertEquals("", entry.fieldPath());
+        assertEquals(String.valueOf(located.length()), entry.to());
+    }
+
+    @Test
+    public void onLocatedTextStillRunsThroughNormalPipeline() {
+        ExtractOptions opts = ExtractOptions.defaults()
+                .withOnLocate((text, format) -> "{\"text\":\"hi\",\"confidence\":\"medium\"}");
+        ExtractionOutcome o = Extract.extract("ignored prose", jsonAnswer(), opts);
+        // jsonAnswer()'s confidence field declares @enumAlias medium -> OK.
+        assertEquals("OK", o.data().get("confidence"));
+        assertEquals(FieldExtraction.EXTRACTED, o.report().states().get("confidence"));
+    }
+
+    @Test
+    public void onLocateEmptySpanReportsEmptyLikeAnEmptyReply() {
+        // The ORIGINAL reply is non-blank — only onLocate's chosen region is empty. The empty
+        // flag must key off what onLocate selected, not off the original text.
+        ExtractOptions opts = ExtractOptions.defaults().withOnLocate((text, format) -> "");
+        ExtractionOutcome o = Extract.extract("some reply text that is not empty", jsonAnswer(), opts);
+        assertTrue(o.report().isEmpty());
+        assertTrue(o.report().lostRequired().contains("text"));
+        assertTrue(o.report().lostRequired().contains("confidence"));
+    }
+
+    @Test
+    public void onLocateThrowingPropagates() {
+        ExtractOptions opts = ExtractOptions.defaults().withOnLocate((text, format) -> {
+            throw new RuntimeException("boom");
+        });
+        try {
+            Extract.extract("anything", jsonAnswer(), opts);
+            fail("expected RuntimeException to propagate");
+        } catch (RuntimeException e) {
+            assertEquals("boom", e.getMessage());
+        }
+    }
+
+    @Test
+    public void onLocateDrivesXmlExtractionWithXmlFormat() {
+        ExtractSchema xml = new ExtractSchema(Format.XML, "answer", List.of(
+                FieldSpec.scalar("text", FieldKind.STRING, true)));
+        java.util.concurrent.atomic.AtomicReference<Format> seen = new java.util.concurrent.atomic.AtomicReference<>();
+        ExtractOptions opts = ExtractOptions.defaults().withOnLocate((text, format) -> {
+            seen.set(format);
+            java.util.regex.Matcher m =
+                    java.util.regex.Pattern.compile("<answer>[\\s\\S]*</answer>").matcher(text);
+            return m.find() ? m.group() : null;
+        });
+        ExtractionOutcome o = Extract.extract(
+                "prose <wrapper><answer><text>hi</text></answer></wrapper> trailing", xml, opts);
+        assertEquals(Format.XML, seen.get());
+        assertEquals("hi", o.data().get("text"));
+    }
+
+    @Test
+    public void onLocateMaySynthesizeTextNotInInput() {
+        ExtractOptions opts = ExtractOptions.defaults()
+                .withOnLocate((text, format) -> "{\"text\":\"synthesized\",\"confidence\":\"HIGH\"}");
+        ExtractionOutcome o = Extract.extract("totally unrelated noise", jsonAnswer(), opts);
+        assertEquals("synthesized", o.data().get("text"));
+    }
+
     @Test
     public void jsonStringArrayExtractsAsList() {
         ExtractSchema s = new ExtractSchema(Format.JSON, "answer", List.of(

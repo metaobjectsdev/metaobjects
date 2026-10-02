@@ -40,7 +40,7 @@ public class CoerceTest {
     @Test
     public void runtimeAliasWinsOverSchema() {
         FieldSpec f = FieldSpec.enumField("tone", true, List.of("FRIENDLY", "HOSTILE"), Map.of("x", "FRIENDLY"));
-        ExtractOptions opts = new ExtractOptions(Tolerance.NORMAL, Map.of("x", "HOSTILE"), Map.of(), null, false);
+        ExtractOptions opts = new ExtractOptions(Tolerance.NORMAL, Map.of("x", "HOSTILE"), Map.of(), null, null, false);
         assertEquals("HOSTILE", Coerce.value("x", f, opts, "tone", rep));
         assertTrue(rep.coercions().stream().anyMatch(c -> c.kind().equals("runtime-alias-override")));
     }
@@ -85,7 +85,7 @@ public class CoerceTest {
     public void onFieldHookWins() {
         FieldSpec f = FieldSpec.scalar("x", FieldKind.STRING, true);
         ExtractOptions opts = new ExtractOptions(Tolerance.NORMAL, Map.of(), Map.of(),
-                (path, raw, spec) -> "HOOKED", false);
+                (path, raw, spec) -> "HOOKED", null, false);
         assertEquals("HOOKED", Coerce.value("anything", f, opts, "x", rep));
     }
 
@@ -107,7 +107,7 @@ public class CoerceTest {
         FieldSpec f = FieldSpec.scalar("x", FieldKind.STRING, true);
         java.util.Map<String, java.util.function.Function<String, Object>> norms =
                 java.util.Map.of("x", raw -> raw.toUpperCase());
-        ExtractOptions opts = new ExtractOptions(Tolerance.NORMAL, Map.of(), norms, null, false);
+        ExtractOptions opts = new ExtractOptions(Tolerance.NORMAL, Map.of(), norms, null, null, false);
         assertEquals("HELLO", Coerce.value("hello", f, opts, "x", rep));
         assertTrue(rep.coercions().stream().anyMatch(c -> c.kind().equals("normalizer")));
     }

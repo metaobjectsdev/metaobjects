@@ -28,22 +28,53 @@ export function extract(
   const stripped = strip(text);
   const ci = o.tolerance !== Tolerance.STRICT;
 
+  // #364: the document-level onLocate hook runs BEFORE the default locator. A non-null return
+  // is the payload span, fed into the same format-specific forgiving reader a default-located
+  // span would be — tolerance/coercion/normalizers/onField downstream are unaffected. A null
+  // return (or no hook) falls through to the default locate strategy unchanged. A thrown error
+  // propagates (not swallowed), matching onField.
+  const located = o.onLocate == null ? null : o.onLocate(text ?? "", schema.format);
+
   // XML rootless (opts.rootless): the payload's fields ARE the top-level elements — there is no
   // enclosing root to locate — so parse the whole stripped text's top-level elements directly.
   // Otherwise locate the <rootName> span as before. JSON is unaffected. Mirrors Java Extract.
   let span: string | null;
   let raw: Record<string, unknown>;
-  if (schema.format === Format.JSON) {
+  // Whether the SELECTED region (not the original reply) was itself empty/blank — the signal
+  // markEmpty() keys on below. For the default path this is the pre-existing "nothing to parse"
+  // test (stripped.length === 0 || span == null); for onLocate it must be judged against the
+  // hook's OWN return, not the original text — otherwise an empty located span (e.g. the hook
+  // deliberately returning "") reports "not empty" while every field is LOST, because the
+  // original reply was non-blank even though the thing onLocate chose to parse was.
+  let regionBlank: boolean;
+  if (located != null) {
+    span = located;
+    raw =
+      schema.format === Format.JSON
+        ? readJson(located)
+        : o.rootless
+          ? readXmlRootless(located, ci)
+          : readXml(located, ci);
+    // `from` is deliberately left empty rather than the original text: a document-level audit
+    // entry that copied the whole raw reply (which can be arbitrarily large) into the report on
+    // every call would make the report itself heavy for no benefit `to`'s length doesn't already
+    // give. `to` is the located span's LENGTH, not the span text, for the same reason.
+    report.addCoercion({ fieldPath: "", from: "", to: String(located.length), kind: "onLocate" });
+    regionBlank = located.trim().length === 0;
+  } else if (schema.format === Format.JSON) {
     ({ span, raw } = selectJson(text, stripped, schema.fields, ci));
+    regionBlank = stripped.length === 0 || span == null;
   } else if (o.rootless) {
     span = stripped.length === 0 ? null : stripped;
     raw = span == null ? {} : readXmlRootless(stripped, ci);
+    regionBlank = stripped.length === 0 || span == null;
   } else {
     span = locateXml(stripped, schema.rootName, ci);
     raw = span == null ? {} : readXml(span, ci);
+    regionBlank = stripped.length === 0 || span == null;
   }
 
-  if (isEmptyRecord(raw) && (stripped.length === 0 || span == null)) {
+  if (isEmptyRecord(raw) && regionBlank) {
     report.markEmpty();
   }
 

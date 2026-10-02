@@ -20,29 +20,70 @@ public static class ExtractEngine
         string stripped = Strip.Apply(text);
         bool ci = o.Tolerance != Tolerance.Strict;
 
+        // FR-364: the document-level OnLocate hook runs BEFORE the default locator. A non-null
+        // return is the payload span, fed into the same format-specific forgiving reader a
+        // default-located span would be — tolerance/coercion/normalizers/OnField downstream are
+        // unaffected. A null return (or no hook) falls through to the default locate strategy
+        // unchanged. A thrown exception propagates (not swallowed), matching OnField.
+        string? located = o.OnLocate?.Invoke(text ?? "", schema.Format);
+
         // XML rootless (opts.Rootless): the payload's fields ARE the top-level elements — there is
         // no enclosing root to locate — so parse the whole stripped text's top-level elements
         // directly. Otherwise locate the <rootName> span as before. JSON is unaffected.
         // Mirrors Java Extract.extract.
         string? span;
         Dictionary<string, object?> raw;
-        if (schema.Format == Format.Json)
+        // Whether the SELECTED region (not the original reply) was itself empty/blank — the
+        // signal MarkEmpty() keys on below. For the default path this is the pre-existing
+        // "nothing to parse" test (stripped.Length == 0 || span == null); for OnLocate it must
+        // be judged against the hook's OWN return, not the original text — otherwise an empty
+        // located span (e.g. the hook deliberately returning "") reports "not empty" while every
+        // field is LOST, because the original reply was non-blank even though the thing OnLocate
+        // chose to parse was.
+        bool regionBlank;
+        if (located != null)
+        {
+            span = located;
+            if (schema.Format == Format.Json)
+            {
+                raw = new JsonForgivingReader().Read(located);
+            }
+            else if (o.Rootless)
+            {
+                raw = new XmlForgivingReader().ReadRootless(located, ci);
+            }
+            else
+            {
+                raw = new XmlForgivingReader().Read(located, ci);
+            }
+            // `From` is deliberately left empty rather than the original text: a document-level
+            // audit entry that copied the whole raw reply (which can be arbitrarily large) into
+            // the report on every call would make the report itself heavy for no benefit `To`'s
+            // length doesn't already give. `To` is the located span's LENGTH, not the span text,
+            // for the same reason.
+            report.AddCoercion(new Coercion("", "", located.Length.ToString(System.Globalization.CultureInfo.InvariantCulture), "onLocate"));
+            regionBlank = located.Trim().Length == 0;
+        }
+        else if (schema.Format == Format.Json)
         {
             span = SelectJson(text, stripped, schema.Fields, ci);
             raw = span == null ? new Dictionary<string, object?>() : new JsonForgivingReader().Read(span);
+            regionBlank = stripped.Length == 0 || span == null;
         }
         else if (o.Rootless)
         {
             span = stripped.Length == 0 ? null : stripped;
             raw = span == null ? new Dictionary<string, object?>() : new XmlForgivingReader().ReadRootless(stripped, ci);
+            regionBlank = stripped.Length == 0 || span == null;
         }
         else
         {
             span = Locate.Xml(stripped, schema.RootName, ci);
             raw = span == null ? new Dictionary<string, object?>() : new XmlForgivingReader().Read(span, ci);
+            regionBlank = stripped.Length == 0 || span == null;
         }
 
-        if (raw.Count == 0 && (stripped.Length == 0 || span == null))
+        if (raw.Count == 0 && regionBlank)
         {
             report.MarkEmpty();
         }

@@ -38,23 +38,55 @@ def extract(
     stripped = _strip.strip(text)
     ci = o.tolerance != Tolerance.STRICT
 
+    # FR-364: the document-level on_locate hook runs BEFORE the default locator. A non-None
+    # return is the payload span, fed into the same format-specific forgiving reader a
+    # default-located span would be — tolerance/coercion/normalizers/on_field downstream are
+    # unaffected. A None return (or no hook) falls through to the default locate strategy
+    # unchanged. A raised exception propagates (not swallowed), matching on_field.
+    located: str | None = None if o.on_locate is None else o.on_locate(text if text is not None else "", schema.format)
+
     # XML rootless (opts.rootless): the payload's fields ARE the top-level elements — there
     # is no enclosing root to locate — so parse the whole stripped text's top-level elements
     # directly. Otherwise locate the <rootName> span as before. JSON is unaffected. Mirrors
     # Java Extract.extract.
     span: str | None
     raw: dict[str, object]
-    if schema.format == Format.JSON:
+    # Whether the SELECTED region (not the original reply) was itself empty/blank — the signal
+    # mark_empty() keys on below. For the default path this is the pre-existing "nothing to
+    # parse" test (stripped == "" or span is None); for on_locate it must be judged against the
+    # hook's OWN return, not the original text — otherwise an empty located span (e.g. the hook
+    # deliberately returning "") reports "not empty" while every field is LOST, because the
+    # original reply was non-blank even though the thing on_locate chose to parse was.
+    region_blank: bool
+    if located is not None:
+        span = located
+        if schema.format == Format.JSON:
+            raw = JsonForgivingReader().read(located)
+        elif o.rootless:
+            raw = XmlForgivingReader().read_rootless(located, ci)
+        else:
+            raw = XmlForgivingReader().read(located, ci)
+        # `from_` is deliberately left empty rather than the original text: a document-level
+        # audit entry that copied the whole raw reply (which can be arbitrarily large) into the
+        # report on every call would make the report itself heavy for no benefit `to`'s length
+        # doesn't already give. `to` is the located span's LENGTH, not the span text, for the
+        # same reason.
+        report.add_coercion(Coercion("", "", str(len(located)), "onLocate"))
+        region_blank = located.strip() == ""
+    elif schema.format == Format.JSON:
         span = _select_json(text, stripped, schema.fields, ci)
         raw = {} if span is None else JsonForgivingReader().read(span)
+        region_blank = stripped == "" or span is None
     elif o.rootless:
         span = None if stripped == "" else stripped
         raw = {} if span is None else XmlForgivingReader().read_rootless(stripped, ci)
+        region_blank = stripped == "" or span is None
     else:
         span = _locate.xml(stripped, schema.root_name, ci)
         raw = {} if span is None else XmlForgivingReader().read(span, ci)
+        region_blank = stripped == "" or span is None
 
-    if not raw and (stripped == "" or span is None):
+    if not raw and region_blank:
         report.mark_empty()
 
     _extract(schema.fields, raw, "", data, report, o, ci)
