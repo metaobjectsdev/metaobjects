@@ -143,6 +143,47 @@ public sealed class Fr010NestedExtractCodegenTests
         Assert.False((bool)report.GetType().GetMethod("HasLostRequired")!.Invoke(report, null)!);
     }
 
+    // #364: the generated ExtractLenient(mo, text, opts) parameter is ExtractOptions untouched —
+    // this proves the document-level OnLocate hook reaches the engine THROUGH the generated,
+    // compiled delegating overload, not just the hand-called render-package ExtractEngine tested
+    // in MetaObjects.Render.Tests/Extract/ExtractTests.cs.
+    [Fact]
+    public void Generated_delegating_extract_threads_opts_OnLocate_to_the_engine()
+    {
+        var root = Load(NestedModel);
+        var parserSrcs = new OutputParserGenerator().Generate(Ctx(root)).Select(f => f.Content);
+        var asm = CompileToAssembly([.. parserSrcs, .. GeneratedValueObjects.Sources(root)]);
+
+        var parserType = asm.GetType("Acme.Generated.OrderOutputParser")!;
+        var extract = parserType.GetMethod("ExtractLenient",
+            new[] { typeof(MetaObject), typeof(string), typeof(MetaObjects.Render.Extract.ExtractOptions) })!;
+
+        MetaObject orderMo = root.FindObject("OrderPayload")!;
+
+        // The default locator would pick the FIRST fenced block (it carries declared fields,
+        // #363). OnLocate picks the SECOND one instead, proving the option flowed all the way
+        // through generated code into the render-package engine.
+        const string draft = "{ \"orderId\": \"DRAFT\" }";
+        const string real = "{ \"orderId\": \"A-300\", \"shipTo\": { \"street\": \"1 Main St\" }, \"items\": [] }";
+        string dirty = "```json\n" + draft + "\n```\nOn second thought:\n```json\n" + real + "\n```";
+
+        MetaObjects.Render.Extract.OnLocate onLocate = (text, format) =>
+        {
+            var matches = System.Text.RegularExpressions.Regex.Matches(text, "```json\\s*\\n([\\s\\S]*?)\\n```");
+            return matches.Count > 1 ? matches[1].Groups[1].Value : null;
+        };
+        var opts = MetaObjects.Render.Extract.ExtractOptions.Defaults() with { OnLocate = onLocate };
+
+        var result = extract.Invoke(null, new object?[] { orderMo, dirty, opts })!;
+        var data = result.GetType().GetProperty("Data")!.GetValue(result)!;
+        Assert.Equal("A-300", data.GetType().GetProperty("orderId")!.GetValue(data));
+
+        var report = result.GetType().GetProperty("Report")!.GetValue(result)!;
+        var coercions = (IEnumerable)report.GetType().GetMethod("Coercions")!.Invoke(report, null)!;
+        Assert.Contains(coercions.Cast<object>(),
+            c => (string)c.GetType().GetProperty("Kind")!.GetValue(c)! == "onLocate");
+    }
+
     [Fact]
     public void Loader_convenience_overload_resolves_payload_and_populates_nested()
     {

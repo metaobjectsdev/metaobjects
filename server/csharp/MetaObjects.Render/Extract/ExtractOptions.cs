@@ -3,16 +3,19 @@ namespace MetaObjects.Render.Extract;
 /// <summary>
 /// Bounded runtime override surface (the "20%").
 /// <see cref="Aliases"/> and <see cref="Normalizers"/> are MERGED with the schema's,
-/// runtime winning on key conflict. <see cref="OnField"/> is the single bespoke-coercion hook.
+/// runtime winning on key conflict. <see cref="OnField"/> is the single per-field
+/// bespoke-coercion hook; <see cref="OnLocate"/> is the single document-level
+/// (payload-location) hook.
 /// </summary>
 public sealed record ExtractOptions(
     Tolerance Tolerance,
     IReadOnlyDictionary<string, string> Aliases,
     IReadOnlyDictionary<string, Func<string, object?>> Normalizers,
     OnField? OnField,
+    OnLocate? OnLocate = null,
     bool Rootless = false)
 {
-    /// <summary>Default options: Normal tolerance, no aliases, no normalizers, no hook, not rootless.</summary>
+    /// <summary>Default options: Normal tolerance, no aliases, no normalizers, no hooks, not rootless.</summary>
     public static ExtractOptions Defaults() =>
         new(
             Tolerance.Normal,

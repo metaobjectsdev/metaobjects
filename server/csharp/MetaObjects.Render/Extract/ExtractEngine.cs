@@ -20,13 +20,37 @@ public static class ExtractEngine
         string stripped = Strip.Apply(text);
         bool ci = o.Tolerance != Tolerance.Strict;
 
+        // FR-364: the document-level OnLocate hook runs BEFORE the default locator. A non-null
+        // return is the payload span, fed into the same format-specific forgiving reader a
+        // default-located span would be — tolerance/coercion/normalizers/OnField downstream are
+        // unaffected. A null return (or no hook) falls through to the default locate strategy
+        // unchanged. A thrown exception propagates (not swallowed), matching OnField.
+        string? located = o.OnLocate?.Invoke(text ?? "", schema.Format);
+
         // XML rootless (opts.Rootless): the payload's fields ARE the top-level elements — there is
         // no enclosing root to locate — so parse the whole stripped text's top-level elements
         // directly. Otherwise locate the <rootName> span as before. JSON is unaffected.
         // Mirrors Java Extract.extract.
         string? span;
         Dictionary<string, object?> raw;
-        if (schema.Format == Format.Json)
+        if (located != null)
+        {
+            span = located;
+            if (schema.Format == Format.Json)
+            {
+                raw = new JsonForgivingReader().Read(located);
+            }
+            else if (o.Rootless)
+            {
+                raw = new XmlForgivingReader().ReadRootless(located, ci);
+            }
+            else
+            {
+                raw = new XmlForgivingReader().Read(located, ci);
+            }
+            report.AddCoercion(new Coercion("", "", located.Length.ToString(System.Globalization.CultureInfo.InvariantCulture), "onLocate"));
+        }
+        else if (schema.Format == Format.Json)
         {
             span = SelectJson(text, stripped, schema.Fields, ci);
             raw = span == null ? new Dictionary<string, object?>() : new JsonForgivingReader().Read(span);
