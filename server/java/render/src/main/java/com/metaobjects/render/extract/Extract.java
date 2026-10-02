@@ -17,12 +17,29 @@ public final class Extract {
         String stripped = Strip.strip(text);
         boolean ci = o.tolerance() != Tolerance.STRICT;
 
+        // FR-364: the document-level onLocate hook runs BEFORE the default locator. A non-null
+        // return is the payload span, fed into the same format-specific forgiving reader a
+        // default-located span would be — tolerance/coercion/normalizers/onField downstream are
+        // unaffected. A null return (or no hook) falls through to the default locate strategy
+        // unchanged. A thrown exception propagates (not swallowed), matching onField.
+        String located = o.onLocate() == null ? null : o.onLocate().locate(text == null ? "" : text, schema.format());
+
         // XML rootless (opts.rootless): the payload's fields ARE the top-level elements — there is
         // no enclosing root to locate — so parse the whole stripped text's top-level elements
         // directly. Otherwise locate the <rootName> span as before. JSON is unaffected.
         String span;
         Map<String, Object> raw;
-        if (schema.format() == Format.JSON) {
+        if (located != null) {
+            span = located;
+            if (schema.format() == Format.JSON) {
+                raw = new JsonForgivingReader().read(located);
+            } else if (o.rootless()) {
+                raw = new XmlForgivingReader().readRootless(located, ci);
+            } else {
+                raw = new XmlForgivingReader().read(located, ci);
+            }
+            report.addCoercion(new Coercion("", "", String.valueOf(located.length()), "onLocate"));
+        } else if (schema.format() == Format.JSON) {
             span = selectJson(text, stripped, schema.fields(), ci);
             raw = span == null ? Map.of() : new JsonForgivingReader().read(span);
         } else if (o.rootless()) {
