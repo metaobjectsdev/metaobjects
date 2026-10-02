@@ -34,6 +34,7 @@ command surface splits in two:
 | **Vocabulary upgrade** (`upgrade`) | **Node `meta`** | `meta upgrade [--to <version>] [--apply]` | **any backend** — rewrites RETIRED metadata vocabulary (`@violation` → `@counterexample`, `@readOnly` → `@mutability`, dropping `@verifiedBy`) and resolves ATTRIBUTE CONTRADICTIONS (`@fields` beside `@expr` on an index key). Node-only because it edits the metadata documents themselves, which every port shares; a non-TS project runs `npx meta upgrade` against its own `metaobjects/`. **Canonical JSON and YAML alike.** Previews by default. Retirements needing a human decision are refused and the run exits non-zero, so CI cannot record a partial migration as finished |
 | **Vocabulary search** (`types`) | **Node `meta`** | `meta types [query]` | **any backend** — apropos/`kubectl explain` over the live metamodel registry (names + descriptions + when-to-use); the vocabulary is cross-port identical (registry-conformance) |
 | **Dependency sync** (`deps`) | **Node `meta`** | `meta deps sync \| check \| list` | **any backend** — resolves a declared metadata dependency's `path` transport into a committed snapshot + lock (FR-023), so `sync`/`check`/`list` themselves stay Node-only regardless of your server language. TypeScript and Python then LOAD that snapshot at every rung of their own source ladder — the two ports that implement dependency resolution in Phase 1a; Java, Kotlin, and C# don't read `dependencies` yet (Phase 2). See [`metadata-dependencies.md`](metadata-dependencies.md) |
+| **Canonical format** (`fmt`) | every port | `meta fmt` / `dotnet meta fmt` / `mvn metaobjects:fmt` / `metaobjects fmt` | (#304) ships in **every** port — the canonical serializer already exists in all five, so formatting is local, not Node-only. `--check` lists non-canonical files and exits non-zero without changing anything. Formats each file STANDALONE — own-mode, declared-here layer only (ADR-0039); an `extends` onto another file's base is preserved as-is, never resolved or erred on; a file declaring an unresolvable `overlay: true` (no base in the same file) is reported as skipped rather than guessed at. A YAML file is always skipped — no canonical YAML emitter exists (ADR-0006). Before writing, every port reloads the whole project with the candidate swapped in and refuses the write unless the reloaded model's canonical form is byte-identical to the untouched baseline — fmt never changes meaning. See [Fixture corpus](#meta-fmt--canonical-formatting-304) below and `fixtures/fmt-conformance/README.md` |
 | TS codegen | Node `meta` | `meta gen` | TS projects. **No `--template-spec` flag, deliberately** — `metaobjects.config.ts` already takes generator VALUES, so a declarative template generator is declared there (`templateGenerator()`, or `templateSpecToGenerators(parseTemplateSpec(spec))` to reuse a C#/Python spec file). Keeping it in the config is what lets `meta verify --codegen` regenerate WITH it, since that gate re-runs the config's generator list; see [declarative template scopes](codegen-concepts.md#declarative-template-scopes) |
 | C# codegen | `dotnet meta` | `dotnet meta gen` / `verify --templates` / `verify --codegen` | a .NET tool (`ToolCommandName=dotnet-meta`); invoked `dotnet meta` so it never shadows the Node `meta`; ships the ADR-0021 D2 subverbs (`--db` rejected, exit 2; bare `verify` = `--templates`). `gen` also accepts `--template-spec <json>` (+ `--template-root <dir>`, default `prompts/` when it exists, else `templates/`) — the declarative Mustache template-codegen surface (the cross-port JSON contract shared with Python), **auto-discovered at `<projectRoot>/template-spec.json`** when the flag is absent. Prefer the conventional path: `verify --codegen` takes no `--template-spec`, so discovery is how the drift gate sees your template generators at all; see [declarative template scopes](codegen-concepts.md#declarative-template-scopes) |
 | Java/Kotlin codegen | Maven plugin | `mvn metaobjects:generate` (`metaobjects:generate`) | Kotlin generators run through the same goal — see below. **No `--template-spec` flag, deliberately** — `<generator>` already loads a consumer class from the project classpath, so the declarative surface is `com.metaobjects.generator.template.TemplateScopeGenerator` wired as an ordinary `<generator>` with `<template>` / `<scope>` / `<outputPattern>` / `<templatesDir>` / `<format>` args (covers BOTH Java and Kotlin); see [declarative template scopes](codegen-concepts.md#declarative-template-scopes). The `generate`/`verify`/`docs` goals are declared `threadSafe` and support parallel multi-module reactor builds (`mvn -T`) (#233) |
@@ -530,6 +531,62 @@ Four properties worth knowing before you wire it into CI:
   plain columns or a key expression, never both. `upgrade` drops `@fields`, and that is not
   a coin toss — the pair used to load with `@fields` **silently discarded**, so the index in
   your database is already the expression one and dropping it changes no emitted DDL.
+
+## `meta fmt` — canonical formatting (#304)
+
+Every port already ships the canonical serializer the cross-port conformance
+corpora byte-match against — that is what the five `expected.json` fixtures
+under `fixtures/conformance/` prove on every run. `fmt` just surfaces it as a
+command, in the `gofmt`/`buf format` tradition: one canonical form, no
+formatting debate, usable as a CI gate via `--check`.
+
+| Port | Command |
+|---|---|
+| Node `meta` (reference) | `meta fmt [<file>...] [--check]` |
+| C# | `dotnet meta fmt [<file>...] [--check]` |
+| Java / Kotlin | `mvn metaobjects:fmt [-Dmeta.fmt.check=true] [-Dmeta.fmt.files=<csv>]` |
+| Python | `metaobjects fmt [<file>...] [--check]` |
+
+**Files.** The metadata files the project's resolved sources contain — each
+port's own source/collection resolution (Node: `resolveCollection()` in
+`@metaobjectsdev/sdk`; never a hardcoded `metaobjects/`). Optional explicit
+file arguments narrow the run to those files, which must be members of the
+resolved set.
+
+**Per file, standalone — own-mode, declared-here layer only (ADR-0039).**
+`fmt` never merges a file with its siblings to format it. Two things follow:
+
+- An `extends` onto a base declared in ANOTHER file is preserved exactly as
+  written — never resolved, and never an error here (resolving `extends` is
+  the full project loader's job, not the formatter's; own-mode serialization
+  only needs the raw ref string).
+- A file declaring `overlay: true` with no base in the SAME file cannot be
+  formatted standalone — the attempt surfaces the same
+  `ERR_OVERLAY_NO_TARGET` a real load would raise applying that overlay, and
+  `fmt` reports the file as **skipped** rather than guessing at a merge it
+  cannot see. A file mixing a plain declaration with an unresolvable overlay
+  is skipped WHOLE — `fmt` never partially formats a file. This is the
+  concrete shape of "overlay files stay overlays": `fmt` leaves them
+  untouched rather than attempt a reconstruction it cannot prove correct.
+
+**YAML is left untouched.** The canonical interchange form is JSON
+([ADR-0006](../../spec/decisions/ADR-0006-ai-first-yaml-authoring.md)); no
+port ships a canonical YAML emitter that round-trips today. A `.yaml`/`.yml`
+file is always reported as skipped, never converted to JSON.
+
+**Safety: fmt never changes meaning.** Before writing a file, every port
+reloads the WHOLE project with that file's candidate content substituted in
+and requires both that it loads with no errors and that the reloaded model's
+canonical serialization is byte-identical to the untouched baseline. A file
+that fails this check is left exactly as it was and reported as an error —
+never partially written, never silently corrupted. `--check` runs the exact
+same decision and never writes anything, successful or not.
+
+**Fixture corpus.** `fixtures/fmt-conformance/` (see its README) pins the
+single-file contract above across all five ports: given one file's raw
+content, every port must produce the same canonical bytes, or classify the
+same refusal (`"overlay"` vs `"error"`). Each port's own test suite runs it,
+the same way `fixtures/conformance/` gates the loader.
 
 ## Schema is Node-only — by design
 

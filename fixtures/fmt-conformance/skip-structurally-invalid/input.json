@@ -1,0 +1,8 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      { "object.thisSubtypeDoesNotExist": { "name": "Bogus", "children": [] } }
+    ]
+  }
+}

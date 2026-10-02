@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      { "object.entity": { "name": "Plain", "children": [] } },
+      {
+        "object.entity": {
+          "name": "Other",
+          "overlay": true,
+          "children": [
+            { "field.string": { "name": "extra" } }
+          ]
+        }
+      }
+    ]
+  }
+}

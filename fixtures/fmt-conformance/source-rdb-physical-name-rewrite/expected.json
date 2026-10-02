@@ -1,0 +1,25 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "ActiveWidget",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "active_widgets"
+              }
+            },
+            {
+              "field.string": {
+                "name": "sku"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

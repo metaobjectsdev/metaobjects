@@ -41,6 +41,7 @@ COMMANDS:
   deps list             One line per locked dependency: name, version, hash, node/package summary
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
   export                Flatten loaded metadata to one canonical JSON artifact
+  fmt [<file>...]       Rewrite metadata files into canonical form; --check lists drift, exits non-zero
   docs [<project-root>] --out <dir>  Generate neutral metadata documentation (entity + template pages; --site for HTML site)
   verify                Drift gate — subverbs: --templates / --db / --codegen / --docs / --deps (bare = --templates)
   upgrade               Rewrite retired metadata vocabulary (previews; --apply writes)
@@ -85,6 +86,18 @@ GEN FLAGS:
 
 EXPORT FLAGS:
   --out <file>          Write output to a file (default: stdout)
+
+FMT FLAGS:
+  [<file>...]           Optional explicit file(s) to format — must be members of this
+                        project's resolved metadata sources (resolveCollection()); omit
+                        to format every one of them.
+  --check               List files that are not canonical and exit non-zero; changes nothing.
+                        A file whose formatting would change the LOADED MODEL's meaning
+                        is never rewritten — reported as an error instead (safety check).
+                        A YAML file is always reported as skipped: no canonical YAML
+                        emitter exists yet (ADR-0006 — JSON is the canonical interchange
+                        form). A file declaring an overlay with no base in the same file
+                        is skipped too — fmt never guesses at a cross-file merge.
 
 DOCS FLAGS:
   [<project-root>]      PROJECT ROOT to resolve metadata from — the directory that CONTAINS
@@ -371,6 +384,36 @@ FLAGS:
   --out <file>          Write output to a file (default: stdout)
   --help, -h            Print this help
 `,
+  fmt: `meta fmt — rewrite metadata files into canonical form
+
+USAGE:
+  meta fmt [<file>...] [flags]
+
+Formats every JSON metadata file this project's resolved sources contain
+(resolveCollection() — never a hardcoded 'metaobjects/'), or just the files
+named. Each file is formatted as its OWN content (own-mode, declared-here
+layer only) — never inlining an inherited member or another file's overlay.
+
+FLAGS:
+  [<file>...]           Optional explicit file(s) — must be members of this project's
+                        resolved metadata sources; omit to format every one of them.
+  --check               List files that are not canonical and exit non-zero; changes
+                        nothing on disk.
+  --help, -h            Print this help
+
+SAFETY: before writing any file, fmt reloads the whole project with that file's
+candidate content swapped in and requires the loaded model's canonical form to
+be byte-identical to the untouched baseline. A file that fails this check is
+left exactly as it was and reported as an error — fmt never changes meaning.
+
+YAML: left untouched and reported as skipped — no canonical YAML emitter
+exists yet (ADR-0006: JSON is the canonical interchange form; YAML is an
+authoring format).
+
+OVERLAY: a file declaring 'overlay: true' with no base declared in the SAME
+file is reported as skipped — fmt only reformats a layer it can see in full;
+it never guesses at a merge against another file.
+`,
   docs: `meta docs — generate neutral metadata documentation (entity + template pages)
 
 USAGE:
@@ -644,6 +687,10 @@ export async function run(argv: string[]): Promise<number> {
     case "export": {
       const { exportCommand } = await import("./commands/export.js");
       return exportCommand(rest, cwd);
+    }
+    case "fmt": {
+      const { fmtCommand } = await import("./commands/fmt.js");
+      return fmtCommand(rest, cwd);
     }
     case "types": {
       const { typesCommand } = await import("./commands/types.js");

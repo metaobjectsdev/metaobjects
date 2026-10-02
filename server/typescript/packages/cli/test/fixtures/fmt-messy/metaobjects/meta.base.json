@@ -1,0 +1,33 @@
+{
+    "metadata.root": {
+        "package": "acme",
+        "children": [
+            {
+                "object.entity": {
+                    "@description": "A widget",
+                    "name": "Widget",
+                    "children": [
+                        {
+                            "field.string": {
+                                "name": "sku",
+                                "@maxLength": 40,
+                                "@required": true
+                            }
+                        },
+                        {
+                            "field.string": {
+                                "name": "name"
+                            }
+                        },
+                        {
+                            "identity.secondary": {
+                                "name": "bySku",
+                                "@fields": "sku"
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+}

@@ -1,0 +1,19 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Gadget",
+          "children": [
+            {
+              "field.string": {
+                "name": "label"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
