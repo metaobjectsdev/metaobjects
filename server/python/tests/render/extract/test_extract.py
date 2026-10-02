@@ -286,6 +286,16 @@ def test_on_located_text_still_runs_through_normal_pipeline() -> None:
     assert o.report.states()["confidence"] == FieldExtraction.EXTRACTED
 
 
+def test_on_locate_empty_span_reports_empty_like_an_empty_reply() -> None:
+    # The ORIGINAL reply is non-blank — only on_locate's chosen region is empty. The empty
+    # flag must key off what on_locate selected, not off the original text.
+    opts = ExtractOptions(on_locate=lambda text, fmt: "")
+    o = extract("some reply text that is not empty", _json_answer(), opts)
+    assert o.report.is_empty()
+    assert "text" in o.report.lost_required()
+    assert "confidence" in o.report.lost_required()
+
+
 def test_on_locate_raising_propagates() -> None:
     def on_locate(text: str, fmt: Format) -> str | None:
         raise RuntimeError("boom")
