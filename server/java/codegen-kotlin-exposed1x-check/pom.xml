@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.metaobjects</groupId>
+    <artifactId>metaobjects</artifactId>
+    <version>8.0.11</version>
+  </parent>
+
+  <artifactId>metaobjects-codegen-kotlin-exposed1x-check</artifactId>
+  <name>MetaObjects :: Codegen :: Kotlin :: Exposed 1.x Compile Check</name>
+  <description>
+    Issue #390 — proves the Kotlin codegen target's `exposedApi=1` output (Exposed 1.x,
+    `org.jetbrains.exposed.v1.*`) actually compiles and round-trips, which NOTHING in the
+    default reactor can check: codegen-kotlin ITSELF stays on Kotlin 2.0.21 (it only emits
+    text — see CLAUDE.md "core vs helpers" — so its own production code never needs to read
+    Exposed 1.x's metadata), while this module's handful of static test/driver sources are
+    compiled by a NEWER kotlin-maven-plugin (see `kotlin.version` below) — ordinary
+    backward-compatible Kotlin, not a floor imposed on codegen-kotlin or any other module. The
+    GENERATED `exposedApi=1` output itself — plus a small Kotlin driver snippet that exercises
+    it — is compiled a SECOND time, dynamically and in-process, via `dev.zacsweers.kctfork:core`,
+    whose bundled embedded compiler is pinned to the project's floor for Exposed 1.x consumers
+    (Kotlin >= 2.2 — see `exposed1x.kctfork.version` below). Mirrors
+    `CodegenCompileConformanceTest` (codegen-kotlin) for generation + selection, and
+    `integration-tests-kotlin`'s `PostgresContainer` for the round-trip DB.
+
+    Intentionally NOT registered as a module in the parent pom — same reason as the sibling
+    `integration-tests-kotlin`: keeps the default reactor build (`mvn test`) docker-free (the
+    round-trip test needs a real Postgres) and never reaches `install`/`deploy`, so this
+    module is never published. Invoke explicitly via
+    `mvn -f server/java/codegen-kotlin-exposed1x-check/pom.xml test`, or via
+    `scripts/integration-test.sh kotlin` (wired in alongside integration-tests-kotlin).
+  </description>
+
+  <properties>
+    <!-- This module's OWN build-time kotlin-maven-plugin — NOT the same thing as codegen-kotlin
+         staying on 2.0.21 (that is about the GENERATOR's production code; this is about
+         compiling the few small test/driver sources in THIS module). It is pinned to the SAME
+         version kctfork's embedded compiler bundles (see exposed1x.kctfork.version) rather than
+         the project's usual 2.0.21: `dev.zacsweers.kctfork:core`'s `kotlin-compiler-embeddable`
+         dependency is on this module's TEST classpath regardless (kctfork IS the dynamic-compile
+         harness), and a 2.0.21 kotlinc refuses to even SCAN a 2.2.x-metadata `.kotlin_module`
+         sitting on its classpath ("Module was compiled with an incompatible version of Kotlin")
+         — independent of whether any of this module's own sources import a symbol from it. None
+         of this module's sources use syntax newer than 2.0.21 understands, so building them with
+         a newer compiler is ordinary backward-compatible Kotlin, not a floor this module imposes
+         on anyone else. -->
+    <kotlin.version>2.2.21</kotlin.version>
+    <!-- The GENERATED exposedApi=1 output's floor (dynamically compiled — see below). -->
+    <exposed1x.version>1.3.1</exposed1x.version>
+    <!-- dev.zacsweers.kctfork:core — the kotlin-compile-testing fork whose EMBEDDED
+         compiler version this picks. 0.11.1 bundles kotlin-compiler-embeddable 2.2.21,
+         comfortably above the "Kotlin >= 2.2" floor the issue's migration-guide research
+         states for Exposed 1.3.x consumers. -->
+    <exposed1x.kctfork.version>0.11.1</exposed1x.kctfork.version>
+    <!-- Exposed 1.3.1 itself declares this as its kotlin-stdlib dependency (checked against
+         its published POM) — pinned explicitly here so the stdlib ON THE CLASSPATH (which
+         kctfork's `inheritClassPath=true` dynamic compile reads, and the round-trip driver
+         runs against) matches exactly what Exposed 1.x was built against, rather than
+         whatever Maven's dependency mediation happens to pick between this and the
+         kotlin.version-managed 2.2.21 artifacts pulled in by kotlin-test-junit5 etc. -->
+    <exposed1x.kotlin.stdlib.version>2.3.20</exposed1x.kotlin.stdlib.version>
+    <jackson.version>2.18.2</jackson.version>
+    <postgres.jdbc.version>42.7.4</postgres.jdbc.version>
+    <maven.compiler.release>21</maven.compiler.release>
+  </properties>
+
+  <dependencies>
+    <!-- The stdlib Exposed 1.3.1 itself is built against (see exposed1x.kotlin.stdlib.version
+         above) — pinned ahead of the kotlin.version-managed 2.0.21 artifacts below so Maven's
+         dependency mediation resolves ONE consistent stdlib for both this module's own static
+         compile and the dynamically-compiled exposedApi=1 output. -->
+    <dependency>
+      <groupId>org.jetbrains.kotlin</groupId>
+      <artifactId>kotlin-stdlib</artifactId>
+      <version>${exposed1x.kotlin.stdlib.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- The generator under test, and the loader it generates from. Same Kotlin version
+         (2.0.21) as this module's own static sources — no metadata-version concern here;
+         issue #390 is entirely about the TEXT these generators emit under exposedApi=1,
+         not about codegen-kotlin's own compiled classes. -->
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-codegen-kotlin</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-metadata-ktx</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- The embedded-compiler test harness. Its OWN kotlin-compiler-embeddable transitive
+         dependency (pinned by exposed1x.kctfork.version, see above) is what actually compiles
+         the generated exposedApi=1 sources — NOT this module's kotlin-maven-plugin. -->
+    <dependency>
+      <groupId>dev.zacsweers.kctfork</groupId>
+      <artifactId>core</artifactId>
+      <version>${exposed1x.kctfork.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Exposed 1.3.x — the artifact under test. Test-scoped so it lands on this module's
+         test classpath, which `inheritClassPath = true` hands to kctfork's dynamic compile
+         AND which the round-trip driver actually runs against. Never referenced by import in
+         any of this module's OWN .kt sources (see the class doc above). -->
+    <dependency>
+      <groupId>org.jetbrains.exposed</groupId>
+      <artifactId>exposed-core</artifactId>
+      <version>${exposed1x.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains.exposed</groupId>
+      <artifactId>exposed-jdbc</artifactId>
+      <version>${exposed1x.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains.exposed</groupId>
+      <artifactId>exposed-java-time</artifactId>
+      <version>${exposed1x.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- exposed-json: AllTypes/Asset-shaped fixtures carry field.object @storage:jsonb /
+         field.string @dbColumnType=jsonb columns — those emit `jsonb(...)`, which lives here. -->
+    <dependency>
+      <groupId>org.jetbrains.exposed</groupId>
+      <artifactId>exposed-json</artifactId>
+      <version>${exposed1x.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- kotlinx.serialization: the `field.string @dbColumnType=jsonb` open-bag codec
+         resolves to a kotlinx JsonElement (issue #98) — needed to compile the generated
+         AssetTable / AllTypesTable. -->
+    <dependency>
+      <groupId>org.jetbrains.kotlinx</groupId>
+      <artifactId>kotlinx-serialization-core-jvm</artifactId>
+      <version>1.7.3</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains.kotlinx</groupId>
+      <artifactId>kotlinx-serialization-json-jvm</artifactId>
+      <version>1.7.3</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- The generated per-package MetaJsonbMapper.kt support file (typed field.object/
+         field.map jsonb columns) wires Jackson + the kotlin + jsr310 modules. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>${jackson.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.module</groupId>
+      <artifactId>jackson-module-kotlin</artifactId>
+      <version>${jackson.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.datatype</groupId>
+      <artifactId>jackson-datatype-jsr310</artifactId>
+      <version>${jackson.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- The generated entity data class carries jakarta.validation field constraints
+         (FR-036) unconditionally — hibernate-validator brings jakarta.validation-api
+         transitively; expressly is the EL impl the message interpolator needs. -->
+    <dependency>
+      <groupId>org.hibernate.validator</groupId>
+      <artifactId>hibernate-validator</artifactId>
+      <version>8.0.1.Final</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.glassfish.expressly</groupId>
+      <artifactId>expressly</artifactId>
+      <version>5.0.0</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Round-trip test: a real Postgres (via PostgresContainer, docker CLI — see
+         integration-tests-kotlin's copy for why not testcontainers-java) + its JDBC driver. -->
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <version>${postgres.jdbc.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.jetbrains.kotlin</groupId>
+      <artifactId>kotlin-test-junit5</artifactId>
+      <version>${kotlin.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>5.10.2</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <testSourceDirectory>src/test/kotlin</testSourceDirectory>
+    <plugins>
+      <plugin>
+        <groupId>org.jetbrains.kotlin</groupId>
+        <artifactId>kotlin-maven-plugin</artifactId>
+        <version>${kotlin.version}</version>
+        <executions>
+          <execution>
+            <id>test-compile</id>
+            <phase>test-compile</phase>
+            <goals><goal>test-compile</goal></goals>
+          </execution>
+        </executions>
+        <configuration>
+          <jvmTarget>21</jvmTarget>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${surefire.plugin.version}</version>
+      </plugin>
+      <!-- Same JaCoCo/embedded-compiler clash integration-tests-kotlin works around: the
+           runtime agent chokes instrumenting kotlin-compiler-embeddable's giant
+           `FirErrors.<clinit>` (ASM MethodTooLargeException). Third-party tooling, never a
+           coverage subject. -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>${jacoco.plugin.version}</version>
+        <configuration>
+          <excludes>
+            <exclude>org/jetbrains/kotlin/**</exclude>
+            <exclude>org/jetbrains/org/objectweb/**</exclude>
+            <exclude>com/tschuchort/compiletesting/**</exclude>
+          </excludes>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
