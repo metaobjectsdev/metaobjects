@@ -12,12 +12,14 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 
 /**
- * #364 Kotlin interop proof for the document-level [ExtractOptions.OnLocate] hook. Kotlin ships
- * NO new extract code — it drives the shared Java engine (`com.metaobjects.render.extract`,
- * `codegen-kotlin`'s generated parsers call straight into it) — so this is a faithful
- * transliteration of the Java reference `ExtractTest`'s onLocate cases, proving a Kotlin lambda
- * satisfies the Java `OnLocate` functional interface and that the engine's behavior (override,
- * audit, fallthrough, propagation) holds unchanged when driven from Kotlin.
+ * #364 Kotlin interop proof for the document-level [ExtractOptions.OnLocate] hook, driven
+ * DIRECTLY against the shared Java engine (`Extract.extract`) — Kotlin ships no extract engine
+ * of its own. This is a faithful transliteration of the Java reference `ExtractTest`'s onLocate
+ * cases, proving a Kotlin lambda satisfies the Java `OnLocate` functional interface and that the
+ * engine's behavior (override, audit, fallthrough, propagation) holds unchanged when driven from
+ * Kotlin. It does NOT exercise a generated parser — for proof that `codegen-kotlin`'s generated
+ * `extractLenient(loader, text, opts)` actually threads `opts.onLocate` through to this same
+ * engine, see `KotlinOnLocateCompileRunTest` (in `com.metaobjects.generator.kotlin`).
  */
 class OnLocateKotlinInteropTest {
 
