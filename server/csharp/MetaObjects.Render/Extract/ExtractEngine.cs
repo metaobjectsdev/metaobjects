@@ -33,6 +33,14 @@ public static class ExtractEngine
         // Mirrors Java Extract.extract.
         string? span;
         Dictionary<string, object?> raw;
+        // Whether the SELECTED region (not the original reply) was itself empty/blank — the
+        // signal MarkEmpty() keys on below. For the default path this is the pre-existing
+        // "nothing to parse" test (stripped.Length == 0 || span == null); for OnLocate it must
+        // be judged against the hook's OWN return, not the original text — otherwise an empty
+        // located span (e.g. the hook deliberately returning "") reports "not empty" while every
+        // field is LOST, because the original reply was non-blank even though the thing OnLocate
+        // chose to parse was.
+        bool regionBlank;
         if (located != null)
         {
             span = located;
@@ -48,25 +56,34 @@ public static class ExtractEngine
             {
                 raw = new XmlForgivingReader().Read(located, ci);
             }
+            // `From` is deliberately left empty rather than the original text: a document-level
+            // audit entry that copied the whole raw reply (which can be arbitrarily large) into
+            // the report on every call would make the report itself heavy for no benefit `To`'s
+            // length doesn't already give. `To` is the located span's LENGTH, not the span text,
+            // for the same reason.
             report.AddCoercion(new Coercion("", "", located.Length.ToString(System.Globalization.CultureInfo.InvariantCulture), "onLocate"));
+            regionBlank = located.Trim().Length == 0;
         }
         else if (schema.Format == Format.Json)
         {
             span = SelectJson(text, stripped, schema.Fields, ci);
             raw = span == null ? new Dictionary<string, object?>() : new JsonForgivingReader().Read(span);
+            regionBlank = stripped.Length == 0 || span == null;
         }
         else if (o.Rootless)
         {
             span = stripped.Length == 0 ? null : stripped;
             raw = span == null ? new Dictionary<string, object?>() : new XmlForgivingReader().ReadRootless(stripped, ci);
+            regionBlank = stripped.Length == 0 || span == null;
         }
         else
         {
             span = Locate.Xml(stripped, schema.RootName, ci);
             raw = span == null ? new Dictionary<string, object?>() : new XmlForgivingReader().Read(span, ci);
+            regionBlank = stripped.Length == 0 || span == null;
         }
 
-        if (raw.Count == 0 && (stripped.Length == 0 || span == null))
+        if (raw.Count == 0 && regionBlank)
         {
             report.MarkEmpty();
         }

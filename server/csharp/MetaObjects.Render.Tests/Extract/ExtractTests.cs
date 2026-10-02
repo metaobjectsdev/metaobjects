@@ -259,6 +259,20 @@ public class ExtractTests
     }
 
     [Fact]
+    public void OnLocateEmptySpanReportsEmptyLikeAnEmptyReply()
+    {
+        // The ORIGINAL reply is non-blank — only OnLocate's chosen region is empty. The empty
+        // flag must key off what OnLocate selected, not off the original text.
+        var opts = ExtractOptions.Defaults() with { OnLocate = (text, format) => "" };
+
+        ExtractionOutcome o = ExtractEngine.Run("some reply text that is not empty", JsonAnswer(), opts);
+
+        Assert.True(o.Report.IsEmpty);
+        Assert.Contains("text", o.Report.LostRequired());
+        Assert.Contains("confidence", o.Report.LostRequired());
+    }
+
+    [Fact]
     public void OnLocateThrowingPropagates()
     {
         var opts = ExtractOptions.Defaults() with
