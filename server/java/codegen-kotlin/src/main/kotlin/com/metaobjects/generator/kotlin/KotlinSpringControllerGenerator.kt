@@ -277,11 +277,16 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("import ${ExposedImports.core(api, "Op")}\n")
             append("import ${ExposedImports.core(api, "SortOrder")}\n")
             append("import ${ExposedImports.core(api, "ResultRow")}\n")
-            // issue #390: under 1.x, SqlExpressionBuilder is gone — `eq` is a plain top-level
-            // import, and nothing in this file's `with(SqlExpressionBuilder) { ... }` blocks
-            // survives as a `with(...)` under V1 (see the delete / filter-pipeline call sites).
-            if (api == ExposedApi.V1) append("import ${ExposedImports.core(api, "eq")}\n")
-            else append("import org.jetbrains.exposed.sql.SqlExpressionBuilder\n")
+            // issue #390 (review fix): under 1.x, SqlExpressionBuilder is gone — every operator
+            // the filter-pipeline's WhereOp (and delete's bare `eq`) got for free through
+            // `with(SqlExpressionBuilder) { ... }` is now a plain top-level import, scoped to
+            // exactly what this entity's scalarFields will make emitFilterPipeline emit — see
+            // v1FilterOperatorImports.
+            if (api == ExposedApi.V1) {
+                for (op in v1FilterOperatorImports(scalarFields)) append("import ${ExposedImports.core(api, op)}\n")
+            } else {
+                append("import org.jetbrains.exposed.sql.SqlExpressionBuilder\n")
+            }
             append("import ${ExposedImports.core(api, "and")}\n")
             append("import ${ExposedImports.jdbc(api, "deleteWhere")}\n")
             append("import ${ExposedImports.jdbc(api, "insert")}\n")
@@ -327,6 +332,27 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // uuid-free entities stay byte-identical.
             if (pkParamType == "UUID" || scalarFields.any { it.elementType == "UUID" }) {
                 append("import java.util.UUID\n")
+            }
+            // Pre-existing gap found while adding issue #390's controller-tier compile pass
+            // (review fix #2): a filterable field.decimal's WHERE-arm casts `p.value as
+            // BigDecimal` (see emitPerFieldDispatchArm) with no import anywhere in this file —
+            // "Unresolved reference: BigDecimal" on BOTH exposedApi values (this generator never
+            // excludes DecimalField from scalarFields the way emitTph's filterSpecs does; no
+            // existing test compiled this entity+controller combination to catch it). Fixed for
+            // both: nothing depends on broken, never-compiled output, so there is no
+            // byte-identical contract to preserve here. Same conditional-import shape as
+            // Instant/UUID above.
+            if (scalarFields.any { it.elementType == "BigDecimal" }) {
+                append("import java.math.BigDecimal\n")
+            }
+            // Same pre-existing gap, same fix, for a filterable field.uri / field.inet (a
+            // @lenient one degrades to String — see KotlinTypeMapper.lenientNetField — and
+            // needs neither import, which is exactly why this checks elementType, not subType).
+            if (scalarFields.any { it.elementType == "URI" }) {
+                append("import java.net.URI\n")
+            }
+            if (scalarFields.any { it.elementType == "InetAddress" }) {
+                append("import java.net.InetAddress\n")
             }
             // FR-009 (#179): a filterable enum column is compared as its stored string via
             // `col.castTo<String>(TextColumnType())`; import both only when such a column exists
@@ -712,11 +738,14 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("import ${ExposedImports.core(api, "Op")}\n")
             append("import ${ExposedImports.core(api, "ResultRow")}\n")
             append("import ${ExposedImports.core(api, "SortOrder")}\n")
-            // issue #390: under 1.x, SqlExpressionBuilder is gone — `eq` is a plain top-level
-            // import, and nothing in this file's `with(SqlExpressionBuilder) { ... }` blocks
-            // survives as a `with(...)` under V1 (see the delete / filter-pipeline call sites).
-            if (api == ExposedApi.V1) append("import ${ExposedImports.core(api, "eq")}\n")
-            else append("import org.jetbrains.exposed.sql.SqlExpressionBuilder\n")
+            // issue #390 (review fix): see emit()'s identical comment above — same scoping,
+            // against this TPH base's filterSpecs (the union of its own + every subtype's
+            // scalar columns) rather than a single entity's scalarFields.
+            if (api == ExposedApi.V1) {
+                for (op in v1FilterOperatorImports(filterSpecs)) append("import ${ExposedImports.core(api, op)}\n")
+            } else {
+                append("import org.jetbrains.exposed.sql.SqlExpressionBuilder\n")
+            }
             append("import ${ExposedImports.core(api, "and")}\n")
             append("import ${ExposedImports.jdbc(api, "deleteWhere")}\n")
             append("import ${ExposedImports.jdbc(api, "insert")}\n")
@@ -764,6 +793,15 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // vanilla controller, so uuid-free hierarchies stay byte-identical.
             if (pkParamType == "UUID" || filterSpecs.any { it.elementType == "UUID" }) {
                 append("import java.util.UUID\n")
+            }
+            // Pre-existing gap — see emit()'s identical BigDecimal/URI/InetAddress comments
+            // above; filterSpecs excludes DecimalField (see its own filter above) but not
+            // UriField/InetField, so this hierarchy needs the URI/InetAddress half of the fix.
+            if (filterSpecs.any { it.elementType == "URI" }) {
+                append("import java.net.URI\n")
+            }
+            if (filterSpecs.any { it.elementType == "InetAddress" }) {
+                append("import java.net.InetAddress\n")
             }
             // FR-009 (#179): a filterable enum in the union — the discriminator included — is
             // compared as its stored string via `col.castTo<String>(TextColumnType())`; same
@@ -848,7 +886,13 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("            q = q.orderBy(${sortColumnExpr(table, shortName, sortFields)} to dir)\n")
             append("        }\n")
             append("        val total: Long = if (withCount == 1) q.count() else -1L\n")
-            append("        val rows = q.limit(limit ?: 50, (offset ?: 0).toLong()).map { rowTo${shortName}(it) }\n")
+            // issue #390: Exposed 1.x's Query.limit(count) dropped the 0.x 2-arg
+            // limit(count, offset) overload — offset is now its OWN chained call.
+            if (api == ExposedApi.V1) {
+                append("        val rows = q.limit(limit ?: 50).offset((offset ?: 0).toLong()).map { rowTo${shortName}(it) }\n")
+            } else {
+                append("        val rows = q.limit(limit ?: 50, (offset ?: 0).toLong()).map { rowTo${shortName}(it) }\n")
+            }
             append("        if (withCount == 1) ResponseEntity.ok(mapOf(\"rows\" to rows, \"total\" to total) as Any)\n")
             append("        else ResponseEntity.ok(rows as Any)\n")
             append("    }\n\n")
@@ -906,7 +950,13 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("            val (field, dir) = parsed\n")
                 append("            q = q.orderBy(${sortColumnExpr(table, shortName, sortFields)} to dir)\n")
                 append("        }\n")
+                // issue #390: Exposed 1.x's Query.limit(count) dropped the 0.x 2-arg
+            // limit(count, offset) overload — offset is now its OWN chained call.
+            if (api == ExposedApi.V1) {
+                append("        val rows = q.limit(limit ?: 50).offset((offset ?: 0).toLong()).map { rowTo${shortName}(it) }\n")
+            } else {
                 append("        val rows = q.limit(limit ?: 50, (offset ?: 0).toLong()).map { rowTo${shortName}(it) }\n")
+            }
                 append("        ResponseEntity.ok(rows as Any)\n")
                 append("    }\n\n")
 
@@ -1136,6 +1186,43 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     /** Capitalize the first char (method-name suffix from a discriminator value). */
     private fun capitalizeFirst(s: String): String =
         if (s.isEmpty()) s else s[0].uppercaseChar() + s.substring(1)
+
+    /**
+     * The exact top-level Exposed operator import names (issue #390 — review fix)
+     * [emitFilterPipeline]'s `<Entity>WhereOp` will emit for [fields] under `exposedApi=1`,
+     * mirroring [emitPerFieldDispatchArm]'s per-field conditionals EXACTLY (never broader) —
+     * dropping `with(SqlExpressionBuilder) { ... }` under V1 means every operator the 0.x
+     * block got for free now needs an explicit top-level import, and importing one never
+     * emitted risks an unused-import failure on a consumer's strict compile. `eq`/`isNull`/
+     * `isNotNull` are unconditional (every arm — scalar or int-backed-enum — emits all three);
+     * an int-backed enum's early-return arm additionally emits `neq`/`inList` but never
+     * `greater`/`greaterEq`/`less`/`lessEq`/`like` (no ordering/substring compare on a raw
+     * int); the scalar arm's `neq`/`inList` gate on `!isBoolean`, `greater`/`greaterEq`/
+     * `less`/`lessEq` on `!isStringLike && !isBoolean`, and `like` on `isStringLike` — the
+     * SAME three conditions [emitPerFieldDispatchArm] itself gates on. `and` (the WhereOp
+     * fold, `combined = combined?.and(op) ?: op`) is handled separately — it is UNCONDITIONAL
+     * on the predicate loop, not on any field's subtype, so the three call sites import it
+     * unconditionally already. Returns empty for an empty [fields] (no per-field arm, hence
+     * no operator, is ever emitted — the WhereOp function still compiles on `and` alone).
+     */
+    private fun v1FilterOperatorImports(fields: List<ScalarFieldSpec>): List<String> {
+        if (fields.isEmpty()) return emptyList()
+        val ops = sortedSetOf("eq", "isNull", "isNotNull")
+        for (f in fields) {
+            if (f.intBackedEnumType != null) {
+                ops += "neq"; ops += "inList"
+                continue
+            }
+            val isStringLike = f.subType == StringField.SUBTYPE_STRING || f.subType == EnumField.SUBTYPE_ENUM
+            val isBoolean = f.subType == BooleanField.SUBTYPE_BOOLEAN
+            if (!isBoolean) { ops += "neq"; ops += "inList" }
+            if (!isStringLike && !isBoolean) {
+                ops += "greater"; ops += "greaterEq"; ops += "less"; ops += "lessEq"
+            }
+            if (isStringLike) ops += "like"
+        }
+        return ops.toList()
+    }
 
     /**
      * Emit the three-piece FR-009 filter pipeline (data class + parse function +
@@ -1753,11 +1840,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("import ${ExposedImports.core(api, "Op")}\n")
             append("import ${ExposedImports.core(api, "SortOrder")}\n")
             append("import ${ExposedImports.core(api, "ResultRow")}\n")
-            // issue #390: under 1.x, SqlExpressionBuilder is gone — `eq` is a plain top-level
-            // import, and nothing in this file's `with(SqlExpressionBuilder) { ... }` blocks
-            // survives as a `with(...)` under V1 (see the delete / filter-pipeline call sites).
-            if (api == ExposedApi.V1) append("import ${ExposedImports.core(api, "eq")}\n")
-            else append("import org.jetbrains.exposed.sql.SqlExpressionBuilder\n")
+            // issue #390 (review fix): see emit()'s identical comment above.
+            if (api == ExposedApi.V1) {
+                for (op in v1FilterOperatorImports(scalarFields)) append("import ${ExposedImports.core(api, op)}\n")
+            } else {
+                append("import org.jetbrains.exposed.sql.SqlExpressionBuilder\n")
+            }
             append("import ${ExposedImports.core(api, "and")}\n")
             append("import ${ExposedImports.jdbc(api, "selectAll")}\n")
             append("import ${ExposedImports.transactions(api, "transaction")}\n")
@@ -1783,6 +1871,16 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             }
             if (pkParamType == "UUID" || scalarFields.any { it.elementType == "UUID" }) {
                 append("import java.util.UUID\n")
+            }
+            // Pre-existing gap — see emit()'s identical comment above.
+            if (scalarFields.any { it.elementType == "BigDecimal" }) {
+                append("import java.math.BigDecimal\n")
+            }
+            if (scalarFields.any { it.elementType == "URI" }) {
+                append("import java.net.URI\n")
+            }
+            if (scalarFields.any { it.elementType == "InetAddress" }) {
+                append("import java.net.InetAddress\n")
             }
             if (scalarFields.any { it.subType == EnumField.SUBTYPE_ENUM }) {
                 append("import ${ExposedImports.core(api, "TextColumnType")}\n")
@@ -1921,6 +2019,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     private fun appendListHandler(
         sb: StringBuilder, shortName: String, readObj: String, sortFields: List<String>
     ) = with(sb) {
+        val api = exposedApi()
         // List handler — pagination + sort + withCount + FR-009 filter operators.
         //
         // The filter reads `request.queryString` raw rather than Spring's parameter map:
@@ -1950,7 +2049,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         append("        val total: Long = if (withCount == 1) q.count() else -1L\n")
         append("        val effectiveLimit = limit ?: 50\n")
         append("        val effectiveOffset = (offset ?: 0).toLong()\n")
-        append("        val rows = q.limit(effectiveLimit, effectiveOffset).map { rowTo${shortName}(it) }\n")
+        // issue #390: see the vanilla/TPH controllers' identical comment above.
+        if (api == ExposedApi.V1) {
+            append("        val rows = q.limit(effectiveLimit).offset(effectiveOffset).map { rowTo${shortName}(it) }\n")
+        } else {
+            append("        val rows = q.limit(effectiveLimit, effectiveOffset).map { rowTo${shortName}(it) }\n")
+        }
         append("        if (withCount == 1) ResponseEntity.ok(mapOf(\"rows\" to rows, \"total\" to total) as Any)\n")
         append("        else ResponseEntity.ok(rows as Any)\n")
         append("    }\n\n")
