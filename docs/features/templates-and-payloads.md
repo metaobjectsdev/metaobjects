@@ -531,6 +531,78 @@ turns an absent value into a plausible one (`Boolean.TRUE.equals(vo.getFlag())` 
 un-catches what the framework caught. Prefer declaring the default in metadata (where it is
 reported) over defaulting in code (where it is not).
 
+### Override surface: `onLocate`, `onField`, `normalizers`, `tolerance`
+
+The tolerant extract has a bounded, three-level override surface, and **every level is
+auditable** — using it adds an entry to the extraction report's coercion log, so an override
+is never invisible. An adopter who re-implements one of these in application code (a
+per-field uppercase normalizer, say) loses that audit trail for nothing — the surface
+already covers it.
+
+| Level | Hook / option | Signature | Audited as a coercion with `kind` |
+|---|---|---|---|
+| document | `onLocate` | `(text, format) -> string \| null` | `"onLocate"` (document-level: empty field path) |
+| field | `onField` | `(fieldPath, raw, spec) -> value \| null` | `"onField"` |
+| field, by name | `normalizers` | `{ [fieldPathOrName]: raw -> value \| null }` | `"normalizer"` |
+| document | `tolerance` | `STRICT \| NORMAL \| LOOSE` | — changes default coercion behavior; not a hook |
+
+`onLocate` and `onField` both return `null`/`None` to mean "fall through to the default
+behavior" — `onLocate` to the shipped locator (#363's fenced-then-first-object-with-a-declared-field
+rule), `onField` to the default scalar/enum coercion. **A hook that throws propagates** — it
+is not swallowed, so a bug in your hook surfaces as a thrown error rather than a silently
+degraded extraction.
+
+`onLocate(text, format)` is the newest of the three and the only **document-level** one: it
+runs once, before the default locator, receiving the full raw reply and the schema's declared
+format. It returns the substring that is the payload — parsed normally afterward (tolerance,
+coercion, `normalizers`, and `onField` all still apply to it) — or `null` to accept the
+default. The returned text does not need to be a literal substring of the input (the hook may
+synthesize it, e.g. to paper over a reply shape no fixed rule should special-case). Reach for
+it when the reply's envelope is unusual in a way the generic locator can't know about — a
+custom wrapper key, a non-fenced delimiter convention, or choosing among several well-formed
+objects by a rule specific to your prompt.
+
+TypeScript:
+
+```ts
+const opts: Partial<ExtractOptions> = {
+  onLocate: (text, format) => {
+    // Unwrap a custom <answer>...</answer> envelope the default locator doesn't know about.
+    const m = /<answer>([\s\S]*)<\/answer>/.exec(text);
+    return m ? m[1] : null;
+  },
+};
+const { data, report } = extractLenientNpcResponseWithLoader(root, llmResponse, opts);
+```
+
+Python:
+
+```python
+opts = ExtractOptions(
+    on_locate=lambda text, fmt: text.split("ANSWER:", 1)[1] if "ANSWER:" in text else None,
+)
+```
+
+C#:
+
+```csharp
+var opts = ExtractOptions.Defaults() with {
+    OnLocate = (text, format) => text.Contains("ANSWER:") ? text.Split("ANSWER:")[1] : null,
+};
+```
+
+Java (and Kotlin, which drives the same engine):
+
+```java
+ExtractOptions opts = ExtractOptions.defaults()
+    .withOnLocate((text, format) -> text.contains("ANSWER:") ? text.split("ANSWER:", 2)[1] : null);
+```
+
+If you find yourself hand-rolling a payload-location step, a per-field repair, or a
+value-uppercasing pass outside the generated extract, check this surface first — the
+generated tolerant extractor already threads all three straight to the engine, and each one
+leaves a trace in the report that your own code would otherwise have to reconstruct.
+
 ## Drift detection: `verify`
 
 For every template, `verify` resolves the text, parses the `{{...}}` references,
