@@ -390,9 +390,10 @@ USAGE:
   meta fmt [<file>...] [flags]
 
 Formats every JSON metadata file this project's resolved sources contain
-(resolveCollection() — never a hardcoded 'metaobjects/'), or just the files
-named. Each file is formatted as its OWN content (own-mode, declared-here
-layer only) — never inlining an inherited member or another file's overlay.
+(resolveCollection() — never a hardcoded default directory), or just the
+files named. Each file is formatted as its OWN content (own-mode,
+declared-here layer only) — never inlining an inherited member or another
+file's overlay.
 
 FLAGS:
   [<file>...]           Optional explicit file(s) — must be members of this project's
