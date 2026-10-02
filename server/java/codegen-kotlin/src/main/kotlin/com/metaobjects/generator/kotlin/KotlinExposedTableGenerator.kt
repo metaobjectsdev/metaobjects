@@ -4,6 +4,8 @@ package com.metaobjects.generator.kotlin
 // com.metaobjects.generator.kotlin when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.kotlin.ExposedApi
+import com.metaobjects.generator.kotlin.ExposedImports
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinNaming
 import com.metaobjects.generator.kotlin.KotlinTphPlan
@@ -91,6 +93,14 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      */
     protected fun useNames(): Boolean =
         (getArg(KotlinGenUtil.ARG_USE_NAMES, "false") ?: "false").toBoolean()
+
+    /**
+     * Exposed output-API version (issue #390) — `0` (default) emits Exposed 0.x
+     * (`org.jetbrains.exposed.sql.*`, byte-identical to every release before this arg
+     * existed); `1` emits Exposed 1.x (`org.jetbrains.exposed.v1.*`). From the
+     * `exposedApi` generator arg (`<args><exposedApi>1</exposedApi></args>` in the pom).
+     */
+    protected fun exposedApi(): ExposedApi = ExposedApi.parse(getArg(ExposedApi.ARG_EXPOSED_API))
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -357,8 +367,10 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * extensions the generated tables call. `internal` keeps it package+module-private while
      * every `*Table.kt` in the package shares the one declaration.
      */
-    private fun emitInetUriSupportFile(pkg: String, outRoot: Path) =
-        emitSupportFile(pkg, outRoot, INET_URI_SUPPORT_FILE_NAME, INET_URI_SUPPORT_FILE_IMPORTS, INET_URI_SUPPORT_BLOCK)
+    private fun emitInetUriSupportFile(pkg: String, outRoot: Path) {
+        val api = exposedApi()
+        emitSupportFile(pkg, outRoot, INET_URI_SUPPORT_FILE_NAME, inetUriSupportFileImports(api), inetUriSupportBlock(api))
+    }
 
     /**
      * Emit the per-package `MetaInstantWithTimeZoneColumnType.kt` support file for
@@ -369,8 +381,10 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * the single shared declaration — fixing the multi-table-per-package redeclaration that the
      * earlier inline-per-file emission caused.
      */
-    private fun emitInstantTzSupportFile(pkg: String, outRoot: Path) =
-        emitSupportFile(pkg, outRoot, INSTANT_TZ_SUPPORT_FILE_NAME, INSTANT_TZ_SUPPORT_FILE_IMPORTS, INSTANT_TZ_SUPPORT_BLOCK)
+    private fun emitInstantTzSupportFile(pkg: String, outRoot: Path) {
+        val api = exposedApi()
+        emitSupportFile(pkg, outRoot, INSTANT_TZ_SUPPORT_FILE_NAME, instantTzSupportFileImports(api), instantTzSupportBlock(api))
+    }
 
     /**
      * Emit one `internal` per-package support file (`<fileName>.kt`): a package header (when the
@@ -424,6 +438,9 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         excludeDerivedFields: Boolean = false,
     ): Boolean {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
+        // issue #390: read once per emit() call and threaded through every Exposed FQN /
+        // column-spec decision below via KotlinTypeMapper + ExposedImports.
+        val api = exposedApi()
         val isView = isViewKind(sourceRdb)
         val tableObjectName = objectNameOverride ?: KotlinNaming.tableObjectName(shortName)
         // FR-016: getPhysicalName() implements the four-step rule (kind-matching
@@ -601,7 +618,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             // emitted via the jsonb-import decision (alongside the `Json` import its codec needs) —
             // skip here so the `import ...json.jsonb` line isn't emitted twice.
             if (KotlinTypeMapper.isJsonbOpenBag(field)) continue
-            KotlinTypeMapper.exposedColumnImport(field)?.let { columnFunctionImports += it }
+            KotlinTypeMapper.exposedColumnImport(field, api)?.let { columnFunctionImports += it }
         }
         // Flattened object sub-columns also contribute column functions (and thus
         // potentially imports). Walk the field.object children's referenced object.value
@@ -615,7 +632,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 if (subField is EnumField) continue
                 // jsonb open bag → its `jsonb`/`Json` imports come via the jsonb-import decision (skip here).
                 if (KotlinTypeMapper.isJsonbOpenBag(subField)) continue
-                KotlinTypeMapper.exposedColumnImport(subField)?.let { columnFunctionImports += it }
+                KotlinTypeMapper.exposedColumnImport(subField, api)?.let { columnFunctionImports += it }
             }
         }
 
@@ -668,9 +685,9 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             if (pkg.isNotEmpty()) {
                 append("package $pkg\n\n")
             }
-            append("import org.jetbrains.exposed.sql.Table\n")
+            append("import ${ExposedImports.core(api, "Table")}\n")
             if (fkColumns.any { it.hasReferenceOption } || needsRefOptForDecor) {
-                append("import org.jetbrains.exposed.sql.ReferenceOption\n")
+                append("import ${ExposedImports.core(api, "ReferenceOption")}\n")
             }
             for (imp in columnFunctionImports) {
                 append("import $imp\n")
@@ -682,7 +699,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 append("import $imp\n")
             }
             if (needsJsonbExtensionImport) {
-                append("import org.jetbrains.exposed.sql.json.jsonb\n")
+                append("import ${ExposedImports.json(api, "jsonb")}\n")
             }
             // Only the open-bag `field.string @dbColumnType=jsonb` (JsonElement) uses kotlinx Json.
             // Object/map jsonb columns use the same-package `metaJsonbMapper` (no import needed).
@@ -690,10 +707,17 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 append("import kotlinx.serialization.json.Json\n")
             }
             // R6 Plan 2a: the gen_random_uuid() server default uses CustomFunction +
-            // UUIDColumnType, which need explicit imports (neither is a Table member).
+            // UUIDColumnType, which need explicit imports (neither is a Table member). Under
+            // 1.x the java.util.UUID-binding UUIDColumnType moved to core.java (issue #390) —
+            // uuid PK generation always needs java.util.UUID, never kotlin.uuid.Uuid, so this
+            // is unconditional on [ExposedApi], not gated by whether the column itself is a
+            // `field.uuid` vs a `@dbColumnType=uuid` string.
             if (uuidGeneratedPk) {
-                append("import org.jetbrains.exposed.sql.CustomFunction\n")
-                append("import org.jetbrains.exposed.sql.UUIDColumnType\n")
+                append("import ${ExposedImports.core(api, "CustomFunction")}\n")
+                val uuidColumnTypeImport =
+                    if (api == ExposedApi.V1) ExposedImports.javaUuid("UUIDColumnType")
+                    else ExposedImports.core(api, "UUIDColumnType")
+                append("import $uuidColumnTypeImport\n")
             }
             // an instant (default) timestamp calls the `instantWithTimeZone(...)` extension
             // from the package-shared MetaInstantWithTimeZoneColumnType.kt support file. That
@@ -749,7 +773,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     // via the SAME resolveColumnName). No equality check needed: the
                     // reference and the value it stands for are derived from one shared
                     // transform (KotlinNaming.namesMember), so they cannot disagree.
-                    KotlinTypeMapper.exposedColumnSpec(field, columnExprFor(field))
+                    KotlinTypeMapper.exposedColumnSpec(field, columnExprFor(field), api)
                 }
                 val withAuto = when {
                     isPk && incrementPk -> "$baseSpec.autoIncrement()"
@@ -788,7 +812,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     // enums take the customEnumeration form here too.
                     enumColumnSpec(field, entity, columnExprFor(field))
                 } else {
-                    KotlinTypeMapper.exposedColumnSpec(field, columnExprFor(field))
+                    KotlinTypeMapper.exposedColumnSpec(field, columnExprFor(field), api)
                 }
                 append("    val ${KotlinNaming.safeColumnProperty(field.name)} = $baseSpec.nullable()\n")
             }
@@ -976,6 +1000,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // would break Exposed insert). Default false → byte-identical for a vanilla entity + the view.
         excludeDerived: Boolean = false,
     ): List<ObjectColumnSpec> {
+        val api = exposedApi()
         val result = mutableListOf<ObjectColumnSpec>()
         for (field in entity.metaFields) {
             if (excludeDerived && KotlinGenUtil.isDerivedField(field)) continue
@@ -1019,7 +1044,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     // Task 6 — out of scope: this composite name belongs to neither a
                     // single field of `entity` nor of `target` — <Entity>Names has no
                     // constant for it. Always literal; useNames() does not reach here.
-                    val baseSpec = KotlinTypeMapper.exposedColumnSpec(subField, "\"$colName\"")
+                    val baseSpec = KotlinTypeMapper.exposedColumnSpec(subField, "\"$colName\"", api)
                     // Sub-column is nullable iff the parent is nullable OR the sub-field itself is.
                     val nullable = parentNullable || !KotlinGenUtil.isRequiredField(subField)
                     val full = if (nullable) "$baseSpec.nullable()" else baseSpec
@@ -1120,10 +1145,22 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         const val INSTANT_TZ_SUPPORT_FILE_NAME = "MetaInstantWithTimeZoneColumnType"
 
         /**
-         * Imports for the per-package [INSTANT_TZ_SUPPORT_BLOCK] support file. Kept here (rather
+         * Imports for the per-package [instantTzSupportBlock] support file, keyed by
+         * [ExposedApi] (issue #390 — V1's symbols fan out across `v1.core` /
+         * `v1.core.statements.api` / `v1.core.vendors` / `v1.javatime`). Kept here (rather
          * than FQN-ing every reference inline) so the emitted support file reads idiomatically.
          */
-        val INSTANT_TZ_SUPPORT_FILE_IMPORTS: String = """
+        fun instantTzSupportFileImports(api: ExposedApi): String = if (api == ExposedApi.V1) """
+            |import java.time.Instant
+            |import ${ExposedImports.core(api, "Column")}
+            |import ${ExposedImports.core(api, "ColumnType")}
+            |import ${ExposedImports.core(api, "IDateColumnType")}
+            |import ${ExposedImports.core(api, "Table")}
+            |import ${ExposedImports.javatime(api, "JavaInstantColumnType")}
+            |import ${ExposedImports.statementsApi(api, "PreparedStatementApi")}
+            |import ${ExposedImports.statementsApi(api, "RowApi")}
+            |import ${ExposedImports.vendors(api, "currentDialect")}
+            |""".trimMargin() else """
             |import java.time.Instant
             |import org.jetbrains.exposed.sql.Column
             |import org.jetbrains.exposed.sql.ColumnType
@@ -1152,9 +1189,14 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
          * same package shares the ONE declaration — multiple instant-timestamp tables per
          * package no longer redeclare a top-level class/extension (the bug the prior per-file
          * inline emission caused). Note: the `$` lines below have no Kotlin string templates,
-         * so this trimMargin block is emitted verbatim.
+         * so this trimMargin block is emitted verbatim. The ONLY textual difference between
+         * [ExposedApi] versions is `readObject`'s row-accessor parameter type (issue #390 —
+         * `java.sql.ResultSet` under 0.x, `RowApi` under 1.x; see [instantTzSupportFileImports]
+         * for the matching import).
          */
-        val INSTANT_TZ_SUPPORT_BLOCK: String = """
+        fun instantTzSupportBlock(api: ExposedApi): String {
+            val readObjectParamType = if (api == ExposedApi.V1) "RowApi" else "java.sql.ResultSet"
+            return """
             |/**
             | * GENERATED — do not hand-edit.
             | * Custom Exposed column type for instant (default, non-`@localTime`): a
@@ -1175,7 +1217,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             |    override fun nonNullValueToString(value: Instant): String = delegate.nonNullValueToString(value)
             |    override fun nonNullValueAsDefaultString(value: Instant): String =
             |        delegate.nonNullValueAsDefaultString(value)
-            |    override fun readObject(rs: java.sql.ResultSet, index: Int): Any? = delegate.readObject(rs, index)
+            |    override fun readObject(rs: $readObjectParamType, index: Int): Any? = delegate.readObject(rs, index)
             |    override fun setParameter(
             |        stmt: PreparedStatementApi,
             |        index: Int,
@@ -1190,6 +1232,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             |internal fun Table.instantWithTimeZone(name: String): Column<Instant> =
             |    registerColumn(name, MetaInstantWithTimeZoneColumnType())
             |""".trimMargin()
+        }
 
         /**
          * File name (sans `.kt`) of the per-package support file emitted for `field.uri` /
@@ -1197,8 +1240,23 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
          */
         const val INET_URI_SUPPORT_FILE_NAME = "MetaInetUriColumnType"
 
-        /** Imports for the per-package [INET_URI_SUPPORT_BLOCK] support file. */
-        val INET_URI_SUPPORT_FILE_IMPORTS: String = """
+        /**
+         * Imports for the per-package [inetUriSupportBlock] support file, keyed by [ExposedApi]
+         * (issue #390). V1 carries two EXTRA imports over the mechanical FQN fan-out:
+         * `JdbcPreparedStatementImpl` and `java.sql.Types`, both needed by
+         * `MetaInetColumnType.setParameter`'s raw-statement bind (see [inetUriSupportBlock]).
+         */
+        fun inetUriSupportFileImports(api: ExposedApi): String = if (api == ExposedApi.V1) """
+            |import java.net.InetAddress
+            |import java.net.URI
+            |import java.sql.Types
+            |import ${ExposedImports.core(api, "Column")}
+            |import ${ExposedImports.core(api, "ColumnType")}
+            |import ${ExposedImports.core(api, "Table")}
+            |import ${ExposedImports.statementsApi(api, "PreparedStatementApi")}
+            |import ${ExposedImports.vendors(api, "currentDialect")}
+            |import org.jetbrains.exposed.v1.jdbc.statements.jdbc.JdbcPreparedStatementImpl
+            |""".trimMargin() else """
             |import java.net.InetAddress
             |import java.net.URI
             |import org.jetbrains.exposed.sql.Column
@@ -1222,9 +1280,55 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
          *    native `inet` column.
          *
          * Both are `internal` so every `*Table.kt` in the package shares the one declaration.
-         * The `$` lines below carry no Kotlin string templates — emitted verbatim.
+         * The `$` lines below carry no Kotlin string templates — emitted verbatim. The ONLY
+         * textual difference between [ExposedApi] versions is `MetaInetColumnType.setParameter`'s
+         * bind call (issue #390). 0.x's `stmt[index] = value.hostAddress` binds the address
+         * STRING with no explicit JDBC type, which the Postgres driver defaults to `VARCHAR` —
+         * `Postgres then refuses the implicit varchar→inet cast ("column is of type inet but
+         * expression is of type character varying"). [A LATENT 0.x DEFECT, left untouched per
+         * exposedApi=0's byte-identical contract: `integration-tests-kotlin`'s persistence-
+         * conformance reference harness already works around it with a HAND-MAINTAINED
+         * `MetaInetStringColumnType` that never exercises the generator's own 0.x emission for a
+         * real write.] 1.x's `PreparedStatementApi.set` dropped the 2-arg form entirely (only a
+         * 3-arg `set(index, value, columnType)` remains, decompiled to confirm it discards
+         * `columnType` and still calls the bare 2-arg `PreparedStatement.setObject` — so routing
+         * through it would not even reach a DIFFERENT bind), so 1.x reaches the raw
+         * `java.sql.PreparedStatement` (via `JdbcPreparedStatementImpl.statement`, the same
+         * escape hatch the reference harness already uses) and binds with `Types.OTHER` — the
+         * exact pattern that already round-trips for 0.x's reference harness and OMDB's JVM
+         * `InetCodec`.
          */
-        val INET_URI_SUPPORT_BLOCK: String = """
+        fun inetUriSupportBlock(api: ExposedApi): String {
+            // `setParameter`'s `value` has ALREADY been through `notNullValueToDB` by the time
+            // `fillParameters`'s default implementation calls here (confirmed by decompiling it:
+            // it calls `columnType.valueToDB(value)` — which for a non-null value delegates to
+            // `notNullValueToDB` — THEN `columnType.setParameter(this, index, <converted value>)`).
+            // So `value` is the STRING `notNullValueToDB` returned, never the original
+            // `InetAddress` — an `is InetAddress` check here is always false, on EITHER
+            // [ExposedApi]. 0.x's `stmt[index] = value.hostAddress` therefore always falls to its
+            // own `else super.setParameter(...)`, binding that string with NO JDBC type hint —
+            // the SAME latent defect [inetUriSupportBlock]'s doc above names (left untouched for
+            // exposedApi=0's byte-identical contract: this whole block is the ONE place this
+            // generator's text differs by [ExposedApi], so the 0.x branch below reproduces the
+            // ORIGINAL lines verbatim, comment included, rather than varying just the call). 1.x's
+            // replacement checks nullness, not type, matching the reference harness's
+            // `MetaInetStringColumnType` exactly — and REPLACES the two-line `if/else`, so it
+            // carries its own trailing brace (no shared `else super.setParameter(...)` line below).
+            val inetSetParameterBlock = if (api == ExposedApi.V1) {
+                "        val raw = (stmt as JdbcPreparedStatementImpl).statement\n" +
+                    "        if (value == null) raw.setNull(index, Types.OTHER)\n" +
+                    "        else raw.setObject(index, value.toString(), Types.OTHER)\n" +
+                    "    }"
+            } else {
+                "        // Bind as a string and let the Postgres JDBC driver coerce it to the native\n" +
+                    "        // `inet` column. Anything else — a null for a nullable column above all —\n" +
+                    "        // goes to the base implementation, which knows how to bind it: `stmt[index]`\n" +
+                    "        // takes a non-null Any, so widening the local to Any? did not compile.\n" +
+                    "        if (value is InetAddress) stmt[index] = value.hostAddress\n" +
+                    "        else super.setParameter(stmt, index, value)\n" +
+                    "    }"
+            }
+            return """
             |/**
             | * GENERATED — do not hand-edit.
             | * Custom Exposed column type for `field.uri`: a `Column<java.net.URI>` whose SQL DDL
@@ -1260,19 +1364,14 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             |    override fun notNullValueToDB(value: InetAddress): Any = value.hostAddress
             |    override fun nonNullValueToString(value: InetAddress): String = "'${'$'}{value.hostAddress}'"
             |    override fun setParameter(stmt: PreparedStatementApi, index: Int, value: Any?) {
-            |        // Bind as a string and let the Postgres JDBC driver coerce it to the native
-            |        // `inet` column. Anything else — a null for a nullable column above all —
-            |        // goes to the base implementation, which knows how to bind it: `stmt[index]`
-            |        // takes a non-null Any, so widening the local to Any? did not compile.
-            |        if (value is InetAddress) stmt[index] = value.hostAddress
-            |        else super.setParameter(stmt, index, value)
-            |    }
+            |${inetSetParameterBlock}
             |}
             |
             |/** Column builder for `field.inet`: a `Column<java.net.InetAddress>` over an `inet` column. */
             |internal fun Table.inetColumn(name: String): Column<InetAddress> =
             |    registerColumn(name, MetaInetColumnType())
             |""".trimMargin()
+        }
 
         /**
          * File name (sans `.kt`) of the per-package support file holding the shared Jackson
@@ -1768,7 +1867,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // name (e.g. "author_id" from the composition's shortName + "Id"), not a
         // metaField of any single object — no <Entity>Names constant names it. Always
         // literal; useNames() does not reach here.
-        return runCatching { KotlinTypeMapper.exposedColumnSpec(pkField, "\"$colName\"") }
+        return runCatching { KotlinTypeMapper.exposedColumnSpec(pkField, "\"$colName\"", exposedApi()) }
             .getOrDefault("long(\"$colName\")")
     }
 

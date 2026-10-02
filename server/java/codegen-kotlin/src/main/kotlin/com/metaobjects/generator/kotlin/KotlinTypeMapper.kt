@@ -104,9 +104,6 @@ object KotlinTypeMapper {
      */
     private val DB_COLUMN_TYPE_JSONB = CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB
 
-    /** FQN of the Exposed `jsonb` extension function (raw-string open-JSON path). */
-    private const val EXPOSED_JSONB_IMPORT = "org.jetbrains.exposed.sql.json.jsonb"
-
     /**
      * The kotlinx-serialization JSON-value type a `field.string @dbColumnType=jsonb` open-bag is
      * exposed as (issue #98). `JsonElement` is the idiomatic "any JSON value" type — kotlinx is
@@ -357,8 +354,8 @@ object KotlinTypeMapper {
      * one — e.g., the flattened `@storage` path that prefix-joins parent + sub field) use
      * the two-arg overload [exposedColumnSpec] and pass the column name explicitly.
      */
-    fun exposedColumnSpec(field: MetaField<*>): String =
-        exposedColumnSpec(field, "\"${KotlinGenUtil.resolveColumnName(field)}\"")
+    fun exposedColumnSpec(field: MetaField<*>, exposedApi: ExposedApi = ExposedApi.V0): String =
+        exposedColumnSpec(field, "\"${KotlinGenUtil.resolveColumnName(field)}\"", exposedApi)
 
     /**
      * Return the fully-qualified import required for the Exposed column function this
@@ -375,11 +372,11 @@ object KotlinTypeMapper {
      * `binary`) — those are inherited by the `object FooTable : Table(...)` declaration
      * and don't need their own import line.
      */
-    fun exposedColumnImport(field: MetaField<*>): String? = when (field) {
-        is DateField      -> "org.jetbrains.exposed.sql.javatime.date"
+    fun exposedColumnImport(field: MetaField<*>, exposedApi: ExposedApi = ExposedApi.V0): String? = when (field) {
+        is DateField      -> ExposedImports.javatime(exposedApi, "date")
         // field.time → Exposed `time(...)` (javatime extension; needs an explicit import,
         // same as `date(...)`).
-        is TimeField      -> "org.jetbrains.exposed.sql.javatime.time"
+        is TimeField      -> ExposedImports.javatime(exposedApi, "time")
         // Default for field.timestamp (ADR-0036 Wave 2) emits the file-local
         // `instantWithTimeZone(...)` extension — a `Column<java.time.Instant>` with
         // `TIMESTAMP WITH TIME ZONE` DDL (see [EXPOSED_INSTANT_TZ_FN]). That helper is
@@ -389,22 +386,37 @@ object KotlinTypeMapper {
         // mapped by exposed-java-time to `java.time.LocalDateTime` (the zone-less wall-clock
         // shape) — which needs the javatime `datetime` import.
         is TimestampField -> {
-            if (localTimeOptIn(field)) "org.jetbrains.exposed.sql.javatime.datetime"
+            if (localTimeOptIn(field)) ExposedImports.javatime(exposedApi, "datetime")
             else null
         }
         // `@dbColumnType=jsonb` on a field.string emits the `jsonb(...)` extension, which
-        // needs the exposed-json import. `@dbColumnType=uuid` maps to `uuid(...)`, a Table
-        // member — no import. All other StringField shapes (varchar/text) are Table members.
-        // A derived `isArray` string emits Exposed's `array<E>("col")` — a Table MEMBER
-        // (like uuid/integer), so no import is required (same as the uuid/text paths).
-        is StringField    ->
-            if (!isArrayResolved(field) && dbColumnType(field) == DB_COLUMN_TYPE_JSONB) EXPOSED_JSONB_IMPORT else null
+        // needs the exposed-json import. `@dbColumnType=uuid` maps to `uuid(...)` under 0.x
+        // (a Table member — no import) but `javaUUID(...)` under 1.x (issue #390 — a
+        // top-level extension function, which DOES need an explicit import, unlike `uuid()`).
+        // All other StringField shapes (varchar/text) are Table members. A derived `isArray`
+        // string emits Exposed's `array<E>("col")` — a Table MEMBER (like uuid/integer), so
+        // no import is required (same as the uuid/text paths).
+        is StringField    -> when {
+            isArrayResolved(field) -> null
+            dbColumnType(field) == DB_COLUMN_TYPE_UUID ->
+                if (exposedApi == ExposedApi.V1) ExposedImports.javaUuid("javaUUID") else null
+            dbColumnType(field) == DB_COLUMN_TYPE_JSONB -> ExposedImports.json(exposedApi, "jsonb")
+            else -> null
+        }
         // field.map emits the `jsonb(...)` extension (single JSONB column), which needs
         // the exposed-json import — same as the `@dbColumnType=jsonb` string path.
-        is MapField       -> EXPOSED_JSONB_IMPORT
-        // IntegerField, LongField, DoubleField, FloatField, BooleanField, CurrencyField,
-        // EnumField, and UuidField all map to member functions on Table.
-        // No additional import required.
+        is MapField       -> ExposedImports.json(exposedApi, "jsonb")
+        // field.uuid (scalar, non-array) → `uuid(...)` under 0.x (a Table member — no
+        // import) but `javaUUID(...)` under 1.x (issue #390), same reasoning as the
+        // `@dbColumnType=uuid` StringField case above. The array arm stays a Table member
+        // (`array<E>("col", columnType)`) under both — only the explicit element
+        // `UUIDColumnType()` instance it's handed changes, inline-qualified in
+        // [exposedColumnSpec] rather than imported, so it needs no import here.
+        is UuidField      ->
+            if (exposedApi == ExposedApi.V1 && !isArrayResolved(field)) ExposedImports.javaUuid("javaUUID")
+            else null
+        // IntegerField, LongField, DoubleField, FloatField, BooleanField, CurrencyField, and
+        // EnumField all map to member functions on Table. No additional import required.
         else -> null
     }
 
@@ -418,18 +430,21 @@ object KotlinTypeMapper {
      * the underlying MetaField, and by [KotlinExposedTableGenerator]'s per-entity column
      * loop.
      */
-    fun exposedColumnSpec(field: MetaField<*>, colExpr: String): String = when (field) {
+    fun exposedColumnSpec(field: MetaField<*>, colExpr: String, exposedApi: ExposedApi = ExposedApi.V0): String = when (field) {
         is StringField    -> {
             // Phase 1 (dbColumnType slim-and-derive): a `field.string` + `isArray` DERIVES a
             // native Postgres `text[]` via Exposed's `array<E>("col", columnType)` Table member.
             // The element ColumnType is explicit (TextColumnType) so emission never depends on
             // Exposed's reified resolveColumnType picking VARCHAR vs TEXT for String — `text[]`
             // matches the canonical migrate-ts DDL. Derivation wins over any `@dbColumnType`.
+            // Inline-qualified (not imported) so it reads correctly under either [ExposedApi].
             //
-            // `@dbColumnType=uuid` opt-in: emit `uuid("col")` instead of `text`. The Kotlin
-            // data class property stays `String` for now (Exposed coerces String ↔ uuid at
-            // the SQL boundary), so adopters can convert a string-shaped FK column to the
-            // native Postgres uuid type without changing their data class shape.
+            // `@dbColumnType=uuid` opt-in: emit `uuid("col")` instead of `text` under 0.x, or
+            // `javaUUID("col")` under 1.x (issue #390 — `uuid()` binds `kotlin.uuid.Uuid` in
+            // 1.x, not `java.util.UUID`). The Kotlin data class property stays `String` for
+            // now (Exposed coerces String ↔ uuid at the SQL boundary), so adopters can convert
+            // a string-shaped FK column to the native Postgres uuid type without changing
+            // their data class shape.
             //
             // `@dbColumnType=jsonb` opt-in: emit a real Postgres `JSONB` column via the
             // Exposed `jsonb(name, encoder, decoder)` extension with identity String
@@ -437,9 +452,9 @@ object KotlinTypeMapper {
             // straight through). Matches the other ports' JSONB emission — a TEXT column
             // would never round-trip to JSONB through the introspection corpus.
             if (isArrayResolved(field)) {
-                "array<String>($colExpr, org.jetbrains.exposed.sql.TextColumnType())"
+                "array<String>($colExpr, ${ExposedImports.core(exposedApi, "TextColumnType")}())"
             } else when (dbColumnType(field)) {
-                DB_COLUMN_TYPE_UUID  -> "uuid($colExpr)"
+                DB_COLUMN_TYPE_UUID  -> if (exposedApi == ExposedApi.V1) "javaUUID($colExpr)" else "uuid($colExpr)"
                 // `@dbColumnType=jsonb` open bag (#98): decode the JSONB text to a kotlinx
                 // `JsonElement` (so the data-class property + CRUD DTO is a parsed JSON value, not
                 // a double-encoded String) and encode it back via `toString()` (a JsonElement's
@@ -491,13 +506,21 @@ object KotlinTypeMapper {
         // enum class (Exposed's `customEnumeration` / `enumerationByName` takes a KClass<E>)
         // and is intentionally deferred.
         is EnumField      -> "varchar($colExpr, $ENUM_VARCHAR_LEN)"
-        // field.uuid → Exposed's first-class `uuid(name)` (native Postgres uuid column).
-        // R6 Plan 2a: matched by instanceof now that UuidField is a real JVM class.
-        // Phase 1: with `isArray` it DERIVES a native Postgres `uuid[]` via Exposed's
-        // `array<E>("col", columnType)` Table member (explicit UUIDColumnType element) —
+        // field.uuid → Exposed's first-class `uuid(name)` under 0.x (native Postgres uuid
+        // column, java.util.UUID) or `javaUUID(name)` under 1.x (issue #390 — 1.x's `uuid()`
+        // binds `kotlin.uuid.Uuid` instead; `javaUUID` is the replacement that keeps
+        // `Column<java.util.UUID>`, matching the data-class property). R6 Plan 2a: matched by
+        // instanceof now that UuidField is a real JVM class. Phase 1: with `isArray` it
+        // DERIVES a native Postgres `uuid[]` via Exposed's `array<E>("col", columnType)`
+        // Table member (explicit UUIDColumnType element, inline-qualified per [ExposedApi]) —
         // matching the canonical migrate-ts DDL.
         is UuidField      ->
-            if (isArrayResolved(field)) "array<java.util.UUID>($colExpr, org.jetbrains.exposed.sql.UUIDColumnType())"
+            if (isArrayResolved(field)) {
+                val uuidColumnTypeFqn =
+                    if (exposedApi == ExposedApi.V1) ExposedImports.javaUuid("UUIDColumnType")
+                    else ExposedImports.core(exposedApi, "UUIDColumnType")
+                "array<java.util.UUID>($colExpr, $uuidColumnTypeFqn())"
+            } else if (exposedApi == ExposedApi.V1) "javaUUID($colExpr)"
             else "uuid($colExpr)"
         // field.uri → file-local `uriColumn(...)` extension: a `Column<java.net.URI>` whose
         // DDL is plain `text` (Postgres has no uri type). The helper lives in the package-shared

@@ -4,6 +4,8 @@ package com.metaobjects.generator.kotlin
 // com.metaobjects.generator.kotlin when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.kotlin.ExposedApi
+import com.metaobjects.generator.kotlin.ExposedImports
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinM2mSupport
 import com.metaobjects.generator.kotlin.KotlinNaming
@@ -68,6 +70,14 @@ import com.metaobjects.generator.util.GeneratedFileWriter
  */
 open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
+    /**
+     * Exposed output-API version (issue #390) — `0` (default) emits Exposed 0.x
+     * (`org.jetbrains.exposed.sql.*`, byte-identical to every release before this arg
+     * existed); `1` emits Exposed 1.x (`org.jetbrains.exposed.v1.*`). From the
+     * `exposedApi` generator arg (`<args><exposedApi>1</exposedApi></args>` in the pom).
+     */
+    protected fun exposedApi(): ExposedApi = ExposedApi.parse(getArg(ExposedApi.ARG_EXPOSED_API))
+
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
     override fun execute(loader: MetaDataLoader) {
@@ -121,6 +131,7 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         outRoot: Path,
         loader: MetaDataLoader,
     ) {
+        val api = exposedApi()
         val (pkg, ownerShort) = PackageMapping.splitFqn(entity.name)
         val ownerTable = ownerShort + "Table"
         // TypeName.toString() yields the FQN (`kotlin.Long`, `java.util.UUID`, ...);
@@ -146,22 +157,41 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             if (pkg.isNotEmpty()) {
                 append("package $pkg\n\n")
             }
-            append("import org.jetbrains.exposed.sql.Query\n")
+            append("import ${ExposedImports.jdbc(api, "Query")}\n")
+            if (api == ExposedApi.V1) {
+                // issue #390: `eq` is a SqlExpressionBuilder-scoped member under 0.x, brought
+                // into scope implicitly by `.where{}`'s `SqlExpressionBuilder.() -> Op<Boolean>`
+                // receiver — so 0.x only imports it explicitly when a call site (the m2mNavs
+                // join/where blocks below) needs it OUTSIDE a `.where{}`. `Query.where()` takes a
+                // receiver-LESS lambda under 1.x (`() -> Op<Boolean>`), so every call site below —
+                // the plain composition helpers' `.where{}`, the reverse-FK finders', AND the
+                // m2mNavs joins — needs the plain top-level import; unconditional here because
+                // this function only reaches this point when at least one of helpers/m2mNavs/
+                // reverseFks is non-empty (the early return above), and all three use `eq`.
+                append("import ${ExposedImports.core(api, "eq")}\n")
+                // `inList` (the batched reverse-FK finder) is the same 0.x-implicit/1.x-explicit
+                // story as `eq` — conditional because it is the ONLY site that uses it.
+                if (reverseFks.isNotEmpty()) append("import ${ExposedImports.core(api, "inList")}\n")
+            }
             if (m2mNavs.isNotEmpty()) {
-                append("import org.jetbrains.exposed.sql.JoinType\n")
-                append("import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq\n")
+                append("import ${ExposedImports.core(api, "JoinType")}\n")
+                if (api == ExposedApi.V0) {
+                    // 0.x — UNCHANGED (byte-identical). See the V1 branch above for why this
+                    // import is conditional on m2mNavs under 0.x but unconditional under 1.x.
+                    append("import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq\n")
+                }
                 // `and` backs both the symmetric branch's directional ON clause (no neq
                 // exclusion — keeps the self endpoint) AND a non-symmetric nav whose TARGET is a
                 // TPH subtype (FW-3): the shared storage table's rows are ANDed with the
                 // discriminator so a sibling subtype's row can't come back. `or` is symmetric-only.
                 if (m2mNavs.any { it.nav.symmetric }) {
-                    append("import org.jetbrains.exposed.sql.or\n")
+                    append("import ${ExposedImports.core(api, "or")}\n")
                 }
                 if (m2mNavs.any { it.nav.symmetric || it.nav.targetDiscriminator != null }) {
-                    append("import org.jetbrains.exposed.sql.and\n")
+                    append("import ${ExposedImports.core(api, "and")}\n")
                 }
             }
-            append("import org.jetbrains.exposed.sql.selectAll\n")
+            append("import ${ExposedImports.jdbc(api, "selectAll")}\n")
             // java.util.UUID appears in helper signatures when the owner's PK (or a
             // reverse-FK value type) is uuid — the param types were already derived, but
             // without this import the generated file had an unresolved reference. Emitted

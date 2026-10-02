@@ -100,6 +100,14 @@ run_kotlin() {
   ( cd server/java \
       && mvn -q -DskipTests install -pl metadata,codegen-kotlin -am \
       && mvn -f integration-tests-kotlin/pom.xml test ) || FAIL=1
+  # Issue #390 — exposedApi=1 (Exposed 1.x) compile + round-trip check. Same
+  # docker-only / excluded-from-the-reactor shape as integration-tests-kotlin
+  # above (and the SAME reason: its round-trip test needs a real Postgres), but
+  # it is its OWN module because it needs a different Kotlin compiler floor
+  # than codegen-kotlin itself (>= 2.2, vs. the project's usual 2.0.21) to read
+  # Exposed 1.3.x's metadata — see that module's pom for the full rationale.
+  ( cd server/java \
+      && mvn -f codegen-kotlin-exposed1x-check/pom.xml test ) || FAIL=1
 }
 
 case "$WHICH" in
