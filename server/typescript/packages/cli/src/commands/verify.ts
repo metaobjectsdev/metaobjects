@@ -40,6 +40,7 @@ import {
 import { lintRequirements } from "../lib/requirement-lint.js";
 import { lintOverlays } from "../lib/overlay-lint.js";
 import { lintNodeNames } from "../lib/name-lint.js";
+import { lintDeprecatedReferences } from "../lib/deprecation-lint.js";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import { resolveD1Config, resolveMigrateConfig } from "../lib/config.js";
 import {
@@ -356,6 +357,9 @@ export async function verifyCommand(
   // off the end of a capped run.
   let nameSection: AdvisorySection<AdvisoryDiagnosticRow> =
     skippedSection("the name lint did not run");
+  // #305 — the deprecated-reference authoring lint. Its own section, same reason.
+  let deprecationSection: AdvisorySection<AdvisoryDiagnosticRow> =
+    skippedSection("the deprecated-reference lint did not run");
   // The ledger counts `meta verify` prints on every run. Undefined for a project
   // declaring no requirement.* node at all (opt-in by declaration) — the payload
   // then omits the block rather than reporting zeroes that would read as an empty
@@ -395,6 +399,11 @@ export async function verifyCommand(
   // Whitespace in a node's `name` — loads clean on every port, almost never meant.
   // Runs on every `meta verify`; warnings ONLY, never changes the exit code.
   runNameLintAdvisory();
+
+  // #305 — a node that depends (extends/@objectRef/@references/origin
+  // @from/@of/@via) on a `deprecated` node. Runs on every `meta verify`;
+  // warnings ONLY, never changes the exit code.
+  runDeprecationLintAdvisory();
 
   // Advisory verify-as-teacher pass: surface hand-rolled work the metadata could
   // model. Warnings ONLY — never changes the exit code (bias to under-flagging).
@@ -445,6 +454,7 @@ export async function verifyCommand(
         antiPatterns: antiPatternSection,
         overlays: overlaySection,
         names: nameSection,
+        deprecations: deprecationSection,
       }),
       fmt,
     );
@@ -836,6 +846,29 @@ export async function verifyCommand(
     if (findings.length > 0) {
       log.warn(
         `meta verify — names: ${findings.length} authoring warning(s) ` +
+          `(advisory — does not fail the build):`,
+      );
+      warnCapped(findings.map(formatDiagnostic), flags.limit, { structured });
+    }
+  }
+
+  // -- deprecated-reference authoring lint (advisory) -------------------------
+  // #305 — reads the LOADED model (see deprecation-lint.ts). Its own section,
+  // its own cap, and a skip that carries its reason rather than looking clean.
+  function runDeprecationLintAdvisory(): void {
+    if (flags.noDeprecationLint) {
+      deprecationSection = skippedSection("suppressed by --no-deprecation-lint");
+      return;
+    }
+    if (process.env.META_NO_DEPRECATION_LINT === "1") {
+      deprecationSection = skippedSection("suppressed by META_NO_DEPRECATION_LINT=1");
+      return;
+    }
+    const findings = lintDeprecatedReferences(root);
+    deprecationSection = ranSection(findings.map((d) => toDiagnosticRow(d, "lint")));
+    if (findings.length > 0) {
+      log.warn(
+        `meta verify — deprecations: ${findings.length} reference(s) to a deprecated node ` +
           `(advisory — does not fail the build):`,
       );
       warnCapped(findings.map(formatDiagnostic), flags.limit, { structured });
@@ -1856,6 +1889,7 @@ function buildVerifyPayload(input: {
   antiPatterns: AdvisorySection<AdvisoryFindingRow>;
   overlays: AdvisorySection<AdvisoryDiagnosticRow>;
   names: AdvisorySection<AdvisoryDiagnosticRow>;
+  deprecations: AdvisorySection<AdvisoryDiagnosticRow>;
 }): Record<string, unknown> {
   const ran = input.gates.filter((g) => g.ran);
   const failed = ran.filter((g) => !g.ok);
@@ -1878,6 +1912,9 @@ function buildVerifyPayload(input: {
   if (input.names.status === "ran" && input.names.total > 0) {
     parts.push(`${input.names.total} name authoring finding(s)`);
   }
+  if (input.deprecations.status === "ran" && input.deprecations.total > 0) {
+    parts.push(`${input.deprecations.total} deprecated-reference finding(s)`);
+  }
 
   const help: string[] = [];
   if (failed.length > 0) {
@@ -1898,12 +1935,18 @@ function buildVerifyPayload(input: {
       `${input.names.total} node name(s) containing whitespace — see names.rows[]; rename each node, and pin @column on a field whose physical column must keep its name`,
     );
   }
+  if (input.deprecations.total > 0) {
+    help.push(
+      `${input.deprecations.total} reference(s) to a deprecated node — see deprecations.rows[]; each names the deprecated target and, where declared, its replacement`,
+    );
+  }
   if (
     failed.length === 0 &&
     input.antiPatterns.total === 0 &&
     input.requirements.total === 0 &&
     input.overlays.total === 0 &&
-    input.names.total === 0
+    input.names.total === 0 &&
+    input.deprecations.total === 0
   ) {
     help.push("no drift and nothing advisory to answer — nothing to do");
   }
@@ -1917,6 +1960,7 @@ function buildVerifyPayload(input: {
     requirements: input.requirements,
     overlays: input.overlays,
     names: input.names,
+    deprecations: input.deprecations,
     ...(input.requirementCounts !== undefined ? { requirementCounts: input.requirementCounts } : {}),
     // The honest boundary. Everything named here is REACHABLE — it is printed as
     // text on stderr — but it is not in this document, and a reader must not have

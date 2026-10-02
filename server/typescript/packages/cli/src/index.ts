@@ -129,6 +129,8 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
                         (never a gate — this lint can't fail the build)
   --no-name-lint        Suppress the advisory node-name AUTHORING lint (whitespace
                         in a name; never a gate — this lint can't fail the build)
+  --no-deprecation-lint Suppress the advisory deprecated-reference AUTHORING lint
+                        (never a gate — this lint can't fail the build)
   --limit <n|all>       How many advisory lines TEXT output prints per section before
                         it truncates (default 20). Never applies to --format
                         toon/json, which carry every finding and every diagnostic.
@@ -324,6 +326,8 @@ FLAGS:
                         never a gate; this lint can't fail the build
   --no-name-lint        Suppress the advisory node-name AUTHORING lint (whitespace in
                         a name) — never a gate; this lint can't fail the build
+  --no-deprecation-lint Suppress the advisory deprecated-reference AUTHORING lint —
+                        never a gate; this lint can't fail the build
   --limit <n|all>       Advisory lines TEXT output prints PER SECTION before truncating
                         (default 20; per-section so the authoring lint can never push
                         the gate's own warnings off the end)
@@ -361,6 +365,14 @@ Leading or trailing whitespace is almost certainly a copy-paste accident — ren
 the node, and pin @column on a field whose physical column must keep its name.
 Requirement names are left to the requirement lint above. Warnings only — it can
 never fail the build. Opt out with --no-name-lint or META_NO_NAME_LINT=1.
+
+verify also prints an ADVISORY deprecated-reference authoring lint, in its own
+section: any node that depends on a node carrying the documentation @deprecated
+attr, via extends, @objectRef, @references, or an origin's @from/@of/@via. Where
+the deprecated node also carries @replacedBy, the finding names the replacement.
+A node referencing itself (a recursive FK, a same-entity passthrough) is not a
+finding. Warnings only — it can never fail the build. Opt out with
+--no-deprecation-lint or META_NO_DEPRECATION_LINT=1.
 `,
   export: `meta export — flatten loaded metadata to one canonical JSON artifact
 

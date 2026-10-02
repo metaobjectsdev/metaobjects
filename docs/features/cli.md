@@ -110,6 +110,16 @@ Rules of the contract:
   `WARN_NAME_INTERNAL_WHITESPACE` flags whitespace inside a name. Requirement names
   belong to the requirement lint. This lint is advisory only, appears as `names` in
   `--format json|toon`, and is muted with `--no-name-lint` or `META_NO_NAME_LINT=1`.
+- **The deprecated-reference authoring lint also runs on every `meta verify`** (#305).
+  `deprecated`/`replacedBy` are registered documentation common-attrs in every port, and
+  this is the first thing that reads them: `WARN_DEPRECATED_REFERENCE` fires when a node
+  depends on a `deprecated` node through `extends`, `@objectRef`, `@references`, or an
+  origin's `@from`/`@of`/`@via`. Where the deprecated node also carries `replacedBy`, the
+  finding names the replacement. A node referencing itself — a recursive FK like
+  `Category.parentId -> Category`, or a same-entity passthrough — is not a finding, and
+  `deprecated` inherited through the TARGET's own `extends` chain still counts. Advisory
+  only, appears as `deprecations` in `--format json|toon`, and is muted with
+  `--no-deprecation-lint` or `META_NO_DEPRECATION_LINT=1`.
 
 ### The prompt directory: `--prompts` everywhere (F101)
 
