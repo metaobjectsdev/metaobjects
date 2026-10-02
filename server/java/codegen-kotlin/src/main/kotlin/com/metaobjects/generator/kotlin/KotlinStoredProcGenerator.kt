@@ -4,6 +4,8 @@ package com.metaobjects.generator.kotlin
 // com.metaobjects.generator.kotlin when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.kotlin.ExposedApi
+import com.metaobjects.generator.kotlin.ExposedImports
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinNaming
 import com.metaobjects.generator.kotlin.KotlinTypeMapper
@@ -102,6 +104,9 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
     protected fun useNames(): Boolean =
         (getArg(KotlinGenUtil.ARG_USE_NAMES, "false") ?: "false").toBoolean()
 
+    /** See [KotlinExposedTableGenerator.exposedApi] — same arg, same default (issue #390). */
+    protected fun exposedApi(): ExposedApi = ExposedApi.parse(getArg(ExposedApi.ARG_EXPOSED_API))
+
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
     override fun execute(loader: MetaDataLoader) {
@@ -136,6 +141,7 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         // takes the loader for the same reason.
         loader: MetaDataLoader,
     ) {
+        val api = exposedApi()
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val objectName = KotlinNaming.procObjectName(shortName)
         // FR-016: the ONE physical-name resolver (see the class doc). Empty only for a
@@ -219,9 +225,9 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
 
         // Backward-compat path: no fields at all → emit the documented stub.
         val source = if (resultFields.isEmpty() && params.isEmpty()) {
-            renderStub(pkg, shortName, objectName, procNameExpr, procNameDoc)
+            renderStub(pkg, shortName, objectName, procNameExpr, procNameDoc, api)
         } else {
-            renderCallObject(pkg, shortName, objectName, procNameExpr, procNameDoc, params, resultFields)
+            renderCallObject(pkg, shortName, objectName, procNameExpr, procNameDoc, params, resultFields, api)
         }
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$objectName.kt")
@@ -242,11 +248,17 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         objectName: String,
         procNameExpr: String,
         procNameDoc: String,
+        exposedApi: ExposedApi = ExposedApi.V0,
     ): String = buildString {
         if (pkg.isNotEmpty()) {
             append("package $pkg\n\n")
         }
-        append("import org.jetbrains.exposed.sql.Transaction\n\n")
+        // issue #390: `Transaction` is abstract under 1.x — the JDBC implementation (and the
+        // receiver `transaction { }` actually hands the hand-write example below) is
+        // `JdbcTransaction`. This import (and the KDoc's receiver type) is the only thing that
+        // changes; the stub is otherwise a worked EXAMPLE in a comment, never compiled.
+        val transactionReceiver = if (exposedApi == ExposedApi.V1) "JdbcTransaction" else "Transaction"
+        append("import ${ExposedImports.jdbc(exposedApi, transactionReceiver)}\n\n")
         append("/**\n")
         append(" * GENERATED — stub for $procNameDoc.\n")
         append(" *\n")
@@ -254,7 +266,7 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         append(" * and row-mapping body are consumer-specific. Fill in the wrapper with your\n")
         append(" * procedure's parameter set:\n")
         append(" *\n")
-        append(" * fun Transaction.call$shortName(/* params */): List<$shortName> {\n")
+        append(" * fun $transactionReceiver.call$shortName(/* params */): List<$shortName> {\n")
         append(" *     val results = mutableListOf<$shortName>()\n")
         append(" *     exec(\"SELECT * FROM ${'$'}{${objectName}.PROC_NAME}(?)\") { rs ->\n")
         append(" *         while (rs.next()) results.add($shortName(/* map fields */))\n")
@@ -281,12 +293,18 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         procNameDoc: String,
         params: List<MetaField<*>>,
         resultFields: List<MetaField<*>>,
+        exposedApi: ExposedApi = ExposedApi.V0,
     ): String = buildString {
         if (pkg.isNotEmpty()) {
             append("package $pkg\n\n")
         }
-        append("import org.jetbrains.exposed.sql.Transaction\n")
-        append("import org.jetbrains.exposed.sql.transactions.transaction\n\n")
+        // issue #390: `Transaction` is unused in the emitted body below (only the top-level
+        // `transaction { }` function is called) — kept as-is for V0 byte-identity; under V1 it
+        // becomes `JdbcTransaction`, the concrete type `transaction { }` actually hands the
+        // block (`Transaction` itself is abstract in 1.x).
+        val transactionType = if (exposedApi == ExposedApi.V1) "JdbcTransaction" else "Transaction"
+        append("import ${ExposedImports.jdbc(exposedApi, transactionType)}\n")
+        append("import ${ExposedImports.transactions(exposedApi, "transaction")}\n\n")
 
         append("/** GENERATED — wrapper for $procNameDoc. */\n")
         append("object $objectName {\n")
@@ -306,7 +324,7 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
             append(") { rs ->\n")
         } else {
             val bindings = params.joinToString(",\n") { p ->
-                "            ${exposedColumnTypeCtor(p)} to ${p.name}"
+                "            ${exposedColumnTypeCtor(p, exposedApi)} to ${p.name}"
             }
             append(", listOf(\n")
             append(bindings)
@@ -379,17 +397,22 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
      * Mirrors the [KotlinTypeMapper.exposedColumnSpec] vocabulary at the
      * column-type-class level (one rung above the column-builder factory).
      */
-    private fun exposedColumnTypeCtor(field: MetaField<*>): String = when (field) {
-        is StringField    -> "org.jetbrains.exposed.sql.VarCharColumnType(255)"
-        is IntegerField   -> "org.jetbrains.exposed.sql.IntegerColumnType()"
-        is LongField      -> "org.jetbrains.exposed.sql.LongColumnType()"
-        is DoubleField    -> "org.jetbrains.exposed.sql.DoubleColumnType()"
-        is BooleanField   -> "org.jetbrains.exposed.sql.BooleanColumnType()"
-        is DateField      -> "org.jetbrains.exposed.sql.javatime.JavaLocalDateColumnType()"
-        is TimestampField -> "org.jetbrains.exposed.sql.javatime.JavaInstantColumnType()"
-        is CurrencyField  -> "org.jetbrains.exposed.sql.LongColumnType()"
-        is EnumField      -> "org.jetbrains.exposed.sql.VarCharColumnType(${KotlinTypeMapper.ENUM_VARCHAR_LEN})"
-        is UuidField      -> "org.jetbrains.exposed.sql.UUIDColumnType()"
+    private fun exposedColumnTypeCtor(field: MetaField<*>, exposedApi: ExposedApi): String = when (field) {
+        is StringField    -> "${ExposedImports.core(exposedApi, "VarCharColumnType")}(255)"
+        is IntegerField   -> "${ExposedImports.core(exposedApi, "IntegerColumnType")}()"
+        is LongField      -> "${ExposedImports.core(exposedApi, "LongColumnType")}()"
+        is DoubleField    -> "${ExposedImports.core(exposedApi, "DoubleColumnType")}()"
+        is BooleanField   -> "${ExposedImports.core(exposedApi, "BooleanColumnType")}()"
+        is DateField      -> "${ExposedImports.javatime(exposedApi, "JavaLocalDateColumnType")}()"
+        is TimestampField -> "${ExposedImports.javatime(exposedApi, "JavaInstantColumnType")}()"
+        is CurrencyField  -> "${ExposedImports.core(exposedApi, "LongColumnType")}()"
+        is EnumField      -> "${ExposedImports.core(exposedApi, "VarCharColumnType")}(${KotlinTypeMapper.ENUM_VARCHAR_LEN})"
+        // issue #390: java.util.UUID columns MUST use the core.java UUIDColumnType under 1.x —
+        // bare core.UUIDColumnType (if it even existed there) would be the kotlin.uuid.Uuid
+        // binding the 0.x name no longer provides; see KotlinTypeMapper's [UuidField] branches.
+        is UuidField      ->
+            if (exposedApi == ExposedApi.V1) "${ExposedImports.javaUuid("UUIDColumnType")}()"
+            else "${ExposedImports.core(exposedApi, "UUIDColumnType")}()"
         else -> throw IllegalArgumentException(
             "unsupported Exposed ColumnType for param ${field::class.simpleName} '${field.name}'"
         )

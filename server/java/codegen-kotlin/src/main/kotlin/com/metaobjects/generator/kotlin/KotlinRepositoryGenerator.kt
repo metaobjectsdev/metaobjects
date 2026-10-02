@@ -4,6 +4,8 @@ package com.metaobjects.generator.kotlin
 // com.metaobjects.generator.kotlin when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.kotlin.ExposedApi
+import com.metaobjects.generator.kotlin.ExposedImports
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinNaming
 import com.metaobjects.generator.kotlin.KotlinTphPlan
@@ -66,6 +68,14 @@ import com.metaobjects.generator.util.GeneratedFileWriter
  */
 open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
+    /**
+     * Exposed output-API version (issue #390) — `0` (default) emits Exposed 0.x
+     * (`org.jetbrains.exposed.sql.*`, byte-identical to every release before this arg
+     * existed); `1` emits Exposed 1.x (`org.jetbrains.exposed.v1.*`). From the
+     * `exposedApi` generator arg (`<args><exposedApi>1</exposedApi></args>` in the pom).
+     */
+    protected fun exposedApi(): ExposedApi = ExposedApi.parse(getArg(ExposedApi.ARG_EXPOSED_API))
+
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
     override fun execute(loader: MetaDataLoader) {
@@ -120,6 +130,7 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
     }
 
     private fun emit(entity: MetaObject, outRoot: Path, primary: MetaIdentity?, writeThrough: Boolean) {
+        val api = exposedApi()
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         // #214: writes target the `<Short>Table`; reads (rowTo / findById / the post-insert +
         // post-update re-reads) route to the `<Short>View`. For a vanilla entity both are the
@@ -215,16 +226,20 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         val src = buildString {
             if (pkg.isNotEmpty()) append("package $pkg\n\n")
 
-            append("import org.jetbrains.exposed.sql.ResultRow\n")
-            append("import org.jetbrains.exposed.sql.SqlExpressionBuilder\n")
-            append("import org.jetbrains.exposed.sql.deleteWhere\n")
-            append("import org.jetbrains.exposed.sql.insert\n")
-            append("import org.jetbrains.exposed.sql.selectAll\n")
+            append("import ${ExposedImports.core(api, "ResultRow")}\n")
+            // issue #390: under 1.x, SqlExpressionBuilder is gone from the operators'
+            // perspective — eq/and/... are top-level imports and deleteWhere's lambda no
+            // longer provides SqlExpressionBuilder as an implicit receiver (see [delete]).
+            if (api == ExposedApi.V1) append("import ${ExposedImports.core(api, "eq")}\n")
+            else append("import ${ExposedImports.core(api, "SqlExpressionBuilder")}\n")
+            append("import ${ExposedImports.jdbc(api, "deleteWhere")}\n")
+            append("import ${ExposedImports.jdbc(api, "insert")}\n")
+            append("import ${ExposedImports.jdbc(api, "selectAll")}\n")
             // The @autoSet stamping helper writes through the common insert/update supertype.
-            if (hasAutoSet) append("import org.jetbrains.exposed.sql.statements.UpdateBuilder\n")
-            append("import org.jetbrains.exposed.sql.statements.UpdateStatement\n")
-            append("import org.jetbrains.exposed.sql.update\n")
-            append("import org.jetbrains.exposed.sql.transactions.transaction\n")
+            if (hasAutoSet) append("import ${ExposedImports.statements(api, "UpdateBuilder")}\n")
+            append("import ${ExposedImports.statements(api, "UpdateStatement")}\n")
+            append("import ${ExposedImports.jdbc(api, "update")}\n")
+            append("import ${ExposedImports.transactions(api, "transaction")}\n")
             // java.util.UUID surfaces when the PK is a client-generated uuid, or any column is uuid.
             if (uuidPk || hasUuidColumn) append("import java.util.UUID\n")
             append("\n")
@@ -358,9 +373,17 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
             // --- delete ---
             append("    /** Delete by primary key; true if a row was removed. */\n")
             append("    open fun delete(id: $pkParamType): Boolean = transaction {\n")
-            // `eq` must resolve through SqlExpressionBuilder inside deleteWhere's receiver (same
-            // gotcha the controller documents — a bare `Table.pk eq id` is "Unresolved reference: eq").
-            append("        $writeObj.deleteWhere { with(SqlExpressionBuilder) { $writeObj.$pkFieldName eq id } } > 0\n")
+            if (api == ExposedApi.V1) {
+                // issue #390: under 1.x `eq` is a plain top-level import — deleteWhere's lambda
+                // no longer provides an implicit SqlExpressionBuilder receiver, so the `with(...)`
+                // wrapper 0.x needed is both unnecessary and unavailable (SqlExpressionBuilder
+                // is not imported in this file under V1 — see the import block above).
+                append("        $writeObj.deleteWhere { $writeObj.$pkFieldName eq id } > 0\n")
+            } else {
+                // `eq` must resolve through SqlExpressionBuilder inside deleteWhere's receiver (same
+                // gotcha the controller documents — a bare `Table.pk eq id` is "Unresolved reference: eq").
+                append("        $writeObj.deleteWhere { with(SqlExpressionBuilder) { $writeObj.$pkFieldName eq id } } > 0\n")
+            }
             append("    }\n")
 
             append("}\n")

@@ -4,6 +4,8 @@ package com.metaobjects.generator.kotlin
 // com.metaobjects.generator.kotlin when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.kotlin.ExposedApi
+import com.metaobjects.generator.kotlin.ExposedImports
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinTphPlan
 import com.metaobjects.generator.kotlin.PackageMapping
@@ -37,10 +39,14 @@ import com.metaobjects.generator.util.GeneratedFileWriter
  */
 open class KotlinValidatorGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
+    /** See [KotlinExposedTableGenerator.exposedApi] — same arg, same default (issue #390). */
+    protected fun exposedApi(): ExposedApi = ExposedApi.parse(getArg(ExposedApi.ARG_EXPOSED_API))
+
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
+        val api = exposedApi()
         val pkg = getArg("packageName")
             ?: throw GeneratorException("packageName is required")
         val outRoot = Paths.get(outDir.absolutePath)
@@ -60,11 +66,16 @@ open class KotlinValidatorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
                 Triple(entity.name, "${shortName}Table", tablePkg)
             }
 
-        emitValidator(pkg, entries, outRoot)
-        emitHelper(pkg, outRoot)
+        emitValidator(pkg, entries, outRoot, api)
+        emitHelper(pkg, outRoot, api)
     }
 
-    protected open fun emitValidator(pkg: String, entries: List<Triple<String, String, String>>, outRoot: Path) {
+    protected open fun emitValidator(
+        pkg: String,
+        entries: List<Triple<String, String, String>>,
+        outRoot: Path,
+        exposedApi: ExposedApi = ExposedApi.V0,
+    ) {
         val registry = entries.joinToString(",\n        ") { (fqn, table, _) -> "\"$fqn\" to $table" }
         // The Table objects live in their entity's own package; import any that
         // are NOT in this validator's package or the bare reference won't resolve.
@@ -79,7 +90,7 @@ open class KotlinValidatorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             }
             append("import com.metaobjects.loader.MetaDataLoader\n")
             append("import com.metaobjects.metadata.ktx.metaObjectOrNull\n")
-            append("import org.jetbrains.exposed.sql.Table\n")
+            append("import ${ExposedImports.core(exposedApi, "Table")}\n")
             for (imp in tableImports) append("import $imp\n")
             append("\n")
             append("/**\n")
@@ -112,14 +123,14 @@ open class KotlinValidatorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         GeneratedFileWriter.write(outFile, source)
     }
 
-    protected open fun emitHelper(pkg: String, outRoot: Path) {
+    protected open fun emitHelper(pkg: String, outRoot: Path, exposedApi: ExposedApi = ExposedApi.V0) {
         val source = buildString {
             if (pkg.isNotEmpty()) {
                 append("package $pkg\n\n")
             }
             append("import com.metaobjects.`object`.MetaObject\n")
             append("import com.metaobjects.field.MetaField\n")
-            append("import org.jetbrains.exposed.sql.Table\n\n")
+            append("import ${ExposedImports.core(exposedApi, "Table")}\n\n")
             append("/**\n")
             append(" * GENERATED — compares a [MetaObject]'s field set vs an Exposed [Table]'s column set\n")
             append(" * and records any discrepancies into the supplied `errors` list.\n")

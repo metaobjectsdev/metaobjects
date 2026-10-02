@@ -4,6 +4,7 @@ package com.metaobjects.generator.kotlin
 // com.metaobjects.generator.kotlin when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.kotlin.ExposedApi
 import com.metaobjects.generator.kotlin.KotlinPoetFileWriter
 
 import com.metaobjects.generator.GeneratorException
@@ -50,10 +51,14 @@ import java.nio.file.Paths
  */
 open class KotlinSpringConfigGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
+    /** See [KotlinExposedTableGenerator.exposedApi] — same arg, same default (issue #390). */
+    protected fun exposedApi(): ExposedApi = ExposedApi.parse(getArg(ExposedApi.ARG_EXPOSED_API))
+
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
+        val api = exposedApi()
         val pkg = getArg("packageName")
             ?: throw GeneratorException("packageName is required")
         val className = getArg("className", DEFAULT_CLASS_NAME) ?: DEFAULT_CLASS_NAME
@@ -89,7 +94,7 @@ open class KotlinSpringConfigGenerator : MultiFileDirectGeneratorBase<MetaObject
                     .initializer("dataSource")
                     .build()
             )
-            .addInitializerBlock(CodeBlock.of("%T.connect(dataSource)\n", DATABASE))
+            .addInitializerBlock(CodeBlock.of("%T.connect(dataSource)\n", databaseClassName(api)))
 
         if (validatorEnabled) {
             typeBuilder.addFunction(buildValidatorFn(resources))
@@ -131,12 +136,20 @@ open class KotlinSpringConfigGenerator : MultiFileDirectGeneratorBase<MetaObject
             .build()
     }
 
+    /**
+     * `Database`'s [ClassName], keyed by [ExposedApi] (issue #390) — `org.jetbrains.exposed.sql`
+     * under 0.x, `org.jetbrains.exposed.v1.jdbc` under 1.x (Database moved to the JDBC tier,
+     * same as `SchemaUtils`/`Query`/`selectAll`/`insert`/`update`/`deleteWhere`).
+     */
+    private fun databaseClassName(api: ExposedApi): ClassName =
+        if (api == ExposedApi.V1) ClassName("org.jetbrains.exposed.v1.jdbc", "Database")
+        else ClassName("org.jetbrains.exposed.sql", "Database")
+
     private companion object {
         const val DEFAULT_CLASS_NAME = "MetadataExposedConfig"
         const val DEFAULT_METADATA_RESOURCE = "meta.entities.json"
 
         val DATA_SOURCE = ClassName("javax.sql", "DataSource")
-        val DATABASE = ClassName("org.jetbrains.exposed.sql", "Database")
         val CONFIGURATION = ClassName("org.springframework.context.annotation", "Configuration")
         val EVENT_LISTENER = ClassName("org.springframework.context.event", "EventListener")
         val APPLICATION_READY_EVENT =

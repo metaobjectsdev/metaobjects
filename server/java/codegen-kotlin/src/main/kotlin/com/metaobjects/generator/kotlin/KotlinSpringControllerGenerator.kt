@@ -4,6 +4,8 @@ package com.metaobjects.generator.kotlin
 // com.metaobjects.generator.kotlin when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.kotlin.ExposedApi
+import com.metaobjects.generator.kotlin.ExposedImports
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinM2mSupport
 import com.metaobjects.generator.kotlin.KotlinNaming
@@ -95,6 +97,14 @@ import com.metaobjects.generator.util.GeneratedFileWriter
  */
 open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
+    /**
+     * Exposed output-API version (issue #390) — `0` (default) emits Exposed 0.x
+     * (`org.jetbrains.exposed.sql.*`, byte-identical to every release before this arg
+     * existed); `1` emits Exposed 1.x (`org.jetbrains.exposed.v1.*`). From the
+     * `exposedApi` generator arg (`<args><exposedApi>1</exposedApi></args>` in the pom).
+     */
+    protected fun exposedApi(): ExposedApi = ExposedApi.parse(getArg(ExposedApi.ARG_EXPOSED_API))
+
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
     override fun execute(loader: MetaDataLoader) {
@@ -157,6 +167,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     }
 
     protected open fun emit(entity: MetaObject, outRoot: Path, loader: MetaDataLoader) {
+        val api = exposedApi()
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val tableObjectName = KotlinNaming.tableObjectName(shortName)
         // #214 FR-024 §7: writes (create / update / delete) target the write `<Short>Table`; reads
@@ -263,16 +274,20 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             if (pkg.isNotEmpty()) {
                 append("package $pkg\n\n")
             }
-            append("import org.jetbrains.exposed.sql.Op\n")
-            append("import org.jetbrains.exposed.sql.SortOrder\n")
-            append("import org.jetbrains.exposed.sql.ResultRow\n")
-            append("import org.jetbrains.exposed.sql.SqlExpressionBuilder\n")
-            append("import org.jetbrains.exposed.sql.and\n")
-            append("import org.jetbrains.exposed.sql.deleteWhere\n")
-            append("import org.jetbrains.exposed.sql.insert\n")
-            append("import org.jetbrains.exposed.sql.selectAll\n")
-            append("import org.jetbrains.exposed.sql.update\n")
-            append("import org.jetbrains.exposed.sql.transactions.transaction\n")
+            append("import ${ExposedImports.core(api, "Op")}\n")
+            append("import ${ExposedImports.core(api, "SortOrder")}\n")
+            append("import ${ExposedImports.core(api, "ResultRow")}\n")
+            // issue #390: under 1.x, SqlExpressionBuilder is gone — `eq` is a plain top-level
+            // import, and nothing in this file's `with(SqlExpressionBuilder) { ... }` blocks
+            // survives as a `with(...)` under V1 (see the delete / filter-pipeline call sites).
+            if (api == ExposedApi.V1) append("import ${ExposedImports.core(api, "eq")}\n")
+            else append("import org.jetbrains.exposed.sql.SqlExpressionBuilder\n")
+            append("import ${ExposedImports.core(api, "and")}\n")
+            append("import ${ExposedImports.jdbc(api, "deleteWhere")}\n")
+            append("import ${ExposedImports.jdbc(api, "insert")}\n")
+            append("import ${ExposedImports.jdbc(api, "selectAll")}\n")
+            append("import ${ExposedImports.jdbc(api, "update")}\n")
+            append("import ${ExposedImports.transactions(api, "transaction")}\n")
             append("import com.fasterxml.jackson.databind.JsonNode\n")
             // ObjectMapper + TypeReference are used ONLY by the per-field patch bind, which is
             // emitted only when there ARE settable fields — omit them otherwise (unused import /
@@ -317,8 +332,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // `col.castTo<String>(TextColumnType())`; import both only when such a column exists
             // so entities without a filterable enum stay byte-identical.
             if (scalarFields.any { it.subType == EnumField.SUBTYPE_ENUM }) {
-                append("import org.jetbrains.exposed.sql.TextColumnType\n")
-                append("import org.jetbrains.exposed.sql.castTo\n")
+                append("import ${ExposedImports.core(api, "TextColumnType")}\n")
+                append("import ${ExposedImports.core(api, "castTo")}\n")
             }
             append("import java.time.LocalDate\n")
             append("import java.time.LocalDateTime\n")
@@ -544,7 +559,15 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // generated-controller HTTP lane; mirrors the hand-rolled reference server.)
             append("    @DeleteMapping(\"/{id}\")\n")
             append("    fun delete(@PathVariable id: $pkParamType): ResponseEntity<Any> = transaction {\n")
-            append("        val deleted = ${tableObjectName}.deleteWhere { with(SqlExpressionBuilder) { ${tableObjectName}.${pkFieldName} eq id } }\n")
+            if (api == ExposedApi.V1) {
+                // issue #390: `eq` is a plain top-level import under 1.x — deleteWhere's lambda
+                // takes the table as an ordinary (unused) parameter, not an implicit receiver, so
+                // the `with(SqlExpressionBuilder)` wrapper 0.x needed is both unavailable and
+                // unnecessary (bare top-level `eq` resolves regardless of lambda receiver).
+                append("        val deleted = ${tableObjectName}.deleteWhere { ${tableObjectName}.${pkFieldName} eq id }\n")
+            } else {
+                append("        val deleted = ${tableObjectName}.deleteWhere { with(SqlExpressionBuilder) { ${tableObjectName}.${pkFieldName} eq id } }\n")
+            }
             append("        if (deleted == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
             append("        else ResponseEntity.noContent().build<Any>()\n")
             append("    }\n")
@@ -586,6 +609,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      * discriminator is the generated enum, so `type` is scoped/injected as `<Enum>.<Value>`.
      */
     protected open fun emitTph(base: MetaObject, plan: KotlinTphPlan.Plan, outRoot: Path, loader: MetaDataLoader) {
+        val api = exposedApi()
         val (pkg, shortName) = PackageMapping.splitFqn(base.name)
         val table = shortName + "Table"
         val routeBase = KotlinNaming.controllerPath(shortName)
@@ -685,16 +709,20 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
 
         val src = buildString {
             if (pkg.isNotEmpty()) append("package $pkg\n\n")
-            append("import org.jetbrains.exposed.sql.Op\n")
-            append("import org.jetbrains.exposed.sql.ResultRow\n")
-            append("import org.jetbrains.exposed.sql.SortOrder\n")
-            append("import org.jetbrains.exposed.sql.SqlExpressionBuilder\n")
-            append("import org.jetbrains.exposed.sql.and\n")
-            append("import org.jetbrains.exposed.sql.deleteWhere\n")
-            append("import org.jetbrains.exposed.sql.insert\n")
-            append("import org.jetbrains.exposed.sql.selectAll\n")
-            append("import org.jetbrains.exposed.sql.update\n")
-            append("import org.jetbrains.exposed.sql.transactions.transaction\n")
+            append("import ${ExposedImports.core(api, "Op")}\n")
+            append("import ${ExposedImports.core(api, "ResultRow")}\n")
+            append("import ${ExposedImports.core(api, "SortOrder")}\n")
+            // issue #390: under 1.x, SqlExpressionBuilder is gone — `eq` is a plain top-level
+            // import, and nothing in this file's `with(SqlExpressionBuilder) { ... }` blocks
+            // survives as a `with(...)` under V1 (see the delete / filter-pipeline call sites).
+            if (api == ExposedApi.V1) append("import ${ExposedImports.core(api, "eq")}\n")
+            else append("import org.jetbrains.exposed.sql.SqlExpressionBuilder\n")
+            append("import ${ExposedImports.core(api, "and")}\n")
+            append("import ${ExposedImports.jdbc(api, "deleteWhere")}\n")
+            append("import ${ExposedImports.jdbc(api, "insert")}\n")
+            append("import ${ExposedImports.jdbc(api, "selectAll")}\n")
+            append("import ${ExposedImports.jdbc(api, "update")}\n")
+            append("import ${ExposedImports.transactions(api, "transaction")}\n")
             // FR-035 present-key PATCH: the per-subtype update handler binds the RAW JsonNode (not the
             // union data class, which cannot see absent-vs-null) so the tristate (omitted / present-null
             // / present-value) is visible.
@@ -741,8 +769,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // compared as its stored string via `col.castTo<String>(TextColumnType())`; same
             // conditional imports as the vanilla controller.
             if (filterSpecs.any { it.subType == EnumField.SUBTYPE_ENUM }) {
-                append("import org.jetbrains.exposed.sql.TextColumnType\n")
-                append("import org.jetbrains.exposed.sql.castTo\n")
+                append("import ${ExposedImports.core(api, "TextColumnType")}\n")
+                append("import ${ExposedImports.core(api, "castTo")}\n")
             }
             append("import java.time.LocalDate\n")
             append("import java.time.LocalDateTime\n")
@@ -1018,7 +1046,13 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // per-subtype delete (404 cross-subtype)
                 append("    @DeleteMapping(\"/$seg/{id}\")\n")
                 append("    fun delete$sfx(@PathVariable id: $pkParamType): ResponseEntity<Any> = transaction {\n")
-                append("        val deleted = $table.deleteWhere { with(SqlExpressionBuilder) { ($table.$pkFieldName eq id) and ($table.${plan.discriminatorField} eq $disc) } }\n")
+                if (api == ExposedApi.V1) {
+                    // issue #390 — see the vanilla controller's delete() for why V1 drops the
+                    // `with(SqlExpressionBuilder)` wrapper (bare top-level eq/and resolve here).
+                    append("        val deleted = $table.deleteWhere { ($table.$pkFieldName eq id) and ($table.${plan.discriminatorField} eq $disc) }\n")
+                } else {
+                    append("        val deleted = $table.deleteWhere { with(SqlExpressionBuilder) { ($table.$pkFieldName eq id) and ($table.${plan.discriminatorField} eq $disc) } }\n")
+                }
                 append("        if (deleted == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
                 append("        else ResponseEntity.noContent().build<Any>()\n")
                 append("    }\n\n")
@@ -1128,6 +1162,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         allowlistName: String,
         scalarFields: List<ScalarFieldSpec>,
     ) {
+        val api = exposedApi()
         // Cross-port cap on `in`-list size — a larger list is rejected with the
         // `filter.in_too_large` envelope, matching the TS runtime-ts parser's
         // DEFAULT_MAX_IN_LIST. Emitted as a file-private const so parse<Entity>Filter
@@ -1342,8 +1377,17 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         out.append("@Suppress(\"UNCHECKED_CAST\")\n")
         out.append("private fun ${shortName}WhereOp(predicates: List<${shortName}FilterPredicate>): Op<Boolean>? {\n")
         out.append("    if (predicates.isEmpty()) return null\n")
-        out.append("    return with(SqlExpressionBuilder) {\n")
-        out.append("        var combined: Op<Boolean>? = null\n")
+        // issue #390: under 1.x the column operators emitPerFieldDispatchArm emits below
+        // (eq/less/greater/inList/like/castTo) are plain top-level imports, not
+        // SqlExpressionBuilder-scoped members — this function needs no `with(...)` receiver
+        // at all. The per-field loop body is IDENTICAL text either way (indentation is
+        // cosmetic in Kotlin); only the opening/closing frame differs.
+        if (api == ExposedApi.V1) {
+            out.append("    var combined: Op<Boolean>? = null\n")
+        } else {
+            out.append("    return with(SqlExpressionBuilder) {\n")
+            out.append("        var combined: Op<Boolean>? = null\n")
+        }
         out.append("        for (p in predicates) {\n")
         out.append("            val op: Op<Boolean> = when (p.field) {\n")
         for ((fname, subType, elementType, intBackedEnumType) in scalarFields) {
@@ -1364,8 +1408,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         out.append("            }\n")
         out.append("            combined = combined?.and(op) ?: op\n")
         out.append("        }\n")
-        out.append("        combined\n")
-        out.append("    }\n")
+        if (api == ExposedApi.V1) {
+            out.append("    return combined\n")
+        } else {
+            out.append("        combined\n")
+            out.append("    }\n")
+        }
         out.append("}\n\n")
     }
 
@@ -1672,6 +1720,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      * rather than advertising an address it never serves.
      */
     protected open fun emitReadOnly(entity: MetaObject, outRoot: Path, loader: MetaDataLoader) {
+        val api = exposedApi()
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val readObj = KotlinNaming.tableObjectName(shortName)
         val routeBase = KotlinNaming.controllerPath(shortName)
@@ -1701,13 +1750,17 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // write path reaches (insert / update / deleteWhere, the Jackson patch bind, the
             // Validator, DeleteMapping / RequestBody, and the constraint @ExceptionHandler).
             // Kept in the same order so a reader diffing the two files sees only the absences.
-            append("import org.jetbrains.exposed.sql.Op\n")
-            append("import org.jetbrains.exposed.sql.SortOrder\n")
-            append("import org.jetbrains.exposed.sql.ResultRow\n")
-            append("import org.jetbrains.exposed.sql.SqlExpressionBuilder\n")
-            append("import org.jetbrains.exposed.sql.and\n")
-            append("import org.jetbrains.exposed.sql.selectAll\n")
-            append("import org.jetbrains.exposed.sql.transactions.transaction\n")
+            append("import ${ExposedImports.core(api, "Op")}\n")
+            append("import ${ExposedImports.core(api, "SortOrder")}\n")
+            append("import ${ExposedImports.core(api, "ResultRow")}\n")
+            // issue #390: under 1.x, SqlExpressionBuilder is gone — `eq` is a plain top-level
+            // import, and nothing in this file's `with(SqlExpressionBuilder) { ... }` blocks
+            // survives as a `with(...)` under V1 (see the delete / filter-pipeline call sites).
+            if (api == ExposedApi.V1) append("import ${ExposedImports.core(api, "eq")}\n")
+            else append("import org.jetbrains.exposed.sql.SqlExpressionBuilder\n")
+            append("import ${ExposedImports.core(api, "and")}\n")
+            append("import ${ExposedImports.jdbc(api, "selectAll")}\n")
+            append("import ${ExposedImports.transactions(api, "transaction")}\n")
             append("import org.springframework.http.HttpStatus\n")
             append("import org.springframework.http.ResponseEntity\n")
             append("import org.springframework.web.bind.annotation.GetMapping\n")
@@ -1732,8 +1785,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("import java.util.UUID\n")
             }
             if (scalarFields.any { it.subType == EnumField.SUBTYPE_ENUM }) {
-                append("import org.jetbrains.exposed.sql.TextColumnType\n")
-                append("import org.jetbrains.exposed.sql.castTo\n")
+                append("import ${ExposedImports.core(api, "TextColumnType")}\n")
+                append("import ${ExposedImports.core(api, "castTo")}\n")
             }
             append("import java.time.LocalDate\n")
             append("import java.time.LocalDateTime\n")
