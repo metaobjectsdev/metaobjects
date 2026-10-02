@@ -41,6 +41,7 @@ export {
   type ExtractionResult,
   type Coercion,
   type OnField,
+  type OnLocate,
 } from "./extract/types.js";
 export {
   asString,

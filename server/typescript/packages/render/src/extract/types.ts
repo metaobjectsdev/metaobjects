@@ -262,8 +262,21 @@ export function extractSchema(format: Format, rootName: string, fields: readonly
 export type OnField = (fieldPath: string, rawValue: string, spec: FieldSpec) => unknown | null;
 
 /**
+ * FR-364: the document-level locate hook. Receives the RAW reply text (null/undefined
+ * normalized to `""`) and the schema's declared `Format`; returns the substring that is the
+ * payload, or `null` to fall back to the default locator (the fenced-then-first-object rule
+ * #363 fixed). A non-null return is parsed by the normal pipeline exactly like a
+ * default-located span — tolerance, coercion, `normalizers`, and `onField` all still apply —
+ * so this hook only decides WHICH text is the payload, never how it is parsed. The returned
+ * text need not be a literal substring of the input (the hook may synthesize it). A thrown
+ * error propagates (it is not swallowed), matching `onField`.
+ */
+export type OnLocate = (text: string, format: Format) => string | null;
+
+/**
  * Bounded runtime override surface. aliases/normalizers are MERGED with the
- * schema's, runtime winning on key conflict. onField is the single hook.
+ * schema's, runtime winning on key conflict. onField is the single per-field hook; onLocate
+ * is the single document-level (payload-location) hook.
  *
  * `rootless` (XML only): when `true`, the input has NO enclosing root element — the payload's
  * fields ARE the top-level elements (a flat sequence like `<a>..</a><b>..</b>`). The engine
@@ -276,11 +289,19 @@ export interface ExtractOptions {
   readonly aliases: Readonly<Record<string, string>>;
   readonly normalizers: Readonly<Record<string, (raw: string) => unknown | null>>;
   readonly onField: OnField | null;
+  readonly onLocate: OnLocate | null;
   readonly rootless: boolean;
 }
 
 export function defaults(): ExtractOptions {
-  return { tolerance: Tolerance.NORMAL, aliases: {}, normalizers: {}, onField: null, rootless: false };
+  return {
+    tolerance: Tolerance.NORMAL,
+    aliases: {},
+    normalizers: {},
+    onField: null,
+    onLocate: null,
+    rootless: false,
+  };
 }
 
 /** Normalize a partial / undefined options bag into a complete ExtractOptions. */
@@ -291,6 +312,7 @@ export function normalizeOptions(opts?: Partial<ExtractOptions> | null): Extract
     aliases: opts.aliases == null ? {} : { ...opts.aliases },
     normalizers: opts.normalizers == null ? {} : { ...opts.normalizers },
     onField: opts.onField ?? null,
+    onLocate: opts.onLocate ?? null,
     rootless: opts.rootless ?? false,
   };
 }

@@ -201,4 +201,80 @@ describe("extract pipeline", () => {
     expect(o.report.states().get("meta.score")).toBe(FieldExtraction.EXTRACTED);
     expect((o.data["meta"] as Record<string, unknown>)["score"]).toBe(7);
   });
+
+  // ---- #364: document-level onLocate hook ----
+  describe("onLocate hook", () => {
+    test("overrides the default locator's choice of payload", () => {
+      const dirty =
+        '```json\n{"text":"draft","confidence":"HIGH"}\n```\n' +
+        "Actually, here is the real answer:\n" +
+        '```json\n{"text":"final","confidence":"HIGH"}\n```';
+      // The default locator would pick the FIRST fenced block (it already carries a declared
+      // field, #363). This hook picks the LAST fenced block instead.
+      const onLocate = (text: string, format: Format): string | null => {
+        expect(format).toBe(Format.JSON);
+        const blocks = [...text.matchAll(/```json\s*\n([\s\S]*?)\n```/g)].map((m) => m[1] ?? "");
+        return blocks.length > 0 ? blocks[blocks.length - 1]! : null;
+      };
+      const o = extract(dirty, jsonAnswer(), { onLocate });
+      expect(o.data["text"]).toBe("final");
+    });
+
+    test("a null return falls back to the default locator", () => {
+      const dirty = 'Sure!\n```json\n{"text":"hi","confidence":"HIGH"}\n```\nDone.';
+      const o = extract(dirty, jsonAnswer(), { onLocate: () => null });
+      expect(o.data["text"]).toBe("hi");
+    });
+
+    test("is audited as an onLocate coercion on the document (empty) path", () => {
+      const located = '{"text":"hi","confidence":"HIGH"}';
+      const o = extract("noise before " + located + " noise after", jsonAnswer(), {
+        onLocate: () => located,
+      });
+      const entry = o.report.coercions().find((c) => c.kind === "onLocate");
+      expect(entry).toBeDefined();
+      expect(entry?.fieldPath).toBe("");
+      expect(entry?.to).toBe(String(located.length));
+    });
+
+    test("the located text still runs through the normal pipeline (schema enumAlias applies)", () => {
+      const o = extract("ignored prose", jsonAnswer(), {
+        onLocate: () => '{"text":"hi","confidence":"medium"}',
+      });
+      // jsonAnswer()'s confidence field declares @enumAlias medium -> OK.
+      expect(o.data["confidence"]).toBe("OK");
+      expect(o.report.states().get("confidence")).toBe(FieldExtraction.EXTRACTED);
+    });
+
+    test("a thrown error propagates rather than being swallowed", () => {
+      expect(() =>
+        extract("anything", jsonAnswer(), {
+          onLocate: () => {
+            throw new Error("boom");
+          },
+        }),
+      ).toThrow("boom");
+    });
+
+    test("drives XML extraction too, receiving Format.XML", () => {
+      const xml = extractSchema(Format.XML, "answer", [scalar("text", FieldKind.STRING, true)]);
+      const seenFormats: Format[] = [];
+      const o = extract("prose <wrapper><answer><text>hi</text></answer></wrapper> trailing", xml, {
+        onLocate: (text, format) => {
+          seenFormats.push(format);
+          const m = /<answer>[\s\S]*<\/answer>/.exec(text);
+          return m ? m[0] : null;
+        },
+      });
+      expect(seenFormats).toEqual([Format.XML]);
+      expect(o.data["text"]).toBe("hi");
+    });
+
+    test("may synthesize text that is not a literal substring of the input", () => {
+      const o = extract("totally unrelated noise", jsonAnswer(), {
+        onLocate: () => '{"text":"synthesized","confidence":"HIGH"}',
+      });
+      expect(o.data["text"]).toBe("synthesized");
+    });
+  });
 });

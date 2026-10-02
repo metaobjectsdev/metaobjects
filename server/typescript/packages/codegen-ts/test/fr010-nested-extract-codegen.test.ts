@@ -166,4 +166,34 @@ describe("FR-010 nested extract codegen — import-and-RUN proof (delegating pat
     expect(report).toBeDefined();
     expect(typeof report.isEmpty).toBe("function");
   });
+
+  // #364: the generated parser's `opts` parameter is ExtractOptions untouched — this proves the
+  // document-level onLocate hook actually reaches the engine THROUGH the generated
+  // extractLenient<Name>WithLoader(root, text, opts) call, not just through the hand-called
+  // render-package extract() tested in render/test/extract/extract.test.ts.
+  test("extractLenientOrderOutWithLoader(root, text, opts) threads opts.onLocate to the engine", async () => {
+    const root = await loadRoot();
+    const parserSrc = renderOutputParser(root, "OrderOut");
+
+    const dir = mkdtempSync(join(import.meta.dir, "fr010-nested-onlocate-"));
+    TEMP_DIRS.push(dir);
+    writeFileSync(join(dir, "OrderOutOnLocate.output.ts"), parserSrc);
+    const parser = await import(join(dir, "OrderOutOnLocate.output.ts"));
+
+    // The default locator would pick the FIRST fenced block (it carries declared fields, #363).
+    // onLocate picks the SECOND one instead, proving the option flowed all the way through
+    // generated code into the render-package engine.
+    const draft = JSON.stringify({ orderId: "DRAFT", status: "OPEN" });
+    const real = JSON.stringify({ orderId: "A-200", status: "CLOSED" });
+    const dirty = ["```json", draft, "```", "On second thought:", "```json", real, "```"].join("\n");
+
+    const onLocate = (text: string): string | null => {
+      const blocks = [...text.matchAll(/```json\s*\n([\s\S]*?)\n```/g)].map((m) => m[1] ?? "");
+      return blocks.length > 1 ? blocks[1]! : null;
+    };
+
+    const { data, report } = parser.extractLenientOrderOutWithLoader(root, dirty, { onLocate });
+    expect(data.orderId).toBe("A-200");
+    expect(report.coercions().some((c: { kind: string }) => c.kind === "onLocate")).toBe(true);
+  });
 });

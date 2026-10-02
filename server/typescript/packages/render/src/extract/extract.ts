@@ -28,12 +28,28 @@ export function extract(
   const stripped = strip(text);
   const ci = o.tolerance !== Tolerance.STRICT;
 
+  // #364: the document-level onLocate hook runs BEFORE the default locator. A non-null return
+  // is the payload span, fed into the same format-specific forgiving reader a default-located
+  // span would be — tolerance/coercion/normalizers/onField downstream are unaffected. A null
+  // return (or no hook) falls through to the default locate strategy unchanged. A thrown error
+  // propagates (not swallowed), matching onField.
+  const located = o.onLocate == null ? null : o.onLocate(text ?? "", schema.format);
+
   // XML rootless (opts.rootless): the payload's fields ARE the top-level elements — there is no
   // enclosing root to locate — so parse the whole stripped text's top-level elements directly.
   // Otherwise locate the <rootName> span as before. JSON is unaffected. Mirrors Java Extract.
   let span: string | null;
   let raw: Record<string, unknown>;
-  if (schema.format === Format.JSON) {
+  if (located != null) {
+    span = located;
+    raw =
+      schema.format === Format.JSON
+        ? readJson(located)
+        : o.rootless
+          ? readXmlRootless(located, ci)
+          : readXml(located, ci);
+    report.addCoercion({ fieldPath: "", from: "", to: String(located.length), kind: "onLocate" });
+  } else if (schema.format === Format.JSON) {
     ({ span, raw } = selectJson(text, stripped, schema.fields, ci));
   } else if (o.rootless) {
     span = stripped.length === 0 ? null : stripped;
