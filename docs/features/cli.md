@@ -593,7 +593,13 @@ exactly as each port's existing `gen`/`verify` surface already does:
   capability exists in `FmtCommand.Run`'s `explicitFiles` parameter for an
   embedder, just not on the CLI.
 - **Java/Kotlin** takes Maven parameters, not flags: `-Dmeta.fmt.check=true` /
-  `-Dmeta.fmt.files=<csv>`, mirroring `-Dmeta.verify.mode`.
+  `-Dmeta.fmt.files=<csv>`, mirroring `-Dmeta.verify.mode`. It inherits the
+  Mojo-wide `-Dmeta.lax` convention `gen`/`verify` already use: strict by
+  default (an unregistered type/subtype or `@attr` fails the standalone
+  per-file parse too), `-Dmeta.lax=true` to relax it, rather than the lenient
+  default the other three ports chose for `fmt` specifically. One goal covers
+  BOTH Java and Kotlin: `fmt` only ever touches metadata files, which carry no
+  per-language distinction, so there is nothing Kotlin-specific to add.
 - **Python** mirrors the Node reference exactly: `metaobjects fmt [<file>...] [--check]`.
 
 **Fixture corpus.** `fixtures/fmt-conformance/` (see its README) pins the
