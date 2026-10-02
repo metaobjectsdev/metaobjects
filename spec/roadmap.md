@@ -3,7 +3,7 @@
 > **Status, priority and target release live in GitHub, not in this file** (since 2026-10-02).
 > - **Features:** issues labelled [`FR`](https://github.com/metaobjectsdev/metaobjects/issues?q=is%3Aissue+label%3AFR).
 >   An issue with no milestone is untriaged.
-> - **Releases:** [milestones](https://github.com/metaobjectsdev/metaobjects/milestones) (`1.1`, `1.2`, … `1.x (later)`).
+> - **Releases:** [milestones](https://github.com/metaobjectsdev/metaobjects/milestones): the next minor (`1.1`) and `1.x (later)`.
 > - **The roadmap view:** the **MetaObjects Roadmap** project board (all `FR` issues, grouped by milestone).
 >
 > This file keeps what an issue tracker does not: the release direction, the index from FR

@@ -10,14 +10,15 @@ planned or active, and eight live FRs with no issue at all). One place to update
 | Fact | Lives in | Not in |
 |---|---|---|
 | A feature exists, its scope summary, its status | the GitHub **issue**, labelled `FR` | `spec/roadmap.md` |
-| Target release | the issue's **milestone** (`1.1`, `1.2`, `1.3`, `1.4`, `1.x (later)`) | `spec/roadmap.md` |
+| Target release | the issue's **milestone**: the next minor (today `1.1`) or `1.x (later)` | `spec/roadmap.md` |
 | Work in progress | the **MetaObjects Roadmap** project board's `Status` field (Todo / In progress / Done) | — |
 | The design (why and how) | `docs/superpowers/specs/*`, ADRs in `spec/decisions/*` — linked from the issue, never copied into it | the issue body |
 | Release direction, FR number → issue → spec index, future themes, history | `spec/roadmap.md` | — |
 | What shipped in which version | `CHANGELOG.md` | — |
 
 **An issue labelled `FR` with no milestone is untriaged.** Triage means giving it a milestone or
-closing it.
+closing it. There are only two open milestones at a time: the next minor and `1.x (later)`. When a
+minor is cut, close its milestone and open the next one, choosing its contents from `1.x (later)`.
 
 ## FR numbers
 
