@@ -10,6 +10,26 @@ here.**
 
 ## [Unreleased]
 
+### Fixed
+
+- **Kotlin: two pre-existing generated-controller compile defects, found extending the
+  `exposedApi=1` controller-tier compile check.** Both were excluded (not fixed) when that
+  check landed; both are fixed now, for `exposedApi=0` and `exposedApi=1` alike, with no
+  exclusions left. (1) A filterable `field.inet` column's generated filter dispatch emitted
+  ordering operators (`gt`/`gte`/`lt`/`lte`) that `java.net.InetAddress` cannot satisfy (it is
+  not `Comparable`) — the per-field operator gate now derives from the same
+  `com.metaobjects.query.FilterOps` single source of truth the generated `<Entity>FilterAllowlist`
+  already reads, so the controller can no longer emit an operator the allowlist itself would
+  refuse to admit. (2) The `field.string @dbColumnType=uuid` physical escape hatch bound a
+  native `Column<UUID>` on the generated Exposed table while the generated entity/controller
+  assumed `String` (per ADR-0037, the escape hatch is physical-only) — a mismatch on every
+  filter comparison and the PATCH bind. The table now binds a `Column<String>` instead (a new
+  package-shared `uuidString(...)` extension that persists through the native Postgres `uuid`
+  type while converting only at the Kotlin-value boundary), agreeing with the entity/controller
+  and with how every other port treats the same escape hatch. A new `exposedApi=0` controller-
+  tier compile test (`integration-tests-kotlin`) closes the matching gap on the default/stable
+  output path, which nothing had compiled over the full shared fitness corpus before.
+
 ## [1.0.12] — 2026-10-02
 
 _npm `1.0.12` (all 14 `@metaobjectsdev/*` packages in lockstep), PyPI `1.0.12`, NuGet `1.0.12` and
