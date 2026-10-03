@@ -218,6 +218,23 @@ export const ERROR_CODES = [
   // @fields), whichever is declared supplies no key, or a named field does not exist
   // on the owning entity's effective (resolved via extends) field set.
   "ERR_INVALID_INDEX",
+  // FR-044 — reporting vocabulary (validateReporting, loader/reporting-validation.ts).
+  // Rule ids D1-D4 / M1-M6 / R1-R7 are the cross-port rule table; S1/F1/F2 reuse
+  // ERR_BAD_ATTR_FILTER.
+  // A dimension's @of/@via does not resolve, @via crosses a to-many hop, or a
+  // time dimension's column or grains do not fit its type (D1-D4).
+  "ERR_INVALID_DIMENSION",
+  // A measure's @of is not a field of its own entity, a tuple/@distinct/@agg
+  // combination is illegal, @segment does not resolve, or a ratio operand is not a
+  // measure.aggregate of the same entity (M1-M6).
+  "ERR_INVALID_MEASURE",
+  // An object.report's @from is not an entity, a @dimensions/@measures/@segment
+  // item does not resolve, it declares a field/identity or a writable source, or
+  // two items derive the same report field name (R1-R7).
+  "ERR_INVALID_REPORT",
+  // An object.report lists a measure that belongs to an entity other than @from;
+  // v1 refuses multi-fact reports (R3).
+  "ERR_REPORT_FOREIGN_MEASURE",
   // FR-039 — a requirement.* with @status: retired declares @implementedBy. Refused
   // rather than exempted: a retired capability has no implementation BY DEFINITION,
   // so forbidding the attribute makes the dangling-reference class unreachable

@@ -72,3 +72,17 @@ export type MeasureAgg = (typeof MEASURE_AGGS)[number];
 
 /** Separator in an `object.report` `@dimensions` item: `name` or `name:grain`. */
 export const REPORT_DIMENSION_GRAIN_SEPARATOR = ":";
+
+// ---------------------------------------------------------------------------
+// Relative-date filter values (FR-044 R4)
+// ---------------------------------------------------------------------------
+
+/** The single key of a relative-date filter value: `{ now: "<ISO-8601 duration>" }`
+ *  means "the current time plus that duration", evaluated when the view is queried.
+ *  Legal only in the `@filter` of a `segment`, `measure.aggregate` or `object.report`. */
+export const FILTER_RELATIVE_NOW = "now";
+
+/** A signed ISO-8601 duration (`-P7D`, `P1Y2M`, `-PT12H`). The lookaheads refuse the
+ *  degenerate `P` and `PT` forms (a designator with no component). */
+export const ISO_DURATION_RE =
+  /^[+-]?P(?!$)(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+S)?)?$/;
