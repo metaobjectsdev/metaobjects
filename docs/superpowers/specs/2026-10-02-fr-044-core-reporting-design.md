@@ -118,7 +118,7 @@ and gets its own agreement then.
 | `measure` | type | What to count or sum is the author's statement; a field declares a value, not an aggregate over rows. |
 | `measure.aggregate` | subtype | One aggregate over the entity's own rows. |
 | `measure.ratio` | subtype | A quotient of two measures; a different lowering (`NULLIF` guard) and different attributes from an aggregate. |
-| `segment` | type | A named `attr.filter` (D1). The name is the new information: reuse across measures and reports, and the exporters' named segments/filters. |
+| `segment`, `segment.filter` | type, subtype | A named `attr.filter` (D1). One concrete subtype, because every `*.base` in the registry is an abstract anchor. The name is the new information: reuse across measures and reports, and the exporters' named segments/filters. |
 | `object.report` | subtype | Grain is the dimension tuple and fields are derived (D2); `object.projection` is one row per base row with declared fields. |
 | `@grains` | attr, `string`, `isArray`, on `dimension.time` | The supported grains are a modelling choice (a date column may make no sense per hour). Closed set `hour, day, week, month, quarter, year`. |
 | `@segment` | attr, `string`, on `measure.aggregate` and `object.report` | Names a declared segment; the reference is the author's choice. |
@@ -221,8 +221,8 @@ must be exact or error.
 ### R3 — `segment`: a named, reusable filter
 
 ```yaml
-- segment: { name: active, "@filter": { status: active } }
-- segment: { name: completions, "@filter": { eventType: exercise_complete } }
+- segment.filter: { name: active, "@filter": { status: active } }
+- segment.filter: { name: completions, "@filter": { eventType: exercise_complete } }
 ```
 
 A child of `object.entity` carrying one `attr.filter`. Measures and reports reference it by
