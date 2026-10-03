@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_REPORT_FOREIGN_MEASURE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.shop.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[4]['object.report']"
+      }
+    }
+  ],
+  "warnings": []
+}

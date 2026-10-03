@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_INVALID_DIMENSION",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.shop.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.entity'].children[12]['dimension.attribute']"
+      }
+    }
+  ],
+  "warnings": []
+}

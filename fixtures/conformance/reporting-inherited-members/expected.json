@@ -1,0 +1,82 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "BaseEvent",
+          "abstract": true,
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "occurredAt"
+              }
+            },
+            {
+              "dimension.time": {
+                "name": "occurredAt",
+                "@grains": [
+                  "day",
+                  "week"
+                ],
+                "@of": "BaseEvent.occurredAt"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "events",
+                "@agg": "count",
+                "@of": [
+                  "BaseEvent.id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "WorkoutEvent",
+          "extends": "BaseEvent",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "workout_events"
+              }
+            },
+            {
+              "field.string": {
+                "name": "eventType"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "DailyEvents",
+          "@dimensions": [
+            "occurredAt:day"
+          ],
+          "@from": "WorkoutEvent",
+          "@measures": [
+            "events"
+          ]
+        }
+      }
+    ]
+  }
+}
