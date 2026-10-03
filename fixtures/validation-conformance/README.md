@@ -154,10 +154,9 @@ runners wrap the bind step so a native-parse failure maps to `valid=false`.
 ## CI gate
 
 All five port runners assert byte-identical boolean verdicts across all five
-generated validation artifacts. `.github/workflows/conformance.yml` describes
-them (TS/C#/Java/Python under the `conformance` matrix, Kotlin under
-`conformance-kotlin`) but no longer runs them — Actions is disabled here, see
-AGENTS.md. `scripts/ci-local.sh` is what runs them: the five live in its
+generated validation artifacts. `scripts/ci-local.sh` is what runs them, and
+`.github/workflows/conformance.yml` is a thin wrapper that calls it once per
+lane. The five live in the script's
 `csharp`, `java` and `python` sections plus `ts-fast`, so the flagless
 `scripts/ci-local.sh` covers all five and `--quick` covers TypeScript only. See
 [`docs/CONFORMANCE.md`](../../docs/CONFORMANCE.md).

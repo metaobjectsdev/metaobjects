@@ -74,9 +74,9 @@ Cross-language persistence / api-contract corpora (Docker + Testcontainers) run 
 ### Local CI (this IS the CI — run it before opening/merging a PR)
 
 GitHub Actions is disabled on this repository, so the files in `.github/workflows/`
-still describe the checks but no longer run them. They are kept because the switch is
-reversible; meanwhile `scripts/ci-local.sh` is what runs them, and it mirrors all three
-check workflows:
+no longer run. They are kept because the switch is reversible. `scripts/ci-local.sh` is
+the single definition of the checks: all three check workflows are thin wrappers that
+call it, so a local run is the same check a workflow run would be:
 
 ```bash
 scripts/ci-local.sh            # full parity: hygiene.yml's leak-scan, all-port

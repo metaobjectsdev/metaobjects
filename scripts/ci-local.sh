@@ -2,14 +2,16 @@
 #
 # Local CI — run the gates .github/workflows/ describes, on your machine.
 #
-# GitHub Actions is DISABLED on this repository (2026-09-16), so nothing in
-# .github/workflows/ fires — not hygiene.yml's leak scan on a PR, not
-# conformance.yml, not integration-tests.yml, not local-ci.yml on the
-# self-hosted runner. The workflow files are kept, and unchanged, because the
-# switch is reversible. Until it is reversed THIS SCRIPT IS THE ONLY THING THAT
-# RUNS THEM, including the public-repo leak scan. Run it before opening or
-# merging a PR, so nothing red leaves your machine. The no-mistakes validation
-# gate runs it automatically — see .no-mistakes.yaml.
+# THIS SCRIPT IS THE SINGLE DEFINITION of the repository's checks. Every check
+# workflow in .github/workflows/ — hygiene.yml, conformance.yml,
+# integration-tests.yml and local-ci.yml — is a thin wrapper: it checks out,
+# installs the toolchains a lane needs, and calls this script with a selector.
+# None carries a step body of its own, so a workflow and a local run cannot
+# drift apart. Add or change a check HERE, never in a workflow. When GitHub
+# Actions is off, this script is the only thing that runs them, including the
+# public-repo leak scan. Run it before opening or merging a PR, so nothing red
+# leaves your machine. The no-mistakes validation gate runs it automatically —
+# see .no-mistakes.yaml.
 #
 # Usage:
 #   scripts/ci-local.sh              # FULL parity: all-port conformance + full Java
@@ -25,6 +27,8 @@
 #                                    #   exclusive with --quick (exit 2 if combined).
 #                                    #   gates  → leak-scan, pom parity, fixture-lint,
 #                                    #            doc-template drift, embedded-library drift
+#                                    #   leak-scan → the public-repo leak scan ALONE
+#                                    #            (hygiene.yml's PR gate; also in gates)
 #                                    #   ts     → ts build+typecheck, ts conformance,
 #                                    #            completeness-gate, full unit suites
 #                                    #            (ts-unit), integration-tests ts
@@ -47,6 +51,16 @@
 #                                    #   python → full python test suite + integration-tests
 #                                    #   csharp → full csharp codegen suite + conformance
 #                                    #            + integration-tests
+#   scripts/ci-local.sh --no-integration
+#                                    # Drop the docker/Postgres half of the selected
+#                                    #   sections: the integration suites, the
+#                                    #   migrate-ts / runtime-ts real-PG gates and the
+#                                    #   sidecar. conformance.yml uses it, because
+#                                    #   integration-tests.yml owns those suites.
+#   scripts/ci-local.sh --integration-only
+#                                    # The inverse: run ONLY that docker/Postgres half
+#                                    #   (integration-tests.yml). Mutually exclusive
+#                                    #   with --quick and with --no-integration.
 #   scripts/ci-local.sh --strict-toolchains
 #                                    # Promote missing-toolchain and docker-down SKIPs
 #                                    #   to FAILs; useful in CI or a full-toolchain
@@ -61,6 +75,11 @@
 # does from its `services:` block — nothing here changes. Opt out with
 # MO_CI_NO_PG_SIDECAR=1; rename it with MO_PG_SIDECAR_NAME.
 #
+# MO_CI_LEAK_BASE overrides the ref the leak scan diffs against (default origin/main,
+# else HEAD~1); hygiene.yml points it at the PR's base branch. MO_CI_JACOCO=1 keeps
+# JaCoCo ON in the Java reactor, which local-ci skips — conformance.yml's nightly sets
+# it, because the second, instrumented environment is why that schedule exists.
+#
 # Set MO_CI_LIST_ONLY=1 to print the steps that would run (given the current
 # flags) and exit 0 without running anything — useful for verifying section
 # selection without waiting for tests to complete.
@@ -72,22 +91,25 @@
 # so use it wherever a skip would mean a real gap rather than an absent toolchain:
 # the pre-release run, and the no-mistakes gate's two commands (.no-mistakes.yaml).
 #
-# Mirrors: hygiene.yml (leak-scan) · conformance.yml (fixture-lint, typecheck,
-# 5-port conformance, kotlin, java-reactor, completeness-gate, doc-template-drift,
-# embedded-library-drift) · integration-tests.yml (5-port suite + migrate-ts-pg).
+# Called by: hygiene.yml (--only leak-scan) · conformance.yml (--only gates /
+# ts-fast / csharp / java-fast / python, and java-slow for the reactor, all with
+# --no-integration) · integration-tests.yml (--integration-only, one job per lane) ·
+# local-ci.yml (one job per lane).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-QUICK=0; STRICT=0; ONLY=""
+QUICK=0; STRICT=0; ONLY=""; NO_INTEG=0; INTEG_ONLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1 ;;
     --strict-toolchains) STRICT=1 ;;
+    --no-integration) NO_INTEG=1 ;;
+    --integration-only) INTEG_ONLY=1 ;;
     --only) shift; case "${1:-}" in
-        gates|ts|ts-fast|ts-unit|ts-slow|java|java-fast|java-slow|python|csharp) ONLY="$ONLY ${1}" ;;
-        *) echo "--only expects gates|ts|ts-fast|ts-unit|ts-slow|java|java-fast|java-slow|python|csharp, got '${1:-}'" >&2; exit 2 ;;
+        gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|java|java-fast|java-slow|python|csharp) ONLY="$ONLY ${1}" ;;
+        *) echo "--only expects gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|java|java-fast|java-slow|python|csharp, got '${1:-}'" >&2; exit 2 ;;
       esac ;;
     -h|--help) awk 'NR==1{next} /^set -uo/{exit} {sub(/^# ?/,""); print}' "$0"; exit 0 ;;
     *) echo "unknown arg: $1 (see --help)" >&2; exit 2 ;;
@@ -95,12 +117,23 @@ while [ $# -gt 0 ]; do
   shift
 done
 [ -n "$ONLY" ] && [ "$QUICK" -eq 1 ] && { echo "--only and --quick are mutually exclusive" >&2; exit 2; }
+[ "$INTEG_ONLY" -eq 1 ] && [ "$QUICK" -eq 1 ] && { echo "--integration-only and --quick are mutually exclusive" >&2; exit 2; }
+[ "$INTEG_ONLY" -eq 1 ] && [ "$NO_INTEG" -eq 1 ] && { echo "--integration-only and --no-integration are mutually exclusive" >&2; exit 2; }
 
-want() { # want <section> — true when the section should run
+in_lane() { # in_lane <section> — true when the section is selected
   [ -z "$ONLY" ] && return 0
   case " $ONLY " in *" $1 "*) return 0 ;; *) return 1 ;; esac
 }
-want_any() { # want_any <section...> — true when ANY listed section should run
+in_lane_any() { # in_lane_any <section...> — true when ANY listed section is selected
+  local s; for s in "$@"; do in_lane "$s" && return 0; done; return 1
+}
+# want / want_any guard the NON-integration steps, so --integration-only turns them all
+# off. The docker/Postgres block below asks in_lane / in_lane_any directly.
+want() { # want <section> — true when the section's non-integration steps should run
+  [ "$INTEG_ONLY" -eq 1 ] && return 1
+  in_lane "$1"
+}
+want_any() { # want_any <section...> — true when ANY listed section's should run
   local s; for s in "$@"; do want "$s" && return 0; done; return 1
 }
 
@@ -143,8 +176,8 @@ step_if() {  # step_if <tool> "<name>" <cmd...>  — SKIP (or FAIL under --stric
 
 # ── hygiene.yml: public-repo leak scan (the SECURITY gate kept in CI) ──────────
 gate_leak_scan() {
-  local base="origin/main"
-  git rev-parse --verify -q "$base" >/dev/null 2>&1 || base="HEAD~1"
+  local base="${MO_CI_LEAK_BASE:-origin/main}"
+  [ -n "${MO_CI_LEAK_BASE:-}" ] || git rev-parse --verify -q "$base" >/dev/null 2>&1 || base="HEAD~1"
   bash .githooks/leak-scan.sh "$base"
 }
 
@@ -569,12 +602,17 @@ gate_ts_unit() {
     ( cd "client/web/packages/$p" && bun test --timeout 30000 ) || return 1
   done
 }
+# The ApiDocsCrossPort re-run is ORDER-dependent, not redundant. That test execs the built
+# `dotnet meta` and soft-skips when the CLI dll is absent — and the whole-project Codegen.Tests
+# run above it comes BEFORE Cli.Tests, which is what builds the CLI. On a clean checkout (any
+# CI runner) the first pass therefore skips it; only this run, after the CLI exists, gates it.
 gate_conf_csharp() {
   ( cd server/csharp \
       && dotnet test MetaObjects.Conformance.Tests/MetaObjects.Conformance.Tests.csproj --nologo --verbosity quiet \
       && dotnet test MetaObjects.Render.Tests/MetaObjects.Render.Tests.csproj --nologo --verbosity quiet \
       && dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --nologo --verbosity quiet \
-      && dotnet test MetaObjects.Cli.Tests/MetaObjects.Cli.Tests.csproj --nologo --verbosity quiet )
+      && dotnet test MetaObjects.Cli.Tests/MetaObjects.Cli.Tests.csproj --nologo --verbosity quiet \
+      && dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --filter "FullyQualifiedName~ApiDocsCrossPort" --nologo --verbosity quiet )
 }
 # NOTE: these -Dtest= lists are a CHERRY-PICK, so a new test class that is not named here
 # runs in NO per-push lane and reports green. Adding a test to this module means adding its
@@ -616,7 +654,12 @@ gate_conf_kotlin() {
 # never fails the build — it is pure instrumentation overhead for a pass/fail CI
 # signal. `clean` stays: self-hosted workspaces persist and actions/checkout wipes
 # only git-tracked state, so a stale target/ can otherwise leak between runs.
-gate_java_reactor() { ( cd server/java && mvn -q clean install -Djacoco.skip=true ); }
+# MO_CI_JACOCO=1 keeps it ON — conformance.yml's hosted nightly, whose header says why.
+gate_java_reactor() {
+  local jacoco="-Djacoco.skip=true"
+  [ "${MO_CI_JACOCO:-0}" = "1" ] && jacoco=""
+  ( cd server/java && mvn -q clean install $jacoco )
+}
 gate_completeness() { ( cd server/typescript/packages/metadata && bun run conformance:mutation ); }
 gate_doc_template_drift() {
   bash scripts/sync-doc-templates.sh \
@@ -742,6 +785,8 @@ elif [ "$QUICK" -eq 1 ]; then
 else
   _mode="full — all ports + reactor + docker"
 fi
+[ "$NO_INTEG" -eq 1 ] && _mode="$_mode, no integration"
+[ "$INTEG_ONLY" -eq 1 ] && _mode="$_mode, integration only"
 echo "metaobjects local CI  (mode: $_mode)"
 
 # ── Optional dry-run listing ──────────────────────────────────────────────────
@@ -757,7 +802,7 @@ fi
 # ── Step invocations ──────────────────────────────────────────────────────────
 # Fast tier: shared gates and TS checks, interleaved in the original order so
 # that no-flags execution is byte-equivalent to the pre-refactor script.
-if want gates; then step    "leak-scan (security)"             gate_leak_scan;             fi
+if want_any gates leak-scan; then step "leak-scan (security)"   gate_leak_scan;             fi
 if want gates; then step    "pom-version parity"               gate_pom_versions;           fi
 if want gates; then step    "bun-version parity"               gate_bun_version;            fi
 if want gates; then step    "uv.lock version parity"           gate_uv_lock_version;        fi
@@ -832,7 +877,12 @@ else
   if want_any java java-fast;   then step_if mvn "conformance: kotlin"           gate_conf_kotlin;  fi
   if want_any java java-slow;   then step_if mvn "java-reactor (install)"        gate_java_reactor; fi
   # Docker integration — full suite when no --only, per-port otherwise.
-  if [ -z "$ONLY" ]; then
+  # --no-integration drops this whole half; --integration-only keeps ONLY it, which is
+  # why it asks in_lane / in_lane_any (selection) where the checks above ask want.
+  if [ "$NO_INTEG" -eq 1 ]; then
+    echo ""; echo "── ⊘ --no-integration: SKIPPING the docker/Postgres integration half ──"
+    SKIP+=("integration-tests (--no-integration)")
+  elif [ -z "$ONLY" ]; then
     if docker info >/dev/null 2>&1; then
       step "integration-tests (5-port + docker)" gate_integration
     else
@@ -842,8 +892,8 @@ else
   else
     # ts-slow needs the workspace dist/ to run integration. When the fast lane also
     # runs (umbrella `ts` / local full), its build already produced it — only build
-    # here when ts-slow runs in isolation (the CI ts-slow job).
-    if want_any ts ts-slow && ! want_any ts ts-fast; then step_if bun "ts build (for integration)" gate_ts_build; fi
+    # here when ts-slow runs without it (the CI ts-slow job, or --integration-only).
+    if in_lane_any ts ts-slow && ! want_any ts ts-fast; then step_if bun "ts build (for integration)" gate_ts_build; fi
     # Bring the sidecar up BEFORE the two real-PG gates, not just before the docker
     # integration step. `ensure_pg_sidecar` exports MIGRATE_TS_PG_URL and its own comment
     # says that is so "migrate-ts's real-Postgres suites run locally instead of
@@ -856,13 +906,13 @@ else
     #
     # Ordered BEFORE the docker integration step so a container-readiness flake there
     # can never prevent the migrate verdict from being produced.
-    if want_any ts ts-slow && docker info >/dev/null 2>&1; then ensure_pg_sidecar; fi
-    want_any ts ts-slow        && step_if bun "migrate-ts real-PG suite" gate_migrate_ts_pg
-    want_any ts ts-slow        && step_if bun "runtime-ts real-PG dialect matrix" gate_runtime_ts_pg
-    want_any ts ts-slow        && run_integration_for ts     ts
-    want_any java java-slow    && run_integration_for java   java kotlin
-    want python                && run_integration_for python python
-    want csharp                && run_integration_for csharp csharp
+    if in_lane_any ts ts-slow && docker info >/dev/null 2>&1; then ensure_pg_sidecar; fi
+    in_lane_any ts ts-slow     && step_if bun "migrate-ts real-PG suite" gate_migrate_ts_pg
+    in_lane_any ts ts-slow     && step_if bun "runtime-ts real-PG dialect matrix" gate_runtime_ts_pg
+    in_lane_any ts ts-slow     && run_integration_for ts     ts
+    in_lane_any java java-slow && run_integration_for java   java kotlin
+    in_lane python             && run_integration_for python python
+    in_lane csharp             && run_integration_for csharp csharp
   fi
 fi
 
