@@ -1,7 +1,9 @@
 package com.metaobjects.mojo;
 
+import com.metaobjects.library.LibrarySources;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.loader.MetaDataSource;
 import com.metaobjects.loader.uri.URIHelper;
 import com.metaobjects.loader.uri.URIModel;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -25,9 +27,15 @@ import java.util.stream.Collectors;
  * <p>Overrides {@link #execute()} directly rather than going through the
  * generator-building template {@link AbstractMetaDataMojo#execute()} drives
  * (mirrors {@link MetaDataVerifyMojo}) — fmt has no generator list; it needs
- * several loader instances (the baseline, one fresh reload per candidate
- * file, one empty-rooted loader per file parsed standalone), which the
- * template's single {@code createLoader()} call does not give it.</p>
+ * several loader instances (the baseline directory walk, one in-memory-source
+ * reload per candidate file's safety check, one empty-rooted loader per file
+ * parsed standalone), which the template's single {@code createLoader()} call
+ * does not give it. Only the FIRST (baseline) load ever walks the real
+ * directory; every reload after that builds its own explicit
+ * {@code List<MetaDataSource>} (real files via {@code FileSource}, the one
+ * candidate under test via {@code InMemoryStringSource}) and calls
+ * {@code MetaDataLoader.load(List)} directly — nothing is ever written to
+ * disk before the safety check proves it safe.</p>
  *
  * <p>Files: every file {@link AbstractMetaDataMojo#createLoader} resolved for
  * this project — the same {@code <loader><sourceDir>}/{@code <sources>} /
@@ -56,18 +64,45 @@ public class MetaDataFmtMojo extends AbstractMetaDataMojo {
         warnIfAgentContextStale();
 
         ClassLoader projectClassLoader = createProjectClassLoader();
+        // ONE real directory walk — to learn the resolved file list via the full
+        // <loader><sourceDir>/<sources>/.metaobjects/config.json ladder, and to
+        // fail fast (via createLoader's own failOnLoaderErrors) if the project
+        // does not currently load cleanly. Reused as the baseline; every
+        // per-candidate safety-check reload below builds its OWN in-memory
+        // source list instead of walking the directory again (issue: a disk
+        // write before verification is never acceptable — see FmtSupport).
         MetaDataLoader baseline = createLoader(projectClassLoader);
 
         List<Path> allFiles = resolveFilePaths(baseline);
-
         List<Path> targets = resolveTargets(allFiles);
 
         boolean strict = !isLax();
+        String loaderName = getLoader().getName();
+        List<String> libraries = getLoader().getLibraries();
+        List<MetaDataSource> librarySources =
+            (libraries != null && !libraries.isEmpty())
+                ? LibrarySources.librarySources(libraries)
+                : List.of();
+
         FmtSupport.RunResult result = FmtSupport.run(
             baseline,
+            allFiles,
             targets,
-            () -> createLoader(projectClassLoader),
-            loaderName -> {
+            librarySources,
+            () -> {
+                // SAME loader name as `baseline` (loaderConfig.getName()) — both sides
+                // of the safety-check comparison carry the identical "loader-root-name
+                // leak" (see FmtSupport.formatFile's javadoc), so it cancels out rather
+                // than manufacturing a false mismatch. No sources yet: MetaDataLoader
+                // .load(List) requires init() to have run first, but takes the actual
+                // source list as a separate call — see FmtSupport.buildSources.
+                MetaDataLoader fresh = new MetaDataLoader(
+                    LoaderOptions.create(false, false, strict), MetaDataLoader.SUBTYPE_MANUAL,
+                    loaderName);
+                fresh.init();
+                return fresh;
+            },
+            loaderNameForFile -> {
                 // The loader's NAME becomes the root's own "package" in canonical output
                 // (see FmtSupport.formatFile's javadoc — the Java loader-root-name leak the
                 // conformance harness also works around), so FmtSupport passes the file's
@@ -76,7 +111,7 @@ public class MetaDataFmtMojo extends AbstractMetaDataMojo {
                 // CanonicalJsonParser takes, for provenance only).
                 MetaDataLoader standalone = new MetaDataLoader(
                     LoaderOptions.create(false, false, strict), MetaDataLoader.SUBTYPE_MANUAL,
-                    loaderName);
+                    loaderNameForFile);
                 standalone.init();
                 return standalone;
             },

@@ -6,7 +6,10 @@ import com.google.gson.JsonParser;
 import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.io.json.CanonicalJsonSerializer;
+import com.metaobjects.loader.FileSource;
+import com.metaobjects.loader.InMemoryStringSource;
 import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.loader.MetaDataSource;
 import com.metaobjects.loader.parser.json.CanonicalJsonParser;
 
 import java.io.ByteArrayInputStream;
@@ -34,21 +37,26 @@ import java.util.stream.Collectors;
  *       (ADR-0039). Never merged with its siblings: {@code extends} onto
  *       another file's base is preserved as the raw ref string (Java's loader
  *       defers forward/cross-file {@code extends} to a post-load resolution
- *       pass this class never runs), and an {@code overlay: true} declaration
- *       with no base in the SAME file surfaces as
- *       {@link ErrorCode#ERR_OVERLAY_NO_TARGET} — reported as a skip rather
- *       than guessed at (see {@code DeferredOverlayTest} — a bare
- *       {@link CanonicalJsonParser} run outside a loader batch drains its own
- *       overlay queue immediately, which is exactly the "no base in this
- *       document" signal fmt wants).</li>
+ *       pass this class never runs).</li>
+ *   <li>A file declaring {@code overlay: true} ANYWHERE in its tree is
+ *       skipped — not only when no base exists in the same file. A formatter
+ *       never changes structure: a standalone {@link CanonicalJsonParser} run
+ *       (outside a loader batch) drains its own overlay queue immediately,
+ *       and when a same-(type,name) base IS present in the same document it
+ *       happily MERGES the two, silently dropping the overlay marker from the
+ *       output. {@link #hasOverlayDeclaration} checks the raw document for
+ *       {@code overlay: true} BEFORE the parser ever runs, so that case is
+ *       caught too — {@link ErrorCode#ERR_OVERLAY_NO_TARGET} (the no-local-
+ *       target case) is kept only as a defensive second signal.</li>
  *   <li>YAML is always skipped: no canonical YAML emitter exists (ADR-0006).</li>
- *   <li>Before a write lands, the WHOLE project is reloaded (fresh, from disk)
- *       with the candidate already written, and the write is reverted unless
- *       that reload has no errors AND its canonical serialization is
- *       byte-identical to the untouched baseline. This port writes the
- *       candidate and reloads rather than substituting an in-memory source
- *       (as TS/C# do) — same guarantee, different mechanism: a file is never
- *       left mutated unless the reload proved it safe.</li>
+ *   <li>Before a write lands, the WHOLE project is reloaded with the
+ *       candidate substituted in via an {@link InMemoryStringSource} carrying
+ *       the real file's id — {@link FileSource} for every other resolved
+ *       file — and the write happens ONLY after that reload has no errors AND
+ *       its canonical serialization is byte-identical to the untouched
+ *       baseline. Nothing is ever written to disk before it is proven safe,
+ *       and {@code --check} never writes at all (mirrors TS/C#/Python
+ *       exactly; this port no longer writes-then-reverts).</li>
  * </ul>
  */
 public final class FmtSupport {
@@ -118,14 +126,25 @@ public final class FmtSupport {
      *
      * <p>Parsing happens directly through {@link CanonicalJsonParser}, outside
      * any loader batch, so its overlay queue drains immediately against
-     * whatever this one document alone declares.</p>
+     * whatever this one document alone declares — but only once
+     * {@link #hasOverlayDeclaration} has already ruled out an overlay
+     * ANYWHERE in the document (see the class doc).</p>
      */
     public static FormatFileResult formatFile(
             Function<String, MetaDataLoader> standaloneLoaderFactory, String content, String sourceId) {
-        MetaDataLoader loader = standaloneLoaderFactory.apply(detectPackage(content));
+        // Strip a UTF-8 BOM up front — Java-authored files often carry one, and
+        // neither Files.readString nor Gson's JsonParser strips it on its own.
+        String normalized = stripBom(content);
+
+        if (hasOverlayDeclaration(normalized)) {
+            return FormatFileResult.failure(true,
+                "this file declares an overlay fmt cannot resolve standalone");
+        }
+
+        MetaDataLoader loader = standaloneLoaderFactory.apply(detectPackage(normalized));
         try {
             new CanonicalJsonParser(loader, sourceId)
-                .loadFromStream(new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)));
+                .loadFromStream(new ByteArrayInputStream(normalized.getBytes(StandardCharsets.UTF_8)));
         } catch (RuntimeException ex) {
             return FormatFileResult.failure(false, ex.getMessage());
         }
@@ -147,20 +166,31 @@ public final class FmtSupport {
      *                             caller (the Mojo template's own first load) — reused
      *                             rather than reloaded, so a clean project costs exactly
      *                             one load per candidate file, not two.
-     * @param targetFiles          the files to format, in the loader's own resolution order
-     * @param freshProjectLoader   reloads the WHOLE project fresh from disk — called once
-     *                             per candidate that needs the safety check
+     * @param allFiles             EVERY file the project's metadata-location ladder
+     *                             resolved (not just the ones being formatted) — the
+     *                             safety-check reload needs the whole project regardless
+     *                             of which files are in {@code targetFiles}
+     * @param targetFiles          the files to format, a subset of {@code allFiles}
+     * @param librarySources       opted-in MetaObjects-shipped library sources, prepended
+     *                             to every reload exactly as a real load would
+     * @param freshEmptyLoader     supplies a fresh loader, already {@code .init()}-ed with
+     *                             NO sources, sharing the project's registry/strict/name —
+     *                             ready for {@link MetaDataLoader#load(List)} to be called
+     *                             on it directly. Called once per candidate that needs the
+     *                             safety-check reload.
      * @param standaloneLoaderFactory supplies a fresh, empty-rooted loader given the LOADER
      *                             NAME to construct it with (see {@link #formatFile}) — never
      *                             the file's own source id, which may contain characters
      *                             (dots) a loader name may not
-     * @param check                never writes; the safety check still runs (write + reload
-     *                             + always-restore) so --check and a real run share logic
+     * @param check                never writes, under any circumstance — the safety check
+     *                             still runs so --check and a real run share one decision
      */
     public static RunResult run(
             MetaDataLoader initialBaseline,
+            List<Path> allFiles,
             List<Path> targetFiles,
-            Supplier<MetaDataLoader> freshProjectLoader,
+            List<MetaDataSource> librarySources,
+            Supplier<MetaDataLoader> freshEmptyLoader,
             Function<String, MetaDataLoader> standaloneLoaderFactory,
             boolean check) {
 
@@ -197,19 +227,16 @@ public final class FmtSupport {
                 continue;
             }
 
-            // Safety check: write the candidate, reload the WHOLE project fresh, and
-            // require it to load clean with a byte-identical canonical form — else (or
-            // in --check mode, regardless) restore the original content immediately.
-            // A file is never left on disk in a state this run has not verified.
-            writeString(path, formatted.text);
-            MetaDataLoader test = freshProjectLoader.get();
+            // Safety check: reload the WHOLE project with the candidate substituted
+            // in via an in-memory source — nothing on disk changes yet. Only once
+            // that reload is proven clean AND canonically byte-identical to the
+            // baseline does a (non-check) run write the real file. A file is never
+            // written before it is verified, and --check never writes at all.
+            MetaDataLoader test = freshEmptyLoader.get();
+            test.load(buildSources(allFiles, librarySources, path, formatted.text));
             List<MetaDataException> testErrors = test.getErrors();
             boolean safe = (testErrors == null || testErrors.isEmpty())
                 && CanonicalJsonSerializer.canonicalSerialize(test.getRoot()).equals(baselineCanonical);
-
-            if (!safe || check) {
-                writeString(path, content);
-            }
 
             if (!safe) {
                 reports.add(new FileReport(path, Status.ERROR,
@@ -217,11 +244,80 @@ public final class FmtSupport {
             } else if (check) {
                 reports.add(new FileReport(path, Status.WOULD_FORMAT, null));
             } else {
+                writeString(path, formatted.text);
                 reports.add(new FileReport(path, Status.FORMATTED, null));
             }
         }
 
         return RunResult.ok(reports);
+    }
+
+    /**
+     * Build the source list for one project reload: {@code librarySources} first
+     * (matching a real load's order), then every file in {@code allFiles} as a
+     * {@link FileSource} — except {@code overridePath}, which loads from
+     * {@code overrideText} via an {@link InMemoryStringSource} carrying the same
+     * id a {@link FileSource} for that path would have used. Disk is never
+     * touched for {@code overridePath}.
+     */
+    private static List<MetaDataSource> buildSources(
+            List<Path> allFiles, List<MetaDataSource> librarySources, Path overridePath, String overrideText) {
+        List<MetaDataSource> sources = new ArrayList<>(librarySources);
+        for (Path p : allFiles) {
+            if (overridePath != null && p.equals(overridePath)) {
+                sources.add(new InMemoryStringSource(overrideText, p.getFileName().toString()));
+            } else {
+                sources.add(new FileSource(p));
+            }
+        }
+        return sources;
+    }
+
+    /**
+     * Whether {@code content}'s canonical-JSON shape declares an
+     * {@code overlay: true} node anywhere in its tree — the top-level
+     * declaration itself, or any descendant reached by walking {@code
+     * children} arrays. A purely STRUCTURAL check (independent of the
+     * registry), run before the document is ever parsed into a tree — see the
+     * class doc for why a same-file base+overlay merge must never happen in
+     * the first place. Malformed or non-JSON content answers {@code false};
+     * {@link #formatFile}'s own parse reports that failure properly.
+     */
+    static boolean hasOverlayDeclaration(String content) {
+        try {
+            JsonElement el = JsonParser.parseString(content);
+            if (!el.isJsonObject()) return false;
+            JsonObject top = el.getAsJsonObject();
+            for (String key : top.keySet()) {
+                if ("$schema".equals(key)) continue;
+                JsonElement body = top.get(key);
+                if (body == null || !body.isJsonObject()) continue;
+                return bodyHasOverlay(body.getAsJsonObject());
+            }
+            return false;
+        } catch (Exception ignore) {
+            return false;
+        }
+    }
+
+    private static boolean bodyHasOverlay(JsonObject body) {
+        JsonElement childrenEl = body.get("children");
+        if (childrenEl == null || !childrenEl.isJsonArray()) return false;
+        for (JsonElement child : childrenEl.getAsJsonArray()) {
+            if (!child.isJsonObject()) continue;
+            for (String key : child.getAsJsonObject().keySet()) {
+                JsonElement childBodyEl = child.getAsJsonObject().get(key);
+                if (childBodyEl == null || !childBodyEl.isJsonObject()) continue;
+                JsonObject childBody = childBodyEl.getAsJsonObject();
+                JsonElement overlayEl = childBody.get("overlay");
+                if (overlayEl != null && overlayEl.isJsonPrimitive()
+                        && overlayEl.getAsJsonPrimitive().isBoolean() && overlayEl.getAsBoolean()) {
+                    return true;
+                }
+                if (bodyHasOverlay(childBody)) return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -248,6 +344,11 @@ public final class FmtSupport {
         } catch (Exception ignore) {
             return "";
         }
+    }
+
+    /** Strips a leading UTF-8 BOM character, if present. */
+    private static String stripBom(String content) {
+        return !content.isEmpty() && content.charAt(0) == '﻿' ? content.substring(1) : content;
     }
 
     private static String extensionOf(String name) {
