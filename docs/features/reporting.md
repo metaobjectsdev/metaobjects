@@ -161,7 +161,7 @@ a rule differently fails the corpus.
 | Rule | Refused |
 |---|---|
 | **D1** | An `@of` that is not `Entity.field`, that names the wrong entity, or whose field does not exist. Without `@via`, `Entity` is the owning entity; with `@via`, it is the `@via` terminal. |
-| **D2** | An `@via` that is not `Owner.hop[.hop...]` starting at the owning entity, or that crosses a hop which is not a `relationship.*` with `@cardinality: one` or an `identity.reference`. |
+| **D2** | An `@via` that is not `Owner.hop[.hop...]` starting at the owning entity, or that crosses a hop which is not a `relationship.*` with `@cardinality: one` or an `identity.reference`, or a hop whose target resolves to no object. |
 | **D3** | A `dimension.time` whose `@of` is not a `field.date` or `field.timestamp`. |
 | **D4** | A `dimension.time` over a `field.date` that declares `hour` (a date has no hour). |
 
@@ -202,8 +202,8 @@ mistake gives one error.
 | **R2** | `ERR_INVALID_REPORT` | A `@dimensions` item that names no dimension of `@from`; a time dimension with no `:grain`, or a grain its `@grains` does not declare; a grain on an attribute dimension; the same item listed twice. |
 | **R3** | `ERR_REPORT_FOREIGN_MEASURE` / `ERR_INVALID_REPORT` | A `@measures` item that belongs to a **different entity** than `@from` is `ERR_REPORT_FOREIGN_MEASURE`; one that resolves nowhere is `ERR_INVALID_REPORT`. |
 | **R4** | `ERR_INVALID_REPORT` | A report that declares any `field.*` or `identity.*` child. |
-| **R5** | `ERR_INVALID_REPORT` | A report `source.*` that is writable. A report's source, if present, must be `@kind: view`. |
-| **R6** | `ERR_INVALID_REPORT` | Two derived field names that collide: a dimension `revenue` with a measure `revenue`, or dimension `purchasedAt` at grain `day` with a measure named `purchasedAtDay`. A measure listed twice is the same error. |
+| **R5** | `ERR_INVALID_REPORT` | A report `source.*` that is writable. A report's source, if present, must have a read-only `@kind` (`view`, `materializedView`, `storedProc`, `tableFunction`); a writable `@kind: table` is refused. |
+| **R6** | `ERR_INVALID_REPORT` | Two derived field names that collide: a dimension `revenue` with a measure `revenue`, or dimension `purchasedAt` at grain `day` with a measure named `purchasedAtDay`. A measure listed twice gets the same code with its own message ("lists 'x' more than once"). A repeated dimension item is reported under R2, not R6. |
 | **R7** | `ERR_INVALID_REPORT` | A report `@segment` that names no segment of `@from`. |
 
 `purchasedAt:day` and `purchasedAt:week` together are legal, since they derive different

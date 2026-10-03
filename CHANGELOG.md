@@ -24,7 +24,7 @@ PATCH is cut from it until 1.1 ships._
   value `{ now: "<ISO-8601 duration>" }`, legal only in the `@filter` of a segment, a
   `measure.aggregate` or an `object.report`. Four new error codes (`ERR_INVALID_DIMENSION`,
   `ERR_INVALID_MEASURE`, `ERR_INVALID_REPORT`, `ERR_REPORT_FOREIGN_MEASURE`) and extended
-  `ERR_BAD_ATTR_FILTER` carry the load-time rules, gated by 25 new shared conformance fixtures.
+  `ERR_BAD_ATTR_FILTER` carry the load-time rules, gated by 24 new shared conformance fixtures.
   `measure.derived` is not registered (it waits for FR-037 R5). **No generated output yet:** an
   `object.report` emits no view DDL, route, client code or docs page, `meta migrate` proposes
   nothing for it, and a model using the new names generates exactly what it did without them.
