@@ -354,8 +354,17 @@ public abstract class MetaSource extends MetaData {
     }
 
     /**
-     * Tiny inflector mirroring the TS reference {@code pluralize}: handles the
-     * (s|x|z|ch|sh) → +es and consonant-y → +ies cases; otherwise +s.
+     * FROZEN — the DEFAULT PHYSICAL name derivation only (step 4 above, reached only
+     * when metadata declares no explicit physical name). Tiny inflector mirroring the
+     * TS reference {@code pluralizeTableNameLegacy} (metadata/src/naming.ts) — NOT the
+     * TS {@code pluralize}, which now differs for an already-plural word: handles the
+     * (s|x|z|ch|sh) → +es and consonant-y → +ies cases; otherwise +s, with deliberately
+     * NO already-plural detection. An adopter's live database was created with this
+     * rule; adding the already-plural check here would make {@code meta migrate}
+     * propose a rename for every already-plural entity name on the next run. The
+     * API-surface analog ({@code RouteNaming.pluralize} in {@code codegen-base}) has
+     * that fix — this one must not, and the two are intentionally separate,
+     * independently-maintained implementations (never merge them into one call site).
      */
     private static String pluralizeInternal(String s) {
         if (s == null || s.isEmpty()) return s;

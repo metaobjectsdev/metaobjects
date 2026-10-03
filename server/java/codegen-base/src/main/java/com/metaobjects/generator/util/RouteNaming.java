@@ -47,15 +47,49 @@ public final class RouteNaming {
     }
 
     /**
-     * The cross-port pluralization contract, byte-identical in every port: a word ending
-     * {@code s}/{@code x}/{@code z}/{@code ch}/{@code sh} takes {@code es}; a consonant
-     * followed by {@code y} becomes {@code ies}; anything else takes {@code s}.
-     *
-     * <p>Expects an already-lowercased word (what {@code toSnakeCase} returns), which is
-     * why the suffix tests are case-sensitive.</p>
+     * The four letters that precede a genuinely SINGULAR "...s" ending in the common
+     * patterns this codebase's entity names hit — status, address, bonus, alias, gas,
+     * analysis. Anything else before a final "s" reads as already-plural.
      */
-    public static String pluralize(String word) {
-        if (word == null || word.isEmpty()) return word;
+    private static final String ALREADY_PLURAL_EXCLUDED_PRECEDING_CHARS = "suia";
+
+    /**
+     * True when {@code word} already reads as a plural noun, so running it through the
+     * ordinary suffix rule would double it — the real defect this exists to fix:
+     * {@code program_purchase_stats} -&gt; {@code program_purchase_statses} shipped as a
+     * REST collection path in an adopter's app.
+     *
+     * <p>Heuristic, not a dictionary: a word ending in {@code s} is already-plural
+     * UNLESS the character immediately before that final {@code s} is one of
+     * s/u/i/a (case-insensitive). Covers stats, settings, details, news, analytics,
+     * series, photos; leaves status, address, bonus, alias, gas, analysis on the
+     * ordinary suffix path (unchanged).</p>
+     *
+     * <p>Known miss, deliberately not fixed here: a genuinely singular word ending in
+     * "...s" with none of those four letters before it reads as already-plural too —
+     * {@code lens} -&gt; {@code lens} (correct plural {@code lenses}). Fixing that needs
+     * a real dictionary, which this is not; the heuristic optimizes for the shape the
+     * doubling defect actually hits (entity names that are already a plural
+     * concept).</p>
+     */
+    private static boolean isAlreadyPlural(String word) {
+        if (word.length() < 2) return false;
+        char last = Character.toLowerCase(word.charAt(word.length() - 1));
+        if (last != 's') return false;
+        char before = Character.toLowerCase(word.charAt(word.length() - 2));
+        return ALREADY_PLURAL_EXCLUDED_PRECEDING_CHARS.indexOf(before) < 0;
+    }
+
+    /**
+     * FROZEN — byte-for-byte the pre-fix suffix-only pluralization rule, with no
+     * already-plural detection. This is exposed only so {@link #pluralize} can fall
+     * back to it; every OTHER call site in this class / port goes through
+     * {@link #pluralize}. The DEFAULT PHYSICAL name fallback lives in a completely
+     * separate, independently-frozen implementation
+     * ({@code MetaSource#pluralizeInternal} in {@code metadata}) — this method is
+     * NOT that one, and the two must never be merged into a single call site.
+     */
+    private static String pluralizeLegacySuffixOnly(String word) {
         if (word.endsWith("s") || word.endsWith("x") || word.endsWith("z")
                 || word.endsWith("ch") || word.endsWith("sh")) {
             return word + "es";
@@ -65,5 +99,24 @@ public final class RouteNaming {
             return word.substring(0, word.length() - 1) + "ies";
         }
         return word + "s";
+    }
+
+    /**
+     * The cross-port pluralization contract, byte-identical in every port: a word ending
+     * {@code s}/{@code x}/{@code z}/{@code ch}/{@code sh} takes {@code es}; a consonant
+     * followed by {@code y} becomes {@code ies}; anything else takes {@code s}. Adds
+     * already-plural detection ({@link #isAlreadyPlural}) on top of that historical
+     * suffix rule ({@link #pluralizeLegacySuffixOnly}) — API/code-surface pluralization
+     * only; the DEFAULT PHYSICAL table name fallback is frozen separately
+     * ({@code MetaSource#pluralizeInternal}), so an existing adopter database never sees
+     * a proposed rename.
+     *
+     * <p>Expects an already-lowercased word (what {@code toSnakeCase} returns), which is
+     * why the suffix tests are case-sensitive.</p>
+     */
+    public static String pluralize(String word) {
+        if (word == null || word.isEmpty()) return word;
+        if (isAlreadyPlural(word)) return word;
+        return pluralizeLegacySuffixOnly(word);
     }
 }

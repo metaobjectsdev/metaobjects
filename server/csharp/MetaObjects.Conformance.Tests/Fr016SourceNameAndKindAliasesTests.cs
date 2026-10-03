@@ -158,6 +158,18 @@ public class Fr016SourceNameAndKindAliasesTests
         Assert.Equal("customers", src.PhysicalName);
     }
 
+    [Fact]
+    public void Step4_frozen_legacy_rule_still_doubles_an_already_plural_owner_name()
+    {
+        // The default PHYSICAL table name derivation is FROZEN at the
+        // pre-fix suffix-only rule (SourceNaming.Pluralize), so an adopter's existing
+        // database never sees a proposed rename for an already-plural entity name.
+        // Only the API-surface CSharpNaming.Pluralize gets the already-plural fix.
+        var doc = OneEntityDoc("ProgramPurchaseStats", "{}");
+        var src = FirstSource(doc);
+        Assert.Equal("program_purchase_statses", src.PhysicalName);
+    }
+
     // -------------------------------------------------------------------------
     // 4. Validation — ERR_PHYSICAL_NAME_MULTIPLE
     // -------------------------------------------------------------------------

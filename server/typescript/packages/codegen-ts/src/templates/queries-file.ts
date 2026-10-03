@@ -23,7 +23,7 @@ import {
   getPkFields,
   schemaInputType,
 } from "./queries.js";
-import { pluralize, findByIdFnName, listFnName, createFnName, insertPreservingFnName, updateFnName } from "../naming.js";
+import { pluralize, findByIdFnName, listFnName, createFnName, insertPreservingFnName, updateFnName, singleRowVarName } from "../naming.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants.js";
 import { isTphDiscriminatorBase, tphConcreteSubtypes } from "./tph-discriminator.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
@@ -206,7 +206,7 @@ function renderWriteThroughQueriesFile(obj: MetaObject, ctx: RenderContext): str
   const camelName = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const viewVar = `${camelName}View`;
   const tableVar = ctx.collectionName(entityName);
-  const singularVar = camelName;
+  const singularVar = singleRowVarName(entityName, tableVar);
   const entityFileName = entityModuleSpecifier(
     ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(obj), entityName, ctx.extStyle,
   );

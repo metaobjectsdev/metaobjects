@@ -34,9 +34,18 @@ internal static class SourceNaming
     }
 
     /// <summary>
-    /// Cosmetic pluralization (English-only). Mirrors the TS reference
-    /// <c>pluralize</c>: <c>-s|-x|-z|-ch|-sh</c> → <c>+es</c>; consonant + <c>y</c>
-    /// → <c>-y +ies</c>; otherwise <c>+s</c>.
+    /// FROZEN — the DEFAULT PHYSICAL name derivation only (FR-016/ADR-0018 step 4 on
+    /// <see cref="MetaSource"/>'s <c>PhysicalName</c>, reached only when metadata
+    /// declares no explicit physical name). Cosmetic pluralization (English-only),
+    /// suffix rule only, deliberately with NO already-plural detection: <c>-s|-x|-z|-ch|-sh</c>
+    /// → <c>+es</c>; consonant + <c>y</c> → <c>-y +ies</c>; otherwise <c>+s</c>. Mirrors
+    /// the TS reference <c>pluralizeTableNameLegacy</c> (metadata/src/naming.ts) — NOT
+    /// the TS <c>pluralize</c>, which now differs for an already-plural word.
+    /// An adopter's live database was created with this rule; adding the already-plural
+    /// check here would make <c>meta migrate</c> propose a rename for every
+    /// already-plural entity name on the next run. The API-surface analog
+    /// (<c>CSharpNaming.Pluralize</c> in <c>MetaObjects.Codegen</c>) has that fix — this
+    /// one must not.
     /// </summary>
     public static string Pluralize(string name)
     {

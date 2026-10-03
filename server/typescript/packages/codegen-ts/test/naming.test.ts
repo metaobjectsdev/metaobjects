@@ -7,6 +7,8 @@ import {
   tableNameFromEntity,
   columnNameFromField,
   variableNameFromEntity,
+  listFnName,
+  reverseFinderFnName,
 } from "../src/naming.js";
 
 describe("toSnakeCase", () => {
@@ -61,6 +63,13 @@ describe("pluralize", () => {
     // Just confirms pluralize doesn't crash on weird input
     expect(pluralize("Person")).toBe("Persons"); // documented imperfection per design §13 #1
   });
+  test("does not double-pluralize an already-plural entity name", () => {
+    // ProgramPurchaseStats used to come out ProgramPurchaseStatses:
+    // a real adopter shipped six such doubled REST/hook names.
+    expect(pluralize("ProgramPurchaseStats")).toBe("ProgramPurchaseStats");
+    expect(pluralize("Settings")).toBe("Settings");
+    expect(pluralize("Series")).toBe("Series");
+  });
 });
 
 describe("tableNameFromEntity", () => {
@@ -68,6 +77,9 @@ describe("tableNameFromEntity", () => {
     expect(tableNameFromEntity("Post")).toBe("posts");
     expect(tableNameFromEntity("UserAccount")).toBe("user_accounts");
     expect(tableNameFromEntity("Category")).toBe("categories");
+  });
+  test("does not double-pluralize an already-plural entity name", () => {
+    expect(tableNameFromEntity("ProgramPurchaseStats")).toBe("program_purchase_stats");
   });
 });
 
@@ -106,6 +118,21 @@ describe("variableNameFromEntity", () => {
 
   test("empty-string override is ignored (falls through to pluralization)", () => {
     expect(variableNameFromEntity("AuditLog", { overrides: { AuditLog: "" } })).toBe("auditLogs");
+  });
+
+  test("does not double-pluralize an already-plural entity name", () => {
+    expect(variableNameFromEntity("ProgramPurchaseStats")).toBe("programPurchaseStats");
+  });
+});
+
+describe("listFnName / reverseFinderFnName (already-plural entity names)", () => {
+  test("listFnName does not double-pluralize", () => {
+    expect(listFnName("ProgramPurchaseStats")).toBe("listProgramPurchaseStats");
+  });
+  test("reverseFinderFnName does not double-pluralize the source entity segment", () => {
+    expect(reverseFinderFnName("ProgramPurchaseStats", "programId")).toBe(
+      "findProgramPurchaseStatsByProgram",
+    );
   });
 });
 

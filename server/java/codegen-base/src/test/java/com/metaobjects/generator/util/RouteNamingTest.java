@@ -1,6 +1,13 @@
 package com.metaobjects.generator.util;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.junit.Test;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static org.junit.Assert.assertEquals;
 
@@ -65,5 +72,74 @@ public class RouteNamingTest {
         assertEquals(null, RouteNaming.collectionSegment(null));
         assertEquals("", RouteNaming.pluralize(""));
         assertEquals(null, RouteNaming.pluralize(null));
+    }
+
+    // ---- Already-plural detection --------------------------------
+    //
+    // An already-plural entity name used to double (ProgramPurchaseStats ->
+    // ProgramPurchaseStatses / program_purchase_statses) in the REST collection
+    // segment. Mirrors the TS fix in metadata/src/naming.ts exactly (same
+    // four-letter exclusion set before a final "s").
+
+    @Test
+    public void alreadyPluralWordsAreLeftUnchanged() {
+        assertEquals("stats", RouteNaming.pluralize("stats"));
+        assertEquals("settings", RouteNaming.pluralize("settings"));
+        assertEquals("details", RouteNaming.pluralize("details"));
+        assertEquals("news", RouteNaming.pluralize("news"));
+        assertEquals("analytics", RouteNaming.pluralize("analytics"));
+        assertEquals("series", RouteNaming.pluralize("series"));
+        assertEquals("photos", RouteNaming.pluralize("photos"));
+    }
+
+    @Test
+    public void collectionSegmentDoesNotDoublePluralizeAnAlreadyPluralEntityName() {
+        assertEquals("program_purchase_stats", RouteNaming.collectionSegment("ProgramPurchaseStats"));
+        assertEquals("settings", RouteNaming.collectionSegment("Settings"));
+    }
+
+    @Test
+    public void wordsEndingInSUIAPlusSKeepExistingBehavior() {
+        assertEquals("statuses", RouteNaming.pluralize("status"));
+        assertEquals("addresses", RouteNaming.pluralize("address"));
+        assertEquals("bonuses", RouteNaming.pluralize("bonus"));
+        assertEquals("aliases", RouteNaming.pluralize("alias"));
+        assertEquals("gases", RouteNaming.pluralize("gas"));
+        // Documented pre-existing imperfection, explicitly out of scope — not "analyses".
+        assertEquals("analysises", RouteNaming.pluralize("analysis"));
+    }
+
+    @Test
+    public void documentedKnownMissLensReadsAsAlreadyPlural() {
+        // Correct plural is "lenses"; this heuristic is not a dictionary. See
+        // RouteNaming.pluralize's doc comment.
+        assertEquals("lens", RouteNaming.pluralize("lens"));
+    }
+
+    /**
+     * fixtures/naming-conformance/ — the shared cross-port data proving every port's
+     * API-surface pluralizer agrees on the same inputs. See that corpus's README; the
+     * FROZEN legacy-pluralizer half of the same fixture is checked in
+     * {@code metadata}'s {@code Fr016SourcePhysicalNameTest} (a different module —
+     * {@code codegen-base} has no access to {@code MetaSource}'s private
+     * {@code pluralizeInternal}, nor should it).
+     */
+    @Test
+    public void namingConformanceApiPluralsMatch() throws IOException {
+        Path repoRoot = Path.of(System.getProperty("user.dir")).resolve("../../..").normalize();
+        Path fixture = repoRoot.resolve("fixtures/naming-conformance/already-plural-pluralize.json");
+        JsonObject root = JsonParser.parseString(Files.readString(fixture)).getAsJsonObject();
+        JsonArray cases = root.getAsJsonArray("cases");
+        for (int i = 0; i < cases.size(); i++) {
+            JsonObject c = cases.get(i).getAsJsonObject();
+            String name = c.get("name").getAsString();
+            String expected = c.get("apiPlural").getAsString();
+            // RouteNaming.pluralize expects an already-lowercased word (what toSnakeCase
+            // returns); every fixture case is a single word, so lowercasing both sides
+            // is byte-equivalent to snake_casing first.
+            assertEquals(
+                "pluralize(" + name + ")",
+                expected.toLowerCase(), RouteNaming.pluralize(name.toLowerCase()));
+        }
     }
 }

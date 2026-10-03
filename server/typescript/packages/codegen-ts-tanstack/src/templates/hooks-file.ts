@@ -15,7 +15,7 @@ import {
   GENERATED_HEADER,
   GENERATED_EDIT_NOTE,
   isProjection,
-  pluralize,
+  hookListNameSegment,
   entityModuleSpecifier,
   isTphDiscriminatorBase,
   tphPlan,
@@ -170,7 +170,7 @@ function renderReadOnlyHooksFile(entity: MetaObject, entityModule: string, ctx: 
   // The id parameter must follow the entity's DECLARED primary-key type — a uuid/string
   // PK typed as `number` is simply wrong for the data (and a tsc error at every call site).
   const pkType = getPkInfo(entity, ctx).tsType;
-  const entityNamePlural = pluralize(entityName);
+  const entityNamePlural = hookListNameSegment(entityName);
   const lcEntity = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const keysVar = `${lcEntity}Keys`;
   const m2mEntries = m2mEntriesFor(entity, ctx);
@@ -245,7 +245,7 @@ function renderFullHooksFile(entity: MetaObject, entityModule: string, ctx: Rend
   // The id parameter must follow the entity's DECLARED primary-key type — a uuid/string
   // PK typed as `number` is simply wrong for the data (and a tsc error at every call site).
   const pkType = getPkInfo(entity, ctx).tsType;
-  const entityNamePlural = pluralize(entityName);
+  const entityNamePlural = hookListNameSegment(entityName);
   const lcEntity = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const keysVar = `${lcEntity}Keys`;
   const m2mEntries = m2mEntriesFor(entity, ctx);
@@ -449,7 +449,7 @@ export function use${baseName}(
   });
 }
 
-export function use${pluralize(baseName)}(
+export function use${hookListNameSegment(baseName)}(
   filter?: ${baseName}Filter,
   opts?: Omit<${useQueryOptionsSym}<${baseName}[]>, "queryKey" | "queryFn">,
 ): ${useQueryResultSym}<${baseName}[]> {
@@ -471,7 +471,7 @@ export function use${pluralize(baseName)}(
     const updateInput = `Partial<${createInput}>`;
     const subPath = `\`\${${baseName}.$path}/${seg}\``;
     return code`
-export function use${pluralize(subName)}(
+export function use${hookListNameSegment(subName)}(
   filter?: ${subName}Filter,
   opts?: Omit<${useQueryOptionsSym}<${subName}[]>, "queryKey" | "queryFn">,
 ): ${useQueryResultSym}<${subName}[]> {

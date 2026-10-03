@@ -1,7 +1,13 @@
 import { describe, it, expect } from "bun:test";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
 import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
-import { resolveTableSchema, resolveTableName, primaryRdbSource } from "../src/naming.js";
+import {
+  resolveTableSchema, resolveTableName, primaryRdbSource,
+  pluralize, pluralizeTableNameLegacy,
+} from "../src/naming.js";
 import { MetaModelError } from "../src/errors.js";
 import { MetaObject } from "../src/core/object/meta-object.js";
 import type { MetaSource } from "../src/persistence/source/meta-source.js";
@@ -270,4 +276,98 @@ describe("primaryRdbSource — the divergence refusal", () => {
     expect(primaryRdbSource(value)).toBeUndefined();
     expect(resolveTableName(value)).toBe("moneys");
   });
+
+  it("an already-plural entity name with no source still gets the LEGACY double-plural (frozen physical default)", async () => {
+    // resolveTableName's no-source fallback must stay byte-for-byte the OLD rule: an
+    // adopter's existing database was created with this default, and a change here
+    // would make `meta migrate` propose a rename for every already-plural entity name.
+    const root = await loadClean({
+      "metadata.root": {
+        package: "acme",
+        children: [
+          { "object.value": { name: "ProgramPurchaseStats", children: [{ "field.long": { name: "count" } }] } },
+        ],
+      },
+    });
+    const value = root.ownChildren().find((c) => c.name === "ProgramPurchaseStats")!;
+    expect(primaryRdbSource(value)).toBeUndefined();
+    // Old suffix rule only: "program_purchase_stats" ends in "s" -> +"es".
+    expect(resolveTableName(value)).toBe("program_purchase_statses");
+  });
+});
+
+describe("pluralizeTableNameLegacy", () => {
+  it("is the frozen suffix-only rule — doubles an already-plural word", () => {
+    expect(pluralizeTableNameLegacy("stats")).toBe("statses");
+    expect(pluralizeTableNameLegacy("settings")).toBe("settingses");
+  });
+
+  it("matches ordinary suffix behavior unaffected by the already-plural fix", () => {
+    expect(pluralizeTableNameLegacy("user")).toBe("users");
+    expect(pluralizeTableNameLegacy("category")).toBe("categories");
+    expect(pluralizeTableNameLegacy("box")).toBe("boxes");
+    expect(pluralizeTableNameLegacy("status")).toBe("statuses");
+    expect(pluralizeTableNameLegacy("address")).toBe("addresses");
+  });
+});
+
+describe("pluralize (API/code-surface — already-plural aware)", () => {
+  it("leaves an already-plural word unchanged instead of doubling it", () => {
+    expect(pluralize("Stats")).toBe("Stats");
+    expect(pluralize("Settings")).toBe("Settings");
+    expect(pluralize("Details")).toBe("Details");
+    expect(pluralize("News")).toBe("News");
+    expect(pluralize("Analytics")).toBe("Analytics");
+    expect(pluralize("Series")).toBe("Series");
+    expect(pluralize("Photos")).toBe("Photos");
+    expect(pluralize("ProgramPurchaseStats")).toBe("ProgramPurchaseStats");
+  });
+
+  it("keeps existing behavior for words whose singular ends in s/u/i/a + s", () => {
+    expect(pluralize("Status")).toBe("Statuses");
+    expect(pluralize("Address")).toBe("Addresses");
+    expect(pluralize("Bonus")).toBe("Bonuses");
+    expect(pluralize("Alias")).toBe("Aliases");
+    expect(pluralize("Gas")).toBe("Gases");
+    // Documented pre-existing imperfection, explicitly out of scope — not "Analyses".
+    expect(pluralize("Analysis")).toBe("Analysises");
+  });
+
+  it("keeps existing behavior for every non-s ending", () => {
+    expect(pluralize("user")).toBe("users");
+    expect(pluralize("category")).toBe("categories");
+    expect(pluralize("box")).toBe("boxes");
+    expect(pluralize("class")).toBe("classes");
+  });
+
+  it("documented known miss: a genuinely singular word ending in a non-s/u/i/a + s reads as already-plural", () => {
+    // Lens -> Lens (correct plural is Lenses). See the function doc for why this
+    // heuristic is not a dictionary and does not attempt to fix this case.
+    expect(pluralize("Lens")).toBe("Lens");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fixtures/naming-conformance/ — the shared cross-port data proving every
+// port's API-surface pluralizer and frozen legacy pluralizer agree on the
+// SAME inputs. See that corpus's README for the schema and the other ports'
+// runners.
+// ---------------------------------------------------------------------------
+describe("fixtures/naming-conformance/already-plural-pluralize.json", () => {
+  const fixturePath = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "..", "..", "..", "..", "..",
+    "fixtures", "naming-conformance", "already-plural-pluralize.json",
+  );
+  const { cases } = JSON.parse(readFileSync(fixturePath, "utf8")) as {
+    cases: { name: string; apiPlural: string; legacyPlural: string }[];
+  };
+
+  it.each(cases.map((c) => [c.name, c.apiPlural, c.legacyPlural] as const))(
+    "%s -> api %s, legacy %s",
+    (name, apiPlural, legacyPlural) => {
+      expect(pluralize(name)).toBe(apiPlural);
+      expect(pluralizeTableNameLegacy(name)).toBe(legacyPlural);
+    },
+  );
 });

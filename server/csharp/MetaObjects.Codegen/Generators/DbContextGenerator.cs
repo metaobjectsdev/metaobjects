@@ -197,7 +197,7 @@ public class DbContextGenerator : IGenerator
             // own columns into the base table as nullable.
             var tph = TphPlanBuilder.For(e, ctx.Root);
             if (tph is not null)
-                modelLines.Add(HasDiscriminatorConfig(owner, e, tph));
+                modelLines.Add(HasDiscriminatorConfig(owner, e, tph, ctx.Config));
 
             // ADR-0047 / #294 — explicit 1:N relationship configuration, with the
             // referential action INLINE on the call that establishes the foreign key.
@@ -389,15 +389,18 @@ public class DbContextGenerator : IGenerator
     // discriminator field is an enum (the canonical shape) the HasValue argument is the
     // enum literal (<EnumType>.<Value>), which round-trips through the enum's
     // HasConversion<string>() as the text symbol; otherwise the raw string value.
-    private static string HasDiscriminatorConfig(string owner, MetaObject baseEntity, TphPlan tph)
+    private static string HasDiscriminatorConfig(string owner, MetaObject baseEntity, TphPlan tph, GenConfig config)
     {
         var discField = baseEntity.FindField(tph.DiscriminatorField);
         var discProp = CSharpNaming.Pascal(tph.DiscriminatorField);
         var isEnum = discField is not null && discField.SubType == FIELD_SUBTYPE_ENUM;
         // The enum type is nested in the base class, so qualify it (<Base>.<EnumType>)
-        // when referenced from the DbContext (a sibling type).
+        // when referenced from the DbContext (a sibling type) — global::-qualified
+        // (CSharpNaming.QualifiedOwnerTypeRef), not bare: a bare <Base> can resolve to
+        // this DbContext's own same-named DbSet property instead of the entity type
+        // (CS1061), which an already-plural base entity name now reaches.
         var enumType = discField is not null && isEnum
-            ? $"{owner}.{CSharpNaming.EnumTypeName(baseEntity, discField)}" : null;
+            ? $"{CSharpNaming.QualifiedOwnerTypeRef(owner, config)}.{CSharpNaming.EnumTypeName(baseEntity, discField)}" : null;
 
         var sb = new StringBuilder();
         sb.Append($"        modelBuilder.Entity<{owner}>().HasDiscriminator(e => e.{discProp})");
@@ -916,9 +919,14 @@ public class DbContextGenerator : IGenerator
         // field a load error, so hanging it on the shared declaration is the only legal way
         // to int-back a shared enum. String-backed shared enums never showed this because
         // HasConversion<string>() names no type at all.
+        // Non-shared branch: the enum IS nested in the entity class, referenced from the
+        // DbContext (a sibling type) — global::-qualified (CSharpNaming.QualifiedOwnerTypeRef),
+        // not bare: a bare <Owner> can resolve to this DbContext's own same-named DbSet
+        // property instead of the entity type (CS1061), which an already-plural entity
+        // name now reaches.
         var type = Fr019SharedEnum.SharedEnumForField(f) is { } shared
             ? Fr019SharedEnum.SharedEnumTypeReference(shared, config)
-            : $"{owner}.{CSharpNaming.EnumTypeName(entity, f)}";
+            : $"{CSharpNaming.QualifiedOwnerTypeRef(owner, config)}.{CSharpNaming.EnumTypeName(entity, f)}";
         // Read the ints THROUGH the map, keyed by member, so @values stays the SSOT and a
         // member with no mapping cannot silently vanish from the conversion.
         var ints = new List<string>(members.Count);

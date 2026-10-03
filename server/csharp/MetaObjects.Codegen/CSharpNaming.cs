@@ -994,11 +994,45 @@ public static class CSharpNaming
     }
 
     /// <summary>
-    /// Cosmetic pluralization for a DbSet property name + the route collection
-    /// segment (the table name itself comes from [Table]). Shared so the DbContext
-    /// and routes generators agree.
+    /// The four letters that precede a genuinely SINGULAR "...s" ending in the common
+    /// patterns this codebase's entity names hit — Status, Address, Bonus, Alias, Gas,
+    /// Analysis. Anything else before a final "s" reads as already-plural.
     /// </summary>
-    public static string Pluralize(string name)
+    private static readonly char[] AlreadyPluralExcludedPrecedingChars = ['s', 'u', 'i', 'a'];
+
+    /// <summary>
+    /// True when <paramref name="name"/> already reads as a plural noun, so running it
+    /// through the ordinary suffix rule would double it — the real defect this exists
+    /// to fix: <c>ProgramPurchaseStats</c> -&gt; <c>ProgramPurchaseStatses</c> shipped as
+    /// six REST collection paths and generated DbSet/finder names in an adopter's app.
+    ///
+    /// <para>Heuristic, not a dictionary: a word ending in "s" is already-plural UNLESS
+    /// the character immediately before that final "s" is one of s/u/i/a
+    /// (case-insensitive). Covers Stats, Settings, Details, News, Analytics, Series,
+    /// Photos; leaves Status, Address, Bonus, Alias, Gas, Analysis on the ordinary
+    /// suffix path (unchanged).</para>
+    ///
+    /// <para>Known miss, deliberately not fixed here: a genuinely singular word ending
+    /// in "...s" with none of those four letters before it reads as already-plural too
+    /// — <c>Lens</c> -&gt; <c>Lens</c> (correct plural <c>Lenses</c>). Fixing that needs
+    /// a real dictionary, which this is not; the heuristic optimizes for the shape the
+    /// doubling defect actually hits (entity names that are already a plural
+    /// concept).</para>
+    /// </summary>
+    private static bool IsAlreadyPlural(string s)
+    {
+        if (s.Length < 2 || !s.EndsWith("s", StringComparison.OrdinalIgnoreCase)) return false;
+        return Array.IndexOf(AlreadyPluralExcludedPrecedingChars, char.ToLowerInvariant(s[^2])) < 0;
+    }
+
+    /// <summary>
+    /// FROZEN — byte-for-byte the pre-fix suffix-only pluralization rule, with no
+    /// already-plural detection. Mirrors <see cref="MetaObjects.Persistence.Source.SourceNaming"/>'s
+    /// own (separately-defined, equally frozen) <c>Pluralize</c>, which this codegen
+    /// layer never calls — kept here only as the disambiguation fallback for this
+    /// project's own API-surface use (see <see cref="Pluralize"/>).
+    /// </summary>
+    private static string PluralizeLegacySuffixOnly(string name)
     {
         if (name.EndsWith("s", StringComparison.Ordinal) || name.EndsWith("x", StringComparison.Ordinal) ||
             name.EndsWith("z", StringComparison.Ordinal) || name.EndsWith("ch", StringComparison.Ordinal) ||
@@ -1007,6 +1041,24 @@ public static class CSharpNaming
         if (name.Length > 1 && name.EndsWith("y", StringComparison.Ordinal) && !"aeiou".Contains(name[^2]))
             return name[..^1] + "ies";
         return name + "s";
+    }
+
+    /// <summary>
+    /// Cosmetic pluralization for a DbSet property name + the route collection
+    /// segment (the table name itself comes from [Table]). Shared so the DbContext
+    /// and routes generators agree.
+    ///
+    /// <para>API/code-surface pluralization — NOT for a default physical table/column
+    /// name: that fallback lives in the separate, frozen
+    /// <see cref="MetaObjects.Persistence.Source.SourceNaming.Pluralize"/>, so an
+    /// existing adopter database never sees a proposed rename. Adds already-plural
+    /// detection (<see cref="IsAlreadyPlural"/>) on top of the historical suffix rule
+    /// (<see cref="PluralizeLegacySuffixOnly"/>).</para>
+    /// </summary>
+    public static string Pluralize(string name)
+    {
+        if (IsAlreadyPlural(name)) return name;
+        return PluralizeLegacySuffixOnly(name);
     }
 
     /// <summary>
@@ -1047,4 +1099,35 @@ public static class CSharpNaming
             return Pascal(shared.Name);
         return Pascal(entity.Name) + Pascal(field.Name);
     }
+
+    /// <summary>
+    /// How code generated INSIDE the DbContext class body (<c>OnModelCreating</c>) must
+    /// reference an entity TYPE by its bare name, when reaching for one of that entity's
+    /// own NESTED static members (a TPH discriminator enum, an int-backed enum) —
+    /// <c>HasDiscriminatorConfig</c> / <c>EnumConversionCall</c> in DbContextGenerator.
+    ///
+    /// <para>Inside that class, C# simple-name lookup binds a bare <c>&lt;Owner&gt;</c> to
+    /// the DbContext's OWN same-named <c>DbSet&lt;Owner&gt;</c> PROPERTY before it
+    /// considers the entity TYPE of that name — the same shadowing rule documented on
+    /// <see cref="MetaObjects.Codegen.Generators.DbContextGenerator"/>'s
+    /// <c>ForeignKeyExpression</c> (fixed there with a lambda parameter, which only works
+    /// for an INSTANCE member). A nested static member access has no instance to hang a
+    /// lambda off, so <c>global::</c> + the full namespace is the fix: it bypasses
+    /// simple-name member lookup and binds to the TYPE.</para>
+    ///
+    /// <para>Applied ONLY when <c>owner</c> is itself already-plural (<c>Pluralize(owner)
+    /// == owner</c>) — exactly when that entity's OWN DbSet property equals its OWN type
+    /// name (<c>DbSet&lt;AllTypes&gt; AllTypes</c>), introduced by the already-plural
+    /// pluralize fix: the previously-bare <c>AllTypes.AllTypesIntEnumVal.DRAFT</c>
+    /// resolved <c>AllTypes</c> as the DbSet property and failed to compile (CS1061)
+    /// looking for a nested enum on it. Conditioned rather than unconditional so every
+    /// entity that was never already-plural keeps byte-identical output — this is a
+    /// targeted fix for the self-collision the pluralize change introduces, not a general
+    /// hardening pass over every DbContext reference. The OLDER cross-entity variant of
+    /// this hazard (<c>Pluralize("Address") == "Addresses"</c>, a DIFFERENT entity's
+    /// DbSet) predates this fix and is unconditionally out of scope here — it is guarded
+    /// where it actually bites (<c>ForeignKeyExpression</c>'s lambda), not here.</para>
+    /// </summary>
+    public static string QualifiedOwnerTypeRef(string owner, GenConfig config) =>
+        Pluralize(owner) == owner ? $"global::{config.Namespace}.{owner}" : owner;
 }

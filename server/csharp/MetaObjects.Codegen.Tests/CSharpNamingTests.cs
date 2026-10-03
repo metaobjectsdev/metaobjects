@@ -4,6 +4,8 @@
 // migrate-engine removal: the logical field subtype maps to a fixed C# type
 // regardless of any physical @dbColumnType override (ADR-0013).
 
+using System.IO;
+using System.Text.Json;
 using MetaObjects.Codegen;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
@@ -76,5 +78,113 @@ public class CSharpNamingTests
         // The fixture above declares @table "irrelevant_physical_name"; the route
         // must derive from the entity name regardless.
         Assert.Equal("post_categories", CSharpNaming.RoutePath(Entity("PostCategory")));
+    }
+
+    // ---- Pluralize: already-plural detection --------------------
+    //
+    // An already-plural entity name used to double (ProgramPurchaseStats ->
+    // ProgramPurchaseStatses) in every API-surface spelling that goes through
+    // this function: DbSet property names, the route collection segment, and
+    // reverse-finder names. Mirrors the TS fix in metadata/src/naming.ts exactly
+    // (same four-letter exclusion set before a final "s").
+
+    [Theory]
+    [InlineData("Stats", "Stats")]
+    [InlineData("Settings", "Settings")]
+    [InlineData("Details", "Details")]
+    [InlineData("News", "News")]
+    [InlineData("Analytics", "Analytics")]
+    [InlineData("Series", "Series")]
+    [InlineData("Photos", "Photos")]
+    [InlineData("ProgramPurchaseStats", "ProgramPurchaseStats")]
+    public void Pluralize_leaves_an_already_plural_word_unchanged(string input, string expected)
+    {
+        Assert.Equal(expected, CSharpNaming.Pluralize(input));
+    }
+
+    [Theory]
+    [InlineData("Status", "Statuses")]
+    [InlineData("Address", "Addresses")]
+    [InlineData("Bonus", "Bonuses")]
+    [InlineData("Alias", "Aliases")]
+    [InlineData("Gas", "Gases")]
+    // Documented pre-existing imperfection, explicitly out of scope — not "Analyses".
+    [InlineData("Analysis", "Analysises")]
+    public void Pluralize_keeps_existing_behavior_for_s_u_i_a_plus_s_endings(string input, string expected)
+    {
+        Assert.Equal(expected, CSharpNaming.Pluralize(input));
+    }
+
+    [Fact]
+    public void Pluralize_documented_known_miss_Lens_reads_as_already_plural()
+    {
+        // Correct plural is "Lenses"; this heuristic is not a dictionary. See the
+        // function's doc comment.
+        Assert.Equal("Lens", CSharpNaming.Pluralize("Lens"));
+    }
+
+    [Fact]
+    public void RoutePath_does_not_double_pluralize_an_already_plural_entity_name()
+    {
+        Assert.Equal("program_purchase_stats", CSharpNaming.RoutePath(Entity("ProgramPurchaseStats")));
+    }
+
+    [Fact]
+    public void DbSetName_does_not_double_pluralize_an_already_plural_entity_name()
+    {
+        Assert.Equal("ProgramPurchaseStats", CSharpNaming.DbSetName(Entity("ProgramPurchaseStats")));
+    }
+
+    // -- fixtures/naming-conformance/ — the shared cross-port data proving every
+    // port's API-surface pluralizer and frozen legacy pluralizer agree on the
+    // SAME inputs. See that corpus's README for the schema and the other ports'
+    // runners. The legacy half goes through the PUBLIC MetaSource.PhysicalName
+    // (an entity with an empty source.rdb — step 4, same shape as
+    // Fr016SourceNameAndKindAliasesTests' Step4 test) rather than calling
+    // SourceNaming.Pluralize directly: that class is `internal` to MetaObjects
+    // and this test project has no InternalsVisibleTo grant.
+
+    private static MetaObject EntityWithEmptySource(string name)
+    {
+        var json = $@"{{ ""metadata.root"": {{ ""package"": ""test"", ""children"": [
+            {{ ""object.entity"": {{ ""name"": ""{name}"", ""children"": [
+                {{ ""source.rdb"": {{ }} }},
+                {{ ""field.long"": {{ ""name"": ""id"" }} }},
+                {{ ""identity.primary"": {{ ""name"": ""pk"", ""@fields"": ""id"" }} }}
+            ] }} }} ] }} }}";
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(json, id: "naming-conformance.json")]);
+        Assert.Empty(r.Errors);
+        return r.Root.Objects().Single(o => o.Name == name);
+    }
+
+    public sealed record NamingCase(string Name, string ApiPlural, string LegacyPlural);
+
+    public static TheoryData<NamingCase> NamingConformanceCases()
+    {
+        var path = Path.Combine(
+            CorpusPaths.RepoRoot(), "fixtures", "naming-conformance", "already-plural-pluralize.json");
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        var data = new TheoryData<NamingCase>();
+        foreach (var c in doc.RootElement.GetProperty("cases").EnumerateArray())
+        {
+            data.Add(new NamingCase(
+                c.GetProperty("name").GetString()!,
+                c.GetProperty("apiPlural").GetString()!,
+                c.GetProperty("legacyPlural").GetString()!));
+        }
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(NamingConformanceCases))]
+    public void NamingConformance_apiAndLegacyPluralsMatch(NamingCase c)
+    {
+        Assert.Equal(c.ApiPlural, CSharpNaming.Pluralize(c.Name));
+        var entity = EntityWithEmptySource(c.Name);
+        var source = entity.Children().OfType<MetaSource>().Single();
+        // physical_name snake_cases first; every fixture case is a single PascalCase
+        // word, so lowercasing is byte-equivalent to snake_casing it (no word boundary
+        // to insert "_" at) — avoids depending on CSharpNaming's private ToSnakeCase.
+        Assert.Equal(c.LegacyPlural.ToLowerInvariant(), source.PhysicalName);
     }
 }

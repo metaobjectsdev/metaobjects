@@ -15,6 +15,9 @@
  */
 package com.metaobjects.source;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
@@ -26,7 +29,10 @@ import com.metaobjects.registry.SharedRegistryTestBase;
 import com.metaobjects.util.ErrorMessageConstants;
 import org.junit.Test;
 
+import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
@@ -241,6 +247,45 @@ public class Fr016SourcePhysicalNameTest extends SharedRegistryTestBase {
             oneSourceEntity("Customer", "{ }"),
             "fr016-step4-entity.json");
         assertEquals("customers", firstSource(l).getPhysicalName());
+    }
+
+    @Test
+    public void step4FrozenLegacyRuleStillDoublesAnAlreadyPluralOwnerName() {
+        // The default PHYSICAL table name derivation is FROZEN at the
+        // pre-fix suffix-only rule, so an adopter's existing database never sees a
+        // proposed rename for an already-plural entity name. Only the API-surface
+        // RouteNaming.pluralize (codegen-base) gets the already-plural fix.
+        MetaDataLoader l = loadThrough(
+            oneSourceEntity("ProgramPurchaseStats", "{ }"),
+            "fr016-step4-already-plural-entity.json");
+        assertEquals("program_purchase_statses", firstSource(l).getPhysicalName());
+    }
+
+    /**
+     * fixtures/naming-conformance/ — the shared cross-port data proving every port's
+     * FROZEN legacy pluralizer agrees on the same inputs. The API-surface half of the
+     * same fixture is checked in {@code codegen-base}'s {@code RouteNamingTest} (a
+     * different module — {@code metadata} has no business importing a codegen-layer
+     * naming seam, and this module's {@code MetaSource.pluralizeInternal} that step 4
+     * exercises is private by design). See that corpus's README.
+     */
+    @Test
+    public void namingConformanceLegacyPluralsMatch() throws IOException {
+        Path repoRoot = Path.of(System.getProperty("user.dir")).resolve("../../..").normalize();
+        Path fixture = repoRoot.resolve("fixtures/naming-conformance/already-plural-pluralize.json");
+        JsonObject root = JsonParser.parseString(Files.readString(fixture)).getAsJsonObject();
+        JsonArray cases = root.getAsJsonArray("cases");
+        for (int i = 0; i < cases.size(); i++) {
+            JsonObject c = cases.get(i).getAsJsonObject();
+            String name = c.get("name").getAsString();
+            String expected = c.get("legacyPlural").getAsString();
+            MetaDataLoader l = loadThrough(
+                oneSourceEntity(name, "{ }"), "naming-conformance-" + name + ".json");
+            // Every fixture case is a single PascalCase word, so lowercasing is
+            // byte-equivalent to the snake_case step physical_name applies first.
+            assertEquals("physicalName(" + name + ")",
+                expected.toLowerCase(), firstSource(l).getPhysicalName());
+        }
     }
 
     // =======================================================================

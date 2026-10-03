@@ -47,7 +47,17 @@ def _to_snake_case(s: str) -> str:
 
 
 def _pluralize(s: str) -> str:
-    """Trivial cross-port pluralization (matches TS ``pluralize``)."""
+    """FROZEN — the DEFAULT PHYSICAL name derivation only (step 4 below, reached
+    only when metadata declares no explicit physical name). Matches the TS
+    reference ``pluralizeTableNameLegacy`` (metadata/src/naming.ts) — NOT the TS
+    ``pluralize``, which now differs for an already-plural word, deliberately
+    with NO already-plural detection. An adopter's live database was created
+    with this rule; adding the already-plural check here would make a schema
+    migration propose a rename for every already-plural entity name on the next
+    run. The API-surface analog (``metaobjects.apidocs.naming.pluralize``) has
+    that fix — this one must not, and the two are intentionally separate,
+    independently-maintained implementations (never merge them into one call
+    site)."""
     if not s:
         return s
     lower = s.lower()
@@ -128,7 +138,8 @@ class MetaSource(MetaData):
             2. Legacy ``@table`` for non-table kind (pre-1.0 fallback).
             3. Source's bare structural ``name`` via snake_case
                (no pluralize — the source's name IS the logical name).
-            4. Owning entity's name via ``pluralize(snake_case())``.
+            4. Owning entity's name via the frozen legacy ``pluralize(snake_case())``
+               — see module-level ``_pluralize``'s docstring for why it is frozen.
 
         Callers needing the legacy raw ``@table`` slot only should use
         :meth:`table_name`; codegen / runtime should use ``physical_name``.

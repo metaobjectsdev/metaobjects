@@ -1,0 +1,53 @@
+{
+  "_comment": "Cross-port pluralization conformance — the already-plural fix. For each `name` (a PascalCase entity short name), `apiPlural` is what every port's API/code-surface pluralizer (TS metadata pluralize / C# CSharpNaming.Pluralize / Java+Kotlin RouteNaming.pluralize / Python apidocs.naming.pluralize) must return, and `legacyPlural` is what every port's FROZEN default-physical-name pluralizer (TS pluralizeTableNameLegacy / C# SourceNaming.Pluralize / Java+Python MetaSource pluralizeInternal/_pluralize) must return. Both are the PascalCase-in-case-insensitive-suffix-rule form; a port applies its own snake_case step before comparing where its naming seam operates on snake_case (Java/Kotlin/Python route pluralize takes an already-lowercased word, so compare case-insensitively or lowercase both sides first).",
+  "cases": [
+    {
+      "name": "Stats",
+      "apiPlural": "Stats",
+      "legacyPlural": "Statses",
+      "note": "already-plural: api unchanged, legacy default-table-name doubles (frozen)"
+    },
+    {
+      "name": "Settings",
+      "apiPlural": "Settings",
+      "legacyPlural": "Settingses",
+      "note": "already-plural: api unchanged, legacy default-table-name doubles (frozen)"
+    },
+    {
+      "name": "Series",
+      "apiPlural": "Series",
+      "legacyPlural": "Serieses",
+      "note": "already-plural: api unchanged, legacy default-table-name doubles (frozen)"
+    },
+    {
+      "name": "Status",
+      "apiPlural": "Statuses",
+      "legacyPlural": "Statuses",
+      "note": "NOT already-plural (char before final s is 'u', excluded) — unchanged behavior on both axes"
+    },
+    {
+      "name": "Address",
+      "apiPlural": "Addresses",
+      "legacyPlural": "Addresses",
+      "note": "NOT already-plural (char before final s is 's', excluded) — unchanged behavior on both axes"
+    },
+    {
+      "name": "Alias",
+      "apiPlural": "Aliases",
+      "legacyPlural": "Aliases",
+      "note": "NOT already-plural (char before final s is 'a', excluded) — unchanged behavior on both axes"
+    },
+    {
+      "name": "Category",
+      "apiPlural": "Categories",
+      "legacyPlural": "Categories",
+      "note": "consonant+y rule, does not end in s pre-pluralization — unaffected baseline"
+    },
+    {
+      "name": "Box",
+      "apiPlural": "Boxes",
+      "legacyPlural": "Boxes",
+      "note": "sibilant +es rule, does not end in s pre-pluralization — unaffected baseline"
+    }
+  ]
+}

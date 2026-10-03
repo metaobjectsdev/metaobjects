@@ -15,6 +15,7 @@ import {
   deleteByIdFnName,
   reverseFinderFnName,
   reverseFinderInFnName,
+  singleRowVarName,
 } from "../naming.js";
 
 /** Map a field subType to the generated TS scalar type for keys/values. */
@@ -52,7 +53,7 @@ export function getPkFields(entity: MetaObject): string[] {
 export function renderFindByIdFn(entity: MetaObject, ctx: RenderContext, readVar?: string): Code {
   const varName = readVar ?? ctx.collectionName(entity.name);
   const entityName = entity.name;
-  const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
+  const singularVar = singleRowVarName(entityName, varName);
   const { fieldName: pkField, tsType: pkType } = getPkInfo(entity, ctx);
   const fnName = findByIdFnName(entityName);
   const eqSym = imp("eq@drizzle-orm");
@@ -112,7 +113,7 @@ function insertThenReadBack(entity: MetaObject, ctx: RenderContext, varName: str
 export function renderCreateFn(entity: MetaObject, ctx: RenderContext): Code {
   const varName = ctx.collectionName(entity.name);
   const entityName = entity.name;
-  const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
+  const singularVar = singleRowVarName(entityName, varName);
   const fnName = createFnName(entityName);
   const schemaName = `${entityName}InsertSchema`;
 
@@ -149,7 +150,7 @@ export async function ${fnName}(db: Db, data: ${schemaInputType(schemaName)}): P
 export function renderInsertPreservingFn(entity: MetaObject, ctx: RenderContext): Code {
   const varName = ctx.collectionName(entity.name);
   const entityName = entity.name;
-  const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
+  const singularVar = singleRowVarName(entityName, varName);
   const fnName = insertPreservingFnName(entityName);
   const schemaName = `${entityName}InsertPreservingSchema`;
 
@@ -173,7 +174,7 @@ export async function ${fnName}(db: Db, data: ${schemaInputType(schemaName)}): P
 export function renderUpdateFn(entity: MetaObject, ctx: RenderContext): Code {
   const varName = ctx.collectionName(entity.name);
   const entityName = entity.name;
-  const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
+  const singularVar = singleRowVarName(entityName, varName);
   const { fieldName: pkField, tsType: pkType } = getPkInfo(entity, ctx);
   const fnName = updateFnName(entityName);
   const findByIdFn = findByIdFnName(entityName);

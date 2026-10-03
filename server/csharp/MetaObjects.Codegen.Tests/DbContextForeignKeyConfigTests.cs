@@ -7,10 +7,20 @@
 //    to a MEMBER of the context before it considers the type of the same name — and the context
 //    declares a DbSet property per entity. So any entity whose type name collides with some
 //    DbSet property name binds `<Owner>` to the DbSet and fails to compile (CS1061). Reachable
-//    from stock metadata: Pluralize("Address") == "Addresses", so a model with both an `Address`
-//    and an `Addresses` entity breaks. The typed lambda overload is immune (its parameter is
+//    from stock metadata: Pluralize("Pizza") == "Pizzas", so a model with both a `Pizza`
+//    and a `Pizzas` entity breaks. The typed lambda overload is immune (its parameter is
 //    local, so nothing can shadow it) and stays compile-checked, unlike a string literal — which
 //    would compile past a wrong name and only fail later inside EF.
+//
+//    (Not "Address"/"Addresses" — the historical pair here before the
+//    already-plural pluralize fix makes Pluralize("Addresses") == "Addresses", so that
+//    SECOND entity's OWN DbSet would ALSO collide with the first entity's "Addresses"
+//    DbSet (CS0102 duplicate member) — a separate, general cross-entity DbSet-name
+//    collision this fix does not attempt to solve. "Pizza"/"Pizzas" demonstrates the
+//    SAME nameof-vs-lambda hazard without tripping that unrelated second collision:
+//    Pluralize("Pizzas") is NOT already-plural (the char before its final "s" is "a",
+//    excluded — see CSharpNaming.Pluralize), so it still legacy-pluralizes to a
+//    distinct "Pizzases".)
 //
 // 2. The emission is an overridable seam. Stock codegen emits NO reference navigation properties
 //    (ADR-0038 replaced reverse navigation with explicit FK finders), which is why the
@@ -35,25 +45,25 @@ namespace MetaObjects.Codegen.Tests;
 public sealed class DbContextForeignKeyConfigTests
 {
     /// <summary>
-    /// `Address` + `Addresses`, both persisted, with `Addresses` carrying the reference.
-    /// Pluralize("Address") == "Addresses", so the context declares `DbSet&lt;Address&gt; Addresses`
-    /// — the exact identifier the FK line for entity `Addresses` has to name.
+    /// `Pizza` + `Pizzas`, both persisted, with `Pizzas` carrying the reference.
+    /// Pluralize("Pizza") == "Pizzas", so the context declares `DbSet&lt;Pizza&gt; Pizzas`
+    /// — the exact identifier the FK line for entity `Pizzas` has to name.
     /// </summary>
     private const string DbSetNameCollisionModel = """
     { "metadata.root": { "package": "acme", "children": [
-      { "object.entity": { "name": "Address", "children": [
-        { "source.rdb": { "@table": "address" } },
+      { "object.entity": { "name": "Pizza", "children": [
+        { "source.rdb": { "@table": "pizza" } },
         { "field.long":   { "name": "id" } },
         { "field.string": { "name": "city", "@maxLength": 40 } },
         { "identity.primary": { "@fields": "id" } }
       ]}},
-      { "object.entity": { "name": "Addresses", "children": [
-        { "source.rdb": { "@table": "addresses" } },
+      { "object.entity": { "name": "Pizzas", "children": [
+        { "source.rdb": { "@table": "pizzas" } },
         { "field.long": { "name": "id" } },
-        { "field.long": { "name": "addressId" } },
+        { "field.long": { "name": "pizzaId" } },
         { "identity.primary": { "@fields": "id" } },
-        { "identity.reference": { "name": "refAddress", "@fields": "addressId",
-          "@references": "Address", "@onDelete": "cascade" } }
+        { "identity.reference": { "name": "refPizza", "@fields": "pizzaId",
+          "@references": "Pizza", "@onDelete": "cascade" } }
       ]}}
     ]}}
     """;
@@ -101,8 +111,8 @@ public sealed class DbContextForeignKeyConfigTests
         var src = Assert.Single(new DbContextGenerator().Generate(Ctx(Load(DbSetNameCollisionModel)))).Content;
 
         Assert.Contains(
-            "modelBuilder.Entity<Addresses>().HasOne<Address>().WithMany()"
-            + ".HasForeignKey(e => e.AddressId).OnDelete(DeleteBehavior.Cascade);",
+            "modelBuilder.Entity<Pizzas>().HasOne<Pizza>().WithMany()"
+            + ".HasForeignKey(e => e.PizzaId).OnDelete(DeleteBehavior.Cascade);",
             src);
         // No nameof() anywhere in the FK configuration — that is the whole defect.
         Assert.DoesNotContain(".HasForeignKey(nameof(", src);
@@ -145,15 +155,18 @@ public sealed class DbContextForeignKeyConfigTests
         var stock = Assert.Single(new DbContextGenerator().Generate(Ctx(root))).Content;
         var suppressed = Assert.Single(new NoReferenceFkDbContextGenerator().Generate(Ctx(root))).Content;
 
-        Assert.Contains(".HasForeignKey(e => e.AddressId)", stock);
+        Assert.Contains(".HasForeignKey(e => e.PizzaId)", stock);
 
         // Only the relationship configuration goes away. The DbSets, the entity mappings and
         // everything else the generator emits must be untouched — suppressing FK config is not
         // opting out of the DbContext.
         Assert.DoesNotContain("HasOne<", suppressed);
         Assert.DoesNotContain("HasForeignKey", suppressed);
-        Assert.Contains("public DbSet<Address> Addresses { get; set; }", suppressed);
-        Assert.Contains("public DbSet<Addresses> Addresseses { get; set; }", suppressed);
+        Assert.Contains("public DbSet<Pizza> Pizzas { get; set; }", suppressed);
+        // Pluralize("Pizzas") is NOT already-plural (see the fixture doc comment above),
+        // so this stays the legacy-pluralized "Pizzases" rather than colliding with the
+        // first entity's "Pizzas" DbSet.
+        Assert.Contains("public DbSet<Pizzas> Pizzases { get; set; }", suppressed);
     }
 
     [Fact]

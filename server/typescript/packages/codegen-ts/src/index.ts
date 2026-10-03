@@ -101,7 +101,7 @@ export { warnRetiredCodegenAttrs } from "./retired-codegen-attrs.js";
 
 export { formatTs } from "./format.js";
 
-export { pluralize, columnNameFromField, tableNameFromEntity, viewNameFromProjection, routesHandlerName } from "./naming.js";
+export { pluralize, columnNameFromField, tableNameFromEntity, viewNameFromProjection, routesHandlerName, hookListNameSegment } from "./naming.js";
 // ADR-0034 Amendment 4 — what a generator written FROM SCRATCH needs beyond the node
 // accessors: the engine's own case helpers, the enum members, the package-aware target of an
 // `@objectRef`, and the served REST address. Each answer here is a rule the engine already

@@ -19,6 +19,8 @@ import os
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from metaobjects import MetaDataLoader
 from metaobjects.core_types import core_provider
 from metaobjects.meta.persistence.source.meta_source import MetaSource
@@ -158,6 +160,37 @@ def test_physical_name_step4_owning_entity_pluralize_snake_case() -> None:
     _, _, root, _ = _load(_one_source("Author", {}))
     # Default kind = table, no alias, no source name → "authors".
     assert _first_source(root).physical_name() == "authors"
+
+
+def test_physical_name_step4_frozen_legacy_rule_still_doubles_an_already_plural_owner_name() -> None:
+    """The default PHYSICAL table name derivation is FROZEN at the
+    pre-fix suffix-only rule, so an adopter's existing database never sees a
+    proposed rename for an already-plural entity name. Only the API-surface
+    ``metaobjects.apidocs.naming.pluralize`` gets the already-plural fix."""
+    _, _, root, _ = _load(_one_source("ProgramPurchaseStats", {}))
+    assert _first_source(root).physical_name() == "program_purchase_statses"
+
+
+# ---------------------------------------------------------------------------
+# fixtures/naming-conformance/ — the shared cross-port data proving every
+# port's FROZEN legacy pluralizer agrees on the same inputs (the API-surface
+# half of the same fixture is checked in test_route_path_naming.py, against
+# metaobjects.apidocs.naming.pluralize directly). See that corpus's README.
+# ---------------------------------------------------------------------------
+_NAMING_CONFORMANCE_FIXTURE = (
+    Path(__file__).parents[4] / "fixtures" / "naming-conformance" / "already-plural-pluralize.json"
+)
+_naming_conformance_cases = json.loads(_NAMING_CONFORMANCE_FIXTURE.read_text())["cases"]
+
+
+@pytest.mark.parametrize(
+    "case", _naming_conformance_cases, ids=[c["name"] for c in _naming_conformance_cases]
+)
+def test_naming_conformance_legacy_plurals_match(case: dict) -> None:
+    _, _, root, _ = _load(_one_source(case["name"], {}))
+    # Every fixture case is a single PascalCase word, so lowercasing is
+    # byte-equivalent to the snake_case step physical_name applies first.
+    assert _first_source(root).physical_name() == case["legacyPlural"].lower()
 
 
 # ---------------------------------------------------------------------------

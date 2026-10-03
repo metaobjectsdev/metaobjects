@@ -74,6 +74,52 @@ def _route_snake_case(name: str) -> str:
     return to_snake_case(name)
 
 
+_ALREADY_PLURAL_EXCLUDED_PRECEDING_CHARS = "suia"
+"""The four letters that precede a genuinely SINGULAR "...s" ending in the common
+patterns this codebase's entity names hit — status, address, bonus, alias, gas,
+analysis. Anything else before a final "s" reads as already-plural."""
+
+
+def _is_already_plural(word: str) -> bool:
+    """True when ``word`` already reads as a plural noun, so running it through
+    the ordinary suffix rule would double it — the real defect this exists to
+    fix: ``program_purchase_stats`` -> ``program_purchase_statses`` shipped as a
+    REST collection path in an adopter's app.
+
+    Heuristic, not a dictionary: a word ending in ``s`` is already-plural UNLESS
+    the character immediately before that final ``s`` is one of s/u/i/a
+    (case-insensitive). Covers stats, settings, details, news, analytics,
+    series, photos; leaves status, address, bonus, alias, gas, analysis on the
+    ordinary suffix path (unchanged).
+
+    Known miss, deliberately not fixed here: a genuinely singular word ending in
+    "...s" with none of those four letters before it reads as already-plural too
+    — ``lens`` -> ``lens`` (correct plural ``lenses``). Fixing that needs a real
+    dictionary, which this is not; the heuristic optimizes for the shape the
+    doubling defect actually hits (entity names that are already a plural
+    concept)."""
+    if len(word) < 2:
+        return False
+    lowered = word.lower()
+    if lowered[-1] != "s":
+        return False
+    return lowered[-2] not in _ALREADY_PLURAL_EXCLUDED_PRECEDING_CHARS
+
+
+def _pluralize_legacy_suffix_only(name: str) -> str:
+    """FROZEN — byte-for-byte the pre-fix suffix-only pluralization rule, with no
+    already-plural detection. Exposed only so :func:`pluralize` can fall back to
+    it. The DEFAULT PHYSICAL name fallback lives in a completely separate,
+    independently-frozen implementation (``meta_source._pluralize``) — this is
+    NOT that one, and the two must never be merged into a single call site."""
+    lowered = name.lower()
+    if lowered.endswith(("s", "x", "z", "ch", "sh")):
+        return name + "es"
+    if len(name) >= 2 and lowered[-1] == "y" and lowered[-2] not in "aeiou":
+        return name[:-1] + "ies"
+    return name + "s"
+
+
 def pluralize(name: str) -> str:
     """``post_category`` → ``post_categories``; ``address`` → ``addresses``.
 
@@ -82,13 +128,16 @@ def pluralize(name: str) -> str:
     ``y`` becomes ``ies``; anything else takes ``s``. The cross-port
     byte-identity covers the already-lowercased word :func:`route_path` feeds
     in — suffix tests here run on a lowercased copy, unlike the JVM port's
-    case-sensitive ones, so mixed-case input may diverge."""
-    lowered = name.lower()
-    if lowered.endswith(("s", "x", "z", "ch", "sh")):
-        return name + "es"
-    if len(name) >= 2 and lowered[-1] == "y" and lowered[-2] not in "aeiou":
-        return name[:-1] + "ies"
-    return name + "s"
+    case-sensitive ones, so mixed-case input may diverge.
+
+    Adds already-plural detection (:func:`_is_already_plural`) on top of that
+    historical suffix rule (:func:`_pluralize_legacy_suffix_only`) — API/code-
+    surface pluralization only; the DEFAULT PHYSICAL table name fallback is
+    frozen separately (``meta_source._pluralize``), so an existing adopter
+    database never sees a proposed rename."""
+    if _is_already_plural(name):
+        return name
+    return _pluralize_legacy_suffix_only(name)
 
 
 def model_class_name(obj: MetaData) -> str:

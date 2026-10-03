@@ -9,7 +9,7 @@ public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
-    public DbSet<AllTypes> AllTypeses { get; set; } = default!;
+    public DbSet<AllTypes> AllTypes { get; set; } = default!;
     public DbSet<Asset> Assets { get; set; } = default!;
     public DbSet<Auth> Auths { get; set; } = default!;
     public DbSet<Follow> Follows { get; set; } = default!;
@@ -34,7 +34,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<AllTypes>().OwnsOne(x => x.Settings, b => b.ToJson(AllTypesNames.SettingsColumn));
         modelBuilder.Entity<AllTypes>().OwnsMany(x => x.Labels, b => b.ToJson(AllTypesNames.LabelsColumn));
         modelBuilder.Entity<AllTypes>().Property(x => x.EnumVal).HasConversion<string>();
-        modelBuilder.Entity<AllTypes>().Property(x => x.IntEnumVal).HasConversion(v => v == AllTypes.AllTypesIntEnumVal.DRAFT ? 0 : v == AllTypes.AllTypesIntEnumVal.PUBLISHED ? 5 : 9, v => v == 0 ? AllTypes.AllTypesIntEnumVal.DRAFT : v == 5 ? AllTypes.AllTypesIntEnumVal.PUBLISHED : v == 9 ? AllTypes.AllTypesIntEnumVal.ARCHIVED : UnmappedEnumValue<AllTypes.AllTypesIntEnumVal>(v, "intEnumVal"));
+        modelBuilder.Entity<AllTypes>().Property(x => x.IntEnumVal).HasConversion(v => v == global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.DRAFT ? 0 : v == global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.PUBLISHED ? 5 : 9, v => v == 0 ? global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.DRAFT : v == 5 ? global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.PUBLISHED : v == 9 ? global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.ARCHIVED : UnmappedEnumValue<global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal>(v, "intEnumVal"));
         modelBuilder.Entity<AllTypes>().Property(x => x.DecVal).HasPrecision(18, 6);
         modelBuilder.Entity<AllTypes>().Property(x => x.TsVal).HasColumnType("timestamp without time zone");
         modelBuilder.Entity<AllTypes>().Property(x => x.TsTzVal).HasColumnType("timestamp with time zone");

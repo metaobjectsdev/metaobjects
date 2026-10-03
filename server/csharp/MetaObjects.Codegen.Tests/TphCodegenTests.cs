@@ -196,6 +196,9 @@ public class TphCodegenTests
         Assert.DoesNotContain("DbSet<PriorAuthAuth>", db);
         // HasDiscriminator + HasValue per subtype (the discriminator maps to the enum prop;
         // the enum's HasConversion<string>() stores the symbol, so the column is TEXT).
+        // Bare "Auth." stays bare: the global::-qualification (CSharpNaming.QualifiedOwnerTypeRef)
+        // only applies when the owner's OWN name is already-plural ("Auth" is not), see
+        // a base entity named like e.g. "AllTypes" would get the qualified form.
         Assert.Contains("HasDiscriminator(e => e.Type)", db);
         Assert.Contains("HasValue<BridgeAuth>(Auth.AuthType.Bridge)", db);
         Assert.Contains("HasValue<CopayAuth>(Auth.AuthType.Copay)", db);

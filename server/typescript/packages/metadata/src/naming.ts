@@ -73,10 +73,64 @@ export function applyColumnNamingStrategy(name: string, strategy: ColumnNamingSt
   }
 }
 
-export function pluralize(s: string): string {
+/** The four letters that precede a genuinely SINGULAR "...s" ending in the common
+ *  patterns this codebase's entity names hit — Status, Address, Bonus, Alias, Gas,
+ *  Analysis. Anything else before a final "s" reads as already-plural. */
+const ALREADY_PLURAL_EXCLUDED_PRECEDING_CHARS = new Set(["s", "u", "i", "a"]);
+
+/**
+ * True when `s` already reads as a plural noun, so running it through the ordinary
+ * suffix rule would double it — the real defect this file exists to fix:
+ * `ProgramPurchaseStats` → `ProgramPurchaseStatses` shipped as six REST collection
+ * paths and TanStack hook names in an adopter's app.
+ *
+ * Heuristic, not a dictionary: a word ending in "s" is already-plural UNLESS the
+ * character immediately before that final "s" is one of s/u/i/a (case-insensitive).
+ * Covers Stats, Settings, Details, News, Analytics, Series, Photos; leaves Status,
+ * Address, Bonus, Alias, Gas, Analysis on the ordinary suffix path (unchanged).
+ *
+ * Known miss, deliberately not fixed here: a genuinely singular word ending in
+ * "...s" with none of those four letters before it reads as already-plural too —
+ * `Lens` → `Lens` (correct plural `Lenses`). Fixing that needs a real dictionary,
+ * which this function is not; the heuristic optimizes for the shape the doubling
+ * defect actually hits (entity names that are already a plural concept).
+ */
+function isAlreadyPlural(s: string): boolean {
+  if (!/s$/i.test(s) || s.length < 2) return false;
+  return !ALREADY_PLURAL_EXCLUDED_PRECEDING_CHARS.has(s[s.length - 2]!.toLowerCase());
+}
+
+/**
+ * FROZEN — byte-for-byte the pre-fix suffix-only pluralization rule, with no
+ * already-plural detection. This is the DEFAULT PHYSICAL NAME derivation only:
+ * `resolveTableName`'s no-source fallback and `MetaSource.physicalName`'s step-4
+ * owner-name fallback, both reached only when metadata declares no explicit
+ * physical name. An adopter's live database was created with this rule; changing
+ * it would make `meta migrate` propose a rename for every already-plural entity
+ * name on the next run. Never call this for an API/code-surface name (REST paths,
+ * generated hook/query/finder/list names, DbSet/collection variable names) — those
+ * go through {@link pluralize}, which fixes the doubling this function
+ * deliberately still has.
+ */
+export function pluralizeTableNameLegacy(s: string): string {
   if (/(s|x|z|ch|sh)$/i.test(s)) return s + "es";
   if (/[^aeiou]y$/i.test(s)) return s.slice(0, -1) + "ies";
   return s + "s";
+}
+
+/**
+ * API/code-surface pluralization: REST collection/route paths, entity-descriptor
+ * URLs, generated hook/query/finder/list function names, DbSet/collection names —
+ * every generator-facing use. Adds already-plural detection ({@link isAlreadyPlural})
+ * on top of the historical suffix rule ({@link pluralizeTableNameLegacy}).
+ *
+ * NOT for default physical table/column name derivation — that fallback is frozen
+ * (see `pluralizeTableNameLegacy`) so an existing adopter database never sees a
+ * proposed rename.
+ */
+export function pluralize(s: string): string {
+  if (isAlreadyPlural(s)) return s;
+  return pluralizeTableNameLegacy(s);
 }
 
 /**
@@ -183,7 +237,9 @@ export function resolveTableName(entity: MetaData): string {
   // a read-only primary source is the right answer.
   const source = primaryRdbSource(entity);
   if (source !== undefined) return source.physicalName;
-  return pluralize(toSnakeCase(entity.name));
+  // Frozen: this is a DEFAULT PHYSICAL name, not an API-surface name. See
+  // pluralizeTableNameLegacy's doc.
+  return pluralizeTableNameLegacy(toSnakeCase(entity.name));
 }
 
 export function resolveColumnName(

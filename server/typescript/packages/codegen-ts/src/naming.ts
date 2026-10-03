@@ -106,6 +106,24 @@ export function listFnName(entityName: string): string {
   return `list${pluralize(entityName)}`;
 }
 
+/**
+ * The `<Plural>` segment for a generated symbol pair that names a LIST form beside a
+ * BARE-name detail/singular form IN THE SAME SCOPE with no verb prefix to tell them
+ * apart — the TanStack hooks file's `use<Entity>(id)` / `use<Plural>(filter)` pair is
+ * the one caller (`listFnName` etc. above always carry a verb prefix like `list`/`find`,
+ * so they never collide with anything).
+ *
+ * `pluralize` now leaves an already-plural entity name unchanged (`Stats` → `Stats`), so
+ * for such a name `pluralize(entityName) === entityName` — e.g. `useStats` for BOTH the
+ * detail hook and the list hook, a duplicate function declaration. This appends `List`
+ * in exactly that case, never otherwise: `Post` → `Posts` (unaffected), `Stats` →
+ * `StatsList`.
+ */
+export function hookListNameSegment(entityName: string): string {
+  const plural = pluralize(entityName);
+  return plural === entityName ? `${entityName}List` : plural;
+}
+
 /** Generated create helper name: `create<Entity>`. */
 export function createFnName(entityName: string): string {
   return `create${entityName}`;
@@ -177,6 +195,27 @@ export function reverseFinderFnName(sourceEntityName: string, fkFieldName: strin
 /** Generated reverse batched finder name: `find<EPlural>By<FkField>In`. */
 export function reverseFinderInFnName(sourceEntityName: string, fkFieldName: string): string {
   return `${reverseFinderFnName(sourceEntityName, fkFieldName)}In`;
+}
+
+/**
+ * The destructured single-row LOCAL variable name used beside a collection variable in
+ * the same generated statement — `queries.ts`'s create/update/insertPreserving/findById
+ * bodies: `const [<row>] = await db.X(<collectionVarName>)...`.
+ *
+ * Ordinarily just the bare camelCase entity name (`Post` → `post`). But `pluralize` now
+ * leaves an already-plural entity name unchanged, so for such a name the
+ * COLLECTION variable `ctx.collectionName` returns is the SAME bare camelCase string —
+ * `programPurchaseStats` names both the Drizzle table export and this local row variable.
+ * Left alone, that produces `const [programPurchaseStats] = await
+ * db.insert(programPurchaseStats)...`: the destructuring target referenced inside its own
+ * initializer, a block-scoped "used before its declaration" compile error. This appends a
+ * `Row` suffix ONLY in that exact collision case — every ordinary entity keeps the
+ * existing bare camelCase local-variable spelling (`const [post] = await
+ * db.insert(posts)...`).
+ */
+export function singleRowVarName(entityName: string, collectionVarName: string): string {
+  const bare = entityName.charAt(0).toLowerCase() + entityName.slice(1);
+  return bare === collectionVarName ? `${bare}Row` : bare;
 }
 
 /**
