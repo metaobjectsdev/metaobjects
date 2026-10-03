@@ -9,6 +9,7 @@ from typing import Callable
 from metaobjects.meta.meta_root import MetaRoot
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.core.object.meta_object import MetaObject
+from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_REPORT
 from metaobjects.shared.base_types import TYPE_OBJECT
 from .collection_name_collision import assert_no_collection_name_collisions
 from .config import GenConfig
@@ -99,6 +100,12 @@ def run_gen(
 
     safe: list[MetaObject] = []
     for o in objs:
+        # FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
+        # Dropped here, at the entity set every generator reads, and not per generator: a
+        # report may declare a read-only `source.rdb @kind: view` (R5), which would
+        # otherwise pass every source-keyed gate and emit routes, names and an allowlist.
+        if o.sub_type == OBJECT_SUBTYPE_REPORT:
+            continue
         if not _VALID_NAME.match(o.name):
             result.warnings.append(
                 f"Skipping entity with unsafe name {o.name!r} — must match ^[A-Za-z_]\\w*$."
