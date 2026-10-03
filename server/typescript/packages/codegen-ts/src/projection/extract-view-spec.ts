@@ -35,6 +35,7 @@ import {
   FILTER_OP_LT,
   FILTER_OP_LTE,
   FILTER_OP_IS_NULL,
+  FILTER_OP_IN,
   FILTER_OP_LIKE,
   FIELD_SUBTYPE_ENUM,
   FILTER_COMPOSE_AND,
@@ -95,14 +96,22 @@ const EXPR_COMPARISON_OPS: ReadonlySet<string> = new Set([
 
 /**
  * Desugar a single field clause to the canonical `{ op: value }` form (scalar→eq,
- * array→in, null→isNull, object→as-is). Mirrors metadata's attr.filter desugar so an
+ * array→in, null→isNull, an object carrying a `now` key→eq, any other object→as-is).
+ * Mirrors metadata's attr.filter desugar (`core/attr/meta-attr-filter.ts`) so an
  * aggregate `@filter` works whether or not it was pre-desugared by the loader.
+ *
+ * The `now` rule matters here: `{ now: "-P7D" }` is a relative-date VALUE (FR-044 F2),
+ * never an op map. Read as-is, a programmatic, pre-desugar shorthand `{ f: { now: "x" } }`
+ * would lower as op `now` with value `"x"`, and `assertNoRelativeDate` — which inspects the
+ * VALUE — would never see it.
  */
 function desugarClause(raw: unknown): Record<string, unknown> {
-  if (raw === null) return { isNull: true };
-  if (Array.isArray(raw)) return { in: raw };
-  if (typeof raw === "object") return raw as Record<string, unknown>;
-  return { eq: raw };
+  if (raw === null) return { [FILTER_OP_IS_NULL]: true };
+  if (Array.isArray(raw)) return { [FILTER_OP_IN]: raw };
+  if (typeof raw === "object") {
+    return FILTER_RELATIVE_NOW in raw ? { [FILTER_OP_EQ]: raw } : (raw as Record<string, unknown>);
+  }
+  return { [FILTER_OP_EQ]: raw };
 }
 
 /**
@@ -209,6 +218,10 @@ function encodeIntEnumFilterValue(
   fieldName: string,
   projectionName: string,
 ): unknown {
+  // Every filter value this lowering renders as a SQL literal passes through here — the
+  // row-scope view @filter AND the origin.aggregate scoping @filter — so this is the one
+  // place a relative-date value (FR-044, legal only on reporting hosts) is refused before
+  // it could land as `[object Object]`. Runs before the intMap early return on purpose.
   assertNoRelativeDate(value, `Projection ${projectionName}: view @filter on "${fieldName}"`);
   if (intMap === undefined) return value;
   if (op === FILTER_OP_IS_NULL) return value;
