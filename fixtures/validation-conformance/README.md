@@ -157,7 +157,8 @@ All five port runners assert byte-identical boolean verdicts across all five
 generated validation artifacts. `scripts/ci-local.sh` is what runs them, and
 `.github/workflows/conformance.yml` is a thin wrapper that calls it once per
 lane. The five live in the script's
-`csharp`, `java` and `python` sections plus `ts-fast`, so the flagless
+`csharp`, `java` (Java and Kotlin, as `java-fast`) and `python` sections plus
+`ts-fast`, so the flagless
 `scripts/ci-local.sh` covers all five and `--quick` covers TypeScript only. See
 [`docs/CONFORMANCE.md`](../../docs/CONFORMANCE.md).
 

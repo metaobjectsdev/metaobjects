@@ -880,8 +880,9 @@ else
   # --no-integration drops this whole half; --integration-only keeps ONLY it, which is
   # why it asks in_lane / in_lane_any (selection) where the checks above ask want.
   if [ "$NO_INTEG" -eq 1 ]; then
-    echo ""; echo "── ⊘ --no-integration: SKIPPING the docker/Postgres integration half ──"
-    SKIP+=("integration-tests (--no-integration)")
+    # Not added to SKIP: a selector the caller chose is not a gap, and a SKIP entry would
+    # make every conformance.yml lane report "passed with skips" under --strict-toolchains.
+    echo ""; echo "── ⊘ --no-integration: not running the docker/Postgres integration half ──"
   elif [ -z "$ONLY" ]; then
     if docker info >/dev/null 2>&1; then
       step "integration-tests (5-port + docker)" gate_integration
