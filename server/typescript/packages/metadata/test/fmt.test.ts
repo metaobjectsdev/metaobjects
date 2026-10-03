@@ -151,6 +151,38 @@ describe("formatMetadataFile", () => {
     expect(result.overlay).toBe(true);
   });
 
+  it("reports overlay — never silently merges — when a same-file redeclaration has a local base", () => {
+    // A plain Widget AND a same-(type,name) overlay:true redeclaration, both
+    // in this one file. buildTree's ordinary find-or-reuse WOULD merge these
+    // into a single node (the base exists locally), dropping the overlay
+    // marker from the output. fmt must never do that — a formatter never
+    // changes structure — so this is `overlay: true`, not a merged success.
+    const doc = JSON.stringify({
+      "metadata.root": {
+        package: "acme",
+        children: [
+          { "object.entity": { name: "Widget", children: [{ "field.string": { name: "sku" } }] } },
+          { "object.entity": { name: "Widget", overlay: true, children: [{ "field.string": { name: "notes" } }] } },
+        ],
+      },
+    });
+    const result = formatMetadataFile(doc, { registry, sourceId: "meta.widget.json" });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.overlay).toBe(true);
+  });
+
+  it("strips a leading UTF-8 BOM and normalizes CRLF to LF", () => {
+    const withBom = "﻿" + JSON.stringify({
+      "metadata.root": { package: "acme", children: [{ "object.entity": { name: "Gadget", children: [] } }] },
+    }).replace(/\n/g, "\r\n");
+    const result = formatMetadataFile(withBom, { registry, sourceId: "meta.gadget.json" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.text.charCodeAt(0)).not.toBe(0xfeff);
+    expect(result.text).not.toContain("\r\n");
+  });
+
   it("still formats the plain sibling in a mixed file, but reports the whole file as overlay", () => {
     const doc = JSON.stringify({
       "metadata.root": {

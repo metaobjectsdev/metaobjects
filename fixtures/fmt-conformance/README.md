@@ -12,9 +12,15 @@ suite, the same way `fixtures/conformance/` gates the loader and
 (ADR-0039). It never merges a file with its siblings: an `extends` onto a
 base declared in another file is preserved as the raw ref string (never
 resolved, never an error here — resolving it is the full project loader's
-job, not fmt's), and an `overlay: true` declaration with no base in the SAME
-file cannot be formatted standalone at all — that is reported as a skip, not
-guessed at.
+job, not fmt's), and a file declaring `overlay: true` ANYWHERE in its tree is
+reported as a skip, not guessed at — **whether or not a same-file base
+exists to merge into.** A formatter never changes structure: a plain
+declaration and a same-`(type, name)` `overlay: true` redeclaration in the
+SAME file does have a local base, and the ordinary loader would merge them —
+but merging silently drops the overlay marker from the output, which is a
+structural change `fmt` must never make. So this is checked directly against
+the raw document before anything else runs, not inferred from whether
+resolution happens to fail.
 
 This corpus therefore exercises exactly that single-file contract. Loading a
 whole PROJECT (resolving sources, running the whole-project safety check
@@ -42,9 +48,13 @@ integration tests cover that.
 - `expected-skip.json` — `{ "reason": "overlay" | "error" }`. `fmt` must
   refuse to format `input.json` standalone and classify WHY:
   - `"overlay"` — the file declares (or contains, anywhere) an
-    `overlay: true` node with no same-`(type, name)` base in the same file.
-    A MIXED file (plain declarations alongside an unresolvable overlay) is
-    still `"overlay"` as a whole — fmt does not partially format a file.
+    `overlay: true` node — REGARDLESS of whether a same-`(type, name)` base
+    also exists in the same file. A MIXED file (a plain declaration alongside
+    an overlay, whether or not that overlay's target is also in this file) is
+    still `"overlay"` as a whole — fmt does not partially format a file, and
+    it never merges a same-file base+overlay into one node even though the
+    ordinary loader would (that merge drops the overlay marker, which is the
+    one thing a formatter may never do to a file's structure).
   - `"error"` — any other reason the file cannot be parsed standalone (an
     unregistered type/subtype, a missing required structural key, …).
 
@@ -82,7 +92,10 @@ other port implements that SAME refusal — which is exactly what the
 | `preserve-unresolved-cross-file-extends` | An `extends` ref to a base declared in another file is preserved as-is, never an error |
 | `skip-overlay-no-local-base` | A file whose only declaration is `overlay: true` with no local base is skipped, reason `"overlay"` |
 | `skip-mixed-plain-and-overlay` | A file mixing a plain declaration with an unresolvable overlay is skipped WHOLE, reason `"overlay"` |
+| `skip-overlay-redeclares-local-base` | A plain declaration AND a same-`(type, name)` `overlay: true` redeclaration in the SAME file (a local base exists) is still skipped, reason `"overlay"` — never silently merged |
 | `skip-structurally-invalid` | A file that cannot be parsed at all (unregistered subtype) is skipped, reason `"error"` |
+| `crlf-normalized-to-lf` | A CRLF-line-ended input formats to the LF-only canonical form |
+| `bom-stripped` | A UTF-8-BOM-prefixed input parses (BOM stripped) and the output carries no BOM |
 
 ## Adding a new fixture
 
