@@ -37,6 +37,18 @@ public class ReportingValidationTests
 
     private static JsonNode Wrap(string typeSubType, string json) => new JsonObject { [typeSubType] = JsonNode.Parse(json) };
 
+    /// <summary>Replace the child of object <paramref name="objName"/> keyed
+    /// <paramref name="typeSubType"/> and named <paramref name="childName"/> — selected by
+    /// (type, name), never by index, so a fixture reorder cannot retarget the edit.</summary>
+    private static void ReplaceChild(JsonNode doc, string objName, string typeSubType, string childName, string json)
+    {
+        var kids = ChildrenOf(doc, objName);
+        int i = kids.Select((w, idx) => (w, idx))
+            .Single(t => t.w!.AsObject().First().Key == typeSubType
+                && (string?)t.w!.AsObject().First().Value!["name"] == childName).idx;
+        kids[i] = Wrap(typeSubType, json);
+    }
+
     private static string Single(LoadResult r, ErrorCode code)
     {
         Assert.Equal([code], r.Errors.Select(e => e.Code));
@@ -127,7 +139,8 @@ public class ReportingValidationTests
                 { "field.int": { "name": "now" } },
                 { "identity.primary": { "name": "id", "extends": "Purchase.id" } } ] }
             """));
-        Assert.DoesNotContain(Load(m).Errors, e => e.Message.Contains("relative date", System.StringComparison.Ordinal));
+        // The projection is otherwise valid, so the model loads clean: nothing reads `now` as a relative date.
+        Assert.Empty(Load(m).Errors);
     }
 
     [Fact]
@@ -155,7 +168,7 @@ public class ReportingValidationTests
     public void A_broken_member_on_an_abstract_base_is_reported_once_not_once_per_inheritor()
     {
         var m = Inherited();
-        ChildrenOf(m, "BaseEvent")[3] = Wrap("measure.aggregate",
+        ReplaceChild(m, "BaseEvent", "measure.aggregate", "events",
             """{ "name": "events", "@agg": "sum", "@of": "BaseEvent.nope" }""");
         string msg = Single(Load(m), ErrorCode.ERR_INVALID_MEASURE);
         Assert.Equal(
@@ -168,9 +181,9 @@ public class ReportingValidationTests
     public void A_broken_base_dimension_and_base_segment_filter_are_each_reported_once()
     {
         var m = Inherited();
-        var kids = ChildrenOf(m, "BaseEvent");
-        kids[2] = Wrap("dimension.time", """{ "name": "occurredAt", "@of": "BaseEvent.nope", "@grains": ["day", "week"] }""");
-        kids.Add(Wrap("segment.filter", """{ "name": "recent", "@filter": { "nope": 1 } }"""));
+        ReplaceChild(m, "BaseEvent", "dimension.time", "occurredAt",
+            """{ "name": "occurredAt", "@of": "BaseEvent.nope", "@grains": ["day", "week"] }""");
+        ChildrenOf(m, "BaseEvent").Add(Wrap("segment.filter", """{ "name": "recent", "@filter": { "nope": 1 } }"""));
         Assert.Equal(
             [ErrorCode.ERR_INVALID_DIMENSION, ErrorCode.ERR_BAD_ATTR_FILTER],
             Load(m).Errors.Select(e => e.Code));
