@@ -93,9 +93,9 @@ Each port's existing naming unit-test file reads this JSON and asserts both
 | Port | Test file |
 |---|---|
 | TypeScript | `server/typescript/packages/metadata/test/naming.test.ts` (pluralizers); `server/typescript/packages/codegen-ts/test/naming/collection-name-collision.test.ts` (refusal — `assertNoCollectionNameCollisions`, wired into `runGen` in `runner.ts`) |
-| C# | `server/csharp/MetaObjects.Codegen.Tests/CSharpNamingTests.cs` (pluralizers); `server/csharp/MetaObjects.Codegen.Tests/DbContextForeignKeyConfigTests.cs` (refusal — the historical Address/Addresses fixture, now an expected-error test) |
-| Java / Kotlin | `server/java/codegen-base/src/test/java/com/metaobjects/generator/util/RouteNamingTest.java` (pluralizers; Kotlin inherits — `KotlinNaming.collectionSegment` delegates to the same `RouteNaming.pluralize`) |
-| Python | `server/python/tests/codegen/test_route_path_naming.py` (pluralizers) |
+| C# | `server/csharp/MetaObjects.Codegen.Tests/CSharpNamingTests.cs` (pluralizers + refusal — `CSharpNaming.AssertNoCollectionNameCollisions`, wired into `CodegenRunner.Run`); `server/csharp/MetaObjects.Codegen.Tests/DbContextForeignKeyConfigTests.cs` (the historical Address/Addresses fixture, now an expected-error test at both the unit and `CodegenRunner.Run` integration level) |
+| Java / Kotlin | `server/java/codegen-base/src/test/java/com/metaobjects/generator/util/RouteNamingTest.java` (pluralizers + refusal — `RouteNaming.assertNoCollectionNameCollisions`, wired into `MetaDataGeneratorMojo#executeGenerators`; Kotlin inherits both — it runs through the same Maven goal) |
+| Python | `server/python/tests/codegen/test_route_path_naming.py` (pluralizers); `server/python/tests/codegen/test_collection_name_collision.py` (refusal — `assert_no_collection_name_collisions`, wired into `run_gen` in `runner.py`) |
 
 No HTTP server, no database — this corpus is intentionally a pure function
 check, unlike `api-contract-conformance` (which is the right place for the

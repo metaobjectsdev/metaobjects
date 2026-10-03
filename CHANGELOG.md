@@ -19,23 +19,48 @@ here.**
   ending in "s" as already-plural UNLESS the character before that final "s" is one of
   s/u/i/a (so `Stats`/`Settings`/`Series`/`News`/`Analytics`/`Photos` stay unchanged, while
   `Status`/`Address`/`Bonus`/`Alias`/`Gas`/`Analysis` keep pluralizing exactly as before —
-  the heuristic's one documented miss is `Lens` → `Lens`, correct plural `Lenses`). The
-  DEFAULT PHYSICAL table/column name derivation is explicitly **frozen** at the old
-  suffix-only rule in every port (a new, separately-named/byte-for-byte-preserved function
-  where the two pluralizers were previously the same function), so an adopter's existing
-  database never sees `meta migrate` propose a rename for an already-plural entity it
-  didn't touch. Fixing the doubling surfaced two further, narrower defects it was
-  incidentally masking: a TypeScript already-plural entity's generated Drizzle collection
-  variable name could collide with its own singular row variable in the same statement
-  (`const [x] = await db.insert(x)...`, a TDZ compile error) — the colliding local variable
-  now gets a `Row` suffix only in that exact case; and a C# already-plural entity's own
-  `DbSet` property name could collide with its own entity TYPE name inside `OnModelCreating`
-  (C# resolves a bare same-named reference to the DbSet member before the type, same
+  the heuristic's one documented miss is `Lens` → `Lens`, correct plural `Lenses`).
+
+  **Upgrade impact — read before regenerating.** If any entity name in your model is
+  already a plural noun (`Stats`, `Settings`, `Series`, and the like):
+  - **The REST collection path changes.** `/program_purchase_statses` becomes
+    `/program_purchase_stats`. A client still calling the old doubled URL gets a plain
+    404, not a redirect — update callers before or alongside the regen.
+  - **Generated hook, query, finder, and list function/method names change too**
+    (`useProgramPurchaseStatses` → `useProgramPurchaseStats`, `listProgramPurchaseStatses`
+    → `listProgramPurchaseStats`, the C# DbSet property, the Java/Python finder/router
+    names). Any hand-written code importing or calling the OLD doubled symbol fails to
+    compile (TS/C#/Kotlin) or import (Python) after you regenerate — grep for the old
+    spelling across your own code, not just generated output.
+  - **There is no per-entity override for a route or generated hook/finder/list name.**
+    TypeScript's `variableNameFromEntity`/`CollectionNameOptions.overrides` renames only
+    the Drizzle collection VARIABLE — it does not touch the REST path or any hook/query/
+    finder/list name. If the new spelling is wrong for your API, the fix is to rename the
+    entity itself; there is no config knob that renames only the generated surface.
+  - **Default PHYSICAL table and column names do NOT change.** The fallback used when
+    metadata declares no explicit physical name is explicitly **frozen** at the old
+    suffix-only rule in every port (a new, separately-named, byte-for-byte-preserved
+    function where the two pluralizers were previously the same one) — `meta migrate`
+    proposes no rename for an already-plural entity you didn't touch.
+  - **Two entities in one generation run whose names now land on the same API-surface
+    collection name is a GENERATION ERROR, not a silent collision.** `Address` + `Addresses`
+    (or `Order` + `Orders`) both resolve to `/addresses` / `/orders` once an already-plural
+    name stops doubling — before this fix they did not collide (`Addresses` doubled to
+    `addresseses`). Every port now refuses such a model outright, before any generator
+    runs, naming both entities and the colliding name; rename one entity to proceed. New
+    cross-port fixture corpus `fixtures/naming-conformance/` carries both the already-plural
+    cases and the expected-collision cases, run by every port.
+
+  Fixing the doubling also surfaced two further, narrower defects it was incidentally
+  masking: a TypeScript already-plural entity's generated Drizzle collection variable name
+  could collide with its own singular row variable in the same statement (`const [x] =
+  await db.insert(x)...`, a TDZ compile error) — the colliding local variable now gets a
+  `Row` suffix only in that exact case; and a C# already-plural entity's own `DbSet`
+  property name could collide with its own entity TYPE name inside `OnModelCreating` (C#
+  resolves a bare same-named reference to the DbSet member before the type, the same
   shadowing class as the pre-existing `Address`/`Addresses` cross-entity hazard) — the
   TPH-discriminator and int-backed-enum nested-type references are now `global::`-qualified
-  when (and only when) the owning entity's name is itself already-plural. New cross-port
-  fixture corpus `fixtures/naming-conformance/` proves all five ports agree on both the
-  API-surface and frozen-legacy pluralizers for the same input set.
+  when, and only when, the owning entity's name is itself already-plural.
 
 - **Kotlin: two pre-existing generated-controller compile defects, found extending the
   `exposedApi=1` controller-tier compile check.** Both were excluded (not fixed) when that
