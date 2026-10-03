@@ -13,6 +13,7 @@ import com.metaobjects.generator.GeneratorException
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.generator.util.GeneratedFileWriter
+import com.metaobjects.generator.util.GeneratorUtil
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import java.io.OutputStream
@@ -94,6 +95,8 @@ open class KotlinNamesGenerator :
         // Pass 1 — every object that participates in the database (#248).
         val emitted = mutableSetOf<String>()
         for (entity in loader.metaObjects) {
+            // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
+            if (GeneratorUtil.isReport(entity)) continue
             if (emit(entity, outRoot, strategy)) emitted += entity.name
         }
         // Pass 2 — the abstract bases those participants EXTEND, each carrying the columns

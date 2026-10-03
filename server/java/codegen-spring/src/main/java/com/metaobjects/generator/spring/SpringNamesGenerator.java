@@ -18,6 +18,7 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.index.Index;
 import com.metaobjects.index.LookupIndex;
+import com.metaobjects.generator.util.GeneratorUtil;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.source.MetaSource;
@@ -127,6 +128,8 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
         // Pass 1 — every object that participates in the database (#248).
         Set<String> emitted = new HashSet<>();
         for (MetaObject entity : loader.getMetaObjects()) {
+            // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
+            if (GeneratorUtil.isReport(entity)) continue;
             if (emit(entity, outRoot, strategy, false)) emitted.add(entity.getName());
         }
         // Pass 2 — the abstract bases those participants EXTEND, each carrying the columns
