@@ -10,6 +10,35 @@ here.**
 
 ## [Unreleased]
 
+_**`metamodelVersion` moves `1.0` to `1.1`.** The change is additive: every model that loaded
+under 1.0 loads and generates byte-for-byte the same. `main` carries 1.1 from here, so no 1.0.x
+PATCH is cut from it until 1.1 ships._
+
+### Added
+
+- **Metamodel 1.1: the reporting vocabulary (FR-044), loader-validated in all five ports.**
+  Registered: `dimension.attribute`, `dimension.time` (`@grains`: `hour, day, week, month,
+  quarter, year`, weeks start Monday), `measure.aggregate` (`@agg`: `count, sum, avg, min, max`),
+  `measure.ratio`, `segment.filter` (all children of `object.entity`) and `object.report`
+  (`@from`, `@dimensions`, `@measures`, `@segment`, `@filter`), plus the relative-date filter
+  value `{ now: "<ISO-8601 duration>" }`, legal only in the `@filter` of a segment, a
+  `measure.aggregate` or an `object.report`. Four new error codes (`ERR_INVALID_DIMENSION`,
+  `ERR_INVALID_MEASURE`, `ERR_INVALID_REPORT`, `ERR_REPORT_FOREIGN_MEASURE`) and extended
+  `ERR_BAD_ATTR_FILTER` carry the load-time rules, gated by 25 new shared conformance fixtures.
+  `measure.derived` is not registered (it waits for FR-037 R5). **No generated output yet:** an
+  `object.report` emits no view DDL, route, client code or docs page, `meta migrate` proposes
+  nothing for it, and a model using the new names generates exactly what it did without them.
+  See [docs/features/reporting.md](docs/features/reporting.md).
+
+### Fixed
+
+- **Java: a bare string authored for an `isArray` attribute is now ONE item.** The Java parser
+  used to split it on commas, which left stray quotes in the items; TypeScript and Python
+  already kept it whole. All three now agree.
+- **Python: the `@filter` desugar now matches TypeScript.** It recurses into `and` / `or`
+  (previously it collapsed the lists), and an object clause that is not an operator map is
+  reported as a bad operator (previously it was wrapped in `eq`).
+
 ## [1.0.13] — 2026-10-03
 
 _npm `1.0.13` (all 14 `@metaobjectsdev/*` packages in lockstep), PyPI `1.0.13`, NuGet `1.0.13` and

@@ -224,7 +224,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 | `origin-*`, `error-origin-*` | [features/templates-and-payloads.md](features/templates-and-payloads.md) (payload origins) |
 | `projection-*`, `error-projection-*`, `field-readonly-on-view-projection` | [features/source-kinds.md](features/source-kinds.md) (projections + the object taxonomy, ADR-0028) |
 | `requirement-*`, `error-unknown-attr-requirement` | [features/requirements.md](features/requirements.md) (vocabulary only — the `meta verify` checks are TS-owned; see "Split coverage" above) |
-| `reporting-*`, `error-dimension-*`, `error-measure-*`, `error-ratio-*`, `error-segment-*`, `error-report-*`, `error-relative-date-*` | [FR-044 core reporting design](superpowers/specs/2026-10-02-fr-044-core-reporting-design.md) (the `dimension` / `measure` / `segment` / `object.report` vocabulary and its load-time rules) |
+| `reporting-*`, `error-dimension-*`, `error-measure-*`, `error-ratio-*`, `error-segment-*`, `error-report-*`, `error-relative-date-*` | [features/reporting.md](features/reporting.md) (the `dimension` / `measure` / `segment` / `object.report` vocabulary and its load-time rules; design in the [FR-044 spec](superpowers/specs/2026-10-02-fr-044-core-reporting-design.md)) |
 | `smoke-empty-metadata` | [features/entities.md](features/entities.md) |
 
 ### `fixtures/yaml-conformance/` (16)

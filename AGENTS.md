@@ -47,9 +47,10 @@ number. Both are the convergent-publishing rule working as intended. **1.0 is CU
 1.0.5's `rc.1` through `rc.11`, 1.0.7's and 1.0.8's `rc.1`, and 1.0.9's `rc.1` through `rc.6` are
 superseded, and npm's `next` tag is REPOINTED onto each release — not deleted, because
 `dist-tag rm` 403s for every token we hold (`docs/RELEASING.md` §4).
-`metamodelVersion` reads **`1.0`**, frozen — C4 landed and G4 shipped it, and no 1.0.x patch
-has moved it (1.0.4 relaxed `@sourceRefField` onto `@cardinality: one` with a prose-only
-manifest footprint, and was ruled a hold). Per-release detail lives in **`CHANGELOG.md`** — it is the log, and this file does
+`metamodelVersion` read **`1.0`** through 1.0.13 — C4 landed and G4 shipped it, and no 1.0.x patch
+moved it (1.0.4 relaxed `@sourceRefField` onto `@cardinality: one` with a prose-only
+manifest footprint, and was ruled a hold). `main` now carries **`1.1`** for the FR-044 reporting
+vocabulary, so 1.0.x PATCH releases are held from `main` until 1.1 ships. Per-release detail lives in **`CHANGELOG.md`** — it is the log, and this file does
 not duplicate it.
 
 The npm surface is **14 `@metaobjectsdev/*` packages in full lockstep**; the two `angular`
