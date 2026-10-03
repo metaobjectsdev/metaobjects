@@ -140,6 +140,8 @@ public final class ValidationPhase {
      *       {@code @onDelete}/{@code @onUpdate} enum-membership rules.</li>
      *   <li>{@link #validateRequirementStatus(MetaRoot)} — {@code requirement.*}
      *       {@code @status} enum-membership rules.</li>
+     *   <li>{@link #validateReporting(MetaRoot)} — FR-044 reporting vocabulary
+     *       (dimensions, measures, segments, reports, relative-date filter values).</li>
      *   <li>{@link #validateOrigins(MetaRoot)} — {@code origin.*} required-attr +
      *       {@code @from}/{@code @of} reference resolution + {@code @via} path traversal
      *       through declared relationships.</li>
@@ -266,6 +268,9 @@ public final class ValidationPhase {
         pass(collected, () -> validateDataGridLayouts(root));
         // #207 — projection row-scope @filter field-ref validation (fail-closed).
         pass(collected, () -> validateProjectionFilter(root));
+        // FR-044 — the reporting vocabulary's cross-node rules (D1-D4, M1-M6, S1, R1-R7,
+        // F1/F2). Collects every finding; a broken rule yields exactly one error.
+        pass(collected, () -> collected.addAll(validateReporting(root)));
         pass(collected, () -> validateTemplates(root));
         pass(collected, () -> validateEntityHasPrimaryIdentity(root, loader));
         pass(collected, () -> validateFilterableHasSupportedOps(root));
@@ -3427,6 +3432,19 @@ public final class ValidationPhase {
         }
     }
 
+    /**
+     * FR-044 — validate the reporting vocabulary ({@code dimension.*}, {@code measure.*},
+     * {@code segment.*}, {@code object.report}) and the relative-date filter value. The
+     * rules and their message text mirror the TS {@code reporting-validation.ts}; see
+     * {@link ReportingValidation}.
+     *
+     * @param root the fully-loaded root
+     * @return every finding, in emission order (empty when the model is valid)
+     */
+    static List<MetaDataException> validateReporting(MetaRoot root) {
+        return ReportingValidation.validate(root);
+    }
+
     // =========================================================================
      // @filterable without backing index — warning pass
     //
@@ -4152,7 +4170,7 @@ public final class ValidationPhase {
      *
      * @param referrerPkg the effective package of the node carrying the ref ("" for root-level)
      */
-    private static MetaObject resolveRootObject(MetaRoot root, String ref, String referrerPkg) {
+    static MetaObject resolveRootObject(MetaRoot root, String ref, String referrerPkg) {
         if (ref == null) return null;
         String pkg = (referrerPkg == null) ? "" : referrerPkg;
         if (ref.indexOf(MetaData.PKG_SEPARATOR) >= 0) {

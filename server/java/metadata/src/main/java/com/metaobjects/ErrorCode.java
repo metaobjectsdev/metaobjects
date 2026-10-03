@@ -540,6 +540,43 @@ public enum ErrorCode {
      */
     ERR_ENUM_INT_VALUE_MAP_ARRAY,
 
+    /**
+     * FR-044: a {@code dimension.*} is invalid: {@code @of} is not Entity.field on the
+     * owning entity (or, with {@code @via}, on the {@code @via} terminal) or names no
+     * field (D1); {@code @via} does not start at the owning entity, names an unknown hop,
+     * or crosses a hop that is not {@code @cardinality: one} or an identity.reference (D2);
+     * a {@code dimension.time}'s {@code @of} is not a field.date or field.timestamp (D3);
+     * or a {@code dimension.time} over a field.date declares the 'hour' grain (D4).
+     */
+    ERR_INVALID_DIMENSION,
+
+    /**
+     * FR-044: a {@code measure.*} is invalid: an {@code @of} item is not a field of the
+     * owning entity (M1); more than one {@code @of} item without {@code @agg: count} and
+     * {@code @distinct: true} (M2); {@code @distinct: true} with an {@code @agg} other than
+     * count (M3); sum/avg over a non-numeric field or min/max over a boolean, object or
+     * map field (M4); {@code @segment} names no segment of the owning entity (M5); or a
+     * {@code measure.ratio} operand does not name a measure.aggregate of the same entity (M6).
+     */
+    ERR_INVALID_MEASURE,
+
+    /**
+     * FR-044: an {@code object.report} is invalid: {@code @from} does not resolve to an
+     * object.entity (R1); a {@code @dimensions} item is unknown, mis-grained or repeated
+     * (R2); a {@code @measures} item resolves to no measure at all (R3); the report
+     * declares a field.* or identity.* child (R4) or a writable source (R5); two items
+     * derive the same report field name (R6); or {@code @segment} names no segment of
+     * {@code @from} (R7).
+     */
+    ERR_INVALID_REPORT,
+
+    /**
+     * FR-044: an {@code object.report} lists a measure (bare or dotted) that belongs to an
+     * entity other than {@code @from} (R3). All measures of a report come from
+     * {@code @from}; combining two fact tables is a second report.
+     */
+    ERR_REPORT_FOREIGN_MEASURE,
+
     /** An internal loader error with no stable error code. */
     ERR_UNKNOWN,
 }

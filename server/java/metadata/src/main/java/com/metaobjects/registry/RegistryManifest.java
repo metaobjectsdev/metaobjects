@@ -241,6 +241,7 @@ public final class RegistryManifest {
                 new com.metaobjects.identity.IdentityTypesMetaDataProvider(),
                 new com.metaobjects.index.IndexTypesMetaDataProvider(),
                 new com.metaobjects.requirement.RequirementTypesMetaDataProvider(),
+                new com.metaobjects.reporting.ReportingTypesMetaDataProvider(),
                 new com.metaobjects.database.CoreDBMetaDataProvider(),
                 new com.metaobjects.source.SourceTypesMetaDataProvider(),
                 new com.metaobjects.origin.OriginTypesMetaDataProvider(),
@@ -466,7 +467,7 @@ public final class RegistryManifest {
             // Array-ness is the orthogonal axis: a StringAttribute requirement
             // marked .asArray() emits valueType "string" + isArray true (the
             // retired stringarray subtype). Detected via the array-constraint set.
-            boolean isArray = arrayAttrNames.contains(name);
+            boolean isArray = isArrayAttr(registry, type, subType, name, arrayAttrNames);
             ManifestAttr existing = byName.get(name);
             boolean required = req.isRequired() || (existing != null && existing.required());
             // FR-033: the per-attr doc description (empty string when not yet
@@ -567,29 +568,57 @@ public final class RegistryManifest {
     }
 
     /**
-     * Build the set of attr names that are array-valued, by scanning the
-     * registry's constraints for the auto-generated array CustomConstraint
-     * (id {@code <type>.<subType>.<attr>.array} for per-type attrs, or
-     * {@code *.*.<attr>.array} for common attrs). The attr name is the
-     * second-to-last dotted segment (immediately before the {@code .array}
-     * suffix). This is the {@code .asArray()} / {@code @isArray} marker —
+     * Build the set of array-valued attr keys ({@code <type>.<subType>.<attr>}, or
+     * {@code *.*.<attr>} for common attrs), by scanning the registry's constraints for
+     * the auto-generated array CustomConstraint (id {@code <key>.array}). Read through
+     * {@link #isArrayAttr}. This is the {@code .asArray()} / {@code @isArray} marker —
      * Java's array attrs carry no flag on the {@link ChildRequirement} itself.
      */
     private static Set<String> arrayAttrNames(MetaDataRegistry registry) {
-        Set<String> names = new HashSet<>();
+        Set<String> keys = new HashSet<>();
         for (Constraint c : registry.getAllValidationConstraints()) {
             String id = c.getConstraintId();
             if (id == null || !id.endsWith(ARRAY_CONSTRAINT_SUFFIX)) {
                 continue;
             }
             String withoutSuffix = id.substring(0, id.length() - ARRAY_CONSTRAINT_SUFFIX.length());
-            int lastDot = withoutSuffix.lastIndexOf('.');
-            String attrName = lastDot >= 0 ? withoutSuffix.substring(lastDot + 1) : withoutSuffix;
-            if (!attrName.isEmpty()) {
-                names.add(attrName);
+            if (!withoutSuffix.isEmpty()) {
+                keys.add(withoutSuffix);
             }
         }
-        return names;
+        return keys;
+    }
+
+    /**
+     * True when {@code attrName} is array-valued ON {@code type.subType}: its array
+     * constraint is keyed by the declaring {@code <type>.<subType>.<attr>}, found on this
+     * type, on a type it inherits from, or as a common attr ({@code *.*.<attr>}).
+     *
+     * <p>Scoped per type, never by attr name alone: FR-044 made {@code @of} array-valued
+     * on {@code measure.aggregate} while it stays scalar on {@code dimension.*} and
+     * {@code origin.*}. A name-only lookup would mark every {@code @of} in the manifest an
+     * array.</p>
+     */
+    private static boolean isArrayAttr(MetaDataRegistry registry, String type, String subType,
+                                       String attrName, Set<String> arrayKeys) {
+        if (arrayKeys.contains(WILDCARD + "." + WILDCARD + "." + attrName)) {
+            return true;
+        }
+        Set<String> visited = new HashSet<>();
+        String t = type;
+        String st = subType;
+        while (t != null && st != null && visited.add(t + "." + st)) {
+            if (arrayKeys.contains(t + "." + st + "." + attrName)) {
+                return true;
+            }
+            TypeDefinition def = registry.getTypeDefinition(t, st);
+            if (def == null || !def.hasParent()) {
+                break;
+            }
+            t = def.getParentType();
+            st = def.getParentSubType();
+        }
+        return false;
     }
 
     /**

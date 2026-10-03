@@ -345,6 +345,18 @@ public final class ErrorMessageConstants {
     public static final String ERR_TYPE_MISMATCH_FORMAT = "Type mismatch at %s: Expected %s, got %s";
 
     /** Format template for validation errors */
+    /** FR-044 — an invalid {@code dimension.*} (rules D1-D4). Cross-language contract: {@code ERR_INVALID_DIMENSION}. */
+    public static final String ERR_INVALID_DIMENSION = "ERR_INVALID_DIMENSION";
+
+    /** FR-044 — an invalid {@code measure.*} (rules M1-M6). Cross-language contract: {@code ERR_INVALID_MEASURE}. */
+    public static final String ERR_INVALID_MEASURE = "ERR_INVALID_MEASURE";
+
+    /** FR-044 — an invalid {@code object.report} (rules R1-R7). Cross-language contract: {@code ERR_INVALID_REPORT}. */
+    public static final String ERR_INVALID_REPORT = "ERR_INVALID_REPORT";
+
+    /** FR-044 — a report lists another entity's measure (rule R3). Cross-language contract: {@code ERR_REPORT_FOREIGN_MEASURE}. */
+    public static final String ERR_REPORT_FOREIGN_MEASURE = "ERR_REPORT_FOREIGN_MEASURE";
+
     public static final String ERR_VALIDATION_FORMAT = "Validation failed for %s: %s";
 
     /** Format template for configuration errors */

@@ -146,7 +146,9 @@ public class ConformanceTest {
                 // AND unexercised. ProviderAliasCompletenessTest now gates it.
                 "index-types",
                 "origin-types",
-                "requirement-types"
+                "requirement-types",
+                // FR-044 reporting vocabulary (dimension / measure / segment).
+                "reporting-types"
             ),
             // The corpus's "metaobjects-db" provider maps to Java's
             // CoreDBMetaDataProvider (id "database-extensions"), which registers the
