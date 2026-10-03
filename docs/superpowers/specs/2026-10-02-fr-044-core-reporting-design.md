@@ -1,12 +1,12 @@
 # FR-044 — Core reporting: declared measures, dimensions and reports, plus semantic-layer exporters
 
 **Date:** 2026-10-02.
-**Status:** Requirements (pre-design). Direction approved by the maintainer on 2026-10-02:
+**Status:** Requirements, decisions locked. Direction approved by the maintainer on 2026-10-02:
 the core metamodel provides a Cube-shaped vocabulary, served in-repo as SQL views; adopters
-who need a full semantic layer get one through exporters to established tools. The detailed
-vocabulary shapes below are **proposals**. Each new attribute or subtype still needs the
-maintainer's explicit agreement and a written can't-be-computed justification (ADR-0023)
-before it is registered.
+who need a full semantic layer get one through exporters to established tools. On 2026-10-03
+the maintainer accepted all six open decisions as recommended (§8) and gave the explicit
+ADR-0023 agreement for the new vocabulary listed in §3.1, with the justifications written
+there. Ready for an implementation plan.
 **Target:** metamodel `1.1` (additive vocabulary is a MINOR — `docs/compatibility-policy.md`,
 `scripts/check-metamodel-version.mjs`). Nothing here is a PATCH.
 **Relates to:** [ADR-0037](../../../spec/decisions/ADR-0037-metamodel-vocabulary-expansion-decision-framework.md)
@@ -103,6 +103,41 @@ These bind every requirement below. They restate FR-037's shared obligations for
 6. **Versioning.** All additions are additive: `metamodelVersion` `1.0` → `1.1`, a MINOR
    release on every registry (a `metamodelVersion` change forces all four).
 
+### 3.1 ADR-0023 register (agreed 2026-10-03)
+
+The maintainer agreed to this list on 2026-10-03. Each entry carries its can't-be-computed
+justification. Nothing outside this list may be registered under FR-044 without a new
+agreement. `measure.derived` is deliberately absent: it waits for FR-037 R5's arithmetic wave
+and gets its own agreement then.
+
+| New name | Kind | Why it cannot be computed from existing metadata |
+|---|---|---|
+| `dimension` | type | Which fields are meaningful to group by is the author's modelling decision; no existing node states it, and the exporters need the named set. |
+| `dimension.attribute` | subtype | Groups by a column value as-is. Separate from `time` because it has no grain and no truncation. |
+| `dimension.time` | subtype | Owns grain truncation and `@grains`, which an attribute dimension does not have. |
+| `measure` | type | What to count or sum is the author's statement; a field declares a value, not an aggregate over rows. |
+| `measure.aggregate` | subtype | One aggregate over the entity's own rows. |
+| `measure.ratio` | subtype | A quotient of two measures; a different lowering (`NULLIF` guard) and different attributes from an aggregate. |
+| `segment` | type | A named `attr.filter` (D1). The name is the new information: reuse across measures and reports, and the exporters' named segments/filters. |
+| `object.report` | subtype | Grain is the dimension tuple and fields are derived (D2); `object.projection` is one row per base row with declared fields. |
+| `@grains` | attr, `string`, `isArray`, on `dimension.time` | The supported grains are a modelling choice (a date column may make no sense per hour). Closed set `hour, day, week, month, quarter, year`. |
+| `@segment` | attr, `string`, on `measure.aggregate` and `object.report` | Names a declared segment; the reference is the author's choice. |
+| `@dimensions` | attr, `string`, `isArray`, on `object.report` | Which dimensions form the grain is the report's definition. An item is a dimension name, or `name:grain` for a time dimension. |
+| `@measures` | attr, `string`, `isArray`, on `object.report` | Which measures the report returns is the report's definition. |
+| `@numerator`, `@denominator` | attrs, `string`, on `measure.ratio` | The two measures the ratio divides; not derivable. |
+
+Existing attribute names registered on the new nodes, with the same value grammar as today:
+`@of` (on `dimension.*` as a string; on `measure.aggregate` with `isArray: true`, so a bare
+string coerces to a one-element list and a list is the tuple form), `@via` (dimensions,
+to-one only), `@agg` (`count | sum | avg | min | max` on a measure, a subset of
+`origin.aggregate`'s set), `@distinct`, `@filter` (`measure.aggregate`, `segment`,
+`object.report`), and `@from` (`object.report`). Each registration still lands in every
+port's provider and in `fixtures/registry-conformance/expected-registry.json`.
+
+**Change from the first draft:** the report's `@window` attribute is dropped. A report's row
+scope is the existing `@filter` (which carries R4's relative-date values), so no new
+attribute is needed for it.
+
 ## 4. Requirements
 
 The examples use the reference adopter's model: `Purchase`, `Program` and `WorkoutEvent`.
@@ -193,8 +228,8 @@ must be exact or error.
 A child of `object.entity` carrying one `attr.filter`. Measures and reports reference it by
 name. **ADR-0037:** (0) derivable? A segment is a named `attr.filter`, so this is the
 weakest addition. The case for it is reuse (the same "active purchase" rule in five measures)
-and export (Cube segments and MetricFlow filters are named). **Open decision D1:** register
-`segment`, or let measures carry an inline `@filter` only and drop R3.
+and export (Cube segments and MetricFlow filters are named). **D1 (resolved 2026-10-03):**
+register `segment`. Inline `@filter` on a measure stays legal as well.
 
 ### R4 — Relative-date filter values
 
@@ -224,15 +259,21 @@ text; the registry prose says so.
 - object.report:
     name: DailyRevenue
     "@from": Purchase
-    "@dimensions": [{ purchasedAt: day }]
+    "@dimensions": ["purchasedAt:day"]
     "@measures": [purchases, revenue]
-    "@window": { purchasedAt: { gte: { now: "-P90D" } } }
+    "@filter": { purchasedAt: { gte: { now: "-P90D" } } }
 - object.report:
     name: StoreTotals          # no dimensions: exactly one row
     "@from": Purchase
     "@measures": [purchases, buyers, revenue]
 ```
 
+- `@filter` and `@segment` on a report scope the rows before grouping (a `WHERE`, not a
+  `HAVING`). Both may be present; they combine with AND.
+- A `@dimensions` item is a dimension name of `@from`, or `name:grain` for a time dimension
+  (a single colon; a dimension name never carries a package, so it cannot collide with the
+  `::` package separator). A time dimension listed without a grain, or with a grain its
+  `@grains` does not declare, is a load error.
 - One output row per distinct dimension tuple; **no dimensions means exactly one row**
   (the global totals case).
 - **All measures in a report belong to `@from`.** v1 refuses a measure from another entity
@@ -253,9 +294,9 @@ text; the registry prose says so.
 **ADR-0037 walk.** Is a report a projection with an extra attribute? No: a projection is one
 row per base row and declares its fields; a report's grain is the dimension tuple and its
 fields are derived. Different grain and different field derivation are own behaviour, so it
-is an `object` **subtype** (ADR-0028 taxonomy). **Open decision D2:** `object.report` as a
-new subtype (recommended), or `object.projection` with `@dimensions`/`@measures` attributes
-(fewer new names, but overloads a type whose contract is "one row per base row").
+is an `object` **subtype** (ADR-0028 taxonomy). **D2 (resolved 2026-10-03):** a new
+`object.report` subtype. Attributes on `object.projection` were rejected because they would
+overload a type whose contract is "one row per base row".
 
 ### R6 — Exporters (reference helpers, TS first)
 
@@ -263,7 +304,9 @@ new subtype (recommended), or `object.projection` with `@dimensions`/`@measures`
   dimensions or measures, with joins from to-one relationships, measures, dimensions (time
   dimensions with granularities), and segments.
 - **`metricflow-model`** — emits dbt `semantic_models` (entities from identities, dimensions,
-  measures) and `metrics` (simple, ratio, derived).
+  measures) and `metrics` (simple, ratio, derived). **D5 (resolved 2026-10-03):** built on the
+  first adopter demand, not in the 1.1 change set. The §5 mapping column stays as the contract
+  it must meet.
 - Both are **reference helpers**: listed by `meta gen --list`, ejectable with `meta eject`,
   output drift-checked by `meta verify --codegen`. They are not core and carry no runtime.
 - **Mapping is lossless for the core vocabulary** by construction: §5's table is a contract,
@@ -313,7 +356,7 @@ Composes only R1–R5 vocabulary; adds none.
    MySQL, persistence-conformance (read each report view in every port), api-contract
    `report/` sub-corpus (list, filter, sort, paging, 405 on writes) in every port.
 3. **R2 `measure.derived`** — once FR-037 R5's arithmetic lands.
-4. **R6** — Cube exporter, then MetricFlow.
+4. **R6** — Cube exporter. MetricFlow on first adopter demand (D5).
 5. **R7** — the library.
 
 ## 7. Acceptance criteria
@@ -330,15 +373,18 @@ Composes only R1–R5 vocabulary; adds none.
 - Every port reads every fixture report view through its persistence layer.
 - Every port's generated route lists a report with `?filter` and `?sort` on derived fields,
   and answers writes `405`.
-- Exporters: golden fixtures for both targets; a real Cube instance and `dbt parse` accept the
-  output; the Cube query result equals the report view result on the conformance data.
+- Cube exporter: golden fixtures; a real Cube instance accepts the output; the Cube query
+  result equals the report view result on the conformance data. (MetricFlow: golden fixtures
+  and `dbt parse`, when it is built.)
 - No-churn: the existing corpora produce byte-identical output.
 - The reference adopter's admin analytics are rebuilt from declarations, and its hand-written
   report code shrinks accordingly (measured and recorded in the release notes).
 
-## 8. Open decisions (for the maintainer)
+## 8. Decisions (resolved 2026-10-03)
 
-| # | Decision | Recommendation |
+The maintainer accepted every recommendation on 2026-10-03.
+
+| # | Decision | Ruling |
 |---|---|---|
 | D1 | Register `segment` (R3), or inline `@filter` only | Register it: reuse and exporter mapping |
 | D2 | `object.report` subtype, or attributes on `object.projection` | New subtype: different grain and derived fields |
