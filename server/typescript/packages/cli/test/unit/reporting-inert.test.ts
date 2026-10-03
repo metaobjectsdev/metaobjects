@@ -22,13 +22,17 @@ import { mkdtempSync, mkdirSync, copyFileSync, rmSync, readFileSync, readdirSync
 import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { loadUris, type MetaRoot } from "@metaobjectsdev/metadata";
+import { loadUris, OBJECT_SUBTYPE_REPORT, DEFAULT_COLUMN_NAMING_STRATEGY, type MetaRoot } from "@metaobjectsdev/metadata";
 import {
-  runGen, makeRenderContext, buildPkMap, buildRelationMap,
-  type GenContext, type Generator, type MetaobjectsGenConfig,
+  runGen, makeRenderContext, buildPkMap, buildRelationMap, buildProjectionViews,
+  type AgentSchemaInput, type GenContext, type Generator, type MetaobjectsGenConfig,
+  type SchemaColumnLike,
 } from "@metaobjectsdev/codegen-ts";
-import { apiDocsFile } from "@metaobjectsdev/codegen-ts/generators";
-import { buildExpectedSchema, diff, type SchemaSnapshot } from "@metaobjectsdev/migrate-ts";
+import { agentDocsFile, apiDocsFile } from "@metaobjectsdev/codegen-ts/generators";
+import {
+  buildExpectedSchema, buildExpectedSchemaWithProvenance, columnTypeSql, diff, qualifiedDbName,
+  type SchemaSnapshot,
+} from "@metaobjectsdev/migrate-ts";
 import { composeCatalog } from "../../src/lib/catalog.js";
 import { docsCommand } from "../../src/commands/docs.js";
 
@@ -94,9 +98,9 @@ beforeAll(async () => {
 
 describe("FR-044 reporting nodes are inert in codegen", () => {
   test("the with-model really carries the vocabulary (else every check below is vacuous)", () => {
-    const reports = withReporting.objects().filter((o) => o.subType === "report");
+    const reports = withReporting.objects().filter((o) => o.subType === OBJECT_SUBTYPE_REPORT);
     expect(reports.map((o) => o.name).sort()).toEqual(["DailyRevenue", "ProgramEngagement", "StoreTotals"]);
-    expect(withoutReporting.objects().some((o) => o.subType === "report")).toBe(false);
+    expect(withoutReporting.objects().some((o) => o.subType === OBJECT_SUBTYPE_REPORT)).toBe(false);
   });
 
   const catalog = composeCatalog();
@@ -108,6 +112,17 @@ describe("FR-044 reporting nodes are inert in codegen", () => {
       expect(actual).toEqual(expected);
     });
   }
+
+  test("exactly these generators cannot run from a bare model — the list may only shrink", async () => {
+    // Each is compared above on its error message alone, which proves nothing about its
+    // output. Pinned by name so a generator that starts throwing cannot drop out silently.
+    //   shared-model  needs a `files` selection `meta gen` supplies at run time
+    const threw: string[] = [];
+    for (const [name, entry] of Object.entries(catalog)) {
+      if ("<threw>" in (await emit(withoutReporting, [entry.factory()]))) threw.push(name);
+    }
+    expect(threw.sort()).toEqual(["shared-model"]);
+  });
 
   test("every runnable generator in ONE run emits the same files (barrels see the whole suite)", async () => {
     // A generator that cannot run from a bare model (shared-model needs a `files`
@@ -125,6 +140,25 @@ describe("FR-044 reporting nodes are inert in codegen", () => {
     expect(Object.keys(expected).length).toBeGreaterThan(10);
     expect(Object.keys(actual)).toEqual(Object.keys(expected));
     expect(actual).toEqual(expected);
+  });
+});
+
+describe("FR-044 a selection of only reports", () => {
+  test("warns that there is nothing to generate, like an empty selection", async () => {
+    const root = mkdtempSync(join(tmpdir(), "reporting-inert-only-"));
+    try {
+      const result = await runGen({
+        config: { outDir: "src/generated", extStyle: "js", dialect: "postgres", dbImport: "../db", generators: Object.values(composeCatalog()).filter((e) => e.name !== "shared-model").map((e) => e.factory()) },
+        metadata: withReporting,
+        projectRoot: root,
+        genStateDir: join(root, GEN_STATE),
+        entityFilter: ["DailyRevenue", "ProgramEngagement", "StoreTotals"],
+      });
+      expect(result.files).toEqual([]);
+      expect(result.warnings.some((w) => w.startsWith("No entities to generate") && w.includes("object.report"))).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
@@ -155,6 +189,8 @@ describe("FR-044 reporting nodes are inert in meta docs", () => {
     try {
       mkdirSync(join(root, "metaobjects"), { recursive: true });
       copyFileSync(join(MODELS, variant, "meta.shop.json"), join(root, "metaobjects", "meta.shop.json"));
+      // `--agent` is listed for completeness but emits nothing without a gen config; the
+      // agent surface is driven directly below, with the UI tier wired.
       for (const flags of [[], ["--agent"], ["--requirements"], ["--site"]]) {
         const out = join(root, "out" + flags.join(""));
         expect(await docsCommand([root, "--out", out, ...flags], root, { silent: true })).toBe(0);
@@ -179,30 +215,70 @@ describe("FR-044 reporting nodes are inert in meta docs", () => {
     expect(actual).toEqual(expected);
   });
 
+  /** The GenContext `meta docs` builds, with a full generator suite wired: the Hono
+   *  routes and the UI tier both on, so every page that keys off them is rendered. */
+  const docsCtx = (metadata: MetaRoot): GenContext => ({
+    entities: metadata.objects(),
+    loadedRoot: metadata,
+    matches: () => true,
+    config: {
+      outDir: "docs", extStyle: "none", dbImport: "", dialect: "postgres", outputLayout: "flat",
+      includeHonoRoutes: true, includeUiTier: true,
+    } as never,
+    renderContext: makeRenderContext({
+      dialect: "postgres", loadedRoot: metadata, outDir: "docs", dbImport: "", apiPrefix: "/api",
+      pkMap: buildPkMap(metadata), relationMap: buildRelationMap(metadata),
+    }),
+    projectRoot: MODELS,
+    warn: () => {},
+  });
+
+  const compare = (expected: Record<string, string>, actual: Record<string, string>): void => {
+    expect(Object.keys(actual)).toEqual(Object.keys(expected));
+    expect(actual).toEqual(expected);
+  };
+
   test("the api surface is identical", async () => {
     // `meta docs --api` materializes only with a loadable gen config, which a temp project
     // cannot import; so drive the generator with the GenContext `meta docs` builds.
     const api = async (metadata: MetaRoot): Promise<Record<string, string>> => {
-      const ctx: GenContext = {
-        entities: metadata.objects(),
-        loadedRoot: metadata,
-        matches: () => true,
-        config: { outDir: "docs", extStyle: "none", dbImport: "", dialect: "sqlite", outputLayout: "flat" } as never,
-        renderContext: makeRenderContext({
-          dialect: "sqlite", loadedRoot: metadata, outDir: "docs", dbImport: "", apiPrefix: "",
-          pkMap: buildPkMap(metadata), relationMap: buildRelationMap(metadata),
-        }),
-        projectRoot: MODELS,
-        warn: () => {},
-      };
       const out: Record<string, string> = {};
-      for (const f of await apiDocsFile({ subDir: "api" }).generate(ctx)) out[f.path] = f.content;
+      for (const f of await apiDocsFile({ subDir: "api" }).generate(docsCtx(metadata))) out[f.path] = f.content;
       return out;
     };
     const expected = await api(withoutReporting);
-    const actual = await api(withReporting);
     expect(Object.keys(expected).length).toBeGreaterThan(2);
-    expect(Object.keys(actual)).toEqual(Object.keys(expected));
-    expect(actual).toEqual(expected);
+    compare(expected, await api(withReporting));
+  });
+
+  test("the agent surface (schema, ui, requirements) is identical with the UI tier wired", async () => {
+    // Same reason as above: `meta docs --agent` needs a loadable gen config. The schema
+    // input is built exactly as docs.ts's buildAgentSchemaInput builds it for postgres.
+    const agent = async (metadata: MetaRoot): Promise<Record<string, string>> => {
+      const dialect = "postgres" as const;
+      const strategy = DEFAULT_COLUMN_NAMING_STRATEGY;
+      const built = buildExpectedSchemaWithProvenance(metadata, {
+        dialect,
+        columnNamingStrategy: strategy,
+        views: buildProjectionViews(metadata, { dialect, columnNamingStrategy: strategy }),
+      });
+      const schema: AgentSchemaInput = {
+        dialect,
+        tables: built.snapshot.tables,
+        views: built.snapshot.views,
+        provenance: built.provenance,
+        columnType: (c: SchemaColumnLike) => columnTypeSql(c as never, dialect),
+        qualify: qualifiedDbName,
+      };
+      const out: Record<string, string> = {};
+      const files = await agentDocsFile({ schema, columnNamingStrategy: strategy }).generate(docsCtx(metadata));
+      for (const f of files) out[f.path] = f.content;
+      return out;
+    };
+    const expected = await agent(withoutReporting);
+    // ui.md is the page that leaked a view-backed report; it must actually be rendered.
+    expect(Object.keys(expected).some((p) => p.endsWith("ui.md"))).toBe(true);
+    expect(Object.keys(expected).some((p) => p.endsWith("schema.md"))).toBe(true);
+    compare(expected, await agent(withReporting));
   });
 });

@@ -21,7 +21,7 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { isAbstract } from "./instance-artifacts.js";
 import { isProjection } from "./projection/projection-detector.js";
-import { hasAnyRdbSource, hasWritableRdbSource } from "./source-detect.js";
+import { hasAnyRdbSource, hasWritableRdbSource, isReport } from "./source-detect.js";
 import { resourcePath, restPath } from "./templates/entity-ui-descriptor.js";
 import {
   declaresTphDiscriminator,
@@ -40,7 +40,11 @@ import { tphRouteSegment } from "./templates/tph-discriminator.js";
  * `routesFile` / `routesFileHono` gate on, so hooks exist exactly where routes do.
  */
 export function servesReadApi(entity: MetaObject): boolean {
-  return !isAbstract(entity) && hasAnyRdbSource(entity);
+  // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
+  // A report may declare a read-only `source.rdb @kind: view` (R5), which would pass the
+  // source test below although no route serves it; runGen already drops reports, so this
+  // matters to the doors that read the model directly (agent/ui.md, owned generators).
+  return !isAbstract(entity) && !isReport(entity) && hasAnyRdbSource(entity);
 }
 
 /**
