@@ -188,7 +188,7 @@ public class CSharpNamingTests
         Assert.Equal(c.LegacyPlural.ToLowerInvariant(), source.PhysicalName);
     }
 
-    // -- AssertNoCollectionNameCollisions (#<pending>) --------------------------
+    // -- AssertNoCollectionNameCollisions --------------------------
 
     private static IReadOnlyList<MetaObject> MultiEntityRoot(params (string Name, bool IsValue)[] specs)
     {
@@ -239,5 +239,31 @@ public class CSharpNamingTests
         // named "Addresses" never gets a DbSet/route/finder, so it must not trip this.
         var entities = MultiEntityRoot(("Address", false), ("Addresses", true));
         CSharpNaming.AssertNoCollectionNameCollisions(entities); // does not throw
+    }
+
+    public sealed record CollisionCase(string EntityA, string EntityB);
+
+    public static TheoryData<CollisionCase> NamingConformanceCollisionCases()
+    {
+        var path = Path.Combine(
+            CorpusPaths.RepoRoot(), "fixtures", "naming-conformance", "already-plural-pluralize.json");
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        var data = new TheoryData<CollisionCase>();
+        foreach (var c in doc.RootElement.GetProperty("collisionCases").EnumerateArray())
+        {
+            data.Add(new CollisionCase(
+                c.GetProperty("entityA").GetString()!,
+                c.GetProperty("entityB").GetString()!));
+        }
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(NamingConformanceCollisionCases))]
+    public void NamingConformance_collisionCasesAreRefused(CollisionCase c)
+    {
+        var entities = MultiEntityRoot((c.EntityA, false), (c.EntityB, false));
+        Assert.Throws<InvalidOperationException>(
+            () => CSharpNaming.AssertNoCollectionNameCollisions(entities));
     }
 }

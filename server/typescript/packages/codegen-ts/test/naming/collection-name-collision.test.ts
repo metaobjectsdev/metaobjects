@@ -1,4 +1,7 @@
 import { describe, test, expect } from "bun:test";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { MetaDataLoader, InMemoryStringSource, type MetaObject } from "@metaobjectsdev/metadata";
 import { assertNoCollectionNameCollisions, ERR_COLLECTION_NAME_COLLISION } from "../../src/naming/collection-name-collision.js";
 
@@ -35,7 +38,7 @@ describe("assertNoCollectionNameCollisions", () => {
   });
 
   test("throws when an already-plural entity collides with its singular counterpart", async () => {
-    // #<pending> — "Address" legacy-pluralizes to "Addresses"; "Addresses" is
+    // "Address" legacy-pluralizes to "Addresses"; "Addresses" is
     // already-plural and stays "Addresses" — both land on the same collection name.
     const objects = await loadObjects([entity("Address"), entity("Addresses")]);
     expect(() => assertNoCollectionNameCollisions(objects)).toThrow(
@@ -86,5 +89,20 @@ describe("assertNoCollectionNameCollisions", () => {
       entity("Addresses"),
     ]);
     expect(() => assertNoCollectionNameCollisions(objects)).toThrow(ERR_COLLECTION_NAME_COLLISION);
+  });
+
+  test("fixtures/naming-conformance/'s collisionCases are all refused", async () => {
+    const fixturePath = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "..", "..", "..", "..", "..", "..",
+      "fixtures", "naming-conformance", "already-plural-pluralize.json",
+    );
+    const { collisionCases } = JSON.parse(readFileSync(fixturePath, "utf8")) as {
+      collisionCases: { entityA: string; entityB: string }[];
+    };
+    for (const { entityA, entityB } of collisionCases) {
+      const objects = await loadObjects([entity(entityA), entity(entityB)]);
+      expect(() => assertNoCollectionNameCollisions(objects)).toThrow(ERR_COLLECTION_NAME_COLLISION);
+    }
   });
 });
