@@ -270,8 +270,18 @@ public final class ValidationPhase {
         // #207 — projection row-scope @filter field-ref validation (fail-closed).
         pass(collected, () -> validateProjectionFilter(root));
         // FR-044 — the reporting vocabulary's cross-node rules (D1-D4, M1-M6, S1, R1-R7,
-        // F1/F2). Collects every finding; a broken rule yields exactly one error.
-        pass(collected, () -> collected.addAll(validateReporting(root)));
+        // F1/F2). Collects every finding; a broken rule yields exactly one error. The pass
+        // already drops its own repeats (ReportingValidation's sink, keyed by node + message),
+        // so its findings are deduped on their MESSAGE too: two distinct reporting failures
+        // on one node (two unresolved @dimensions items, two inheritors breaking one
+        // inherited dimension) share code + envelope but are two errors in every port.
+        java.util.Set<MetaDataException> reportingFindings =
+                java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        pass(collected, () -> {
+            List<MetaDataException> reporting = validateReporting(root);
+            reportingFindings.addAll(reporting);
+            collected.addAll(reporting);
+        });
         pass(collected, () -> validateTemplates(root));
         pass(collected, () -> validateEntityHasPrimaryIdentity(root, loader));
         pass(collected, () -> validateFilterableHasSupportedOps(root));
@@ -289,7 +299,7 @@ public final class ValidationPhase {
         // caught by both the generic required-attr pass and a subtype-specific pass) — that is
         // one finding, not two, and the envelope (code + source) is identical. Dedupe on it so
         // a defect is reported once, while genuinely-distinct findings stay separate.
-        java.util.List<MetaDataException> findings = dedupe(collected);
+        java.util.List<MetaDataException> findings = dedupe(collected, reportingFindings);
 
         // Surface ALL findings: record every error but the last on the loader (source order),
         // then throw the last so the load still fails. Single error → records nothing, throws
@@ -318,8 +328,11 @@ public final class ValidationPhase {
     /** Collapse duplicate findings (same code + same source envelope), preserving first-seen
      *  order. Two errors the conformance envelope model cannot tell apart ARE the same finding.
      *  A finding with neither code nor envelope (no distinguishing identity) is never deduped —
-     *  it keeps its own slot via an index-tagged key. */
-    private static java.util.List<MetaDataException> dedupe(java.util.List<MetaDataException> in) {
+     *  it keeps its own slot via an index-tagged key. A finding in {@code keyedByMessage} (the
+     *  reporting pass, which emits several distinct findings per node) adds its message to the
+     *  key, so only a true repeat collapses. */
+    private static java.util.List<MetaDataException> dedupe(
+            java.util.List<MetaDataException> in, java.util.Set<MetaDataException> keyedByMessage) {
         java.util.Map<String, MetaDataException> byKey = new java.util.LinkedHashMap<>();
         for (int i = 0; i < in.size(); i++) {
             MetaDataException e = in.get(i);
@@ -328,6 +341,9 @@ public final class ValidationPhase {
             // No code AND no envelope → nothing to dedupe on; tag with the index so distinct
             // such findings are not collapsed into one.
             String key = (code.isEmpty() && env.isEmpty()) ? ("#" + i) : (code + "|" + env);
+            if (keyedByMessage.contains(e)) {
+                key = key + "|" + e.getMessage();
+            }
             byKey.putIfAbsent(key, e);
         }
         return new java.util.ArrayList<>(byKey.values());

@@ -298,6 +298,47 @@ public class ReportingValidationTest extends SharedRegistryTestBase {
     }
 
     // ---------------------------------------------------------------------------
+    // The loader's envelope dedupe keeps distinct reporting findings on one node
+    // ---------------------------------------------------------------------------
+
+    /** Every error a full load reports: those recorded on the loader plus the one thrown. */
+    private static List<MetaDataException> loadErrors(JsonObject doc) {
+        MetaDataLoader loader = strictLoader("reporting-validation-load-errors");
+        List<MetaDataException> all = new ArrayList<>();
+        try {
+            loader.load(List.of(new InMemoryStringSource(new Gson().toJson(doc), "meta.shop.json")));
+        } catch (MetaDataException thrown) {
+            all.addAll(loader.getErrors());
+            all.add(thrown);
+        }
+        return all;
+    }
+
+    @Test
+    public void twoInheritorsBreakingOneInheritedDimensionAreTwoLoadErrors() throws IOException {
+        // Both findings sit on the SAME node (the base's dimension) with the same code;
+        // only the message names the inheritor. The loader must not collapse them.
+        List<MetaDataException> got = loadErrors(inheritedModel("LoginEvent", "SignupEvent"));
+        assertEquals(List.of("ERR_INVALID_DIMENSION", "ERR_INVALID_DIMENSION"), codes(got));
+        assertTrue(got.get(0).getMessage(), got.get(0).getMessage().contains("(inherited by 'acme::shop::LoginEvent')"));
+        assertTrue(got.get(1).getMessage(), got.get(1).getMessage().contains("(inherited by 'acme::shop::SignupEvent')"));
+    }
+
+    @Test
+    public void badDimensionItemAndBadSegmentOnOneReportAreTwoLoadErrors() throws IOException {
+        JsonObject doc = cleanModel();
+        JsonObject report = rootNode(doc, "object.report", "StoreTotals");
+        report.add("@dimensions", JsonParser.parseString("[\"region\"]"));
+        report.addProperty("@segment", "completions");
+        List<MetaDataException> got = loadErrors(doc);
+        assertEquals(List.of("ERR_INVALID_REPORT", "ERR_INVALID_REPORT"), codes(got));
+        assertEquals("report 'acme::shop::StoreTotals': @dimensions item 'region' names no dimension of @from "
+                + "'acme::shop::Purchase'.", got.get(0).getMessage());
+        assertEquals("report 'acme::shop::StoreTotals': @segment 'completions' names no segment of @from "
+                + "'acme::shop::Purchase'.", got.get(1).getMessage());
+    }
+
+    // ---------------------------------------------------------------------------
     // Relative-date values (F1 / F2) and the desugar rule
     // ---------------------------------------------------------------------------
 
