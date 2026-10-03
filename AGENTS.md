@@ -124,7 +124,8 @@ would publish the committed (non-RC) version; only `publish-csharp.yml` has a `v
 (To toggle it: `gh api -X PUT repos/<owner>/<repo>/actions/permissions -F enabled=true` — `-F`
 for a TYPED boolean, since `-f` sends the string `"true"` and 422s.)
 
-**`scripts/ci-local.sh` is still the pre-PR gate**, and it mirrors the hosted lanes —
+**`scripts/ci-local.sh` is still the pre-PR gate**, and it is the single definition of the
+hosted checks — every check workflow in `.github/workflows/` is a thin wrapper that calls it.
 `--quick` covers `hygiene.yml` in full plus the TypeScript half of `conformance.yml`, and the
 flagless full run
 adds the C#/Java/Kotlin/Python conformance lanes, the Java reactor and `integration-tests.yml`'s
