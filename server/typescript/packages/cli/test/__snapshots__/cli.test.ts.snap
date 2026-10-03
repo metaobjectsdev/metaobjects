@@ -76,8 +76,11 @@ FMT FLAGS:
                         is never rewritten — reported as an error instead (safety check).
                         A YAML file is always reported as skipped: no canonical YAML
                         emitter exists yet (ADR-0006 — JSON is the canonical interchange
-                        form). A file declaring an overlay with no base in the same file
-                        is skipped too — fmt never guesses at a cross-file merge.
+                        form). A file declaring 'overlay: true' anywhere — whether or not
+                        a same-file base exists to merge into — is skipped too: a
+                        formatter never changes structure, and buildTree's ordinary
+                        find-or-reuse behavior would otherwise silently fold a same-file
+                        base + overlay into one node, dropping the overlay marker.
 
 DOCS FLAGS:
   [<project-root>]      PROJECT ROOT to resolve metadata from — the directory that CONTAINS
