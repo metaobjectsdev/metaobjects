@@ -2,11 +2,10 @@
 #
 # WHY THIS EXISTS. With no commands declared, the gate's test step is an AGENT choosing
 # "the smallest relevant tests" to run. This repository already has the answer committed:
-# `scripts/ci-local.sh`, which every check workflow in `.github/workflows/` calls as a thin
-# wrapper — hygiene.yml's leak scan, conformance.yml's lanes, and integration-tests.yml's
-# Testcontainers matrix. Since
-# GitHub Actions was disabled on this repository (2026-09-16) that script is the ONLY thing
-# that runs those checks at all, so pinning the gate to it is what keeps them running.
+# `scripts/ci-local.sh`, the single definition of the checks — every check workflow in
+# `.github/workflows/` runs on GitHub as a thin wrapper over it (hygiene.yml's leak scan,
+# conformance.yml's lanes, integration-tests.yml's Testcontainers matrix), so pinning the
+# gate to it runs exactly the repository's checks, the same ones GitHub runs.
 #
 # THE SPLIT. These two commands together are exactly `scripts/ci-local.sh --quick`, cut
 # along the script's own `--only` section boundaries so neither step repeats the other.
@@ -54,9 +53,8 @@
 # takes effect until it is merged to `main`.
 #
 # There is no `ci` section and none is needed: `no-mistakes status` reports this repository
-# as `ci_mode: local`, so the gate skips the CI step and monitors no forge checks. That is
-# already the right answer while Actions is disabled — a PR triggers zero workflows, so
-# there would be nothing to wait for.
+# as `ci_mode: local`, so the gate skips the CI step and monitors no forge checks — the
+# commands above already run the same script the GitHub workflows run.
 
 commands:
   test: "scripts/ci-local.sh --only ts-fast --only ts-unit --strict-toolchains"
