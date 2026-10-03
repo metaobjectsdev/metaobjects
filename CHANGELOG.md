@@ -10,6 +10,10 @@ here.**
 
 ## [Unreleased]
 
+## [1.0.12] — 2026-10-02
+
+_npm `1.0.12` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
 _A PATCH by the maintainer's decision. Its four additions add new surface (a command, a
 generator option, an extract hook and a `verify` advisory), which `docs/compatibility-policy.md`
 classes as a MINOR. All are additive and opt-in: nothing that loads, generates or verifies today
