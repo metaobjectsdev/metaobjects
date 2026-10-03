@@ -34,6 +34,7 @@ import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.identity.MetaIdentity
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
+import com.metaobjects.query.FilterOps
 import com.metaobjects.source.MetaSource
 import com.metaobjects.source.RdbSource
 import java.io.OutputStream
@@ -357,7 +358,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // FR-009 (#179): a filterable enum column is compared as its stored string via
             // `col.castTo<String>(TextColumnType())`; import both only when such a column exists
             // so entities without a filterable enum stay byte-identical.
-            if (scalarFields.any { it.subType == EnumField.SUBTYPE_ENUM }) {
+            if (scalarFields.any { needsStringCastDispatch(it.subType, it.elementType, it.intBackedEnumType) }) {
                 append("import ${ExposedImports.core(api, "TextColumnType")}\n")
                 append("import ${ExposedImports.core(api, "castTo")}\n")
             }
@@ -806,7 +807,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // FR-009 (#179): a filterable enum in the union — the discriminator included — is
             // compared as its stored string via `col.castTo<String>(TextColumnType())`; same
             // conditional imports as the vanilla controller.
-            if (filterSpecs.any { it.subType == EnumField.SUBTYPE_ENUM }) {
+            if (filterSpecs.any { needsStringCastDispatch(it.subType, it.elementType, it.intBackedEnumType) }) {
                 append("import ${ExposedImports.core(api, "TextColumnType")}\n")
                 append("import ${ExposedImports.core(api, "castTo")}\n")
             }
@@ -1188,38 +1189,60 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         if (s.isEmpty()) s else s[0].uppercaseChar() + s.substring(1)
 
     /**
+     * The FR-009 filter-operator band a field of [subType] (or, when non-null,
+     * [intBackedEnumType]'s int-backed enum band) may legally be filtered with — the
+     * SAME single source of truth ([com.metaobjects.query.FilterOps]) the generated
+     * `<Entity>FilterAllowlist` draws from ([KotlinFilterAllowlistGenerator]), so this controller
+     * can never emit an operator the allowlist itself would refuse to admit. One source of truth,
+     * not a second hand-rolled isStringLike/isBoolean gate — which happened to agree with
+     * `FilterOps` for every subtype EXCEPT `uuid`/`uri`/`inet` (none string-like, none boolean, so
+     * the old gate fell through to "emit ordering ops"): `field.inet`'s Kotlin type
+     * (`java.net.InetAddress`) is not `Comparable`, so `greater`/`greaterEq`/`less`/`lessEq` never
+     * compiled for it — a bug this derivation makes structurally impossible, because
+     * `FilterOps.opsForSubType("inet")` has no ordering ops to begin with (identity-comparison-only
+     * band, same as `uuid`). `field.uuid`/`field.uri` happened to compile their (allowlist-
+     * unreachable) ordering arms only because `UUID`/`URI` ARE `Comparable` — this derivation now
+     * omits those unreachable arms too, which is strictly a subset of what compiled before.
+     */
+    private fun fieldFilterBand(subType: String?, intBackedEnumType: String?): Set<String> =
+        if (intBackedEnumType != null) FilterOps.OPS_ENUM_INT_BACKED else FilterOps.opsForSubType(subType)
+
+    /**
+     * True iff a field's WHERE-op dispatch needs the `castTo<String>(TextColumnType())` import —
+     * either it is a string-backed [EnumField] (its `col` is cast for EVERY op — FR-009 #179) or
+     * its [fieldFilterBand] admits `like` while its OWN Kotlin element type is not already
+     * `String` (a non-lenient `field.uri`: a free-text/string filter band over a native
+     * `Column<URI>` — see [emitPerFieldDispatchArm]'s `like` arm, the only op that needs the
+     * cast for such a field). Shared by every import-gate call site so the gate and the arm it
+     * guards can never drift apart.
+     */
+    private fun needsStringCastDispatch(subType: String?, elementType: String, intBackedEnumType: String?): Boolean {
+        if (subType == EnumField.SUBTYPE_ENUM) return true
+        return FilterOps.FILTER_OP_LIKE in fieldFilterBand(subType, intBackedEnumType) && elementType != "String"
+    }
+
+    /**
      * The exact top-level Exposed operator import names (issue #390 — review fix)
      * [emitFilterPipeline]'s `<Entity>WhereOp` will emit for [fields] under `exposedApi=1`,
-     * mirroring [emitPerFieldDispatchArm]'s per-field conditionals EXACTLY (never broader) —
-     * dropping `with(SqlExpressionBuilder) { ... }` under V1 means every operator the 0.x
-     * block got for free now needs an explicit top-level import, and importing one never
-     * emitted risks an unused-import failure on a consumer's strict compile. `eq`/`isNull`/
-     * `isNotNull` are unconditional (every arm — scalar or int-backed-enum — emits all three);
-     * an int-backed enum's early-return arm additionally emits `neq`/`inList` but never
-     * `greater`/`greaterEq`/`less`/`lessEq`/`like` (no ordering/substring compare on a raw
-     * int); the scalar arm's `neq`/`inList` gate on `!isBoolean`, `greater`/`greaterEq`/
-     * `less`/`lessEq` on `!isStringLike && !isBoolean`, and `like` on `isStringLike` — the
-     * SAME three conditions [emitPerFieldDispatchArm] itself gates on. `and` (the WhereOp
-     * fold, `combined = combined?.and(op) ?: op`) is handled separately — it is UNCONDITIONAL
-     * on the predicate loop, not on any field's subtype, so the three call sites import it
-     * unconditionally already. Returns empty for an empty [fields] (no per-field arm, hence
-     * no operator, is ever emitted — the WhereOp function still compiles on `and` alone).
+     * derived from [fieldFilterBand] — the SAME SSOT [emitPerFieldDispatchArm] gates its emitted
+     * arms on, so the import set and the arms it is importing FOR can never drift apart. `eq`/
+     * `isNull`/`isNotNull` are unconditional (every arm — scalar or int-backed-enum — emits all
+     * three); `ne`→`neq` and `in`→`inList` import whenever the field's band admits them; the four
+     * ordering ops import together (bands never offer a subset); `like` imports whenever the
+     * band admits it. Returns empty for an empty [fields] (no per-field arm, hence no operator, is
+     * ever emitted — the WhereOp function still compiles on `and` alone).
      */
     private fun v1FilterOperatorImports(fields: List<ScalarFieldSpec>): List<String> {
         if (fields.isEmpty()) return emptyList()
         val ops = sortedSetOf("eq", "isNull", "isNotNull")
         for (f in fields) {
-            if (f.intBackedEnumType != null) {
-                ops += "neq"; ops += "inList"
-                continue
-            }
-            val isStringLike = f.subType == StringField.SUBTYPE_STRING || f.subType == EnumField.SUBTYPE_ENUM
-            val isBoolean = f.subType == BooleanField.SUBTYPE_BOOLEAN
-            if (!isBoolean) { ops += "neq"; ops += "inList" }
-            if (!isStringLike && !isBoolean) {
+            val band = fieldFilterBand(f.subType, f.intBackedEnumType)
+            if (FilterOps.FILTER_OP_NE in band) ops += "neq"
+            if (FilterOps.FILTER_OP_IN in band) ops += "inList"
+            if (FilterOps.FILTER_OP_GT in band) {
                 ops += "greater"; ops += "greaterEq"; ops += "less"; ops += "lessEq"
             }
-            if (isStringLike) ops += "like"
+            if (FilterOps.FILTER_OP_LIKE in band) ops += "like"
         }
         return ops.toList()
     }
@@ -1478,15 +1501,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         out.append("        for (p in predicates) {\n")
         out.append("            val op: Op<Boolean> = when (p.field) {\n")
         for ((fname, subType, elementType, intBackedEnumType) in scalarFields) {
-            val isStringLike = (subType == StringField.SUBTYPE_STRING || subType == EnumField.SUBTYPE_ENUM)
-            val isBoolean = (subType == BooleanField.SUBTYPE_BOOLEAN)
             emitPerFieldDispatchArm(
                 out,
                 tableObjectName = tableObjectName,
                 fieldName = fname,
                 elementType = elementType,
-                isStringLike = isStringLike,
-                isBoolean = isBoolean,
+                subType = subType,
                 isEnum = (subType == EnumField.SUBTYPE_ENUM),
                 intBackedEnumType = intBackedEnumType,
             )
@@ -1507,16 +1527,17 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     /**
      * Emit one per-field arm of the {@code <Entity>WhereOp}'s {@code when (p.field)}.
      * Each arm opens a nested {@code when (p.op)} on the 9 FR-009 ops, gated by
-     * field subtype shape: string-like fields skip the comparison ops; booleans
-     * skip everything but eq/isNull.
+     * [fieldFilterBand] — the SAME [com.metaobjects.query.FilterOps] single source of truth the
+     * generated {@code <Entity>FilterAllowlist} draws from, so this dispatch can never emit an
+     * operator the allowlist itself would refuse to admit (e.g. an ordering comparison on a
+     * non-{@code Comparable} Kotlin type — {@code field.inet}'s {@code java.net.InetAddress}).
      */
     protected open fun emitPerFieldDispatchArm(
         out: StringBuilder,
         tableObjectName: String,
         fieldName: String,
         elementType: String,
-        isStringLike: Boolean,
-        isBoolean: Boolean,
+        subType: String?,
         isEnum: Boolean,
         intBackedEnumType: String? = null,
     ) {
@@ -1549,24 +1570,35 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // via `CAST(col AS text)` (`.castTo<String>(TextColumnType())`) — matching every other
         // port's string-band enum-filter semantics — so eq/ne/in/like all compare Strings.
         // (`isNull` still checks the raw column's nullability.)
+        val band = fieldFilterBand(subType, null)
         val col = if (isEnum) "${tableObjectName}.${fieldName}.castTo<String>(TextColumnType())"
                   else "${tableObjectName}.${fieldName}"
         out.append("                \"$fieldName\" -> when (p.op) {\n")
         out.append("                    \"eq\" -> $col eq (p.value as $elementType)\n")
-        if (!isBoolean) {
+        if (FilterOps.FILTER_OP_NE in band) {
             out.append("                    \"ne\" -> $col neq (p.value as $elementType)\n")
         }
-        if (!isStringLike && !isBoolean) {
+        if (FilterOps.FILTER_OP_GT in band) {
             out.append("                    \"gt\" -> $col greater (p.value as $elementType)\n")
             out.append("                    \"gte\" -> $col greaterEq (p.value as $elementType)\n")
             out.append("                    \"lt\" -> $col less (p.value as $elementType)\n")
             out.append("                    \"lte\" -> $col lessEq (p.value as $elementType)\n")
         }
-        if (!isBoolean) {
+        if (FilterOps.FILTER_OP_IN in band) {
             out.append("                    \"in\" -> $col inList (p.value as List<$elementType>)\n")
         }
-        if (isStringLike) {
-            out.append("                    \"like\" -> $col like (p.value as String)\n")
+        if (FilterOps.FILTER_OP_LIKE in band) {
+            // Exposed's `like` extension requires a String-typed expression. An isEnum field's
+            // `col` is already the castTo<String> form above (its eq/ne/in/like ALL compare
+            // strings). A `field.uri` is the other `like`-banded subtype FilterOps admits (its
+            // band is free-text/string — ADR-0037 Wave 3) whose native Exposed column is
+            // `Column<URI>`, not `Column<String>` — so ITS `like` arm alone needs the SAME cast,
+            // scoped to just this op (its eq/ne/in arms stay against the native URI column,
+            // matching the coercer's and the native-uuid/field.uuid arm's existing per-op
+            // native-type precedent).
+            val likeCol = if (isEnum || elementType == "String") col
+                          else "${tableObjectName}.${fieldName}.castTo<String>(TextColumnType())"
+            out.append("                    \"like\" -> $likeCol like (p.value as String)\n")
         }
         out.append("                    \"isNull\" -> if (p.value as Boolean) ${tableObjectName}.${fieldName}.isNull() else ${tableObjectName}.${fieldName}.isNotNull()\n")
         out.append("                    else -> throw IllegalStateException(\"unsupported op for $fieldName: \" + p.op)\n")
@@ -1882,7 +1914,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             if (scalarFields.any { it.elementType == "InetAddress" }) {
                 append("import java.net.InetAddress\n")
             }
-            if (scalarFields.any { it.subType == EnumField.SUBTYPE_ENUM }) {
+            if (scalarFields.any { needsStringCastDispatch(it.subType, it.elementType, it.intBackedEnumType) }) {
                 append("import ${ExposedImports.core(api, "TextColumnType")}\n")
                 append("import ${ExposedImports.core(api, "castTo")}\n")
             }
