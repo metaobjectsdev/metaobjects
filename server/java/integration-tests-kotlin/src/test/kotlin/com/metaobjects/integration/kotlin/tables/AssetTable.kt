@@ -11,12 +11,14 @@ import kotlinx.serialization.json.Json
 /**
  * Hand-written reference Exposed Table mirroring `Asset` from
  * `fixtures/persistence-conformance/canonical/meta.fitness.json` — the R6 Plan 2a/2b
- * native-physical-column subject. Byte-for-byte the shape that
- * [com.metaobjects.generator.kotlin.KotlinExposedTableGenerator] emits for this entity:
+ * native-physical-column subject, feeding the SP-H write-roundtrip harness
+ * ([com.metaobjects.integration.kotlin.QueryScenarioRunner], `asset-uuid-roundtrip.yaml`), which
+ * reads/writes rows through THIS table directly — never through a generated entity/controller.
+ * Byte-for-byte the shape [com.metaobjects.generator.kotlin.KotlinExposedTableGenerator] emits
+ * for this entity, with ONE deliberate, documented divergence (`externalId`, below):
  *
  *   - `field.uuid` PK + `@generation:uuid`           → `uuid("id")` + gen_random_uuid() DEFAULT
  *   - `field.uuid` (non-key, @required)              → `uuid("ownerId")` (Postgres native uuid)
- *   - `field.string` + `@dbColumnType:uuid`          → `uuid("externalId")` (native uuid column; generated DATA-CLASS property stays String)
  *   - `field.string` + `@dbColumnType:jsonb`         → `jsonb("payload", …)` (real Postgres JSONB; parsed to kotlinx JsonElement, issue #98)
  *   - default `field.timestamp` (instant/TZ-aware, ADR-0036 Wave 2) → `instantWithTimeZone("recordedAt")`
  *     (a `Column<java.time.Instant>` whose DDL is `TIMESTAMP WITH TIME ZONE` — matches the
@@ -31,8 +33,14 @@ import kotlinx.serialization.json.Json
 object AssetTable : Table("assets") {
     val id = uuid("id").defaultExpression(CustomFunction("gen_random_uuid", UUIDColumnType()))
     val ownerId = uuid("ownerId")
-    // `@dbColumnType:uuid` on a field.string → native uuid column. Exposed surfaces this as
-    // a java.util.UUID at the SQL boundary; the normalizer lowercases it canonically.
+    // `field.string` + `@dbColumnType:uuid` — a DELIBERATE divergence from what the generator
+    // now emits (`uuidString("externalId")`, a `Column<String>`; see
+    // KotlinExposedTableGenerator.uuidStringSupportBlock's doc). That change exists to agree
+    // with a GENERATED entity/controller's `String` property (ADR-0037) — a concern this
+    // hand-written table never has, since its only caller is this file's own runner, which
+    // reads/writes a `java.util.UUID` directly and normalizes it itself (lowercases it
+    // canonically) rather than going through any generated String-typed DTO. Keeping the
+    // native `uuid(...)` here is a truthful, intentional divergence, not a missed update.
     val externalId = uuid("externalId")
     // `@dbColumnType:jsonb` open-JSON column (#98). The codec PARSES the JSONB text to a kotlinx
     // `JsonElement` (decode `Json.parseToJsonElement`, encode `it.toString()`), so the column is

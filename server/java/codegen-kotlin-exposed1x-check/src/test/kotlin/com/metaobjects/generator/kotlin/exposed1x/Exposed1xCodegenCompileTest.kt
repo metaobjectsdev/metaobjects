@@ -100,12 +100,15 @@ class Exposed1xCodegenCompileTest {
             // The acceptance-critical trap the issue calls out BY NAME: a java.util.UUID column
             // must use javaUUID(...), never bare uuid(...) (which binds kotlin.uuid.Uuid under
             // 1.x — "the one silent trap: emitting uuid() still compiles, but it changes the
-            // Kotlin type"). The Asset entity's `id`/`ownerId` (field.uuid) and `externalId`
-            // (field.string @dbColumnType=uuid) all route through this.
+            // Kotlin type"). The Asset entity's `id`/`ownerId` (native field.uuid) route through
+            // this. `externalId` (field.string @dbColumnType=uuid) does NOT — it now emits the
+            // package-shared `uuidString(...)` extension (ADR-0037: the escape hatch is
+            // physical-only, so the property stays String; see
+            // KotlinExposedTableGenerator.uuidStringSupportBlock) — but id/ownerId alone still
+            // exercise the javaUUID(...) trap this assertion exists to catch.
             assertTrue(Regex("""\bjavaUUID\(""").containsMatchIn(combined),
                 "expected at least one javaUUID(...) column — the fixture declares field.uuid " +
-                    "columns (Asset.id/ownerId) and a field.string @dbColumnType=uuid column " +
-                    "(Asset.externalId); none were found in:\n${emittedPaths.map { it.fileName }}")
+                    "columns (Asset.id/ownerId); none were found in:\n${emittedPaths.map { it.fileName }}")
             assertFalse(Regex("""(?<!java)\buuid\(""").containsMatchIn(combined),
                 "expected NO bare uuid(...) column under exposedApi=1 (it would bind " +
                     "kotlin.uuid.Uuid, not java.util.UUID — issue #390's named silent trap)")

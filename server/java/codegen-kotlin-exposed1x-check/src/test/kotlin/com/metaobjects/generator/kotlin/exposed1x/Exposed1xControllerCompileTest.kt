@@ -44,27 +44,38 @@ import kotlin.test.assertTrue
  * classpath (this module's pom — real dependencies, not stubs, so a missing import fails here
  * exactly as it would for a real consumer).
  *
- * **Excluded: `AllTypesController.kt` and `AssetController.kt`** — found by this same thoroughness,
- * but PRE-EXISTING and `exposedApi`-INDEPENDENT (confirmed: neither trace mentions a package the
- * `exposedApi` branch chooses, and the root causes hold identically for `uuid`/`javaUUID`, which
- * bind the same `java.util.UUID` on both versions). Verbatim from the compiler, before this
- * exclusion was added:
- *  1. `AllTypesController.kt` — `emitPerFieldDispatchArm`'s `!isStringLike && !isBoolean` gate
- *     emits `greater`/`greaterEq`/`less`/`lessEq` for ANY such field, but `field.inet`'s Kotlin
- *     type (`java.net.InetAddress`) does not implement `Comparable` (unlike `field.uuid`'s `UUID`
- *     and `field.uri`'s `URI`, which do and compile fine) — "None of the following candidates is
- *     applicable" on `inetVal`/`inet6Val`'s ordering arms.
+ * **`AllTypesController.kt` and `AssetController.kt` are no longer excluded.** Both were
+ * PRE-EXISTING, `exposedApi`-INDEPENDENT defects this same thoroughness first found (confirmed:
+ * neither trace mentioned a package the `exposedApi` branch chooses, and the root causes held
+ * identically for `uuid`/`javaUUID`, which bind the same `java.util.UUID` on both versions):
+ *  1. `AllTypesController.kt` — the per-field filter dispatch's ordering-op gate was a hand-rolled
+ *     `!isStringLike && !isBoolean` check that happened to agree with the generated
+ *     `<Entity>FilterAllowlist`'s operator band for every subtype EXCEPT `uuid`/`uri`/`inet`
+ *     (none string-like, none boolean, so it fell through to "emit ordering ops"): `field.inet`'s
+ *     Kotlin type (`java.net.InetAddress`) does not implement `Comparable` (unlike `field.uuid`'s
+ *     `UUID` and `field.uri`'s `URI`, which do and compiled fine even though those ordering arms
+ *     were ALSO allowlist-unreachable) — "None of the following candidates is applicable" on
+ *     `inetVal`/`inet6Val`'s ordering arms. Fixed by deriving the dispatch gate from the SAME
+ *     single source of truth the allowlist generator reads —
+ *     `com.metaobjects.query.FilterOps.opsForSubType(subType)` — via
+ *     `KotlinSpringControllerGenerator.fieldFilterBand`, so the controller can never again emit an
+ *     operator the allowlist itself would refuse to admit.
  *  2. `AssetController.kt` — the `field.string @dbColumnType=uuid` escape hatch's own contract
- *     (`KotlinTypeMapper`: "the property stays String") binds `externalId` to a `Column<UUID>`
- *     table-side ADR-0037) while `emitPerFieldDispatchArm` casts `(p.value as String)`
- *     controller-side — a String/UUID mismatch on every comparison AND the PATCH bind.
- * Neither is reachable through `KotlinFilterAllowlistGenerator`'s allowlist in a REAL request (it
- * does not admit `gt`/`gte`/`lt`/`lte` for `inet`, matching the port's own filter-op semantics),
- * but the generated Kotlin still has to COMPILE regardless of what a well-formed HTTP request can
- * reach — and until now nothing had ever compiled `KotlinSpringControllerGenerator`'s output for
- * either entity, on any `exposedApi`. Both are genuine defects worth fixing, but a design
- * decision (not a mechanical import) each, and out of issue #390's scope — call out, not papered
- * over, so a reader of a green run here knows exactly what is and is not proven.
+ *     (ADR-0037: physical-only, so `KotlinTypeMapper.kotlinTypeName` keeps the property `String`)
+ *     bound `externalId` to a native `Column<UUID>` table-side (`uuid(...)`/`javaUUID(...)`) while
+ *     the controller casts `(p.value as String)` and binds `dto.externalId: String` directly
+ *     against it — a String/UUID mismatch on every comparison AND the PATCH bind. Fixed by giving
+ *     the TABLE a `Column<String>` instead: `KotlinExposedTableGenerator`'s package-shared
+ *     `uuidString(...)` extension (`MetaUuidStringColumnType`) persists through the real Postgres
+ *     `uuid` type — delegating every JDBC/DDL concern to Exposed's own `UUIDColumnType` — while
+ *     converting only at the Kotlin-value boundary, so the column now agrees with the generated
+ *     entity/controller's `String` property (matching every other MetaObjects port, which converts
+ *     String↔UUID at the layer BELOW the ORM — Java's OMDB `JdbcCodecs.UuidCodec`, say — not in
+ *     application code).
+ * Neither was reachable through `KotlinFilterAllowlistGenerator`'s allowlist in a REAL request
+ * (it never admitted `gt`/`gte`/`lt`/`lte` for `inet`, matching the port's own filter-op
+ * semantics), but the generated Kotlin still has to COMPILE regardless of what a well-formed HTTP
+ * request can reach.
  */
 @OptIn(org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi::class)
 class Exposed1xControllerCompileTest {
@@ -110,14 +121,11 @@ class Exposed1xControllerCompileTest {
                 }
             }
 
-            // See the class doc's "Excluded" section: two PRE-EXISTING, exposedApi-INDEPENDENT
-            // controller defects (non-Comparable field.inet ordering ops; the
-            // @dbColumnType=uuid escape hatch's String/UUID mismatch) — neither a missing
-            // import, neither introduced by this issue, both out of #390's scope.
-            val preexistingBrokenControllers = setOf("AllTypesController.kt", "AssetController.kt")
+            // See the class doc above: both AllTypesController.kt (non-Comparable field.inet
+            // ordering ops) and AssetController.kt (the @dbColumnType=uuid escape hatch's
+            // String/UUID mismatch) are now fixed — no exclusions.
             val emittedPaths: List<Path> = Files.walk(outDir)
                 .filter { it.isRegularFile() && it.toString().endsWith(".kt") }
-                .filter { it.fileName.toString() !in preexistingBrokenControllers }
                 .toList()
             assertTrue(emittedPaths.any { it.fileName.toString().endsWith("Controller.kt") },
                 "expected at least one <Entity>Controller.kt; saw ${emittedPaths.map { it.fileName }}")

@@ -17,18 +17,23 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 /**
  * Issue #390 acceptance criterion: "the emitted custom column types round-trip through a real
  * JDBC read under 1.x." `Exposed1xCodegenCompileTest` proves the full fitness corpus COMPILES
- * against Exposed 1.3.x; this test proves the THREE hand-rolled `Meta*ColumnType` support
- * classes ([KotlinExposedTableGenerator]'s `instantTzSupportBlock` / `inetUriSupportBlock`) —
- * the ones issue #390 calls out by name as needing the `readObject(rs: RowApi, …)` signature
- * change — actually read back correctly against a real Postgres:
+ * against Exposed 1.3.x; this test proves the hand-rolled `Meta*ColumnType` support classes
+ * ([KotlinExposedTableGenerator]'s `instantTzSupportBlock` / `inetUriSupportBlock` /
+ * `uuidStringSupportBlock`) actually read back correctly against a real Postgres:
  *
  *  - `MetaInstantWithTimeZoneColumnType` (a `field.timestamp`, default/non-`@localTime`),
  *  - `MetaUriColumnType` (`field.uri`),
  *  - `MetaInetColumnType` (`field.inet`),
+ *  - `MetaUuidStringColumnType` (`field.string @dbColumnType=uuid` — the R6 Plan 2b escape
+ *    hatch fixed alongside `field.inet`'s ordering-op compile defect; see
+ *    `Exposed1xControllerCompileTest`'s class doc for both root causes). This column is the one
+ *    the generated AssetController/entity ASSUME `String` for (ADR-0037: physical-only), so the
+ *    round-trip below asserts the readback is the SAME `String` that was inserted — not a
+ *    `java.util.UUID` — proving the Kotlin-value boundary this class exists to hold.
  *
  * plus a `javaUUID`-generated PK (`field.uuid` + `@generation: uuid`), the issue's other named
  * acceptance point. A tiny PURPOSE-BUILT fixture (not the shared `meta.fitness.json`) keeps the
- * INSERT in the driver below to four columns instead of needing a `Settings`/`Label` value
+ * INSERT in the driver below to five columns instead of needing a `Settings`/`Label` value
  * object for `AllTypes`' jsonb columns — orthogonal to what this test exists to prove.
  *
  * Needs a real Postgres (via [PostgresContainer] — docker CLI, or `METAOBJECTS_TEST_PG_URL`
@@ -53,6 +58,7 @@ class Exposed1xRoundTripTest {
                   { "field.timestamp": { "name": "createdAt", "@required": true } },
                   { "field.uri":       { "name": "homepage",  "@required": true } },
                   { "field.inet":      { "name": "address",   "@required": true } },
+                  { "field.string":    { "name": "externalRef", "@required": true, "@dbColumnType": "uuid" } },
                   { "identity.primary": { "name": "id", "@fields": "id", "@generation": "uuid" } }
                 ]
               }}
@@ -91,11 +97,17 @@ class Exposed1xRoundTripTest {
                 val wantCreatedAt = Instant.parse("2026-01-01T12:34:56.789Z")
                 val wantHomepage = URI.create("https://example.com/path?q=1")
                 val wantAddress = InetAddress.getByName("192.168.1.42")
+                // The String value the generated entity/controller hold for a
+                // `field.string @dbColumnType=uuid` column (ADR-0037: physical-only — the
+                // property is String, never java.util.UUID). Lowercase + canonical dashed
+                // form, matching what java.util.UUID.toString() always produces.
+                val wantExternalRef = "9d3b7f2a-5c4e-4a1b-8e6f-1a2b3c4d5e6f"
 
                 val insertedId = RoundTripProbeTable.insert {
                     it[RoundTripProbeTable.createdAt] = wantCreatedAt
                     it[RoundTripProbeTable.homepage] = wantHomepage
                     it[RoundTripProbeTable.address] = wantAddress
+                    it[RoundTripProbeTable.externalRef] = wantExternalRef
                 }[RoundTripProbeTable.id]
 
                 val row = RoundTripProbeTable.selectAll()
@@ -104,12 +116,18 @@ class Exposed1xRoundTripTest {
                 val gotCreatedAt = row[RoundTripProbeTable.createdAt]
                 val gotHomepage = row[RoundTripProbeTable.homepage]
                 val gotAddress = row[RoundTripProbeTable.address]
+                // Statically typed String (not java.util.UUID) — this line would not even
+                // COMPILE against the pre-fix native uuid(...)/javaUUID(...) Column<UUID>.
+                val gotExternalRef: String = row[RoundTripProbeTable.externalRef]
 
                 val problems = mutableListOf<String>()
                 if (gotCreatedAt != wantCreatedAt) problems += "createdAt: want=${'$'}wantCreatedAt got=${'$'}gotCreatedAt"
                 if (gotHomepage != wantHomepage) problems += "homepage: want=${'$'}wantHomepage got=${'$'}gotHomepage"
                 if (gotAddress.hostAddress != wantAddress.hostAddress) {
                     problems += "address: want=${'$'}{wantAddress.hostAddress} got=${'$'}{gotAddress.hostAddress}"
+                }
+                if (gotExternalRef != wantExternalRef) {
+                    problems += "externalRef: want=${'$'}wantExternalRef got=${'$'}gotExternalRef"
                 }
 
                 if (problems.isEmpty()) "OK" else "MISMATCH: " + problems.joinToString("; ")

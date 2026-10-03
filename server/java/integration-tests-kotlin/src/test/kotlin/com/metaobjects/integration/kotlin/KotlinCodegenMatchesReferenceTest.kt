@@ -82,16 +82,24 @@ internal class KotlinCodegenMatchesReferenceTest {
             ),
         ),
         // R6 Plan 2a/2b native physical column types: field.uuid → Exposed `uuid(...)`,
-        // field.string + @dbColumnType:uuid → `uuid(...)`, field.string + @dbColumnType:jsonb
-        // → `jsonb(...)` (NOT text), default field.timestamp (instant/TZ-aware, ADR-0036 Wave 2) →
-        // `instantWithTimeZone(...)` (a file-local Column<Instant> with TIMESTAMP WITH TIME ZONE
-        // DDL — matches the Instant data class, NOT the native OffsetDateTime variant). Verifies
-        // the generator emits the native families the hand-written reference AssetTable carries.
+        // field.string + @dbColumnType:jsonb → `jsonb(...)` (NOT text), default field.timestamp
+        // (instant/TZ-aware, ADR-0036 Wave 2) → `instantWithTimeZone(...)` (a file-local
+        // Column<Instant> with TIMESTAMP WITH TIME ZONE DDL — matches the Instant data class,
+        // NOT the native OffsetDateTime variant). field.string + @dbColumnType:uuid →
+        // `uuidString(...)` — a package-shared `Column<String>` over the native Postgres uuid
+        // type (NOT a bare `uuid(...)` `Column<UUID>`: ADR-0037 keeps the escape hatch's logical
+        // type `String`, matching the generated entity/controller — found fixing
+        // AssetController.kt's pre-existing compile defect, see KotlinExposedTableGenerator's
+        // `uuidStringSupportBlock`). Verifies the generator emits the native families the
+        // hand-written reference AssetTable carries for id/ownerId/payload/recordedAt (AssetTable
+        // itself intentionally still uses native `uuid("externalId")` for its OWN purpose — the
+        // SP-H roundtrip harness reads/normalizes a `java.util.UUID` directly and never passes
+        // through a generated String-typed entity, so there is no mismatch for it to hold).
         "Asset" to EntityExpectation(
             columns = listOf(
                 ExpectedColumn("id", families = setOf("uuid")),
                 ExpectedColumn("ownerId", families = setOf("uuid")),
-                ExpectedColumn("externalId", families = setOf("uuid")),
+                ExpectedColumn("externalId", families = setOf("uuidString")),
                 ExpectedColumn("payload", families = setOf("jsonb")),
                 ExpectedColumn("recordedAt", families = setOf("instantWithTimeZone")),
             ),
