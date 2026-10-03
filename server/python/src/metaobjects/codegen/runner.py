@@ -10,6 +10,7 @@ from metaobjects.meta.meta_root import MetaRoot
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.shared.base_types import TYPE_OBJECT
+from .collection_name_collision import assert_no_collection_name_collisions
 from .config import GenConfig
 from .constants import generated_package_init
 from .generator import GenContext, Generator
@@ -106,6 +107,10 @@ def run_gen(
         safe.append(o)
     if not safe:
         return result
+
+    # Refuse before any generator runs — the one choke point that sees the WHOLE
+    # entity set every route/router-emitting generator below reads from.
+    assert_no_collection_name_collisions(safe)
 
     emitted: dict[str, tuple[str, str]] = {}  # full_path -> (content, generated_by)
     for gen in generators:

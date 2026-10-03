@@ -210,3 +210,24 @@ def test_the_no_manifest_refusal_leads_with_the_performable_remedy(tmp_path: Pat
     assert "--baseline=adopt" in msgs[0]
     # What it must no longer do: prescribe committing a file this project cannot produce.
     assert "Commit '.metaobjects/.gen-state/.hashes.json' and re-run" not in msgs[0]
+
+
+def test_run_gen_refuses_a_model_with_colliding_collection_names(tmp_path: Path) -> None:
+    """Integration-level: proves the collision gate is wired into the real entry
+    point (run_gen), not just callable as a standalone function. Address +
+    Addresses both pluralize to "Addresses" — reachable now that an already-
+    plural entity name is no longer double-pluralized."""
+    root = _load(tmp_path / "meta", {"metadata.root": {"package": "acme", "children": [
+        {"object.entity": {"name": "Address", "children": [
+            {"source.rdb": {"@table": "address"}},
+            {"field.long": {"name": "id"}},
+            {"identity.primary": {"@fields": "id"}},
+        ]}},
+        {"object.entity": {"name": "Addresses", "children": [
+            {"source.rdb": {"@table": "addresses"}},
+            {"field.long": {"name": "id"}},
+            {"identity.primary": {"@fields": "id"}},
+        ]}},
+    ]}})
+    with pytest.raises(ValueError):
+        run_gen(GenConfig(out_dir=str(tmp_path / "out")), root, generators=[entity_model()])

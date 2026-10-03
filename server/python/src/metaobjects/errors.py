@@ -200,6 +200,12 @@ class ErrorCode(str, Enum):
     # Codegen (ADR-0044): two value-object FQNs in one payload artifact derive the same
     # emitted record name even after package-qualification. Peer of ERR_VAR_NOT_ON_PAYLOAD.
     ERR_PAYLOAD_NAME_COLLISION = "ERR_PAYLOAD_NAME_COLLISION"
+    # Codegen: two DISTINCT entities/projections in one generation run pluralize to the
+    # SAME API-surface collection name (route path, generated router/finder names) —
+    # e.g. "Address" and "Addresses" both resolving to "Addresses". A codegen-time (not
+    # loader) error, peer of ERR_PAYLOAD_NAME_COLLISION: refused rather than silently
+    # letting one entity's route win.
+    ERR_COLLECTION_NAME_COLLISION = "ERR_COLLECTION_NAME_COLLISION"
     ERR_OUTPUT_TAG_MISSING = "ERR_OUTPUT_TAG_MISSING"
     # SP-H Unit9 — @filterable: true on a field subtype with no filter-operator
     # band (e.g. field.object). Would silently generate an empty-ops filter.
