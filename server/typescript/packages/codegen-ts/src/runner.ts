@@ -12,6 +12,7 @@ import {
   composeRegistry, coreProviders,
 } from "@metaobjectsdev/metadata";
 import { assignEmittedNames } from "./naming/collision-names.js";
+import { assertNoCollectionNameCollisions } from "./naming/collection-name-collision.js";
 import { isAbstract } from "./instance-artifacts.js";
 import { dbEmittingObjects, missingDialectMessage } from "./db-emitting.js";
 import { hasAnyRdbSource } from "./source-detect.js";
@@ -419,6 +420,10 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   if (safeEntities.length === 0) {
     return { files: [], warnings, conflicts: [] };
   }
+
+  // Refuse before any generator runs — the one choke point that sees the WHOLE
+  // set every route/hook/collection-variable generator below reads from.
+  assertNoCollectionNameCollisions(safeEntities);
 
   // #194 — dbImport / dialect are optional config, BUT a model that declares a
   // source.rdb genuinely needs `dialect`. Only a sourced object emits database

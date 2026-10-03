@@ -78,8 +78,8 @@ describe("tableNameFromEntity", () => {
     expect(tableNameFromEntity("UserAccount")).toBe("user_accounts");
     expect(tableNameFromEntity("Category")).toBe("categories");
   });
-  test("does not double-pluralize an already-plural entity name", () => {
-    expect(tableNameFromEntity("ProgramPurchaseStats")).toBe("program_purchase_stats");
+  test("FROZEN: still doubles an already-plural entity name — this is the DEFAULT PHYSICAL table name fallback, not an API-surface name", () => {
+    expect(tableNameFromEntity("ProgramPurchaseStats")).toBe("program_purchase_statses");
   });
 });
 

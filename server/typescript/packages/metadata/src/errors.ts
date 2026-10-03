@@ -131,6 +131,13 @@ export const ERROR_CODES = [
   // same emitted record name even after package-qualification. Peer of
   // ERR_VAR_NOT_ON_PAYLOAD — a codegen-time (not loader) error.
   "ERR_PAYLOAD_NAME_COLLISION",
+  // Codegen: two DISTINCT entities/projections in one generation run pluralize to the
+  // SAME API-surface collection name (REST path, generated hook/query/finder/list
+  // names, DbSet/collection variable name) — e.g. "Address" and "Addresses" both
+  // resolving to "Addresses". A codegen-time (not loader) error, peer of
+  // ERR_PAYLOAD_NAME_COLLISION: refused rather than silently emitting a duplicate
+  // symbol / route / DbSet member.
+  "ERR_COLLECTION_NAME_COLLISION",
   "ERR_PARTIAL_UNRESOLVED",
   "ERR_REQUIRED_SLOT_UNUSED",
   "ERR_OUTPUT_TAG_MISSING",

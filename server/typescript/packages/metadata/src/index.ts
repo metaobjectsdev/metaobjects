@@ -302,7 +302,7 @@ export type { AttrSchemaValidationResult } from "./attr-schema-validate.js";
 // Naming — hoisted from runtime-ts in v0.2.3 so multiple consumers (runtime-ts, migrate-ts, codegen-ts)
 // share identical name resolution. See spec §4.1.
 export {
-  toSnakeCase, toKebabCase, pluralize,
+  toSnakeCase, toKebabCase, pluralize, pluralizeTableNameLegacy,
   applyColumnNamingStrategy, DEFAULT_COLUMN_NAMING_STRATEGY,
   resolveTableName, resolveColumnName, resolveTableSchema, resolveIndexName,
   primaryRdbSource, sourceAddressKey,

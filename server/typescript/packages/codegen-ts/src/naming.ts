@@ -8,6 +8,7 @@ import {
   applyColumnNamingStrategy,
   DEFAULT_COLUMN_NAMING_STRATEGY,
   pluralize,
+  pluralizeTableNameLegacy,
   toKebabCase,
   toSnakeCase,
   type ColumnNamingStrategy,
@@ -29,12 +30,22 @@ export function toPascalCase(s: string): string {
   return s.length > 0 ? s[0]!.toUpperCase() + s.slice(1) : s;
 }
 
-/** PascalCase entity → strategy-applied plural for DB table name. */
+/**
+ * PascalCase entity → strategy-applied plural for a DEFAULT PHYSICAL DB table
+ * name — the fallback `drizzle-schema.ts` uses when `obj.dbTable` is absent
+ * (no declared/resolved primary source). Frozen at the legacy suffix-only
+ * rule (`pluralizeTableNameLegacy`), NOT the already-plural-aware `pluralize`
+ * every API/code-surface name uses — this is a physical name, so an
+ * already-plural entity's default table must keep doubling exactly like
+ * `resolveTableName`'s own no-source fallback and `MetaSource.physicalName`
+ * step 4 (both in `@metaobjectsdev/metadata`), or `meta migrate` would see a
+ * different default and propose a rename nobody asked for.
+ */
 export function tableNameFromEntity(
   entityName: string,
   strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
 ): string {
-  return applyColumnNamingStrategy(pluralize(entityName), strategy);
+  return applyColumnNamingStrategy(pluralizeTableNameLegacy(entityName), strategy);
 }
 
 /** camelCase or PascalCase field → strategy-applied DB column name. */
