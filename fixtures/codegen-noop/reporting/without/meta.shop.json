@@ -1,0 +1,180 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "purchases",
+                "@objectRef": "Purchase",
+                "@cardinality": "many"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Purchase",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "purchases"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId"
+              }
+            },
+            {
+              "field.string": {
+                "name": "customerEmail"
+              }
+            },
+            {
+              "field.currency": {
+                "name": "amountCents"
+              }
+            },
+            {
+              "field.string": {
+                "name": "status"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "refunded"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "purchasedAt"
+              }
+            },
+            {
+              "field.date": {
+                "name": "purchasedOn"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "programRef",
+                "@references": "Program",
+                "@fields": [
+                  "programId"
+                ]
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "program",
+                "@objectRef": "Program",
+                "@cardinality": "one"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "WorkoutEvent",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "workout_events"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId"
+              }
+            },
+            {
+              "field.string": {
+                "name": "customerEmail"
+              }
+            },
+            {
+              "field.int": {
+                "name": "weekNumber"
+              }
+            },
+            {
+              "field.int": {
+                "name": "dayNumber"
+              }
+            },
+            {
+              "field.string": {
+                "name": "eventType"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "occurredAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

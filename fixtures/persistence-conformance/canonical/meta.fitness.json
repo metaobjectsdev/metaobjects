@@ -14,7 +14,10 @@
           { "relationship.composition": { "name": "weeks", "@objectRef": "Week", "@cardinality": "many" } },
           { "identity.primary":   { "name": "id", "@fields": "id", "@generation": "increment" } },
           { "identity.secondary": { "name": "byTitle", "@fields": "title" } },
-          { "index.lookup": { "name": "idx_programs_title_status", "@fields": ["title", "status"], "@orders": ["asc", "asc"] } }
+          { "index.lookup": { "name": "idx_programs_title_status", "@fields": ["title", "status"], "@orders": ["asc", "asc"] } },
+          { "dimension.time":    { "name": "createdAt", "@of": "Program.createdAt", "@grains": ["day", "month"] } },
+          { "measure.aggregate": { "name": "listValue", "@agg": "sum", "@of": "Program.priceCents", "@segment": "published" } },
+          { "segment.filter":    { "name": "published", "@filter": { "status": "PUBLISHED" } } }
         ]
       }},
       { "object.entity": {
