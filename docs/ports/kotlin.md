@@ -622,7 +622,7 @@ codegen-matches-reference, all runnable via `scripts/integration-test.sh kotlin`
 `codegen-kotlin-exposed1x-check` (same command) adds three `exposedApi=1` tests: the model
 + persistence tier and the controller tier (each the full fitness corpus against Exposed
 1.3.x, with no exclusions) compiling against the real jars, and a real-Postgres round-trip
-of the three custom column types — see
+of the four custom column types — see
 [Exposed 1.x output](#exposed-1x-output-exposedapi) above. `integration-tests-kotlin` adds
 the `exposedApi=0` sibling of the controller-tier compile (`FitnessCorpusControllerCompileTest`),
 also with no exclusions.
