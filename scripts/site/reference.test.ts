@@ -50,7 +50,7 @@ describe("renderReference", () => {
   test("renders every metamodel markdown page", () => {
     expect(existsSync(MD_DIR)).toBe(true);
     const p = pages();
-    expect(Object.keys(p).length).toBe(16);
+    expect(Object.keys(p).length).toBe(19);
     expect(Object.keys(p)).toContain("index.html");
     expect(Object.keys(p)).toContain("types/field.html");
   });
@@ -153,7 +153,7 @@ describe("build-site-reference --check", () => {
 
   test("a freshly rendered tree checks clean", () => {
     const r = run("--check", "--out", rendered());
-    expect(r.out).toContain("is fresh (16 page(s))");
+    expect(r.out).toContain("is fresh (19 page(s))");
     expect(r.code).toBe(0);
   });
 

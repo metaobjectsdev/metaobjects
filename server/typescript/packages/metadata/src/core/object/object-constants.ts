@@ -14,12 +14,15 @@ import { SUBTYPE_BASE } from "../../shared/base-types.js";
 export const OBJECT_SUBTYPE_ENTITY = "entity";
 export const OBJECT_SUBTYPE_VALUE = "value";
 export const OBJECT_SUBTYPE_PROJECTION = "projection";
+//   - report : declared dimensions x measures of one entity, compiled to a read-only view (FR-044)
+export const OBJECT_SUBTYPE_REPORT = "report";
 
 export const OBJECT_SUBTYPES = [
   SUBTYPE_BASE,
   OBJECT_SUBTYPE_ENTITY,
   OBJECT_SUBTYPE_VALUE,
   OBJECT_SUBTYPE_PROJECTION,
+  OBJECT_SUBTYPE_REPORT,
 ] as const;
 export type ObjectSubType = (typeof OBJECT_SUBTYPES)[number];
 
@@ -49,3 +52,17 @@ export const OBJECT_ATTR_DISCRIMINATOR_VALUE = "discriminatorValue";
  *  but resolves against the projection's OWN declared fields rather than one
  *  aggregated entity. An aggregate-derived field is not addressable (fail-closed). */
 export const OBJECT_PROJECTION_ATTR_FILTER = "filter";
+
+// ---------------------------------------------------------------------------
+// FR-044 — object.report attrs
+// ---------------------------------------------------------------------------
+/** The object.entity whose rows the report aggregates. */
+export const OBJECT_REPORT_ATTR_FROM = "from";
+/** Dimension names of @from; a time dimension is written `name:grain`. */
+export const OBJECT_REPORT_ATTR_DIMENSIONS = "dimensions";
+/** Measure names of @from. */
+export const OBJECT_REPORT_ATTR_MEASURES = "measures";
+/** Optional segment of @from scoping the rows. */
+export const OBJECT_REPORT_ATTR_SEGMENT = "segment";
+/** Optional row scope over @from's fields (an attr.filter). */
+export const OBJECT_REPORT_ATTR_FILTER = "filter";

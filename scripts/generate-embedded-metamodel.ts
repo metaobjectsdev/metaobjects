@@ -84,6 +84,8 @@ const CONCEPT_DIRS: Record<string, string> = {
   ui: "presentation/ui",
   "ui-web": "presentation/ui-web",
   requirement: "core/requirement",
+  // FR-044: dimension / measure / segment (the object.report vocabulary)
+  reporting: "core/reporting",
   // depth-1
   template: "template",
   // FR-033 S1.5: the prompt concern provider lives in template/ (templateProvider

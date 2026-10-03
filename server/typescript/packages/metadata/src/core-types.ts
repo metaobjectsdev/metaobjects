@@ -60,6 +60,15 @@ import { INDEX_SUBTYPES } from "./core/index/index-constants.js";
 import { MetaRequirement } from "./core/requirement/meta-requirement.js";
 import { REQUIREMENT_DEFINITION } from "./core/requirement/requirement-definition.embedded.js";
 import { REQUIREMENT_SUBTYPES } from "./core/requirement/requirement-constants.js";
+import { MetaDimension } from "./core/reporting/meta-dimension.js";
+import { MetaMeasure } from "./core/reporting/meta-measure.js";
+import { MetaSegment } from "./core/reporting/meta-segment.js";
+import { REPORTING_DEFINITION } from "./core/reporting/reporting-definition.embedded.js";
+import {
+  DIMENSION_SUBTYPES,
+  MEASURE_SUBTYPES,
+  SEGMENT_SUBTYPES,
+} from "./core/reporting/reporting-constants.js";
 import {
   TYPE_METADATA,
   TYPE_OBJECT,
@@ -75,6 +84,9 @@ import {
   TYPE_TEMPLATE,
   TYPE_INDEX,
   TYPE_REQUIREMENT,
+  TYPE_DIMENSION,
+  TYPE_MEASURE,
+  TYPE_SEGMENT,
   SUBTYPE_ROOT,
 } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
@@ -508,6 +520,35 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   );
   for (const reqDef of defineProviderFromData(REQUIREMENT_DEFINITION, REQUIREMENT_FACTORIES)) {
     registry.register(reqDef);
+  }
+
+  // FR-044 reporting vocabulary — dimension / measure / segment. Declared as
+  // children of `object.entity` (spec/metamodel/object.json), never root-level, so
+  // no root wildcard is added above. Three types in one provider file because they
+  // are one vocabulary: a report names dimensions and measures, and both may
+  // reference a segment. `measure.derived` is NOT registered (waits for FR-037 R5).
+  const REPORTING_FACTORIES: FactoryMap = {
+    ...Object.fromEntries(
+      DIMENSION_SUBTYPES.map((subType) => [
+        `${TYPE_DIMENSION}.${subType}`,
+        (typeId: TypeId, name: string) => new MetaDimension(typeId, name),
+      ]),
+    ),
+    ...Object.fromEntries(
+      MEASURE_SUBTYPES.map((subType) => [
+        `${TYPE_MEASURE}.${subType}`,
+        (typeId: TypeId, name: string) => new MetaMeasure(typeId, name),
+      ]),
+    ),
+    ...Object.fromEntries(
+      SEGMENT_SUBTYPES.map((subType) => [
+        `${TYPE_SEGMENT}.${subType}`,
+        (typeId: TypeId, name: string) => new MetaSegment(typeId, name),
+      ]),
+    ),
+  };
+  for (const reportingDef of defineProviderFromData(REPORTING_DEFINITION, REPORTING_FACTORIES)) {
+    registry.register(reportingDef);
   }
 
   // Declare the core cross-references ON their TypeDefinitions, so the loader's

@@ -521,6 +521,19 @@ metadata.root:
                                   A view meant to show active records showing
                                   every record, because scoping was left to
                                   each query.
+                      - requirement.functional:
+                          name: objectReport
+                          title: Report
+                          level: 4
+                          status: planned
+                          statement: >-
+                            A report is a fixed combination of dimensions and
+                            measures of one entity, read-only, whose fields are
+                            derived from that combination rather than declared.
+                          counterexample: >-
+                            A dashboard query that groups by a column the
+                            report's author never named, because its fields
+                            were typed by hand beside the grouping.
 
                 - requirement.functional:
                     name: attributeValueTypes
@@ -1135,6 +1148,87 @@ metadata.root:
                           counterexample: >-
                             A latest value that is whichever row the database
                             happened to return.
+
+                - requirement.functional:
+                    name: reporting
+                    title: Reporting
+                    level: 3
+                    status: planned
+                    statement: >-
+                      The numbers a dashboard shows are declared once, as named
+                      measures grouped by named dimensions, so that no hand-written
+                      query holds the only definition of what a total means.
+                    counterexample: >-
+                      A revenue figure computed in three places with three different
+                      row scopes, each one correct for the screen it was written for.
+                    description: >-
+                      Covers declaring the dimensions, measures and segments of an
+                      entity and the report that combines them. How a report is
+                      lowered to a view is derivation, and how it is served is the
+                      API surface.
+                    children:
+                      - requirement.functional:
+                          name: dimensionAttribute
+                          title: Attribute dimension
+                          level: 4
+                          status: planned
+                          statement: >-
+                            An attribute dimension names a column to group by,
+                            reaching a related row only along to-one paths, so
+                            grouping can never multiply the rows measured.
+                          counterexample: >-
+                            A total that doubles because the dimension joined
+                            through a one-to-many relationship.
+                      - requirement.functional:
+                          name: dimensionTime
+                          title: Time dimension
+                          level: 4
+                          status: planned
+                          statement: >-
+                            A time dimension groups a date or timestamp column by
+                            a declared grain, and a week starts on Monday in
+                            every lowering.
+                          counterexample: >-
+                            A weekly series whose weeks start on Sunday in one
+                            language and Monday in another.
+                      - requirement.functional:
+                          name: measureAggregate
+                          title: Aggregate measure
+                          level: 4
+                          status: planned
+                          statement: >-
+                            An aggregate measure is one declared aggregate over
+                            the declaring entity's own rows, counting rows unless
+                            it says it counts distinct values.
+                          counterexample: >-
+                            A purchase count that silently counts distinct
+                            buyers, because the default was borrowed from a
+                            different kind of aggregate.
+                      - requirement.functional:
+                          name: measureRatio
+                          title: Ratio measure
+                          level: 4
+                          status: planned
+                          statement: >-
+                            A ratio measure is the quotient of two aggregate
+                            measures and is empty, not an error, when the
+                            denominator is zero.
+                          counterexample: >-
+                            A dashboard average that fails the whole report for
+                            the one day nothing was started.
+                      - requirement.functional:
+                          name: segmentFilter
+                          title: Named filter
+                          level: 4
+                          status: planned
+                          statement: >-
+                            A named filter is declared once on an entity and
+                            referenced by name, so a measure and a report that
+                            mean the same rows cannot drift apart.
+                          counterexample: >-
+                            An active-purchase definition copied into four
+                            measures, three of which are updated when the
+                            definition changes.
 
                 - requirement.functional:
                     name: constraints

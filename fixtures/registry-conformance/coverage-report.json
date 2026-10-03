@@ -1,5 +1,5 @@
 {
-  "registeredSubTypeCount": 59,
+  "registeredSubTypeCount": 65,
   "exercisedSubTypeCount": 47,
   "untestedSubTypes": [
     "attr.boolean",
@@ -10,6 +10,12 @@
     "attr.int",
     "attr.intMap",
     "attr.long",
+    "dimension.attribute",
+    "dimension.time",
+    "measure.aggregate",
+    "measure.ratio",
+    "object.report",
+    "segment.filter",
     "validator.atLeastOne",
     "validator.comparison",
     "validator.presentIff",

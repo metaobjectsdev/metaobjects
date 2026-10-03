@@ -81,6 +81,27 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "max": null
         },
         {
+          "type": "dimension",
+          "subType": "*",
+          "name": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "type": "measure",
+          "subType": "*",
+          "name": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "type": "segment",
+          "subType": "*",
+          "name": "*",
+          "min": 0,
+          "max": null
+        },
+        {
           "type": "attr",
           "subType": "string",
           "name": "discriminator",
@@ -130,6 +151,57 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. Resolves against the projection's own declared fields; an aggregate-derived field is not addressable (fail-closed)."
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "subType": "report",
+      "extendsBase": true,
+      "description": "A declared report (FR-044): a fixed combination of dimensions and measures of ONE entity (@from), compiled to a read-only view. One row per distinct dimension tuple; no dimensions means exactly one row. Fields are DERIVED, not declared: one per dimension (a time dimension's field is <dimension><Grain>, e.g. purchasedAtDay) and one per measure. Every measure must belong to @from (two fact tables are two reports). @filter and @segment scope rows before grouping and combine by AND. Read-only: no writes, no get-by-id.",
+      "whenToUse": "Dashboard totals, per-day series and per-group summaries that would otherwise be hand-written GROUP BY queries.",
+      "children": [
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "from",
+          "min": 1,
+          "max": 1,
+          "description": "The object.entity whose rows the report aggregates."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "dimensions",
+          "isArray": true,
+          "min": 0,
+          "max": 1,
+          "description": "Dimension names of @from; a time dimension is written 'name:grain'. Absent means one global row."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "measures",
+          "isArray": true,
+          "min": 1,
+          "max": 1,
+          "description": "Measure names of @from."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "segment",
+          "min": 0,
+          "max": 1,
+          "description": "Optional segment of @from scoping the rows."
+        },
+        {
+          "type": "attr",
+          "subType": "filter",
+          "name": "filter",
+          "min": 0,
+          "max": 1,
+          "description": "Optional row scope over @from's fields; may use relative-date values."
         }
       ]
     }

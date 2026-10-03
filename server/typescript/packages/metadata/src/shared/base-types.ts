@@ -22,6 +22,12 @@ export const TYPE_INDEX = "index";
 /** Capability / requirement records — `requirement.functional` (existence check)
  *  and `requirement.architectural` (universality check). Ruling amendment 3. */
 export const TYPE_REQUIREMENT = "requirement";
+/** FR-044 reporting vocabulary — a named group-by attribute (`dimension.attribute`,
+ *  `dimension.time`), a named aggregate (`measure.aggregate`, `measure.ratio`) and a
+ *  named row filter (`segment.filter`), all declared on an `object.entity`. */
+export const TYPE_DIMENSION = "dimension";
+export const TYPE_MEASURE = "measure";
+export const TYPE_SEGMENT = "segment";
 
 export const BASE_TYPES = [
   TYPE_METADATA,
@@ -38,6 +44,9 @@ export const BASE_TYPES = [
   TYPE_TEMPLATE,
   TYPE_INDEX,
   TYPE_REQUIREMENT,
+  TYPE_DIMENSION,
+  TYPE_MEASURE,
+  TYPE_SEGMENT,
 ] as const;
 export type BaseType = (typeof BASE_TYPES)[number];
 
