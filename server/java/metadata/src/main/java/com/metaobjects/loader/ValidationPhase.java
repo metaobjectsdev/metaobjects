@@ -140,11 +140,12 @@ public final class ValidationPhase {
      *       {@code @onDelete}/{@code @onUpdate} enum-membership rules.</li>
      *   <li>{@link #validateRequirementStatus(MetaRoot)} — {@code requirement.*}
      *       {@code @status} enum-membership rules.</li>
-     *   <li>{@link #validateReporting(MetaRoot)} — FR-044 reporting vocabulary
-     *       (dimensions, measures, segments, reports, relative-date filter values).</li>
      *   <li>{@link #validateOrigins(MetaRoot)} — {@code origin.*} required-attr +
      *       {@code @from}/{@code @of} reference resolution + {@code @via} path traversal
      *       through declared relationships.</li>
+     *   <li>{@link #validateReporting(MetaRoot)} — FR-044 reporting vocabulary
+     *       (dimensions, measures, segments, reports, relative-date filter values);
+     *       runs right after {@code validateProjectionFilter}.</li>
      *   <li>{@link #validateEntityHasPrimaryIdentity(MetaRoot, MetaDataLoader)} — non-fatal
      *       advisory: every concrete {@code object.entity} with at least one field child
      *       SHOULD have a primary identity (unless {@code @isAbstract: true}). Records

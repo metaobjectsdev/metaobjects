@@ -933,7 +933,8 @@ final class ReportingValidation {
     }
 
     private static void pushBadValue(MetaData node, String attr, String value, List<String> allowed, ErrorSink sink) {
-        sink.push(node, ErrorCode.ERR_BAD_ATTR_VALUE, nodeLabel(node),
+        // The TS attr-schema check's short label (`type.subType 'name'`, no parent chain).
+        sink.push(node, ErrorCode.ERR_BAD_ATTR_VALUE, childLabel(node),
                 " attribute '@" + attr + "' has value '" + value + "' which is not one of the allowed values: "
                         + String.join(", ", allowed));
     }

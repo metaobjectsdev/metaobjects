@@ -41,10 +41,10 @@ final class ReportingAttrs {
     }
 
     /**
-     * A string-list attr: a list keeps its string items; a bare string is one item. A
-     * {@code StringAttribute} stores an authored array comma-delimited when it is not in
-     * array mode, so a string carrying commas is split (the same dual handling
-     * {@code MetaRequirement} and {@code MetaIdentity.getFields()} apply).
+     * A string-list attr: a list keeps its string items; a bare string is ONE item, never
+     * split on commas (TS {@code stringList}), so {@code "Purchase.a,Purchase.b"} stays a
+     * single (invalid) {@code Entity.field} item. The canonical parser keeps such a bare
+     * string whole too ({@code StringAttribute.setSingleElementArray}).
      */
     static List<String> stringList(MetaData node, String attrName) {
         if (!node.hasMetaAttr(attrName)) return new ArrayList<>();
@@ -55,10 +55,7 @@ final class ReportingAttrs {
                 if (item instanceof String) out.add((String) item);
             }
         } else if (v instanceof String) {
-            for (String part : ((String) v).split(",")) {
-                String trimmed = part.trim();
-                if (!trimmed.isEmpty()) out.add(trimmed);
-            }
+            out.add((String) v);
         }
         return out;
     }

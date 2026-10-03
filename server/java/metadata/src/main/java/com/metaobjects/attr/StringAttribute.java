@@ -80,6 +80,23 @@ public class StringAttribute extends MetaAttribute<String> {
     }
 
     /**
+     * Array mode holding exactly one element, kept WHOLE even when it contains a comma.
+     *
+     * <p>The comma-delimited {@link #setValueAsString} path splits every comma, which is
+     * right for a JSON array the parser flattened but wrong for a canonical bare string
+     * authored for an array attr: the TS reference wraps {@code "a,b"} as the single item
+     * {@code ["a,b"]} (normalizeStringArrayAttr), it does not split it.</p>
+     *
+     * @param value the single element (trimmed, as the single-value path trims)
+     */
+    public void setSingleElementArray(String value) {
+        setArray(true);
+        List<String> one = new ArrayList<>();
+        one.add(value == null ? null : value.trim());
+        setValueAsObjectDirect(one);
+    }
+
+    /**
      * Direct value setting that bypasses DataConverter when in array mode
      */
     private void setValueAsObjectDirect(Object value) {

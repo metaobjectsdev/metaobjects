@@ -370,6 +370,9 @@ public class ReportingValidationTest extends SharedRegistryTestBase {
         member(doc, "Purchase", "measure.aggregate", "revenue").addProperty("@agg", "median");
         List<MetaDataException> got = ValidationPhase.validateReporting(loadJson(doc));
         assertEquals(List.of("ERR_BAD_ATTR_VALUE"), codes(got));
+        // Byte-identical to the TS attr-schema check (attr-schema-validate.ts, Check 3).
+        assertEquals("measure.aggregate 'revenue' attribute '@agg' has value 'median' which is not one of "
+                + "the allowed values: count, sum, avg, min, max", got.get(0).getMessage());
     }
 
     @Test
@@ -379,5 +382,22 @@ public class ReportingValidationTest extends SharedRegistryTestBase {
                 JsonParser.parseString("[\"day\", \"fortnight\"]"));
         List<MetaDataException> got = ValidationPhase.validateReporting(loadJson(doc));
         assertEquals(List.of("ERR_BAD_ATTR_VALUE"), codes(got));
+        // An isArray attr reports each offending ELEMENT, as TS does.
+        assertEquals("dimension.time 'purchasedAt' attribute '@grains' has value 'fortnight' which is not one "
+                + "of the allowed values: hour, day, week, month, quarter, year", got.get(0).getMessage());
+    }
+
+    // ---------------------------------------------------------------------------
+    // A bare-string @of is ONE item — never split on commas (TS stringList)
+    // ---------------------------------------------------------------------------
+
+    @Test
+    public void aBareStringOfWithACommaIsOneInvalidItem() throws IOException {
+        JsonObject doc = cleanModel();
+        member(doc, "Purchase", "measure.aggregate", "revenue").addProperty("@of", "Purchase.amountCents,Purchase.id");
+        List<MetaDataException> got = ValidationPhase.validateReporting(loadJson(doc));
+        assertEquals(List.of("ERR_INVALID_MEASURE"), codes(got));
+        assertEquals("measure 'revenue' on entity 'acme::shop::Purchase': @of 'Purchase.amountCents,Purchase.id' "
+                + "must be Entity.field.", got.get(0).getMessage());
     }
 }

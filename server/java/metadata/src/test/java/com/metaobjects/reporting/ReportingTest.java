@@ -146,6 +146,28 @@ public class ReportingTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void aBareStringWithACommaStaysOneItemAndAJsonArrayStillSplitsIntoItems() throws IOException {
+        String json = Files.readString(corpusRoot().resolve("reporting-vocabulary/input/meta.shop.json"),
+                StandardCharsets.UTF_8)
+                .replace("\"@of\": \"Purchase.amountCents\"", "\"@of\": \"Purchase.amountCents,Purchase.id\"");
+        MetaDataLoader loader = new MetaDataLoader(
+                LoaderOptions.create(false, false, true), MetaDataLoader.SUBTYPE_MANUAL, "reporting-test-comma");
+        loader.setSourceURIs(java.util.Collections.emptyList());
+        loader.init();
+        try {
+            loader.load(List.of(new InMemoryStringSource(json, "meta.shop.json")));
+        } catch (com.metaobjects.MetaDataException expected) {
+            // the comma item is an invalid Entity.field (M1); the tree is still built
+        }
+        MetaObject purchase = object(loader.getRoot(), "Purchase");
+        assertEquals(List.of("Purchase.amountCents,Purchase.id"),
+                member(purchase, MetaMeasure.class, "revenue").getOfColumns());
+        // A JSON-array @of keeps its items.
+        assertEquals(List.of("WorkoutEvent.programId", "WorkoutEvent.weekNumber", "WorkoutEvent.dayNumber"),
+                member(object(loader.getRoot(), "WorkoutEvent"), MetaMeasure.class, "daysEngaged").getOfColumns());
+    }
+
+    @Test
     public void aListOfIsTheTupleForm() throws IOException {
         MetaObject workout = object(loadFixture("reporting-vocabulary"), "WorkoutEvent");
         MetaMeasure days = member(workout, MetaMeasure.class, "daysEngaged");
