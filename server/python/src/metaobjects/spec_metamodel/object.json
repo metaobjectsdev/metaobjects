@@ -24,6 +24,9 @@
       "children": [
         { "type": "relationship", "subType": "*", "name": "*", "min": 0, "max": null },
         { "type": "template", "subType": "*", "name": "*", "min": 0, "max": null },
+        { "type": "dimension", "subType": "*", "name": "*", "min": 0, "max": null },
+        { "type": "measure", "subType": "*", "name": "*", "min": 0, "max": null },
+        { "type": "segment", "subType": "*", "name": "*", "min": 0, "max": null },
         { "type": "attr", "subType": "string", "name": "discriminator", "min": 0, "max": 1, "description": "FR-014: names the field on this entity (resolvable via extends:) that holds the subtype-discriminator value. Subtypes of this entity declare @discriminatorValue to bind their rows to a discriminator value. The discriminator field itself is an ordinary field declaration (typically field.enum or field.int / field.string)." },
         { "type": "attr", "subType": "string", "name": "discriminatorValue", "min": 0, "max": 1, "description": "FR-014: on a subtype of an entity with @discriminator — the value that identifies rows of this subtype in the shared discriminator field. Wire form is always a string; the underlying field's subtype (enum / int / string) controls codegen + storage coercion. Required on every concrete subtype of a discriminated entity." }
       ]
@@ -48,6 +51,20 @@
       "rules": "object.projection is a derived read-only representation: every field is extends-bound, origin-derived, or self-declared-under-external-assembly, and all are read-only at the subtype level. Identity is optional and, when present, MUST extend an entity identity. Sources are restricted to read-only @kinds. The declared field set IS the exposure — an inclusive list, fail-closed. A projection NEVER declares relationships (derivation is expressed via @via, not a relationship child) and NEVER co-locates templates — hence its child set omits both relationship and template. The assembly origins (origin.aggregate / origin.computed / origin.first) live HERE, not on object.value; a SOURCELESS projection is the legal shape for a wire-assembled read model, and a template-level @payloadRef/@responseRef may target one (#210). See ADR-0028 (object taxonomy, projection).",
       "children": [
         { "type": "attr", "subType": "filter", "name": "filter", "min": 0, "max": 1, "description": "Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. Resolves against the projection's own declared fields; an aggregate-derived field is not addressable (fail-closed)." }
+      ]
+    },
+    {
+      "type": "object",
+      "subType": "report",
+      "extendsBase": true,
+      "description": "A declared report (FR-044): a fixed combination of dimensions and measures of ONE entity (@from), compiled to a read-only view. One row per distinct dimension tuple; no dimensions means exactly one row. Fields are DERIVED, not declared: one per dimension (a time dimension's field is <dimension><Grain>, e.g. purchasedAtDay) and one per measure. Every measure must belong to @from (two fact tables are two reports). @filter and @segment scope rows before grouping and combine by AND. Read-only: no writes, no get-by-id.",
+      "whenToUse": "Dashboard totals, per-day series and per-group summaries that would otherwise be hand-written GROUP BY queries.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "from", "min": 1, "max": 1, "description": "The object.entity whose rows the report aggregates." },
+        { "type": "attr", "subType": "string", "name": "dimensions", "isArray": true, "min": 0, "max": 1, "description": "Dimension names of @from; a time dimension is written 'name:grain'. Absent means one global row." },
+        { "type": "attr", "subType": "string", "name": "measures", "isArray": true, "min": 1, "max": 1, "description": "Measure names of @from." },
+        { "type": "attr", "subType": "string", "name": "segment", "min": 0, "max": 1, "description": "Optional segment of @from scoping the rows." },
+        { "type": "attr", "subType": "filter", "name": "filter", "min": 0, "max": 1, "description": "Optional row scope over @from's fields; may use relative-date values." }
       ]
     }
   ]

@@ -13,6 +13,13 @@ TYPE_SOURCE = "source"
 TYPE_ORIGIN = "origin"
 TYPE_TEMPLATE = "template"
 TYPE_REQUIREMENT = "requirement"
+# FR-044 reporting vocabulary — a named group-by attribute (dimension.attribute,
+# dimension.time), a named aggregate (measure.aggregate, measure.ratio) and a named
+# row filter (segment.filter), all declared on an object.entity. Mirrors TS
+# shared/base-types.ts.
+TYPE_DIMENSION = "dimension"
+TYPE_MEASURE = "measure"
+TYPE_SEGMENT = "segment"
 
 SUBTYPE_BASE = "base"
 SUBTYPE_ROOT = "root"

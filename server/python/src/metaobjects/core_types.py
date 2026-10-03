@@ -60,11 +60,38 @@ from .meta.core.object.object_constants import (
     OBJECT_ATTR_DISCRIMINATOR,
     OBJECT_ATTR_DISCRIMINATOR_VALUE,
     OBJECT_PROJECTION_ATTR_FILTER,
+    OBJECT_REPORT_ATTR_DIMENSIONS,
+    OBJECT_REPORT_ATTR_FILTER,
+    OBJECT_REPORT_ATTR_FROM,
+    OBJECT_REPORT_ATTR_MEASURES,
+    OBJECT_REPORT_ATTR_SEGMENT,
     OBJECT_SUBTYPE_ENTITY,
     OBJECT_SUBTYPE_PROJECTION,
+    OBJECT_SUBTYPE_REPORT,
     OBJECT_SUBTYPES,
 )
 from .meta.core.relationship.meta_relationship import MetaRelationship
+from .meta.core.reporting.meta_dimension import MetaDimension
+from .meta.core.reporting.meta_measure import MetaMeasure
+from .meta.core.reporting.meta_segment import MetaSegment
+from .meta.core.reporting.reporting_constants import (
+    DIMENSION_SUBTYPE_ATTRIBUTE,
+    DIMENSION_SUBTYPE_TIME,
+    MEASURE_AGGS,
+    MEASURE_SUBTYPE_AGGREGATE,
+    MEASURE_SUBTYPE_RATIO,
+    REPORTING_ATTR_AGG,
+    REPORTING_ATTR_DENOMINATOR,
+    REPORTING_ATTR_DISTINCT,
+    REPORTING_ATTR_FILTER,
+    REPORTING_ATTR_GRAINS,
+    REPORTING_ATTR_NUMERATOR,
+    REPORTING_ATTR_OF,
+    REPORTING_ATTR_SEGMENT,
+    REPORTING_ATTR_VIA,
+    SEGMENT_SUBTYPE_FILTER,
+    TIME_GRAINS,
+)
 from .meta.core.requirement.meta_requirement import MetaRequirement
 from .meta.core.requirement.requirement_constants import (
     REQUIREMENT_ATTR_DISPOSITION,
@@ -143,15 +170,18 @@ from .shared.base_types import (
     SUBTYPE_BASE,
     SUBTYPE_ROOT,
     TYPE_ATTR,
+    TYPE_DIMENSION,
     TYPE_FIELD,
     TYPE_IDENTITY,
     TYPE_INDEX,
     TYPE_LAYOUT,
+    TYPE_MEASURE,
     TYPE_METADATA,
     TYPE_OBJECT,
     TYPE_ORIGIN,
     TYPE_RELATIONSHIP,
     TYPE_REQUIREMENT,
+    TYPE_SEGMENT,
     TYPE_SOURCE,
     TYPE_TEMPLATE,
     TYPE_VALIDATOR,
@@ -229,7 +259,7 @@ core_provider.add(
 )
 
 
-# object.* (entity, value, projection)
+# object.* (entity, value, projection, report)
 _OBJECT_CHILD_RULES = [
     ChildRule(TYPE_FIELD, "*"),
     ChildRule(TYPE_IDENTITY, "*"),
@@ -302,6 +332,128 @@ for _def in core_provider._defs:  # noqa: SLF001 (provider build-time enrichment
             )
         )
         break
+
+# FR-044 — object.report: declared dimensions x measures of ONE entity (@from),
+# compiled to a read-only view. Its fields and identity are DERIVED (the loader
+# refuses declared ones, R4), so it carries the projection's child set (no
+# relationship / template). object.json's report block (extendsBase) is the
+# strict graph the spec pass re-derives onto this def; it declares ONLY the five
+# report attrs, so the shared discriminator attrs are pruned exactly as on
+# projection. Mirrors the TS object provider.
+for _def in core_provider._defs:  # noqa: SLF001 (provider build-time enrichment)
+    if _def.type == TYPE_OBJECT and _def.sub_type == OBJECT_SUBTYPE_REPORT:
+        _def.child_rules[:] = list(_PROJECTION_CHILD_RULES)
+        _def.attrs.extend(
+            [
+                AttrSchema(name=OBJECT_REPORT_ATTR_FROM, value_type=ATTR_SUBTYPE_STRING, required=True),
+                AttrSchema(
+                    name=OBJECT_REPORT_ATTR_DIMENSIONS,
+                    value_type=ATTR_SUBTYPE_STRING,
+                    required=False,
+                    is_array=True,
+                ),
+                AttrSchema(
+                    name=OBJECT_REPORT_ATTR_MEASURES,
+                    value_type=ATTR_SUBTYPE_STRING,
+                    required=True,
+                    is_array=True,
+                ),
+                AttrSchema(name=OBJECT_REPORT_ATTR_SEGMENT, value_type=ATTR_SUBTYPE_STRING, required=False),
+                AttrSchema(name=OBJECT_REPORT_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=False),
+            ]
+        )
+        break
+
+# FR-044 reporting vocabulary — dimension / measure / segment. Declared as
+# children of object.entity (spec/metamodel/object.json — the strict-children
+# pass derives the entity's dimension/measure/segment placements from it), never
+# root-level, so the root keeps its five wildcards. One vocabulary, one block: a
+# report names dimensions and measures, and both may reference a segment.
+# measure.derived is NOT registered (it waits for FR-037 R5). Attr scoping is
+# per-subtype exactly as spec/metamodel/reporting.json declares it.
+_DIMENSION_COMMON_ATTRS = [
+    AttrSchema(name=REPORTING_ATTR_OF, value_type=ATTR_SUBTYPE_STRING, required=True),
+    AttrSchema(name=REPORTING_ATTR_VIA, value_type=ATTR_SUBTYPE_STRING, required=False),
+]
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_DIMENSION,
+        sub_type=DIMENSION_SUBTYPE_ATTRIBUTE,
+        factory=MetaDimension,
+        attrs=list(_DIMENSION_COMMON_ATTRS),
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_DIMENSION,
+        sub_type=DIMENSION_SUBTYPE_TIME,
+        factory=MetaDimension,
+        attrs=[
+            *_DIMENSION_COMMON_ATTRS,
+            # Weeks start Monday (ISO-8601) in every lowering; 'hour' is refused on
+            # a field.date by the loader (D4), not by the closed set.
+            AttrSchema(
+                name=REPORTING_ATTR_GRAINS,
+                value_type=ATTR_SUBTYPE_STRING,
+                required=True,
+                is_array=True,
+                allowed_values=TIME_GRAINS,
+            ),
+        ],
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_MEASURE,
+        sub_type=MEASURE_SUBTYPE_AGGREGATE,
+        factory=MetaMeasure,
+        attrs=[
+            AttrSchema(
+                name=REPORTING_ATTR_AGG,
+                value_type=ATTR_SUBTYPE_STRING,
+                required=True,
+                allowed_values=MEASURE_AGGS,
+            ),
+            # isArray: a bare string coerces to a one-element list (the tuple form
+            # is a distinct count, M2).
+            AttrSchema(
+                name=REPORTING_ATTR_OF,
+                value_type=ATTR_SUBTYPE_STRING,
+                required=True,
+                is_array=True,
+            ),
+            AttrSchema(name=REPORTING_ATTR_DISTINCT, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
+            AttrSchema(name=REPORTING_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=False),
+            AttrSchema(name=REPORTING_ATTR_SEGMENT, value_type=ATTR_SUBTYPE_STRING, required=False),
+        ],
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_MEASURE,
+        sub_type=MEASURE_SUBTYPE_RATIO,
+        factory=MetaMeasure,
+        attrs=[
+            AttrSchema(name=REPORTING_ATTR_NUMERATOR, value_type=ATTR_SUBTYPE_STRING, required=True),
+            AttrSchema(name=REPORTING_ATTR_DENOMINATOR, value_type=ATTR_SUBTYPE_STRING, required=True),
+        ],
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_SEGMENT,
+        sub_type=SEGMENT_SUBTYPE_FILTER,
+        factory=MetaSegment,
+        attrs=[
+            AttrSchema(name=REPORTING_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=True),
+        ],
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
 
 # field.* (one factory, data_type by subtype)
 # Note: FIELD_SUBTYPE_ENUM is excluded from FIELD_SUBTYPES; it is registered

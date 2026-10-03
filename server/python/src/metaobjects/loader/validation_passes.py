@@ -19,6 +19,7 @@ from .validate_field_mutability import validate_field_mutability
 from .validate_discriminator import validate_discriminator
 from .validate_source_parameter_ref import validate_source_parameter_ref
 from .validate_source_escapes import validate_source_escapes
+from .validate_reporting import validate_reporting
 from ..meta.core.field.field_constants import (
     ENUM_MEMBER_PATTERN,
     FIELD_ATTR_COERCE_DEFAULT,
@@ -197,6 +198,9 @@ def run_validations(
     _validate_datagrid_filter_values(root, errors)
     # #207 — object.projection view-level @filter reference validation.
     _validate_projection_filter(root, errors)
+    # FR-044 — the reporting vocabulary (dimension / measure / segment /
+    # object.report) and relative-date filter values (rules D1-F2).
+    validate_reporting(root, errors)
     _validate_origin_paths(root, errors)
     # FR-024 B6 — an entity's origin-bearing field needs a read-capable source.
     _validate_derived_field_providability(root, errors)
