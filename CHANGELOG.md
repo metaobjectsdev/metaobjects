@@ -10,6 +10,10 @@ here.**
 
 ## [Unreleased]
 
+## [1.0.13] — 2026-10-03
+
+_npm `1.0.13` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
 ### Fixed
 
 - **Cross-port: an already-plural entity name no longer doubles in generated API/code-surface
