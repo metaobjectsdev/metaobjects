@@ -245,7 +245,9 @@ passing load says nothing about any query: there is no query.
 
 All additions are additive. `metamodelVersion` moved `1.0` to `1.1`, a MINOR on the
 metamodel axis and on every registry ([compatibility-policy.md](../compatibility-policy.md)).
-A model that does not use the new names loads and generates exactly as before. Until 1.1
+A model that does not use the new names generates exactly as before. What loads changes only
+where the same change fixed Java and Python parsing bugs, each toward what TypeScript already
+did; the [CHANGELOG](../../CHANGELOG.md) lists them and the models they affect. Until 1.1
 ships, `main` carries `metamodelVersion` 1.1, so no 1.0.x PATCH is cut from it.
 
 The design and its decisions are in
