@@ -2,8 +2,9 @@ name: integration-tests
 
 # Enforces the persistence + api-contract conformance corpora — the Docker /
 # Testcontainers suites that are NOT in the default `mvn test` / `dotnet test` /
-# `bun test` path — against a real Postgres for all five ports. Per-language jobs
-# run in parallel; any port red blocks the gate.
+# `bun test` path — against a real Postgres for all five ports, plus the migrate-ts
+# and runtime-ts real-Postgres suites. Per-lane jobs run in parallel; any lane red
+# blocks the gate.
 #
 # COST: this 5-port Testcontainers matrix is EXPENSIVE, so it does NOT run on every
 # push/PR. Triggers:
@@ -14,6 +15,21 @@ name: integration-tests
 #   scripts/integration-test.sh <port>
 # The cheap public-repo SECURITY gate (hygiene / leak-scan) still runs on every PR.
 # Push-to-main coverage now comes from local-ci.yml on the self-hosted runner.
+#
+# THIN WRAPPER: scripts/ci-local.sh is the single definition of these checks. Each job
+# installs the toolchain its lane needs and calls the script with that lane's `--only`
+# selector and `--integration-only`, which runs just the lane's docker/Postgres half:
+#   ts-slow   — migrate-ts real-PG suite, runtime-ts real-PG dialect matrix, TS
+#               persistence + api-contract corpora
+#   java-slow — the Java and Kotlin integration modules
+#   csharp / python — that port's integration corpora
+#
+# RELEASE BACKSTOP. The PRIMARY gate for the migrate-ts real-PG suites is local-ci.yml's
+# ts-slow lane, on every push to main; the ts-slow job here is the cold-environment
+# backstop on the v* tag. Tags are pushed AFTER publish (docs/RELEASING.md), so red HERE
+# means a broken release is already live on four immutable registries — treat it as an
+# incident, never as noise. That inversion is exactly how this lane once sat red for
+# eight releases.
 
 on:
   push:
@@ -21,21 +37,23 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   release-gate:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        port: [ts, csharp, java, kotlin, python]
-    # A single job-level Postgres sidecar shared by every port, instead of each
-    # port booting (and pulling) its own container per scenario. Mirrors the
-    # migrate-ts-pg job below. Each port's PG helper, when it sees
-    # METAOBJECTS_TEST_PG_URL, connects to this sidecar and CREATEs a
-    # uniquely-named database per scenario (dropping it on stop) — preserving the
-    # "fresh empty DB per scenario" isolation the per-port containers gave, with
-    # no image pull / container boot on the hot path. Local dev (no env var) still
-    # boots per-port containers exactly as before.
+        lane: [ts-slow, csharp, java-slow, python]
+    # A single job-level Postgres sidecar shared by every lane, instead of each
+    # port booting (and pulling) its own container per scenario. Each port's PG
+    # helper, when it sees METAOBJECTS_TEST_PG_URL, connects to this sidecar and
+    # CREATEs a uniquely-named database per scenario (dropping it on stop) —
+    # preserving the "fresh empty DB per scenario" isolation the per-port containers
+    # gave, with no image pull / container boot on the hot path. With the variable
+    # set, the script's own sidecar logic stands aside.
     services:
       postgres:
         image: postgres:16
@@ -52,9 +70,11 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      - name: Set up Bun (TS port)
-        if: matrix.port == 'ts'
+      - name: Set up Bun (TS lane)
+        if: matrix.lane == 'ts-slow'
         uses: oven-sh/setup-bun@v2
         with:
           # Pin a known-good Bun (1.3.8 segfaults on exit; see the flake that cost a
@@ -62,8 +82,8 @@ jobs:
           # output — the actions/cache step below does that.
           bun-version: '1.3.14'
 
-      - name: Cache Bun install cache (TS port)
-        if: matrix.port == 'ts'
+      - name: Cache Bun install cache (TS lane)
+        if: matrix.lane == 'ts-slow'
         uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
@@ -71,14 +91,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
-      - name: Set up .NET (C# port)
-        if: matrix.port == 'csharp'
+      - name: Set up .NET (C# lane)
+        if: matrix.lane == 'csharp'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      - name: Cache NuGet packages (C# port)
-        if: matrix.port == 'csharp'
+      - name: Cache NuGet packages (C# lane)
+        if: matrix.lane == 'csharp'
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
@@ -86,77 +106,32 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nuget-
 
-      - name: Set up JDK (Java and Kotlin ports)
-        if: matrix.port == 'java' || matrix.port == 'kotlin'
+      - name: Set up JDK (Java + Kotlin lane)
+        if: matrix.lane == 'java-slow'
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
           cache: maven
 
-      - name: Set up uv (Python port)
-        if: matrix.port == 'python'
+      - name: Set up uv (Python lane)
+        if: matrix.lane == 'python'
         uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
 
-      - name: Install workspace deps
-        if: matrix.port == 'ts'
-        run: bun install
-
-      - name: Run integration tests
+      - name: Run integration tests (${{ matrix.lane }})
         env:
+          LANE: ${{ matrix.lane }}
           # The shared sidecar's admin URL. Each port's PG helper sees this and
-          # creates/drops a uniquely-named database per scenario off it, rather
-          # than booting its own container. Unset locally → per-port container
-          # fallback.
+          # creates/drops a uniquely-named database per scenario off it.
           METAOBJECTS_TEST_PG_URL: postgres://metaobjects:metaobjects@localhost:5432/metaobjects_test
-        run: ./scripts/integration-test.sh ${{ matrix.port }}
-
-  # migrate-ts PG integration tests — the apply / lifecycle / rollback +
-  # introspection suites that exercise REAL Postgres behavior (advisory locks,
-  # multi-tenant ledger, down-migrations) that pg-mem cannot fake. They
-  # `describe.skip` unless MIGRATE_TS_PG_URL is set; a `services: postgres`
-  # container supplies the URL.
-  #
-  # The PRIMARY gate for these suites is local-ci.yml's ts-slow lane, on every push
-  # to main. This job is the cold-environment RELEASE BACKSTOP on the v* tag. Tags
-  # are pushed AFTER publish (docs/RELEASING.md), so red HERE means a broken release
-  # is already live on four immutable registries — treat it as an incident, never as
-  # noise. That inversion is exactly how this lane sat red for eight releases.
-  migrate-ts-pg:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: migrate
-          POSTGRES_PASSWORD: migrate
-          POSTGRES_DB: migrate_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U migrate -d migrate_test"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: '1.3.14'
-      - name: Cache Bun install cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-      - run: bun install
-      - name: Run migrate-ts suite against real Postgres
-        env:
-          MIGRATE_TS_PG_URL: postgres://migrate:migrate@localhost:5432/migrate_test
-          # Arms the in-suite sentinel: if the URL above ever stops being set, the
-          # suite FAILS instead of silently skipping and reporting a green release gate.
+          # migrate-ts's real-PG suites run against the same sidecar, and the EXPECT
+          # flags arm the in-suite sentinels: if a URL ever stops being set, the suite
+          # FAILS instead of silently skipping and reporting a green release gate.
+          MIGRATE_TS_PG_URL: postgres://metaobjects:metaobjects@localhost:5432/metaobjects_test
           MIGRATE_TS_PG_EXPECT: '1'
-        run: cd server/typescript/packages/migrate-ts && bun test
+          RUNTIME_TS_PG_EXPECT: '1'
+        run: |
+          METAOBJECTS_CI_M2_REPO="$HOME/.m2/repository" \
+            scripts/ci-local.sh --only "$LANE" --integration-only --strict-toolchains

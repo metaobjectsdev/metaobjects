@@ -53,7 +53,7 @@ import static org.junit.Assert.assertTrue;
  *
  * <p><strong>LIVE (SP-G Unit 8).</strong> Units 4-7 reconciled the Java metamodel
  * registry to byte-match the canonical; Unit 8 re-enabled this gate (and the
- * Kotlin one), wired both into {@code .github/workflows/conformance.yml}, and
+ * Kotlin one), wired both into the conformance lanes of {@code scripts/ci-local.sh}, and
  * constrained the runner to the defined metamodel provider set (above). The
  * history of the reconciled divergences is retained below for context.</p>
  *

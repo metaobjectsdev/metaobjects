@@ -3,6 +3,11 @@ name: hygiene
 # Public-repo leak gate: scans a PR's added lines for absolute local paths and
 # private/other-project names (structural patterns; the private denylist is local-only).
 # The scanner lives in .githooks/leak-scan.sh so its pattern literals don't self-trip.
+#
+# THIN WRAPPER: scripts/ci-local.sh is the single definition of this check. This
+# workflow only checks out and calls it with `--only leak-scan`, pointing the scan at
+# the PR's base branch through MO_CI_LEAK_BASE. `leak-scan` is the status main's branch
+# protection requires, so the job name must not change.
 
 on:
   pull_request:
@@ -17,5 +22,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Leak scan (added lines vs base)
-        run: bash .githooks/leak-scan.sh "origin/${{ github.base_ref }}"
+        env:
+          MO_CI_LEAK_BASE: origin/${{ github.base_ref }}
+        run: scripts/ci-local.sh --only leak-scan --strict-toolchains

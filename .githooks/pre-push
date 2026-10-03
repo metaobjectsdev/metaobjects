@@ -76,7 +76,7 @@ echo "pre-push: TypeScript change detected — running the build + typecheck gat
 echo "          (skip in an emergency with: git push --no-verify)" >&2
 
 # typecheck resolves cross-package types through each dep's dist/, so build first —
-# exactly what .github/workflows/conformance.yml does before `typecheck`.
+# exactly what scripts/ci-local.sh's ts-fast lane does before `typecheck`.
 if ! ( cd "$ROOT" && bun run --filter '*' build ) >/tmp/metaobjects-prepush-build.log 2>&1; then
   echo "" >&2
   echo "  ✖ pre-push BLOCKED: workspace build failed. Last lines:" >&2

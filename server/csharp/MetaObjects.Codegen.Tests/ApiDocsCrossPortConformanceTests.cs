@@ -105,7 +105,7 @@ public sealed class ApiDocsCrossPortConformanceTests
         // builds always build the CLI, so the gate is real there.
         // Soft-skip when the CLI isn't built: an isolated `dotnet test` on this project alone
         // does not build MetaObjects.Cli, so there is nothing to exercise. CI runs this only
-        // AFTER building the CLI (see conformance.yml), so the gate is real there. (xUnit 2.9's
+        // AFTER building the CLI (see gate_conf_csharp in scripts/ci-local.sh), so the gate is real there. (xUnit 2.9's
         // dynamic Assert.Skip isn't enabled in this project; a visible console note + early
         // return is the low-dependency equivalent — never a hard failure for a missing build.)
         var cliDll = FindCliDll();

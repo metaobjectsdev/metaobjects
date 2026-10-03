@@ -325,7 +325,7 @@ divergence:
 | Java | **live + green** (byte-identical; reconciled SP-G Units 4-7, gate re-enabled Unit 8) | `metadata/src/test/java/com/metaobjects/registry/RegistryManifestConformanceTest.java` | its `java` section (in the metadata `-Dtest=` list) |
 | Kotlin | **live + green** (byte-identical; composes the metamodel provider set) | `codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/RegistryManifestConformanceTest.kt` | its `java` section (in the codegen-kotlin `-Dtest=` list) |
 
-`.github/workflows/conformance.yml` describes where each port's runner is wired (the `conformance` matrix plus `conformance-kotlin`) but no longer runs them — Actions is disabled on this repository, see AGENTS.md; `scripts/ci-local.sh` is what runs them, and `--quick` covers TypeScript only. TS / C# / Python were live from the start; Java + Kotlin were re-enabled in SP-G Unit 8 after the Java metamodel-vocabulary reconciliation (Units 4-7) landed (see the **divergence analysis**:
+`scripts/ci-local.sh` is where each port's runner is wired (its `ts-fast`, `csharp`, `java-fast` — Java and Kotlin — and `python` lanes); `.github/workflows/conformance.yml` is a thin wrapper that calls the script once per lane, and `--quick` covers TypeScript only. TS / C# / Python were live from the start; Java + Kotlin were re-enabled in SP-G Unit 8 after the Java metamodel-vocabulary reconciliation (Units 4-7) landed (see the **divergence analysis**:
 [`docs/superpowers/specs/2026-06-02-sp-g-java-registry-divergence-analysis.md`](../../docs/superpowers/specs/2026-06-02-sp-g-java-registry-divergence-analysis.md) and the
 [reconciliation plan](../../docs/superpowers/plans/2026-06-02-sp-g-java-reconciliation-plan.md)).
 
