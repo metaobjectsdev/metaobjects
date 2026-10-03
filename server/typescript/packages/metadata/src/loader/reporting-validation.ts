@@ -122,7 +122,6 @@ const TEMPORAL_FIELD_SUBTYPES: readonly string[] = [FIELD_SUBTYPE_DATE, FIELD_SU
 /** F2 — the only ops a relative-date value may sit under. */
 const RELATIVE_DATE_OPS: readonly string[] = [FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE];
 
-
 const ERR_INVALID_DIMENSION: ErrorCode = "ERR_INVALID_DIMENSION";
 const ERR_INVALID_MEASURE: ErrorCode = "ERR_INVALID_MEASURE";
 const ERR_INVALID_REPORT: ErrorCode = "ERR_INVALID_REPORT";
@@ -247,11 +246,29 @@ function relativeOperand(v: unknown): Record<string, unknown> | undefined {
   return undefined;
 }
 
-/** Deep search: does a filter value contain a relative value (well-formed or not) anywhere? */
-function containsRelativeValue(v: unknown): boolean {
+/** Deep search of an operand VALUE: is a relative value (well-formed or not) anywhere inside it? */
+function operandContainsRelativeValue(v: unknown): boolean {
   if (isRelativeValue(v)) return true;
-  if (Array.isArray(v)) return v.some(containsRelativeValue);
-  if (isPlainObject(v)) return Object.values(v).some(containsRelativeValue);
+  if (Array.isArray(v)) return v.some(operandContainsRelativeValue);
+  if (isPlainObject(v)) return Object.values(v).some(operandContainsRelativeValue);
+  return false;
+}
+
+/**
+ * Does a filter contain a relative value in any operand? Walks the filter grammar
+ * (`and`/`or` arrays, `{ field: { op: operand } }`) so only operand VALUES are
+ * searched: a field key that happens to be named `now` is a field, not a relative date.
+ */
+function filterContainsRelativeValue(filter: unknown): boolean {
+  if (!isPlainObject(filter)) return false;
+  for (const [key, clause] of Object.entries(filter)) {
+    if (key === FILTER_COMPOSE_OR || key === FILTER_COMPOSE_AND) {
+      if (Array.isArray(clause) && clause.some(filterContainsRelativeValue)) return true;
+      continue;
+    }
+    if (isRelativeValue(clause)) return true; // un-desugared shorthand
+    if (isPlainObject(clause) && Object.values(clause).some(operandContainsRelativeValue)) return true;
+  }
   return false;
 }
 
@@ -829,7 +846,7 @@ function checkNoRelativeDates(node: MetaData, sink: ErrorSink): void {
     // visits every declared node exactly once (an inherited filter is checked
     // where it is declared; origin.* never inherits, ADR-0029).
     for (const attr of node.ownMetaAttrs()) {
-      if (attr.subType === ATTR_SUBTYPE_FILTER && containsRelativeValue(attr.value)) {
+      if (attr.subType === ATTR_SUBTYPE_FILTER && filterContainsRelativeValue(attr.value)) {
         sink.push(
           node,
           ERR_BAD_ATTR_FILTER,

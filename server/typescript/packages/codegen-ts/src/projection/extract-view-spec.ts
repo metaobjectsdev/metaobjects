@@ -39,6 +39,7 @@ import {
   FIELD_SUBTYPE_ENUM,
   FILTER_COMPOSE_AND,
   FILTER_COMPOSE_OR,
+  FILTER_RELATIVE_NOW,
   SORT_ORDER_DESC,
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_CARDINALITY,
@@ -102,6 +103,24 @@ function desugarClause(raw: unknown): Record<string, unknown> {
   if (Array.isArray(raw)) return { in: raw };
   if (typeof raw === "object") return raw as Record<string, unknown>;
   return { eq: raw };
+}
+
+/**
+ * FR-044 — a relative-date value `{ now: "<ISO duration>" }` is legal only in the
+ * `@filter` of a segment, measure.aggregate or object.report (the loader's F1 rule), and
+ * this lowering has no rendering for it: it would otherwise land as a SQL literal of
+ * `[object Object]`. A programmatic caller skips the loader, so refuse it here, loudly.
+ * The report lowering (FR-044 Plan 2) replaces this throw.
+ */
+function assertNoRelativeDate(value: unknown, where: string): void {
+  const isRelative = (v: unknown): boolean =>
+    typeof v === "object" && v !== null && !Array.isArray(v) && FILTER_RELATIVE_NOW in v;
+  if (isRelative(value) || (Array.isArray(value) && value.some(isRelative))) {
+    throw new Error(
+      `${where}: a relative-date filter value ({ ${FILTER_RELATIVE_NOW}: "<ISO-8601 duration>" }) cannot be ` +
+        `lowered to a view; it is legal only in the @filter of a segment, measure.aggregate or object.report.`,
+    );
+  }
 }
 
 /**
@@ -190,6 +209,7 @@ function encodeIntEnumFilterValue(
   fieldName: string,
   projectionName: string,
 ): unknown {
+  assertNoRelativeDate(value, `Projection ${projectionName}: view @filter on "${fieldName}"`);
   if (intMap === undefined) return value;
   if (op === FILTER_OP_IS_NULL) return value;
   if (op === FILTER_OP_LIKE) {

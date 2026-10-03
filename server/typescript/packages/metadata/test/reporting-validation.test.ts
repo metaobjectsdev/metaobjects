@@ -873,6 +873,74 @@ describe("validateReporting — relative dates", () => {
     const msg = await single(m, "ERR_BAD_ATTR_FILTER");
     expect(msg).toContain("relative date");
   });
+
+  test("F2: a relative value survives desugaring unchanged", async () => {
+    const m = edit((x) =>
+      setChild(x, "WorkoutEvent", "recent", {
+        "segment.filter": { name: "recent", "@filter": { occurredAt: { gte: { now: "-P7D" } } } },
+      }),
+    );
+    const { root, errors } = await loadInline(m);
+    expect(errors).toEqual([]);
+    const event = root.children().find((c) => c.name === "WorkoutEvent")!;
+    const seg = event.children().find((c) => c.name === "recent") as unknown as {
+      filter(): Record<string, unknown> | undefined;
+    };
+    expect(seg.filter()).toEqual({ occurredAt: { gte: { now: "-P7D" } } });
+  });
+
+  test("F2: the operator-less shorthand is the value of an implicit eq, refused as such", async () => {
+    // `{ f: { now: ... } }` is a relative VALUE (like any other shorthand value it means
+    // `eq`), never the op `now`; F2 then refuses it because eq is not a range op.
+    const m = edit((x) =>
+      setChild(x, "WorkoutEvent", "recent", {
+        "segment.filter": { name: "recent", "@filter": { occurredAt: { now: "-P7D" } } },
+      }),
+    );
+    const msg = await single(m, "ERR_BAD_ATTR_FILTER");
+    expect(msg).toContain("relative date");
+    expect(msg).toContain("op 'eq'");
+    expect(msg).not.toContain("not allowed for");
+  });
+
+  test("F1: a field literally named `now` is a field, not a relative date", async () => {
+    const m = edit((x) =>
+      x["metadata.root"].children.push({
+        "object.projection": {
+          name: "NowView",
+          "@filter": { now: { eq: 1 } },
+          children: [
+            { "source.rdb": { "@kind": "view", "@view": "now_view" } },
+            field("long", "id", { extends: "Purchase.id" }),
+            field("int", "now"),
+            { "identity.primary": { name: "id", extends: "Purchase.id" } },
+          ],
+        },
+      }),
+    );
+    const { errors } = await loadInline(m);
+    expect(errors.map((e) => e.message).filter((msg) => msg.includes("relative date"))).toEqual([]);
+  });
+
+  test("F1: a field named `now` inside and/or does not hide a real relative value beside it", async () => {
+    const m = edit((x) =>
+      x["metadata.root"].children.push({
+        "object.projection": {
+          name: "NowView",
+          "@filter": { or: [{ now: { eq: 1 } }, { purchasedAt: { gte: { now: "-P7D" } } }] },
+          children: [
+            { "source.rdb": { "@kind": "view", "@view": "now_view" } },
+            field("long", "id", { extends: "Purchase.id" }),
+            field("int", "now"),
+            field("timestamp", "purchasedAt", { extends: "Purchase.purchasedAt" }),
+            { "identity.primary": { name: "id", extends: "Purchase.id" } },
+          ],
+        },
+      }),
+    );
+    const { errors } = await loadInline(m);
+    expect(errors.filter((e) => e.message.includes("relative date")).length).toBe(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
