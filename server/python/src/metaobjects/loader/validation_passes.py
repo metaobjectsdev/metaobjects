@@ -1353,37 +1353,56 @@ def _validate_datagrid_filter_values(
                 # Type check handled by attr-schema pass (ERR_BAD_ATTR_VALUE).
                 continue
 
-            for field_name, clause in filter_value.items():
-                if field_name not in filterable:
-                    errors.append(
-                        MetaError(
-                            f"{_node_label(node)} layout.dataGrid '{child.name}' @filter "
-                            f"references field '{field_name}' which is not a filterable field "
-                            f"on this object",
-                            ErrorCode.ERR_BAD_ATTR_FILTER,
-                            envelope=child.source,
-                        )
-                    )
-                    continue
+            _check_datagrid_filter_clauses(node, child, filter_value, filterable, errors)
 
-                allowed_ops = filterable[field_name]
-                if not isinstance(clause, dict):
-                    # Shorthand (scalar/list/null) desugared to op-object by FilterAttr;
-                    # if still not a dict here, skip (attr-schema pass covers type errors).
-                    continue
-                for op in clause:
-                    if op not in allowed_ops:
-                        field_obj = node.find_field(field_name)
-                        sub = field_obj.sub_type if field_obj is not None else "?"
-                        errors.append(
-                            MetaError(
-                                f"{_node_label(node)} layout.dataGrid '{child.name}' @filter "
-                                f"uses operator '{op}' on field '{field_name}' which is not "
-                                f"allowed for field subtype '{sub}'",
-                                ErrorCode.ERR_BAD_ATTR_FILTER,
-                                envelope=child.source,
-                            )
-                        )
+
+def _check_datagrid_filter_clauses(
+    node: MetaObject,
+    layout: MetaData,
+    clauses: dict,
+    filterable: dict[str, frozenset[str]],
+    errors: list[MetaError],
+) -> None:
+    """Check one level of a dataGrid @filter. An ``and``/``or`` key is a composition
+    whose list items are themselves filter objects -- recurse into each, never read
+    the key as a field name (mirrors the TS reference ``checkFilterClauses``)."""
+    for field_name, clause in clauses.items():
+        if field_name == _FILTER_COMPOSE_AND or field_name == _FILTER_COMPOSE_OR:
+            if isinstance(clause, list):
+                for sub in clause:
+                    if isinstance(sub, dict):
+                        _check_datagrid_filter_clauses(node, layout, sub, filterable, errors)
+            continue
+        if field_name not in filterable:
+            errors.append(
+                MetaError(
+                    f"{_node_label(node)} layout.dataGrid '{layout.name}' @filter "
+                    f"references field '{field_name}' which is not a filterable field "
+                    f"on this object",
+                    ErrorCode.ERR_BAD_ATTR_FILTER,
+                    envelope=layout.source,
+                )
+            )
+            continue
+
+        allowed_ops = filterable[field_name]
+        if not isinstance(clause, dict):
+            # Shorthand (scalar/list/null) desugared to op-object by FilterAttr;
+            # if still not a dict here, skip (attr-schema pass covers type errors).
+            continue
+        for op in clause:
+            if op not in allowed_ops:
+                field_obj = node.find_field(field_name)
+                sub_type = field_obj.sub_type if field_obj is not None else "?"
+                errors.append(
+                    MetaError(
+                        f"{_node_label(node)} layout.dataGrid '{layout.name}' @filter "
+                        f"uses operator '{op}' on field '{field_name}' which is not "
+                        f"allowed for field subtype '{sub_type}'",
+                        ErrorCode.ERR_BAD_ATTR_FILTER,
+                        envelope=layout.source,
+                    )
+                )
 
 
 # ---------------------------------------------------------------------------

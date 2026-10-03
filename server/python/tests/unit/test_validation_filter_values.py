@@ -211,3 +211,54 @@ def test_ops_for_subtype_numeric_subtypes() -> None:
         assert ops_for_subtype(subtype) == expected, (
             f"ops_for_subtype('{subtype}') should be {expected}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Tests: and/or composition — recursed into, never read as a field name
+# (mirrors the TS reference checkFilterClauses)
+# ---------------------------------------------------------------------------
+
+
+def _filter_errors(root: MetaData) -> list[MetaError]:
+    errors, _ = _errors_and_warnings(root)
+    return [e for e in errors if e.code == ErrorCode.ERR_BAD_ATTR_FILTER]
+
+
+def test_valid_and_or_preset_no_error() -> None:
+    """A valid and/or preset loads clean — 'and'/'or' are compositions, not fields."""
+    root = _build_root_with_filter(
+        {
+            "or": [{"email": {"like": "%@example.com"}}, {"subscribed": {"eq": True}}],
+            "and": [{"email": {"ne": "x"}}],
+        },
+        filterable_fields=[("email", "string"), ("subscribed", "boolean")],
+    )
+    assert _filter_errors(root) == []
+
+
+def test_and_or_inner_clauses_are_checked() -> None:
+    """A clause INSIDE an and/or is checked like a top-level one (field + op)."""
+    root = _build_root_with_filter(
+        {
+            "or": [{"notFilterable": {"eq": "x"}}],
+            "and": [{"subscribed": {"like": "x%"}}],
+        },
+        filterable_fields=[("subscribed", "boolean")],
+        non_filterable_fields=[("notFilterable", "string")],
+    )
+    messages = [e.message for e in _filter_errors(root)]
+    assert len(messages) == 2, messages
+    assert "references field 'notFilterable' which is not a filterable field" in messages[0]
+    assert "uses operator 'like' on field 'subscribed'" in messages[1]
+    assert not any("'or'" in m or "'and'" in m for m in messages)
+
+
+def test_relative_date_inside_or_is_one_error() -> None:
+    """A relative date inside an `or` of a dataGrid preset is ONE error (F1), as in TS —
+    not a second 'field or is not filterable' error."""
+    root = _build_root_with_filter(
+        {"or": [{"createdAt": {"gte": {"now": "-P7D"}}}]},
+        filterable_fields=[("createdAt", "timestamp")],
+    )
+    errors = _filter_errors(root)
+    assert len(errors) == 1, [e.message for e in errors]
