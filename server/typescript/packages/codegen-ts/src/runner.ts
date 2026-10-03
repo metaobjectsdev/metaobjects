@@ -15,7 +15,7 @@ import { assignEmittedNames } from "./naming/collision-names.js";
 import { assertNoCollectionNameCollisions } from "./naming/collection-name-collision.js";
 import { isAbstract } from "./instance-artifacts.js";
 import { dbEmittingObjects, missingDialectMessage } from "./db-emitting.js";
-import { hasAnyRdbSource } from "./source-detect.js";
+import { hasAnyRdbSource, isReport } from "./source-detect.js";
 import type { Generator, GenContext, EmittedFile } from "./generator.js";
 import type { MetaobjectsGenConfig } from "./metaobjects-config.js";
 import { normalizeConfig, DEFAULT_TARGET_NAME } from "./metaobjects-config.js";
@@ -409,6 +409,8 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
 
   const safeEntities: MetaObject[] = [];
   for (const entity of filtered) {
+    // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
+    if (isReport(entity)) continue;
     if (!VALID_ENTITY_NAME.test(entity.name)) {
       warnings.push(
         `Skipping entity with unsafe name "${entity.name}" — must match /^[A-Za-z_][A-Za-z0-9_]*$/.`,
