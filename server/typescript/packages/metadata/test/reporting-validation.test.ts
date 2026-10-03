@@ -840,10 +840,38 @@ describe("validateReporting — relative dates", () => {
       }),
     );
     const { errors } = await loadInline(m);
-    expect(errors.map((e) => e.code)).toContain("ERR_BAD_ATTR_FILTER");
-    const f1 = errors.filter((e) => e.message.includes("relative date"));
-    expect(f1.length).toBe(1);
-    expect(f1[0]!.message).toContain("origin.aggregate");
+    expect(errors.map((e) => e.code)).toEqual(["ERR_BAD_ATTR_FILTER"]);
+    expect(errors[0]!.message).toContain("origin.aggregate");
+  });
+
+  test("F2: an operand with a `now` key plus other keys is refused on a reporting host", async () => {
+    const m = edit((x) =>
+      patchObject(x, "DailyRevenue", { "@filter": { purchasedAt: { gte: { now: "-P7D", x: 1 } } } }),
+    );
+    const msg = await single(m, "ERR_BAD_ATTR_FILTER");
+    expect(msg).toBe(
+      "report 'acme::shop::DailyRevenue': @filter on 'purchasedAt' has a malformed relative date " +
+        '{"now":"-P7D","x":1}; a relative date is exactly { now: "<ISO-8601 duration>" } with no other keys.',
+    );
+  });
+
+  test("F1: an operand with a `now` key plus other keys is refused on a non-reporting host", async () => {
+    const m = edit((x) =>
+      x["metadata.root"].children.push({
+        "object.projection": {
+          name: "RecentPurchase",
+          "@filter": { purchasedAt: { gte: { now: "-P7D", x: 1 } } },
+          children: [
+            { "source.rdb": { "@kind": "view", "@view": "recent_purchases" } },
+            field("long", "id", { extends: "Purchase.id" }),
+            field("timestamp", "purchasedAt", { extends: "Purchase.purchasedAt" }),
+            { "identity.primary": { name: "id", extends: "Purchase.id" } },
+          ],
+        },
+      }),
+    );
+    const msg = await single(m, "ERR_BAD_ATTR_FILTER");
+    expect(msg).toContain("relative date");
   });
 });
 
@@ -921,6 +949,22 @@ describe("validateReporting — inherited members", () => {
       "dimension.attribute": { name: "viaNothing", "@of": "BaseEvent.id", "@via": "BaseEvent.nope" },
     });
     expect(await codes(m)).toEqual(["ERR_INVALID_DIMENSION"]);
+  });
+
+  test("two inheritors that break the same inherited member the same way are EACH reported", async () => {
+    const m = inheritedModel();
+    (objectBody(m, "WorkoutEvent").children as Wrapper[]).push(field("string", "occurredAt"));
+    m["metadata.root"].children.push({
+      "object.entity": {
+        name: "LoginEvent",
+        extends: "BaseEvent",
+        children: [{ "source.rdb": { "@table": "login_events" } }, field("string", "occurredAt"), primary()],
+      },
+    });
+    const { errors } = await loadInline(m);
+    expect(errors.map((e) => e.code)).toEqual(["ERR_INVALID_DIMENSION", "ERR_INVALID_DIMENSION"]);
+    expect(errors[0]!.message).toContain("(inherited by 'acme::shop::WorkoutEvent')");
+    expect(errors[1]!.message).toContain("(inherited by 'acme::shop::LoginEvent')");
   });
 
   test("an inheritor whose override breaks an inherited member is reported, naming the inheritor", async () => {

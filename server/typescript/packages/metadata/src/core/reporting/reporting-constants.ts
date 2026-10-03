@@ -64,17 +64,28 @@ export const REPORTING_ATTR_DENOMINATOR = "denominator";
 // ---------------------------------------------------------------------------
 
 /** Weeks start on Monday (ISO-8601) in every lowering. */
-export const TIME_GRAINS = ["hour", "day", "week", "month", "quarter", "year"] as const;
+export const GRAIN_HOUR = "hour";
+export const GRAIN_DAY = "day";
+export const GRAIN_WEEK = "week";
+export const GRAIN_MONTH = "month";
+export const GRAIN_QUARTER = "quarter";
+export const GRAIN_YEAR = "year";
+export const TIME_GRAINS = [GRAIN_HOUR, GRAIN_DAY, GRAIN_WEEK, GRAIN_MONTH, GRAIN_QUARTER, GRAIN_YEAR] as const;
 export type TimeGrain = (typeof TIME_GRAINS)[number];
 
-export const MEASURE_AGGS = ["count", "sum", "avg", "min", "max"] as const;
+export const AGG_COUNT = "count";
+export const AGG_SUM = "sum";
+export const AGG_AVG = "avg";
+export const AGG_MIN = "min";
+export const AGG_MAX = "max";
+export const MEASURE_AGGS = [AGG_COUNT, AGG_SUM, AGG_AVG, AGG_MIN, AGG_MAX] as const;
 export type MeasureAgg = (typeof MEASURE_AGGS)[number];
 
 /** Separator in an `object.report` `@dimensions` item: `name` or `name:grain`. */
 export const REPORT_DIMENSION_GRAIN_SEPARATOR = ":";
 
 // ---------------------------------------------------------------------------
-// Relative-date filter values (FR-044 R4)
+// Relative-date filter values (spec §4 R4; rules F1/F2)
 // ---------------------------------------------------------------------------
 
 /** The single key of a relative-date filter value: `{ now: "<ISO-8601 duration>" }`

@@ -75,6 +75,14 @@ import { isWritableSource } from "../shared/node-guards.js";
 import {
   FILTER_RELATIVE_NOW,
   ISO_DURATION_RE,
+  AGG_COUNT,
+  AGG_SUM,
+  AGG_AVG,
+  AGG_MIN,
+  AGG_MAX,
+  GRAIN_HOUR,
+  REPORTING_ATTR_NUMERATOR,
+  REPORTING_ATTR_DENOMINATOR,
   MEASURE_SUBTYPE_AGGREGATE,
 } from "../core/reporting/reporting-constants.js";
 import { MetaDimension } from "../core/reporting/meta-dimension.js";
@@ -114,12 +122,6 @@ const TEMPORAL_FIELD_SUBTYPES: readonly string[] = [FIELD_SUBTYPE_DATE, FIELD_SU
 /** F2 — the only ops a relative-date value may sit under. */
 const RELATIVE_DATE_OPS: readonly string[] = [FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE];
 
-const AGG_COUNT = "count";
-const AGG_SUM = "sum";
-const AGG_AVG = "avg";
-const AGG_MIN = "min";
-const AGG_MAX = "max";
-const GRAIN_HOUR = "hour";
 
 const ERR_INVALID_DIMENSION: ErrorCode = "ERR_INVALID_DIMENSION";
 const ERR_INVALID_MEASURE: ErrorCode = "ERR_INVALID_MEASURE";
@@ -152,24 +154,29 @@ export function validateReporting(root: MetaData): ParseError[] {
   return sink.errors;
 }
 
-/** Collects errors, dropping an exact repeat (same node, code and message) —
- *  the shape an unmodified inherited member's failure takes when it is
- *  re-validated under an inheriting entity. A message is `head + suffix + body`;
- *  the repeat test ignores the suffix (" (inherited by '<entity>')"), so the
- *  pass-2 copy of a failure pass 1 already reported is dropped. */
+/** Collects errors, dropping a repeat — the shape an unmodified inherited
+ *  member's failure takes when it is re-validated under an inheriting entity.
+ *  A message is `head + suffix + body`. A pass-2 error (suffix
+ *  " (inherited by '<entity>')") is dropped when pass 1 already reported the
+ *  same failure without a suffix, or the same inheritor already reported it;
+ *  a second inheritor's identical failure is still reported, under its own name. */
 class ErrorSink {
   readonly errors: ParseError[] = [];
   private readonly seen = new Map<MetaData, Set<string>>();
 
   push(node: MetaData, code: ErrorCode, head: string, body: string, suffix = ""): void {
-    const key = `${code}\u0000${head}${body}`;
+    // `base` drops a pass-2 copy of a failure pass 1 already reported; a pass-2
+    // entry is keyed WITH its suffix, so two inheritors that break the same
+    // inherited member the same way are each reported.
+    const base = `${code}\u0000${head}${body}`;
+    const key = `${base}\u0000${suffix}`;
     let keys = this.seen.get(node);
     if (keys === undefined) {
       keys = new Set();
       this.seen.set(node, keys);
     }
-    if (keys.has(key)) return;
-    keys.add(key);
+    if (keys.has(base) || keys.has(key)) return;
+    keys.add(suffix === "" ? base : key);
     this.errors.push(new ParseError(`${head}${suffix}${body}`, { code, source: node.source }));
   }
 }
@@ -222,11 +229,15 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-/** `{ now: <anything> }` — exactly the one key. */
+/** An object operand carrying a `now` key — a relative-date value, well-formed
+ *  (exactly `{ now }`) or not. A malformed one is refused, never read as data. */
 function isRelativeValue(v: unknown): v is Record<string, unknown> {
-  if (!isPlainObject(v)) return false;
-  const keys = Object.keys(v);
-  return keys.length === 1 && keys[0] === FILTER_RELATIVE_NOW;
+  return isPlainObject(v) && Object.keys(v).includes(FILTER_RELATIVE_NOW);
+}
+
+/** True for a well-formed relative value: exactly the one key `now`. */
+function isExactRelativeValue(v: Record<string, unknown>): boolean {
+  return Object.keys(v).length === 1;
 }
 
 /** The relative value an op's operand carries: the operand itself, or one inside an array operand. */
@@ -236,7 +247,7 @@ function relativeOperand(v: unknown): Record<string, unknown> | undefined {
   return undefined;
 }
 
-/** Deep search: does a filter value contain a relative value anywhere? */
+/** Deep search: does a filter value contain a relative value (well-formed or not) anywhere? */
 function containsRelativeValue(v: unknown): boolean {
   if (isRelativeValue(v)) return true;
   if (Array.isArray(v)) return v.some(containsRelativeValue);
@@ -509,8 +520,8 @@ function checkAggregateColumns(ctx: MemberCtx, measure: MetaMeasure, err: (messa
 /** M6 — each operand names a measure.aggregate of the same entity. */
 function checkRatioOperands(ctx: MemberCtx, ratio: MetaMeasure, err: (message: string) => void): void {
   const operands: [string, string | undefined][] = [
-    ["numerator", ratio.numerator()],
-    ["denominator", ratio.denominator()],
+    [REPORTING_ATTR_NUMERATOR, ratio.numerator()],
+    [REPORTING_ATTR_DENOMINATOR, ratio.denominator()],
   ];
   for (const [attr, ref] of operands) {
     if (ref === undefined) continue; // missing operand is ERR_MISSING_REQUIRED_ATTR
@@ -578,6 +589,13 @@ function checkFilter(
       }
       const relative = relativeOperand(operand);
       if (relative === undefined) continue;
+      if (!isExactRelativeValue(relative)) {
+        err(
+          `@filter on '${key}' has a malformed relative date ${JSON.stringify(relative)}; a relative date is ` +
+            `exactly { now: "<ISO-8601 duration>" } with no other keys.`,
+        );
+        continue;
+      }
       if (!TEMPORAL_FIELD_SUBTYPES.includes(field.subType)) {
         err(
           `@filter on '${key}' uses a relative date ({ now: ... }), but '${key}' is field.${field.subType}; ` +
