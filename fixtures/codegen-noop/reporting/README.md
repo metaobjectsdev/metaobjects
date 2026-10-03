@@ -22,9 +22,10 @@ the difference. The per-port tests that hold this:
 | Kotlin | `server/java/codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/ReportingInertTest.kt` |
 | Python | `server/python/tests/test_reporting_inert.py` |
 
-Out of scope by decision: the documentation tier (`meta docs` and its peers). It documents
-the model as declared, so a report gets a page there; that is documentation of metadata,
-not generated code.
+The documentation tier is held to the same rule (FR-044 Plan 1 ruling): `meta docs` (model,
+agent, requirements and site pages) and every port's api-docs builder emit nothing for a
+report, because its fields are derived by the lowering and a page today would show none of
+them. The TypeScript, C#, Java, Kotlin and Python tests above compare that output too.
 
 Regenerate `without/` from `with/` by deleting every `dimension.*`, `measure.*` and
 `segment.*` child and every `object.report` node — nothing else may differ.

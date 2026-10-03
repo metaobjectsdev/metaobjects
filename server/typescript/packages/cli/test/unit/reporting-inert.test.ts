@@ -12,19 +12,25 @@
 // `source.rdb @kind: view` (R5 allows one): that is the case that leaked in C#, where it
 // emitted a keyless DbSet, a GET route and a filter allowlist for an object with no fields.
 //
-// Not covered, by decision: `meta docs`. It documents the model as declared, so a report
-// gets its own page there (typed `object.report`); that is documentation of metadata, not
-// generated code. Under `meta gen` the docs-tier catalog entries are compared like the rest.
+// `meta docs` is held to the same rule (controller ruling, 2026-10-03): a report's fields
+// are derived by its lowering, so a page for one today would show none of them. Every docs
+// surface — model pages, agent pages, requirements, the HTML site, and the api surface —
+// must come out identical with and without the reporting nodes.
 
 import { describe, test, expect, beforeAll } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, rmSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { loadUris, type MetaRoot } from "@metaobjectsdev/metadata";
-import { runGen, type Generator, type MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
+import {
+  runGen, makeRenderContext, buildPkMap, buildRelationMap,
+  type GenContext, type Generator, type MetaobjectsGenConfig,
+} from "@metaobjectsdev/codegen-ts";
+import { apiDocsFile } from "@metaobjectsdev/codegen-ts/generators";
 import { buildExpectedSchema, diff, type SchemaSnapshot } from "@metaobjectsdev/migrate-ts";
 import { composeCatalog } from "../../src/lib/catalog.js";
+import { docsCommand } from "../../src/commands/docs.js";
 
 // test/unit → cli → packages → typescript → server → repo root
 const REPO_ROOT = resolve(import.meta.dir, "..", "..", "..", "..", "..", "..");
@@ -136,5 +142,67 @@ describe("FR-044 reporting nodes are inert in migrate", () => {
     const fromEmptyWith = await diff(withSchema, empty, { dialect: "postgres" });
     const fromEmptyWithout = await diff(withoutSchema, empty, { dialect: "postgres" });
     expect(fromEmptyWith.changes).toEqual(fromEmptyWithout.changes);
+  });
+});
+
+describe("FR-044 reporting nodes are inert in meta docs", () => {
+  /** Run `meta docs` over a project holding one variant, once per surface flag set, and
+   *  read back everything written. The project directory has the SAME basename for both
+   *  variants: the site stamps it into every page title. */
+  async function docsOutput(variant: "with" | "without"): Promise<Record<string, string>> {
+    const parent = mkdtempSync(join(tmpdir(), "reporting-inert-docs-"));
+    const root = join(parent, "shop");
+    try {
+      mkdirSync(join(root, "metaobjects"), { recursive: true });
+      copyFileSync(join(MODELS, variant, "meta.shop.json"), join(root, "metaobjects", "meta.shop.json"));
+      for (const flags of [[], ["--agent"], ["--requirements"], ["--site"]]) {
+        const out = join(root, "out" + flags.join(""));
+        expect(await docsCommand([root, "--out", out, ...flags], root, { silent: true })).toBe(0);
+      }
+      const files: Record<string, string> = {};
+      for (const rel of walkFiles(root)) {
+        if (rel.split(sep)[0] === "metaobjects") continue;
+        files[rel] = readFileSync(join(root, rel), "utf8");
+      }
+      return files;
+    } finally {
+      rmSync(parent, { recursive: true, force: true });
+    }
+  }
+
+  test("model, agent, requirements and site output are identical", async () => {
+    const expected = await docsOutput("without");
+    const actual = await docsOutput("with");
+    expect(Object.keys(expected).some((p) => p.endsWith(".html"))).toBe(true);
+    expect(Object.keys(expected).some((p) => p.endsWith(".md"))).toBe(true);
+    expect(Object.keys(actual)).toEqual(Object.keys(expected));
+    expect(actual).toEqual(expected);
+  });
+
+  test("the api surface is identical", async () => {
+    // `meta docs --api` materializes only with a loadable gen config, which a temp project
+    // cannot import; so drive the generator with the GenContext `meta docs` builds.
+    const api = async (metadata: MetaRoot): Promise<Record<string, string>> => {
+      const ctx: GenContext = {
+        entities: metadata.objects(),
+        loadedRoot: metadata,
+        matches: () => true,
+        config: { outDir: "docs", extStyle: "none", dbImport: "", dialect: "sqlite", outputLayout: "flat" } as never,
+        renderContext: makeRenderContext({
+          dialect: "sqlite", loadedRoot: metadata, outDir: "docs", dbImport: "", apiPrefix: "",
+          pkMap: buildPkMap(metadata), relationMap: buildRelationMap(metadata),
+        }),
+        projectRoot: MODELS,
+        warn: () => {},
+      };
+      const out: Record<string, string> = {};
+      for (const f of await apiDocsFile({ subDir: "api" }).generate(ctx)) out[f.path] = f.content;
+      return out;
+    };
+    const expected = await api(withoutReporting);
+    const actual = await api(withReporting);
+    expect(Object.keys(expected).length).toBeGreaterThan(2);
+    expect(Object.keys(actual)).toEqual(Object.keys(expected));
+    expect(actual).toEqual(expected);
   });
 });

@@ -20,6 +20,9 @@ from pathlib import Path
 import pytest
 
 from metaobjects import load_uris
+from metaobjects.apidocs.builder import PythonApiModelBuilder
+from metaobjects.apidocs.paths import Layout, doc_page_output_path
+from metaobjects.apidocs.renderer import render_agent_api, render_index, render_unit_page
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.generator import Generator
 from metaobjects.codegen.generator_registry import (
@@ -102,5 +105,27 @@ def test_every_runnable_generator_in_one_run_emits_the_same_files(tmp_path: Path
     actual = _emit("with", runnable, tmp_path / "b")
     assert THREW not in expected, expected.get(THREW)
     assert len(expected) > 10, f"only {len(expected)} files — the suite barely ran"
+    assert list(actual) == list(expected)
+    assert actual == expected
+
+
+def _api_docs(variant: str) -> dict[str, str]:
+    """The api docs surface (``metaobjects docs``): every unit page, the index and the
+    agent page. A report has no generated API to document, and its derived fields do not
+    exist until its lowering lands."""
+    model = PythonApiModelBuilder().build(_load(variant), "shop")
+    pages = {
+        doc_page_output_path(Layout.PACKAGE, unit.package, unit.node): render_unit_page(unit, None)
+        for unit in model.units
+    }
+    pages["README.md"] = render_index(model, Layout.PACKAGE)
+    pages["AGENT-API.md"] = render_agent_api(model)
+    return dict(sorted(pages.items()))
+
+
+def test_api_docs_are_the_same_with_and_without_reporting_nodes() -> None:
+    expected = _api_docs("without")
+    assert len(expected) > 3, f"only {len(expected)} pages — the docs barely ran"
+    actual = _api_docs("with")
     assert list(actual) == list(expected)
     assert actual == expected

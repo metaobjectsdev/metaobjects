@@ -48,6 +48,7 @@ from metaobjects.codegen.generators.tph_plan import is_tph_subtype
 from metaobjects.codegen.instance_artifacts import emits_instance_artifacts, is_abstract
 from metaobjects.source_resolution import primary_rdb_source
 from metaobjects.meta.core.field import field_constants as fc
+from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_REPORT
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY
@@ -116,6 +117,10 @@ class PythonApiModelBuilder:
 
         units: list[ApiUnit] = []
         for obj in objects:
+            # FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
+            # It has no generated API to document, and its derived fields do not exist yet.
+            if obj.sub_type == OBJECT_SUBTYPE_REPORT:
+                continue
             unit = self._build_object_unit(obj, root, object_index)
             if unit is not None:
                 units.append(unit)

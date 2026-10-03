@@ -1,5 +1,7 @@
 import type { MetaData, MetaObject, MetaRelationship } from "@metaobjectsdev/metadata";
-import { deriveM2MFields, resolveRelationshipReference, stripPackage } from "@metaobjectsdev/metadata";
+import {
+  deriveM2MFields, resolveRelationshipReference, stripPackage, OBJECT_SUBTYPE_REPORT, TYPE_OBJECT,
+} from "@metaobjectsdev/metadata";
 import { type LoadedModel, treeOf } from "./load.js";
 
 export interface DocNode { kind: "object" | "prompt" | "output"; name: string; pkg: string; pkgPath: string; href: string; node: MetaData; tree: string; }
@@ -33,6 +35,10 @@ export class LinkGraph {
 
   constructor(model: LoadedModel) {
     for (const o of model.root.ownChildren()) {
+      // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
+      // Dropped from the graph every page, index and nav list is built from: its fields
+      // are derived by that lowering, so a page today would show none of them.
+      if (o.type === TYPE_OBJECT && o.subType === OBJECT_SUBTYPE_REPORT) continue;
       let kind: DocNode["kind"] | undefined;
       if (o.type === "object") kind = "object";
       else if (o.type === "template") kind = o.subType === "prompt" ? "prompt" : "output";

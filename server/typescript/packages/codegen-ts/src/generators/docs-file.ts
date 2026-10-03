@@ -35,6 +35,7 @@ import {
 import { projectProvider } from "../render-engine/framework-provider.js";
 import { renderMermaidErBlock } from "../templates/mermaid-er.js";
 import { buildEntityDocData } from "./docs-data-builder.js";
+import { isReport } from "../source-detect.js";
 import { buildTemplateDocData } from "./template-doc-builder.js";
 import type { OutputLayout } from "../import-path.js";
 
@@ -112,6 +113,9 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
       const templateNodes: DocPageNode[] = [];
       const files: EmittedFile[] = ctx.loadedRoot
         .objects()
+        // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
+        // Its fields are derived by that lowering, so a page today would show none of them.
+        .filter((o) => !isReport(o))
         .filter(ctx.matches)
         .map((entity: MetaObject) => {
           const node = docPageNode(entity);

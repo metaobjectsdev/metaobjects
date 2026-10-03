@@ -1,5 +1,8 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.generator.kotlin.apidocs.DocsPaths
+import com.metaobjects.generator.kotlin.apidocs.KotlinApiDocsRenderer
+import com.metaobjects.generator.kotlin.apidocs.KotlinApiModelBuilder
 import com.metaobjects.generator.util.GeneratedFileWriter
 import com.metaobjects.metadata.ktx.loadDirectory
 import com.metaobjects.`object`.MetaObject
@@ -115,6 +118,31 @@ class ReportingInertTest {
         assertFalse(THREW in expected, "the combined suite threw: ${expected[THREW]}")
         assertTrue(expected.size > 10, "only ${expected.size} files — the suite barely ran")
         val leak = sameOrLeak("combined", expected, emit("with", runnable))
+        assertTrue(leak == null, leak)
+    }
+
+    /**
+     * The api docs surface: every unit page, the index and the agent page. A report has no
+     * generated API to document, and its derived fields do not exist until its lowering lands.
+     */
+    private fun apiDocs(variant: String): Map<String, String> {
+        val model = KotlinApiModelBuilder().build(load(variant), "shop")
+        val renderer = KotlinApiDocsRenderer()
+        val pages = TreeMap<String, String>()
+        for (unit in model.units) {
+            pages[DocsPaths.docPageOutputPath(DocsPaths.Layout.PACKAGE, unit.pkg, unit.node)] =
+                renderer.renderUnitPage(unit, null)
+        }
+        pages["README.md"] = renderer.renderIndex(model, DocsPaths.Layout.PACKAGE)
+        pages["AGENT-API.md"] = renderer.renderAgentApi(model)
+        return pages
+    }
+
+    @Test
+    fun `api docs are the same with and without reporting nodes`() {
+        val expected = apiDocs("without")
+        assertTrue(expected.size > 3, "only ${expected.size} pages — the docs barely ran")
+        val leak = sameOrLeak("api docs", expected, apiDocs("with"))
         assertTrue(leak == null, leak)
     }
 

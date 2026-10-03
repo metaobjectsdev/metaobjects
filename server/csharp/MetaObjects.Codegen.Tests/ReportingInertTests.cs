@@ -14,6 +14,7 @@
 // GenContext, because the skip lives at the runner's entity-set choke point.
 
 using MetaObjects.Codegen;
+using MetaObjects.Codegen.ApiDocs;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
 using Xunit;
@@ -115,5 +116,32 @@ public class ReportingInertTests
         Assert.False(expected.ContainsKey("<threw>"), expected.GetValueOrDefault("<threw>"));
         Assert.True(expected.Count > 10, $"only {expected.Count} files — the suite barely ran");
         AssertSame(expected, actual);
+    }
+
+    /// <summary>
+    /// The api docs surface (`dotnet meta docs`): every unit page, the index and the agent
+    /// page, rendered exactly as DocsCommand renders them. A report has no generated API to
+    /// document, and its derived fields do not exist until its lowering lands.
+    /// </summary>
+    private static SortedDictionary<string, string> ApiDocs(MetaRoot root)
+    {
+        var config = new GenConfig { OutDir = "/unused", Namespace = "Shop" };
+        var model = new CSharpApiModelBuilder(config).Build(root, "shop");
+        var renderer = new CSharpApiDocsRenderer();
+        var pages = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (var unit in model.Units)
+            pages[DocsPaths.DocPageOutputPath(DocsPaths.Layout.Package, unit.Package, unit.Node)] =
+                renderer.RenderUnitPage(unit, null);
+        pages["README.md"] = renderer.RenderIndex(model, DocsPaths.Layout.Package);
+        pages["AGENT-API.md"] = renderer.RenderAgentApi(model);
+        return pages;
+    }
+
+    [Fact]
+    public void Api_docs_are_the_same_with_and_without_reporting_nodes()
+    {
+        var expected = ApiDocs(Load("without"));
+        Assert.True(expected.Count > 3, $"only {expected.Count} pages — the docs barely ran");
+        AssertSame(expected, ApiDocs(Load("with")));
     }
 }

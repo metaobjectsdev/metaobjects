@@ -3,6 +3,11 @@ package com.metaobjects.generator.spring;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorRegistry;
 import com.metaobjects.generator.GeneratorRegistry.GeneratorInfo;
+import com.metaobjects.generator.apidocs.ApiUnit;
+import com.metaobjects.generator.apidocs.DocsPaths;
+import com.metaobjects.generator.apidocs.JavaApiDocsRenderer;
+import com.metaobjects.generator.apidocs.JavaApiModel;
+import com.metaobjects.generator.apidocs.JavaApiModelBuilder;
 import com.metaobjects.generator.util.GeneratedFileWriter;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
@@ -45,6 +50,8 @@ public class ReportingInertTest extends SharedRegistryTestBase {
     public TemporaryFolder tempFolder = new TemporaryFolder();
 
     private static final String THREW = "<threw>";
+    private static final java.util.regex.Pattern GENERATED_ON =
+        java.util.regex.Pattern.compile("Generated On:[^\\n]*");
 
     private static Path model(String variant) {
         return SpringTestFixtures.findCorpusRoot().getParent()
@@ -92,7 +99,10 @@ public class ReportingInertTest extends SharedRegistryTestBase {
         }
         try (Stream<Path> s = Files.walk(outDir)) {
             for (Path p : s.filter(Files::isRegularFile).collect(Collectors.toList())) {
-                files.put(outDir.relativize(p).toString(), Files.readString(p, StandardCharsets.UTF_8));
+                // The model tier stamps a wall-clock "Generated On:" line into every class
+                // header; two runs a second apart differ there and nowhere else by design.
+                files.put(outDir.relativize(p).toString(),
+                    GENERATED_ON.matcher(Files.readString(p, StandardCharsets.UTF_8)).replaceAll("Generated On: <time>"));
             }
         }
         return files;
@@ -149,5 +159,30 @@ public class ReportingInertTest extends SharedRegistryTestBase {
             assertTrue(tier + ": only " + expected.size() + " files — the suite barely ran", expected.size() >= 3);
             assertSame(tier.toString(), expected, emit("with", suite));
         }
+    }
+
+    /**
+     * The api docs surface ({@code mvn metaobjects:docs}): every unit page, the index and the
+     * agent page. A report has no generated API to document, and its derived fields do not
+     * exist until its lowering lands.
+     */
+    private Map<String, String> apiDocs(String variant) throws Exception {
+        JavaApiModel model = new JavaApiModelBuilder().build(load(variant), "shop");
+        JavaApiDocsRenderer renderer = new JavaApiDocsRenderer();
+        Map<String, String> pages = new TreeMap<>();
+        for (ApiUnit unit : model.units()) {
+            pages.put(DocsPaths.docPageOutputPath(DocsPaths.Layout.PACKAGE, unit.pkg(), unit.node()),
+                renderer.renderUnitPage(unit, null));
+        }
+        pages.put("README.md", renderer.renderIndex(model, DocsPaths.Layout.PACKAGE));
+        pages.put("AGENT-API.md", renderer.renderAgentApi(model));
+        return pages;
+    }
+
+    @Test
+    public void apiDocsAreTheSameWithAndWithoutReportingNodes() throws Exception {
+        Map<String, String> expected = apiDocs("without");
+        assertTrue("only " + expected.size() + " pages — the docs barely ran", expected.size() > 3);
+        assertSame("api docs", expected, apiDocs("with"));
     }
 }

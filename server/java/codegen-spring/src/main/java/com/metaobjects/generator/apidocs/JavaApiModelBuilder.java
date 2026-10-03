@@ -12,6 +12,7 @@ import com.metaobjects.generator.spring.SpringOutputPromptGenerator;
 import com.metaobjects.generator.spring.SpringRenderHelperGenerator;
 import com.metaobjects.generator.spring.SpringRepositoryGenerator;
 import com.metaobjects.io.util.IOUtil;
+import com.metaobjects.generator.util.GeneratorUtil;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.generator.util.RestSurfaceGate;
 import com.metaobjects.object.MetaObject;
@@ -84,6 +85,9 @@ public final class JavaApiModelBuilder {
         // Objects: one unit per object.entity / object.value (entity vs value drives
         // which symbol categories appliesTo lets through).
         for (MetaObject obj : loader.getMetaObjects()) {
+            // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
+            // It has no generated API to document, and its derived fields do not exist yet.
+            if (GeneratorUtil.isReport(obj)) continue;
             ApiUnit unit = buildObjectUnit(obj, loader);
             if (unit != null) {
                 units.add(unit);

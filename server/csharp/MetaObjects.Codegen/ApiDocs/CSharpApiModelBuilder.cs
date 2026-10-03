@@ -47,6 +47,9 @@ public sealed class CSharpApiModelBuilder
         // Objects: one unit per concrete object.entity / object.value.
         foreach (var obj in root.Objects())
         {
+            // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
+            // It has no generated API to document, and its derived fields do not exist yet.
+            if (obj.IsReport()) continue;
             var unit = BuildObjectUnit(obj, root);
             if (unit is not null) units.Add(unit);
         }
