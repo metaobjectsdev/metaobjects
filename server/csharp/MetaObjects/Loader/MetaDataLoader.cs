@@ -485,6 +485,10 @@ public class MetaDataLoader
             // aggregate-derived field-ref fails closed with ERR_BAD_ATTR_FILTER.
             errors.AddRange(ValidationPasses.ValidateProjectionFilter(root));
 
+            // Pass 7c (FR-044): reporting vocabulary cross-node rules (dimensions, measures,
+            // segments, reports, relative-date filter values).
+            errors.AddRange(ValidationPasses.ValidateReporting(root, _registry));
+
             // Pass 8: @storage cross-attribute validation on field.object
             errors.AddRange(ValidationPasses.ValidateFieldObjectStorage(root));
 

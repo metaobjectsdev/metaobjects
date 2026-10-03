@@ -15,6 +15,7 @@ using MetaObjects.Core.Validator;
 using MetaObjects.Core.Identity;
 using MetaObjects.Core.Index;
 using MetaObjects.Core.Relationship;
+using MetaObjects.Core.Reporting;
 using MetaObjects.Core.Requirement;
 using MetaObjects.Persistence.Origin;
 using MetaObjects.Persistence.Source;
@@ -267,7 +268,7 @@ public static class CoreTypes
                 (tid, n) => new MetaRoot(tid, n),
                 []));
 
-        // object — 4 subtypes (base, entity, value, projection)
+        // object — 5 subtypes (base, entity, value, projection, report)
         List<ChildRule> objectRules =
         [
             Wildcard(TYPE_FIELD),
@@ -306,9 +307,16 @@ public static class CoreTypes
             // attr.filter object lowered to a view-level WHERE). Strict attr scoping
             // (from spec object.json's projection allow-list) keeps it here and prunes
             // the discriminator attrs, which projection does not declare.
-            List<AttrSchema> objectAttrs = subType == OBJECT_SUBTYPE_PROJECTION
-                ? [.. ObjectSchema.ObjectAttrs, ObjectSchema.ProjectionFilterAttr]
-                : ObjectSchema.ObjectAttrs.ToList();
+            // FR-044: object.report carries @from / @dimensions / @measures / @segment /
+            // @filter. Strict attr scoping (from spec object.json's report allow-list)
+            // keeps those and prunes the discriminator attrs, which a report does not
+            // declare; its structural child graph also comes from the spec.
+            List<AttrSchema> objectAttrs = subType switch
+            {
+                OBJECT_SUBTYPE_PROJECTION => [.. ObjectSchema.ObjectAttrs, ObjectSchema.ProjectionFilterAttr],
+                OBJECT_SUBTYPE_REPORT     => [.. ObjectSchema.ObjectAttrs, .. ReportingSchema.ReportAttrs],
+                _                         => ObjectSchema.ObjectAttrs.ToList(),
+            };
 
             List<ChildRule> rules = subType == OBJECT_SUBTYPE_PROJECTION
                 ? new List<ChildRule>(projectionRules)
@@ -627,6 +635,47 @@ public static class CoreTypes
         // the mechanism's only controlled evidence fail to load. The loader owns what
         // is unconditional (the status enum, shape, levels); `meta verify` owns the
         // status-conditional resolution, where the severity actually depends on data.
+
+        // FR-044 reporting vocabulary — dimension / measure / segment. Declared as children
+        // of `object.entity` (spec/metamodel/object.json), never root-level, so no root
+        // wildcard is added above. Three types in one provider file (reporting.json)
+        // because they are one vocabulary: a report names dimensions and measures, and
+        // both may reference a segment. `measure.derived` is NOT registered (waits for
+        // FR-037 R5). Descriptions + whenToUse come from the embedded reporting.json via
+        // ApplySpecDescriptions; the placeholder descriptions below are overwritten there.
+        foreach (string subType in DIMENSION_SUBTYPES)
+        {
+            registry.Register(
+                Def(
+                    TYPE_DIMENSION,
+                    subType,
+                    $"Dimension ({subType})",
+                    [Wildcard(TYPE_ATTR)],
+                    (tid, n) => new MetaDimension(tid, n),
+                    ReportingSchema.DimensionAttrsMap[subType].ToList()));
+        }
+        foreach (string subType in MEASURE_SUBTYPES)
+        {
+            registry.Register(
+                Def(
+                    TYPE_MEASURE,
+                    subType,
+                    $"Measure ({subType})",
+                    [Wildcard(TYPE_ATTR)],
+                    (tid, n) => new MetaMeasure(tid, n),
+                    ReportingSchema.MeasureAttrsMap[subType].ToList()));
+        }
+        foreach (string subType in SEGMENT_SUBTYPES)
+        {
+            registry.Register(
+                Def(
+                    TYPE_SEGMENT,
+                    subType,
+                    $"Segment ({subType})",
+                    [Wildcard(TYPE_ATTR)],
+                    (tid, n) => new MetaSegment(tid, n),
+                    ReportingSchema.SegmentAttrsMap[subType].ToList()));
+        }
 
         // template — fourth-pillar metatype (FR-004). prompt + output + toolcall;
         // attr-only children. A single MetaTemplate class backs every subtype (mirrors

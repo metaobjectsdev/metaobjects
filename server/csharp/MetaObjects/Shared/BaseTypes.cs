@@ -38,6 +38,14 @@ public static class BaseTypes
     /// (UNIVERSALITY).
     /// </summary>
     public const string TYPE_REQUIREMENT  = "requirement";
+    /// <summary>
+    /// FR-044 reporting vocabulary — a named group-by attribute (<c>dimension.attribute</c>,
+    /// <c>dimension.time</c>), a named aggregate (<c>measure.aggregate</c>, <c>measure.ratio</c>)
+    /// and a named row filter (<c>segment.filter</c>), all declared on an <c>object.entity</c>.
+    /// </summary>
+    public const string TYPE_DIMENSION    = "dimension";
+    public const string TYPE_MEASURE      = "measure";
+    public const string TYPE_SEGMENT      = "segment";
 
     public static readonly string[] BASE_TYPES =
     [
@@ -55,6 +63,9 @@ public static class BaseTypes
         TYPE_TEMPLATE,
         TYPE_INDEX,
         TYPE_REQUIREMENT,
+        TYPE_DIMENSION,
+        TYPE_MEASURE,
+        TYPE_SEGMENT,
     ];
 
     // -----------------------------------------------------------------------
