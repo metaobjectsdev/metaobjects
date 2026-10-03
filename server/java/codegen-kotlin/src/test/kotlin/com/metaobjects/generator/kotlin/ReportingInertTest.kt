@@ -112,6 +112,15 @@ class ReportingInertTest {
     }
 
     @Test
+    fun `exactly these generators cannot run from a bare model`() {
+        // Each is compared above on its error message alone, which proves nothing about its
+        // output. Pinned by name so a generator that starts throwing cannot drop out
+        // silently; the list may only shrink.
+        val threw = GENERATOR_REGISTRY.values.filter { THREW in emit("without", listOf(it)) }.map { it.name }.sorted()
+        assertEquals(emptyList(), threw)
+    }
+
+    @Test
     fun `every runnable generator in one run emits the same files`() {
         val runnable = GENERATOR_REGISTRY.values.filter { THREW !in emit("without", listOf(it)) }
         val expected = emit("without", runnable)

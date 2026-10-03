@@ -407,10 +407,20 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     return { files: [], warnings, conflicts: [] };
   }
 
+  // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
+  // Dropped here, at the entity set every generator reads. A selection made only of
+  // reports gets the same "nothing to generate" warning as an empty one.
+  const generatable = filtered.filter((o) => !isReport(o));
+  if (generatable.length === 0) {
+    warnings.push(
+      "No entities to generate — every selected object is an object.report, which has no " +
+        "generated output until its lowering lands (FR-044 Plan 2/3).",
+    );
+    return { files: [], warnings, conflicts: [] };
+  }
+
   const safeEntities: MetaObject[] = [];
-  for (const entity of filtered) {
-    // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
-    if (isReport(entity)) continue;
+  for (const entity of generatable) {
     if (!VALID_ENTITY_NAME.test(entity.name)) {
       warnings.push(
         `Skipping entity with unsafe name "${entity.name}" — must match /^[A-Za-z_][A-Za-z0-9_]*$/.`,

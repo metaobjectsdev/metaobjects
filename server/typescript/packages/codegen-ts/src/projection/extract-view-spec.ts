@@ -171,7 +171,7 @@ function resolveAggregateFilter(
         op,
         field.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(field) : undefined,
         key,
-        entity.name,
+        `origin.aggregate @filter over ${entity.name}`,
       ),
     });
   }
@@ -216,18 +216,21 @@ function encodeIntEnumFilterValue(
   op: string,
   intMap: Record<string, number> | undefined,
   fieldName: string,
-  projectionName: string,
+  /** Names the filter being lowered, for the error text: the row-scope view @filter
+   *  (`Projection P: view @filter`) or an aggregate's scoping filter
+   *  (`origin.aggregate @filter over E`). */
+  host: string,
 ): unknown {
   // Every filter value this lowering renders as a SQL literal passes through here — the
   // row-scope view @filter AND the origin.aggregate scoping @filter — so this is the one
   // place a relative-date value (FR-044, legal only on reporting hosts) is refused before
   // it could land as `[object Object]`. Runs before the intMap early return on purpose.
-  assertNoRelativeDate(value, `Projection ${projectionName}: view @filter on "${fieldName}"`);
+  assertNoRelativeDate(value, `${host} on "${fieldName}"`);
   if (intMap === undefined) return value;
   if (op === FILTER_OP_IS_NULL) return value;
   if (op === FILTER_OP_LIKE) {
     throw new Error(
-      `Projection ${projectionName}: view @filter uses "like" on "${fieldName}", an ` +
+      `${host} uses "like" on "${fieldName}", an ` +
         `int-backed field.enum (@intValueMap) — it stores as an integer column, so a ` +
         `substring match is not expressible. Use eq/ne/in.`,
     );
@@ -237,7 +240,7 @@ function encodeIntEnumFilterValue(
     const n = intMap[v];
     if (typeof n !== "number") {
       throw new Error(
-        `Projection ${projectionName}: view @filter value "${v}" for "${fieldName}" has no ` +
+        `${host} value "${v}" for "${fieldName}" has no ` +
           `entry in @intValueMap.`,
       );
     }
@@ -297,7 +300,7 @@ function resolveViewFilter(
       // rendered as a SQL literal. The Drizzle customType handles the runtime query
       // path, but view DDL is emitted as literal SQL text and never touches Drizzle.
       const value = encodeIntEnumFilterValue(
-        rawValue, op, intMapsByField.get(key), key, projectionName,
+        rawValue, op, intMapsByField.get(key), key, `Projection ${projectionName}: view @filter`,
       );
       if (col.kind === "passthrough") {
         clauses.push({ kind: "cmp", ref: `${col.sourceAlias}.${col.sourceColumn}`, op, value });

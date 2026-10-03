@@ -51,7 +51,7 @@ describe("view lowering refuses a relative-date filter value", () => {
     filter.placedAt = { gte: { now: "-P7D" } };
 
     expect(() => extractViewSpec(proj, result.root, { columnNamingStrategy: "snake_case" })).toThrow(
-      /relative-date filter value.*cannot be lowered to a view/,
+      /^Projection OrderView: view @filter on "placedAt": a relative-date filter value.*cannot be lowered to a view/,
     );
   });
 
@@ -67,7 +67,7 @@ describe("view lowering refuses a relative-date filter value", () => {
     filter.placedAt = { now: "-P7D" };
 
     expect(() => extractViewSpec(proj, result.root, { columnNamingStrategy: "snake_case" })).toThrow(
-      /relative-date filter value.*cannot be lowered to a view/,
+      /^Projection OrderView: view @filter on "placedAt": a relative-date filter value.*cannot be lowered to a view/,
     );
   });
 
@@ -163,7 +163,8 @@ describe("the origin.aggregate @filter refuses a relative-date value too", () =>
     const { root, proj, filter } = await loadAgg();
     filter.placedAt = { gte: { now: "-P7D" } };
     expect(() => extractViewSpec(proj, root, { columnNamingStrategy: "snake_case" })).toThrow(
-      /relative-date filter value.*cannot be lowered to a view/,
+      // The message names the aggregate's filter, not the projection's row-scope one.
+      /^origin\.aggregate @filter over Order on "placedAt": a relative-date filter value.*cannot be lowered to a view/,
     );
   });
 
@@ -171,7 +172,8 @@ describe("the origin.aggregate @filter refuses a relative-date value too", () =>
     const { root, proj, filter } = await loadAgg();
     filter.placedAt = { now: "-P7D" };
     expect(() => extractViewSpec(proj, root, { columnNamingStrategy: "snake_case" })).toThrow(
-      /relative-date filter value.*cannot be lowered to a view/,
+      // The message names the aggregate's filter, not the projection's row-scope one.
+      /^origin\.aggregate @filter over Order on "placedAt": a relative-date filter value.*cannot be lowered to a view/,
     );
   });
 });

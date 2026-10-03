@@ -121,12 +121,12 @@ public class ReportingInertTest extends SharedRegistryTestBase {
         // Else every comparison below is vacuously green.
         List<String> reports = new ArrayList<>();
         for (MetaObject mo : load("with").getMetaObjects()) {
-            if ("report".equals(mo.getSubType())) reports.add(mo.getShortName());
+            if (MetaObject.SUBTYPE_REPORT.equals(mo.getSubType())) reports.add(mo.getShortName());
         }
         reports.sort(null);
         assertEquals(List.of("DailyRevenue", "ProgramEngagement", "StoreTotals"), reports);
         for (MetaObject mo : load("without").getMetaObjects()) {
-            assertFalse("without-model declares a report", "report".equals(mo.getSubType()));
+            assertFalse("without-model declares a report", MetaObject.SUBTYPE_REPORT.equals(mo.getSubType()));
         }
     }
 
@@ -143,6 +143,26 @@ public class ReportingInertTest extends SharedRegistryTestBase {
             }
         }
         assertTrue(String.join("\n", leaks), leaks.isEmpty());
+    }
+
+    @Test
+    public void exactlyTheseGeneratorsCannotRunFromABareModel() throws Exception {
+        // Each is compared above on its error message alone, which proves nothing about its
+        // output. Pinned by name so a generator that starts throwing cannot drop out
+        // silently; the list may only shrink.
+        //   extractor  not a Generator at all: fused into `entity`, which emits it
+        //   template   needs a `template` arg (no default template exists)
+        List<String> threw = new ArrayList<>();
+        StringBuilder why = new StringBuilder();
+        for (GeneratorInfo info : GeneratorRegistry.list().values()) {
+            Map<String, String> out = emit("without", List.of(info));
+            if (out.containsKey(THREW)) {
+                threw.add(info.stableName());
+                why.append(info.stableName()).append(": ").append(out.get(THREW)).append('\n');
+            }
+        }
+        threw.sort(null);
+        assertEquals(why.toString(), List.of("extractor", "template"), threw);
     }
 
     @Test

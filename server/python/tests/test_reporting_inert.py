@@ -129,3 +129,29 @@ def test_api_docs_are_the_same_with_and_without_reporting_nodes() -> None:
     actual = _api_docs("with")
     assert list(actual) == list(expected)
     assert actual == expected
+
+
+def test_exactly_these_generators_cannot_run_from_a_bare_model(tmp_path: Path) -> None:
+    # Each is compared above on its error message alone, which proves nothing about its
+    # output. Pinned by name so a generator that starts throwing cannot drop out silently;
+    # the list may only shrink.
+    threw = sorted(
+        e.name for i, e in enumerate(list_generators())
+        if THREW in _emit("without", [e], tmp_path / f"probe-{i}")
+    )
+    assert threw == []
+
+
+def test_a_selection_of_only_reports_warns_that_there_is_nothing_to_generate(
+    tmp_path: Path,
+) -> None:
+    result = run_gen(
+        GenConfig(out_dir=str(tmp_path / "out")),
+        _load("with"),
+        generators=[_build(e, tmp_path) for e in list_generators()],
+        entity_filter=["DailyRevenue", "ProgramEngagement", "StoreTotals"],
+    )
+    assert result.files == []
+    assert any(
+        w.startswith("No entities to generate") and "object.report" in w for w in result.warnings
+    ), result.warnings

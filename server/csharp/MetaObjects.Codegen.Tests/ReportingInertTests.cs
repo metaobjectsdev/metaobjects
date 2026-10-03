@@ -106,6 +106,20 @@ public class ReportingInertTests
     }
 
     [Fact]
+    public void Exactly_these_generators_cannot_run_from_a_bare_model()
+    {
+        // Each is compared above on its error message alone, which proves nothing about its
+        // output. Pinned by name so a generator that starts throwing cannot drop out
+        // silently; the list may only shrink.
+        var threw = GeneratorRegistry.Entries
+            .Where(e => Emit(Load("without"), [Build(e.Value)]).ContainsKey("<threw>"))
+            .Select(e => e.Key)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToList();
+        Assert.Equal(new List<string>(), threw);
+    }
+
+    [Fact]
     public void Every_runnable_generator_in_one_run_emits_the_same_files()
     {
         var runnable = GeneratorRegistry.Entries.Values

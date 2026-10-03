@@ -26,3 +26,17 @@ test("attr consumption is tracked accurately", async () => {
   const consumedAttr = rep2.attrs.find((r) => r.key === "field:@maxLength");
   expect(consumedAttr?.consumed).toBe(true);
 });
+
+test("FR-044 reporting vocabulary is reported as deferred, not as a rendering gap", async () => {
+  // The inert model pair shared by every port's FR-044 Plan 1 inert test.
+  const withReporting = join(import.meta.dir, "..", "..", "..", "..", "..", "fixtures", "codegen-noop", "reporting", "with");
+  const model = await loadModel([withReporting]);
+  const rep = new CoverageTracker().report(model.root);
+  expect(rep.deferred.map((r) => r.key)).toEqual([
+    "dimension.attribute", "dimension.time", "measure.aggregate", "measure.ratio", "object.report", "segment.filter",
+  ]);
+  // Never a "not rendered" row: the site renders none of it by design until Plan 2/3.
+  const gapKeys = [...rep.kinds, ...rep.attrs].map((r) => r.key);
+  expect(gapKeys.some((k) => /^(dimension|measure|segment)[.:]/.test(k) || k === "object.report")).toBe(false);
+  expect(rep.warnings.filter((w) => w.includes("deferred (FR-044 Plan 2/3)")).length).toBe(6);
+});

@@ -48,10 +48,12 @@ from metaobjects.codegen.generators.tph_plan import is_tph_subtype
 from metaobjects.codegen.instance_artifacts import emits_instance_artifacts, is_abstract
 from metaobjects.source_resolution import primary_rdb_source
 from metaobjects.meta.core.field import field_constants as fc
-from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_REPORT
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
-from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY
+from metaobjects.meta.core.object.object_constants import (
+    OBJECT_SUBTYPE_ENTITY,
+    OBJECT_SUBTYPE_REPORT,
+)
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.persistence.source.source_constants import SOURCE_KIND_TABLE
 from metaobjects.meta.template import template_constants as tc

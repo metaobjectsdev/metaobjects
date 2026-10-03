@@ -98,14 +98,21 @@ def run_gen(
         result.warnings.append(f"No entities to generate — {reason}.")
         return result
 
+    # FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
+    # Dropped here, at the entity set every generator reads, and not per generator: a
+    # report may declare a read-only `source.rdb @kind: view` (R5), which would otherwise
+    # pass every source-keyed gate and emit routes, names and an allowlist. A selection made
+    # only of reports gets the same "nothing to generate" warning as an empty one.
+    objs = [o for o in objs if o.sub_type != OBJECT_SUBTYPE_REPORT]
+    if not objs:
+        result.warnings.append(
+            "No entities to generate — every selected object is an object.report, which has "
+            "no generated output until its lowering lands (FR-044 Plan 2/3)."
+        )
+        return result
+
     safe: list[MetaObject] = []
     for o in objs:
-        # FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
-        # Dropped here, at the entity set every generator reads, and not per generator: a
-        # report may declare a read-only `source.rdb @kind: view` (R5), which would
-        # otherwise pass every source-keyed gate and emit routes, names and an allowlist.
-        if o.sub_type == OBJECT_SUBTYPE_REPORT:
-            continue
         if not _VALID_NAME.match(o.name):
             result.warnings.append(
                 f"Skipping entity with unsafe name {o.name!r} — must match ^[A-Za-z_]\\w*$."
