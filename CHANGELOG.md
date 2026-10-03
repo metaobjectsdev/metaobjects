@@ -12,7 +12,11 @@ here.**
 
 ## [1.0.13] — 2026-10-03
 
-_npm `1.0.13` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+_npm `1.0.13` (all 14 `@metaobjectsdev/*` packages in lockstep), PyPI `1.0.13`, NuGet `1.0.13` and
+Maven Central `8.0.13`. `metamodelVersion` stays `1.0`. Gated by a private `1.0.13-rc.1` build of the
+release commit on the adopter estate (`rc-gate.sh` 7/7) and a full local CI run (`--strict-toolchains`)
+on that commit. **Read "Upgrade impact" below if any entity name is already plural** — its REST path
+and generated names change._
 
 ### Fixed
 
