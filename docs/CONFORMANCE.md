@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **23 shared conformance corpora** under
+The MetaObjects standard ships **24 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -49,6 +49,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 | [`fixtures/fmt-conformance/`](../fixtures/fmt-conformance/) (#304 — `meta fmt`) | 12 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/naming-conformance/`](../fixtures/naming-conformance/) | 8 cases | ✓ | ✓ | inherits via Java (`RouteNaming.pluralize`) | ✓ | ✓ |
 
 A ✓ means the port runs the corpus green; an explicit `n / m` is used where a port
 carries a ledgered divergence. The two ledgered YAML fixtures are documented
@@ -350,6 +351,46 @@ Phase 1a is TypeScript + Python only; those three ports arrive in Phase 2.
 > being excused. The fixtures were committed while three ports were still red, and the red was
 > recorded here rather than in a ledger, because ledgering a fixture the design intends to pass
 > is how a port quietly stays behind.
+
+### `fixtures/naming-conformance/` (8 cases)
+
+All 8 cases → the already-plural pluralize fix (CHANGELOG `## [Unreleased]`):
+an entity whose name is already a plural noun (`Stats`, `Settings`, `Series`)
+used to get double-pluralized (`ProgramPurchaseStats` → `ProgramPurchaseStatses`)
+in every port's REST collection path, generated hook/query/finder/list names,
+and DbSet/collection names. File-shaped like `scope-conformance/` above: one
+committed `already-plural-pluralize.json`, read directly by every port's
+naming unit-test file, no per-port fixture, no ledger.
+
+Each case carries BOTH axes the fix touches: `apiPlural` (the API/code-surface
+pluralizer every generator-facing use now gets) and `legacyPlural` (the
+FROZEN default-physical-table-name pluralizer, deliberately NOT fixed, so an
+adopter's live database never sees a proposed rename). Three already-plural
+cases (`Stats`, `Settings`, `Series`) prove the two axes now DIVERGE; three
+look-alike cases (`Status`, `Address`, `Alias` — each ends in "...s" preceded
+by one of the excluded letters s/u/i/a) prove both axes stay IDENTICAL to the
+pre-fix behavior; two baseline cases (`Category`, `Box`) don't end in "s" at
+all before pluralizing and are untouched by either axis.
+
+No HTTP server, no database — this corpus is a pure function check. The
+*route-spelling* half of the general pluralization rule is additionally
+gated end-to-end over HTTP by
+[`fixtures/api-contract-conformance/m2m/scenarios/route-spelling-multiword-collection.yaml`](../fixtures/api-contract-conformance/m2m/scenarios/route-spelling-multiword-collection.yaml)
+(the `PostCategory` multi-word/consonant-y scenario, predating this fix); the
+default-physical-table-name axis has no HTTP-observable surface at all, so it
+can only be proven at the pluralizer-function level, which is what this
+corpus does for both axes in one data file.
+
+**All five ports run it** (Kotlin inherits, since `KotlinNaming.collectionSegment`
+delegates to the same `RouteNaming.pluralize` Java runs):
+`server/typescript/packages/metadata/test/naming.test.ts`,
+`server/csharp/MetaObjects.Codegen.Tests/CSharpNamingTests.cs`,
+`server/java/codegen-base/src/test/java/com/metaobjects/generator/util/RouteNamingTest.java`
++ `server/java/metadata/src/test/java/com/metaobjects/source/Fr016SourcePhysicalNameTest.java`
+(API-surface and frozen-legacy halves split across the two modules that already
+own those two functions), and
+`server/python/tests/codegen/test_route_path_naming.py` +
+`server/python/tests/unit/test_fr016_source_name_and_kind_aliases.py` (same split).
 
 ## Orphaned fixtures (tested but not yet documented)
 

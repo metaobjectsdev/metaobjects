@@ -12,6 +12,31 @@ here.**
 
 ### Fixed
 
+- **Cross-port: an already-plural entity name no longer doubles in generated API/code-surface
+  names.** `ProgramPurchaseStats` used to come out `ProgramPurchaseStatses` in the REST
+  collection path, generated hook/query/finder/list function names, and DbSet/collection
+  names — a real adopter shipped six such URLs. Every port's pluralizer now treats a word
+  ending in "s" as already-plural UNLESS the character before that final "s" is one of
+  s/u/i/a (so `Stats`/`Settings`/`Series`/`News`/`Analytics`/`Photos` stay unchanged, while
+  `Status`/`Address`/`Bonus`/`Alias`/`Gas`/`Analysis` keep pluralizing exactly as before —
+  the heuristic's one documented miss is `Lens` → `Lens`, correct plural `Lenses`). The
+  DEFAULT PHYSICAL table/column name derivation is explicitly **frozen** at the old
+  suffix-only rule in every port (a new, separately-named/byte-for-byte-preserved function
+  where the two pluralizers were previously the same function), so an adopter's existing
+  database never sees `meta migrate` propose a rename for an already-plural entity it
+  didn't touch. Fixing the doubling surfaced two further, narrower defects it was
+  incidentally masking: a TypeScript already-plural entity's generated Drizzle collection
+  variable name could collide with its own singular row variable in the same statement
+  (`const [x] = await db.insert(x)...`, a TDZ compile error) — the colliding local variable
+  now gets a `Row` suffix only in that exact case; and a C# already-plural entity's own
+  `DbSet` property name could collide with its own entity TYPE name inside `OnModelCreating`
+  (C# resolves a bare same-named reference to the DbSet member before the type, same
+  shadowing class as the pre-existing `Address`/`Addresses` cross-entity hazard) — the
+  TPH-discriminator and int-backed-enum nested-type references are now `global::`-qualified
+  when (and only when) the owning entity's name is itself already-plural. New cross-port
+  fixture corpus `fixtures/naming-conformance/` proves all five ports agree on both the
+  API-surface and frozen-legacy pluralizers for the same input set.
+
 - **Kotlin: two pre-existing generated-controller compile defects, found extending the
   `exposedApi=1` controller-tier compile check.** Both were excluded (not fixed) when that
   check landed; both are fixed now, for `exposedApi=0` and `exposedApi=1` alike, with no

@@ -101,9 +101,23 @@ same in all five ports, and derived from the NAME — never from the physical
 | `Category` | `categories` | consonant + `y` becomes `ies` |
 | `Day` | `days` | a VOWEL before the `y` does not |
 | `HTTPServer` | `http_servers` | a run of capitals stays together until the final one that begins a word |
+| `Stats` | `stats` | already-plural (a final `s` NOT preceded by s/u/i/a) is left unchanged |
 
 The same rule serves an `object.projection`, so `OrderSummary` is at
 `/order_summaries` whether it is an entity or a projection.
+
+> **Already-plural names don't double.** An entity whose name is already a
+> plural noun — `Stats`, `Settings`, `Series` — used to be served at
+> `/statses`, `/settingses`, `/serieses`. The pluralizer now treats a final
+> `s` as already-plural unless the character before it is one of s/u/i/a
+> (which still keeps `Status` → `/statuses`, `Address` → `/addresses`,
+> `Alias` → `/aliases` pluralizing normally — those endings are a genuinely
+> singular word, not an already-plural one). This is the API/code-surface
+> rule only: a sourceless entity's DEFAULT PHYSICAL table name is a
+> **separate, intentionally unchanged** derivation, so an adopter's existing
+> database never sees a migration propose a rename for an already-plural
+> entity it didn't touch. `fixtures/naming-conformance/` gates both rules,
+> for the same input set, in every port.
 
 Generated TS hooks read `$path` from the entity-constants file, so the client and
 the server agree on the path segment without hand-coordination.
