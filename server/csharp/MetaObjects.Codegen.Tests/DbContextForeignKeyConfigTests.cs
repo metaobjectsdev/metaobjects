@@ -7,20 +7,21 @@
 //    to a MEMBER of the context before it considers the type of the same name — and the context
 //    declares a DbSet property per entity. So any entity whose type name collides with some
 //    DbSet property name binds `<Owner>` to the DbSet and fails to compile (CS1061). Reachable
-//    from stock metadata: Pluralize("Pizza") == "Pizzas", so a model with both a `Pizza`
-//    and a `Pizzas` entity breaks. The typed lambda overload is immune (its parameter is
+//    from stock metadata: Pluralize("Address") == "Addresses", so a model with both an `Address`
+//    and an `Addresses` entity breaks. The typed lambda overload is immune (its parameter is
 //    local, so nothing can shadow it) and stays compile-checked, unlike a string literal — which
 //    would compile past a wrong name and only fail later inside EF.
 //
-//    (Not "Address"/"Addresses" — the historical pair here before the
-//    already-plural pluralize fix makes Pluralize("Addresses") == "Addresses", so that
-//    SECOND entity's OWN DbSet would ALSO collide with the first entity's "Addresses"
-//    DbSet (CS0102 duplicate member) — a separate, general cross-entity DbSet-name
-//    collision this fix does not attempt to solve. "Pizza"/"Pizzas" demonstrates the
-//    SAME nameof-vs-lambda hazard without tripping that unrelated second collision:
-//    Pluralize("Pizzas") is NOT already-plural (the char before its final "s" is "a",
-//    excluded — see CSharpNaming.Pluralize), so it still legacy-pluralizes to a
-//    distinct "Pizzases".)
+//    Since the already-plural pluralize fix, this SAME pair is ALSO a cross-entity DbSet-NAME
+//    collision in its own right: Pluralize("Addresses") == "Addresses" too (it is already-
+//    plural, so it is left unchanged), so the "Addresses" entity's OWN DbSet would collide with
+//    the "Address" entity's DbSet (CS0102 duplicate member) — a SEPARATE defect from the nameof
+//    hazard above, caught earlier and refused outright by `CSharpNaming.AssertNoCollectionNameCollisions`
+//    (called from `CodegenRunner.Run`, see `Address_and_Addresses_is_refused_as_a_collection_name_collision`
+//    below) before `DbContextGenerator` ever runs. `Fk_property_is_named_by_typed_lambda_not_nameof`
+//    below still exercises `DbContextGenerator` directly (bypassing that runner-level gate, as an
+//    ejected/embedded generator legitimately can, ADR-0034) to pin the nameof-vs-lambda fix on its
+//    own merits — defense in depth, not redundant with the gate.
 //
 // 2. The emission is an overridable seam. Stock codegen emits NO reference navigation properties
 //    (ADR-0038 replaced reverse navigation with explicit FK finders), which is why the
@@ -45,25 +46,54 @@ namespace MetaObjects.Codegen.Tests;
 public sealed class DbContextForeignKeyConfigTests
 {
     /// <summary>
-    /// `Pizza` + `Pizzas`, both persisted, with `Pizzas` carrying the reference.
-    /// Pluralize("Pizza") == "Pizzas", so the context declares `DbSet&lt;Pizza&gt; Pizzas`
-    /// — the exact identifier the FK line for entity `Pizzas` has to name.
+    /// `Address` + `Addresses`, both persisted, with `Addresses` carrying the reference.
+    /// Pluralize("Address") == "Addresses", so the context declares `DbSet&lt;Address&gt; Addresses`
+    /// — the exact identifier the FK line for entity `Addresses` has to name. This model is
+    /// ALSO now refused outright by `CSharpNaming.AssertNoCollectionNameCollisions` (see the
+    /// class-level comment above) — only `Fk_property_is_named_by_typed_lambda_not_nameof`
+    /// below still exercises it, by calling `DbContextGenerator` directly rather than through
+    /// the runner-level gate.
     /// </summary>
     private const string DbSetNameCollisionModel = """
     { "metadata.root": { "package": "acme", "children": [
-      { "object.entity": { "name": "Pizza", "children": [
-        { "source.rdb": { "@table": "pizza" } },
+      { "object.entity": { "name": "Address", "children": [
+        { "source.rdb": { "@table": "address" } },
         { "field.long":   { "name": "id" } },
         { "field.string": { "name": "city", "@maxLength": 40 } },
         { "identity.primary": { "@fields": "id" } }
       ]}},
-      { "object.entity": { "name": "Pizzas", "children": [
-        { "source.rdb": { "@table": "pizzas" } },
+      { "object.entity": { "name": "Addresses", "children": [
+        { "source.rdb": { "@table": "addresses" } },
         { "field.long": { "name": "id" } },
-        { "field.long": { "name": "pizzaId" } },
+        { "field.long": { "name": "addressId" } },
         { "identity.primary": { "@fields": "id" } },
-        { "identity.reference": { "name": "refPizza", "@fields": "pizzaId",
-          "@references": "Pizza", "@onDelete": "cascade" } }
+        { "identity.reference": { "name": "refAddress", "@fields": "addressId",
+          "@references": "Address", "@onDelete": "cascade" } }
+      ]}}
+    ]}}
+    """;
+
+    /// <summary>
+    /// A clean, non-colliding FK pair for the "override seam" tests below, which compile
+    /// generated output through Roslyn — `DbSetNameCollisionModel` above is, by design,
+    /// now refused before it ever reaches a generator, so it cannot stand in for "some
+    /// ordinary two-entity FK model" the way it did before the collision check existed.
+    /// </summary>
+    private const string OverrideSeamModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Author", "children": [
+        { "source.rdb": { "@table": "author" } },
+        { "field.long":   { "name": "id" } },
+        { "field.string": { "name": "name", "@maxLength": 80 } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.entity": { "name": "Post", "children": [
+        { "source.rdb": { "@table": "post" } },
+        { "field.long": { "name": "id" } },
+        { "field.long": { "name": "authorId" } },
+        { "identity.primary": { "@fields": "id" } },
+        { "identity.reference": { "name": "refAuthor", "@fields": "authorId",
+          "@references": "Author", "@onDelete": "cascade" } }
       ]}}
     ]}}
     """;
@@ -108,11 +138,14 @@ public sealed class DbContextForeignKeyConfigTests
     [Fact]
     public void Fk_property_is_named_by_typed_lambda_not_nameof()
     {
+        // Calls DbContextGenerator directly — bypassing CodegenRunner's collision gate,
+        // as an ejected/embedded generator legitimately can (ADR-0034) — to pin the
+        // nameof-vs-lambda fix on its own merits, independent of the gate.
         var src = Assert.Single(new DbContextGenerator().Generate(Ctx(Load(DbSetNameCollisionModel)))).Content;
 
         Assert.Contains(
-            "modelBuilder.Entity<Pizzas>().HasOne<Pizza>().WithMany()"
-            + ".HasForeignKey(e => e.PizzaId).OnDelete(DeleteBehavior.Cascade);",
+            "modelBuilder.Entity<Addresses>().HasOne<Address>().WithMany()"
+            + ".HasForeignKey(e => e.AddressId).OnDelete(DeleteBehavior.Cascade);",
             src);
         // No nameof() anywhere in the FK configuration — that is the whole defect.
         Assert.DoesNotContain(".HasForeignKey(nameof(", src);
@@ -126,9 +159,27 @@ public sealed class DbContextForeignKeyConfigTests
     }
 
     [Fact]
-    public void An_entity_named_like_a_DbSet_property_still_compiles()
+    public void Address_and_Addresses_is_refused_as_a_collection_name_collision()
     {
-        AssertCompiles(DbSetNameCollisionModel);
+        // The expected-error replacement for the old "...still_compiles" test: this
+        // model never reaches DbContextGenerator in real usage any more — it is
+        // refused at the CodegenRunner choke point first.
+        var root = Load(DbSetNameCollisionModel);
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => CSharpNaming.AssertNoCollectionNameCollisions(root.Objects()));
+        Assert.Contains("Address", ex.Message);
+        Assert.Contains("Addresses", ex.Message);
+    }
+
+    [Fact]
+    public void CodegenRunner_refuses_the_Address_and_Addresses_model_before_any_generator_runs()
+    {
+        // Integration-level: proves the gate is actually WIRED into the real entry
+        // point (CodegenRunner.Run), not just callable as a standalone function.
+        var root = Load(DbSetNameCollisionModel);
+        var config = new GenConfig { OutDir = Path.Combine(Path.GetTempPath(), "mo-" + Guid.NewGuid().ToString("N")), Namespace = "Acme.Generated" };
+        Assert.Throws<InvalidOperationException>(
+            () => CodegenRunner.Run(config, root, [new EntityGenerator(), new DbContextGenerator(), new NamesGenerator()]));
     }
 
     [Fact]
@@ -151,28 +202,25 @@ public sealed class DbContextForeignKeyConfigTests
     [Fact]
     public void The_reference_fk_emission_can_be_suppressed_by_a_subclass()
     {
-        var root = Load(DbSetNameCollisionModel);
+        var root = Load(OverrideSeamModel);
         var stock = Assert.Single(new DbContextGenerator().Generate(Ctx(root))).Content;
         var suppressed = Assert.Single(new NoReferenceFkDbContextGenerator().Generate(Ctx(root))).Content;
 
-        Assert.Contains(".HasForeignKey(e => e.PizzaId)", stock);
+        Assert.Contains(".HasForeignKey(e => e.AuthorId)", stock);
 
         // Only the relationship configuration goes away. The DbSets, the entity mappings and
         // everything else the generator emits must be untouched — suppressing FK config is not
         // opting out of the DbContext.
         Assert.DoesNotContain("HasOne<", suppressed);
         Assert.DoesNotContain("HasForeignKey", suppressed);
-        Assert.Contains("public DbSet<Pizza> Pizzas { get; set; }", suppressed);
-        // Pluralize("Pizzas") is NOT already-plural (see the fixture doc comment above),
-        // so this stays the legacy-pluralized "Pizzases" rather than colliding with the
-        // first entity's "Pizzas" DbSet.
-        Assert.Contains("public DbSet<Pizzas> Pizzases { get; set; }", suppressed);
+        Assert.Contains("public DbSet<Author> Authors { get; set; }", suppressed);
+        Assert.Contains("public DbSet<Post> Posts { get; set; }", suppressed);
     }
 
     [Fact]
     public void Suppressing_reference_fks_still_compiles()
     {
-        var root = Load(DbSetNameCollisionModel);
+        var root = Load(OverrideSeamModel);
         AssertCompiles(root, new NoReferenceFkDbContextGenerator());
     }
 

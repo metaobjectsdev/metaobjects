@@ -187,4 +187,57 @@ public class CSharpNamingTests
         // to insert "_" at) — avoids depending on CSharpNaming's private ToSnakeCase.
         Assert.Equal(c.LegacyPlural.ToLowerInvariant(), source.PhysicalName);
     }
+
+    // -- AssertNoCollectionNameCollisions (#<pending>) --------------------------
+
+    private static IReadOnlyList<MetaObject> MultiEntityRoot(params (string Name, bool IsValue)[] specs)
+    {
+        var children = string.Join(",\n", specs.Select(s => s.IsValue
+            ? $@"{{ ""object.value"": {{ ""name"": ""{s.Name}"", ""children"": [
+                    {{ ""field.string"": {{ ""name"": ""text"" }} }}
+                ] }} }}"
+            : $@"{{ ""object.entity"": {{ ""name"": ""{s.Name}"", ""children"": [
+                    {{ ""source.rdb"": {{ ""@table"": ""{s.Name.ToLowerInvariant()}"" }} }},
+                    {{ ""field.long"": {{ ""name"": ""id"" }} }},
+                    {{ ""identity.primary"": {{ ""@fields"": ""id"" }} }}
+                ] }} }}"));
+        var json = $@"{{ ""metadata.root"": {{ ""package"": ""acme"", ""children"": [{children}] }} }}";
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(json, id: "multi.json")]);
+        Assert.Empty(r.Errors);
+        return r.Root.Objects();
+    }
+
+    [Fact]
+    public void AssertNoCollectionNameCollisions_doesNotThrow_forDistinctPlurals()
+    {
+        var entities = MultiEntityRoot(("Post", false), ("Author", false), ("Category", false));
+        CSharpNaming.AssertNoCollectionNameCollisions(entities); // does not throw
+    }
+
+    [Fact]
+    public void AssertNoCollectionNameCollisions_throws_forAddressAndAddresses()
+    {
+        var entities = MultiEntityRoot(("Address", false), ("Addresses", false));
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => CSharpNaming.AssertNoCollectionNameCollisions(entities));
+        Assert.Contains("Address", ex.Message);
+        Assert.Contains("Addresses", ex.Message);
+    }
+
+    [Fact]
+    public void AssertNoCollectionNameCollisions_throws_forOrderAndOrders()
+    {
+        var entities = MultiEntityRoot(("Order", false), ("Orders", false));
+        Assert.Throws<InvalidOperationException>(
+            () => CSharpNaming.AssertNoCollectionNameCollisions(entities));
+    }
+
+    [Fact]
+    public void AssertNoCollectionNameCollisions_excludesValueObjects()
+    {
+        // "Address" (entity) legacy-pluralizes to "Addresses"; an unrelated object.value
+        // named "Addresses" never gets a DbSet/route/finder, so it must not trip this.
+        var entities = MultiEntityRoot(("Address", false), ("Addresses", true));
+        CSharpNaming.AssertNoCollectionNameCollisions(entities); // does not throw
+    }
 }

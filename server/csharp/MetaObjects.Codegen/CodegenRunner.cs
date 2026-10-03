@@ -35,6 +35,10 @@ public static class CodegenRunner
             Warn = warnings.Add,
         };
 
+        // Refuse before any generator runs — the one choke point that sees the WHOLE
+        // entity set every DbSet/route/finder-emitting generator below reads from.
+        CSharpNaming.AssertNoCollectionNameCollisions(ctx.Entities);
+
         Directory.CreateDirectory(config.OutDir);
         var results = new List<WriteResult>();
         // Two generators (or a name collision between an entity and a value-object

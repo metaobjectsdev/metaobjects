@@ -56,17 +56,46 @@ The case set deliberately covers three behavior classes in one pass:
    before pluralizing, so neither axis is touched by this fix. Proves the
    already-plural check never fires on an ordinary word.
 
+## Expected-collision cases
+
+`collisionCases` (same file) covers the OTHER thing the already-plural fix
+makes reachable: two DISTINCT entities in the same generation run whose
+API-surface plural coincides.
+
+```jsonc
+{
+  "collisionCases": [
+    { "entityA": "Address", "entityB": "Addresses", "collidesOn": "Addresses", "note": "..." }
+  ]
+}
+```
+
+Before this fix, `Pluralize(singular)` always LENGTHENED its input, so a
+singular/plural pair never coincided (`Pluralize("Address")` → `"Addresses"`,
+`Pluralize("Addresses")` → `"Addresseses"` — distinct). After it,
+`Pluralize("Addresses")` is a no-op (already-plural), landing on the exact
+string `Pluralize("Address")` produces. Every port's codegen must REFUSE a
+generation run containing such a pair — a named, cross-port error
+(`ERR_COLLECTION_NAME_COLLISION`) naming both entities and the colliding
+name — never silently let one win (a duplicate route, a duplicate generated
+symbol, or in C# a `DbSet` property already declared under that name,
+`CS0102`). This does NOT apply to the frozen `legacyPlural` (default
+physical table name) axis: that rule still always lengthens its input, so it
+cannot produce this collision — only the API-surface axis can, and only the
+API-surface axis is checked here.
+
 ## Per-port runner
 
 Each port's existing naming unit-test file reads this JSON and asserts both
-columns against its own two pluralizers:
+`cases` columns against its own two pluralizers, and asserts each
+`collisionCases` pair is REFUSED by that port's collision check:
 
 | Port | Test file |
 |---|---|
-| TypeScript | `server/typescript/packages/metadata/test/naming.test.ts` |
-| C# | `server/csharp/MetaObjects.Codegen.Tests/CSharpNamingTests.cs` |
-| Java / Kotlin | `server/java/codegen-base/src/test/java/com/metaobjects/generator/util/RouteNamingTest.java` (Kotlin inherits — `KotlinNaming.collectionSegment` delegates to the same `RouteNaming.pluralize`) |
-| Python | `server/python/tests/codegen/test_route_path_naming.py` |
+| TypeScript | `server/typescript/packages/metadata/test/naming.test.ts` (pluralizers); `server/typescript/packages/codegen-ts/test/naming/collection-name-collision.test.ts` (refusal — `assertNoCollectionNameCollisions`, wired into `runGen` in `runner.ts`) |
+| C# | `server/csharp/MetaObjects.Codegen.Tests/CSharpNamingTests.cs` (pluralizers); `server/csharp/MetaObjects.Codegen.Tests/DbContextForeignKeyConfigTests.cs` (refusal — the historical Address/Addresses fixture, now an expected-error test) |
+| Java / Kotlin | `server/java/codegen-base/src/test/java/com/metaobjects/generator/util/RouteNamingTest.java` (pluralizers; Kotlin inherits — `KotlinNaming.collectionSegment` delegates to the same `RouteNaming.pluralize`) |
+| Python | `server/python/tests/codegen/test_route_path_naming.py` (pluralizers) |
 
 No HTTP server, no database — this corpus is intentionally a pure function
 check, unlike `api-contract-conformance` (which is the right place for the

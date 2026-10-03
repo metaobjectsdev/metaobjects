@@ -1125,9 +1125,65 @@ public static class CSharpNaming
     /// targeted fix for the self-collision the pluralize change introduces, not a general
     /// hardening pass over every DbContext reference. The OLDER cross-entity variant of
     /// this hazard (<c>Pluralize("Address") == "Addresses"</c>, a DIFFERENT entity's
-    /// DbSet) predates this fix and is unconditionally out of scope here — it is guarded
-    /// where it actually bites (<c>ForeignKeyExpression</c>'s lambda), not here.</para>
+    /// DbSet) predates this fix and is out of scope HERE — <c>ForeignKeyExpression</c>'s
+    /// lambda is what keeps THAT reference safe to compile. <see cref="AssertNoCollectionNameCollisions"/>
+    /// now refuses the model outright before any of this runs when two entities share a
+    /// pluralized name at all (so a model that reaches this method never has that pair
+    /// in the first place) — the two are complementary, not redundant: this method's
+    /// job is a bare reference staying correct even for an owner that collides only
+    /// with ITSELF (the self-collision case), which the refusal does not and should not
+    /// forbid.</para>
     /// </summary>
     public static string QualifiedOwnerTypeRef(string owner, GenConfig config) =>
         Pluralize(owner) == owner ? $"global::{config.Namespace}.{owner}" : owner;
+
+    /// <summary>
+    /// Refuse a generation run in which two DISTINCT entities/projections pluralize to
+    /// the same API-surface collection name (<see cref="DbSetName"/> / <see cref="RoutePath"/>
+    /// / a generated finder name) — e.g. "Address" and "Addresses" both resolving to
+    /// "Addresses". Reachable from stock metadata now that <see cref="Pluralize"/> no
+    /// longer doubles an already-plural word: before that fix "Addresses" legacy-
+    /// pluralized to "Addresseses", so the pair never collided; it is the SAME
+    /// mechanism as the pre-existing Address/Addresses nameof-vs-DbSet-property hazard
+    /// (see <c>DbContextForeignKeyConfigTests</c>), but this is the cross-ENTITY
+    /// collision on the DbSet NAME itself (CS0102 duplicate member), not the
+    /// bare-identifier-inside-OnModelCreating hazard <c>ForeignKeyExpression</c> guards.
+    ///
+    /// <para>Called ONCE, over the full entity set, before any generator runs
+    /// (<see cref="CodegenRunner.Run"/>) — the single choke point every DbSet/route/
+    /// finder-emitting generator reads its entity list from. Scoped to every object
+    /// EXCEPT <c>object.value</c> (<see cref="MetaObject.IsValue"/>) — a value object
+    /// never gets a DbSet, route, or finder name, so it cannot collide on any of them.
+    /// A TPH subtype IS included: a subtype's own pluralized name feeds subtype-scoped
+    /// generated names too, so two subtypes (or a subtype and an unrelated top-level
+    /// entity) sharing a pluralized name collide exactly as two top-level entities
+    /// would.</para>
+    ///
+    /// <para>A PURE function of the entity set, never of traversal order: the reported
+    /// pair is deterministic (first-seen-by-input-order "owner" of a plural; thrown as
+    /// soon as a second, different entity claims the same plural).</para>
+    /// </summary>
+    public static void AssertNoCollectionNameCollisions(IReadOnlyList<MetaObject> entities)
+    {
+        var ownerOfPlural = new Dictionary<string, MetaObject>(StringComparer.Ordinal);
+        foreach (var obj in entities)
+        {
+            if (obj.IsValue()) continue;
+            var plural = Pluralize(obj.Name);
+            if (ownerOfPlural.TryGetValue(plural, out var existing))
+            {
+                if (existing.ResolutionKey() != obj.ResolutionKey())
+                    throw new InvalidOperationException(
+                        $"\"{existing.Name}\" and \"{obj.Name}\" both pluralize to the API-surface " +
+                        $"collection name \"{plural}\" (DbSet property name, route collection segment, " +
+                        $"generated reverse-finder name) — rename one entity so its pluralized name is " +
+                        $"distinct. Default PHYSICAL table names are unaffected by this rule and are not " +
+                        $"involved in the collision.");
+            }
+            else
+            {
+                ownerOfPlural[plural] = obj;
+            }
+        }
+    }
 }

@@ -49,5 +49,20 @@
       "legacyPlural": "Boxes",
       "note": "sibilant +es rule, does not end in s pre-pluralization — unaffected baseline"
     }
+  ],
+  "_collisionComment": "Expected-ERROR cases: two DISTINCT entities in the SAME generation run whose API-surface pluralizer output coincides on `collidesOn` — every port's codegen must REFUSE this (a named, cross-port error code, e.g. ERR_COLLECTION_NAME_COLLISION) rather than silently letting one entity's route/hook/DbSet-equivalent name win. Reachable because the already-plural fix makes an ALREADY-PLURAL name's own API-surface plural equal to itself, while its singular counterpart's legacy-suffix plural lands on the exact same string (`Pluralize(singular) == plural == Pluralize(plural)`). Not reachable before this fix — the old suffix-only rule always lengthened the input, so `Pluralize(\"Address\")` (\"Addresses\") and `Pluralize(\"Addresses\")` (\"Addresseses\") never coincided.",
+  "collisionCases": [
+    {
+      "entityA": "Address",
+      "entityB": "Addresses",
+      "collidesOn": "Addresses",
+      "note": "Address (not already-plural, legacy-pluralizes to Addresses) collides with Addresses (already-plural, stays Addresses)"
+    },
+    {
+      "entityA": "Order",
+      "entityB": "Orders",
+      "collidesOn": "Orders",
+      "note": "same shape as Address/Addresses — Order legacy-pluralizes to Orders; Orders is already-plural and stays Orders"
+    }
   ]
 }
