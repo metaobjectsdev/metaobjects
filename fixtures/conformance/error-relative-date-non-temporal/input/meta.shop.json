@@ -331,7 +331,7 @@
             "revenue"
           ],
           "@filter": {
-            "status": {
+            "amountCents": {
               "gte": {
                 "now": "-P90D"
               }
