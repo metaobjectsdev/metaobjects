@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **24 shared conformance corpora** under
+The MetaObjects standard ships **25 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -50,6 +50,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 | [`fixtures/fmt-conformance/`](../fixtures/fmt-conformance/) (#304 — `meta fmt`) | 12 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/naming-conformance/`](../fixtures/naming-conformance/) | 8 cases | ✓ | ✓ | inherits via Java (`RouteNaming.pluralize`) | ✓ | ✓ |
+| [`fixtures/codegen-noop/`](../fixtures/codegen-noop/) (FR-044 — reporting vocabulary is inert) | 1 model pair (`reporting/with` vs `reporting/without`) | ✓ (codegen + migrate) | ✓ | ✓ | ✓ | ✓ |
 
 A ✓ means the port runs the corpus green; an explicit `n / m` is used where a port
 carries a ledgered divergence. The two ledgered YAML fixtures are documented
@@ -74,8 +75,9 @@ the corpora above do two different jobs. Only the first is a promise to adopters
   (the canonical serializer, surfaced per-file — ADR-0034's "canonical format" is core).
   A red cell here is a MetaObjects bug.
 - **Template quality checks — not a promise.** The generated lane of
-  `api-contract-conformance/`, `generator-registry-conformance/` (stable generator names)
-  and the codegen-compile gate. They check that the reference generators are correct
+  `api-contract-conformance/`, `generator-registry-conformance/` (stable generator names),
+  `codegen-noop/` (vocabulary with no lowering yet emits nothing) and the codegen-compile
+  gate. They check that the reference generators are correct
   starting points; an adopter's ejected copy is theirs and is not gated. The hand-rolled
   reference-server lane of `api-contract-conformance/` still pins the wire contract that
   the runtimes and the client speak, which is core.
