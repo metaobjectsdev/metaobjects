@@ -21,6 +21,7 @@ COMMANDS:
   deps list             One line per locked dependency: name, version, hash, node/package summary
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
   export                Flatten loaded metadata to one canonical JSON artifact
+  fmt [<file>...]       Rewrite metadata files into canonical form; --check lists drift, exits non-zero
   docs [<project-root>] --out <dir>  Generate neutral metadata documentation (entity + template pages; --site for HTML site)
   verify                Drift gate — subverbs: --templates / --db / --codegen / --docs / --deps (bare = --templates)
   upgrade               Rewrite retired metadata vocabulary (previews; --apply writes)
@@ -65,6 +66,21 @@ GEN FLAGS:
 
 EXPORT FLAGS:
   --out <file>          Write output to a file (default: stdout)
+
+FMT FLAGS:
+  [<file>...]           Optional explicit file(s) to format — must be members of this
+                        project's resolved metadata sources (resolveCollection()); omit
+                        to format every one of them.
+  --check               List files that are not canonical and exit non-zero; changes nothing.
+                        A file whose formatting would change the LOADED MODEL's meaning
+                        is never rewritten — reported as an error instead (safety check).
+                        A YAML file is always reported as skipped: no canonical YAML
+                        emitter exists yet (ADR-0006 — JSON is the canonical interchange
+                        form). A file declaring 'overlay: true' anywhere — whether or not
+                        a same-file base exists to merge into — is skipped too: a
+                        formatter never changes structure, and buildTree's ordinary
+                        find-or-reuse behavior would otherwise silently fold a same-file
+                        base + overlay into one node, dropping the overlay marker.
 
 DOCS FLAGS:
   [<project-root>]      PROJECT ROOT to resolve metadata from — the directory that CONTAINS

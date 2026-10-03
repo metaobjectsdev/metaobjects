@@ -1,0 +1,27 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "User",
+          "children": [
+            {
+              "field.string": {
+                "name": "email"
+              }
+            },
+            {
+              "identity.secondary": {
+                "name": "byEmail",
+                "@fields": [
+                  "email"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -14,3 +14,11 @@ fixtures/** text eol=lf
 # Mustache templates carry cross-port byte-exact contracts elsewhere too
 # (test resources, snapshots).
 *.mustache text eol=lf
+
+# fmt-conformance's crlf-normalized-to-lf fixture tests fmt's OWN CRLF->LF
+# normalization — its input.json must keep its literal CRLF bytes (that is
+# the input under test), overriding the blanket `fixtures/** text eol=lf`
+# rule above. `-text` opts it out of line-ending conversion entirely (Git
+# treats it as binary for EOL purposes only; it is still a plain diffable
+# JSON file).
+fixtures/fmt-conformance/crlf-normalized-to-lf/input.json -text

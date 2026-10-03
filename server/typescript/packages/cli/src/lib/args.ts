@@ -191,6 +191,35 @@ export function parseExportArgs(argv: string[]): ExportFlags {
 }
 
 // ---------------------------------------------------------------------------
+// fmt flags (#304)
+// ---------------------------------------------------------------------------
+
+export interface FmtFlags {
+  check: boolean;
+  /** Optional explicit file list — narrows the run to these files (must be
+   *  members of the project's resolved metadata sources). Empty = every file. */
+  files: string[];
+}
+
+/** The flag table `parseFmtArgs` parses. Exported so the help text can be gated against it. */
+export const FMT_OPTIONS = {
+  check: { type: "boolean", default: false },
+} as const;
+
+export function parseFmtArgs(argv: string[]): FmtFlags {
+  const { values, positionals } = parseArgs({
+    args: argv,
+    options: FMT_OPTIONS,
+    strict: true,
+    allowPositionals: true,
+  });
+  return {
+    check: !!values.check,
+    files: positionals,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // shared DB-connection vocab (used by both verify --db and migrate)
 // ---------------------------------------------------------------------------
 

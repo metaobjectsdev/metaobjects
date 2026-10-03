@@ -1,0 +1,8 @@
+metadata:
+  package: acme
+  children:
+    - object.entity:
+        name: Thing
+        children:
+          - field.string:
+              name: label

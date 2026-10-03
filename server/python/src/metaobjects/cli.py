@@ -1069,6 +1069,132 @@ def _cmd_list(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _describe_fmt_report(report: "object", cwd: Path) -> str:
+    from metaobjects import fmt
+
+    try:
+        rel = report.path.relative_to(cwd)
+    except ValueError:
+        rel = report.path
+    if report.status == fmt.STATUS_FORMATTED:
+        return f"  reformatted  {rel}"
+    if report.status == fmt.STATUS_WOULD_FORMAT:
+        return f"  not canonical  {rel}"
+    if report.status == fmt.STATUS_UNCHANGED:
+        return f"  ok           {rel}"
+    if report.status == fmt.STATUS_SKIPPED_YAML:
+        return f"  skipped (yaml)     {rel} — {report.detail}"
+    if report.status == fmt.STATUS_SKIPPED_OVERLAY:
+        return (
+            f"  skipped (overlay)  {rel} — this file declares an overlay fmt "
+            "cannot resolve standalone"
+        )
+    if report.status == fmt.STATUS_ERROR:
+        return f"  error        {rel} — {report.detail}"
+    return f"  {report.status}  {rel}"  # pragma: no cover — exhaustive in practice
+
+
+def _cmd_fmt(args: argparse.Namespace) -> int:
+    """``fmt`` (#304) — rewrite metadata files into canonical form; ``--check``
+    lists non-canonical files and exits non-zero without changing anything.
+
+    Mirrors the TS reference surface exactly: no ``metadata_dir`` positional —
+    files come from the neutral ``.metaobjects/config.json`` ladder
+    (:func:`resolve_metadata_location`, rungs 3-4; this command does not read
+    this port's own ``metaobjects.config.yaml`` rung 2, matching the scope the
+    C# and Java ports also keep for `fmt`), optionally narrowed by explicit
+    file arguments.
+    """
+    from metaobjects import fmt
+    from metaobjects.core_types import core_providers
+    from metaobjects.library import library_sources
+    from metaobjects.provider import compose_registry
+
+    providers_extra, providers_ok = _providers_from_args(args)
+    if not providers_ok:
+        return 1
+    providers = [*core_providers, *providers_extra]
+    registry = compose_registry(providers)
+
+    cwd = Path.cwd()
+    collection = _resolve_metadata_location_or_print_error(None, cwd)
+    if collection is None:
+        return 1
+
+    all_files = list(collection.files)
+    own_files = list(collection.own_files)
+
+    if args.files:
+        wanted = [Path(f).resolve() for f in args.files]
+        owned_set = {p.resolve() for p in own_files}
+        missing = [str(p) for p in wanted if p not in owned_set]
+        if missing:
+            print(
+                "error: not among this project's resolved metadata sources: "
+                + ", ".join(missing),
+                file=sys.stderr,
+            )
+            print(
+                "metaobjects fmt only formats files the metadata-location ladder "
+                "already resolves — pass no arguments to format every one of them.",
+                file=sys.stderr,
+            )
+            return 1
+        wanted_set = {p for p in wanted}
+        targets = [p for p in own_files if p.resolve() in wanted_set]
+    else:
+        targets = own_files
+
+    lib_sources = library_sources(list(collection.libraries)) if collection.libraries else []
+
+    result = fmt.run(
+        all_files=all_files,
+        target_files=targets,
+        file_ids=dict(collection.file_ids),
+        registry=registry,
+        lib_sources=lib_sources,
+        check=bool(args.check),
+        providers=providers,
+    )
+
+    if result.fatal is not None:
+        print(f"error: {result.fatal}", file=sys.stderr)
+        return 1
+
+    if not result.files:
+        print("metaobjects fmt — no metadata files to format.")
+        return 0
+
+    for report in result.files:
+        print(_describe_fmt_report(report, cwd))
+
+    errored = sum(1 for r in result.files if r.status == fmt.STATUS_ERROR)
+    needs_format = sum(1 for r in result.files if r.status == fmt.STATUS_WOULD_FORMAT)
+    reformatted = sum(1 for r in result.files if r.status == fmt.STATUS_FORMATTED)
+
+    if args.check:
+        if needs_format or errored:
+            suffix = f", {errored} error(s)" if errored else ""
+            print(
+                f"metaobjects fmt --check — {needs_format} file(s) not canonical{suffix}. "
+                "Run `metaobjects fmt` to fix.",
+                file=sys.stderr,
+            )
+            return 1
+        print("metaobjects fmt --check — every file is already canonical.")
+        return 0
+
+    if errored:
+        print(
+            f"metaobjects fmt — {errored} file(s) could not be formatted safely (left unchanged).",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"metaobjects fmt — {reformatted} file(s) reformatted.")
+    return 0
+
+
 def _cmd_eject(args: argparse.Namespace) -> int:
     """Copy reference generators into ``codegen/generators/`` to own (ADR-0034 Am. 3)."""
     root = Path(args.root) if args.root else Path.cwd()
@@ -2492,6 +2618,31 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     verify.set_defaults(func=_cmd_verify)
+
+    fmt_p = sub.add_parser(
+        "fmt",
+        help="rewrite metadata files into canonical form (#304)",
+    )
+    fmt_p.add_argument(
+        "files",
+        nargs="*",
+        metavar="FILE",
+        help="optional explicit file(s) to format — must be members of this "
+        "project's resolved metadata sources; omit to format every one of them",
+    )
+    fmt_p.add_argument(
+        "--check",
+        action="store_true",
+        help="list files that are not canonical and exit non-zero; changes nothing",
+    )
+    fmt_p.add_argument(
+        "--provider",
+        action="append",
+        default=None,
+        metavar="MODULE:SYMBOL",
+        help="consumer-registered Provider(s), repeatable (module:symbol)",
+    )
+    fmt_p.set_defaults(func=_cmd_fmt)
 
     eject_p = sub.add_parser(
         "eject",

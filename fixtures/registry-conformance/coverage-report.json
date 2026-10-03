@@ -1,6 +1,6 @@
 {
   "registeredSubTypeCount": 59,
-  "exercisedSubTypeCount": 46,
+  "exercisedSubTypeCount": 47,
   "untestedSubTypes": [
     "attr.boolean",
     "attr.class",
@@ -10,7 +10,6 @@
     "attr.int",
     "attr.intMap",
     "attr.long",
-    "attr.string",
     "validator.atLeastOne",
     "validator.comparison",
     "validator.presentIff",
@@ -244,7 +243,6 @@
         "example",
         "formExclude",
         "instruction",
-        "sortableDefaultOrder",
         "unique",
         "xmlText"
       ]

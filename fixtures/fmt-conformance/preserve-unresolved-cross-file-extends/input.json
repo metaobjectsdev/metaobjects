@@ -1,0 +1,16 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Car",
+          "extends": "acme::Vehicle",
+          "children": [
+            { "field.string": { "name": "plate" } }
+          ]
+        }
+      }
+    ]
+  }
+}

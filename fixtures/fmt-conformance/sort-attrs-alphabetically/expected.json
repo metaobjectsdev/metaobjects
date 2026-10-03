@@ -1,0 +1,22 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Widget",
+          "children": [
+            {
+              "field.string": {
+                "name": "sku",
+                "@description": "stock keeping unit",
+                "@maxLength": 40,
+                "@required": true
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

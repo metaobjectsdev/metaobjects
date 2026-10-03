@@ -1,0 +1,16 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "User",
+          "overlay": true,
+          "children": [
+            { "field.string": { "name": "nickname" } }
+          ]
+        }
+      }
+    ]
+  }
+}

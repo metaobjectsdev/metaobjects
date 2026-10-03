@@ -35,6 +35,8 @@ if (args.Length == 0)
         "    eject <name>... [--force] [--root <dir>]        copy a reference generator into\n" +
         "                                                     codegen/generators/ to own (ADR-0034);\n" +
         "                                                     see `dotnet meta gen --list`\n" +
+        "    fmt [<metadataDir>] [--check]                    rewrite metadata into canonical form (#304);\n" +
+        "                                                     --check lists drift, exits non-zero, changes nothing\n" +
         "    agent-docs                                           see `npx meta agent-docs`");
     return 2;
 }
@@ -44,6 +46,7 @@ return args[0] switch
     "gen" => RunGen(args[1..]),
     "verify" => RunVerify(args[1..]),
     "docs" => RunDocs(args[1..]),
+    "fmt" => RunFmt(args[1..]),
     "eject" => RunEject(args[1..]),
     "agent-docs" => AgentDocsRedirect(),
     _ => Unknown(args[0]),
@@ -264,6 +267,88 @@ static int RunDocs(string[] rest)
     }
     foreach (var p in outcome.WrittenPaths) Console.WriteLine($"  written: {p}");
     Console.WriteLine($"dotnet meta docs: {outcome.WrittenPaths.Count} api page(s) written");
+    return 0;
+}
+
+// `dotnet meta fmt [<metadataDir>] [--check]` — canonical formatting (#304).
+// Takes the same optional <metadataDir> positional every other command does
+// (an omitted one falls back to the .metaobjects/config.json ladder); unlike
+// the TS reference, this port does not accept individual file arguments to
+// narrow the run — FmtCommand.Run supports it (see its `explicitFiles`
+// parameter), but no flag here surfaces it, matching this port's existing
+// gen/verify/docs surface, which takes a directory, never a file list.
+static int RunFmt(string[] rest)
+{
+    string? metadataDir = null;
+    bool check = false;
+    foreach (var a in rest)
+    {
+        if (a == "--check") check = true;
+        else if (a.StartsWith('-'))
+        {
+            Console.Error.WriteLine($"dotnet meta fmt: unknown option \"{a}\"");
+            Console.Error.WriteLine("usage: dotnet meta fmt [<metadataDir>] [--check]");
+            return 2;
+        }
+        else metadataDir ??= a;
+    }
+
+    var resolvedMeta = ResolveMetadataDirOrExit(metadataDir);
+    var result = FmtCommand.Run(resolvedMeta, check);
+
+    if (result.Fatal is not null)
+    {
+        Console.Error.WriteLine($"error: {result.Fatal}");
+        return 1;
+    }
+
+    if (result.Files.Count == 0)
+    {
+        Console.WriteLine("dotnet meta fmt — no metadata files to format.");
+        return 0;
+    }
+
+    foreach (var f in result.Files)
+    {
+        var rel = Path.GetRelativePath(Directory.GetCurrentDirectory(), f.Path);
+        var line = f.Status switch
+        {
+            FmtCommand.FileStatus.Formatted => $"  reformatted  {rel}",
+            FmtCommand.FileStatus.WouldFormat => $"  not canonical  {rel}",
+            FmtCommand.FileStatus.Unchanged => $"  ok           {rel}",
+            FmtCommand.FileStatus.SkippedYaml => $"  skipped (yaml)     {rel} — {f.Detail}",
+            FmtCommand.FileStatus.SkippedOverlay => $"  skipped (overlay)  {rel} — this file declares an overlay fmt cannot resolve standalone",
+            FmtCommand.FileStatus.Error => $"  error        {rel} — {f.Detail}",
+            _ => $"  {f.Status}  {rel}",
+        };
+        Console.WriteLine(line);
+    }
+
+    var errored = result.Files.Count(f => f.Status == FmtCommand.FileStatus.Error);
+    var needsFormat = result.Files.Count(f => f.Status == FmtCommand.FileStatus.WouldFormat);
+    var reformatted = result.Files.Count(f => f.Status == FmtCommand.FileStatus.Formatted);
+
+    if (check)
+    {
+        if (needsFormat > 0 || errored > 0)
+        {
+            Console.Error.WriteLine(
+                $"dotnet meta fmt --check — {needsFormat} file(s) not canonical" +
+                (errored > 0 ? $", {errored} error(s)" : "") +
+                ". Run `dotnet meta fmt` to fix.");
+            return 1;
+        }
+        Console.WriteLine("dotnet meta fmt --check — every file is already canonical.");
+        return 0;
+    }
+
+    if (errored > 0)
+    {
+        Console.Error.WriteLine($"dotnet meta fmt — {errored} file(s) could not be formatted safely (left unchanged).");
+        return 1;
+    }
+
+    Console.WriteLine($"dotnet meta fmt — {reformatted} file(s) reformatted.");
     return 0;
 }
 

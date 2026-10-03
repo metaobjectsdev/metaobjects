@@ -1,0 +1,21 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Widget",
+          "@description": "A widget",
+          "children": [
+            {
+              "field.string": {
+                "name": "tags",
+                "isArray": true
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

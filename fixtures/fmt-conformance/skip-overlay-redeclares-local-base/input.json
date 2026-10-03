@@ -1,0 +1,24 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Widget",
+          "children": [
+            { "field.string": { "name": "sku" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Widget",
+          "overlay": true,
+          "children": [
+            { "field.string": { "name": "notes" } }
+          ]
+        }
+      }
+    ]
+  }
+}

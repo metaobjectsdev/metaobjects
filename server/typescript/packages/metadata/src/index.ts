@@ -243,6 +243,10 @@ export { parseJson } from "./parser-json.js";
 export { serializeJson, canonicalSerialize, canonicalSerializeEffective, serializeSharedDocument, inferAttrSubType } from "./serializer-json.js";
 export type { SerializeOptions } from "./serializer-json.js";
 
+// Formatter (#304) — per-file canonical formatting, built on the serializer above.
+export { formatMetadataFile } from "./fmt.js";
+export type { FormatFileOptions, FormatFileResult } from "./fmt.js";
+
 // Super resolution helper (most resolution moved into parser; this is the lookup utility)
 export { resolveSuperRef } from "./super-resolve.js";
 

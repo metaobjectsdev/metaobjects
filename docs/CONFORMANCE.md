@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **22 shared conformance corpora** under
+The MetaObjects standard ships **23 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -48,6 +48,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 23 cases | ✓ (reference implementation) | — (Phase 2) | — (Phase 2) | — (Phase 2) | ✓ (2 of 23 assert a documented Python-only vocabulary gap instead of the corpus's full contract — see below) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
+| [`fixtures/fmt-conformance/`](../fixtures/fmt-conformance/) (#304 — `meta fmt`) | 12 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
 
 A ✓ means the port runs the corpus green; an explicit `n / m` is used where a port
 carries a ledgered divergence. The two ledgered YAML fixtures are documented
@@ -68,8 +69,9 @@ the corpora above do two different jobs. Only the first is a promise to adopters
   Mustache engine), `template-output-render-conformance/`, `output-prompt-conformance/`,
   `extract-conformance/`, `verify-conformance/`, `verify-strict-conformance/`,
   `persistence-conformance/` (runtime reads and writes, and the TS-owned migration
-  scenarios), `agent-context-conformance/` and `metamodel-docs/`. A red cell here is a
-  MetaObjects bug.
+  scenarios), `agent-context-conformance/`, `metamodel-docs/` and `fmt-conformance/`
+  (the canonical serializer, surfaced per-file — ADR-0034's "canonical format" is core).
+  A red cell here is a MetaObjects bug.
 - **Template quality checks — not a promise.** The generated lane of
   `api-contract-conformance/`, `generator-registry-conformance/` (stable generator names)
   and the codegen-compile gate. They check that the reference generators are correct

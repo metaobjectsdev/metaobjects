@@ -335,14 +335,19 @@ public final class CanonicalJsonSerializer {
         // The parser stores the as-authored string via setAuthoredSuperRef when
         // it sees an `extends` key; fall back to the resolved super FQN only when
         // no authored string is available (e.g. a programmatically-built tree).
-        if (node.hasSuperData()) {
-            String authoredSuperRef = node.getAuthoredSuperRef();
-            String superRef = (authoredSuperRef != null && !authoredSuperRef.isEmpty())
-                ? authoredSuperRef
-                : node.getSuperData().getName();
-            if (superRef != null && !superRef.isEmpty()) {
-                body.addProperty(KEY_EXTENDS, superRef);
-            }
+        //
+        // Gating on hasSuperData() alone (the prior condition) silently dropped
+        // `extends` whenever super resolution never ran or failed to resolve —
+        // own mode must echo the AUTHORED ref regardless of resolution (#304:
+        // `meta fmt` formats a file standalone, deferring super resolution on
+        // purpose, so an authored cross-file `extends` reaches here with
+        // hasSuperData() false and must still round-trip).
+        String authoredSuperRef = node.getAuthoredSuperRef();
+        String superRef = (authoredSuperRef != null && !authoredSuperRef.isEmpty())
+            ? authoredSuperRef
+            : (node.hasSuperData() ? node.getSuperData().getName() : null);
+        if (superRef != null && !superRef.isEmpty()) {
+            body.addProperty(KEY_EXTENDS, superRef);
         }
 
         // 4. abstract — sourced from "isAbstract" MetaAttribute child
