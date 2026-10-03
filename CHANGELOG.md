@@ -10,6 +10,68 @@ here.**
 
 ## [Unreleased]
 
+_A PATCH by the maintainer's decision. Its four additions add new surface (a command, a
+generator option, an extract hook and a `verify` advisory), which `docs/compatibility-policy.md`
+classes as a MINOR. All are additive and opt-in: nothing that loads, generates or verifies today
+changes behaviour unless you use the new surface. `metamodelVersion` stays `1.0`._
+
+### Added
+
+- **`fmt` — format metadata files into canonical form, in every CLI** (#304): `meta fmt`,
+  `dotnet meta fmt`, `mvn metaobjects:fmt` (Java and Kotlin) and `metaobjects fmt` (Python).
+  `--check` lists files that are not canonical and exits non-zero without writing anything,
+  for use as a CI gate. Each JSON metadata file in the project's resolved sources (or the files
+  named on the command line, which must belong to them) is rewritten in the canonical form the
+  conformance corpora byte-match, own-mode: only what that file declares, never inherited or
+  merged members. **Safety:** a candidate is loaded together with the rest of the project from
+  memory, and written only when the reloaded model is identical to the original; otherwise the
+  file is left untouched and reported. **Skipped and reported, never rewritten:** YAML files (no
+  canonical YAML form exists; ADR-0006) and any file containing an `overlay: true` declaration
+  (a formatter never changes structure). CRLF line endings become LF and a UTF-8 BOM is
+  dropped. Output is byte-identical across the four CLIs, gated by the new shared
+  `fixtures/fmt-conformance/` corpus (12 fixtures).
+- **`meta verify` warns about references to a deprecated node** (#305). A new advisory section,
+  `deprecations`, reports `WARN_DEPRECATED_REFERENCE` when metadata depends on a node carrying
+  the registered `deprecated` attribute: through `extends`, `@objectRef`, `@references`
+  (including the dotted `Entity.field` form) or a projection origin's `@from` / `@of` / `@via`.
+  An inherited `deprecated` counts, and an empty reason still marks the node deprecated. When the
+  node declares `replacedBy`, the warning names the replacement. A node referencing itself or an
+  ancestor is not reported. Like the other authoring lints it **never fails the build**; mute it
+  with `--no-deprecation-lint` or `META_NO_DEPRECATION_LINT=1`. Date-based escalation waits for
+  severity levels and suppressions (#302).
+- **A document-level locate hook for reply extraction, in all five ports** (#364):
+  `ExtractOptions.onLocate` (TS, Java and Kotlin), `OnLocate` (C#), `on_locate` (Python). It
+  receives the raw reply and the declared format and returns the substring that is the payload,
+  or null to use the default locator. The located text then goes through the normal pipeline
+  (tolerance, coercion, normalizers, `onField`), and generated output parsers pass the option
+  through. Each use is recorded in the extraction report as a coercion of kind `onLocate`
+  (carrying the located length, not the text). A hook that returns an empty string reports the
+  reply as empty; a hook that throws propagates the error. The prompts guide
+  (`docs/features/templates-and-payloads.md`) gains an "Override surface" section covering
+  `onLocate`, `onField`, `normalizers` and `tolerance` per port. Structural key aliasing, the
+  other half of #364, is new vocabulary and is not in this release.
+- **Kotlin codegen can emit Exposed 1.x** (#390). A new generator arg, `exposedApi` (`0`, the
+  default, or `1`), is honoured by every Kotlin generator that emits Exposed code. `0` output is
+  byte-identical to 1.0.11. `1` emits the Exposed 1.x API: the `org.jetbrains.exposed.v1.*`
+  packages, `javaUUID` for `java.util.UUID` columns (never `uuid()`, which would silently change
+  the Kotlin type), top-level filter operators in place of `SqlExpressionBuilder`, `RowApi`-based
+  custom column types, and `limit(n).offset(m)`. This unblocks upgrading to Exposed 1.3.0+, the
+  first version whose identifier caches are thread-safe; on 0.x, concurrent queries can corrupt
+  them (`ClassCastException` inside `HashMap`). The 1.x mode implies Exposed 1.3.x, Kotlin 2.2 or
+  later, and Spring 6.2 / Boot 3.5 for `spring-transaction`. A new reactor-excluded module,
+  `codegen-kotlin-exposed1x-check`, compiles the 1.x output (model, persistence and controller
+  tiers) with Kotlin 2.2 against Exposed 1.3.1 and real Spring 6.2, and round-trips the custom
+  column types through Postgres. See `docs/ports/kotlin.md`.
+
+### Fixed
+
+- **Java canonical JSON kept an authored `extends` only after super resolution ran.** In
+  own-mode the serializer dropped `extends` whenever the reference had not been resolved, unlike
+  TS, C# and Python, which always emit the authored reference. Found by `fmt`, which formats one
+  file at a time; existing conformance output is unchanged.
+- **Generated Kotlin controllers missed imports for filterable `BigDecimal`, `URI` and
+  `InetAddress` columns,** in both Exposed modes. Found by the new controller-tier compile check.
+
 ## [1.0.11] — 2026-10-01
 
 _npm `1.0.11` (all 14 `@metaobjectsdev/*` packages in lockstep), PyPI `1.0.11`, NuGet `1.0.11` and
