@@ -12,7 +12,8 @@ import kotlin.test.assertTrue
  * via `extends:` must inherit that base field's *physical* shaping — the same way it
  * already inherits `@maxLength` — for:
  *
- *   - `@dbColumnType=uuid`            → `uuid("col")`            (NOT `varchar(col, 36)`)
+ *   - `@dbColumnType=uuid`            → `uuidString("col")`      (NOT `varchar(col, 36)`, NOT
+ *     a native `uuid(...)` `Column<UUID>` — see `KotlinExposedTableGenerator.uuidStringSupportBlock`)
  *   - `isArray:true` (string)         → `array<String>(...)`    (NOT `varchar`/`text`)
  *   - a default (instant/TZ-aware) `field.timestamp` → `instantWithTimeZone(...)` (NOT `datetime`)
  *   - a `field.enum` super            → the projection's OWN `<View>Status` enum
@@ -77,9 +78,9 @@ class KotlinProjectionExtendsInheritanceTest {
             val table = Files.readString(tableKt)
 
             // --- @dbColumnType=uuid inherited via extends ---
-            assertTrue("val id = uuid(\"id\")" in table,
-                "uuid PK must inherit @dbColumnType=uuid (uuid(\"id\")); saw:\n$table")
-            assertTrue("val ownerId = uuid(\"owner_id\")" in table,
+            assertTrue("val id = uuidString(\"id\")" in table,
+                "uuid PK must inherit @dbColumnType=uuid (uuidString(\"id\")); saw:\n$table")
+            assertTrue("val ownerId = uuidString(\"owner_id\")" in table,
                 "ownerId must inherit @dbColumnType=uuid; saw:\n$table")
             assertFalse("varchar(\"id\"" in table || "varchar(\"owner_id\"" in table,
                 "uuid columns must NOT fall back to varchar; saw:\n$table")

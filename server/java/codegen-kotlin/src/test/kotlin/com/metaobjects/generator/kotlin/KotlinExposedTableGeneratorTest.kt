@@ -961,9 +961,16 @@ class KotlinExposedTableGeneratorTest {
     }
 
     /**
-     * `@dbColumnType=uuid` on a `field.string` emits an Exposed `uuid("col")` column
-     * (Postgres native uuid type) instead of `varchar(...)`. The Kotlin data class
-     * property type stays `String` — Exposed coerces String ↔ uuid at the SQL boundary.
+     * `@dbColumnType=uuid` on a `field.string` emits an Exposed `uuidString("col")` column
+     * (the package-shared `Column<String>` extension — Postgres native uuid physical type)
+     * instead of `varchar(...)`. The Kotlin data class property type stays `String` (ADR-0037:
+     * `@dbColumnType` is physical-only) — `uuidString`'s custom `ColumnType<String>` converts at
+     * the Kotlin-value boundary, delegating every JDBC/DDL concern to Exposed's own
+     * `UUIDColumnType` (see `KotlinExposedTableGenerator.uuidStringSupportBlock`'s doc). Previously
+     * this emitted a bare `uuid("col")` — a native `Column<UUID>` that was self-consistent on the
+     * table alone but mismatched the generated entity/controller's `String` property, which never
+     * compiled once a controller was generated+compiled for such an entity (issue found fixing
+     * `AssetController.kt`'s pre-existing compile defect, Exposed1xControllerCompileTest).
      */
     @Test fun stringFieldWithDbColumnTypeUuidEmitsUuidColumn() {
         val uuidFixture = """{
@@ -984,11 +991,11 @@ class KotlinExposedTableGeneratorTest {
             gen.execute(loadString("uuid", uuidFixture))
 
             val src = Files.readString(outDir.resolve("x/AccountTable.kt"))
-            // uuid columns from @dbColumnType=uuid — NOT varchar.
-            assertTrue("val id = uuid(\"id\")" in src,
-                "expected uuid id column (not varchar); saw:\n$src")
-            assertTrue("val userId = uuid(\"user_id\")" in src,
-                "expected uuid userId column with snake_case name; saw:\n$src")
+            // uuidString columns from @dbColumnType=uuid — NOT varchar, NOT a native uuid() column.
+            assertTrue("val id = uuidString(\"id\")" in src,
+                "expected uuidString id column (not varchar/uuid); saw:\n$src")
+            assertTrue("val userId = uuidString(\"user_id\")" in src,
+                "expected uuidString userId column with snake_case name; saw:\n$src")
             // Regular field.string (no @dbColumnType, no @maxLength) derives `text(...)` (Phase 1).
             assertTrue("val displayName = text(\"display_name\")" in src,
                 "expected plain text for displayName (no @dbColumnType/@maxLength); saw:\n$src")

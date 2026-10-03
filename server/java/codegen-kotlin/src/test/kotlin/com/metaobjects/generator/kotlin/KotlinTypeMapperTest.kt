@@ -254,13 +254,18 @@ class KotlinTypeMapperTest {
         )
     }
 
-    @Test fun `string field with dbColumnType=uuid emits uuid column instead of varchar`() {
-        // `@dbColumnType=uuid` on a `field.string` selects the native Postgres uuid column
-        // type. Kotlin property type stays `String` (no change to the data class shape;
-        // Exposed coerces String ↔ uuid at the SQL boundary).
+    @Test fun `string field with dbColumnType=uuid emits uuidString column instead of varchar`() {
+        // `@dbColumnType=uuid` on a `field.string` selects the package-shared `uuidString(...)`
+        // extension — a `Column<String>` over the native Postgres uuid column type. Kotlin
+        // property type stays `String` (ADR-0037: `@dbColumnType` is physical-only); the custom
+        // `ColumnType<String>` converts at the Kotlin-value boundary (delegating every JDBC/DDL
+        // concern to Exposed's own `UUIDColumnType`), so the column agrees with the generated
+        // entity/controller's `String` property — unlike the old bare `uuid(...)`
+        // (`Column<UUID>`), which never compiled once a controller was generated for such a
+        // field (see `KotlinExposedTableGenerator.uuidStringSupportBlock`'s doc).
         val f = StringField("userId")
         f.addMetaAttr(StringAttribute.create("dbColumnType", "uuid"))
-        assertEquals("uuid(\"user_id\")", KotlinTypeMapper.exposedColumnSpec(f))
+        assertEquals("uuidString(\"user_id\")", KotlinTypeMapper.exposedColumnSpec(f))
         // Kotlin type unchanged — still String.
         assertEquals(STRING, KotlinTypeMapper.kotlinTypeName(f))
     }

@@ -140,6 +140,13 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // same `internal` per-package sharing rationale as the instant-tz / inet-uri helpers.
         val packagesNeedingJacksonMapper = sortedSetOf<String>()
 
+        // Packages that emit at least one table carrying a `field.string @dbColumnType=uuid`
+        // column (R6 Plan 2b physical escape hatch). Each such package gets ONE shared
+        // `MetaUuidStringColumnType.kt` support file (the custom `Column<String>` column type +
+        // the `uuidString(...)` builder extension), emitted in pass 3 — same multi-table-per-
+        // package sharing rationale as the other helpers.
+        val packagesNeedingUuidStringHelper = sortedSetOf<String>()
+
         // Pass 2: emit one Table per entity using its own metadata + the
         // inbound FKs accumulated in Pass 1.
         // FR-024 (ADR-0028): object.projection is emitted too — a projection with
@@ -167,6 +174,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 emitWriteThrough(
                     entity, outRoot, loader, fkMap, refDecorationMap,
                     packagesNeedingInstantTzHelper, packagesNeedingInetUriHelper, packagesNeedingJacksonMapper,
+                    packagesNeedingUuidStringHelper,
                 )
                 continue
             }
@@ -218,6 +226,11 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             if (entityNeedsJacksonMapper(entity, loader)) {
                 packagesNeedingJacksonMapper += PackageMapping.splitFqn(entity.name).first
             }
+            // R6 Plan 2b: does this table carry a `field.string @dbColumnType=uuid` column? If
+            // so its package needs the shared MetaUuidStringColumnType support file.
+            if (entityNeedsUuidStringHelper(entity, loader)) {
+                packagesNeedingUuidStringHelper += PackageMapping.splitFqn(entity.name).first
+            }
         }
 
         // Pass 3: emit ONE shared `MetaInstantWithTimeZoneColumnType.kt` per package
@@ -241,6 +254,13 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // ObjectMapper is package+module-private, so every `*Table.kt` in the package shares it.
         for (pkg in packagesNeedingJacksonMapper) {
             emitJsonbMapperSupportFile(pkg, outRoot)
+        }
+
+        // Pass 3d (R6 Plan 2b): emit ONE shared `MetaUuidStringColumnType.kt` per package that
+        // has at least one `field.string @dbColumnType=uuid` column. Same `internal` per-package
+        // sharing rationale as the other helpers.
+        for (pkg in packagesNeedingUuidStringHelper) {
+            emitUuidStringSupportFile(pkg, outRoot)
         }
     }
 
@@ -269,6 +289,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         packagesNeedingInstantTzHelper: MutableSet<String>,
         packagesNeedingInetUriHelper: MutableSet<String>,
         packagesNeedingJacksonMapper: MutableSet<String>,
+        packagesNeedingUuidStringHelper: MutableSet<String>,
     ) {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val writeSource = KotlinGenUtil.writableRdbSource(entity)
@@ -300,6 +321,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         if (usedInstantTzWrite || usedInstantTzRead) packagesNeedingInstantTzHelper += pkg
         if (entityNeedsInetUriHelper(entity, loader)) packagesNeedingInetUriHelper += pkg
         if (entityNeedsJacksonMapper(entity, loader)) packagesNeedingJacksonMapper += pkg
+        if (entityNeedsUuidStringHelper(entity, loader)) packagesNeedingUuidStringHelper += pkg
     }
 
     /**
@@ -343,6 +365,17 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
     }
 
     /**
+     * True iff [entity] carries at least one `field.string @dbColumnType=uuid` column (R6 Plan
+     * 2b) — on a direct field only (unlike the inet-uri/jsonb helpers, a flattened `object.value`
+     * sub-field is materialised per-subfield by [KotlinTypeMapper]'s flattened path, which never
+     * calls [KotlinTypeMapper.exposedColumnSpec]'s `StringField`/`@dbColumnType` branch for a
+     * nested sub-field the same way, so there is no flattened surface to walk here). Mirrors
+     * [entityNeedsInetUriHelper]'s direct-field walk.
+     */
+    private fun entityNeedsUuidStringHelper(entity: MetaObject, loader: MetaDataLoader): Boolean =
+        entity.metaFields.any { it !is ObjectField && KotlinTypeMapper.usesUuidStringHelper(it) }
+
+    /**
      * Emit the per-package `MetaJsonbMapper.kt` support file: an `internal` shared Jackson
      * [com.fasterxml.jackson.databind.ObjectMapper] (`metaJsonbMapper`) that the generated typed
      * `jsonb()` column codecs call to encode/decode `field.object @storage:jsonb` value objects
@@ -370,6 +403,22 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
     private fun emitInetUriSupportFile(pkg: String, outRoot: Path) {
         val api = exposedApi()
         emitSupportFile(pkg, outRoot, INET_URI_SUPPORT_FILE_NAME, inetUriSupportFileImports(api), inetUriSupportBlock(api))
+    }
+
+    /**
+     * Emit the per-package `MetaUuidStringColumnType.kt` support file (R6 Plan 2b): an
+     * `internal` custom Exposed column type for `field.string @dbColumnType=uuid` — a
+     * `Column<String>` persisted through the Postgres-native `uuid` type, delegating every
+     * JDBC/DDL concern to Exposed's own `UUIDColumnType` — plus the `Table.uuidString(name)`
+     * column-builder extension the generated tables call. `internal` keeps it package+module-
+     * private while every `*Table.kt` in the package shares the one declaration.
+     */
+    private fun emitUuidStringSupportFile(pkg: String, outRoot: Path) {
+        val api = exposedApi()
+        emitSupportFile(
+            pkg, outRoot, UUID_STRING_SUPPORT_FILE_NAME,
+            uuidStringSupportFileImports(api), uuidStringSupportBlock(api),
+        )
     }
 
     /**
@@ -1372,6 +1421,92 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             |    registerColumn(name, MetaInetColumnType())
             |""".trimMargin()
         }
+
+        /**
+         * File name (sans `.kt`) of the per-package support file emitted for a `field.string
+         * @dbColumnType=uuid` column (R6 Plan 2b). One per package that has ≥1 such column.
+         */
+        const val UUID_STRING_SUPPORT_FILE_NAME = "MetaUuidStringColumnType"
+
+        /**
+         * Imports for the per-package [uuidStringSupportBlock] support file, keyed by
+         * [ExposedApi]. The delegate's FQN is the one textual difference between versions
+         * (issue #390 — 1.x's bare `UUIDColumnType` binds `kotlin.uuid.Uuid`; `javaUuid`'s
+         * `UUIDColumnType` is the java.util.UUID-backed replacement — the SAME substitution
+         * [KotlinTypeMapper.exposedColumnSpec] already makes for a native `field.uuid` column
+         * under 1.x).
+         */
+        fun uuidStringSupportFileImports(api: ExposedApi): String {
+            val uuidColumnTypeImport =
+                if (api == ExposedApi.V1) ExposedImports.javaUuid("UUIDColumnType")
+                else ExposedImports.core(api, "UUIDColumnType")
+            return """
+            |import ${ExposedImports.core(api, "Column")}
+            |import ${ExposedImports.core(api, "ColumnType")}
+            |import ${ExposedImports.core(api, "Table")}
+            |import $uuidColumnTypeImport
+            |import ${ExposedImports.statementsApi(api, "PreparedStatementApi")}
+            |""".trimMargin()
+        }
+
+        /**
+         * Shared support body emitted ONCE PER PACKAGE (into [UUID_STRING_SUPPORT_FILE_NAME].kt)
+         * for any package with at least one `field.string @dbColumnType=uuid` column (R6 Plan 2b
+         * physical escape hatch).
+         *
+         * ADR-0037: `@dbColumnType` is a PHYSICAL-only escape hatch — the field's LOGICAL/native
+         * Kotlin type is unchanged, so [KotlinTypeMapper.kotlinTypeName] keeps the data-class
+         * property `String` (matching every other port — Java's OMDB converts String↔UUID at its
+         * JDBC codec, the layer BELOW its ORM; TS/Python/C# keep the column's own `string`/`str`/
+         * `string` type too — see `JdbcCodecs.UuidCodec`, the per-port notes under `docs/ports`).
+         * Exposed has no codec layer below its typed `Column<T>` (unlike a JDBC
+         * `PreparedStatement`/`ResultSet`), so
+         * THIS custom `ColumnType<String>` — not a raw `uuid(...)`/`javaUUID(...)` native
+         * `Column<UUID>` — IS that lowest layer for Exposed: it persists through the real
+         * Postgres `uuid` column type (delegating every JDBC/DDL concern to Exposed's own
+         * battle-tested `UUIDColumnType`, never re-implementing uuid binding) while surfacing a
+         * plain `String` to every Kotlin caller above it (the generated entity data class, the
+         * controller's filter dispatch and PATCH bind) — so they never see `java.util.UUID` and
+         * never have to convert.
+         *
+         * Defines ONE `internal` custom column type + its `Table` column-builder extension:
+         *  - `MetaUuidStringColumnType` — a `ColumnType<String>` that delegates `sqlType()` /
+         *    `setParameter()` verbatim to a `UUIDColumnType()` instance, converting ONLY at the
+         *    Kotlin-value boundary (`UUID.fromString`/`.toString()`) for `notNullValueToDB` /
+         *    `valueFromDB` / `nonNullValueToString`.
+         *  - `Table.uuidString(name)` — the builder extension the generated table calls.
+         *
+         * `internal` so every `*Table.kt` in the package shares the one declaration (the same
+         * multi-table-per-package redeclaration concern as the instant-tz / inet-uri helpers).
+         */
+        fun uuidStringSupportBlock(api: ExposedApi): String = """
+            |/**
+            | * GENERATED — do not hand-edit.
+            | * Custom Exposed column type for `field.string @dbColumnType=uuid` (ADR-0037
+            | * physical-only escape hatch): a `Column<String>` persisted through the real
+            | * Postgres `uuid` type. Every SQL/JDBC concern is DELEGATED to Exposed's own
+            | * `java.util.UUID`-backed `UUIDColumnType` — this class converts ONLY at the
+            | * Kotlin-value boundary, so the generated entity/controller see a plain `String`
+            | * (matching every other MetaObjects port) while the column keeps its native uuid
+            | * physical type.
+            | */
+            |internal class MetaUuidStringColumnType : ColumnType<String>() {
+            |    private val delegate = UUIDColumnType()
+            |    override fun sqlType(): String = delegate.sqlType()
+            |    override fun valueFromDB(value: Any): String =
+            |        requireNotNull(delegate.valueFromDB(value)) { "null uuid column value" }.toString()
+            |    override fun notNullValueToDB(value: String): Any =
+            |        delegate.notNullValueToDB(java.util.UUID.fromString(value))
+            |    override fun nonNullValueToString(value: String): String =
+            |        delegate.nonNullValueToString(java.util.UUID.fromString(value))
+            |    override fun setParameter(stmt: PreparedStatementApi, index: Int, value: Any?) =
+            |        delegate.setParameter(stmt, index, value)
+            |}
+            |
+            |/** Column builder for `field.string @dbColumnType=uuid`: a `Column<String>` over a native `uuid` column. */
+            |internal fun Table.uuidString(name: String): Column<String> =
+            |    registerColumn(name, MetaUuidStringColumnType())
+            |""".trimMargin()
 
         /**
          * File name (sans `.kt`) of the per-package support file holding the shared Jackson

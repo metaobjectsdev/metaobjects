@@ -155,6 +155,25 @@ object KotlinTypeMapper {
     const val EXPOSED_INET_FN = "inetColumn"
 
     /**
+     * Name of the generated, file-local Exposed extension function emitted for a
+     * `field.string @dbColumnType=uuid` column (R6 Plan 2b physical escape hatch; ADR-0037:
+     * `@dbColumnType` is physical-ONLY, so the field's logical/native Kotlin type stays
+     * `String` — see [kotlinTypeName]'s `StringField` arm, unconditional on `@dbColumnType`).
+     * Returns a `Column<String>` whose `sqlType()` is the Postgres-native `uuid` — so the
+     * column type MATCHES the generated entity/controller's `String` property while the
+     * physical column stays native uuid (every JDBC/DDL concern DELEGATED to Exposed's own
+     * `UUIDColumnType`; this helper converts only at the Kotlin-value boundary). Previously this
+     * emitted a bare `uuid(...)`/`javaUUID(...)` native `Column<UUID>` — self-consistent on the
+     * TABLE in isolation, but a `String`/`UUID` mismatch against the generated entity data class
+     * and controller (`KotlinSpringControllerGenerator` casts `p.value as String` and binds
+     * `dto.externalId: String` directly against the column), which never compiled once a
+     * controller was generated+compiled for such an entity. [KotlinExposedTableGenerator] emits
+     * the supporting `ColumnType<String>` + this extension into the package-shared
+     * `MetaUuidStringColumnType` support file.
+     */
+    const val EXPOSED_UUID_STRING_FN = "uuidString"
+
+    /**
      * Compute the generated Kotlin enum-class name for an [EnumField] hung off [entity].
      *
      * Returns {@code null} when [field] is not an {@link EnumField} (the caller should
@@ -390,16 +409,15 @@ object KotlinTypeMapper {
             else null
         }
         // `@dbColumnType=jsonb` on a field.string emits the `jsonb(...)` extension, which
-        // needs the exposed-json import. `@dbColumnType=uuid` maps to `uuid(...)` under 0.x
-        // (a Table member — no import) but `javaUUID(...)` under 1.x (issue #390 — a
-        // top-level extension function, which DOES need an explicit import, unlike `uuid()`).
-        // All other StringField shapes (varchar/text) are Table members. A derived `isArray`
-        // string emits Exposed's `array<E>("col")` — a Table MEMBER (like uuid/integer), so
-        // no import is required (same as the uuid/text paths).
+        // needs the exposed-json import. `@dbColumnType=uuid` emits `uuidString(...)` — the
+        // package-shared file-local extension [EXPOSED_UUID_STRING_FN] (see its doc) — on
+        // EITHER [ExposedApi], so (like `uriColumn`/`inetColumn`) it needs NO import here
+        // regardless of version. All other StringField shapes (varchar/text) are Table
+        // members. A derived `isArray` string emits Exposed's `array<E>("col")` — a Table
+        // MEMBER (like uuid/integer), so no import is required (same as the uuid/text paths).
         is StringField    -> when {
             isArrayResolved(field) -> null
-            dbColumnType(field) == DB_COLUMN_TYPE_UUID ->
-                if (exposedApi == ExposedApi.V1) ExposedImports.javaUuid("javaUUID") else null
+            dbColumnType(field) == DB_COLUMN_TYPE_UUID -> null
             dbColumnType(field) == DB_COLUMN_TYPE_JSONB -> ExposedImports.json(exposedApi, "jsonb")
             else -> null
         }
@@ -439,12 +457,19 @@ object KotlinTypeMapper {
             // matches the canonical migrate-ts DDL. Derivation wins over any `@dbColumnType`.
             // Inline-qualified (not imported) so it reads correctly under either [ExposedApi].
             //
-            // `@dbColumnType=uuid` opt-in: emit `uuid("col")` instead of `text` under 0.x, or
-            // `javaUUID("col")` under 1.x (issue #390 — `uuid()` binds `kotlin.uuid.Uuid` in
-            // 1.x, not `java.util.UUID`). The Kotlin data class property stays `String` for
-            // now (Exposed coerces String ↔ uuid at the SQL boundary), so adopters can convert
-            // a string-shaped FK column to the native Postgres uuid type without changing
-            // their data class shape.
+            // `@dbColumnType=uuid` opt-in: emit `uuidString("col")` — the package-shared
+            // `Column<String>` extension (see [EXPOSED_UUID_STRING_FN]'s doc) — on EITHER
+            // [ExposedApi]. ADR-0037: `@dbColumnType` is PHYSICAL-only, so the Kotlin
+            // data-class property stays `String` (unconditional — see [kotlinTypeName]'s
+            // `StringField` arm); Exposed has no codec layer below its typed `Column<T>` (unlike
+            // Java's OMDB, which converts at its JDBC codec beneath the ORM), so this helper IS
+            // that layer — it persists through the real Postgres `uuid` type (delegating every
+            // JDBC/DDL concern to Exposed's own `UUIDColumnType`) while converting only at the
+            // Kotlin-value boundary, so adopters can convert a string-shaped FK column to the
+            // native Postgres uuid type without changing their data class shape. (Previously
+            // this emitted a bare `uuid("col")`/`javaUUID("col")` — a native `Column<UUID>` that
+            // was self-consistent on the table alone but mismatched the generated entity/
+            // controller's `String` property; see [EXPOSED_UUID_STRING_FN]'s doc.)
             //
             // `@dbColumnType=jsonb` opt-in: emit a real Postgres `JSONB` column via the
             // Exposed `jsonb(name, encoder, decoder)` extension with identity String
@@ -454,7 +479,7 @@ object KotlinTypeMapper {
             if (isArrayResolved(field)) {
                 "array<String>($colExpr, ${ExposedImports.core(exposedApi, "TextColumnType")}())"
             } else when (dbColumnType(field)) {
-                DB_COLUMN_TYPE_UUID  -> if (exposedApi == ExposedApi.V1) "javaUUID($colExpr)" else "uuid($colExpr)"
+                DB_COLUMN_TYPE_UUID  -> "$EXPOSED_UUID_STRING_FN($colExpr)"
                 // `@dbColumnType=jsonb` open bag (#98): decode the JSONB text to a kotlinx
                 // `JsonElement` (so the data-class property + CRUD DTO is a parsed JSON value, not
                 // a double-encoded String) and encode it back via `toString()` (a JsonElement's
@@ -624,6 +649,17 @@ object KotlinTypeMapper {
      */
     fun usesInetUriHelper(field: MetaField<*>): Boolean =
         (field is UriField || field is InetField) && !lenientNetField(field)
+
+    /**
+     * True iff [field] needs the package-shared `MetaUuidStringColumnType.kt` support file —
+     * i.e. it is a non-array [StringField] carrying `@dbColumnType=uuid` (R6 Plan 2b). Mirrors
+     * [exposedColumnSpec]'s StringField/`DB_COLUMN_TYPE_UUID` branch exactly (array wins over
+     * `@dbColumnType`, same as that branch). [KotlinExposedTableGenerator] uses this to decide
+     * whether a package needs the support file (one `uuidString(...)` extension declaration
+     * shared across its tables).
+     */
+    fun usesUuidStringHelper(field: MetaField<*>): Boolean =
+        field is StringField && !isArrayResolved(field) && dbColumnType(field) == DB_COLUMN_TYPE_UUID
 
     /**
      * Best-effort read of a named boolean attribute on [field], resolved THROUGH the `extends`
