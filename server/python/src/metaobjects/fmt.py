@@ -74,8 +74,12 @@ def format_file(content: str, registry: TypeRegistry, source_id: str) -> FormatF
     the tree, returns the canonical serialization of the resulting file root.
     Never raises for a malformed file; that comes back as ``ok=False``.
     """
+    # Strip a UTF-8 BOM before parsing — json.loads rejects one outright
+    # ("Unexpected UTF-8 BOM (decode using utf-8-sig)"), and Java-authored
+    # files often carry one.
+    normalized = content[1:] if content.startswith("﻿") else content
     try:
-        doc = json.loads(content)
+        doc = json.loads(normalized)
     except json.JSONDecodeError as exc:
         return FormatFileResult(ok=False, message=f"invalid JSON: {exc}")
 
