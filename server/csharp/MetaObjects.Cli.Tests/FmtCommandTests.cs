@@ -107,6 +107,46 @@ public sealed class FmtCommandTests : IDisposable
     }
 
     [Fact]
+    public void FormatFile_reports_overlay_even_when_a_local_base_exists_never_merges()
+    {
+        // A plain Widget AND a same-(type,name) overlay:true redeclaration, both in
+        // this one file. Parser.ParseJson's ordinary find-or-reuse WOULD merge these
+        // (the base exists locally), dropping the overlay marker. fmt must never do
+        // that — a formatter never changes structure — so this is overlay:true, not
+        // a merged success.
+        const string doc = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Widget", "children": [
+            { "field.string": { "name": "sku" } }
+          ]}},
+          { "object.entity": { "name": "Widget", "overlay": true, "children": [
+            { "field.string": { "name": "notes" } }
+          ]}}
+        ]}}
+        """;
+        var result = FmtCommand.FormatFile(doc, DefaultRegistry(), "meta.widget.json");
+        Assert.False(result.Ok);
+        Assert.True(result.Overlay);
+    }
+
+    [Fact]
+    public void FormatFile_strips_bom_and_normalizes_crlf()
+    {
+        const string body =
+            "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [\n"
+            + "  { \"object.entity\": { \"name\": \"Gadget\", \"children\": [] } }\n"
+            + "]}}";
+        string withBom = "﻿" + body.Replace("\n", "\r\n");
+        var result = FmtCommand.FormatFile(withBom, DefaultRegistry(), "meta.gadget.json");
+        Assert.True(result.Ok);
+        // char-exact: string.StartsWith(string) with the default culture-aware
+        // comparer treats U+FEFF as collation-ignorable and can return true for
+        // ANY string, BOM or not — the ordinal char check is the real assertion.
+        Assert.NotEqual('﻿', result.Text![0]);
+        Assert.DoesNotContain("\r\n", result.Text);
+    }
+
+    [Fact]
     public void FormatFile_reports_a_mixed_file_as_overlay_whole()
     {
         const string doc = """

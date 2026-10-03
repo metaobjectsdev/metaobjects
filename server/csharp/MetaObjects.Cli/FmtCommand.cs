@@ -8,15 +8,23 @@
 //   - Each file is formatted STANDALONE — own-mode, declared-here layer only
 //     (ADR-0039). Never merged with its siblings: an `extends` onto another
 //     file's base is preserved as the raw ref string (super resolution is
-//     deferred and never run here), and an `overlay: true` declaration with
-//     no base in the SAME file surfaces as ERR_OVERLAY_NO_TARGET — reported
-//     as a skip rather than guessed at.
+//     deferred and never run here).
+//   - A file declaring `overlay: true` ANYWHERE in its tree is skipped —
+//     not only when no base exists in the same file. A formatter never
+//     changes structure: the ordinary parser's find-or-reuse behavior would
+//     happily merge a plain declaration with a same-(type,name) `overlay:
+//     true` redeclaration IN THE SAME FILE (a local base exists), silently
+//     dropping the overlay marker from the output. `HasOverlayDeclaration`
+//     below checks the raw document BEFORE `Parser.ParseJson` ever runs, so
+//     that case is caught too, not only the no-local-target one
+//     `ERR_OVERLAY_NO_TARGET` reports (kept as a defensive second signal).
 //   - YAML is always skipped: no canonical YAML emitter exists (ADR-0006).
 //   - Before writing, the WHOLE project is reloaded with the candidate
 //     substituted in (an InMemoryStringSource carrying the real file's id)
 //     and the write is refused unless that reload has no errors AND its
 //     canonical serialization is byte-identical to the untouched baseline.
 
+using System.Text.Json;
 using MetaObjects.Config;
 using MetaObjects.Loader;
 using MetaObjects.Library;
@@ -44,6 +52,12 @@ public static class FmtCommand
     /// </summary>
     public static FormatFileResult FormatFile(string content, TypeRegistry registry, string sourceId, bool strict = false)
     {
+        if (HasOverlayDeclaration(content))
+        {
+            return new FormatFileResult(false, true, null,
+                "this file declares an overlay fmt cannot resolve standalone");
+        }
+
         ParseResult result;
         try
         {
@@ -68,6 +82,65 @@ public static class FmtCommand
         }
 
         return new FormatFileResult(true, false, SerializerJson.CanonicalSerialize(result.Root), null);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="content"/>'s canonical-JSON shape declares an
+    /// <c>overlay: true</c> node anywhere in its tree — the top-level
+    /// declaration itself, or any descendant reached by walking <c>children</c>
+    /// arrays. A purely STRUCTURAL check (independent of the registry), run
+    /// before <see cref="Parser.ParseJson"/> so a same-file base+overlay merge
+    /// never happens in the first place — see the module header. Malformed or
+    /// non-JSON content answers <c>false</c>; <see cref="FormatFile"/>'s own
+    /// parse reports that failure properly.
+    /// </summary>
+    internal static bool HasOverlayDeclaration(string content)
+    {
+        // Mirrors Parser.ParseJson's own BOM-stripping front-end — JsonDocument.Parse
+        // does not tolerate a leading UTF-8 BOM character either.
+        string normalized = content.Length > 0 && content[0] == '﻿' ? content[1..] : content;
+        JsonDocument doc;
+        try
+        {
+            doc = JsonDocument.Parse(normalized);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+        using (doc)
+        {
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return false;
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                if (prop.Name == "$schema") continue;
+                if (prop.Value.ValueKind != JsonValueKind.Object) continue;
+                return BodyHasOverlay(prop.Value);
+            }
+            return false;
+        }
+    }
+
+    private static bool BodyHasOverlay(JsonElement body)
+    {
+        if (!body.TryGetProperty("children", out var children) || children.ValueKind != JsonValueKind.Array)
+            return false;
+        foreach (var child in children.EnumerateArray())
+        {
+            if (child.ValueKind != JsonValueKind.Object) continue;
+            foreach (var childProp in child.EnumerateObject())
+            {
+                var childBody = childProp.Value;
+                if (childBody.ValueKind != JsonValueKind.Object) continue;
+                if (childBody.TryGetProperty("overlay", out var overlayVal)
+                    && overlayVal.ValueKind == JsonValueKind.True)
+                {
+                    return true;
+                }
+                if (BodyHasOverlay(childBody)) return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>
