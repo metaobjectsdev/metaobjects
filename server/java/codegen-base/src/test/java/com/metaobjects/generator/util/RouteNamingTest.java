@@ -3,13 +3,20 @@ package com.metaobjects.generator.util;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.metaobjects.generator.GeneratorException;
+import com.metaobjects.object.EntityMetaObject;
+import com.metaobjects.object.MetaObject;
+import com.metaobjects.object.ValueMetaObject;
 import org.junit.Test;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 /**
  * THE collection-URL spelling, for both JVM generators at once.
@@ -140,6 +147,61 @@ public class RouteNamingTest {
             assertEquals(
                 "pluralize(" + name + ")",
                 expected.toLowerCase(), RouteNaming.pluralize(name.toLowerCase()));
+        }
+    }
+
+    // ---- assertNoCollectionNameCollisions ---------------------------------
+
+    private static MetaObject entity(String name) {
+        return new EntityMetaObject(name);
+    }
+
+    private static MetaObject value(String name) {
+        return new ValueMetaObject(name);
+    }
+
+    @Test
+    public void assertNoCollectionNameCollisionsDoesNotThrowForDistinctSegments() {
+        RouteNaming.assertNoCollectionNameCollisions(List.of(entity("Post"), entity("Author"), entity("Category")));
+    }
+
+    @Test
+    public void assertNoCollectionNameCollisionsThrowsForAddressAndAddresses() {
+        GeneratorException ex = assertThrows(GeneratorException.class,
+            () -> RouteNaming.assertNoCollectionNameCollisions(List.of(entity("Address"), entity("Addresses"))));
+        assertTrue(ex.getMessage().contains("Address"));
+        assertTrue(ex.getMessage().contains("Addresses"));
+    }
+
+    @Test
+    public void assertNoCollectionNameCollisionsThrowsForOrderAndOrders() {
+        assertThrows(GeneratorException.class,
+            () -> RouteNaming.assertNoCollectionNameCollisions(List.of(entity("Order"), entity("Orders"))));
+    }
+
+    @Test
+    public void assertNoCollectionNameCollisionsExcludesValueObjects() {
+        // "Address" (entity) resolves to /addresses; an unrelated object.value named
+        // "Addresses" never gets a route, so it must not trip this.
+        RouteNaming.assertNoCollectionNameCollisions(List.of(entity("Address"), value("Addresses")));
+    }
+
+    /**
+     * fixtures/naming-conformance/ — the shared collisionCases half, run here too (the
+     * API-surface-plurals half is {@link #namingConformanceApiPluralsMatch}).
+     */
+    @Test
+    public void namingConformanceCollisionCasesAreRefused() throws IOException {
+        Path repoRoot = Path.of(System.getProperty("user.dir")).resolve("../../..").normalize();
+        Path fixture = repoRoot.resolve("fixtures/naming-conformance/already-plural-pluralize.json");
+        JsonObject root = JsonParser.parseString(Files.readString(fixture)).getAsJsonObject();
+        JsonArray cases = root.getAsJsonArray("collisionCases");
+        for (int i = 0; i < cases.size(); i++) {
+            JsonObject c = cases.get(i).getAsJsonObject();
+            String a = c.get("entityA").getAsString();
+            String b = c.get("entityB").getAsString();
+            assertThrows("(" + a + ", " + b + ")", GeneratorException.class,
+                () -> RouteNaming.assertNoCollectionNameCollisions(List.of(entity(a), entity(b))));
         }
     }
 }

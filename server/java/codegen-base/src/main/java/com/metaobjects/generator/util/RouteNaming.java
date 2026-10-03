@@ -1,6 +1,12 @@
 package com.metaobjects.generator.util;
 
 import com.metaobjects.database.ColumnNaming;
+import com.metaobjects.generator.GeneratorException;
+import com.metaobjects.object.MetaObject;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * THE REST collection-URL segment rule, shared by every JVM generator.
@@ -118,5 +124,49 @@ public final class RouteNaming {
         if (word == null || word.isEmpty()) return word;
         if (isAlreadyPlural(word)) return word;
         return pluralizeLegacySuffixOnly(word);
+    }
+
+    /**
+     * Refuse a generation run in which two DISTINCT entities/projections resolve to the
+     * same REST collection segment ({@link #collectionSegment}) — e.g. {@code Address}
+     * and {@code Addresses} both landing on {@code /addresses}. Reachable from stock
+     * metadata now that {@link #pluralize} no longer doubles an already-plural word:
+     * before that fix {@code Addresses} legacy-pluralized to {@code addresseses}, so the
+     * pair never collided.
+     *
+     * <p>Called ONCE, over the full entity set, before any generator runs
+     * ({@code MetaDataGeneratorMojo#executeGenerators}) — the single choke point shared
+     * by every JVM generator (Java's {@code codegen-spring} AND Kotlin's
+     * {@code codegen-kotlin}, both invoked through the same {@code metaobjects:generate}
+     * Maven goal). Scoped to every object EXCEPT {@code object.value} ({@link
+     * MetaObject#SUBTYPE_VALUE}) — a value object never gets a route, so it cannot
+     * collide on one.</p>
+     *
+     * <p>A PURE function of the entity set, never of traversal order: the reported pair
+     * is deterministic (first-seen-by-input-order "owner" of a collection segment;
+     * thrown as soon as a second, different entity claims the same one). No formal
+     * {@code ErrorCode} ledger entry — this port's own precedent for a codegen-time (not
+     * loader-time) error is a plain {@link GeneratorException} with a descriptive
+     * message (see {@code GeneratedFileWriter#claim}'s output-path-collision check),
+     * not a registered enum constant.</p>
+     */
+    public static void assertNoCollectionNameCollisions(List<MetaObject> entities) {
+        Map<String, MetaObject> ownerOfSegment = new HashMap<>();
+        for (MetaObject obj : entities) {
+            if (MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) continue;
+            String segment = collectionSegment(obj.getShortName());
+            MetaObject existing = ownerOfSegment.get(segment);
+            if (existing != null) {
+                if (existing != obj) {
+                    throw new GeneratorException(
+                        "\"" + existing.getName() + "\" and \"" + obj.getName() + "\" both resolve to the " +
+                        "REST collection segment \"" + segment + "\" — rename one entity so its collection " +
+                        "segment is distinct. Default PHYSICAL table names are unaffected by this rule and " +
+                        "are not involved in the collision.");
+                }
+            } else {
+                ownerOfSegment.put(segment, obj);
+            }
+        }
     }
 }
