@@ -52,7 +52,7 @@ changes behaviour unless you use the new surface. `metamodelVersion` stays `1.0`
   other half of #364, is new vocabulary and is not in this release.
 - **Kotlin codegen can emit Exposed 1.x** (#390). A new generator arg, `exposedApi` (`0`, the
   default, or `1`), is honoured by every Kotlin generator that emits Exposed code. `0` output is
-  byte-identical to 1.0.11. `1` emits the Exposed 1.x API: the `org.jetbrains.exposed.v1.*`
+  unchanged from 1.0.11 apart from the import fix under Fixed. `1` emits the Exposed 1.x API: the `org.jetbrains.exposed.v1.*`
   packages, `javaUUID` for `java.util.UUID` columns (never `uuid()`, which would silently change
   the Kotlin type), top-level filter operators in place of `SqlExpressionBuilder`, `RowApi`-based
   custom column types, and `limit(n).offset(m)`. This unblocks upgrading to Exposed 1.3.0+, the
