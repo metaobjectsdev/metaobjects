@@ -667,7 +667,7 @@ describe("validateReporting — reports", () => {
     const msg = await single(m, "ERR_INVALID_REPORT");
     expect(msg).toBe(
       "report 'acme::shop::StoreTotals': source.rdb is writable; a report is read-only, so its source must " +
-        "declare @kind: view.",
+        "declare a read-only @kind (view, materializedView, storedProc or tableFunction).",
     );
   });
 
@@ -687,6 +687,22 @@ describe("validateReporting — reports", () => {
     });
     const msg = await single(m, "ERR_INVALID_REPORT");
     expect(msg).toContain("'purchasedAtDay'");
+  });
+
+  test("R6: an attribute dimension and a measure with the same name are refused", async () => {
+    // An attribute dimension derives its bare name (no grain suffix), so dimension
+    // `revenue` and measure `revenue` would both become report field `revenue`.
+    const m = edit((x) => {
+      setChild(x, "Purchase", "revenue", {
+        "dimension.attribute": { name: "revenue", "@of": "Purchase.status" },
+      });
+      patchObject(x, "StoreTotals", { "@dimensions": ["revenue"] });
+    });
+    const msg = await single(m, "ERR_INVALID_REPORT");
+    expect(msg).toBe(
+      "report 'acme::shop::StoreTotals': dimension item 'revenue' and measure 'revenue' both derive report " +
+        "field 'revenue'. Report field names must be unique; rename the measure or drop one item.",
+    );
   });
 
   test("R6: a measure listed twice is refused", async () => {

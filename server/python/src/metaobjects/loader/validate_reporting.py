@@ -718,7 +718,7 @@ def _check_report(root: MetaData, report: MetaData, sink: _ErrorSink) -> None:
         if isinstance(source, MetaSource) and source.is_writable():
             err(
                 f": {_child_label(source)} is writable; a report is read-only, so its source must "
-                f"declare @kind: view.",
+                f"declare a read-only @kind (view, materializedView, storedProc or tableFunction).",
                 source,
             )
 

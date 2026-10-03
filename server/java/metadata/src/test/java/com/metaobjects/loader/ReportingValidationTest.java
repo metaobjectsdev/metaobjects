@@ -182,7 +182,7 @@ public class ReportingValidationTest extends SharedRegistryTestBase {
         expect.put("error-report-segment-unresolved", new String[]{"ERR_INVALID_REPORT",
                 "report 'acme::shop::StoreTotals': @segment 'completions' names no segment of @from 'acme::shop::Purchase'."});
         expect.put("error-report-writable-source", new String[]{"ERR_INVALID_REPORT",
-                "report 'acme::shop::StoreTotals': source.rdb is writable; a report is read-only, so its source must declare @kind: view."});
+                "report 'acme::shop::StoreTotals': source.rdb is writable; a report is read-only, so its source must declare a read-only @kind (view, materializedView, storedProc or tableFunction)."});
         expect.put("error-segment-filter-bad-field", new String[]{"ERR_BAD_ATTR_FILTER",
                 "segment 'active' on entity 'acme::shop::Purchase': @filter names 'state', which is not a field of 'acme::shop::Purchase'."});
 
@@ -250,6 +250,21 @@ public class ReportingValidationTest extends SharedRegistryTestBase {
         List<MetaDataException> got = ValidationPhase.validateReporting(loadJson(doc));
         assertEquals(List.of("ERR_INVALID_REPORT"), codes(got));
         assertEquals("report 'acme::shop::StoreTotals': @measures lists 'purchases' more than once.",
+                got.get(0).getMessage());
+    }
+
+    @Test
+    public void attributeDimensionAndMeasureWithOneNameCollide() throws IOException {
+        // An attribute dimension derives its bare name, so dimension `revenue` and measure
+        // `revenue` would both become report field `revenue` (R6).
+        JsonObject doc = cleanModel();
+        rootNode(doc, "object.entity", "Purchase").getAsJsonArray("children")
+                .add(json("{\"dimension.attribute\":{\"name\":\"revenue\",\"@of\":\"Purchase.status\"}}"));
+        rootNode(doc, "object.report", "StoreTotals").add("@dimensions", JsonParser.parseString("[\"revenue\"]"));
+        List<MetaDataException> got = ValidationPhase.validateReporting(loadJson(doc));
+        assertEquals(List.of("ERR_INVALID_REPORT"), codes(got));
+        assertEquals("report 'acme::shop::StoreTotals': dimension item 'revenue' and measure 'revenue' both derive "
+                + "report field 'revenue'. Report field names must be unique; rename the measure or drop one item.",
                 got.get(0).getMessage());
     }
 

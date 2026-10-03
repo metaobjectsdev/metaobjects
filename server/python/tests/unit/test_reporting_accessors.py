@@ -354,3 +354,45 @@ def test_broken_base_member_is_reported_once() -> None:
             "on 'acme::shop::BaseEvent'.",
         )
     ]
+
+
+def test_writable_report_source_names_every_read_only_kind() -> None:
+    doc = copy.deepcopy(_fixture_doc("reporting-vocabulary"))
+    _body(doc, "StoreTotals")["children"] = [{"source.rdb": {"@table": "store_totals"}}]
+    assert _errors(doc) == [
+        (
+            ErrorCode.ERR_INVALID_REPORT,
+            "report 'acme::shop::StoreTotals': source.rdb is writable; a report is read-only, so its source must "
+            "declare a read-only @kind (view, materializedView, storedProc or tableFunction).",
+        )
+    ]
+
+
+def test_attribute_dimension_and_measure_with_one_name_collide() -> None:
+    # An attribute dimension derives its bare name, so dimension `revenue` and
+    # measure `revenue` would both become report field `revenue` (R6).
+    doc = copy.deepcopy(_fixture_doc("reporting-vocabulary"))
+    _body(doc, "Purchase")["children"].append(
+        {"dimension.attribute": {"name": "revenue", "@of": "Purchase.status"}}
+    )
+    _body(doc, "StoreTotals")["@dimensions"] = ["revenue"]
+    assert _errors(doc) == [
+        (
+            ErrorCode.ERR_INVALID_REPORT,
+            "report 'acme::shop::StoreTotals': dimension item 'revenue' and measure 'revenue' both derive report "
+            "field 'revenue'. Report field names must be unique; rename the measure or drop one item.",
+        )
+    ]
+
+
+def test_two_unresolved_dimension_items_are_two_errors() -> None:
+    doc = copy.deepcopy(_fixture_doc("reporting-vocabulary"))
+    _body(doc, "DailyRevenue")["@dimensions"] = ["region", "channel"]
+    assert _errors(doc) == [
+        (
+            ErrorCode.ERR_INVALID_REPORT,
+            f"report 'acme::shop::DailyRevenue': @dimensions item '{item}' names no dimension of @from "
+            "'acme::shop::Purchase'.",
+        )
+        for item in ("region", "channel")
+    ]

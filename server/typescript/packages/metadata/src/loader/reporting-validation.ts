@@ -665,7 +665,7 @@ function checkReport(root: MetaData, report: MetaData, sink: ErrorSink): void {
     if (isWritableSource(source)) {
       err(
         `: ${childLabel(source)} is writable; a report is read-only, so its source must ` +
-          `declare @kind: view.`,
+          `declare a read-only @kind (view, materializedView, storedProc or tableFunction).`,
         source,
       );
     }

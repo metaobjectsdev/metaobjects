@@ -255,4 +255,29 @@ public class ReportingValidationTests
             "report 'acme::shop::StoreTotals': @measures lists 'purchases' more than once.",
             Single(Load(m), ErrorCode.ERR_INVALID_REPORT));
     }
+
+    [Fact]
+    public void R5_a_writable_source_names_every_read_only_kind()
+    {
+        var m = Positive();
+        ObjectBody(m, "StoreTotals")["children"] = JsonNode.Parse("""[{ "source.rdb": { "@table": "store_totals" } }]""");
+        Assert.Equal(
+            "report 'acme::shop::StoreTotals': source.rdb is writable; a report is read-only, so its source must " +
+            "declare a read-only @kind (view, materializedView, storedProc or tableFunction).",
+            Single(Load(m), ErrorCode.ERR_INVALID_REPORT));
+    }
+
+    [Fact]
+    public void R6_an_attribute_dimension_and_a_measure_with_the_same_name_collide()
+    {
+        // An attribute dimension derives its bare name, so dimension `revenue` and measure
+        // `revenue` would both become report field `revenue`.
+        var m = Positive();
+        ChildrenOf(m, "Purchase").Add(Wrap("dimension.attribute", """{ "name": "revenue", "@of": "Purchase.status" }"""));
+        ObjectBody(m, "StoreTotals")["@dimensions"] = JsonNode.Parse("""["revenue"]""");
+        Assert.Equal(
+            "report 'acme::shop::StoreTotals': dimension item 'revenue' and measure 'revenue' both derive report " +
+            "field 'revenue'. Report field names must be unique; rename the measure or drop one item.",
+            Single(Load(m), ErrorCode.ERR_INVALID_REPORT));
+    }
 }

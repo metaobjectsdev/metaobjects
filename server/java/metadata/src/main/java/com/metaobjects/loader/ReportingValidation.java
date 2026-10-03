@@ -713,7 +713,7 @@ final class ReportingValidation {
             if (child instanceof MetaSource && ((MetaSource) child).isWritable()) {
                 sink.push(child, ErrorCode.ERR_INVALID_REPORT, label,
                         ": " + childLabel(child) + " is writable; a report is read-only, so its source must "
-                                + "declare @kind: view.");
+                                + "declare a read-only @kind (view, materializedView, storedProc or tableFunction).");
             }
         }
 

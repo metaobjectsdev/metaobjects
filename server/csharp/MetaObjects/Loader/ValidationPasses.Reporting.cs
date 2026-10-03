@@ -654,7 +654,7 @@ public static partial class ValidationPasses
             if (source is MetaSource ms && ms.IsWritable())
             {
                 Err($": {ReportingChildLabel(source)} is writable; a report is read-only, so its source must " +
-                    "declare @kind: view.", source);
+                    "declare a read-only @kind (view, materializedView, storedProc or tableFunction).", source);
             }
         }
 
