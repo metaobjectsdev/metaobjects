@@ -22,7 +22,7 @@ The first four ship per-language today across the five ports (TS / C# / Java / P
 
 ## Status
 
-_Last refreshed 2026-10-02._
+_Last refreshed 2026-10-03._
 
 **1.0 gating — the quiet period is RETIRED (2026-09-06).** `docs/1.0-readiness.md` §G3 no
 longer asks for "one coordinated release with no metamodel-breaking change." It measured a
@@ -39,9 +39,9 @@ because a conformance corpus gates the ports against each other and never agains
 in ADR-0035 **Amendment 3**. Do not reintroduce a waiting gate in any form.
 
 
-**Where the versions are.** `latest` is **`1.0.12`** on npm, **`8.0.12`** on Maven Central,
-**`1.0.12`** on PyPI and **`1.0.12`** on NuGet (the Maven major is always **npm major + 7**, so
-1.0.12 is 8.0.12). All four moved at 1.0.12, 1.0.11, 1.0.10 and 1.0.9 (Maven skipped 8.0.8); Maven sat out 1.0.8 (no JVM
+**Where the versions are.** `latest` is **`1.0.13`** on npm, **`8.0.13`** on Maven Central,
+**`1.0.13`** on PyPI and **`1.0.13`** on NuGet (the Maven major is always **npm major + 7**, so
+1.0.13 is 8.0.13). All four moved at 1.0.13, 1.0.12, 1.0.11, 1.0.10 and 1.0.9 (Maven skipped 8.0.8); Maven sat out 1.0.8 (no JVM
 product change), and earlier Maven alone took 1.0.6 (8.0.6) while the other three skipped that
 number. Both are the convergent-publishing rule working as intended. **1.0 is CUT**: the `1.0.0-rc.5` through `rc.8` candidates, 1.0.4's `rc.1`,
 1.0.5's `rc.1` through `rc.11`, 1.0.7's and 1.0.8's `rc.1`, and 1.0.9's `rc.1` through `rc.6` are
@@ -83,7 +83,7 @@ PyPI has had no product change since `0.25.0` — nothing is broken.
 
 **Key cross-language features shipped:** FR5 family (a/b/c/d/e + WARN envelope-shape — actionable loader errors per ADR-0009); FR-003 (Java RDB runtime persistence + projections; schema migrations are TS-only — the Java migration engine was removed); FR-006 (template.output parser-on-receipt codegen per ADR-0010 in all 5 ports); FR-008 + FR-009 (cross-port REST API contract + the nine filter operators); FR-018 (M:N relationship codegen in all 5 ports — entity navigation + idiomatic ORM wiring [Drizzle m2m / EF Core `UsingEntity` / Spring repo+JPA / Exposed / Pydantic+route as the SQLAlchemy-secondary equivalent] + REST traversal `GET /<source-plural>/{id}/<relation>` + Tier-2 docs, gated by the shared api-contract m2m corpus in both lanes + persistence-conformance; the TanStack M:N client hook is a deferred client-ergonomics follow-up); SP-H (field-subtype end-to-end hardening: every concrete `field.*` subtype write+read round-trips cross-port via the persistence `op: roundtrip` gate; cut `field.byte`/`field.short`/`field.class` non-functional stubs; cross-port filter-op reconciliation for uuid/currency); source v2 paradigm (ADR-0007); metadata-ktx Kotlin facade; per-target output directories (TS codegen).
 
-**Latest release: 1.0.12** (2026-10-02) — npm `1.0.12`, PyPI `1.0.12`, NuGet `1.0.12`, Maven Central `8.0.12`. A PATCH by the maintainer's decision, though its four additions are MINOR-class surface (noted in the CHANGELOG): `fmt` in every CLI with a shared `fmt-conformance` corpus, a `meta verify` advisory for references to deprecated nodes, a document-level `onLocate` extract hook in all five ports, and an opt-in Exposed 1.x output mode for Kotlin codegen. Gated by a private `1.0.12-rc.2` build on the adopter estate (`rc-gate.sh` 7/7) and a full `--strict-toolchains` local CI run. The previous release, 1.0.11 (2026-10-01), fixed nine adopter-found defects (forms with a blank optional date, D1 DELETE 204, out-of-root regeneration, Python `verify --codegen`, TanStack `.meta` imports, FK-index advisory names) and added a 1.0.x upgrade guide.
+**Latest release: 1.0.13** (2026-10-03) — npm `1.0.13`, PyPI `1.0.13`, NuGet `1.0.13`, Maven Central `8.0.13`. A PATCH: an already-plural entity name (`Stats`, `Settings`) no longer doubles in API-surface names (REST paths, hooks, finders, DbSets) in any port, while default physical table names stay frozen on the old rule; two entities that would share one API name are now a generation error; two Kotlin controller compile fixes (`field.inet` filter ops, `@dbColumnType: uuid` on a string field). Gated by a private `1.0.13-rc.1` build on the adopter estate (`rc-gate.sh` 7/7) and a full `--strict-toolchains` local CI run. The previous release, 1.0.12 (2026-10-02), added `fmt` in every CLI, a deprecated-reference `verify` advisory, the `onLocate` extract hook, and an Exposed 1.x Kotlin output mode.
 
 Active and planned work lives in GitHub: issues labelled `FR`, milestones for releases, and the MetaObjects Roadmap project board. `spec/roadmap.md` keeps the release direction and the FR → issue → spec index. Process: `docs/ROADMAP-PROCESS.md`.
 
