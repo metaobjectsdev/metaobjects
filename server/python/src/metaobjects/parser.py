@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import cast
 
 from .errors import ErrorCode, MetaError
-from .meta.core.attr.attr_constants import ATTR_SUBTYPE_STRINGARRAY
+from .meta.core.attr.attr_constants import ATTR_SUBTYPE_PROPERTIES, ATTR_SUBTYPE_STRINGARRAY
 from .meta.meta_data import MetaData
 from .meta.meta_root import MetaRoot
 from .naming_refs import REF_BEARING_ATTR_NAMES, is_relative_ref
@@ -460,6 +460,12 @@ def _build(
                 if schema is not None and schema.is_array
                 else (schema.value_type if schema else None)
             )
+            # An UNDECLARED attr whose value is a JSON object is the registered
+            # `attr.properties` bag, exactly as the explicit
+            # `{"attr.properties": {...}}` child form loads it — so strict-attr
+            # exempts it. Mirrors TS parser-core inferUndeclaredAttrSubType.
+            if schema is None and isinstance(value, dict):
+                attr_sub_type = ATTR_SUBTYPE_PROPERTIES
             node.set_attr(attr_name, value, sub_type=attr_sub_type)
             # FR5a / ADR-0009 — stamp the just-constructed MetaAttribute node with
             # its origin envelope. Mirrors C# Parser.cs:1039 (attrModel.SetSource).

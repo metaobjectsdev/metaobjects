@@ -64,6 +64,14 @@ it until 1.1 ships._
 
 ### Fixed
 
+- **Python, C#, Java: an inline object-valued attribute now loads as an `attr.properties` bag.**
+  `"@store": { "collection": "orders" }` on a node that declares no `@store` is the registered
+  property bag, the same thing the explicit `{ "attr.properties": { "name": ..., "value": {...} } }`
+  child produces. TypeScript always loaded it that way. Python loaded it as `attr.base` and
+  failed a strict load with `ERR_UNKNOWN_ATTR`; C# rejected the value with `ERR_BAD_ATTR_VALUE`;
+  Java (and so Kotlin) loaded it but stored the bag as a JSON-text string. All four loaders now
+  agree, gated by the `attr-properties-inline` conformance fixture. Nothing that loaded before
+  stops loading.
 - **Java OMDB reads a projection whose view is named by `@view`.** The read mapping took the
   view name from `@table` only, so a projection declared with the kind-matching `@view` alias
   had no read mapping. It now resolves the source's physical name (`@view`, then the legacy

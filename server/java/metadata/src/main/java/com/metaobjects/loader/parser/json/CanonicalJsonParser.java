@@ -1432,6 +1432,20 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             // This lets the base parser's existing [...]  → comma-delimited → isArray=true
             // path fire correctly, without any hardcoded attribute names.
             JsonElement rawValue = entry.getValue();
+            // An UNDECLARED @-attr whose value is a JSON object is the registered
+            // attr.properties bag — materialize it as that subtype, exactly as the
+            // explicit {"attr.properties": {...}} child form does. The base parser's
+            // value-shape inference knows only scalars and arrays and would store the
+            // bag as a JSON-text STRING attr. Mirrors TS inferUndeclaredAttrSubType.
+            if (isExemptPropertiesAttr(rawValue) && !isDeclaredAttribute(md, attrName)) {
+                MetaAttribute<?> bag = (MetaAttribute<?>) getTypeRegistry().createInstance(
+                    MetaAttribute.TYPE_ATTR,
+                    com.metaobjects.attr.PropertiesAttribute.SUBTYPE_PROPERTIES, attrName);
+                md.addChild(bag);
+                bag.setValueAsString(jsonElementToString(rawValue));
+                tagAttrChildWithJsonSource(md, attrName);
+                continue;
+            }
             // Cross-port: object-valued attrs (e.g. attr.filter) MUST be authored as
             // a JSON object. The legacy form `@filter: "..."` (string-quoted JSON) is
             // rejected here so the loader surfaces ERR_BAD_ATTR_VALUE before the
