@@ -6,7 +6,7 @@ entity it reads from.
 
 ## What this gates
 
-Plan 2 lowers a view-backed report to a SQL view and every port reads it. This
+A view-backed report is lowered to a SQL view and every port reads it. This
 sub-corpus gates the next step: that every port's **generator emits a read route for
 it**, with the same filter, sort and paging surface as any other list route, and
 nothing else. A report is a derived read model: it has no identity, so it has no item
@@ -110,12 +110,11 @@ hand-rolled reference server would answer every scenario by construction.
 
 | Port | Generated lane | Note |
 |---|---|---|
-| TypeScript | wired | `test/api-contract-report.test.ts` (12 scenarios + a seed-vs-view check) |
-| C# | not yet wired | `Api/ApiContractReportConformanceTest.cs` |
-| Java | not yet wired | `api/ReportGeneratedApiContractConformanceTest.java` |
-| Kotlin | not yet wired | `api/report/ReportGeneratedApiContractConformanceTest.kt` |
-| Python | not yet wired | `tests/integration/test_api_contract_report.py` |
+| TypeScript | wired | `server/typescript/packages/integration-tests/test/api-contract-report.test.ts` (12 scenarios + a seed-vs-view check). Full stack: generated Fastify routes over the real views on Testcontainers Postgres |
+| C# | wired | `server/csharp/MetaObjects.IntegrationTests/Api/ApiContractReportConformanceTest.cs`. Full stack: generated routes and EF Core over `schema.postgres.sql` on Testcontainers Postgres |
+| Java | wired | `server/java/integration-tests/src/test/java/com/metaobjects/integration/api/ReportGeneratedApiContractConformanceTest.java` (12 scenarios + a scenario-count check). Generated controllers behind an in-memory repository seeded from `reports` |
+| Kotlin | wired | `server/java/integration-tests-kotlin/src/test/kotlin/com/metaobjects/integration/kotlin/api/report/ReportGeneratedApiContractConformanceTest.kt` (12 scenarios, the count check, and a check that the sourceless report generated nothing). Generated controllers over the generated Exposed table objects, seeded from `reports` |
+| Python | wired | `server/python/tests/integration/test_api_contract_report.py` (12 scenarios, a check that exactly the served reports are generated, and `/api/invoice_days` is `404`). Generated routers behind in-memory repositories seeded from `reports` |
 
-The corpus lands ahead of the ports on purpose: it is the contract they are changed to
-satisfy. The scenarios use only assertion keys every runner already has (`equals`,
+The scenarios use only assertion keys every runner already has (`equals`,
 `length`, `envelope`, `error` with `field`, and a status with no `body`).

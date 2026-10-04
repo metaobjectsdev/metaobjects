@@ -356,13 +356,18 @@ class AuthorService(private val db: Database) {
 
 ### Reports
 
-For an `object.report` that declares a read-only `source.rdb` of `@kind: view`,
-`KotlinExposedTableGenerator` writes one read-only Exposed table object, `<Report>Table`, bound
-to that view, with one column per derived field (dimensions, then measures). That is all Kotlin
-generates for a report: no row class, no `<Report>Names`, and nothing from any other generator.
-A report with no view source generates nothing. See [reporting](../features/reporting.md) for
-the vocabulary and the columns a report gets. An excerpt, under the default snake_case column
-naming:
+For a concrete `object.report` that declares a read-only `source.rdb` of `@kind: view`, four
+generators write one file each. `KotlinExposedTableGenerator` writes a read-only Exposed table
+object, `<Report>Table`, bound to that view, with one column per derived field (dimensions,
+then measures). `KotlinEntityGenerator` writes `<Report>`, an immutable data class with one
+property per derived field and no validation annotations. `KotlinFilterAllowlistGenerator`
+writes `<Report>FilterAllowlist`, and `KotlinSpringControllerGenerator` writes
+`<Report>Controller`: one `@GetMapping` list handler, a `@PostMapping` answering 405, and no
+`/{id}` mapping. Every derived field with filter operators is filterable and sortable. No
+`<Report>Names` is written, and nothing from any other generator. A report with no view source
+generates nothing. See [reporting](../features/reporting.md) for the vocabulary, the columns a
+report gets and the REST contract. An excerpt of the table, under the default snake_case
+column naming:
 
 ```kotlin
 object ProgramMinutesTable : Table("v_program_minutes") {

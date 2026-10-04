@@ -300,6 +300,28 @@ If you prefer un-extensioned imports (some legacy bundler setups), set
 `extStyle: "none"` in `metaobjects.config.ts` and use `"moduleResolution":
 "bundler"`.
 
+### Reports
+
+A concrete `object.report` whose read source is a `source.rdb` of `@kind: view` is served
+like a keyless read-only projection. For a report `<R>` the generators you have wired write:
+
+| Generator | File | Holds |
+|---|---|---|
+| `entityFile()` | `<R>.ts` | Drizzle view binding, Zod read schema, row type, descriptor, filter and sort allowlists |
+| `queriesFile()` | `<R>.queries.ts` | `list<Plural>` only. No by-id query |
+| `routesFile()` / `routesFileHono()` | `<R>.routes.ts` / `<R>.routes.hono.ts` | GET list; `POST` answers 405; no `/:id` route |
+| `namesFile()` | `<R>.names.ts` | the view and column names |
+| `barrel()` | `index.ts` | one export |
+
+Every derived field with filter operators is filterable and sortable. A decimal column (an
+`avg`, a ratio) is a `string` in the read schema and on the wire. The UI tier writes nothing
+for a report (no hooks, grid, grid hook or form) and `agent/ui.md` lists none: those
+generators gate on `servesClientTier`, which is false for a report, while `servesReadApi` is
+true. If you own an ejected hook generator that gates on `servesReadApi`, switch it to
+`servesClientTier`, or it emits a list hook for every served report. A report with no view
+source, or an abstract one, generates nothing. The contract is in
+[reporting](../features/reporting.md#how-a-report-is-served).
+
 ### `<Entity>Names` — the physical names, as constants
 
 `meta init` scaffolds a `names` generator, so a new project gets `<Entity>.names.ts`

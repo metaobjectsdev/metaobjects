@@ -109,8 +109,12 @@ The codegen emits:
 - `Author.g.cs` — class per entity (a mutable attributed POCO, not a record).
 - `<Report>.g.cs` — keyless row class per **view-backed report** (`object.report` with a
   read-only `@kind: view` source); mapped in `AppDbContext` with `DbSet` +
-  `HasNoKey().ToView(...)`. No routes or filter allowlist for a report. See
-  [reporting](../features/reporting.md).
+  `HasNoKey().ToView(...)`. It is served like a keyless projection: `<Report>Routes.g.cs`
+  (`MapGet` list, `MapPost` answering 405, no `{id}` route) and
+  `<Report>FilterAllowlist.g.cs`, with every derived field that has filter operators
+  filterable and sortable (on a report an enum dimension sorts too; an entity's enum field
+  does not). No names artifact. See
+  [reporting](../features/reporting.md#how-a-report-is-served).
 - `AppDbContext.g.cs` — `DbSet<Author>`, projection `.ToView()`, `@storage` owned
   types via `OwnsOne` (single) / `OwnsMany(...).ToJson(...)` (`@isArray` array-of-VO),
   enum-as-string via `HasConversion<string>()`.

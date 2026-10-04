@@ -176,6 +176,17 @@ move together here — they share one emit predicate, because the generated cont
 the other two. The repository interface a projection gets is the read-only one:
 `list` / `count` / `findById` and nothing that writes.
 
+**Reports.** A concrete `object.report` whose read source is `source.rdb @kind: view` is
+served like a keyless projection. For a report `<R>`: `<R>Dto` (a record, one component
+per derived field; an enum dimension is an enum nested in the DTO), `<R>Repository`
+(`list` and `count` only, no `findById`), `<R>FilterAllowlist` and `<R>Controller` (one
+`@GetMapping`, a `@PostMapping` answering 405, no `/{id}` mapping). You implement the
+repository against the view. Every derived field with filter operators is filterable
+and sortable. No names artifact is written for a report. `gen` refuses a served report
+with a derived field over a `field.object`. A report with no view source, or an abstract
+one, generates nothing. The route and contract: `references/reporting.md` in the
+`metaobjects-authoring` skill.
+
 Its `CREATE VIEW` DDL is emitted by the Node `meta migrate` from the
 projection's `origin.*` children — `origin.passthrough`, `origin.aggregate` (`@agg`
 `count`/`sum`/`avg`/`min`/`max`, plus the #195 `any`/`all` quantifiers over a `@filter`

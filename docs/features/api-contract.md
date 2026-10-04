@@ -321,7 +321,8 @@ for the one-line change.
 | `field.string`, `field.uuid`, `field.enum` | string | UUID is canonical hex (`8-4-4-4-12`). |
 | `field.int`, `field.long`, `field.double` | number | `long` MAY be string on overflow; defer to per-port docs. |
 | `field.boolean` | boolean | – |
-| `field.date` | string | ISO 8601 calendar date (`YYYY-MM-DD`). |
+| `field.date` | string | ISO 8601 calendar date (`YYYY-MM-DD`). Asserted literally by the `report/` sub-corpus (a time dimension's bucket), the first corpus to do so. |
+| `field.decimal` | **per port** | Not pinned. Each port sends its own decimal form (TypeScript a string, since the driver reads `numeric` as one), and no scenario asserts a decimal's spelling: precision is the engine's. A client reading decimals from more than one backend must accept a string or a number. |
 | `field.time` | string | `HH:MM:SS[.fff]`. |
 | `field.timestamp` | string | Instant, tz-aware by default (ADR-0036 Wave 2) — `YYYY-MM-DDTHH:MM:SS[.fff]Z`, **always UTC**. |
 | `field.timestamp` (`@localTime: true`) | string | Naive wall clock — `YYYY-MM-DDTHH:MM:SS[.fff]`, **no `Z`**. |
@@ -415,17 +416,30 @@ codegen, and scoping them out would have dropped a capability two ports shipped.
 
 The surface:
 
-- `GET /<plural>` and `GET /<plural>/{id}` are mounted, the latter through whatever
-  identity the projection declares or inherits.
+- `GET /<plural>` is mounted, and `GET /<plural>/{id}` when the projection can be
+  addressed by key (the keyless rule below), through whatever identity it declares or
+  inherits.
 - `?filter[...]` and `?sort=` apply, against allowlists generated from the
   **projection's own** declared field set — not the base entity's.
 - **Every write verb answers `405` with `{"error": "method_not_allowed"}`** — `POST`
   on the collection, `PATCH` / `PUT` / `DELETE` on the item. 405 rather than 404
   because the resource plainly exists: the same path answers `GET`. `message` is free
   prose and is not part of the contract.
-- A **keyless** projection (no `identity.primary`) mounts no `/{id}` route at all, so
-  it refuses only the collection verb — refusing an item verb would advertise an
-  address the port never serves.
+- A **keyless** projection mounts no `/{id}` route at all, so it refuses only the
+  collection verb — refusing an item verb would advertise an address the port never
+  serves. What counts as keyless differs by port, and the corpus does not gate it:
+
+  | Port | Item routes are mounted when |
+  |---|---|
+  | C#, Java, Kotlin | the projection declares or inherits a **single-column** `identity.primary` |
+  | TypeScript, Python | it declares or inherits an `identity.primary` (a composite one binds its first field), **or** it declares none and has a field named `id` |
+
+  So a projection with an `id` field and no declared identity has item routes in
+  TypeScript and Python and none in the other three. Until FR-044, TypeScript and Python
+  mounted the item routes for **every** read-only projection, including one with no
+  identity and no `id` field, where they could not address a row (TypeScript answered the
+  view's first row). That one shape lost its `/{id}` routes, its by-id query and, in
+  TypeScript, its detail hook; every other projection is unchanged.
 
 Every port mounts those refusals **explicitly**. Left to the framework, ASP.NET and
 Spring each answer an unmatched method on a matched path with an empty-bodied 405 and
@@ -436,6 +450,31 @@ Gated by [`fixtures/api-contract-conformance/projection/`](../../fixtures/api-co
 which runs the **generated lane only, on all five ports**: what is under test is
 whether a port's generator emits the routes, and a hand-rolled reference server would
 answer every scenario by construction.
+
+## Reports
+
+**All five ports serve a view-backed `object.report`** (a concrete report whose read source
+is a `source.rdb` of `@kind: view`) exactly as a keyless read-only projection is served. A
+report with no source, an abstract one, and one over a `materializedView`, `storedProc` or
+`tableFunction` mount nothing. `<segment>` is the object rule above: `InvoicesByMonth` is at
+`/invoices_by_months`.
+
+| Request | Answer |
+|---|---|
+| `GET /<apiPrefix>/<segment>` | `200`, a JSON array of rows, one per distinct dimension tuple. `?filter[...]`, `?sort=`, `limit` and `offset` apply as on any list route; `withCount=1` answers `{ "rows": [...], "total": N }`, `N` being the number of groups after filtering. |
+| `POST /<apiPrefix>/<segment>` | `405 {"error": "method_not_allowed"}`. `message` is free prose. |
+| any verb on `/<apiPrefix>/<segment>/{id}` | Not mounted, in every port: a report has no identity. The framework's own `404`; its body is outside the contract. |
+| a filter or sort error | The field-naming envelopes above, unchanged. |
+
+Every derived field whose type has filter operators is filterable and sortable, dimension
+and measure alike; the allowlists are the report's own derived fields, never the `@from`
+entity's. No request parameter picks dimensions, measures or a grain. No port generates a
+client hook, grid or form for a report yet.
+
+Gated by [`fixtures/api-contract-conformance/report/`](../../fixtures/api-contract-conformance/report/)
+(12 scenarios), **generated lane only, on all five ports**, for the reason `projection/`
+gives. The columns, their types and the per-port generated files are in
+[reporting.md](reporting.md#how-a-report-is-served).
 
 ## Hand-writing a conforming controller (if you outgrow the generated one)
 

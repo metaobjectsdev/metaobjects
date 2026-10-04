@@ -49,7 +49,7 @@ What the code does that the documents do not say, found while verifying. Each on
 - **The route segment rule is unchanged:** the object name, `snake_case`d, then pluralized (`docs/features/api-contract.md`). No report-specific spelling.
 - **Default physical table-name pluralization is frozen** (1.0.13). This plan derives no physical name.
 - **Routes, DTOs, allowlists, hooks and controllers are reference helpers** (ADR-0034 Amendment 3). TypeScript's ejectable copies under `codegen-ts/src/reference/` change in the same commit as the package generators; `reference-byte-identical.test.ts` holds them together.
-- **No-churn:** a model with no `object.report` produces byte-identical output in every generator and every docs surface, with the two exceptions open questions 4 and 5 name (a keyless projection in TypeScript and Python; a decimal in a TypeScript view read schema).
+- **No-churn:** a model with no `object.report` produces byte-identical output in every generator and every docs surface, with five exceptions, each a named behaviour change in the [proof table](#no-churn-and-back-compat-proof): the two that open questions 4 and 5 name (a read-only projection with no declared identity and no `id` field, in TypeScript and Python; a decimal in a TypeScript view read schema), and three found during execution (the API docs of a read-only object document only what is generated, in TypeScript, with the matching Python fix ruled and in progress when this was written; a Java filter allowlist of more than ten fields; a Kotlin controller over a decimal or float field).
 - ADR-0039: read effective properties with resolving accessors. Any `own*()` call carries a comment naming its sanctioned case. Python `attr()` is OWN.
 - TS: named constants for metamodel strings, no `any`, never `instanceof` a node from another package.
 - Public repo: no private project names, no absolute home paths, in code, fixtures, docs or commit messages.
@@ -111,6 +111,8 @@ This is the existing keyless-projection contract ("a keyless projection … refu
 Mechanism, the same in every port: the read model sets `@filterable: true` on each derived field that has a filter band. The port's existing allowlist generator then needs no report branch. Nothing sets `@sortable` or `@sortableDefaultOrder`: TypeScript treats a filterable field as sortable, and the other four ports sort on every orderable scalar already.
 
 A report author cannot narrow this set. There is no node to put `@filterable` on, and registering it on a dimension or measure would be new vocabulary (open question 1).
+
+As built: an array-valued derived field (a dimension over an `isArray` field) follows its subtype's band. It is filterable and sortable in TypeScript, Java and Kotlin; C# leaves an array out of its sort allowlist. The corpus has no such dimension. Also as built: "the other four ports sort on every orderable scalar already" was false for an enum in C#, so C# makes an enum dimension sortable on a report only.
 
 ### Table D — wire encoding of a derived field
 
@@ -299,7 +301,7 @@ The api-contract corpus goes from 61 scenarios to 73 (`+ 12 report`).
 | Surface | A served report | A sourceless report | The `@from` entity |
 |---|---|---|---|
 | Model page (`--model`, `docsFile`) | A page: kind `report`, its `@from` (linked), its view, its row scope (`@segment`, `@filter`), and a column table from `reportShape`: name, type, nullable, role, and a definition written from the dimension or measure ("`Invoice.issuedOn` truncated to month, UTC"; "sum of `Invoice.amountCents` where segment `paid`"; "`paidInvoices` / `invoices`, null when the denominator is 0") | The same page, with "Not served: declares no view source" in place of the view | A "Reporting" section: its dimensions, measures and segments, and the reports that name it |
-| API page (`--api`, `apiDocsFile`, and each port's api-docs builder) | One unit: the row model, `GET <served path>` and nothing else, the list query function. No hook | No unit | unchanged |
+| API page (`--api`, `apiDocsFile`, and each port's api-docs builder) | One unit: the row model, `GET <served path>` and nothing else, the list query function (or, in a port without one, the repository seam). No hook | No unit | unchanged |
 | Agent pages (`--agent`) | `agent/ui.md` does not list a report: no UI tier is generated for one (Plan 5). `agent/schema.md` is unchanged (it already lists the view) | nothing | unchanged |
 | Site (`--site`, `docs-site`) | A report page and an entry in the object index; the reporting nodes count as rendered in the coverage audit | A report page, marked not served | The same "Reporting" section |
 
@@ -764,8 +766,8 @@ export function generateReportApiSchemaSql(root: MetaRoot): Promise<string> {
 
 ```ts
   /**
-   * False for an object with no single-column primary identity: an `object.report`, or
-   * a keyless projection. Mounts the list route and the collection POST refusal only,
+   * False for an object whose rows cannot be addressed by key: an `object.report`, or a
+   * keyless projection (as built: no declared identity AND no field named `id`). Mounts the list route and the collection POST refusal only,
    * and no `/:id` route of any verb. Default true, which is today's behaviour.
    */
   readonly itemRoutes?: boolean;
@@ -829,8 +831,10 @@ The Hono file holds the same two tests against `app.request(...)`.
 export function servedReport(obj: MetaObject): boolean;
 
 // codegen-ts/src/api-surface.ts
-/** True iff the object has a single-column primary identity, so its REST surface has
- *  /:id routes. Mirrors the JVM RestSurfaceGate.hasItemRoute. */
+/** As built (ruled during Task 3): false for every report; otherwise true when the by-id
+ *  column exists on the object (a declared primary identity, or no identity and a field
+ *  named `id`); false otherwise. This is NOT the JVM RestSurfaceGate.hasItemRoute, which
+ *  requires a DECLARED single-column primary identity; C#, Java and Kotlin keep that rule. */
 export function hasItemRoute(entity: MetaObject): boolean;
 
 /** True when the client UI tier (hooks, grids, `agent/ui.md`) is generated for the
@@ -865,6 +869,7 @@ test("a served report mounts a keyless read-only surface", ...);
   // and its doc comment says "report", not "projection"
 
 test("a projection with a single-column identity is unchanged", ...);
+  // (as built, a projection with an `id` field and no declared identity is unchanged too)
   // the existing projection golden is byte-identical: no `itemRoutes` key at all
 
 test("a served report gets a list query and no by-id query", ...);
@@ -880,7 +885,7 @@ test("no UI-tier generator emits for a served report", ...);
   // true and servesClientTier is false; hasUiSurface is false for it
 
 test("a keyless projection gets a list hook and no detail hook", ...);
-  // renderReadOnlyHooksFile for a projection with no single-column identity
+  // renderReadOnlyHooksFile for a projection with no declared identity and no `id` field
 
 test("a report and an entity that share a route segment are a generation error", ...);
   // a model with entity Invoice and view-backed report Invoices throws the existing
@@ -1069,7 +1074,7 @@ Kotlin already emits `<R>Table`. The read-only controller reads that object by n
 **What the spike showed.** With the runner swap, `entity`, `filter-allowlist`, `names` and `routes` each emit one file for `StoreTotals` and nothing else changes. The model is a correct Pydantic class (`revenue: int | None = None`). Three things were wrong: the allowlist was empty; the router had `GET`, `PATCH`, `PUT` and `DELETE` on `/{store_totals_id}`; and the repository `Protocol` had `find_by_id(self, id: int)`.
 
 - [ ] **Step 1: Failing tests.** In `test_report_read_model.py`: every derived field is filterable (read with the resolving accessor; Python `attr()` is OWN). A new `tests/codegen/test_report_router.py`: the rendered `store_totals_router.py` has exactly `@router.get("")` and `@router.post("")`, no path with `{`, and a `StoreTotalsRepository` with `list` and `count` only; `store_totals_filter_allowlist.py` names `purchases`, `buyers`, `revenue`; a projection with a single-column identity renders byte-identically to before. `cd server/python && uv run pytest -q tests/test_report_read_model.py tests/codegen/test_report_router.py`: FAIL.
-- [ ] **Step 2: Implement.** Mark derived fields filterable in `report_read_model.py`. Add `is_served_report` and `has_item_route(entity)` (true iff a primary identity with exactly one field) to `instance_artifacts.py`. Replace the drop at `runner.py:106` with the swap, and reword the warning:
+- [ ] **Step 2: Implement.** Mark derived fields filterable in `report_read_model.py`. Add `is_served_report` and `has_item_route(entity)` (as built: false for every report; otherwise true when a primary identity is declared, or none is declared and a field named `id` exists; false otherwise) to `instance_artifacts.py`. Replace the drop at `runner.py:106` with the swap, and reword the warning:
 
 ```python
     # FR-044: a served report (Table A) is generated from its read model, which the
@@ -1081,7 +1086,7 @@ Kotlin already emits `<R>Table`. The read-only controller reads that object by n
     ]
 ```
 
-In `_render_readonly_router`, emit the `get` handler, the three item refusals and `find_by_id` only when `has_item_route(entity)`, and say "report" for a report. This also corrects a keyless projection (open question 4). In `apidocs/builder.py`, document a served report and skip an unserved one.
+In `_render_readonly_router`, emit the `get` handler, the three item refusals and `find_by_id` only when `has_item_route(entity)`, and say "report" for a report. This also corrects a keyless projection (open question 4; as built, only one with no declared identity and no `id` field). In `apidocs/builder.py`, document a served report and skip an unserved one.
 - [ ] **Step 3: Write the lane** on the pattern of `test_api_contract_projection.py` and `generated_projection_app.py`: one app with the three generated routers, each behind an in-memory repository seeded from `seed.json`'s `reports` (`paidShare` as `Decimal("0.4")`, `issuedOnMonth` as a `date`).
 - [ ] **Step 4: Update `test_reporting_inert.py`:** the `with` model adds exactly four files, all for `StoreTotals`.
 - [ ] **Step 5: Run.** `uv run pytest -q`, the lane, and `tests/codegen/test_codegen_compile_conformance.py` (which now imports six report models). Expected: green.
@@ -1141,8 +1146,10 @@ Expected: PASS.
 | Existing api-contract scenarios are unchanged | No runner changes; the new sub-corpus uses existing assertion keys only |
 | C# and Kotlin output from Plan 2 is unchanged | The row class, the `DbContext` mapping and the Exposed table keep their bytes; `IntegrationFixtureDriftTests` and `KotlinCodegenMatchesReferenceTest` |
 | **Behaviour change 1** (unreleased vocabulary) | A view-backed report now generates code and mounts a route. Nothing released carries `object.report` |
-| **Behaviour change 2** (released behaviour, open question 4) | A keyless read-only projection in TypeScript and Python loses its `/{id}` routes, its by-id query and its detail hook. They were never able to serve a row by key. The CHANGELOG names it |
+| **Behaviour change 2** (released behaviour, open question 4) | In TypeScript and Python, a read-only projection with **no declared identity and no field named `id`** loses its `/{id}` routes, its by-id query (`find…ById` / `find_by_id`) and, in TypeScript, its detail hook. That shape could not serve a row by key. A projection with a declared identity, or with an `id` field and no declared identity, served rows by key before and is unchanged (ruled during Task 3: `hasItemRoute` / `has_item_route`). C#, Java and Kotlin keep requiring a declared single-column identity. The CHANGELOG names it |
 | **Behaviour change 3** (released output, open question 5) | In TypeScript, a decimal field of a view read schema is `z.string()`, not `z.number()`. The runtime value was always a string. The CHANGELOG names it |
+| **Behaviour change 4** (released docs output, found in Task 5) | In TypeScript (`meta docs` API pages), a read-only object's API unit documents only what is generated (the same fix is ruled for Python's api-docs builder and was in progress when this row was written; the CHANGELOG names Python only once it lands): a read-only projection's page no longer lists create/update/delete functions, write verbs or Insert/Update schemas, and a keyless one no longer lists `/:id` or the by-id function. Write-through projections and entities are unchanged. The CHANGELOG names it |
+| **Behaviour change 5** (released output, found in Tasks 7 and 8) | Kotlin: the generated Spring controller of any entity or projection with a `field.decimal` or `field.float` scalar field regenerates with different bytes (`coerce<E>Decimal` / `coerce<E>Float` in place of `coerce<E>Double`), because a filter on such a column threw `ClassCastException` (a 500). A TPH controller changes for a float field only. Models with only double, int, long or string fields keep their bytes. Java: a filter allowlist of more than ten fields is spelled with `Map.ofEntries` (it did not compile before); ten or fewer keep their bytes. The CHANGELOG names both |
 
 ## Unverified items
 
@@ -1174,6 +1181,17 @@ Ruled 2026-10-04, before execution. The questions are kept below as asked.
 5. Both parts confirmed: the corpus asserts a ratio is present and filterable, not its spelling; the TypeScript view read schema types a decimal as a string for reports and projections alike. Recorded as behaviour change 3.
 6. **Different from the plan as first written:** no typed client list hook (TanStack) and no other UI-tier output for a report in Plan 3. The UI tier stays off for reports until Plan 5. The tasks, tables and expected outputs above were changed to match: `servesReadApi` still answers true for a served report, so the route and queries generators emit; a new `servesClientTier` gate keeps the hook, grid and grid-hook generators and `agent/ui.md` off.
 7. Both asymmetries stay as described.
+
+### As built
+
+What execution changed or added, beyond the answers above. The tables and tasks were edited to match.
+
+- **A. No UI tier for a report (answer 6).** TypeScript gates the UI tier (the TanStack generators and the source-only Angular generators) on a new `servesClientTier` predicate, while `servesReadApi` is true for a served report. `agent/ui.md` lists no report. An adopter-owned (ejected) hook generator that still gates on `servesReadApi` would emit for a report; the CHANGELOG tells owners to switch to `servesClientTier`.
+- **B. The item-route rule (answer 4).** TypeScript `hasItemRoute` and Python `has_item_route`: false for every report; otherwise true when the by-id column exists on the object (a declared primary identity, or no identity and a field named `id`); false otherwise. Only a read-only projection with no identity and no `id` field loses its `/{id}` routes, by-id query and, in TypeScript, its detail hook. This differs from C#, Java and Kotlin, which require a declared single-column identity and are unchanged.
+- **C. Decimal (answer 5).** A `field.decimal` in a TypeScript view read schema is `z.string()`, for reports and projections.
+- **D. API docs accuracy (new, behaviour change 4).** In TypeScript a read-only object's API unit documents only what is generated. The same fix is ruled for Python and was in progress when this note was written.
+- **E. Per-port fixes found on the way.** C#: a report's enum dimension is sortable (report-only; an entity's enum field is still not sortable in C#). Java: the filter-allowlist generator handles more than ten filterable fields (`Map.ofEntries`). Kotlin: a filter on a decimal or float column no longer throws, which changes the generated controller of any entity or projection with such a field (behaviour change 5); reads of a field whose name needs `safeColumnProperty` compile, byte-neutral for every other name.
+- **Requirements ledger (Task 10 Step 5).** Nothing moved. No entry of `metaobjects/meta.requirements.yaml` is about serving a report: `objectReport` and the `reporting` branch describe declaring the vocabulary, and the ledger carries no `@implementedBy` on any node by design.
 
 ## Open questions for the captain
 

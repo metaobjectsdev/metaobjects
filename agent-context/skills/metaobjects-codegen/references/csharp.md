@@ -72,6 +72,18 @@ at all, so it refuses only the collection verb.
 Those refusals are mounted EXPLICITLY, not left to ASP.NET: unmounted, the framework
 answers its own 405 with an EMPTY body, which is a wire shape no other port sends.
 
+**Reports.** A concrete `object.report` whose read source is `source.rdb @kind: view` is
+served like a keyless projection. For a report `<R>`: `<R>.g.cs` (a keyless row class,
+one property per derived field) mapped in the `DbContext` with a `DbSet` and
+`HasNoKey().ToView(...)`, `<R>Routes.g.cs` (`MapGet` list, `MapPost` answering 405, no
+`{id}` route) and `<R>FilterAllowlist.g.cs`. Every derived field with filter operators
+is filterable and sortable; on a report an enum dimension sorts too (an entity's enum
+field is still not sortable in C#). The view and its columns are bound by literal, with
+no names artifact. `gen` refuses a served report with a derived field over a
+`field.object`, or one whose Pascal name equals the report's class name. A report with
+no view source, or an abstract one, generates nothing. The route and contract:
+`references/reporting.md` in the `metaobjects-authoring` skill.
+
 **Entity read-view (write-through).** An `object.entity` that keeps its writable `table`
 primary source and adds a `@role: replica` `@kind: view` source is a write-through
 read-view (#214): the generated EF entity carries the derived `origin.*` fields read-only

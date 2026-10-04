@@ -299,6 +299,20 @@ object it emits — so its output ships whenever `entity` is in your `<generator
 there is no `<generator>` entry for it. The other four ports expose `extractor` as a
 standalone generator; Java fuses it, which is why it carries a stable name here at all.
 
+### Reports
+
+A concrete `object.report` whose read source is a `source.rdb` of `@kind: view` is served
+like a keyless read-only projection. Four generators write one file each for a report `<R>`:
+`dto` writes `<R>Dto` (a record, one component per derived field), `repository` writes
+`<R>Repository` (`list` and `count` only, which you implement against the view),
+`filter-allowlist` writes `<R>FilterAllowlist`, and `routes` writes `<R>Controller` (one
+`@GetMapping`, a `@PostMapping` answering 405, no `/{id}` mapping). Every derived field with
+filter operators is filterable and sortable. No other generator emits for a report: no names
+class, no entity class. `gen` fails, naming the report and the dimension or measure, when a
+derived field reads a `field.object`. A report with no view source, or an abstract one,
+generates nothing. The contract is in
+[reporting](../features/reporting.md#how-a-report-is-served).
+
 ### `<Entity>Names` — the physical names, as constants
 
 `SpringNamesGenerator` is opt-in, like every Java generator — there is no

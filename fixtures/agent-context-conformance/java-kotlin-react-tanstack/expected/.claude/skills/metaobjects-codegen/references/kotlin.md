@@ -185,6 +185,18 @@ The controller takes no constructor parameters — nothing binds a request body,
 injects neither an `ObjectMapper` nor a `Validator`. `KotlinFilterAllowlistGenerator`
 moves with it on one shared predicate: the emitted controller names the allowlist.
 
+**Reports.** A concrete `object.report` whose read source is `source.rdb @kind: view` is
+served like a keyless projection. For a report `<R>`: `<R>Table` (a read-only Exposed
+table object bound to the view), `<R>` (an immutable data class, one property per derived
+field, no validation annotations), `<R>FilterAllowlist` and `<R>Controller` (one
+`@GetMapping`, a `@PostMapping` answering 405, no `/{id}` mapping). An enum dimension is
+typed by the enum of the entity it reads; no per-report enum is written. Every derived
+field with filter operators is filterable and sortable. The view and columns are bound
+by literal. `gen` refuses a served report with a derived field over a `field.object`,
+one named after a Kotlin hard keyword, or two that land on one column property. A report
+with no view source, or an abstract one, generates nothing. The route and contract:
+`references/reporting.md` in the `metaobjects-authoring` skill.
+
 The `CREATE VIEW` DDL is emitted by the
 Node `meta migrate` from the projection's `origin.*` children — `origin.passthrough`,
 `origin.aggregate` (`@agg` `count`/`sum`/`avg`/`min`/`max`, plus the #195 `any`/`all`

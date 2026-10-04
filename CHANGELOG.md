@@ -71,8 +71,8 @@ it until 1.1 ships._
   `ObjectManager` read a view-backed report (list and count, with filter, sort and limit on the
   derived fields; by-id and writes are refused); C# generates a keyless EF Core row type and
   `DbContext` mapping for it and Kotlin an Exposed table object. `meta docs` lists the view on
-  the agent schema page. **Still absent:** no route, typed client, filter allowlist or api-docs
-  entry for a report in any port, no `measure.derived`, and no query-time grouping. Six shared
+  the agent schema page. **Still absent:** no `measure.derived` and no query-time grouping (the
+  next entry says how a report is served). Six shared
   persistence scenarios (`report-*.yaml`) and `report-shapes.json` hold the ports to the same
   columns; the `metaobjects-authoring` skill now teaches reports (`references/reporting.md`).
   Anyone who declared a view-sourced report under the unreleased 1.1 vocabulary will now see a
@@ -84,6 +84,97 @@ it until 1.1 ships._
   (`Sale.total`) and reads the same as the bare name in every port. Java OQL
   (`executeQuery`) with a report as its result class builds rows from the report's derived
   fields.
+- **A view-backed report is served by a generated list route in every port (FR-044).** A
+  concrete `object.report` whose read source is a `source.rdb` of `@kind: view` now gets the
+  read-only REST surface of a keyless projection: `GET /<apiPrefix>/<segment>` lists it with the
+  standard `?filter[...]`, `?sort=`, `limit`, `offset` and `withCount=1` (`total` counts groups
+  after filtering), `POST` answers `405 {"error": "method_not_allowed"}`, and `/{id}` is not
+  mounted (a report has no identity). `<segment>` is the existing rule, the name snake_cased
+  then pluralized: `InvoicesByMonth` is `/invoices_by_months`. Every derived field whose type
+  has filter operators is filterable and sortable, dimension and measure alike, and a report
+  cannot narrow that set; a field of the `@from` entity the report does not expose is refused
+  with a `400`. No request parameter picks dimensions, measures or a grain. A report with no
+  source, an abstract one, and one over a `materializedView`, `storedProc` or `tableFunction`
+  mount nothing. No vocabulary is added and `metamodelVersion` stays `1.1`. What each port
+  generates for a report `<R>`: TypeScript `<R>.ts`, `<R>.queries.ts` (list only),
+  `<R>.routes.ts` / `<R>.routes.hono.ts`, `<R>.names.ts` and the barrel export; C#
+  `<R>Routes.g.cs` and `<R>FilterAllowlist.g.cs` beside the existing row class; Java `<R>Dto`,
+  `<R>Repository` (`list` and `count`), `<R>FilterAllowlist` and `<R>Controller`; Kotlin the
+  `<R>` data class, `<R>FilterAllowlist` and `<R>Controller` beside the existing table object;
+  Python `<R>.py`, `<snake>_filter_allowlist.py`, `<snake>_router.py` and `<snake>_names.py`.
+  So **TypeScript, Java and Python now generate a report's row type**, where they generated
+  nothing for a report before. Java `gen` now joins Kotlin and C# in refusing a served report
+  with a derived field over a `field.object`. In C# a report's enum dimension is sortable (an
+  entity's enum field still is not). A decimal column (`avg`, a ratio, a `sum` of a decimal)
+  has no cross-port JSON spelling: each port sends its own, and TypeScript sends a string.
+  Gated by a new api-contract sub-corpus, `fixtures/api-contract-conformance/report/` (12
+  scenarios, generated lane, all five ports; the corpus goes from 61 scenarios to 73), which
+  is also the first to assert a `field.date` literally. Anyone who declared a view-sourced
+  report under the unreleased 1.1 vocabulary will see these files on the next `gen`. See
+  [docs/features/reporting.md](docs/features/reporting.md#how-a-report-is-served).
+- **Reports have model and API pages in `meta docs` (FR-044).** Every report gets a model page
+  (its `@from`, its view or "Not served" with the reason, its row scope, and a column table
+  with a definition per column) listed under `## Reports` on the model index, and a page on the
+  site. An entity that declares dimensions, measures or segments, or that a report reads from,
+  gains a "Reporting" section. A served report gets one API page (row model, `GET <path>`, the
+  list query) in `meta docs` and in every port's api-docs builder; a report that is not served
+  gets none. `EntityDocData` gains four optional keys for an owned `docs/entity-page.md`
+  template: `hasReport`, `reportBlock`, `hasReporting`, `reportingBlock`. A model with no
+  reporting nodes renders the same model pages as before.
+- **No client hook or other UI-tier output is generated for a report yet (FR-044).** No
+  TanStack hook, grid, grid hook or form, no Angular service or grid, and `agent/ui.md` lists
+  no report. In TypeScript the UI-tier generators now gate on a new exported predicate,
+  `servesClientTier` (`servesReadApi` and not a report); `servesReadApi` is true for a served
+  report so that its routes and queries emit. **If you own an ejected hook or grid generator
+  that gates on `servesReadApi`, it will emit for every served report: switch it to
+  `servesClientTier`.** `hasItemRoute`, `isReport`, `servedReport` and `generatableObjects` are
+  exported from `@metaobjectsdev/codegen-ts` beside it.
+
+### Changed
+
+Five corrections that shipped with report serving and reach models that declare no report.
+Each one changes generated output on the next `gen`, so the drift gate reports it until you
+regenerate.
+
+- **TypeScript and Python: a read-only projection with no declared identity and no field named
+  `id` loses its item surface.** It no longer gets `GET /{id}` or the three item-verb refusals,
+  its by-id query (`find<Name>ById` in TypeScript, `find_by_id` on the Python repository
+  Protocol) or, in TypeScript, its detail hook and `detail` query keys. That surface could not
+  address a row: TypeScript built the query with no `WHERE` and answered the view's first row,
+  and Python bound an `id: int` to nothing. **Unchanged:** a projection with a declared
+  identity (a composite one still binds its first field), and a projection with an `id` field
+  and no declared identity. C#, Java and Kotlin are unchanged and remain stricter: they mount
+  `/{id}` only for a declared single-column identity, so a projection with an `id` field and no
+  declared identity has item routes in TypeScript and Python and none in the other three. The
+  TypeScript mounts (`mountReadOnlyCrudRoutes`, Fastify and Hono) take a new `itemRoutes: false`
+  option for this; it defaults to mounting them.
+- **TypeScript: a `field.decimal` in a view read schema is `z.string()`, not `z.number()`.**
+  Affects the generated read schema of any `object.projection` (and report) with a decimal
+  field. The value Drizzle reads from a `numeric` view column was always a string, so the old
+  schema disagreed with the row it parsed. Code that treated the parsed field as a `number`
+  stops typechecking.
+- **TypeScript API docs: a read-only object's page documents only what is generated.** In
+  `meta docs` API pages, a read-only projection's page no longer lists `create`, `update` or
+  `delete` functions, write REST verbs or Insert/Update schemas, none of which were ever
+  generated for it, and a keyless one (the shape above) no longer lists `/:id` or the by-id
+  function. Write-through projections and entities are unchanged. `meta verify --docs` reports
+  the affected pages as stale until regenerated.
+- **Java: a filter allowlist with more than ten filterable fields now compiles.**
+  `SpringFilterAllowlistGenerator` spelled `OPS_BY_FIELD` with `Map.of`, which has no overload
+  past ten pairs, so an entity or projection with eleven or more `@filterable` fields generated
+  a class `javac` refused. It now uses `Map.ofEntries` above ten. Ten or fewer are
+  byte-identical.
+- **Kotlin: the generated Spring controller of any entity or projection with a `field.decimal`
+  or `field.float` scalar field regenerates with different bytes.** Its filter coercion now
+  calls a new `coerce<Entity>Decimal` / `coerce<Entity>Float` function where it called
+  `coerce<Entity>Double`. Before, a list filter on such a column threw `ClassCastException`,
+  a `500` on a request the allowlist had admitted, because the handler cast the coerced
+  `Double` to the column's `BigDecimal` or `Float`. A single-table-inheritance (TPH) controller
+  changes for a float field only; its filter pipeline already left decimals out. A model with
+  only string, int, long, double and the other non-decimal, non-float subtypes keeps its bytes.
+  Separately, a read-only controller or row mapper over a field named after a member of
+  Exposed's `Table` (such as `source`) now reads the suffixed column property
+  (`sourceColumn`) and compiles; every other field name keeps its bytes.
 
 ### Changed
 

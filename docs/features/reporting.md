@@ -8,18 +8,22 @@ Python, Kotlin through Java). Arrived with **metamodel 1.1** (FR-044).
 
 **What a report becomes.** A report that declares a read-only `source.rdb` of `@kind: view`
 is **lowered to a SQL view**: `meta migrate` creates it (Postgres, SQLite and D1; MySQL SQL
-comes from `buildReportViews`, see [MySQL](#mysql)), and every port reads it through its own
-runtime. [What a report lowers to](#what-a-report-lowers-to) is the contract. A report with
-no `source.*` stays inert: it is a checked statement of intent that generates nothing.
+comes from `buildReportViews`, see [MySQL](#mysql)), every port reads it through its own
+runtime, and every port's generators **serve it over REST**: one read-only list route, with
+the standard filter, sort and paging on the derived fields.
+[What a report lowers to](#what-a-report-lowers-to) is the column contract and
+[How a report is served](#how-a-report-is-served) is the REST one. A report with no `source.*`
+stays inert: it is a checked statement of intent. No generator, migration or runtime acts on
+it, and the one thing written about it is a `meta docs` model page marked "not served".
 
-**What does not exist yet.** There is no REST route, no typed client or hook, no filter
-allowlist and no api-docs entry for a report in any port (the later plans of FR-044). There
-is no `measure.derived`, no query-time choice of dimensions or measures (a report is a fixed
-combination, compiled once), and no time-zone vocabulary: time grains and relative dates are
-UTC. A model that declares none of this generates byte-for-byte what it did before, in every
-port.
+**What does not exist yet.** No typed client hook, grid, form or other UI-tier output is
+generated for a report in any port (a later plan of FR-044). There is no `measure.derived`,
+no query-time choice of dimensions or measures (a report is a fixed combination, compiled
+once), and no time-zone vocabulary: time grains and relative dates are UTC.
 
-**Entirely opt-in.** A model that declares none of this sees no change at all.
+**Entirely opt-in.** Nothing here applies to a model that declares none of it. The change
+that served reports also corrected three things about read-only projections and one filter
+defect per JVM port; [Compatibility](#compatibility) lists them.
 
 ## The problem it solves
 
@@ -290,11 +294,81 @@ report in two cases, because the generated table would not compile: a derived fi
 a Kotlin hard keyword (`in`, `is`, `object`, `when`, …), and two derived fields that land on one
 column property (a name that collides with a member of Exposed's `Table`, such as `source`, gets
 a `Column` suffix, which can meet a second field already called `sourceColumn`). Both fail `gen`
-with an error naming the report and the dimension or measure. No port generates a route, typed
-client, filter allowlist or api-docs entry for a report.
+with an error naming the report and the dimension or measure.
 
-`meta docs` lists a report's view on the agent schema page (`agent/schema.md`) and on no other
-page.
+### How a report is served
+
+**Which reports.** One rule in five ports: a report is served when it is not abstract and its
+read source has `@kind: view` (with or without `@sql`, with or without `@unmanaged`; the view
+is assumed to exist). A report with no `source.*`, an abstract report, and a report whose
+read source is a `materializedView`, `storedProc` or `tableFunction` are not served: nothing
+is generated for them and nothing is mounted.
+
+**The surface.** `<segment>` is the report's name, `snake_case`d and then pluralized, the
+rule every object uses ([api-contract.md](api-contract.md)).
+
+| Request | Answer |
+|---|---|
+| `GET /<apiPrefix>/<segment>` | `200`, a JSON array of rows, one per distinct dimension tuple. `?filter[...]`, `?sort=`, `limit` and `offset` apply exactly as on any list route. `withCount=1` answers `{ "rows": [...], "total": N }`, where `N` is the number of groups after filtering. |
+| `POST /<apiPrefix>/<segment>` | `405 {"error": "method_not_allowed"}`. `message` is free prose. |
+| any verb on `/<apiPrefix>/<segment>/{id}` | Not mounted. The framework answers its own `404`, whose body is outside the contract. A report has no identity, so a row of it has no address, even when a derived field happens to be named `id`. |
+| a filter or sort error | The four field-naming envelopes of [api-contract.md](api-contract.md), unchanged. |
+
+The route lists the compiled view. No request parameter picks dimensions, measures or a
+grain. The default page size is the port's own, as for any list route: TypeScript and C#
+return every row when `limit` is omitted, Java, Kotlin and Python the first 50.
+
+**What a caller may filter and sort on.** Every derived field whose type has filter operators
+(string, enum, uuid, int, long, double, float, decimal, currency, date, time, timestamp,
+boolean), dimension and measure alike, with exactly the operators that type has on any other
+object, and each such field sorts (default direction `asc`). A derived field typed `object`
+or `map` is neither filterable nor sortable. The allowlists are the report's **own** derived
+fields: a field of the `@from` entity that the report does not expose is refused with
+`400 invalid_filter_field` or `400 invalid_sort_field`. No vocabulary was added for this; the
+generators mark each derived field filterable on the detached read model, and nothing is
+written on a dimension, measure or report node.
+
+**Wire encodings** are the existing ones ([api-contract.md](api-contract.md), "Type
+encodings"), applied to the column types above:
+
+| Derived type | JSON |
+|---|---|
+| `string`, `enum`, `uuid` | string |
+| `long`, `int`, `double` | number |
+| `currency` | integer minor units |
+| `date` (a time dimension at `day`, `week`, `month`, `quarter` or `year`) | `YYYY-MM-DD`, the first day of the bucket |
+| `timestamp` (a time dimension at `hour`) | an instant with `Z`, or naive without for a `@localTime` field |
+| `decimal` (`avg`, a ratio, a `sum` of a decimal) | **the port's own decimal spelling.** Not part of the contract: precision is the engine's, and the ports do not agree on one JSON form (TypeScript sends a string) |
+| a null value | `null`, with the key present |
+
+**What each port generates for a served report.** `<R>` is the report's name.
+
+| Port | Generated |
+|---|---|
+| TypeScript | `<R>.ts` (Drizzle view binding, Zod read schema, row type, descriptor, filter and sort allowlists), `<R>.queries.ts` (the list query only), `<R>.routes.ts` (and `<R>.routes.hono.ts` from the Hono routes generator), `<R>.names.ts`, the barrel export |
+| C# | `<R>.g.cs` (keyless row class) and its `DbContext` mapping, `<R>Routes.g.cs`, `<R>FilterAllowlist.g.cs` |
+| Java | `<R>Dto`, `<R>Repository` (`list` and `count` only), `<R>FilterAllowlist`, `<R>Controller` |
+| Kotlin | `<R>Table` (Exposed), the `<R>` data class, `<R>FilterAllowlist`, `<R>Controller` |
+| Python | `<R>.py` (Pydantic row model), `<snake>_filter_allowlist.py`, `<snake>_router.py`, `<snake>_names.py` |
+
+No port generates a by-id query, a `findById` on a repository seam, a create or update
+schema, a write method, a form, a grid or a client hook for a report. In TypeScript the UI
+tier asks a separate predicate, `servesClientTier`, which is false for a report while
+`servesReadApi` is true; a hook generator you own that still gates on `servesReadApi` will
+emit a list hook for a served report, so switch it to `servesClientTier`. TypeScript and
+Python write a names artifact because their read model flows through the names generator;
+C#, Java and Kotlin bind the view and its columns by literal. These are reference helpers,
+not core: copy and own them with your port's `eject`.
+
+**`meta docs`.** Every report gets a model page (kind `report`, its `@from`, its view or
+"Not served" with the reason, its row scope, and a column table with a definition per
+column), listed under `## Reports` on the model index. An entity that declares dimensions,
+measures or segments, or that a report names as its `@from`, gains a "Reporting" section. A
+served report gets one API page: its row model, `GET <served path>` and the list query (in a
+port with no query function, the repository seam). A report that is not served gets no API
+page. The agent UI page (`agent/ui.md`) lists no report, and the agent schema page
+(`agent/schema.md`) lists a view-backed report's view as before. Every port's api-docs
+builder documents a served report the same way.
 
 ### What differs by engine
 
@@ -320,18 +394,32 @@ the bodies are valid under MySQL's default `ONLY_FULL_GROUP_BY`.
 
 - **A derived report from a TPH subtype is refused.** Declare it from the base with an `@filter`
   on the discriminator field (see "Which reports lower").
-- **An abstract view-backed report gets no C# row class and no Kotlin table object.** The
-  TypeScript, Java and Python runtimes still read it. The same holds for a report whose source
-  `@kind` is `materializedView`, `storedProc` or `tableFunction`: C# and Kotlin generate nothing
-  for it, `meta migrate` skips it, and the three runtimes issue a `SELECT` against whatever
-  relation the source names. That works for a materialized view you created and is a database
-  error for a stored procedure or a table function.
+- **An abstract view-backed report is not served, and gets no C# row class and no Kotlin table
+  object.** No port generates a route for it. The TypeScript, Java and Python runtimes still
+  read it. The same holds for a report whose source `@kind` is `materializedView`, `storedProc`
+  or `tableFunction`: no port's generators emit anything for it, `meta migrate` skips it, and
+  the three runtimes issue a `SELECT` against whatever relation the source names. That works
+  for a materialized view you created and is a database error for a stored procedure or a
+  table function.
 - **A report over a `field.object` is not supported across ports.** A dimension whose `@of` is a
   `field.object` (or a field carrying `@objectRef`) loads in every port. Java OMDB then refuses
-  the read, and Kotlin `gen` and C# `gen` refuse to generate the table or row, each with an
-  error naming the report and the dimension (the same refusal covers a measure whose column is
-  typed by such a field). The TypeScript and Python runtimes read it and return the parsed JSON.
-  Group by a scalar field.
+  the read, and Java, Kotlin and C# `gen` refuse to generate anything for the served report,
+  each with an error naming the report and the dimension (the same refusal covers a measure
+  whose column is typed by such a field). TypeScript and Python read it, serve it and return
+  the parsed JSON; the field is neither filterable nor sortable. Group by a scalar field.
+- **A report cannot narrow what is filterable.** Every derived field with filter operators is
+  filterable and sortable. A report declares no fields, so there is nowhere to write
+  `@filterable`, and registering it on a dimension or measure would be new vocabulary.
+- **The route segment follows the object rule, with no report spelling.** `InvoicesByMonth` is
+  served at `/invoices_by_months`, not `/invoices_by_month`; `StoreTotals` at `/store_totals`.
+- **A decimal's JSON spelling differs by port.** An `avg`, a ratio and a `sum` of a decimal
+  are decimals. Each port sends its own form and the corpus asserts none of them, so a client
+  that reads one from two backends must parse both a string and a number.
+- **An array-valued derived field is not gated.** A dimension over an `isArray` field takes
+  its element subtype's filter operators; C# leaves an array out of its sort allowlist. The
+  corpus has no such dimension, so do not rely on filtering or sorting one across ports.
+- **No generated client.** A served report has a route and a row type; a hook, grid or form
+  for it is yours to write until the UI tier covers reports.
 - **With `@via`, `@of` must name an entity that has the field** (declared on it or inherited by
   it); naming a base of the reached entity for a field only the subtype declares loads and then
   fails `meta migrate`. The quiet form of the same rule: a `@via` dimension reads its field from
@@ -348,6 +436,18 @@ the Monday boundary, an hour bucket, a relative window). The derived columns are
 `fixtures/persistence-conformance/report-shapes.json`, produced by TypeScript and byte-matched
 by every port. The SQL is produced by TypeScript only, so the other ports read the view the
 TypeScript migrate engine produced and never lower a report themselves.
+
+The REST surface is gated by twelve scenarios under
+[`fixtures/api-contract-conformance/report/`](../../fixtures/api-contract-conformance/report/),
+run in the **generated lane on all five ports**: list (a dimension with a segment-scoped sum
+that is null for one group), a time dimension at a grain (`YYYY-MM-DD`), a no-dimension
+totals report with the `withCount` envelope, a filter on a dimension and on a measure, a sort
+on a measure, paging over groups, the three field-naming `400` envelopes, `405` on `POST`,
+and `404` on every verb at `/{id}`. The corpus model carries one sourceless report, so a port
+that serves every report it finds fails. No scenario asserts a decimal's spelling or a
+timestamp literal. TypeScript and C# run the scenarios against the real views on Postgres;
+Java, Kotlin and Python serve seeded rows behind their repository seam, and a TypeScript test
+holds those rows equal to what the views return.
 
 ## The rules the loader enforces
 
@@ -451,6 +551,29 @@ A model that does not use the new names generates exactly as before. What loads 
 where the same change fixed Java and Python parsing bugs, each toward what TypeScript already
 did; the [CHANGELOG](../../CHANGELOG.md) lists them and the models they affect. Until 1.1
 ships, `main` carries `metamodelVersion` 1.1, so no 1.0.x PATCH is cut from it.
+
+Serving reports added no vocabulary (`metamodelVersion` stays 1.1). The same change corrected
+generated output for models that declare no report. Each is in the
+[CHANGELOG](../../CHANGELOG.md) with the shape it affects:
+
+- **TypeScript and Python: a read-only projection with no declared identity and no field named
+  `id`** no longer gets `/{id}` routes, a by-id query (`find…ById` / `find_by_id`) or, in
+  TypeScript, a detail hook. That surface could not address a row. A projection with a declared
+  identity, or with an `id` field and no declared identity, is unchanged. C#, Java and Kotlin
+  are unchanged and stricter: they mount `/{id}` only for a declared single-column identity.
+- **TypeScript: a `field.decimal` in a view read schema** (a projection's or a report's) is
+  `z.string()`, not `z.number()`. The value read from the view was always a string.
+- **TypeScript API docs: a read-only object's page documents only what is generated.** A
+  read-only projection's page no longer lists create, update or delete
+  functions, write verbs or Insert/Update schemas, and a keyless one no longer lists `/:id` or
+  the by-id function. `meta verify --docs` reports the page as stale until you regenerate.
+- **Java: a filter allowlist with more than ten filterable fields** now compiles (it is
+  spelled with `Map.ofEntries`). Ten or fewer are byte-identical.
+- **Kotlin: a list filter on a `field.decimal` or `field.float` column** no longer throws.
+  The generated controller of any entity or projection with a decimal or float scalar field
+  regenerates with different bytes (a `coerce<Entity>Decimal` / `coerce<Entity>Float` function
+  where it used `coerce<Entity>Double`). A controller that reads a field named after a member
+  of Exposed's `Table` (such as `source`) now compiles; every other name keeps its bytes.
 
 The design and its decisions are in
 [`docs/superpowers/specs/2026-10-02-fr-044-core-reporting-design.md`](../superpowers/specs/2026-10-02-fr-044-core-reporting-design.md).
