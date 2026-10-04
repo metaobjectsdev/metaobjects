@@ -3,7 +3,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { sqliteView, integer, text } from "drizzle-orm/sqlite-core";
-import { mountReadOnlyCrudRoutes } from "../../src/drizzle-fastify/mount-read-only.js";
+import { mountReadOnlyCrudRoutes, type MountReadOnlyOptions } from "../../src/drizzle-fastify/mount-read-only.js";
 import type { FilterAllowlist, SortAllowlist } from "../../src/drizzle-fastify/filter-allowlist.js";
 
 describe("mountReadOnlyCrudRoutes", () => {
@@ -209,4 +209,65 @@ describe("mountReadOnlyCrudRoutes — raw-SQL (opaque view) page bounds", () => 
       expect(body.expected).toBe(param === "limit" ? "an integer from 0 to 1000" : "a non-negative integer (0 or more)");
     });
   }
+});
+
+// A keyless object (an `object.report`, or a projection with no single-column key) has no
+// identity to address: `itemRoutes: false` mounts the list and the collection refusal only.
+describe("mountReadOnlyCrudRoutes — itemRoutes / resource", () => {
+  let client: ReturnType<typeof createClient>;
+  const apps: FastifyInstance[] = [];
+
+  beforeAll(async () => {
+    client = createClient({ url: ":memory:" });
+    await client.execute(`CREATE TABLE sales (id INTEGER PRIMARY KEY, amount INTEGER NOT NULL)`);
+    await client.execute(`CREATE VIEW v_totals AS SELECT id, amount FROM sales`);
+    await client.execute(`INSERT INTO sales (id, amount) VALUES (1, 10), (2, 20)`);
+  });
+
+  afterAll(async () => {
+    for (const a of apps) await a.close();
+    client.close();
+  });
+
+  async function mountView(opts: Partial<MountReadOnlyOptions>): Promise<FastifyInstance> {
+    const app = Fastify();
+    mountReadOnlyCrudRoutes({
+      fastify: app,
+      path: "/totals",
+      db: drizzle(client),
+      view: sqliteView("v_totals", {
+        id: integer("id").notNull(),
+        amount: integer("amount").notNull(),
+      }).existing(),
+      filterAllowlist: {},
+      sortAllowlist: {},
+      dialect: "sqlite",
+      ...opts,
+    });
+    await app.ready();
+    apps.push(app);
+    return app;
+  }
+
+  test("itemRoutes: false mounts no /:id route of any verb", async () => {
+    const app = await mountView({ itemRoutes: false, resource: "report" });
+    expect((await app.inject({ method: "GET", url: "/totals" })).statusCode).toBe(200);
+    for (const method of ["GET", "PATCH", "PUT", "DELETE"] as const) {
+      expect((await app.inject({ method, url: "/totals/1" })).statusCode).toBe(404);
+    }
+    const post = await app.inject({ method: "POST", url: "/totals", payload: {} });
+    expect(post.statusCode).toBe(405);
+    expect(post.json()).toMatchObject({ error: "method_not_allowed" });
+    expect(String(post.json().message)).toContain("report");
+  });
+
+  test("the default still mounts GET :id and the three item refusals", async () => {
+    const app = await mountView({});
+    expect((await app.inject({ method: "GET", url: "/totals/1" })).statusCode).toBe(200);
+    for (const method of ["PATCH", "PUT", "DELETE"] as const) {
+      expect((await app.inject({ method, url: "/totals/1", payload: {} })).statusCode).toBe(405);
+    }
+    const post = await app.inject({ method: "POST", url: "/totals", payload: {} });
+    expect(post.json().message).toBe("POST is not supported on a projection (read-only).");
+  });
 });
