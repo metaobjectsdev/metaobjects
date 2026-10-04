@@ -690,9 +690,9 @@ public object KotlinGenUtil {
             // about packages or @via is restated here.
             val owner = shape.ofEntity(f)
                 ?: throw GeneratorException(
-                    "report \"${report.shortName}\": its dimension \"${f.dimension?.shortName}\" reads the enum " +
-                        "\"${f.dimension?.of}\" through @via, and the entity that reference names does not " +
-                        "resolve, so the generated column has no enum class to be typed by."
+                    "report \"${report.shortName}\": its $item reads the enum \"${f.typeSourceKey()}\", and the " +
+                        "entity that reference names does not resolve, so the generated column has no enum " +
+                        "class to be typed by."
                 )
             out[f.name] = KotlinTypeMapper.enumTypeName(f.typeSource, owner)
                 ?: throw GeneratorException(
