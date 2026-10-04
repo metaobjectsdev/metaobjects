@@ -1,0 +1,17 @@
+name: report-list
+description: >
+  GET /api/invoice_status_totals — a view-backed object.report serves a list route.
+  One row per distinct dimension tuple, one key per derived field. paidCents is a
+  sum scoped by the `paid` segment: it is null for a group with no paid row, and the
+  key is present. Ordered by the dimension so the assertion is deterministic.
+requests:
+  - id: r1
+    method: GET
+    path: /api/invoice_status_totals?sort=status:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { status: "OPEN", invoices: 2, totalCents: 130500, paidCents: null }
+          - { status: "PAID", invoices: 2, totalCents: 185000, paidCents: 185000 }
+          - { status: "VOID", invoices: 1, totalCents: 0, paidCents: null }

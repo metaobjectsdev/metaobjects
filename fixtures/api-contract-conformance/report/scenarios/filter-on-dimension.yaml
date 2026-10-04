@@ -1,0 +1,12 @@
+name: report-filter-on-dimension
+description: >
+  ?filter[status][eq]=OPEN — a dimension is a filterable derived field.
+requests:
+  - id: r1
+    method: GET
+    path: /api/invoice_status_totals?filter[status][eq]=OPEN
+    expect:
+      status: 200
+      body:
+        equals:
+          - { status: "OPEN", invoices: 2, totalCents: 130500, paidCents: null }

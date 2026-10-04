@@ -1,0 +1,12 @@
+name: report-sort-invalid
+description: >
+  A sort on a field the report does not derive is rejected, naming the field.
+requests:
+  - id: r1
+    method: GET
+    path: /api/invoice_status_totals?sort=reference:asc
+    expect:
+      status: 400
+      body:
+        error: "invalid_sort"
+        field: "reference"

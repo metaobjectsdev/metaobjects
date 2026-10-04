@@ -1,0 +1,24 @@
+{
+  "invoices": [
+    { "id": 1, "reference": "INV-1001", "status": "PAID", "amountCents": 125000, "issuedOn": "2026-04-30" },
+    { "id": 2, "reference": "INV-1002", "status": "OPEN", "amountCents":  40000, "issuedOn": "2026-05-01" },
+    { "id": 3, "reference": "INV-1003", "status": "OPEN", "amountCents":  90500, "issuedOn": "2026-05-17" },
+    { "id": 4, "reference": "INV-1004", "status": "VOID", "amountCents":      0, "issuedOn": "2026-05-31" },
+    { "id": 5, "reference": "INV-1005", "status": "PAID", "amountCents":  60000, "issuedOn": "2026-06-01" }
+  ],
+  "reports": {
+    "InvoiceStatusTotals": [
+      { "status": "OPEN", "invoices": 2, "totalCents": 130500, "paidCents": null },
+      { "status": "PAID", "invoices": 2, "totalCents": 185000, "paidCents": 185000 },
+      { "status": "VOID", "invoices": 1, "totalCents": 0, "paidCents": null }
+    ],
+    "InvoicesByMonth": [
+      { "issuedOnMonth": "2026-04-01", "invoices": 1, "totalCents": 125000 },
+      { "issuedOnMonth": "2026-05-01", "invoices": 3, "totalCents": 130500 },
+      { "issuedOnMonth": "2026-06-01", "invoices": 1, "totalCents": 60000 }
+    ],
+    "InvoiceTotals": [
+      { "invoices": 5, "totalCents": 315500, "paidShare": "0.4" }
+    ]
+  }
+}

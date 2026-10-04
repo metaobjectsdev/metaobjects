@@ -1,0 +1,16 @@
+name: report-list-time-grain
+description: >
+  GET /api/invoices_by_months — a time dimension at a grain is a derived field named
+  <dimension><Grain> and typed date: the first day of the bucket, spelled YYYY-MM-DD.
+  The segment is the report NAME snake_cased and pluralized, like every other object.
+requests:
+  - id: r1
+    method: GET
+    path: /api/invoices_by_months?sort=issuedOnMonth:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { issuedOnMonth: "2026-04-01", invoices: 1, totalCents: 125000 }
+          - { issuedOnMonth: "2026-05-01", invoices: 3, totalCents: 130500 }
+          - { issuedOnMonth: "2026-06-01", invoices: 1, totalCents: 60000 }

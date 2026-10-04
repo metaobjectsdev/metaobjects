@@ -1,0 +1,14 @@
+name: report-sort-desc-on-measure
+description: >
+  ?sort=totalCents:desc — a measure is a sortable derived field.
+requests:
+  - id: r1
+    method: GET
+    path: /api/invoice_status_totals?sort=totalCents:desc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { status: "PAID", invoices: 2, totalCents: 185000, paidCents: 185000 }
+          - { status: "OPEN", invoices: 2, totalCents: 130500, paidCents: null }
+          - { status: "VOID", invoices: 1, totalCents: 0, paidCents: null }

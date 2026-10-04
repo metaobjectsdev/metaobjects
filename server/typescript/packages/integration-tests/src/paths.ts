@@ -40,6 +40,10 @@ export const API_CONTRACT_WRITE_THROUGH_SCENARIOS_DIR = resolve(API_CONTRACT_WRI
 // F22 view-only projection subcorpus (GENERATED lane only, every port).
 export const API_CONTRACT_PROJECTION_DIR = resolve(API_CONTRACT_DIR, "projection");
 export const API_CONTRACT_PROJECTION_SCENARIOS_DIR = resolve(API_CONTRACT_PROJECTION_DIR, "scenarios");
+// FR-044 view-backed report subcorpus (GENERATED lane only, every port).
+export const API_CONTRACT_REPORT_DIR = resolve(API_CONTRACT_DIR, "report");
+export const API_CONTRACT_REPORT_SCENARIOS_DIR = resolve(API_CONTRACT_REPORT_DIR, "scenarios");
+export const API_CONTRACT_REPORT_SCHEMA_SQL_PATH = resolve(API_CONTRACT_REPORT_DIR, "schema.postgres.sql");
 
 // fixtures/validation-conformance/ — cross-port generated input-validation corpus.
 export const VALIDATION_DIR = resolve(repoRoot, "fixtures", "validation-conformance");

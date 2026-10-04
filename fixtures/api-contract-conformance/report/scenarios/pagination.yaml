@@ -1,0 +1,22 @@
+name: report-pagination
+description: >
+  limit and offset page the groups, and withCount=1 reports how many groups there are,
+  not how many invoices.
+requests:
+  - id: r1
+    method: GET
+    path: /api/invoice_status_totals?sort=status:asc&limit=1&offset=1
+    expect:
+      status: 200
+      body:
+        equals:
+          - { status: "PAID", invoices: 2, totalCents: 185000, paidCents: 185000 }
+  - id: r2
+    method: GET
+    path: /api/invoice_status_totals?sort=status:asc&limit=2&withCount=1
+    expect:
+      status: 200
+      body:
+        envelope: true
+        rowsLength: 2
+        total: 3
