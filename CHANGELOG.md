@@ -64,6 +64,25 @@ it until 1.1 ships._
 
 ### Fixed
 
+- **Python, C#, Java: the generic `view.*` controls now load.** A document carrying
+  `view.text`, `view.dropdown` or any of the other web-presentation controls (`textarea`, `date`,
+  `month`, `hotlink`, `radio`, `checkbox`, `number`, `password`, `hidden`, `web`, `image`)
+  loaded in TypeScript and failed with `ERR_UNKNOWN_SUBTYPE` in every other port, so metadata
+  shared between a TypeScript web client and a Python, C#, Java or Kotlin backend could not be
+  loaded by the backend. Those ports had left the controls unregistered on purpose, as
+  vocabulary with no backend consumer. They are now registered for LOADING in every port and
+  remain presentation-only: no backend generator reads them, and they stay out of
+  `expected-registry.json`, so `metamodelVersion` does not move for this. Gated by the
+  `view-text-basic` conformance fixture. Attributes on these controls are still registered only
+  by the TypeScript `ui-web` provider.
+- **Python, C#, Java: an inline object-valued attribute now loads as an `attr.properties` bag.**
+  `"@store": { "collection": "orders" }` on a node that declares no `@store` is the registered
+  property bag, the same thing the explicit `{ "attr.properties": { "name": ..., "value": {...} } }`
+  child produces. TypeScript always loaded it that way. Python loaded it as `attr.base` and
+  failed a strict load with `ERR_UNKNOWN_ATTR`; C# rejected the value with `ERR_BAD_ATTR_VALUE`;
+  Java (and so Kotlin) loaded it but stored the bag as a JSON-text string. All four loaders now
+  agree, gated by the `attr-properties-inline` conformance fixture. Nothing that loaded before
+  stops loading.
 - **Java OMDB reads a projection whose view is named by `@view`.** The read mapping took the
   view name from `@table` only, so a projection declared with the kind-matching `@view` alias
   had no read mapping. It now resolves the source's physical name (`@view`, then the legacy

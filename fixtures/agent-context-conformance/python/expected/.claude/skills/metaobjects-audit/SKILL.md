@@ -560,7 +560,7 @@ The audit never edits code. Pattern: **dry-run → review the diff → apply**.
   `APIRouter`; relationship / non-`table` source-kind / `field.object flattened` codegen is partial.
 - **C#** has no ObjectManager runtime tier (EF Core is the runtime) — hand services over the generated `DbContext` are expected.
 - **Cut subtypes** — `field.byte` / `field.short` / `field.class` are removed; never recommend them.
-- **TS/web-only** — `view.*` widget subtypes exist only for TS/web consumers; only `view.base` / `view.currency` are cross-port-gated.
+- **TS/web-only** — `view.*` widget subtypes load in every port but are consumed only by TS/web; only `view.base` / `view.currency` are cross-port-gated.
 - **Planned, not shipped** — `api.*` / `operation.*` / `binding.*` (FR-024) and MCP exposure of declared prompts/tools are not yet in the registry; their absence is not an adopter defect.
 - **Cross-port version-NUMBER skew is by design** — TS/C#/Python `0.x` vs Java/Kotlin `7.x` Maven is correct; never flag the *number lines* differing. But that is exactly why you can't eyeball cross-language drift: compare **`metamodelVersion`** (Phase 0 cross-language consistency item), not the package numbers. A `metamodelVersion` MISMATCH across ports *is* a finding; so is a port lagging its ecosystem's latest release. Also flag *intra-port* drift (mixed versions within one port, or a runtime package in `devDependencies`).
 - **Stale upstream prose** — "hand-write the Spring controller" (Java/Kotlin) is out of date; trust `meta gen --list`, not stale prose.

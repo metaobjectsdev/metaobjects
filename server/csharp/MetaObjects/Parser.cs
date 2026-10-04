@@ -1597,6 +1597,26 @@ public static class Parser
                 .AttrsOf(model.Type, model.SubType)
                 .FirstOrDefault(a => a.Name == attrName);
 
+            // An UNDECLARED @-attr whose value is a JSON object is the registered
+            // `attr.properties` bag — materialize it exactly as the explicit
+            // `{"attr.properties": {...}}` child form does (structural attr child +
+            // SetAttr map entry), so the strict-attr pass exempts it. Mirrors TS
+            // parser-core inferUndeclaredAttrSubType.
+            if (attrSpec is null
+                && rawVal.ValueKind == JsonValueKind.Object
+                && st.Registry.Find(TYPE_ATTR, ATTR_SUBTYPE_PROPERTIES) is { } bagDef)
+            {
+                object bag = DataConverter.ToAttrObject(rawVal);
+                MetaData bagModel = bagDef.Factory(bagDef.TypeId, attrName);
+                st.Builder.PushKey(key);
+                bagModel.SetSource(st.CurrentSource());
+                st.Builder.Pop();
+                bagModel.SetAttr(RESERVED_KEY_VALUE, bag);
+                model.AddChild(bagModel);
+                model.SetAttr(attrName, bag);
+                continue;
+            }
+
             object? value;
             try
             {

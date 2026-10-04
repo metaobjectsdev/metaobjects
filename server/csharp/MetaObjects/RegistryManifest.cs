@@ -39,8 +39,9 @@ public static class RegistryManifest
     //    them as such; `description` stays in commonAttrs);
     //  - `metadata.base` is a per-port inheritance anchor (Java's), not in the
     //    cross-port contract — other ports register only `metadata.root`;
-    //  - the 11 generic `view.*` controls are a TS-web-presentation facet (cut
-    //    cross-port; C#/Python deregister them, TS keeps them registered).
+    //  - the generic `view.*` controls are a TS-web-presentation facet. C#
+    //    registers them for LOADING only (CoreTypes, via ViewConstants); this
+    //    filter is what keeps them out of the cross-port manifest.
     // ------------------------------------------------------------------
 
     // Wave 3b — the in/out boundary is an EXPLICIT CLASSIFICATION (a reason

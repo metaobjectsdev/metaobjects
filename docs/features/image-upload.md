@@ -7,12 +7,14 @@ image to a consumer-supplied adapter and stores only the key the adapter
 returns. No image bytes ever cross the MetaObjects wire — the field, the
 generated Zod schema, and the REST payload all carry a plain string.
 
-This is a **TS-web-only** feature. The metamodel vocabulary (`view.image` and
-its five attrs) is registered by the `metaobjects-ui-web` provider and applied
-only in TypeScript; the non-TS ports carry a byte-identical mirror of the spec
-file for drift parity but never apply the provider, and none of them ship an
-upload widget. A `field.string` authored with a `view.image` child is, to a
-Java/Kotlin/C#/Python port, just a plain string field.
+This is a **TS-web-only** feature — the upload widget, crop UI and adapter
+contract exist only in the TypeScript web client, and no other port ships one.
+The `view.image` subtype itself LOADS in every port (all the generic `view.*`
+controls register for loading everywhere; they stay manifest-excluded as
+PRESENTATION_ONLY — `fixtures/registry-conformance/README.md`), but its five
+attrs (`@aspectRatio` … `@maxBytes`) are registered only by the TypeScript
+`metaobjects-ui-web` provider, so a `view.image` carrying them is authorable in
+TypeScript alone. A backend port reads the field as the plain string it is.
 
 ## Authoring: `field.string` + `view.image`
 

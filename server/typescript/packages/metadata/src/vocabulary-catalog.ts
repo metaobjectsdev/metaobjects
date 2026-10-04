@@ -2,8 +2,8 @@
 //
 // `buildRegistryManifest` answers "what must all five ports byte-match?" and deliberately
 // carves rows OUT of its answer: the `metadata.base` inheritance anchor, and the 13
-// TS-web-presentation `view.*` controls, which stay REGISTERED in TypeScript (the loader
-// must accept an authored `view.dropdown`) but are deregistered in C# and Python and
+// TS-web-presentation `view.*` controls, which are REGISTERED in every port (the loader
+// must accept an authored `view.dropdown`) but consumed only by TypeScript, and so are
 // excluded from the shared canonical everywhere. That carve-out is correct and documented
 // (fixtures/registry-conformance/README.md, B-2).
 //

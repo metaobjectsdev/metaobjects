@@ -288,8 +288,9 @@ public final class RegistryManifest {
     //    no-ops for TS/C#/Python. `description` stays in the commonAttrs block.
     //  - metadata.base is Java's internal inheritance anchor — other ports
     //    register only metadata.root (the deferred inheritsFrom anchor).
-    //  - the 11 generic view.* controls are a TS-web-presentation facet (Java
-    //    never registered them anyway; the filter keeps the contract explicit).
+    //  - the generic view.* controls are a TS-web-presentation facet. Java
+    //    registers them for LOADING only (PresentationView); this filter is what
+    //    keeps them out of the cross-port manifest.
     // ------------------------------------------------------------------
 
     /**
