@@ -12,6 +12,7 @@ import com.metaobjects.generator.kotlin.KotlinTypeMapper
 import com.metaobjects.generator.kotlin.PackageMapping
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.generator.util.RestSurfaceGate
+import com.metaobjects.reporting.ReportReadModel
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.source.MetaSource
 import com.metaobjects.template.MetaTemplate
@@ -39,7 +40,10 @@ import com.metaobjects.template.TemplateConstants
  *   traversal) / FILTER (the `<Entity>FilterAllowlist` object). A read-only `object.projection` →
  *   MODEL + a single read-only DATA_ACCESS surface (the Exposed `Table` for a view kind, or the
  *   `<Name>Proc` callable for a storedProc kind); no write surfaces. A value object → MODEL only. An
- *   abstract object / a TPH subtype yields no instance artifacts.
+ *   abstract object / a TPH subtype yields no instance artifacts. A SERVED report (`object.report`
+ *   over a view, FR-044) is documented from its read model: MODEL (its row), DATA_ACCESS (the
+ *   read-only Exposed `Table`), one REST symbol (`GET <path>`) and FILTER. A report that is not
+ *   served yields no unit.
  * - **Templates** (both subtypes): each → PAYLOAD / RENDER, since every renderable template gets
  *   a render helper (ADR-0052); a RESPONDING `template.prompt` adds PROMPT / OUTPUT_PARSER /
  *   EXTRACTOR — each gated by the matching generator's applies-predicate.
@@ -68,10 +72,15 @@ class KotlinApiModelBuilder {
         // Objects: one unit per object.entity / object.value / object.projection (the subtype +
         // each generator's gate drive which symbol categories are let through — a projection is a
         // read-only model, documented as MODEL + its read-only data-access surface only).
-        for (obj in loader.metaObjects) {
+        for (declared in loader.metaObjects) {
+            // FR-044 Plan 3: a SERVED report (its read source is a view) is documented from
+            // its read model, the object its data class, table, allowlist and controller are
+            // generated from. A report that is not served generates nothing and gets no unit.
+            val obj = RestSurfaceGate.restShapeOf(declared) ?: continue
             if (obj.subType != MetaObject.SUBTYPE_ENTITY &&
                 obj.subType != MetaObject.SUBTYPE_VALUE &&
-                obj.subType != MetaObject.SUBTYPE_PROJECTION
+                obj.subType != MetaObject.SUBTYPE_PROJECTION &&
+                obj !is ReportReadModel
             ) {
                 continue
             }
@@ -97,9 +106,11 @@ class KotlinApiModelBuilder {
         val (pkg, shortName) = PackageMapping.splitFqn(obj.name)
         val entity = obj.subType == MetaObject.SUBTYPE_ENTITY
         val projection = obj.subType == MetaObject.SUBTYPE_PROJECTION
+        val report = obj is ReportReadModel   // a served report's read model (see build)
         val unitKind = when {
             entity -> "entity"
             projection -> "projection"
+            report -> "report"
             else -> "value"
         }
 
@@ -120,6 +131,7 @@ class KotlinApiModelBuilder {
                     usage = when {
                         entity -> "the entity model (plain Kotlin data class, Jackson-compatible; also the controller request/response body)"
                         projection -> "the read-model (plain Kotlin data class, Jackson-compatible; read-only projection of query results)"
+                        report -> "the report row (plain Kotlin data class, Jackson-compatible; read-only, one property per derived field)"
                         else -> "the value-object model (plain Kotlin data class, Jackson-compatible)"
                     },
                 )
@@ -129,7 +141,8 @@ class KotlinApiModelBuilder {
         // A projection's data-access surface IS what codegen-kotlin emits for its source
         // @kind: a read-only Exposed Table object (view / materializedView) or a stored-proc
         // callable object (storedProc).
-        if (projection && !KotlinGenUtil.isAbstractEntity(obj)) {
+        // A served report's is the read-only Exposed Table object over its view (FR-044).
+        if ((projection || report) && !KotlinGenUtil.isAbstractEntity(obj)) {
             projectionDataAccess(obj)?.let { symbols.add(it) }
         }
 
@@ -296,6 +309,10 @@ class KotlinApiModelBuilder {
             )
         }
         rest("GET $base", "list with pagination / sort / filters")
+        // FR-044: a served report is a list and nothing else (Table G). It has no identity,
+        // so no item route; its controller answers POST with 405, which is a refusal and not
+        // an operation of the API.
+        if (obj is ReportReadModel) return
         // F22 — a read-only projection serves the reads and REFUSES every write verb with
         // 405. Documenting it with the writable verb list would be the precise drift this
         // builder exists to prevent; and a keyless projection has no /{id} route at all.

@@ -63,12 +63,11 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
-        for (entity in loader.metaObjects) {
-            // FR-044 Plan 3, interim: RestSurfaceGate now admits a served object.report (the Java
-            // port emits its read-only surface from RestSurfaceGate.restShapeOf). This generator
-            // does not serve a report yet, and the declared node has no fields to emit from, so a
-            // report is skipped here until the Kotlin port switches this loop to restShapeOf.
-            if (com.metaobjects.generator.util.GeneratorUtil.isReport(entity)) continue
+        for (declared in loader.metaObjects) {
+            // FR-044: a served report filters on its DERIVED fields, so its allowlist is built
+            // from its read model (which marks every banded derived field @filterable). Any
+            // other report maps to null and gets no allowlist; a non-report is itself.
+            val entity = RestSurfaceGate.restShapeOf(declared) ?: continue
             // FR-017 TPH: a discriminator subtype folds into its base — the base's allowlist
             // (unioned across subtype columns via isTphBase) is the only one the polymorphic
             // controller uses; a per-subtype allowlist is dead. Mirror the controller/table skip.

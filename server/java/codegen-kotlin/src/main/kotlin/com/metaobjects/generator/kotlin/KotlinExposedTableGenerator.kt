@@ -44,6 +44,7 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import org.slf4j.LoggerFactory
 import com.metaobjects.generator.util.GeneratedFileWriter
+import com.metaobjects.generator.util.RestSurfaceGate
 
 /**
  * Generator: one Exposed Table `object` per `object.entity` that has a `source.rdb` child.
@@ -367,12 +368,13 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      *  - it binds its view and columns by LITERAL even when the names generator is in the
      *    run ([bindsThroughNames]): [KotlinNamesGenerator] emits nothing for a report;
      *  - an enum column references the enum class of the entity the dimension reads
-     *    ([reportEnumClass]): no generator emits a per-report enum;
+     *    ([KotlinGenUtil.reportEnumClasses]): no generator emits a per-report enum;
      *  - a derived decimal with no declared precision reads at [REPORT_DECIMAL_PRECISION] /
      *    [REPORT_DECIMAL_SCALE] ([scalarColumnSpec]).
      *
      * A report has no identity, so the table has no `primaryKey`, and no index or reference.
-     * Every other Kotlin generator skips reports.
+     * The data class, filter allowlist and read-only controller of the same report come from
+     * their own generators, each through `RestSurfaceGate.restShapeOf` (FR-044 Plan 3).
      */
     private fun emitReport(
         report: MetaObject,
@@ -383,10 +385,11 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         packagesNeedingJacksonMapper: MutableSet<String>,
         packagesNeedingUuidStringHelper: MutableSet<String>,
     ) {
-        if (KotlinGenUtil.isAbstractEntity(report)) return
+        // Table A, from the one JVM predicate every REST-surface generator asks: a report
+        // is served only when it is concrete and its read source is `@kind: view`.
+        if (!RestSurfaceGate.isServedReport(report)) return
         // The source the report is READ from, by the rule that names the lowered view.
         val source = ReportShape.readSource(report) as? RdbSource ?: return
-        if (source.effectiveKind != MetaSource.KIND_VIEW) return
 
         // Table B, derived ONCE for the report; everything below reads this one shape.
         val shape = ReportShape.of(report, loader.root)
@@ -395,8 +398,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val model = ReportReadModel.of(report)
         val pkg = PackageMapping.splitFqn(report.name).first
         reportPlans[model] = ReportTablePlan(
-            enumClasses = shape.fields().filter { it.typeSource is EnumField }
-                .associate { it.name to reportEnumClass(shape, it) },
+            enumClasses = KotlinGenUtil.reportEnumClasses(shape),
             unsizedDecimals = shape.fields()
                 .filter { it.typeSource == null && it.subType == DecimalField.SUBTYPE_DECIMAL }
                 .mapTo(HashSet()) { it.name },
@@ -498,40 +500,9 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
     private fun bindsThroughNames(entity: MetaObject): Boolean = useNames() && entity !is ReportReadModel
 
     /**
-     * The generated enum class a report's derived enum field [f] is typed by. A report gets
-     * no entity class and so no enum of its own; its enum column carries the values of the
-     * field the dimension (or min/max measure) reads, and is typed by THAT field's class:
-     * the one [KotlinEntityGenerator] emits for the entity the item reads from. Without
-     * `@via` that is the report's `@from` entity (which is how a field `@from` inherits from
-     * an abstract base still names a class that exists); with `@via` it is the entity the
-     * `@of` reference names. [ReportShape.ofEntity] answers both, by the rule that derived
-     * the field (a bare name resolves in the package of the entity DECLARING the dimension).
-     *
-     * @throws GeneratorException naming the report and the dimension when that entity does
-     *   not resolve. The shape resolved the same reference to derive [f], so a loaded model
-     *   cannot reach this; it guards a tree built in code, where typing the column by a
-     *   guessed class would compile against the wrong enum.
-     */
-    private fun reportEnumClass(shape: ReportShape, f: ReportShape.Field): ClassName {
-        val report = shape.report()
-        // The entity the field is read from, by the rule that derived the field: nothing
-        // about packages or @via is restated here.
-        val owner = shape.ofEntity(f)
-            ?: throw GeneratorException(
-                "report \"${report.shortName}\": its dimension \"${f.dimension?.shortName}\" reads the enum " +
-                    "\"${f.dimension?.of}\" through @via, and the entity that reference names does not " +
-                    "resolve, so the generated column has no enum class to be typed by."
-            )
-        return KotlinTypeMapper.enumTypeName(f.typeSource, owner)
-            ?: throw GeneratorException(
-                "report \"${report.shortName}\": its ${describeItem(f)} is an enum with no generated enum class."
-            )
-    }
-
-    /**
      * The generated enum class a `field.enum` column of [entity]'s table is typed by:
      * [KotlinTypeMapper.enumTypeName] for an entity or projection — the class
-     * [KotlinEntityGenerator] emits for it — and [reportEnumClass] for a report.
+     * [KotlinEntityGenerator] emits for it — and [KotlinGenUtil.reportEnumClasses] for a report.
      */
     private fun enumClassFor(field: MetaField<*>, entity: MetaObject): ClassName? =
         reportPlans[entity]?.enumClasses?.get(field.name) ?: KotlinTypeMapper.enumTypeName(field, entity)

@@ -23,11 +23,13 @@ import kotlin.test.assertTrue
  * `dimension.*`, `measure.*` and `segment.*` generate nothing anywhere. An `object.report`
  * with no read-only source generates nothing anywhere. A report that declares a read-only
  * `source.rdb @kind: view` is lowered to that view (by TypeScript migrate), and Kotlin
- * generates exactly one thing for it: its read-only Exposed table, from
- * [KotlinExposedTableGenerator]. Every other generator in [GENERATOR_REGISTRY] — entity,
- * names, relations, repository, controller, filter allowlist, the docs tier — emits for a
- * model that USES the vocabulary exactly what it emits for the same model without it, byte
- * for byte.
+ * generates exactly four files for it (FR-044 Plan 3), one from each of four generators:
+ * its read-only Exposed table ([KotlinExposedTableGenerator]), its row data class
+ * ([KotlinEntityGenerator]), its filter allowlist ([KotlinFilterAllowlistGenerator]) and its
+ * read-only controller ([KotlinSpringControllerGenerator]). Every other generator in
+ * [GENERATOR_REGISTRY] — names, relations, repository, validator, the prompt tier — emits
+ * for a model that USES the vocabulary exactly what it emits for the same model without it,
+ * byte for byte, and those four emit nothing else new.
  *
  * The model pair is `fixtures/codegen-noop/reporting/{with,without}`, shared with the other
  * four ports' copies of this test. `with/` carries two sourceless reports
@@ -87,26 +89,27 @@ class ReportingInertTest {
     }
 
     /**
-     * Null when [actual] is [expected] plus exactly the files in [added] (path to contents,
-     * empty for a generator that must stay inert); else what leaked.
+     * Null when [actual] is [expected] plus exactly the paths in [added] (empty for a
+     * generator that must stay inert), every [expected] file unchanged; else what leaked.
+     * What an added file CONTAINS is pinned elsewhere: the table below, the rest in
+     * [KotlinReportRestSurfaceTest].
      */
     private fun sameOrLeak(
         label: String,
         expected: Map<String, String>,
         actual: Map<String, String>,
-        added: Map<String, String> = emptyMap(),
+        added: Set<String> = emptySet(),
     ): String? {
-        val wanted = TreeMap(expected).apply { putAll(added) }
-        if (wanted.keys.toList() != actual.keys.toList()) {
-            return "$label: emitted file set ${wanted.keys} became ${actual.keys}"
+        val wanted = (expected.keys + added).sorted()
+        if (wanted != actual.keys.toList()) {
+            return "$label: emitted file set $wanted became ${actual.keys}"
         }
-        val differing = wanted.keys.filter { wanted[it] != actual[it] }
+        val differing = expected.keys.filter { expected[it] != actual[it] }
         return if (differing.isEmpty()) null else "$label: $differing differ once reporting nodes are declared"
     }
 
-    /** What a generator may add for the with-model: the view-backed report's table, and only from `exposed-table`. */
-    private fun allowedFor(info: GeneratorInfo): Map<String, String> =
-        if (info.name == EXPOSED_TABLE) mapOf(STORE_TOTALS_TABLE_PATH to STORE_TOTALS_TABLE) else emptyMap()
+    /** What a generator may add for the with-model: one file of the view-backed report, from four generators. */
+    private fun allowedFor(info: GeneratorInfo): Set<String> = setOfNotNull(STORE_TOTALS_FILES[info.name])
 
     @Test
     fun `the with-model really carries the vocabulary`() {
@@ -120,7 +123,7 @@ class ReportingInertTest {
     }
 
     @Test
-    fun `only the Exposed table generator emits for a report, and only the view-backed one's table`() {
+    fun `only four generators emit for a report, each one file, for the view-backed one`() {
         // Every generator is compared before anything is asserted, so one red run names
         // every leak rather than the first.
         val leaks = GENERATOR_REGISTRY.values.mapNotNull { info ->
@@ -138,6 +141,16 @@ class ReportingInertTest {
     }
 
     @Test
+    fun `the view-backed report emits exactly one file from each of the four generators`() {
+        // Else the allowance above is vacuous: each file really is emitted.
+        for ((name, path) in STORE_TOTALS_FILES) {
+            val info = GENERATOR_REGISTRY.getValue(name)
+            val added = emit("with", listOf(info)).keys - emit("without", listOf(info)).keys
+            assertEquals(setOf(path), added, name)
+        }
+    }
+
+    @Test
     fun `a sourceless report appears in no generated file`() {
         val files = emit("with", GENERATOR_REGISTRY.values.toList())
         assertFalse(THREW in files, "the combined suite threw: ${files[THREW]}")
@@ -145,9 +158,9 @@ class ReportingInertTest {
             val hits = files.filter { (path, text) -> report in path || report in text }.keys
             assertTrue(hits.isEmpty(), "$report leaked into $hits")
         }
-        // The view-backed report is named by its table and by nothing else.
+        // The view-backed report is named by its four files and by nothing else.
         val hits = files.filter { (path, text) -> "StoreTotals" in path || "StoreTotals" in text }.keys
-        assertEquals(setOf(STORE_TOTALS_TABLE_PATH), hits)
+        assertEquals(STORE_TOTALS_FILES.values.toSet(), hits)
     }
 
     @Test
@@ -165,14 +178,14 @@ class ReportingInertTest {
         val expected = emit("without", runnable)
         assertFalse(THREW in expected, "the combined suite threw: ${expected[THREW]}")
         assertTrue(expected.size > 10, "only ${expected.size} files — the suite barely ran")
-        val leak = sameOrLeak(
-            "combined", expected, emit("with", runnable), mapOf(STORE_TOTALS_TABLE_PATH to STORE_TOTALS_TABLE))
+        val leak = sameOrLeak("combined", expected, emit("with", runnable), STORE_TOTALS_FILES.values.toSet())
         assertTrue(leak == null, leak)
     }
 
     /**
-     * The api docs surface: every unit page, the index and the agent page. A report has no
-     * generated API to document — no route, repository or DTO — whether or not it has a view.
+     * The api docs surface: every unit page, the index and the agent page. A served report
+     * has a generated API to document (its row, table, list route and allowlist); a
+     * sourceless one has none.
      */
     private fun apiDocs(variant: String): Map<String, String> {
         val model = KotlinApiModelBuilder().build(load(variant), "shop")
@@ -188,11 +201,28 @@ class ReportingInertTest {
     }
 
     @Test
-    fun `api docs are the same with and without reporting nodes`() {
+    fun `api docs gain exactly the view-backed report's page`() {
         val expected = apiDocs("without")
+        val actual = apiDocs("with")
         assertTrue(expected.size > 3, "only ${expected.size} pages — the docs barely ran")
-        val leak = sameOrLeak("api docs", expected, apiDocs("with"))
-        assertTrue(leak == null, leak)
+        val added = actual.keys - expected.keys
+        assertEquals(1, added.size, added.toString())
+        assertTrue("StoreTotals" in added.single(), added.toString())
+        assertEquals(emptySet(), expected.keys - actual.keys)
+        // Every other unit page is byte-identical; only the two pages that LIST units move.
+        val listings = setOf("README.md", "AGENT-API.md")
+        val differing = expected.keys.filter { it !in listings && expected[it] != actual[it] }
+        assertTrue(differing.isEmpty(), "$differing differ once reporting nodes are declared")
+        for (page in listings) {
+            // Dropping every line that names the report leaves the page it was (blank
+            // separator lines aside: the report's section brings its own).
+            val lines = actual.getValue(page).lines()
+                .filterNot { it.isBlank() || "StoreTotals" in it || "store_totals" in it }
+            assertEquals(expected.getValue(page).lines().filterNot { it.isBlank() }, lines, page)
+        }
+        for (report in listOf("ProgramEngagement", "DailyRevenue")) {
+            assertFalse(actual.any { (path, text) -> report in path || report in text }, "$report is documented")
+        }
     }
 
     private companion object {
@@ -202,6 +232,14 @@ class ReportingInertTest {
         const val EXPOSED_TABLE = "exposed-table"
 
         const val STORE_TOTALS_TABLE_PATH = "acme/shop/StoreTotalsTable.kt"
+
+        /** Registry id of each generator that emits for a served report, to the one file it adds. */
+        val STORE_TOTALS_FILES = mapOf(
+            EXPOSED_TABLE to STORE_TOTALS_TABLE_PATH,
+            "entity" to "acme/shop/StoreTotals.kt",
+            "filter-allowlist" to "acme/shop/StoreTotalsFilterAllowlist.kt",
+            "routes" to "acme/shop/StoreTotalsController.kt",
+        )
 
         /** `StoreTotals`: three measures over `Purchase` — two counts and a sum of a currency. */
         val STORE_TOTALS_TABLE = """
