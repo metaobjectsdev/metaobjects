@@ -81,11 +81,15 @@ generated code and both runtimes quote identifiers themselves.
 
 An `object.report` (the reporting vocabulary, `docs/features/reporting.md`) is a compiled
 view, and on MySQL you create that view yourself, because `meta migrate` does not. Declare
-the report with a read-only `source.rdb` of `@kind: view` and `@unmanaged: true`:
+the report with a read-only `source.rdb` of `@kind: view` and no `@unmanaged`, since
+`meta migrate` never targets MySQL and so nothing manages the view either way:
 
 ```json
-{ "source.rdb": { "@kind": "view", "@view": "v_program_minutes", "@unmanaged": true } }
+{ "source.rdb": { "@kind": "view", "@view": "v_program_minutes" } }
 ```
+
+`buildReportViews` skips a report whose source is `@unmanaged: true`, so generate the SQL
+before marking a source unmanaged if a shared model needs that flag for another database.
 
 `buildReportViews` returns the body of each view-backed report for the `mysql` dialect. Put
 each one in your own migration as `CREATE VIEW <name> AS <body>`:

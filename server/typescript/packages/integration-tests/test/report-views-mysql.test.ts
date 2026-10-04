@@ -27,12 +27,17 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import mysql from "mysql2/promise";
 import { buildReportViews } from "@metaobjectsdev/codegen-ts";
-import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource, loadDirectory, type MetaRoot } from "@metaobjectsdev/metadata";
 import { startMysql, type MysqlContainerHandle } from "../src/mysql-container.ts";
 import { loadMetadataDir } from "../src/load-metadata.ts";
 import { CANONICAL_DIR } from "../src/paths.ts";
+
+const REPO_ROOT = resolve(import.meta.dir, "../../../../..");
 
 let container: MysqlContainerHandle;
 let conn: mysql.Connection;
@@ -80,7 +85,10 @@ function reportViews(root: MetaRoot) {
 /** `CREATE VIEW` for every report view of `root`, exactly as the recipe shows. */
 async function createViews(root: MetaRoot): Promise<string[]> {
   const views = reportViews(root);
-  for (const v of views) await conn.query(`CREATE VIEW \`${v.name}\` AS\n${v.sql}`);
+  for (const v of views) {
+    await conn.query(`DROP VIEW IF EXISTS \`${v.name}\``);
+    await conn.query(`CREATE VIEW \`${v.name}\` AS\n${v.sql}`);
+  }
   return views.map((v) => v.name);
 }
 
@@ -176,8 +184,14 @@ beforeAll(async () => {
     supportBigNumbers: true,
     bigNumberStrings: true,
   });
+  // Idempotent: a rerun against a persistent METAOBJECTS_TEST_MYSQL_URL starts clean, and
+  // every test below is independent of test order (or of `-t` selecting one of them).
+  const stale = await select(`SELECT table_name AS n FROM information_schema.views WHERE table_schema = DATABASE()`);
+  for (const v of stale) await conn.query(`DROP VIEW IF EXISTS \`${String(v.n)}\``);
+  for (const t of ["weeks", "programs", "assets", "events"]) await conn.query(`DROP TABLE IF EXISTS ${t}`);
   for (const ddl of DDL) await conn.query(ddl);
   canonical = await loadMetadataDir(CANONICAL_DIR);
+  await createViews(canonical);
 }, 240_000);
 
 afterAll(async () => {
@@ -198,6 +212,7 @@ describe("report views — canonical model on real MySQL 8.4", () => {
     expect(String(mode?.g)).toContain("ONLY_FULL_GROUP_BY");
     expect(String(mode?.s)).toContain("ONLY_FULL_GROUP_BY");
 
+    // Re-create them here, under the mode just asserted, so this test does not lean on beforeAll.
     const names = await createViews(canonical);
     expect([...names].sort()).toEqual([...CANONICAL_VIEWS].sort());
     for (const name of names) {
@@ -207,7 +222,8 @@ describe("report views — canonical model on real MySQL 8.4", () => {
     const created = await select(
       `SELECT table_name AS n FROM information_schema.views WHERE table_schema = DATABASE() ORDER BY table_name`,
     );
-    expect(created.map((r) => r.n)).toEqual([...CANONICAL_VIEWS].sort());
+    // The inline-model tests below add views of their own, so assert inclusion, not equality.
+    expect(created.map((r) => r.n)).toEqual(expect.arrayContaining([...CANONICAL_VIEWS]));
   }, 60_000);
 
   describe("values", () => {
@@ -382,4 +398,66 @@ describe("report views — inline models on real MySQL 8.4", () => {
     // P1DT1H forward: everything up to a day and an hour ahead; the 3-days-ahead row is out.
     expect(await select("SELECT * FROM `v_up_to_tomorrow`")).toEqual([{ events: "4" }]);
   }, 60_000);
+});
+
+describe("the recipe's declaration and script", () => {
+  /** The first fenced `json` block under "### Reports" in docs/recipes/mysql.md. */
+  function recipeDeclaration(): string {
+    const doc = readFileSync(join(REPO_ROOT, "docs/recipes/mysql.md"), "utf8");
+    const section = doc.slice(doc.indexOf("### Reports"));
+    const m = /```json\n([\s\S]*?)\n```/.exec(section);
+    if (m === null) throw new Error("docs/recipes/mysql.md has no json block under '### Reports'");
+    return m[1]!;
+  }
+
+  /** A model whose one report carries `sourceJson` as its source, written where `loadDirectory` reads it. */
+  function modelDir(sourceJson: string): string {
+    const dir = mkdtempSync(join(tmpdir(), "report-recipe-"));
+    const source = JSON.parse(sourceJson) as Record<string, unknown>;
+    writeFileSync(join(dir, "meta.fitness.json"), JSON.stringify({ "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Week", children: [
+        { "source.rdb": { "@table": "weeks" } },
+        { "field.long": { name: "id" } },
+        { "field.int": { name: "durationMinutes", "@required": true } },
+        { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+        { "measure.aggregate": { name: "weeks", "@agg": "count", "@of": "Week.id" } },
+      ] } },
+      { "object.report": { name: "ProgramMinutes", "@from": "Week", "@measures": ["weeks"], children: [source] } },
+    ]}}));
+    return dir;
+  }
+
+  /** The recipe's script, minus the console.log. */
+  async function recipeViews(sourceJson: string) {
+    const dir = modelDir(sourceJson);
+    try {
+      const { root } = await loadDirectory(dir);
+      return buildReportViews(root, { dialect: "mysql" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  test("the declaration the recipe shows yields exactly one view, and MySQL accepts its body", async () => {
+    const declaration = recipeDeclaration();
+    expect(declaration).not.toContain("@unmanaged");
+    const views = await recipeViews(declaration);
+    expect(views.map((v) => v.name)).toEqual(["v_program_minutes"]);
+
+    // The body is built over the default snake_case column names; the recipe's own `weeks`
+    // table has `id`, so it resolves as it stands.
+    await conn.query("DROP VIEW IF EXISTS `v_program_minutes_recipe`");
+    await conn.query(`CREATE VIEW \`v_program_minutes_recipe\` AS\n${views[0]!.sql}`);
+    await exec(`
+      INSERT INTO programs (id, title, priceCents, status, created_ts) VALUES (1, 'P', 1, 'DRAFT', '2026-05-01T10:00:00');
+      INSERT INTO weeks (programId, label, durationMinutes) VALUES (1, 'a', 30), (1, 'b', 45);`);
+    expect(await select("SELECT * FROM `v_program_minutes_recipe`")).toEqual([{ weeks: "2" }]);
+    await conn.query("DROP VIEW `v_program_minutes_recipe`");
+  }, 60_000);
+
+  test("the same declaration with @unmanaged: true yields no view: buildReportViews skips an unmanaged source", async () => {
+    const unmanaged = JSON.parse(recipeDeclaration()) as { "source.rdb": Record<string, unknown> };
+    unmanaged["source.rdb"]["@unmanaged"] = true;
+    expect(await recipeViews(JSON.stringify(unmanaged))).toEqual([]);
+  });
 });
