@@ -92,6 +92,10 @@ it until 1.1 ships._
   - `@maxLength` and `validator.length @max` on one field are strictest-wins. The runner
     used `@maxLength` alone, so a tighter validator bound was not applied.
 
+  One resolution is corrected: a package-qualified `@objectRef` (`billing::Address`) on a
+  value-object field now resolves to the object in that package. It resolved to the first
+  object of that bare name, so with two same-named value objects the wrong one's rules ran.
+
   One rule is relaxed: an authored `validator.length @min: 0` on a `@required` string now
   admits the empty string, as the generated schema already did.
 

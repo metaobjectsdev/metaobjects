@@ -177,8 +177,7 @@ export function runValidators(
 }
 
 /** Resolve a `field.object`'s `@objectRef` to its value-object MetaData by walking
- *  to the tree root. The ref may be a bare name or a `pkg::Name` FQN. Mirrors the
- *  extract-object resolver. Returns undefined when unresolvable OR when the target
+ *  to the tree root. The ref may be a bare name or a `pkg::Name` FQN. Returns undefined when unresolvable OR when the target
  *  is not an `object.value` (→ no VO recursion). Cross-port parity: C#/Java/Kotlin
  *  gate the recursion on the ref being a value object, so a `field.object @objectRef`
  *  pointing at a non-value object validates identically (skipped) on every port.
@@ -191,11 +190,12 @@ function resolveVoRef(field: MetaData): MetaData | undefined {
   // class check fails for a real root and every VO reference silently stops
   // resolving, skipping nested value-object validation with no error.
   if (!isMetaRoot(root)) return undefined;
-  let target = root.findObject(ref);
-  if (target === undefined) {
-    const sep = ref.lastIndexOf(PACKAGE_SEPARATOR);
-    if (sep >= 0) target = root.findObject(ref.slice(sep + PACKAGE_SEPARATOR.length));
-  }
+  // The package-qualified key first, so `billing::Address` never resolves to another
+  // package's `Address`; then the bare name (a bare ref, or the trailing segment).
+  const objects = root.objects();
+  const sep = ref.lastIndexOf(PACKAGE_SEPARATOR);
+  const short = sep >= 0 ? ref.slice(sep + PACKAGE_SEPARATOR.length) : ref;
+  const target = objects.find((o) => o.resolutionKey() === ref) ?? objects.find((o) => o.name === short);
   return target?.subType === OBJECT_SUBTYPE_VALUE ? target : undefined;
 }
 

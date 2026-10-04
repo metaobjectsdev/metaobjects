@@ -478,3 +478,26 @@ describe("runValidators — assigned primary key", () => {
     expect(errorsOf(ledger(), { code: "" })).toEqual([]);
   });
 });
+
+describe("runValidators — value-object @objectRef resolution", () => {
+  test("a package-qualified ref picks the object in that package, not the first of that name", async () => {
+    const { MetaDataLoader, InMemoryStringSource } = await import("@metaobjectsdev/metadata");
+    const file = (pkg: string, children: unknown[]) =>
+      new InMemoryStringSource(JSON.stringify({ "metadata.root": { package: pkg, children } }));
+    const r = await new MetaDataLoader().load([
+      file("shipping", [{ "object.value": { name: "Address", children: [
+        { "field.string": { name: "zip", "@required": true } },
+      ] } }]),
+      file("billing", [{ "object.value": { name: "Address", children: [
+        { "field.string": { name: "city", "@required": true } },
+      ] } }]),
+      file("orders", [{ "object.entity": { name: "Order", children: [
+        { "field.object": { name: "addr", "@objectRef": "billing::Address" } },
+      ] } }]),
+    ]);
+    expect(r.errors).toEqual([]);
+    const order = r.root.objects().find((o) => o.name === "Order")!;
+    expect(errorsOf(order, { addr: { city: "NYC" } })).toEqual([]);
+    expect(errorsOf(order, { addr: { zip: "12345" } }).map((e) => e.field)).toEqual(["addr.city"]);
+  });
+});

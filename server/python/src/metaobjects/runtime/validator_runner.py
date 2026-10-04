@@ -14,13 +14,14 @@ behaviour, because the failure list is byte-compared across the two runners:
 
 - a ``bool`` is not a number (``isinstance(True, int)`` is true in Python);
 - string length counts UTF-16 code units, as JS ``String.length`` does;
-- a number in a message prints as JS prints it (an integral float has no ``.0``).
+- a number in a message prints as JS prints it (``2.0`` is ``2``, ``1e-07`` is ``1e-7``).
 """
 from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 
 from ..meta.core.field import field_constants as fc
 from ..meta.core.identity import identity_constants as ic
@@ -430,7 +431,33 @@ def _utf16_length(value: str) -> int:
 
 
 def _js_number(value: object) -> str:
-    """``value`` as a JS template literal prints it: an integral float carries no ``.0``."""
-    if isinstance(value, float) and value.is_integer() and abs(value) < 1e21:
-        return str(int(value))
-    return str(value)
+    """``value`` as a JS template literal prints it (ECMAScript ``Number::toString``).
+
+    Python and JS agree on the shortest round-trip DIGITS of a float but lay them out
+    differently: JS prints an integral float with no ``.0``, switches to exponent notation
+    only below 1e-6 and from 1e21, writes the exponent unpadded (``1e-7``, ``1e+21``), and
+    names the non-finite values ``Infinity`` / ``NaN``. An ``int`` and a string print as
+    they are."""
+    if not isinstance(value, float):
+        return str(value)
+    if value != value:
+        return "NaN"
+    if value in (float("inf"), float("-inf")):
+        return "Infinity" if value > 0 else "-Infinity"
+    if value == 0:
+        return "0"
+    sign, digit_tuple, exponent = Decimal(repr(abs(value))).as_tuple()
+    digits = "".join(map(str, digit_tuple)).rstrip("0")
+    # The decimal point sits after ``point`` digits: value = 0.<digits> x 10^point.
+    point = len(digit_tuple) + int(exponent)
+    count = len(digits)
+    if count <= point <= 21:
+        text = digits + "0" * (point - count)
+    elif 0 < point <= 21:
+        text = f"{digits[:point]}.{digits[point:]}"
+    elif -6 < point <= 0:
+        text = "0." + "0" * -point + digits
+    else:
+        mantissa = digits if count == 1 else f"{digits[0]}.{digits[1:]}"
+        text = f"{mantissa}e{'+' if point > 0 else '-'}{abs(point - 1)}"
+    return text if value > 0 else f"-{text}"

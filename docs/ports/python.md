@@ -479,8 +479,9 @@ labelled `field.member` or `field[i].member`.
 The `ObjectManager` write methods do not call it, so validate first when the data is
 untrusted.
 
-Two details follow JavaScript so that both runners report identical failures: string
-length counts UTF-16 code units, and a `bool` is not accepted as a number.
+Three details follow JavaScript so that both runners report identical failures: string
+length counts UTF-16 code units, a `bool` is not accepted as a number, and a number in a
+message prints as JavaScript prints it (`2.0` as `2`, `1e-07` as `1e-7`).
 
 ## FR-004 — render
 

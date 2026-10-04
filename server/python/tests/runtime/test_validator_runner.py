@@ -444,3 +444,46 @@ def test_object_manager_validate_returns_the_runner_result() -> None:
     assert [e.to_dict() for e in om.validate("Post", {}).errors] == [
         {"field": "title", "rule": "required", "message": "'title' is required"},
     ]
+
+
+# ── cross-runner parity details ──────────────────────────────────────────────
+
+
+def test_package_qualified_object_ref_picks_the_object_in_that_package() -> None:
+    from metaobjects.loader.meta_data_loader import InMemoryStringSource
+
+    def doc(pkg: str, child: dict) -> str:
+        return json.dumps({"metadata.root": {"package": pkg, "children": [child]}})
+
+    result = MetaDataLoader().load([InMemoryStringSource(text) for text in (
+        doc("shipping", {"object.value": {"name": "Address", "children": [_string("zip", required=True)]}}),
+        doc("billing", {"object.value": {"name": "Address", "children": [_string("city", required=True)]}}),
+        doc("orders", {"object.entity": {"name": "Order", "children": [
+            {"field.object": {"name": "addr", "@objectRef": "billing::Address"}},
+        ]}}),
+    )])
+    assert not result.errors, [str(e) for e in result.errors]
+    order = next(c for c in result.root.children() if c.name == "Order")
+    assert _rules(order, {"addr": {"city": "NYC"}}) == []
+    assert _rules(order, {"addr": {"zip": "12345"}}) == ["addr.city:required"]
+
+
+def test_numbers_in_messages_print_as_javascript_prints_them() -> None:
+    from metaobjects.runtime.validator_runner import _js_number
+
+    # Each pair is (value, what a JS template literal prints for it).
+    for value, printed in [
+        (0, "0"), (-1, "-1"), (2.0, "2"), (-0.0, "0"), (1.5, "1.5"), (0.1, "0.1"),
+        (1e-5, "0.00001"), (1e-6, "0.000001"), (1e-7, "1e-7"), (1.5e-7, "1.5e-7"),
+        (123456789.125, "123456789.125"), (1e21, "1e+21"), (1.5e22, "1.5e+22"), (1e20, "100000000000000000000"),
+        (float("inf"), "Infinity"), (float("-inf"), "-Infinity"), (float("nan"), "NaN"),
+        ("5", "5"),
+    ]:
+        assert _js_number(value) == printed, value
+
+
+def test_a_small_value_prints_as_javascript_prints_it() -> None:
+    # Validator bounds are int-typed in the metamodel, so only the VALUE can be fractional.
+    e = _load({"field.double": {"name": "ratio", "children": [{"validator.numeric": {"@min": 1}}]}})
+    assert _errors(e, {"ratio": 0.000001})[0]["message"] == "'ratio' must be at least 1 (got 0.000001)"
+    assert _errors(e, {"ratio": 1e-7})[0]["message"] == "'ratio' must be at least 1 (got 1e-7)"
