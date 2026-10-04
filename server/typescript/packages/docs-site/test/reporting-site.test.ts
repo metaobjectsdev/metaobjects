@@ -3,14 +3,12 @@
 // entity's page, and the reporting vocabulary counted as RENDERED by the coverage audit.
 //
 // The model pair is the one every port's FR-044 inert test shares
-// (fixtures/codegen-noop/reporting/). The sentences asserted here are the same ones
-// codegen-ts's `reporting-docs.test.ts` asserts for the markdown model pages over the same
-// model: the two packages each hold a copy of the wording, and these two tests are what
-// keeps the copies saying the same thing.
+// (fixtures/codegen-noop/reporting/). The sentences come from `@metaobjectsdev/metadata`'s
+// describers, which the markdown model pages (codegen-ts) print too.
 
 import { beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
 import { generateSite, type SiteResult } from "../src/site";
@@ -28,13 +26,14 @@ interface Site { result: SiteResult; files: Record<string, string>; }
 
 /** Generate the site for one variant. The source dir has the SAME basename for both
  *  variants: a page prints the file its object came from. */
-async function site(variant: "with" | "without"): Promise<Site> {
+async function site(variant: "with" | "without", edit?: (json: string) => string): Promise<Site> {
   const parent = mkdtempSync(join(tmpdir(), "reporting-site-"));
   try {
     const src = join(parent, "shop");
     const out = join(parent, "out");
     mkdirSync(src);
-    copyFileSync(join(MODELS, variant, "meta.shop.json"), join(src, "meta.shop.json"));
+    const model = readFileSync(join(MODELS, variant, "meta.shop.json"), "utf8");
+    writeFileSync(join(src, "meta.shop.json"), edit ? edit(model) : model);
     const result = await generateSite({ sourceDirs: [src], outDir: out, title: "Shop", stamp: "2026-01-01", commit: "abc1234" });
     const files: Record<string, string> = {};
     for (const rel of walk(out)) files[rel] = readFileSync(join(out, rel), "utf8");
@@ -147,6 +146,21 @@ describe("FR-044 the site renders reports", () => {
     expect(coverage.warnings.filter((w) => /deferred|dimension|measure|segment|object\.report/.test(w))).toEqual([]);
     // And the model without reports warns about exactly what the model with them does.
     expect(coverage.warnings).toEqual(withoutSite.result.coverage.warnings);
+  });
+
+  test("an attr a reporting node carries that no page prints is reported as not rendered", async () => {
+    // The audit marks only the attrs the describers read. `@description` on a measure is
+    // legal (a documentation attr of any node) and the Reporting section does not print it.
+    const edited = await site("with", (json) => {
+      const needle = '"name": "revenue",';
+      expect(json.split(needle).length).toBe(2);
+      return json.replace(needle, `${needle} "@description": "Gross takings.",`);
+    });
+    const row = edited.result.coverage.attrs.find((r) => r.key === "measure:@description");
+    expect(row).toEqual({ key: "measure:@description", count: 1, consumed: false });
+    expect(edited.result.coverage.warnings).toContain("coverage: measure:@description (1) not rendered by any page");
+    // The attrs the section does print are still counted as rendered.
+    expect(edited.result.coverage.attrs.find((r) => r.key === "measure:@agg")?.consumed).toBe(true);
   });
 
   test("a report is not an orphan: it is linked to the entity it reads from", () => {

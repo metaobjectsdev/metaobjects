@@ -6,36 +6,28 @@
 //   • the `@from` ENTITY's page: a "Reporting" section listing the dimensions, measures
 //     and segments it declares and the reports that name it.
 //
-// Everything is read from declared metadata. No SQL is derived here: a definition says
-// what a column means ("sum of `Invoice.amountCents` where segment `paid`"), never how
-// the view computes it. `docs-site` renders the same sentences on the HTML site from its
-// own copy of these rules (it does not depend on this package); its tests hold the two
-// together.
+// The SENTENCES come from `@metaobjectsdev/metadata` (`core/reporting/report-describe.ts`),
+// which `docs-site` reads too, so the markdown pages and the HTML site cannot disagree.
+// This module only lays them out as markdown.
 
 import {
-  type MetaData,
   type MetaObject,
   type MetaRoot,
-  type ReportField,
   DIMENSION_SUBTYPE_TIME,
-  MEASURE_SUBTYPE_RATIO,
   OBJECT_REPORT_ATTR_FILTER,
   OBJECT_REPORT_ATTR_SEGMENT,
-  REPORTING_ATTR_AGG,
-  REPORTING_ATTR_DENOMINATOR,
-  REPORTING_ATTR_DISTINCT,
-  REPORTING_ATTR_FILTER,
-  REPORTING_ATTR_GRAINS,
-  REPORTING_ATTR_NUMERATOR,
-  REPORTING_ATTR_OF,
-  REPORTING_ATTR_SEGMENT,
-  REPORTING_ATTR_VIA,
-  SOURCE_KIND_VIEW,
   TYPE_DIMENSION,
   TYPE_MEASURE,
   TYPE_SEGMENT,
+  describeDimension,
+  describeMeasure,
+  describeReportField,
+  describeRowScope,
+  describeSegment,
   isMetaObject,
+  reportFieldTypeName,
   reportFrom,
+  reportNotServedReason,
   reportReadSource,
   reportShape,
   resolveObjectRef,
@@ -44,97 +36,9 @@ import type { OutputLayout } from "../import-path.js";
 import { docPageHref, docPageNode, effectivePackage } from "../docs-paths.js";
 import { isReport } from "../source-detect.js";
 
-/** Inline code. A backtick cannot sit inside a single-backtick span, so it is dropped. */
+/** Inline code for a name this module prints itself (the describers return theirs ready). */
 function tick(text: string): string {
   return `\`${text.replace(/`/g, "")}\``;
-}
-
-/** A row-scope filter as authored: compact JSON, in the order it was declared. */
-function filterText(filter: unknown): string {
-  return tick(JSON.stringify(filter));
-}
-
-function stringList(v: unknown): string[] {
-  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string");
-  return typeof v === "string" ? [v] : [];
-}
-
-/**
- * "segment `paid` and filter `{…}`": the rows a measure or a report is scoped to, or
- * undefined when it declares neither. The two combine by AND, which is what the lowering
- * does with them.
- */
-export function describeRowScope(segment: unknown, filter: unknown): string | undefined {
-  const parts: string[] = [];
-  if (typeof segment === "string" && segment !== "") parts.push(`segment ${tick(segment)}`);
-  if (filter !== undefined && filter !== null) parts.push(`filter ${filterText(filter)}`);
-  return parts.length > 0 ? parts.join(" and ") : undefined;
-}
-
-/** "`Program.title` via `Purchase.program`": the column a dimension groups by. */
-function dimensionColumn(dim: MetaData): string {
-  // ADR-0039: resolving, so a dimension that extends another reads its effective @of/@via.
-  const of = dim.attr(REPORTING_ATTR_OF);
-  const via = dim.attr(REPORTING_ATTR_VIA);
-  const column = tick(typeof of === "string" ? of : "");
-  return typeof via === "string" && via !== "" ? `${column} via ${tick(via)}` : column;
-}
-
-/** A dimension as its entity declares it: the column, and for a time dimension its grains. */
-export function describeDimension(dim: MetaData): string {
-  const column = dimensionColumn(dim);
-  if (dim.subType !== DIMENSION_SUBTYPE_TIME) return column;
-  return `${column}; grains: ${stringList(dim.attr(REPORTING_ATTR_GRAINS)).join(", ")}`;
-}
-
-/** A dimension as ONE report column: a time dimension is truncated to the report's grain. */
-function describeDimensionColumn(dim: MetaData, grain: string | undefined): string {
-  const column = dimensionColumn(dim);
-  if (grain === undefined) return column;
-  // Reports are UTC only (Plan 3 global constraint): there is no time-zone vocabulary.
-  const joiner = column.includes(" via ") ? "," : "";
-  return `${column}${joiner} truncated to ${grain}, UTC`;
-}
-
-/** A measure in words: the aggregate and its row scope, or the ratio and its null rule. */
-export function describeMeasure(measure: MetaData): string {
-  // ADR-0039: resolving reads throughout, as for a dimension.
-  if (measure.subType === MEASURE_SUBTYPE_RATIO) {
-    const numerator = measure.attr(REPORTING_ATTR_NUMERATOR);
-    const denominator = measure.attr(REPORTING_ATTR_DENOMINATOR);
-    return `${tick(String(numerator ?? ""))} / ${tick(String(denominator ?? ""))}, null when the denominator is 0`;
-  }
-  const columns = stringList(measure.attr(REPORTING_ATTR_OF)).map(tick);
-  const of = columns.length === 1 ? columns[0]! : `(${columns.join(", ")})`;
-  const distinct = measure.attr(REPORTING_ATTR_DISTINCT) === true ? "distinct " : "";
-  const scope = describeRowScope(measure.attr(REPORTING_ATTR_SEGMENT), measure.attr(REPORTING_ATTR_FILTER));
-  return `${String(measure.attr(REPORTING_ATTR_AGG) ?? "")} of ${distinct}${of}${scope !== undefined ? ` where ${scope}` : ""}`;
-}
-
-/** One derived column's definition, from the dimension or measure it comes from. */
-export function describeReportField(field: ReportField): string {
-  if (field.dimension !== undefined) return describeDimensionColumn(field.dimension, field.grain);
-  return field.measure !== undefined ? describeMeasure(field.measure) : "";
-}
-
-/** The neutral logical type of a derived column: its Table B subtype, `[]` for an array. */
-export function reportFieldType(field: ReportField): string {
-  // ADR-0039: resolvedIsArray() is the resolving read of the native array flag.
-  return field.typeSource?.resolvedIsArray() === true ? `${field.subType}[]` : field.subType;
-}
-
-/**
- * Why a report is not served, or undefined when it is (Table A). The wording is the
- * spec's for the common case: a report that declares no source at all.
- */
-export function reportNotServedReason(report: MetaObject): string | undefined {
-  if (report.isAbstract === true) return "Not served: the report is abstract";
-  const source = reportReadSource(report);
-  if (source === undefined) return "Not served: declares no view source";
-  if (source.effectiveKind !== SOURCE_KIND_VIEW) {
-    return `Not served: its source is a ${source.effectiveKind}, not a view`;
-  }
-  return undefined;
 }
 
 /** A markdown table cell: a pipe would end the cell. */
@@ -163,7 +67,7 @@ export function buildReportBlock(report: MetaObject, root: MetaRoot, layout: Out
     lines.push("", "| Column | Type | Nullable | Role | Definition |", "|---|---|---|---|---|");
     for (const f of shape.fields) {
       lines.push(
-        `| ${tick(f.name)} | ${tick(reportFieldType(f))} | ${f.required ? "no" : "yes"} | ${f.role} | ${cell(describeReportField(f))} |`,
+        `| ${tick(f.name)} | ${tick(reportFieldTypeName(f))} | ${f.required ? "no" : "yes"} | ${f.role} | ${cell(describeReportField(f))} |`,
       );
     }
   }
@@ -198,7 +102,7 @@ export function buildReportingBlock(entity: MetaObject, root: MetaRoot, layout: 
     ["Measures", members.filter((c) => c.type === TYPE_MEASURE).map((m) =>
       `- ${tick(m.name)} — ${describeMeasure(m)}`)],
     ["Segments", members.filter((c) => c.type === TYPE_SEGMENT).map((s) =>
-      `- ${tick(s.name)} — ${filterText(s.attr(REPORTING_ATTR_FILTER) ?? {})}`)],
+      `- ${tick(s.name)} — ${describeSegment(s)}`)],
     ["Reports", reportsFrom(entity, root)
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((r) => `- [${r.name}](${docPageHref(layout, docPageNode(entity), docPageNode(r))})`)],

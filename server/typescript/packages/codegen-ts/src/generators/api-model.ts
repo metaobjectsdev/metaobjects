@@ -83,7 +83,11 @@
 //     and nothing else: a report has no identity, so no by-id query and no `/:id`; no
 //     write helper; no insert/update schema. No hook is documented for any object here
 //     (see DEFERRALS), and none is generated for a report at all (`servesClientTier`).
-//   • A KEYLESS projection (no identity and no `id` column) likewise documents no
+//   • A READ-ONLY object (a read-only-kind source and no writable one: a view-backed
+//     projection, a report's read model) documents reads only: no create/update/delete,
+//     no write verb, no insert/update schema, because its generated files carry none
+//     (`isReadOnlySurface`). A write-through object is not read-only and keeps them all.
+//   • A KEYLESS read-only object (no identity and no `id` column) also documents no
 //     `find<Name>ById` and no `/:id`: the read-only generators emit neither
 //     (`hasItemRoute`).
 //
@@ -135,7 +139,7 @@ import { hasItemRoute, servedPath, servesReadApi } from "../api-surface.js";
 import { isProjection } from "../projection/projection-detector.js";
 import { buildPkMap } from "../pk-resolver.js";
 import { buildRelationMap, type RelationEntry, type RelationMap } from "../relation-resolver.js";
-import { generatableObjects, isReport } from "../source-detect.js";
+import { generatableObjects } from "../source-detect.js";
 import { effectivePackage } from "../docs-paths.js";
 import { entityOutputPath, type OutputLayout } from "../import-path.js";
 import type { RenderContext } from "../render-context.js";
@@ -392,14 +396,30 @@ function isQueryable(obj: MetaObject): boolean {
 }
 
 /**
- * True for a READ-ONLY object the generators give no item surface: no `/:id` route and
+ * True when the generators emit the READ-ONLY surface for the object: reads only, no
+ * create/update/delete helper, no write verb, no insert or update schema.
+ *
+ * This is `isProjection` from `projection/projection-detector.ts`, the exact test
+ * `entity-file.ts`, `queries-file.ts`, `routes-file.ts` and `routes-file-hono.ts`
+ * dispatch on, and it is a test of SOURCES, not of the `object.projection` subtype: the
+ * object declares a read-only-kind source and no writable one. So it is true for a
+ * view-backed projection and for a report's read model, and FALSE for a write-through
+ * object (a writable table plus a replica view), whose generated files really do carry
+ * the write helpers, the write verbs and both schemas. Documenting writes for a
+ * read-only object published functions and endpoints that were never generated.
+ */
+function isReadOnlySurface(obj: MetaObject): boolean {
+  return isProjection(obj);
+}
+
+/**
+ * True for a read-only object the generators give no item surface: no `/:id` route and
  * no by-id query. That is a projection with no identity and no `id` column, and every
- * report (FR-044). `hasItemRoute` is the generators' own predicate; it is only meaningful
- * for the read-only surface, hence the `isProjection` guard (a report's read model
- * carries a read-only source, so it is one too).
+ * report (FR-044). `hasItemRoute` is the generators' own predicate, and only the
+ * read-only surface asks it (a writable entity's by-id helpers are unconditional).
  */
 function lacksItemSurface(obj: MetaObject): boolean {
-  return isProjection(obj) && !hasItemRoute(obj);
+  return isReadOnlySurface(obj) && !hasItemRoute(obj);
 }
 
 function buildEntityUnit(
@@ -432,9 +452,9 @@ function buildEntityUnit(
 
   if (isQueryable(obj)) {
     symbols.push(...dataAccessSymbols(obj, ctx, root, layout));
-    // A report's entity module exports a read schema only: no insert or update schema
-    // exists to document (FR-044).
-    if (!isReport(obj)) symbols.push(...validationSymbols(obj, entityMod));
+    // A read-only object's entity module exports a read schema only: no insert or update
+    // schema exists to document.
+    if (!isReadOnlySurface(obj)) symbols.push(...validationSymbols(obj, entityMod));
     // REST needs no gate of its own: the routes generator's built-in filter is
     // `servesReadApi && !isTphSubtype` — exactly isQueryable — so every queryable
     // object gets routes. (Its `filter` option can narrow that further; this builder
@@ -532,9 +552,9 @@ function dataAccessSymbols(
   // entity's queries file emits its by-id helpers unconditionally.
   const reads: ApiSymbol[] = lacksItemSurface(obj) ? [listSymbol] : [findSymbol, listSymbol];
 
-  // FR-044: a report is served by its list and nothing else. No create, update or delete
-  // exists on any generated seam, so none is documented.
-  if (isReport(obj)) {
+  // A read-only object is served by its reads and nothing else: the read-only queries
+  // file emits no create, update or delete, so none is documented.
+  if (isReadOnlySurface(obj)) {
     return reads;
   }
 
@@ -650,7 +670,7 @@ function restSymbols(
 ): ApiSymbol[] {
   const name = obj.name;
   const path = servedPath(obj, apiPrefix);
-  const readOnly = isProjection(obj) || isTphDiscriminatorBase(obj, root);
+  const readOnly = isReadOnlySurface(obj) || isTphDiscriminatorBase(obj, root);
 
   // REST endpoints are not importable functions — to WIRE them an adopter
   // imports the entity's route registrar (`<entity>Routes`) from the routes
@@ -867,7 +887,7 @@ function restHonoSymbols(
 ): ApiSymbol[] {
   const name = obj.name;
   const path = servedPath(obj, apiPrefix);
-  const readOnly = isProjection(obj);
+  const readOnly = isReadOnlySurface(obj);
 
   const honoMod = entityModulePath(layout, obj, `${name}.routes.hono`);
   const registrar = `register${name}Routes`;
