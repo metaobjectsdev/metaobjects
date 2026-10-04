@@ -312,6 +312,32 @@ Because M:N membership is a **set**, the runner compares `relate` results
 > (both columns equal X) — the historical Kotlin failure mode this scenario
 > pins; all five ports now retain the `(a,a)` row.
 
+### Report scenarios (FR-044)
+
+Six `queries/report-*.yaml` scenarios read a view-backed `object.report` through the
+port's runtime. They use only `op: list` and `op: count`, single-key `sort`, `filter` and
+`limit`: a report has no primary key, so there is no `op: get` and no write. The schema is
+still the committed `canonical/schema.postgres.sql`, which creates each report's view, so a
+port reads the view the TypeScript migrate engine produced and never lowers a report itself.
+Rows are keyed by the report's **derived field names** (dimensions in `@dimensions` order,
+then measures in `@measures` order; a time dimension is named `<name><Grain>`, for example
+`createdAtMonth`).
+
+| Scenario | What it pins |
+|---|---|
+| `report-grouped-measures` | every measure kind; an attribute dimension reached through a to-one reference; `filter`, `sort` and `limit` on a measure; `count` of groups |
+| `report-totals` | no dimensions: one row for the whole table; a ratio |
+| `report-totals-empty` | one row over an empty table: `count` is `0`, `sum` is `null`, a zero-denominator ratio is `null` |
+| `report-time-grains` | `month` grain beside an enum dimension; a segment-filtered `sum` that is `null`; the ISO Monday week boundary; a report-level `@segment` |
+| `report-time-hour-and-date` | `hour` on an instant, `week` on a `field.date` |
+| `report-relative-date` | a `{ now: "-P30D" }` filter, with a seed relative to the database clock |
+
+Wire shapes follow the view's column types and [`normalization.md`](./normalization.md):
+`count` and the integral `sum` are `BIGINT` (string), `min`/`max` of an int are `INTEGER`
+(number), `avg` and a ratio are `NUMERIC` (canonical decimal string, so `"60"`, `"0.75"`
+and `"0"`), a `date`-grain bucket is a `DATE` string, and an instant `hour` bucket is a
+`TIMESTAMPTZ` string in UTC (`"2026-05-04T03:00:00Z"`).
+
 ### Filter operators
 
 Same vocabulary as the cross-language filter spec (Project D):

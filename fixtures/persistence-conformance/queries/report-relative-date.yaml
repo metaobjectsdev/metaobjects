@@ -1,0 +1,18 @@
+name: report-relative-date
+description: |
+  RecentPrograms carries the report-level filter createdAt >= now - P30D. A relative-date
+  value is evaluated by the database when the view is QUERIED (the view calls now()), not
+  when it is created, so a fixed seed date would rot as the clock advances. The seed is
+  therefore clock-relative: seed SQL is executed raw, so an expression is legal. One
+  program is three days old (inside the window), the other sixty (outside).
+  created_ts is a naive timestamp holding the UTC wall clock.
+seed-data: |
+  INSERT INTO "programs" ("id","title","priceCents","status","created_ts") VALUES
+    (1, 'Fresh', 1000, 'PUBLISHED', (now() AT TIME ZONE 'UTC') - INTERVAL '3 days'),
+    (2, 'Stale', 2000, 'PUBLISHED', (now() AT TIME ZONE 'UTC') - INTERVAL '60 days');
+queries:
+  - name: only-the-recent-program-counts
+    op: list
+    entity: RecentPrograms
+    expect:
+      - { programs: "1" }

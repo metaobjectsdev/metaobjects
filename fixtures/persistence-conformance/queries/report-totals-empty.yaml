@@ -1,0 +1,14 @@
+name: report-totals-empty
+description: |
+  FitnessTotals over an EMPTY weeks table. Three pins, each a place where an engine
+  could plausibly differ:
+    - a report with no dimensions returns exactly ONE row even over an empty table
+      (an aggregate without GROUP BY always yields one row);
+    - a count of nothing is 0, but a sum of nothing is NULL (not 0);
+    - a ratio whose denominator is zero is NULL (the view divides by NULLIF(den, 0)).
+queries:
+  - name: one-row-over-an-empty-table
+    op: list
+    entity: FitnessTotals
+    expect:
+      - { weeks: "0", totalMinutes: null, longShare: null }

@@ -1,0 +1,38 @@
+name: report-time-grains
+description: |
+  Time-grain dimensions over Program.createdAt (a naive timestamp, @column created_ts).
+  A grain bucket is a DATE: the first day of the bucket, wire form "YYYY-MM-DD".
+
+  ProgramsByMonth groups by (createdAt month, status). The PUBLISHED group's listValue is
+  the sum of priceCents over the published programs: 4999 + 2500 + 300 = 7799. The DRAFT
+  and ARCHIVED groups have no published row, so the measure's `published` segment matches
+  nothing there and the sum is NULL (not 0).
+
+  ProgramsByWeek buckets by ISO week (Monday start) and carries a report-level segment,
+  `published`, so the DRAFT and ARCHIVED programs are absent. Program 2 (Sunday 23:30) and
+  program 5 (Monday 00:00) are thirty minutes apart and land in different weeks: that is
+  the ISO Monday boundary.
+seed-data: |
+  INSERT INTO "programs" ("id","title","priceCents","status","created_ts") VALUES
+    (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00'),
+    (2, 'Strength', 2500, 'PUBLISHED', '2026-05-17T23:30:00'),
+    (3, 'Mobility', 1000, 'DRAFT', '2026-06-01T00:00:00'),
+    (4, 'Legacy', 700, 'ARCHIVED', '2026-05-31T23:59:59'),
+    (5, 'Monday', 300, 'PUBLISHED', '2026-05-18T00:00:00');
+queries:
+  - name: by-month-and-status
+    op: list
+    entity: ProgramsByMonth
+    sort: [{ field: status, dir: asc }]
+    expect:
+      - { createdAtMonth: "2026-05-01", status: "ARCHIVED", programs: "1", listValue: null }
+      - { createdAtMonth: "2026-06-01", status: "DRAFT", programs: "1", listValue: null }
+      - { createdAtMonth: "2026-05-01", status: "PUBLISHED", programs: "3", listValue: "7799" }
+  - name: by-week-published-only
+    op: list
+    entity: ProgramsByWeek
+    sort: [{ field: createdAtWeek, dir: asc }]
+    expect:
+      - { createdAtWeek: "2026-04-27", programs: "1" }
+      - { createdAtWeek: "2026-05-11", programs: "1" }
+      - { createdAtWeek: "2026-05-18", programs: "1" }

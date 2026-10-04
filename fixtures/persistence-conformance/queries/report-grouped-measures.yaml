@@ -1,0 +1,53 @@
+name: report-grouped-measures
+description: |
+  ProgramMinutes is an object.report over Week: one row per (program, programTitle),
+  with every measure kind. programTitle is reached through the to-one reference
+  Week.fkProgram, so the view joins programs. Wire shapes follow the view's column
+  types: counts and the integral sum are BIGINT (string), min/max of an int are
+  INTEGER (number), avg and the ratio are NUMERIC (canonical decimal string).
+
+  Program 1's slots are (1,30), (1,60), (1,90): three distinct tuples from four rows.
+  Its labels are 'Week 1', 'Week 2' and one NULL: two distinct, the null uncounted.
+
+  A report has no primary key, so every query here is a list or a count; get-by-id
+  and every write are refused.
+seed-data: |
+  INSERT INTO "programs" ("id","title","priceCents","status","created_ts") VALUES
+    (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00'),
+    (2, 'Strength', 2500, 'PUBLISHED', '2026-05-17T23:30:00');
+  INSERT INTO "weeks" ("id","programId","label","durationMinutes") VALUES
+    (10, 1, 'Week 1', 30),
+    (11, 1, 'Week 2', 60),
+    (12, 1, 'Week 2', 90),
+    (13, 1, NULL, 60),
+    (20, 2, 'Solo', 45);
+queries:
+  - name: all-groups
+    op: list
+    entity: ProgramMinutes
+    sort: [{ field: program, dir: asc }]
+    expect:
+      - { program: "1", programTitle: "Foundations", weeks: "4", longWeeks: "3", labels: "2", slots: "3",
+          totalMinutes: "240", avgMinutes: "60", minMinutes: 30, maxMinutes: 90, longShare: "0.75" }
+      - { program: "2", programTitle: "Strength", weeks: "1", longWeeks: "0", labels: "1", slots: "1",
+          totalMinutes: "45", avgMinutes: "45", minMinutes: 45, maxMinutes: 45, longShare: "0" }
+  - name: filter-on-a-measure
+    op: list
+    entity: ProgramMinutes
+    filter: { weeks: { gte: 2 } }
+    sort: [{ field: program, dir: asc }]
+    expect:
+      - { program: "1", programTitle: "Foundations", weeks: "4", longWeeks: "3", labels: "2", slots: "3",
+          totalMinutes: "240", avgMinutes: "60", minMinutes: 30, maxMinutes: 90, longShare: "0.75" }
+  - name: sort-desc-on-a-measure
+    op: list
+    entity: ProgramMinutes
+    sort: [{ field: totalMinutes, dir: desc }]
+    limit: 1
+    expect:
+      - { program: "1", programTitle: "Foundations", weeks: "4", longWeeks: "3", labels: "2", slots: "3",
+          totalMinutes: "240", avgMinutes: "60", minMinutes: 30, maxMinutes: 90, longShare: "0.75" }
+  - name: count-groups
+    op: count
+    entity: ProgramMinutes
+    expect: 2
