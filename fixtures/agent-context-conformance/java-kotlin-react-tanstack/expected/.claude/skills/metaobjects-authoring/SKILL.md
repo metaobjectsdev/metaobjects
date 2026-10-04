@@ -743,8 +743,10 @@ Three rules an author trips on:
 **A report is served only when it declares `source.rdb` with `@kind: view`.** That declaration
 is what makes `meta migrate` create the view (Postgres, SQLite, D1), what every port's
 runtime reads, and what makes every port's generators serve it: one read-only list route at
-the pluralized snake_case name (`InvoicesByMonth` is `/invoices_by_months`), with filter,
-sort and paging on every derived field, `405` on `POST` and no `/{id}` route. A report with
+the pluralized snake_case name (`InvoicesByMonth` is `/invoices_by_months`), with paging,
+and filter and sort on every derived field whose type has filter operators (an `object` or
+`map` derived field is neither filterable nor sortable), `405` on `POST` and no `/{id}`
+route. A report with
 no `source.*` is checked at load and generates nothing.
 
 A report `@from` a TPH subtype is refused when its view is derived (the subtype shares its

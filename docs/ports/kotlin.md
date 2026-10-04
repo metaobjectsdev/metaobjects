@@ -364,8 +364,8 @@ property per derived field and no validation annotations. `KotlinFilterAllowlist
 writes `<Report>FilterAllowlist`, and `KotlinSpringControllerGenerator` writes
 `<Report>Controller`: one `@GetMapping` list handler, a `@PostMapping` answering 405, and no
 `/{id}` mapping. Every derived field with filter operators is filterable and sortable. No
-`<Report>Names` is written, and nothing from any other generator. A report with no view source
-generates nothing. See [reporting](../features/reporting.md) for the vocabulary, the columns a
+`<Report>Names` is written, and nothing from any other generator. A report with no view source,
+or an abstract one, generates nothing. See [reporting](../features/reporting.md) for the vocabulary, the columns a
 report gets and the REST contract. An excerpt of the table, under the default snake_case
 column naming:
 

@@ -324,7 +324,7 @@ boolean), dimension and measure alike, with exactly the operators that type has 
 object, and each such field sorts (default direction `asc`). A derived field typed `object`
 or `map` is neither filterable nor sortable. The allowlists are the report's **own** derived
 fields: a field of the `@from` entity that the report does not expose is refused with
-`400 invalid_filter_field` or `400 invalid_sort_field`. No vocabulary was added for this; the
+`400 invalid_filter_field` or `400 invalid_sort`. No vocabulary was added for this; the
 generators mark each derived field filterable on the detached read model, and nothing is
 written on a dimension, measure or report node.
 
@@ -415,9 +415,14 @@ the bodies are valid under MySQL's default `ONLY_FULL_GROUP_BY`.
 - **A decimal's JSON spelling differs by port.** An `avg`, a ratio and a `sum` of a decimal
   are decimals. Each port sends its own form and the corpus asserts none of them, so a client
   that reads one from two backends must parse both a string and a number.
-- **An array-valued derived field is not gated.** A dimension over an `isArray` field takes
-  its element subtype's filter operators; C# leaves an array out of its sort allowlist. The
-  corpus has no such dimension, so do not rely on filtering or sorting one across ports.
+- **An array- or map-valued derived field is not gated, and the ports' sort allowlists differ
+  for one.** A dimension over an `isArray` field takes its element subtype's filter operators
+  in every port. For sorting, C# leaves an array out of its sort allowlist; TypeScript, Java,
+  Kotlin and Python decide by subtype alone and so list it. A `map`-typed field has no filter
+  operators and is left out of the sort allowlist by TypeScript, C#, Java and Kotlin; Python's
+  router drops only `object` fields, so it would list a `map` one. The corpus has no array or
+  map dimension, so none of this is asserted: do not rely on filtering or sorting one across
+  ports.
 - **No generated client.** A served report has a route and a row type; a hook, grid or form
   for it is yours to write until the UI tier covers reports.
 - **With `@via`, `@of` must name an entity that has the field** (declared on it or inherited by

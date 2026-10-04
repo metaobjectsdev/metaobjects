@@ -169,8 +169,9 @@ Its REST surface is generated and READ-ONLY (F22): GET list + GET by id, the sam
 `?filter[...]`/`?sort=` grammar as a table entity against allowlists built from the
 projection's OWN declared field set, and `POST` / `PATCH` / `PUT` / `DELETE` each
 answering `405 {"error": "method_not_allowed"}` — 405 and not 404 because the same
-path answers GET. A KEYLESS projection (no `identity.primary`) mounts no `/{id}` route
-at all, so it refuses only the collection verb.
+path answers GET. A KEYLESS projection mounts no `/{id}` route at all, so it refuses only
+the collection verb. Keyless here means anything but a declared single-column
+`identity.primary`: no identity, or a composite one.
 `SpringControllerGenerator`, `SpringRepositoryGenerator` and `SpringFilterAllowlistGenerator`
 move together here — they share one emit predicate, because the generated controller names
 the other two. The repository interface a projection gets is the read-only one:

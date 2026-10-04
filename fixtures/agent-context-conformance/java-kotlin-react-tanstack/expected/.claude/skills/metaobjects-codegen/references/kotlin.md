@@ -179,8 +179,9 @@ Its REST surface is generated and READ-ONLY (F22): GET list + GET by id, the sam
 `?filter[...]`/`?sort=` grammar as a table entity against allowlists built from the
 projection's OWN declared field set, and `POST` / `PATCH` / `PUT` / `DELETE` each
 answering `405 {"error": "method_not_allowed"}` — 405 and not 404 because the same
-path answers GET. A KEYLESS projection (no `identity.primary`) mounts no `/{id}` route
-at all, so it refuses only the collection verb.
+path answers GET. A KEYLESS projection mounts no `/{id}` route at all, so it refuses only
+the collection verb. Keyless here means anything but a declared single-column
+`identity.primary`: no identity, or a composite one.
 The controller takes no constructor parameters — nothing binds a request body, so it
 injects neither an `ObjectMapper` nor a `Validator`. `KotlinFilterAllowlistGenerator`
 moves with it on one shared predicate: the emitted controller names the allowlist.

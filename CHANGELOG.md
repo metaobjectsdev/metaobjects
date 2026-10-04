@@ -112,6 +112,18 @@ it until 1.1 ships._
   is also the first to assert a `field.date` literally. Anyone who declared a view-sourced
   report under the unreleased 1.1 vocabulary will see these files on the next `gen`. See
   [docs/features/reporting.md](docs/features/reporting.md#how-a-report-is-served).
+  **Upgrading an owned TypeScript `routes` or `routes-hono` generator.** A copy ejected before
+  this release holds the old template inline and still gates on `servesReadApi`, which is now
+  true for a served report. Run against a model with one, it writes the report's route file
+  from its projection branch: `GET /:id` and the three item refusals are mounted, with no
+  `itemRoutes: false`. Re-eject it (`meta eject routes --force`, which also rewrites the
+  adapter copy under `codegen/runtime/`), or add the `itemRoutes: false` and
+  `resource: "report"` lines to your copy's read-only mount options. An owned
+  `mount-read-only.ts` that predates those two options must be re-synced as well: a current
+  routes generator passes them, and its output fails typecheck against the older
+  `MountReadOnlyOptions`. A hand-written generator that gates on `servesReadApi`, or on
+  `!isAbstract` as the `meta generator` scaffold does, now receives a served report's read
+  model: gate UI output on `servesClientTier`.
 - **Reports have model and API pages in `meta docs` (FR-044).** Every report gets a model page
   (its `@from`, its view or "Not served" with the reason, its row scope, and a column table
   with a definition per column) listed under `## Reports` on the model index, and a page on the
@@ -132,22 +144,42 @@ it until 1.1 ships._
 
 ### Changed
 
-Six corrections that shipped with report serving and reach models that declare no report.
-Each one changes generated output on the next `gen`, so the drift gate reports it until you
-regenerate.
+Seven corrections that shipped with report serving and reach models that declare no report.
+Each one changes generated code on the next `gen`, or generated docs on the next `meta docs`
+or Python api-docs build, as its entry says. A drift gate that covers that output reports it
+until you regenerate.
 
 - **TypeScript and Python: a read-only projection with no declared identity and no field named
   `id` loses its item surface.** It no longer gets `GET /{id}` or the three item-verb refusals,
   its by-id query (`find<Name>ById` in TypeScript, `find_by_id` on the Python repository
   Protocol) or, in TypeScript, its detail hook and `detail` query keys. That surface could not
   address a row: TypeScript built the query with no `WHERE` and answered the view's first row,
-  and Python bound an `id: int` to nothing. **Unchanged:** a projection with a declared
-  identity (a composite one still binds its first field), and a projection with an `id` field
-  and no declared identity. C#, Java and Kotlin are unchanged and remain stricter: they mount
+  and Python bound an `id: int` to nothing. **Unchanged by this entry:** a projection with a
+  declared identity (a composite one still binds its first field; the next entry covers one
+  keyed on a field not named `id`), and a projection with an `id` field and no declared
+  identity. C#, Java and Kotlin are unchanged and remain stricter: they mount
   `/{id}` only for a declared single-column identity, so a projection with an `id` field and no
   declared identity has item routes in TypeScript and Python and none in the other three. The
   TypeScript mounts (`mountReadOnlyCrudRoutes`, Fastify and Hono) take a new `itemRoutes: false`
-  option for this; it defaults to mounting them.
+  option for this; it defaults to mounting them. **Upgrading:** an owned `routes` or
+  `routes-hono` generator ejected before this release keeps mounting the item routes for this
+  shape until you re-eject it or add `itemRoutes: false` to its read-only mount options, and
+  an owned `mount-read-only.ts` needs the re-sync described under the served-report entry
+  above.
+- **TypeScript: a read-only projection whose identity is on a field not named `id` now
+  addresses that field.** The shape: a view-only `object.projection` whose
+  `identity.primary` names a single field such as `code`, or a composite identity whose first
+  field is not `id`. Its generated `<Name>.routes.ts` / `<Name>.routes.hono.ts` gains one line
+  in the read-only mount options, `idColumn: "<field>"`, the same field `find<Name>ById`
+  already read. Before, the mount looked for a column `id`, found none, built the query with
+  no `WHERE` and answered `GET /<path>/<anything>` with the view's first row. A projection
+  keyed on `id` keeps its bytes. Both read-only mounts (Fastify and Hono) also stop answering
+  with a row when the view has no column under `idColumn`: `GET /:id` now answers
+  `404 {"error": "not_found"}`. That covers an owned routes generator that predates this
+  line, as long as it imports the mounts from the package or from a re-synced owned copy.
+  `itemRouteField` and `DEFAULT_ID_FIELD` are exported from `@metaobjectsdev/codegen-ts` for
+  an owned routes generator. `idColumn` is the column's key in the Drizzle view (the field
+  name), not its physical name.
 - **TypeScript: a `field.decimal` in a view read schema is `z.string()`, not `z.number()`.**
   Affects the generated read schema of any `object.projection` (and report) with a decimal
   field. The value Drizzle reads from a `numeric` view column was always a string, so the old
