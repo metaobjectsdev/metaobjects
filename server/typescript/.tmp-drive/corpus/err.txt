@@ -1,2 +1,0 @@
-dotnet meta verify — fields: 1 authoring warning(s) (advisory — does not fail the build):
-  WARN_REFERENCE_FIELD_NOT_FOUND [acme::app::stock::Item.owner_fk]: identity.reference "owner_fk" lists "ownerIdd" in @fields, but acme::app::stock::Item has no field of that name, inherited and overlaid fields included. Nothing checks this at load, so the reference is built on a field that does not exist. Rename the entry to an existing field, or declare the field.
