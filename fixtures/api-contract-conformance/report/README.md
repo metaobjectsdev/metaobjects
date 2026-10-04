@@ -110,7 +110,7 @@ hand-rolled reference server would answer every scenario by construction.
 
 | Port | Generated lane | Note |
 |---|---|---|
-| TypeScript | not yet wired | `test/api-contract-report.test.ts` |
+| TypeScript | wired | `test/api-contract-report.test.ts` (12 scenarios + a seed-vs-view check) |
 | C# | not yet wired | `Api/ApiContractReportConformanceTest.cs` |
 | Java | not yet wired | `api/ReportGeneratedApiContractConformanceTest.java` |
 | Kotlin | not yet wired | `api/report/ReportGeneratedApiContractConformanceTest.kt` |
