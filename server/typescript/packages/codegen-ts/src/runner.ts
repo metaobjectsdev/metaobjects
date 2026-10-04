@@ -414,8 +414,9 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   const generatable = generatableObjects(filtered, root);
   if (generatable.length === 0) {
     warnings.push(
-      "No entities to generate — every selected object is an object.report with no " +
-        "`source.rdb @kind: view`, which generates nothing.",
+      "No entities to generate — every selected object is an object.report that is not " +
+        "served (it is abstract, or its read source is not a `source.rdb @kind: view`), " +
+        "which generates nothing.",
     );
     return { files: [], warnings, conflicts: [] };
   }

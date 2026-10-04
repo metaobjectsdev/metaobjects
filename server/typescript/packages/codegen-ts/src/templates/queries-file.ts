@@ -149,8 +149,8 @@ import { ${varName}, type ${entityName}, type ${entityName}Patch, ${entityName}I
  * Read-only queries file for a projection (view-backed, ADR Project E) or a served
  * report's read model (FR-044).
  *
- * Emits `list<Plural>`, plus `find<Name>ById` when the object has a single-column
- * identity, selecting from the object's `<camel>View` Drizzle view and returning the
+ * Emits `list<Plural>`, plus `find<Name>ById` when the object has an id column
+ * (`hasItemRoute`), selecting from the object's `<camel>View` Drizzle view and returning the
  * inferred read type. A keyless projection and every report get the list alone: there is
  * no column to look a row up by, and a by-id function over a made-up `id` does not
  * compile. Deliberately NO create/update/delete and NO `<Name>InsertSchema` import — a

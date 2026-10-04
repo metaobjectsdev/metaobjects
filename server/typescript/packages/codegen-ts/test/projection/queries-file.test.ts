@@ -57,11 +57,7 @@ async function loadProjectionFixture() {
         name: "ProgramSummary",
         children: [
           { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
-          // A single-column identity, inherited from the base: this is what gives the
-          // projection a by-id query. Without it the projection is keyless (FR-044 Plan 3,
-          // answer 4) and gets the list alone — see the keyless tests below.
-          { "field.int": { name: "id", extends: "Program.id" } },
-          { "identity.primary": { name: "id", extends: "Program.id" } },
+          { "field.int": { name: "id" } },
           {
             "field.int": {
               name: "weekCount",
@@ -179,6 +175,33 @@ function pgCtx(root: MetaRoot) {
   });
 }
 
+/** A served report whose first dimension is named `id`: the read model then has a field
+ *  called `id`, which must not be mistaken for an identity. */
+const REPORT_WITH_ID_FIELD = [
+  {
+    "object.entity": {
+      name: "Invoice",
+      children: [
+        { "source.rdb": { "@table": "invoices" } },
+        { "field.long": { name: "id" } },
+        { "field.string": { name: "status" } },
+        { "identity.primary": { name: "id", "@fields": "id" } },
+        { "dimension.attribute": { name: "id", "@of": "Invoice.id" } },
+        { "measure.aggregate": { name: "invoices", "@agg": "count", "@of": "Invoice.id" } },
+      ],
+    },
+  },
+  {
+    "object.report": {
+      name: "InvoiceRows",
+      "@from": "Invoice",
+      "@dimensions": ["id"],
+      "@measures": ["invoices"],
+      children: [{ "source.rdb": { "@kind": "view", "@table": "v_invoice_rows" } }],
+    },
+  },
+];
+
 describe("renderQueriesFile — a served report and a keyless projection (FR-044 Plan 3)", () => {
   test("a served report gets a list query and no by-id query", async () => {
     const root = await loadFile("codegen-noop", "reporting", "with", "meta.shop.json");
@@ -193,7 +216,24 @@ describe("renderQueriesFile — a served report and a keyless projection (FR-044
     expect(out).not.toContain("projection");
   });
 
-  test("a keyless projection gets a list query and no by-id query", async () => {
+  test("a projection with an `id` column and no declared identity keeps its by-id query", async () => {
+    // The id-by-convention shape: `getPkInfo` falls back to `id`, the column exists, and
+    // the query compiles and works. It is not keyless, and its output does not move.
+    const { projection, ctx } = await loadProjectionFixture();
+    expect(projection.primaryIdentity()).toBeUndefined();
+    const out = renderQueriesFile(projection, ctx);
+    expect(out).toContain("export async function findProgramSummaryById(db: Db, id: number)");
+    expect(out).toContain("eq(programSummaryView.id, id)");
+  });
+
+  test("a report with a derived field named `id` still gets no by-id query", async () => {
+    const root = await loadMetadata(REPORT_WITH_ID_FIELD);
+    const out = renderQueriesFile(readModel(root, "InvoiceRows"), pgCtx(root));
+    expect(out).toContain("export async function listInvoiceRows(");
+    expect(out).not.toContain("ById");
+  });
+
+  test("a keyless projection (no identity, no `id` column) gets a list query and no by-id query", async () => {
     const root = await loadMetadata([
       {
         "object.entity": {

@@ -30,8 +30,8 @@ import {
  *
  * Projections (view-backed, read-only) emit only:
  *   - <camel>Keys query-key factory
- *   - use<Entity>(id)       — useQuery on GET :id (only with a single-column identity;
- *                             a keyless projection has no item route to fetch)
+ *   - use<Entity>(id)       — useQuery on GET :id (only when the projection has an id
+ *                             column; a keyless one has no item route to fetch)
  *   - use<Entities>(filter) — useQuery on list
  *
  * Full (writable) entities additionally emit:
@@ -192,7 +192,7 @@ import {
 } from ${JSON.stringify(entityModule)};
 `;
 
-  // A keyless projection (no single-column identity) is served GET list only: the route
+  // A keyless projection (no identity and no `id` column) is served GET list only: the route
   // generator mounts no `/:id`, so a detail hook would fetch an address nothing answers.
   // It gets the list hook and no `details`/`detail` keys. A keyed projection is unchanged.
   const keyed = hasItemRoute(entity);

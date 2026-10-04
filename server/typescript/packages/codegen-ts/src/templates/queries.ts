@@ -27,10 +27,15 @@ function subTypeToTsType(subType: string): "number" | "boolean" | "string" {
       : "string";
 }
 
+/** The by-id field of an object that declares no primary identity: `id`, by convention.
+ *  `hasItemRoute` (api-surface.ts) asks whether this field exists before a read-only
+ *  surface addresses a row by it. An instance field name, not a metamodel string. */
+export const DEFAULT_ID_FIELD = "id";
+
 /** Get the PK field name and its TS type for a given entity. */
 export function getPkInfo(entity: MetaObject, ctx: RenderContext): { fieldName: string; tsType: string } {
   // Use primaryIdentity() to find the primary identity (may be inherited from extends:/super:).
-  const pkFieldName = getPkFields(entity)[0] ?? "id";
+  const pkFieldName = getPkFields(entity)[0] ?? DEFAULT_ID_FIELD;
   const pkInfo = ctx.pkMap.get(entity.name);
   const subType = pkInfo?.fieldSubType ?? "long";
   return { fieldName: pkFieldName, tsType: subTypeToTsType(subType) };

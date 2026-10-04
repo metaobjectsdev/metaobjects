@@ -360,7 +360,7 @@ function ctxFor(root: MetaRoot, apiPrefix = "") {
   });
 }
 
-/** The projection fixture above with a single-column identity inherited from its base. */
+/** A projection with a single-column identity inherited from its base. */
 async function loadKeyedProjectionFixture() {
   const root = await loadMetadata([
     {
@@ -423,8 +423,118 @@ describe("renderRoutesFile — a served report (FR-044 Plan 3)", () => {
     }
   });
 
-  test("a keyless projection mounts no item routes and is still called a projection", async () => {
+  test("a projection with an `id` column and no declared identity is unchanged", async () => {
+    // The id-by-convention shape: the mount addresses `id` by default and the column is
+    // there, so the item routes work and stay.
+    const root = await loadMetadata([
+      {
+        "object.entity": {
+          name: "Program",
+          children: [
+            { "source.rdb": { "@table": "programs" } },
+            { "field.int": { name: "id" } },
+            { "identity.primary": { name: "id", "@fields": "id" } },
+          ],
+        },
+      },
+      {
+        "object.projection": {
+          name: "ProgramRow",
+          children: [
+            { "source.rdb": { "@kind": "view", "@table": "v_program_row" } },
+            { "field.int": { name: "id" } },
+          ],
+        },
+      },
+    ]);
+    const projection = declared(root, "ProgramRow");
+    expect(projection.primaryIdentity()).toBeUndefined();
+    expect(hasItemRoute(projection)).toBe(true);
+    const ctx = makeRenderContext({
+      dialect: "sqlite", loadedRoot: root, outDir: "/x", dbImport: "~/db",
+      pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+    });
+    for (const out of [renderRoutesFile(projection, ctx), renderRoutesFileHono(projection, ctx)]) {
+      expect(out).toContain("Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.");
+      expect(out).not.toContain("itemRoutes");
+    }
+  });
+
+  test("a projection with a composite identity keeps its item routes, as before", async () => {
+    const root = await loadMetadata([
+      {
+        "object.entity": {
+          name: "Seat",
+          children: [
+            { "source.rdb": { "@table": "seats" } },
+            { "field.int": { name: "row" } },
+            { "field.int": { name: "num" } },
+            { "identity.primary": { name: "pk", "@fields": ["row", "num"] } },
+          ],
+        },
+      },
+      {
+        "object.projection": {
+          name: "SeatView",
+          children: [
+            { "source.rdb": { "@kind": "view", "@table": "v_seat" } },
+            { "field.int": { name: "row", extends: "Seat.row" } },
+            { "field.int": { name: "num", extends: "Seat.num" } },
+            { "identity.primary": { name: "pk", extends: "Seat.pk" } },
+          ],
+        },
+      },
+    ]);
+    const projection = declared(root, "SeatView");
+    expect(hasItemRoute(projection)).toBe(true);
+    const ctx = makeRenderContext({
+      dialect: "sqlite", loadedRoot: root, outDir: "/x", dbImport: "~/db",
+      pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+    });
+    expect(renderRoutesFile(projection, ctx)).not.toContain("itemRoutes");
+  });
+
+  test("a report with a derived field named `id` still mounts no item routes", async () => {
+    const root = await loadMetadata([
+      {
+        "object.entity": {
+          name: "Invoice",
+          children: [
+            { "source.rdb": { "@table": "invoices" } },
+            { "field.long": { name: "id" } },
+            { "identity.primary": { name: "id", "@fields": "id" } },
+            { "dimension.attribute": { name: "id", "@of": "Invoice.id" } },
+            { "measure.aggregate": { name: "invoices", "@agg": "count", "@of": "Invoice.id" } },
+          ],
+        },
+      },
+      {
+        "object.report": {
+          name: "InvoiceRows",
+          "@from": "Invoice",
+          "@dimensions": ["id"],
+          "@measures": ["invoices"],
+          children: [{ "source.rdb": { "@kind": "view", "@table": "v_invoice_rows" } }],
+        },
+      },
+    ]);
+    const report = declared(root, "InvoiceRows");
+    const model = reportReadModel(report, root);
+    // Not vacuous: the read model really has a field called `id`.
+    expect(model.findField("id")).toBeDefined();
+    expect(hasItemRoute(report)).toBe(false);
+    expect(hasItemRoute(model)).toBe(false);
+    const ctx = ctxFor(root);
+    for (const out of [renderRoutesFile(model, ctx), renderRoutesFileHono(model, ctx)]) {
+      expect(out).toContain("itemRoutes: false,");
+      expect(out).toContain('resource: "report",');
+    }
+  });
+
+  test("a keyless projection (no identity, no `id` column) mounts no item routes and is still called a projection", async () => {
     const { projection, ctx } = await loadProjectionFixture();
+    expect(projection.primaryIdentity()).toBeUndefined();
+    expect(projection.findField("id")).toBeUndefined();
     expect(hasItemRoute(projection)).toBe(false);
     for (const out of [renderRoutesFile(projection, ctx), renderRoutesFileHono(projection, ctx)]) {
       expect(out).toContain("itemRoutes: false,");

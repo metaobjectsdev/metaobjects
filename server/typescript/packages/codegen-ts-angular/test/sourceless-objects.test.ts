@@ -16,7 +16,9 @@ import {
   angularGridFile,
   barrel,
 } from "../src/index.js";
-import { makeRenderContext, buildPkMap, buildRelationMap } from "@metaobjectsdev/codegen-ts";
+import {
+  makeRenderContext, buildPkMap, buildRelationMap, servesClientTier, servesReadApi,
+} from "@metaobjectsdev/codegen-ts";
 import type { GenContext, Generator } from "@metaobjectsdev/codegen-ts";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 
@@ -31,6 +33,17 @@ const META = JSON.stringify({
         { "field.string": { name: "name", "@filterable": true, children: [{ "view.text": {} }] } },
         { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
         { "layout.dataGrid": { name: "default", "@columns": ["id", "name"] } },
+        { "dimension.attribute": { name: "name", "@of": "Author.name" } },
+        { "measure.aggregate": { name: "authors", "@agg": "count", "@of": "Author.id" } },
+      ] } },
+      // Served report (FR-044 Plan 3) — it HAS a read endpoint (`servesReadApi` is true),
+      // and the dataGrid layout is deliberate bait, so it passes every gate but the
+      // client-tier one. The UI tier is off for reports until Plan 5: no service, no grid,
+      // no barrel line. Reverting any gate here to `servesReadApi` emits for it.
+      { "object.report": { name: "AuthorTotals", "@from": "Author",
+        "@dimensions": ["name"], "@measures": ["authors"], children: [
+        { "source.rdb": { "@kind": "view", "@table": "v_author_totals" } },
+        { "layout.dataGrid": { name: "default", "@columns": ["name"] } },
       ] } },
       // View-backed projection — read endpoint exists, so the service stays; a form
       // (nothing to submit) and no write surface must NOT be emitted for it.
@@ -118,5 +131,18 @@ describe("endpoint guards — no artifact without an endpoint", () => {
     expect(content).not.toContain("NotePayload");
     expect(content).not.toContain("Sourceless");
     expect(content).not.toContain("AuthorCard");
+    expect(content).not.toContain("AuthorTotals");
+  });
+
+  test("a served report is the bait it claims to be: an endpoint, and no client tier", async () => {
+    const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(META)]);
+    expect(errors).toEqual([]);
+    const report = root.objects().find((o) => o.name === "AuthorTotals");
+    if (!report) throw new Error("AuthorTotals not found");
+    // Without this the "no AuthorTotals" assertions above could pass for the wrong reason.
+    expect(servesReadApi(report)).toBe(true);
+    expect(servesClientTier(report)).toBe(false);
+    expect(angularServiceFile().filter?.(report)).toBe(false);
+    expect(angularGridFile().filter?.(report)).toBe(false);
   });
 });

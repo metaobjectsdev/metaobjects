@@ -79,8 +79,8 @@ export function renderRoutesFileHono(
   // --- Projection / report path: read-only routes (GET list, + GET :id when keyed) ---
   if (isProjection(entity)) {
     const camelName = entityName.charAt(0).toLowerCase() + entityName.slice(1);
-    // A keyless read-only object (a projection with no single-column identity, and every
-    // report: FR-044) has no row to address, so it mounts GET list and the collection 405
+    // A keyless read-only object (a projection with no identity and no `id` column, and
+    // every report: FR-044) has no row to address, so it mounts GET list and the collection 405
     // and no `/:id` route of any verb. Both keys are absent for a keyed projection, which
     // keeps its output byte-identical.
     const keyless = !hasItemRoute(entity);
