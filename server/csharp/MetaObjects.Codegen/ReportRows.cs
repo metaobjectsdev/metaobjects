@@ -5,8 +5,11 @@
 // A report that declares a read-only `source.rdb @kind: view` is a database view
 // (contract Table A). C# has no metadata-driven runtime, so reading that view means
 // generating its row: a keyless entity class (EntityGenerator) and its
-// `HasNoKey().ToView(...)` mapping plus a DbSet (DbContextGenerator). Nothing else is
-// generated for a report: no routes, filter allowlist, names artifact or api docs.
+// `HasNoKey().ToView(...)` mapping plus a DbSet (DbContextGenerator). Its read surface
+// (Plan 3) is a filter allowlist (FilterAllowlistGenerator) and a routes file
+// (RoutesGenerator) that mounts the list GET and refuses POST with a 405: a report has no
+// identity, so there is no item route and no write. No names artifact is generated; the
+// row binds its view and columns by literal.
 //
 // The view's existence is what matters, not who creates it. `@unmanaged: true` (migrate
 // never creates it) and `@sql` (the author wrote the body) both still name a view with
@@ -25,7 +28,10 @@
 // report already satisfies their projection predicates (`IsReadOnlyProjection()`,
 // `DbView`), so it is handed to them as a ROW MODEL: a detached object with one real
 // `field.*` child per derived field and a copy of the report's read source. They then
-// emit it exactly as they emit a keyless read-only projection.
+// emit it exactly as they emit a keyless read-only projection. Each derived field that has
+// a filter band carries `@filterable: true` (contract Table C), so the allowlist generator
+// needs no report branch either. That attr is set on the detached row model only, never on
+// a dimension, measure or report node.
 //
 // The row model is never added to the root and nothing in the loaded tree is mutated to
 // build it (the source is copied, not re-parented). It keeps the report's name, package
@@ -33,6 +39,7 @@
 //
 // Mirrors server/typescript/packages/metadata/src/core/reporting/report-read-model.ts.
 
+using MetaObjects.Core.Query;
 using MetaObjects.Core.Reporting;
 using MetaObjects.Meta;
 using static MetaObjects.Core.Field.FieldConstants;
@@ -65,7 +72,9 @@ public static class ReportRows
 
     /// <summary>
     /// True iff <paramref name="obj"/> is a report whose read source is a view, the one
-    /// shape that generates a row (see the file header for the other kinds).
+    /// shape that generates a row and is served (see the file header for the other kinds).
+    /// Answers the same for a declared report node and for its <see cref="RowModel"/>,
+    /// which carries a copy of the read source.
     /// </summary>
     public static bool IsViewBacked(MetaObject obj) =>
         obj.IsReport() && !obj.IsAbstract
@@ -164,6 +173,11 @@ public static class ReportRows
             // `isArray` is a native flag, not an attr; ResolvedIsArray() is its resolving read.
             if (src.ResolvedIsArray()) field.SetIsArray(true);
         }
+        // Table C: every derived field whose type has a filter band is filterable. Asked
+        // last, of the finished field, because an int-backed enum's band depends on a
+        // carried attr. A report author cannot narrow this set: there is no node to put
+        // `@filterable` on.
+        if (QueryConstants.OpsForField(field).Length > 0) field.SetAttr(FIELD_ATTR_FILTERABLE, true);
         return field;
     }
 
@@ -186,7 +200,7 @@ public static class ReportRows
         root.Objects().Where(IsViewBacked).Select(r => RowModel(r, root)).ToList();
 
     /// <summary>
-    /// The objects a row-emitting generator iterates: the run's entity set with every
+    /// The objects a report-aware generator iterates: the run's entity set with every
     /// report node removed, then the row model of each view-backed report.
     /// <para>
     /// The row models come from the root, not from <see cref="GenContext.Entities"/>:

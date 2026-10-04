@@ -62,7 +62,7 @@ public sealed record FieldShape(string Name, string Type, bool Optional, string?
 /// <summary>One documented unit (an entity / value object, or a template) + its symbols.</summary>
 /// <param name="Node">The unit's short name (the doc-page basename).</param>
 /// <param name="Package">The unit's metadata package (e.g. <c>acme::shop</c>).</param>
-/// <param name="Kind">"entity" | "value" | "template".</param>
+/// <param name="Kind">"entity" | "projection" | "report" | "value" | "template".</param>
 /// <param name="Symbols">The documented symbols, in canonical IR order.</param>
 public sealed record ApiUnit(
     string Node,

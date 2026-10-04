@@ -151,10 +151,11 @@ public class ReportRowCodegenTests
         Assert.Contains("    public DbSet<SalesTotal> SalesTotals { get; set; } = default!;", ctx);
         Assert.Contains("        modelBuilder.Entity<SalesTotal>().HasNoKey().ToView(\"v_sales\");", ctx);
 
-        // Nothing else: no names artifact, filter allowlist or routes for a report.
+        // Its read surface (Plan 3): the allowlist and the routes file. No names artifact.
         Assert.Equal(
-            ["SalesTotal.g.cs"],
-            files.Keys.Where(k => k.Contains("SalesTotal", StringComparison.Ordinal)).ToList());
+            ["SalesTotal.g.cs", "SalesTotalFilterAllowlist.g.cs", "SalesTotalRoutes.g.cs"],
+            files.Keys.Where(k => k.Contains("SalesTotal", StringComparison.Ordinal))
+                .OrderBy(k => k, StringComparer.Ordinal).ToList());
     }
 
     public static TheoryData<string, string> InertSources => new()
@@ -195,6 +196,138 @@ public class ReportRowCodegenTests
         foreach (var (path, content) in expected)
             Assert.True(content == actual[path], $"{path} differs for an unfiltered entity set");
         Assert.DoesNotContain(actual.Keys, k => k.Contains("Sourceless", StringComparison.Ordinal));
+    }
+
+    // ---------------------------------------------------------------------
+    // Plan 3 — the read-only routes file and the filter allowlist
+    // ---------------------------------------------------------------------
+
+    /// <summary>fixtures/codegen-noop/reporting/with: `StoreTotals` is view-backed,
+    /// `ProgramEngagement` and `DailyRevenue` are sourceless.</summary>
+    private static MetaRoot LoadWithModel()
+    {
+        string path = Path.Combine(
+            CorpusPaths.RepoRoot(), "fixtures", "codegen-noop", "reporting", "with", "meta.shop.json");
+        var result = new MetaDataLoader().Load([new FileSource(path)]);
+        Assert.True(result.Errors.Count == 0,
+            "model did not load:\n" + string.Join("\n", result.Errors.Select(e => $"  {e.Code}: {e.Message}")));
+        return result.Root;
+    }
+
+    private static int Count(string haystack, string needle)
+    {
+        int n = 0;
+        for (int i = haystack.IndexOf(needle, StringComparison.Ordinal); i >= 0;
+             i = haystack.IndexOf(needle, i + needle.Length, StringComparison.Ordinal)) n++;
+        return n;
+    }
+
+    [Fact]
+    public void A_served_report_gets_a_routes_file_with_the_list_route_and_a_405_and_no_item_route()
+    {
+        var files = Emit(RunnerContext(LoadWithModel()), new RoutesGenerator());
+
+        Assert.True(files.ContainsKey("StoreTotalsRoutes.g.cs"), "no routes file for the view-backed report");
+        var routes = files["StoreTotalsRoutes.g.cs"];
+        Assert.Equal(1, Count(routes, "app.MapGet("));
+        Assert.Equal(1, Count(routes, "app.MapPost("));
+        Assert.DoesNotContain("{id}", routes);
+        Assert.DoesNotContain("app.MapPatch(", routes);
+        Assert.DoesNotContain("app.MapPut(", routes);
+        Assert.DoesNotContain("app.MapDelete(", routes);
+
+        // Table B: the segment is the pluralized snake_case name; the 405 says "report".
+        Assert.Contains("app.MapGet(prefix + \"/store_totals\",", routes);
+        Assert.Contains("app.MapPost(prefix + \"/store_totals\", () =>", routes);
+        Assert.Contains(
+            "Results.Json(new { error = \"method_not_allowed\", message = \"POST is not supported on a report (read-only).\" }, statusCode: 405));",
+            routes);
+        Assert.DoesNotContain("projection", routes);
+        // It reads the report's own DbSet and names the report's own allowlist.
+        Assert.Contains("IQueryable<StoreTotals> q = db.StoreTotals.AsNoTracking();", routes);
+        Assert.Contains("FilterParser.Parse(qs, StoreTotalsFilterAllowlist.Fields, StoreTotalsFilterAllowlist.OpsByField);", routes);
+        // Every derived scalar is sortable.
+        foreach (var field in new[] { "Purchases", "Buyers", "Revenue" })
+            Assert.Contains($"        \"{field}\",", routes);
+    }
+
+    [Fact]
+    public void A_served_report_gets_a_filter_allowlist_naming_every_derived_field()
+    {
+        var files = Emit(RunnerContext(LoadWithModel()), new FilterAllowlistGenerator());
+
+        Assert.True(files.ContainsKey("StoreTotalsFilterAllowlist.g.cs"), "no allowlist for the view-backed report");
+        var allowlist = files["StoreTotalsFilterAllowlist.g.cs"];
+        // Table C: a count and a sum of a currency take the numeric band.
+        foreach (var field in new[] { "purchases", "buyers", "revenue" })
+            Assert.Contains(
+                $"        [\"{field}\"] = new(System.StringComparer.Ordinal) {{ \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" }},",
+                allowlist);
+        // The report's own derived fields, never the @from entity's.
+        Assert.DoesNotContain("customerEmail", allowlist);
+    }
+
+    [Fact]
+    public void A_sourceless_report_gets_no_routes_file_and_no_allowlist()
+    {
+        var files = Emit(RunnerContext(LoadWithModel()), new RoutesGenerator(), new FilterAllowlistGenerator());
+        foreach (var sourceless in new[] { "ProgramEngagement", "DailyRevenue" })
+        {
+            Assert.DoesNotContain(files.Keys, k => k.Contains(sourceless, StringComparison.Ordinal));
+            Assert.DoesNotContain(files.Values, c => c.Contains(sourceless, StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public void A_served_report_raises_no_keyless_warning()
+    {
+        // "no single-column primary key" is a finding on an entity. A report has no identity
+        // by definition, so the same sentence about one is noise on every run.
+        var root = LoadWithModel();
+        var warnings = new List<string>();
+        var ctx = new GenContext
+        {
+            Entities = root.Objects().Where(o => !o.IsReport()).ToList(),
+            Root = root,
+            Config = Config(),
+            Warn = warnings.Add,
+        };
+        var files = new RoutesGenerator().Generate(ctx).ToList();
+
+        Assert.Contains(files, f => f.Path == "StoreTotalsRoutes.g.cs");
+        Assert.DoesNotContain(warnings, w => w.Contains("StoreTotals", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_applies_to_predicates_answer_for_a_declared_report_node()
+    {
+        // The api-docs builder and the integration harness pass DECLARED nodes, not row models.
+        var root = LoadWithModel();
+        MetaObject Named(string name) => root.Objects().Single(o => o.Name == name);
+
+        Assert.True(RoutesGenerator.AppliesTo(Named("StoreTotals"), root));
+        Assert.True(FilterAllowlistGenerator.AppliesTo(Named("StoreTotals")));
+        foreach (var sourceless in new[] { "ProgramEngagement", "DailyRevenue" })
+        {
+            Assert.False(RoutesGenerator.AppliesTo(Named(sourceless), root));
+            Assert.False(FilterAllowlistGenerator.AppliesTo(Named(sourceless)));
+        }
+    }
+
+    [Fact]
+    public void A_field_with_no_filter_band_is_not_filterable_and_every_other_derived_field_is()
+    {
+        var allowlist = Emit(RunnerContext(Cube()), new FilterAllowlistGenerator())["SalesCubeFilterAllowlist.g.cs"];
+        foreach (var field in new[]
+        {
+            "store", "channel", "status", "storeRegion", "soldAtHour", "soldAtDay", "soldAtMonth",
+            "bookedAtHour", "soldOnWeek", "sales", "channels", "unitsSold", "revenue", "totalWeight",
+            "totalScore", "avgUnits", "avgScore", "minUnits", "lastSoldAt", "maxWeight", "unitsPerSale",
+        })
+            Assert.Contains($"        [\"{field}\"] = ", allowlist);
+        // A string dimension takes the string band, a date the ordered band.
+        Assert.Contains("[\"channel\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"in\", \"like\", \"isNull\" },", allowlist);
+        Assert.Contains("[\"soldAtDay\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" },", allowlist);
     }
 
     // ---------------------------------------------------------------------
@@ -293,7 +426,7 @@ public class ReportRowCodegenTests
     public void The_row_and_its_mapping_compile(bool includeNames)
     {
         var ctx = RunnerContext(Cube(), Config(includeNames: includeNames));
-        var generators = new List<IGenerator> { new EntityGenerator(), new DbContextGenerator() };
+        var generators = new List<IGenerator> { new EntityGenerator(), new DbContextGenerator(), new FilterAllowlistGenerator() };
         if (includeNames) generators.Add(new NamesGenerator());
         var files = generators.SelectMany(g => g.Generate(ctx)).ToList();
 

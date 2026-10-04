@@ -14,8 +14,8 @@
 //   decimal / currency / date / timestamp / time → eq, ne, gt, gte, lt, lte, in, isNull
 //   boolean                                    → eq, isNull
 //
-// Read-only projections (source.rdb @kind=view/...) are skipped — they have no
-// filter routes today (G3 in the routes generator's gap list).
+// A view-backed `object.report` (FR-044) gets one too, from its row model: every derived
+// field with a filter band is filterable (ReportRows). A report with no view source gets none.
 
 using System.Text;
 using MetaObjects.Meta;
@@ -53,13 +53,19 @@ public class FilterAllowlistGenerator : PerEntityGenerator
     /// </para>
     /// </summary>
     public static bool AppliesTo(MetaObject entity) =>
-        // FR-044 — a report has no filter allowlist (it has no routes to name one). Stated
-        // here as well as at CodegenRunner's entity set, for the same reason as
-        // RoutesGenerator.AppliesTo.
-        !entity.IsReport()
-        && (((entity.IsEntity() || entity.DbView is not null)
-                && InstanceArtifacts.EmitsInstanceArtifacts(entity))
-            || InstanceArtifacts.IsSourcelessEntity(entity));
+        // FR-044 — a report applies iff it is served, the same answer RoutesGenerator.AppliesTo
+        // gives, and for the same reason the two predicates agree everywhere else: the routes
+        // file names this allowlist. True for the declared node and for its row model alike.
+        entity.IsReport()
+            ? ReportRows.IsViewBacked(entity)
+            : ((entity.IsEntity() || entity.DbView is not null)
+                    && InstanceArtifacts.EmitsInstanceArtifacts(entity))
+                || InstanceArtifacts.IsSourcelessEntity(entity);
+
+    // FR-044 — a served report joins the set as its ROW MODEL (ReportRows), whose derived
+    // fields are what the allowlist lists; a raw report node in the entity set is dropped.
+    public override IEnumerable<EmittedFile> Generate(GenContext ctx) =>
+        ReportRows.WithReportRows(ctx).Where(Filter).Select(e => GenerateOne(e, ctx));
 
     protected override EmittedFile GenerateOne(MetaObject entity, GenContext ctx)
     {
