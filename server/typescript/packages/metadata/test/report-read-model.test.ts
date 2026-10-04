@@ -4,8 +4,10 @@ import { pathToFileURL } from "node:url";
 import {
   FIELD_ATTR_COLUMN,
   FIELD_ATTR_CURRENCY,
+  FIELD_ATTR_FILTERABLE,
   FIELD_ATTR_LOCAL_TIME,
   FIELD_ATTR_REQUIRED,
+  FIELD_ATTR_SORTABLE,
   FIELD_ATTR_VALUES,
   InMemoryStringSource,
   MetaDataLoader,
@@ -54,6 +56,16 @@ describe("reportReadModel (FR-044 Table B as a detached read model)", () => {
       ["maxMinutes", "int"],
       ["longShare", "decimal"],
     ]);
+  });
+
+  test("every derived field with a filter band is filterable; @sortable is never set", async () => {
+    const root = await load();
+    const fields = fieldsOf(model(root, "ProgramMinutes"));
+    expect(fields.length).toBe(11);
+    for (const f of fields) {
+      expect(f.attr(FIELD_ATTR_FILTERABLE)).toBe(true);
+      expect(f.attr(FIELD_ATTR_SORTABLE)).toBeUndefined();
+    }
   });
 
   test("min keeps the source field's subtype: minMinutes is field.int", async () => {

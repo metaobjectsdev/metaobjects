@@ -5,7 +5,7 @@ import {
   type GeneratorFactory,
   formatTs,
   packageToPath,
-  servesReadApi,
+  servesClientTier,
   servesWriteApi,
   isProjection,
   effectivePackage,
@@ -52,13 +52,13 @@ export const barrel = function barrel(opts?: AngularBarrelOpts): Generator {
         const pkg = effectivePackage(e);
         // Each line mirrors its generator's filter exactly — a re-export of a file
         // that was never emitted is a hard build break in the consumer app.
-        if (servesReadApi(e)) {
+        if (servesClientTier(e)) {
           lines.push(`export * from ${JSON.stringify(specifierFor(layout, pkg, `${e.name}.service`))};`);
         }
         if (servesWriteApi(e) && !isProjection(e)) {
           lines.push(`export * from ${JSON.stringify(specifierFor(layout, pkg, `${e.name}.form.component`))};`);
         }
-        if (servesReadApi(e) && hasDataGridLayout(e)) {
+        if (servesClientTier(e) && hasDataGridLayout(e)) {
           lines.push(`export * from ${JSON.stringify(specifierFor(layout, pkg, `${e.name}.grid.component`))};`);
         }
       }

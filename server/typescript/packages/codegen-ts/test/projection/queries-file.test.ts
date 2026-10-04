@@ -6,7 +6,11 @@
 // findById + list selecting from the VIEW var, no insert import, no writes.
 
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { MetaDataLoader, InMemoryStringSource, loadUris, reportReadModel } from "@metaobjectsdev/metadata";
+import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
+import { renderEntityFile } from "../../src/templates/entity-file.js";
 import { renderQueriesFile } from "../../src/templates/queries-file.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
@@ -53,7 +57,11 @@ async function loadProjectionFixture() {
         name: "ProgramSummary",
         children: [
           { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
-          { "field.int": { name: "id" } },
+          // A single-column identity, inherited from the base: this is what gives the
+          // projection a by-id query. Without it the projection is keyless (FR-044 Plan 3,
+          // answer 4) and gets the list alone — see the keyless tests below.
+          { "field.int": { name: "id", extends: "Program.id" } },
+          { "identity.primary": { name: "id", extends: "Program.id" } },
           {
             "field.int": {
               name: "weekCount",
@@ -140,5 +148,91 @@ describe("renderQueriesFile — source-aware dispatch", () => {
       expect(out).toContain("createPost");
       expect(out).toContain("updatePost");
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FR-044 Plan 3 — a served report, a keyless projection, and the decimal read type
+// ---------------------------------------------------------------------------
+
+// test/projection → test → codegen-ts → packages → typescript → server → repo root
+const REPO_FIXTURES = resolve(import.meta.dir, "..", "..", "..", "..", "..", "..", "fixtures");
+
+async function loadFile(...segments: string[]): Promise<MetaRoot> {
+  const result = await loadUris([pathToFileURL(join(REPO_FIXTURES, ...segments)).href]);
+  if (result.errors.length > 0) {
+    throw new Error(`Loader errors:\n${result.errors.map((e) => e.message).join("\n")}`);
+  }
+  return result.root;
+}
+
+function readModel(root: MetaRoot, name: string): MetaObject {
+  const report = root.objects().find((o) => o.name === name);
+  if (!report) throw new Error(`${name} not found`);
+  return reportReadModel(report, root);
+}
+
+function pgCtx(root: MetaRoot) {
+  return makeRenderContext({
+    dialect: "postgres", loadedRoot: root, outDir: "/x", dbImport: "~/db",
+    pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+  });
+}
+
+describe("renderQueriesFile — a served report and a keyless projection (FR-044 Plan 3)", () => {
+  test("a served report gets a list query and no by-id query", async () => {
+    const root = await loadFile("codegen-noop", "reporting", "with", "meta.shop.json");
+    const out = renderQueriesFile(readModel(root, "StoreTotals"), pgCtx(root));
+    expect(out).toContain("export async function listStoreTotals(");
+    expect(out).toContain("from(storeTotalsView)");
+    expect(out).not.toContain("findStoreTotalsById");
+    expect(out).not.toContain("ById");
+    // `eq` was only ever imported for the by-id predicate.
+    expect(out).not.toContain("drizzle-orm\"");
+    expect(out).toContain("— report (read-only)");
+    expect(out).not.toContain("projection");
+  });
+
+  test("a keyless projection gets a list query and no by-id query", async () => {
+    const root = await loadMetadata([
+      {
+        "object.entity": {
+          name: "Tag",
+          children: [
+            { "source.rdb": { "@table": "tags" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "label" } },
+            { "identity.primary": { name: "id", "@fields": "id" } },
+          ],
+        },
+      },
+      {
+        "object.projection": {
+          name: "TagLabel",
+          children: [
+            { "source.rdb": { "@kind": "view", "@table": "v_tag_label" } },
+            { "field.string": { name: "label", extends: "Tag.label" } },
+          ],
+        },
+      },
+    ]);
+    const projection = root.objects().find((o) => o.name === "TagLabel");
+    if (!projection) throw new Error("TagLabel not found");
+    const out = renderQueriesFile(projection, makeRenderContext({
+      dialect: "sqlite", loadedRoot: root, outDir: "/x", dbImport: "~/db",
+      pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+    }));
+    expect(out).toContain("export async function listTagLabels(");
+    expect(out).not.toContain("ById");
+    expect(out).toContain("— projection (read-only)");
+  });
+
+  test("a decimal derived field is a string in the read schema", async () => {
+    const root = await loadFile("persistence-conformance", "canonical", "meta.fitness.json");
+    const out = renderEntityFile(readModel(root, "ProgramMinutes"), pgCtx(root));
+    const squashed = out.replace(/\s+/g, " ");
+    expect(squashed).toContain("avgMinutes: z.string().nullable()");
+    expect(squashed).toContain("longShare: z.string().nullable()");
+    expect(squashed).toContain("totalMinutes: z.number().int().nullable()");
   });
 });

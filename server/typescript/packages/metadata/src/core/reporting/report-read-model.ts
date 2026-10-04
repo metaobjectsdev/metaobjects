@@ -33,6 +33,7 @@ import { MetaObject } from "../object/meta-object.js";
 import { MetaField } from "../field/meta-field.js";
 import {
   FIELD_ATTR_CURRENCY,
+  FIELD_ATTR_FILTERABLE,
   FIELD_ATTR_INT_VALUE_MAP,
   FIELD_ATTR_MAX_LENGTH,
   FIELD_ATTR_OBJECT_REF,
@@ -42,6 +43,7 @@ import {
   FIELD_ATTR_STORAGE,
   FIELD_ATTR_VALUES,
 } from "../field/field-constants.js";
+import { opsForField } from "../query/query-constants.js";
 import { reportShape, type ReportField } from "./report-shape.js";
 
 /**
@@ -86,6 +88,10 @@ function derivedField(f: ReportField): MetaField {
     // `isArray` is a native flag, not an attr; resolvedIsArray() is its resolving read.
     if (src.resolvedIsArray()) field.setIsArray(true);
   }
+  // Table C (Plan 3): a report author has no node to put @filterable on, so every
+  // derived field that has a filter band is filterable. Set on this detached model
+  // only; no vocabulary is added and the declared tree is not touched.
+  if (opsForField(field).length > 0) field.setAttr(FIELD_ATTR_FILTERABLE, true);
   return field;
 }
 

@@ -162,8 +162,13 @@ export function zodTypeFor(field: MetaField, timestampMode: "date" | "string" = 
       return "z.number().int()";
     case FIELD_SUBTYPE_DOUBLE:
     case FIELD_SUBTYPE_FLOAT:
-    case FIELD_SUBTYPE_DECIMAL:
       return "z.number()";
+    case FIELD_SUBTYPE_DECIMAL:
+      // A view column of this subtype is Drizzle's `numeric`, which READS a string (the
+      // driver does not parse an arbitrary-precision value into a lossy double), and
+      // `field.decimal` is a `string` in TypeScript everywhere else. `z.number()` here
+      // disagreed with the view's own inferred row type and did not compile.
+      return "z.string()";
     case FIELD_SUBTYPE_ENUM: {
       const values = enumValues(field);
       return values !== undefined ? zodEnumExpr(values) : "z.string()";

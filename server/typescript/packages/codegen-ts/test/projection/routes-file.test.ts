@@ -4,8 +4,18 @@
 //   - vanilla entities still emit mountCrudRoutes + table var import
 
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { MetaDataLoader, InMemoryStringSource, loadUris, reportReadModel } from "@metaobjectsdev/metadata";
+import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import { renderRoutesFile } from "../../src/templates/routes-file.js";
+import { renderRoutesFileHono } from "../../src/templates/routes-file-hono.js";
+import { hasGeneratedForm, hasItemRoute, servesClientTier, servesReadApi } from "../../src/api-surface.js";
+import { servedReport } from "../../src/source-detect.js";
+import { hasUiSurface } from "../../src/generators/agent-ui-page.js";
+import { runGen } from "../../src/runner.js";
+import { routesFile } from "../../src/generators/routes-file.js";
+import { ERR_COLLECTION_NAME_COLLISION } from "../../src/naming/collection-name-collision.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
@@ -318,5 +328,167 @@ describe("renderRoutesFile — source-aware dispatch", () => {
       expect(out).toContain("OrderInsertSchema");
       expect(out).toContain("OrderUpdateSchema");
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FR-044 Plan 3 — a served report, and the keyless projection it shares a path with
+// ---------------------------------------------------------------------------
+
+// test/projection → test → codegen-ts → packages → typescript → server → repo root
+const REPO_FIXTURES = resolve(import.meta.dir, "..", "..", "..", "..", "..", "..", "fixtures");
+const REPORTING_WITH = join(REPO_FIXTURES, "codegen-noop", "reporting", "with", "meta.shop.json");
+
+async function loadReportingModel(): Promise<MetaRoot> {
+  const result = await loadUris([pathToFileURL(REPORTING_WITH).href]);
+  if (result.errors.length > 0) {
+    throw new Error(`Loader errors:\n${result.errors.map((e) => e.message).join("\n")}`);
+  }
+  return result.root;
+}
+
+function declared(root: MetaRoot, name: string): MetaObject {
+  const found = root.objects().find((o) => o.name === name);
+  if (!found) throw new Error(`${name} not found`);
+  return found;
+}
+
+function ctxFor(root: MetaRoot, apiPrefix = "") {
+  return makeRenderContext({
+    dialect: "postgres", loadedRoot: root, outDir: "/x", dbImport: "~/db", apiPrefix,
+    pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+  });
+}
+
+/** The projection fixture above with a single-column identity inherited from its base. */
+async function loadKeyedProjectionFixture() {
+  const root = await loadMetadata([
+    {
+      "object.entity": {
+        name: "Program",
+        children: [
+          { "source.rdb": { "@table": "programs" } },
+          { "field.int": { name: "id" } },
+          { "field.string": { name: "title" } },
+          { "identity.primary": { name: "id", "@fields": "id" } },
+        ],
+      },
+    },
+    {
+      "object.projection": {
+        name: "ProgramCard",
+        children: [
+          { "source.rdb": { "@kind": "view", "@table": "v_program_card" } },
+          { "field.int": { name: "id", extends: "Program.id" } },
+          { "identity.primary": { name: "id", extends: "Program.id" } },
+          { "field.string": { name: "title", extends: "Program.title" } },
+        ],
+      },
+    },
+  ]);
+  return { projection: declared(root, "ProgramCard"), ctx: makeRenderContext({
+    dialect: "sqlite", loadedRoot: root, outDir: "/x", dbImport: "~/db",
+    pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+  }) };
+}
+
+describe("renderRoutesFile — a served report (FR-044 Plan 3)", () => {
+  test("a served report mounts a keyless read-only surface", async () => {
+    const root = await loadReportingModel();
+    const model = reportReadModel(declared(root, "StoreTotals"), root);
+    for (const out of [
+      renderRoutesFile(model, ctxFor(root)),
+      renderRoutesFile(model, ctxFor(root, "/api")),
+      renderRoutesFileHono(model, ctxFor(root)),
+    ]) {
+      expect(out).toContain("mountReadOnlyCrudRoutes");
+      expect(out).toContain("itemRoutes: false,");
+      expect(out).toContain('resource: "report",');
+      expect(out).toContain("(report — view-backed, no writes)");
+      expect(out).toContain("Exposes GET list only. POST returns 405.");
+      expect(out).not.toContain("projection");
+      expect(out).not.toContain("GET :id");
+    }
+  });
+
+  test("a projection with a single-column identity is unchanged", async () => {
+    const { projection, ctx } = await loadKeyedProjectionFixture();
+    expect(hasItemRoute(projection)).toBe(true);
+    for (const out of [renderRoutesFile(projection, ctx), renderRoutesFileHono(projection, ctx)]) {
+      expect(out).toContain("(projection — view-backed, no writes)");
+      expect(out).toContain("Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.");
+      // No key at all, not `itemRoutes: true`: the keyed output keeps its bytes.
+      expect(out).not.toContain("itemRoutes");
+      expect(out).not.toContain("resource:");
+    }
+  });
+
+  test("a keyless projection mounts no item routes and is still called a projection", async () => {
+    const { projection, ctx } = await loadProjectionFixture();
+    expect(hasItemRoute(projection)).toBe(false);
+    for (const out of [renderRoutesFile(projection, ctx), renderRoutesFileHono(projection, ctx)]) {
+      expect(out).toContain("itemRoutes: false,");
+      expect(out).not.toContain("resource:");
+      expect(out).toContain("(projection — view-backed, no writes)");
+      expect(out).toContain("Exposes GET list only. POST returns 405.");
+    }
+  });
+
+  test("a served report has a read API and no client tier; an unserved one has neither", async () => {
+    const root = await loadReportingModel();
+    const storeTotals = declared(root, "StoreTotals");
+    // The declared node and its read model answer the same.
+    for (const o of [storeTotals, reportReadModel(storeTotals, root)]) {
+      expect(servedReport(o)).toBe(true);
+      expect(servesReadApi(o)).toBe(true);
+      expect(servesClientTier(o)).toBe(false);
+      expect(hasUiSurface(o)).toBe(false);
+      expect(hasGeneratedForm(o)).toBe(false);
+      expect(hasItemRoute(o)).toBe(false);
+    }
+    for (const name of ["ProgramEngagement", "DailyRevenue"]) {
+      const sourceless = declared(root, name);
+      expect(servedReport(sourceless)).toBe(false);
+      expect(servesReadApi(sourceless)).toBe(false);
+      expect(servesClientTier(sourceless)).toBe(false);
+    }
+    // An entity is untouched by the split: both answers are the old one.
+    const program = declared(root, "Program");
+    expect(servesReadApi(program)).toBe(true);
+    expect(servesClientTier(program)).toBe(true);
+  });
+
+  test("a report and an entity that share a route segment are a generation error", async () => {
+    const root = await loadMetadata([
+      {
+        "object.entity": {
+          name: "Invoice",
+          children: [
+            { "source.rdb": { "@table": "invoices" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "status" } },
+            { "identity.primary": { name: "id", "@fields": "id" } },
+            { "dimension.attribute": { name: "status", "@of": "Invoice.status" } },
+            { "measure.aggregate": { name: "invoices", "@agg": "count", "@of": "Invoice.id" } },
+          ],
+        },
+      },
+      {
+        "object.report": {
+          name: "Invoices",
+          "@from": "Invoice",
+          "@dimensions": ["status"],
+          "@measures": ["invoices"],
+          children: [{ "source.rdb": { "@kind": "view", "@table": "v_invoices" } }],
+        },
+      },
+    ]);
+    const run = runGen({
+      config: { outDir: "src/generated", extStyle: "js", dialect: "postgres", dbImport: "../db", generators: [routesFile()] },
+      metadata: root,
+      dryRun: true,
+    });
+    await expect(run).rejects.toThrow(ERR_COLLECTION_NAME_COLLISION);
+    await expect(run).rejects.toThrow(/"Invoice" and "Invoices"/);
   });
 });

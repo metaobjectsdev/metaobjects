@@ -1,5 +1,5 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, entityMetaFileName, renderEntityMetaFile, servesReadApi, isTphSubtype,
+import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, entityMetaFileName, renderEntityMetaFile, servesClientTier, isTphSubtype,
   withClientDirective, namesRef, namesConstArg,
   effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
@@ -63,7 +63,7 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
   // outright TS2307 when the inherited layout carries an `@filter` preset (the hook then
   // imports `<sub>DefaultFilter` from the missing columns module).
   const passesOtherGates = (e: MetaObject): boolean =>
-    servesReadApi(e)
+    servesClientTier(e)
     && userFilter(e)
     && (!isTphSubtype(e) || tphSubtypeGrids(e));
   const emit = perEntity(async (entity: MetaObject, ctx) => {

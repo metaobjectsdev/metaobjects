@@ -6,7 +6,7 @@ import {
   type GeneratorFactory,
   formatTs,
   entityOutputPath,
-  servesReadApi,
+  servesClientTier,
   effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 import { renderGridFile } from "../templates/grid-file.js";
@@ -45,7 +45,7 @@ export const angularGridFile = function angularGridFile(
     filter: (e: MetaObject) =>
       // A grid renders what a generated READ endpoint returns — no endpoint, no grid
       // (see api-surface.ts).
-      servesReadApi(e) && userFilter(e) && hasDataGridLayout(e),
+      servesClientTier(e) && userFilter(e) && hasDataGridLayout(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("angular-grid: renderContext is required (provided by runGen)");

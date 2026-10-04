@@ -27,6 +27,8 @@ import { pluralize, findByIdFnName, listFnName, createFnName, insertPreservingFn
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants.js";
 import { isTphDiscriminatorBase, tphConcreteSubtypes } from "./tph-discriminator.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
+import { isReport } from "../source-detect.js";
+import { hasItemRoute } from "../api-surface.js";
 import { hasAutoSetFields } from "./zod-validators.js";
 import { effectivePackage } from "../docs-paths.js";
 
@@ -144,12 +146,15 @@ import { ${varName}, type ${entityName}, type ${entityName}Patch, ${entityName}I
 }
 
 /**
- * Read-only queries file for a projection (view-backed, ADR Project E).
+ * Read-only queries file for a projection (view-backed, ADR Project E) or a served
+ * report's read model (FR-044).
  *
- * Emits only `find<Name>ById` + `list<Plural>`, selecting from the projection's
- * `<camel>View` Drizzle view and returning the inferred read type. Deliberately
- * NO create/update/delete and NO `<Name>InsertSchema` import — a projection is
- * read-only and its entity file never exports an insert schema.
+ * Emits `list<Plural>`, plus `find<Name>ById` when the object has a single-column
+ * identity, selecting from the object's `<camel>View` Drizzle view and returning the
+ * inferred read type. A keyless projection and every report get the list alone: there is
+ * no column to look a row up by, and a by-id function over a made-up `id` does not
+ * compile. Deliberately NO create/update/delete and NO `<Name>InsertSchema` import — a
+ * read-only object's entity file never exports an insert schema.
  */
 function renderProjectionQueriesFile(obj: MetaObject, ctx: RenderContext): string {
   const entityName = obj.name;
@@ -158,8 +163,6 @@ function renderProjectionQueriesFile(obj: MetaObject, ctx: RenderContext): strin
   const entityFileName = entityModuleSpecifier(
     ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(obj), entityName, ctx.extStyle,
   );
-  const { fieldName: pkField, tsType: pkType } = getPkInfo(obj, ctx);
-  const eqSym = imp("eq@drizzle-orm");
 
   const { import: dbTypeImport, alias: dbTypeAlias } = dbTypeBlock(ctx.dialect);
 
@@ -170,13 +173,21 @@ ${dbTypeAlias}
 import { ${viewVar}, type ${entityName} } from ${JSON.stringify(entityFileName)};
 `;
 
-  const reads = code`
-export async function ${findByIdFnName(entityName)}(db: Db, ${pkField}: ${pkType}): Promise<${entityName} | null> {
+  // Spliced into the one template below so a keyed projection's bytes do not move.
+  let findById: Code | string = "";
+  if (hasItemRoute(obj)) {
+    const { fieldName: pkField, tsType: pkType } = getPkInfo(obj, ctx);
+    const eqSym = imp("eq@drizzle-orm");
+    findById = code`export async function ${findByIdFnName(entityName)}(db: Db, ${pkField}: ${pkType}): Promise<${entityName} | null> {
   const [row] = await db.select().from(${viewVar}).where(${eqSym}(${viewVar}.${pkField}, ${pkField})).limit(1);
   return row ?? null;
 }
 
-export async function ${listFnName(entityName)}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${entityName}[]> {
+`;
+  }
+
+  const reads = code`
+${findById}export async function ${listFnName(entityName)}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${entityName}[]> {
   let q = db.select().from(${viewVar}).$dynamic();
   if (opts?.limit !== undefined) q = q.limit(opts.limit);
   if (opts?.offset !== undefined) q = q.offset(opts.offset);
@@ -185,9 +196,10 @@ export async function ${listFnName(entityName)}(db: Db, opts?: { limit?: number;
 `;
 
   const body = joinCode([literalImports, reads], { on: "\n" }).toString();
+  const noun = isReport(obj) ? "report" : "projection";
   const header =
     `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
-    `// Source metadata: ${entityName} (${obj.fqn()}) — projection (read-only)\n` +
+    `// Source metadata: ${entityName} (${obj.fqn()}) — ${noun} (read-only)\n` +
     sidecarLine(`${entityName}.extra.ts`);
   return header + body;
 }

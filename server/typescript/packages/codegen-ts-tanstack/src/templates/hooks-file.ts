@@ -15,6 +15,7 @@ import {
   GENERATED_HEADER,
   GENERATED_EDIT_NOTE,
   isProjection,
+  hasItemRoute,
   hookListNameSegment,
   entityModuleSpecifier,
   isTphDiscriminatorBase,
@@ -29,7 +30,8 @@ import {
  *
  * Projections (view-backed, read-only) emit only:
  *   - <camel>Keys query-key factory
- *   - use<Entity>(id)       — useQuery on GET :id
+ *   - use<Entity>(id)       — useQuery on GET :id (only with a single-column identity;
+ *                             a keyless projection has no item route to fetch)
  *   - use<Entities>(filter) — useQuery on list
  *
  * Full (writable) entities additionally emit:
@@ -190,18 +192,25 @@ import {
 } from ${JSON.stringify(entityModule)};
 `;
 
+  // A keyless projection (no single-column identity) is served GET list only: the route
+  // generator mounts no `/:id`, so a detail hook would fetch an address nothing answers.
+  // It gets the list hook and no `details`/`detail` keys. A keyed projection is unchanged.
+  const keyed = hasItemRoute(entity);
+  const detailKeyLines = keyed
+    ? `\n  details: () => [...${keysVar}.all(), "detail"] as const,` +
+      `\n  detail:  (id: ${pkType}) => [...${keysVar}.details(), id] as const,`
+    : "";
+
   const queryKeys: Code = code`
 export const ${keysVar} = {
   all:     () => [${JSON.stringify(lcEntity)}] as const,
   lists:   () => [...${keysVar}.all(), "list"] as const,
-  list:    (filter?: ${entityName}Filter) => [...${keysVar}.lists(), filter ?? {}] as const,
-  details: () => [...${keysVar}.all(), "detail"] as const,
-  detail:  (id: ${pkType}) => [...${keysVar}.details(), id] as const,${relationKeyLine}
+  list:    (filter?: ${entityName}Filter) => [...${keysVar}.lists(), filter ?? {}] as const,${detailKeyLines}${relationKeyLine}
 };
 `;
 
-  const queries: Code = code`
-export function use${entityName}(
+  // Spliced into the one template below so a keyed projection's bytes do not move.
+  const detailQuery: Code | string = !keyed ? "" : code`export function use${entityName}(
   id: ${pkType},
   opts?: Omit<${useQueryOptionsSym}<${entityName}Row>, "queryKey" | "queryFn">,
 ): ${useQueryResultSym}<${entityName}Row> {
@@ -213,7 +222,10 @@ export function use${entityName}(
   });
 }
 
-export function use${entityNamePlural}(
+`;
+
+  const queries: Code = code`
+${detailQuery}export function use${entityNamePlural}(
   filter?: ${entityName}Filter,
   opts?: Omit<${useQueryOptionsSym}<${entityName}Row[]>, "queryKey" | "queryFn">,
 ): ${useQueryResultSym}<${entityName}Row[]> {

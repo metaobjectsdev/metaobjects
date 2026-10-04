@@ -1,7 +1,10 @@
 // Projection declaration template — emits a Drizzle view declaration,
 // a Zod read schema, the TS type via z.infer, and a constants block.
 //
-// This is the read-only counterpart to entity-file.ts.
+// This is the read-only counterpart to entity-file.ts. It renders a projection, and
+// (FR-044 Plan 3) the read model of a served report: a detached object with one real
+// field per derived field and a copy of the report's view source, which is a keyless
+// read-only object and so takes this path with no report branch of its own.
 // It does NOT emit:
 //   - Drizzle table declaration (view-only)
 //   - Zod Insert/Update schemas

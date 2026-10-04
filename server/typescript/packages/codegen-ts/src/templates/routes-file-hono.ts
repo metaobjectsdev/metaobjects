@@ -30,6 +30,8 @@ import { type RenderContext } from "../render-context.js";
 import { entityModuleSpecifier } from "../import-path.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
+import { isReport } from "../source-detect.js";
+import { hasItemRoute } from "../api-surface.js";
 import { authSeamJsDoc, type CrudVerb, exposeLine } from "../routes-expose.js";
 import { effectivePackage } from "../docs-paths.js";
 import { httpRuntimeSpecifier } from "../owned-runtime.js";
@@ -74,9 +76,22 @@ export function renderRoutesFileHono(
     ? `\`${ctx.apiPrefix}\${${entityName}.$path}/*\``
     : `\`\${${entityName}.$path}/*\``;
 
-  // --- Projection path: read-only routes (GET list + GET :id) ---
+  // --- Projection / report path: read-only routes (GET list, + GET :id when keyed) ---
   if (isProjection(entity)) {
     const camelName = entityName.charAt(0).toLowerCase() + entityName.slice(1);
+    // A keyless read-only object (a projection with no single-column identity, and every
+    // report: FR-044) has no row to address, so it mounts GET list and the collection 405
+    // and no `/:id` route of any verb. Both keys are absent for a keyed projection, which
+    // keeps its output byte-identical.
+    const keyless = !hasItemRoute(entity);
+    const report = isReport(entity);
+    const noun = report ? "report" : "projection";
+    const exposes = keyless
+      ? "Exposes GET list only. POST returns 405."
+      : "Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.";
+    const keylessOpts = (indent: string): string =>
+      (keyless ? `\n${indent}itemRoutes: false,` : "") +
+      (report ? `\n${indent}resource: "report",` : "");
     const HonoSym = imp("t:Hono@hono");
     const mountReadOnlyCrudRoutesSym = imp(`mountReadOnlyCrudRoutes@${runtimeSpec}`);
 
@@ -91,9 +106,9 @@ import {
 
     const body = code`
 /**
- * Mount read-only REST endpoints for ${entityName} (projection — view-backed, no writes).
+ * Mount read-only REST endpoints for ${entityName} (${noun} — view-backed, no writes).
  *
- * Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.
+ * ${exposes}
  * Customize: register this as-is, or import individual route helpers from
  * ${runtimeSpec}.
 ${authSeamJsDoc({ framework: "hono", handlerName, mountPathExpr: authPathExpr, narrowable: false })}
@@ -107,7 +122,7 @@ export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unkno
     view: ${camelName}View,
     filterAllowlist: ${entityName}FilterAllowlist,
     sortAllowlist: ${entityName}SortAllowlist,
-    dialect: ${JSON.stringify(ctx.dialect)},
+    dialect: ${JSON.stringify(ctx.dialect)},${keylessOpts("    ")}
   });
 }
 `;

@@ -41,7 +41,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import type { MetaData, MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER } from "../constants.js";
-import { hasGeneratedForm, restPath, servedPath, servesReadApi } from "../api-surface.js";
+import { hasGeneratedForm, restPath, servedPath, servesClientTier } from "../api-surface.js";
 import {
   buildEntityUiDescriptor,
   type UiFieldDescriptor,
@@ -155,10 +155,11 @@ function dataGrids(obj: MetaObject): MetaData[] {
 /**
  * True when a UI generator would emit for this object.
  *
- * `servesReadApi` — the api-surface predicate the hook, grid and form generators
- * themselves gate on — NOT "has fields" and never an object-subtype test. A form, a grid
- * and a hook are all clients of a generated endpoint, so an object with no endpoint has no
- * UI to document.
+ * `servesClientTier` — the api-surface predicate the hook and grid generators
+ * themselves gate on — NOT "has fields". A form, a grid and a hook are all clients of a
+ * generated endpoint, so an object with no endpoint has no UI to document. A served
+ * report (FR-044) has an endpoint and no UI tier until Plan 5, which is the one place
+ * this differs from `servesReadApi`.
  *
  * Getting this wrong is not cosmetic. Gating on "has fields" put a prompt payload
  * (`object.value`, no source, no routes) on the page under a heading that announced an
@@ -167,7 +168,7 @@ function dataGrids(obj: MetaObject): MetaData[] {
  * UI tier asks the endpoint question and never a storage or subtype one.
  */
 export function hasUiSurface(obj: MetaObject): boolean {
-  return servesReadApi(obj);
+  return servesClientTier(obj);
 }
 
 function gridSection(obj: MetaObject, grid: MetaData): string[] {
