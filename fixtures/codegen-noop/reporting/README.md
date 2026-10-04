@@ -1,4 +1,4 @@
-# Reporting vocabulary is inert (FR-044 Plan 1)
+# Reporting vocabulary: what is lowered, what stays inert (FR-044)
 
 Two models that differ ONLY by the FR-044 reporting vocabulary:
 
@@ -10,9 +10,15 @@ Two models that differ ONLY by the FR-044 reporting vocabulary:
   a view-backed report passes every source-keyed codegen gate and is the shape most likely
   to leak output.
 
-Until a report's lowering lands (Plan 2/3), every generator in every port must emit
-byte-identical files for the two models, and TypeScript migrate must propose nothing for
-the difference. The per-port tests that hold this:
+What is lowered (FR-044 Plan 2): a report that declares a read-only `source.rdb @kind: view`
+becomes that view, in TypeScript migrate only. `StoreTotals` is that report, so `meta migrate`
+proposes exactly one extra statement for `with/` over `without/`, `CREATE VIEW v_store_totals`,
+and the `meta docs` agent schema page lists it. Nothing else differs.
+
+What stays inert: a report with no read-only source (`ProgramEngagement`, `DailyRevenue`),
+everywhere; every generator in TypeScript, Java and Python, for every report; and routes in
+every port. No other port emits SQL for a report (ADR-0015), so for them `with/` and `without/`
+still generate byte-identical files. The per-port tests that hold this:
 
 | Port | Test |
 |---|---|

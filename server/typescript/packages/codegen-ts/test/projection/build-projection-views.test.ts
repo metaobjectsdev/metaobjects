@@ -9,8 +9,10 @@
 // `origin.passthrough` renames, and the bodyOnly emit shape consumed by migrate-ts.
 
 import { describe, test, expect } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
-import { buildProjectionViews } from "../../src/projection/build-projection-views.js";
+import { buildProjectionViews, buildReportViews } from "../../src/projection/build-projection-views.js";
 
 async function load(children: unknown[]) {
   const json = JSON.stringify({ "metadata.root": { package: "acme", children } });
@@ -297,5 +299,149 @@ describe("buildProjectionViews — #208 @sql / @unmanaged DDL-ownership escape v
     expect(() => buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" })).toThrow(
       /not yet migrate-managed on @kind: "materializedView"/,
     );
+  });
+});
+
+// FR-044 Plan 2 Task 6 — a view-backed object.report lowers through buildReportViews, which
+// buildProjectionViews calls after its two existing loops (contract Table A).
+describe("buildReportViews — view-backed reports (FR-044 Plan 2, Table A)", () => {
+  type Json = Record<string, unknown>;
+  const REPORTING = resolve(import.meta.dir, "../../../../../../fixtures/codegen-noop/reporting");
+
+  function shop(variant: "with" | "without", mutate?: (children: Json[]) => void): Json {
+    const model = JSON.parse(readFileSync(resolve(REPORTING, variant, "meta.shop.json"), "utf8")) as {
+      "metadata.root": { children: Json[] };
+    };
+    mutate?.(model["metadata.root"].children);
+    return model;
+  }
+  async function loadModel(model: Json) {
+    const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(model))]);
+    expect(errors).toEqual([]);
+    return root;
+  }
+  const PG = { dialect: "postgres", columnNamingStrategy: "literal" } as const;
+
+  test("a view-backed report yields one ExpectedView named by its source", async () => {
+    const root = await loadModel(shop("with"));
+    const views = buildReportViews(root, PG);
+    expect(views.map((v) => v.name)).toEqual(["v_store_totals"]);
+    const v = views[0]!;
+    expect(v.fqn).toBe("acme::shop::StoreTotals");
+    expect(v.dependsOn).toEqual(["purchases"]);
+    expect(v.columns).toBeUndefined();
+    expect("columns" in v).toBe(false);
+    expect(v.sql).toContain("FROM \"purchases\" p");
+    expect(v.sql).toContain('COUNT(p."id") FILTER (WHERE p."status" = \'active\') AS "purchases"');
+    expect(v.sql).not.toContain("CREATE VIEW");
+  });
+
+  test("a sourceless report yields nothing", async () => {
+    const root = await loadModel(shop("with"));
+    const names = buildProjectionViews(root, PG).map((v) => v.name);
+    expect(names).toContain("v_store_totals");
+    expect(names.some((n) => /engagement|daily/i.test(n))).toBe(false);
+    expect(names).toHaveLength(1);
+  });
+
+  test("an @unmanaged report source yields nothing", async () => {
+    const root = await loadModel(
+      shop("with", (children) => {
+        const r = children.find((c) => (c["object.report"] as Json | undefined)?.name === "StoreTotals");
+        const kids = (r!["object.report"] as { children: Json[] }).children;
+        (kids[0]!["source.rdb"] as Json)["@unmanaged"] = true;
+      }),
+    );
+    expect(buildReportViews(root, PG)).toEqual([]);
+  });
+
+  test("a non-view report source kind yields nothing", async () => {
+    const root = await loadModel(
+      shop("with", (children) => {
+        const r = children.find((c) => (c["object.report"] as Json | undefined)?.name === "StoreTotals");
+        const kids = (r!["object.report"] as { children: Json[] }).children;
+        (kids[0]!["source.rdb"] as Json)["@kind"] = "materializedView";
+      }),
+    );
+    expect(buildReportViews(root, PG)).toEqual([]);
+  });
+
+  test("an @sql report source keeps the author's body and depends on the @from table", async () => {
+    const body = "SELECT COUNT(*) AS purchases FROM purchases";
+    const root = await loadModel(
+      shop("with", (children) => {
+        const r = children.find((c) => (c["object.report"] as Json | undefined)?.name === "StoreTotals");
+        const kids = (r!["object.report"] as { children: Json[] }).children;
+        (kids[0]!["source.rdb"] as Json)["@sql"] = body;
+      }),
+    );
+    const views = buildReportViews(root, PG);
+    expect(views).toHaveLength(1);
+    expect(views[0]!.sql).toBe(body);
+    expect(views[0]!.dependsOn).toEqual(["purchases"]);
+    expect(views[0]!.fqn).toBe("acme::shop::StoreTotals");
+    expect("columns" in views[0]!).toBe(false);
+  });
+
+  test("the projection loop does not see a report", async () => {
+    const root = await loadModel(shop("with"));
+    const all = buildProjectionViews(root, PG);
+    expect(all).toHaveLength(1);
+    expect(all).toEqual(buildReportViews(root, PG));
+  });
+
+  test("a model with no report returns exactly what it returned before; reports come last", async () => {
+    const withReport = (children: Json[]) => {
+      children.push(
+        { "object.projection": { name: "ProgramLite", children: [
+          { "source.rdb": { "@kind": "view", "@view": "v_program_lite" } },
+          { "field.long": { name: "id", extends: "Program.id" } },
+          { "identity.primary": { extends: "Program.id" } },
+        ] } },
+      );
+    };
+    // Re-use the with-model's reports but drop them again: a projection-only twin.
+    const twin = (keepReports: boolean) =>
+      shop("with", (children) => {
+        withReport(children);
+        if (!keepReports) {
+          for (let i = children.length - 1; i >= 0; i--) if ("object.report" in children[i]!) children.splice(i, 1);
+        }
+      });
+    const without = buildProjectionViews(await loadModel(twin(false)), PG);
+    const withR = buildProjectionViews(await loadModel(twin(true)), PG);
+    expect(without.map((v) => v.name)).toEqual(["v_program_lite"]);
+    expect(withR.map((v) => v.name)).toEqual(["v_program_lite", "v_store_totals"]);
+    expect(withR.slice(0, without.length)).toEqual(without);
+    // And the report-free codegen-noop model is still empty.
+    expect(buildProjectionViews(await loadModel(shop("without")), PG)).toEqual([]);
+  });
+
+  test("mysql is accepted by buildReportViews and emits backticks", async () => {
+    const root = await loadModel(shop("with"));
+    const views = buildReportViews(root, { dialect: "mysql", columnNamingStrategy: "literal" });
+    expect(views).toHaveLength(1);
+    expect(views[0]!.sql).toContain("FROM `purchases` p");
+    expect(views[0]!.sql).toContain("CASE WHEN p.`status` = 'active' THEN p.`id` END");
+  });
+
+  test("d1 returns exactly the sqlite bodies", async () => {
+    const root = await loadModel(shop("with"));
+    const d1 = buildReportViews(root, { dialect: "d1", columnNamingStrategy: "literal" });
+    const sqlite = buildReportViews(root, { dialect: "sqlite", columnNamingStrategy: "literal" });
+    expect(d1).toEqual(sqlite);
+    expect(d1[0]!.sql).toContain('COUNT(CASE WHEN p."status" = \'active\' THEN p."id" END)');
+  });
+
+  test("a view-backed report over a @from with no table throws, naming the report and the entity", async () => {
+    const root = await loadModel(
+      shop("with", (children) => {
+        const purchase = children.find((c) => (c["object.entity"] as Json | undefined)?.name === "Purchase");
+        const kids = (purchase!["object.entity"] as { children: Json[] }).children;
+        kids.splice(kids.findIndex((k) => "source.rdb" in k), 1);
+      }),
+    );
+    expect(() => buildReportViews(root, PG)).toThrow(/report 'StoreTotals'.*'Purchase'/);
+    expect(() => buildProjectionViews(root, PG)).toThrow(/StoreTotals/);
   });
 });

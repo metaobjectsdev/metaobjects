@@ -17,6 +17,8 @@ import {
   isMetaRoot,
   isReadOnlySource,
   isWritableSource,
+  reportFrom,
+  resolveObjectRef,
   SOURCE_KIND_VIEW,
   TYPE_FIELD,
   TYPE_IDENTITY,
@@ -25,7 +27,12 @@ import {
   resolveTableSchema,
 } from "@metaobjectsdev/metadata";
 import { isProjection, isWriteThrough } from "./projection-detector.js";
-import { extractViewSpec, refNamedOwner } from "./extract-view-spec.js";
+import { extractViewSpec, packageOf, refNamedOwner } from "./extract-view-spec.js";
+import { extractReportSpec } from "./extract-report-spec.js";
+import { emitReportViewDdl } from "./report-ddl-emit.js";
+import type { ReportViewSpec } from "./report-spec.js";
+import type { ReportDialect } from "./time-sql.js";
+import { isReport } from "../source-detect.js";
 import { emitViewDdl } from "./view-ddl-emit.js";
 import type { JoinNode, ViewSpec } from "./view-spec.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
@@ -108,7 +115,10 @@ export function buildProjectionViews(
   for (const obj of root.objects()) joinTables[obj.resolutionKey()] = resolveTableName(obj);
 
   const out: ExpectedView[] = [];
-  for (const projection of root.objects().filter(isProjection)) {
+  // A view-backed object.report satisfies isProjection (a read-only source, no writable one)
+  // but is lowered by buildReportViews below, not here: name it out rather than rely on
+  // viewIsDerived happening to drop it.
+  for (const projection of root.objects().filter((o) => isProjection(o) && !isReport(o))) {
     // #208 §6 — classify DDL ownership BEFORE viewIsDerived (see classifyReadOnlySource),
     // so an escape-valve view carrying extends-bound identity/fields (pure shape / row
     // identity) is never mis-synthesized into a wrong base-table passthrough SELECT.
@@ -149,7 +159,77 @@ export function buildProjectionViews(
     }
     emitViewFor(entity, root, joinTables, dialect, columnNamingStrategy, out);
   }
+
+  // FR-044 — the view of every view-backed object.report, appended AFTER the two loops
+  // above so the views a report-free model returns keep their order.
+  out.push(...buildReportViews(root, { dialect: opts.dialect, columnNamingStrategy }));
   return out;
+}
+
+export interface BuildReportViewsOptions {
+  dialect: "postgres" | "sqlite" | "d1" | "mysql";
+  columnNamingStrategy?: ColumnNamingStrategy;
+}
+
+/**
+ * The view of every view-backed `object.report` (contract Table A). Called by
+ * buildProjectionViews; exported separately because MySQL is accepted here and nowhere
+ * else (migrate does not target MySQL; the SQL ships through this function and a recipe).
+ *
+ * The Table A gate (classifyReadOnlySource) runs BEFORE extractReportSpec: a sourceless
+ * report must never reach it, because projectionViewName falls back to `v_<name>` and
+ * would invent a view nobody declared. A report whose `@from` has no table, or whose
+ * `@via` chain does not resolve, throws out of extractReportSpec naming the report; that
+ * propagates so `meta migrate` fails loudly instead of emitting a view over nothing.
+ */
+export function buildReportViews(root: MetaData, opts: BuildReportViewsOptions): ExpectedView[] {
+  if (!isMetaRoot(root)) {
+    throw new Error("buildReportViews: root must be a loaded MetaRoot.");
+  }
+  // D1 is SQLite at the SQL level.
+  const dialect: ReportDialect = opts.dialect === "d1" ? "sqlite" : opts.dialect;
+  const columnNamingStrategy = opts.columnNamingStrategy ?? "snake_case";
+  const joinTables: Record<string, string> = {};
+  for (const obj of root.objects()) joinTables[obj.resolutionKey()] = resolveTableName(obj);
+
+  const out: ExpectedView[] = [];
+  for (const report of root.objects().filter(isReport)) {
+    const cls = classifyReadOnlySource(report); // Table A
+    if (cls.kind === "skip") continue;
+    if (cls.kind === "sql") {
+      emitSqlView(report, cls.source, root, joinTables, out);
+      continue;
+    }
+    const spec = extractReportSpec(report, root, { columnNamingStrategy });
+    const baseTableName = joinTables[spec.joinTree.baseEntity];
+    if (!baseTableName) continue; // unresolved base — extractReportSpec already refuses a table-less @from
+    const schema = resolveTableSchema(report);
+    out.push({
+      name: spec.viewName,
+      sql: emitReportViewDdl(spec, { dialect, baseTableName, joinTables, bodyOnly: true }),
+      dependsOn: reportDependsOn(spec, baseTableName, joinTables),
+      fqn: report.resolutionKey(),
+      ...(schema !== undefined ? { schema } : {}),
+      // `columns` omitted on purpose: unknown, so migrate takes the fail-safe drop+create (Table F).
+    });
+  }
+  return out;
+}
+
+/** The base table plus every joined table, deduped — the physical tables a report view reads. */
+function reportDependsOn(
+  spec: ReportViewSpec,
+  baseTableName: string,
+  joinTables: Readonly<Record<string, string>>,
+): string[] {
+  const tables = new Set<string>([baseTableName]);
+  const walk = (node: JoinNode): void => {
+    const t = joinTables[node.targetEntity];
+    if (t) tables.add(t);
+    for (const child of node.children) walk(child);
+  };
+  for (const j of spec.joinTree.joins) walk(j);
+  return [...tables];
 }
 
 /**
@@ -258,7 +338,7 @@ function emitSqlView(
 /**
  * The physical tables an `@sql` view depends on. migrate-ts uses this to drop+recreate
  * the view around a column-altering change on a source table (Postgres blocks ALTER on a
- * column a view depends on). Two sources, no `@dependsOn` attr:
+ * column a view depends on). Three sources, no `@dependsOn` attr:
  *
  *   - A **write-through host** (a writable table source + an `@sql` read-view source)
  *     reads from its OWN table — its one certain dependency. It has NO extends anchors
@@ -267,6 +347,9 @@ function emitSqlView(
  *   - A **projection** `@sql` view's dependencies are its extends-bound anchor tables
  *     (D7 — the `extends` bindings that anchor the read model's shape ARE the dependency
  *     declaration).
+ *   - A **report** `@sql` view reads its `@from` entity's table (FR-044). A report has
+ *     neither a writable table nor extends anchors, so without this its dependsOn would
+ *     be empty and a column ALTER on the `@from` table would fail at apply.
  *
  * Deduped. (A table the opaque body JOINs but neither hosts nor anchors is NOT tracked —
  * the deferred `@dependsOn` escape, ADR-0043.)
@@ -289,6 +372,13 @@ function collectSqlDependsOn(
     const owner = refNamedOwner(child, root);
     if (owner === undefined) continue;
     const t = joinTables[owner.resolutionKey()];
+    if (t !== undefined) tables.add(t);
+  }
+  // A report's `@from` table (resolved package-locally, as reportShape does).
+  if (isReport(host)) {
+    const fromName = reportFrom(host);
+    const from = fromName === undefined ? undefined : resolveObjectRef(root, fromName, packageOf(host)).node;
+    const t = from === undefined ? undefined : joinTables[from.resolutionKey()];
     if (t !== undefined) tables.add(t);
   }
   return [...tables];

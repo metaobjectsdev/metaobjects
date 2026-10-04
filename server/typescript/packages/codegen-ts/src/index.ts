@@ -271,8 +271,8 @@ export { emitReportViewDdl } from "./projection/report-ddl-emit.js";
 export type { ReportEmitOptions } from "./projection/report-ddl-emit.js";
 export { extractReportSpec } from "./projection/extract-report-spec.js";
 export type { ReportViewSpec } from "./projection/report-spec.js";
-export { buildProjectionViews } from "./projection/build-projection-views.js";
-export type { ExpectedView, BuildProjectionViewsOptions } from "./projection/build-projection-views.js";
+export { buildProjectionViews, buildReportViews } from "./projection/build-projection-views.js";
+export type { ExpectedView, BuildProjectionViewsOptions, BuildReportViewsOptions } from "./projection/build-projection-views.js";
 export type { JoinNode, JoinTree, SelectColumn, SelectSpec, ViewSpec } from "./projection/view-spec.js";
 // Prompt construction (FR-004): ADR-0056 — a template's payload is its value object's own
 // interface (entityFile()), so there is no template-tier payload emitter to export. The one

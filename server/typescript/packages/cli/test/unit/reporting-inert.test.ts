@@ -1,11 +1,13 @@
-// FR-044 Plan 1 — the reporting vocabulary is INERT in every generator and in migrate.
+// FR-044 — what a report generates, and what it does not.
 //
-// Plan 1 registers `dimension.*`, `measure.*`, `segment.*` and `object.report` and
-// validates them at load, but gives none of them output: a report's lowering (a view, a
-// typed row, a route) lands in Plan 2/3. Until then a model that USES the vocabulary must
-// generate exactly what the same model without it generates — byte for byte, in every
-// catalog generator — and `meta migrate` must propose nothing for it. Anything else is
-// churn an adopter sees the day they declare a measure.
+// Plan 1 registered `dimension.*`, `measure.*`, `segment.*` and `object.report` and gave
+// them no output. Plan 2 lowers exactly ONE thing: a report that declares a read-only
+// `source.rdb @kind: view` becomes that view in TypeScript migrate (and so on the
+// `meta docs` agent schema page, which lists the views migrate would create). Everything
+// else stays inert, and this file holds it there: a sourceless report is inert everywhere,
+// every catalog generator emits the same files with and without the reporting nodes (no
+// TypeScript generator emits for a report; routes and the typed row are Plan 3), and every
+// docs surface other than that one schema entry is byte-identical.
 //
 // The model pair lives in fixtures/codegen-noop/reporting/ and is shared with the other
 // four ports' copies of this test. `with/` carries a report that declares a read-only
@@ -15,7 +17,7 @@
 // `meta docs` is held to the same rule (controller ruling, 2026-10-03): a report's fields
 // are derived by its lowering, so a page for one today would show none of them. Every docs
 // surface — model pages, agent pages, requirements, the HTML site, and the api surface —
-// must come out identical with and without the reporting nodes.
+// must come out identical with and without the reporting nodes, bar the one view entry.
 
 import { describe, test, expect, beforeAll } from "bun:test";
 import { mkdtempSync, mkdirSync, copyFileSync, rmSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -162,24 +164,35 @@ describe("FR-044 a selection of only reports", () => {
   });
 });
 
-describe("FR-044 reporting nodes are inert in migrate", () => {
-  test("the expected postgres schema is identical, and diff() proposes no statement", async () => {
-    const withSchema: SchemaSnapshot = buildExpectedSchema(withReporting, { dialect: "postgres" });
-    const withoutSchema: SchemaSnapshot = buildExpectedSchema(withoutReporting, { dialect: "postgres" });
-    expect(withSchema).toEqual(withoutSchema);
+describe("FR-044 a sourceless report is inert in migrate; a view-backed report proposes exactly its view", () => {
+  test("the expected postgres schemas differ by exactly v_store_totals, and diff() proposes exactly that view", async () => {
+    const views = (m: MetaRoot) => buildProjectionViews(m, { dialect: "postgres" });
+    const withSchema: SchemaSnapshot = buildExpectedSchema(withReporting, { dialect: "postgres", views: views(withReporting) });
+    const withoutSchema: SchemaSnapshot = buildExpectedSchema(withoutReporting, { dialect: "postgres", views: views(withoutReporting) });
+
+    // Only StoreTotals declares a view; ProgramEngagement and DailyRevenue are sourceless.
+    expect(withoutSchema.views).toEqual([]);
+    expect(withSchema.views.map((v) => v.name)).toEqual(["v_store_totals"]);
+    // Everything else is the same: the tables do not move.
+    expect(withSchema.tables).toEqual(withoutSchema.tables);
 
     // Live DB = the model without reporting nodes; metadata = the model with them.
-    const forward = await diff(withSchema, withoutSchema, { dialect: "postgres" });
-    expect(forward.changes).toEqual([]);
-    // And from an empty database, the report adds nothing to what the entities need.
+    const forward = await diff({ expected: withSchema, actual: withoutSchema });
+    expect(forward.changes.map((c) => [c.kind, c.kind === "create-view" ? c.view.name : undefined])).toEqual([
+      ["create-view", "v_store_totals"],
+    ]);
+    // And from an empty database, the report adds exactly that one view to what the entities need.
     const empty: SchemaSnapshot = { tables: [], views: [] };
-    const fromEmptyWith = await diff(withSchema, empty, { dialect: "postgres" });
-    const fromEmptyWithout = await diff(withoutSchema, empty, { dialect: "postgres" });
-    expect(fromEmptyWith.changes).toEqual(fromEmptyWithout.changes);
+    const fromEmptyWith = await diff({ expected: withSchema, actual: empty });
+    const fromEmptyWithout = await diff({ expected: withoutSchema, actual: empty });
+    expect(fromEmptyWith.changes.filter((c) => c.kind !== "create-view")).toEqual(
+      fromEmptyWithout.changes.filter((c) => c.kind !== "create-view"),
+    );
+    expect(fromEmptyWith.changes.filter((c) => c.kind === "create-view")).toHaveLength(1);
   });
 });
 
-describe("FR-044 reporting nodes are inert in meta docs", () => {
+describe("FR-044 reporting nodes are inert in meta docs, bar the one view entry", () => {
   /** Run `meta docs` over a project holding one variant, once per surface flag set, and
    *  read back everything written. The project directory has the SAME basename for both
    *  variants: the site stamps it into every page title. */
@@ -251,7 +264,7 @@ describe("FR-044 reporting nodes are inert in meta docs", () => {
     compare(expected, await api(withReporting));
   });
 
-  test("the agent surface (schema, ui, requirements) is identical with the UI tier wired", async () => {
+  test("the agent surface differs only by the schema page's v_store_totals view, with the UI tier wired", async () => {
     // Same reason as above: `meta docs --agent` needs a loadable gen config. The schema
     // input is built exactly as docs.ts's buildAgentSchemaInput builds it for postgres.
     const agent = async (metadata: MetaRoot): Promise<Record<string, string>> => {
@@ -279,6 +292,20 @@ describe("FR-044 reporting nodes are inert in meta docs", () => {
     // ui.md is the page that leaked a view-backed report; it must actually be rendered.
     expect(Object.keys(expected).some((p) => p.endsWith("ui.md"))).toBe(true);
     expect(Object.keys(expected).some((p) => p.endsWith("schema.md"))).toBe(true);
-    compare(expected, await agent(withReporting));
+    const actual = await agent(withReporting);
+
+    // The schema page lists the views migrate would create (docs.ts feeds it
+    // buildProjectionViews), so the one view-backed report appears there and nowhere else.
+    const schemaPage = Object.keys(expected).find((p) => p.endsWith("schema.md"))!;
+    const entry = "## Views\n\n" +
+      "A view is generated from its projection's `origin.*` children — it is derived, never hand-written. " +
+      "Editing the view SQL directly is drift the tool cannot see.\n\n" +
+      "### `v_store_totals`\n\nDeclared by `acme::shop::StoreTotals`.\n\n";
+    expect(actual[schemaPage]).toContain(entry);
+    expect(actual[schemaPage]!.replace(entry, "")).toBe(expected[schemaPage]!);
+    delete actual[schemaPage];
+    const rest = { ...expected };
+    delete rest[schemaPage];
+    compare(rest, actual);
   });
 });
