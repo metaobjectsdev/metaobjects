@@ -1,0 +1,5 @@
+meta: meta verify — running --templates (default). Explicit subverbs: --templates (prompt drift), --db/--dialect d1 (schema drift), --codegen (codegen drift), --docs (docs drift), --deps (dependency drift), --replay/--replay-snapshot (the committed migration chain replays from empty).
+meta: meta verify — no template.* nodes found; the template gate had nothing to check.
+meta: meta verify — fields: 1 authoring warning(s) (advisory — does not fail the build):
+meta:   WARN_REFERENCE_FIELD_NOT_FOUND [acme::app::stock::Item.owner_fk]: identity.reference "owner_fk" lists "ownerIdd" in @fields, but acme::app::stock::Item has no field of that name, inherited and overlaid fields included. Nothing checks this at load, so the reference is built on a field that does not exist. Rename the entry to an existing field, or declare the field.
+meta: meta verify — not run: schema (--db <url>), codegen (--codegen), docs (--docs), deps (--deps), replay (--replay) — a bare 'meta verify' runs only the template gate (plus the requirement ledger); name each gate to run it
