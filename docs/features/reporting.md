@@ -6,13 +6,18 @@ and counts, as metadata, validated when the model loads._
 **Status:** registered and loader-validated in all five ports (TypeScript, C#, Java,
 Python, Kotlin through Java). Arrived with **metamodel 1.1** (FR-044).
 
-**Reports generate nothing yet.** This release ships the vocabulary and its load-time
-rules, and no more. There is no view DDL, no `meta migrate` proposal, no REST route, no
-generated client hook and no docs page for an `object.report`, and `meta docs` and the API
-docs skip it. A model that declares dimensions, measures, segments and reports generates
-byte-for-byte what the same model without them generates, in every port. Generated output
-for reports lands in later plans of FR-044; until then the declarations are a checked
-statement of intent that an agent or a person can read.
+**What a report becomes.** A report that declares a read-only `source.rdb` of `@kind: view`
+is **lowered to a SQL view**: `meta migrate` creates it (Postgres, SQLite and D1; MySQL SQL
+comes from `buildReportViews`, see [MySQL](#mysql)), and every port reads it through its own
+runtime. [What a report lowers to](#what-a-report-lowers-to) is the contract. A report with
+no `source.*` stays inert: it is a checked statement of intent that generates nothing.
+
+**What does not exist yet.** There is no REST route, no typed client or hook, no filter
+allowlist and no api-docs entry for a report in any port (the later plans of FR-044). There
+is no `measure.derived`, no query-time choice of dimensions or measures (a report is a fixed
+combination, compiled once), and no time-zone vocabulary: time grains and relative dates are
+UTC. A model that declares none of this generates byte-for-byte what it did before, in every
+port.
 
 **Entirely opt-in.** A model that declares none of this sees no change at all.
 
@@ -109,7 +114,10 @@ A report is a top-level object that names an entity as its `@from`:
       { "object.report": {
           "name": "StoreTotals",
           "@from": "Purchase",
-          "@measures": ["purchases", "buyers", "revenue"]
+          "@measures": ["purchases", "buyers", "revenue"],
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_store_totals" } }
+          ]
       }}
     ]
 }}
@@ -149,6 +157,144 @@ order: one per dimension, then one per measure.
 
 A `@dimensions` item is a dimension name, or `name:grain` for a time dimension (a single
 colon, so it cannot collide with the `::` package separator).
+
+`StoreTotals` above declares the source that makes it **served**; `DailyRevenue` declares
+none, so it is checked at load and nothing more. A report is served only when it declares a
+`source.rdb` with `@kind: view` (the next section says what that does).
+
+## What a report lowers to
+
+### Which reports lower
+
+The report's **own** read-only source decides. Dimensions, measures and segments are never
+lowered alone.
+
+| The report declares | Result |
+|---|---|
+| no `source.*` | Inert: no view, no migrate statement, no runtime read. Reading it through an `ObjectManager` fails as "not served". |
+| `source.rdb` with `@kind: view` | A derived view. `meta migrate` creates `CREATE VIEW <name>`, where the name is the source's `@view` (or the legacy `@table`). |
+| the same, plus `@sql` | Your SQL is the body, exactly as for a projection. The column shape below still defines what the runtime reads. |
+| the same, plus `@unmanaged: true` | `meta migrate` never creates or drops it (you or a migration tool own the DDL), but the runtime still reads it through the shape below. |
+| `@kind: materializedView`, `storedProc` or `tableFunction` | `meta migrate` skips it, as for a projection. |
+
+A view-backed report whose `@from` entity has no table (it is abstract, or declares no
+writable `source.rdb`) fails `meta migrate` with an error naming the report and the entity,
+rather than emitting a view over a table that does not exist.
+
+### The columns you get
+
+A report has no primary key and declares no fields; its read shape is derived. One column
+per `@dimensions` item in listed order, then one per `@measures` item in listed order. The
+physical column name is your naming strategy applied to the **derived field name**; an
+`@column` on the `@of` field is never inherited.
+
+| Item | Column | Type | Never null? |
+|---|---|---|---|
+| `dimension.attribute` | the dimension's name | the `@of` field's type | only when the dimension has no `@via` and the `@of` field declares `@required: true` |
+| `dimension.time` at `hour` | `<name>Hour` | `timestamp` | same rule |
+| `dimension.time` at `day`, `week`, `month`, `quarter`, `year` | `<name><Grain>` | `date`, the first day of the bucket | same rule |
+| `count` (with or without `@distinct`) | the measure's name | `long` | yes: a count is never null |
+| `sum` of `int` or `long` | the measure's name | `long` | no |
+| `sum` of `currency` | the measure's name | `currency` (integer minor units, with the field's `@currency`) | no |
+| `sum` of `decimal` | the measure's name | `decimal` | no |
+| `sum` of `double` or `float` | the measure's name | `double` | no |
+| `avg` of `int`, `long`, `currency` or `decimal` | the measure's name | `decimal` | no |
+| `avg` of `double` or `float` | the measure's name | `double` | no |
+| `min` / `max` | the measure's name | the `@of` field's type | no |
+| `measure.ratio` | the measure's name | `decimal` | no |
+
+A derived column carries the type-shaping attributes of its `@of` field where they apply
+(`@currency`, `@values`, `@intValueMap`, `@maxLength`, `@precision`, `@scale`, `@localTime`,
+`@objectRef`, `@storage`, `@dbColumnType`, `isArray`) and nothing else: no `@column`, no
+`@required` beyond the rule above, no `@default`, no validators.
+
+### Measures
+
+A measure's rows are the report's rows after its own `@segment` and `@filter` (ANDed) are
+applied. The aggregates:
+
+- **`count`** counts the rows whose `@of` column is not null. On a non-null column that is
+  every row. With `@distinct` it counts distinct non-null values. A tuple (`@of` with several
+  items) counts distinct tuples, and a tuple with any null component is not counted, on every
+  engine.
+- **`sum`** of nothing is **null**, not zero: a report with no matching rows, or a filtered
+  measure that matched none of a group's rows, shows null. A `sum` of an integer type is cast
+  so the column is a `BIGINT` on every engine.
+- **`avg`, `min`, `max`** are the engine's own.
+- **`measure.ratio`** is `numerator / NULLIF(denominator, 0)`: a zero denominator is **null**,
+  never an error. Each operand is repeated inline with its own conditions, so an operand need
+  not be listed in `@measures`.
+
+A report with no dimensions is one row over the whole table. Over an **empty** table that row
+still exists: counts are `0`, sums and ratios are null.
+
+### Dimensions, time grains and joins
+
+- **`@via`** reaches a column of a to-one related entity, through a join. The join type is the
+  projection rule, unchanged: a required belongs-to foreign key joins `INNER`, anything else
+  `LEFT OUTER`, and an `INNER` survives only when every join above it is `INNER`. The
+  consequence to know: **a dimension reached through a required reference drops a fact row
+  whose reference matches no row, from that report.** A dimension that is not listed in
+  `@dimensions` adds no join.
+- **Grains** are `hour, day, week, month, quarter, year`. A bucket is the first instant (for
+  `hour`) or first day (for the rest) of the period. **Weeks start on Monday (ISO-8601)** on
+  every engine: the week of Sunday 2026-05-17 starts 2026-05-11, and Monday 2026-06-01 starts
+  its own week.
+- **UTC only.** A `field.timestamp` instant is bucketed in UTC whatever the reader's session
+  time zone is, so two readers get the same buckets. A `field.timestamp` with `@localTime` and
+  a `field.date` are bucketed as stored. There is no vocabulary for another zone.
+- `GROUP BY` is every listed dimension, in `@dimensions` order. The report's `@segment` and
+  `@filter` are the `WHERE`: rows are scoped before grouping, and there is no `HAVING`.
+- **Relative dates** in a view are evaluated when the view is **queried**, against the UTC
+  clock. A naive (`@localTime`) timestamp is compared with the UTC wall clock.
+
+### What the runtime does with it
+
+| Port | Read side |
+|---|---|
+| TypeScript | `ObjectManager` reads a view-backed report through a detached read model: `list` and `count`, with filter, sort and limit on the derived fields. |
+| Java | OMDB, the same read. |
+| Python | `ObjectManager`, the same read. |
+| C# | codegen writes a keyless EF Core row class per view-backed report and maps it with `HasNoKey().ToView(...)` plus a `DbSet`. |
+| Kotlin | codegen writes an Exposed table object per view-backed report. |
+
+By-id and every write are refused (a report has no identity and is read-only); a report with no
+view source is refused as not served; an `@unmanaged` view-backed report is still read. C# also
+refuses a report whose derived field name, in Pascal case, equals the report's own class name,
+since the row class could not have a member named like itself. No port generates a route,
+typed client, filter allowlist or api-docs entry for a report.
+
+`meta docs` lists a report's view on the agent schema page (`agent/schema.md`) and on no other
+page.
+
+### What differs by engine
+
+| | Postgres | SQLite / D1 | MySQL |
+|---|---|---|---|
+| Created by | `meta migrate` | `meta migrate` | you (see below) |
+| `avg` and ratio of `2` over `3` | `0.66666666666666666667` | `0.6666666666666666` | `0.6667` |
+| `decimal` | `NUMERIC` | none: SQLite has no decimal, so `avg`, a ratio and a `sum` of a decimal column are `REAL` | `DECIMAL` |
+| Instants and dates | `TIMESTAMPTZ`, `DATE` | ISO-8601 text (an hour bucket is `...:00:00.000Z`) | `DATETIME(3)` read as the UTC wall clock |
+
+A changed report is dropped and re-created by `meta migrate` (it does not `CREATE OR
+REPLACE`, since the diff does not know the old column list).
+
+#### MySQL
+
+`meta migrate` never targets MySQL (ADR-0015), so on MySQL you create the view yourself.
+`buildReportViews(root, { dialect: "mysql" })` from `@metaobjectsdev/codegen-ts` returns the
+body of each view-backed report; the recipe in [`docs/recipes/mysql.md`](../recipes/mysql.md)
+("Reports") shows the loop and its caveats. It skips a report whose source is `@unmanaged`, and
+the bodies are valid under MySQL's default `ONLY_FULL_GROUP_BY`.
+
+### What the corpus gates
+
+Six shared scenarios under `fixtures/persistence-conformance/queries/report-*.yaml` read the
+canonical reports through every port's runtime (list and count, filter, sort, an empty table,
+the Monday boundary, an hour bucket, a relative window). The derived columns are pinned by
+`fixtures/persistence-conformance/report-shapes.json`, produced by TypeScript and byte-matched
+by every port. The SQL is produced by TypeScript only, so the other ports read the view the
+TypeScript migrate engine produced and never lower a report themselves.
 
 ## The rules the loader enforces
 
@@ -238,8 +384,11 @@ of the four operators a relative date may sit under, so it is refused.
 
 The loader checks that the declarations are consistent with each other and with the model.
 It does not check that a measure means what its name says, that a segment's filter selects
-the rows you intend, or that the data exists. And since a report generates nothing yet, a
-passing load says nothing about any query: there is no query.
+the rows you intend, or that the data exists. A green `meta migrate` proves the view was
+created, not that its numbers are the ones you mean: a dimension reached through a required
+reference leaves out the fact rows whose reference matches nothing, and a report's
+`@filter` may select no rows at all. A report with no view source is still only checked at
+load, and a passing load says nothing about a query against it: there is none.
 
 ## Compatibility
 

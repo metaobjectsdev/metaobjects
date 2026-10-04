@@ -264,7 +264,7 @@ export function renderAgentSchemaPage(
     out.push("## Views");
     out.push("");
     out.push(
-      "A view is generated from its projection's `origin.*` children — it is derived, " +
+      "A view is generated from its projection's `origin.*` children or its report's dimensions and measures — it is derived, " +
         "never hand-written. Editing the view SQL directly is drift the tool cannot see.",
     );
     out.push("");

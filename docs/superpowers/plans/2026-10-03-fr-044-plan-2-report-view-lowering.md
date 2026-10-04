@@ -311,7 +311,7 @@ These shapes were run on the three engines with conditionally quoted identifiers
 | Gate | Path | Ports |
 |---|---|---|
 | Canonical reports (model) | `fixtures/persistence-conformance/canonical/meta.fitness.json` | all (shared input) |
-| Report shapes artifact | `fixtures/persistence-conformance/canonical/report-shapes.json` (new, TS-produced, committed) | TS produces and drift-checks; C#, Java, Kotlin (through Java), Python byte-match their own derivation in a container-free unit test |
+| Report shapes artifact | `fixtures/persistence-conformance/report-shapes.json` (new, TS-produced, committed) | TS produces and drift-checks; C#, Java, Kotlin (through Java), Python byte-match their own derivation in a container-free unit test |
 | Canonical schema | `fixtures/persistence-conformance/canonical/schema.postgres.sql` (regenerated: six views added) | all execute it |
 | `queries/report-grouped-measures.yaml` | every Table C row; an attribute dimension reached by `@via`; `filter`, `sort`, `count` on derived fields | all five |
 | `queries/report-totals.yaml` | no dimensions → one row; ratio | all five |
@@ -480,7 +480,7 @@ The fixture's fields carry no `@required`, so every dimension is `required: fals
 ```ts
 // Table B of docs/superpowers/plans/2026-10-03-fr-044-plan-2-report-view-lowering.md:
 // a report's derived fields. The single definition; every port has a rule-for-rule copy,
-// gated by fixtures/persistence-conformance/canonical/report-shapes.json.
+// gated by fixtures/persistence-conformance/report-shapes.json.
 
 const SUM_LONG: ReadonlySet<string> = new Set([FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG]);
 const FLOATING: ReadonlySet<string> = new Set([FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT]);
@@ -953,7 +953,7 @@ function literal(v: unknown, d: ReportDialect): string {
 - Modify: `server/typescript/packages/codegen-ts/src/index.ts` (export `buildReportViews` beside `buildProjectionViews` at line 270)
 - Modify: `fixtures/persistence-conformance/canonical/meta.fitness.json`
 - Regenerate: `fixtures/persistence-conformance/canonical/schema.postgres.sql`
-- Create: `server/typescript/packages/integration-tests/src/gen-report-shapes.ts`, `fixtures/persistence-conformance/canonical/report-shapes.json`
+- Create: `server/typescript/packages/integration-tests/src/gen-report-shapes.ts`, `fixtures/persistence-conformance/report-shapes.json`
 - Modify: `server/typescript/packages/integration-tests/package.json` (script `"gen:report-shapes": "bun run src/gen-report-shapes.ts"`)
 - Test: `server/typescript/packages/integration-tests/test/report-shapes-artifact.test.ts` (new), `test/schema-artifact.test.ts` (existing), `server/typescript/packages/codegen-ts/test/projection/build-projection-views.test.ts` (add cases)
 - Modify: `server/typescript/packages/cli/test/unit/reporting-inert.test.ts`, `fixtures/codegen-noop/reporting/README.md`

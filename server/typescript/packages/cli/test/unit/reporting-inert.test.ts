@@ -298,7 +298,7 @@ describe("FR-044 reporting nodes are inert in meta docs, bar the one view entry"
     // buildProjectionViews), so the one view-backed report appears there and nowhere else.
     const schemaPage = Object.keys(expected).find((p) => p.endsWith("schema.md"))!;
     const entry = "## Views\n\n" +
-      "A view is generated from its projection's `origin.*` children — it is derived, never hand-written. " +
+      "A view is generated from its projection's `origin.*` children or its report's dimensions and measures — it is derived, never hand-written. " +
       "Editing the view SQL directly is drift the tool cannot see.\n\n" +
       "### `v_store_totals`\n\nDeclared by `acme::shop::StoreTotals`.\n\n";
     expect(actual[schemaPage]).toContain(entry);

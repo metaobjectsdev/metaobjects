@@ -29,6 +29,7 @@ This file covers what almost every model needs. The topics below live in
 | `references/read-views-and-projections.md` | an `object.projection`, `origin.*` vocabulary, `@filter` / `@expr`, or an `@sql` / `@unmanaged` view |
 | `references/inheritance-tph.md` | several entities are variants of one thing sharing a single table (`@discriminator`) |
 | `references/metadata-dependencies.md` | the project builds on another package's metadata (`dependencies`, cross-package `overlay`) |
+| `references/reporting.md` | a dashboard number, count or total over one entity's rows: what columns a report gets, time grains, null rules, engine differences |
 | `references/requirements.md` | installed only when the project declares `requirement.*` nodes |
 
 ## The operating principle: model-first, generate-first
@@ -676,6 +677,75 @@ Several variants of one thing sharing **one table**: the base `object.entity` de
 `@discriminator` (naming a `field.enum` of subtype tags) and each subtype `extends` it with a
 `@discriminatorValue`. Codegen emits per-subtype routes with the discriminator injected and
 immutable. Supported in all five ports; the worked example is in `references/inheritance-tph.md`.
+
+## Reporting — dimensions, measures and reports
+
+Reach for it when a dashboard number would otherwise be a hand-written `GROUP BY`: revenue per
+day, buyers per program, a total. You name the pieces once, on the entity that owns the rows,
+and an `object.report` combines them by name. Four node kinds:
+
+- `dimension.attribute` / `dimension.time` — what to group by (`@of: Entity.field`; a time
+  dimension lists the `@grains` it supports: `hour`, `day`, `week`, `month`, `quarter`, `year`);
+- `measure.aggregate` (`@agg`: `count`, `sum`, `avg`, `min`, `max`) and `measure.ratio`
+  (`@numerator` / `@denominator`, both measures of the entity);
+- `segment.filter` — a named, reusable `@filter` ("active purchase");
+- `object.report` — a top-level object: `@from` an entity, `@dimensions` (`name` or
+  `name:grain`), `@measures`.
+
+```json
+{ "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      { "object.entity": {
+          "name": "Purchase",
+          "children": [
+            { "source.rdb": { "@table": "purchases" } },
+            { "field.long":      { "name": "id" } },
+            { "field.string":    { "name": "status" } },
+            { "field.currency":  { "name": "amountCents" } },
+            { "field.timestamp": { "name": "purchasedAt" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } },
+            { "segment.filter":      { "name": "active", "@filter": { "status": "active" } } },
+            { "dimension.time":      { "name": "purchasedAt", "@of": "Purchase.purchasedAt",
+                                       "@grains": ["day", "month"] } },
+            { "measure.aggregate":   { "name": "purchases", "@agg": "count", "@of": "Purchase.id",
+                                       "@segment": "active" } },
+            { "measure.aggregate":   { "name": "revenue", "@agg": "sum", "@of": "Purchase.amountCents" } }
+          ]
+      }},
+      { "object.report": {
+          "name": "DailyRevenue",
+          "@from": "Purchase",
+          "@dimensions": ["purchasedAt:day"],
+          "@measures": ["purchases", "revenue"],
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_daily_revenue" } }
+          ]
+      }}
+    ]
+}}
+```
+
+Three rules an author trips on:
+
+1. **Every measure belongs to `@from`.** A report cannot mix measures of two entities (joining
+   two fact tables multiplies each side's rows); two fact tables are two reports.
+2. **`@via` is to-one only.** A dimension reaches a related entity's column through a
+   `relationship.*` with `@cardinality: one` (or an `identity.reference`), never through a
+   to-many, which would repeat fact rows and double-count a `sum`.
+3. **A report declares no fields.** Its columns are derived: one per dimension, then one per
+   measure (a time dimension at a grain is `<name><Grain>`, so `purchasedAt:day` is
+   `purchasedAtDay`). A `field.*` or `identity.*` child on a report is an error.
+
+**A report is served only when it declares `source.rdb` with `@kind: view`.** That declaration
+is what makes `meta migrate` create the view (Postgres, SQLite, D1) and what every port's
+runtime reads; a report with no `source.*` is checked at load and generates nothing.
+
+What does not exist: no REST route and no typed client for a report yet, no `measure.derived`
+(arithmetic between measures beyond `measure.ratio`), no query-time choice of dimensions or
+measures (a report is a fixed, compiled combination), and no time-zone vocabulary (grains and
+relative dates are UTC). Column types, the null rules, Monday weeks and per-engine differences
+are in `references/reporting.md`.
 
 ## Requirements — capability ledger (opt-in)
 

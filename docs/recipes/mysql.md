@@ -79,10 +79,11 @@ generated code and both runtimes quote identifiers themselves.
 
 ### Reports
 
-An `object.report` (the reporting vocabulary, `docs/features/reporting.md`) is a compiled
-view, and on MySQL you create that view yourself, because `meta migrate` does not. Declare
-the report with a read-only `source.rdb` of `@kind: view` and no `@unmanaged`, since
-`meta migrate` never targets MySQL and so nothing manages the view either way:
+An `object.report` (the reporting vocabulary; see `references/reporting.md` in the
+`metaobjects-authoring` skill) is a compiled view, and on MySQL you create that view
+yourself, because `meta migrate` does not. Declare the report with a read-only
+`source.rdb` of `@kind: view` and no `@unmanaged`, since `meta migrate` never targets MySQL
+and so nothing manages the view either way:
 
 ```json
 { "source.rdb": { "@kind": "view", "@view": "v_program_minutes" } }
@@ -103,6 +104,10 @@ for (const view of buildReportViews(root, { dialect: "mysql" })) {
   console.log(`CREATE VIEW \`${view.name}\` AS\n${view.sql};`);
 }
 ```
+
+The loop above ignores `view.schema` (on MySQL, the database a source's `@schema` names), so
+each view is created in the connection's current database; qualify the name yourself if a
+report's source declares `@schema`.
 
 Pass `columnNamingStrategy` to match your tables' column names (the default is `snake_case`).
 The bodies are valid under MySQL's default `sql_mode`, `ONLY_FULL_GROUP_BY` included, and a

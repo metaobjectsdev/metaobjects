@@ -154,7 +154,7 @@ first-week wedge plan — and `meta init` picks up from there.
 | Template-drift verify | Yes | Yes (`Verify.check`) | Yes (via Java) | Yes (`dotnet meta verify`) | Yes (`metaobjects.render.verify`) |
 | YAML authoring (sigil-free → JSON) | Yes | Yes | Yes (via Java) | Yes | Yes |
 | Capability requirements (`requirement.*`) | Registered + `meta verify` gate | Registered (loads + validates) | Registered (via Java) | Registered (loads + validates) | Registered (loads + validates) |
-| Reporting vocabulary (`dimension` / `measure` / `segment` / `object.report`, FR-044) | Registered (loads + validates); no generated output yet | Registered (loads + validates); no generated output yet | Registered (via Java); no generated output yet | Registered (loads + validates); no generated output yet | Registered (loads + validates); no generated output yet |
+| Reporting vocabulary (`dimension` / `measure` / `segment` / `object.report`, FR-044) | Registered; a view-backed report becomes a SQL view in `meta migrate` and is read by `ObjectManager`; no routes yet | Registered; OMDB reads a view-backed report; no generated output | Registered (via Java); generates an Exposed table object per view-backed report | Registered; generates a keyless EF Core row type per view-backed report | Registered; `ObjectManager` reads a view-backed report; no generated output |
 | Libraries (`libraries: [...]`) | Yes | Yes | Yes (via Java) | Yes | Yes |
 | Metadata dependencies (`dependencies`) | Yes (`meta deps sync`, `path` transport) | Phase 2 | Phase 2 | Phase 2 | Yes (loads the synced snapshot) |
 | Runtime metadata (ObjectManager-style) | Yes (`runtime-ts`) | Yes (OMDB) | Yes (via Java OMDB + Exposed) | Roadmap | Yes (ObjectManager) |

@@ -4,8 +4,8 @@ import {
 } from "@metaobjectsdev/metadata";
 
 /** FR-044 reporting vocabulary — all four types: `dimension.*`, `measure.*`, `segment.*`
- *  and `object.report`. Inert in every generator until the report lowering lands (FR-044
- *  Plan 2/3), so the site renders none of it BY DESIGN.
+ *  and `object.report`. A view-backed report is lowered to a view (FR-044 Plan 2), but no
+ *  site page renders any of this vocabulary until Plan 3, so the site shows none of it BY DESIGN.
  *
  *  The audit reports these as DEFERRED, not as "not rendered by any page" and not by
  *  silently dropping them: the gap stays visible on the returned report (`deferred`, one
