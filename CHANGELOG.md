@@ -64,6 +64,17 @@ it until 1.1 ships._
 
 ### Fixed
 
+- **Python, C#, Java: the generic `view.*` controls now load.** A document carrying
+  `view.text`, `view.dropdown` or any of the other web-presentation controls (`textarea`, `date`,
+  `month`, `hotlink`, `radio`, `checkbox`, `number`, `password`, `hidden`, `web`, `image`)
+  loaded in TypeScript and failed with `ERR_UNKNOWN_SUBTYPE` in every other port, so metadata
+  shared between a TypeScript web client and a Python, C#, Java or Kotlin backend could not be
+  loaded by the backend. Those ports had left the controls unregistered on purpose, as
+  vocabulary with no backend consumer. They are now registered for LOADING in every port and
+  remain presentation-only: no backend generator reads them, and they stay out of
+  `expected-registry.json`, so `metamodelVersion` does not move for this. Gated by the
+  `view-text-basic` conformance fixture. Attributes on these controls are still registered only
+  by the TypeScript `ui-web` provider.
 - **Python, C#, Java: an inline object-valued attribute now loads as an `attr.properties` bag.**
   `"@store": { "collection": "orders" }` on a node that declares no `@store` is the registered
   property bag, the same thing the explicit `{ "attr.properties": { "name": ..., "value": {...} } }`

@@ -38,8 +38,8 @@
 //                           — a TS-web presentation facet (TS web client + TS
 //                           form codegen consume them; zero backend/codegen/
 //                           render consumers in any port), like the TS-only `D1`
-//                           dialect. Stay REGISTERED in TS; deregistered in
-//                           C#/Python; EXCLUDED from the manifest everywhere.
+//                           dialect. REGISTERED in every port, for LOADING
+//                           only; EXCLUDED from the manifest everywhere.
 //
 // The boundary is now an EXPLICIT classification (not a silent default): the
 // port-private set is enumerated WITH a reason category, and a TRIPWIRE

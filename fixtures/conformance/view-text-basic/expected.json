@@ -1,0 +1,51 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "note",
+                "children": [
+                  {
+                    "view.text": {
+                      "name": "form"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "status",
+                "children": [
+                  {
+                    "view.dropdown": {
+                      "name": "form"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

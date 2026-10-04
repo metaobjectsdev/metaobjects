@@ -10,8 +10,8 @@ import org.slf4j.LoggerFactory;
  * concrete subtypes so they are discoverable through the unified registry.
  *
  * <p>Cross-port: the TS/C# ports surface a "view-types" provider for the
- * same vocabulary (today: {@code view.currency}; future: validation views,
- * display views). Priority 10 mirrors the field/attr providers — runs after
+ * same vocabulary: {@code view.currency} plus the generic web-presentation
+ * controls ({@link PresentationView}), which are registered for loading only. Priority 10 mirrors the field/attr providers — runs after
  * {@code core-types} (0) so {@code metadata.base} is available.</p>
  *
  * @since 7.0.0
@@ -24,6 +24,7 @@ public class ViewTypesMetaDataProvider implements MetaDataTypeProvider {
     public void registerTypes(MetaDataRegistry registry) {
         MetaView.registerTypes(registry);
         CurrencyView.registerTypes(registry);
+        PresentationView.registerTypes(registry);
         log.debug("View types registered via provider");
     }
 

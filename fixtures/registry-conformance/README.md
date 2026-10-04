@@ -253,18 +253,21 @@ them as such with a declared reason.
   only the concrete tree root (`metadata.root`). It is the not-universally-tracked
   `inheritsFrom` anchor this manifest already defers, so the `(metadata, base)`
   row is carved out. See SP-G analysis C-5.
-- **`PRESENTATION_ONLY`** — the 11 generic `view.*` controls (`checkbox`, `date`,
-  `dropdown`,
-  `hidden`, `hotlink`, `month`, `number`, `password`, `radio`, `text`,
-  `textarea`, `web`) — a TS-web-PRESENTATION facet, like the TS-only `D1`
+- **`PRESENTATION_ONLY`** — the 13 generic `view.*` controls (`checkbox`, `date`,
+  `dropdown`, `hidden`, `hotlink`, `image`, `month`, `number`, `password`, `radio`,
+  `text`, `textarea`, `web`) — a TS-web-PRESENTATION facet, like the TS-only `D1`
   dialect. They have zero backend / codegen / render consumers; only the TS web
   client (`client/web/packages/{tanstack,angular}/src/`) + TS form codegen
   (`server/typescript/packages/codegen-ts/src/templates/field-meta.ts`) consume
-  them. They stay **registered in TypeScript** (the loader must accept an
-  authored `view.dropdown`) but are **deregistered in C# + Python** (dead vocab
-  there) and **excluded from the manifest** by all four emitters. Only
+  them. They are **registered in every port** — TypeScript, C#, Java (so Kotlin)
+  and Python — so one metadata document loads everywhere (an authored
+  `view.dropdown` is not an `ERR_UNKNOWN_SUBTYPE` in a backend port; gated by the
+  `view-text-basic` conformance fixture), and **excluded from the manifest** by
+  all four emitters, because registration there is for LOADING only. Only
   `view.base` + `view.currency` (the cross-port currency `@locale` wire
-  contract) remain. See SP-G analysis B-2.
+  contract) are manifest rows. See SP-G analysis B-2; C#, Java and Python
+  originally left them unregistered, which made a document shared between a TS
+  web client and a backend port unloadable in the backend.
 
 ### EXCLUDED from v1 — deferred follow-ons (documented, not silent)
 
@@ -380,8 +383,8 @@ Detail per port:
   uniform emitter exclusions documented in "EXCLUDED" above (no Java behavior
   change): the structural keywords `isArray`/`isAbstract` + the `description`
   per-type duplicate are filtered from the `attrs` list, the `metadata.base`
-  anchor row is skipped, and the 11 generic `view.*` controls are cut (Java
-  never registered them). The REMAINING (Phase 2) divergence between Java's
+  anchor row is skipped, and the generic `view.*` controls are cut from the
+  manifest (every port registers them for loading only). The REMAINING (Phase 2) divergence between Java's
   registry and the cross-port logical vocabulary that TS, C#, and Python agree
   on: Java carries a parallel physical-DB attr vocabulary
   (`dbType`/`dbIndex`/`dbLength`/`dbNullable`/`dbForeignKey`/`dbPrecision`/
