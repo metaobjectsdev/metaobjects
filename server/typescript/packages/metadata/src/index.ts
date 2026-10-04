@@ -60,6 +60,7 @@ export {
   type ReportFieldRole,
   type ReportShape,
 } from "./core/reporting/report-shape.js";
+export { reportReadModel } from "./core/reporting/report-read-model.js";
 // Shared `@implementedBy` resolution — one resolver for the CLI's requirement
 // checks and codegen's requirement-test fan-out (FR-038).
 export {

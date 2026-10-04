@@ -3,6 +3,7 @@ import {
   TYPE_FIELD, TYPE_IDENTITY,
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_ATTR_FIELDS,
+  OBJECT_SUBTYPE_REPORT,
   DEFAULT_COLUMN_NAMING_STRATEGY,
   resolveTableName, resolveColumnName,
 } from "@metaobjectsdev/metadata";
@@ -193,7 +194,9 @@ export function buildSelectSpec(
   strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
 ): SelectSpec {
   const allFields = projectedFields ?? listFieldNames(entity);
-  const pkFields = resolvePkFields(entity);
+  // A report's read model (FR-044) has no identity, so there is no key to add to the
+  // column list. Scoped to the report subtype: every other object still requires one.
+  const pkFields = entity.subType === OBJECT_SUBTYPE_REPORT ? [] : resolvePkFields(entity);
   const fieldSet = new Set<string>(allFields);
   for (const pk of pkFields) fieldSet.add(pk);
 

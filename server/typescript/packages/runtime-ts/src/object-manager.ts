@@ -1,6 +1,8 @@
 import type { MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_OBJECT, TYPE_FIELD,
+  OBJECT_SUBTYPE_REPORT,
+  isMetaObject, isMetaRoot, isReadOnlySource, reportReadModel,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL,
 } from "@metaobjectsdev/metadata";
@@ -111,7 +113,7 @@ export class ObjectManager {
   }
 
   async findById(entityName: string, id: unknown, opts: ReadOpts = {}): Promise<Row | null> {
-    const entity = this.requireEntity(entityName);
+    const entity = this.requireIdentified(entityName, "findById");
     const pkField = resolvePkFields(entity)[0]!;
     return this.findFirst(entityName, { [pkField]: this.coerceIdArg(entity, id) as string | number }, opts);
   }
@@ -151,7 +153,7 @@ export class ObjectManager {
 
   async load(refString: string): Promise<Row | null> {
     const { entity: entityName, pkValues } = decodeRef(refString);
-    const entity = this.requireEntity(entityName);
+    const entity = this.requireIdentified(entityName, "load");
     const pkFields = resolvePkFields(entity);
     if (pkValues.length !== pkFields.length) {
       throw new MetadataError(
@@ -169,12 +171,12 @@ export class ObjectManager {
   }
 
   refOf(entityName: string, record: Row): string {
-    const entity = this.requireEntity(entityName);
+    const entity = this.requireIdentified(entityName, "refOf");
     return encodeRef(entityName, record, resolvePkFields(entity));
   }
 
   async create(entityName: string, data: Row, opts: WriteOpts = {}): Promise<Row> {
-    const entity = this.requireEntity(entityName);
+    const entity = this.requireIdentified(entityName, "create");
     const driver = opts.tx ?? this.driver;
 
     const restricted0 = this.applyViewRestriction(entity, data, opts.view);
@@ -197,7 +199,7 @@ export class ObjectManager {
   }
 
   async update(entityName: string, id: unknown, data: Row, opts: WriteOpts = {}): Promise<Row | null> {
-    const entity = this.requireEntity(entityName);
+    const entity = this.requireIdentified(entityName, "update");
     const driver = opts.tx ?? this.driver;
 
     const restricted0 = this.applyViewRestriction(entity, data, opts.view);
@@ -229,7 +231,7 @@ export class ObjectManager {
   }
 
   async delete(entityName: string, id: unknown, opts: WriteOpts = {}): Promise<boolean> {
-    const entity = this.requireEntity(entityName);
+    const entity = this.requireIdentified(entityName, "delete");
     const driver = opts.tx ?? this.driver;
     // FR-017 TPH: scope the by-id delete to the subtype (cross-subtype → not found).
     const spec = buildDeleteSpec(entity, this.coerceIdArg(entity, id), this.columnNamingStrategy, this.tphScope(entity));
@@ -243,7 +245,7 @@ export class ObjectManager {
   }
 
   async createMany(entityName: string, dataArray: Row[], opts: WriteOpts = {}): Promise<Row[]> {
-    const entity = this.requireEntity(entityName);
+    const entity = this.requireIdentified(entityName, "createMany");
     const driver = opts.tx ?? this.driver;
 
     // Validate + identity-resolve every row before any insert so a late failure can't leave partial state.
@@ -274,7 +276,7 @@ export class ObjectManager {
   }
 
   async updateMany(entityName: string, filter: Filter, partial: Row, opts: WriteOpts = {}): Promise<number> {
-    const entity = this.requireEntity(entityName);
+    const entity = this.requireIdentified(entityName, "updateMany");
     const driver = opts.tx ?? this.driver;
     const restricted = this.applyViewRestriction(entity, partial, opts.view);
     const v = runValidators(entity, restricted, { partial: true });
@@ -292,7 +294,7 @@ export class ObjectManager {
   }
 
   async deleteMany(entityName: string, filter: Filter, opts: WriteOpts = {}): Promise<number> {
-    const entity = this.requireEntity(entityName);
+    const entity = this.requireIdentified(entityName, "deleteMany");
     const driver = opts.tx ?? this.driver;
     const spec: DeleteManySpec = {
       table: resolveTableName(entity),
@@ -464,6 +466,12 @@ export class ObjectManager {
   }
 
   private requireEntity(entityName: string): MetaData {
+    const entity = this.requireObject(entityName);
+    return entity.subType === OBJECT_SUBTYPE_REPORT ? this.reportReadModelOf(entity) : entity;
+  }
+
+  /** The declared object node, exactly as loaded (a report is NOT swapped for its read model). */
+  private requireObject(entityName: string): MetaData {
     if (!VALID_ENTITY_NAME.test(entityName)) {
       throw new UnsafeNameError(
         `Unsafe entity name '${entityName}'`,
@@ -474,6 +482,57 @@ export class ObjectManager {
     const entity = this.metadata.children().find((c) => c.type === TYPE_OBJECT && c.name === entityName);
     if (!entity) {
       throw new MetadataError(`Unknown entity '${entityName}'`, { entity: entityName });
+    }
+    return entity;
+  }
+
+  /**
+   * FR-044: a report declares no fields — its read shape is derived — so it is read
+   * through a detached read model carrying one real field per derived field and the
+   * report's own read-only source. Everything downstream (column list, filter and
+   * sort resolution, the name map, read coercion) then treats it as it treats a
+   * projection. The model is built once per report node and never joins the tree.
+   *
+   * A report with no read-only source of its own has no view (Table A), so there is
+   * nothing to read: refused here rather than falling through to a default table name.
+   */
+  private reportReadModelOf(report: MetaData): MetaData {
+    if (!isMetaObject(report) || !isMetaRoot(this.metadata)) {
+      throw new MetadataError(
+        `Report '${report.name}' cannot be read: the ObjectManager's metadata is not a loaded root`,
+        { entity: report.name },
+      );
+    }
+    let model: MetaData;
+    try {
+      model = reportReadModel(report, this.metadata);
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      throw new MetadataError(`Report '${report.name}' cannot be read: ${detail}`, { entity: report.name, cause });
+    }
+    if (!model.children().some((c) => isReadOnlySource(c))) {
+      throw new MetadataError(
+        `Report '${report.name}' is not served: it declares no read-only source, so it has no view to read`,
+        { entity: report.name },
+      );
+    }
+    return model;
+  }
+
+  /**
+   * Resolve an entity for an operation that needs an identity or writes: get-by-id,
+   * reference encode/decode, and every create/update/delete. A report (FR-044) is an
+   * aggregate over a view — it has no primary key and no write target — so these are
+   * refused by name before anything else is looked at (a sourceless report included).
+   */
+  private requireIdentified(entityName: string, op: string): MetaData {
+    const entity = this.requireObject(entityName);
+    if (entity.subType === OBJECT_SUBTYPE_REPORT) {
+      throw new MetadataError(
+        `${op} is not supported on '${entityName}': a report is read-only and has no identity ` +
+          `(read it with findMany, findFirst or count)`,
+        { entity: entityName },
+      );
     }
     return entity;
   }
