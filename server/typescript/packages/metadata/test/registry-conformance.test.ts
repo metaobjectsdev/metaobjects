@@ -67,7 +67,7 @@ test("manifest excludes the metadata.base inheritance anchor (keeps metadata.roo
   expect(metadataSubTypes).toContain("root");
 });
 
-test("manifest cuts the 11 generic view.* controls, keeps view.base + view.currency", () => {
+test("manifest cuts the 13 generic view.* controls, keeps view.base + view.currency", () => {
   const manifest = buildRegistryManifest(composeRegistry(coreProviders));
   const viewSubTypes = manifest.types
     .filter((t) => t.type === "view")

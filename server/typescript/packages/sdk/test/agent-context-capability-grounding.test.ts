@@ -13,8 +13,9 @@ const EXEMPT_SUBTYPES = new Set<string>([
   // cut stubs (named only to say "do NOT audit for them")
   "field.byte", "field.short", "field.class",
   // TS-consumed view widgets (every port loads them; not in the cross-port registry)
-  "view.text", "view.textarea", "view.date", "view.month", "view.hotlink", "view.dropdown",
-  "view.radio", "view.checkbox", "view.number", "view.password", "view.hidden", "view.web",
+  "view.text", "view.textarea", "view.date", "view.month", "view.hotlink", "view.image",
+  "view.dropdown", "view.radio", "view.checkbox", "view.number", "view.password", "view.hidden",
+  "view.web",
   // planned, not yet registered (flagged "not yet in the registry")
   "api.base", "api.operational", "operation.query", "operation.command", "binding.rest",
 ]);

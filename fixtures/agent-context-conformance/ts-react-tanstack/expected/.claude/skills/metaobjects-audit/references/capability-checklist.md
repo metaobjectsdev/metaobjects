@@ -178,8 +178,8 @@ soft-delete / status / type view it models.
   hunt hand-written grid column definitions + data hooks a data-grid layout generates.
 - **CALIBRATION — TS/web-only:** the `view.*` widget subtypes are consumed only by TS/web
   and are NOT in the cross-port registry — `view.text`, `view.textarea`, `view.date`,
-  `view.month`, `view.hotlink`, `view.dropdown`, `view.radio`, `view.checkbox`, `view.number`,
-  `view.password`, `view.hidden`, `view.web`. Every port LOADS them, so shared metadata that
+  `view.month`, `view.hotlink`, `view.image`, `view.dropdown`, `view.radio`, `view.checkbox`,
+  `view.number`, `view.password`, `view.hidden`, `view.web`. Every port LOADS them, so shared metadata that
   carries them is valid in a backend port; nothing outside TS/web reads them. **Audit these
   only for TS adopters.** Only
   `view.base` / `view.currency` are cross-port-gated.
