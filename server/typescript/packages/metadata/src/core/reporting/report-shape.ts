@@ -22,8 +22,24 @@ import {
 } from "../field/field-constants.js";
 import { MetaDimension } from "./meta-dimension.js";
 import { MetaMeasure } from "./meta-measure.js";
-import { reportDerivedFieldName, reportDimensionItems, reportFrom, reportMeasureNames } from "./report-accessors.js";
-import { AGG_AVG, AGG_COUNT, AGG_SUM, GRAIN_HOUR, TYPE_DIMENSION, TYPE_MEASURE, type TimeGrain } from "./reporting-constants.js";
+import {
+  reportDerivedFieldName,
+  reportDimensionItems,
+  reportFrom,
+  reportMeasureItemName,
+  reportMeasureItemOwner,
+  reportMeasureNames,
+} from "./report-accessors.js";
+import {
+  AGG_AVG,
+  AGG_COUNT,
+  AGG_SUM,
+  GRAIN_HOUR,
+  TIME_GRAINS,
+  TYPE_DIMENSION,
+  TYPE_MEASURE,
+  type TimeGrain,
+} from "./reporting-constants.js";
 
 export type ReportFieldRole = "dimension" | "measure";
 
@@ -55,15 +71,79 @@ function packageOfKey(key: string): string {
   return i >= 0 ? key.slice(0, i) : "";
 }
 
-/** Resolve a dimension's or measure's `Entity.field` reference to the field node. */
-export function resolveReportingFieldRef(ref: string, owner: MetaObject, root: MetaRoot): MetaField | undefined {
+/** True when `candidate` is `entity` or an entity it extends (the super chain). */
+function isSelfOrAncestor(candidate: MetaData, entity: MetaData): boolean {
+  const visited = new Set<MetaData>();
+  for (let n: MetaData | undefined = entity; n !== undefined && !visited.has(n); n = n.superData) {
+    if (n === candidate) return true;
+    visited.add(n);
+  }
+  return false;
+}
+
+/**
+ * The entity that DECLARES a dimension, measure or segment reached through `from`: the
+ * member's parent, which is `from` itself or an entity `from` extends. A bare entity name
+ * inside the member (`@of`, `@via`) resolves in THIS entity's package, exactly as the
+ * loader's `validateReporting` resolves it (`pkgOf(ctx.declaring)`), never in `from`'s
+ * package or the report's.
+ */
+export function reportingMemberOwner(member: MetaData, from: MetaObject): MetaData {
+  return member.parent ?? from;
+}
+
+/**
+ * Resolve a dimension's or measure's `Entity.field` reference to the field node. The ONE
+ * rule, the same as the loader's (`validateReporting` D1 / M1):
+ *
+ *  1. The entity half resolves relative to the package of `declaring`, the entity that
+ *     declares the member ({@link reportingMemberOwner}).
+ *  2. With `host` (a measure, or a dimension without `@via`: the reference is about the
+ *     `@from` entity's own rows) the named entity must be `host` or an entity it extends,
+ *     and the field is read from `host`, so a field `host` redeclares wins.
+ *  3. Without `host` (a dimension with `@via`) the field is read from the named entity.
+ *
+ * Undefined when any step fails.
+ */
+export function resolveReportingFieldRef(
+  ref: string,
+  declaring: MetaData,
+  root: MetaRoot,
+  host?: MetaObject,
+): MetaField | undefined {
   // `Entity.field`; a package qualifier uses `::`, so the member separator is the LAST dot.
   const dot = ref.lastIndexOf(CHILD_REF_SEPARATOR);
   if (dot <= 0) return undefined;
-  const entity = resolveObjectRef(root, ref.slice(0, dot), packageOfKey(owner.resolutionKey())).node;
-  if (!isMetaObject(entity)) return undefined;
+  const named = resolveObjectRef(root, ref.slice(0, dot), packageOfKey(declaring.resolutionKey())).node;
+  if (!isMetaObject(named)) return undefined;
+  if (host !== undefined && !isSelfOrAncestor(named, host)) return undefined;
   // ADR-0039: resolving, so a field inherited through extends is found.
-  return entity.fields().find((f) => f.name === ref.slice(dot + 1));
+  return (host ?? named).fields().find((f) => f.name === ref.slice(dot + 1));
+}
+
+/**
+ * The hop names of a dimension's `@via` (`Owner.hop[.hop...]`), read as the loader reads it
+ * (`validateReporting` rule D2): `Owner` resolves in the package of `declaring`
+ * ({@link reportingMemberOwner}) and must be `from` or an entity `from` extends. The walk
+ * itself then starts AT `from`, whichever of the two `Owner` named. Undefined when the
+ * reference has no owner, no hop, or an owner that is not `from` or an ancestor of it.
+ */
+export function reportingViaHops(
+  via: string,
+  declaring: MetaData,
+  from: MetaObject,
+  root: MetaRoot,
+): string[] | undefined {
+  // The owner ends at the first `.` after the last `::` (a package qualifier has no `.`).
+  const lastSep = via.lastIndexOf(PACKAGE_SEPARATOR);
+  const segStart = lastSep === -1 ? 0 : lastSep + PACKAGE_SEPARATOR.length;
+  const dot = via.indexOf(CHILD_REF_SEPARATOR, segStart);
+  if (dot <= segStart) return undefined;
+  const hops = via.slice(dot + CHILD_REF_SEPARATOR.length).split(CHILD_REF_SEPARATOR);
+  if (hops.some((h) => h === "")) return undefined;
+  const owner = resolveObjectRef(root, via.slice(0, dot), packageOfKey(declaring.resolutionKey())).node;
+  if (owner === undefined || !isSelfOrAncestor(owner, from)) return undefined;
+  return hops;
 }
 
 function unresolved(reportName: string, what: string): Error {
@@ -80,6 +160,10 @@ function declaredMember<T extends MetaData>(
   return from.children().find((c): c is T => c.type === type && c.name === name && c instanceof cls);
 }
 
+function isTimeGrain(grain: string | undefined): grain is TimeGrain {
+  return grain !== undefined && (TIME_GRAINS as readonly string[]).includes(grain);
+}
+
 function dimensionField(
   item: { name: string; grain?: string },
   from: MetaObject,
@@ -88,12 +172,15 @@ function dimensionField(
 ): ReportField {
   const dim = declaredMember(from, TYPE_DIMENSION, item.name, MetaDimension);
   if (dim === undefined) throw unresolved(reportName, `dimension '${item.name}' on '${from.name}'`);
-  const of = resolveReportingFieldRef(dim.of() ?? "", from, root);
+  const vialess = dim.via() === undefined;
+  const of = resolveReportingFieldRef(dim.of() ?? "", reportingMemberOwner(dim, from), root, vialess ? from : undefined);
   if (of === undefined) throw unresolved(reportName, `dimension '${item.name}' @of`);
   const name = reportDerivedFieldName(item);
-  const required = dim.via() === undefined && of.attr(FIELD_ATTR_REQUIRED) === true;
+  const required = vialess && of.attr(FIELD_ATTR_REQUIRED) === true;
   if (dim.isTime()) {
-    const grain = item.grain as TimeGrain;
+    // Loader rule R2 guarantees a grain from the closed set; a tree built in code does not.
+    const grain = item.grain;
+    if (!isTimeGrain(grain)) throw unresolved(reportName, `time dimension '${item.name}' grain '${grain ?? ""}'`);
     if (grain === GRAIN_HOUR) {
       return { name, role: "dimension", subType: FIELD_SUBTYPE_TIMESTAMP, required, typeSource: of, dimension: dim, grain };
     }
@@ -102,9 +189,23 @@ function dimensionField(
   return { name, role: "dimension", subType: of.subType, required, typeSource: of, dimension: dim };
 }
 
-function measureField(name: string, from: MetaObject, root: MetaRoot, reportName: string): ReportField {
+/**
+ * One `@measures` item, bare (`total`) or dotted (`Sale.total`, loader rule R3). The measure
+ * is named by the item's last segment and looked up on `from`; a qualifier resolves in the
+ * REPORT's package and must be `from` or an entity `from` extends.
+ */
+function measureField(item: string, report: MetaObject, from: MetaObject, root: MetaRoot): ReportField {
+  const reportName = report.name;
+  const name = reportMeasureItemName(item);
+  const qualifier = reportMeasureItemOwner(item);
+  if (qualifier !== undefined) {
+    const owner = resolveObjectRef(root, qualifier, packageOfKey(report.resolutionKey())).node;
+    if (owner === undefined || !isSelfOrAncestor(owner, from)) {
+      throw unresolved(reportName, `measure '${item}' on '${from.name}'`);
+    }
+  }
   const m = declaredMember(from, TYPE_MEASURE, name, MetaMeasure);
-  if (m === undefined) throw unresolved(reportName, `measure '${name}' on '${from.name}'`);
+  if (m === undefined) throw unresolved(reportName, `measure '${item}' on '${from.name}'`);
   if (m.isRatio()) {
     return { name, role: "measure", subType: FIELD_SUBTYPE_DECIMAL, required: false, measure: m };
   }
@@ -112,7 +213,7 @@ function measureField(name: string, from: MetaObject, root: MetaRoot, reportName
   if (agg === AGG_COUNT) {
     return { name, role: "measure", subType: FIELD_SUBTYPE_LONG, required: true, measure: m };
   }
-  const of = resolveReportingFieldRef(m.ofColumns()[0] ?? "", from, root);
+  const of = resolveReportingFieldRef(m.ofColumns()[0] ?? "", reportingMemberOwner(m, from), root, from);
   if (of === undefined) throw unresolved(reportName, `measure '${name}' @of`);
   const src = of.subType;
   if (agg === AGG_SUM) {
@@ -139,7 +240,7 @@ export function reportShape(report: MetaObject, root: MetaRoot): ReportShape {
   if (!isMetaObject(from)) throw unresolved(report.name, `@from '${fromName}'`);
   const fields = [
     ...reportDimensionItems(report).map((item) => dimensionField(item, from, root, report.name)),
-    ...reportMeasureNames(report).map((name) => measureField(name, from, root, report.name)),
+    ...reportMeasureNames(report).map((item) => measureField(item, report, from, root)),
   ];
   return { report, from, fields };
 }

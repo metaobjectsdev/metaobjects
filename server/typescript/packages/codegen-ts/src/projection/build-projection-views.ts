@@ -27,7 +27,7 @@ import {
   resolveTableSchema,
 } from "@metaobjectsdev/metadata";
 import { isProjection, isWriteThrough } from "./projection-detector.js";
-import { extractViewSpec, packageOf, refNamedOwner } from "./extract-view-spec.js";
+import { extractViewSpec, packageOf, projectionViewSource, refNamedOwner } from "./extract-view-spec.js";
 import { extractReportSpec } from "./extract-report-spec.js";
 import { emitReportViewDdl } from "./report-ddl-emit.js";
 import type { ReportViewSpec } from "./report-spec.js";
@@ -176,7 +176,8 @@ export interface BuildReportViewsOptions {
  * buildProjectionViews; exported separately because MySQL is accepted here and nowhere
  * else (migrate does not target MySQL; the SQL ships through this function and a recipe).
  *
- * The Table A gate (classifyReadOnlySource) runs BEFORE extractReportSpec: a sourceless
+ * The Table A gate (classifySource, over the source `projectionViewSource` selects) runs
+ * BEFORE extractReportSpec: a sourceless
  * report must never reach it, because projectionViewName falls back to `v_<name>` and
  * would invent a view nobody declared. A report whose `@from` has no table, or whose
  * `@via` chain does not resolve, throws out of extractReportSpec naming the report; that
@@ -194,7 +195,11 @@ export function buildReportViews(root: MetaData, opts: BuildReportViewsOptions):
 
   const out: ExpectedView[] = [];
   for (const report of root.objects().filter(isReport)) {
-    const cls = classifyReadOnlySource(report); // Table A
+    // Table A, decided by the SAME source the view is named by (`projectionViewName`) and
+    // the runtime reads (`reportReadModel`): the own read-only source with role primary,
+    // else the first own read-only source. Reports only: the projection and write-through
+    // loops above keep classifying their FIRST own read-only source.
+    const cls = classifySource(projectionViewSource(report));
     if (cls.kind === "skip") continue;
     if (cls.kind === "sql") {
       emitSqlView(report, cls.source, root, joinTables, out);
@@ -202,7 +207,14 @@ export function buildReportViews(root: MetaData, opts: BuildReportViewsOptions):
     }
     const spec = extractReportSpec(report, root, { columnNamingStrategy });
     const baseTableName = joinTables[spec.joinTree.baseEntity];
-    if (!baseTableName) continue; // unresolved base — extractReportSpec already refuses a table-less @from
+    if (!baseTableName) {
+      // extractReportSpec refuses a table-less @from first, so this is a defect, not an
+      // authoring error; skipping would silently drop a view the report declares.
+      throw new Error(
+        `report '${report.name}': no table name is known for its @from entity '${spec.joinTree.baseEntity}', ` +
+          `so its view '${spec.viewName}' cannot be emitted.`,
+      );
+    }
     const schema = resolveTableSchema(report);
     out.push({
       name: spec.viewName,
@@ -257,7 +269,11 @@ type ReadOnlySourceClass =
   | { kind: "derive"; source: MetaSource };
 
 function classifyReadOnlySource(host: MetaObject): ReadOnlySourceClass {
-  const source = host.ownChildren().find(isReadOnlySource);
+  return classifySource(host.ownChildren().find(isReadOnlySource));
+}
+
+/** The classification itself, for a source the caller has already selected. */
+function classifySource(source: MetaSource | undefined): ReadOnlySourceClass {
   if (source === undefined) return { kind: "skip" };
   if (source.isUnmanaged) return { kind: "skip" }; // external — Flyway/hand-migration owns it
   if (source.sqlBody !== undefined) return { kind: "sql", source }; // author-supplied body

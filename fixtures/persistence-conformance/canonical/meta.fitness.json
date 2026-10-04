@@ -323,7 +323,7 @@
 
       { "object.report": { "name": "ProgramMinutes", "@from": "Week",
         "@dimensions": ["program", "programTitle"],
-        "@measures": ["weeks", "longWeeks", "labels", "slots", "totalMinutes", "avgMinutes", "minMinutes", "maxMinutes", "longShare"],
+        "@measures": ["Week.weeks", "longWeeks", "labels", "slots", "totalMinutes", "avgMinutes", "minMinutes", "maxMinutes", "longShare"],
         "children": [ { "source.rdb": { "@kind": "view", "@view": "v_program_minutes" } } ] } },
       { "object.report": { "name": "FitnessTotals", "@from": "Week",
         "@measures": ["weeks", "totalMinutes", "longShare"],

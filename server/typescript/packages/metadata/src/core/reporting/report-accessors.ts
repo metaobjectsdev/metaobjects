@@ -8,6 +8,7 @@ import {
   OBJECT_REPORT_ATTR_FROM,
   OBJECT_REPORT_ATTR_MEASURES,
 } from "../object/object-constants.js";
+import { CHILD_REF_SEPARATOR } from "../../shared/structural.js";
 import { REPORT_DIMENSION_GRAIN_SEPARATOR } from "./reporting-constants.js";
 
 export interface ReportDimensionItem {
@@ -34,9 +35,28 @@ export function reportDimensionItems(obj: MetaData): ReportDimensionItem[] {
   });
 }
 
-/** The `@measures` names. */
+/** The `@measures` items AS WRITTEN: each a bare measure `name`, or a dotted
+ *  `Entity.name` (loader rule R3). Use {@link reportMeasureItemName} for the measure name. */
 export function reportMeasureNames(obj: MetaData): string[] {
   return stringList(obj.attr(OBJECT_REPORT_ATTR_MEASURES));
+}
+
+/**
+ * The measure a `@measures` item names: the segment after its LAST `.`
+ * (`total`, `Sale.total` and `acme::shop::Sale.total` all name `total`). It is also
+ * the derived report field's name. The part before that `.`, when present, is an
+ * entity qualifier, which {@link reportMeasureItemOwner} returns.
+ */
+export function reportMeasureItemName(item: string): string {
+  const dot = item.lastIndexOf(CHILD_REF_SEPARATOR);
+  return dot === -1 ? item : item.slice(dot + CHILD_REF_SEPARATOR.length);
+}
+
+/** The entity qualifier of a dotted `@measures` item (`Sale` in `Sale.total`), or
+ *  undefined for a bare item. Loader rule R3: it names `@from` or an entity `@from` extends. */
+export function reportMeasureItemOwner(item: string): string | undefined {
+  const dot = item.lastIndexOf(CHILD_REF_SEPARATOR);
+  return dot === -1 ? undefined : item.slice(0, dot);
 }
 
 /** The derived report field for a dimension item: `name` (attribute) or `name` + Capitalized(grain) (time). */

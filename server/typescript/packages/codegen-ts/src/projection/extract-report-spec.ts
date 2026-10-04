@@ -16,13 +16,23 @@ import {
   FIELD_SUBTYPE_TIMESTAMP,
   FILTER_COMPOSE_AND,
   FILTER_COMPOSE_OR,
+  FILTER_OP_IN,
   FILTER_RELATIVE_NOW,
+  IDENTITY_REFERENCE_ATTR_REFERENCES,
+  IDENTITY_SUBTYPE_REFERENCE,
   OBJECT_REPORT_ATTR_FILTER,
   OBJECT_REPORT_ATTR_SEGMENT,
+  RELATIONSHIP_ATTR_OBJECT_REF,
+  TYPE_IDENTITY,
   TYPE_MEASURE,
+  TYPE_RELATIONSHIP,
   TYPE_SEGMENT,
   reportShape,
+  reportingMemberOwner,
+  reportingViaHops,
+  resolveObjectRef,
   resolveReportingFieldRef,
+  type MetaData,
   type MetaField,
   type MetaMeasure,
   type MetaObject,
@@ -33,6 +43,7 @@ import {
 import { intValueMapOf } from "../enum-meta.js";
 import { columnNameFromField } from "../naming.js";
 import { hasWritableRdbSource } from "../source-detect.js";
+import { isTphSubtype, tphDiscriminatorBase, tphDiscriminatorPin } from "../templates/zod-validators.js";
 import {
   desugarClause,
   encodeIntEnumFilterValue,
@@ -104,6 +115,14 @@ function resolveReportFilter(
     }
     const ref = `${alias}.${sourceColumnNameFor(field, ctx)}`;
     for (const [op, raw] of Object.entries(desugarClause(val))) {
+      // `IN ()` is a syntax error on Postgres and MySQL, so it would fail when the migration is
+      // applied, far from the report. The loader accepts the empty list; refuse it here by name.
+      if (op === FILTER_OP_IN && Array.isArray(raw) && raw.length === 0) {
+        throw new Error(
+          `${where}: the 'in' list on "${key}" is empty, which no row can match and no database accepts ` +
+            `as SQL (IN ()). List at least one value, or remove the clause.`,
+        );
+      }
       clauses.push({ kind: "cmp", ref, op, value: lowerFilterValue(raw, op, field, key, where) });
     }
   }
@@ -174,8 +193,11 @@ function aggregateOf(
   const where = `report '${report.name}' measure '${measure.name}'`;
   const agg = measure.agg();
   if (agg === undefined) throw new Error(`${where}: has no @agg.`);
+  // The same rule as reportShape: the entity half resolves in the DECLARING entity's package,
+  // and the column is read from `from` (a measure aggregates `from`'s own rows).
+  const declaring = reportingMemberOwner(measure, from);
   const fields = measure.ofColumns().map((ref) => {
-    const f = resolveReportingFieldRef(ref, from, root);
+    const f = resolveReportingFieldRef(ref, declaring, root, from);
     if (f === undefined) throw new Error(`${where}: @of '${ref}' does not resolve.`);
     return f;
   });
@@ -206,6 +228,38 @@ function aliasAtEndOf(path: Path, joins: readonly JoinNode[]): string {
   return alias;
 }
 
+/**
+ * Why a dimension's `@via` walk stopped at `hop`: the error names the hop, the entity it was
+ * looked up on, and what the model is missing. The loader (rule D2) accepts a to-one
+ * `relationship.*` with no `identity.reference` behind it, so the missing-foreign-key case is
+ * reachable from a model that loads clean.
+ */
+function viaHopError(where: string, via: string, hop: string, at: MetaData, root: MetaRoot): Error {
+  const head = `${where} @via '${via}' cannot be joined at hop '${hop}' on '${at.resolutionKey()}'`;
+  // ADR-0039: resolving children(), so an inherited relationship or reference is found.
+  const node = at
+    .children()
+    .find(
+      (c) =>
+        c.name === hop &&
+        (c.type === TYPE_RELATIONSHIP || (c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_REFERENCE)),
+    );
+  if (node === undefined) {
+    return new Error(`${head}: it names no relationship or identity.reference of that entity.`);
+  }
+  const targetRef = node.attr(
+    node.type === TYPE_IDENTITY ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF,
+  );
+  const target = typeof targetRef === "string" ? resolveObjectRef(root, targetRef, packageOf(at)).node : undefined;
+  if (target === undefined) {
+    return new Error(`${head}: its target '${String(targetRef ?? "")}' does not resolve to an object.`);
+  }
+  return new Error(
+    `${head}: the model declares no foreign key for it. A view joins a hop through an identity.reference; ` +
+      `declare one on '${at.name}' whose @references is '${target.name}' (with the foreign-key field in @fields).`,
+  );
+}
+
 export function extractReportSpec(report: MetaObject, root: MetaRoot, ctx: ExtractContext): ReportViewSpec {
   const shape = reportShape(report, root);
   const from = shape.from;
@@ -216,21 +270,45 @@ export function extractReportSpec(report: MetaObject, root: MetaRoot, ctx: Extra
         `source.rdb), so no view can be derived. Give '${from.name}' a source, or remove the report's source.`,
     );
   }
+  // A TPH subtype has no table of its own: its rows sit in the discriminator base's table beside
+  // every other subtype's. A derived view has no discriminator predicate, so it would aggregate
+  // all of them and report wrong numbers with nothing failing. Refuse, and say how to scope it.
+  if (isTphSubtype(from)) {
+    const base = tphDiscriminatorBase(from);
+    const pin = tphDiscriminatorPin(from);
+    throw new Error(
+      `report '${report.name}': @from '${from.name}' is a TPH subtype: it shares the table of ` +
+        `'${base?.name ?? ""}' with every other subtype, so a view derived from it would aggregate all of ` +
+        `their rows. Declare the report @from '${base?.name ?? ""}' with an @filter on the discriminator ` +
+        `field '${pin?.fieldName ?? ""}' (for example { ${JSON.stringify(pin?.fieldName ?? "")}: ` +
+        `${JSON.stringify(pin?.value ?? "")} }).`,
+    );
+  }
   const used = new Set<string>();
   const baseAlias = shortAliasFor(from.name, used);
-  const pkg = packageOf(from);
 
   // One path per LISTED dimension that has @via (Table F); an unlisted dimension adds no join.
   const pathOf = new Map<ReportField, Path>();
   for (const f of shape.fields) {
-    const via = f.dimension?.via();
-    if (via === undefined) continue;
-    const path = walkViaPath(via, root, pkg, ctx);
+    const dim = f.dimension;
+    const via = dim?.via();
+    if (dim === undefined || via === undefined) continue;
+    const where = `report '${report.name}': dimension '${f.name}'`;
+    // The loader's rule D2: the owner half resolves in the DECLARING entity's package and must be
+    // `from` or an entity it extends; the walk then starts AT `from`.
+    const hops = reportingViaHops(via, reportingMemberOwner(dim, from), from, root);
+    if (hops === undefined) {
+      throw new Error(
+        `${where} @via '${via}' must be Owner.hop[.hop...], starting at @from '${from.name}' or an entity it extends.`,
+      );
+    }
+    const path = walkViaPath([from.resolutionKey(), ...hops].join("."), root, packageOf(from), ctx);
     // walkViaPath stops at the first hop it cannot resolve; a partial path would pin the
     // dimension to the wrong alias, so the whole chain must be walked.
-    const hops = via.split(".").length - 1;
-    if (path.length !== hops || hops === 0) {
-      throw new Error(`report '${report.name}': dimension '${f.name}' @via '${via}' does not resolve to a join path.`);
+    if (path.length !== hops.length) {
+      const last = path[path.length - 1];
+      const at = last === undefined ? from : root.objects().find((o) => o.resolutionKey() === last.targetEntity);
+      throw viaHopError(where, via, hops[path.length]!, at ?? from, root);
     }
     pathOf.set(f, path);
   }
@@ -239,7 +317,18 @@ export function extractReportSpec(report: MetaObject, root: MetaRoot, ctx: Extra
   const columns = shape.fields.map((f): ReportColumn => {
     const dbColAlias = columnNameFromField(f.name, ctx.columnNamingStrategy);
     if (f.role === "dimension") {
-      const of = f.typeSource ?? resolveReportingFieldRef(f.dimension?.of() ?? "", from, root);
+      const dim = f.dimension;
+      // A time dimension below the hour grain carries no typeSource; resolve by reportShape's rule.
+      const of =
+        f.typeSource ??
+        (dim === undefined
+          ? undefined
+          : resolveReportingFieldRef(
+              dim.of() ?? "",
+              reportingMemberOwner(dim, from),
+              root,
+              dim.via() === undefined ? from : undefined,
+            ));
       if (of === undefined) throw new Error(`report '${report.name}': dimension '${f.name}' @of does not resolve.`);
       const path = pathOf.get(f);
       const alias = path === undefined ? baseAlias : aliasAtEndOf(path, joins);

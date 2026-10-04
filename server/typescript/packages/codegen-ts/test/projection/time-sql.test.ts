@@ -64,6 +64,18 @@ describe("truncateToGrain (Table D)", () => {
   test.each(["postgres", "sqlite", "mysql"] as const)("hour on a date column throws (%s)", (dialect) => {
     expect(() => truncateToGrain(X, "hour", "date", dialect)).toThrow(/hour/);
   });
+
+  test.each(["postgres", "sqlite", "mysql"] as const)(
+    "a grain outside the closed set is refused, never interpolated into SQL (%s)",
+    (dialect) => {
+      // A programmatic caller skips the loader; the Postgres arm writes the grain into
+      // date_trunc('<grain>', ...), so an unchecked string would reach the DDL.
+      const hostile = "day', now()); DROP TABLE t; --" as unknown as "day";
+      expect(() => truncateToGrain(X, hostile, "instant", dialect)).toThrow(
+        `time-sql: "day', now()); DROP TABLE t; --" is not a time grain (hour, day, week, month, quarter, year).`,
+      );
+    },
+  );
 });
 
 describe("relativeNowSql (Table E)", () => {

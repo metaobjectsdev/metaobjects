@@ -9,6 +9,8 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { InMemoryStringSource, MetaDataLoader } from "@metaobjectsdev/metadata";
+
 import {
   generateReportShapesJson,
   readReportShapesJson,
@@ -47,5 +49,42 @@ describe("canonical report-shapes artifact (report-shapes.json)", () => {
       ["fitness::RecentPrograms", "v_recent_programs"],
       ["fitness::AssetActivity", "v_asset_activity"],
     ]);
+  });
+
+  test("`view` is the source the lowering names and the runtime reads: primary, else first", async () => {
+    // A replica declared BEFORE the primary must not name the report's view.
+    const model = {
+      "metadata.root": {
+        package: "acme",
+        children: [
+          {
+            "object.entity": {
+              name: "Sale",
+              children: [
+                { "source.rdb": { "@table": "sales" } },
+                { "field.long": { name: "id" } },
+                { "identity.primary": { name: "pk", "@fields": ["id"] } },
+                { "measure.aggregate": { name: "sales", "@agg": "count", "@of": "Sale.id" } },
+              ],
+            },
+          },
+          {
+            "object.report": {
+              name: "Totals",
+              "@from": "Sale",
+              "@measures": ["sales"],
+              children: [
+                { "source.rdb": { "@kind": "view", "@view": "v_totals_replica", "@role": "replica" } },
+                { "source.rdb": { "@kind": "view", "@view": "v_totals", "@role": "primary" } },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(model))]);
+    expect(errors).toEqual([]);
+    const parsed = JSON.parse(generateReportShapesJson(root)) as { reports: { view: string | null }[] };
+    expect(parsed.reports.map((r) => r.view)).toEqual(["v_totals"]);
   });
 });

@@ -5,7 +5,14 @@
 import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobjectsdev/metadata";
+import {
+  MetaDataLoader,
+  InMemoryStringSource,
+  OBJECT_REPORT_ATTR_FILTER,
+  reportReadModel,
+  type MetaObject,
+  type MetaRoot,
+} from "@metaobjectsdev/metadata";
 import { extractReportSpec, temporalOf } from "../../src/projection/extract-report-spec.js";
 import { isRelativeNow } from "../../src/projection/report-spec.js";
 import type { ReportViewSpec } from "../../src/projection/report-spec.js";
@@ -216,6 +223,16 @@ describe("extractReportSpec", () => {
     });
     const s = await spec("RatioOnly", { model });
     expect(s.columns.map((c) => c.kind)).toEqual(["ratio"]);
+    const ratio = s.columns[0]!;
+    if (ratio.kind !== "ratio") throw new Error("expected a ratio");
+    // Neither operand is listed, and both arrive as full aggregates over the base alias.
+    const listed = await spec("ProgramEngagement");
+    const same = listed.columns.find((c) => c.fieldName === "avgDaysPerStarter")!;
+    if (same.kind !== "ratio") throw new Error("expected a ratio");
+    expect(ratio.numerator).toEqual(same.numerator);
+    expect(ratio.denominator).toEqual(same.denominator);
+    expect(ratio.numerator.refs).toHaveLength(3);
+    expect(ratio.denominator.refs).toEqual(["w.customer_email"]);
   });
 
   test("an integral sum is cast to bigint; a currency sum too; a floating sum to double", async () => {
@@ -292,5 +309,247 @@ describe("temporalOf", () => {
     expect(temporalOf(field("purchasedOn"))).toBe("date");
     expect(temporalOf(field("purchasedAt"))).toBe("instant");
     expect(temporalOf(field("localAt"))).toBe("naive");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Final fix wave (FR-044): refusals and reference resolution.
+// ---------------------------------------------------------------------------
+
+const CTX = { columnNamingStrategy: "snake_case" } as const;
+
+const file = (pkg: string, children: Json[]): InMemoryStringSource =>
+  new InMemoryStringSource(JSON.stringify({ "metadata.root": { package: pkg, children } }));
+
+async function loadFiles(files: InMemoryStringSource[]): Promise<MetaRoot> {
+  const { root, errors } = await new MetaDataLoader().load(files);
+  expect(errors).toEqual([]);
+  return root;
+}
+
+const view = (name: string): Json => ({ "source.rdb": { "@kind": "view", "@view": name } });
+
+/** The node with one attr replaced, WITHOUT the loader (the loaded tree is frozen and the
+ *  loader refuses these values): what a caller building a tree in code can hand in. */
+function withAttr(node: MetaObject, name: string, value: unknown): MetaObject {
+  const stub = Object.create(node) as MetaObject;
+  Object.defineProperty(stub, "attr", { value: (n: string) => (n === name ? value : node.attr(n)) });
+  return stub;
+}
+
+describe("extractReportSpec: a @from in a TPH hierarchy", () => {
+  /** `User` owns the table and the discriminator; `Admin` is a TPH subtype sharing it. */
+  const tph = (reports: Json[]): InMemoryStringSource =>
+    file("acme", [
+      {
+        "object.entity": {
+          name: "User",
+          "@discriminator": "kind",
+          children: [
+            { "source.rdb": { "@table": "users" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "kind" } },
+            { "identity.primary": { name: "pk", "@fields": ["id"] } },
+            { "measure.aggregate": { name: "users", "@agg": "count", "@of": "User.id" } },
+          ],
+        },
+      },
+      { "object.entity": { name: "Admin", extends: "User", "@discriminatorValue": "ADMIN", children: [] } },
+      ...reports,
+    ]);
+  const report = (name: string, from: string, extra: Json = {}, source: Json = view("v_r")): Json => ({
+    "object.report": { name, "@from": from, "@measures": ["users"], ...extra, children: [source] },
+  });
+
+  test("a derived report @from a TPH subtype is refused, naming the report and the subtype", async () => {
+    const root = await loadFiles([tph([report("Admins", "Admin")])]);
+    expect(() => extractReportSpec(root.findObject("Admins")!, root, CTX)).toThrow(
+      "report 'Admins': @from 'Admin' is a TPH subtype: it shares the table of 'User' with every other " +
+        "subtype, so a view derived from it would aggregate all of their rows. Declare the report " +
+        "@from 'User' with an @filter on the discriminator field 'kind' (for example { \"kind\": \"ADMIN\" }).",
+    );
+  });
+
+  test("a report @from the TPH base is accepted and reads the shared table unscoped", async () => {
+    const root = await loadFiles([tph([report("Users", "User")])]);
+    const s = extractReportSpec(root.findObject("Users")!, root, CTX);
+    expect(s.joinTree.baseEntity).toBe("acme::User");
+    expect(s.where).toBeUndefined();
+  });
+
+  test("a base report with an @filter on the discriminator lowers to a WHERE on that column", async () => {
+    const root = await loadFiles([tph([report("Admins", "User", { "@filter": { kind: "ADMIN" } })])]);
+    const s = extractReportSpec(root.findObject("Admins")!, root, CTX);
+    expect(s.where).toEqual({ kind: "cmp", ref: "u.kind", op: "eq", value: "ADMIN" });
+  });
+
+  test("the runtime read model does not look at @from's TPH position: it serves whatever relation the source names", async () => {
+    // An @sql or @unmanaged view over a subtype is the author's body, so it is not refused
+    // (build-projection-views.test.ts); the read model's shape is the same Table B either way.
+    const root = await loadFiles([tph([report("Admins", "Admin")])]);
+    const model = reportReadModel(root.findObject("Admins")!, root);
+    expect(model?.fields().map((f) => f.name)).toEqual(["users"]);
+  });
+});
+
+describe("extractReportSpec: references resolve as the loader resolves them", () => {
+  /** `a::Base` (abstract) declares members with BARE references; `b::Ev extends a::Base`. */
+  const shared = (): InMemoryStringSource =>
+    file("a", [
+      {
+        "object.entity": {
+          name: "Owner",
+          children: [
+            { "source.rdb": { "@table": "owners" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "label" } },
+            { "identity.primary": { name: "pk", "@fields": ["id"] } },
+          ],
+        },
+      },
+      {
+        "object.entity": {
+          name: "Base",
+          abstract: true,
+          children: [
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "kind" } },
+            { "field.long": { name: "ownerId" } },
+            { "identity.primary": { name: "pk", "@fields": ["id"] } },
+            { "identity.reference": { name: "ownerRef", "@fields": ["ownerId"], "@references": "a::Owner" } },
+            { "relationship.association": { name: "owner", "@objectRef": "a::Owner", "@cardinality": "one" } },
+            { "dimension.attribute": { name: "kind", "@of": "Base.kind" } },
+            { "dimension.attribute": { name: "ownerLabel", "@of": "Owner.label", "@via": "Base.owner" } },
+            { "measure.aggregate": { name: "events", "@agg": "count", "@of": "Base.id" } },
+          ],
+        },
+      },
+    ]);
+  const consumer = (extra: Json[] = []): InMemoryStringSource =>
+    file("b", [
+      ...extra,
+      { "object.entity": { name: "Ev", extends: "a::Base", children: [{ "source.rdb": { "@table": "evs" } }] } },
+      {
+        "object.report": {
+          name: "R",
+          "@from": "Ev",
+          "@dimensions": ["kind", "ownerLabel"],
+          "@measures": ["Ev.events"],
+          children: [view("v_r")],
+        },
+      },
+    ]);
+
+  const refs = (s: ReportViewSpec): unknown[] =>
+    s.columns.map((c) => (c.kind === "aggregate" ? c.aggregate.refs : (c as { ref: string }).ref));
+
+  test("a bare @of / @via inherited from another package resolves in the declaring entity's package", async () => {
+    const root = await loadFiles([shared(), consumer()]);
+    const s = extractReportSpec(root.findObject("R")!, root, CTX);
+    expect(s.joinTree.baseEntity).toBe("b::Ev");
+    expect(s.joinTree.joins.map((j) => [j.relationship, j.targetEntity])).toEqual([["owner", "a::Owner"]]);
+    expect(refs(s)).toEqual(["e.kind", `${s.joinTree.joins[0]!.alias}.label`, ["e.id"]]);
+  });
+
+  test("same-named decoys in the report's package do not capture the references", async () => {
+    const decoys: Json[] = [
+      { "object.entity": { name: "Base", children: [{ "field.int": { name: "id" } }, { "field.int": { name: "kind" } }] } },
+      {
+        "object.entity": {
+          name: "Owner",
+          children: [{ "source.rdb": { "@table": "decoy_owners" } }, { "field.int": { name: "label", "@column": "decoy" } }],
+        },
+      },
+    ];
+    const root = await loadFiles([shared(), consumer(decoys)]);
+    const s = extractReportSpec(root.findObject("R")!, root, CTX);
+    expect(s.joinTree.joins.map((j) => j.targetEntity)).toEqual(["a::Owner"]);
+    expect(refs(s)).toEqual(["e.kind", `${s.joinTree.joins[0]!.alias}.label`, ["e.id"]]);
+  });
+});
+
+describe("extractReportSpec: refusals that name what is wrong", () => {
+  test("refuses an abstract @from, naming the report and the entity", async () => {
+    const root = await loadFiles([
+      file("acme", [
+        {
+          "object.entity": {
+            name: "Shape",
+            abstract: true,
+            children: [
+              { "source.rdb": { "@table": "shapes" } },
+              { "field.long": { name: "id" } },
+              { "identity.primary": { name: "pk", "@fields": ["id"] } },
+              { "measure.aggregate": { name: "shapes", "@agg": "count", "@of": "Shape.id" } },
+            ],
+          },
+        },
+        { "object.report": { name: "Shapes", "@from": "Shape", "@measures": ["shapes"], children: [view("v_shapes")] } },
+      ]),
+    ]);
+    expect(() => extractReportSpec(root.findObject("Shapes")!, root, CTX)).toThrow(
+      /report 'Shapes'.*'Shape'.*no table \(it is abstract/,
+    );
+  });
+
+  test("a @via hop with no foreign key in the model is refused, naming the hop and what it needs", async () => {
+    // The loader accepts a to-one relationship with no identity.reference behind it.
+    const model = shopModel((children) => {
+      const purchase = children.find((c) => (c["object.entity"] as Json | undefined)?.name === "Purchase")!;
+      const kids = (purchase["object.entity"] as { children: Json[] }).children;
+      kids.splice(kids.findIndex((k) => "identity.reference" in k), 1);
+    });
+    const root = await load(model);
+    expect(() => extractReportSpec(root.findObject("ProgramTitles")!, root, CTX)).toThrow(
+      "report 'ProgramTitles': dimension 'programTitle' @via 'Purchase.program' cannot be joined at hop 'program' " +
+        "on 'acme::shop::Purchase': the model declares no foreign key for it. A view joins a hop through an " +
+        "identity.reference; declare one on 'Purchase' whose @references is 'Program' (with the foreign-key " +
+        "field in @fields).",
+    );
+  });
+
+  test("a @via whose later hop does not resolve is refused, not joined part-way", async () => {
+    const root = await load(shopModel());
+    const titles = root.findObject("ProgramTitles")!;
+    const from = root.findObject("Purchase")!;
+    const dim = from.children().find((c) => c.name === "programTitle")!;
+    // Past the loader (rule D2 refuses an unknown hop): a two-hop path whose second hop is nothing.
+    const via = Object.create(dim) as typeof dim & { via(): string };
+    Object.defineProperty(via, "via", { value: () => "Purchase.program.nowhere" });
+    const fromStub = Object.create(from) as MetaObject;
+    Object.defineProperty(fromStub, "children", { value: () => from.children().map((c) => (c === dim ? via : c)) });
+    const rootStub = Object.create(root) as MetaRoot;
+    const fromKey = from.resolutionKey();
+    Object.defineProperty(rootStub, "children", {
+      value: () => root.children().map((c) => (c.resolutionKey() === fromKey ? fromStub : c)),
+    });
+    Object.defineProperty(rootStub, "objects", {
+      value: () => root.objects().map((c) => (c.resolutionKey() === fromKey ? fromStub : c)),
+    });
+    expect(() => extractReportSpec(titles, rootStub, CTX)).toThrow(
+      /report 'ProgramTitles': dimension 'programTitle' @via 'Purchase.program.nowhere' cannot be joined at hop 'nowhere' on 'acme::shop::Program': it names no relationship or identity.reference/,
+    );
+  });
+
+  test("a filter field that is not a field of @from is refused by name", async () => {
+    const root = await load(shopModel());
+    // Past the loader (rule S1 refuses an unknown filter field).
+    const r = withAttr(root.findObject("StoreTotals")!, OBJECT_REPORT_ATTR_FILTER, { nope: 1 });
+    expect(() => extractReportSpec(r, root, CTX)).toThrow(
+      `report 'StoreTotals' @filter: filter field "nope" is not a field of 'Purchase'.`,
+    );
+  });
+
+  test("an empty `in` list is refused at lowering, naming the report and the field", async () => {
+    const model = shopModel((children) => {
+      children.push({
+        "object.report": { name: "NoStatuses", "@from": "Purchase", "@measures": ["purchases"], "@filter": { status: { in: [] } } },
+      });
+    });
+    const root = await load(model);
+    expect(() => extractReportSpec(root.findObject("NoStatuses")!, root, CTX)).toThrow(
+      `report 'NoStatuses' @filter: the 'in' list on "status" is empty, which no row can match and no ` +
+        `database accepts as SQL (IN ()). List at least one value, or remove the clause.`,
+    );
   });
 });

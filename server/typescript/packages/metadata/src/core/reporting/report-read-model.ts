@@ -107,7 +107,7 @@ function derivedField(f: ReportField): MetaField {
  * model that loads, the primary branch fires. The first-read-only fallback covers a
  * tree built in code, and keeps this rule identical to the lowering's.
  */
-function reportReadSource(report: MetaObject): MetaSource | undefined {
+export function reportReadSource(report: MetaObject): MetaSource | undefined {
   // ADR-0039: own — source classification reads the sources the report declares
   // ITSELF, exactly as the lowering's `viewName` does.
   const readOnly = report.ownChildren().filter(isReadOnlySource);

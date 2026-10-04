@@ -4,6 +4,7 @@
 import {
   GRAIN_DAY, GRAIN_HOUR, GRAIN_MONTH, GRAIN_QUARTER, GRAIN_WEEK, GRAIN_YEAR,
   ISO_DURATION_RE,
+  TIME_GRAINS,
   type TimeGrain,
 } from "@metaobjectsdev/metadata";
 
@@ -56,6 +57,11 @@ export function truncateToGrain(
   temporal: ReportTemporal,
   dialect: ReportDialect,
 ): string {
+  // The Postgres arm writes the grain into `date_trunc('<grain>', ...)`. The loader validates
+  // it (rule R2); a programmatic caller skips the loader, so check the closed set here.
+  if (!(TIME_GRAINS as readonly string[]).includes(grain)) {
+    throw new Error(`time-sql: "${String(grain)}" is not a time grain (${TIME_GRAINS.join(", ")}).`);
+  }
   if (grain === GRAIN_HOUR && temporal === "date") {
     // Rule D4 forbids this at load; a programmatic caller skips the loader.
     throw new Error(`time-sql: the "hour" grain cannot truncate a date column (${ref}).`);

@@ -383,6 +383,91 @@ describe("buildReportViews — view-backed reports (FR-044 Plan 2, Table A)", ()
     expect("columns" in views[0]!).toBe(false);
   });
 
+  test("the projection loop does not see an @sql report either: one view, not two", async () => {
+    // An @sql report is the shape most like a projection (a read-only source with a body).
+    // Were the `!isReport` filter on the projection loop dropped, it would be emitted twice.
+    const root = await loadModel(
+      shop("with", (children) => {
+        const r = children.find((c) => (c["object.report"] as Json | undefined)?.name === "StoreTotals");
+        const kids = (r!["object.report"] as { children: Json[] }).children;
+        (kids[0]!["source.rdb"] as Json)["@sql"] = "SELECT COUNT(*) AS purchases FROM purchases";
+      }),
+    );
+    expect(buildProjectionViews(root, PG)).toHaveLength(1);
+  });
+
+  // Source selection (final fix wave A4): Table A is decided by the SAME source the view is
+  // named by and the runtime reads: the own read-only source with role primary, else the
+  // first own read-only source. A replica declared first must not decide it.
+  const replicaFirst = (replica: Json) =>
+    shop("with", (children) => {
+      const r = children.find((c) => (c["object.report"] as Json | undefined)?.name === "StoreTotals");
+      const kids = (r!["object.report"] as { children: Json[] }).children;
+      (kids[0]!["source.rdb"] as Json)["@role"] = "primary";
+      kids.unshift({ "source.rdb": { "@kind": "view", "@table": "v_store_totals_replica", "@role": "replica", ...replica } });
+    });
+
+  test("a replica declared before the primary, @unmanaged: the primary view is still created", async () => {
+    const root = await loadModel(replicaFirst({ "@unmanaged": true }));
+    const views = buildReportViews(root, PG);
+    expect(views.map((v) => v.name)).toEqual(["v_store_totals"]);
+    expect(views[0]!.sql).toContain('FROM "purchases" p');
+  });
+
+  test("a replica declared before the primary, with @sql: the primary is derived and named, not the replica's body", async () => {
+    const root = await loadModel(replicaFirst({ "@sql": "SELECT 1 AS purchases" }));
+    const views = buildReportViews(root, PG);
+    expect(views.map((v) => v.name)).toEqual(["v_store_totals"]);
+    expect(views[0]!.sql).not.toContain("SELECT 1 AS purchases");
+    expect(views[0]!.sql).toContain('FROM "purchases" p');
+  });
+
+  test("a primary that is @unmanaged is skipped even when a managed replica is declared first", async () => {
+    const root = await loadModel(
+      shop("with", (children) => {
+        const r = children.find((c) => (c["object.report"] as Json | undefined)?.name === "StoreTotals");
+        const kids = (r!["object.report"] as { children: Json[] }).children;
+        Object.assign(kids[0]!["source.rdb"] as Json, { "@role": "primary", "@unmanaged": true });
+        kids.unshift({ "source.rdb": { "@kind": "view", "@table": "v_store_totals_replica", "@role": "replica" } });
+      }),
+    );
+    expect(buildReportViews(root, PG)).toEqual([]);
+  });
+
+  test("an @sql report @from a TPH subtype is not refused: the author owns the body", async () => {
+    const tph = (source: Json): Json => ({
+      "metadata.root": {
+        package: "acme",
+        children: [
+          {
+            "object.entity": {
+              name: "User",
+              "@discriminator": "kind",
+              children: [
+                { "source.rdb": { "@table": "users" } },
+                { "field.long": { name: "id" } },
+                { "field.string": { name: "kind" } },
+                { "identity.primary": { name: "pk", "@fields": ["id"] } },
+                { "measure.aggregate": { name: "users", "@agg": "count", "@of": "User.id" } },
+              ],
+            },
+          },
+          { "object.entity": { name: "Admin", extends: "User", "@discriminatorValue": "ADMIN", children: [] } },
+          { "object.report": { name: "Admins", "@from": "Admin", "@measures": ["users"], children: [{ "source.rdb": source }] } },
+        ],
+      },
+    });
+    const body = "SELECT COUNT(id) AS users FROM users WHERE kind = 'ADMIN'";
+    const sql = buildReportViews(await loadModel(tph({ "@kind": "view", "@view": "v_admins", "@sql": body })), PG);
+    expect(sql.map((v) => [v.name, v.sql, v.dependsOn])).toEqual([["v_admins", body, ["users"]]]);
+    // An @unmanaged view is likewise the author's: nothing is created and nothing is refused.
+    expect(buildReportViews(await loadModel(tph({ "@kind": "view", "@view": "v_admins", "@unmanaged": true })), PG)).toEqual([]);
+    // The derived path is the one that refuses.
+    await expect(
+      loadModel(tph({ "@kind": "view", "@view": "v_admins" })).then((root) => buildReportViews(root, PG)),
+    ).rejects.toThrow(/report 'Admins': @from 'Admin' is a TPH subtype/);
+  });
+
   test("the projection loop does not see a report", async () => {
     const root = await loadModel(shop("with"));
     const all = buildProjectionViews(root, PG);

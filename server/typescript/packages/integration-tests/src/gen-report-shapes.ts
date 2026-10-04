@@ -19,8 +19,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
-  isReadOnlySource,
   OBJECT_SUBTYPE_REPORT,
+  reportReadSource,
   reportShape,
   type MetaField,
   type MetaRoot,
@@ -60,9 +60,10 @@ export function generateReportShapesJson(root: MetaRoot): string {
   for (const report of root.objects()) {
     if (report.subType !== OBJECT_SUBTYPE_REPORT) continue;
     const shape = reportShape(report, root);
-    // ADR-0039: own — the report's own declared read-only source names its view; a report
-    // inherits no source, and a sourceless one has no view.
-    const source = report.ownChildren().find(isReadOnlySource);
+    // The ONE source-selection rule (own read-only source with role primary, else the first
+    // own read-only source): the source the lowering names the view by and the runtime reads.
+    // A sourceless report has no view.
+    const source = reportReadSource(report);
     reports.push({
       report: report.resolutionKey(),
       from: shape.from.resolutionKey(),
