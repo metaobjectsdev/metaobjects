@@ -457,7 +457,7 @@ static int RunVerify(string[] rest)
     string? generatorsCsv = null;
     string? templateRoot = null;
     string? columnNamingRaw = null;
-    bool templates = false, codegen = false, db = false, lax = false;
+    bool templates = false, codegen = false, db = false, lax = false, noFieldLint = false;
 
     for (int i = 0; i < rest.Length; i++)
     {
@@ -482,6 +482,9 @@ static int RunVerify(string[] rest)
         // --lax (#96 / ADR-0023): restore the legacy open-attr load. verify is
         // strict-by-default — an undeclared/typo'd own @attr is ERR_UNKNOWN_ATTR.
         else if (a == "--lax") lax = true;
+        // Mutes the advisory field AUTHORING lint (FieldLint) — never a gate, so this
+        // changes what is printed and nothing else. META_NO_FIELD_LINT=1 does the same.
+        else if (a == "--no-field-lint") noFieldLint = true;
         else if (a == "--out" && i + 1 < rest.Length) outDir = rest[++i];
         else if (a == "--namespace" && i + 1 < rest.Length) { ns = rest[++i]; nsExplicit = true; }
         else if (a == "--generators" && i + 1 < rest.Length) generatorsCsv = rest[++i];
@@ -495,7 +498,7 @@ static int RunVerify(string[] rest)
         else if (a.StartsWith('-'))
         {
             Console.Error.WriteLine($"dotnet meta verify: unknown option \"{a}\"");
-            Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>] [--column-naming literal|snake_case|kebab-case]] [--db] [--lax]");
+            Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>] [--column-naming literal|snake_case|kebab-case]] [--db] [--lax] [--no-field-lint]");
             return 2;
         }
         else if (metadataDir is null) metadataDir = a;
@@ -635,6 +638,12 @@ static int RunVerify(string[] rest)
     // -- db gate (rejected in C#) --
     if (result.DbRejectionMessage is not null)
         Console.Error.WriteLine($"  {result.DbRejectionMessage}");
+
+    // The field AUTHORING lint — a reference identity over a field the object lacks, a
+    // field name declared twice in one children list. Both load clean on every port. Runs
+    // on every `verify`, whichever gates were selected; warnings ONLY, never the exit code.
+    if (!noFieldLint && Environment.GetEnvironmentVariable(FieldLint.EnvOptOut) != "1")
+        FieldLint.RunAdvisory(resolvedMeta.Directory, resolvedMeta.Files, resolvedMeta.Libraries, Console.Error);
 
     // The handed-off codegen gate already printed its own verdict (inherited console);
     // fold its exit code into the aggregate the same way every other subverb does — max,

@@ -1,0 +1,20 @@
+{
+  "metadata.root": {
+    "package": "acme::app",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Item",
+          "overlay": true,
+          "children": [
+            {
+              "field.long": {
+                "name": "ownerId"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

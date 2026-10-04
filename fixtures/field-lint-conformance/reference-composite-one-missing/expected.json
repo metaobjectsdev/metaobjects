@@ -1,0 +1,9 @@
+{
+  "findings": [
+    {
+      "code": "WARN_REFERENCE_FIELD_NOT_FOUND",
+      "path": "acme::app::Item.owner_fk",
+      "message": "identity.reference \"owner_fk\" lists \"region\" in @fields, but acme::app::Item has no field of that name, inherited and overlaid fields included. Nothing checks this at load, so the reference is built on a field that does not exist. Rename the entry to an existing field, or declare the field."
+    }
+  ]
+}

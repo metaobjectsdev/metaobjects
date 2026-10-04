@@ -147,6 +147,9 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
                         in a name; never a gate — this lint can't fail the build)
   --no-deprecation-lint Suppress the advisory deprecated-reference AUTHORING lint
                         (never a gate — this lint can't fail the build)
+  --no-field-lint       Suppress the advisory field AUTHORING lint (a reference
+                        identity over a missing field; a duplicate field name —
+                        never a gate; this lint can't fail the build)
   --limit <n|all>       How many advisory lines TEXT output prints per section before
                         it truncates (default 20). Never applies to --format
                         toon/json, which carry every finding and every diagnostic.
@@ -344,6 +347,9 @@ FLAGS:
                         a name) — never a gate; this lint can't fail the build
   --no-deprecation-lint Suppress the advisory deprecated-reference AUTHORING lint —
                         never a gate; this lint can't fail the build
+  --no-field-lint       Suppress the advisory field AUTHORING lint (a reference
+                        identity over a missing field; a duplicate field name) —
+                        never a gate; this lint can't fail the build
   --limit <n|all>       Advisory lines TEXT output prints PER SECTION before truncating
                         (default 20; per-section so the authoring lint can never push
                         the gate's own warnings off the end)
@@ -389,6 +395,12 @@ the deprecated node also carries @replacedBy, the finding names the replacement.
 A node referencing itself (a recursive FK, a same-entity passthrough) is not a
 finding. Warnings only — it can never fail the build. Opt out with
 --no-deprecation-lint or META_NO_DEPRECATION_LINT=1.
+
+verify also prints an ADVISORY field authoring lint, in its own section. It reports
+an identity.reference whose @fields names a field the object does not have
+(inherited and overlaid fields count as present), and a field name declared more
+than once in one object's children list. Both load with no error. Warnings only —
+it can never fail the build. Opt out with --no-field-lint or META_NO_FIELD_LINT=1.
 `,
   export: `meta export — flatten loaded metadata to one canonical JSON artifact
 

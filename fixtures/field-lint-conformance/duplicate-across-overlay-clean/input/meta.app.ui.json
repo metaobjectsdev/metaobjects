@@ -1,0 +1,21 @@
+{
+  "metadata.root": {
+    "package": "acme::app",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Item",
+          "overlay": true,
+          "children": [
+            {
+              "field.string": {
+                "name": "label",
+                "@maxLength": 40
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

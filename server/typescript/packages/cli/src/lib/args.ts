@@ -406,6 +406,13 @@ export interface VerifyFlags {
    */
   noDeprecationLint: boolean;
   /**
+   * Suppress the advisory FIELD authoring lint — a reference identity whose
+   * `@fields` names a field the object lacks, and a field name declared twice in
+   * one children list. Advisory only, like its siblings: it has no gate half and
+   * can never fail the build.
+   */
+  noFieldLint: boolean;
+  /**
    * ADR-0023 strict-attr load opt-OUT (#96). `verify` is strict-by-default — an
    * undeclared/typo'd own `@attr` fails verify (ERR_UNKNOWN_ATTR). `--lax`
    * restores the legacy open-attr load (today's behavior). Default false (strict).
@@ -448,6 +455,7 @@ export const VERIFY_OPTIONS = {
   "no-overlay-lint": { type: "boolean", default: false },
   "no-name-lint": { type: "boolean", default: false },
   "no-deprecation-lint": { type: "boolean", default: false },
+  "no-field-lint": { type: "boolean", default: false },
   lax: { type: "boolean", default: false },
   "d1": { type: "string" },
   "remote": { type: "boolean", default: false },
@@ -534,6 +542,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     noOverlayLint: !!values["no-overlay-lint"],
     noNameLint: !!values["no-name-lint"],
     noDeprecationLint: !!values["no-deprecation-lint"],
+    noFieldLint: !!values["no-field-lint"],
     lax: !!values.lax,
     d1: values.d1 as string | undefined,
     remote: !!values.remote,

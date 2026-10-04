@@ -1,0 +1,13 @@
+metadata:
+  package: acme::app
+  children:
+    - object.entity:
+        name: Item
+        children:
+          - field.long: id
+          - field.string: label
+          - field.string[]:
+              name: label
+          - identity.primary:
+              name: pk
+              fields: [id]
