@@ -168,8 +168,17 @@ public class RoutesGenerator : PerEntityGenerator
         // Sort allowlist: every scalar field on the entity is sortable. The
         // generated handler does case-insensitive lookup so the wire grammar
         // (?sort=createdAt:desc) matches the C# property name (CreatedAt).
+        //
+        // FR-044 — on a REPORT an enum dimension sorts too (contract Table C: every derived
+        // field with a filter band is filterable and sortable). Report-only, so an entity's
+        // or projection's allowlist keeps its bytes. The sort arm is the same
+        // EF.Property<object>(x, "<Name>") as any other field; the row maps the enum with
+        // HasConversion<string>() (or to its integer under @intValueMap), so the ORDER BY is
+        // over the stored column.
         var sortFields = entity.Fields()
-            .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray())
+            .Where(f => (CSharpNaming.ScalarFor(f.SubType) is not null
+                         || (isReport && f.SubType == FIELD_SUBTYPE_ENUM))
+                        && !f.ResolvedIsArray())
             .Select(f => CSharpNaming.Pascal(f.Name))
             .ToList();
 

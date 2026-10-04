@@ -330,6 +330,76 @@ public class ReportRowCodegenTests
         Assert.Contains("[\"soldAtDay\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" },", allowlist);
     }
 
+    [Fact]
+    public void An_enum_dimension_of_a_report_is_sortable()
+    {
+        // Table C: a field with a filter band sorts. The entity sort rule takes C# scalars
+        // only, which leaves an enum out; a report's enum dimension is in.
+        var routes = Emit(RunnerContext(Cube()), new RoutesGenerator())["SalesCubeRoutes.g.cs"];
+        string allowlist = routes[
+            routes.IndexOf("SortAllowlist =", StringComparison.Ordinal)..routes.IndexOf("SortDefaultDesc =", StringComparison.Ordinal)];
+        Assert.Contains("        \"Status\",\n", allowlist.ReplaceLineEndings("\n"));
+        Assert.Contains(
+            "            \"Status\" => desc ? q.OrderByDescending(x => EF.Property<object>(x!, \"Status\")) : q.OrderBy(x => EF.Property<object>(x!, \"Status\")),",
+            routes);
+        // Every derived field of the cube is in the sort allowlist, in Table B order.
+        var sortable = allowlist.Split('\n').Select(l => l.Trim()).Where(l => l.StartsWith('"'))
+            .Select(l => l.Trim('"', ',')).ToList();
+        Assert.Equal(
+            [
+                "Store", "Channel", "Status", "StoreRegion", "SoldAtHour", "SoldAtDay", "SoldAtMonth",
+                "BookedAtHour", "SoldOnWeek", "Sales", "Channels", "UnitsSold", "Revenue", "TotalWeight",
+                "TotalScore", "AvgUnits", "AvgScore", "MinUnits", "LastSoldAt", "MaxWeight", "UnitsPerSale",
+            ],
+            sortable);
+    }
+
+    [Fact]
+    public void An_entitys_enum_field_stays_out_of_its_sort_allowlist()
+    {
+        // The enum case is report-only: an entity's routes keep their bytes.
+        var routes = Emit(RunnerContext(Cube()), new RoutesGenerator())["SaleRoutes.g.cs"];
+        Assert.DoesNotContain("\"Status\"", routes);
+    }
+
+    [Fact]
+    public void The_routes_of_a_report_with_an_enum_dimension_compile()
+    {
+        // The codegen-compile gate leaves the routes tier out (it needs ASP.NET Core), so the
+        // sort arm over the enum property is compiled here, with the shared framework added.
+        var ctx = RunnerContext(Cube(), Config(includeNames: true));
+        var files = new IGenerator[]
+            {
+                new EntityGenerator(), new DbContextGenerator(), new NamesGenerator(),
+                new FilterAllowlistGenerator(), new RoutesGenerator(),
+            }
+            .SelectMany(g => g.Generate(ctx)).ToList();
+        Assert.Contains(files, f => f.Path == "SalesCubeRoutes.g.cs");
+
+        var paths = DbContextCompileTests.BuildReferences()
+            .OfType<PortableExecutableReference>().Select(r => r.FilePath!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        string aspNetDir = Path.GetDirectoryName(typeof(Microsoft.AspNetCore.Http.IQueryCollection).Assembly.Location)!;
+        foreach (var dll in Directory.GetFiles(aspNetDir, "*.dll")) paths.Add(dll);
+        paths.Add(typeof(Microsoft.AspNetCore.Builder.WebApplication).Assembly.Location);
+        paths.Add(typeof(Microsoft.AspNetCore.Http.Results).Assembly.Location);
+        // The routes import FilterParser and EfCoreFilterDispatch from the codegen package.
+        paths.Add(typeof(RoutesGenerator).Assembly.Location);
+
+        var trees = files
+            .Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path))
+            .ToList();
+        var comp = CSharpCompilation.Create(
+            "report_routes_" + Guid.NewGuid().ToString("N"), trees,
+            paths.Where(File.Exists).Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var errors = comp.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error)
+            .Select(d => $"{d.Location.GetLineSpan().Path}: {d.Id}: {d.GetMessage()}")
+            .ToList();
+        Assert.True(errors.Count == 0, string.Join("\n", errors));
+    }
+
     // ---------------------------------------------------------------------
     // Table B — the C# type and nullability of every derived field
     // ---------------------------------------------------------------------
