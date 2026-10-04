@@ -79,6 +79,7 @@ public static class ReportRows
         var source = ReportShapes.ReadSource(report)
             ?? throw new InvalidOperationException($"report '{report.Name}' declares no read-only source.");
         var shape = ReportShapes.Of(report, root);
+        RefuseFieldNamedAfterTheRow(report, shape);
 
         var model = new MetaObject(new TypeId(report.Type, report.SubType), report.Name);
         if (report.Package is { } pkg) model.SetPackage(pkg);
@@ -91,6 +92,30 @@ public static class ReportRows
         model.AddChild(CopySource(source));
         model.Freeze();
         return model;
+    }
+
+    /// <summary>
+    /// Refuse a report one of whose derived fields would become a property with the row
+    /// class's own name. C# forbids a member named after its enclosing type (CS0542), and
+    /// the loader relates a report's name to none of its item names, so a report named for
+    /// what it measures (<c>Revenue</c> with a measure <c>revenue</c>) loads clean and would
+    /// otherwise generate a file that does not compile. Reached only for a report that
+    /// generates a row; a report that generates nothing claims no name.
+    /// </summary>
+    private static void RefuseFieldNamedAfterTheRow(MetaObject report, ReportShape shape)
+    {
+        string className = CSharpNaming.Pascal(report.Name);
+        foreach (var f in shape.Fields)
+        {
+            if (CSharpNaming.Pascal(f.Name) != className) continue;
+            string role = ReportShapes.RoleName(f.Role);
+            string item = f.Role == ReportFieldRole.Dimension ? f.Dimension!.Name : f.Measure!.Name;
+            throw new InvalidOperationException(
+                $"report \"{report.Name}\" and its {role} \"{item}\" both generate the C# name " +
+                $"\"{className}\" (the row class, and the property for derived field \"{f.Name}\"), " +
+                $"and a C# member cannot be named after its enclosing type — rename the report " +
+                $"or the {role}.");
+        }
     }
 
     private static MetaField DerivedField(ReportField f)

@@ -162,6 +162,8 @@ public class ReportRowCodegenTests
         { "no source", "" },
         // The lowering skips these kinds, so no relation with the Table B columns is promised.
         { "a materialized view", "\"@kind\": \"materializedView\", \"@materializedView\": \"mv_sales\"" },
+        { "a stored procedure", "\"@kind\": \"storedProc\", \"@proc\": \"sp_sales\"" },
+        { "a table function", "\"@kind\": \"tableFunction\", \"@function\": \"fn_sales\"" },
     };
 
     [Theory]
@@ -329,6 +331,43 @@ public class ReportRowCodegenTests
         {
             if (Directory.Exists(outDir)) Directory.Delete(outDir, recursive: true);
         }
+    }
+
+    public static TheoryData<string, string, string, string> RowNameCollisions => new()
+    {
+        // report name, @dimensions, @measures, the phrase the message must carry
+        { "Sales", "", "\"sales\"", "its measure \"sales\"" },
+        { "Channel", "\"channel\"", "\"sales\"", "its dimension \"channel\"" },
+        // A time dimension collides through its DERIVED name; the message names the item.
+        { "SoldAtDay", "\"soldAt:day\"", "\"sales\"", "its dimension \"soldAt\"" },
+    };
+
+    [Theory]
+    [MemberData(nameof(RowNameCollisions))]
+    public void A_report_whose_derived_field_is_named_after_its_row_class_is_refused(
+        string report, string dims, string measures, string names)
+    {
+        // CS0542: a member cannot be named after its enclosing type. `gen` must say so
+        // rather than exit 0 and leave it to the adopter's build.
+        var root = Load(Report(report, "\"@kind\": \"view\", \"@view\": \"v_x\"", dims, measures));
+        foreach (var generator in new IGenerator[] { new EntityGenerator(), new DbContextGenerator() })
+        {
+            var ex = Assert.Throws<InvalidOperationException>(() => generator.Generate(RunnerContext(root)).ToList());
+            Assert.Contains($"report \"{report}\"", ex.Message);
+            Assert.Contains(names, ex.Message);
+            Assert.Contains("rename the report or the", ex.Message);
+        }
+    }
+
+    [Fact]
+    public void A_sourceless_report_whose_item_is_named_after_it_is_not_refused()
+    {
+        // It generates no row, so there is no class for the name to collide with.
+        var with = EmitAll(RunnerContext(Load(Report("Channel", "", "\"channel\"", "\"sales\""))));
+        var without = EmitAll(RunnerContext(Load()));
+        Assert.Equal(without.Keys.OrderBy(k => k).ToList(), with.Keys.OrderBy(k => k).ToList());
+        foreach (var (path, content) in without)
+            Assert.True(content == with[path], $"{path} changed");
     }
 
     [Fact]
