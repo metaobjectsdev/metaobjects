@@ -48,10 +48,103 @@ def test_served_report_predicate_follows_table_a() -> None:
     assert is_served_report(report_read_model(_obj(root, "InvoiceStatusTotals"), root))
 
 
-def test_only_an_object_with_a_single_field_identity_has_an_item_route() -> None:
+def _projection(*, identity: list[str] | None, id_field: bool) -> MetaObject:
+    from metaobjects.meta.core.field.meta_field import MetaField
+    from metaobjects.meta.core.identity.identity_constants import (
+        IDENTITY_ATTR_FIELDS,
+        IDENTITY_SUBTYPE_PRIMARY,
+    )
+    from metaobjects.meta.core.identity.meta_identity import MetaIdentity
+    from metaobjects.meta.persistence.source.meta_source import MetaSource
+    from metaobjects.meta.persistence.source.source_constants import (
+        SOURCE_ATTR_KIND,
+        SOURCE_KIND_VIEW,
+        SOURCE_SUBTYPE_RDB,
+    )
+    from metaobjects.shared.base_types import TYPE_FIELD, TYPE_IDENTITY, TYPE_SOURCE
+
+    obj = MetaObject(TYPE_OBJECT, "projection", "Summary")
+    obj.package = "acme::test"
+    src = MetaSource(TYPE_SOURCE, SOURCE_SUBTYPE_RDB, "")
+    src.set_attr(SOURCE_ATTR_KIND, SOURCE_KIND_VIEW, sub_type="string")
+    obj.add_child(src)
+    names = (["id"] if id_field else []) + ["code", "other"]
+    for n in names:
+        obj.add_child(MetaField(TYPE_FIELD, "int", n))
+    if identity is not None:
+        ident = MetaIdentity(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY, "pk")
+        ident.set_attr(IDENTITY_ATTR_FIELDS, identity)
+        obj.add_child(ident)
+    return obj
+
+
+def _has_item_surface(src: str) -> bool:
+    return (
+        '@router.get("/{summary_id}")' in src
+        and "def find_by_id(" in src
+        and src.count('"error": "method_not_allowed",') == 4
+    )
+
+
+def test_a_report_never_has_an_item_route_even_with_a_derived_field_named_id() -> None:
     root = _load()
+    model = report_read_model(_obj(root, "InvoiceStatusTotals"), root)
+    assert not has_item_route(model)
+    assert not has_item_route(_obj(root, "InvoiceStatusTotals"))  # the declared node too
     assert has_item_route(_obj(root, "Invoice"))
-    assert not has_item_route(report_read_model(_obj(root, "InvoiceStatusTotals"), root))
+    # A derived field named `id`: build a report whose dimension is `Invoice.id`.
+    import json
+
+    from metaobjects.loader.meta_data_loader import MetaDataLoader
+    from metaobjects.loader.sources import InMemoryStringSource
+
+    meta = json.loads((_CORPUS / "meta.json").read_text())
+    meta["metadata.root"]["children"].append({"object.report": {
+        "name": "ById", "@from": "Invoice", "@dimensions": ["id"], "@measures": ["invoices"],
+        "children": [{"source.rdb": {"@kind": "view", "@view": "v_by_id"}}],
+    }})
+    # A dimension named after the key column: `Invoice.id` needs a dimension node.
+    inv = next(c["object.entity"] for c in meta["metadata.root"]["children"] if "object.entity" in c)
+    inv["children"].append({"dimension.attribute": {"name": "id", "@of": "Invoice.id"}})
+    result = MetaDataLoader().load([InMemoryStringSource(json.dumps(meta), "meta.json")])
+    assert not result.errors, [e.message for e in result.errors]
+    by_id = _obj(result.root, "ById")
+    read_model = report_read_model(by_id, result.root)
+    assert "id" in [f.name for f in read_model.fields()]
+    assert not has_item_route(read_model)
+    src = render_router(read_model)
+    assert src is not None and "find_by_id" not in src and "{" not in "".join(
+        ln for ln in src.splitlines() if ln.startswith("@router.")
+    )
+
+
+def test_a_projection_with_a_single_field_identity_has_the_item_surface() -> None:
+    p = _projection(identity=["id"], id_field=True)
+    assert has_item_route(p)
+    assert _has_item_surface(render_router(p))
+
+
+def test_a_projection_with_an_id_field_and_no_identity_has_the_item_surface() -> None:
+    p = _projection(identity=None, id_field=True)
+    assert has_item_route(p)
+    assert _has_item_surface(render_router(p))
+
+
+def test_a_composite_identity_keeps_its_item_route_bound_to_the_first_field() -> None:
+    p = _projection(identity=["code", "other"], id_field=False)
+    assert has_item_route(p)
+    assert _has_item_surface(render_router(p))
+
+
+def test_a_projection_with_no_identity_and_no_id_field_is_keyless() -> None:
+    p = _projection(identity=None, id_field=False)
+    assert not has_item_route(p)
+    src = render_router(p)
+    assert src is not None
+    decorators = re.findall(r'@router\.(\w+)\(("[^"]*")', src)
+    assert decorators == [("get", '""'), ("post", '""')], decorators
+    assert "find_by_id" not in src
+    assert src.count('"error": "method_not_allowed",') == 1
 
 
 def test_report_router_has_the_collection_routes_and_no_item_route() -> None:
@@ -97,18 +190,3 @@ def test_run_gen_serves_three_reports_and_nothing_for_the_sourceless_one(tmp_pat
         assert f"{snake}_names.py" in files
     assert not any(f.startswith("invoice_days") for f in files)
     assert not any("invoice_days" in f for f in files)
-
-
-def test_a_composite_identity_has_no_single_path_parameter() -> None:
-    from metaobjects.meta.core.identity.identity_constants import (
-        IDENTITY_ATTR_FIELDS,
-        IDENTITY_SUBTYPE_PRIMARY,
-    )
-    from metaobjects.meta.core.identity.meta_identity import MetaIdentity
-    from metaobjects.shared.base_types import TYPE_IDENTITY
-
-    obj = MetaObject(TYPE_OBJECT, "projection", "Pair")
-    identity = MetaIdentity(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY, "pk")
-    identity.set_attr(IDENTITY_ATTR_FIELDS, ["a", "b"])
-    obj.add_child(identity)
-    assert not has_item_route(obj)

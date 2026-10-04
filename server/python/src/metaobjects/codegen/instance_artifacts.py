@@ -7,7 +7,6 @@ shape concern (emit_abstract_shapes, default on) handled in entity_model" — th
 field was read by nothing and entity_model never consulted it, so `GenConfig` now
 refuses to accept a value it cannot honour.
 """
-from metaobjects.meta.core.identity.identity_constants import IDENTITY_ATTR_FIELDS
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_REPORT
 from metaobjects.meta.core.reporting.report_read_model import report_read_source
@@ -65,18 +64,26 @@ def is_served_report(obj: MetaObject) -> bool:
 
 
 def has_item_route(entity: MetaObject) -> bool:
-    """Whether a read-only object is addressable by key: it has a primary identity over
-    EXACTLY ONE field. A report has no identity at all, and a keyless projection has none
-    either, so neither gets a ``/{id}`` route or a ``find_by_id`` on its repository seam
-    (FR-044 open question 4). A composite identity has no single path parameter to bind."""
-    identity = entity.primary_identity()
-    if identity is None:
+    """Whether a read-only object gets a ``/{id}`` route, a ``find_by_id`` on its
+    repository seam and the three item-verb refusals (FR-044 open question 4, as ruled).
+
+    Answer 4 removes only what could never serve a row, so the rule is:
+
+    * a report (the declared node or its read model) NEVER has one, even if a derived
+      field is named ``id``: it has no identity, and a row of it is not addressable;
+    * otherwise it has one when it declares a primary identity (a single field, or a
+      composite one, which binds its FIRST field exactly as before this change), or when
+      it declares NO primary identity and has an effective field named ``id`` (the
+      default key ``pk_field_name`` falls back to);
+    * otherwise (no identity and no ``id`` field) the route could only bind an ``int`` it
+      cannot honour, so it is not generated.
+
+    Every projection whose router had a usable item route before FR-044 renders
+    byte-identically. ADR-0039: ``children()`` / ``fields()`` resolve, so an inherited
+    identity or ``id`` field counts.
+    """
+    if entity.sub_type == OBJECT_SUBTYPE_REPORT:
         return False
-    fields = identity.get_meta_attr(IDENTITY_ATTR_FIELDS)  # ADR-0039: resolving (identity attr)
-    if isinstance(fields, str):
-        names = [n for n in (p.strip() for p in fields.split(",")) if n]
-    elif isinstance(fields, (list, tuple)):
-        names = [n for n in fields if isinstance(n, str) and n]
-    else:
-        names = []
-    return len(names) == 1
+    if entity.primary_identity() is not None:
+        return True
+    return any(f.name == "id" for f in entity.fields())

@@ -41,7 +41,9 @@ def _view_projection(*, keyed: bool = True) -> MetaObject:
     src = MetaSource(TYPE_SOURCE, SOURCE_SUBTYPE_RDB, "")
     src.set_attr(SOURCE_ATTR_KIND, SOURCE_KIND_VIEW, sub_type="string")
     o.add_child(src)
-    o.add_child(_f("id", fc.FIELD_SUBTYPE_INT, required=True))
+    # A keyless projection has neither a primary identity nor a field named `id`: only
+    # then is there nothing a by-id route could bind.
+    o.add_child(_f("id" if keyed else "code", fc.FIELD_SUBTYPE_INT, required=True))
     o.add_child(_f("weekCount", fc.FIELD_SUBTYPE_INT))  # non-required derived field
     if keyed:
         identity = MetaIdentity(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY, "pk")
@@ -94,9 +96,10 @@ def test_projection_router_is_read_only() -> None:
 
 
 def test_keyless_projection_router_has_no_item_routes() -> None:
-    """FR-044 open question 4: a projection with no single-field identity has no item
-    address, so it gets GET list and the collection POST refusal only, and its repository
-    seam has no ``find_by_id``. (Before, it bound an ``id: int`` it could not honour.)"""
+    """FR-044 open question 4 (as ruled): a projection with no primary identity AND no
+    ``id`` field has no item address, so it gets GET list and the collection POST refusal
+    only, and its repository seam has no ``find_by_id``. (Before, it bound an ``id: int``
+    it could not honour.)"""
     src = render_router(_view_projection(keyed=False))
     assert src is not None
     compile(src, "<ProgramSummary router>", "exec")
