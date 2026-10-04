@@ -54,7 +54,7 @@ object KotlinNaming {
      */
     val RESERVED_TABLE_MEMBERS: Set<String> = setOf(
         "source", "fields", "columns", "index", "indices", "primaryKey",
-        "tableName", "ddl", "foreignKeys", "checkConstraints", "sequences",
+        "tableName", "schemaName", "ddl", "foreignKeys", "checkConstraints", "sequences",
         "autoIncColumn", "realFields", "defaultExpression", "generatedSignature",
         "tableNameWithoutScheme", "tableNameWithoutSchemeSanitized",
     )

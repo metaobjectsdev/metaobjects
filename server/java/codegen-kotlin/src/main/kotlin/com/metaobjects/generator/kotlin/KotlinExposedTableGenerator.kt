@@ -15,20 +15,26 @@ import com.metaobjects.generator.kotlin.PackageMapping
 import com.metaobjects.MetaData
 import com.metaobjects.database.CoreDBMetaDataProvider
 import com.metaobjects.database.IndexNaming
+import com.metaobjects.MetaRoot
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.MapField
 import com.metaobjects.field.MetaField
+import com.metaobjects.field.DecimalField
 import com.metaobjects.field.ObjectField
+import com.metaobjects.generator.GeneratorException
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.identity.MetaIdentity
 import com.metaobjects.identity.ReferenceIdentity
 import com.metaobjects.index.LookupIndex
 import com.metaobjects.loader.MetaDataLoader
+import com.metaobjects.loader.ValidationPhase
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.relationship.CompositionRelationship
 import com.metaobjects.relationship.MetaRelationship
 import com.metaobjects.relationship.RelationshipReferences
+import com.metaobjects.reporting.ReportReadModel
+import com.metaobjects.reporting.ReportShape
 import com.metaobjects.source.MetaSource
 import com.metaobjects.source.RdbSource
 import com.squareup.kotlinpoet.ClassName
@@ -43,6 +49,10 @@ import com.metaobjects.generator.util.GeneratedFileWriter
 /**
  * Generator: one Exposed Table `object` per `object.entity` that has a `source.rdb` child.
  * Entities without source.rdb are skipped (no persistence layer).
+ *
+ * <p>A view-backed `object.report` (FR-044) also gets one — the read-only mapping of the view
+ * `meta migrate` creates, with one column per derived field. See [emitReport] for which
+ * reports emit and which do not.
  *
  * <p>Exposed's `Column<T>` types are inferred by the Kotlin compiler from the initialiser
  * expressions (e.g., `val name = varchar("name", 100)`). KotlinPoet's [com.squareup.kotlinpoet.PropertySpec]
@@ -154,6 +164,16 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // a view-kind entity was pre-FR-024 (read-only by construction; projections
         // carry no relationships/references, so passes 1+3 stay entity-only).
         for (entity in loader.metaObjects) {
+            // FR-044: a report declares no fields, so it is emitted from its derived shape
+            // rather than through the entity/projection path below.
+            if (entity.subType == MetaObject.SUBTYPE_REPORT) {
+                emitReport(
+                    entity, outRoot, loader,
+                    packagesNeedingInstantTzHelper, packagesNeedingInetUriHelper, packagesNeedingJacksonMapper,
+                    packagesNeedingUuidStringHelper,
+                )
+                continue
+            }
             if (entity.subType != MetaObject.SUBTYPE_ENTITY &&
                 entity.subType != MetaObject.SUBTYPE_PROJECTION) continue
             // Abstract entities are inheritance scaffolding — never emit a persistence table.
@@ -322,6 +342,160 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         if (entityNeedsInetUriHelper(entity, loader)) packagesNeedingInetUriHelper += pkg
         if (entityNeedsJacksonMapper(entity, loader)) packagesNeedingJacksonMapper += pkg
         if (entityNeedsUuidStringHelper(entity, loader)) packagesNeedingUuidStringHelper += pkg
+    }
+
+    /**
+     * FR-044 — emit the read-only `<Short>Table` of a view-backed `object.report`.
+     *
+     * Which reports emit (contract Table A):
+     *
+     *  - no read-only source: NOTHING. The report has no view, so there is nothing to map
+     *    (a sourceless object generates nothing, #248).
+     *  - `source.rdb @kind: view`: the table object, bound to the source's physical name.
+     *    The same for a view marked `@unmanaged: true` or carrying an authored `@sql` body:
+     *    migrate does not derive (or does not create) that view, but the view exists and
+     *    Table B still defines the columns a reader gets, so the mapping is needed either way.
+     *  - `@kind: materializedView` / `storedProc` / `tableFunction`: NOTHING. The lowering
+     *    skips those kinds, so no relation with the Table B columns is promised.
+     *  - an abstract report: NOTHING.
+     *
+     * The columns are the report's DERIVED fields — one per dimension, then one per measure —
+     * taken from the JVM's single definition of that shape ([ReportShape], via
+     * [ReportReadModel], which presents them as ordinary field nodes). So the report goes
+     * through the same [emit] as a view-kind projection, with three differences, each keyed
+     * on the entity being a [ReportReadModel]:
+     *
+     *  - it binds its view and columns by LITERAL even when the names generator is in the
+     *    run ([bindsThroughNames]): [KotlinNamesGenerator] emits nothing for a report;
+     *  - an enum column references the enum class of the entity the dimension reads
+     *    ([enumClassFor]): no generator emits a per-report enum;
+     *  - a derived decimal with no declared precision reads at [REPORT_DECIMAL_PRECISION] /
+     *    [REPORT_DECIMAL_SCALE] ([scalarColumnSpec]).
+     *
+     * A report has no identity, so the table has no `primaryKey`, and no index or reference.
+     * Every other Kotlin generator skips reports.
+     */
+    private fun emitReport(
+        report: MetaObject,
+        outRoot: Path,
+        loader: MetaDataLoader,
+        packagesNeedingInstantTzHelper: MutableSet<String>,
+        packagesNeedingInetUriHelper: MutableSet<String>,
+        packagesNeedingJacksonMapper: MutableSet<String>,
+        packagesNeedingUuidStringHelper: MutableSet<String>,
+    ) {
+        if (KotlinGenUtil.isAbstractEntity(report)) return
+        // The source the report is READ from, by the rule that names the lowered view.
+        val source = ReportShape.readSource(report) as? RdbSource ?: return
+        if (source.effectiveKind != MetaSource.KIND_VIEW) return
+
+        refuseUncompilableReportColumns(report)
+        val model = ReportReadModel.of(report)
+        val pkg = PackageMapping.splitFqn(report.name).first
+        if (emit(model, source, outRoot, loader, emptyList(), emptyMap())) packagesNeedingInstantTzHelper += pkg
+        if (entityNeedsInetUriHelper(model, loader)) packagesNeedingInetUriHelper += pkg
+        if (entityNeedsJacksonMapper(model, loader)) packagesNeedingJacksonMapper += pkg
+        if (entityNeedsUuidStringHelper(model, loader)) packagesNeedingUuidStringHelper += pkg
+    }
+
+    /**
+     * Refuse a report whose derived field names cannot become the column properties of one
+     * Kotlin `object`. `gen` would otherwise exit 0 and the adopter's build would be the
+     * first thing to disagree.
+     *
+     * Two cases, both loadable. A derived field named after a Kotlin hard keyword (`in`,
+     * `is`, `object`, …) is not a legal property name. And [KotlinNaming.safeColumnProperty]
+     * renames a field that collides with an Exposed `Table` member (`source` becomes
+     * `sourceColumn`), which can land on a second derived field already called that.
+     *
+     * Scoped to reports: an entity field has the same two hazards and they are left as they
+     * were. A report that generates no table (see [emitReport]) is never checked.
+     */
+    private fun refuseUncompilableReportColumns(report: MetaObject) {
+        val seen = HashMap<String, ReportShape.Field>()
+        for (f in ReportShape.of(report).fields()) {
+            if (f.name in KOTLIN_HARD_KEYWORDS) {
+                throw GeneratorException(
+                    "report \"${report.shortName}\": its ${describeItem(f)} generates the Exposed column " +
+                        "property \"${f.name}\", and `${f.name}` is a Kotlin keyword, so the generated " +
+                        "table would not compile. Rename the ${f.role.wireName()}."
+                )
+            }
+            val property = KotlinNaming.safeColumnProperty(f.name)
+            val prior = seen.put(property, f) ?: continue
+            throw GeneratorException(
+                "report \"${report.shortName}\": its ${describeItem(prior)} and its ${describeItem(f)} both " +
+                    "generate the Exposed column property \"$property\" (a name that collides with a member " +
+                    "of Exposed's Table gets a \"Column\" suffix), so the generated table would not " +
+                    "compile. Rename one of them."
+            )
+        }
+    }
+
+    /**
+     * `measure "x"` or `dimension "x"`. The derived name IS the item name here: only a time
+     * dimension derives a different one (`<name><Grain>`), and that is never a keyword, a
+     * `Table` member or a `…Column` name, so a time dimension is never refused.
+     */
+    private fun describeItem(f: ReportShape.Field): String = "${f.role.wireName()} \"${f.name}\""
+
+    /** The derived field of [model]'s report that [field] (one of the model's fields) stands for. */
+    private fun derivedField(model: ReportReadModel, field: MetaField<*>): ReportShape.Field =
+        ReportShape.of(model.report()).fields().first { it.name == field.name }
+
+    /**
+     * Whether the table of [entity] references `<Entity>Names` constants: only when the
+     * names generator is in the run ([useNames]) AND emits an artifact for [entity]. It
+     * emits none for a report (FR-044), so a report binds its view and columns by literal.
+     */
+    private fun bindsThroughNames(entity: MetaObject): Boolean = useNames() && entity !is ReportReadModel
+
+    /**
+     * The generated enum class a `field.enum` column of [entity]'s table is typed by.
+     *
+     * For an entity or projection that is [KotlinTypeMapper.enumTypeName] — the class
+     * [KotlinEntityGenerator] emits for it. A report gets no entity class and so no enum of
+     * its own; its enum column carries the values of the field the dimension (or min/max
+     * measure) reads, and is typed by THAT field's class: the one generated for the entity
+     * the item reads from. Without `@via` that is the report's `@from` entity (which is how
+     * a field `@from` inherits from an abstract base still names a class that exists); with
+     * `@via` it is the entity the `@of` reference names.
+     */
+    private fun enumClassFor(field: MetaField<*>, entity: MetaObject): ClassName? {
+        if (entity !is ReportReadModel || field !is EnumField) return KotlinTypeMapper.enumTypeName(field, entity)
+        val report = entity.report()
+        val shape = ReportShape.of(report)
+        val derived = shape.fields().first { it.name == field.name }
+        val of = derived.typeSource
+            ?: error("report '${report.name}': enum field '${field.name}' has no type source")
+        val via = derived.dimension?.via
+        val owner = if (via == null) shape.from() else {
+            val root = generateSequence(report.parent) { it.parent }.filterIsInstance<MetaRoot>().first()
+            // Same resolution ReportShape applies to the reference: the member separator is
+            // the LAST dot, and the entity resolves relative to the @from entity's package.
+            ValidationPhase.resolveRootObject(
+                root, derived.dimension.of.substringBeforeLast('.'), shape.from().`package` ?: "",
+            ) ?: shape.from()
+        }
+        return KotlinTypeMapper.enumTypeName(of, owner)
+    }
+
+    /**
+     * The Exposed column spec of a non-enum scalar [field] of [entity]: the type mapper's,
+     * except for a report's derived decimal that carries no declared precision (an `avg`, a
+     * ratio, or a `sum` of a decimal — Table B gives those no type source).
+     *
+     * Exposed's decimal column rounds every value it reads to the column's declared scale,
+     * so the mapper's default of four places would silently turn a ratio of 2/3 into 0.6667.
+     * These columns are an unconstrained NUMERIC in the view, so they are read at the widest
+     * precision and scale a Postgres NUMERIC is commonly declared with. The object maps a
+     * view, so the two numbers never reach DDL.
+     */
+    private fun scalarColumnSpec(entity: MetaObject, field: MetaField<*>, colExpr: String, api: ExposedApi): String {
+        if (entity is ReportReadModel && field is DecimalField && derivedField(entity, field).typeSource == null) {
+            return "decimal($colExpr, $REPORT_DECIMAL_PRECISION, $REPORT_DECIMAL_SCALE)"
+        }
+        return KotlinTypeMapper.exposedColumnSpec(field, colExpr, api)
     }
 
     /**
@@ -516,7 +690,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // and the artifact answers it by role; two sources in one role that DISAGREE are
         // refused when the artifact is built (KotlinGenUtil.sourcesOf), so a role key cannot
         // silently stand for the wrong name.
-        val names = if (useNames()) KotlinGenUtil.resolveObjectNames(entity, columnNaming()) else null
+        val names = if (bindsThroughNames(entity)) KotlinGenUtil.resolveObjectNames(entity, columnNaming()) else null
         // The slot describing THIS source, and the only thing that decides whether the names
         // arm is taken at all. Null when the names generator is out of the run, or when the
         // source's @kind carries no physical-name alias — a future @kind with no alias
@@ -723,7 +897,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 }
             }
             for (field in entity.metaFields) {
-                if (field is EnumField) consider(KotlinTypeMapper.enumTypeName(field, entity))
+                if (field is EnumField) consider(enumClassFor(field, entity))
             }
             for (field in KotlinTphPlan.collectSubtypeFields(entity, loader)) {
                 if (field is EnumField) consider(KotlinTypeMapper.enumTypeName(field, entity))
@@ -822,7 +996,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     // via the SAME resolveColumnName). No equality check needed: the
                     // reference and the value it stands for are derived from one shared
                     // transform (KotlinNaming.namesMember), so they cannot disagree.
-                    KotlinTypeMapper.exposedColumnSpec(field, columnExprFor(field), api)
+                    scalarColumnSpec(entity, field, columnExprFor(field), api)
                 }
                 val withAuto = when {
                     isPk && incrementPk -> "$baseSpec.autoIncrement()"
@@ -949,7 +1123,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * for longer. A second copy of a substitution rule is a second chance to miss a branch.
      */
     protected fun columnExpr(entity: MetaObject, f: MetaField<*>): String {
-        if (!useNames()) return "\"${KotlinGenUtil.resolveColumnName(f, columnNaming())}\""
+        if (!bindsThroughNames(entity)) return "\"${KotlinGenUtil.resolveColumnName(f, columnNaming())}\""
         // ADR-0039: metaFields is the RESOLVING accessor — an inherited field is a HIT here,
         // and the artifact of `entity` is where its constant is read from.
         if (entity.metaFields.any { it.name == f.name }) return ownColumnExpr(entity, f)
@@ -996,7 +1170,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      */
     protected fun ownColumnExpr(entity: MetaObject, f: MetaField<*>): String {
         val (_, shortName) = PackageMapping.splitFqn(entity.name)
-        return if (useNames())
+        return if (bindsThroughNames(entity))
             "${KotlinNaming.namesObjectName(shortName)}.${KotlinNaming.namesMember(f.name)}_COLUMN"
         else "\"${KotlinGenUtil.resolveColumnName(f, columnNaming())}\""
     }
@@ -1174,6 +1348,24 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         /** Cross-language @storage attr on field.object — values: flattened | jsonb (default). */
         const val ATTR_STORAGE = "storage"
         const val STORAGE_FLATTENED = "flattened"
+
+        /**
+         * FR-044 — the precision and scale a report's derived decimal is READ at when the
+         * shape gives it none (an `avg`, a ratio, a `sum` of a decimal). See [scalarColumnSpec].
+         */
+        const val REPORT_DECIMAL_PRECISION = 38
+        const val REPORT_DECIMAL_SCALE = 18
+
+        /**
+         * Kotlin's hard keywords: never usable as an identifier without backticks, so a
+         * report's derived field named after one cannot be a column property. See
+         * [refuseUncompilableReportColumns].
+         */
+        val KOTLIN_HARD_KEYWORDS: Set<String> = setOf(
+            "as", "break", "class", "continue", "do", "else", "false", "for", "fun", "if", "in",
+            "interface", "is", "null", "object", "package", "return", "super", "this", "throw",
+            "true", "try", "typealias", "typeof", "val", "var", "when", "while",
+        )
 
         /**
          * Exposed column suffix that renders a Postgres `DEFAULT gen_random_uuid()`
@@ -2051,7 +2243,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * `columnExprFor`) substitutes exactly like every other column site.
      */
     private fun enumColumnSpec(field: EnumField, entity: MetaObject, colExpr: String): String {
-        val enumCn = KotlinTypeMapper.enumTypeName(field, entity)
+        val enumCn = enumClassFor(field, entity)
             ?: error("enumTypeName returned null for EnumField '${field.name}' on ${entity.name}")
         val simple = enumCn.simpleName
         val intMap = readIntValueMap(field)

@@ -1,0 +1,409 @@
+package com.metaobjects.generator.kotlin
+
+import com.metaobjects.generator.Generator
+import com.metaobjects.generator.GeneratorException
+import com.metaobjects.loader.MetaDataLoader
+import com.metaobjects.metadata.ktx.loadDirectory
+import com.metaobjects.metadata.ktx.loadString
+import com.tschuchort.compiletesting.KotlinCompilation
+import com.tschuchort.compiletesting.SourceFile
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
+import java.util.TreeMap
+import kotlin.io.path.isRegularFile
+import kotlin.io.path.readText
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+/**
+ * FR-044 — [KotlinExposedTableGenerator] emits the read-only Exposed table of a view-backed
+ * `object.report`, with one column per derived field (contract Table B), and nothing for a
+ * report that has no view.
+ *
+ * The six canonical reports are generated from the shared persistence corpus, the same
+ * model the hand-written reference tables in `integration-tests-kotlin` map and the
+ * persistence lane reads.
+ */
+@OptIn(org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi::class)
+class KotlinReportTableGeneratorTest {
+
+    private fun canonicalDir(): Path {
+        var cur: Path? = Paths.get("").toAbsolutePath()
+        while (cur != null) {
+            val candidate = cur.resolve("fixtures/persistence-conformance/canonical")
+            if (Files.isDirectory(candidate)) return candidate
+            cur = cur.parent
+        }
+        throw IllegalStateException("Could not locate fixtures/persistence-conformance/canonical")
+    }
+
+    /** Run [generators] over [loader] into one directory; relative path to contents. */
+    private fun emit(
+        loader: MetaDataLoader,
+        args: Map<String, String> = emptyMap(),
+        generators: List<Generator> = listOf(KotlinExposedTableGenerator()),
+    ): Map<String, String> {
+        val outDir = Files.createTempDirectory("report-table-")
+        try {
+            for (gen in generators) {
+                gen.setArgs(mapOf("outputDir" to outDir.toString(), "packageName" to "acme.shop") + args)
+                gen.execute(loader)
+            }
+            val files = TreeMap<String, String>()
+            Files.walk(outDir).use { s ->
+                s.filter { it.isRegularFile() }.forEach { files[outDir.relativize(it).toString()] = it.readText() }
+            }
+            return files
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    private fun canonical(args: Map<String, String> = mapOf("columnNaming" to "literal")) =
+        emit(loadDirectory("report-table-canonical", canonicalDir()), args)
+
+    private fun assertCompiles(files: Map<String, String>) {
+        val sources = files.filterKeys { it.endsWith(".kt") }
+            .map { (path, text) -> SourceFile.kotlin(path.substringAfterLast('/'), text) }
+        val result = KotlinCompilation().apply {
+            this.sources = sources
+            inheritClassPath = true   // Exposed, off the test classpath
+            messageOutputStream = System.out
+        }.compile()
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+    }
+
+    // --- The canonical reports ---------------------------------------------------------
+
+    @Test
+    fun `a grouped report emits one column per derived field, typed and nullable by Table B`() {
+        assertEquals(
+            """
+            |package fitness
+            |
+            |import org.jetbrains.exposed.sql.Table
+            |
+            |/** READ-ONLY VIEW — generated from view metadata; do not insert/update/delete directly. */
+            |/** GENERATED — do not hand-edit. Regenerated from metadata. */
+            |object ProgramMinutesTable : Table("v_program_minutes") {
+            |    val program = long("program")
+            |    val programTitle = varchar("programTitle", 200).nullable()
+            |    val weeks = long("weeks")
+            |    val longWeeks = long("longWeeks")
+            |    val labels = long("labels")
+            |    val slots = long("slots")
+            |    val totalMinutes = long("totalMinutes").nullable()
+            |    val avgMinutes = decimal("avgMinutes", 38, 18).nullable()
+            |    val minMinutes = integer("minMinutes").nullable()
+            |    val maxMinutes = integer("maxMinutes").nullable()
+            |    val longShare = decimal("longShare", 38, 18).nullable()
+            |}
+            |""".trimMargin(),
+            canonical().getValue("fitness/ProgramMinutesTable.kt"),
+        )
+    }
+
+    @Test
+    fun `every canonical report emits its table and none has a primary key`() {
+        val files = canonical()
+        val reports = listOf(
+            "ProgramMinutes" to "v_program_minutes", "FitnessTotals" to "v_fitness_totals",
+            "ProgramsByMonth" to "v_programs_by_month", "ProgramsByWeek" to "v_programs_by_week",
+            "RecentPrograms" to "v_recent_programs", "AssetActivity" to "v_asset_activity",
+        )
+        for ((report, view) in reports) {
+            val src = files.getValue("fitness/${report}Table.kt")
+            assertTrue("object ${report}Table : Table(\"$view\") {" in src, src)
+            assertFalse("primaryKey" in src, src)
+            assertFalse("init {" in src, src)
+            assertFalse(".references(" in src, src)
+            assertFalse("autoIncrement" in src, src)
+        }
+    }
+
+    @Test
+    fun `a day-or-coarser bucket is a date and an enum dimension is typed by the source entity's enum`() {
+        val src = canonical().getValue("fitness/ProgramsByMonthTable.kt")
+        assertTrue("import org.jetbrains.exposed.sql.javatime.date\n" in src, src)
+        assertTrue("    val createdAtMonth = date(\"createdAtMonth\")\n" in src, src)
+        // Program.status's own generated class — no generator emits a ProgramsByMonthStatus.
+        assertTrue(
+            "    val status = enumerationByName(\"status\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, ProgramStatus::class)\n" in src,
+            src,
+        )
+        assertFalse("ProgramsByMonthStatus" in src, src)
+        assertTrue("    val programs = long(\"programs\")\n" in src, src)
+        // A sum of a currency is integer minor units, and null over no rows.
+        assertTrue("    val listValue = long(\"listValue\").nullable()\n" in src, src)
+    }
+
+    @Test
+    fun `an hour bucket of an instant is the instant column and brings the package helper`() {
+        val files = canonical()
+        val src = files.getValue("fitness/AssetActivityTable.kt")
+        assertTrue("    val recordedAtHour = instantWithTimeZone(\"recordedAtHour\")\n" in src, src)
+        assertTrue("    val asOfDateWeek = date(\"asOfDateWeek\")\n" in src, src)
+        assertTrue("    val assets = long(\"assets\")\n" in src, src)
+        assertTrue("fitness/MetaInstantWithTimeZoneColumnType.kt" in files.keys, files.keys.toString())
+    }
+
+    @Test
+    fun `the naming strategy applies to the derived field name`() {
+        val src = canonical(emptyMap()).getValue("fitness/ProgramMinutesTable.kt")   // snake_case default
+        assertTrue("    val avgMinutes = decimal(\"avg_minutes\", 38, 18).nullable()\n" in src, src)
+        assertTrue("    val programTitle = varchar(\"program_title\", 200).nullable()\n" in src, src)
+    }
+
+    @Test
+    fun `the Exposed 1x mode emits the same report table against the v1 packages`() {
+        val files = canonical(mapOf("columnNaming" to "literal", "exposedApi" to "1"))
+        val byMonth = files.getValue("fitness/ProgramsByMonthTable.kt")
+        assertTrue("import org.jetbrains.exposed.v1.core.Table\n" in byMonth, byMonth)
+        assertTrue("import org.jetbrains.exposed.v1.javatime.date\n" in byMonth, byMonth)
+        assertFalse("org.jetbrains.exposed.sql" in byMonth, byMonth)
+        assertTrue("    val createdAtMonth = date(\"createdAtMonth\")\n" in byMonth, byMonth)
+        val minutes = files.getValue("fitness/ProgramMinutesTable.kt")
+        assertTrue("    val avgMinutes = decimal(\"avgMinutes\", 38, 18).nullable()\n" in minutes, minutes)
+    }
+
+    @Test
+    fun `with the names generator in the run a report still binds by literal and gets no names artifact`() {
+        val files = emit(
+            loadDirectory("report-table-names", canonicalDir()),
+            mapOf("columnNaming" to "literal", "useNames" to "true"),
+            listOf(KotlinNamesGenerator(), KotlinExposedTableGenerator()),
+        )
+        // The entity beside it does reference its artifact, so the arg really was on.
+        assertTrue("ProgramNames." in files.getValue("fitness/ProgramTable.kt"))
+        val src = files.getValue("fitness/ProgramMinutesTable.kt")
+        assertTrue("object ProgramMinutesTable : Table(\"v_program_minutes\") {" in src, src)
+        assertTrue("    val weeks = long(\"weeks\")\n" in src, src)
+        assertFalse("Names" in src, src)
+        assertFalse(files.keys.any { it.endsWith("ProgramMinutesNames.kt") }, files.keys.toString())
+    }
+
+    // --- Which reports emit (Table A) --------------------------------------------------
+
+    /** A `Sale` entity with [measures], and a `SaleTotals` report over them with [reportSource]. */
+    private fun model(
+        measures: List<String> = listOf("sales"),
+        reportSource: String? = """{ "source.rdb": { "@kind": "view", "@view": "v_sale_totals" } }""",
+        extraMembers: String = "",
+        dimensions: List<String> = emptyList(),
+    ): String {
+        val measureNodes = measures.joinToString(",\n") {
+            """{ "measure.aggregate": { "name": "$it", "@agg": "count", "@of": "Sale.id" } }"""
+        }
+        val children = reportSource?.let { """, "children": [ $it ]""" } ?: ""
+        val dims = if (dimensions.isEmpty()) "" else
+            """ "@dimensions": [${dimensions.joinToString(",") { "\"$it\"" }}],"""
+        return """{
+          "metadata.root": { "package": "acme::shop", "children": [
+            { "object.entity": { "name": "Sale", "children": [
+                { "source.rdb": { "@table": "sales" } },
+                { "field.long": { "name": "id" } },
+                { "field.timestamp": { "name": "soldAt" } },
+                { "field.string": { "name": "channel" } },
+                { "identity.primary": { "name": "id", "@fields": ["id"] } },
+                $extraMembers
+                $measureNodes
+            ] } },
+            { "object.report": { "name": "SaleTotals", "@from": "Sale",$dims
+                "@measures": [${measures.joinToString(",") { "\"$it\"" }}]$children } }
+          ] }
+        }"""
+    }
+
+    private fun reportFiles(json: String, args: Map<String, String> = emptyMap()): Map<String, String> =
+        emit(loadString("report-table-model", json), args).filterKeys { "SaleTotals" in it }
+
+    @Test
+    fun `a sourceless report generates nothing`() {
+        assertEquals(emptyMap(), reportFiles(model(reportSource = null)))
+    }
+
+    @Test
+    fun `a managed view-backed report generates its table`() {
+        val files = reportFiles(model())
+        assertEquals(setOf("acme/shop/SaleTotalsTable.kt"), files.keys)
+        val src = files.values.single()
+        assertTrue("object SaleTotalsTable : Table(\"v_sale_totals\") {" in src, src)
+        assertTrue("    val sales = long(\"sales\")\n" in src, src)
+    }
+
+    @Test
+    fun `an unmanaged view and an authored-sql view exist, so each still generates the table`() {
+        for (attrs in listOf(
+            """"@unmanaged": true""",
+            """"@sql": "SELECT COUNT(id) AS sales FROM sales"""",
+        )) {
+            val files = reportFiles(model(
+                reportSource = """{ "source.rdb": { "@kind": "view", "@view": "v_sale_totals", $attrs } }"""))
+            assertEquals(setOf("acme/shop/SaleTotalsTable.kt"), files.keys, attrs)
+            assertTrue("    val sales = long(\"sales\")\n" in files.values.single(), attrs)
+        }
+    }
+
+    @Test
+    fun `a view named by the legacy table attr and a schema-qualified view bind that name`() {
+        val legacy = reportFiles(model(
+            reportSource = """{ "source.rdb": { "@kind": "view", "@table": "v_legacy" } }"""))
+        assertTrue("Table(\"v_legacy\")" in legacy.values.single(), legacy.values.single())
+        val qualified = reportFiles(model(
+            reportSource = """{ "source.rdb": { "@kind": "view", "@view": "v_sale_totals", "@schema": "rpt" } }"""))
+        assertTrue("Table(\"rpt.v_sale_totals\")" in qualified.values.single(), qualified.values.single())
+    }
+
+    @Test
+    fun `a report over a kind the lowering skips generates nothing`() {
+        for (kind in listOf(
+            """"@kind": "materializedView", "@materializedView": "mv_sale_totals"""",
+            """"@kind": "storedProc", "@procedure": "sale_totals"""",
+            """"@kind": "tableFunction", "@function": "sale_totals"""",
+        )) {
+            assertEquals(emptyMap(), reportFiles(model(reportSource = """{ "source.rdb": { $kind } }""")), kind)
+        }
+    }
+
+    // --- Names that would not compile ---------------------------------------------------
+
+    @Test
+    fun `names that are SQL keywords or Exposed Table members compile`() {
+        // `order`, `user`, `group`, `rank` are ordinary dashboard names; the rest are (or
+        // look like) members of Exposed's Table, which safeColumnProperty renames.
+        val names = listOf(
+            "order", "user", "group", "rank", "count", "name", "columns", "tableName", "source",
+            "index", "fields", "primaryKey", "schemaName",
+        )
+        val files = reportFiles(model(measures = names))
+        val src = files.getValue("acme/shop/SaleTotalsTable.kt")
+        assertTrue("    val order = long(\"order\")\n" in src, src)
+        // The physical column keeps the derived name; only the Kotlin property is renamed.
+        assertTrue("    val columnsColumn = long(\"columns\")\n" in src, src)
+        assertTrue("    val tableNameColumn = long(\"table_name\")\n" in src, src)
+        assertTrue("    val schemaNameColumn = long(\"schema_name\")\n" in src, src)
+        assertCompiles(files)
+    }
+
+    @Test
+    fun `a measure named after a Kotlin keyword is refused, naming the report and the measure`() {
+        for (keyword in listOf("in", "is", "object", "when", "fun")) {
+            val e = assertFailsWith<GeneratorException>(keyword) { reportFiles(model(measures = listOf("sales", keyword))) }
+            val message = e.message.orEmpty()
+            assertTrue("report \"SaleTotals\"" in message, message)
+            assertTrue("measure \"$keyword\"" in message, message)
+            assertTrue("Kotlin keyword" in message && "Rename the measure" in message, message)
+        }
+    }
+
+    @Test
+    fun `a dimension named after a Kotlin keyword is refused, naming the dimension`() {
+        val e = assertFailsWith<GeneratorException> {
+            reportFiles(model(
+                extraMembers = """{ "dimension.attribute": { "name": "class", "@of": "Sale.channel" } },""",
+                dimensions = listOf("class"),
+            ))
+        }
+        val message = e.message.orEmpty()
+        assertTrue("report \"SaleTotals\"" in message && "dimension \"class\"" in message, message)
+    }
+
+    @Test
+    fun `two derived fields that land on one column property are refused, naming both`() {
+        val e = assertFailsWith<GeneratorException> {
+            reportFiles(model(measures = listOf("source", "sourceColumn")))
+        }
+        val message = e.message.orEmpty()
+        assertTrue("report \"SaleTotals\"" in message, message)
+        assertTrue("measure \"source\"" in message && "measure \"sourceColumn\"" in message, message)
+        assertTrue("\"sourceColumn\"" in message && "Rename one of them" in message, message)
+    }
+
+    @Test
+    fun `a dimension and a measure that land on one column property are refused, naming both`() {
+        val e = assertFailsWith<GeneratorException> {
+            reportFiles(model(
+                measures = listOf("fieldsColumn"),
+                extraMembers = """{ "dimension.attribute": { "name": "fields", "@of": "Sale.channel" } },""",
+                dimensions = listOf("fields"),
+            ))
+        }
+        val message = e.message.orEmpty()
+        assertTrue("dimension \"fields\"" in message && "measure \"fieldsColumn\"" in message, message)
+    }
+
+    @Test
+    fun `a time dimension's derived name is never refused`() {
+        val files = reportFiles(model(
+            extraMembers = """{ "dimension.time": { "name": "source", "@of": "Sale.soldAt", "@grains": ["day"] } },""",
+            dimensions = listOf("source:day"),
+        ))
+        assertTrue("    val sourceDay = date(\"source_day\")" in files.values.single(), files.values.single())
+    }
+
+    @Test
+    fun `a report that generates no table is not refused for its names`() {
+        assertEquals(emptyMap(), reportFiles(model(measures = listOf("in", "source", "sourceColumn"), reportSource = null)))
+    }
+
+    @Test
+    fun `an enum dimension reached by via is typed by the enum of the entity it reads, and compiles`() {
+        val json = """{
+          "metadata.root": { "package": "acme::shop", "children": [
+            { "object.entity": { "name": "Store", "children": [
+                { "source.rdb": { "@table": "stores" } },
+                { "field.long": { "name": "id" } },
+                { "field.enum": { "name": "tier", "@values": ["GOLD", "SILVER"], "@required": true } },
+                { "identity.primary": { "name": "id", "@fields": ["id"] } }
+            ] } },
+            { "object.entity": { "name": "Sale", "children": [
+                { "source.rdb": { "@table": "sales" } },
+                { "field.long": { "name": "id" } },
+                { "field.long": { "name": "storeId", "@required": true } },
+                { "field.enum": { "name": "channel", "@values": ["WEB", "SHOP"], "@intValueMap": { "WEB": 1, "SHOP": 2 }, "@required": true } },
+                { "identity.primary": { "name": "id", "@fields": ["id"] } },
+                { "identity.reference": { "name": "storeRef", "@references": "Store", "@fields": ["storeId"] } },
+                { "relationship.association": { "name": "store", "@objectRef": "Store", "@cardinality": "one" } },
+                { "dimension.attribute": { "name": "storeTier", "@of": "Store.tier", "@via": "Sale.store" } },
+                { "dimension.attribute": { "name": "channel", "@of": "Sale.channel" } },
+                { "measure.aggregate": { "name": "sales", "@agg": "count", "@of": "Sale.id" } }
+            ] } },
+            { "object.report": { "name": "SalesByTier", "@from": "Sale",
+                "@dimensions": ["storeTier", "channel"], "@measures": ["sales"],
+                "children": [ { "source.rdb": { "@kind": "view", "@view": "v_sales_by_tier" } } ] } }
+          ] }
+        }"""
+        val files = emit(
+            loadString("report-table-via-enum", json),
+            generators = listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator()),
+        )
+        val src = files.getValue("acme/shop/SalesByTierTable.kt")
+        // Store's class, and nullable: a dimension reached by @via can be null.
+        assertTrue(
+            "    val storeTier = enumerationByName(\"store_tier\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, StoreTier::class).nullable()\n" in src,
+            src,
+        )
+        // An int-backed enum keeps its mapping, typed by Sale's class.
+        assertTrue("    val channel = customEnumeration(\"channel\", \"INTEGER\", " in src, src)
+        assertTrue("1 -> SaleChannel.WEB" in src && "SaleChannel.SHOP -> 2" in src, src)
+        assertFalse("SalesByTier" in src.replace("SalesByTierTable", ""), src)
+        assertCompiles(files)
+    }
+
+    // --- The emitted reports build ------------------------------------------------------
+
+    @Test
+    fun `the canonical report tables compile beside the entities they reference`() {
+        val files = emit(
+            loadDirectory("report-table-compile", canonicalDir()),
+            mapOf("columnNaming" to "literal", "packageName" to "fitness"),
+            listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator()),
+        )
+        assertTrue(files.keys.count { it.endsWith("Table.kt") } >= 6, files.keys.toString())
+        assertCompiles(files)
+    }
+}
