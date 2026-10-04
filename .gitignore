@@ -78,3 +78,7 @@ tools/prerelease/registry.env
 hs_err_pid*.log
 replay_pid*.log
 core.[0-9]*
+
+# Throwaway projects the validation gate builds to drive the CLIs by hand.
+.tmp-java-drive/
+.tmp-drive/
