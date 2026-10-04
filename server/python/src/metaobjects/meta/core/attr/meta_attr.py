@@ -5,6 +5,7 @@ from ....attr_class_map import register_attr_class, register_fallback_attr_class
 from ....datatype import DataType
 from ...meta_data import MetaData
 from ....shared.base_types import SUBTYPE_BASE
+from ..reporting.reporting_constants import FILTER_RELATIVE_NOW
 from .attr_constants import (
     ATTR_SUBTYPE_BOOLEAN,
     ATTR_SUBTYPE_CLASS,
@@ -85,27 +86,50 @@ class StringArrayAttr(MetaAttr):
         return raw
 
 
-_FILTER_OPS = frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "like", "isNull"})
-
-
-def _is_op_object(value: object) -> bool:
-    """Return True if value is already a filter op-object (all keys are filter ops)."""
-    return (
-        isinstance(value, dict)
-        and len(value) > 0
-        and all(k in _FILTER_OPS for k in value)
-    )
+# Filter op / composition keys (mirrors TS query-constants.ts).
+_FILTER_OP_EQ = "eq"
+_FILTER_OP_IN = "in"
+_FILTER_OP_IS_NULL = "isNull"
+_FILTER_COMPOSE_AND = "and"
+_FILTER_COMPOSE_OR = "or"
 
 
 def _desugar_filter_value(value: object) -> object:
-    """Desugar a single field-level filter shorthand into an op-object."""
+    """Desugar a single field-level filter clause into an op-object.
+
+    Mirrors the TS ``desugarClause`` (meta-attr-filter.ts): ``null`` -> isNull,
+    a list -> ``in``, a non-object scalar -> ``eq``. An OBJECT clause is an op map
+    and passes through as-is — EXCEPT one carrying a ``now`` key (FR-044 F2): that
+    is a relative-date VALUE, never an op map (``now`` is not an operator), so the
+    shorthand ``{ f: { now: "-P7D" } }`` means ``eq`` like every other shorthand
+    value and survives as an opaque operand; validation then refuses it (``eq`` is
+    not a range op). An explicit-op ``{ gte: { now } }`` passes through unchanged.
+    """
     if value is None:
-        return {"isNull": True}
+        return {_FILTER_OP_IS_NULL: True}
     if isinstance(value, list):
-        return {"in": value}
-    if _is_op_object(value):
-        return value  # already an op-object — pass through unchanged
-    return {"eq": value}
+        return {_FILTER_OP_IN: value}
+    if isinstance(value, dict):
+        return {_FILTER_OP_EQ: value} if FILTER_RELATIVE_NOW in value else value
+    return {_FILTER_OP_EQ: value}
+
+
+def _desugar_filter_object(value: dict[str, object]) -> dict[str, object]:
+    """Desugar a (possibly composed) filter object. ``and`` / ``or`` hold arrays of
+    sub-filters, each desugared recursively (a non-array / non-object member is kept
+    as-is for validation to refuse); every other key is a field clause. Mirrors the
+    TS ``desugarFilterObject``."""
+    out: dict[str, object] = {}
+    for key, raw in value.items():
+        if key == _FILTER_COMPOSE_AND or key == _FILTER_COMPOSE_OR:
+            out[key] = (
+                [_desugar_filter_object(sub) if isinstance(sub, dict) else sub for sub in raw]
+                if isinstance(raw, list)
+                else raw
+            )
+            continue
+        out[key] = _desugar_filter_value(raw)
+    return out
 
 
 class FilterAttr(MetaAttr):
@@ -116,7 +140,7 @@ class FilterAttr(MetaAttr):
     def desugar(self, value: object) -> object:
         if not isinstance(value, dict):
             return value
-        return {field: _desugar_filter_value(v) for field, v in value.items()}
+        return _desugar_filter_object(value)
 
 
 class ExpressionAttr(MetaAttr):

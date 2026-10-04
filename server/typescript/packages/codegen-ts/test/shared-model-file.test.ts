@@ -208,7 +208,7 @@ describe("sharedModelFile()", () => {
       schema_version: 1,
       name: "acme-common",
       version: "1.0.0",
-      metamodelVersion: "1.0",
+      metamodelVersion: "1.1",
       artifact: "acme-common.metaobjects.json",
       integrity: PINNED_HASH,
       packages: ["acme::common"],

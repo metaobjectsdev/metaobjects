@@ -1,0 +1,373 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "purchases",
+                "@cardinality": "many",
+                "@objectRef": "Purchase"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Purchase",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "purchases"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId"
+              }
+            },
+            {
+              "field.string": {
+                "name": "customerEmail"
+              }
+            },
+            {
+              "field.currency": {
+                "name": "amountCents"
+              }
+            },
+            {
+              "field.string": {
+                "name": "status"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "refunded"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "purchasedAt"
+              }
+            },
+            {
+              "field.date": {
+                "name": "purchasedOn"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "programRef",
+                "@fields": [
+                  "programId"
+                ],
+                "@references": "Program"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "program",
+                "@cardinality": "one",
+                "@objectRef": "Program"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "program",
+                "@of": "Purchase.programId"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "programTitle",
+                "@of": "Program.title",
+                "@via": "Purchase.program"
+              }
+            },
+            {
+              "dimension.time": {
+                "name": "purchasedAt",
+                "@grains": [
+                  "day",
+                  "week",
+                  "month",
+                  "quarter",
+                  "year"
+                ],
+                "@of": "Purchase.purchasedAt"
+              }
+            },
+            {
+              "dimension.time": {
+                "name": "programCreatedAt",
+                "@grains": [
+                  "month",
+                  "year"
+                ],
+                "@of": "Program.createdAt",
+                "@via": "Purchase.program"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "refundedPurchases",
+                "@agg": "count",
+                "@filter": {
+                  "refunded": {
+                    "eq": true
+                  }
+                },
+                "@of": [
+                  "Purchase.id"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "purchases",
+                "@agg": "count",
+                "@of": [
+                  "Purchase.id"
+                ],
+                "@segment": "active"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "buyers",
+                "@agg": "count",
+                "@distinct": true,
+                "@of": [
+                  "Purchase.customerEmail"
+                ],
+                "@segment": "active"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "revenue",
+                "@agg": "sum",
+                "@of": [
+                  "Purchase.amountCents"
+                ],
+                "@segment": "active"
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "active",
+                "@filter": {
+                  "status": {
+                    "eq": "active"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "WorkoutEvent",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "workout_events"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId"
+              }
+            },
+            {
+              "field.string": {
+                "name": "customerEmail"
+              }
+            },
+            {
+              "field.int": {
+                "name": "weekNumber"
+              }
+            },
+            {
+              "field.int": {
+                "name": "dayNumber"
+              }
+            },
+            {
+              "field.string": {
+                "name": "eventType"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "occurredAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "program",
+                "@of": "WorkoutEvent.programId"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "starters",
+                "@agg": "count",
+                "@distinct": true,
+                "@of": [
+                  "WorkoutEvent.customerEmail"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "daysEngaged",
+                "@agg": "count",
+                "@distinct": true,
+                "@of": [
+                  "WorkoutEvent.programId",
+                  "WorkoutEvent.weekNumber",
+                  "WorkoutEvent.dayNumber"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "lastActivityAt",
+                "@agg": "max",
+                "@of": [
+                  "WorkoutEvent.occurredAt"
+                ]
+              }
+            },
+            {
+              "measure.ratio": {
+                "name": "avgDaysPerStarter",
+                "@denominator": "starters",
+                "@numerator": "daysEngaged"
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "completions",
+                "@filter": {
+                  "eventType": {
+                    "eq": "exercise_complete"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "ProgramEngagement",
+          "@dimensions": [
+            "program"
+          ],
+          "@from": "WorkoutEvent",
+          "@measures": [
+            "starters",
+            "daysEngaged",
+            "avgDaysPerStarter",
+            "lastActivityAt"
+          ],
+          "@segment": "completions"
+        }
+      },
+      {
+        "object.report": {
+          "name": "DailyRevenue",
+          "@dimensions": [
+            "purchasedAt:day"
+          ],
+          "@filter": {
+            "purchasedAt": {
+              "gte": {
+                "now": "-P90D"
+              }
+            }
+          },
+          "@from": "Purchase",
+          "@measures": [
+            "purchases",
+            "revenue"
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "StoreTotals",
+          "@from": "Purchase",
+          "@measures": [
+            "purchases",
+            "buyers",
+            "revenue"
+          ]
+        }
+      }
+    ]
+  }
+}

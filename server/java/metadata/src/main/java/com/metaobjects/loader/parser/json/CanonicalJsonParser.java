@@ -1454,6 +1454,9 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                 }
             }
             String stringValue;
+            // Set when a bare string is wrapped for an array attr and carries a comma: the
+            // comma-delimited array path would split it, so it is re-set whole below.
+            String wrappedBareStringWithComma = null;
             if (rawValue.isJsonPrimitive() && rawValue.getAsJsonPrimitive().isString()) {
                 String arrayConstraintId = md.getType() + "." + md.getSubType() + "." + attrName + ".array";
                 String commonArrayConstraintId = "*.*." + attrName + ".array";
@@ -1461,6 +1464,9 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                         || getTypeRegistry().hasConstraint(commonArrayConstraintId)) {
                     // Desugar: wrap bare string as single-element JSON array
                     stringValue = "[\"" + rawValue.getAsString().replace("\\", "\\\\").replace("\"", "\\\"") + "\"]";
+                    if (rawValue.getAsString().contains(",")) {
+                        wrappedBareStringWithComma = rawValue.getAsString();
+                    }
                     log.debug("Desugared bare string @{} to JSON array for [{}:{}] in file [{}]",
                         attrName, md.getType(), md.getSubType(), getFilename());
                 } else {
@@ -1472,6 +1478,17 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
 
             // Delegate to the base parser — handles type inference + array desugar
             super.parseInlineAttribute(md, attrName, stringValue);
+
+            // A bare string is ONE array element, commas included (TS
+            // normalizeStringArrayAttr wraps "a,b" as ["a,b"]); the comma-delimited
+            // array path above split it, so re-set it whole.
+            // ADR-0039: own — parse-time fix-up of the attr just added to this declaration.
+            if (wrappedBareStringWithComma != null && md.hasMetaAttr(attrName, false)) {
+                MetaAttribute<?> added = md.getMetaAttr(attrName, false);
+                if (added instanceof com.metaobjects.attr.StringAttribute) {
+                    ((com.metaobjects.attr.StringAttribute) added).setSingleElementArray(wrappedBareStringWithComma);
+                }
+            }
 
             // FR5a / ADR-0009 — tag the just-added inline attr child with its
             // JsonSource provenance. The base parser adds the MetaAttribute as a

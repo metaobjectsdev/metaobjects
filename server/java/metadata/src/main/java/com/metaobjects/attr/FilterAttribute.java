@@ -10,6 +10,7 @@ import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonSyntaxException;
 import com.metaobjects.DataTypes;
 import com.metaobjects.registry.MetaDataRegistry;
+import com.metaobjects.reporting.ReportingConstants;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -27,6 +28,8 @@ import java.util.Map;
  *   <li>Array value {@code [...]} → {@code {in: [...]}}</li>
  *   <li>JSON {@code null} → {@code {isNull: true}}</li>
  *   <li>Explicit {@code {op: value}} clause → passed through unchanged</li>
+ *   <li>A clause object carrying a {@code now} key (a relative-date value, FR-044) →
+ *       {@code {eq: {now: ...}}}; {@code now} is never an operator</li>
  *   <li>{@code or} / {@code and} composition keys recurse into their sub-filter arrays</li>
  * </ul>
  *
@@ -243,6 +246,16 @@ public class FilterAttribute extends MetaAttribute<Map<String, Object>> {
             return clause;
         }
         if (raw.isJsonObject()) {
+            // FR-044 F2: an object carrying a `now` key is a relative-date VALUE, never an
+            // op map (`now` is not an operator). Shorthand `{ f: { now: "-P7D" } }` therefore
+            // means `eq` like every other shorthand value, and survives as an opaque operand;
+            // validation then refuses it (`eq` is not a range op) instead of reading `now` as
+            // an op. Mirrors the TS desugarClause. An explicit-op `{ gte: { now } }` has no
+            // top-level `now` key, so it passes through below unchanged.
+            if (raw.getAsJsonObject().has(ReportingConstants.FILTER_RELATIVE_NOW)) {
+                clause.put(OP_EQ, jsonElementToJava(raw));
+                return clause;
+            }
             // Explicit op-value object — convert to Java map and pass through unchanged.
             // Do NOT recurse into desugarJsonObject — the keys here are op names, not field names.
             Map<String, Object> opMap = new LinkedHashMap<>();

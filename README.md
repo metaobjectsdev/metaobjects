@@ -154,6 +154,7 @@ first-week wedge plan — and `meta init` picks up from there.
 | Template-drift verify | Yes | Yes (`Verify.check`) | Yes (via Java) | Yes (`dotnet meta verify`) | Yes (`metaobjects.render.verify`) |
 | YAML authoring (sigil-free → JSON) | Yes | Yes | Yes (via Java) | Yes | Yes |
 | Capability requirements (`requirement.*`) | Registered + `meta verify` gate | Registered (loads + validates) | Registered (via Java) | Registered (loads + validates) | Registered (loads + validates) |
+| Reporting vocabulary (`dimension` / `measure` / `segment` / `object.report`, FR-044) | Registered (loads + validates); no generated output yet | Registered (loads + validates); no generated output yet | Registered (via Java); no generated output yet | Registered (loads + validates); no generated output yet | Registered (loads + validates); no generated output yet |
 | Libraries (`libraries: [...]`) | Yes | Yes | Yes (via Java) | Yes | Yes |
 | Metadata dependencies (`dependencies`) | Yes (`meta deps sync`, `path` transport) | Phase 2 | Phase 2 | Phase 2 | Yes (loads the synced snapshot) |
 | Runtime metadata (ObjectManager-style) | Yes (`runtime-ts`) | Yes (OMDB) | Yes (via Java OMDB + Exposed) | Roadmap | Yes (ObjectManager) |
@@ -259,8 +260,8 @@ metaobjects/
 ├── README.md                       # you are here
 ├── CLAUDE.md                       # project instructions for Claude
 ├── spec/                           # canonical metamodel docs, ADRs, roadmap
-├── fixtures/                       # 22 cross-language conformance corpora — the oracle
-│   ├── conformance/                # metamodel (loader + serializer + navigation), 329 fixtures
+├── fixtures/                       # 25 cross-language conformance corpora — the oracle
+│   ├── conformance/                # metamodel (loader + serializer + navigation), 361 fixtures
 │   ├── yaml-conformance/           # YAML authoring desugar
 │   ├── render-conformance/         # FR-004 byte-identical render oracle
 │   ├── verify-conformance/         # FR-004 template-drift gate

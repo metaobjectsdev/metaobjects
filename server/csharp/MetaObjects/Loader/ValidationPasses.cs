@@ -41,7 +41,7 @@ namespace MetaObjects.Loader;
 /// (Effective, extends-resolving reads also live in the typed node getters —
 /// <c>MetaField</c>/<c>MetaIdentity</c>/<c>MetaRelationship</c> — used by codegen and runtime.)
 /// </remarks>
-public static class ValidationPasses
+public static partial class ValidationPasses
 {
     // -------------------------------------------------------------------------
     // Result types

@@ -53,6 +53,9 @@ public abstract class MetaObject extends MetaData {
     /** Semantic subtype: a derived read-only representation of entities (FR-024, ADR-0028). */
     public static final String SUBTYPE_PROJECTION = "projection";
 
+    /** Semantic subtype: a declared report over ONE entity's dimensions and measures (FR-044). */
+    public static final String SUBTYPE_REPORT = "report";
+
     // === OBJECT-LEVEL ATTRIBUTE NAME CONSTANTS ===
     // These apply to ALL object types and are inherited by concrete object implementations
     // ATTR_IS_ABSTRACT is imported from MetaData (universal attribute)
@@ -91,6 +94,18 @@ public abstract class MetaObject extends MetaData {
      * ({@code spec/metamodel/object.json}) scopes it to {@code object.projection} only.
      */
     public static final String ATTR_FILTER = "filter";
+
+    /** FR-044 — {@code object.report}: the {@code object.entity} whose rows the report aggregates. */
+    public static final String ATTR_REPORT_FROM = "from";
+
+    /** FR-044 — {@code object.report}: dimension names of {@code @from}; a time dimension is {@code name:grain}. */
+    public static final String ATTR_REPORT_DIMENSIONS = "dimensions";
+
+    /** FR-044 — {@code object.report}: measure names of {@code @from}. */
+    public static final String ATTR_REPORT_MEASURES = "measures";
+
+    /** FR-044 — {@code object.report}: optional segment of {@code @from} scoping the rows. */
+    public static final String ATTR_REPORT_SEGMENT = "segment";
 
     /**
      * Register MetaObject type and constraints with registry.
@@ -224,6 +239,26 @@ public abstract class MetaObject extends MetaData {
             // view's outer SQL WHERE. The strict per-subtype allow-list (Pass 5 of
             // applySpecDescriptions, reading spec/metamodel/object.json) scopes it to
             // object.projection, so it survives pruning here while staying off entity/value.
+            def.optionalAttributeWithConstraints(ATTR_FILTER)
+               .ofType(FilterAttribute.SUBTYPE_FILTER).asSingle();
+        });
+
+        // FR-044 — object.report: a fixed combination of dimensions and measures of ONE
+        // entity (@from), compiled to a read-only view. Its fields are DERIVED, never
+        // declared (rule R4 in the reporting validation pass); its structural children
+        // come from spec/metamodel/object.json (extendsBase), like object.projection.
+        registry.registerType(ReportMetaObject.class, def -> {
+            def.type(TYPE_OBJECT).subType(SUBTYPE_REPORT)
+               .description("Report object (derived, read-only) — a declared aggregation of one entity")
+               .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE);
+            def.requiredAttributeWithConstraints(ATTR_REPORT_FROM)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_REPORT_DIMENSIONS)
+               .ofType(StringAttribute.SUBTYPE_STRING).asArray();
+            def.requiredAttributeWithConstraints(ATTR_REPORT_MEASURES)
+               .ofType(StringAttribute.SUBTYPE_STRING).asArray();
+            def.optionalAttributeWithConstraints(ATTR_REPORT_SEGMENT)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             def.optionalAttributeWithConstraints(ATTR_FILTER)
                .ofType(FilterAttribute.SUBTYPE_FILTER).asSingle();
         });

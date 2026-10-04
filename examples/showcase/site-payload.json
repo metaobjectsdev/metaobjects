@@ -4,12 +4,12 @@
     "pypi": "1.0.13",
     "nuget": "1.0.13",
     "maven": "8.0.13",
-    "metamodel": "1.0"
+    "metamodel": "1.1"
   },
   "counts": {
-    "fixtures": 334,
-    "corpora": 24,
-    "baseTypes": 14
+    "fixtures": 361,
+    "corpora": 25,
+    "baseTypes": 17
   },
   "snippets": {
     "showcase-model": {

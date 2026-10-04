@@ -23,12 +23,16 @@ import {
   TYPE_OBJECT,
   TYPE_TEMPLATE,
   TYPE_RELATIONSHIP,
+  TYPE_DIMENSION,
+  TYPE_MEASURE,
+  TYPE_SEGMENT,
 } from "../src/shared/base-types.js";
 import {
   OBJECT_SUBTYPES,
   OBJECT_SUBTYPE_ENTITY,
   OBJECT_SUBTYPE_VALUE,
   OBJECT_SUBTYPE_PROJECTION,
+  OBJECT_SUBTYPE_REPORT,
 } from "../src/core/object/object-constants.js";
 import { SUBTYPE_BASE } from "../src/shared/base-types.js";
 
@@ -71,10 +75,21 @@ const PROJECTION_FILTER: Record<string, ExpectedAttr> = {
   filter: { valueType: "filter", required: false },
 };
 
+// FR-044 — object.report carries its five declaration attrs. The array-valued ones
+// (@dimensions, @measures) are `string` attrs with isArray, so valueType stays "string".
+const REPORT_ATTRS: Record<string, ExpectedAttr> = {
+  from: { valueType: "string", required: true },
+  dimensions: { valueType: "string", required: false },
+  measures: { valueType: "string", required: true },
+  segment: { valueType: "string", required: false },
+  filter: { valueType: "filter", required: false },
+};
+
 function expectedAttrsFor(subType: string): Record<string, ExpectedAttr> {
   if (subType === OBJECT_SUBTYPE_ENTITY) return { ...DISCRIMINATOR };
   if (subType === OBJECT_SUBTYPE_VALUE) return { ...NORMALIZE };
   if (subType === OBJECT_SUBTYPE_PROJECTION) return { ...PROJECTION_FILTER };
+  if (subType === OBJECT_SUBTYPE_REPORT) return { ...REPORT_ATTRS };
   // base carries NO attrs (discriminator moved to entity only).
   return {};
 }
@@ -86,18 +101,27 @@ function expectedAttrsFor(subType: string): Record<string, ExpectedAttr> {
 // attrs enforce via the named AttrSchema set, ERR_UNKNOWN_ATTR).
 const BASE_RULE_TYPES = ["field", "identity", "validator", "layout", "source", "index"];
 const VALUE_RULE_TYPES = [...BASE_RULE_TYPES, TYPE_RELATIONSHIP];
-const ENTITY_RULE_TYPES = [...BASE_RULE_TYPES, TYPE_RELATIONSHIP, TYPE_TEMPLATE];
+// FR-044: object.entity also hosts the reporting vocabulary (dimension / measure / segment).
+const ENTITY_RULE_TYPES = [
+  ...BASE_RULE_TYPES,
+  TYPE_RELATIONSHIP,
+  TYPE_TEMPLATE,
+  TYPE_DIMENSION,
+  TYPE_MEASURE,
+  TYPE_SEGMENT,
+];
 const PROJECTION_RULE_TYPES = [...BASE_RULE_TYPES];
 
 function expectedChildTypesFor(subType: string): string[] {
   if (subType === OBJECT_SUBTYPE_ENTITY) return ENTITY_RULE_TYPES;
   if (subType === OBJECT_SUBTYPE_VALUE) return VALUE_RULE_TYPES;
   if (subType === OBJECT_SUBTYPE_PROJECTION) return PROJECTION_RULE_TYPES;
+  if (subType === OBJECT_SUBTYPE_REPORT) return BASE_RULE_TYPES; // report inherits base only (derived fields)
   return BASE_RULE_TYPES; // base
 }
 
 describe("object provider — strict per-subtype completeness (FR-033 S1-object)", () => {
-  test("registers all 4 object subtypes", () => {
+  test("registers all 5 object subtypes", () => {
     const registered = registry.allSubTypesOf(TYPE_OBJECT).sort();
     expect(registered).toEqual([...OBJECT_SUBTYPES].sort());
   });
@@ -139,11 +163,12 @@ describe("object provider — strict per-subtype completeness (FR-033 S1-object)
     });
   }
 
-  test("composed childRule counts: base=6, value=7, entity=8, projection=6", () => {
+  test("composed childRule counts: base=6, value=7, entity=11, projection=6, report=6", () => {
     expect(registry.find(TYPE_OBJECT, SUBTYPE_BASE)!.childRules.length).toBe(6);
     expect(registry.find(TYPE_OBJECT, OBJECT_SUBTYPE_VALUE)!.childRules.length).toBe(7);
-    expect(registry.find(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY)!.childRules.length).toBe(8);
+    expect(registry.find(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY)!.childRules.length).toBe(11);
     expect(registry.find(TYPE_OBJECT, OBJECT_SUBTYPE_PROJECTION)!.childRules.length).toBe(6);
+    expect(registry.find(TYPE_OBJECT, OBJECT_SUBTYPE_REPORT)!.childRules.length).toBe(6);
   });
 
   test("only object.entity carries the template childRule", () => {

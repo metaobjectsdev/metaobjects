@@ -14,6 +14,11 @@ from metaobjects.meta.core.field.field_constants import FIELD_SUBTYPES
 from metaobjects.meta.core.identity.identity_constants import IDENTITY_SUBTYPES
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPES
 from metaobjects.meta.core.relationship.relationship_constants import RELATIONSHIP_SUBTYPES
+from metaobjects.meta.core.reporting.reporting_constants import (
+    DIMENSION_SUBTYPES,
+    MEASURE_SUBTYPES,
+    SEGMENT_SUBTYPES,
+)
 from metaobjects.meta.persistence.origin.origin_constants import ORIGIN_SUBTYPES
 from metaobjects.meta.persistence.source.source_constants import SOURCE_SUBTYPES
 from metaobjects.meta.presentation.layout.layout_constants import LAYOUT_SUBTYPES
@@ -21,12 +26,15 @@ from metaobjects.meta.presentation.view.view_constants import VIEW_SUBTYPES
 from metaobjects.provider import compose_registry
 from metaobjects.shared.base_types import (
     TYPE_ATTR,
+    TYPE_DIMENSION,
     TYPE_FIELD,
     TYPE_IDENTITY,
     TYPE_LAYOUT,
+    TYPE_MEASURE,
     TYPE_OBJECT,
     TYPE_ORIGIN,
     TYPE_RELATIONSHIP,
+    TYPE_SEGMENT,
     TYPE_SOURCE,
     TYPE_VIEW,
 )
@@ -41,6 +49,10 @@ _EXPECTED: list[tuple[str, tuple[str, ...]]] = [
     (TYPE_ORIGIN, ORIGIN_SUBTYPES),
     (TYPE_VIEW, VIEW_SUBTYPES),
     (TYPE_LAYOUT, LAYOUT_SUBTYPES),
+    # FR-044 reporting vocabulary.
+    (TYPE_DIMENSION, DIMENSION_SUBTYPES),
+    (TYPE_MEASURE, MEASURE_SUBTYPES),
+    (TYPE_SEGMENT, SEGMENT_SUBTYPES),
 ]
 
 _registry = compose_registry([core_provider])

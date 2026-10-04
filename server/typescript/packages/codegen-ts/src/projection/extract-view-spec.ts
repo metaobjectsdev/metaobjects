@@ -35,10 +35,12 @@ import {
   FILTER_OP_LT,
   FILTER_OP_LTE,
   FILTER_OP_IS_NULL,
+  FILTER_OP_IN,
   FILTER_OP_LIKE,
   FIELD_SUBTYPE_ENUM,
   FILTER_COMPOSE_AND,
   FILTER_COMPOSE_OR,
+  FILTER_RELATIVE_NOW,
   SORT_ORDER_DESC,
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_CARDINALITY,
@@ -94,14 +96,40 @@ const EXPR_COMPARISON_OPS: ReadonlySet<string> = new Set([
 
 /**
  * Desugar a single field clause to the canonical `{ op: value }` form (scalar→eq,
- * array→in, null→isNull, object→as-is). Mirrors metadata's attr.filter desugar so an
+ * array→in, null→isNull, an object carrying a `now` key→eq, any other object→as-is).
+ * Mirrors metadata's attr.filter desugar (`core/attr/meta-attr-filter.ts`) so an
  * aggregate `@filter` works whether or not it was pre-desugared by the loader.
+ *
+ * The `now` rule matters here: `{ now: "-P7D" }` is a relative-date VALUE (FR-044 F2),
+ * never an op map. Read as-is, a programmatic, pre-desugar shorthand `{ f: { now: "x" } }`
+ * would lower as op `now` with value `"x"`, and `assertNoRelativeDate` — which inspects the
+ * VALUE — would never see it.
  */
 function desugarClause(raw: unknown): Record<string, unknown> {
-  if (raw === null) return { isNull: true };
-  if (Array.isArray(raw)) return { in: raw };
-  if (typeof raw === "object") return raw as Record<string, unknown>;
-  return { eq: raw };
+  if (raw === null) return { [FILTER_OP_IS_NULL]: true };
+  if (Array.isArray(raw)) return { [FILTER_OP_IN]: raw };
+  if (typeof raw === "object") {
+    return FILTER_RELATIVE_NOW in raw ? { [FILTER_OP_EQ]: raw } : (raw as Record<string, unknown>);
+  }
+  return { [FILTER_OP_EQ]: raw };
+}
+
+/**
+ * FR-044 — a relative-date value `{ now: "<ISO duration>" }` is legal only in the
+ * `@filter` of a segment, measure.aggregate or object.report (the loader's F1 rule), and
+ * this lowering has no rendering for it: it would otherwise land as a SQL literal of
+ * `[object Object]`. A programmatic caller skips the loader, so refuse it here, loudly.
+ * The report lowering (FR-044 Plan 2) replaces this throw.
+ */
+function assertNoRelativeDate(value: unknown, where: string): void {
+  const isRelative = (v: unknown): boolean =>
+    typeof v === "object" && v !== null && !Array.isArray(v) && FILTER_RELATIVE_NOW in v;
+  if (isRelative(value) || (Array.isArray(value) && value.some(isRelative))) {
+    throw new Error(
+      `${where}: a relative-date filter value ({ ${FILTER_RELATIVE_NOW}: "<ISO-8601 duration>" }) cannot be ` +
+        `lowered to a view; it is legal only in the @filter of a segment, measure.aggregate or object.report.`,
+    );
+  }
 }
 
 /**
@@ -143,7 +171,7 @@ function resolveAggregateFilter(
         op,
         field.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(field) : undefined,
         key,
-        entity.name,
+        `origin.aggregate @filter over ${entity.name}`,
       ),
     });
   }
@@ -188,13 +216,21 @@ function encodeIntEnumFilterValue(
   op: string,
   intMap: Record<string, number> | undefined,
   fieldName: string,
-  projectionName: string,
+  /** Names the filter being lowered, for the error text: the row-scope view @filter
+   *  (`Projection P: view @filter`) or an aggregate's scoping filter
+   *  (`origin.aggregate @filter over E`). */
+  host: string,
 ): unknown {
+  // Every filter value this lowering renders as a SQL literal passes through here — the
+  // row-scope view @filter AND the origin.aggregate scoping @filter — so this is the one
+  // place a relative-date value (FR-044, legal only on reporting hosts) is refused before
+  // it could land as `[object Object]`. Runs before the intMap early return on purpose.
+  assertNoRelativeDate(value, `${host} on "${fieldName}"`);
   if (intMap === undefined) return value;
   if (op === FILTER_OP_IS_NULL) return value;
   if (op === FILTER_OP_LIKE) {
     throw new Error(
-      `Projection ${projectionName}: view @filter uses "like" on "${fieldName}", an ` +
+      `${host} uses "like" on "${fieldName}", an ` +
         `int-backed field.enum (@intValueMap) — it stores as an integer column, so a ` +
         `substring match is not expressible. Use eq/ne/in.`,
     );
@@ -204,7 +240,7 @@ function encodeIntEnumFilterValue(
     const n = intMap[v];
     if (typeof n !== "number") {
       throw new Error(
-        `Projection ${projectionName}: view @filter value "${v}" for "${fieldName}" has no ` +
+        `${host} value "${v}" for "${fieldName}" has no ` +
           `entry in @intValueMap.`,
       );
     }
@@ -264,7 +300,7 @@ function resolveViewFilter(
       // rendered as a SQL literal. The Drizzle customType handles the runtime query
       // path, but view DDL is emitted as literal SQL text and never touches Drizzle.
       const value = encodeIntEnumFilterValue(
-        rawValue, op, intMapsByField.get(key), key, projectionName,
+        rawValue, op, intMapsByField.get(key), key, `Projection ${projectionName}: view @filter`,
       );
       if (col.kind === "passthrough") {
         clauses.push({ kind: "cmp", ref: `${col.sourceAlias}.${col.sourceColumn}`, op, value });

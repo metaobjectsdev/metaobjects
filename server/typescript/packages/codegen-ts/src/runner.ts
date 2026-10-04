@@ -15,7 +15,7 @@ import { assignEmittedNames } from "./naming/collision-names.js";
 import { assertNoCollectionNameCollisions } from "./naming/collection-name-collision.js";
 import { isAbstract } from "./instance-artifacts.js";
 import { dbEmittingObjects, missingDialectMessage } from "./db-emitting.js";
-import { hasAnyRdbSource } from "./source-detect.js";
+import { hasAnyRdbSource, isReport } from "./source-detect.js";
 import type { Generator, GenContext, EmittedFile } from "./generator.js";
 import type { MetaobjectsGenConfig } from "./metaobjects-config.js";
 import { normalizeConfig, DEFAULT_TARGET_NAME } from "./metaobjects-config.js";
@@ -407,8 +407,20 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     return { files: [], warnings, conflicts: [] };
   }
 
+  // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
+  // Dropped here, at the entity set every generator reads. A selection made only of
+  // reports gets the same "nothing to generate" warning as an empty one.
+  const generatable = filtered.filter((o) => !isReport(o));
+  if (generatable.length === 0) {
+    warnings.push(
+      "No entities to generate — every selected object is an object.report, which has no " +
+        "generated output until its lowering lands (FR-044 Plan 2/3).",
+    );
+    return { files: [], warnings, conflicts: [] };
+  }
+
   const safeEntities: MetaObject[] = [];
-  for (const entity of filtered) {
+  for (const entity of generatable) {
     if (!VALID_ENTITY_NAME.test(entity.name)) {
       warnings.push(
         `Skipping entity with unsafe name "${entity.name}" — must match /^[A-Za-z_][A-Za-z0-9_]*$/.`,

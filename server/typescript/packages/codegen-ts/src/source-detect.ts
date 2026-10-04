@@ -16,6 +16,7 @@
 // @metaobjectsdev/metadata tree").
 import {
   OBJECT_SUBTYPE_PROJECTION,
+  OBJECT_SUBTYPE_REPORT,
   SOURCE_SUBTYPE_RDB,
   isMetaSource,
   isWritableSource,
@@ -83,4 +84,15 @@ export function isSourcelessEntity(obj: MetaObject): boolean {
   if (obj.primaryIdentity() === undefined) return false;
   // ADR-0039: resolving — a source inherited through extends makes the object persistable.
   return !obj.children().some(isMetaSource);
+}
+
+/**
+ * True for an `object.report` (FR-044). Plan 1 registers and validates the reporting
+ * vocabulary but gives a report no lowering yet, so the runner drops it from the entity
+ * set every generator reads — including a report that declares a read-only
+ * `source.rdb @kind: view` (R5 allows one), which would otherwise pass every
+ * source-keyed gate below and emit an empty projection tier.
+ */
+export function isReport(obj: MetaObject): boolean {
+  return obj.subType === OBJECT_SUBTYPE_REPORT;
 }

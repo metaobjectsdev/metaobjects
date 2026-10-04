@@ -29,7 +29,11 @@ public static class CodegenRunner
         var warnings = new List<string>();
         var ctx = new GenContext
         {
-            Entities = root.Objects(),
+            // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
+            // Dropped here, at the entity set every generator reads, and not per generator:
+            // a report may declare a read-only `source.rdb @kind: view` (R5), which would
+            // otherwise pass every source-keyed gate and emit an empty projection tier.
+            Entities = root.Objects().Where(o => !o.IsReport()).ToList(),
             Root = root,
             Config = config,
             Warn = warnings.Add,

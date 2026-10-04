@@ -14,6 +14,7 @@ import {
   FILTER_COMPOSE_OR,
   FILTER_COMPOSE_AND,
 } from "../query/query-constants.js";
+import { FILTER_RELATIVE_NOW } from "../reporting/reporting-constants.js";
 import { registerAttrClass } from "../../attr-class-map.js";
 
 export class FilterAttr extends MetaAttr {
@@ -60,7 +61,13 @@ function desugarFilterObject(filter: AttrObject): AttrObject {
 function desugarClause(raw: AttrJson): AttrObject {
   if (raw === null) return { [FILTER_OP_IS_NULL]: true };
   if (Array.isArray(raw)) return { [FILTER_OP_IN]: raw };
-  if (typeof raw === "object") return raw as AttrObject;
+  // FR-044 F2: an object carrying a `now` key is a relative-date VALUE, never an
+  // op map (`now` is not an operator). Shorthand `{ f: { now: "-P7D" } }` therefore
+  // means `eq` like every other shorthand value, and survives as an opaque operand;
+  // validation then refuses it (`eq` is not a range op) instead of reading `now` as an op.
+  if (typeof raw === "object") {
+    return FILTER_RELATIVE_NOW in raw ? { [FILTER_OP_EQ]: raw } : (raw as AttrObject);
+  }
   return { [FILTER_OP_EQ]: raw };
 }
 

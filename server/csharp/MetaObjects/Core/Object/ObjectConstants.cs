@@ -7,7 +7,7 @@ using MetaObjects.Shared;
 namespace MetaObjects.Core.Object;
 
 /// <summary>
-/// Object concern constants — the object subtypes (base, entity, value, projection).
+/// Object concern constants — the object subtypes (base, entity, value, projection, report).
 /// </summary>
 public static class ObjectConstants
 {
@@ -17,6 +17,7 @@ public static class ObjectConstants
     //   - entity : persistent record (typically has @primary identity)
     //   - value  : value-object (no identity; equality by content)
     //   - projection : derived read-only representation of entities (FR-024, ADR-0028)
+    //   - report : declared dimensions x measures of one entity, compiled to a read-only view (FR-044)
     //
     // No object-level attrs: a Java-runtime materialization strategy enum has no
     // place in a cross-language metamodel core (ADR-0003 §4) and no conformance
@@ -26,6 +27,7 @@ public static class ObjectConstants
     public const string OBJECT_SUBTYPE_ENTITY     = "entity";
     public const string OBJECT_SUBTYPE_VALUE      = "value";
     public const string OBJECT_SUBTYPE_PROJECTION = "projection";
+    public const string OBJECT_SUBTYPE_REPORT     = "report";
 
     // -----------------------------------------------------------------------
     // FR-014 — TPH discriminator attrs (registered on every object subtype).
@@ -58,11 +60,31 @@ public static class ObjectConstants
     /// </summary>
     public const string OBJECT_PROJECTION_ATTR_FILTER = "filter";
 
+    // -----------------------------------------------------------------------
+    // FR-044 — object.report attrs. Mirrors TS OBJECT_REPORT_ATTR_*.
+    // -----------------------------------------------------------------------
+
+    /// <summary>The object.entity whose rows the report aggregates.</summary>
+    public const string OBJECT_REPORT_ATTR_FROM = "from";
+
+    /// <summary>Dimension names of @from; a time dimension is written <c>name:grain</c>.</summary>
+    public const string OBJECT_REPORT_ATTR_DIMENSIONS = "dimensions";
+
+    /// <summary>Measure names of @from.</summary>
+    public const string OBJECT_REPORT_ATTR_MEASURES = "measures";
+
+    /// <summary>Optional segment of @from scoping the rows.</summary>
+    public const string OBJECT_REPORT_ATTR_SEGMENT = "segment";
+
+    /// <summary>Optional row scope over @from's fields (an attr.filter).</summary>
+    public const string OBJECT_REPORT_ATTR_FILTER = "filter";
+
     public static readonly string[] OBJECT_SUBTYPES =
     [
         BaseTypes.SUBTYPE_BASE,
         OBJECT_SUBTYPE_ENTITY,
         OBJECT_SUBTYPE_VALUE,
         OBJECT_SUBTYPE_PROJECTION,
+        OBJECT_SUBTYPE_REPORT,
     ];
 }

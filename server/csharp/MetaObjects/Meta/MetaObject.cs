@@ -158,6 +158,9 @@ public class MetaObject(TypeId typeId, string name) : MetaData(typeId, name)
     /// <summary>True when the object's subtype is <c>projection</c> (a derived read-only model).</summary>
     public bool IsProjection() => SubType == OBJECT_SUBTYPE_PROJECTION;
 
+    /// <summary>True when the object's subtype is <c>report</c> (FR-044: declared dimensions x measures).</summary>
+    public bool IsReport() => SubType == OBJECT_SUBTYPE_REPORT;
+
     // -------------------------------------------------------------------------
     // Fields
     // -------------------------------------------------------------------------

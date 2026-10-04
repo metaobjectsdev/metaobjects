@@ -42,6 +42,17 @@ export * from "./core/identity/identity-constants.js";
 export * from "./core/index/index-constants.js";
 export * from "./core/requirement/requirement-constants.js";
 export { MetaRequirement } from "./core/requirement/meta-requirement.js";
+export * from "./core/reporting/reporting-constants.js";
+export { MetaDimension } from "./core/reporting/meta-dimension.js";
+export { MetaMeasure } from "./core/reporting/meta-measure.js";
+export { MetaSegment } from "./core/reporting/meta-segment.js";
+export {
+  reportFrom,
+  reportDimensionItems,
+  reportMeasureNames,
+  reportDerivedFieldName,
+  type ReportDimensionItem,
+} from "./core/reporting/report-accessors.js";
 // Shared `@implementedBy` resolution — one resolver for the CLI's requirement
 // checks and codegen's requirement-test fan-out (FR-038).
 export {

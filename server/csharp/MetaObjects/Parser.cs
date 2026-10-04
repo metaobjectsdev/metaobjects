@@ -1498,6 +1498,15 @@ public static class Parser
             return new Dictionary<string, object?>(StringComparer.Ordinal)
                 { [FILTER_OP_IN] = raw }.AsReadOnly();
 
+        // FR-044 F2: an object carrying a `now` key is a relative-date VALUE, never an
+        // op map (`now` is not an operator). Shorthand `{ f: { now: "-P7D" } }` therefore
+        // means `eq` like every other shorthand value, and survives as an opaque operand;
+        // validation then refuses it (`eq` is not a range op) instead of reading `now` as
+        // an op. An explicit-op clause `{ f: { gte: { now: ... } } }` passes through below.
+        if (raw is IReadOnlyDictionary<string, object?> relative && relative.ContainsKey(FILTER_RELATIVE_NOW))
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
+                { [FILTER_OP_EQ] = raw }.AsReadOnly();
+
         // already-object → pass through (explicit op clause)
         if (raw is IReadOnlyDictionary<string, object?> obj)
             return obj;

@@ -26,6 +26,7 @@ import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateSortableHasSupportedSubtype, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateM2MJunctionPairing, validateIndexLookupFields, validateProjectionFilter, validateRetiredRequirementLinks } from "./validation-passes.js";
+import { validateReporting } from "./reporting-validation.js";
 import { runRegisteredValidation } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { validateSourceEscapes } from "../persistence/source/validate-source-escapes.js";
@@ -645,6 +646,10 @@ export class MetaDataLoader {
       // projection's own declared, WHERE-addressable fields (passthrough/computed/plain);
       // an aggregate-derived or dangling ref is fail-closed (ERR_BAD_ATTR_FILTER).
       errors.push(...validateProjectionFilter(root));
+
+      // FR-044 — reporting vocabulary cross-node rules (dimensions, measures,
+      // segments, reports, relative-date filter values).
+      errors.push(...validateReporting(root));
 
       // FR-017 — M:N relationship validation (deferred-resolution): @through names a
       // junction declaring two identity.reference children; @sourceRefField matches one;

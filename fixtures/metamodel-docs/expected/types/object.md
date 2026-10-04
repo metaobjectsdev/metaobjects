@@ -48,11 +48,14 @@ An object that owns its data: own identity, writable sources, and lifecycle. The
 
 **Allowed children**
 
+- `dimension.*` — 0..*
 - `field.*` — 0..*
 - `identity.*` — 0..*
 - `index.*` — 0..*
 - `layout.*` — 0..*
+- `measure.*` — 0..*
 - `relationship.*` — 0..*
+- `segment.*` — 0..*
 - `source.*` — 0..*
 - `template.*` — 0..*
 - `validator.*` — 0..*
@@ -72,6 +75,33 @@ A derived read-only representation of entities. Its fields are extends-bound / o
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | `@filter` | filter | no |  |  | metaobjects-core-types | Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. Resolves against the projection's own declared fields; an aggregate-derived field is not addressable (fail-closed). |
+
+**Allowed children**
+
+- `field.*` — 0..*
+- `identity.*` — 0..*
+- `index.*` — 0..*
+- `layout.*` — 0..*
+- `source.*` — 0..*
+- `validator.*` — 0..*
+
+### object.report
+
+A declared report (FR-044): a fixed combination of dimensions and measures of ONE entity (@from), compiled to a read-only view. One row per distinct dimension tuple; no dimensions means exactly one row. Fields are DERIVED, not declared: one per dimension (a time dimension's field is <dimension><Grain>, e.g. purchasedAtDay) and one per measure. Every measure must belong to @from (two fact tables are two reports). @filter and @segment scope rows before grouping and combine by AND. Read-only: no writes, no get-by-id.
+
+**Owning provider:** metaobjects-core-types
+
+**When to use:** Dashboard totals, per-day series and per-group summaries that would otherwise be hand-written GROUP BY queries.
+
+**Attributes**
+
+| Attribute | Type | Required | Default | Allowed values | Provider | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| `@dimensions` | string[] | no |  |  | metaobjects-core-types | Dimension names of @from; a time dimension is written 'name:grain'. Absent means one global row. |
+| `@filter` | filter | no |  |  | metaobjects-core-types | Optional row scope over @from's fields; may use relative-date values. |
+| `@from` | string | yes |  |  | metaobjects-core-types | The object.entity whose rows the report aggregates. |
+| `@measures` | string[] | yes |  |  | metaobjects-core-types | Measure names of @from. |
+| `@segment` | string | no |  |  | metaobjects-core-types | Optional segment of @from scoping the rows. |
 
 **Allowed children**
 

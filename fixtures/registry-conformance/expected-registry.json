@@ -1,5 +1,5 @@
 {
-  "metamodelVersion": "1.0",
+  "metamodelVersion": "1.1",
   "types": [
     {
       "type": "attr",
@@ -76,6 +76,67 @@
       "subType": "string",
       "description": "A string-valued metadata attribute. Coerces to and validates as text; the default value-type for inline @-syntax attrs (array-of-string is the same subtype with isArray).",
       "attrs": [],
+      "children": []
+    },
+    {
+      "type": "dimension",
+      "subType": "attribute",
+      "description": "A named group-by attribute of the entity that declares it (FR-044). Groups report rows by a column value as-is. @of names Entity.field: the owning entity, or the @via terminal. @via may follow only to-one hops, so grouping by a related row's column can never multiply the measured rows.",
+      "whenToUse": "A column a dashboard groups by: product, status, region. Declare it once on the fact entity and reference it by name from reports.",
+      "attrs": [
+        {
+          "name": "of",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "Dotted Entity.field reference naming the grouped column (e.g. 'Purchase.programId', or 'Program.title' with @via)."
+        },
+        {
+          "name": "via",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "Optional dotted to-one relationship path from the owning entity to the entity @of names (e.g. 'Purchase.program'). Every hop must be @cardinality: one or an identity.reference."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "dimension",
+      "subType": "time",
+      "description": "A named time dimension (FR-044): groups report rows by a date or timestamp column truncated to a grain. @of names a field.date or field.timestamp. Weeks start on Monday (ISO-8601) in every lowering. A report names it as 'dimension:grain' and the derived report field is <dimension><Grain> (e.g. purchasedAtDay).",
+      "whenToUse": "Per-day, per-week or per-month series on a dashboard.",
+      "attrs": [
+        {
+          "name": "grains",
+          "valueType": "string",
+          "isArray": true,
+          "required": true,
+          "allowedValues": [
+            "hour",
+            "day",
+            "week",
+            "month",
+            "quarter",
+            "year"
+          ],
+          "description": "The grains this dimension supports. Weeks start Monday (ISO-8601). 'hour' is refused on a field.date."
+        },
+        {
+          "name": "of",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "Dotted Entity.field reference naming the date or timestamp column."
+        },
+        {
+          "name": "via",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "Optional dotted to-one relationship path, as on dimension.attribute."
+        }
+      ],
       "children": []
     },
     {
@@ -3065,6 +3126,80 @@
       "children": []
     },
     {
+      "type": "measure",
+      "subType": "aggregate",
+      "description": "A named aggregate over the declaring entity's own rows (FR-044). @agg count without @distinct counts rows; with @distinct it counts distinct values of @of (a list in @of is a distinct count of the tuple). Unlike origin.aggregate, count is NOT distinct by default: a measure aggregates its own rows and dimensions reach only to-one paths, so no join inflates it.",
+      "whenToUse": "A number a dashboard shows: revenue, purchases, distinct buyers, last activity.",
+      "attrs": [
+        {
+          "name": "agg",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "allowedValues": [
+            "count",
+            "sum",
+            "avg",
+            "min",
+            "max"
+          ],
+          "description": "The aggregate function. sum/avg need a numeric field; min/max refuse boolean, object and map fields."
+        },
+        {
+          "name": "distinct",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "Count distinct values. Legal only with @agg: count."
+        },
+        {
+          "name": "filter",
+          "valueType": "filter",
+          "isArray": false,
+          "required": false,
+          "description": "Optional row scope (a portable attr.filter over the declaring entity's fields). May use relative-date values ({ now: \"-P7D\" }). Combines with @segment by AND."
+        },
+        {
+          "name": "of",
+          "valueType": "string",
+          "isArray": true,
+          "required": true,
+          "description": "Dotted Entity.field reference(s) on the declaring entity. A bare string is one column; more than one requires @agg: count and @distinct: true."
+        },
+        {
+          "name": "segment",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "Optional name of a segment declared on the same entity. Combines with @filter by AND."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "measure",
+      "subType": "ratio",
+      "description": "A named quotient of two measure.aggregate siblings (FR-044), lowered as numerator / NULLIF(denominator, 0) and typed decimal. A zero denominator yields null.",
+      "whenToUse": "Averages per unit that are not a plain avg: average days engaged per starter.",
+      "attrs": [
+        {
+          "name": "denominator",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "Name of a measure.aggregate on the same entity."
+        },
+        {
+          "name": "numerator",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "Name of a measure.aggregate on the same entity."
+        }
+      ],
+      "children": []
+    },
+    {
       "type": "metadata",
       "subType": "root",
       "description": "Root metadata document",
@@ -3171,6 +3306,13 @@
       ],
       "children": [
         {
+          "childType": "dimension",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
           "childType": "field",
           "childSubType": "*",
           "childName": "*",
@@ -3199,7 +3341,21 @@
           "max": null
         },
         {
+          "childType": "measure",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
           "childType": "relationship",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "segment",
           "childSubType": "*",
           "childName": "*",
           "min": 0,
@@ -3241,6 +3397,93 @@
           "isArray": false,
           "required": false,
           "description": "Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. Resolves against the projection's own declared fields; an aggregate-derived field is not addressable (fail-closed)."
+        }
+      ],
+      "children": [
+        {
+          "childType": "field",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "identity",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "index",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "layout",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "source",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "subType": "report",
+      "description": "A declared report (FR-044): a fixed combination of dimensions and measures of ONE entity (@from), compiled to a read-only view. One row per distinct dimension tuple; no dimensions means exactly one row. Fields are DERIVED, not declared: one per dimension (a time dimension's field is <dimension><Grain>, e.g. purchasedAtDay) and one per measure. Every measure must belong to @from (two fact tables are two reports). @filter and @segment scope rows before grouping and combine by AND. Read-only: no writes, no get-by-id.",
+      "whenToUse": "Dashboard totals, per-day series and per-group summaries that would otherwise be hand-written GROUP BY queries.",
+      "attrs": [
+        {
+          "name": "dimensions",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "Dimension names of @from; a time dimension is written 'name:grain'. Absent means one global row."
+        },
+        {
+          "name": "filter",
+          "valueType": "filter",
+          "isArray": false,
+          "required": false,
+          "description": "Optional row scope over @from's fields; may use relative-date values."
+        },
+        {
+          "name": "from",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The object.entity whose rows the report aggregates."
+        },
+        {
+          "name": "measures",
+          "valueType": "string",
+          "isArray": true,
+          "required": true,
+          "description": "Measure names of @from."
+        },
+        {
+          "name": "segment",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "Optional segment of @from scoping the rows."
         }
       ],
       "children": [
@@ -3961,6 +4204,22 @@
           "max": null
         }
       ]
+    },
+    {
+      "type": "segment",
+      "subType": "filter",
+      "description": "A named, reusable row filter on the declaring entity (FR-044). Measures and reports reference it by name; exporters emit it as a named segment.",
+      "whenToUse": "The same filter (e.g. 'active purchase') would otherwise be repeated in several measures or reports.",
+      "attrs": [
+        {
+          "name": "filter",
+          "valueType": "filter",
+          "isArray": false,
+          "required": true,
+          "description": "The row scope: a portable attr.filter over the declaring entity's fields. May use relative-date values."
+        }
+      ],
+      "children": []
     },
     {
       "type": "source",

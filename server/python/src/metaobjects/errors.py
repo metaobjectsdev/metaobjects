@@ -117,6 +117,18 @@ class ErrorCode(str, Enum):
     # to any object in the loaded tree (a dangling cross-reference between metadata).
     ERR_INVALID_REFERENCE = "ERR_INVALID_REFERENCE"
     ERR_BAD_ATTR_FILTER = "ERR_BAD_ATTR_FILTER"
+    # FR-044 reporting vocabulary (loader/validate_reporting.py; rule ids D1-D4,
+    # M1-M6, R1-R7 in the shared rule table). ERR_INVALID_DIMENSION: a dimension's
+    # @of / @via does not resolve to a to-one path and a field of the right type.
+    # ERR_INVALID_MEASURE: a measure's @of / @agg / @distinct / @segment /
+    # ratio operands are inconsistent. ERR_INVALID_REPORT: an object.report's @from
+    # / @dimensions / @measures / @segment / declared children / source are invalid.
+    # ERR_REPORT_FOREIGN_MEASURE: a report lists a measure that belongs to a
+    # different entity than @from.
+    ERR_INVALID_DIMENSION = "ERR_INVALID_DIMENSION"
+    ERR_INVALID_MEASURE = "ERR_INVALID_MEASURE"
+    ERR_INVALID_REPORT = "ERR_INVALID_REPORT"
+    ERR_REPORT_FOREIGN_MEASURE = "ERR_REPORT_FOREIGN_MEASURE"
     # Reserved structural body key authored as an @-attr (source-v2 / ADR-0007).
     ERR_RESERVED_ATTR = "ERR_RESERVED_ATTR"
     # Source-v2 multi-source one-primary rule (ADR-0007).

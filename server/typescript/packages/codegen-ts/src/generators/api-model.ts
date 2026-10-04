@@ -125,6 +125,7 @@ import { servedPath, servesReadApi } from "../api-surface.js";
 import { isProjection } from "../projection/projection-detector.js";
 import { buildPkMap } from "../pk-resolver.js";
 import { buildRelationMap, type RelationEntry, type RelationMap } from "../relation-resolver.js";
+import { isReport } from "../source-detect.js";
 import { effectivePackage } from "../docs-paths.js";
 import { entityOutputPath, type OutputLayout } from "../import-path.js";
 import type { RenderContext } from "../render-context.js";
@@ -297,6 +298,9 @@ export function buildApiModel(root: MetaRoot, ctx: ApiModelContext): ApiModel {
   const units: ApiUnitDoc[] = [];
 
   for (const obj of root.objects()) {
+    // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
+    // It has no generated API to document yet.
+    if (isReport(obj)) continue;
     units.push(buildEntityUnit(obj, pkCtx, root, layout, relationMap, includeHono, apiPrefix));
   }
 

@@ -40,6 +40,7 @@ docs/
 │   ├── metadata-sources.md          # where metadata comes from: sources, scope, discovery
 │   ├── metadata-dependencies.md     # building on a metadata model published elsewhere (FR-023)
 │   ├── libraries.md                 # reusable declared design you opt into, a layer at a time (FR-043)
+│   ├── reporting.md                 # dimensions, measures, segments, reports: vocabulary and load rules (FR-044)
 │   └── own-your-codegen.md          # scaffold-and-own generator ownership (ADR-0034)
 └── ports/                       # one file per language/framework port
     ├── typescript.md
@@ -65,6 +66,7 @@ this tree is documentation, not the source of truth.
 | Build on a metadata model another repository publishes (`dependencies`, `meta deps sync`, overlay/extend across the boundary) | [`features/metadata-dependencies.md`](features/metadata-dependencies.md) |
 | Adopt a design MetaObjects already ships — users/groups/roles, an LLM trace envelope — instead of authoring it (`libraries`, `meta eject <library>`) | [`features/libraries.md`](features/libraries.md) |
 | Record what the system is supposed to do, and stop agents reviving retired features | [`features/requirements.md`](features/requirements.md) |
+| Declare what a dashboard groups by and counts (`dimension`, `measure`, `segment`, `object.report`; load-time checked, no generated output yet) | [`features/reporting.md`](features/reporting.md) |
 | Wire prompt construction (FR-004) | [`features/templates-and-payloads.md`](features/templates-and-payloads.md) |
 | Share a metadata shape across multiple instances (abstracts, `extends:`) | [`features/abstracts-and-inheritance.md`](features/abstracts-and-inheritance.md) |
 | Add a custom metamodel subtype or attribute to a downstream project | [`features/extending-with-providers.md`](features/extending-with-providers.md) + [`recipes/extending-metaobjects-with-providers.md`](recipes/extending-metaobjects-with-providers.md) |

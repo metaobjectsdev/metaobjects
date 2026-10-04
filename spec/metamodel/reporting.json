@@ -1,0 +1,43 @@
+{
+  "provider": "metaobjects-core-types",
+  "types": [
+    { "type": "dimension", "subType": "attribute",
+      "description": "A named group-by attribute of the entity that declares it (FR-044). Groups report rows by a column value as-is. @of names Entity.field: the owning entity, or the @via terminal. @via may follow only to-one hops, so grouping by a related row's column can never multiply the measured rows.",
+      "whenToUse": "A column a dashboard groups by: product, status, region. Declare it once on the fact entity and reference it by name from reports.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "of", "min": 1, "max": 1, "description": "Dotted Entity.field reference naming the grouped column (e.g. 'Purchase.programId', or 'Program.title' with @via)." },
+        { "type": "attr", "subType": "string", "name": "via", "min": 0, "max": 1, "description": "Optional dotted to-one relationship path from the owning entity to the entity @of names (e.g. 'Purchase.program'). Every hop must be @cardinality: one or an identity.reference." }
+      ] },
+    { "type": "dimension", "subType": "time",
+      "description": "A named time dimension (FR-044): groups report rows by a date or timestamp column truncated to a grain. @of names a field.date or field.timestamp. Weeks start on Monday (ISO-8601) in every lowering. A report names it as 'dimension:grain' and the derived report field is <dimension><Grain> (e.g. purchasedAtDay).",
+      "whenToUse": "Per-day, per-week or per-month series on a dashboard.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "of", "min": 1, "max": 1, "description": "Dotted Entity.field reference naming the date or timestamp column." },
+        { "type": "attr", "subType": "string", "name": "via", "min": 0, "max": 1, "description": "Optional dotted to-one relationship path, as on dimension.attribute." },
+        { "type": "attr", "subType": "string", "name": "grains", "isArray": true, "min": 1, "max": 1, "allowedValues": ["hour", "day", "week", "month", "quarter", "year"], "description": "The grains this dimension supports. Weeks start Monday (ISO-8601). 'hour' is refused on a field.date." }
+      ] },
+    { "type": "measure", "subType": "aggregate",
+      "description": "A named aggregate over the declaring entity's own rows (FR-044). @agg count without @distinct counts rows; with @distinct it counts distinct values of @of (a list in @of is a distinct count of the tuple). Unlike origin.aggregate, count is NOT distinct by default: a measure aggregates its own rows and dimensions reach only to-one paths, so no join inflates it.",
+      "whenToUse": "A number a dashboard shows: revenue, purchases, distinct buyers, last activity.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "agg", "min": 1, "max": 1, "allowedValues": ["count", "sum", "avg", "min", "max"], "description": "The aggregate function. sum/avg need a numeric field; min/max refuse boolean, object and map fields." },
+        { "type": "attr", "subType": "string", "name": "of", "isArray": true, "min": 1, "max": 1, "description": "Dotted Entity.field reference(s) on the declaring entity. A bare string is one column; more than one requires @agg: count and @distinct: true." },
+        { "type": "attr", "subType": "boolean", "name": "distinct", "min": 0, "max": 1, "description": "Count distinct values. Legal only with @agg: count." },
+        { "type": "attr", "subType": "filter", "name": "filter", "min": 0, "max": 1, "description": "Optional row scope (a portable attr.filter over the declaring entity's fields). May use relative-date values ({ now: \"-P7D\" }). Combines with @segment by AND." },
+        { "type": "attr", "subType": "string", "name": "segment", "min": 0, "max": 1, "description": "Optional name of a segment declared on the same entity. Combines with @filter by AND." }
+      ] },
+    { "type": "measure", "subType": "ratio",
+      "description": "A named quotient of two measure.aggregate siblings (FR-044), lowered as numerator / NULLIF(denominator, 0) and typed decimal. A zero denominator yields null.",
+      "whenToUse": "Averages per unit that are not a plain avg: average days engaged per starter.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "numerator", "min": 1, "max": 1, "description": "Name of a measure.aggregate on the same entity." },
+        { "type": "attr", "subType": "string", "name": "denominator", "min": 1, "max": 1, "description": "Name of a measure.aggregate on the same entity." }
+      ] },
+    { "type": "segment", "subType": "filter",
+      "description": "A named, reusable row filter on the declaring entity (FR-044). Measures and reports reference it by name; exporters emit it as a named segment.",
+      "whenToUse": "The same filter (e.g. 'active purchase') would otherwise be repeated in several measures or reports.",
+      "children": [
+        { "type": "attr", "subType": "filter", "name": "filter", "min": 1, "max": 1, "description": "The row scope: a portable attr.filter over the declaring entity's fields. May use relative-date values." }
+      ] }
+  ]
+}
