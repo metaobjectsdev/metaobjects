@@ -468,6 +468,69 @@ describe("extractReportSpec: references resolve as the loader resolves them", ()
   });
 });
 
+describe("extractReportSpec: the @via walk starts at @from whatever its package looks like", () => {
+  /** `F` with a to-one reference to `P`, and a report grouping by P's title through it. */
+  const facts = (pkg: string, pTable = "ps"): InMemoryStringSource =>
+    file(pkg, [
+      {
+        "object.entity": {
+          name: "P",
+          children: [
+            { "source.rdb": { "@table": pTable } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "title" } },
+            { "identity.primary": { name: "pk", "@fields": ["id"] } },
+          ],
+        },
+      },
+      {
+        "object.entity": {
+          name: "F",
+          children: [
+            { "source.rdb": { "@table": `${pTable}_facts` } },
+            { "field.long": { name: "id" } },
+            { "field.long": { name: "pId" } },
+            { "identity.primary": { name: "pk", "@fields": ["id"] } },
+            { "identity.reference": { name: "pRef", "@fields": ["pId"], "@references": "P" } },
+            { "dimension.attribute": { name: "pTitle", "@of": "P.title", "@via": "F.pRef" } },
+            { "measure.aggregate": { name: "facts", "@agg": "count", "@of": "F.id" } },
+          ],
+        },
+      },
+      {
+        "object.report": {
+          name: "ByP",
+          "@from": "F",
+          "@dimensions": ["pTitle"],
+          "@measures": ["facts"],
+          children: [view("v_by_p")],
+        },
+      },
+    ]);
+  const joinsOf = (root: MetaRoot, reportKey: string): unknown[] => {
+    const report = root.objects().find((o) => o.resolutionKey() === reportKey)!;
+    const s = extractReportSpec(report, root, CTX);
+    return [s.joinTree.baseEntity, ...s.joinTree.joins.map((j) => [j.relationship, j.targetEntity])];
+  };
+
+  test.each(["acme", "com.acme", "com.acme::shop.v2"])(
+    "a @via dimension lowers to one join in package '%s' (a package name may contain a dot)",
+    async (pkg) => {
+      const root = await loadFiles([facts(pkg)]);
+      expect(joinsOf(root, `${pkg}::ByP`)).toEqual([`${pkg}::F`, ["pRef", `${pkg}::P`]]);
+    },
+  );
+
+  test("the walk starts at THIS report's @from when another package has an entity of the same short name", async () => {
+    // Loaded in both orders: neither `F` may win by load order.
+    for (const files of [[facts("one", "ps1"), facts("two", "ps2")], [facts("two", "ps2"), facts("one", "ps1")]]) {
+      const root = await loadFiles(files);
+      expect(joinsOf(root, "one::ByP")).toEqual(["one::F", ["pRef", "one::P"]]);
+      expect(joinsOf(root, "two::ByP")).toEqual(["two::F", ["pRef", "two::P"]]);
+    }
+  });
+});
+
 describe("extractReportSpec: refusals that name what is wrong", () => {
   test("refuses an abstract @from, naming the report and the entity", async () => {
     const root = await loadFiles([

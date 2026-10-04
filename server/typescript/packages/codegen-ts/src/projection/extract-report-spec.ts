@@ -302,7 +302,11 @@ export function extractReportSpec(report: MetaObject, root: MetaRoot, ctx: Extra
         `${where} @via '${via}' must be Owner.hop[.hop...], starting at @from '${from.name}' or an entity it extends.`,
       );
     }
-    const path = walkViaPath([from.resolutionKey(), ...hops].join("."), root, packageOf(from), ctx);
+    // The head is `from`'s SHORT name, resolved in `from`'s own package: a bare name binds the
+    // referrer's package first, so it is `from` itself even when another package has an entity
+    // of that name. Never its resolution key: walkViaPath splits on every `.`, and a package
+    // name may contain one (`com.acme::F`).
+    const path = walkViaPath([from.name, ...hops].join("."), root, packageOf(from), ctx);
     // walkViaPath stops at the first hop it cannot resolve; a partial path would pin the
     // dimension to the wrong alias, so the whole chain must be walked.
     if (path.length !== hops.length) {

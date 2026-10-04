@@ -334,7 +334,11 @@ the bodies are valid under MySQL's default `ONLY_FULL_GROUP_BY`.
   Group by a scalar field.
 - **With `@via`, `@of` must name an entity that has the field** (declared on it or inherited by
   it); naming a base of the reached entity for a field only the subtype declares loads and then
-  fails `meta migrate`. Without `@via` the field is read from the `@from` entity itself.
+  fails `meta migrate`. The quiet form of the same rule: a `@via` dimension reads its field from
+  the entity `@of` names, so when the reached subtype **redeclares** that field and `@of` names
+  the base, the view selects the base's column and type with no error. Qualify `@of` with the
+  subtype that declares the field you mean. Without `@via` the field is read from the `@from`
+  entity itself.
 
 ### What the corpus gates
 
