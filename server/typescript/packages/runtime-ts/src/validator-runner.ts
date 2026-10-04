@@ -1,7 +1,7 @@
 // Pure function: NEVER throws. ObjectManager wraps a non-ok result in a ValidationError on writes;
 // om.validate() returns the result directly.
 
-import { isMetaObject, isMetaRoot, type MetaData } from "@metaobjectsdev/metadata";
+import { isMetaObject, isMetaRoot, resolveObjectRef, type MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_FIELD, TYPE_VALIDATOR,
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
@@ -10,7 +10,7 @@ import {
   FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
   FIELD_ATTR_DB_COLUMN_TYPE, DB_COLUMN_TYPE_JSONB, FIELD_ATTR_OBJECT_REF,
-  PACKAGE_SEPARATOR, OBJECT_SUBTYPE_VALUE,
+  OBJECT_SUBTYPE_VALUE,
   VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_PATTERN,
   VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_ARRAY,
   FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET, FIELD_ATTR_LENIENT,
@@ -190,12 +190,13 @@ function resolveVoRef(field: MetaData): MetaData | undefined {
   // class check fails for a real root and every VO reference silently stops
   // resolving, skipping nested value-object validation with no error.
   if (!isMetaRoot(root)) return undefined;
-  // The package-qualified key first, so `billing::Address` never resolves to another
-  // package's `Address`; then the bare name (a bare ref, or the trailing segment).
-  const objects = root.objects();
-  const sep = ref.lastIndexOf(PACKAGE_SEPARATOR);
-  const short = sep >= 0 ? ref.slice(sep + PACKAGE_SEPARATOR.length) : ref;
-  const target = objects.find((o) => o.resolutionKey() === ref) ?? objects.find((o) => o.name === short);
+  // ADR-0042 — the SINGLE object-ref resolver every ref site shares: an FQN matches
+  // its resolution key exactly; a bare ref resolves in the DECLARING owner's package
+  // (an inherited field resolves in the package that declared it), then a root-level
+  // object — never a same-named object in some other package.
+  const owner = field.parent ?? root;
+  const referrerPkg = owner.package ?? owner.fileDefaultPackage ?? "";
+  const target = resolveObjectRef(root, ref, referrerPkg).node;
   return target?.subType === OBJECT_SUBTYPE_VALUE ? target : undefined;
 }
 

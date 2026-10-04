@@ -468,6 +468,26 @@ def test_package_qualified_object_ref_picks_the_object_in_that_package() -> None
     assert _rules(order, {"addr": {"zip": "12345"}}) == ["addr.city:required"]
 
 
+def test_bare_object_ref_resolves_in_the_declaring_entitys_own_package() -> None:
+    from metaobjects.loader.meta_data_loader import InMemoryStringSource
+
+    def doc(pkg: str, child: dict) -> str:
+        return json.dumps({"metadata.root": {"package": pkg, "children": [child]}})
+
+    # shipping loads first, so a first-match-of-that-name scan would bind its Address.
+    result = MetaDataLoader().load([InMemoryStringSource(text) for text in (
+        doc("shipping", {"object.value": {"name": "Address", "children": [_string("zip", required=True)]}}),
+        doc("billing", {"object.entity": {"name": "Order", "children": [
+            {"field.object": {"name": "addr", "@objectRef": "Address"}},
+        ]}}),
+        doc("billing", {"object.value": {"name": "Address", "children": [_string("city", required=True)]}}),
+    )])
+    assert not result.errors, [str(e) for e in result.errors]
+    order = next(c for c in result.root.children() if c.name == "Order")
+    assert _rules(order, {"addr": {"city": "NYC"}}) == []
+    assert _rules(order, {"addr": {"zip": "12345"}}) == ["addr.city:required"]
+
+
 def test_numbers_in_messages_print_as_javascript_prints_them() -> None:
     from metaobjects.runtime.validator_runner import _js_number
 

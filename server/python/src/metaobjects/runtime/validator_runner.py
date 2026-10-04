@@ -30,8 +30,8 @@ from ..meta.core.object.object_constants import OBJECT_SUBTYPE_VALUE
 from ..meta.core.validator import validator_constants as vc
 from ..meta.meta_data import MetaData
 from ..meta.persistence.db import db_constants as dbc
+from ..naming_refs import resolve_object_ref
 from ..shared.base_types import TYPE_FIELD, TYPE_VALIDATOR
-from ..shared.separators import PACKAGE_SEP
 
 
 @dataclass(frozen=True)
@@ -214,12 +214,14 @@ def _resolve_vo_ref(field: MetaData) -> MetaObject | None:
     root: MetaData = field
     while root.parent is not None:
         root = root.parent
-    objects = [c for c in root.children() if isinstance(c, MetaObject)]
-    short = ref.rsplit(PACKAGE_SEP, 1)[-1]
-    target = next((o for o in objects if o.resolution_key() == ref), None) or next(
-        (o for o in objects if o.name == short), None,
-    )
-    return target if target is not None and target.sub_type == OBJECT_SUBTYPE_VALUE else None
+    # ADR-0042 — the SINGLE object-ref resolver every ref site shares: an FQN matches
+    # its resolution key exactly; a bare ref resolves in the DECLARING owner's package
+    # (an inherited field resolves in the package that declared it), then a root-level
+    # object — never a same-named object in some other package.
+    owner = field.parent if field.parent is not None else root
+    referrer_pkg = owner.package or owner.file_default_package or ""
+    target = resolve_object_ref(root, ref, referrer_pkg)
+    return target if isinstance(target, MetaObject) and target.sub_type == OBJECT_SUBTYPE_VALUE else None
 
 
 def _assigned_pk_field_names(entity: MetaData) -> frozenset[str]:

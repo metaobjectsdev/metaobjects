@@ -500,4 +500,28 @@ describe("runValidators — value-object @objectRef resolution", () => {
     expect(errorsOf(order, { addr: { city: "NYC" } })).toEqual([]);
     expect(errorsOf(order, { addr: { zip: "12345" } }).map((e) => e.field)).toEqual(["addr.city"]);
   });
+
+  test("a bare ref resolves in the declaring entity's own package, not the first of that name", async () => {
+    const { MetaDataLoader, InMemoryStringSource } = await import("@metaobjectsdev/metadata");
+    const file = (pkg: string, children: unknown[]) =>
+      new InMemoryStringSource(JSON.stringify({ "metadata.root": { package: pkg, children } }));
+    // shipping loads first, so a first-match-of-that-name scan would bind its Address.
+    const r = await new MetaDataLoader().load([
+      file("shipping", [{ "object.value": { name: "Address", children: [
+        { "field.string": { name: "zip", "@required": true } },
+      ] } }]),
+      file("billing", [
+        { "object.value": { name: "Address", children: [
+          { "field.string": { name: "city", "@required": true } },
+        ] } },
+        { "object.entity": { name: "Order", children: [
+          { "field.object": { name: "addr", "@objectRef": "Address" } },
+        ] } },
+      ]),
+    ]);
+    expect(r.errors).toEqual([]);
+    const order = r.root.objects().find((o) => o.name === "Order")!;
+    expect(errorsOf(order, { addr: { city: "NYC" } })).toEqual([]);
+    expect(errorsOf(order, { addr: { zip: "12345" } }).map((e) => e.field)).toEqual(["addr.city"]);
+  });
 });
