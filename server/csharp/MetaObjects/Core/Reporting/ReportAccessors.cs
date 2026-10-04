@@ -48,9 +48,35 @@ public static class ReportAccessors
             .ToList()
             .AsReadOnly();
 
-    /// <summary>The <c>@measures</c> names.</summary>
+    /// <summary>
+    /// The <c>@measures</c> items AS WRITTEN: each a bare measure <c>name</c>, or a dotted
+    /// <c>Entity.name</c> (loader rule R3). Use <see cref="ReportMeasureItemName"/> for the measure name.
+    /// </summary>
     public static IReadOnlyList<string> ReportMeasureNames(MetaData obj) =>
         ReportingValues.StringList(obj.Attr(OBJECT_REPORT_ATTR_MEASURES));
+
+    /// <summary>
+    /// The measure a <c>@measures</c> item names: the segment after its LAST <c>.</c>
+    /// (<c>total</c>, <c>Sale.total</c> and <c>acme::shop::Sale.total</c> all name
+    /// <c>total</c>). It is also the derived report field's name. The part before that
+    /// <c>.</c>, when present, is an entity qualifier (<see cref="ReportMeasureItemOwner"/>).
+    /// </summary>
+    public static string ReportMeasureItemName(string item)
+    {
+        int dot = item.LastIndexOf(CHILD_REF_SEPARATOR, StringComparison.Ordinal);
+        return dot == -1 ? item : item[(dot + CHILD_REF_SEPARATOR.Length)..];
+    }
+
+    /// <summary>
+    /// The entity qualifier of a dotted <c>@measures</c> item (<c>Sale</c> in
+    /// <c>Sale.total</c>), or null for a bare item. Loader rule R3: it names <c>@from</c>
+    /// or an entity <c>@from</c> extends.
+    /// </summary>
+    public static string? ReportMeasureItemOwner(string item)
+    {
+        int dot = item.LastIndexOf(CHILD_REF_SEPARATOR, StringComparison.Ordinal);
+        return dot == -1 ? null : item[..dot];
+    }
 
     /// <summary>
     /// The derived report field for a dimension item: <c>name</c> (attribute) or

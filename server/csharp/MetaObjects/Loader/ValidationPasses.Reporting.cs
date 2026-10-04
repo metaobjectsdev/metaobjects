@@ -143,7 +143,8 @@ public static partial class ValidationPasses
     }
 
     /// <summary>True when <paramref name="candidate"/> is <paramref name="entity"/> or an entity it extends.</summary>
-    private static bool IsSelfOrAncestor(MetaData? candidate, MetaData entity)
+    // Internal: the report shape (ReportShapes) applies the same test, so it uses this one.
+    internal static bool IsSelfOrAncestor(MetaData? candidate, MetaData entity)
     {
         var visited = new HashSet<MetaData>(ReferenceEqualityComparer.Instance);
         for (MetaData? n = entity; n is not null && !visited.Contains(n); n = n.SuperData)

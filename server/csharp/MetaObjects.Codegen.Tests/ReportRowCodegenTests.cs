@@ -386,4 +386,78 @@ public class ReportRowCodegenTests
             if (Directory.Exists(outDir)) Directory.Delete(outDir, recursive: true);
         }
     }
+
+    // ---------------------------------------------------------------------
+    // What generates nothing, and what is refused
+    // ---------------------------------------------------------------------
+
+    private const string ObjectDimensionModel =
+        """
+        { "metadata.root": { "package": "acme::shop", "children": [
+          { "object.value": { "name": "Address", "children": [
+            { "field.string": { "name": "city" } }
+          ] } },
+          { "object.entity": { "name": "Sale", "children": [
+            { "source.rdb": { "@table": "sales" } },
+            { "field.long": { "name": "id", "@required": true } },
+            { "field.object": { "name": "shipTo", "@objectRef": "Address", "@storage": "jsonb" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } },
+            { "dimension.attribute": { "name": "destination", "@of": "Sale.shipTo" } },
+            { "measure.aggregate": { "name": "sales", "@agg": "count", "@of": "Sale.id" } }
+          ] } },
+          { "object.report": { "name": "SalesByDestination", "@from": "Sale",
+              "@dimensions": ["destination"], "@measures": ["sales"]<<SOURCE>> } }
+        ] } }
+        """;
+
+    private static MetaRoot LoadObjectDimension(bool viewBacked)
+    {
+        string source = viewBacked
+            ? ", \"children\": [ { \"source.rdb\": { \"@kind\": \"view\", \"@view\": \"v_by_destination\" } } ]"
+            : "";
+        var result = new MetaDataLoader().Load(
+            [new InMemoryStringSource(ObjectDimensionModel.Replace("<<SOURCE>>", source), id: "meta.shop.json")]);
+        Assert.True(result.Errors.Count == 0,
+            "model did not load:\n" + string.Join("\n", result.Errors.Select(e => $"  {e.Code}: {e.Message}")));
+        return result.Root;
+    }
+
+    [Fact]
+    public void A_dimension_over_a_field_object_is_refused_naming_the_report_and_the_dimension()
+    {
+        // The loader accepts it. Left alone, the row class silently has no property for
+        // the dimension, so the report would read without the column it groups by.
+        var root = LoadObjectDimension(viewBacked: true);
+        foreach (var generator in new IGenerator[] { new EntityGenerator(), new DbContextGenerator() })
+        {
+            var ex = Assert.Throws<InvalidOperationException>(() => generator.Generate(RunnerContext(root)).ToList());
+            Assert.Equal(
+                "report \"SalesByDestination\": its dimension \"destination\" reads \"acme::shop::Sale.shipTo\", " +
+                "a field.object. A report over a field.object is not supported; group by a scalar field.",
+                ex.Message);
+        }
+    }
+
+    [Fact]
+    public void A_sourceless_report_over_a_field_object_generates_nothing_and_is_not_refused()
+    {
+        var files = EmitAll(RunnerContext(LoadObjectDimension(viewBacked: false)));
+        Assert.DoesNotContain(files.Keys, k => k.Contains("SalesByDestination", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void An_abstract_view_backed_report_generates_nothing()
+    {
+        // An abstract object gets no class in this port, report or not. The TypeScript,
+        // Java and Python runtimes still read the view (docs/features/reporting.md, Known limits).
+        string report = Report("SalesTotal", "\"@kind\": \"view\", \"@view\": \"v_sales\"")
+            .Replace("\"name\": \"SalesTotal\",", "\"name\": \"SalesTotal\", \"abstract\": true,");
+        Assert.Contains("\"abstract\": true", report);
+        var with = EmitAll(RunnerContext(Load(report)));
+        var without = EmitAll(RunnerContext(Load()));
+
+        Assert.Equal(without.Keys.OrderBy(k => k).ToList(), with.Keys.OrderBy(k => k).ToList());
+        foreach (var (path, content) in without)
+            Assert.True(content == with[path], $"{path} changed");
+    }
 }

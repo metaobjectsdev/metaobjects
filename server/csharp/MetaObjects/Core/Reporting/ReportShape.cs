@@ -7,6 +7,7 @@
 // artifact every port byte-matches; see ReportShapeTests).
 
 using System.Text;
+using MetaObjects.Loader;
 using MetaObjects.Meta;
 
 namespace MetaObjects.Core.Reporting;
@@ -52,15 +53,43 @@ public static class ReportShapes
     private static readonly HashSet<string> Floating =
         new(StringComparer.Ordinal) { FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT };
 
-    /// <summary>Resolve a dimension's or measure's <c>Entity.field</c> reference to the field node.</summary>
-    public static MetaField? ResolveReportingFieldRef(string reference, MetaObject owner, MetaRoot root)
+    /// <summary>
+    /// The entity that DECLARES a dimension or measure reached through <paramref name="from"/>:
+    /// the member's parent, which is <paramref name="from"/> itself or an entity it extends. A
+    /// bare entity name inside the member (<c>@of</c>, <c>@via</c>) resolves in THIS entity's
+    /// package, exactly as the loader's <c>ValidateReporting</c> resolves it
+    /// (<c>EffectivePackage(ctx.Declaring)</c>), never in <paramref name="from"/>'s package or
+    /// the report's.
+    /// </summary>
+    public static MetaData ReportingMemberOwner(MetaData member, MetaObject from) => member.Parent ?? from;
+
+    /// <summary>
+    /// Resolve a dimension's or measure's <c>Entity.field</c> reference to the field node.
+    /// The ONE rule, the same as the loader's (<c>ValidateReporting</c> D1 / M1) and as the
+    /// TypeScript <c>resolveReportingFieldRef</c>:
+    /// <list type="number">
+    /// <item>The entity half resolves relative to the package of <paramref name="declaring"/>,
+    /// the entity that declares the member (<see cref="ReportingMemberOwner"/>).</item>
+    /// <item>With <paramref name="host"/> (a measure, or a dimension without <c>@via</c>: the
+    /// reference is about the <c>@from</c> entity's own rows) the named entity must be
+    /// <paramref name="host"/> or an entity it extends, and the field is read from
+    /// <paramref name="host"/>, so a field it redeclares wins.</item>
+    /// <item>Without <paramref name="host"/> (a dimension with <c>@via</c>) the field is read
+    /// from the named entity.</item>
+    /// </list>
+    /// Null when any step fails.
+    /// </summary>
+    public static MetaField? ResolveReportingFieldRef(
+        string reference, MetaData declaring, MetaRoot root, MetaObject? host = null)
     {
         // `Entity.field`; a package qualifier uses `::`, so the member separator is the LAST dot.
         int dot = reference.LastIndexOf(CHILD_REF_SEPARATOR, StringComparison.Ordinal);
         if (dot <= 0) return null;
-        var entity = NamingRefs.ResolveObjectRef(root, reference[..dot], NamingRefs.EffectivePackage(owner)) as MetaObject;
+        if (NamingRefs.ResolveObjectRef(root, reference[..dot], NamingRefs.EffectivePackage(declaring))
+            is not MetaObject named) return null;
+        if (host is not null && !ValidationPasses.IsSelfOrAncestor(named, host)) return null;
         // ADR-0039: resolving, so a field inherited through extends is found.
-        return entity?.FindField(reference[(dot + CHILD_REF_SEPARATOR.Length)..]);
+        return (host ?? named).FindField(reference[(dot + CHILD_REF_SEPARATOR.Length)..]);
     }
 
     private static InvalidOperationException Unresolved(string reportName, string what) =>
@@ -74,30 +103,49 @@ public static class ReportShapes
     {
         var dim = DeclaredMember<MetaDimension>(from, TYPE_DIMENSION, item.Name)
             ?? throw Unresolved(reportName, $"dimension '{item.Name}' on '{from.Name}'");
-        var of = ResolveReportingFieldRef(dim.Of() ?? "", from, root)
+        bool vialess = dim.Via() is null;
+        var of = ResolveReportingFieldRef(dim.Of() ?? "", ReportingMemberOwner(dim, from), root, vialess ? from : null)
             ?? throw Unresolved(reportName, $"dimension '{item.Name}' @of");
         string name = ReportAccessors.ReportDerivedFieldName(item);
         // The @required ATTR only, read resolving (ADR-0039); a validator.required child does not count.
-        bool required = dim.Via() is null && of.Attr(FIELD_ATTR_REQUIRED) is true;
+        bool required = vialess && of.Attr(FIELD_ATTR_REQUIRED) is true;
         if (dim.IsTime())
         {
-            return item.Grain == GRAIN_HOUR
-                ? new ReportField(name, ReportFieldRole.Dimension, FIELD_SUBTYPE_TIMESTAMP, required, of, dim, item.Grain)
-                : new ReportField(name, ReportFieldRole.Dimension, FIELD_SUBTYPE_DATE, required, null, dim, item.Grain);
+            // Loader rule R2 guarantees a grain from the closed set; a tree built in code does not.
+            string? grain = item.Grain;
+            if (grain is null || !TIME_GRAINS.Contains(grain, StringComparer.Ordinal))
+                throw Unresolved(reportName, $"time dimension '{item.Name}' grain '{grain ?? ""}'");
+            return grain == GRAIN_HOUR
+                ? new ReportField(name, ReportFieldRole.Dimension, FIELD_SUBTYPE_TIMESTAMP, required, of, dim, grain)
+                : new ReportField(name, ReportFieldRole.Dimension, FIELD_SUBTYPE_DATE, required, null, dim, grain);
         }
         return new ReportField(name, ReportFieldRole.Dimension, of.SubType, required, of, dim);
     }
 
-    private static ReportField MeasureField(string name, MetaObject from, MetaRoot root, string reportName)
+    /// <summary>
+    /// One <c>@measures</c> item, bare (<c>total</c>) or dotted (<c>Sale.total</c>, loader
+    /// rule R3). The measure is named by the item's last segment and looked up on
+    /// <paramref name="from"/>; a qualifier resolves in the REPORT's package and must be
+    /// <paramref name="from"/> or an entity it extends.
+    /// </summary>
+    private static ReportField MeasureField(string item, MetaObject report, MetaObject from, MetaRoot root)
     {
+        string reportName = report.Name;
+        string name = ReportAccessors.ReportMeasureItemName(item);
+        if (ReportAccessors.ReportMeasureItemOwner(item) is { } qualifier)
+        {
+            var owner = NamingRefs.ResolveObjectRef(root, qualifier, NamingRefs.EffectivePackage(report));
+            if (owner is null || !ValidationPasses.IsSelfOrAncestor(owner, from))
+                throw Unresolved(reportName, $"measure '{item}' on '{from.Name}'");
+        }
         var m = DeclaredMember<MetaMeasure>(from, TYPE_MEASURE, name)
-            ?? throw Unresolved(reportName, $"measure '{name}' on '{from.Name}'");
+            ?? throw Unresolved(reportName, $"measure '{item}' on '{from.Name}'");
         if (m.IsRatio())
             return new ReportField(name, ReportFieldRole.Measure, FIELD_SUBTYPE_DECIMAL, false, Measure: m);
         string? agg = m.Agg();
         if (agg == AGG_COUNT)
             return new ReportField(name, ReportFieldRole.Measure, FIELD_SUBTYPE_LONG, true, Measure: m);
-        var of = ResolveReportingFieldRef(m.OfColumns().FirstOrDefault() ?? "", from, root)
+        var of = ResolveReportingFieldRef(m.OfColumns().FirstOrDefault() ?? "", ReportingMemberOwner(m, from), root, from)
             ?? throw Unresolved(reportName, $"measure '{name}' @of");
         string src = of.SubType;
         if (agg == AGG_SUM)
@@ -131,8 +179,8 @@ public static class ReportShapes
         var fields = new List<ReportField>();
         foreach (var item in ReportAccessors.ReportDimensionItems(report))
             fields.Add(DimensionField(item, from, root, report.Name));
-        foreach (string name in ReportAccessors.ReportMeasureNames(report))
-            fields.Add(MeasureField(name, from, root, report.Name));
+        foreach (string item in ReportAccessors.ReportMeasureNames(report))
+            fields.Add(MeasureField(item, report, from, root));
         return new ReportShape(report, from, fields.AsReadOnly());
     }
 

@@ -13,7 +13,9 @@
 // the Table B columns, so both still get a row. A report with no source stays inert, and
 // so does one whose read source is a materialized view, a stored procedure or a table
 // function: the lowering skips those kinds, so no relation with the Table B columns is
-// promised to exist.
+// promised to exist. An ABSTRACT report generates nothing either, view or not: an abstract
+// object gets no class in this port. And a view-backed report with a derived field over a
+// `field.object` is refused by name (RefuseObjectField): a keyless row cannot own it.
 //
 // WHY A SYNTHESIZED OBJECT, NOT A REPORT BRANCH IN EACH GENERATOR
 //
@@ -80,6 +82,7 @@ public static class ReportRows
             ?? throw new InvalidOperationException($"report '{report.Name}' declares no read-only source.");
         var shape = ReportShapes.Of(report, root);
         RefuseFieldNamedAfterTheRow(report, shape);
+        RefuseObjectField(report, shape);
 
         var model = new MetaObject(new TypeId(report.Type, report.SubType), report.Name);
         if (report.Package is { } pkg) model.SetPackage(pkg);
@@ -115,6 +118,30 @@ public static class ReportRows
                 $"\"{className}\" (the row class, and the property for derived field \"{f.Name}\"), " +
                 $"and a C# member cannot be named after its enclosing type — rename the report " +
                 $"or the {role}.");
+        }
+    }
+
+    /// <summary>
+    /// Refuse a report with a derived field typed by a <c>field.object</c> (a dimension over
+    /// an embedded value object, say). The loader accepts it, but a keyless row cannot own
+    /// the value object: the entity generator would emit the row with no property for the
+    /// field at all, and the report would read without the column it groups by. Reached
+    /// only for a report that generates a row. The Java read model and the Kotlin table
+    /// generator refuse the same report with the same sentence.
+    /// </summary>
+    private static void RefuseObjectField(MetaObject report, ReportShape shape)
+    {
+        foreach (var f in shape.Fields)
+        {
+            if (f.TypeSource is not { } src) continue;
+            // ADR-0039: resolving — an @objectRef the @of field inherits counts.
+            if (src.SubType != FIELD_SUBTYPE_OBJECT && src.Attr(FIELD_ATTR_OBJECT_REF) is null) continue;
+            string role = ReportShapes.RoleName(f.Role);
+            string item = f.Role == ReportFieldRole.Dimension ? f.Dimension!.Name : f.Measure!.Name;
+            string owner = src.Parent?.ResolutionKey() ?? "";
+            throw new InvalidOperationException(
+                $"report \"{report.Name}\": its {role} \"{item}\" reads \"{owner}.{src.Name}\", " +
+                $"a field.{src.SubType}. A report over a field.object is not supported; group by a scalar field.");
         }
     }
 
