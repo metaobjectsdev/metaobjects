@@ -29,6 +29,7 @@ import com.metaobjects.field.DoubleField;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.LongField;
 import com.metaobjects.field.MetaField;
+import com.metaobjects.field.ObjectField;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.object.ReportMetaObject;
 import com.metaobjects.source.MetaSource;
@@ -138,6 +139,9 @@ public final class ReportReadModel extends ReportMetaObject {
 
     /** True when the report has a view to read (Table A); a sourceless report is not served. */
     public boolean isServed() {
+        // ADR-0039: own — findPrimaryReadOnlySource() reads getSources(false). Sanctioned:
+        // the model's sources are exactly the one copy build() added (pinned to primary);
+        // the model extends nothing, so there is no inherited layer to drop.
         return findPrimaryReadOnlySource().isPresent();
     }
 
@@ -147,6 +151,7 @@ public final class ReportReadModel extends ReportMetaObject {
      * ({@code @view} for a view), so a report is read under the name the lowering created.
      */
     public String viewName() {
+        // ADR-0039: own — as isServed(): the model's one source is its own copy.
         return findPrimaryReadOnlySource().map(MetaSource::getPhysicalName).orElse(null);
     }
 
@@ -155,13 +160,34 @@ public final class ReportReadModel extends ReportMetaObject {
         // The resolution key carries the package, so the model resolves as the report does.
         ReportReadModel model = new ReportReadModel(report.getName());
         model.report = report;
-        for (ReportShape.Field f : shape.fields()) model.addChild(derivedField(f));
+        for (ReportShape.Field f : shape.fields()) {
+            refuseObjectField(report, f);
+            model.addChild(derivedField(f));
+        }
 
         MetaSource source = ReportShape.readSource(report);
         if (source != null) model.addChild(copySource(source));
 
         model.freeze();
         return model;
+    }
+
+    /**
+     * Refuse a derived field typed by a {@code field.object} (or by any field carrying
+     * {@code @objectRef}). The loader puts no subtype restriction on a dimension's
+     * {@code @of}, so such a report loads; but the derived field is a detached node, and an
+     * {@code @objectRef} on it cannot be resolved (there is no loader to resolve it in), so
+     * a read would fail deep in the codec with no report named. Refused here, by name.
+     */
+    private static void refuseObjectField(MetaObject report, ReportShape.Field f) {
+        MetaField<?> src = f.typeSource();
+        if (src == null) return;
+        // ADR-0039: resolving — an @objectRef the @of field inherits counts.
+        if (!ObjectField.SUBTYPE_OBJECT.equals(src.getSubType()) && !src.hasMetaAttr(MetaField.ATTR_OBJECT_REF)) return;
+        throw new MetaDataException("report '" + report.getShortName() + "': " + f.role().wireName() + " '"
+                + (f.dimension() != null ? f.dimension().getShortName() : f.name()) + "' reads '" + f.typeSourceKey()
+                + "', a field." + src.getSubType() + ". A report over a field.object is not supported;"
+                + " group by a scalar field.");
     }
 
     private static MetaField<?> derivedField(ReportShape.Field f) {

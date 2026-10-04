@@ -323,7 +323,10 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
      */
     @Override
     public ObjectRef getObjectRef(Object obj) {
-        requireNotReport(getMetaObjectFor(obj), "getObjectRef");
+        // The same lookup the base method does. An object with no metadata is left to the
+        // base, so everything but a report row behaves exactly as it did.
+        MetaObject mc = MetaDataUtil.findMetaObject(obj, this);
+        if (mc != null) requireNotReport(mc, "getObjectRef");
         return super.getObjectRef(obj);
     }
 
@@ -1073,6 +1076,15 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
     }
 
     /**
+     * The object an OQL query names as its result class ({@code [Name] SELECT ...}).
+     * Resolved through the loader registry, as it always was; a seam so a manager wired to
+     * a specific loader can resolve the name against it.
+     */
+    protected MetaObject findResultClass(String className) throws MetaDataNotFoundException {
+        return MetaDataUtil.findMetaObjectByName(className, this);
+    }
+
+    /**
      * Executes the specified query and maps it to the given object.
      *
      * String oql = "[" + Product.CLASSNAME + "]" + " SELECT {P.*}, {M.name} AS
@@ -1105,7 +1117,7 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
                 String className = query.substring(1, i).trim();
                 query = query.substring(i + 1).trim();
 
-                resultClass = MetaDataUtil.findMetaObjectByName(className, this);
+                resultClass = findResultClass(className);
             } else {
                 throw new MetaDataException("OQL does not contain a result set definition using []'s or {}'s: [" + query + "]");
             }
@@ -1121,6 +1133,11 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
 
                 LinkedList<Object> data = new LinkedList<Object>();
                 try {
+                    // FR-044: a declared report has no fields, so its rows are built from its
+                    // read model (one field per derived field). In OQL the author supplies the
+                    // SQL, so a sourceless report is a legitimate result shape too: it has a
+                    // model and simply no mapping, and columns bind by derived field name.
+                    if (ReportReadModel.isReport(resultClass)) resultClass = ReportReadModel.of(resultClass);
                     ObjectMappingDB mapping = (ObjectMappingDB) getReadMapping(resultClass);
 
                     while (rs.next()) {

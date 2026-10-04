@@ -16,6 +16,7 @@
 package com.metaobjects.reporting;
 
 import com.metaobjects.MetaData;
+import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaRoot;
 import com.metaobjects.database.CoreDBMetaDataProvider;
 import com.metaobjects.field.CurrencyField;
@@ -43,6 +44,7 @@ import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * FR-044 — {@link ReportReadModel}: the detached object a runtime reads a report through.
@@ -306,5 +308,45 @@ public class ReportReadModelTest extends SharedRegistryTestBase {
         assertSame(model, ReportReadModel.of(report));
         assertSame("a read model is its own read model", model, ReportReadModel.of(model));
         assertNotSame(model, ReportReadModel.of(object(canonical, "ProgramMinutes"), canonical));
+    }
+
+    // ---------------------------------------------------------------------------
+    // A derived field over a field.object is refused by name
+    // ---------------------------------------------------------------------------
+
+    private static final String OBJECT_DIMENSION_MODEL = """
+        { "metadata.root": { "package": "shop", "children": [
+          { "object.value": { "name": "Address", "children": [
+            { "field.string": { "name": "city" } }
+          ] } },
+          { "object.entity": { "name": "Sale", "children": [
+            { "source.rdb": { "@table": "sales" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+            { "field.object": { "name": "shipTo", "@objectRef": "Address", "@storage": "jsonb" } },
+            { "dimension.attribute": { "name": "destination", "@of": "Sale.shipTo" } },
+            { "measure.aggregate": { "name": "sales", "@agg": "count", "@of": "Sale.id" } }
+          ] } },
+          { "object.report": { "name": "SalesByDestination", "@from": "Sale",
+              "@dimensions": ["destination"], "@measures": ["sales"], "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_sales_by_destination" } }
+          ] } }
+        ] } }
+        """;
+
+    @Test
+    public void aDimensionOverAFieldObjectIsRefusedByName() {
+        MetaRoot root = loadJson(OBJECT_DIMENSION_MODEL);
+        MetaObject report = object(root, "SalesByDestination");
+        // The shape still derives (the loader accepts the model); the read model refuses.
+        assertEquals("object", ReportShape.of(report, root).fields().get(0).subType());
+        try {
+            ReportReadModel.of(report, root);
+            fail("a report over a field.object must be refused");
+        } catch (MetaDataException e) {
+            assertEquals("report 'SalesByDestination': dimension 'destination' reads 'shop::Sale.shipTo',"
+                    + " a field.object. A report over a field.object is not supported; group by a scalar field.",
+                    e.getMessage());
+        }
     }
 }

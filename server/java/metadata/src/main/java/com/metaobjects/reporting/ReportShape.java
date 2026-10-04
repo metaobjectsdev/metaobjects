@@ -34,6 +34,7 @@ import com.metaobjects.source.MetaSource;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
 
@@ -116,11 +117,13 @@ public final class ReportShape {
 
     private final MetaObject report;
     private final MetaObject from;
+    private final MetaRoot root;
     private final List<Field> fields;
 
-    private ReportShape(MetaObject report, MetaObject from, List<Field> fields) {
+    private ReportShape(MetaObject report, MetaObject from, MetaRoot root, List<Field> fields) {
         this.report = report;
         this.from = from;
+        this.root = root;
         this.fields = Collections.unmodifiableList(fields);
     }
 
@@ -137,6 +140,22 @@ public final class ReportShape {
     /** The derived fields, dimensions then measures, each in listed order. */
     public List<Field> fields() {
         return fields;
+    }
+
+    /**
+     * The entity a derived field's {@code @of} field is READ from, by the rule that derived
+     * the field ({@link #resolveFieldRef}): the {@code @from} entity for a measure or a
+     * dimension without {@code @via}, and the entity the {@code @of} reference names for a
+     * dimension with {@code @via}. {@code null} when that entity does not resolve, which a
+     * shape derived from a loaded model cannot reach.
+     *
+     * <p>It is the entity whose generated artifacts describe the field (a Kotlin enum class,
+     * say), which for an inherited field is not the object that declares it.</p>
+     */
+    public MetaObject ofEntity(Field field) {
+        MetaDimension dim = field.dimension();
+        if (dim == null || dim.getVia() == null) return from;
+        return resolveFieldRefEntity(dim.getOf(), memberOwner(dim, from), root);
     }
 
     /**
@@ -199,23 +218,48 @@ public final class ReportShape {
         for (ReportDimensionItem item : ReportAccessors.reportDimensionItems(report)) {
             fields.add(dimensionField(item, from, root, report));
         }
-        for (String name : ReportAccessors.reportMeasureNames(report)) {
-            fields.add(measureField(name, from, root, report));
+        for (String item : ReportAccessors.reportMeasureNames(report)) {
+            fields.add(measureField(item, from, root, report));
         }
-        return new ReportShape(report, from, fields);
+        return new ReportShape(report, from, root, fields);
+    }
+
+    /**
+     * The entity that DECLARES a dimension or measure reached through {@code from}: the
+     * member's parent, which is {@code from} itself or an entity {@code from} extends. A bare
+     * entity name inside the member ({@code @of}, {@code @via}) resolves in THIS entity's
+     * package, exactly as the loader's reporting validation resolves it
+     * ({@code pkgOf(ctx.declaring())}), never in {@code from}'s package or the report's.
+     */
+    public static MetaData memberOwner(MetaData member, MetaObject from) {
+        MetaData parent = member.getParent();
+        return parent != null ? parent : from;
     }
 
     /**
      * Resolve a dimension's or measure's {@code Entity.field} reference to the field node,
-     * or {@code null}. A package qualifier uses {@code ::}, so the member separator is the
-     * LAST dot; the entity resolves relative to {@code owner}'s package (ADR-0042).
+     * or {@code null}. The ONE rule, the same as the loader's (reporting validation D1 / M1)
+     * and as the TypeScript {@code resolveReportingFieldRef}:
+     *
+     * <ol>
+     *   <li>A package qualifier uses {@code ::}, so the member separator is the LAST dot.
+     *       The entity half resolves relative to the package of {@code declaring}, the
+     *       entity that declares the member ({@link #memberOwner}; ADR-0042).</li>
+     *   <li>With {@code host} (a measure, or a dimension without {@code @via}: the reference
+     *       is about the {@code @from} entity's own rows) the named entity must be
+     *       {@code host} or an entity it extends, and the field is read from {@code host},
+     *       so a field {@code host} redeclares wins.</li>
+     *   <li>Without {@code host} ({@code null}: a dimension with {@code @via}) the field is
+     *       read from the named entity.</li>
+     * </ol>
      */
-    public static MetaField<?> resolveFieldRef(String ref, MetaObject owner, MetaRoot root) {
-        MetaObject entity = resolveFieldRefEntity(ref, owner, root);
-        if (entity == null) return null;
+    public static MetaField<?> resolveFieldRef(String ref, MetaData declaring, MetaRoot root, MetaObject host) {
+        MetaObject named = resolveFieldRefEntity(ref, declaring, root);
+        if (named == null) return null;
+        if (host != null && !isSelfOrAncestor(named, host)) return null;
         String fieldName = ref.substring(ref.lastIndexOf(SEP) + SEP.length());
         // ADR-0039: resolving, so a field inherited through extends is found.
-        for (MetaField<?> f : entity.getMetaFields()) {
+        for (MetaField<?> f : (host != null ? host : named).getMetaFields()) {
             if (fieldName.equals(f.getName())) return f;
         }
         return null;
@@ -223,27 +267,45 @@ public final class ReportShape {
 
     /**
      * The entity an {@code Entity.field} reference NAMES, or {@code null}: the entity half
-     * of {@link #resolveFieldRef}, by the same rule. It is the entity the reference is
-     * written against, which for an inherited field is not the object that declares it.
+     * of {@link #resolveFieldRef}, resolved relative to the package of {@code declaring}
+     * (the entity that declares the dimension or measure carrying the reference). It is the
+     * entity the reference is written against, which for an inherited field is not the
+     * object that declares it.
      */
-    public static MetaObject resolveFieldRefEntity(String ref, MetaObject owner, MetaRoot root) {
+    public static MetaObject resolveFieldRefEntity(String ref, MetaData declaring, MetaRoot root) {
         if (ref == null) return null;
         int dot = ref.lastIndexOf(SEP);
         if (dot <= 0) return null;
-        return ValidationPhase.resolveRootObject(root, ref.substring(0, dot), packageOf(owner));
+        return ValidationPhase.resolveRootObject(root, ref.substring(0, dot), packageOf(declaring));
+    }
+
+    /** True when {@code candidate} is {@code entity} or an entity it extends (the super chain). */
+    private static boolean isSelfOrAncestor(MetaData candidate, MetaData entity) {
+        Set<MetaData> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (MetaData n = entity; n != null && !visited.contains(n); n = n.getSuperData()) {
+            if (n == candidate) return true;
+            visited.add(n);
+        }
+        return false;
     }
 
     private static Field dimensionField(ReportDimensionItem item, MetaObject from, MetaRoot root, MetaObject report) {
         MetaDimension dim = declaredMember(from, MetaDimension.class, item.name());
         if (dim == null) throw unresolved(report, "dimension '" + item.name() + "' on '" + from.getShortName() + "'");
-        MetaField<?> of = resolveFieldRef(dim.getOf(), from, root);
+        boolean vialess = dim.getVia() == null;
+        MetaField<?> of = dim.getOf() == null ? null
+                : resolveFieldRef(dim.getOf(), memberOwner(dim, from), root, vialess ? from : null);
         if (of == null) throw unresolved(report, "dimension '" + item.name() + "' @of");
 
         String name = ReportAccessors.reportDerivedFieldName(item);
         // Attr only: a validator.required child does not make the column non-null.
-        boolean required = dim.getVia() == null && ReportingAttrs.isTrue(of, MetaField.ATTR_REQUIRED);
+        boolean required = vialess && ReportingAttrs.isTrue(of, MetaField.ATTR_REQUIRED);
         if (dim.isTime()) {
+            // Loader rule R2 guarantees a grain from the closed set; a tree built in code does not.
             String grain = item.grain();
+            if (grain == null || !ReportingConstants.TIME_GRAINS.contains(grain)) {
+                throw unresolved(report, "time dimension '" + item.name() + "' grain '" + (grain == null ? "" : grain) + "'");
+            }
             if (ReportingConstants.GRAIN_HOUR.equals(grain)) {
                 return new Field(name, Role.DIMENSION, TimestampField.SUBTYPE_TIMESTAMP, required, of, dim, grain, null);
             }
@@ -253,9 +315,23 @@ public final class ReportShape {
         return new Field(name, Role.DIMENSION, of.getSubType(), required, of, dim, null, null);
     }
 
-    private static Field measureField(String name, MetaObject from, MetaRoot root, MetaObject report) {
+    /**
+     * One {@code @measures} item, bare ({@code total}) or dotted ({@code Sale.total}, loader
+     * rule R3). The measure is named by the item's last segment and looked up on
+     * {@code from}; a qualifier resolves in the REPORT's package and must be {@code from} or
+     * an entity {@code from} extends.
+     */
+    private static Field measureField(String item, MetaObject from, MetaRoot root, MetaObject report) {
+        String name = ReportAccessors.reportMeasureItemName(item);
+        String qualifier = ReportAccessors.reportMeasureItemOwner(item);
+        if (qualifier != null) {
+            MetaObject owner = ValidationPhase.resolveRootObject(root, qualifier, packageOf(report));
+            if (owner == null || !isSelfOrAncestor(owner, from)) {
+                throw unresolved(report, "measure '" + item + "' on '" + from.getShortName() + "'");
+            }
+        }
         MetaMeasure m = declaredMember(from, MetaMeasure.class, name);
-        if (m == null) throw unresolved(report, "measure '" + name + "' on '" + from.getShortName() + "'");
+        if (m == null) throw unresolved(report, "measure '" + item + "' on '" + from.getShortName() + "'");
         if (m.isRatio()) {
             return new Field(name, Role.MEASURE, DecimalField.SUBTYPE_DECIMAL, false, null, null, null, m);
         }
@@ -265,7 +341,8 @@ public final class ReportShape {
             return new Field(name, Role.MEASURE, LongField.SUBTYPE_LONG, true, null, null, null, m);
         }
         List<String> columns = m.getOfColumns();
-        MetaField<?> of = resolveFieldRef(columns.isEmpty() ? null : columns.get(0), from, root);
+        MetaField<?> of = columns.isEmpty() ? null
+                : resolveFieldRef(columns.get(0), memberOwner(m, from), root, from);
         if (of == null) throw unresolved(report, "measure '" + name + "' @of");
         String src = of.getSubType();
         if (ReportingConstants.AGG_SUM.equals(agg)) {

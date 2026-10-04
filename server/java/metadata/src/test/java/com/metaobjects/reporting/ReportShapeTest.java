@@ -68,12 +68,16 @@ public class ReportShapeTest extends SharedRegistryTestBase {
         canonical = MetaDataLoader.fromDirectory("report-shape-test", corpusDir().resolve("canonical")).getRoot();
     }
 
-    private static MetaRoot loadJson(String json) {
+    private static MetaRoot loadJson(String... files) {
         MetaDataLoader loader = new MetaDataLoader(
                 LoaderOptions.create(false, false, true), MetaDataLoader.SUBTYPE_MANUAL, "report-shape-inline");
         loader.setSourceURIs(java.util.Collections.emptyList());
         loader.init();
-        loader.load(List.of(new InMemoryStringSource(json, "meta.inline.json")));
+        List<com.metaobjects.loader.MetaDataSource> sources = new java.util.ArrayList<>();
+        for (int i = 0; i < files.length; i++) {
+            sources.add(new InMemoryStringSource(files[i], "meta.inline" + i + ".json"));
+        }
+        loader.load(sources);
         assertTrue("no load errors: " + loader.getErrors(), loader.getErrors().isEmpty());
         return loader.getRoot();
     }
@@ -321,5 +325,123 @@ public class ReportShapeTest extends SharedRegistryTestBase {
             assertTrue(e.getMessage(), e.getMessage().contains("report 'Stray'"));
             assertTrue(e.getMessage(), e.getMessage().contains("measure 'nope'"));
         }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Reference resolution: the shape must agree with the loader's reporting validation
+    // about what a reference names, or a model that loads clean fails (or is silently
+    // mistyped) when it is read. The same cases as the TypeScript report-shape.test.ts.
+    // ---------------------------------------------------------------------------
+
+    /** {@code a::Base} (abstract): members whose bare {@code @of} names {@code Base}. */
+    private static final String SHARED_BASE = """
+        { "metadata.root": { "package": "a", "children": [
+          { "object.entity": { "name": "Base", "abstract": true, "children": [
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "kind" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+            { "dimension.attribute": { "name": "kind", "@of": "Base.kind" } },
+            { "measure.aggregate": { "name": "events", "@agg": "count", "@of": "Base.id" } },
+            { "measure.aggregate": { "name": "lastKind", "@agg": "max", "@of": "Base.kind" } }
+          ] } }
+        ] } }
+        """;
+
+    private static final String DECOY =
+            "{ \"object.entity\": { \"name\": \"Base\", \"children\": ["
+            + " { \"field.int\": { \"name\": \"id\" } }, { \"field.int\": { \"name\": \"kind\" } } ] } },";
+
+    /** Package {@code b}: {@code Ev extends a::Base} and report {@code R} over it. */
+    private static String evFile(String before, String evExtra, String measures) {
+        return "{ \"metadata.root\": { \"package\": \"b\", \"children\": [" + before
+                + " { \"object.entity\": { \"name\": \"Ev\", \"extends\": \"a::Base\", \"children\": ["
+                + " { \"source.rdb\": { \"@table\": \"evs\" } }" + evExtra + " ] } },"
+                + " { \"object.report\": { \"name\": \"R\", \"@from\": \"Ev\", \"@dimensions\": [\"kind\"],"
+                + " \"@measures\": " + measures + ", \"children\": ["
+                + " { \"source.rdb\": { \"@kind\": \"view\", \"@view\": \"v_r\" } } ] } } ] } }";
+    }
+
+    private static final String BARE_MEASURES = "[\"events\", \"lastKind\"]";
+
+    /** {@code name subType typeSourceKey} per derived field of report {@code R}. */
+    private static List<String> typed(MetaRoot root) {
+        return ReportShape.of(object(root, "R"), root).fields().stream()
+                .map(f -> f.name() + " " + f.subType() + " " + f.typeSourceKey())
+                .collect(Collectors.toList());
+    }
+
+    @Test
+    public void aBareOfOnAMemberInheritedFromAnotherPackageResolvesInTheDeclaringEntitysPackage() {
+        MetaRoot root = loadJson(SHARED_BASE, evFile("", "", BARE_MEASURES));
+        assertEquals(List.of("kind string a::Base.kind", "events long null", "lastKind string a::Base.kind"),
+                typed(root));
+    }
+
+    @Test
+    public void aSameNamedDecoyInTheReportsPackageDoesNotCaptureTheReference() {
+        MetaRoot root = loadJson(SHARED_BASE, evFile(DECOY, "", BARE_MEASURES));
+        assertEquals(List.of("kind string a::Base.kind", "events long null", "lastKind string a::Base.kind"),
+                typed(root));
+    }
+
+    @Test
+    public void withoutViaTheFieldIsReadFromFromSoAFieldFromRedeclaresWins() {
+        MetaRoot root = loadJson(SHARED_BASE,
+                evFile("", ", { \"field.int\": { \"name\": \"kind\" } }", BARE_MEASURES));
+        assertEquals(List.of("kind int b::Ev.kind", "events long null", "lastKind int b::Ev.kind"), typed(root));
+    }
+
+    @Test
+    public void aDottedMeasuresItemNamesTheMeasureByItsLastSegment() {
+        MetaRoot root = loadJson(SHARED_BASE, evFile("", "", "[\"Ev.events\", \"a::Base.lastKind\"]"));
+        assertEquals(List.of("kind string a::Base.kind", "events long null", "lastKind string a::Base.kind"),
+                typed(root));
+    }
+
+    @Test
+    public void measureItemNameIsTheLastSegment() {
+        assertEquals("total", ReportAccessors.reportMeasureItemName("total"));
+        assertEquals("total", ReportAccessors.reportMeasureItemName("Sale.total"));
+        assertEquals("total", ReportAccessors.reportMeasureItemName("acme::shop::Sale.total"));
+        assertNull(ReportAccessors.reportMeasureItemOwner("total"));
+        assertEquals("acme::shop::Sale", ReportAccessors.reportMeasureItemOwner("acme::shop::Sale.total"));
+    }
+
+    /** A report built in code (never added to the root): what the loader would refuse. */
+    private static com.metaobjects.object.ReportMetaObject stray(String name, String from, String attr, String item) {
+        com.metaobjects.object.ReportMetaObject stray = new com.metaobjects.object.ReportMetaObject(name);
+        stray.addMetaAttr(com.metaobjects.attr.StringAttribute.create(MetaObject.ATTR_REPORT_FROM, from));
+        com.metaobjects.attr.StringArrayAttribute items = new com.metaobjects.attr.StringArrayAttribute(attr);
+        items.setValue(List.of(item));
+        stray.addMetaAttr(items);
+        return stray;
+    }
+
+    private static void assertUnresolved(String expected, MetaObject report, MetaRoot root) {
+        try {
+            ReportShape.of(report, root);
+            fail("expected: " + expected);
+        } catch (MetaDataException e) {
+            assertEquals(expected, e.getMessage());
+        }
+    }
+
+    @Test
+    public void aDottedMeasuresItemWhoseQualifierIsNotFromOrAnAncestorDoesNotResolve() {
+        MetaRoot root = loadJson(SHARED_BASE, evFile(DECOY, "", BARE_MEASURES));
+        // Past the loader, which refuses these as ERR_INVALID_REPORT / ERR_REPORT_FOREIGN_MEASURE.
+        assertUnresolved("report 'R': measure 'Nope.events' on 'Ev' does not resolve.",
+                stray("b::R", "Ev", MetaObject.ATTR_REPORT_MEASURES, "Nope.events"), root);
+        // The qualifier resolves in the REPORT's package: b::Base is the decoy, not an ancestor of Ev.
+        assertUnresolved("report 'R': measure 'Base.events' on 'Ev' does not resolve.",
+                stray("b::R", "Ev", MetaObject.ATTR_REPORT_MEASURES, "Base.events"), root);
+    }
+
+    @Test
+    public void aTimeDimensionItemWithNoGrainOrAGrainOutsideTheClosedSetDoesNotResolve() {
+        assertUnresolved("report 'Stray': time dimension 'createdAt' grain '' does not resolve.",
+                stray("fitness::Stray", "Program", MetaObject.ATTR_REPORT_DIMENSIONS, "createdAt"), canonical);
+        assertUnresolved("report 'Stray': time dimension 'createdAt' grain 'fortnight' does not resolve.",
+                stray("fitness::Stray", "Program", MetaObject.ATTR_REPORT_DIMENSIONS, "createdAt:fortnight"), canonical);
     }
 }

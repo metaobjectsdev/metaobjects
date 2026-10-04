@@ -31,7 +31,13 @@
         { "source.rdb": { "name": "replica", "@kind": "view", "@view": "RPT_V_REPLICA", "@role": "replica" } },
         { "source.rdb": { "name": "main", "@kind": "view", "@view": "RPT_V_PRIMARY" } }
       ] } },
-      { "object.report": { "name": "InertSales", "@from": "Sale", "@measures": ["sales"] } }
+      { "object.report": { "name": "InertSales", "@from": "Sale", "@measures": ["sales"] } },
+      { "object.projection": { "name": "SaleRegionView", "children": [
+        { "source.rdb": { "@kind": "view", "@view": "RPT_V_SALE_REGIONS" } },
+        { "field.long": { "name": "id", "extends": "reporttest::Sale.id" } },
+        { "field.string": { "name": "region", "extends": "reporttest::Sale.region" } },
+        { "identity.primary": { "name": "pk", "extends": "reporttest::Sale.pk" } }
+      ] } }
     ]
   }
 }

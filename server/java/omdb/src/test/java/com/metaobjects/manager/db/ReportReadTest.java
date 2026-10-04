@@ -107,6 +107,12 @@ public class ReportReadTest {
                 return new ObjectRef(registry.findMetaObjectByName(rest.substring(0, slash)),
                         new String[] { rest.substring(slash + 1) });
             }
+
+            // An OQL result class is named the same way, and resolved the same way here.
+            @Override
+            protected MetaObject findResultClass(String className) {
+                return registry.findMetaObjectByName(className);
+            }
         };
         omdb.setDatabaseDriver(new DerbyDriver());
         omdb.setDataSource(ds);
@@ -127,6 +133,8 @@ public class ReportReadTest {
             s.execute("CREATE VIEW RPT_V_REPLICA (sales) AS SELECT COUNT(id) + 100 FROM RPT_SALES");
             s.execute("CREATE TABLE REPLICATED_SALES (sales BIGINT)");
             s.execute("INSERT INTO REPLICATED_SALES VALUES (999)");
+            // A projection whose view is named by @view (not the legacy @table).
+            s.execute("CREATE VIEW RPT_V_SALE_REGIONS (id, region) AS SELECT id, region FROM RPT_SALES");
             s.execute("CREATE TABLE INERT_SALES (sales BIGINT)");
             s.execute("INSERT INTO INERT_SALES VALUES (999)");
         }
@@ -496,6 +504,94 @@ public class ReportReadTest {
             assertEquals(3L, omdb.getObjectsCount(oc, sale, null));
         } finally {
             omdb.releaseConnection(oc);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // OQL with a report as the result class
+    // ---------------------------------------------------------------------------
+
+    /** Run an OQL query and flatten each row by the fields of {@code rowShape}. */
+    private static List<Map<String, Object>> query(String oql, MetaObject rowShape) {
+        ObjectConnection oc = omdb.getConnection();
+        try {
+            List<Map<String, Object>> rows = new ArrayList<>();
+            for (Object o : omdb.executeQuery(oc, oql, new ArrayList<>())) {
+                assertSame("an OQL row of a report is an instance of its read model",
+                        rowShape, omdb.getMetaObjectFor(o));
+                Map<String, Object> row = new LinkedHashMap<>();
+                for (MetaField<?> f : rowShape.getMetaFields()) row.put(f.getName(), f.getObject(o));
+                rows.add(row);
+            }
+            return rows;
+        } finally {
+            omdb.releaseConnection(oc);
+        }
+    }
+
+    @Test
+    public void oqlWithAReportResultClassBuildsRowsFromTheReadModel() {
+        MetaObject declared = object("SalesByRegion");
+        // The author supplies the SQL; the report supplies the row shape.
+        assertEquals(List.of(row("region", "west", "sales", 1L, "revenue", 50L, "minAmount", 50L)),
+                // Aliases are quoted because OQL binds a result column by its exact name and
+                // Derby upper-cases an unquoted one (true of any OQL result class).
+                query("[reporttest::SalesByRegion] SELECT region AS \"region\", sales AS \"sales\","
+                        + " revenue AS \"revenue\", minAmount AS \"minAmount\""
+                        + " FROM RPT_V_BY_REGION WHERE sales < 2", ReportReadModel.of(declared)));
+    }
+
+    @Test
+    public void oqlWithASourcelessReportResultClassStillBuildsRows() {
+        // InertSales has no view, so it is not served by getObjects; as an OQL result shape
+        // it only names the columns, and they bind by derived field name.
+        assertEquals(List.of(row("sales", 3L)),
+                query("[reporttest::InertSales] SELECT COUNT(id) AS \"sales\" FROM RPT_SALES",
+                        ReportReadModel.of(object("InertSales"))));
+    }
+
+    // ---------------------------------------------------------------------------
+    // A projection declared with @view (the same physical-name rule as a report)
+    // ---------------------------------------------------------------------------
+
+    @Test
+    public void aProjectionDeclaredWithViewIsReadFromThatView() {
+        MetaObject projection = object("SaleRegionView");
+        ObjectMappingDB mapping = (ObjectMappingDB) omdb.getReadMapping(projection);
+        assertNotNull("a projection whose view is named by @view has a read mapping", mapping);
+        assertEquals("RPT_V_SALE_REGIONS", ((BaseDef) mapping.getDBDef()).getNameDef().getName());
+
+        ObjectConnection oc = omdb.getConnection();
+        try {
+            QueryOptions options = new QueryOptions(new Expression("region", "west"));
+            Collection<?> found = omdb.getObjects(oc, projection, options);
+            assertEquals(1, found.size());
+            assertEquals(Long.valueOf(3L), ((ValueObject) found.iterator().next()).getLong("id"));
+        } finally {
+            omdb.releaseConnection(oc);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // getObjectRef on an object that is not a report
+    // ---------------------------------------------------------------------------
+
+    @Test
+    public void getObjectRefOnAnObjectWithNoMetadataFailsExactlyAsTheBaseManagerDoes() {
+        Object stranger = new Object();
+        Throwable base = null;
+        try {
+            com.metaobjects.util.MetaDataUtil.findMetaObject(stranger, omdb);
+        } catch (RuntimeException e) {
+            base = e;
+        }
+        assertNotNull("the base lookup refuses an object with no metadata", base);
+        try {
+            omdb.getObjectRef(stranger);
+            fail("an object with no metadata has no reference");
+        } catch (RuntimeException e) {
+            assertSame(base.getClass(), e.getClass());
+            assertEquals(base.getMessage(), e.getMessage());
         }
     }
 }
