@@ -509,6 +509,12 @@ public static class CSharpNaming
     /// </summary>
     public static ObjectNames? ResolveObjectNames(MetaObject obj, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal)
     {
+        // FR-044 — a report resolves no names artifact, so NamesGenerator emits none and
+        // the report's generated row (ReportRows) spells its view and columns as literals
+        // through the same fallback a sourceless object takes. One gate, here, so the
+        // artifact and every reference to it cannot disagree about whether it exists.
+        if (obj.IsReport()) return null;
+
         // SourceResolution.PrimaryRdbSource, not a scan of our own: ADR-0039's RESOLVING
         // source accessor (an inherited primary must be seen, or an entity extending an
         // abstract base with its own primary source would wrongly read as unpersisted),

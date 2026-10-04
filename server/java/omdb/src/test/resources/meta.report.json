@@ -1,0 +1,43 @@
+{
+  "metadata.root": {
+    "package": "reporttest",
+    "children": [
+      { "object.entity": { "name": "Sale", "children": [
+        { "source.rdb": { "@table": "RPT_SALES" } },
+        { "field.long": { "name": "id" } },
+        { "field.string": { "name": "region", "@required": true, "@maxLength": 8 } },
+        { "field.enum": { "name": "status", "@required": true, "@values": ["OPEN", "CLOSED"],
+                          "@intValueMap": { "OPEN": 1, "CLOSED": 2 } } },
+        { "field.long": { "name": "amountCents", "@required": true } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "assigned" } },
+        { "dimension.attribute": { "name": "region", "@of": "Sale.region" } },
+        { "dimension.attribute": { "name": "status", "@of": "Sale.status" } },
+        { "measure.aggregate": { "name": "sales", "@agg": "count", "@of": "Sale.id" } },
+        { "measure.aggregate": { "name": "revenue", "@agg": "sum", "@of": "Sale.amountCents" } },
+        { "measure.aggregate": { "name": "minAmount", "@agg": "min", "@of": "Sale.amountCents" } }
+      ] } },
+      { "object.report": { "name": "SalesByRegion", "@from": "Sale", "@dimensions": ["region"],
+          "@measures": ["sales", "revenue", "minAmount"], "children": [
+        { "source.rdb": { "@kind": "view", "@view": "RPT_V_BY_REGION" } }
+      ] } },
+      { "object.report": { "name": "SalesByStatus", "@from": "Sale", "@dimensions": ["status"],
+          "@measures": ["sales"], "children": [
+        { "source.rdb": { "@kind": "view", "@view": "RPT_V_BY_STATUS" } }
+      ] } },
+      { "object.report": { "name": "UnmanagedSales", "@from": "Sale", "@measures": ["sales"], "children": [
+        { "source.rdb": { "@kind": "view", "@view": "RPT_V_HAND_MADE", "@unmanaged": true } }
+      ] } },
+      { "object.report": { "name": "ReplicatedSales", "@from": "Sale", "@measures": ["sales"], "children": [
+        { "source.rdb": { "name": "replica", "@kind": "view", "@view": "RPT_V_REPLICA", "@role": "replica" } },
+        { "source.rdb": { "name": "main", "@kind": "view", "@view": "RPT_V_PRIMARY" } }
+      ] } },
+      { "object.report": { "name": "InertSales", "@from": "Sale", "@measures": ["sales"] } },
+      { "object.projection": { "name": "SaleRegionView", "children": [
+        { "source.rdb": { "@kind": "view", "@view": "RPT_V_SALE_REGIONS" } },
+        { "field.long": { "name": "id", "extends": "reporttest::Sale.id" } },
+        { "field.string": { "name": "region", "extends": "reporttest::Sale.region" } },
+        { "identity.primary": { "name": "pk", "extends": "reporttest::Sale.pk" } }
+      ] } }
+    ]
+  }
+}

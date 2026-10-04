@@ -16,6 +16,12 @@ import com.metaobjects.integration.kotlin.tables.ProgramStatView
 import com.metaobjects.integration.kotlin.tables.ProgramTable
 import com.metaobjects.integration.kotlin.tables.ProgramView
 import com.metaobjects.integration.kotlin.tables.WeekTable
+import com.metaobjects.integration.kotlin.tables.AssetActivityView
+import com.metaobjects.integration.kotlin.tables.FitnessTotalsView
+import com.metaobjects.integration.kotlin.tables.ProgramMinutesView
+import com.metaobjects.integration.kotlin.tables.ProgramsByMonthView
+import com.metaobjects.integration.kotlin.tables.ProgramsByWeekView
+import com.metaobjects.integration.kotlin.tables.RecentProgramsView
 import org.jetbrains.exposed.sql.AndOp
 import org.jetbrains.exposed.sql.Column
 import org.jetbrains.exposed.sql.Database
@@ -484,6 +490,14 @@ object QueryScenarioRunner {
         "Measurement" -> MeasurementTable
         "ProgramStat" -> ProgramStatView
         "ProgramView" -> ProgramView
+        // FR-044: a view-backed report is read through the view its lowering created. It has
+        // no primary key, so only `list` and `count` reach these.
+        "ProgramMinutes" -> ProgramMinutesView
+        "FitnessTotals" -> FitnessTotalsView
+        "ProgramsByMonth" -> ProgramsByMonthView
+        "ProgramsByWeek" -> ProgramsByWeekView
+        "RecentPrograms" -> RecentProgramsView
+        "AssetActivity" -> AssetActivityView
         "Asset" -> AssetTable
         "AllTypes" -> AllTypesTable
         // FR-017 TPH: the discriminator base + all its subtypes share the single `auths` table.

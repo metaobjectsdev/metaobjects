@@ -77,6 +77,51 @@ the reference: its column builders name the MySQL types.
 A column named after a MySQL reserved word (`rank`, `order`) needs backticks in your DDL. The
 generated code and both runtimes quote identifiers themselves.
 
+### Reports
+
+An `object.report` (the reporting vocabulary; see `references/reporting.md` in the
+`metaobjects-authoring` skill) is a compiled view, and on MySQL you create that view
+yourself, because `meta migrate` does not. Declare the report with a read-only
+`source.rdb` of `@kind: view` and no `@unmanaged`, since `meta migrate` never targets MySQL
+and so nothing manages the view either way:
+
+```json
+{ "source.rdb": { "@kind": "view", "@view": "v_program_minutes" } }
+```
+
+`buildReportViews` skips a report whose source is `@unmanaged: true`, so generate the SQL
+before marking a source unmanaged if a shared model needs that flag for another database.
+
+`buildReportViews` returns the body of each view-backed report for the `mysql` dialect. Put
+each one in your own migration as `CREATE VIEW <name> AS <body>`:
+
+```ts
+import { buildReportViews } from "@metaobjectsdev/codegen-ts";
+import { loadDirectory } from "@metaobjectsdev/metadata";
+
+const { root } = await loadDirectory("metaobjects"); // wherever your metadata lives
+for (const view of buildReportViews(root, { dialect: "mysql" })) {
+  console.log(`CREATE VIEW \`${view.name}\` AS\n${view.sql};`);
+}
+```
+
+The loop above ignores `view.schema`, which is the report source's `@schema` when it declares
+one. If yours does, create the view in that schema yourself (qualify the name in your
+migration); the loop will not.
+
+Pass `columnNamingStrategy` to match your tables' column names (the default is `snake_case`).
+The bodies are valid under MySQL's default `sql_mode`, `ONLY_FULL_GROUP_BY` included, and a
+change to a report means a new `CREATE OR REPLACE VIEW` (or `DROP` and `CREATE`) in your
+migrations; nothing diffs the live view for you. Two things differ from Postgres and SQLite:
+
+- **Ratios and averages have four fractional digits by default.** MySQL divides to
+  `div_precision_increment` digits, so a ratio of 2 to 3 is `0.6667` (Postgres returns
+  `0.66666666666666666667`, SQLite `0.6666666666666666`), and a ratio of 3 to 4 is `0.7500`.
+- **`DATETIME` values are read as the UTC wall clock.** A `DATETIME(3)` column carries no zone,
+  so every time grain and every relative-date window (`{ "now": "-P30D" }`, evaluated with
+  `UTC_TIMESTAMP(3)` when the view is queried) treats the stored value as UTC. That matches
+  what the generated tier and the ObjectManager store when the pool uses `timezone: "Z"`.
+
 ## Behaviour that differs from Postgres and SQLite
 
 - **Writes read the row back.** MySQL has no `RETURNING`:

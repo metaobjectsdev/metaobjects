@@ -124,7 +124,7 @@
       "ports": ["java"]
     },
     "exposed-table": {
-      "concept": "Per-entity Kotlin Exposed table object.",
+      "concept": "Kotlin Exposed table object per table-backed or view-backed entity or projection, and per view-backed report.",
       "tier": "native",
       "layer": "persistence",
       "ports": ["kotlin"]

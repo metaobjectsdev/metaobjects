@@ -105,7 +105,7 @@ const EXPR_COMPARISON_OPS: ReadonlySet<string> = new Set([
  * would lower as op `now` with value `"x"`, and `assertNoRelativeDate` — which inspects the
  * VALUE — would never see it.
  */
-function desugarClause(raw: unknown): Record<string, unknown> {
+export function desugarClause(raw: unknown): Record<string, unknown> {
   if (raw === null) return { [FILTER_OP_IS_NULL]: true };
   if (Array.isArray(raw)) return { [FILTER_OP_IN]: raw };
   if (typeof raw === "object") {
@@ -119,7 +119,8 @@ function desugarClause(raw: unknown): Record<string, unknown> {
  * `@filter` of a segment, measure.aggregate or object.report (the loader's F1 rule), and
  * this lowering has no rendering for it: it would otherwise land as a SQL literal of
  * `[object Object]`. A programmatic caller skips the loader, so refuse it here, loudly.
- * The report lowering (FR-044 Plan 2) replaces this throw.
+ * The throw stays for projection and `origin.aggregate` filters. A report lowers its relative
+ * values through `extract-report-spec.ts` and renders them in `report-ddl-emit.ts`.
  */
 function assertNoRelativeDate(value: unknown, where: string): void {
   const isRelative = (v: unknown): boolean =>
@@ -211,7 +212,7 @@ function intEnumMapsOf(projection: MetaObject): ReadonlyMap<string, Record<strin
  * pinned equal to `@values`) and throws for the same reason — silently emitting the
  * symbol would produce DDL that fails only at apply time, against a live database.
  */
-function encodeIntEnumFilterValue(
+export function encodeIntEnumFilterValue(
   value: unknown,
   op: string,
   intMap: Record<string, number> | undefined,
@@ -539,7 +540,7 @@ export function refNamedOwner(node: MetaData, root: MetaRoot): MetaObject | unde
 }
 
 /** Effective package of an object, taken from its resolution key ("<pkg>::<Name>"). */
-function packageOf(obj: MetaData): string {
+export function packageOf(obj: MetaData): string {
   const key = obj.resolutionKey();
   const i = key.lastIndexOf("::");
   return i >= 0 ? key.slice(0, i) : "";
@@ -597,7 +598,7 @@ function baseEntityFor(
   );
 }
 
-function sourceColumnNameFor(
+export function sourceColumnNameFor(
   entityField: MetaData,
   ctx: ExtractContext,
 ): string {
@@ -777,7 +778,7 @@ function resolveExprNode(
   return undefined;
 }
 
-function shortAliasFor(entityName: string, used: Set<string>): string {
+export function shortAliasFor(entityName: string, used: Set<string>): string {
   // Derive from the SHORT name — an entity ref may now be a resolutionKey ("pkg::Name",
   // #244); the alias must stay the first letter of the entity, so existing single-package
   // view SQL is byte-identical (a changed alias would churn `verify --db` fingerprints).
@@ -796,7 +797,7 @@ function shortAliasFor(entityName: string, used: Set<string>): string {
 // prefix into a trie, then converts to JoinNode tree.
 // ---------------------------------------------------------------------------
 
-interface PathStep {
+export interface PathStep {
   entity: MetaData;
   relationship: string;
   cardinality: "one" | "many";
@@ -809,11 +810,176 @@ interface PathStep {
   targetEntity: string;
 }
 
-type Path = PathStep[];
+export type Path = PathStep[];
 
 interface TrieNode {
   children: Map<string, TrieNode>;
   step?: PathStep;
+}
+
+/** Walk one dotted `@via` (`Owner.hop[.hop…]`) into join steps. Returns [] when the
+ *  head or any hop does not resolve. Throws on an ambiguous hop (#368). A report dimension
+ *  joins through this same walk as a projection origin, so hop resolution, the ambiguity
+ *  errors and the #209 join type are one implementation. */
+export function walkViaPath(via: string, root: MetaRoot, referrerPkg: string, ctx: ExtractContext): Path {
+  const segments = via.split(".");
+  const rawEntity = segments[0];
+  const relSegments = segments.slice(1);
+  if (!rawEntity) return [];
+  // @via may be package-qualified ("pkg::Entity.rel"). Resolve package-aware and key
+  // the joinTree on resolutionKey() (FQN) so a same-bare-named entity in another
+  // package can't win — the passthrough @from lookups key on the same FQN (#244).
+  let currentObj = resolveEntityRef(root, rawEntity, referrerPkg);
+  if (!currentObj) return [];
+
+  const path: Path = [];
+  for (const relName of relSegments) {
+    // FR-024: a hop may name a relationship OR a reference-only FK
+    // (identity.reference — a to-one forward-FK edge). ADR-0039: resolving —
+    // a traversed relationship/reference may inherit its target via extends.
+    const resolved = resolveHop(currentObj, relName);
+    if (!resolved) break;
+    const { hop, targetName, cardinality } = resolved;
+    // @objectRef/@references may be package-qualified ("pkg::Entity"); resolve it
+    // package-aware relative to the hop's source entity (the loader qualifies a
+    // same-package ref even when authored bare), so the join binds the exact target.
+    const target = resolveEntityRef(root, targetName, packageOf(currentObj));
+    if (!target) break;
+
+    // #368: two identity.reference declarations onto the same target are legal
+    // (e.g. Match.homeTeamRef/awayTeamRef -> Team) — resolveHopReference prefers
+    // the SPECIFIC reference/relationship the hop already named over re-deriving
+    // one from the target alone, so an explicit `@via: "Match.homeTeamRef"` (or a
+    // relationship disambiguated by @sourceRefField/name-pairing) resolves cleanly.
+    // Only a relationship hop that even the ladder cannot choose reaches the throw.
+    const resolvedRef = resolveHopReference(currentObj as MetaObject, hop, relName, target);
+    let ref: ReferenceLookup | undefined;
+    if (Array.isArray(resolvedRef)) {
+      if (resolvedRef.length > 1) {
+        // #368 round 2: @sourceRefField cannot fix this, but WHY differs by shape, and
+        // asserting the wrong reason for a given shape is itself a bug (fix round 1 of
+        // this cleanup caught exactly that). resolveRelationshipReference's ladder reads
+        // ONLY the hop's own entity's candidates (referenceCandidatesFor(currentObj, ...));
+        // it never even looks at `target`'s references. So:
+        //  - If `currentObj` itself holds one of the ambiguous candidates, resolution
+        //    already tried @sourceRefField/name-pairing against it and failed — and that
+        //    is only reachable at all when @cardinality isn't "one": a @cardinality "one"
+        //    relationship with 2+ own-side candidates is rejected at LOAD by rule (e)
+        //    (validateOneSideReferenceResolution) using this exact same ladder, so if we
+        //    got this far with an own-side candidate, @cardinality is provably not "one",
+        //    and @sourceRefField is provably illegal here (rule (d)).
+        //  - If NONE of the candidates are `currentObj`'s own, @sourceRefField could not
+        //    have mattered regardless of @cardinality — it only ever consults the hop's
+        //    OWN identity.reference children, and it has none targeting `target`. This is
+        //    rule (e)'s zero-candidate gap (validation-passes.ts:2226, `<= 1` skips 0 too):
+        //    a @cardinality "one" relationship can reach here with the FK entirely on the
+        //    far side, so @cardinality itself must NOT be asserted in this branch.
+        const holderName = (currentObj as MetaObject).name;
+        const holderOwnsACandidate = resolvedRef.some((r) => r.holder.name === holderName);
+        const whySourceRefFieldCannotHelp = holderOwnsACandidate
+          ? `it only disambiguates a @cardinality "${CARDINALITY_ONE}" relationship, and this ` +
+            `relationship's @cardinality is not "${CARDINALITY_ONE}" (declaring @sourceRefField on it ` +
+            `is itself a load error)`
+          : `it only consults "${holderName}"'s own identity.reference children, and "${holderName}" ` +
+            `declares none targeting "${target.name}" -- every candidate above belongs to the other side ` +
+            `of this join`;
+        throw new Error(
+          `projection join hop "${relName}" from "${holderName}" to "${target.name}" is ambiguous: ` +
+            `${resolvedRef.map((r) => r.referenceIdentity.name).join(", ")}. ` +
+            `@sourceRefField cannot resolve this: ${whySourceRefFieldCannotHelp}. There is no attribute ` +
+            `that disambiguates a hop like this -- remove the extra identity.reference between these two ` +
+            `entities, or restructure the model so only one remains.`,
+        );
+      }
+      ref = resolvedRef[0];
+    } else {
+      ref = resolvedRef;
+    }
+    if (!ref) break;
+
+    const fkField = ref.referenceIdentity.fields[0];
+    if (!fkField) break;
+
+    const resolvedPkField = ref.referenceIdentity.resolvedTargetPkField(root) ?? "id";
+
+    const referenceHolder: "source" | "target" =
+      ref.holder.name === currentObj.name ? "source" : "target";
+
+    // FK lives on the holder; PK on the entity it references. Resolve both to
+    // physical columns now so the ON clause is naming-strategy correct.
+    const fkHolder = referenceHolder === "source" ? currentObj : target;
+    const pkHolder = referenceHolder === "source" ? target : currentObj;
+
+    // #209 — a belongs-to hop (FK on the parent) whose FK is NOT NULL is
+    // semantically INNER: every base row has a match, so INNER and LEFT OUTER
+    // return the same set, and INNER matches the hand-written view it stands in
+    // for (and keeps `verify --db` fingerprints aligned). A nullable belongs-to
+    // FK, or ANY has-many hop (FK on the child — a base row may have zero
+    // children), stays LEFT OUTER so no base row is dropped.
+    // `@enforce: false` does NOT change this. An unenforced NOT NULL reference can name a
+    // row that does not exist, so INNER filters that base row out — and that filter is
+    // what the hand-written view did: a legacy account view joins `ref_id` INNER to the
+    // user table precisely to exclude the accounts whose `ref_id` holds a group id. Making
+    // the hop LEFT OUTER (tried, then reverted before release) silently changed which rows
+    // such views return. To keep unmatched rows, make the FK field nullable.
+    const fkFieldObj = (fkHolder as MetaObject).findField(fkField);
+    const selfInner =
+      referenceHolder === "source" && fkFieldObj !== undefined && isRequired(fkFieldObj);
+    // Nested-chain safety: joins render flat + left-associative, so an INNER hop
+    // BELOW any LEFT ancestor drops the base row (its ON references a column the
+    // LEFT ancestor NULLed). An INNER only survives when the ENTIRE ancestor chain
+    // is INNER; otherwise demote to LEFT (lossless — under a LEFT ancestor, LEFT is
+    // the correct type). `path` holds this chain's ancestor hops accumulated so far.
+    const joinType: "inner" | "left" =
+      selfInner && path.every((prior) => prior.joinType === "inner") ? "inner" : "left";
+
+    path.push({
+      entity: currentObj,
+      relationship: relName,
+      cardinality,
+      fkColumn: joinColumnFor(fkHolder, fkField, ctx),
+      pkColumn: joinColumnFor(pkHolder, resolvedPkField, ctx),
+      referenceHolder,
+      joinType,
+      targetEntity: target.resolutionKey(),
+    });
+    currentObj = target;
+  }
+  return path;
+}
+
+/** Prefix-dedupe paths into JoinNodes, assigning aliases. */
+export function pathsToJoins(paths: readonly Path[], usedAliases: Set<string>): JoinNode[] {
+  // Dedupe by prefix: paths sharing a prefix collapse into one join branch.
+  const trieRoot: TrieNode = { children: new Map() };
+  for (const path of paths) {
+    let node = trieRoot;
+    for (const step of path) {
+      let child = node.children.get(step.relationship);
+      if (!child) {
+        child = { children: new Map(), step };
+        node.children.set(step.relationship, child);
+      }
+      node = child;
+    }
+  }
+
+  function toJoinNode(node: TrieNode): JoinNode {
+    const step = node.step!;
+    return {
+      relationship: step.relationship,
+      targetEntity: step.targetEntity,
+      alias: shortAliasFor(step.targetEntity, usedAliases),
+      cardinality: step.cardinality,
+      fkColumn: step.fkColumn,
+      pkColumn: step.pkColumn,
+      referenceHolder: step.referenceHolder,
+      joinType: step.joinType,
+      children: Array.from(node.children.values()).map(toJoinNode),
+    };
+  }
+
+  return Array.from(trieRoot.children.values()).map(toJoinNode);
 }
 
 function buildJoinTree(
@@ -853,166 +1019,15 @@ function buildJoinTree(
       }
       if (!viaAttr) continue;
 
-      const segments = viaAttr.split(".");
-      const rawEntity = segments[0];
-      const relSegments = segments.slice(1);
-      if (!rawEntity) continue;
-      // @via may be package-qualified ("pkg::Entity.rel"). Resolve package-aware and key
-      // the joinTree on resolutionKey() (FQN) so a same-bare-named entity in another
-      // package can't win — the passthrough @from lookups key on the same FQN (#244).
-      let currentObj = resolveEntityRef(root, rawEntity, projPkg);
-      if (!currentObj) continue;
-
-      const path: Path = [];
-      for (const relName of relSegments) {
-        // FR-024: a hop may name a relationship OR a reference-only FK
-        // (identity.reference — a to-one forward-FK edge). ADR-0039: resolving —
-        // a traversed relationship/reference may inherit its target via extends.
-        const resolved = resolveHop(currentObj, relName);
-        if (!resolved) break;
-        const { hop, targetName, cardinality } = resolved;
-        // @objectRef/@references may be package-qualified ("pkg::Entity"); resolve it
-        // package-aware relative to the hop's source entity (the loader qualifies a
-        // same-package ref even when authored bare), so the join binds the exact target.
-        const target = resolveEntityRef(root, targetName, packageOf(currentObj));
-        if (!target) break;
-
-        // #368: two identity.reference declarations onto the same target are legal
-        // (e.g. Match.homeTeamRef/awayTeamRef -> Team) — resolveHopReference prefers
-        // the SPECIFIC reference/relationship the hop already named over re-deriving
-        // one from the target alone, so an explicit `@via: "Match.homeTeamRef"` (or a
-        // relationship disambiguated by @sourceRefField/name-pairing) resolves cleanly.
-        // Only a relationship hop that even the ladder cannot choose reaches the throw.
-        const resolvedRef = resolveHopReference(currentObj as MetaObject, hop, relName, target);
-        let ref: ReferenceLookup | undefined;
-        if (Array.isArray(resolvedRef)) {
-          if (resolvedRef.length > 1) {
-            // #368 round 2: @sourceRefField cannot fix this, but WHY differs by shape, and
-            // asserting the wrong reason for a given shape is itself a bug (fix round 1 of
-            // this cleanup caught exactly that). resolveRelationshipReference's ladder reads
-            // ONLY the hop's own entity's candidates (referenceCandidatesFor(currentObj, ...));
-            // it never even looks at `target`'s references. So:
-            //  - If `currentObj` itself holds one of the ambiguous candidates, resolution
-            //    already tried @sourceRefField/name-pairing against it and failed — and that
-            //    is only reachable at all when @cardinality isn't "one": a @cardinality "one"
-            //    relationship with 2+ own-side candidates is rejected at LOAD by rule (e)
-            //    (validateOneSideReferenceResolution) using this exact same ladder, so if we
-            //    got this far with an own-side candidate, @cardinality is provably not "one",
-            //    and @sourceRefField is provably illegal here (rule (d)).
-            //  - If NONE of the candidates are `currentObj`'s own, @sourceRefField could not
-            //    have mattered regardless of @cardinality — it only ever consults the hop's
-            //    OWN identity.reference children, and it has none targeting `target`. This is
-            //    rule (e)'s zero-candidate gap (validation-passes.ts:2226, `<= 1` skips 0 too):
-            //    a @cardinality "one" relationship can reach here with the FK entirely on the
-            //    far side, so @cardinality itself must NOT be asserted in this branch.
-            const holderName = (currentObj as MetaObject).name;
-            const holderOwnsACandidate = resolvedRef.some((r) => r.holder.name === holderName);
-            const whySourceRefFieldCannotHelp = holderOwnsACandidate
-              ? `it only disambiguates a @cardinality "${CARDINALITY_ONE}" relationship, and this ` +
-                `relationship's @cardinality is not "${CARDINALITY_ONE}" (declaring @sourceRefField on it ` +
-                `is itself a load error)`
-              : `it only consults "${holderName}"'s own identity.reference children, and "${holderName}" ` +
-                `declares none targeting "${target.name}" -- every candidate above belongs to the other side ` +
-                `of this join`;
-            throw new Error(
-              `projection join hop "${relName}" from "${holderName}" to "${target.name}" is ambiguous: ` +
-                `${resolvedRef.map((r) => r.referenceIdentity.name).join(", ")}. ` +
-                `@sourceRefField cannot resolve this: ${whySourceRefFieldCannotHelp}. There is no attribute ` +
-                `that disambiguates a hop like this -- remove the extra identity.reference between these two ` +
-                `entities, or restructure the model so only one remains.`,
-            );
-          }
-          ref = resolvedRef[0];
-        } else {
-          ref = resolvedRef;
-        }
-        if (!ref) break;
-
-        const fkField = ref.referenceIdentity.fields[0];
-        if (!fkField) break;
-
-        const resolvedPkField = ref.referenceIdentity.resolvedTargetPkField(root) ?? "id";
-
-        const referenceHolder: "source" | "target" =
-          ref.holder.name === currentObj.name ? "source" : "target";
-
-        // FK lives on the holder; PK on the entity it references. Resolve both to
-        // physical columns now so the ON clause is naming-strategy correct.
-        const fkHolder = referenceHolder === "source" ? currentObj : target;
-        const pkHolder = referenceHolder === "source" ? target : currentObj;
-
-        // #209 — a belongs-to hop (FK on the parent) whose FK is NOT NULL is
-        // semantically INNER: every base row has a match, so INNER and LEFT OUTER
-        // return the same set, and INNER matches the hand-written view it stands in
-        // for (and keeps `verify --db` fingerprints aligned). A nullable belongs-to
-        // FK, or ANY has-many hop (FK on the child — a base row may have zero
-        // children), stays LEFT OUTER so no base row is dropped.
-        // `@enforce: false` does NOT change this. An unenforced NOT NULL reference can name a
-        // row that does not exist, so INNER filters that base row out — and that filter is
-        // what the hand-written view did: a legacy account view joins `ref_id` INNER to the
-        // user table precisely to exclude the accounts whose `ref_id` holds a group id. Making
-        // the hop LEFT OUTER (tried, then reverted before release) silently changed which rows
-        // such views return. To keep unmatched rows, make the FK field nullable.
-        const fkFieldObj = (fkHolder as MetaObject).findField(fkField);
-        const selfInner =
-          referenceHolder === "source" && fkFieldObj !== undefined && isRequired(fkFieldObj);
-        // Nested-chain safety: joins render flat + left-associative, so an INNER hop
-        // BELOW any LEFT ancestor drops the base row (its ON references a column the
-        // LEFT ancestor NULLed). An INNER only survives when the ENTIRE ancestor chain
-        // is INNER; otherwise demote to LEFT (lossless — under a LEFT ancestor, LEFT is
-        // the correct type). `path` holds this chain's ancestor hops accumulated so far.
-        const joinType: "inner" | "left" =
-          selfInner && path.every((prior) => prior.joinType === "inner") ? "inner" : "left";
-
-        path.push({
-          entity: currentObj,
-          relationship: relName,
-          cardinality,
-          fkColumn: joinColumnFor(fkHolder, fkField, ctx),
-          pkColumn: joinColumnFor(pkHolder, resolvedPkField, ctx),
-          referenceHolder,
-          joinType,
-          targetEntity: target.resolutionKey(),
-        });
-        currentObj = target;
-      }
+      const path = walkViaPath(viaAttr, root, projPkg, ctx);
       if (path.length > 0) allPaths.push(path);
     }
-  }
-
-  // Dedupe by prefix: paths sharing a prefix collapse into one join branch.
-  const trieRoot: TrieNode = { children: new Map() };
-  for (const path of allPaths) {
-    let node = trieRoot;
-    for (const step of path) {
-      let child = node.children.get(step.relationship);
-      if (!child) {
-        child = { children: new Map(), step };
-        node.children.set(step.relationship, child);
-      }
-      node = child;
-    }
-  }
-
-  function toJoinNode(node: TrieNode): JoinNode {
-    const step = node.step!;
-    return {
-      relationship: step.relationship,
-      targetEntity: step.targetEntity,
-      alias: shortAliasFor(step.targetEntity, usedAliases),
-      cardinality: step.cardinality,
-      fkColumn: step.fkColumn,
-      pkColumn: step.pkColumn,
-      referenceHolder: step.referenceHolder,
-      joinType: step.joinType,
-      children: Array.from(node.children.values()).map(toJoinNode),
-    };
   }
 
   return {
     baseEntity: base.resolutionKey(),
     baseAlias,
-    joins: Array.from(trieRoot.children.values()).map(toJoinNode),
+    joins: pathsToJoins(allPaths, usedAliases),
   };
 }
 

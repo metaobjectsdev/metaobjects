@@ -614,6 +614,44 @@ describe("agent/schema.md — the claims it makes about the model", () => {
     expect(page).not.toContain("one-to-one");
   });
 
+  // FR-044 no-churn: the Views intro names a report only when a report-backed view is on the
+  // page. A projection-only model must keep the wording it had before reports existed, or
+  // `meta verify --docs` flags drift after an upgrade.
+  test("the Views intro of a model with no report view is the pre-report sentence, byte for byte", async () => {
+    const page = (await emit(await load(SHAPES), { schema: fleetSchema() })).get("agent/schema.md") ?? "";
+    expect(page).toContain(
+      "## Views\n\n" +
+        "A view is generated from its projection's `origin.*` children — it is derived, never hand-written. " +
+        "Editing the view SQL directly is drift the tool cannot see.\n\n",
+    );
+    expect(page).not.toContain("report");
+  });
+
+  test("the Views intro names a report's dimensions and measures once a report view is on the page", () => {
+    const fleet = fleetSchema();
+    const base = {
+      ...fleet,
+      views: [{ name: "v_store_totals" }, { name: "v_owner_summary" }],
+      provenance: new Map([
+        ...fleet.provenance,
+        ["public.v_store_totals", "acme::shop::StoreTotals"],
+      ]),
+    };
+    const withReport = renderAgentSchemaPage(base, {
+      declaredBy: new Map(), viewLineage: new Map(), relationships: [], enums: [],
+      reportViews: new Set(["public.v_store_totals"]),
+    });
+    expect(withReport).toContain(
+      "A view is generated from its projection's `origin.*` children or its report's dimensions and measures — " +
+        "it is derived, never hand-written. ",
+    );
+    const without = renderAgentSchemaPage(base, {
+      declaredBy: new Map(), viewLineage: new Map(), relationships: [], enums: [], reportViews: new Set(),
+    });
+    expect(without).toContain("A view is generated from its projection's `origin.*` children — it is derived, never hand-written. ");
+    expect(without).not.toContain("report's");
+  });
+
   test("a view carries its `origin.*` lineage, which is what makes it a derived artifact", async () => {
     const page = (await emit(await load(SHAPES), { schema: fleetSchema() })).get("agent/schema.md") ?? "";
     expect(page).toContain("## Views");

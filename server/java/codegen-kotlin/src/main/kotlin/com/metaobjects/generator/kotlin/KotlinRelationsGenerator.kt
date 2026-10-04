@@ -281,7 +281,7 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             for (fk in reverseFks) {
                 if (!first) append("\n")
                 first = false
-                val col = KotlinNaming.safeColumnProperty(fk.fkField)
+                val col = KotlinNaming.safeColumnProperty(fk.fkField, exposedApi())
                 val single = KotlinNaming.reverseFinderName(fk.fkField)
                 val batched = KotlinNaming.reverseFinderInName(fk.fkField)
                 append("/** Reverse nav: the $ownerShort rows whose `${fk.fkField}` FK points at the given ${fk.targetShortName} id (single indexed query). */\n")

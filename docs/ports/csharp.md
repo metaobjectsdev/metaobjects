@@ -107,6 +107,10 @@ Schema migrations are owned by the Node `meta` CLI (ADR-0015) — the C# CLI is
 The codegen emits:
 
 - `Author.g.cs` — class per entity (a mutable attributed POCO, not a record).
+- `<Report>.g.cs` — keyless row class per **view-backed report** (`object.report` with a
+  read-only `@kind: view` source); mapped in `AppDbContext` with `DbSet` +
+  `HasNoKey().ToView(...)`. No routes or filter allowlist for a report. See
+  [reporting](../features/reporting.md).
 - `AppDbContext.g.cs` — `DbSet<Author>`, projection `.ToView()`, `@storage` owned
   types via `OwnsOne` (single) / `OwnsMany(...).ToJson(...)` (`@isArray` array-of-VO),
   enum-as-string via `HasConversion<string>()`.

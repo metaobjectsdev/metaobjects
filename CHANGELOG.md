@@ -27,13 +27,53 @@ it until 1.1 ships._
   `measure.aggregate` or an `object.report`. Four new error codes (`ERR_INVALID_DIMENSION`,
   `ERR_INVALID_MEASURE`, `ERR_INVALID_REPORT`, `ERR_REPORT_FOREIGN_MEASURE`) and extended
   `ERR_BAD_ATTR_FILTER` carry the load-time rules, gated by 27 new shared conformance fixtures.
-  `measure.derived` is not registered (it waits for FR-037 R5). **No generated output yet:** an
-  `object.report` emits no view DDL, route, client code or docs page, `meta migrate` proposes
-  nothing for it, and a model using the new names generates exactly what it did without them.
-  See [docs/features/reporting.md](docs/features/reporting.md).
+  `measure.derived` is not registered (it waits for FR-037 R5). A model that does not use the
+  new names generates exactly what it did without them; the next entry says what a report
+  becomes. See [docs/features/reporting.md](docs/features/reporting.md).
+- **A report with a view source becomes a SQL view, and every port reads it (FR-044).** An
+  `object.report` that declares a read-only `source.rdb` of `@kind: view` is now lowered by
+  TypeScript: `meta migrate` creates the view on Postgres, SQLite and D1 (a changed report view
+  is dropped and re-created; a derived report view whose `@from` entity has no table fails
+  migrate naming the report and the entity; a report with an `@sql` source skips that check). A
+  derived report view is also refused, by name, when its `@from` is a TPH subtype (the subtype
+  shares its base's table, so the view would count every subtype's rows: declare it from the base
+  with an `@filter` on the discriminator field), when a `@via` hop has no `identity.reference`
+  behind it, and when a filter's `in` list is empty. A bare `@of` or `@via` on a dimension or
+  measure inherited from a base in another package resolves in that base's package, as the loader
+  resolves it. MySQL SQL comes from `buildReportViews(root,
+  { dialect: "mysql" })` and the "Reports" section of `docs/recipes/mysql.md`, since `meta
+  migrate` does not target MySQL. A report with no `source.*` still generates nothing. Time
+  grains and relative dates are UTC, weeks start on Monday, a `sum` of nothing and a ratio over
+  zero are null, and a count is zero. The TypeScript `ObjectManager`, Java OMDB and the Python
+  `ObjectManager` read a view-backed report (list and count, with filter, sort and limit on the
+  derived fields; by-id and writes are refused); C# generates a keyless EF Core row type and
+  `DbContext` mapping for it and Kotlin an Exposed table object. `meta docs` lists the view on
+  the agent schema page. **Still absent:** no route, typed client, filter allowlist or api-docs
+  entry for a report in any port, no `measure.derived`, and no query-time grouping. Six shared
+  persistence scenarios (`report-*.yaml`) and `report-shapes.json` hold the ports to the same
+  columns; the `metaobjects-authoring` skill now teaches reports (`references/reporting.md`).
+  Anyone who declared a view-sourced report under the unreleased 1.1 vocabulary will now see a
+  `CREATE VIEW` from `meta migrate`. Kotlin `gen` fails, naming the report and the dimension or
+  measure, for a view-backed report with a derived field named after a Kotlin hard keyword or
+  with two derived fields that land on one column property. A view-backed report with a
+  dimension or measure over a `field.object` is refused by name by Java OMDB (on read), Kotlin
+  `gen` and C# `gen`; group by a scalar field. A `@measures` item may be written dotted
+  (`Sale.total`) and reads the same as the bare name in every port. Java OQL
+  (`executeQuery`) with a report as its result class builds rows from the report's derived
+  fields.
 
 ### Fixed
 
+- **Java OMDB reads a projection whose view is named by `@view`.** The read mapping took the
+  view name from `@table` only, so a projection declared with the kind-matching `@view` alias
+  had no read mapping. It now resolves the source's physical name (`@view`, then the legacy
+  `@table`), the same rule the TypeScript toolchain creates the view under.
+- **Kotlin: a field named after an Exposed `Table` property that was not reserved now gets the
+  `Column` suffix.** An entity or report field named `schemaName` now emits the column property
+  `schemaNameColumn`; it collided with Exposed's `Table.schemaName` and did not compile before.
+  With `exposedApi=1` the same now holds for `options` and `storageParameters`, which are
+  `Table` properties only in Exposed 1.x; `exposedApi=0` output for those two names is unchanged.
+  The physical column names do not change.
 - **Java: a bare string authored for an `isArray` attribute is now ONE item.** The Java parser
   used to split it on commas, which left stray quotes in the items; TypeScript and Python
   already kept it whole. All three now agree, so a Java model that relied on the split (a

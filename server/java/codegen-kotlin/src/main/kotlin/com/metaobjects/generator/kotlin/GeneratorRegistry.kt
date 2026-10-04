@@ -186,7 +186,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
     ),
     "exposed-table" to GeneratorInfo(
         name = "exposed-table",
-        description = "Per-entity Kotlin Exposed table object.",
+        description = "Kotlin Exposed table object per table-backed or view-backed entity or projection, and per view-backed report.",
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.PERSISTENCE,
         factory = ::KotlinExposedTableGenerator,

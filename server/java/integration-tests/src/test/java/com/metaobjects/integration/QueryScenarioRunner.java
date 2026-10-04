@@ -7,6 +7,7 @@ import com.metaobjects.manager.ObjectConnection;
 import com.metaobjects.manager.db.ObjectManagerDB;
 import com.metaobjects.manager.db.driver.PostgresDriver;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.reporting.ReportReadModel;
 
 import javax.sql.DataSource;
 import java.io.PrintWriter;
@@ -129,7 +130,11 @@ public final class QueryScenarioRunner {
      * {@link ResultSetMetaData}. Returns an empty map for a non-persistent object.
      */
     private static Map<String, Integer> probeColumnSqlTypes(PostgresContainer pg, MetaObject mc) {
-        String relation = mc.getPrimaryRdbViewName();
+        // FR-044: a report's relation is its read model's view (named by the source's
+        // kind-matching @view alias); the declared node carries no fields to key the probe by.
+        String relation = ReportReadModel.isReport(mc)
+            ? ReportReadModel.of(mc).viewName()
+            : mc.getPrimaryRdbViewName();
         if (relation == null) relation = mc.getPrimaryRdbTableName();
         if (relation == null) return Map.of();
         Map<String, Integer> types = new LinkedHashMap<>();

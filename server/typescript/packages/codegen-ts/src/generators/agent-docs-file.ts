@@ -63,6 +63,7 @@ import type { ColumnNamingStrategy, MetaField, MetaObject } from "@metaobjectsde
 import type { EmittedFile, Generator, GeneratorFactory } from "../generator.js";
 import { resolveObjectNames } from "../names.js";
 import { isAbstract } from "../instance-artifacts.js";
+import { isReport } from "../source-detect.js";
 import { enumValues, intValueMapOf } from "../enum-meta.js";
 import { renderAgentSchemaPage } from "./agent-schema-page.js";
 import { renderAgentUiPage } from "./agent-ui-page.js";
@@ -231,6 +232,9 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
         // so this mapping cannot disagree with the column it labels.
         const declaredBy = new Map<string, Map<string, { field: string; type: string }>>();
         const viewLineage = new Map<string, string[]>();
+        // Qualified names of the views a view-backed object.report owns (FR-044). Empty for a
+        // model with no report, so the page is byte-identical to what it was before reports.
+        const reportViews = new Set<string>();
         for (const obj of objects) {
           const names = resolveObjectNames(obj, opts.columnNamingStrategy);
           // The PRIMARY source's physical name and schema — `names.name` is the object's
@@ -249,6 +253,7 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
           // page printed the base's enum a second time under a different owner.
           // `buildExpectedSchema`'s Pass 1 skips abstracts; this reads the same rule.
           if (isTable && !isAbstract(obj)) tableBacked.push(obj);
+          if (!isTable && isReport(obj)) reportViews.add(key);
           let map = declaredBy.get(key);
           if (map === undefined) {
             map = new Map();
@@ -271,6 +276,7 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
         const content = renderAgentSchemaPage(schema, {
           declaredBy,
           viewLineage,
+          reportViews,
           relationships: relationshipLines(objects),
           enums: enumLines(tableBacked),
         });

@@ -95,7 +95,8 @@ open class KotlinNamesGenerator :
         // Pass 1 — every object that participates in the database (#248).
         val emitted = mutableSetOf<String>()
         for (entity in loader.metaObjects) {
-            // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
+            // FR-044: a report gets no names artifact. Its Exposed table (the one thing Kotlin
+            // generates for a view-backed report) binds its view and columns by literal.
             if (GeneratorUtil.isReport(entity)) continue
             if (emit(entity, outRoot, strategy)) emitted += entity.name
         }

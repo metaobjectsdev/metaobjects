@@ -9,6 +9,8 @@ import com.metaobjects.DataTypes;
 import com.metaobjects.MetaDataNotFoundException;
 import com.metaobjects.database.CoreDBMetaDataProvider;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.reporting.ReportReadModel;
+import com.metaobjects.source.MetaSource;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
 
@@ -68,7 +70,14 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 
 	@Override
 	public ObjectMapping getReadMapping(MetaObject mc) {
-		
+
+		// FR-044: a declared report has no field children, so mapping it would yield a
+		// column-less SELECT. Refuse by name instead: a report is mapped through its read model.
+		if ( ReportReadModel.isReport( mc ) && !( mc instanceof ReportReadModel )) {
+			throw new MetaDataException( "Report [" + mc.getName() + "] has no fields to map: a report is read"
+					+ " through its read model (ReportReadModel.of), not through the declared node" );
+		}
+
 		// Try to get a view first 
 		String name = getViewRef( mc );
 		if ( name != null ) {
@@ -117,8 +126,8 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	/** Get the table mapping */
 	protected ObjectMapping getViewMapping( MetaObject mc ) {
 
-		// Create the view definition. The view name comes from source.rdb @table
-		// (@kind=view); OMDB reads from a view that already exists in the database
+		// Create the view definition. The view name is the read-only source.rdb's physical
+		// name (@view, or the legacy @table); OMDB reads from a view that already exists in the database
 		// (created by the migrate toolchain) — it does not synthesize view DDL.
 		ViewDef v = new ViewDef( NameDef.parseName( getViewRef( mc )));
 
@@ -468,14 +477,22 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	}
     
     /**
-     * Retrieves the view name from the MetaObject — the {@code @table} of its
-     * primary read-only {@code source.rdb} child (source-v2 ADR-0007).
+     * Retrieves the view name from the MetaObject: the physical name of its primary
+     * read-only {@code source.rdb} child (source-v2 ADR-0007), resolved by the source's own
+     * rule ({@link MetaSource#getPhysicalName()}, ADR-0018): the kind-matching alias
+     * ({@code @view} for a view) first, then the legacy {@code @table}. One rule for a
+     * projection and for a report's read model, and the rule the TypeScript toolchain
+     * creates the view under.
      *
      * @return the view name, or {@code null} if no primary read-only source
      */
     protected String getViewRef( MetaObject mc )
     {
-      return mc.getPrimaryRdbViewName();
+      // ADR-0039: own — findPrimaryReadOnlySource() reads getSources(false). Sanctioned:
+      // an object is read through the read-only source it declares ITSELF (a projection's
+      // own view; a report read model's one source copy); an inherited writable source is
+      // reached through getTableRef below.
+      return mc.findPrimaryReadOnlySource().map( MetaSource::getPhysicalName ).orElse( null );
     }
 
     /**

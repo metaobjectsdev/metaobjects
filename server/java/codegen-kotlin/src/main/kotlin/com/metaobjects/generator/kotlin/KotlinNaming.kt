@@ -54,20 +54,35 @@ object KotlinNaming {
      */
     val RESERVED_TABLE_MEMBERS: Set<String> = setOf(
         "source", "fields", "columns", "index", "indices", "primaryKey",
-        "tableName", "ddl", "foreignKeys", "checkConstraints", "sequences",
+        "tableName", "schemaName", "ddl", "foreignKeys", "checkConstraints", "sequences",
         "autoIncColumn", "realFields", "defaultExpression", "generatedSignature",
         "tableNameWithoutScheme", "tableNameWithoutSchemeSanitized",
     )
 
     /**
+     * The `Table` properties Exposed 1.x ADDS to [RESERVED_TABLE_MEMBERS] (checked with
+     * `javap` against exposed-core 1.3.1: `options`, `storageParameters`). Reserved only in
+     * the Exposed 1.x output mode: under 0.x neither is a `Table` member, a column property
+     * of that name compiles, and renaming it would change working generated code.
+     */
+    val RESERVED_TABLE_MEMBERS_EXPOSED_1X: Set<String> = setOf("options", "storageParameters")
+
+    /**
      * [KotlinExposedTableGenerator]: the Kotlin property name for a column. Identity for a
      * normal field; a field whose camelCase name collides with an Exposed `Table`/`ColumnSet`
-     * member ([RESERVED_TABLE_MEMBERS]) gets a `Column` suffix (e.g. `source` → `sourceColumn`).
+     * member ([RESERVED_TABLE_MEMBERS], plus [RESERVED_TABLE_MEMBERS_EXPOSED_1X] when
+     * [exposedApi] is 1.x) gets a `Column` suffix (e.g. `source` → `sourceColumn`).
      * The PHYSICAL column name is unaffected — only the Kotlin val identifier changes — so the
      * persisted schema is unchanged.
+     *
+     * Every site that names the property passes the run's [exposedApi], so the table that
+     * declares it and the code that references it agree.
      */
-    fun safeColumnProperty(name: String): String =
-        if (name in RESERVED_TABLE_MEMBERS) name + "Column" else name
+    fun safeColumnProperty(name: String, exposedApi: ExposedApi = ExposedApi.V0): String {
+        val reserved = name in RESERVED_TABLE_MEMBERS ||
+            (exposedApi == ExposedApi.V1 && name in RESERVED_TABLE_MEMBERS_EXPOSED_1X)
+        return if (reserved) name + "Column" else name
+    }
 
     /** [KotlinSpringControllerGenerator]: `shortName + "Controller"`. */
     fun controllerName(shortName: String): String = shortName + "Controller"

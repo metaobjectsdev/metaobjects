@@ -81,8 +81,12 @@ final class ObjectManagerDbAdapter {
         if (spec.limit() != null) opts.setRange(buildRange(spec.offset(), spec.limit()));
 
         Collection<?> raw = omdb.getObjects(conn, mc, opts);
+        // FR-044: a report's rows are instances of its read model (one field per derived
+        // field); the declared report node has no fields to walk. Any other object is its
+        // own read object.
+        MetaObject rowMeta = omdb.readObjectFor(mc);
         List<Map<String, Object>> rows = new ArrayList<>(raw.size());
-        for (Object o : raw) rows.add(toRowMap(mc, o, columnSqlTypes));
+        for (Object o : raw) rows.add(toRowMap(rowMeta, o, columnSqlTypes));
 
         if ("get".equals(spec.op())) return rows.isEmpty() ? null : rows.get(0);
         return rows; // op:list

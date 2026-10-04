@@ -50,9 +50,21 @@ export {
   reportFrom,
   reportDimensionItems,
   reportMeasureNames,
+  reportMeasureItemName,
+  reportMeasureItemOwner,
   reportDerivedFieldName,
   type ReportDimensionItem,
 } from "./core/reporting/report-accessors.js";
+export {
+  reportShape,
+  reportingMemberOwner,
+  reportingViaHops,
+  resolveReportingFieldRef,
+  type ReportField,
+  type ReportFieldRole,
+  type ReportShape,
+} from "./core/reporting/report-shape.js";
+export { reportReadModel, reportReadSource } from "./core/reporting/report-read-model.js";
 // Shared `@implementedBy` resolution — one resolver for the CLI's requirement
 // checks and codegen's requirement-test fan-out (FR-038).
 export {

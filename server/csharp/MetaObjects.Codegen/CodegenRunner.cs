@@ -29,10 +29,15 @@ public static class CodegenRunner
         var warnings = new List<string>();
         var ctx = new GenContext
         {
-            // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
-            // Dropped here, at the entity set every generator reads, and not per generator:
-            // a report may declare a read-only `source.rdb @kind: view` (R5), which would
-            // otherwise pass every source-keyed gate and emit an empty projection tier.
+            // FR-044: an object.report is never in the entity set. Dropped here, at the set
+            // every generator reads, and not per generator: a report may declare a read-only
+            // `source.rdb @kind: view` (R5), which would otherwise pass every source-keyed
+            // gate and emit an empty projection tier (routes, allowlist, names).
+            //
+            // A view-backed report DOES generate its keyless row and DbContext mapping
+            // (Plan 2). The two generators that emit those ask for the report's row model
+            // themselves, through ReportRows, so every other generator stays report-free
+            // without having to know what a report is.
             Entities = root.Objects().Where(o => !o.IsReport()).ToList(),
             Root = root,
             Config = config,
@@ -41,7 +46,9 @@ public static class CodegenRunner
 
         // Refuse before any generator runs — the one choke point that sees the WHOLE
         // entity set every DbSet/route/finder-emitting generator below reads from.
-        CSharpNaming.AssertNoCollectionNameCollisions(ctx.Entities);
+        // A view-backed report gets a DbSet too, so it is part of the collision check.
+        CSharpNaming.AssertNoCollectionNameCollisions(
+            [.. ctx.Entities, .. root.Objects().Where(ReportRows.IsViewBacked)]);
 
         Directory.CreateDirectory(config.OutDir);
         var results = new List<WriteResult>();

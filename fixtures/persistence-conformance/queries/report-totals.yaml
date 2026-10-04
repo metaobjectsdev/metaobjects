@@ -1,0 +1,21 @@
+name: report-totals
+description: |
+  FitnessTotals is an object.report over Week with no dimensions: the whole table is
+  one group, so a list returns exactly one row. longShare is a ratio (NUMERIC): three
+  of the five weeks are long, 3/5 = 0.6.
+seed-data: |
+  INSERT INTO "programs" ("id","title","priceCents","status","created_ts") VALUES
+    (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00'),
+    (2, 'Strength', 2500, 'PUBLISHED', '2026-05-17T23:30:00');
+  INSERT INTO "weeks" ("id","programId","label","durationMinutes") VALUES
+    (10, 1, 'Week 1', 30),
+    (11, 1, 'Week 2', 60),
+    (12, 1, 'Week 2', 90),
+    (13, 1, NULL, 60),
+    (20, 2, 'Solo', 45);
+queries:
+  - name: one-row-for-the-whole-table
+    op: list
+    entity: FitnessTotals
+    expect:
+      - { weeks: "5", totalMinutes: "285", longShare: "0.6" }

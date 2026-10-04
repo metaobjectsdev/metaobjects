@@ -1,0 +1,214 @@
+{
+  "reports": [
+    {
+      "report": "fitness::ProgramMinutes",
+      "from": "fitness::Week",
+      "view": "v_program_minutes",
+      "fields": [
+        {
+          "name": "program",
+          "role": "dimension",
+          "subType": "long",
+          "required": true,
+          "typeSource": "fitness::Week.programId"
+        },
+        {
+          "name": "programTitle",
+          "role": "dimension",
+          "subType": "string",
+          "required": false,
+          "typeSource": "fitness::Program.title"
+        },
+        {
+          "name": "weeks",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "longWeeks",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "labels",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "slots",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "totalMinutes",
+          "role": "measure",
+          "subType": "long",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "avgMinutes",
+          "role": "measure",
+          "subType": "decimal",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "minMinutes",
+          "role": "measure",
+          "subType": "int",
+          "required": false,
+          "typeSource": "fitness::Week.durationMinutes"
+        },
+        {
+          "name": "maxMinutes",
+          "role": "measure",
+          "subType": "int",
+          "required": false,
+          "typeSource": "fitness::Week.durationMinutes"
+        },
+        {
+          "name": "longShare",
+          "role": "measure",
+          "subType": "decimal",
+          "required": false,
+          "typeSource": null
+        }
+      ]
+    },
+    {
+      "report": "fitness::FitnessTotals",
+      "from": "fitness::Week",
+      "view": "v_fitness_totals",
+      "fields": [
+        {
+          "name": "weeks",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "totalMinutes",
+          "role": "measure",
+          "subType": "long",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "longShare",
+          "role": "measure",
+          "subType": "decimal",
+          "required": false,
+          "typeSource": null
+        }
+      ]
+    },
+    {
+      "report": "fitness::ProgramsByMonth",
+      "from": "fitness::Program",
+      "view": "v_programs_by_month",
+      "fields": [
+        {
+          "name": "createdAtMonth",
+          "role": "dimension",
+          "subType": "date",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "status",
+          "role": "dimension",
+          "subType": "enum",
+          "required": true,
+          "typeSource": "fitness::Program.status"
+        },
+        {
+          "name": "programs",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "listValue",
+          "role": "measure",
+          "subType": "currency",
+          "required": false,
+          "typeSource": "fitness::Program.priceCents"
+        }
+      ]
+    },
+    {
+      "report": "fitness::ProgramsByWeek",
+      "from": "fitness::Program",
+      "view": "v_programs_by_week",
+      "fields": [
+        {
+          "name": "createdAtWeek",
+          "role": "dimension",
+          "subType": "date",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "programs",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        }
+      ]
+    },
+    {
+      "report": "fitness::RecentPrograms",
+      "from": "fitness::Program",
+      "view": "v_recent_programs",
+      "fields": [
+        {
+          "name": "programs",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        }
+      ]
+    },
+    {
+      "report": "fitness::AssetActivity",
+      "from": "fitness::Asset",
+      "view": "v_asset_activity",
+      "fields": [
+        {
+          "name": "recordedAtHour",
+          "role": "dimension",
+          "subType": "timestamp",
+          "required": true,
+          "typeSource": "fitness::Asset.recordedAt"
+        },
+        {
+          "name": "asOfDateWeek",
+          "role": "dimension",
+          "subType": "date",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "assets",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        }
+      ]
+    }
+  ]
+}

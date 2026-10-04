@@ -175,3 +175,64 @@ CREATE VIEW "v_program_stat" AS
   LEFT OUTER JOIN weeks w ON w."programId" = p.id
   GROUP BY p.id;
 COMMENT ON VIEW "v_program_stat" IS 'metaobjects:v1:sha256:9120c9f8899e257b52a087c4841b8e55f679d7f9c7a6e58d8823912855f2ab57';
+
+CREATE VIEW "v_program_minutes" AS
+  SELECT
+    w."programId" AS "program",
+    p."title" AS "programTitle",
+    COUNT(w."id") AS "weeks",
+    COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS "longWeeks",
+    COUNT(DISTINCT w."label") AS "labels",
+    COUNT(DISTINCT (w."programId", w."durationMinutes")) FILTER (WHERE w."programId" IS NOT NULL AND w."durationMinutes" IS NOT NULL) AS "slots",
+    CAST(SUM(w."durationMinutes") AS BIGINT) AS "totalMinutes",
+    AVG(w."durationMinutes") AS "avgMinutes",
+    MIN(w."durationMinutes") AS "minMinutes",
+    MAX(w."durationMinutes") AS "maxMinutes",
+    CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0) AS "longShare"
+  FROM "weeks" w
+  INNER JOIN "programs" p ON p."id" = w."programId"
+  GROUP BY w."programId", p."title";
+COMMENT ON VIEW "v_program_minutes" IS 'metaobjects:v1:sha256:06b54e731e0221acab4b6e0a7cb7f5914662eff39af6ca57031a7df69cbbec93';
+
+CREATE VIEW "v_fitness_totals" AS
+  SELECT
+    COUNT(w."id") AS "weeks",
+    CAST(SUM(w."durationMinutes") AS BIGINT) AS "totalMinutes",
+    CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0) AS "longShare"
+  FROM "weeks" w;
+COMMENT ON VIEW "v_fitness_totals" IS 'metaobjects:v1:sha256:92ac554bcb44ee0bc7f3ddab40cf64c52fd964865dfe155104621babdd766e80';
+
+CREATE VIEW "v_programs_by_month" AS
+  SELECT
+    CAST(date_trunc('month', p."created_ts") AS DATE) AS "createdAtMonth",
+    p."status" AS "status",
+    COUNT(p."id") AS "programs",
+    CAST(SUM(p."priceCents") FILTER (WHERE p."status" = 'PUBLISHED') AS BIGINT) AS "listValue"
+  FROM "programs" p
+  GROUP BY CAST(date_trunc('month', p."created_ts") AS DATE), p."status";
+COMMENT ON VIEW "v_programs_by_month" IS 'metaobjects:v1:sha256:8310fbae2f38c07296f2c22297c5e83ef2fbd12faaed5f90bd4211dbc8b45935';
+
+CREATE VIEW "v_programs_by_week" AS
+  SELECT
+    CAST(date_trunc('week', p."created_ts") AS DATE) AS "createdAtWeek",
+    COUNT(p."id") AS "programs"
+  FROM "programs" p
+  WHERE p."status" = 'PUBLISHED'
+  GROUP BY CAST(date_trunc('week', p."created_ts") AS DATE);
+COMMENT ON VIEW "v_programs_by_week" IS 'metaobjects:v1:sha256:656478aaf3e58443a6123f4f016bd61fbebfe2b0122175260155fb92d754e5ae';
+
+CREATE VIEW "v_recent_programs" AS
+  SELECT
+    COUNT(p."id") AS "programs"
+  FROM "programs" p
+  WHERE p."created_ts" >= ((now() AT TIME ZONE 'UTC') - INTERVAL 'P30D');
+COMMENT ON VIEW "v_recent_programs" IS 'metaobjects:v1:sha256:9e675bb71fe4a3c74f06f5db65d7908e246a59c2a8fc062fc2c899948841eccc';
+
+CREATE VIEW "v_asset_activity" AS
+  SELECT
+    date_trunc('hour', a."recordedAt", 'UTC') AS "recordedAtHour",
+    CAST(date_trunc('week', CAST(a."asOfDate" AS TIMESTAMP)) AS DATE) AS "asOfDateWeek",
+    COUNT(a."id") AS "assets"
+  FROM "assets" a
+  GROUP BY date_trunc('hour', a."recordedAt", 'UTC'), CAST(date_trunc('week', CAST(a."asOfDate" AS TIMESTAMP)) AS DATE);
+COMMENT ON VIEW "v_asset_activity" IS 'metaobjects:v1:sha256:02b68a9ec0c67e11c6e505a47591c24e8dece737a46161549167c2cafece0a26';

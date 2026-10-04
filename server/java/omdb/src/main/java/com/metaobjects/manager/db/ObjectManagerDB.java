@@ -18,6 +18,7 @@ package com.metaobjects.manager.db;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.manager.StateAwareMetaObject;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.reporting.ReportReadModel;
 import com.metaobjects.*;
 import com.metaobjects.manager.*;
 import com.metaobjects.manager.db.driver.*;
@@ -255,8 +256,78 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
      * Gets the read mapping
      */
     protected ObjectMapping getReadMapping(MetaObject mc) {
+        // FR-044: a declared report has no fields to map. It is mapped through its read
+        // model, and has no read mapping at all when it declares no view (not served).
+        if (isDeclaredReport(mc)) {
+            ReportReadModel model = ReportReadModel.of(mc);
+            return model.isServed() ? getReadMapping(model) : null;
+        }
         return readMappings.computeIfAbsent(mc,
             k -> Optional.ofNullable(getMappingHandler().getReadMapping(k))).orElse(null);
+    }
+
+    ///////////////////////////////////////////////////////
+    // REPORTS (FR-044)
+    //
+
+    /** True for an {@code object.report} node as loaded (not its read model). */
+    private static boolean isDeclaredReport(MetaObject mc) {
+        return ReportReadModel.isReport(mc) && !(mc instanceof ReportReadModel);
+    }
+
+    /**
+     * The object a READ is planned against. Every object but a report is returned
+     * unchanged. An {@code object.report} declares no fields — its read shape is derived
+     * from its dimensions and measures — so it is read through its detached
+     * {@link ReportReadModel}: ordinary fields (one per derived field) over the report's
+     * view. The column mapping, filter and sort resolution, instance construction and the
+     * read codecs then see nothing unusual. The model is never attached to the loaded tree.
+     *
+     * <p>Rows of a report are instances of the returned model: read their values through
+     * it ({@code readObjectFor(report).getMetaFields()}), not through the declared node,
+     * which has no fields.</p>
+     *
+     * @throws PersistenceException when the report declares no read-only source: it has a
+     *                              shape and no view, so it is not served
+     */
+    public MetaObject readObjectFor(MetaObject mc) {
+        if (!ReportReadModel.isReport(mc)) return mc;
+        ReportReadModel model;
+        try {
+            model = ReportReadModel.of(mc);
+        } catch (MetaDataException e) {
+            throw new PersistenceException("Report [" + mc.getName() + "] cannot be read: " + e.getMessage(), e);
+        }
+        if (!model.isServed()) {
+            throw new PersistenceException("Report [" + mc.getName() + "] is not served: it declares no"
+                + " read-only source, so it has no view to read");
+        }
+        return model;
+    }
+
+    /**
+     * Refuse an operation that needs an identity or writes. A report is a compiled view
+     * with no primary key: it is listed and counted, nothing else. Checked on the subtype,
+     * before any source or mapping check, so a write on a sourceless report is refused as
+     * read-only rather than as unserved.
+     */
+    private static void requireNotReport(MetaObject mc, String operation) {
+        if (ReportReadModel.isReport(mc)) {
+            throw new PersistenceException(operation + " is not supported on [" + mc.getName()
+                + "]: a report is read-only and has no identity (read it with getObjects / getObjectsCount)");
+        }
+    }
+
+    /**
+     * Gets an object's reference. A report row has no identity, so it has no reference.
+     */
+    @Override
+    public ObjectRef getObjectRef(Object obj) {
+        // The same lookup the base method does. An object with no metadata is left to the
+        // base, so everything but a report row behaves exactly as it did.
+        MetaObject mc = MetaDataUtil.findMetaObject(obj, this);
+        if (mc != null) requireNotReport(mc, "getObjectRef");
+        return super.getObjectRef(obj);
     }
 
     /**
@@ -372,6 +443,8 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
     public Object getObjectByRef(ObjectConnection c, String refStr) {
         ObjectRef ref = getObjectRef(refStr);
         MetaObject mc = ref.getMetaClass();
+
+        requireNotReport(mc, "getObjectByRef");
 
         if (!isReadableClass(mc)) {
             throw new PersistenceException("MetaClass [" + mc + "] is not readable");
@@ -489,6 +562,8 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
     @Override
     public int deleteObjects(ObjectConnection c, MetaObject mc, Expression exp) {
 
+        requireNotReport(mc, "deleteObjects");
+
         if (!isDeleteableClass(mc)) {
             throw new PersistenceException("MetaClass [" + mc + "] is not deletable");
         }
@@ -528,6 +603,8 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
      */
     @Override
     public long getObjectsCount(ObjectConnection c, MetaObject mc, Expression exp) throws MetaDataException {
+        mc = readObjectFor(mc); // FR-044: a report is counted through its read model
+
         if (!isReadableClass(mc)) {
             throw new PersistenceException("MetaClass [" + mc + "] is not persistable");
         }
@@ -554,6 +631,8 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
      */
     @Override
     public Collection<?> getObjects(ObjectConnection c, MetaObject mc, QueryOptions options) throws MetaDataException {
+        mc = readObjectFor(mc); // FR-044: a report is read through its read model
+
         if (!isReadableClass(mc)) {
             throw new PersistenceException("MetaClass [" + mc + "] is not persistable");
         }
@@ -604,6 +683,8 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
 
         // Get the MetaClass for the object
         MetaObject mc = getMetaObjectFor(o);
+
+        requireNotReport(mc, "loadObject");
 
         // If it's not a readable class throw an exception
         if (!isReadableClass(mc)) {
@@ -657,6 +738,8 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
 
         MetaObject mc = getMetaObjectFor(obj);
 
+        requireNotReport(mc, "createObject");
+
         if (!isCreateableClass(mc)) {
             throw new PersistenceException("Object of class [" + mc + "] is not createable");
         }
@@ -699,6 +782,7 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
 
         // Get the metaclass and make sure it is updateable
         MetaObject mc = getMetaObjectFor(obj);
+        requireNotReport(mc, "updateObject");
         if (!isUpdateableClass(mc)) {
             throw new PersistenceException("Object of class [" + mc + "] is not writeable");
         }
@@ -784,6 +868,8 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
         checkTransaction(conn, true);
 
         MetaObject mc = getMetaObjectFor(obj);
+
+        requireNotReport(mc, "deleteObject");
 
         if (!isDeleteableClass(mc)) {
             throw new PersistenceException("Object [" + obj + "] of class [" + mc + "] is not deleteable");
@@ -990,6 +1076,15 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
     }
 
     /**
+     * The object an OQL query names as its result class ({@code [Name] SELECT ...}).
+     * Resolved through the loader registry, as it always was; a seam so a manager wired to
+     * a specific loader can resolve the name against it.
+     */
+    protected MetaObject findResultClass(String className) throws MetaDataNotFoundException {
+        return MetaDataUtil.findMetaObjectByName(className, this);
+    }
+
+    /**
      * Executes the specified query and maps it to the given object.
      *
      * String oql = "[" + Product.CLASSNAME + "]" + " SELECT {P.*}, {M.name} AS
@@ -1022,7 +1117,7 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
                 String className = query.substring(1, i).trim();
                 query = query.substring(i + 1).trim();
 
-                resultClass = MetaDataUtil.findMetaObjectByName(className, this);
+                resultClass = findResultClass(className);
             } else {
                 throw new MetaDataException("OQL does not contain a result set definition using []'s or {}'s: [" + query + "]");
             }
@@ -1038,6 +1133,11 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
 
                 LinkedList<Object> data = new LinkedList<Object>();
                 try {
+                    // FR-044: a declared report has no fields, so its rows are built from its
+                    // read model (one field per derived field). In OQL the author supplies the
+                    // SQL, so a sourceless report is a legitimate result shape too: it has a
+                    // model and simply no mapping, and columns bind by derived field name.
+                    if (ReportReadModel.isReport(resultClass)) resultClass = ReportReadModel.of(resultClass);
                     ObjectMappingDB mapping = (ObjectMappingDB) getReadMapping(resultClass);
 
                     while (rs.next()) {
@@ -1078,6 +1178,7 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
      */
     @Override
     public void createObjectsBulk(ObjectConnection c, MetaObject mc, Collection<Object> objects) throws MetaDataException {
+        requireNotReport(mc, "createObjectsBulk");
         if (!isCreateableClass(mc)) {
             throw new PersistenceException("Object of class [" + mc + "] is not createable");
         }
@@ -1108,6 +1209,7 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
      */
     @Override
     public void updateObjectsBulk(ObjectConnection c, MetaObject mc, Collection<Object> objects) throws MetaDataException {
+        requireNotReport(mc, "updateObjectsBulk");
         if (!isUpdateableClass(mc)) {
             throw new PersistenceException("Object of class [" + mc + "] is not updateable");
         }

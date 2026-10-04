@@ -104,6 +104,62 @@ internal class KotlinCodegenMatchesReferenceTest {
                 ExpectedColumn("recordedAt", families = setOf("instantWithTimeZone")),
             ),
         ),
+        // FR-044: the six view-backed reports. Each mirrors its hand-written reference
+        // (`tables/<Report>View.kt`) column for column: the family is the view's real column
+        // type, and a column is nullable exactly when the reference's is. A report has no
+        // identity, so none carries a primary key.
+        "ProgramMinutes" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("program", families = setOf("long"), nullable = false),
+                ExpectedColumn("programTitle", families = setOf("varchar"), nullable = true),
+                ExpectedColumn("weeks", families = setOf("long"), nullable = false),
+                ExpectedColumn("longWeeks", families = setOf("long"), nullable = false),
+                ExpectedColumn("labels", families = setOf("long"), nullable = false),
+                ExpectedColumn("slots", families = setOf("long"), nullable = false),
+                ExpectedColumn("totalMinutes", families = setOf("long"), nullable = true),
+                ExpectedColumn("avgMinutes", families = setOf("decimal"), nullable = true),
+                ExpectedColumn("minMinutes", families = setOf("integer"), nullable = true),
+                ExpectedColumn("maxMinutes", families = setOf("integer"), nullable = true),
+                ExpectedColumn("longShare", families = setOf("decimal"), nullable = true),
+            ),
+            report = "v_program_minutes",
+        ),
+        "FitnessTotals" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("weeks", families = setOf("long"), nullable = false),
+                ExpectedColumn("totalMinutes", families = setOf("long"), nullable = true),
+                ExpectedColumn("longShare", families = setOf("decimal"), nullable = true),
+            ),
+            report = "v_fitness_totals",
+        ),
+        "ProgramsByMonth" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("createdAtMonth", families = setOf("date"), nullable = false),
+                ExpectedColumn("status", families = setOf("varchar", "enumerationByName"), nullable = false),
+                ExpectedColumn("programs", families = setOf("long"), nullable = false),
+                ExpectedColumn("listValue", families = setOf("long"), nullable = true),
+            ),
+            report = "v_programs_by_month",
+        ),
+        "ProgramsByWeek" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("createdAtWeek", families = setOf("date"), nullable = false),
+                ExpectedColumn("programs", families = setOf("long"), nullable = false),
+            ),
+            report = "v_programs_by_week",
+        ),
+        "RecentPrograms" to EntityExpectation(
+            columns = listOf(ExpectedColumn("programs", families = setOf("long"), nullable = false)),
+            report = "v_recent_programs",
+        ),
+        "AssetActivity" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("recordedAtHour", families = setOf("instantWithTimeZone"), nullable = false),
+                ExpectedColumn("asOfDateWeek", families = setOf("date"), nullable = false),
+                ExpectedColumn("assets", families = setOf("long"), nullable = false),
+            ),
+            report = "v_asset_activity",
+        ),
     )
 
     @Test
@@ -124,6 +180,7 @@ internal class KotlinCodegenMatchesReferenceTest {
                 val source = tableFile.readText()
                 assertSourceContainsColumns(entity, source, expected.columns)
                 assertSourceContainsForeignKeys(entity, source, expected.foreignKeys)
+                expected.report?.let { view -> assertSourceIsExactlyTheReportTable(entity, source, view, expected.columns) }
             }
         } finally {
             outDir.deleteRecursively()
@@ -147,7 +204,39 @@ internal class KotlinCodegenMatchesReferenceTest {
                 "${entity}Table.kt: expected `val ${col.name} = <${col.families.joinToString("|")}>(...)`. " +
                     "Source was:\n$source"
             )
+            // Nullability is asserted only where the expectation states it (the reports).
+            col.nullable?.let { nullable ->
+                val line = source.lineSequence().first { Regex("""\bval\s+${Regex.escape(col.name)}\s*=""").containsMatchIn(it) }
+                assertTrue(
+                    line.trimEnd().endsWith(".nullable()") == nullable,
+                    "${entity}Table.kt: expected column '${col.name}' to be ${if (nullable) "nullable" else "non-null"}; saw `${line.trim()}`"
+                )
+            }
         }
+    }
+
+    /**
+     * A report's table (FR-044) is held tighter than an entity's: it binds [view], declares
+     * EXACTLY the expected columns in the expected order (the derived fields — dimensions,
+     * then measures — and nothing else), and has no primary key, because a report has no
+     * identity.
+     */
+    private fun assertSourceIsExactlyTheReportTable(
+        entity: String,
+        source: String,
+        view: String,
+        expected: List<ExpectedColumn>,
+    ) {
+        assertTrue(
+            "object ${entity}Table : Table(\"$view\")" in source,
+            "${entity}Table.kt: expected the table to bind the view '$view'; saw:\n$source",
+        )
+        val declared = Regex("""^\s*val\s+(\w+)\s*=""", RegexOption.MULTILINE).findAll(source).map { it.groupValues[1] }.toList()
+        assertTrue(
+            declared == expected.map { it.name },
+            "${entity}Table.kt: expected exactly the columns ${expected.map { it.name }} in that order; saw $declared",
+        )
+        assertTrue("primaryKey" !in source, "${entity}Table.kt: a report has no identity, so no primaryKey; saw:\n$source")
     }
 
     /**
@@ -173,10 +262,12 @@ internal class KotlinCodegenMatchesReferenceTest {
         }
     }
 
-    private data class ExpectedColumn(val name: String, val families: Set<String>)
+    private data class ExpectedColumn(val name: String, val families: Set<String>, val nullable: Boolean? = null)
     private data class ExpectedFk(val columnName: String, val targetTable: String)
     private data class EntityExpectation(
         val columns: List<ExpectedColumn>,
         val foreignKeys: List<ExpectedFk> = emptyList(),
+        /** For an `object.report` (FR-044): the view its table binds. Null for every other object. */
+        val report: String? = null,
     )
 }

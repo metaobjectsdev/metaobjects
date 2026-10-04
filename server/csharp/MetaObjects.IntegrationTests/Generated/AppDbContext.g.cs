@@ -11,7 +11,9 @@ public class AppDbContext : DbContext
 
     public DbSet<AllTypes> AllTypes { get; set; } = default!;
     public DbSet<Asset> Assets { get; set; } = default!;
+    public DbSet<AssetActivity> AssetActivities { get; set; } = default!;
     public DbSet<Auth> Auths { get; set; } = default!;
+    public DbSet<FitnessTotals> FitnessTotals { get; set; } = default!;
     public DbSet<Follow> Follows { get; set; } = default!;
     public DbSet<Friendship> Friendships { get; set; } = default!;
     public DbSet<Measurement> Measurements { get; set; } = default!;
@@ -21,16 +23,27 @@ public class AppDbContext : DbContext
     public DbSet<PostReferral> PostReferrals { get; set; } = default!;
     public DbSet<PostTag> PostTags { get; set; } = default!;
     public DbSet<Program> Programs { get; set; } = default!;
+    public DbSet<ProgramMinutes> ProgramMinutes { get; set; } = default!;
     public DbSet<ProgramStat> ProgramStats { get; set; } = default!;
     public DbSet<ProgramView> ProgramViews { get; set; } = default!;
+    public DbSet<ProgramsByMonth> ProgramsByMonths { get; set; } = default!;
+    public DbSet<ProgramsByWeek> ProgramsByWeeks { get; set; } = default!;
+    public DbSet<RecentPrograms> RecentPrograms { get; set; } = default!;
     public DbSet<Tag> Tags { get; set; } = default!;
     public DbSet<Week> Weeks { get; set; } = default!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<AssetActivity>().HasNoKey().ToView("v_asset_activity");
+        modelBuilder.Entity<FitnessTotals>().HasNoKey().ToView("v_fitness_totals");
+        modelBuilder.Entity<ProgramMinutes>().HasNoKey().ToView("v_program_minutes");
         modelBuilder.Entity<ProgramStat>().ToView(ProgramStatNames.SourcePrimaryView);
         modelBuilder.Entity<ProgramView>().ToView(ProgramViewNames.SourcePrimaryView);
         modelBuilder.Entity<ProgramView>().Property(x => x.Status).HasConversion<string>();
+        modelBuilder.Entity<ProgramsByMonth>().HasNoKey().ToView("v_programs_by_month");
+        modelBuilder.Entity<ProgramsByMonth>().Property(x => x.Status).HasConversion<string>();
+        modelBuilder.Entity<ProgramsByWeek>().HasNoKey().ToView("v_programs_by_week");
+        modelBuilder.Entity<RecentPrograms>().HasNoKey().ToView("v_recent_programs");
         modelBuilder.Entity<AllTypes>().OwnsOne(x => x.Settings, b => b.ToJson(AllTypesNames.SettingsColumn));
         modelBuilder.Entity<AllTypes>().OwnsMany(x => x.Labels, b => b.ToJson(AllTypesNames.LabelsColumn));
         modelBuilder.Entity<AllTypes>().Property(x => x.EnumVal).HasConversion<string>();

@@ -19,9 +19,10 @@ public class GeneratorUtil {
     }
 
     public static <T extends MetaData> Collection<T> getFilteredMetaData(MetaDataLoader loader, Class<T> clazz, MetaDataFilters filters ) {
-        // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
-        // Dropped here because every direct per-object generator (the Java model tier, the
-        // Mustache and PlantUML generators) selects its objects through this overload.
+        // FR-044: no generator that selects its objects here emits for an object.report, with
+        // or without a view source. Dropped here because every direct per-object generator
+        // (the Java model tier, the Mustache and PlantUML generators) selects its objects
+        // through this overload.
         List<T> generatable = new ArrayList<>();
         for (T md : loader.getMetaData( clazz )) {
             if (!isReport(md)) generatable.add(md);
@@ -30,10 +31,11 @@ public class GeneratorUtil {
     }
 
     /**
-     * True for an {@code object.report} (FR-044). Plan 1 registers and validates the
-     * reporting vocabulary but gives a report no lowering yet, so no generator emits for
-     * one — including a report that declares a read-only {@code source.rdb @kind: view}
-     * (R5 allows one), which would otherwise pass every source-keyed gate.
+     * True for an {@code object.report} (FR-044). The generators that ask this skip a
+     * report: every Java generator, and every Kotlin generator but one. A report that
+     * declares a read-only {@code source.rdb @kind: view} would otherwise pass every
+     * source-keyed gate. The one exception is the Kotlin Exposed table generator, which
+     * emits the read-only table object of a view-backed report.
      */
     public static boolean isReport(MetaData md) {
         return md instanceof MetaObject && MetaObject.SUBTYPE_REPORT.equals(md.getSubType());

@@ -9,6 +9,7 @@ import com.metaobjects.generator.kotlin.KotlinRelationsGenerator
 import com.metaobjects.generator.kotlin.KotlinValidatorGenerator
 import com.metaobjects.generator.util.GeneratedFileWriter
 import com.metaobjects.metadata.ktx.loadDirectory
+import com.metaobjects.metadata.ktx.loadString
 import com.tschuchort.compiletesting.KotlinCompilation
 import com.tschuchort.compiletesting.SourceFile
 import java.nio.file.Files
@@ -123,6 +124,49 @@ class Exposed1xCodegenCompileTest {
             assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode,
                 "exposedApi=1 output over the shared fitness corpus emitted ${sources.size} " +
                     "file(s) that do not compile against Exposed 1.3.x:\n${result.messages}")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * Exposed 1.x adds the open `Table` properties `options` and `storageParameters`, which
+     * 0.x lacks. A column property of either name hides that member and does not compile, so
+     * under `exposedApi=1` the generator suffixes it (`optionsColumn`). Compiled here because
+     * this is the only module with Exposed 1.x on its classpath.
+     */
+    @Test
+    fun `exposedApi=1 table with fields named after 1x-only Table members compiles`() {
+        val model = """{
+          "metadata.root": { "package": "acme::shop", "children": [
+            { "object.entity": { "name": "Plan", "children": [
+                { "source.rdb": { "@table": "plans" } },
+                { "field.long": { "name": "id" } },
+                { "field.string": { "name": "options" } },
+                { "field.string": { "name": "storageParameters" } },
+                { "identity.primary": { "name": "id", "@fields": ["id"], "@generation": "increment" } },
+                { "identity.secondary": { "name": "by_options", "@fields": ["options"] } }
+            ] } }
+          ] }
+        }"""
+        val outDir = Files.createTempDirectory("exposed1x-reserved-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString(), "exposedApi" to "1"))
+            gen.execute(loadString("exposed1x-reserved", model))
+
+            val table = outDir.resolve("acme/shop/PlanTable.kt").readText()
+            assertTrue("val optionsColumn = text(\"options\")" in table, table)
+            assertTrue("val storageParametersColumn = text(\"storage_parameters\")" in table, table)
+
+            val result = KotlinCompilation().apply {
+                sources = listOf(SourceFile.kotlin("PlanTable.kt", table))
+                inheritClassPath = true
+                messageOutputStream = System.out
+            }.compile()
+            assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode,
+                "a table with fields named options / storageParameters does not compile against " +
+                    "Exposed 1.3.x:\n${result.messages}")
         } finally {
             outDir.toFile().deleteRecursively()
         }

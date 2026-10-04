@@ -16,6 +16,7 @@
 package com.metaobjects.reporting;
 
 import com.metaobjects.MetaData;
+import com.metaobjects.util.MetaDataUtil;
 import com.metaobjects.object.MetaObject;
 
 import java.util.ArrayList;
@@ -56,9 +57,29 @@ public final class ReportAccessors {
         return out;
     }
 
-    /** The {@code @measures} names. */
+    /** The {@code @measures} items AS WRITTEN: each a bare measure {@code name}, or a dotted
+     *  {@code Entity.name} (loader rule R3). Use {@link #reportMeasureItemName} for the measure name. */
     public static List<String> reportMeasureNames(MetaData report) {
         return ReportingAttrs.stringList(report, MetaObject.ATTR_REPORT_MEASURES);
+    }
+
+    /**
+     * The measure a {@code @measures} item names: the segment after its LAST {@code .}
+     * ({@code total}, {@code Sale.total} and {@code acme::shop::Sale.total} all name
+     * {@code total}). It is also the derived report field's name. The part before that
+     * {@code .}, when present, is an entity qualifier ({@link #reportMeasureItemOwner}).
+     */
+    public static String reportMeasureItemName(String item) {
+        int dot = item.lastIndexOf(MetaDataUtil.CHILD_REF_SEPARATOR);
+        return dot == -1 ? item : item.substring(dot + MetaDataUtil.CHILD_REF_SEPARATOR.length());
+    }
+
+    /** The entity qualifier of a dotted {@code @measures} item ({@code Sale} in
+     *  {@code Sale.total}), or {@code null} for a bare item. Loader rule R3: it names
+     *  {@code @from} or an entity {@code @from} extends. */
+    public static String reportMeasureItemOwner(String item) {
+        int dot = item.lastIndexOf(MetaDataUtil.CHILD_REF_SEPARATOR);
+        return dot == -1 ? null : item.substring(0, dot);
     }
 
     /** The derived report field for a dimension item: {@code name} (attribute) or
