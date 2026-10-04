@@ -1,0 +1,86 @@
+{
+  "verify": [
+    {
+      "gate": "templates",
+      "ran": true,
+      "ok": true
+    },
+    {
+      "gate": "schema",
+      "ran": false,
+      "ok": true
+    },
+    {
+      "gate": "codegen",
+      "ran": false,
+      "ok": true
+    },
+    {
+      "gate": "docs",
+      "ran": false,
+      "ok": true
+    },
+    {
+      "gate": "deps",
+      "ran": false,
+      "ok": true
+    },
+    {
+      "gate": "requirements",
+      "ran": true,
+      "ok": true
+    },
+    {
+      "gate": "replay",
+      "ran": false,
+      "ok": true
+    }
+  ],
+  "exitCode": 0,
+  "summary": "2 gate(s) ran, all clean; 1 field authoring finding(s)",
+  "help": [
+    "1 field authoring finding(s) — see fields.rows[]; each names a reference identity listing a field its object lacks, or a field name declared twice in one children list"
+  ],
+  "antiPatterns": {
+    "status": "ran",
+    "total": 0,
+    "rows": []
+  },
+  "requirements": {
+    "status": "ran",
+    "total": 0,
+    "rows": []
+  },
+  "overlays": {
+    "status": "ran",
+    "total": 0,
+    "rows": []
+  },
+  "names": {
+    "status": "ran",
+    "total": 0,
+    "rows": []
+  },
+  "deprecations": {
+    "status": "ran",
+    "total": 0,
+    "rows": []
+  },
+  "fields": {
+    "status": "ran",
+    "total": 1,
+    "rows": [
+      {
+        "code": "WARN_REFERENCE_FIELD_NOT_FOUND",
+        "path": "acme::app::stock::Item.owner_fk",
+        "severity": "warn",
+        "source": "lint",
+        "message": "identity.reference \"owner_fk\" lists \"ownerIdd\" in @fields, but acme::app::stock::Item has no field of that name, inherited and overlaid fields included. Nothing checks this at load, so the reference is built on a field that does not exist. Rename the entry to an existing field, or declare the field."
+      }
+    ]
+  },
+  "notRepresented": [
+    "per-gate drift detail (which template variable drifted, which schema change, which generated file differs, which migration failed to replay) — printed as text on stderr; this payload carries each gate's pass/fail verdict",
+    "the loader's own warnings and the agent-context/manifest advisories — printed as text on stderr"
+  ]
+}

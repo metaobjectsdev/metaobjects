@@ -1,0 +1,20 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] -----------------------< drive:field-lint-drive >-----------------------
+[INFO] Building field-lint-drive 1.0.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- metaobjects:8.0.13:verify (default-cli) @ field-lint-drive ---
+[INFO] OM managed types registered via provider
+[INFO] MetaData Mojo > LifeCycle Phase: null
+[INFO] MetaData Mojo > Create Loader: MetaDataLoader[manual:null]
+[WARNING] metaobjects:verify — fields: 1 authoring warning(s) (advisory — does not fail the build):
+[WARNING]   WARN_REFERENCE_FIELD_NOT_FOUND [acme::app::stock::Item.owner_fk]: identity.reference "owner_fk" lists "ownerIdd" in @fields, but acme::app::stock::Item has no field of that name, inherited and overlaid fields included. Nothing checks this at load, so the reference is built on a field that does not exist. Rename the entry to an existing field, or declare the field.
+[INFO] MetaData Verify Mojo > No codegen drift detected across 0 generator(s) in 0 output director(y/ies).
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  0.436 s
+[INFO] Finished at: 2026-10-04T18:15:29-04:00
+[INFO] ------------------------------------------------------------------------
