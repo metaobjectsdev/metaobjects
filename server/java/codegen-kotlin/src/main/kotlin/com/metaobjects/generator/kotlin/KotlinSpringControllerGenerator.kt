@@ -113,6 +113,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val outRoot = Paths.get(outDir.absolutePath)
 
         for (entity in loader.metaObjects) {
+            // FR-044 Plan 3, interim: RestSurfaceGate now admits a served object.report (the Java
+            // port emits its read-only surface from RestSurfaceGate.restShapeOf). This generator
+            // does not serve a report yet, and the declared node has no fields to emit from, so a
+            // report is skipped here until the Kotlin port switches this loop to restShapeOf.
+            if (com.metaobjects.generator.util.GeneratorUtil.isReport(entity)) continue
             // Abstract entities are inheritance scaffolding — never emit a CRUD controller.
             if (KotlinGenUtil.isAbstractEntity(entity)) continue
             // FR-017 TPH: a subtype is folded into its base's single table + base controller (it

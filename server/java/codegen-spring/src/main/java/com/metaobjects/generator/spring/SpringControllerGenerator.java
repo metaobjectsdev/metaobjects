@@ -127,7 +127,11 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         runtimePackage = getArg(ARG_RUNTIME_PACKAGE, RUNTIME_PACKAGE);
         this.loader = loader;
         Path outRoot = Paths.get(outDir.getAbsolutePath());
-        for (MetaObject entity : loader.getMetaObjects()) {
+        for (MetaObject declared : loader.getMetaObjects()) {
+            // FR-044: a served report is emitted from its read model; any other report
+            // has no shape and emits nothing.
+            MetaObject entity = RestSurfaceGate.restShapeOf(declared);
+            if (entity == null) continue;
             if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) continue;
             // FR-017 TPH: a subtype is folded into its base's single table + base controller —
             // it emits no standalone controller (it carries no own source.rdb either, so the
@@ -142,7 +146,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
                 continue;
             }
             // F22 — a view-only projection gets a READ-ONLY controller: reads served, every
-            // write verb answering the cross-port 405 envelope.
+            // write verb answering the cross-port 405 envelope. A served report (FR-044)
+            // takes the same path and, having no identity, comes out keyless.
             if (RestSurfaceGate.isReadOnly(entity)) {
                 emitReadOnly(entity, outRoot);
                 continue;
@@ -158,7 +163,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
     /**
      * True iff this generator emits a {@code @RestController} for {@code entity} —
      * a WRITABLE object (a concrete table-kind {@code object.entity}, or a write-through
-     * entity) or a READ-ONLY view-kind {@code object.projection} (F22). Ask
+     * entity), a READ-ONLY view-kind {@code object.projection} (F22) or a served
+     * {@code object.report} (FR-044, emitted from {@link RestSurfaceGate#restShapeOf}). Ask
      * {@link RestSurfaceGate#isReadOnly(MetaObject)} which of the two shapes is emitted.
      *
      * <p>The predicate itself lives in {@link RestSurfaceGate} and is SHARED with
@@ -535,8 +541,16 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * <p>The item verbs follow the item GET. A projection's identity is OPTIONAL
      * (ADR-0028), and a keyless one mounts no {@code /{id}} read — so it refuses only the
      * collection verb, rather than advertising an address it never serves.</p>
+     *
+     * <p>FR-044: a served {@code object.report} is emitted here too, from its read model.
+     * A report has no identity at all, so it is always the keyless shape: the list, the
+     * collection 405, and no {@code /{id}} mapping of any verb.</p>
      */
     protected void emitReadOnly(MetaObject entity, Path outRoot) {
+        // What the javadoc and the 405 message call this object. Free prose on the wire
+        // (`message` is not part of the asserted contract), but it must not call a report
+        // a projection.
+        String noun = SpringNaming.readOnlyNoun(entity);
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
@@ -576,9 +590,15 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
 
         src.append("/**\n");
         src.append(" * GENERATED — READ-ONLY REST controller for the ").append(shortName)
-           .append(" projection.\n");
-        src.append(" * Implements the cross-port API contract: GET list + GET by id; every write\n");
-        src.append(" * verb answers 405 {\"error\": \"method_not_allowed\"}.\n");
+           .append(" ").append(noun).append(".\n");
+        if (!com.metaobjects.generator.util.GeneratorUtil.isReport(entity)) {
+            src.append(" * Implements the cross-port API contract: GET list + GET by id; every write\n");
+            src.append(" * verb answers 405 {\"error\": \"method_not_allowed\"}.\n");
+        } else {
+            src.append(" * Implements the cross-port API contract: GET list; POST answers\n");
+            src.append(" * 405 {\"error\": \"method_not_allowed\"}. A report has no identity, so no item\n");
+            src.append(" * route is mounted.\n");
+        }
         src.append(" *\n");
         src.append(" * <p>Auth: these read endpoints are unauthenticated. Require authentication for this path\n");
         src.append(" * in your Spring Security config, e.g. {@code http.authorizeHttpRequests(a ->\n");
@@ -625,7 +645,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("    private static ResponseEntity<?> methodNotAllowed(String verb) {\n");
         src.append("        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)\n");
         src.append("                .body(Map.of(\"error\", \"method_not_allowed\",\n");
-        src.append("                        \"message\", verb + \" is not supported on a projection (read-only).\"));\n");
+        src.append("                        \"message\", verb + \" is not supported on a ").append(noun)
+           .append(" (read-only).\"));\n");
         src.append("    }\n\n");
 
         appendParseSortHelper(src, repoName);
@@ -636,7 +657,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             GeneratedFileWriter.write(outFile, src.toString());
         } catch (IOException e) {
             throw new GeneratorException(
-                "failed writing " + controllerName + ".java for projection " + entity.getName() + ": " + e, e);
+                "failed writing " + controllerName + ".java for " + noun + " " + entity.getName() + ": " + e, e);
         }
     }
 

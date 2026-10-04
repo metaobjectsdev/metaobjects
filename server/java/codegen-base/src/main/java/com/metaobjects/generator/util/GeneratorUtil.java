@@ -31,11 +31,13 @@ public class GeneratorUtil {
     }
 
     /**
-     * True for an {@code object.report} (FR-044). The generators that ask this skip a
-     * report: every Java generator, and every Kotlin generator but one. A report that
+     * True for an {@code object.report} (FR-044): the declared node or its read model.
+     * The model-tier generators that ask this skip a report outright; a report that
      * declares a read-only {@code source.rdb @kind: view} would otherwise pass every
-     * source-keyed gate. The one exception is the Kotlin Exposed table generator, which
-     * emits the read-only table object of a view-backed report.
+     * source-keyed gate. The REST-surface generators do not ask this to decide: they map
+     * each object through {@link RestSurfaceGate#restShapeOf}, which serves a view-backed
+     * report from its read model and drops every other report (Plan 3). The Kotlin Exposed
+     * table generator emits the read-only table object of a view-backed report.
      */
     public static boolean isReport(MetaData md) {
         return md instanceof MetaObject && MetaObject.SUBTYPE_REPORT.equals(md.getSubType());

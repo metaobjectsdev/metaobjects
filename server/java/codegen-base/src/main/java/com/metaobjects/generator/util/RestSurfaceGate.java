@@ -3,6 +3,8 @@ package com.metaobjects.generator.util;
 import com.metaobjects.MetaData;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.reporting.ReportReadModel;
+import com.metaobjects.reporting.ReportShape;
 import com.metaobjects.source.MetaSource;
 import com.metaobjects.source.RdbSource;
 
@@ -25,6 +27,14 @@ import com.metaobjects.source.RdbSource;
  * verb answering {@code 405 {"error": "method_not_allowed"}} (F22). Everything else —
  * abstract objects, {@code object.value}, sourceless projections, and the proc /
  * table-function kinds that have no controller story on the JVM — gets nothing.</p>
+ *
+ * <p><b>A third, since FR-044 Plan 3.</b> A SERVED {@code object.report}
+ * ({@link #isServedReport}: its read source is {@code @kind: view}) gets the read-only
+ * surface too, keyless: the list, the collection {@code 405}, and no item route. A report
+ * declares no fields, so a generator never emits from the declared node — it emits from
+ * {@link #restShapeOf}, the report's read model, which carries one field per derived
+ * column. Every generator loop asks {@code restShapeOf} FIRST and skips on {@code null};
+ * that one call is what keeps a report that is not served inert.</p>
  *
  * <p>Lives beside {@link RouteNaming} and for the same reason: two hand-maintained
  * copies of a rule, with nothing tying them together, is exactly what let that one go
@@ -91,6 +101,9 @@ public final class RestSurfaceGate {
      * "at least one view source" requirement.</p>
      */
     public static boolean isReadOnly(MetaObject obj) {
+        // FR-044: a served report (the declared node or its read model) is read-only and
+        // keyless. Any other report has no surface at all.
+        if (isServedReport(obj)) return true;
         if (!MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType())) return false;
         if (GeneratorUtil.isAbstract(obj)) return false;
         boolean anyView = false;
@@ -105,6 +118,49 @@ public final class RestSurfaceGate {
             }
         }
         return anyView;
+    }
+
+    /**
+     * Table A (FR-044 Plan 3): true iff {@code obj} is a SERVED report — a non-abstract
+     * {@code object.report} whose read source ({@link ReportShape#readSource}: its own
+     * read-only source with {@code @role: primary}, else its first own read-only source) is
+     * {@code @kind: view}. Answers the same for the declared report and for its
+     * {@link ReportReadModel}.
+     *
+     * <p>A sourceless report is not served, and neither is one over a
+     * {@code materializedView}, {@code storedProc} or {@code tableFunction}: the lowering
+     * skips those kinds, so no relation with the derived columns is promised.</p>
+     */
+    public static boolean isServedReport(MetaObject obj) {
+        if (obj == null || !MetaObject.SUBTYPE_REPORT.equals(obj.getSubType())) return false;
+        // A read model answers for the report it was built from (it has no parent, so its
+        // own abstract flag and sources are a copy; the declared node is the authority).
+        MetaObject declared = obj instanceof ReportReadModel && ((ReportReadModel) obj).report() != null
+                ? ((ReportReadModel) obj).report() : obj;
+        if (GeneratorUtil.isAbstract(declared)) return false;
+        MetaSource source = ReportShape.readSource(declared);
+        return source != null && MetaSource.KIND_VIEW.equals(source.getEffectiveKind());
+    }
+
+    /**
+     * The object a REST-surface generator emits for {@code obj}: the report's read model
+     * for a served report, {@code null} for any other report, {@code obj} itself otherwise.
+     *
+     * <p>Every generator that emits part of the REST surface (DTO, repository, filter
+     * allowlist, controller, api docs) maps each loaded object through this before any
+     * other test and skips on {@code null}. The read model keeps the report's name and
+     * package, so the emitted names and paths are the report's; it carries one ordinary
+     * {@code field.*} per derived column and no identity, so the existing read-only emit
+     * path produces the keyless surface with no report branch of its own. Passing a read
+     * model returns it unchanged.</p>
+     *
+     * @throws com.metaobjects.MetaDataException naming the report, when a derived field is
+     *         typed by a {@code field.object} (the read model refuses it), so {@code gen}
+     *         stops rather than emitting a row it cannot bind
+     */
+    public static MetaObject restShapeOf(MetaObject obj) {
+        if (obj == null || !MetaObject.SUBTYPE_REPORT.equals(obj.getSubType())) return obj;
+        return isServedReport(obj) ? ReportReadModel.of(obj) : null;
     }
 
     /**

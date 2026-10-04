@@ -116,7 +116,16 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // standalone Java enum, so consuming DTOs reference it instead of redeclaring it inline.
         emitSharedEnums(loader, outRoot);
         boolean emitAbstractShapes = Boolean.parseBoolean(getArg("emitAbstractShapes", "false"));
-        for (MetaObject entity : loader.getMetaObjects()) {
+        for (MetaObject declared : loader.getMetaObjects()) {
+            // FR-044: a served report's row DTO is emitted from its read model (one
+            // component per derived field) and nothing else is: no <R>Patch, no stamping
+            // helper, no builder. Any other report has no shape and emits nothing.
+            MetaObject entity = RestSurfaceGate.restShapeOf(declared);
+            if (entity == null) continue;
+            if (GeneratorUtil.isReport(entity)) {
+                emit(entity, outRoot);
+                continue;
+            }
             // FR-024: a (read) DTO is emitted for concrete entities AND any
             // object.projection (read-only-kind source) — the read model. A proc/
             // tableFunction-backed projection DTO may include input @param fields as
@@ -161,7 +170,8 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
 
     /**
      * True iff this generator emits a concrete DTO {@code record} for
-     * {@code entity}: any {@code object.entity} that is not {@code abstract}.
+     * {@code entity}: any {@code object.entity} that is not {@code abstract}, any
+     * {@code object.projection}, and a served {@code object.report} (FR-044).
      * Unlike the controller/repository, the DTO is emitted for EVERY concrete
      * entity regardless of {@code source.rdb} kind (a view-kind entity still gets
      * a wire DTO). Abstract entities are excluded here — they only get the opt-in
@@ -170,6 +180,9 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * Extracted verbatim from the {@link #execute(MetaDataLoader)} concrete-emit guard.
      */
     public static boolean appliesTo(MetaObject entity) {
+        // FR-044: a served report (the declared node or its read model) gets a row DTO,
+        // emitted from RestSurfaceGate.restShapeOf; any other report gets nothing.
+        if (RestSurfaceGate.isServedReport(entity)) return true;
         // FR-024: emit a read DTO for any concrete entity OR any object.projection
         // (read-only-kind source) — a projection is a read-only wire model; the write
         // surfaces skip it. A proc/tableFunction-backed projection DTO may include
@@ -215,7 +228,10 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // gets the same stamping helpers as any other writable entity's DTO (parity with the
         // vanilla contract for a consumer using the subtype DTO directly). The TPH controller's
         // own per-subtype create instead stamps via the BASE union DTO's helper — see emitTphUnion.
-        boolean writableForAutoSet = SpringRepositoryGenerator.appliesTo(entity) || TphPlan.isTphSubtype(entity);
+        // A report row is read-only and derives no @autoSet field; excluded by name so the
+        // "writable" reading of this flag stays true.
+        boolean writableForAutoSet = !GeneratorUtil.isReport(entity)
+            && (SpringRepositoryGenerator.appliesTo(entity) || TphPlan.isTphSubtype(entity));
         List<String> extraBodyMembers =
             (writableForAutoSet && AutoSetSupport.hasAutoSetFields(entity))
                 ? autoSetStampHelpers(entity, fields, SpringNaming.dtoName(
@@ -596,7 +612,8 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // enum is NOT nested here — its type is materialized standalone (or @provided externally)
         // and merely referenced. Inline enums stay nested (cross-port parity, byte-identical default).
         List<String> enumDecls = collectEnumDecls(entity, fields);
-        String builder = MetaObject.SUBTYPE_PROJECTION.equals(entity.getSubType())
+        // FR-044: a report row is not constructable either, for the projection's reason.
+        String builder = MetaObject.SUBTYPE_PROJECTION.equals(entity.getSubType()) || GeneratorUtil.isReport(entity)
             ? "" : SpringRecordBuilder.members(recordName, components);
         if (enumDecls.isEmpty() && extraBodyMembers.isEmpty() && builder.isEmpty()) {
             src.append(") {}\n");
@@ -945,8 +962,11 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      */
     private void emitNetBindings(MetaDataLoader loader, Path outRoot) {
         java.util.Set<String> packages = new java.util.LinkedHashSet<>();
-        for (MetaObject entity : loader.getMetaObjects()) {
-            if (!appliesTo(entity)) continue;
+        for (MetaObject declared : loader.getMetaObjects()) {
+            // FR-044: a served report's derived fields are on its read model (a dimension
+            // over a strict field.uri / field.inet binds through MetaNetBindings too).
+            MetaObject entity = RestSurfaceGate.restShapeOf(declared);
+            if (entity == null || !appliesTo(entity)) continue;
             for (MetaField field : dtoComponentFields(entity)) {
                 if (isStrictNetField(field)) {
                     packages.add(SpringNaming.splitFqn(entity.getName())[0]);

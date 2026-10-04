@@ -27,6 +27,7 @@ import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.InMemoryStringSource;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.query.FilterOps;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import com.metaobjects.source.MetaSource;
 import org.junit.BeforeClass;
@@ -168,7 +169,45 @@ public class ReportReadModelTest extends SharedRegistryTestBase {
         assertEquals(source.hasMetaAttr(CoreDBMetaDataProvider.LOCAL_TIME), hour.hasMetaAttr(CoreDBMetaDataProvider.LOCAL_TIME));
         MetaField<?> week = model.getMetaField("asOfDateWeek");
         assertEquals("date", week.getSubType());
-        assertEquals("only @required", 1, week.getMetaAttrs().size());
+        assertEquals("only @required and the @filterable every banded derived field gets",
+                2, week.getMetaAttrs().size());
+        assertTrue(week.hasMetaAttr(MetaField.ATTR_REQUIRED));
+        assertTrue(week.hasMetaAttr(MetaField.ATTR_FILTERABLE));
+    }
+
+    // ---------------------------------------------------------------------------
+    // Table C (Plan 3): every derived field with a filter band is filterable
+    // ---------------------------------------------------------------------------
+
+    @Test
+    public void everyDerivedFieldWithAFilterBandIsFilterable() {
+        int banded = 0;
+        // ADR-0039: own — the root's own children in declaration order (a root has no super).
+        for (MetaObject o : canonical.getChildren(MetaObject.class, false)) {
+            if (!ReportReadModel.isReport(o)) continue;
+            for (MetaField<?> f : ReportReadModel.of(o, canonical).getMetaFields()) {
+                boolean hasBand = !FilterOps.opsForField(f).isEmpty();
+                String label = o.getShortName() + "." + f.getName() + " (field." + f.getSubType() + ")";
+                assertEquals(label + ": @filterable is set exactly when the subtype has a filter band",
+                        hasBand, f.hasMetaAttr(MetaField.ATTR_FILTERABLE));
+                if (hasBand) {
+                    banded++;
+                    assertEquals(label, Boolean.TRUE, f.getMetaAttr(MetaField.ATTR_FILTERABLE).getValue());
+                }
+            }
+        }
+        assertTrue("the canonical reports derive dimensions and measures: " + banded, banded > 10);
+    }
+
+    @Test
+    public void filterableIsSetOnTheModelOnlyAndNeverOnTheDeclaredTree() {
+        MetaRoot root = loadJson(SALES_MODEL);
+        ReportReadModel model = ReportReadModel.of(object(root, "SalesByRegion"), root);
+        for (String name : List.of("region", "payload", "revenue", "sales")) {
+            assertTrue(name + " (a measure is filterable too)", model.getMetaField(name).hasMetaAttr(MetaField.ATTR_FILTERABLE));
+        }
+        // The @of field declares no @filterable, and deriving the model does not add one.
+        assertFalse(object(root, "Sale").getMetaField("region").hasMetaAttr(MetaField.ATTR_FILTERABLE));
     }
 
     private static final String SALES_MODEL = """
