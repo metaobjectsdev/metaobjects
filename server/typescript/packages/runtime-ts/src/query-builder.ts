@@ -196,7 +196,17 @@ export function buildSelectSpec(
   const allFields = projectedFields ?? listFieldNames(entity);
   // A report's read model (FR-044) has no identity, so there is no key to add to the
   // column list. Scoped to the report subtype: every other object still requires one.
-  const pkFields = entity.subType === OBJECT_SUBTYPE_REPORT ? [] : resolvePkFields(entity);
+  const isReport = entity.subType === OBJECT_SUBTYPE_REPORT;
+  // A report node as DECLARED has no field children (its shape is derived); only its
+  // read model does. Selecting from the bare node would be a query with no columns.
+  if (isReport && listFieldNames(entity).length === 0) {
+    throw new MetadataError(
+      `Report '${entity.name}' has no fields to select: a report is read through its read model ` +
+        `(reportReadModel), not through the declared node`,
+      { entity: entity.name },
+    );
+  }
+  const pkFields = isReport ? [] : resolvePkFields(entity);
   const fieldSet = new Set<string>(allFields);
   for (const pk of pkFields) fieldSet.add(pk);
 

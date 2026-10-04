@@ -17,6 +17,7 @@ import {
   isMetaSource,
   loadUris,
   reportReadModel,
+  resolveTableName,
   type MetaObject,
   type MetaRoot,
 } from "../src/index.js";
@@ -144,6 +145,55 @@ describe("reportReadModel (FR-044 Table B as a detached read model)", () => {
     const root = await load();
     expect(model(root, "ProgramMinutes")).toBe(model(root, "ProgramMinutes"));
     expect(model(root, "ProgramMinutes")).not.toBe(model(root, "FitnessTotals"));
+  });
+
+  // What the loader permits (asserted by `errors` below, not assumed): a report may
+  // declare two read-only sources, and @role defaults to primary.
+  const multiSource = async (sources: unknown[]): Promise<MetaRoot> => {
+    const result = await new MetaDataLoader().load([
+      new InMemoryStringSource(
+        JSON.stringify({
+          "metadata.root": {
+            package: "acme",
+            children: [
+              { "object.entity": { name: "Sale", children: [
+                { "source.rdb": { "@table": "sales" } },
+                { "field.long": { name: "id" } },
+                { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+                { "measure.aggregate": { name: "sales", "@agg": "count", "@of": "Sale.id" } },
+              ] } },
+              { "object.report": { name: "Totals", "@from": "Sale", "@measures": ["sales"], children: sources } },
+            ],
+          },
+        }),
+      ),
+    ]);
+    expect(result.errors.map((e) => e.message)).toEqual([]);
+    return result.root;
+  };
+
+  test("a replica read-only source declared before the primary view: the model holds the primary", async () => {
+    const root = await multiSource([
+      { "source.rdb": { name: "rep", "@kind": "view", "@view": "v_totals_replica", "@role": "replica" } },
+      { "source.rdb": { name: "pri", "@kind": "view", "@view": "v_totals", "@role": "primary" } },
+    ]);
+    const m = model(root, "Totals");
+    const sources = m.children().filter(isMetaSource);
+    expect(sources.map((s) => [s.physicalName, s.role])).toEqual([["v_totals", "primary"]]);
+    expect(resolveTableName(m)).toBe("v_totals");
+  });
+
+  test("a read-only source with no explicit @role is the one read", async () => {
+    const root = await multiSource([{ "source.rdb": { "@kind": "view", "@view": "v_only" } }]);
+    const m = model(root, "Totals");
+    expect(m.children().filter(isMetaSource).map((s) => [s.physicalName, s.role])).toEqual([["v_only", "primary"]]);
+    expect(resolveTableName(m)).toBe("v_only");
+  });
+
+  test("the canonical reports resolve their table to the declared view", async () => {
+    const root = await load();
+    expect(resolveTableName(model(root, "ProgramMinutes"))).toBe("v_program_minutes");
+    expect(resolveTableName(model(root, "AssetActivity"))).toBe("v_asset_activity");
   });
 
   test("a sourceless report yields a model with the fields and no source", async () => {

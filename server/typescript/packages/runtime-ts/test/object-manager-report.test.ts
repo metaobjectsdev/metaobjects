@@ -21,6 +21,7 @@ import { FileSource } from "@metaobjectsdev/metadata/core";
 import { ObjectManager } from "../src/object-manager.js";
 import { inMemoryDriver } from "../src/drivers/in-memory-driver.js";
 import { MetadataError } from "../src/errors.js";
+import { buildSelectSpec } from "../src/query-builder.js";
 import type { Row } from "../src/persistence-driver.js";
 
 const REPO_ROOT = resolve(import.meta.dir, "..", "..", "..", "..", "..");
@@ -82,6 +83,11 @@ const SALES = {
         { "source.rdb": { "@kind": "view", "@view": "v_authored_sales",
           "@sql": "SELECT COUNT(id) AS sales FROM sales" } },
       ] } },
+      // Loads clean: a report may declare a replica read-only source beside its primary view.
+      { "object.report": { name: "ReplicatedSales", "@from": "Sale", "@measures": ["sales"], children: [
+        { "source.rdb": { name: "rep", "@kind": "view", "@view": "v_replicated_sales_replica", "@role": "replica" } },
+        { "source.rdb": { name: "pri", "@kind": "view", "@view": "v_replicated_sales", "@role": "primary" } },
+      ] } },
       { "object.report": { name: "InertSales", "@from": "Sale", "@measures": ["sales"] } },
     ],
   },
@@ -102,6 +108,11 @@ async function salesOm(): Promise<{ om: ObjectManager; root: MetaRoot }> {
         { status: 2, sales: 6 },
       ],
       v_authored_sales: [{ sales: 10 }],
+      v_replicated_sales: [{ sales: 10 }],
+      // Decoys: the replica view, and the default table name a model with no primary
+      // source would fall back to.
+      v_replicated_sales_replica: [{ sales: 77 }],
+      replicated_sales: [{ sales: 88 }],
       // A decoy: if a report read ever fell back to the entity-name default table
       // ("inert_sales") or to the @from table, these rows would surface.
       sales: [{ id: 1, status: 1, amount_cents: 1000 }],
@@ -110,6 +121,7 @@ async function salesOm(): Promise<{ om: ObjectManager; root: MetaRoot }> {
     pkFields: {
       v_sales_by_status: ["status"], v_unmanaged_sales: ["status"],
       v_authored_sales: ["sales"], inert_sales: ["sales"],
+      v_replicated_sales: ["sales"], v_replicated_sales_replica: ["sales"], replicated_sales: ["sales"],
     },
   });
   return { om: new ObjectManager({ metadata: result.root, driver }), root: result.root };
@@ -192,6 +204,52 @@ describe("ObjectManager reads a view-backed report (FR-044)", () => {
     const { om } = await salesOm();
     expect(await om.findMany("AuthoredSales")).toEqual([{ sales: 10 }]);
     expect(await om.count("AuthoredSales")).toBe(1);
+  });
+
+  test("a replica read-only source declared before the primary view: reads come from the primary view", async () => {
+    const { om } = await salesOm();
+    expect(await om.findMany("ReplicatedSales")).toEqual([{ sales: 10 }]);
+    expect(await om.count("ReplicatedSales")).toBe(1);
+    expect(await om.count("ReplicatedSales", { sales: 10 })).toBe(1);
+  });
+
+  test("a report whose only read-only source has no explicit @role is read from it", async () => {
+    // SalesByStatus, UnmanagedSales and AuthoredSales all declare no @role.
+    const { om, root } = await salesOm();
+    const report = root.objects().find((o) => o.name === "SalesByStatus")!;
+    expect(buildSelectSpec(reportReadModel(report, root), undefined, {}).table).toBe("v_sales_by_status");
+    expect(await om.count("SalesByStatus")).toBe(2);
+  });
+
+  test("the select spec: the view as the table, the derived columns in Table B order, no key column", async () => {
+    const root = await loadCanonical();
+    const report = root.objects().find((o) => o.name === "ProgramMinutes")!;
+    const spec = buildSelectSpec(reportReadModel(report, root), undefined, {});
+    expect(spec.table).toBe("v_program_minutes");
+    expect(spec.columns).toEqual([
+      "program", "program_title", "weeks", "long_weeks", "labels", "slots",
+      "total_minutes", "avg_minutes", "min_minutes", "max_minutes", "long_share",
+    ]);
+    expect(spec.where).toBeUndefined();
+    const literal = buildSelectSpec(reportReadModel(report, root), undefined, {}, undefined, "literal");
+    expect(literal.columns).toEqual([
+      "program", "programTitle", "weeks", "longWeeks", "labels", "slots",
+      "totalMinutes", "avgMinutes", "minMinutes", "maxMinutes", "longShare",
+    ]);
+  });
+
+  test("the declared report node, passed straight to buildSelectSpec, is refused by name", async () => {
+    const root = await loadCanonical();
+    const report = root.objects().find((o) => o.name === "ProgramMinutes")!;
+    let err: unknown;
+    try {
+      buildSelectSpec(report, undefined, {});
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(MetadataError);
+    expect((err as MetadataError).message).toContain("ProgramMinutes");
+    expect((err as MetadataError).message).toContain("no fields");
   });
 
   test("a sourceless report is not served", async () => {

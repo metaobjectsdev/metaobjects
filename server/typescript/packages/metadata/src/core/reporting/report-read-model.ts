@@ -27,6 +27,7 @@ import { TYPE_FIELD } from "../../shared/base-types.js";
 import type { MetaRoot } from "../../shared/meta-root.js";
 import { isReadOnlySource } from "../../shared/node-guards.js";
 import { MetaSource } from "../../persistence/source/meta-source.js";
+import { SOURCE_ATTR_ROLE, SOURCE_ROLE_PRIMARY } from "../../persistence/source/source-constants.js";
 import { FIELD_ATTR_DB_COLUMN_TYPE, FIELD_ATTR_LOCAL_TIME } from "../../persistence/db/db-constants.js";
 import { MetaObject } from "../object/meta-object.js";
 import { MetaField } from "../field/meta-field.js";
@@ -88,12 +89,46 @@ function derivedField(f: ReportField): MetaField {
   return field;
 }
 
-/** A detached copy of a source node: same `type.subType`, name and effective attrs. */
+/**
+ * The source a report is READ from: its own read-only source with `@role: primary`,
+ * else its first own read-only source. Undefined when it declares none (Table A:
+ * not lowered, not served).
+ *
+ * This is the rule that NAMES the lowered view — `viewName` / `projectionViewSource`
+ * in codegen-ts's `projection/extract-view-spec.ts`, reached for a report through
+ * `projectionViewName`. It is restated here because the metadata package cannot
+ * depend on a codegen package; the two must stay the same rule, or the runtime
+ * reads a relation the lowering did not create.
+ *
+ * What the loader permits, measured: a report may declare several read-only sources
+ * (a `@role: replica` view beside its primary view loads clean, in either order);
+ * `@role` defaults to `primary`; a report whose sources include no primary is
+ * `ERR_SOURCE_NO_PRIMARY` and a writable source on a report is refused. So for every
+ * model that loads, the primary branch fires. The first-read-only fallback covers a
+ * tree built in code, and keeps this rule identical to the lowering's.
+ */
+function reportReadSource(report: MetaObject): MetaSource | undefined {
+  // ADR-0039: own — source classification reads the sources the report declares
+  // ITSELF, exactly as the lowering's `viewName` does.
+  const readOnly = report.ownChildren().filter(isReadOnlySource);
+  return readOnly.find((s) => s.role === SOURCE_ROLE_PRIMARY) ?? readOnly[0];
+}
+
+/**
+ * A detached copy of a source node: same `type.subType`, name and effective attrs,
+ * and nothing else (attrs only — the loaded node is never re-parented).
+ *
+ * The copy is the model's ONLY source, and it is pinned to `@role: primary`: the
+ * runtime resolves an object's table through `primaryRdbSource`, which considers
+ * primary sources only, so this is what makes the read land on the selected
+ * source's physical name rather than on a default table name nobody declared.
+ */
 function copySource(source: MetaSource): MetaSource {
   const copy = new MetaSource(source.typeId, source.name);
   // ADR-0039: resolving — the copy carries the source's effective configuration
-  // (@kind, the physical-name alias, @schema, @role, @unmanaged, @sql).
+  // (@kind, the physical-name alias, @schema, @unmanaged, @sql).
   for (const [name, value] of source.attrs()) copy.setAttr(name, value);
+  copy.setAttr(SOURCE_ATTR_ROLE, SOURCE_ROLE_PRIMARY);
   return copy;
 }
 
@@ -101,8 +136,8 @@ const READ_MODELS = new WeakMap<MetaObject, MetaObject>();
 
 /**
  * The read model of an `object.report`: one field per Table B row, in Table B
- * order, plus a copy of the report's own read-only source when it declares one
- * (Table A). A sourceless report yields a model with no source: it has a shape
+ * order, plus a copy of the source the report is read from (see
+ * `reportReadSource`) when it declares one (Table A). A sourceless report yields a model with no source: it has a shape
  * and no view, and the caller decides what that means (the runtime refuses to
  * serve it).
  *
@@ -119,10 +154,7 @@ export function reportReadModel(report: MetaObject, root: MetaRoot): MetaObject 
   if (report.fileDefaultPackage !== undefined) model.setFileDefaultPackage(report.fileDefaultPackage);
   for (const f of shape.fields) model.addChild(derivedField(f));
 
-  // ADR-0039: own — Table A classifies a report by the source it declares ITSELF,
-  // the same own-source read as codegen's `classifyReadOnlySource`, so the runtime
-  // serves exactly the reports whose view the lowering (or the adopter) provides.
-  const source = report.ownChildren().find(isReadOnlySource);
+  const source = reportReadSource(report);
   if (source !== undefined) model.addChild(copySource(source));
 
   model.freeze();
