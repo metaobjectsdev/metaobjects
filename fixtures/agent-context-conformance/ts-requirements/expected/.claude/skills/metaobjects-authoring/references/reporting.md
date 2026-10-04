@@ -14,7 +14,7 @@ A report is a compiled view. The report's **own** read-only source decides what 
 | the same, plus `@unmanaged: true` | `meta migrate` never creates or drops it; the runtime still reads it. |
 | `@kind: materializedView`, `storedProc`, `tableFunction` | `meta migrate` skips it. |
 
-A derived report view (no `@sql`) whose `@from` entity has no table (abstract, or no writable `source.rdb`) fails `meta migrate` with an error naming the report and the entity; a report with an `@sql` source skips that check, since your SQL is used as written. A changed report is dropped and re-created by `meta migrate`.
+A derived report view (no `@sql`) whose `@from` entity has no table (abstract, or no writable `source.rdb`) fails `meta migrate` with an error naming the report and the entity; a report with an `@sql` source skips that check, since your SQL is used as written. A changed report is dropped and re-created by `meta migrate`. When a report declares several read-only sources, the one with `@role: primary` decides (else the first).
 
 ## The columns you get
 
@@ -58,6 +58,8 @@ A filter value `{ "now": "-P30D" }` (the current time plus a signed ISO-8601 dur
 
 A dimension reached by `@via` joins like a projection does: a required belongs-to foreign key joins `INNER`, anything else `LEFT OUTER`. So **a fact row whose required reference matches no row is left out of that report** (a dimension you do not list adds no join). That is the existing projection rule, not a reporting special case.
 
+**Each `@via` hop needs a foreign key the model declares**: an `identity.reference` between the two entities, for example `{ "identity.reference": { "name": "fkProgram", "@fields": ["programId"], "@references": "Program" } }` on the entity that holds `programId`. A `relationship.*` with `@cardinality: one` and no reference behind it loads, and then `meta migrate` fails with an error naming the hop.
+
 ## Engine differences
 
 | | Postgres | SQLite / D1 | MySQL |
@@ -68,6 +70,13 @@ A dimension reached by `@via` joins like a projection does: a required belongs-t
 | Instants | `TIMESTAMPTZ` | ISO-8601 text | `DATETIME(3)`, read as the UTC wall clock |
 
 **MySQL owns its own DDL.** `meta migrate` never targets MySQL, so you create the view yourself: `buildReportViews(root, { dialect: "mysql" })` (`@metaobjectsdev/codegen-ts`) returns each view-backed report's body. That function is in the TypeScript package, so the MySQL view SQL comes from a TypeScript toolchain whatever language your application is in; the recipe showing the loop ships as the MySQL guide in the `metaobjects-codegen` skill's TypeScript stacks only. It skips a report whose source is `@unmanaged`.
+
+## Known limits
+
+- **A report `@from` a TPH subtype is refused** when its view is derived. The subtype shares its base's table with every other subtype, so the view would count all of their rows. Declare the report `@from` the base, with an `@filter` on the discriminator field (`"@filter": { "kind": "ADMIN" }`). An `@sql` or `@unmanaged` report over a subtype is yours to scope.
+- **An empty `in` list in a filter is refused** at `meta migrate`, naming the report and the field.
+- **An abstract view-backed report, or one whose source `@kind` is `materializedView`, `storedProc` or `tableFunction`, gets no C# row class and no Kotlin table object.** The TypeScript, Java and Python runtimes still read whatever relation the source names (fine for a materialized view you created, a database error for a routine).
+- **Do not group by a `field.object`.** A dimension over one is not supported across ports; group by a scalar field.
 
 ## What a report does not have
 

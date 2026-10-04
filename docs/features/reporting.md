@@ -86,6 +86,8 @@ A report is a top-level object that names an entity as its `@from`:
             { "field.string":    { "name": "status" } },
             { "field.timestamp": { "name": "purchasedAt" } },
             { "identity.primary": { "name": "id", "@fields": ["id"] } },
+            { "identity.reference": { "name": "fkProgram", "@fields": ["programId"],
+                                      "@references": "Program" } },
             { "relationship.association": { "name": "program", "@objectRef": "Program",
                                             "@cardinality": "one" } },
             { "segment.filter":      { "name": "active", "@filter": { "status": "active" } } },
@@ -125,11 +127,14 @@ A report is a top-level object that names an entity as its `@from`:
 
 What each piece means:
 
-- **`dimension.attribute`** groups by a column's value as-is. `@of` is `Entity.field`.
+- **`dimension.attribute`** groups by a column's value as-is. `@of` is `Entity.field`. `@via`
+  reaches a to-one related entity's column, and each hop needs a **foreign key the model
+  declares**: an `identity.reference` between the two entities (`fkProgram` above). A
+  `relationship.*` alone names the hop but says nothing about which column joins it.
 - **`dimension.time`** groups by a date or timestamp truncated to a grain. It declares which
   grains it supports in `@grains`.
 - **`measure.aggregate`** is one aggregate over the entity's own rows. `@agg: count` without
-  `@distinct` counts rows. With `@distinct: true` it counts distinct values of `@of`, and a
+  `@distinct` counts the rows whose `@of` is not null. With `@distinct: true` it counts distinct values of `@of`, and a
   list in `@of` is a distinct count of the tuple. This deliberately differs from
   `origin.aggregate`, whose `count` is always distinct as a join-inflation guard: a measure
   aggregates its own entity's rows and a dimension reaches only to-one paths, so no join
@@ -156,7 +161,9 @@ order: one per dimension, then one per measure.
 | measure `revenue` | `revenue` |
 
 A `@dimensions` item is a dimension name, or `name:grain` for a time dimension (a single
-colon, so it cannot collide with the `::` package separator).
+colon, so it cannot collide with the `::` package separator). A `@measures` item is a measure
+name, or `Entity.name` where `Entity` is the `@from` entity or one it extends; both forms name
+the same measure and derive the same field.
 
 `StoreTotals` above declares the source that makes it **served**; `DailyRevenue` declares
 none, so it is checked at load and nothing more. A report is served only when it declares a
@@ -167,7 +174,9 @@ none, so it is checked at load and nothing more. A report is served only when it
 ### Which reports lower
 
 The report's **own** read-only source decides. Dimensions, measures and segments are never
-lowered alone.
+lowered alone. When a report declares several read-only sources, the one with `@role: primary`
+decides (else the first): it is the source the view is named by, the one `meta migrate` creates
+and the one every runtime reads.
 
 | The report declares | Result |
 |---|---|
@@ -181,6 +190,17 @@ A **derived** report view (no `@sql`) whose `@from` entity has no table (it is a
 declares no writable `source.rdb`) fails `meta migrate` with an error naming the report and the
 entity, rather than emitting a view over a table that does not exist. A report with an `@sql`
 source is not derived, so that check does not apply to it: your SQL is used as written.
+
+A derived report view is refused in three more cases, each with an error naming the report:
+
+- **`@from` is a TPH subtype** (an entity with `@discriminatorValue` under a base with
+  `@discriminator`). The subtype shares its base's table with every other subtype, so a view
+  derived from it would count all of their rows. Declare the report `@from` the base, with an
+  `@filter` on the discriminator field (`"@filter": { "kind": "ADMIN" }`). A report `@from` the
+  base is unaffected, and an `@sql` or `@unmanaged` report over a subtype is yours to scope.
+- **a `@via` hop has no foreign key in the model.** The error names the hop and the
+  `identity.reference` it needs.
+- **a filter's `in` list is empty**, which no database accepts as SQL.
 
 ### The columns you get
 
@@ -232,7 +252,9 @@ still exists: counts are `0`, sums and ratios are null.
 
 ### Dimensions, time grains and joins
 
-- **`@via`** reaches a column of a to-one related entity, through a join. The join type is the
+- **`@via`** reaches a column of a to-one related entity, through a join. Every hop is joined
+  through an `identity.reference` the model declares between the two entities; a hop without one
+  loads, and then fails `meta migrate` naming the hop. The join type is the
   projection rule, unchanged: a required belongs-to foreign key joins `INNER`, anything else
   `LEFT OUTER`, and an `INNER` survives only when every join above it is `INNER`. The
   consequence to know: **a dimension reached through a required reference drops a fact row
@@ -293,6 +315,22 @@ REPLACE`, since the diff does not know the old column list).
 body of each view-backed report; the recipe in [`docs/recipes/mysql.md`](../recipes/mysql.md)
 ("Reports") shows the loop and its caveats. It skips a report whose source is `@unmanaged`, and
 the bodies are valid under MySQL's default `ONLY_FULL_GROUP_BY`.
+
+### Known limits
+
+- **A derived report from a TPH subtype is refused.** Declare it from the base with an `@filter`
+  on the discriminator field (see "Which reports lower").
+- **An abstract view-backed report gets no C# row class and no Kotlin table object.** The
+  TypeScript, Java and Python runtimes still read it. The same holds for a report whose source
+  `@kind` is `materializedView`, `storedProc` or `tableFunction`: C# and Kotlin generate nothing
+  for it, `meta migrate` skips it, and the three runtimes issue a `SELECT` against whatever
+  relation the source names. That works for a materialized view you created and is a database
+  error for a stored procedure or a table function.
+- **A dimension over a `field.object` is not supported across ports.** TypeScript and Python
+  return the parsed JSON; the other ports are not gated for it. Group by a scalar field.
+- **With `@via`, `@of` must name an entity that has the field** (declared on it or inherited by
+  it); naming a base of the reached entity for a field only the subtype declares loads and then
+  fails `meta migrate`. Without `@via` the field is read from the `@from` entity itself.
 
 ### What the corpus gates
 

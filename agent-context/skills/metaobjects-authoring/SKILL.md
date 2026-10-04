@@ -730,9 +730,12 @@ Three rules an author trips on:
 
 1. **Every measure belongs to `@from`.** A report cannot mix measures of two entities (joining
    two fact tables multiplies each side's rows); two fact tables are two reports.
-2. **`@via` is to-one only.** A dimension reaches a related entity's column through a
-   `relationship.*` with `@cardinality: one` (or an `identity.reference`), never through a
-   to-many, which would repeat fact rows and double-count a `sum`.
+2. **`@via` is to-one only, and each hop needs a declared foreign key.** A dimension reaches a
+   related entity's column through a `relationship.*` with `@cardinality: one` (or an
+   `identity.reference`), never through a to-many, which would repeat fact rows and double-count
+   a `sum`. The view joins the hop through an `identity.reference` between the two entities
+   (`{ "identity.reference": { "name": "fkProgram", "@fields": ["programId"], "@references":
+   "Program" } }`); a relationship with none behind it loads and then fails `meta migrate`.
 3. **A report declares no fields.** Its columns are derived: one per dimension, then one per
    measure (a time dimension at a grain is `<name><Grain>`, so `purchasedAt:day` is
    `purchasedAtDay`). A `field.*` or `identity.*` child on a report is an error.
@@ -740,6 +743,9 @@ Three rules an author trips on:
 **A report is served only when it declares `source.rdb` with `@kind: view`.** That declaration
 is what makes `meta migrate` create the view (Postgres, SQLite, D1) and what every port's
 runtime reads; a report with no `source.*` is checked at load and generates nothing.
+
+A report `@from` a TPH subtype is refused when its view is derived (the subtype shares its
+base's table): declare it `@from` the base with an `@filter` on the discriminator field.
 
 What does not exist: no REST route and no typed client for a report yet, no `measure.derived`
 (arithmetic between measures beyond `measure.ratio`), no query-time choice of dimensions or

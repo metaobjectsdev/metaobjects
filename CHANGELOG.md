@@ -34,7 +34,13 @@ it until 1.1 ships._
   `object.report` that declares a read-only `source.rdb` of `@kind: view` is now lowered by
   TypeScript: `meta migrate` creates the view on Postgres, SQLite and D1 (a changed report view
   is dropped and re-created; a derived report view whose `@from` entity has no table fails
-  migrate naming the report and the entity; a report with an `@sql` source skips that check). MySQL SQL comes from `buildReportViews(root,
+  migrate naming the report and the entity; a report with an `@sql` source skips that check). A
+  derived report view is also refused, by name, when its `@from` is a TPH subtype (the subtype
+  shares its base's table, so the view would count every subtype's rows: declare it from the base
+  with an `@filter` on the discriminator field), when a `@via` hop has no `identity.reference`
+  behind it, and when a filter's `in` list is empty. A bare `@of` or `@via` on a dimension or
+  measure inherited from a base in another package resolves in that base's package, as the loader
+  resolves it. MySQL SQL comes from `buildReportViews(root,
   { dialect: "mysql" })` and the "Reports" section of `docs/recipes/mysql.md`, since `meta
   migrate` does not target MySQL. A report with no `source.*` still generates nothing. Time
   grains and relative dates are UTC, weeks start on Monday, a `sum` of nothing and a ratio over
