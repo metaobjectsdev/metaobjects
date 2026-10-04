@@ -437,6 +437,52 @@ name_field = [f for f in author.children() if f.name == "name"][0]
 print(name_field.get_meta_attr("maxLength"))   # -> 200
 ```
 
+### Run-time validation
+
+`run_validators` checks a data mapping against an entity's metadata, with no generated
+code and no database. It is the Python port of TypeScript's `runValidators`: the same
+rules, the same failure structure and the same message text.
+
+```python
+from metaobjects.runtime import run_validators
+
+account = next(c for c in result.root.children() if c.name == "Account")
+outcome = run_validators(account, {"name": "", "score": 101})
+outcome.ok                                # -> False
+[e.to_dict() for e in outcome.errors]
+# [{"field": "name", "rule": "length", "message": "'name' must be at least 1 chars (got 0)",
+#   "expected": {"min": 1}, "received": 0},
+#  {"field": "score", "rule": "numeric", "message": "'score' must be at most 100 (got 101)",
+#   "expected": {"max": 100}, "received": 101}]
+```
+
+It never raises. Every failure on every field is collected; a `required` or `type`
+failure stops further checks on that one value only. The rules, by `rule` name:
+
+| `rule` | Fires when |
+|---|---|
+| `required` | a `@required` field, a field with `validator.required`, or an assigned primary key (no `@generation: increment` or `uuid`) is absent or `None` |
+| `type` | the value is not the field subtype's type; an array field is not a list; a value-object field is not a mapping |
+| `length` | a string is longer than `min(@maxLength, validator.length @max)` or shorter than `validator.length @min`. A `@required` string has a floor of 1 unless a `@min` is authored |
+| `regex` | a string does not fully match `validator.regex @pattern` |
+| `numeric` | a number is outside `validator.numeric @min`/`@max` (inclusive) |
+| `array` | an array's element count is outside `validator.array @min`/`@max` |
+| `format` | a `field.uri` is not an absolute URI, or a `field.inet` is not an IPv4/IPv6 literal. `@lenient: true` opts out |
+
+Keyword options: `partial=True` is update mode, where an absent key is untouched and
+only present keys are checked. `store_filled=[...]` names fields the store fills on
+insert, which are then exempt from `required` when absent. A field with a `@default` is
+also exempt when absent. A value object is validated in full, and its failures are
+labelled `field.member` or `field[i].member`.
+
+`ObjectManager.validate(entity_name, data)` returns the same result for a loaded entity.
+The `ObjectManager` write methods do not call it, so validate first when the data is
+untrusted.
+
+Three details follow JavaScript so that both runners report identical failures: string
+length counts UTF-16 code units, a `bool` is not accepted as a number, and a number in a
+message prints as JavaScript prints it (`2.0` as `2`, `1e-07` as `1e-7`).
+
 ## FR-004 — render
 
 `render` takes a `RenderRequest` (only `payload` + `provider` are required; `ref`

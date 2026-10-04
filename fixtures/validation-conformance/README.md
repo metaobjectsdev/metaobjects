@@ -15,6 +15,7 @@ meta.json    # `Account` (package acme::auth) exercising each constraint once,
              #   plus `Ledger` — an ASSIGNED primary key (see below)
 cases.json   # [{ name, entity?, payload, expectValid }] — single-source boolean verdicts
              #   `entity` is optional and defaults to `Account`
+runtime-errors.json  # the exact failure list per rejected case — run-time runners only (below)
 README.md
 ```
 
@@ -150,6 +151,27 @@ So the rule is:
 
 Python fuses both (Pydantic construct-or-`ValidationError`); the Java/Kotlin/C#
 runners wrap the bind step so a native-parse failure maps to `valid=false`.
+
+## Run-time runners (TypeScript and Python)
+
+Two ports also ship a metadata-driven **run-time** runner that needs no generated code:
+TypeScript `runValidators` (`@metaobjectsdev/runtime-ts`) and Python `run_validators`
+(`metaobjects.runtime`). Both run every case here and assert the same boolean verdict.
+
+`runtime-errors.json` goes further for these two: for each rejected case it pins the
+exact failure list — `{ field, rule, message, expected?, received? }` — and both runners
+assert it by deep equality. That is what holds them to identical structure and message
+text, which a boolean verdict cannot. It applies to the run-time runners only; the
+generated artifacts report in their own native error shapes and stay on the boolean
+verdict.
+
+The run-time rule for `field.uri` is an explicit pattern (a scheme, a non-empty
+remainder, and a non-empty authority after `//`), not a platform URL parser, so the two
+runners agree outside the pinned probe set too. It can therefore differ from the
+generated Zod `.url()` in the unpinned gray zone above.
+
+Runners: `server/typescript/packages/integration-tests/test/validation-conformance-runtime.test.ts`
+and `server/python/tests/runtime/test_validation_conformance_runtime.py`.
 
 ## CI gate
 

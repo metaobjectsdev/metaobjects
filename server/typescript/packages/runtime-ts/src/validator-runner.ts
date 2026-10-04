@@ -1,7 +1,7 @@
 // Pure function: NEVER throws. ObjectManager wraps a non-ok result in a ValidationError on writes;
 // om.validate() returns the result directly.
 
-import { isMetaRoot, type MetaData } from "@metaobjectsdev/metadata";
+import { isMetaObject, isMetaRoot, resolveObjectRef, type MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_FIELD, TYPE_VALIDATOR,
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
@@ -10,10 +10,14 @@ import {
   FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
   FIELD_ATTR_DB_COLUMN_TYPE, DB_COLUMN_TYPE_JSONB, FIELD_ATTR_OBJECT_REF,
-  PACKAGE_SEPARATOR, OBJECT_SUBTYPE_VALUE,
+  OBJECT_SUBTYPE_VALUE,
   VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_PATTERN,
+  VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_ARRAY,
+  FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET, FIELD_ATTR_LENIENT,
+  IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION, GENERATION_INCREMENT, GENERATION_UUID,
 } from "@metaobjectsdev/metadata";
 import type { ValidationFailure } from "./errors.js";
+import { isAbsoluteUri, isInetLiteral } from "./net-format.js";
 
 export type ValidationResult =
   | { ok: true }
@@ -56,6 +60,7 @@ export function runValidators(
   opts: RunValidatorsOpts = {},
 ): ValidationResult {
   const errors: ValidationFailure[] = [];
+  const assignedPk = assignedPkFieldNames(entity);
 
   // Effective children so a TPH subtype validates inherited base fields too.
   for (const field of entity.children()) {
@@ -70,7 +75,11 @@ export function runValidators(
     const required = isRequired(field);
     // ADR-0039: effective attr — @default may be inherited via extends.
     const hasDefault = field.attr(FIELD_ATTR_DEFAULT) !== undefined;
-    if (required && (value === undefined || value === null)) {
+    // An ASSIGNED primary key must be supplied whatever @required says: nothing else can
+    // produce the value. That is presence only — the non-empty-string floor below stays
+    // tied to a DECLARED required, as in the generated InsertSchema.
+    const mustBePresent = required || assignedPk.has(field.name);
+    if (mustBePresent && (value === undefined || value === null)) {
       if (opts.partial && !present) continue;
       // A @default exempts a required field only when it is ABSENT (the DB fills
       // it on insert / an omitted patch key is untouched). It does NOT rescue an
@@ -117,6 +126,7 @@ export function runValidators(
           continue;
         }
         const elements: unknown[] = field.resolvedIsArray() ? (value as unknown[]) : [value];
+        if (field.resolvedIsArray()) errors.push(...arraySizeErrors(field, elements.length));
         elements.forEach((el, i) => {
           if (typeof el !== "object" || el === null || Array.isArray(el)) {
             errors.push({
@@ -152,6 +162,7 @@ export function runValidators(
         });
         continue;
       }
+      errors.push(...arraySizeErrors(field, value.length));
       value.forEach((el, i) => {
         if (el === null || el === undefined) return;
         errors.push(...scalarErrors(field, el, false, `${field.name}[${i}]`));
@@ -166,8 +177,7 @@ export function runValidators(
 }
 
 /** Resolve a `field.object`'s `@objectRef` to its value-object MetaData by walking
- *  to the tree root. The ref may be a bare name or a `pkg::Name` FQN. Mirrors the
- *  extract-object resolver. Returns undefined when unresolvable OR when the target
+ *  to the tree root. The ref may be a bare name or a `pkg::Name` FQN. Returns undefined when unresolvable OR when the target
  *  is not an `object.value` (→ no VO recursion). Cross-port parity: C#/Java/Kotlin
  *  gate the recursion on the ref being a value object, so a `field.object @objectRef`
  *  pointing at a non-value object validates identically (skipped) on every port.
@@ -180,11 +190,13 @@ function resolveVoRef(field: MetaData): MetaData | undefined {
   // class check fails for a real root and every VO reference silently stops
   // resolving, skipping nested value-object validation with no error.
   if (!isMetaRoot(root)) return undefined;
-  let target = root.findObject(ref);
-  if (target === undefined) {
-    const sep = ref.lastIndexOf(PACKAGE_SEPARATOR);
-    if (sep >= 0) target = root.findObject(ref.slice(sep + PACKAGE_SEPARATOR.length));
-  }
+  // ADR-0042 — the SINGLE object-ref resolver every ref site shares: an FQN matches
+  // its resolution key exactly; a bare ref resolves in the DECLARING owner's package
+  // (an inherited field resolves in the package that declared it), then a root-level
+  // object — never a same-named object in some other package.
+  const owner = field.parent ?? root;
+  const referrerPkg = owner.package ?? owner.fileDefaultPackage ?? "";
+  const target = resolveObjectRef(root, ref, referrerPkg).node;
   return target?.subType === OBJECT_SUBTYPE_VALUE ? target : undefined;
 }
 
@@ -197,32 +209,87 @@ function isRequired(field: MetaData): boolean {
   return false;
 }
 
-function resolveMaxLength(field: MetaData): number | undefined {
-  // ADR-0039: effective — @maxLength and a length-validator may be inherited via extends.
-  const attr = field.attr(FIELD_ATTR_MAX_LENGTH);
-  if (typeof attr === "number") return attr;
-  for (const child of field.children()) {
-    if (child.type !== TYPE_VALIDATOR) continue;
-    if (child.subType !== VALIDATOR_SUBTYPE_LENGTH) continue;
-    const max = child.attr(VALIDATOR_ATTR_MAX);
-    if (typeof max === "number") return max;
-  }
-  return undefined;
+/** Primary-identity field names the CALLER must supply: the identity carries no
+ *  store-side `@generation` (increment / uuid). A `@default` on the field still lets the
+ *  caller omit it — the `hasDefault` exemption at the call site covers that. */
+function assignedPkFieldNames(entity: MetaData): Set<string> {
+  // isMetaObject, not `instanceof` — see resolveVoRef.
+  const primary = isMetaObject(entity) ? entity.primaryIdentity() : undefined;
+  if (primary === undefined) return new Set();
+  // ADR-0039: effective — an identity may be inherited via extends.
+  const generation = primary.attr(IDENTITY_ATTR_GENERATION);
+  if (generation === GENERATION_INCREMENT || generation === GENERATION_UUID) return new Set();
+  const fields = primary.attr(IDENTITY_ATTR_FIELDS);
+  if (Array.isArray(fields)) return new Set(fields.map(String));
+  return typeof fields === "string" ? new Set([fields]) : new Set();
 }
 
-function resolveMinLength(field: MetaData): number | undefined {
-  // ADR-0039: effective — a length-validator may be inherited via extends.
+interface Bounds { min?: number; max?: number }
+
+/** The `@min` / `@max` of the field's validators of one subtype (last authored wins). */
+function validatorBounds(field: MetaData, validatorSubType: string): Bounds {
+  const bounds: Bounds = {};
+  // ADR-0039: effective — a validator and its bounds may be inherited via extends.
   for (const child of field.children()) {
-    if (child.type !== TYPE_VALIDATOR) continue;
-    if (child.subType !== VALIDATOR_SUBTYPE_LENGTH) continue;
+    if (child.type !== TYPE_VALIDATOR || child.subType !== validatorSubType) continue;
     const min = child.attr(VALIDATOR_ATTR_MIN);
-    if (typeof min === "number") return min;
+    const max = child.attr(VALIDATOR_ATTR_MAX);
+    if (typeof min === "number") bounds.min = min;
+    if (typeof max === "number") bounds.max = max;
   }
+  return bounds;
+}
+
+/** String length bounds. Max is strictest-wins across `@maxLength` and every
+ *  `validator.length @max` (FR-036 A3). Min is the authored `validator.length @min`,
+ *  undefined when none was authored. */
+function lengthBounds(field: MetaData): Bounds {
+  const bounds: Bounds = {};
+  // ADR-0039: effective — @maxLength and a length-validator may be inherited via extends.
+  const attr = field.attr(FIELD_ATTR_MAX_LENGTH);
+  if (typeof attr === "number") bounds.max = attr;
+  for (const child of field.children()) {
+    if (child.type !== TYPE_VALIDATOR || child.subType !== VALIDATOR_SUBTYPE_LENGTH) continue;
+    const min = child.attr(VALIDATOR_ATTR_MIN);
+    const max = child.attr(VALIDATOR_ATTR_MAX);
+    if (typeof min === "number") bounds.min = min;
+    if (typeof max === "number") bounds.max = bounds.max === undefined ? max : Math.min(bounds.max, max);
+  }
+  return bounds;
+}
+
+/** `validator.array @min/@max` — element-count bounds on an array field of any element type. */
+function arraySizeErrors(field: MetaData, size: number): ValidationFailure[] {
+  const { min, max } = validatorBounds(field, VALIDATOR_SUBTYPE_ARRAY);
+  const errors: ValidationFailure[] = [];
+  if (min !== undefined && size < min) {
+    errors.push({
+      field: field.name, rule: "array",
+      message: `'${field.name}' must have at least ${min} items (got ${size})`,
+      expected: { min }, received: size,
+    });
+  }
+  if (max !== undefined && size > max) {
+    errors.push({
+      field: field.name, rule: "array",
+      message: `'${field.name}' must have at most ${max} items (got ${size})`,
+      expected: { max }, received: size,
+    });
+  }
+  return errors;
+}
+
+/** The comparable numeric value of a type-checked numeric field value. An int64 arrives
+ *  as a number, a bigint or a base-10 integer string; the string compares as an integer. */
+function comparable(value: unknown): number | bigint | undefined {
+  if (typeof value === "number" || typeof value === "bigint") return value;
+  if (typeof value === "string" && INT64_STRING_RE.test(value)) return BigInt(value);
   return undefined;
 }
 
 function checkType(subType: string, value: unknown): string | null {
-  if (subType === FIELD_SUBTYPE_STRING || subType === FIELD_SUBTYPE_UUID) {
+  if (subType === FIELD_SUBTYPE_STRING || subType === FIELD_SUBTYPE_UUID
+      || subType === FIELD_SUBTYPE_URI || subType === FIELD_SUBTYPE_INET) {
     if (typeof value !== "string") return `expected string`;
   } else if (NUMERIC_FIELD_SUBTYPES.has(subType)) {
     if (typeof value !== "number") return `expected number`;
@@ -256,8 +323,7 @@ function scalarErrors(field: MetaData, value: unknown, required: boolean, label:
     return errors;
   }
 
-  const maxLen = resolveMaxLength(field);
-  const minLen = resolveMinLength(field);
+  const { min: minLen, max: maxLen } = lengthBounds(field);
   if (typeof value === "string") {
     if (maxLen !== undefined && value.length > maxLen) {
       errors.push({
@@ -268,11 +334,11 @@ function scalarErrors(field: MetaData, value: unknown, required: boolean, label:
         received: value.length,
       });
     }
-    // FR-036 Pin 1: a @required string is non-empty. The effective floor is
-    // max(@min, 1) so the runtime OM rejects "" for a required string exactly as
-    // the generated Zod InsertSchema (.min(1)) does — the two enforcement surfaces
-    // stay in lockstep. A non-required field keeps its authored @min.
-    const effectiveMin = Math.max(minLen ?? 0, required ? 1 : 0);
+    // FR-036 Pin 1: a @required string is non-empty by default (an implicit floor of 1),
+    // but an explicitly authored `validator.length @min` is ALWAYS authoritative over that
+    // floor (#224 / ADR-0044): `@min: 0` opts back to presence-only. Same rule as the
+    // generated Zod InsertSchema, so the two enforcement surfaces stay in lockstep.
+    const effectiveMin = minLen !== undefined ? minLen : required ? 1 : 0;
     if (effectiveMin > 0 && value.length < effectiveMin) {
       errors.push({
         field: label,
@@ -313,6 +379,45 @@ function scalarErrors(field: MetaData, value: unknown, required: boolean, label:
         message: `'${label}' does not match required pattern`,
         expected: pattern,
         received: value,
+      });
+    }
+  }
+
+  // validator.numeric @min/@max — inclusive value bounds on a numeric field.
+  if (NUMERIC_FIELD_SUBTYPES.has(field.subType) || INT64_FIELD_SUBTYPES.has(field.subType)) {
+    const num = comparable(value);
+    const { min, max } = validatorBounds(field, VALIDATOR_SUBTYPE_NUMERIC);
+    if (num !== undefined && min !== undefined && num < min) {
+      errors.push({
+        field: label, rule: "numeric",
+        message: `'${label}' must be at least ${min} (got ${value})`,
+        expected: { min }, received: value,
+      });
+    }
+    if (num !== undefined && max !== undefined && num > max) {
+      errors.push({
+        field: label, rule: "numeric",
+        message: `'${label}' must be at most ${max} (got ${value})`,
+        expected: { max }, received: value,
+      });
+    }
+  }
+
+  // field.uri / field.inet — the strict format contract, unless @lenient opts out.
+  // ADR-0039: effective — @lenient may be inherited via extends.
+  if (typeof value === "string" && field.attr(FIELD_ATTR_LENIENT) !== true) {
+    if (field.subType === FIELD_SUBTYPE_URI && !isAbsoluteUri(value)) {
+      errors.push({
+        field: label, rule: "format",
+        message: `'${label}' must be an absolute URI`,
+        expected: "uri", received: value,
+      });
+    }
+    if (field.subType === FIELD_SUBTYPE_INET && !isInetLiteral(value)) {
+      errors.push({
+        field: label, rule: "format",
+        message: `'${label}' must be an IPv4 or IPv6 address`,
+        expected: "inet", received: value,
       });
     }
   }

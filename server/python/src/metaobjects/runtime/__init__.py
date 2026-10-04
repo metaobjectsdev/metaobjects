@@ -7,6 +7,7 @@ exercise eq/ne/gt/gte/lt/lte/in/like/isNull operators + the top-level `and:`
 combinator + asc/desc sort + limit/offset.
 """
 from .object_manager import Filter, ObjectManager, PostgresDriver
+from .validator_runner import ValidationFailure, ValidationResult, run_validators
 from .llm_recorder import (
     STATUS_ERROR,
     STATUS_OK,
@@ -25,6 +26,9 @@ __all__ = [
     "Filter",
     "ObjectManager",
     "PostgresDriver",
+    "ValidationFailure",
+    "ValidationResult",
+    "run_validators",
     "STATUS_OK",
     "STATUS_ERROR",
     "LlmCallInput",

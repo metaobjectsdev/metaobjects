@@ -29,7 +29,7 @@ import datetime as _dt
 import decimal as _decimal
 import json as _json
 import uuid as _uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any, Protocol
 
 from ..meta.meta_root import MetaRoot
@@ -50,6 +50,7 @@ from .n2m_resolver import (
     resolve_n2m_descriptor,
 )
 from .tph import TphSubtype, tph_subtype_of
+from .validator_runner import ValidationResult, run_validators
 
 
 # Filter shape:
@@ -213,6 +214,13 @@ class ObjectManager:
         self.last_column_oids: dict[str, int] = {}
 
     # --- Public API ----------------------------------------------------------
+
+    def validate(self, entity_name: str, data: Mapping[str, Any]) -> ValidationResult:
+        """Validate ``data`` against ``entity_name``'s metadata — no database access, and
+        nothing is raised for invalid data: the failures come back on the result. Mirrors
+        the TS ``om.validate()``. The write methods do not call it; validate first when
+        the data is untrusted."""
+        return run_validators(self._declared_entity(entity_name), data)
 
     def find_by_id(self, entity_name: str, id_value: Any) -> dict[str, Any] | None:
         self._refuse_report("find_by_id", entity_name)
