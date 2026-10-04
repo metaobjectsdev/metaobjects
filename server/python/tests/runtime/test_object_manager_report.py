@@ -188,6 +188,8 @@ def test_reading_reports_leaves_the_loaded_tree_untouched() -> None:
     assert canonical_serialize(root) == before
     # The report's source node still belongs to the report (never re-parented).
     report = next(c for c in root.children() if c.name == "ProgramMinutes")
+    # ADR-0039: own — the assertion is about the nodes the report DECLARES (its source),
+    # whose parent must still be the report; an inherited child belongs to its base.
     assert all(c.parent is report for c in report.own_children())
 
 

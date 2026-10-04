@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ....naming_refs import CHILD_REF_SEP
 from ...meta_data import MetaData
 from ..object.object_constants import (
     OBJECT_REPORT_ATTR_DIMENSIONS,
@@ -52,8 +53,27 @@ def report_dimension_items(obj: MetaData) -> list[ReportDimensionItem]:
 
 
 def report_measure_names(obj: MetaData) -> list[str]:
-    """ADR-0039: resolving. The ``@measures`` names."""
+    """ADR-0039: resolving. The ``@measures`` items AS WRITTEN: each a bare measure
+    ``name``, or a dotted ``Entity.name`` (loader rule R3). Use
+    :func:`report_measure_item_name` for the measure name."""
     return _string_list(obj.get_meta_attr(OBJECT_REPORT_ATTR_MEASURES))
+
+
+def report_measure_item_name(item: str) -> str:
+    """The measure a ``@measures`` item names: the segment after its LAST ``.``
+    (``total``, ``Sale.total`` and ``acme::shop::Sale.total`` all name ``total``). It is
+    also the derived report field's name. The part before that ``.``, when present, is an
+    entity qualifier (:func:`report_measure_item_owner`)."""
+    dot = item.rfind(CHILD_REF_SEP)
+    return item if dot == -1 else item[dot + len(CHILD_REF_SEP):]
+
+
+def report_measure_item_owner(item: str) -> str | None:
+    """The entity qualifier of a dotted ``@measures`` item (``Sale`` in ``Sale.total``),
+    or ``None`` for a bare item. Loader rule R3: it names ``@from`` or an entity ``@from``
+    extends."""
+    dot = item.rfind(CHILD_REF_SEP)
+    return None if dot == -1 else item[:dot]
 
 
 def report_derived_field_name(item: ReportDimensionItem) -> str:

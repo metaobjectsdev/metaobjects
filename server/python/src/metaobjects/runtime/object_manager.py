@@ -655,6 +655,9 @@ class ObjectManager:
             model = report_read_model(e, self._root)
         except ValueError as exc:
             raise ValueError(f"Report '{name}' cannot be read: {exc}") from exc
+        # ADR-0039: own — the read model is a detached object that extends nothing; its
+        # sources are exactly the one copy report_read_model() added, so there is no
+        # inherited layer for an own read to drop.
         if not any(isinstance(c, MetaSource) for c in model.own_children()):
             raise ValueError(
                 f"Report '{name}' is not served: it declares no read-only source, "
