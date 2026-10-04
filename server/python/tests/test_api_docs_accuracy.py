@@ -260,5 +260,119 @@ def test_output_template_documents_render_and_its_payload_only() -> None:
     assert kinds == {ApiSymbolKind.RENDER, ApiSymbolKind.PAYLOAD}
 
 
+# ---------------------------------------------------------------------------
+# FR-044: a read-only object's unit documents EXACTLY the routes its router mounts.
+# ---------------------------------------------------------------------------
+
+_READ_ONLY_MODEL = """
+{ "metadata.root": { "package": "acme::sales", "children": [
+  { "object.entity": { "name": "Invoice", "children": [
+    { "source.rdb": { "@table": "invoices" } },
+    { "field.long": { "name": "id" } },
+    { "field.string": { "name": "status", "@required": true, "@maxLength": 20 } },
+    { "field.long": { "name": "amountCents", "@required": true } },
+    { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } },
+    { "dimension.attribute": { "name": "status", "@of": "Invoice.status" } },
+    { "measure.aggregate": { "name": "invoices", "@agg": "count", "@of": "Invoice.id" } }
+  ]}},
+  { "object.projection": { "name": "KeyedSummary", "children": [
+    { "source.rdb": { "@kind": "view", "@view": "v_keyed_summary" } },
+    { "field.long": { "name": "id", "extends": "Invoice.id", "@filterable": true } },
+    { "field.string": { "name": "status", "extends": "Invoice.status", "@filterable": true } },
+    { "identity.primary": { "name": "pk", "extends": "Invoice.pk" } }
+  ]}},
+  { "object.projection": { "name": "KeylessSummary", "children": [
+    { "source.rdb": { "@kind": "view", "@view": "v_keyless_summary" } },
+    { "field.string": { "name": "status", "extends": "Invoice.status", "@filterable": true } },
+    { "field.long": { "name": "amountCents", "extends": "Invoice.amountCents", "@filterable": true } }
+  ]}},
+  { "object.report": { "name": "StatusTotals", "@from": "Invoice",
+    "@dimensions": ["status"], "@measures": ["invoices"],
+    "children": [ { "source.rdb": { "@kind": "view", "@view": "v_status_totals" } } ]
+  }}
+]}}
+"""
+
+_WRITE_VERBS = {"POST", "PATCH", "PUT", "DELETE"}
+
+
+def _generated_routers_and_docs():
+    """Run the real orchestrator (`run_gen`, the path `metaobjects gen` takes) and the real
+    docs builder over the read-only model; return ``(docs units by node, router source by
+    snake name)``."""
+    from metaobjects.codegen.generator_registry import GeneratorBuildContext, list_generators
+    from metaobjects.codegen.runner import run_gen
+
+    with tempfile.TemporaryDirectory() as d:
+        (Path(d) / "meta.json").write_text(_READ_ONLY_MODEL, encoding="utf-8")
+        loaded = MetaDataLoader.from_directory(d)
+    assert not loaded.errors, loaded.errors
+    out = Path(tempfile.mkdtemp(prefix="py-apidocs-ro-"))
+    templates = out / "t"
+    templates.mkdir()
+    gens = [
+        e.factory(GeneratorBuildContext(template_root=str(templates)))
+        for e in list_generators()
+        if e.name in {"entity", "routes", "filter-allowlist"}
+    ]
+    run_gen(GenConfig(out_dir=str(out / "o")), loaded.root, generators=gens)
+    routers = {p.stem: p.read_text(encoding="utf-8") for p in (out / "o").glob("*_router.py")}
+    model = PythonApiModelBuilder().build(loaded.root, "apidocs-ro")
+    return {u.node: u for u in model.units}, routers
+
+
+def _mounted_routes(router_src: str, prefix: str) -> set[str]:
+    """``"VERB /api/path"`` for every route the router mounts as a WORKING endpoint: a
+    handler that answers 405 ``method_not_allowed`` is a refusal, not an endpoint."""
+    import ast
+
+    mounted: set[str] = set()
+    for node in ast.walk(ast.parse(router_src)):
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        refusal = "method_not_allowed" in ast.get_source_segment(router_src, node)
+        for dec in node.decorator_list:
+            if (
+                isinstance(dec, ast.Call)
+                and isinstance(dec.func, ast.Attribute)
+                and isinstance(dec.func.value, ast.Name)
+                and dec.func.value.id == "router"
+                and not refusal
+            ):
+                mounted.add(f"{dec.func.attr.upper()} {prefix}{dec.args[0].value}")
+    return mounted
+
+
+def _documented_routes(unit) -> set[str]:
+    return {s.name for s in unit.symbols if s.kind == ApiSymbolKind.REST}
+
+
+@pytest.mark.parametrize(
+    "node,snake,prefix,has_item",
+    [
+        ("KeyedSummary", "keyed_summary", "/api/keyed_summaries", True),
+        ("KeylessSummary", "keyless_summary", "/api/keyless_summaries", False),
+        ("StatusTotals", "status_totals", "/api/status_totals", False),
+    ],
+)
+def test_read_only_unit_documents_exactly_the_routes_its_router_mounts(
+    node: str, snake: str, prefix: str, has_item: bool
+) -> None:
+    units, routers = _generated_routers_and_docs()
+    router = routers[f"{snake}_router"]
+    documented = _documented_routes(units[node])
+    mounted = _mounted_routes(router, prefix)
+    assert documented == mounted
+    # Concretely: GET list always; GET by id only with an item route; never a write verb.
+    assert ("GET " + prefix) in documented
+    assert any(r.startswith("GET " + prefix + "/{") for r in documented) is has_item
+    assert not {r.split(" ")[0] for r in documented} & _WRITE_VERBS
+    # The seam: `find_by_id` exists iff the by-id route does, and the docs agree.
+    assert ("def find_by_id(" in router) is has_item
+    repo = next(s for s in units[node].symbols if s.kind == ApiSymbolKind.DATA_ACCESS)
+    assert ("Optional" in (repo.returns or "")) is has_item
+    assert _contains_identifier(router, repo.name)
+
+
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(pytest.main([__file__, "-q"]))

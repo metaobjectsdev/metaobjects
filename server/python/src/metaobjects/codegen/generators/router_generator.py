@@ -445,6 +445,19 @@ def emits_router(entity: MetaObject) -> bool:
     )
 
 
+def is_read_only_routed(entity: MetaObject) -> bool:
+    """Whether :meth:`RouterGenerator.render_router` chooses the READ-ONLY router for
+    this object (a view / materialized-view source that is not write-through): GET list,
+    GET by id when it has an item route, and the 405 refusals, with no write surface.
+
+    THE predicate behind that choice, shared with the API-docs builder so a page can never
+    present write verbs for an object whose router refuses them."""
+    if not emits_router(entity) or entity.is_write_through():
+        return False
+    src = primary_rdb_source(entity)
+    return src is not None and src.effective_kind() in _READ_ONLY_ROUTED_KINDS
+
+
 def _sort_type_and_tables_lines(sort_field_nodes: list[MetaField]) -> list[str]:
     """The `_SortClause` model + the two sort lookup tables.
 
@@ -1257,7 +1270,7 @@ class RouterGenerator:
             # READ-ONLY router instead: GET list + GET by id, every write verb
             # answering the cross-port 405 envelope. Gated by
             # fixtures/api-contract-conformance/projection/.
-            if src.effective_kind() in _READ_ONLY_ROUTED_KINDS:
+            if is_read_only_routed(entity):
                 return self._render_readonly_router(entity, column_naming)
             return None
 
