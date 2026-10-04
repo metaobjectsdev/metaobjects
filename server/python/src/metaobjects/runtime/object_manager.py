@@ -34,6 +34,8 @@ from typing import Any, Protocol
 
 from ..meta.meta_root import MetaRoot
 from ..meta.core.object.meta_object import MetaObject
+from ..meta.core.object.object_constants import OBJECT_SUBTYPE_REPORT
+from ..meta.core.reporting.report_read_model import report_read_model
 from ..meta.core.field.meta_field import MetaField
 from ..meta.core.field import field_constants as fc
 from ..naming import DEFAULT_COLUMN_NAMING, resolve_column_name
@@ -213,6 +215,7 @@ class ObjectManager:
     # --- Public API ----------------------------------------------------------
 
     def find_by_id(self, entity_name: str, id_value: Any) -> dict[str, Any] | None:
+        self._refuse_report("find_by_id", entity_name)
         entity = self._require_entity(entity_name)
         pk_field = self._primary_pk_field(entity)
         rows = self.find_many(entity_name, {pk_field: id_value}, sort=None, limit=1, offset=None)
@@ -238,6 +241,7 @@ class ObjectManager:
         timestamp equals its created one. Use :meth:`insert_preserving` for the
         import/restore path that must keep original timestamps.
         """
+        self._refuse_report("create", entity_name)
         entity = self._require_entity(entity_name)
         # #203: stamp every onCreate AND onUpdate column with one shared now() (the
         # caller's value is ignored). No-op for entities that declare no @autoSet field.
@@ -259,6 +263,7 @@ class ObjectManager:
         same TPH discriminator injection, same ``RETURNING`` row). For an entity
         that declares no ``@autoSet`` field this is identical to :meth:`create`.
         """
+        self._refuse_report("insert_preserving", entity_name)
         entity = self._require_entity(entity_name)
         return self._insert_row(entity, entity_name, data)
 
@@ -365,6 +370,7 @@ class ObjectManager:
         subtype's patch strips it and the by-id write is scoped to the subtype (a
         cross-subtype id matches no row → the same not-found path).
         """
+        self._refuse_report("update", entity_name)
         entity = self._require_entity(entity_name)
         table = self._table_name(entity)
         pk_field = self._primary_pk_field(entity)
@@ -466,6 +472,7 @@ class ObjectManager:
         Returns ``True`` when a row was deleted, ``False`` when the PK matched
         nothing. Mirrors the TS ``om.delete`` boolean outcome contract.
         """
+        self._refuse_report("delete", entity_name)
         entity = self._require_entity(entity_name)
         table = self._table_name(entity)
         pk_field = self._primary_pk_field(entity)
@@ -560,6 +567,7 @@ class ObjectManager:
         mirror the TS reference resolver. ``record`` is a source-key dict (e.g.
         ``{"id": 1}``); only the source PK is read from it.
         """
+        self._refuse_report("relate", entity_name)
         entity = self._require_entity(entity_name)
         desc = resolve_n2m_descriptor(entity, relation_name, self._entity_by_name)
         if desc is None:
@@ -623,11 +631,46 @@ class ObjectManager:
 
     # --- Helpers -------------------------------------------------------------
 
-    def _require_entity(self, name: str) -> MetaObject:
+    def _declared_entity(self, name: str) -> MetaObject:
+        """The object node exactly as loaded (a report is NOT swapped for its read model)."""
         e = self._entity_by_name.get(name)
         if e is None:
             raise KeyError(f"No entity named '{name}' in loaded metadata")
         return e
+
+    def _require_entity(self, name: str) -> MetaObject:
+        """The object the runtime reads and writes through. FR-044: a report declares no
+        fields (its read shape is derived), so it is read through its detached read model
+        (:func:`report_read_model`) — ordinary derived ``field.*`` children plus a copy of
+        its own read-only source — and everything downstream (column list, filter and sort
+        resolution, read coercion, table resolution) sees an ordinary view-backed object.
+        The model is built once per report node and never joins the loaded tree.
+
+        A report with no read-only source of its own has no view (Table A), so there is
+        nothing to read: refused as not served rather than read from a table nobody made."""
+        e = self._declared_entity(name)
+        if e.sub_type != OBJECT_SUBTYPE_REPORT:
+            return e
+        try:
+            model = report_read_model(e, self._root)
+        except ValueError as exc:
+            raise ValueError(f"Report '{name}' cannot be read: {exc}") from exc
+        if not any(isinstance(c, MetaSource) for c in model.own_children()):
+            raise ValueError(
+                f"Report '{name}' is not served: it declares no read-only source, "
+                f"so it has no view to read"
+            )
+        return model
+
+    def _refuse_report(self, op: str, name: str) -> None:
+        """Refuse an operation a report cannot support — get-by-id, relationship
+        traversal and every write — on the DECLARED subtype, before anything else is
+        looked at (a sourceless report included: it is read-only, not merely unserved)."""
+        if self._declared_entity(name).sub_type == OBJECT_SUBTYPE_REPORT:
+            raise ValueError(
+                f"{op} is not supported on '{name}': a report is read-only and has no identity "
+                f"(it is a view over aggregates; only find_many and count read it)"
+            )
 
     def _table_name(self, entity: MetaObject) -> str:
         """The physical relation *entity* lives in.
@@ -699,6 +742,7 @@ class ObjectManager:
         """The single-field primary-key NAME for an entity, from its
         ``identity.primary`` ``@fields``. ``op: roundtrip`` reads the inserted
         row back by this key (composite PKs are not supported by roundtrip)."""
+        self._refuse_report("primary_key_field", entity_name)
         return self._primary_pk_field(self._require_entity(entity_name))
 
     def _primary_pk_field(self, entity: MetaObject) -> str:
