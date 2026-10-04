@@ -47,7 +47,8 @@ public class RoutesGenerator : PerEntityGenerator
     private const string HelperRuntimeNamespace = "MetaObjects.Codegen.Runtime";
 
     public override bool Filter(MetaObject entity) =>
-        (entity.IsEntity() || entity.DbView is not null) && InstanceArtifacts.EmitsInstanceArtifacts(entity);
+        !entity.IsReport() // FR-044: a report has no routes (see AppliesTo)
+        && (entity.IsEntity() || entity.DbView is not null) && InstanceArtifacts.EmitsInstanceArtifacts(entity);
 
     /// <summary>
     /// True iff this entity gets a generated routes file: it passes <see cref="Filter"/>
@@ -56,7 +57,11 @@ public class RoutesGenerator : PerEntityGenerator
     /// loop AND the api-docs builder (so docs never claim REST a routes-off entity lacks).
     /// </summary>
     public static bool AppliesTo(MetaObject entity, MetaRoot root) =>
-        (entity.IsEntity() || entity.DbView is not null)
+        // FR-044 — a report has no routes. CodegenRunner already keeps reports out of the
+        // entity set; this holds for a caller that builds its context from the unfiltered
+        // root, where a view-backed report would otherwise pass as a projection.
+        !entity.IsReport()
+        && (entity.IsEntity() || entity.DbView is not null)
         && InstanceArtifacts.EmitsInstanceArtifacts(entity)
         && !TphPlanBuilder.IsTphSubtype(entity, root);
 

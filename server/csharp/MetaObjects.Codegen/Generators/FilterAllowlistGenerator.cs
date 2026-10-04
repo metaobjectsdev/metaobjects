@@ -53,9 +53,13 @@ public class FilterAllowlistGenerator : PerEntityGenerator
     /// </para>
     /// </summary>
     public static bool AppliesTo(MetaObject entity) =>
-        ((entity.IsEntity() || entity.DbView is not null)
-            && InstanceArtifacts.EmitsInstanceArtifacts(entity))
-        || InstanceArtifacts.IsSourcelessEntity(entity);
+        // FR-044 — a report has no filter allowlist (it has no routes to name one). Stated
+        // here as well as at CodegenRunner's entity set, for the same reason as
+        // RoutesGenerator.AppliesTo.
+        !entity.IsReport()
+        && (((entity.IsEntity() || entity.DbView is not null)
+                && InstanceArtifacts.EmitsInstanceArtifacts(entity))
+            || InstanceArtifacts.IsSourcelessEntity(entity));
 
     protected override EmittedFile GenerateOne(MetaObject entity, GenContext ctx)
     {

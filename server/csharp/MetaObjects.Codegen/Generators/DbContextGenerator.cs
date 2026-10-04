@@ -72,7 +72,10 @@ public class DbContextGenerator : IGenerator
         // FR-017 TPH: a concrete subtype shares the base's single table — it gets NO
         // DbSet and no per-subtype model config; the hierarchy is reached via the base
         // DbSet (`.OfType<Sub>()`). Filter subtypes out of the emitted set entirely.
-        var objects = ctx.Entities
+        // FR-044 — a view-backed report joins the set as its ROW MODEL, which the
+        // read-only-projection arm below maps as `HasNoKey().ToView(...)`; every other
+        // report node is dropped. See ReportRows.
+        var objects = ReportRows.WithReportRows(ctx)
             .Where(o => AppliesTo(o, ctx.Root))
             .OrderBy(o => o.Name, StringComparer.Ordinal)
             .ToList();
@@ -291,7 +294,7 @@ public class DbContextGenerator : IGenerator
         // references EVERY entity by short name (DbSet<X>, modelBuilder.Entity<X>()),
         // so it needs a `using` for each distinct namespace the entities resolve to.
         var dbCtxNs = ctx.Config.Namespace;
-        var refNamespaces = ctx.Entities
+        var refNamespaces = ReportRows.WithReportRows(ctx)
             .Where(o => o.IsEntity() || o.DbView is not null)
             .Select(o => PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(o), o.Name))
             .Where(ns => !string.IsNullOrEmpty(ns) && ns != dbCtxNs)

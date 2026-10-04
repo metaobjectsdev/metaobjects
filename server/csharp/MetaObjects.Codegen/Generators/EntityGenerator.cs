@@ -44,7 +44,10 @@ public class EntityGenerator : IGenerator
 
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
-        var candidates = ctx.Entities
+        // FR-044 — a view-backed report joins the set as its ROW MODEL (a keyless,
+        // projection-shaped object carrying its derived fields); every other report node
+        // is dropped. See ReportRows.
+        var candidates = ReportRows.WithReportRows(ctx)
             .Where(o => o.IsEntity() || o.DbView is not null)
             .OrderBy(o => o.Name, StringComparer.Ordinal)
             .ToList();
