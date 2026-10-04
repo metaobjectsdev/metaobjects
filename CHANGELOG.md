@@ -55,10 +55,19 @@ it until 1.1 ships._
   Anyone who declared a view-sourced report under the unreleased 1.1 vocabulary will now see a
   `CREATE VIEW` from `meta migrate`. Kotlin `gen` fails, naming the report and the dimension or
   measure, for a view-backed report with a derived field named after a Kotlin hard keyword or
-  with two derived fields that land on one column property.
+  with two derived fields that land on one column property. A view-backed report with a
+  dimension or measure over a `field.object` is refused by name by Java OMDB (on read), Kotlin
+  `gen` and C# `gen`; group by a scalar field. A `@measures` item may be written dotted
+  (`Sale.total`) and reads the same as the bare name in every port. Java OQL
+  (`executeQuery`) with a report as its result class builds rows from the report's derived
+  fields.
 
 ### Fixed
 
+- **Java OMDB reads a projection whose view is named by `@view`.** The read mapping took the
+  view name from `@table` only, so a projection declared with the kind-matching `@view` alias
+  had no read mapping. It now resolves the source's physical name (`@view`, then the legacy
+  `@table`), the same rule the TypeScript toolchain creates the view under.
 - **Kotlin: a field named after an Exposed `Table` property that was not reserved now gets the
   `Column` suffix.** An entity or report field named `schemaName` now emits the column property
   `schemaNameColumn`; it collided with Exposed's `Table.schemaName` and did not compile before.
