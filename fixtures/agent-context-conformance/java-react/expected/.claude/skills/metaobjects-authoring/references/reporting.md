@@ -76,7 +76,7 @@ A dimension reached by `@via` joins like a projection does: a required belongs-t
 - **A report `@from` a TPH subtype is refused** when its view is derived. The subtype shares its base's table with every other subtype, so the view would count all of their rows. Declare the report `@from` the base, with an `@filter` on the discriminator field (`"@filter": { "kind": "ADMIN" }`). An `@sql` or `@unmanaged` report over a subtype is yours to scope.
 - **An empty `in` list in a filter is refused** at `meta migrate`, naming the report and the field.
 - **An abstract view-backed report, or one whose source `@kind` is `materializedView`, `storedProc` or `tableFunction`, gets no C# row class and no Kotlin table object.** The TypeScript, Java and Python runtimes still read whatever relation the source names (fine for a materialized view you created, a database error for a routine).
-- **Do not group by a `field.object`.** A dimension over one is not supported across ports; group by a scalar field.
+- **Do not group by a `field.object`.** A dimension over one, or over a field carrying `@objectRef`, loads everywhere but is refused by name by Java OMDB on read and by Kotlin `gen` and C# `gen`; only the TypeScript and Python runtimes read it (as parsed JSON). Group by a scalar field.
 
 ## What a report does not have
 

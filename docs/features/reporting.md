@@ -326,8 +326,12 @@ the bodies are valid under MySQL's default `ONLY_FULL_GROUP_BY`.
   for it, `meta migrate` skips it, and the three runtimes issue a `SELECT` against whatever
   relation the source names. That works for a materialized view you created and is a database
   error for a stored procedure or a table function.
-- **A dimension over a `field.object` is not supported across ports.** TypeScript and Python
-  return the parsed JSON; the other ports are not gated for it. Group by a scalar field.
+- **A report over a `field.object` is not supported across ports.** A dimension whose `@of` is a
+  `field.object` (or a field carrying `@objectRef`) loads in every port. Java OMDB then refuses
+  the read, and Kotlin `gen` and C# `gen` refuse to generate the table or row, each with an
+  error naming the report and the dimension (the same refusal covers a measure whose column is
+  typed by such a field). The TypeScript and Python runtimes read it and return the parsed JSON.
+  Group by a scalar field.
 - **With `@via`, `@of` must name an entity that has the field** (declared on it or inherited by
   it); naming a base of the reached entity for a field only the subtype declares loads and then
   fails `meta migrate`. Without `@via` the field is read from the `@from` entity itself.
