@@ -53,6 +53,13 @@ export {
   reportDerivedFieldName,
   type ReportDimensionItem,
 } from "./core/reporting/report-accessors.js";
+export {
+  reportShape,
+  resolveReportingFieldRef,
+  type ReportField,
+  type ReportFieldRole,
+  type ReportShape,
+} from "./core/reporting/report-shape.js";
 // Shared `@implementedBy` resolution — one resolver for the CLI's requirement
 // checks and codegen's requirement-test fan-out (FR-038).
 export {
