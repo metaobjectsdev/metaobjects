@@ -124,3 +124,16 @@ node that declares an anchor rather than a thing has no meaning for codegen or r
 
 **Report the divergence and change nothing.** Rejected: the report was the cheap half, and leaving
 one document with two verdicts is the failure the corpora exist to prevent.
+
+## Amendment 1 (2026-10-04) — the concrete `view.*` controls now load in every port
+
+The Consequences paragraph above states that the ports without the TS-side UI provider have
+"`view.currency` and nothing else." That was the SP-G B-2 deregistration ruling, and a
+loader-parity fix has since superseded its registration half: every port now registers the generic
+`view.*` controls (`view.text`, `view.dropdown`, …) for LOADING, so one document carrying them
+loads everywhere. They stay TS-web-presentation-only — no backend consumer reads them — and stay
+excluded from the cross-port manifest as PRESENTATION_ONLY
+(`fixtures/registry-conformance/README.md`); the attrs ON those controls remain registered only by
+the TypeScript UI provider. Nothing here reopens the `view.base` removal: the anchors stay
+authorable-nowhere, and this amendment only retires the claim that a backend port cannot load a
+concrete view.

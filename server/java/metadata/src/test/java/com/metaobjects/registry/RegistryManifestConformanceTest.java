@@ -110,10 +110,12 @@ import static org.junit.Assert.assertTrue;
  *       ADR-0001/ADR-0005, kept registered but excluded from the manifest) were
  *       reconciled in SP-G Unit 6b/6b-finish; the {@code value*}/{@code data*}
  *       vestigial sets were refactor-dropped (Unit 6b).</li>
- *   <li>Subtype gaps/extras: Java lacks {@code attr.stringarray} and the 11 generic {@code view.*} subtypes
- *       (checkbox/date/dropdown/hidden/hotlink/month/number/password/radio/text/
- *       textarea/web), and carries an extra {@code metadata.base} (its
- *       inheritance anchor; the other ports register only {@code metadata.root}).</li>
+ *   <li>Subtype gaps/extras: Java lacks {@code attr.stringarray} (retired
+ *       vocabulary) and carries an extra {@code metadata.base} (its
+ *       inheritance anchor; the other ports register only {@code metadata.root}).
+ *       The generic {@code view.*} presentation controls — which Java formerly
+ *       did not register (SP-G B-2) — now register for LOADING only
+ *       ({@code PresentationView}) and stay excluded from the manifest.</li>
  * </ul>
  * <p><strong>SP-G Unit 6a reconciled</strong> (registration-only structural items):
  * required-ness flips ({@code identity.primary/secondary/reference.fields},
