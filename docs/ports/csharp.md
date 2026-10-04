@@ -463,8 +463,9 @@ always sends. Filter operators (`eq` / `ne` / `gt` / `gte` / `lt` / `lte`
 / `in` / `like` / `isNull`) per [`api-contract.md`](../features/api-contract.md)
 ship too — the generated `<Entity>FilterAllowlist` (`FilterAllowlistGenerator`)
 feeds `FilterParser.Parse` + `EfCoreFilterDispatch.ApplyFilter`, both wired
-directly into the generated list handler. The one real gap: read-only
-projections (`source.rdb @kind: view/...`) don't get filter routes today — see
+directly into the generated list handler. A read-only projection
+(`source.rdb @kind: view`) and a view-backed report get the same filter and sort
+on their list route, against an allowlist of their own fields. Remaining gaps are in
 [`server/csharp/MetaObjects.Codegen/Generators/KNOWN_GAPS.md`](../../server/csharp/MetaObjects.Codegen/Generators/KNOWN_GAPS.md).
 
 ## Capability snapshot

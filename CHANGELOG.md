@@ -132,7 +132,7 @@ it until 1.1 ships._
 
 ### Changed
 
-Five corrections that shipped with report serving and reach models that declare no report.
+Six corrections that shipped with report serving and reach models that declare no report.
 Each one changes generated output on the next `gen`, so the drift gate reports it until you
 regenerate.
 
@@ -159,19 +159,28 @@ regenerate.
   generated for it, and a keyless one (the shape above) no longer lists `/:id` or the by-id
   function. Write-through projections and entities are unchanged. `meta verify --docs` reports
   the affected pages as stale until regenerated.
+- **Python API docs: a read-only projection's page gains the read surface it was missing.**
+  The api-docs builder documented a view-backed projection by its model alone. Its page now
+  also lists what the read-only router emits: the repository Protocol, `GET <path>`,
+  `GET <path>/{id}` only when the projection has an item route (the rule above), and the
+  filter allowlist. No write verb is listed, since the router answers those with `405`.
+  Entities and write-through objects are unchanged. Regenerate the docs to pick the pages up.
 - **Java: a filter allowlist with more than ten filterable fields now compiles.**
   `SpringFilterAllowlistGenerator` spelled `OPS_BY_FIELD` with `Map.of`, which has no overload
   past ten pairs, so an entity or projection with eleven or more `@filterable` fields generated
   a class `javac` refused. It now uses `Map.ofEntries` above ten. Ten or fewer are
   byte-identical.
 - **Kotlin: the generated Spring controller of any entity or projection with a `field.decimal`
-  or `field.float` scalar field regenerates with different bytes.** Its filter coercion now
+  or `field.float` scalar field regenerates with different bytes, whether or not the field is
+  `@filterable`.** That covers writable, write-through and read-only controllers. Its filter
+  coercion now
   calls a new `coerce<Entity>Decimal` / `coerce<Entity>Float` function where it called
   `coerce<Entity>Double`. Before, a list filter on such a column threw `ClassCastException`,
   a `500` on a request the allowlist had admitted, because the handler cast the coerced
   `Double` to the column's `BigDecimal` or `Float`. A single-table-inheritance (TPH) controller
-  changes for a float field only; its filter pipeline already left decimals out. A model with
-  only string, int, long, double and the other non-decimal, non-float subtypes keeps its bytes.
+  changes for a float field only (on the base or a subtype); its filter pipeline already left
+  decimals out. `field.double` is unchanged, so a model with no decimal and no float field
+  keeps its bytes.
   Separately, a read-only controller or row mapper over a field named after a member of
   Exposed's `Table` (such as `source`) now reads the suffixed column property
   (`sourceColumn`) and compiles; every other field name keeps its bytes.

@@ -22,7 +22,7 @@ no query-time choice of dimensions or measures (a report is a fixed combination,
 once), and no time-zone vocabulary: time grains and relative dates are UTC.
 
 **Entirely opt-in.** Nothing here applies to a model that declares none of it. The change
-that served reports also corrected three things about read-only projections and one filter
+that served reports also corrected four things about read-only projections and one filter
 defect per JVM port; [Compatibility](#compatibility) lists them.
 
 ## The problem it solves
@@ -567,12 +567,16 @@ generated output for models that declare no report. Each is in the
   read-only projection's page no longer lists create, update or delete
   functions, write verbs or Insert/Update schemas, and a keyless one no longer lists `/:id` or
   the by-id function. `meta verify --docs` reports the page as stale until you regenerate.
+- **Python API docs: a read-only projection's page gains its read surface.** It listed the
+  model alone; it now also lists the repository Protocol, `GET <path>`, `GET <path>/{id}` when
+  the projection has an item route, and the filter allowlist, and never a write verb.
 - **Java: a filter allowlist with more than ten filterable fields** now compiles (it is
   spelled with `Map.ofEntries`). Ten or fewer are byte-identical.
 - **Kotlin: a list filter on a `field.decimal` or `field.float` column** no longer throws.
-  The generated controller of any entity or projection with a decimal or float scalar field
-  regenerates with different bytes (a `coerce<Entity>Decimal` / `coerce<Entity>Float` function
-  where it used `coerce<Entity>Double`). A controller that reads a field named after a member
+  The generated controller of any entity or projection with a decimal or float scalar field,
+  filterable or not, regenerates with different bytes (a `coerce<Entity>Decimal` /
+  `coerce<Entity>Float` function where it used `coerce<Entity>Double`); a single-table
+  inheritance controller changes for a float field only, and `field.double` is unchanged. A controller that reads a field named after a member
   of Exposed's `Table` (such as `source`) now compiles; every other name keeps its bytes.
 
 The design and its decisions are in
