@@ -49,7 +49,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 | [`fixtures/fmt-conformance/`](../fixtures/fmt-conformance/) (#304 — `meta fmt`) | 12 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
-| [`fixtures/field-lint-conformance/`](../fixtures/field-lint-conformance/) (the `verify` field authoring lint) | 13 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/field-lint-conformance/`](../fixtures/field-lint-conformance/) (the `verify` field authoring lint) | 14 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/naming-conformance/`](../fixtures/naming-conformance/) | 8 cases | ✓ | ✓ | inherits via Java (`RouteNaming.pluralize`) | ✓ | ✓ |
 | [`fixtures/codegen-noop/`](../fixtures/codegen-noop/) (FR-044 — reporting vocabulary is inert) | 1 model pair (`reporting/with` vs `reporting/without`) | ✓ (codegen + migrate) | ✓ | ✓ | ✓ | ✓ |
 

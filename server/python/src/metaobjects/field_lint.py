@@ -78,10 +78,15 @@ def lint_reference_fields(root: MetaData) -> list[FieldLintFinding]:
     out: list[FieldLintFinding] = []
     # OWN-ONLY (ADR-0039 sanctioned case): a root has no super, and its own children
     # are the declared objects.
+    root_pkg = root.package or ""
     for obj in root.own_children():
         if obj.type != TYPE_OBJECT:
             continue
-        address = obj.resolution_key()
+        own_pkg = obj.package
+        if own_pkg and own_pkg.startswith(PACKAGE_SEP) and root_pkg.strip() != "":
+            address = f"{root_pkg}{own_pkg}{PACKAGE_SEP}{obj.name}"
+        else:
+            address = obj.resolution_key()
         # RESOLVING: the effective field set — a field inherited through ``extends`` or
         # added by an overlay file is a field the object has.
         fields = {c.name for c in obj.children() if c.type == TYPE_FIELD}
