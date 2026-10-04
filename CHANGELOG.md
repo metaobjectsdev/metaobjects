@@ -47,10 +47,18 @@ it until 1.1 ships._
   persistence scenarios (`report-*.yaml`) and `report-shapes.json` hold the ports to the same
   columns; the `metaobjects-authoring` skill now teaches reports (`references/reporting.md`).
   Anyone who declared a view-sourced report under the unreleased 1.1 vocabulary will now see a
-  `CREATE VIEW` from `meta migrate`.
+  `CREATE VIEW` from `meta migrate`. Kotlin `gen` fails, naming the report and the dimension or
+  measure, for a view-backed report with a derived field named after a Kotlin hard keyword or
+  with two derived fields that land on one column property.
 
 ### Fixed
 
+- **Kotlin: a field named after an Exposed `Table` property that was not reserved now gets the
+  `Column` suffix.** An entity or report field named `schemaName` now emits the column property
+  `schemaNameColumn`; it collided with Exposed's `Table.schemaName` and did not compile before.
+  With `exposedApi=1` the same now holds for `options` and `storageParameters`, which are
+  `Table` properties only in Exposed 1.x; `exposedApi=0` output for those two names is unchanged.
+  The physical column names do not change.
 - **Java: a bare string authored for an `isArray` attribute is now ONE item.** The Java parser
   used to split it on commas, which left stray quotes in the items; TypeScript and Python
   already kept it whole. All three now agree, so a Java model that relied on the split (a

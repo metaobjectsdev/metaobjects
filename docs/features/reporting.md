@@ -263,8 +263,13 @@ still exists: counts are `0`, sums and ratios are null.
 By-id and every write are refused (a report has no identity and is read-only); a report with no
 view source is refused as not served; an `@unmanaged` view-backed report is still read. C# also
 refuses a report whose derived field name, in Pascal case, equals the report's own class name,
-since the row class could not have a member named like itself. No port generates a route,
-typed client, filter allowlist or api-docs entry for a report.
+since the row class could not have a member named like itself. Kotlin refuses a view-backed
+report in two cases, because the generated table would not compile: a derived field named after
+a Kotlin hard keyword (`in`, `is`, `object`, `when`, …), and two derived fields that land on one
+column property (a name that collides with a member of Exposed's `Table`, such as `source`, gets
+a `Column` suffix, which can meet a second field already called `sourceColumn`). Both fail `gen`
+with an error naming the report and the dimension or measure. No port generates a route, typed
+client, filter allowlist or api-docs entry for a report.
 
 `meta docs` lists a report's view on the agent schema page (`agent/schema.md`) and on no other
 page.

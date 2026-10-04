@@ -211,17 +211,26 @@ public final class ReportShape {
      * LAST dot; the entity resolves relative to {@code owner}'s package (ADR-0042).
      */
     public static MetaField<?> resolveFieldRef(String ref, MetaObject owner, MetaRoot root) {
-        if (ref == null) return null;
-        int dot = ref.lastIndexOf(SEP);
-        if (dot <= 0) return null;
-        MetaObject entity = ValidationPhase.resolveRootObject(root, ref.substring(0, dot), packageOf(owner));
+        MetaObject entity = resolveFieldRefEntity(ref, owner, root);
         if (entity == null) return null;
-        String fieldName = ref.substring(dot + SEP.length());
+        String fieldName = ref.substring(ref.lastIndexOf(SEP) + SEP.length());
         // ADR-0039: resolving, so a field inherited through extends is found.
         for (MetaField<?> f : entity.getMetaFields()) {
             if (fieldName.equals(f.getName())) return f;
         }
         return null;
+    }
+
+    /**
+     * The entity an {@code Entity.field} reference NAMES, or {@code null}: the entity half
+     * of {@link #resolveFieldRef}, by the same rule. It is the entity the reference is
+     * written against, which for an inherited field is not the object that declares it.
+     */
+    public static MetaObject resolveFieldRefEntity(String ref, MetaObject owner, MetaRoot root) {
+        if (ref == null) return null;
+        int dot = ref.lastIndexOf(SEP);
+        if (dot <= 0) return null;
+        return ValidationPhase.resolveRootObject(root, ref.substring(0, dot), packageOf(owner));
     }
 
     private static Field dimensionField(ReportDimensionItem item, MetaObject from, MetaRoot root, MetaObject report) {

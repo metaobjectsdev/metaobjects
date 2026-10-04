@@ -884,7 +884,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("            val parsed = parse${shortName}Sort(sort)\n")
             append("                ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"invalid_sort\", \"field\" to sort.substringBefore(':')) as Any)\n")
             append("            val (field, dir) = parsed\n")
-            append("            q = q.orderBy(${sortColumnExpr(table, shortName, sortFields)} to dir)\n")
+            append("            q = q.orderBy(${sortColumnExpr(table, shortName, sortFields, exposedApi())} to dir)\n")
             append("        }\n")
             append("        val total: Long = if (withCount == 1) q.count() else -1L\n")
             // issue #390: Exposed 1.x's Query.limit(count) dropped the 0.x 2-arg
@@ -949,7 +949,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("            val parsed = parse${shortName}Sort(sort)\n")
                 append("                ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"invalid_sort\", \"field\" to sort.substringBefore(':')) as Any)\n")
                 append("            val (field, dir) = parsed\n")
-                append("            q = q.orderBy(${sortColumnExpr(table, shortName, sortFields)} to dir)\n")
+                append("            q = q.orderBy(${sortColumnExpr(table, shortName, sortFields, exposedApi())} to dir)\n")
                 append("        }\n")
                 // issue #390: Exposed 1.x's Query.limit(count) dropped the 0.x 2-arg
             // limit(count, offset) overload — offset is now its OWN chained call.
@@ -2076,7 +2076,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         append("            val parsed = parse${shortName}Sort(sort)\n")
         append("                ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"invalid_sort\", \"field\" to sort.substringBefore(':')) as Any)\n")
         append("            val (field, dir) = parsed\n")
-        append("            q = q.orderBy(${sortColumnExpr(readObj, shortName, sortFields)} to dir)\n")
+        append("            q = q.orderBy(${sortColumnExpr(readObj, shortName, sortFields, exposedApi())} to dir)\n")
         append("        }\n")
         append("        val total: Long = if (withCount == 1) q.count() else -1L\n")
         append("        val effectiveLimit = limit ?: 50\n")
@@ -2194,11 +2194,11 @@ private fun appendSortDefaultOrders(
  * `null` so a future divergence between the two surfaces a generator bug instead of
  * answering a valid request with a 400.
  */
-private fun sortColumnExpr(tableVar: String, shortName: String, sortFields: List<String>): String {
+private fun sortColumnExpr(tableVar: String, shortName: String, sortFields: List<String>, api: ExposedApi): String {
     if (sortFields.isEmpty()) return "error(\"$shortName has no sortable fields\")"
     val sb = StringBuilder("when (field) {\n")
     for (name in sortFields) {
-        val prop = KotlinNaming.safeColumnProperty(name)
+        val prop = KotlinNaming.safeColumnProperty(name, api)
         sb.append("                \"").append(name).append("\" -> ")
           .append(tableVar).append(".").append(prop).append("\n")
     }

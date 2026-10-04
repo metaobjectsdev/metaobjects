@@ -354,6 +354,47 @@ class AuthorService(private val db: Database) {
 }
 ```
 
+### Reports
+
+For an `object.report` that declares a read-only `source.rdb` of `@kind: view`,
+`KotlinExposedTableGenerator` writes one read-only Exposed table object, `<Report>Table`, bound
+to that view, with one column per derived field (dimensions, then measures). That is all Kotlin
+generates for a report: no row class, no `<Report>Names`, and nothing from any other generator.
+A report with no view source generates nothing. See [reporting](../features/reporting.md) for
+the vocabulary and the columns a report gets. An excerpt, under the default snake_case column
+naming:
+
+```kotlin
+object ProgramMinutesTable : Table("v_program_minutes") {
+    val program = long("program")
+    val weeks = long("weeks")
+    val totalMinutes = long("total_minutes").nullable()
+    val avgMinutes = decimal("avg_minutes", 38, 18).nullable()
+    // … one column per derived field
+}
+```
+
+- A report has no identity, so the object has no `primaryKey`. List it and count it; there is
+  no by-id read and no write.
+- A column is nullable exactly when the derived field can be null: a `sum`, `avg`, `min`, `max`
+  or ratio, and a dimension reached through `@via`.
+- A derived decimal with no declared precision (an `avg`, a ratio, a `sum` of a decimal) is
+  read as `decimal(name, 38, 18)`. Exposed rounds a decimal to the column's scale when it reads
+  it, so the value is exact to 18 places. The object maps a view, so those numbers never reach
+  DDL.
+- An enum dimension is typed by the enum class of the entity it reads (`ProgramStatus` for a
+  dimension over `Program.status`), so it compares against the same constants as the entity's
+  own column. No per-report enum is generated.
+- The view and its columns are bound by string literal even when `useNames` is on.
+- `gen` fails, naming the report and the dimension or measure, when a derived field is named
+  after a Kotlin hard keyword or when two derived fields land on one column property (see
+  below for the `Column` suffix). Rename the item.
+
+A column property whose name is a member of Exposed's `Table` gets a `Column` suffix
+(`source` becomes `sourceColumn`); the physical column name does not change. The reserved set
+follows the output mode: `options` and `storageParameters` are `Table` members only in Exposed
+1.x, so they are suffixed only with `exposedApi=1`.
+
 ### `<Entity>Names` — the physical names, as constants
 
 `names` (`KotlinNamesGenerator`) is **not** wired above — it is opt-in, like

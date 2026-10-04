@@ -28,7 +28,6 @@ import com.metaobjects.identity.MetaIdentity
 import com.metaobjects.identity.ReferenceIdentity
 import com.metaobjects.index.LookupIndex
 import com.metaobjects.loader.MetaDataLoader
-import com.metaobjects.loader.ValidationPhase
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.relationship.CompositionRelationship
 import com.metaobjects.relationship.MetaRelationship
@@ -362,13 +361,13 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * The columns are the report's DERIVED fields — one per dimension, then one per measure —
      * taken from the JVM's single definition of that shape ([ReportShape], via
      * [ReportReadModel], which presents them as ordinary field nodes). So the report goes
-     * through the same [emit] as a view-kind projection, with three differences, each keyed
-     * on the entity being a [ReportReadModel]:
+     * through the same [emit] as a view-kind projection, with three differences, which reach
+     * it through the report's [ReportTablePlan] and its being a [ReportReadModel]:
      *
      *  - it binds its view and columns by LITERAL even when the names generator is in the
      *    run ([bindsThroughNames]): [KotlinNamesGenerator] emits nothing for a report;
      *  - an enum column references the enum class of the entity the dimension reads
-     *    ([enumClassFor]): no generator emits a per-report enum;
+     *    ([reportEnumClass]): no generator emits a per-report enum;
      *  - a derived decimal with no declared precision reads at [REPORT_DECIMAL_PRECISION] /
      *    [REPORT_DECIMAL_SCALE] ([scalarColumnSpec]).
      *
@@ -389,14 +388,44 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val source = ReportShape.readSource(report) as? RdbSource ?: return
         if (source.effectiveKind != MetaSource.KIND_VIEW) return
 
-        refuseUncompilableReportColumns(report)
+        // Table B, derived ONCE for the report; everything below reads this one shape.
+        val shape = ReportShape.of(report, loader.root)
+        refuseUncompilableReportColumns(shape)
         val model = ReportReadModel.of(report)
         val pkg = PackageMapping.splitFqn(report.name).first
-        if (emit(model, source, outRoot, loader, emptyList(), emptyMap())) packagesNeedingInstantTzHelper += pkg
+        reportPlans[model] = ReportTablePlan(
+            enumClasses = shape.fields().filter { it.typeSource is EnumField }
+                .associate { it.name to reportEnumClass(shape, it, loader.root) },
+            unsizedDecimals = shape.fields()
+                .filter { it.typeSource == null && it.subType == DecimalField.SUBTYPE_DECIMAL }
+                .mapTo(HashSet()) { it.name },
+        )
+        try {
+            if (emit(model, source, outRoot, loader, emptyList(), emptyMap())) packagesNeedingInstantTzHelper += pkg
+        } finally {
+            reportPlans.remove(model)
+        }
         if (entityNeedsInetUriHelper(model, loader)) packagesNeedingInetUriHelper += pkg
         if (entityNeedsJacksonMapper(model, loader)) packagesNeedingJacksonMapper += pkg
         if (entityNeedsUuidStringHelper(model, loader)) packagesNeedingUuidStringHelper += pkg
     }
+
+    /**
+     * What [emit] needs to know about the report it is emitting that the read model's
+     * field nodes do not say. Built once per report by [emitReport].
+     *
+     * @property enumClasses derived enum field name → the generated enum class its column is typed by
+     * @property unsizedDecimals derived decimal fields the shape gives no type source, so no precision
+     */
+    private class ReportTablePlan(val enumClasses: Map<String, ClassName>, val unsizedDecimals: Set<String>)
+
+    /**
+     * The plan of the report being emitted, keyed by its read model for the duration of
+     * that one [emit] call. Identity-keyed because node equality is structural. It is how
+     * the three report differences reach [emit] without a parameter on a `protected open`
+     * function an adopter's subclass may override.
+     */
+    private val reportPlans = java.util.IdentityHashMap<ReportReadModel, ReportTablePlan>()
 
     /**
      * Refuse a report whose derived field names cannot become the column properties of one
@@ -411,9 +440,10 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * Scoped to reports: an entity field has the same two hazards and they are left as they
      * were. A report that generates no table (see [emitReport]) is never checked.
      */
-    private fun refuseUncompilableReportColumns(report: MetaObject) {
+    private fun refuseUncompilableReportColumns(shape: ReportShape) {
+        val report = shape.report()
         val seen = HashMap<String, ReportShape.Field>()
-        for (f in ReportShape.of(report).fields()) {
+        for (f in shape.fields()) {
             if (f.name in KOTLIN_HARD_KEYWORDS) {
                 throw GeneratorException(
                     "report \"${report.shortName}\": its ${describeItem(f)} generates the Exposed column " +
@@ -421,7 +451,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                         "table would not compile. Rename the ${f.role.wireName()}."
                 )
             }
-            val property = KotlinNaming.safeColumnProperty(f.name)
+            val property = KotlinNaming.safeColumnProperty(f.name, exposedApi())
             val prior = seen.put(property, f) ?: continue
             throw GeneratorException(
                 "report \"${report.shortName}\": its ${describeItem(prior)} and its ${describeItem(f)} both " +
@@ -439,10 +469,6 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      */
     private fun describeItem(f: ReportShape.Field): String = "${f.role.wireName()} \"${f.name}\""
 
-    /** The derived field of [model]'s report that [field] (one of the model's fields) stands for. */
-    private fun derivedField(model: ReportReadModel, field: MetaField<*>): ReportShape.Field =
-        ReportShape.of(model.report()).fields().first { it.name == field.name }
-
     /**
      * Whether the table of [entity] references `<Entity>Names` constants: only when the
      * names generator is in the run ([useNames]) AND emits an artifact for [entity]. It
@@ -451,34 +477,42 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
     private fun bindsThroughNames(entity: MetaObject): Boolean = useNames() && entity !is ReportReadModel
 
     /**
-     * The generated enum class a `field.enum` column of [entity]'s table is typed by.
+     * The generated enum class a report's derived enum field [f] is typed by. A report gets
+     * no entity class and so no enum of its own; its enum column carries the values of the
+     * field the dimension (or min/max measure) reads, and is typed by THAT field's class:
+     * the one [KotlinEntityGenerator] emits for the entity the item reads from. Without
+     * `@via` that is the report's `@from` entity (which is how a field `@from` inherits from
+     * an abstract base still names a class that exists); with `@via` it is the entity the
+     * `@of` reference names, resolved by [ReportShape]'s own rule.
      *
-     * For an entity or projection that is [KotlinTypeMapper.enumTypeName] — the class
-     * [KotlinEntityGenerator] emits for it. A report gets no entity class and so no enum of
-     * its own; its enum column carries the values of the field the dimension (or min/max
-     * measure) reads, and is typed by THAT field's class: the one generated for the entity
-     * the item reads from. Without `@via` that is the report's `@from` entity (which is how
-     * a field `@from` inherits from an abstract base still names a class that exists); with
-     * `@via` it is the entity the `@of` reference names.
+     * @throws GeneratorException naming the report and the dimension when that entity does
+     *   not resolve. The shape resolved the same reference to derive [f], so a loaded model
+     *   cannot reach this; it guards a tree built in code, where typing the column by a
+     *   guessed class would compile against the wrong enum.
      */
-    private fun enumClassFor(field: MetaField<*>, entity: MetaObject): ClassName? {
-        if (entity !is ReportReadModel || field !is EnumField) return KotlinTypeMapper.enumTypeName(field, entity)
-        val report = entity.report()
-        val shape = ReportShape.of(report)
-        val derived = shape.fields().first { it.name == field.name }
-        val of = derived.typeSource
-            ?: error("report '${report.name}': enum field '${field.name}' has no type source")
-        val via = derived.dimension?.via
-        val owner = if (via == null) shape.from() else {
-            val root = generateSequence(report.parent) { it.parent }.filterIsInstance<MetaRoot>().first()
-            // Same resolution ReportShape applies to the reference: the member separator is
-            // the LAST dot, and the entity resolves relative to the @from entity's package.
-            ValidationPhase.resolveRootObject(
-                root, derived.dimension.of.substringBeforeLast('.'), shape.from().`package` ?: "",
-            ) ?: shape.from()
-        }
-        return KotlinTypeMapper.enumTypeName(of, owner)
+    private fun reportEnumClass(shape: ReportShape, f: ReportShape.Field, root: MetaRoot): ClassName {
+        val report = shape.report()
+        val dimension = f.dimension
+        val owner = if (dimension?.via == null) shape.from() else
+            ReportShape.resolveFieldRefEntity(dimension.of, shape.from(), root)
+                ?: throw GeneratorException(
+                    "report \"${report.shortName}\": its dimension \"${dimension.shortName}\" reads the enum " +
+                        "\"${dimension.of}\" through @via, and the entity that reference names does not " +
+                        "resolve, so the generated column has no enum class to be typed by."
+                )
+        return KotlinTypeMapper.enumTypeName(f.typeSource, owner)
+            ?: throw GeneratorException(
+                "report \"${report.shortName}\": its ${describeItem(f)} is an enum with no generated enum class."
+            )
     }
+
+    /**
+     * The generated enum class a `field.enum` column of [entity]'s table is typed by:
+     * [KotlinTypeMapper.enumTypeName] for an entity or projection — the class
+     * [KotlinEntityGenerator] emits for it — and [reportEnumClass] for a report.
+     */
+    private fun enumClassFor(field: MetaField<*>, entity: MetaObject): ClassName? =
+        reportPlans[entity]?.enumClasses?.get(field.name) ?: KotlinTypeMapper.enumTypeName(field, entity)
 
     /**
      * The Exposed column spec of a non-enum scalar [field] of [entity]: the type mapper's,
@@ -492,7 +526,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * view, so the two numbers never reach DDL.
      */
     private fun scalarColumnSpec(entity: MetaObject, field: MetaField<*>, colExpr: String, api: ExposedApi): String {
-        if (entity is ReportReadModel && field is DecimalField && derivedField(entity, field).typeSource == null) {
+        if (reportPlans[entity]?.unsizedDecimals?.contains(field.name) == true) {
             return "decimal($colExpr, $REPORT_DECIMAL_PRECISION, $REPORT_DECIMAL_SCALE)"
         }
         return KotlinTypeMapper.exposedColumnSpec(field, colExpr, api)
@@ -1014,7 +1048,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 val decorated = if (decoration != null && decoration.emitsReference)
                     "$withAuto.references(${decoration.targetTable}.${decoration.targetPkProperty}${decoration.refSuffix})" else withAuto
                 val full = if (nullable) "$decorated.nullable()" else decorated
-                append("    val ${KotlinNaming.safeColumnProperty(field.name)} = $full\n")
+                append("    val ${KotlinNaming.safeColumnProperty(field.name, exposedApi())} = $full\n")
             }
             // FR-017 TPH: a discriminator base's single table also carries every subtype-only
             // column, emitted NULLABLE (a row of another subtype stores null there, even when the
@@ -1037,16 +1071,16 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 } else {
                     KotlinTypeMapper.exposedColumnSpec(field, columnExprFor(field), api)
                 }
-                append("    val ${KotlinNaming.safeColumnProperty(field.name)} = $baseSpec.nullable()\n")
+                append("    val ${KotlinNaming.safeColumnProperty(field.name, exposedApi())} = $baseSpec.nullable()\n")
             }
             for (oc in objectColumns) {
-                append("    val ${KotlinNaming.safeColumnProperty(oc.propertyName)} = ${oc.columnExpr}\n")
+                append("    val ${KotlinNaming.safeColumnProperty(oc.propertyName, exposedApi())} = ${oc.columnExpr}\n")
             }
             for (fk in fkColumns) {
-                append("    val ${KotlinNaming.safeColumnProperty(fk.propertyName)} = ${fk.columnExpr}\n")
+                append("    val ${KotlinNaming.safeColumnProperty(fk.propertyName, exposedApi())} = ${fk.columnExpr}\n")
             }
             if (primaryFieldNames.isNotEmpty()) {
-                val pkRefs = primaryFieldNames.joinToString(", ") { KotlinNaming.safeColumnProperty(it) }
+                val pkRefs = primaryFieldNames.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
                 append("\n    override val primaryKey = PrimaryKey($pkRefs)\n")
             }
             // Emit `init { uniqueIndex("<name>", col1, ...) }` for identity.secondary
@@ -1063,11 +1097,11 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             if (emittableSecondaries.isNotEmpty() || lookupIndexes.isNotEmpty()) {
                 append("\n    init {\n")
                 for (sec in emittableSecondaries) {
-                    val cols = sec.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it) }
+                    val cols = sec.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
                     append("        uniqueIndex(${indexNameExpr(sec, shortName)}, $cols)\n")
                 }
                 for (idx in lookupIndexes) {
-                    val cols = idx.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it) }
+                    val cols = idx.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
                     append("        index(${indexNameExpr(idx, shortName)}, false, $cols)\n")
                 }
                 append("    }\n")
@@ -2169,7 +2203,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      */
     private fun primaryKeyProperty(target: MetaObject): String {
         val pkField = target.getIdentities(true).firstOrNull { it.isPrimary }?.fields?.firstOrNull()
-        return KotlinNaming.safeColumnProperty(pkField ?: "id")
+        return KotlinNaming.safeColumnProperty(pkField ?: "id", exposedApi())
     }
 
     /**
