@@ -119,7 +119,8 @@ export function desugarClause(raw: unknown): Record<string, unknown> {
  * `@filter` of a segment, measure.aggregate or object.report (the loader's F1 rule), and
  * this lowering has no rendering for it: it would otherwise land as a SQL literal of
  * `[object Object]`. A programmatic caller skips the loader, so refuse it here, loudly.
- * The report lowering (FR-044 Plan 2) replaces this throw.
+ * The throw stays for projection and `origin.aggregate` filters. A report lowers its relative
+ * values through `extract-report-spec.ts` and renders them in `report-ddl-emit.ts`.
  */
 function assertNoRelativeDate(value: unknown, where: string): void {
   const isRelative = (v: unknown): boolean =>

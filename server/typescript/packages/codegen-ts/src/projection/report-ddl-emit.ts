@@ -1,0 +1,177 @@
+// FR-044 Plan 2 (contract Tables C, F) — renders a ReportViewSpec to view SQL for
+// Postgres, SQLite and MySQL. Kept apart from view-ddl-emit.ts on purpose: the projection
+// emitter quotes conditionally (`quoteIfNeeded`) and is Postgres/SQLite only; a report
+// quotes every identifier unconditionally, so a measure named `order` is valid DDL.
+import type { JoinNode, ViewFilterClause } from "./view-spec.js";
+import type { ReportAggregate, ReportColumn, ReportViewSpec } from "./report-spec.js";
+import { isRelativeNow } from "./report-spec.js";
+import { relativeNowSql, truncateToGrain, type ReportDialect } from "./time-sql.js";
+
+export interface ReportEmitOptions {
+  readonly dialect: ReportDialect;
+  readonly baseTableName: string;
+  /** Map from entity name → table name for every entity referenced in joins. */
+  readonly joinTables: Readonly<Record<string, string>>;
+  /** Body only (no CREATE VIEW wrapper, no trailing `;`), as migrate-ts consumes it. */
+  readonly bodyOnly?: boolean;
+}
+
+/** An identifier, quoted unconditionally. */
+function q(ident: string, d: ReportDialect): string {
+  return d === "mysql" ? "`" + ident.replace(/`/g, "``") + "`" : `"${ident.replace(/"/g, '""')}"`;
+}
+
+/** `alias.column` → `alias."column"`. The alias is generated, never quoted. */
+function ref(r: string, d: ReportDialect): string {
+  const dot = r.indexOf(".");
+  return dot < 0 ? q(r, d) : `${r.slice(0, dot)}.${q(r.slice(dot + 1), d)}`;
+}
+
+function literal(v: unknown, d: ReportDialect): string {
+  if (isRelativeNow(v)) return relativeNowSql(v.duration, v.temporal, d);
+  if (v === null || v === undefined) return "NULL";
+  if (typeof v === "number") return String(v);
+  if (typeof v === "boolean") return d === "sqlite" ? (v ? "1" : "0") : v ? "TRUE" : "FALSE";
+  const s = String(v).replace(/'/g, "''");
+  return `'${d === "mysql" ? s.replace(/\\/g, "\\\\") : s}'`;
+}
+
+const FILTER_OP_SQL: Readonly<Record<string, string>> = {
+  eq: "=", ne: "<>", gt: ">", gte: ">=", lt: "<", lte: "<=", like: "LIKE",
+};
+
+/** A resolved filter clause as a SQL boolean expression; `and` / `or` groups are parenthesised. */
+function cond(clause: ViewFilterClause, d: ReportDialect): string {
+  switch (clause.kind) {
+    case "and":
+    case "or":
+      return `(${clause.clauses.map((c) => cond(c, d)).join(clause.kind === "and" ? " AND " : " OR ")})`;
+    case "exprCmp":
+      throw new Error("report-ddl-emit: a report filter never lowers to an exprCmp clause.");
+    case "cmp": {
+      const lhs = ref(clause.ref, d);
+      if (clause.op === "isNull") return clause.value === false ? `${lhs} IS NOT NULL` : `${lhs} IS NULL`;
+      if (clause.op === "in") {
+        const vals = (Array.isArray(clause.value) ? clause.value : [clause.value]).map((v) => literal(v, d));
+        return `${lhs} IN (${vals.join(", ")})`;
+      }
+      const op = FILTER_OP_SQL[clause.op];
+      if (op === undefined) throw new Error(`report-ddl-emit: unsupported filter operator "${clause.op}".`);
+      return `${lhs} ${op} ${literal(clause.value, d)}`;
+    }
+  }
+}
+
+function castType(cast: "bigint" | "double", d: ReportDialect): string | undefined {
+  switch (d) {
+    case "postgres":
+      return cast === "bigint" ? "BIGINT" : "DOUBLE PRECISION";
+    case "mysql":
+      return cast === "bigint" ? "SIGNED" : undefined; // MySQL SUM(double) is already DOUBLE
+    case "sqlite":
+      return undefined; // SQLite has one integer and one real affinity; SUM already fits
+  }
+}
+
+/** One aggregate (Table C): the bare aggregate, the condition by dialect, the cast last. */
+function aggregate(a: ReportAggregate, d: ReportDialect): string {
+  const refs = a.refs.map((r) => ref(r, d));
+  const c = a.filter === undefined ? undefined : cond(a.filter, d);
+  const fn = a.agg.toUpperCase();
+  let sql: string;
+  if (refs.length > 1) {
+    // A distinct tuple count: a tuple with any NULL component is not counted, on every dialect.
+    const notNull = refs.map((r) => `${r} IS NOT NULL`);
+    const both = [...notNull, ...(c === undefined ? [] : [c])].join(" AND ");
+    switch (d) {
+      case "postgres":
+        sql = `COUNT(DISTINCT (${refs.join(", ")})) FILTER (WHERE ${both})`;
+        break;
+      case "sqlite":
+        sql = `COUNT(DISTINCT CASE WHEN ${both} THEN json_array(${refs.join(", ")}) END)`;
+        break;
+      case "mysql": {
+        // MySQL's multi-argument COUNT(DISTINCT …) already skips a tuple with a NULL component.
+        const [first, ...rest] = refs;
+        const head = c === undefined ? first! : `CASE WHEN ${c} THEN ${first} END`;
+        sql = `COUNT(DISTINCT ${[head, ...rest].join(", ")})`;
+        break;
+      }
+    }
+  } else {
+    const x = refs[0]!;
+    const distinct = a.distinct ? "DISTINCT " : "";
+    if (c === undefined) sql = `${fn}(${distinct}${x})`;
+    else if (d === "postgres") sql = `${fn}(${distinct}${x}) FILTER (WHERE ${c})`;
+    else sql = `${fn}(${distinct}CASE WHEN ${c} THEN ${x} END)`;
+  }
+  const type = a.cast === undefined ? undefined : castType(a.cast, d);
+  return type === undefined ? sql : `CAST(${sql} AS ${type})`;
+}
+
+interface RenderedColumn {
+  readonly expr: string;
+  readonly alias: string;
+  /** Present for a dimension: its expression is the GROUP BY term. */
+  readonly grouped: boolean;
+}
+
+function column(c: ReportColumn, d: ReportDialect): RenderedColumn {
+  const alias = q(c.dbColAlias, d);
+  switch (c.kind) {
+    case "dimension":
+      return { expr: ref(c.ref, d), alias, grouped: true };
+    case "timeDimension":
+      return { expr: truncateToGrain(ref(c.ref, d), c.grain, c.temporal, d), alias, grouped: true };
+    case "aggregate":
+      return { expr: aggregate(c.aggregate, d), alias, grouped: false };
+    case "ratio": {
+      // Each operand is its FULL Table C expression (condition and cast included).
+      const num = aggregate(c.numerator, d);
+      const den = aggregate(c.denominator, d);
+      const top = d === "postgres" ? "NUMERIC" : d === "sqlite" ? "REAL" : undefined;
+      return {
+        expr: `${top === undefined ? num : `CAST(${num} AS ${top})`} / NULLIF(${den}, 0)`,
+        alias,
+        grouped: false,
+      };
+    }
+  }
+}
+
+function renderJoin(node: JoinNode, parentAlias: string, options: ReportEmitOptions): string {
+  const table = options.joinTables[node.targetEntity];
+  if (!table) {
+    throw new Error(`report-ddl-emit: no table name registered for joined entity "${node.targetEntity}".`);
+  }
+  const d = options.dialect;
+  const fk = q(node.fkColumn, d);
+  const pk = q(node.pkColumn, d);
+  // referenceHolder "source": FK on the parent (belongs-to); "target": FK on the child (has-many).
+  const on = node.referenceHolder === "source"
+    ? `${node.alias}.${pk} = ${parentAlias}.${fk}`
+    : `${node.alias}.${fk} = ${parentAlias}.${pk}`;
+  const kw = node.joinType === "inner" ? "INNER JOIN" : "LEFT OUTER JOIN";
+  let sql = `  ${kw} ${q(table, d)} ${node.alias} ON ${on}`;
+  for (const child of node.children) sql += "\n" + renderJoin(child, node.alias, options);
+  return sql;
+}
+
+export function emitReportViewDdl(spec: ReportViewSpec, options: ReportEmitOptions): string {
+  const d = options.dialect;
+  // Rendered once: a dimension's SELECT expression is its GROUP BY term, so they cannot differ.
+  const cols = spec.columns.map((c) => column(c, d));
+  const select = cols.map((c) => `    ${c.expr} AS ${c.alias}`).join(",\n");
+  const groupBy = cols.filter((c) => c.grouped).map((c) => c.expr);
+
+  const base = spec.joinTree.baseAlias;
+  const joins = spec.joinTree.joins.map((j) => renderJoin(j, base, options)).join("\n");
+  const body =
+    `  SELECT\n${select}\n  FROM ${q(options.baseTableName, d)} ${base}` +
+    (joins === "" ? "" : `\n${joins}`) +
+    (spec.where === undefined ? "" : `\n  WHERE ${cond(spec.where, d)}`) +
+    (groupBy.length === 0 ? "" : `\n  GROUP BY ${groupBy.join(", ")}`);
+
+  if (options.bodyOnly) return body;
+  return `CREATE VIEW ${q(spec.viewName, d)} AS\n${body};`;
+}
