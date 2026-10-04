@@ -28,7 +28,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Kysely, sql } from "kysely";
 import { LibsqlDialect } from "@libsql/kysely-libsql";
-import { buildExpectedSchema, diff, emit, introspectSqlite, type SchemaSnapshot } from "@metaobjectsdev/migrate-ts";
+import {
+  buildExpectedSchema, diff, emit, introspectSqlite, type Change, type SchemaSnapshot,
+} from "@metaobjectsdev/migrate-ts";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobjectsdev/metadata";
 import { loadMetadataDir } from "../src/load-metadata.ts";
@@ -55,7 +57,10 @@ async function applyRaw(text: string): Promise<void> {
 }
 
 async function loadInline(metaJson: string): Promise<MetaRoot> {
-  return (await new MetaDataLoader().load([new InMemoryStringSource(metaJson)])).root;
+  const r = await new MetaDataLoader().load([new InMemoryStringSource(metaJson)]);
+  // The loader collects errors instead of throwing; a refused inline model must not be migrated.
+  expect(r.errors).toEqual([]);
+  return r.root;
 }
 
 function expectedFor(root: MetaRoot): SchemaSnapshot {
@@ -73,8 +78,9 @@ function expectedFor(root: MetaRoot): SchemaSnapshot {
  * (nothing here reads `all_types`), and it is the only residue the canonical model leaves.
  * It is named, not swallowed: a residual change on any OTHER table or on any view fails.
  */
-const isInetResidue = (c: { kind: string; table?: string }): boolean =>
-  c.kind === "change-column-type" && c.table === "all_types";
+const INET_COLUMNS: ReadonlySet<string> = new Set(["inetVal", "inet6Val"]);
+const isInetResidue = (c: Change): boolean =>
+  c.kind === "change-column-type" && c.table === "all_types" && INET_COLUMNS.has(c.column) && c.to.kind === "inet";
 
 /** build -> introspect -> diff -> emit -> apply. */
 async function migrate(root: MetaRoot) {
@@ -183,18 +189,6 @@ describe("report views — canonical model on real SQLite", () => {
     expect(await select(`SELECT "program" FROM "v_program_minutes" ORDER BY "totalMinutes" DESC LIMIT 1`)).toEqual([{ program: 1 }]);
   });
 
-  test("a tuple with a NULL component is not counted", async () => {
-    // durationMinutes is required, so null the other component: programId is required too.
-    // Prove the guard on the lowered text instead, and the count it protects by hand.
-    const body = viewSql(canonical, "v_program_minutes");
-    expect(body).toContain(`WHEN w."programId" IS NOT NULL AND w."durationMinutes" IS NOT NULL THEN json_array(`);
-    const r = await select(
-      `SELECT COUNT(DISTINCT CASE WHEN a IS NOT NULL AND b IS NOT NULL THEN json_array(a, b) END) AS n
-         FROM (SELECT 1 AS a, 2 AS b UNION ALL SELECT 1, 2 UNION ALL SELECT 1, NULL UNION ALL SELECT NULL, 3)`,
-    );
-    expect(r).toEqual([{ n: 1 }]);
-  });
-
   test("v_fitness_totals: no dimensions, one row; ratio is REAL", async () => {
     await applyRaw(SEED_PROGRAMS_AND_WEEKS);
     expect(await select(`SELECT * FROM "v_fitness_totals"`)).toEqual([{ weeks: 5, totalMinutes: 285, longShare: 0.6 }]);
@@ -289,6 +283,34 @@ describe("report views — inline model on real SQLite", () => {
     { "object.report": { name: "StampsByYear", "@from": "Stamp", "@dimensions": ["day:year"], "@measures": ["stamps"], children: [
       { "source.rdb": { "@kind": "view", "@view": "v_stamps_by_year" } } ] } },
   ]}});
+
+  /** A tuple distinct count whose two components are both NULLABLE (the canonical model's are required). */
+  const PAIR_MODEL = JSON.stringify({ "metadata.root": { package: "acme", children: [
+    { "object.entity": { name: "Pair", children: [
+      { "source.rdb": { "@table": "pairs" } },
+      { "field.long": { name: "id" } },
+      { "field.int": { name: "a" } },
+      { "field.int": { name: "b" } },
+      { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+      { "measure.aggregate": { name: "combos", "@agg": "count", "@distinct": true, "@of": ["Pair.a", "Pair.b"] } },
+    ] } },
+    { "object.report": { name: "PairTotals", "@from": "Pair", "@measures": ["combos"], children: [
+      { "source.rdb": { "@kind": "view", "@view": "v_pair_totals" } } ] } },
+  ]}});
+
+  test("a tuple with a NULL component is not counted, read through the lowered view", async () => {
+    const root = await loadInline(PAIR_MODEL);
+    expect(viewSql(root, "v_pair_totals")).toContain(
+      `COUNT(DISTINCT CASE WHEN p."a" IS NOT NULL AND p."b" IS NOT NULL THEN json_array(p."a", p."b") END)`,
+    );
+    const { expected } = await migrate(root);
+    await assertConverged(expected);
+    // (1,2) twice, (2,1) once, and three rows with a NULL component: two distinct tuples.
+    await applyRaw(`
+      INSERT INTO "pairs" ("a","b") VALUES
+        (1, 2), (1, 2), (2, 1), (1, NULL), (NULL, 3), (NULL, NULL)`);
+    expect(await select(`SELECT * FROM "v_pair_totals"`)).toEqual([{ combos: 2 }]);
+  });
 
   test("QUARTER and YEAR grains: every month of a quarter lands on its first day, and the view converges", async () => {
     const root = await loadInline(STAMP_MODEL);

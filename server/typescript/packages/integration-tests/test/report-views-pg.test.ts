@@ -63,6 +63,8 @@ async function applyRaw(text: string): Promise<void> {
 
 async function loadInline(metaJson: string): Promise<MetaRoot> {
   const r = await new MetaDataLoader().load([new InMemoryStringSource(metaJson)]);
+  // The loader collects errors instead of throwing; a refused inline model must not be migrated.
+  expect(r.errors).toEqual([]);
   return r.root;
 }
 
@@ -410,7 +412,10 @@ describe("report views — inline models on real Postgres", () => {
     await assertConverged(first.expected, first.unmanagedNames);
 
     const after = await loadInline(metricModel(["samples", "total"]));
-    const { result, up, expected, unmanagedNames } = await migrate(after, { dropView: true });
+    // A plain `meta migrate`, no --allow: the drop is PAIRED with the create of the same view,
+    // which is not a destructive change. Passing dropView here would hide a broken pairing.
+    const { result, up, expected, unmanagedNames } = await migrate(after);
+    expect(result.blocked).toEqual([]);
 
     const viewChanges = result.changes.filter((c) => c.kind.endsWith("-view"));
     expect(viewChanges.map((c) => c.kind).sort()).toEqual(["create-view", "drop-view"]);
@@ -425,7 +430,75 @@ describe("report views — inline models on real Postgres", () => {
     expect((cols.rows as { column_name: string }[]).map((c) => c.column_name)).toEqual(["kind", "samples", "total"]);
 
     await assertConverged(expected, unmanagedNames);
-    const again = await migrate(after, { dropView: true });
+    const again = await migrate(after);
     expect(again.up.trim()).toBe("");
+  }, 60_000);
+
+  test("a tuple with a NULL component is not counted, read through the lowered view", async () => {
+    // The canonical tuple's components are both required, so only an inline model can put a
+    // NULL through the FILTER guard on an engine.
+    const root = await loadInline(JSON.stringify({ "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Pair", children: [
+        { "source.rdb": { "@table": "pairs" } },
+        { "field.long": { name: "id" } },
+        { "field.int": { name: "a" } },
+        { "field.int": { name: "b" } },
+        { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+        { "measure.aggregate": { name: "combos", "@agg": "count", "@distinct": true, "@of": ["Pair.a", "Pair.b"] } },
+      ] } },
+      { "object.report": { name: "PairTotals", "@from": "Pair", "@measures": ["combos"], children: [
+        { "source.rdb": { "@kind": "view", "@view": "v_pair_totals" } } ] } },
+    ]}}));
+    const { expected, unmanagedNames } = await migrate(root);
+    await assertConverged(expected, unmanagedNames);
+    await applyRaw(`
+      INSERT INTO "pairs" ("a","b") VALUES (1, 2), (1, 2), (2, 1), (1, NULL), (NULL, 3), (NULL, NULL);`);
+    expect(await select(`SELECT * FROM "v_pair_totals"`)).toEqual([{ combos: "2" }]);
+  }, 60_000);
+
+  test("SUM TYPES (Table C): a decimal sum stays numeric and a double sum is double precision, on the engine", async () => {
+    const root = await loadInline(JSON.stringify({ "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Reading", children: [
+        { "source.rdb": { "@table": "readings" } },
+        { "field.long": { name: "id" } },
+        { "field.decimal": { name: "amount", "@precision": 12, "@scale": 2 } },
+        { "field.double": { name: "score" } },
+        { "field.float": { name: "ratio" } },
+        { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+        { "measure.aggregate": { name: "amountTotal", "@agg": "sum", "@of": "Reading.amount" } },
+        { "measure.aggregate": { name: "scoreTotal", "@agg": "sum", "@of": "Reading.score" } },
+        { "measure.aggregate": { name: "ratioTotal", "@agg": "sum", "@of": "Reading.ratio" } },
+      ] } },
+      { "object.report": { name: "ReadingTotals", "@from": "Reading",
+        "@measures": ["amountTotal", "scoreTotal", "ratioTotal"], children: [
+        { "source.rdb": { "@kind": "view", "@view": "v_reading_totals" } } ] } },
+    ]}}));
+    const body = viewSql(root, "v_reading_totals");
+    expect(body).toContain(`SUM(r."amount") AS "amountTotal"`);
+    expect(body).toContain(`CAST(SUM(r."score") AS DOUBLE PRECISION) AS "scoreTotal"`);
+    expect(body).toContain(`CAST(SUM(r."ratio") AS DOUBLE PRECISION) AS "ratioTotal"`);
+
+    const { expected, unmanagedNames } = await migrate(root);
+    await assertConverged(expected, unmanagedNames);
+
+    // The view's column types are what Table B promises the readers.
+    const cols = await sql.raw(
+      `SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'v_reading_totals' ORDER BY ordinal_position`,
+    ).execute(k);
+    expect(cols.rows).toEqual([
+      { column_name: "amountTotal", data_type: "numeric" },
+      { column_name: "scoreTotal", data_type: "double precision" },
+      { column_name: "ratioTotal", data_type: "double precision" },
+    ]);
+
+    // Over zero rows every sum is NULL, never 0.
+    expect(await select(`SELECT * FROM "v_reading_totals"`)).toEqual([
+      { amountTotal: null, scoreTotal: null, ratioTotal: null },
+    ]);
+    await applyRaw(`INSERT INTO "readings" ("amount","score","ratio") VALUES (10.25, 1.5, 0.5), (0.50, 2.25, 0.25);`);
+    const [row] = await select(`SELECT * FROM "v_reading_totals"`);
+    expect(canonicalDecimal(row!.amountTotal)).toBe("10.75");
+    expect(Number(row!.scoreTotal)).toBe(3.75);
+    expect(Number(row!.ratioTotal)).toBe(0.75);
   }, 60_000);
 });

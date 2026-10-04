@@ -75,7 +75,10 @@ const DDL = [
 ];
 
 async function loadInline(metaJson: string): Promise<MetaRoot> {
-  return (await new MetaDataLoader().load([new InMemoryStringSource(metaJson)])).root;
+  const r = await new MetaDataLoader().load([new InMemoryStringSource(metaJson)]);
+  // The loader collects errors instead of throwing; a refused inline model must not reach MySQL.
+  expect(r.errors).toEqual([]);
+  return r.root;
 }
 
 function reportViews(root: MetaRoot) {
@@ -175,6 +178,14 @@ const RELATIVE_MODEL = JSON.stringify({ "metadata.root": { package: "acme", chil
       { "source.rdb": { "@kind": "view", "@view": "v_up_to_tomorrow" } } ] } },
 ]}});
 
+/** Every view and table this file creates: the canonical six, the inline models' and the recipe's. */
+const OWN_VIEWS = [
+  ...CANONICAL_VIEWS,
+  "v_events_by_grain", "v_last_twelve_hours", "v_last_two_weeks", "v_up_to_tomorrow",
+  "v_program_minutes_recipe",
+] as const;
+const OWN_TABLES = ["weeks", "programs", "assets", "events"] as const;
+
 beforeAll(async () => {
   container = await startMysql();
   conn = await mysql.createConnection({
@@ -186,9 +197,10 @@ beforeAll(async () => {
   });
   // Idempotent: a rerun against a persistent METAOBJECTS_TEST_MYSQL_URL starts clean, and
   // every test below is independent of test order (or of `-t` selecting one of them).
-  const stale = await select(`SELECT table_name AS n FROM information_schema.views WHERE table_schema = DATABASE()`);
-  for (const v of stale) await conn.query(`DROP VIEW IF EXISTS \`${String(v.n)}\``);
-  for (const t of ["weeks", "programs", "assets", "events"]) await conn.query(`DROP TABLE IF EXISTS ${t}`);
+  // Only the views and tables THIS file creates, by name: METAOBJECTS_TEST_MYSQL_URL may point
+  // at a shared database, and sweeping information_schema would drop somebody else's views.
+  for (const v of OWN_VIEWS) await conn.query(`DROP VIEW IF EXISTS \`${v}\``);
+  for (const t of OWN_TABLES) await conn.query(`DROP TABLE IF EXISTS \`${t}\``);
   for (const ddl of DDL) await conn.query(ddl);
   canonical = await loadMetadataDir(CANONICAL_DIR);
   await createViews(canonical);
