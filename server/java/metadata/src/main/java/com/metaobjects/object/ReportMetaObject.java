@@ -23,8 +23,10 @@ import com.metaobjects.object.value.ValueObject;
  * derived from {@code @dimensions} and {@code @measures}, never declared; its rules
  * (R1-R7) are enforced by the loader's reporting validation pass.
  *
- * <p>Registration + canonical serialization only in this plan; the view lowering and
- * the generated read surface arrive with FR-044 Plan 2.</p>
+ * <p>The declared node carries no field children. Its read shape is derived by
+ * {@link com.metaobjects.reporting.ReportShape} (contract Table B), and a runtime reads it
+ * through {@link com.metaobjects.reporting.ReportReadModel}. The view itself is lowered by
+ * the TypeScript toolchain only (ADR-0015); the Java generators emit nothing for a report.</p>
  */
 @SuppressWarnings("serial")
 public class ReportMetaObject extends AbstractObjectRepresentation {

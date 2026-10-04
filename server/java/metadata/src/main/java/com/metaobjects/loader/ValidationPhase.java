@@ -4187,7 +4187,7 @@ public final class ValidationPhase {
      *
      * @param referrerPkg the effective package of the node carrying the ref ("" for root-level)
      */
-    static MetaObject resolveRootObject(MetaRoot root, String ref, String referrerPkg) {
+    public static MetaObject resolveRootObject(MetaRoot root, String ref, String referrerPkg) {
         if (ref == null) return null;
         String pkg = (referrerPkg == null) ? "" : referrerPkg;
         if (ref.indexOf(MetaData.PKG_SEPARATOR) >= 0) {

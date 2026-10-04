@@ -9,6 +9,7 @@ import com.metaobjects.DataTypes;
 import com.metaobjects.MetaDataNotFoundException;
 import com.metaobjects.database.CoreDBMetaDataProvider;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.reporting.ReportReadModel;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
 
@@ -68,7 +69,14 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 
 	@Override
 	public ObjectMapping getReadMapping(MetaObject mc) {
-		
+
+		// FR-044: a declared report has no field children, so mapping it would yield a
+		// column-less SELECT. Refuse by name instead: a report is mapped through its read model.
+		if ( ReportReadModel.isReport( mc ) && !( mc instanceof ReportReadModel )) {
+			throw new MetaDataException( "Report [" + mc.getName() + "] has no fields to map: a report is read"
+					+ " through its read model (ReportReadModel.of), not through the declared node" );
+		}
+
 		// Try to get a view first 
 		String name = getViewRef( mc );
 		if ( name != null ) {
@@ -475,6 +483,10 @@ public class SimpleMappingHandlerDB implements MappingHandler {
      */
     protected String getViewRef( MetaObject mc )
     {
+      // FR-044: a report's read model names its view through the source's kind-matching
+      // alias (@view), the name the TypeScript lowering created the view under. Every other
+      // object keeps the @table read below, unchanged.
+      if ( mc instanceof ReportReadModel ) return ((ReportReadModel) mc).viewName();
       return mc.getPrimaryRdbViewName();
     }
 
