@@ -389,6 +389,10 @@ object ProgramMinutesTable : Table("v_program_minutes") {
 - `gen` fails, naming the report and the dimension or measure, when a derived field is named
   after a Kotlin hard keyword or when two derived fields land on one column property (see
   below for the `Column` suffix). Rename the item.
+- `gen` also fails, naming the report and the dimension or measure, when a derived field reads a
+  `field.object` (a dimension over an embedded value object, say). A report over a
+  `field.object` is not supported; group by a scalar field.
+- An abstract report generates nothing, view or not.
 
 A column property whose name is a member of Exposed's `Table` gets a `Column` suffix
 (`source` becomes `sourceColumn`); the physical column name does not change. The reserved set

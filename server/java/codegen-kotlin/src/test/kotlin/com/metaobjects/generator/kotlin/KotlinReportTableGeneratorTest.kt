@@ -394,6 +394,130 @@ class KotlinReportTableGeneratorTest {
         assertCompiles(files)
     }
 
+    // --- References resolve as the loader resolves them -----------------------------------
+
+    /** `a::Base` (abstract) declares members whose bare `@of` names `Base`. */
+    private val sharedBase = """{
+      "metadata.root": { "package": "a", "children": [
+        { "object.entity": { "name": "Base", "abstract": true, "children": [
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "kind", "@maxLength": 12 } },
+            { "field.enum": { "name": "tier", "@values": ["GOLD", "SILVER"] } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+            { "dimension.attribute": { "name": "kind", "@of": "Base.kind" } },
+            { "dimension.attribute": { "name": "tier", "@of": "Base.tier" } },
+            { "measure.aggregate": { "name": "events", "@agg": "count", "@of": "Base.id" } }
+        ] } }
+      ] }
+    }"""
+
+    /** Package `b`: `Ev extends a::Base` and report `R` over it. [decoy] adds a same-named,
+     *  differently-typed `b::Base` that a package-of-`@from` resolution would capture. */
+    private fun evFile(decoy: Boolean, measures: String = """["events"]"""): String {
+        val decoyNode = if (!decoy) "" else """
+            { "object.entity": { "name": "Base", "children": [
+                { "field.int": { "name": "id" } },
+                { "field.int": { "name": "kind" } },
+                { "field.int": { "name": "tier" } }
+            ] } },"""
+        return """{
+          "metadata.root": { "package": "b", "children": [$decoyNode
+            { "object.entity": { "name": "Ev", "extends": "a::Base", "children": [
+                { "source.rdb": { "@table": "evs" } }
+            ] } },
+            { "object.report": { "name": "R", "@from": "Ev", "@dimensions": ["kind", "tier"],
+                "@measures": $measures,
+                "children": [ { "source.rdb": { "@kind": "view", "@view": "v_r" } } ] } }
+          ] }
+        }"""
+    }
+
+    private fun loadFiles(vararg json: String): MetaDataLoader =
+        MetaDataLoader.createManual(false, "report-table-cross-package").apply {
+            init()
+            load(json.mapIndexed { i, text ->
+                com.metaobjects.loader.InMemoryStringSource(
+                    text, "meta.inline$i.json", com.metaobjects.loader.MetaDataSource.MetaDataFormat.JSON)
+            })
+            assertEquals(emptyList(), errors.map { it.message })
+            register()
+        }
+
+    private fun crossPackageTable(decoy: Boolean, measures: String = """["events"]"""): Map<String, String> =
+        emit(
+            loadFiles(sharedBase, evFile(decoy, measures)),
+            mapOf("columnNaming" to "literal"),
+            listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator()),
+        )
+
+    private fun assertTypedFromTheDeclaringBase(files: Map<String, String>) {
+        val src = files.getValue("b/RTable.kt")
+        assertTrue("    val kind = varchar(\"kind\", 12).nullable()\n" in src, src)
+        // The enum class of the @from entity, which is the class the entity generator emits.
+        assertTrue("EvTier::class).nullable()\n" in src, src)
+        assertTrue("    val events = long(\"events\")\n" in src, src)
+        assertCompiles(files.filterKeys { !it.startsWith("b/Base") })
+    }
+
+    @Test
+    fun `a bare of on a member inherited from another package resolves in the declaring entity's package`() {
+        assertTypedFromTheDeclaringBase(crossPackageTable(decoy = false))
+    }
+
+    @Test
+    fun `a same-named decoy in the report's package does not capture the reference`() {
+        // b::Base.kind and b::Base.tier are ints: captured, the columns would be integer(...).
+        assertTypedFromTheDeclaringBase(crossPackageTable(decoy = true))
+    }
+
+    @Test
+    fun `a dotted measures item names the measure by its last segment`() {
+        val src = crossPackageTable(decoy = false, measures = """["a::Base.events"]""").getValue("b/RTable.kt")
+        assertTrue("    val events = long(\"events\")\n" in src, src)
+        val viaFrom = crossPackageTable(decoy = false, measures = """["Ev.events"]""").getValue("b/RTable.kt")
+        assertEquals(src, viaFrom)
+    }
+
+    // --- What generates nothing, and what is refused ---------------------------------------
+
+    @Test
+    fun `an abstract view-backed report generates nothing`() {
+        // An abstract object gets no table object in this port, report or not. The
+        // TypeScript, Java and Python runtimes still read the view (docs: Known limits).
+        val json = model().replace(""""name": "SaleTotals",""", """"name": "SaleTotals", "abstract": true,""")
+        assertTrue("\"abstract\": true" in json)
+        assertEquals(emptyMap(), reportFiles(json))
+    }
+
+    @Test
+    fun `a dimension over a field object is refused, naming the report and the dimension`() {
+        val json = """{
+          "metadata.root": { "package": "acme::shop", "children": [
+            { "object.value": { "name": "Address", "children": [ { "field.string": { "name": "city" } } ] } },
+            { "object.entity": { "name": "Sale", "children": [
+                { "source.rdb": { "@table": "sales" } },
+                { "field.long": { "name": "id" } },
+                { "field.object": { "name": "shipTo", "@objectRef": "Address", "@storage": "jsonb" } },
+                { "identity.primary": { "name": "id", "@fields": ["id"] } },
+                { "dimension.attribute": { "name": "destination", "@of": "Sale.shipTo" } },
+                { "measure.aggregate": { "name": "sales", "@agg": "count", "@of": "Sale.id" } }
+            ] } },
+            { "object.report": { "name": "SaleTotals", "@from": "Sale", "@dimensions": ["destination"],
+                "@measures": ["sales"],
+                "children": [ { "source.rdb": { "@kind": "view", "@view": "v_sale_totals" } } ] } }
+          ] }
+        }"""
+        val e = assertFailsWith<GeneratorException> { reportFiles(json) }
+        assertEquals(
+            "report \"SaleTotals\": its dimension \"destination\" reads \"acme::shop::Sale.shipTo\", a " +
+                "field.object. A report over a field.object is not supported; group by a scalar field.",
+            e.message,
+        )
+        // The same report with no view generates nothing and is not refused.
+        assertEquals(emptyMap(), reportFiles(json.replace(
+            """"children": [ { "source.rdb": { "@kind": "view", "@view": "v_sale_totals" } } ]""", """"children": []""")))
+    }
+
     // --- The emitted reports build ------------------------------------------------------
 
     @Test

@@ -391,11 +391,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // Table B, derived ONCE for the report; everything below reads this one shape.
         val shape = ReportShape.of(report, loader.root)
         refuseUncompilableReportColumns(shape)
+        refuseObjectFieldReportColumns(shape)
         val model = ReportReadModel.of(report)
         val pkg = PackageMapping.splitFqn(report.name).first
         reportPlans[model] = ReportTablePlan(
             enumClasses = shape.fields().filter { it.typeSource is EnumField }
-                .associate { it.name to reportEnumClass(shape, it, loader.root) },
+                .associate { it.name to reportEnumClass(shape, it) },
             unsizedDecimals = shape.fields()
                 .filter { it.typeSource == null && it.subType == DecimalField.SUBTYPE_DECIMAL }
                 .mapTo(HashSet()) { it.name },
@@ -463,6 +464,26 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
     }
 
     /**
+     * Refuse a report with a derived field typed by a `field.object` (a dimension over an
+     * embedded value object, say). The loader accepts it, but no port reads one through a
+     * report's row: the read model the table is built from ([ReportReadModel]) refuses it
+     * too, with the same sentence. Refused here first so `gen` fails as a generator error
+     * naming the report and the dimension or measure.
+     */
+    private fun refuseObjectFieldReportColumns(shape: ReportShape) {
+        for (f in shape.fields()) {
+            val src = f.typeSource ?: continue
+            // ADR-0039: resolving — an @objectRef the @of field inherits counts.
+            if (src.subType != ObjectField.SUBTYPE_OBJECT && !src.hasMetaAttr(MetaField.ATTR_OBJECT_REF)) continue
+            throw GeneratorException(
+                "report \"${shape.report().shortName}\": its ${describeItem(f)} reads " +
+                    "\"${f.typeSourceKey()}\", a field.${src.subType}. A report over a field.object is " +
+                    "not supported; group by a scalar field."
+            )
+        }
+    }
+
+    /**
      * `measure "x"` or `dimension "x"`. The derived name IS the item name here: only a time
      * dimension derives a different one (`<name><Grain>`), and that is never a keyword, a
      * `Table` member or a `…Column` name, so a time dimension is never refused.
@@ -483,23 +504,24 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * the one [KotlinEntityGenerator] emits for the entity the item reads from. Without
      * `@via` that is the report's `@from` entity (which is how a field `@from` inherits from
      * an abstract base still names a class that exists); with `@via` it is the entity the
-     * `@of` reference names, resolved by [ReportShape]'s own rule.
+     * `@of` reference names. [ReportShape.ofEntity] answers both, by the rule that derived
+     * the field (a bare name resolves in the package of the entity DECLARING the dimension).
      *
      * @throws GeneratorException naming the report and the dimension when that entity does
      *   not resolve. The shape resolved the same reference to derive [f], so a loaded model
      *   cannot reach this; it guards a tree built in code, where typing the column by a
      *   guessed class would compile against the wrong enum.
      */
-    private fun reportEnumClass(shape: ReportShape, f: ReportShape.Field, root: MetaRoot): ClassName {
+    private fun reportEnumClass(shape: ReportShape, f: ReportShape.Field): ClassName {
         val report = shape.report()
-        val dimension = f.dimension
-        val owner = if (dimension?.via == null) shape.from() else
-            ReportShape.resolveFieldRefEntity(dimension.of, shape.from(), root)
-                ?: throw GeneratorException(
-                    "report \"${report.shortName}\": its dimension \"${dimension.shortName}\" reads the enum " +
-                        "\"${dimension.of}\" through @via, and the entity that reference names does not " +
-                        "resolve, so the generated column has no enum class to be typed by."
-                )
+        // The entity the field is read from, by the rule that derived the field: nothing
+        // about packages or @via is restated here.
+        val owner = shape.ofEntity(f)
+            ?: throw GeneratorException(
+                "report \"${report.shortName}\": its dimension \"${f.dimension?.shortName}\" reads the enum " +
+                    "\"${f.dimension?.of}\" through @via, and the entity that reference names does not " +
+                    "resolve, so the generated column has no enum class to be typed by."
+            )
         return KotlinTypeMapper.enumTypeName(f.typeSource, owner)
             ?: throw GeneratorException(
                 "report \"${report.shortName}\": its ${describeItem(f)} is an enum with no generated enum class."
