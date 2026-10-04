@@ -470,6 +470,8 @@ describe("ObjectManager — validate (standalone, no DB hit)", () => {
     const om2 = new ObjectManager({ metadata: makeRoot([post]), driver: inMemoryDriver({}) });
     const r = om2.validate("Post", {});
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.errors[0]?.field).toBe("title");
+    // `id` is an ASSIGNED primary key (no @generation), so it is reported too — the same
+    // presence rule om.create() enforces through resolveIdentity.
+    if (!r.ok) expect(r.errors.map((e) => e.field)).toEqual(["id", "title"]);
   });
 });

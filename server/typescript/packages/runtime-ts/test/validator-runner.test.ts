@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import type { MetaData } from "@metaobjectsdev/metadata";
-import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_VALIDATOR,
+import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_VALIDATOR, TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY,
+         FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET, VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_ARRAY,
          FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_BOOLEAN,
          FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_DOUBLE,
          VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
@@ -267,5 +268,213 @@ describe("runValidators — scalar arrays", () => {
     if (!r.ok) {
       expect(r.errors.map((e) => `${e.field}:${e.rule}`)).toEqual(["tags[1]:length", "scores[1]:type"]);
     }
+  });
+});
+
+// ── Rules the validation-conformance corpus requires of the run-time runner ──────────────
+
+function fieldOf(subType: string, name: string, attrs: Record<string, string | number | boolean> = {}): MetaData {
+  const f = meta(new TypeId(TYPE_FIELD, subType), name);
+  for (const [k, v] of Object.entries(attrs)) f.setAttr(k, v);
+  return f;
+}
+
+function validatorOf(subType: string, attrs: Record<string, string | number | boolean> = {}): MetaData {
+  const v = meta(new TypeId(TYPE_VALIDATOR, subType), subType);
+  for (const [k, val] of Object.entries(attrs)) v.setAttr(k, val);
+  return v;
+}
+
+function entityWith(...fields: MetaData[]): MetaData {
+  return makeEntity((e) => { for (const f of fields) e.addChild(f); });
+}
+
+function errorsOf(e: MetaData, data: Record<string, unknown>, opts = {}) {
+  const r = runValidators(e, data, opts);
+  return r.ok ? [] : r.errors;
+}
+
+describe("runValidators — validator.numeric", () => {
+  const score = () => {
+    const f = fieldOf(FIELD_SUBTYPE_INT, "score");
+    f.addChild(validatorOf(VALIDATOR_SUBTYPE_NUMERIC, { min: 0, max: 100 }));
+    return entityWith(f);
+  };
+
+  test("bounds are inclusive", () => {
+    expect(errorsOf(score(), { score: 0 })).toEqual([]);
+    expect(errorsOf(score(), { score: 100 })).toEqual([]);
+  });
+
+  test("below @min → numeric failure with the bound and the value", () => {
+    expect(errorsOf(score(), { score: -1 })).toEqual([{
+      field: "score", rule: "numeric", message: "'score' must be at least 0 (got -1)",
+      expected: { min: 0 }, received: -1,
+    }]);
+  });
+
+  test("above @max → numeric failure", () => {
+    expect(errorsOf(score(), { score: 101 })).toEqual([{
+      field: "score", rule: "numeric", message: "'score' must be at most 100 (got 101)",
+      expected: { max: 100 }, received: 101,
+    }]);
+  });
+
+  test("an int64 numeric string is compared as an integer and echoed as given", () => {
+    const f = fieldOf(FIELD_SUBTYPE_LONG, "total");
+    f.addChild(validatorOf(VALIDATOR_SUBTYPE_NUMERIC, { min: 10 }));
+    const e = entityWith(f);
+    expect(errorsOf(e, { total: "9223372036854775807" })).toEqual([]);
+    expect(errorsOf(e, { total: 12n })).toEqual([]);
+    expect(errorsOf(e, { total: "5" })).toEqual([{
+      field: "total", rule: "numeric", message: "'total' must be at least 10 (got 5)",
+      expected: { min: 10 }, received: "5",
+    }]);
+  });
+
+  test("validator.numeric on a string field is ignored", () => {
+    const f = fieldOf(FIELD_SUBTYPE_STRING, "code");
+    f.addChild(validatorOf(VALIDATOR_SUBTYPE_NUMERIC, { min: 5 }));
+    expect(errorsOf(entityWith(f), { code: "1" })).toEqual([]);
+  });
+});
+
+describe("runValidators — validator.array", () => {
+  const tags = () => {
+    const f = fieldOf(FIELD_SUBTYPE_STRING, "tags");
+    f.isArray = true;
+    f.addChild(validatorOf(VALIDATOR_SUBTYPE_ARRAY, { min: 1, max: 3 }));
+    return entityWith(f);
+  };
+
+  test("too few elements", () => {
+    expect(errorsOf(tags(), { tags: [] })).toEqual([{
+      field: "tags", rule: "array", message: "'tags' must have at least 1 items (got 0)",
+      expected: { min: 1 }, received: 0,
+    }]);
+  });
+
+  test("too many elements", () => {
+    expect(errorsOf(tags(), { tags: ["a", "b", "c", "d"] })).toEqual([{
+      field: "tags", rule: "array", message: "'tags' must have at most 3 items (got 4)",
+      expected: { max: 3 }, received: 4,
+    }]);
+  });
+
+  test("element errors are still reported alongside a size failure", () => {
+    const errors = errorsOf(tags(), { tags: ["a", "b", "c", 4] });
+    expect(errors.map((e) => `${e.field}:${e.rule}`)).toEqual(["tags:array", "tags[3]:type"]);
+  });
+
+  test("validator.array on a non-array field is ignored", () => {
+    const f = fieldOf(FIELD_SUBTYPE_STRING, "name");
+    f.addChild(validatorOf(VALIDATOR_SUBTYPE_ARRAY, { min: 2 }));
+    expect(errorsOf(entityWith(f), { name: "x" })).toEqual([]);
+  });
+});
+
+describe("runValidators — length precedence", () => {
+  test("@maxLength × validator.length @max is strictest-wins", () => {
+    const f = fieldOf(FIELD_SUBTYPE_STRING, "label", { maxLength: 8 });
+    f.addChild(validatorOf(VALIDATOR_SUBTYPE_LENGTH, { max: 4 }));
+    const e = entityWith(f);
+    expect(errorsOf(e, { label: "1234" })).toEqual([]);
+    expect(errorsOf(e, { label: "12345" })[0]?.expected).toEqual({ max: 4 });
+  });
+
+  test("an authored validator.length @min: 0 opts a required string out of the non-empty floor", () => {
+    const f = fieldOf(FIELD_SUBTYPE_STRING, "note", { required: true });
+    f.addChild(validatorOf(VALIDATOR_SUBTYPE_LENGTH, { min: 0 }));
+    const e = entityWith(f);
+    expect(errorsOf(e, { note: "" })).toEqual([]);
+    expect(errorsOf(e, {}).map((x) => x.rule)).toEqual(["required"]);
+  });
+
+  test("length counts UTF-16 code units", () => {
+    const e = entityWith(fieldOf(FIELD_SUBTYPE_STRING, "icon", { maxLength: 1 }));
+    expect(errorsOf(e, { icon: "\u{1F600}" })[0]?.received).toBe(2);
+  });
+});
+
+describe("runValidators — field.uri / field.inet format", () => {
+  const e = () => entityWith(
+    fieldOf(FIELD_SUBTYPE_URI, "website"),
+    fieldOf(FIELD_SUBTYPE_INET, "sourceIp"),
+    fieldOf(FIELD_SUBTYPE_URI, "citationUrl", { lenient: true }),
+    fieldOf(FIELD_SUBTYPE_INET, "reportedIp", { lenient: true }),
+  );
+
+  test("strict uri accepts an absolute URI, padded or not", () => {
+    for (const website of ["https://a.com", "  https://a.com  ", "mailto:a@b.com", "urn:isbn:0451450523"]) {
+      expect(errorsOf(e(), { website })).toEqual([]);
+    }
+  });
+
+  test("strict uri rejects a scheme-less value, an empty authority and a bare scheme", () => {
+    for (const website of ["example.com", "/path/only", "not a url", "http://", "http:", ""]) {
+      expect(errorsOf(e(), { website })).toEqual([{
+        field: "website", rule: "format", message: "'website' must be an absolute URI",
+        expected: "uri", received: website,
+      }]);
+    }
+  });
+
+  test("strict inet accepts IPv4 and IPv6 literals only", () => {
+    for (const sourceIp of ["192.168.0.1", "::1", "2001:db8::1", "::ffff:1.2.3.4"]) {
+      expect(errorsOf(e(), { sourceIp })).toEqual([]);
+    }
+    expect(errorsOf(e(), { sourceIp: "192.168.01.1" })).toEqual([{
+      field: "sourceIp", rule: "format", message: "'sourceIp' must be an IPv4 or IPv6 address",
+      expected: "inet", received: "192.168.01.1",
+    }]);
+  });
+
+  test("@lenient accepts any string", () => {
+    expect(errorsOf(e(), { citationUrl: "not a url", reportedIp: "example.com" })).toEqual([]);
+  });
+
+  test("a non-string value is a type failure, lenient or not", () => {
+    expect(errorsOf(e(), { website: 5, reportedIp: 5 }).map((x) => `${x.field}:${x.rule}`))
+      .toEqual(["website:type", "reportedIp:type"]);
+  });
+});
+
+describe("runValidators — assigned primary key", () => {
+  const ledger = (generation?: string, codeAttrs: Record<string, string> = {}) => {
+    const pk = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "pk");
+    pk.setAttr("fields", "code");
+    if (generation !== undefined) pk.setAttr("generation", generation);
+    const e = entityWith(fieldOf(FIELD_SUBTYPE_STRING, "code", codeAttrs), fieldOf(FIELD_SUBTYPE_STRING, "label"));
+    e.addChild(pk);
+    return e;
+  };
+
+  test("is required on insert whatever @required says", () => {
+    expect(errorsOf(ledger(), { label: "x" })).toEqual([
+      { field: "code", rule: "required", message: "'code' is required" },
+    ]);
+    expect(errorsOf(ledger(), { code: "L-1" })).toEqual([]);
+  });
+
+  test("a generated key is not demanded", () => {
+    expect(errorsOf(ledger("increment"), {})).toEqual([]);
+    expect(errorsOf(ledger("uuid"), {})).toEqual([]);
+  });
+
+  test("a key with a @default may be omitted", () => {
+    expect(errorsOf(ledger(undefined, { default: "L-0" }), {})).toEqual([]);
+  });
+
+  test("partial mode leaves an absent key alone but rejects a present null", () => {
+    expect(errorsOf(ledger(), {}, { partial: true })).toEqual([]);
+    expect(errorsOf(ledger(), { code: null }, { partial: true }).map((x) => x.rule)).toEqual(["required"]);
+  });
+
+  test("a store-filled key is exempt when absent", () => {
+    expect(errorsOf(ledger(), {}, { storeFilled: ["code"] })).toEqual([]);
+  });
+
+  test("presence only — the non-empty floor belongs to a declared @required", () => {
+    expect(errorsOf(ledger(), { code: "" })).toEqual([]);
   });
 });

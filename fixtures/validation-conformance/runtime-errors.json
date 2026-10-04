@@ -1,0 +1,212 @@
+{
+  "errors": {
+    "name-missing": [
+      {
+        "field": "name",
+        "rule": "required",
+        "message": "'name' is required"
+      }
+    ],
+    "name-too-long": [
+      {
+        "field": "name",
+        "rule": "length",
+        "message": "'name' must be at most 10 chars (got 12)",
+        "expected": {
+          "max": 10
+        },
+        "received": 12
+      }
+    ],
+    "code-too-short": [
+      {
+        "field": "code",
+        "rule": "length",
+        "message": "'code' must be at least 3 chars (got 2)",
+        "expected": {
+          "min": 3
+        },
+        "received": 2
+      }
+    ],
+    "code-pattern-mismatch": [
+      {
+        "field": "code",
+        "rule": "regex",
+        "message": "'code' does not match required pattern",
+        "expected": "[A-Z]+",
+        "received": "abc"
+      }
+    ],
+    "score-below-min": [
+      {
+        "field": "score",
+        "rule": "numeric",
+        "message": "'score' must be at least 0 (got -1)",
+        "expected": {
+          "min": 0
+        },
+        "received": -1
+      }
+    ],
+    "score-above-max": [
+      {
+        "field": "score",
+        "rule": "numeric",
+        "message": "'score' must be at most 100 (got 101)",
+        "expected": {
+          "max": 100
+        },
+        "received": 101
+      }
+    ],
+    "tags-empty": [
+      {
+        "field": "tags",
+        "rule": "array",
+        "message": "'tags' must have at least 1 items (got 0)",
+        "expected": {
+          "min": 1
+        },
+        "received": 0
+      }
+    ],
+    "tags-too-many": [
+      {
+        "field": "tags",
+        "rule": "array",
+        "message": "'tags' must have at most 3 items (got 4)",
+        "expected": {
+          "max": 3
+        },
+        "received": 4
+      }
+    ],
+    "name-empty": [
+      {
+        "field": "name",
+        "rule": "length",
+        "message": "'name' must be at least 1 chars (got 0)",
+        "expected": {
+          "min": 1
+        },
+        "received": 0
+      }
+    ],
+    "pattern-unanchored": [
+      {
+        "field": "code",
+        "rule": "regex",
+        "message": "'code' does not match required pattern",
+        "expected": "[A-Z]+",
+        "received": "xxABCyy"
+      }
+    ],
+    "both-length-bounds": [
+      {
+        "field": "label",
+        "rule": "length",
+        "message": "'label' must be at most 4 chars (got 5)",
+        "expected": {
+          "max": 4
+        },
+        "received": 5
+      }
+    ],
+    "note-missing": [
+      {
+        "field": "note",
+        "rule": "required",
+        "message": "'note' is required"
+      }
+    ],
+    "uri-reject-schemeless": [
+      {
+        "field": "website",
+        "rule": "format",
+        "message": "'website' must be an absolute URI",
+        "expected": "uri",
+        "received": "example.com"
+      }
+    ],
+    "uri-reject-relative": [
+      {
+        "field": "website",
+        "rule": "format",
+        "message": "'website' must be an absolute URI",
+        "expected": "uri",
+        "received": "/path/only"
+      }
+    ],
+    "uri-reject-garbage": [
+      {
+        "field": "website",
+        "rule": "format",
+        "message": "'website' must be an absolute URI",
+        "expected": "uri",
+        "received": "not a url"
+      }
+    ],
+    "uri-reject-empty-authority": [
+      {
+        "field": "website",
+        "rule": "format",
+        "message": "'website' must be an absolute URI",
+        "expected": "uri",
+        "received": "http://"
+      }
+    ],
+    "inet-reject-hostname": [
+      {
+        "field": "sourceIp",
+        "rule": "format",
+        "message": "'sourceIp' must be an IPv4 or IPv6 address",
+        "expected": "inet",
+        "received": "example.com"
+      }
+    ],
+    "inet-reject-octet-range": [
+      {
+        "field": "sourceIp",
+        "rule": "format",
+        "message": "'sourceIp' must be an IPv4 or IPv6 address",
+        "expected": "inet",
+        "received": "256.1.1.1"
+      }
+    ],
+    "inet-reject-cidr": [
+      {
+        "field": "sourceIp",
+        "rule": "format",
+        "message": "'sourceIp' must be an IPv4 or IPv6 address",
+        "expected": "inet",
+        "received": "192.168.0.1/24"
+      }
+    ],
+    "inet-reject-padded": [
+      {
+        "field": "sourceIp",
+        "rule": "format",
+        "message": "'sourceIp' must be an IPv4 or IPv6 address",
+        "expected": "inet",
+        "received": " 192.168.0.1 "
+      }
+    ],
+    "inet-reject-leading-zero": [
+      {
+        "field": "sourceIp",
+        "rule": "format",
+        "message": "'sourceIp' must be an IPv4 or IPv6 address",
+        "expected": "inet",
+        "received": "192.168.01.1"
+      }
+    ],
+    "assigned-pk-missing": [
+      {
+        "field": "code",
+        "rule": "required",
+        "message": "'code' is required"
+      }
+    ]
+  }
+}

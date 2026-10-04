@@ -12,7 +12,8 @@ export type { Filter, FilterValue, QueryOpts } from "./query-builder.js";
 
 export type { FieldViewSpec, EntityViewSpec } from "./view.js";
 
-export type { ValidationResult } from "./validator-runner.js";
+export { runValidators } from "./validator-runner.js";
+export type { ValidationResult, RunValidatorsOpts } from "./validator-runner.js";
 export type { ValidationFailure } from "./errors.js";
 export {
   RuntimeError,
