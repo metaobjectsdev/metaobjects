@@ -33,8 +33,8 @@ it until 1.1 ships._
 - **A report with a view source becomes a SQL view, and every port reads it (FR-044).** An
   `object.report` that declares a read-only `source.rdb` of `@kind: view` is now lowered by
   TypeScript: `meta migrate` creates the view on Postgres, SQLite and D1 (a changed report view
-  is dropped and re-created; a view-backed report whose `@from` entity has no table fails
-  migrate naming the report and the entity). MySQL SQL comes from `buildReportViews(root,
+  is dropped and re-created; a derived report view whose `@from` entity has no table fails
+  migrate naming the report and the entity; a report with an `@sql` source skips that check). MySQL SQL comes from `buildReportViews(root,
   { dialect: "mysql" })` and the "Reports" section of `docs/recipes/mysql.md`, since `meta
   migrate` does not target MySQL. A report with no `source.*` still generates nothing. Time
   grains and relative dates are UTC, weeks start on Monday, a `sum` of nothing and a ratio over

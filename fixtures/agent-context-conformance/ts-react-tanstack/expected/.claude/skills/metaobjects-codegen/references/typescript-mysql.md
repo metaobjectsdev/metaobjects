@@ -87,9 +87,9 @@ for (const view of buildReportViews(root, { dialect: "mysql" })) {
 }
 ```
 
-The loop above ignores `view.schema` (on MySQL, the database a source's `@schema` names), so
-each view is created in the connection's current database; qualify the name yourself if a
-report's source declares `@schema`.
+The loop above ignores `view.schema`, which is the report source's `@schema` when it declares
+one. If yours does, create the view in that schema yourself (qualify the name in your
+migration); the loop will not.
 
 Pass `columnNamingStrategy` to match your tables' column names (the default is `snake_case`).
 The bodies are valid under MySQL's default `sql_mode`, `ONLY_FULL_GROUP_BY` included, and a

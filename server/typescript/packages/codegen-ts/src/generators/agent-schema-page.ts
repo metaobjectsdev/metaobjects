@@ -181,6 +181,9 @@ export interface AgentSchemaPageOptions {
   readonly declaredBy: ReadonlyMap<string, ReadonlyMap<string, { field: string; type: string }>>;
   /** Per-projection lineage lines, keyed by QUALIFIED view name. */
   readonly viewLineage: ReadonlyMap<string, readonly string[]>;
+  /** QUALIFIED names of the views owned by a view-backed `object.report`. Omitted or empty
+   *  means no report view is on the page, and the Views intro keeps its pre-report wording. */
+  readonly reportViews?: ReadonlySet<string>;
   /** Relationship lines, already rendered from the model. */
   readonly relationships: readonly string[];
   /** Enum lines, already rendered from the model. */
@@ -263,8 +266,13 @@ export function renderAgentSchemaPage(
   if (input.views.length > 0) {
     out.push("## Views");
     out.push("");
+    // A model with no report view must render exactly what it rendered before FR-044
+    // (no-churn: `meta verify --docs` would flag drift after an upgrade otherwise).
+    const hasReportView = input.views.some((v) => opts.reportViews?.has(input.qualify(v)) === true);
     out.push(
-      "A view is generated from its projection's `origin.*` children or its report's dimensions and measures — it is derived, " +
+      (hasReportView
+        ? "A view is generated from its projection's `origin.*` children or its report's dimensions and measures — it is derived, "
+        : "A view is generated from its projection's `origin.*` children — it is derived, ") +
         "never hand-written. Editing the view SQL directly is drift the tool cannot see.",
     );
     out.push("");

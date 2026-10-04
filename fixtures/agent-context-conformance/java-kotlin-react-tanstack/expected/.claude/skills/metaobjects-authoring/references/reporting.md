@@ -14,7 +14,7 @@ A report is a compiled view. The report's **own** read-only source decides what 
 | the same, plus `@unmanaged: true` | `meta migrate` never creates or drops it; the runtime still reads it. |
 | `@kind: materializedView`, `storedProc`, `tableFunction` | `meta migrate` skips it. |
 
-A view-backed report whose `@from` entity has no table (abstract, or no writable `source.rdb`) fails `meta migrate` with an error naming the report and the entity. A changed report is dropped and re-created by `meta migrate`.
+A derived report view (no `@sql`) whose `@from` entity has no table (abstract, or no writable `source.rdb`) fails `meta migrate` with an error naming the report and the entity; a report with an `@sql` source skips that check, since your SQL is used as written. A changed report is dropped and re-created by `meta migrate`.
 
 ## The columns you get
 
@@ -67,7 +67,7 @@ A dimension reached by `@via` joins like a projection does: a required belongs-t
 | `decimal` | `NUMERIC` | none: `avg`, a ratio and a `sum` of a decimal column are `REAL` | `DECIMAL` |
 | Instants | `TIMESTAMPTZ` | ISO-8601 text | `DATETIME(3)`, read as the UTC wall clock |
 
-**MySQL owns its own DDL.** `meta migrate` never targets MySQL, so you create the view yourself: `buildReportViews(root, { dialect: "mysql" })` (`@metaobjectsdev/codegen-ts`) returns each view-backed report's body, and the MySQL guide in the `metaobjects-codegen` skill shows the loop. It skips a report whose source is `@unmanaged`.
+**MySQL owns its own DDL.** `meta migrate` never targets MySQL, so you create the view yourself: `buildReportViews(root, { dialect: "mysql" })` (`@metaobjectsdev/codegen-ts`) returns each view-backed report's body. That function is in the TypeScript package, so the MySQL view SQL comes from a TypeScript toolchain whatever language your application is in; the recipe showing the loop ships as the MySQL guide in the `metaobjects-codegen` skill's TypeScript stacks only. It skips a report whose source is `@unmanaged`.
 
 ## What a report does not have
 

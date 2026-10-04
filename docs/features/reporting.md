@@ -177,9 +177,10 @@ lowered alone.
 | the same, plus `@unmanaged: true` | `meta migrate` never creates or drops it (you or a migration tool own the DDL), but the runtime still reads it through the shape below. |
 | `@kind: materializedView`, `storedProc` or `tableFunction` | `meta migrate` skips it, as for a projection. |
 
-A view-backed report whose `@from` entity has no table (it is abstract, or declares no
-writable `source.rdb`) fails `meta migrate` with an error naming the report and the entity,
-rather than emitting a view over a table that does not exist.
+A **derived** report view (no `@sql`) whose `@from` entity has no table (it is abstract, or
+declares no writable `source.rdb`) fails `meta migrate` with an error naming the report and the
+entity, rather than emitting a view over a table that does not exist. A report with an `@sql`
+source is not derived, so that check does not apply to it: your SQL is used as written.
 
 ### The columns you get
 
@@ -218,8 +219,9 @@ applied. The aggregates:
   items) counts distinct tuples, and a tuple with any null component is not counted, on every
   engine.
 - **`sum`** of nothing is **null**, not zero: a report with no matching rows, or a filtered
-  measure that matched none of a group's rows, shows null. A `sum` of an integer type is cast
-  so the column is a `BIGINT` on every engine.
+  measure that matched none of a group's rows, shows null. A `sum` of an integer type is a
+  64-bit integer on every engine (Postgres casts it to `BIGINT`, MySQL to `SIGNED`, and SQLite's
+  integer `SUM` already is one).
 - **`avg`, `min`, `max`** are the engine's own.
 - **`measure.ratio`** is `numerator / NULLIF(denominator, 0)`: a zero denominator is **null**,
   never an error. Each operand is repeated inline with its own conditions, so an operand need
