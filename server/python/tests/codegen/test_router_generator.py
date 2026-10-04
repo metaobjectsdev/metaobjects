@@ -17,6 +17,11 @@ from metaobjects.codegen.generators.router_generator import render_router
 from metaobjects.codegen.runtime.filter_parser import parse_filter
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.field import field_constants as fc
+from metaobjects.meta.core.identity.identity_constants import (
+    IDENTITY_ATTR_FIELDS,
+    IDENTITY_SUBTYPE_PRIMARY,
+)
+from metaobjects.meta.core.identity.meta_identity import MetaIdentity
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.persistence.source.meta_source import MetaSource
 from metaobjects.meta.persistence.source.source_constants import (
@@ -24,7 +29,7 @@ from metaobjects.meta.persistence.source.source_constants import (
     SOURCE_KIND_VIEW,
     SOURCE_SUBTYPE_RDB,
 )
-from metaobjects.shared.base_types import TYPE_FIELD, TYPE_OBJECT, TYPE_SOURCE
+from metaobjects.shared.base_types import TYPE_FIELD, TYPE_IDENTITY, TYPE_OBJECT, TYPE_SOURCE
 
 
 def _entity(
@@ -34,6 +39,7 @@ def _entity(
     source_kind: str | None = "table",
     package: str | None = None,
     subtype: str = "entity",
+    pk: bool = False,
 ) -> MetaObject:
     o = MetaObject(TYPE_OBJECT, subtype, name)
     o.package = package
@@ -44,6 +50,12 @@ def _entity(
         o.add_child(src)
     for f in fields:
         o.add_child(f)
+    if pk:
+        # A single-field primary identity: what makes a read-only object addressable by
+        # key (FR-044: a keyless one gets no item route).
+        identity = MetaIdentity(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY, "pk")
+        identity.set_attr(IDENTITY_ATTR_FIELDS, ["id"])
+        o.add_child(identity)
     return o
 
 
@@ -130,6 +142,7 @@ def test_view_kind_gets_a_read_only_router() -> None:
         [_f("id", fc.FIELD_SUBTYPE_INT, required=True)],
         source_kind=SOURCE_KIND_VIEW,
         package="acme::blog",
+        pk=True,
     )
     out = render_router(view)
     assert out is not None
@@ -166,6 +179,7 @@ def test_projection_subtype_gets_a_read_only_router() -> None:
         source_kind=SOURCE_KIND_VIEW,
         package="acme::sales",
         subtype="projection",
+        pk=True,
     )
     out = render_router(proj)
     assert out is not None

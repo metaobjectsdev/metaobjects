@@ -1,20 +1,24 @@
-"""FR-044 Plan 1 — the reporting vocabulary is INERT in every Python generator.
+"""FR-044 — the reporting vocabulary is INERT in every Python generator, except for the one
+report Plan 3 serves.
 
 Plan 1 registers ``dimension.*``, ``measure.*``, ``segment.*`` and ``object.report`` and
-validates them at load, but gives none of them output: a report's lowering lands in Plan
-2/3. Until then a model that USES the vocabulary must generate exactly what the same model
-without it generates, byte for byte, through every registered generator.
+validates them at load. A model that USES the vocabulary must generate exactly what the
+same model without it generates, byte for byte, through every registered generator, with
+ONE exception: a report that declares a read-only ``source.rdb @kind: view`` is SERVED
+(Plan 3, Table A) and gains exactly the files below, all for ``StoreTotals``. The other two
+reports (``DailyRevenue``, ``ProgramEngagement``) declare no view and generate nothing.
 
 The model pair is ``fixtures/codegen-noop/reporting/{with,without}``, shared with the other
 four ports' copies of this test. ``with/`` carries a report that declares a read-only
 ``source.rdb @kind: view`` (R5 allows one) — the shape that leaked in C#. Here the
 ``entity`` generator used to write an empty ``BaseModel`` module per report.
 
-Runs through ``run_gen`` — the path ``metaobjects gen`` takes — because the skip lives at
+Runs through ``run_gen`` — the path ``metaobjects gen`` takes — because the choice lives at
 its entity-set choke point.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -36,6 +40,15 @@ from metaobjects.shared.base_types import TYPE_OBJECT
 
 MODELS = Path(__file__).parents[3] / "fixtures" / "codegen-noop" / "reporting"
 THREW = "<threw>"
+
+#: What a served report adds, by generator (Table E: row model, allowlist, names, router).
+#: Every other generator emits the same files with and without the vocabulary.
+SERVED_REPORT_FILES: dict[str, list[str]] = {
+    "entity": ["StoreTotals.py"],
+    "filter-allowlist": ["store_totals_filter_allowlist.py"],
+    "names": ["store_totals_names.py"],
+    "routes": ["store_totals_router.py"],
+}
 
 
 def _load(variant: str):
@@ -92,8 +105,11 @@ def test_generator_emits_the_same_files_with_and_without_reporting_nodes(
 ) -> None:
     expected = _emit("without", [entry], tmp_path / "a")
     actual = _emit("with", [entry], tmp_path / "b")
-    assert list(actual) == list(expected)
-    assert actual == expected
+    added = SERVED_REPORT_FILES.get(entry.name, [])
+    # Nothing that exists without the vocabulary changes by a byte; the served report
+    # adds exactly its own files, and only for the generators Table E names.
+    assert sorted(actual) == sorted([*expected, *added])
+    assert {k: v for k, v in actual.items() if k not in added} == expected
 
 
 def test_every_runnable_generator_in_one_run_emits_the_same_files(tmp_path: Path) -> None:
@@ -105,14 +121,16 @@ def test_every_runnable_generator_in_one_run_emits_the_same_files(tmp_path: Path
     actual = _emit("with", runnable, tmp_path / "b")
     assert THREW not in expected, expected.get(THREW)
     assert len(expected) > 10, f"only {len(expected)} files — the suite barely ran"
-    assert list(actual) == list(expected)
-    assert actual == expected
+    added = sorted(f for files in SERVED_REPORT_FILES.values() for f in files)
+    assert len(added) == 4
+    assert sorted(set(actual) - set(expected)) == added
+    assert set(expected) <= set(actual)
+    assert {k: v for k, v in actual.items() if k in expected} == expected
 
 
 def _api_docs(variant: str) -> dict[str, str]:
     """The api docs surface (``metaobjects docs``): every unit page, the index and the
-    agent page. A report has no generated API to document, and its derived fields do not
-    exist until its lowering lands."""
+    agent page. A served report is documented; every other report has no generated API."""
     model = PythonApiModelBuilder().build(_load(variant), "shop")
     pages = {
         doc_page_output_path(Layout.PACKAGE, unit.package, unit.node): render_unit_page(unit, None)
@@ -123,12 +141,31 @@ def _api_docs(variant: str) -> dict[str, str]:
     return dict(sorted(pages.items()))
 
 
-def test_api_docs_are_the_same_with_and_without_reporting_nodes() -> None:
+_STORE_TOTALS_MARKERS = ("StoreTotals", "STORETOTALS", "store_totals")
+
+
+def _without_store_totals(page: str) -> str:
+    """A page with every line that names the served report removed, blank runs collapsed."""
+    kept = [ln for ln in page.splitlines() if not any(m in ln for m in _STORE_TOTALS_MARKERS)]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).rstrip()
+
+
+def test_api_docs_gain_only_the_served_report() -> None:
     expected = _api_docs("without")
     assert len(expected) > 3, f"only {len(expected)} pages — the docs barely ran"
     actual = _api_docs("with")
-    assert list(actual) == list(expected)
-    assert actual == expected
+    # One new unit page, for the served report; the two sourceless reports get none.
+    assert sorted(set(actual) - set(expected)) == ["acme/shop/StoreTotals.md"]
+    assert set(expected) <= set(actual)
+    page = actual["acme/shop/StoreTotals.md"]
+    assert "GET /api/store_totals" in page
+    # A report has no item route and no write verb, so none is documented.
+    assert "POST" not in page and "{" not in page.split("GET /api/store_totals")[1].split("\n")[0]
+    for name, text in expected.items():
+        assert _without_store_totals(actual[name]) == _without_store_totals(text), name
+    for name in expected:
+        if name not in ("README.md", "AGENT-API.md"):
+            assert actual[name] == expected[name], name
 
 
 def test_exactly_these_generators_cannot_run_from_a_bare_model(tmp_path: Path) -> None:
@@ -142,16 +179,29 @@ def test_exactly_these_generators_cannot_run_from_a_bare_model(tmp_path: Path) -
     assert threw == []
 
 
-def test_a_selection_of_only_reports_warns_that_there_is_nothing_to_generate(
+def test_a_selection_of_only_unserved_reports_warns_that_there_is_nothing_to_generate(
     tmp_path: Path,
 ) -> None:
     result = run_gen(
         GenConfig(out_dir=str(tmp_path / "out")),
         _load("with"),
         generators=[_build(e, tmp_path) for e in list_generators()],
-        entity_filter=["DailyRevenue", "ProgramEngagement", "StoreTotals"],
+        entity_filter=["DailyRevenue", "ProgramEngagement"],
     )
     assert result.files == []
     assert any(
         w.startswith("No entities to generate") and "object.report" in w for w in result.warnings
     ), result.warnings
+
+
+def test_a_selection_of_only_reports_generates_only_the_served_one(tmp_path: Path) -> None:
+    result = run_gen(
+        GenConfig(out_dir=str(tmp_path / "out")),
+        _load("with"),
+        generators=[_build(e, tmp_path) for e in list_generators()],
+        entity_filter=["DailyRevenue", "ProgramEngagement", "StoreTotals"],
+    )
+    names = sorted(Path(path).name for path, _ in result.files)
+    assert names == sorted(
+        ["__init__.py", *(f for files in SERVED_REPORT_FILES.values() for f in files)]
+    )

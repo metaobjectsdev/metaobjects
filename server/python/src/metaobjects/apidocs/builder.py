@@ -45,7 +45,11 @@ from metaobjects.codegen.generators.m2m_codegen import (
 from metaobjects.codegen.generators.find_inbound import is_xml, response_shape
 from metaobjects.codegen.value_objects import is_field_required, pkg_of, resolve_payload_vo
 from metaobjects.codegen.generators.tph_plan import is_tph_subtype
-from metaobjects.codegen.instance_artifacts import emits_instance_artifacts, is_abstract
+from metaobjects.codegen.instance_artifacts import (
+    emits_instance_artifacts,
+    is_abstract,
+    is_served_report,
+)
 from metaobjects.source_resolution import primary_rdb_source
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
@@ -54,6 +58,7 @@ from metaobjects.meta.core.object.object_constants import (
     OBJECT_SUBTYPE_ENTITY,
     OBJECT_SUBTYPE_REPORT,
 )
+from metaobjects.meta.core.reporting.report_read_model import report_read_model
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.persistence.source.source_constants import SOURCE_KIND_TABLE
 from metaobjects.meta.template import template_constants as tc
@@ -119,9 +124,14 @@ class PythonApiModelBuilder:
 
         units: list[ApiUnit] = []
         for obj in objects:
-            # FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
-            # It has no generated API to document, and its derived fields do not exist yet.
+            # FR-044: a served report (Table A) has a generated read API, documented from
+            # its read model (its derived fields); every other report has no output.
             if obj.sub_type == OBJECT_SUBTYPE_REPORT:
+                unit = (
+                    self._build_report_unit(obj, root) if is_served_report(obj) else None
+                )
+                if unit is not None:
+                    units.append(unit)
                 continue
             unit = self._build_object_unit(obj, root, object_index)
             if unit is not None:
@@ -215,6 +225,53 @@ class PythonApiModelBuilder:
         if not symbols:
             return None
         return ApiUnit(obj.name, _package_of(obj), unit_kind, symbols)
+
+    def _build_report_unit(self, obj: MetaObject, root: MetaData) -> ApiUnit:
+        """The unit for a SERVED report (FR-044 Table G): the row model, the repository
+        seam (``list`` and ``count``), ``GET <served path>`` and the filter allowlist.
+        Nothing else is generated for it: no item route, no write verb, no validation
+        model. Built over the report's read model so the names are the generators'."""
+        model_obj = report_read_model(obj, root)  # type: ignore[arg-type]
+        model = naming.model_class_name(model_obj)
+        router_module = naming.router_module_name(obj.name)
+        base_path = "/api/" + naming.route_path(obj.name)
+        repo = naming.repository_class_name(obj.name)
+        fields_const = naming.filter_fields_const(obj.name)
+        symbols = [
+            ApiSymbol(
+                name=model,
+                kind=ApiSymbolKind.MODEL,
+                module=naming.model_import(model_obj),
+                signature=f"class {model}(BaseModel)",
+                usage="the Pydantic v2 report row model",
+            ),
+            ApiSymbol(
+                name=repo,
+                kind=ApiSymbolKind.DATA_ACCESS,
+                module=f"from .{router_module} import {repo}",
+                signature=f"class {repo}(Protocol)",
+                usage="data access — the read-only repository Protocol the consumer implements",
+                returns="list / count",
+            ),
+            ApiSymbol(
+                name="GET " + base_path,
+                kind=ApiSymbolKind.REST,
+                module=f"# {router_module}.py — FastAPI APIRouter",
+                signature="GET " + base_path,
+                usage="list with pagination / sort / filters",
+            ),
+            ApiSymbol(
+                name=fields_const,
+                kind=ApiSymbolKind.FILTER,
+                module=(
+                    f"from .{naming.filter_allowlist_module_name(obj.name)} "
+                    f"import {fields_const}"
+                ),
+                signature=f"{fields_const}: frozenset[str]",
+                usage="the filterable-field + filter-operator allowlist",
+            ),
+        ]
+        return ApiUnit(obj.name, _package_of(obj), "report", symbols)
 
     def _add_rest_symbols(
         self,

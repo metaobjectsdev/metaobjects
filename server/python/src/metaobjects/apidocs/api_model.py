@@ -91,7 +91,7 @@ class ApiUnit:
 
     :param node: the unit's short name (the doc-page basename).
     :param package: the unit's metadata package (e.g. ``acme::shop``).
-    :param kind: ``"entity"`` | ``"value"`` | ``"template"``.
+    :param kind: ``"entity"`` | ``"value"`` | ``"report"`` | ``"template"``.
     :param symbols: the documented symbols, in canonical IR order.
     :param example: an optional unit-level worked example (reserved).
     """

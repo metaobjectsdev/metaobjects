@@ -55,7 +55,7 @@ from metaobjects.codegen.generators.m2m_codegen import (
     resolve_m2m_descriptors,
 )
 from metaobjects.codegen.generators.tph_plan import TphPlan, is_tph_subtype, tph_plan_for
-from metaobjects.codegen.instance_artifacts import emits_instance_artifacts
+from metaobjects.codegen.instance_artifacts import emits_instance_artifacts, has_item_route
 from metaobjects.source_resolution import primary_rdb_source
 from metaobjects.codegen.type_map import PyType, py_type_for
 from metaobjects.meta.core.field import field_constants as fc
@@ -70,6 +70,7 @@ from metaobjects.meta.core.identity.identity_constants import (
     IDENTITY_SUBTYPE_REFERENCE,
 )
 from metaobjects.meta.core.object.meta_object import MetaObject
+from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_REPORT
 from metaobjects.meta.core.relationship.relationship_references import (
     reference_target_entity,
 )
@@ -1418,7 +1419,15 @@ class RouterGenerator:
 
         return "\n".join(parts)
 
-    def _emit_readonly_reject_handlers(self, snake: str, plural: str, pk_param: str) -> list[str]:
+    def _emit_readonly_reject_handlers(
+        self,
+        snake: str,
+        plural: str,
+        pk_param: str,
+        *,
+        item_route: bool = True,
+        noun: str = "projection",
+    ) -> list[str]:
         """The write verbs on a read-only projection, each answering the cross-port
         405 envelope.
 
@@ -1430,25 +1439,31 @@ class RouterGenerator:
 
         PUT is here because the writable router serves it; a projection has to
         refuse every verb the writable surface offers, or the one it forgets falls
-        through to a 404 (which is exactly what TypeScript did until F22)."""
+        through to a 404 (which is exactly what TypeScript did until F22).
+
+        *item_route* is false for a keyless object (a report, or a projection with no
+        single-field identity): it has no ``/{id}`` path, so only the collection ``POST``
+        is refused and the item verbs fall through to the framework's own 404 (FR-044).
+        *noun* is what the 405 message calls the resource ("projection" or "report")."""
         lines: list[str] = []
-        for i, (verb, path, fn) in enumerate((
+        refusals = (
             ("post", '""', f"create_{snake}"),
             ("patch", f'"/{{{pk_param}}}"', f"update_{snake}"),
             ("put", f'"/{{{pk_param}}}"', f"replace_{snake}"),
             ("delete", f'"/{{{pk_param}}}"', f"delete_{snake}"),
-        )):
+        )
+        for i, (verb, path, fn) in enumerate(refusals[: 4 if item_route else 1]):
             if i > 0:
                 lines.append("")
                 lines.append("")
             lines.append(f"@router.{verb}({path})")
             lines.append(f"def {fn}() -> Any:")
-            lines.append(f'    """GENERATED — {plural} is a read-only projection; writes are rejected."""')
+            lines.append(f'    """GENERATED — {plural} is a read-only {noun}; writes are rejected."""')
             lines.append("    return JSONResponse(")
             lines.append("        status_code=405,")
             lines.append('        content={')
             lines.append('            "error": "method_not_allowed",')
-            lines.append(f'            "message": "{verb.upper()} is not supported on a projection (read-only).",')
+            lines.append(f'            "message": "{verb.upper()} is not supported on a {noun} (read-only).",')
             lines.append("        },")
             lines.append("    )")
         return lines
@@ -1459,7 +1474,9 @@ class RouterGenerator:
         column_naming: str = DEFAULT_COLUMN_NAMING,
     ) -> str:
         """Render a read-only (`@kind: view` / `materializedView`) object as a FastAPI
-        ``APIRouter``: GET list + GET by id, and the four write verbs answering 405.
+        ``APIRouter``: GET list + GET by id, and the four write verbs answering 405. An
+        object with no single-field identity (every ``object.report``, and a keyless
+        projection) has no item address: GET list and the collection POST refusal only.
 
         Deliberately a separate assembly from the writable path rather than a pile of
         ``if writable`` branches through it. The writable router carries create/update
@@ -1473,8 +1490,14 @@ class RouterGenerator:
         snake = _snake_case(short_name)
         plural = _route_path(short_name)
         pk_param = f"{snake}_id"
-        pk = _pk_py_type(entity)
-        pk_type = pk.expr
+        # FR-044: a report (and any projection without a single-field identity) has no
+        # item address. It gets the collection routes only: no GET /{id}, no item-verb
+        # refusals, no find_by_id on the seam. The framework answers /{id} with its own 404.
+        item_route = has_item_route(entity)
+        is_report = entity.sub_type == OBJECT_SUBTYPE_REPORT
+        noun = "report" if is_report else "projection"
+        pk = _pk_py_type(entity) if item_route else None
+        pk_type = pk.expr if pk is not None else ""
         repo_class = f"{short_name}Repository"
         sort_field_nodes = list(_scalar_fields(entity))
         upper = short_name.upper()
@@ -1483,19 +1506,27 @@ class RouterGenerator:
         allowlist_module = f"{snake}_filter_allowlist"
 
         parts: list[str] = []
+        contract = (
+            "Implements the cross-port API contract: GET list + GET by id; every write\n"
+            'verb answers 405 {"error": "method_not_allowed"}.\n'
+            if item_route
+            else "Implements the cross-port API contract: GET list only (the resource has no\n"
+            "identity, so no item route); POST answers 405 "
+            '{"error": "method_not_allowed"}.\n'
+        )
         parts.append(
             generated_header(short_name, _effective_fqn(entity)).rstrip() + "\n"
-            + f'"""GENERATED — read-only REST router for the {short_name} projection.\n\n'
-            + "Implements the cross-port API contract: GET list + GET by id; every write\n"
-            + 'verb answers 405 {"error": "method_not_allowed"}.\n'
+            + f'"""GENERATED — read-only REST router for the {short_name} {noun}.\n\n'
+            + contract
             + _auth_docstring_paragraph(read_only=True)
             + '"""\n'
         )
         parts.append("from __future__ import annotations")
         parts.append("")
-        for import_line in sorted(pk.imports):
+        pk_imports = pk.imports if pk is not None else ()
+        for import_line in sorted(pk_imports):
             parts.append(import_line)
-        if pk.imports:
+        if pk_imports:
             parts.append("")
         parts.append("from typing import Annotated, Any, Protocol")
         parts.append("")
@@ -1522,7 +1553,7 @@ class RouterGenerator:
         parts.append(f"class {repo_class}(Protocol):")
         parts.append('    """GENERATED — consumer implements with their preferred persistence layer.')
         parts.append("")
-        parts.append("    Read-only: a projection is not writable, so the seam offers no")
+        parts.append(f"    Read-only: a {noun} is not writable, so the seam offers no")
         parts.append('    create / update / delete."""')
         parts.append("    def list(")
         parts.append("        self,")
@@ -1532,7 +1563,8 @@ class RouterGenerator:
         parts.append("        filters: list[FilterPredicate],")
         parts.append("    ) -> list[Any]: ...")
         parts.append("    def count(self, filters: list[FilterPredicate]) -> int: ...")
-        parts.append(f"    def find_by_id(self, id: {pk_type}) -> Any | None: ...")
+        if item_route:
+            parts.append(f"    def find_by_id(self, id: {pk_type}) -> Any | None: ...")
         parts.append("")
         parts.append("")
         parts.append(f"def get_repository() -> {repo_class}:")
@@ -1554,14 +1586,18 @@ class RouterGenerator:
             model_name="",
             patch_model="",
         )
-        for i, hname in enumerate(("list", "get")):
+        for i, hname in enumerate(("list", "get") if item_route else ("list",)):
             if i > 0:
                 parts.append("")
                 parts.append("")
             parts.extend(self._emit_route_handler(hname, **_handler_kwargs))
         parts.append("")
         parts.append("")
-        parts.extend(self._emit_readonly_reject_handlers(snake, plural, pk_param))
+        parts.extend(
+            self._emit_readonly_reject_handlers(
+                snake, plural, pk_param, item_route=item_route, noun=noun
+            )
+        )
         parts.append("")
         return "\n".join(parts)
 

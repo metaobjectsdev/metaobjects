@@ -18,6 +18,7 @@ from metaobjects.meta.core.field.field_constants import (
     FIELD_ATTR_COLUMN,
     FIELD_ATTR_CURRENCY,
     FIELD_ATTR_DEFAULT,
+    FIELD_ATTR_FILTERABLE,
     FIELD_ATTR_MAX_LENGTH,
     FIELD_ATTR_PRECISION,
     FIELD_ATTR_REQUIRED,
@@ -161,4 +162,19 @@ def test_nothing_else_is_carried() -> None:
     # @of field's @column is never inherited; nor is its @default.
     assert ref.get_meta_attr(FIELD_ATTR_COLUMN) is None
     assert ref.get_meta_attr(FIELD_ATTR_DEFAULT) is None
-    assert sorted(ref.attrs()) == sorted([FIELD_ATTR_REQUIRED, FIELD_ATTR_DB_COLUMN_TYPE])
+    # @filterable is the one Plan 3 addition (Table C); nothing else rides along.
+    assert sorted(ref.attrs()) == sorted(
+        [FIELD_ATTR_REQUIRED, FIELD_ATTR_DB_COLUMN_TYPE, FIELD_ATTR_FILTERABLE]
+    )
+
+
+def test_every_derived_field_with_a_filter_band_is_filterable() -> None:
+    # Table C: a report author has no node to put @filterable on, so the read model
+    # sets it on every derived field whose subtype has a filter band. Read RESOLVING
+    # (ADR-0039): get_meta_attr, since Python attr() is OWN-only.
+    fields = _fields()
+    assert all(f.get_meta_attr(FIELD_ATTR_FILTERABLE) is True for f in fields.values())
+    assert set(fields) == {
+        "code", "ref", "tags", "status", "bookedAtHour", "bookedAtDay",
+        "sales", "revenue", "minAmount", "totalWeight", "maxWeight",
+    }
