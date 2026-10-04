@@ -16,3 +16,8 @@ export { UriSource } from "../loader/sources/uri-source.js";
 export { parseYaml } from "./parser-yaml.js";
 export { loadAndExportJson } from "./export-json.js";
 export type { ExportResult } from "./export-json.js";
+
+// The `meta verify` field lint's structural pre-parse walk. Lives here, not on the
+// root entry, because it parses YAML.
+export { declaredDuplicateFields } from "../loader/declared-duplicate-fields.js";
+export type { DeclaredDuplicateField } from "../loader/declared-duplicate-fields.js";

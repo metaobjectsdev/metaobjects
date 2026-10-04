@@ -18,6 +18,19 @@ it until 1.1 ships._
 
 ### Added
 
+- **`verify` warns about two field mistakes the loader accepts, in every port.** An
+  `identity.reference` whose `@fields` names a field the object does not have gets
+  `WARN_REFERENCE_FIELD_NOT_FOUND`. A field name declared more than once in one object's
+  `children` list gets `WARN_DUPLICATE_FIELD_NAME`. Both load with no error today and still
+  do: these are advisory warnings, they never change the exit code, and nothing that loaded
+  before stops loading. A field inherited through `extends` or added by an overlay file
+  counts as present, and neither a subtype overriding an inherited field nor an overlay
+  redeclaring one is a duplicate. The lint runs on every `meta verify`, `dotnet meta verify`,
+  `mvn metaobjects:verify` and `metaobjects verify`, with the same codes and message text,
+  gated by the new `fixtures/field-lint-conformance/` corpus. Mute it with `--no-field-lint`
+  (`-Dmeta.verify.noFieldLint=true` in Maven) or `META_NO_FIELD_LINT=1`. In the Node `meta`
+  it is the `fields` section of `--format json|toon`.
+
 - **Metamodel 1.1: the reporting vocabulary (FR-044), loader-validated in all five ports.**
   Registered: `dimension.attribute`, `dimension.time` (`@grains`: `hour, day, week, month,
   quarter, year`, weeks start Monday), `measure.aggregate` (`@agg`: `count, sum, avg, min, max`),

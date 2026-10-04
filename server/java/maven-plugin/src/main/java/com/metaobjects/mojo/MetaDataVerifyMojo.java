@@ -105,6 +105,18 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     public void setTemplateRoot(String templateRoot) { this.templateRoot = templateRoot; }
     public String getTemplateRoot() { return templateRoot; }
 
+    /**
+     * Mute the advisory field AUTHORING lint ({@link FieldLint}) — a reference identity
+     * over a field the object lacks, and a field name declared twice in one children
+     * list. Never a gate: it only prints warnings, so this changes what is logged and
+     * nothing else. {@code META_NO_FIELD_LINT=1} does the same.
+     */
+    @Parameter(property = "meta.verify.noFieldLint", defaultValue = "false")
+    private boolean noFieldLint = false;
+
+    public void setNoFieldLint(boolean noFieldLint) { this.noFieldLint = noFieldLint; }
+    public boolean isNoFieldLint() { return noFieldLint; }
+
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         // #233: warm the global registry singletons before verify builds its loader,
@@ -134,6 +146,47 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     }
 
     // ------------------------------------------------------------------------
+    // the field authoring lint — advisory, every mode
+    // ------------------------------------------------------------------------
+
+    /**
+     * Runs on every {@code verify}, whichever mode was selected, as soon as the metadata
+     * has loaded — so its warnings are printed even when the gate then fails the build.
+     * Warnings ONLY: this never throws and never changes the build result.
+     */
+    private void runFieldLintAdvisory(MetaDataLoader loader) {
+        if (noFieldLint || "1".equals(System.getenv(FieldLint.ENV_OPT_OUT))) return;
+        List<FieldLint.Finding> findings = new ArrayList<>();
+        try {
+            findings.addAll(FieldLint.lintReferenceFields(loader));
+            findings.addAll(FieldLint.lintDuplicateFields(sourceFiles(loader)));
+        } catch (RuntimeException e) {
+            return;   // an advisory scan never breaks verify
+        }
+        if (findings.isEmpty()) return;
+        getLog().warn("metaobjects:verify — fields: " + findings.size()
+                + " authoring warning(s) (advisory — does not fail the build):");
+        for (FieldLint.Finding f : findings) {
+            getLog().warn("  " + f.code() + " [" + f.path() + "]: " + f.message());
+        }
+    }
+
+    /** The on-disk metadata files this loader read — the documents the duplicate scan reads raw. */
+    private static List<Path> sourceFiles(MetaDataLoader loader) {
+        List<Path> files = new ArrayList<>();
+        if (loader.getSourceURIs() == null) return files;
+        for (java.net.URI uri : loader.getSourceURIs()) {
+            com.metaobjects.loader.uri.URIModel model = com.metaobjects.loader.uri.URIHelper.toURIModel(uri);
+            if (!com.metaobjects.loader.uri.URIHelper.URI_SOURCE_FILE.equals(model.getUriSourceType())) continue;
+            // A relative <source> carries its <sourceDir> as a URI argument — resolve it the
+            // way URIHelper's own stream opener does, or the scan reads nothing.
+            String sourceDir = model.getUriArg(com.metaobjects.loader.uri.URIHelper.URI_ARG_SOURCEDIR);
+            files.add(sourceDir != null ? Paths.get(sourceDir, model.getUriSource()) : Paths.get(model.getUriSource()));
+        }
+        return files;
+    }
+
+    // ------------------------------------------------------------------------
     // mode=templates — template/prompt {{field}}<->payload drift (ADR-0021 D2)
     // ------------------------------------------------------------------------
 
@@ -146,6 +199,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
 
         ClassLoader projectClassLoader = createProjectClassLoader();
         MetaDataLoader loader = createLoader(projectClassLoader);
+        runFieldLintAdvisory(loader);
 
         TemplateVerify.Outcome outcome = TemplateVerify.run(loader, Paths.get(templateRoot));
 
@@ -178,6 +232,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     private void verifyCodegen() throws MojoExecutionException, MojoFailureException {
         ClassLoader projectClassLoader = createProjectClassLoader();
         MetaDataLoader loader = createLoader(projectClassLoader);
+        runFieldLintAdvisory(loader);
 
         // Per-generator: resolve its committed (real) outputDir from the merged args, then
         // stage an arg-override so the regenerate writes to a temp dir instead. Keep the

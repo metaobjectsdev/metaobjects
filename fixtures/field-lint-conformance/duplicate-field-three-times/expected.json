@@ -1,0 +1,9 @@
+{
+  "findings": [
+    {
+      "code": "WARN_DUPLICATE_FIELD_NAME",
+      "path": "acme::app::Item.label",
+      "message": "acme::app::Item declares the field \"label\" 3 times in one children list. Nothing reports this at load, and only the first declaration is certain to take effect. Remove or rename the duplicate."
+    }
+  ]
+}

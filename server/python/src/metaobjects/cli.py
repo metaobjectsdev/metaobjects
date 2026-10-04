@@ -65,6 +65,7 @@ from metaobjects.config.dependencies import (
     refuse_unowned_packages,
 )
 from metaobjects.config.neutral_config import read_neutral_config
+from metaobjects.field_lint import FieldLintFinding, lint_duplicate_fields, lint_reference_fields
 from metaobjects.loader.meta_data_loader import LoadResult
 from metaobjects.loader.sources import FileSource
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -2294,6 +2295,69 @@ def _verify_db(_args: argparse.Namespace) -> int:
     return 2
 
 
+#: Opt-out for the advisory field lint, beside ``--no-field-lint`` (Node `meta` parity).
+FIELD_LINT_ENV = "META_NO_FIELD_LINT"
+
+
+def _field_lint_findings(args: argparse.Namespace) -> "list[FieldLintFinding] | None":
+    """Load the metadata ``verify`` was pointed at and run the field lint over it.
+
+    Returns ``None`` when there is nothing to lint: the metadata could not be located
+    or did not load. Every such failure is already reported by the gate that ran, with
+    its own message and exit code, so this stays silent.
+
+    Loads LENIENT, deliberately: the lint must report the same findings under
+    ``--lax`` as without it, and an unknown attr is the strict gate's finding, not
+    this one's.
+    """
+    from metaobjects.loader.sources import DirectorySource
+
+    providers, _errors = _resolve_providers(getattr(args, "provider", None))
+    if args.metadata_dir is not None:
+        root, _ = _load_root(args.metadata_dir, providers=providers)
+        files = [source.path for source in DirectorySource(args.metadata_dir).expand()]
+    else:
+        config_path = _find_config(args)
+        config = load_project_config(config_path) if config_path is not None else None
+        libraries: "list[str] | None" = None
+        if config is not None:
+            # Quiet on purpose: a bad provider is the gate's error to print, once.
+            providers, _errors = _resolve_providers(config.providers)
+            libraries = config.libraries
+            start = project_root_for(config.metadata_dir())
+        else:
+            start = Path.cwd()
+        collection = resolve_metadata_location(config=config, root=start)
+        root, _ = _load_root_from_collection(collection, providers=providers, libraries=libraries)
+        # The project's OWN files — a dependency artifact is not the adopter's to edit.
+        files = list(collection.own_files)
+    if root is None:
+        return None
+    return [*lint_reference_fields(root), *lint_duplicate_fields(files)]
+
+
+def _run_field_lint_advisory(args: argparse.Namespace) -> None:
+    """The field AUTHORING lint (see :mod:`metaobjects.field_lint`) — runs on every
+    ``verify``, whichever gates were selected. Warnings ONLY: it prints to stderr and
+    never changes the exit code. Muted by ``--no-field-lint`` or ``META_NO_FIELD_LINT=1``.
+    """
+    if getattr(args, "no_field_lint", False) or os.environ.get(FIELD_LINT_ENV) == "1":
+        return
+    try:
+        findings = _field_lint_findings(args)
+    except Exception:  # noqa: BLE001 — an advisory scan never breaks verify
+        return
+    if not findings:
+        return
+    print(
+        f"metaobjects verify — fields: {len(findings)} authoring warning(s) "
+        "(advisory — does not fail the build):",
+        file=sys.stderr,
+    )
+    for finding in findings:
+        print(f"  {finding.code} [{finding.path}]: {finding.message}", file=sys.stderr)
+
+
 def _cmd_verify(args: argparse.Namespace) -> int:
     """Subverb dispatch (ADR-0021 D2). Run each requested mode; aggregate exit =
     max (non-zero if ANY mode drifts). Bare ``verify`` (no subverb) keeps the
@@ -2322,6 +2386,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         exit_code = max(exit_code, _verify_codegen(args))
     if run_templates:
         exit_code = max(exit_code, _verify_templates(args))
+    _run_field_lint_advisory(args)
     return exit_code
 
 
@@ -2578,6 +2643,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--entities",
         default=None,
         help="comma-separated entity allowlist for --codegen drift (match `gen --entities`)",
+    )
+    verify.add_argument(
+        "--no-field-lint",
+        action="store_true",
+        help=(
+            "suppress the advisory field AUTHORING lint (a reference identity over a "
+            "missing field; a duplicate field name) — never a gate, it cannot fail the "
+            "build. META_NO_FIELD_LINT=1 does the same."
+        ),
     )
     verify.add_argument(
         "--lax",
