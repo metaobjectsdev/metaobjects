@@ -18,6 +18,17 @@ it until 1.1 ships._
 
 ### Added
 
+- **Python: a run-time validator runner, `run_validators`.** `metaobjects.runtime.run_validators(entity, data)`
+  validates a data mapping against an entity's metadata with no generated code and no database,
+  and `ObjectManager.validate(entity_name, data)` does the same for a loaded entity. It is the
+  port of TypeScript's `runValidators`: it never raises, collects every failure as
+  `{field, rule, message, expected, received}`, and uses the same rules and message text. Both
+  runners now run `fixtures/validation-conformance/`, and the new `runtime-errors.json` there
+  pins the exact failure list each must produce. See `docs/ports/python.md`, "Run-time
+  validation".
+- **TypeScript: `runValidators` is exported from `@metaobjectsdev/runtime-ts`**, with
+  `RunValidatorsOpts`. It was reachable only through `ObjectManager.validate()` before.
+
 - **Metamodel 1.1: the reporting vocabulary (FR-044), loader-validated in all five ports.**
   Registered: `dimension.attribute`, `dimension.time` (`@grains`: `hour, day, week, month,
   quarter, year`, weeks start Monday), `measure.aggregate` (`@agg`: `count, sum, avg, min, max`),
@@ -61,6 +72,28 @@ it until 1.1 ships._
   (`Sale.total`) and reads the same as the bare name in every port. Java OQL
   (`executeQuery`) with a report as its result class builds rows from the report's derived
   fields.
+
+### Changed
+
+- **TypeScript: `runValidators` rejects more than it did — a behaviour change for
+  `ObjectManager` users.** `ObjectManager.create`, `createMany`, `update`, `updateMany` and
+  `validate` all go through it, so data that was accepted before can now raise a
+  `ValidationError`. The run-time runner had fallen behind the generated Zod schema; it now
+  passes the same `validation-conformance` corpus. What is newly enforced:
+  - `validator.numeric @min`/`@max` on `field.int`, `long`, `currency`, `double` and `float`
+    (rule `numeric`). These bounds were ignored at run time.
+  - `validator.array @min`/`@max` on an array field's element count (rule `array`). Also
+    ignored before.
+  - `field.uri` must be an absolute URI and `field.inet` an IPv4 or IPv6 literal (rule
+    `format`); a non-string value for either is a `type` failure. `@lenient: true` opts out
+    of the format check.
+  - An assigned primary key (no `@generation: increment` or `uuid`, no `@default`) is
+    `required` on insert. `create` already refused this; `validate()` now reports it too.
+  - `@maxLength` and `validator.length @max` on one field are strictest-wins. The runner
+    used `@maxLength` alone, so a tighter validator bound was not applied.
+
+  One rule is relaxed: an authored `validator.length @min: 0` on a `@required` string now
+  admits the empty string, as the generated schema already did.
 
 ### Fixed
 

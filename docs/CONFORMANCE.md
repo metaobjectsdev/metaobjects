@@ -35,7 +35,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 17 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 39 (33 query + 6 migration) | all 39 | 33 query (migrations TS-only, ADR-0015) | 33 query (via Exposed) | 33 query | 33 query |
 | [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 61 (31 core + 10 tph + 9 m2m + 2 jsonb + 2 write-through + 7 projection) | ✓ (Fastify reference + generated lane) | ✓ (embedded HTTP + JDBC) | ✓ (embedded HTTP + Exposed) | ✓ (HttpListener + Npgsql) | ✓ (FastAPI + pg8000) |
-| [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 16 cases | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 42 cases | ✓ (generated Zod + run-time `runValidators`) | ✓ | ✓ | ✓ | ✓ (generated Pydantic + run-time `run_validators`) |
 | [`fixtures/registry-conformance/`](../fixtures/registry-conformance/) | 1 canonical manifest | ✓ (reference emitter) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/object-model-conformance/`](../fixtures/object-model-conformance/) | 1 shared metadata fixture (per-port scenarios) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/codegen-conformance/`](../fixtures/codegen-conformance/) | 4 | ✓ | ✓ | ✓ | ✓ | ✓ |
