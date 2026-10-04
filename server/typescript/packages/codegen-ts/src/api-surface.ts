@@ -79,12 +79,26 @@ export function servesReadApi(entity: MetaObject): boolean {
  * Only the read-only templates ask. The writable surface emits item routes unconditionally.
  */
 export function hasItemRoute(entity: MetaObject): boolean {
-  if (isReport(entity)) return false;
+  return itemRouteField(entity) !== undefined;
+}
+
+/**
+ * The field a read-only object's item routes address a row by, or `undefined` when it has
+ * none (`hasItemRoute` is exactly "this is defined"). It is `getPkInfo`'s field, so the
+ * by-id query and the mounted `GET /:id` read the same column.
+ *
+ * The read-only mount addresses `id` unless told otherwise, so a routes template passes
+ * this as the mount's `idColumn` whenever it is not `id`. Without that, a projection keyed
+ * on `code` mounted a `/:id` route that compared nothing and answered with the view's
+ * first row.
+ */
+export function itemRouteField(entity: MetaObject): string | undefined {
+  if (isReport(entity)) return undefined;
   // ADR-0039: resolving. `getPkFields` reads `primaryIdentity()` and `findField` reads
   // `fields()`, both of which walk the super chain; a projection's identity and its `id`
   // field are typically inherited from its base entity.
   const idField = getPkFields(entity)[0] ?? DEFAULT_ID_FIELD;
-  return entity.findField(idField) !== undefined;
+  return entity.findField(idField) !== undefined ? idField : undefined;
 }
 
 /**

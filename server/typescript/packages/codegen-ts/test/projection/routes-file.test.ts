@@ -10,7 +10,8 @@ import { MetaDataLoader, InMemoryStringSource, loadUris, reportReadModel } from 
 import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import { renderRoutesFile } from "../../src/templates/routes-file.js";
 import { renderRoutesFileHono } from "../../src/templates/routes-file-hono.js";
-import { hasGeneratedForm, hasItemRoute, servesClientTier, servesReadApi } from "../../src/api-surface.js";
+import { hasGeneratedForm, hasItemRoute, itemRouteField, servesClientTier, servesReadApi } from "../../src/api-surface.js";
+import { renderQueriesFile } from "../../src/templates/queries-file.js";
 import { servedReport } from "../../src/source-detect.js";
 import { hasUiSurface } from "../../src/generators/agent-ui-page.js";
 import { runGen } from "../../src/runner.js";
@@ -492,6 +493,98 @@ describe("renderRoutesFile — a served report (FR-044 Plan 3)", () => {
       pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
     });
     expect(renderRoutesFile(projection, ctx)).not.toContain("itemRoutes");
+  });
+
+  // I1 (whole-branch review): the read-only mount addresses `id` unless told otherwise, so
+  // a projection keyed on another field must name it, or `GET /:id` reads with no WHERE.
+  test("a projection keyed on a field not named `id` names that field as the mount's idColumn", async () => {
+    const root = await loadMetadata([
+      {
+        "object.entity": {
+          name: "Product",
+          children: [
+            { "source.rdb": { "@table": "products" } },
+            { "field.string": { name: "code" } },
+            { "field.string": { name: "title" } },
+            { "identity.primary": { name: "pk", "@fields": "code" } },
+          ],
+        },
+      },
+      {
+        "object.projection": {
+          name: "ProductCard",
+          children: [
+            { "source.rdb": { "@kind": "view", "@table": "v_product_card" } },
+            { "field.string": { name: "code", extends: "Product.code" } },
+            { "identity.primary": { name: "pk", extends: "Product.pk" } },
+            { "field.string": { name: "title", extends: "Product.title" } },
+          ],
+        },
+      },
+    ]);
+    const projection = declared(root, "ProductCard");
+    expect(hasItemRoute(projection)).toBe(true);
+    expect(itemRouteField(projection)).toBe("code");
+    const mk = (apiPrefix: string) => makeRenderContext({
+      dialect: "sqlite", loadedRoot: root, outDir: "/x", dbImport: "~/db", apiPrefix,
+      pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+    });
+    expect(renderRoutesFile(projection, mk(""))).toContain('    dialect: "sqlite",\n    idColumn: "code",\n  });');
+    expect(renderRoutesFile(projection, mk("/api"))).toContain('      dialect: "sqlite",\n      idColumn: "code",\n    });');
+    expect(renderRoutesFileHono(projection, mk(""))).toContain('    dialect: "sqlite",\n    idColumn: "code",\n  });');
+    // The by-id query reads the same field of the same view the mount addresses.
+    const queries = renderQueriesFile(projection, mk(""));
+    expect(queries).toContain("eq(productCardView.code, code)");
+  });
+
+  test("a keyed-on-`id` projection passes no idColumn and ends its options at `dialect`", async () => {
+    const { projection, ctx } = await loadKeyedProjectionFixture();
+    expect(itemRouteField(projection)).toBe("id");
+    for (const out of [renderRoutesFile(projection, ctx), renderRoutesFileHono(projection, ctx)]) {
+      expect(out).not.toContain("idColumn");
+      expect(out).toContain('    dialect: "sqlite",\n  });');
+    }
+  });
+
+  test("a composite identity whose first field is not `id` addresses that first field, as its by-id query does", async () => {
+    const root = await loadMetadata([
+      {
+        "object.entity": {
+          name: "Seat",
+          children: [
+            { "source.rdb": { "@table": "seats" } },
+            { "field.int": { name: "row" } },
+            { "field.int": { name: "num" } },
+            { "identity.primary": { name: "pk", "@fields": ["row", "num"] } },
+          ],
+        },
+      },
+      {
+        "object.projection": {
+          name: "SeatView",
+          children: [
+            { "source.rdb": { "@kind": "view", "@table": "v_seat" } },
+            { "field.int": { name: "row", extends: "Seat.row" } },
+            { "field.int": { name: "num", extends: "Seat.num" } },
+            { "identity.primary": { name: "pk", extends: "Seat.pk" } },
+          ],
+        },
+      },
+    ]);
+    const projection = declared(root, "SeatView");
+    const ctx = makeRenderContext({
+      dialect: "sqlite", loadedRoot: root, outDir: "/x", dbImport: "~/db",
+      pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+    });
+    expect(renderRoutesFile(projection, ctx)).toContain('idColumn: "row",');
+    expect(renderQueriesFile(projection, ctx)).toContain("eq(seatViewView.row, row)");
+  });
+
+  test("a keyless object has no item-route field and passes no idColumn", async () => {
+    const root = await loadReportingModel();
+    const model = reportReadModel(declared(root, "StoreTotals"), root);
+    expect(itemRouteField(model)).toBeUndefined();
+    expect(renderRoutesFile(model, ctxFor(root))).not.toContain("idColumn");
   });
 
   test("a report with a derived field named `id` still mounts no item routes", async () => {

@@ -4,7 +4,7 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { Hono } from "hono";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
-import { sqliteView, integer } from "drizzle-orm/sqlite-core";
+import { sqliteView, integer, text } from "drizzle-orm/sqlite-core";
 import { mountReadOnlyCrudRoutes, type MountReadOnlyOptions } from "../../src/hono/mount-read-only.js";
 
 describe("hono mountReadOnlyCrudRoutes — itemRoutes / resource", () => {
@@ -61,5 +61,60 @@ describe("hono mountReadOnlyCrudRoutes — itemRoutes / resource", () => {
     const post = await app.request("/totals", { method: "POST", body: "{}" });
     const body = (await post.json()) as { message: string };
     expect(body.message).toBe("POST is not supported on a projection (read-only).");
+  });
+});
+
+// Hono twin of the Fastify idColumn tests: GET :id reads by `idColumn`, and a view with no
+// such column answers 404 instead of running with no WHERE.
+describe("hono mountReadOnlyCrudRoutes — GET :id addresses idColumn", () => {
+  let client: ReturnType<typeof createClient>;
+
+  beforeAll(async () => {
+    client = createClient({ url: ":memory:" });
+    await client.execute(`CREATE TABLE products (code TEXT PRIMARY KEY, title TEXT NOT NULL)`);
+    await client.execute(`CREATE VIEW v_products AS SELECT code, title FROM products`);
+    await client.execute(`INSERT INTO products (code, title) VALUES ('a1', 'First'), ('b2', 'Second'), ('c3', 'Third')`);
+  });
+
+  afterAll(() => {
+    client.close();
+  });
+
+  function mountProducts(opts: Partial<MountReadOnlyOptions>): Hono {
+    const app = new Hono();
+    mountReadOnlyCrudRoutes({
+      app,
+      path: "/products",
+      db: drizzle(client),
+      view: sqliteView("v_products", {
+        code: text("code").notNull(),
+        title: text("title").notNull(),
+      }).existing(),
+      filterAllowlist: {},
+      sortAllowlist: {},
+      dialect: "sqlite",
+      ...opts,
+    });
+    return app;
+  }
+
+  test("a non-`id` idColumn returns the row it names, not the first row", async () => {
+    const app = mountProducts({ idColumn: "code" });
+    const second = await app.request("/products/b2");
+    expect(second.status).toBe(200);
+    expect(await second.json()).toEqual({ code: "b2", title: "Second" });
+    expect(await (await app.request("/products/c3")).json()).toEqual({ code: "c3", title: "Third" });
+    const missing = await app.request("/products/zz");
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toEqual({ error: "not_found" });
+  });
+
+  test("a view without the id column answers 404, never an unfiltered row", async () => {
+    const app = mountProducts({});
+    for (const id of ["a1", "1", "zz"]) {
+      const res = await app.request(`/products/${id}`);
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: "not_found" });
+    }
   });
 });

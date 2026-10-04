@@ -271,3 +271,65 @@ describe("mountReadOnlyCrudRoutes — itemRoutes / resource", () => {
     expect(post.json().message).toBe("POST is not supported on a projection (read-only).");
   });
 });
+
+// I1 (whole-branch review): the mount addresses the row by `idColumn`. A view keyed on
+// another field must be read by that field, and a view with no such column has no row to
+// answer with: the route used to run with no WHERE and return the view's first row.
+describe("mountReadOnlyCrudRoutes — GET :id addresses idColumn", () => {
+  let client: ReturnType<typeof createClient>;
+  const apps: FastifyInstance[] = [];
+
+  beforeAll(async () => {
+    client = createClient({ url: ":memory:" });
+    await client.execute(`CREATE TABLE products (code TEXT PRIMARY KEY, title TEXT NOT NULL)`);
+    await client.execute(`CREATE VIEW v_products AS SELECT code, title FROM products`);
+    await client.execute(`INSERT INTO products (code, title) VALUES ('a1', 'First'), ('b2', 'Second'), ('c3', 'Third')`);
+  });
+
+  afterAll(async () => {
+    for (const a of apps) await a.close();
+    client.close();
+  });
+
+  async function mountProducts(opts: Partial<MountReadOnlyOptions>): Promise<FastifyInstance> {
+    const app = Fastify();
+    mountReadOnlyCrudRoutes({
+      fastify: app,
+      path: "/products",
+      db: drizzle(client),
+      view: sqliteView("v_products", {
+        code: text("code").notNull(),
+        title: text("title").notNull(),
+      }).existing(),
+      filterAllowlist: {},
+      sortAllowlist: {},
+      dialect: "sqlite",
+      ...opts,
+    });
+    await app.ready();
+    apps.push(app);
+    return app;
+  }
+
+  test("a non-`id` idColumn returns the row it names, not the first row", async () => {
+    const app = await mountProducts({ idColumn: "code" });
+    const second = await app.inject({ method: "GET", url: "/products/b2" });
+    expect(second.statusCode).toBe(200);
+    expect(JSON.parse(second.body)).toEqual({ code: "b2", title: "Second" });
+    const third = await app.inject({ method: "GET", url: "/products/c3" });
+    expect(JSON.parse(third.body)).toEqual({ code: "c3", title: "Third" });
+    const missing = await app.inject({ method: "GET", url: "/products/zz" });
+    expect(missing.statusCode).toBe(404);
+    expect(JSON.parse(missing.body)).toEqual({ error: "not_found" });
+  });
+
+  test("a view without the id column answers 404, never an unfiltered row", async () => {
+    // No idColumn, so the mount looks for `id`, which this view does not have.
+    const app = await mountProducts({});
+    for (const id of ["a1", "1", "zz"]) {
+      const res = await app.inject({ method: "GET", url: `/products/${id}` });
+      expect(res.statusCode).toBe(404);
+      expect(JSON.parse(res.body)).toEqual({ error: "not_found" });
+    }
+  });
+});

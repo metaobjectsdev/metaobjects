@@ -20,7 +20,15 @@ export interface MountReadOnlyOptions {
   readonly filterAllowlist: FilterAllowlist;
   readonly sortAllowlist: SortAllowlist;
   readonly dialect: SqlDialect;
-  /** Override default ID column name (defaults to "id"). */
+  /**
+   * The column `GET /:id` addresses a row by: the KEY of that column in the Drizzle view
+   * (the field name), not its physical name. Defaults to "id". For a view declared with
+   * no columns (the raw-SQL path) it is the physical column name instead, because there
+   * is no key to look up.
+   *
+   * A view that declares columns and has none under this key has no row to address, so
+   * `GET /:id` answers `404 not_found` for every id.
+   */
   readonly idColumn?: string;
   /**
    * Fastify route-level hooks applied to every route this mounts — the same option
@@ -229,15 +237,18 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       }
       // biome-ignore lint/suspicious/noExplicitAny: Drizzle table/view column ref
       const colRef = (view as any)[idCol];
+      // No column under `idColumn`: there is nothing to compare the id against, and a query
+      // with no WHERE would answer with the view's first row. No row is addressable.
+      if (colRef === undefined) {
+        return reply.code(404).send({ error: "not_found" });
+      }
       // Compare against the PK's real type — a uuid/text key must NOT go through Number().
       const idValue = coerceIdForColumn(colRef, id);
       if (idValue === undefined) {
         return reply.code(400).send({ error: "invalid_id" });
       }
       // Await + first row rather than `.get()` (libsql/better-sqlite3-only).
-      const rows = await db.select().from(view).where(
-        colRef !== undefined ? eq(colRef, idValue) : undefined
-      ).limit(1);
+      const rows = await db.select().from(view).where(eq(colRef, idValue)).limit(1);
       const row = (rows as unknown[])[0];
       return row ? toWire(row) : reply.code(404).send({ error: "not_found" });
     });

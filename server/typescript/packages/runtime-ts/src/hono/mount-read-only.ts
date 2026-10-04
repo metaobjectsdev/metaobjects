@@ -30,7 +30,15 @@ export interface MountReadOnlyOptions {
   readonly filterAllowlist: FilterAllowlist;
   readonly sortAllowlist: SortAllowlist;
   readonly dialect: SqlDialect;
-  /** Override default ID column name (defaults to "id"). */
+  /**
+   * The column `GET /:id` addresses a row by: the KEY of that column in the Drizzle view
+   * (the field name), not its physical name. Defaults to "id". For a view declared with
+   * no columns (the raw-SQL path) it is the physical column name instead, because there
+   * is no key to look up.
+   *
+   * A view that declares columns and has none under this key has no row to address, so
+   * `GET /:id` answers `404 not_found` for every id.
+   */
   readonly idColumn?: string;
   /**
    * False for an object with no single-column primary identity: an `object.report`, or
@@ -203,6 +211,11 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       }
       // biome-ignore lint/suspicious/noExplicitAny: Drizzle view column ref
       const colRef = (view as any)[idCol];
+      // No column under `idColumn`: there is nothing to compare the id against, and a query
+      // with no WHERE would answer with the view's first row. No row is addressable.
+      if (colRef === undefined) {
+        return c.json({ error: "not_found" }, 404);
+      }
       // Compare against the PK's real type — a uuid/text key must NOT go through Number().
       const idValue = coerceIdForColumn(colRef, id);
       if (idValue === undefined) {
@@ -213,7 +226,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       const rows = await db
         .select()
         .from(view)
-        .where(colRef !== undefined ? eq(colRef, idValue) : undefined)
+        .where(eq(colRef, idValue))
         .limit(1);
       const row = (rows as unknown[])[0];
       return row ? c.json(toWire(row)) : c.json({ error: "not_found" }, 404);

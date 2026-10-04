@@ -29,7 +29,8 @@ import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants
 import { routesHandlerName } from "../naming.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import { isReport } from "../source-detect.js";
-import { hasItemRoute } from "../api-surface.js";
+import { itemRouteField } from "../api-surface.js";
+import { DEFAULT_ID_FIELD } from "./queries.js";
 import type { RelationEntry } from "../relation-resolver.js";
 import { isTphDiscriminatorBase, tphPlan } from "./tph-discriminator.js";
 import { authSeamJsDoc, type CrudVerb, exposeLine, intersectExpose, TPH_POLYMORPHIC_VERBS } from "../routes-expose.js";
@@ -80,15 +81,22 @@ export function renderRoutesFile(
     const camelName = entityName.charAt(0).toLowerCase() + entityName.slice(1);
     // A keyless read-only object (a projection with no identity and no `id` column, and
     // every report: FR-044) has no row to address, so it mounts GET list and the collection 405
-    // and no `/:id` route of any verb. Both keys are absent for a keyed projection, which
+    // and no `/:id` route of any verb. Every key is absent for a projection keyed on `id`, which
     // keeps its output byte-identical.
-    const keyless = !hasItemRoute(entity);
+    const idField = itemRouteField(entity);
+    const keyless = idField === undefined;
     const report = isReport(entity);
     const noun = report ? "report" : "projection";
     const exposes = keyless
       ? "Exposes GET list only. POST returns 405."
       : "Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.";
+    // The mount addresses `id` by default. A projection keyed on another field names it
+    // (the view's key for that column, which is the field name), so `GET /:id` reads the
+    // same column the by-id query does. Absent for `id`, which keeps that output's bytes.
     const keylessOpts = (indent: string): string =>
+      (idField !== undefined && idField !== DEFAULT_ID_FIELD
+        ? `\n${indent}idColumn: ${JSON.stringify(idField)},`
+        : "") +
       (keyless ? `\n${indent}itemRoutes: false,` : "") +
       (report ? `\n${indent}resource: "report",` : "");
     const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
