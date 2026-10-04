@@ -5,16 +5,8 @@
 import { pathToFileURL } from "node:url";
 import { loadDirectory, loadUris, type MetaRoot } from "@metaobjectsdev/metadata";
 
-/**
- * Committed corpus artifacts that are JSON but are NOT metadata, so the directory loader
- * (which takes every .json/.yaml/.yml it finds) must skip them. `report-shapes.json` sits
- * beside `meta.fitness.json` in canonical/ and would otherwise fail the load with
- * ERR_UNKNOWN_TYPE ("reports").
- */
-const NON_METADATA_ARTIFACTS: readonly string[] = ["report-shapes.json"];
-
 export async function loadMetadataDir(dir: string): Promise<MetaRoot> {
-  const result = await loadDirectory(dir, { exclude: [...NON_METADATA_ARTIFACTS] });
+  const result = await loadDirectory(dir);
   if (result.errors.length > 0) {
     const summary = result.errors
       .map((e) => `${(e as { code?: string }).code ?? "ERROR"}: ${e.message}`)

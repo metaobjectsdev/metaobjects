@@ -2,7 +2,7 @@
 //
 // No DB required. Regenerates the derived fields of every canonical object.report from
 // canonical/meta.fitness.json and asserts they are byte-identical to the committed
-// fixtures/persistence-conformance/canonical/report-shapes.json, which every other port
+// fixtures/persistence-conformance/report-shapes.json, which every other port
 // byte-matches against its own derivation (contract Table B).
 //
 // Regenerate the artifact with: `bun run gen:report-shapes` (in this package).

@@ -1,7 +1,7 @@
 // gen-report-shapes.ts — (re)generate the committed report-shapes artifact.
 //
 // Run: `bun run gen:report-shapes` (from this package). Pure metadata → JSON, no DB.
-// Writes fixtures/persistence-conformance/canonical/report-shapes.json: the derived
+// Writes fixtures/persistence-conformance/report-shapes.json: the derived
 // fields (contract Table B) of every object.report in the canonical model, in declaration
 // order. TypeScript produces it; the C#, Java, Kotlin and Python ports each derive the
 // same shapes from the same model and byte-match this file in a container-free unit test,
@@ -11,6 +11,9 @@
 // keys in the order below; two-space indent; a trailing newline. `typeSource` is
 // `<resolutionKey of the declaring entity>.<field name>` or null; `view` is the report's
 // OWN read-only source's physical name or null.
+//
+// The artifact sits BESIDE canonical/, not inside it: every port directory-loads
+// canonical/ as metadata, and a non-metadata .json there fails the load.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -24,10 +27,10 @@ import {
 } from "@metaobjectsdev/metadata";
 
 import { loadMetadataDir } from "./load-metadata.ts";
-import { CANONICAL_DIR } from "./paths.ts";
+import { CANONICAL_DIR, CORPUS_DIR } from "./paths.ts";
 
 /** Absolute path to the committed report-shapes artifact. */
-export const REPORT_SHAPES_PATH = resolve(CANONICAL_DIR, "report-shapes.json");
+export const REPORT_SHAPES_PATH = resolve(CORPUS_DIR, "report-shapes.json");
 
 interface ShapeFieldJson {
   name: string;

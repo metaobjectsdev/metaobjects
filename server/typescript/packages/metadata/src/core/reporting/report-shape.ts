@@ -1,6 +1,6 @@
 // Table B of docs/superpowers/plans/2026-10-03-fr-044-plan-2-report-view-lowering.md:
 // a report's derived fields. The single definition; every port has a rule-for-rule copy,
-// gated by fixtures/persistence-conformance/canonical/report-shapes.json.
+// gated by fixtures/persistence-conformance/report-shapes.json.
 
 import type { MetaData } from "../../shared/meta-data.js";
 import type { MetaRoot } from "../../shared/meta-root.js";
