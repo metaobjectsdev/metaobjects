@@ -35,7 +35,7 @@ import {
 import { projectProvider } from "../render-engine/framework-provider.js";
 import { renderMermaidErBlock } from "../templates/mermaid-er.js";
 import { buildEntityDocData } from "./docs-data-builder.js";
-import { isReport } from "../source-detect.js";
+import { isReport, servedReport } from "../source-detect.js";
 import { buildTemplateDocData } from "./template-doc-builder.js";
 import type { OutputLayout } from "../import-path.js";
 
@@ -110,20 +110,22 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
       // (README.md) can link them via the SAME docPageHref used everywhere else
       // (links resolve in flat AND package layout). Grouped entity vs template.
       const entityNodes: DocPageNode[] = [];
+      const reportNodes: DocPageNode[] = [];
       const templateNodes: DocPageNode[] = [];
       const files: EmittedFile[] = ctx.loadedRoot
         .objects()
-        // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
-        // Its fields are derived by that lowering, so a page today would show none of them.
-        .filter((o) => !isReport(o))
         .filter(ctx.matches)
         .map((entity: MetaObject) => {
           const node = docPageNode(entity);
-          entityNodes.push(node);
+          // FR-044: every report gets a page, served or not (its columns come from
+          // `reportShape`). It is listed under "Reports" on the index, not "Entities".
+          (isReport(entity) ? reportNodes : entityNodes).push(node);
           const path = docPageOutputPath(layout, node);
           placements.push({ path, fqn: entity.resolutionKey() });
-          // Cross-link to the sibling api surfaces, when emitted (shared builder).
-          const apiRefs = apiRefsFor(path);
+          // Cross-link to the sibling api surfaces, when emitted (shared builder). A
+          // report that is not served has no api unit in any port (Table G), so its page
+          // links to none: the link would point at a page nothing writes.
+          const apiRefs = isReport(entity) && !servedReport(entity) ? undefined : apiRefsFor(path);
           const payload = buildEntityDocData(entity, {
             dialect: rc.dialect,
             layout,
@@ -181,6 +183,7 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
           entityNodes,
           templateNodes,
           apiIndexRefs,
+          reportNodes,
         );
         placements.push({ path: INDEX_FILENAME, fqn: "<the auto-generated overview/index page>" });
         files.unshift({ path: INDEX_FILENAME, content: indexContent });
@@ -211,6 +214,7 @@ function renderIndexPage(
   entityNodes: DocPageNode[],
   templateNodes: DocPageNode[],
   apiIndexRefs?: Array<{ label: string; href: string }>,
+  reportNodes: DocPageNode[] = [],
 ): string {
   const pkg = root.package;
   const out: string[] = [];
@@ -237,6 +241,15 @@ function renderIndexPage(
     out.push("## Entities");
     out.push("");
     for (const node of [...entityNodes].sort(byName)) {
+      out.push(`- [${node.name}](${docPageHref(layout, INDEX_NODE, node)})`);
+    }
+    out.push("");
+  }
+  // FR-044: reports, after the entities they read from. Absent when the model has none.
+  if (reportNodes.length > 0) {
+    out.push("## Reports");
+    out.push("");
+    for (const node of [...reportNodes].sort(byName)) {
       out.push(`- [${node.name}](${docPageHref(layout, INDEX_NODE, node)})`);
     }
     out.push("");

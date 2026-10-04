@@ -27,16 +27,20 @@ test("attr consumption is tracked accurately", async () => {
   expect(consumedAttr?.consumed).toBe(true);
 });
 
-test("FR-044 reporting vocabulary is reported as deferred, not as a rendering gap", async () => {
-  // The inert model pair shared by every port's FR-044 Plan 1 inert test.
+test("FR-044 reporting vocabulary is audited like any other kind: unrendered means a gap", async () => {
+  // The inert model pair shared by every port's FR-044 tests. Nothing is consumed here, so
+  // every reporting kind must surface as "not rendered" (it used to be parked as
+  // "deferred" until the site rendered reports; test/reporting-site.test.ts shows the
+  // real site consumes all of it).
   const withReporting = join(import.meta.dir, "..", "..", "..", "..", "..", "fixtures", "codegen-noop", "reporting", "with");
   const model = await loadModel([withReporting]);
   const rep = new CoverageTracker().report(model.root);
-  expect(rep.deferred.map((r) => r.key)).toEqual([
+  expect("deferred" in rep).toBe(false);
+  const reportingKinds = rep.kinds.filter((r) => /^(dimension|measure|segment)\./.test(r.key) || r.key === "object.report");
+  expect(reportingKinds.map((r) => r.key)).toEqual([
     "dimension.attribute", "dimension.time", "measure.aggregate", "measure.ratio", "object.report", "segment.filter",
   ]);
-  // Never a "not rendered" row: the site renders none of it by design until Plan 2/3.
-  const gapKeys = [...rep.kinds, ...rep.attrs].map((r) => r.key);
-  expect(gapKeys.some((k) => /^(dimension|measure|segment)[.:]/.test(k) || k === "object.report")).toBe(false);
-  expect(rep.warnings.filter((w) => w.includes("deferred (FR-044 Plan 2/3)")).length).toBe(6);
+  expect(reportingKinds.every((r) => !r.consumed)).toBe(true);
+  expect(rep.warnings).toContain("coverage: object.report (3) not rendered by any page");
+  expect(rep.warnings.some((w) => w.includes("deferred"))).toBe(false);
 });

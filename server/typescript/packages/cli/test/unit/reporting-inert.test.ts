@@ -18,9 +18,11 @@
 // `source.rdb @kind: view` (R5 allows one): that is the case that once leaked in C#, where
 // it emitted a keyless DbSet, a GET route and a filter allowlist for an object with no fields.
 //
-// `meta docs` is still held to the Plan 1 rule here (controller ruling, 2026-10-03): every
-// docs surface — model pages, agent pages, requirements, the HTML site, and the api surface
-// — comes out identical with and without the reporting nodes, bar the one view entry.
+// `meta docs` documents reports since Plan 3 (Table G), and the last describe states the
+// difference exactly: a model page and a site page for every report, served or not; a
+// "Reporting" section on each entity that declares reporting nodes; one api unit, for the
+// served report alone; the schema page's one view entry. `agent/ui.md` does not move: no
+// UI tier is generated for a report. Everything else is byte-identical.
 
 import { describe, test, expect, beforeAll } from "bun:test";
 import { mkdtempSync, mkdirSync, copyFileSync, rmSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -292,7 +294,7 @@ describe("FR-044 a sourceless report is inert in migrate; a view-backed report p
   });
 });
 
-describe("FR-044 reporting nodes are inert in meta docs, bar the one view entry", () => {
+describe("FR-044 meta docs differs by exactly the report pages, the Reporting sections and one api unit", () => {
   /** Run `meta docs` over a project holding one variant, once per surface flag set, and
    *  read back everything written. The project directory has the SAME basename for both
    *  variants: the site stamps it into every page title. */
@@ -311,7 +313,7 @@ describe("FR-044 reporting nodes are inert in meta docs, bar the one view entry"
       const files: Record<string, string> = {};
       for (const rel of walkFiles(root)) {
         if (rel.split(sep)[0] === "metaobjects") continue;
-        files[rel] = readFileSync(join(root, rel), "utf8");
+        files[rel.split(sep).join("/")] = readFileSync(join(root, rel), "utf8");
       }
       return files;
     } finally {
@@ -319,13 +321,93 @@ describe("FR-044 reporting nodes are inert in meta docs, bar the one view entry"
     }
   }
 
-  test("model, agent, requirements and site output are identical", async () => {
+  const REPORTS = ["DailyRevenue", "ProgramEngagement", "StoreTotals"] as const;
+  /** The entities that declare dimensions, measures or segments in the with-model. */
+  const REPORTING_ENTITIES = ["Purchase", "WorkoutEvent"] as const;
+  const SITE = "out--site/site";
+  const SITE_PKG = `${SITE}/acme/shop`;
+
+  /** The lines of `after` that are not the next unmatched line of `before`: what was
+   *  inserted. Throws when `before` is not a subsequence of `after`, i.e. when a line
+   *  was removed or rewritten rather than added. */
+  function insertedLines(before: string, after: string): string[] {
+    const want = before.split("\n");
+    const added: string[] = [];
+    let i = 0;
+    for (const line of after.split("\n")) {
+      if (i < want.length && line === want[i]) i++;
+      else added.push(line);
+    }
+    if (i !== want.length) throw new Error(`a line was removed or rewritten: ${JSON.stringify(want[i])}`);
+    return added;
+  }
+
+  test("model pages: a page per report, a Reports index list, a Reporting section on Purchase and WorkoutEvent", async () => {
     const expected = await docsOutput("without");
     const actual = await docsOutput("with");
-    expect(Object.keys(expected).some((p) => p.endsWith(".html"))).toBe(true);
-    expect(Object.keys(expected).some((p) => p.endsWith(".md"))).toBe(true);
-    expect(Object.keys(actual)).toEqual(Object.keys(expected));
-    expect(actual).toEqual(expected);
+    const model = (files: Record<string, string>): string[] =>
+      Object.keys(files).filter((p) => p.startsWith("out/"));
+
+    expect(model(actual).filter((p) => !(p in expected))).toEqual(REPORTS.map((n) => `out/${n}.md`));
+    expect(model(expected).filter((p) => !(p in actual))).toEqual([]);
+
+    // A served report names its view; a sourceless one says it is not served (answer 7).
+    expect(actual["out/StoreTotals.md"]).toContain("**View:** `v_store_totals`");
+    for (const name of SOURCELESS_REPORTS) {
+      expect(actual[`out/${name}.md`]).toContain("**View:** Not served: declares no view source");
+    }
+
+    for (const path of model(expected)) {
+      const before = expected[path]!;
+      const after = actual[path]!;
+      if (path === "out/README.md") {
+        // The index gains the Reports list and nothing else: no entity entry and no
+        // diagram line moves.
+        expect(insertedLines(before, after)).toEqual(["## Reports", "", ...REPORTS.map((n) => `- [${n}](./${n}.md)`), ""]);
+      } else if (REPORTING_ENTITIES.some((e) => path === `out/${e}.md`)) {
+        // The page is what it was, with the Reporting section appended.
+        expect(after.startsWith(before + "\n## Reporting\n")).toBe(true);
+      } else {
+        expect({ path, content: after }).toEqual({ path, content: before });
+      }
+    }
+  });
+
+  test("agent and requirements output (no gen config) is identical", async () => {
+    const expected = await docsOutput("without");
+    const actual = await docsOutput("with");
+    const other = (files: Record<string, string>): Record<string, string> =>
+      Object.fromEntries(Object.entries(files).filter(([p]) => !p.startsWith("out/") && !p.startsWith(`${SITE}/`)));
+    expect(other(actual)).toEqual(other(expected));
+  });
+
+  test("site: a page per report, the Reporting sections, and no page lost", async () => {
+    const expected = await docsOutput("without");
+    const actual = await docsOutput("with");
+    const site = (files: Record<string, string>): string[] =>
+      Object.keys(files).filter((p) => p.startsWith(`${SITE}/`));
+    expect(site(expected).some((p) => p.endsWith(".html"))).toBe(true);
+
+    expect(site(actual).filter((p) => !(p in expected))).toEqual(REPORTS.map((n) => `${SITE_PKG}/${n}.html`));
+    expect(site(expected).filter((p) => !(p in actual))).toEqual([]);
+
+    expect(actual[`${SITE_PKG}/StoreTotals.html`]).toContain("<code>v_store_totals</code>");
+    for (const name of SOURCELESS_REPORTS) {
+      expect(actual[`${SITE_PKG}/${name}.html`]).toContain("Not served: declares no view source");
+    }
+    for (const name of REPORTING_ENTITIES) {
+      expect(actual[`${SITE_PKG}/${name}.html`]).toContain('id="s-reporting"');
+      expect(expected[`${SITE_PKG}/${name}.html`]).not.toContain('id="s-reporting"');
+    }
+    // An entity with no reporting nodes changes by its sidebar alone: the three report
+    // links, in the package it shares with them.
+    const added = insertedLines(expected[`${SITE_PKG}/Program.html`]!, actual[`${SITE_PKG}/Program.html`]!);
+    expect(added.length).toBe(REPORTS.length);
+    for (const [i, name] of REPORTS.entries()) expect(added[i]).toContain(`${name}.html`);
+    // The stylesheet and script are the same bytes either way.
+    for (const asset of [`${SITE}/assets/site.css`, `${SITE}/assets/site.js`]) {
+      expect(actual[asset]).toBe(expected[asset]!);
+    }
   });
 
   /** The GenContext `meta docs` builds, with a full generator suite wired: the Hono
@@ -351,7 +433,7 @@ describe("FR-044 reporting nodes are inert in meta docs, bar the one view entry"
     expect(actual).toEqual(expected);
   };
 
-  test("the api surface is identical", async () => {
+  test("the api surface gains one unit, for the served report: its row model, list query and GET", async () => {
     // `meta docs --api` materializes only with a loadable gen config, which a temp project
     // cannot import; so drive the generator with the GenContext `meta docs` builds.
     const api = async (metadata: MetaRoot): Promise<Record<string, string>> => {
@@ -361,7 +443,36 @@ describe("FR-044 reporting nodes are inert in meta docs, bar the one view entry"
     };
     const expected = await api(withoutReporting);
     expect(Object.keys(expected).length).toBeGreaterThan(2);
-    compare(expected, await api(withReporting));
+    const actual = await api(withReporting);
+
+    // One new page, and no page for a report that is not served (answer 7).
+    expect(Object.keys(actual).filter((p) => !(p in expected))).toEqual(["api/StoreTotals.md"]);
+    expect(Object.keys(expected).filter((p) => !(p in actual))).toEqual([]);
+
+    // Answer 6: the unit is the row model, the list query function and GET <served path>
+    // (once per wired route surface). No by-id, no write, no schema, no hook.
+    const page = actual["api/StoreTotals.md"]!;
+    expect(page.split("\n").filter((l) => l.startsWith("### "))).toEqual([
+      "### `interface StoreTotals`",
+      "### `listStoreTotals(db: Db, opts?: { limit?: number; offset?: number }): Promise<StoreTotals[]>`",
+      "### `GET /api/store_totals`",
+      "### `GET /api/store_totals`",
+    ]);
+    expect(page).not.toMatch(/\buse[A-Z]\w*/);
+
+    // Every other page is byte-identical, bar the two indexes, which gain the report's
+    // entry and lose nothing.
+    for (const [path, before] of Object.entries(expected)) {
+      const after = actual[path]!;
+      if (path === "api/README.md" || path === "api/AGENT-API.md") {
+        const added = after.split("\n").filter((l) => !before.split("\n").includes(l));
+        expect(added.length).toBeGreaterThan(0);
+        for (const l of added) expect(l).toContain("StoreTotals");
+        for (const name of SOURCELESS_REPORTS) expect(after).not.toContain(name);
+        continue;
+      }
+      expect({ path, content: after }).toEqual({ path, content: before });
+    }
   });
 
   test("the agent surface differs only by the schema page's v_store_totals view, with the UI tier wired", async () => {
@@ -407,5 +518,8 @@ describe("FR-044 reporting nodes are inert in meta docs, bar the one view entry"
     const rest = { ...expected };
     delete rest[schemaPage];
     compare(rest, actual);
+    // Answer 6: no UI tier is generated for a report, so the UI page names none.
+    const uiPage = Object.keys(actual).find((p) => p.endsWith("ui.md"))!;
+    for (const name of ["StoreTotals", ...SOURCELESS_REPORTS]) expect(actual[uiPage]).not.toContain(name);
   });
 });

@@ -2,6 +2,10 @@ import type { MetaData } from "@metaobjectsdev/metadata";
 import { LinkGraph, fqnOf, type Ref } from "../link-graph.js";
 import type { CoverageTracker } from "../coverage.js";
 import { esc, badge } from "../badges.js";
+import {
+  REPORT_RENDERED_ATTRS, buildReportSection, buildReportingSection, isReportNode,
+  type ReportSection, type ReportingSection,
+} from "./report-data.js";
 import { inheritanceTree, erDiagramRich, flowchartDomain, RICH_MAX, type ErEdge, type ErNode, type ErAttr } from "../mermaid.js";
 
 // capped box attributes for the rich neighborhood ERD: PK → FKs(target) → enums → required, ≤6 + overflow count
@@ -90,6 +94,10 @@ export interface ObjectPageData {
   referencedBy: { name: string; href: string; via: string }[];
   references: { name: string; href: string; via: string }[]; usedByTemplates: { name: string; href: string }[];
   sourceFile: string;
+  /** FR-044: present on an `object.report` page only. */
+  report?: ReportSection | undefined;
+  /** FR-044: present on a page whose object declares reporting members or is a report's `@from`. */
+  reporting?: ReportingSection | undefined;
 }
 
 function fieldRow(f: MetaData, ownerHref: string, g: LinkGraph, cov: CoverageTracker, ctxPkg: string): FieldRow {
@@ -173,7 +181,10 @@ export function buildObjectPage(fqn: string, g: LinkGraph, cov: CoverageTracker)
   cov.consumeNode(o);
   cov.consumeAttr(o, "description");
   // consumer/structural attrs authored on the object itself (e.g. @dataflow, @neo4j)
-  const objectAttrs = otherAttrs(o, cov, new Set(["description"]));
+  // FR-044: a report's own attrs are rendered by its Report section, not as badges.
+  const report = isReportNode(o) ? buildReportSection(dn, g.root, g, cov) : undefined;
+  const reporting = buildReportingSection(dn, g, cov);
+  const objectAttrs = otherAttrs(o, cov, new Set(["description", ...(report ? REPORT_RENDERED_ATTRS : [])]));
 
   // inheritance hierarchy rows (ancestors nearest-last so level increases downward) + self + direct children
   const anc = g.ancestors(fqn);            // nearest-first
@@ -348,5 +359,6 @@ export function buildObjectPage(fqn: string, g: LinkGraph, cov: CoverageTracker)
     pkg: dn.pkg, href: dn.href, breadcrumbHtml: crumbs.join(" / "), desc: esc(o.attr("description") ?? ""),
     tableName, pkHtml, objectAttrs, storageAttrs, layouts, ownFields, inheritedFields, indexes, validators, relations, origins,
     hierarchy, inheritanceMermaid, neighborhoodMermaid, neighborhoodLegend, neighborhoodMore, referencedBy, references, usedByTemplates, sourceFile: src,
+    report, reporting,
   };
 }
