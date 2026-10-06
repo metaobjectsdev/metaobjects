@@ -6,8 +6,17 @@
 // [Fact] per requirement, calling the member through the interface on the project's witness class). The
 // project owns the witnesses: it writes a class implementing every generated witness interface and
 // implements the members it has witnesses for. A requirement that becomes live adds a failing member, a
-// red test and no compile break; one that is retired or deleted removes the member, so a stale
-// implementation of it no longer binds to anything.
+// red test and no compile break; one that is retired or deleted removes the member.
+//
+// THE DRIFT SIGNAL NEEDS THE EXPLICIT FORM. A witness that implements a member EXPLICITLY
+//
+//     void Requirements_acme_shop_Witnesses.req_acme_shop_Orders_Recorded__object_entity() { ... }
+//
+// stops compiling (CS0539) once the member is removed, which is how an orphan witness is found. The same
+// witness written IMPLICITLY (`public void req_...() { ... }`) is an ordinary method after the member is
+// gone and goes stale silently, so the generated header tells the project to write the explicit form. A
+// method that merely looks like a witness (no `public`, another return type, a parameter, `static`) is not
+// an implementation: it compiles, and the default member runs and fails the test.
 //
 // Which tests exist, what each is called, whether it is skipped and its digest come from
 // MetaObjects.Core.Requirement.RequirementTestIdentities, which every language port shares and a
@@ -50,14 +59,17 @@ public class RequirementTestsGenerator : IGenerator
     public string Name => "requirement-tests";
 
     /// <summary>
-    /// The namespace the generated tests are written into. Default: <c>&lt;run namespace&gt;.Requirements</c>,
+    /// The namespace the generated tests are written into: a dotted C# name, without <c>global::</c>. A keyword
+    /// segment is escaped with <c>@</c> where it is emitted. Default: <c>&lt;run namespace&gt;.Requirements</c>,
     /// so a run with no option set needs none.
     /// </summary>
     public string? TestNamespace { get; init; }
 
     /// <summary>
-    /// The project class that implements every generated witness interface, by its full name. The generated
-    /// tests construct it with <c>new</c>, so it needs a public parameterless constructor. Default:
+    /// The project class that implements every generated witness interface, by its full name (it is emitted as
+    /// <c>global::&lt;name&gt;</c>, so no namespace of the tests can capture it). It should implement each member
+    /// EXPLICITLY; see the file comment. The generated tests construct it with <c>new</c>, so it needs a public
+    /// parameterless constructor. Default:
     /// <c>&lt;run namespace&gt;.RequirementWitnesses</c>. If that class does not exist the test project does not
     /// compile: a one-time setup, and the only by-name binding is a static one (ADR-0001).
     /// </summary>
@@ -86,36 +98,20 @@ public class RequirementTestsGenerator : IGenerator
 
     public IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
-        // The grain is checked first, so a bad one is refused whatever the model holds.
-        RequirementTestGrains.Require(Grain);
-
-        var walked = RequirementTestIdentities.Walk(ctx.Root);
+        // The grain is checked first (Select does it), so a bad one is refused whatever the model holds.
+        // Selection is the very function the identity corpus pins: this generator selects nothing itself.
+        var selection = RequirementTestIdentities.Select(ctx.Root, Grain, Filter);
         // No requirement, no change: nothing is written and nothing is said.
-        if (walked.Count == 0) return [];
+        if (selection.RequirementCount == 0) return [];
 
-        var testNamespace = CheckedName(nameof(TestNamespace), TestNamespace ?? ctx.Config.Namespace + ".Requirements");
-        var witnessClass = CheckedName(nameof(WitnessClass), WitnessClass ?? ctx.Config.Namespace + ".RequirementWitnesses");
+        var testNamespace = ParsedName(nameof(TestNamespace), TestNamespace ?? ctx.Config.Namespace + ".Requirements", allowGlobal: false);
+        var witnessClass = ParsedName(nameof(WitnessClass), WitnessClass ?? ctx.Config.Namespace + ".RequirementWitnesses", allowGlobal: true);
 
-        var planned = new List<Planned>();
-        var uncovered = new List<string>();
-        foreach (var w in walked)
-        {
-            var keep = Filter is null ? RequirementTestIdentities.DefaultFilter(w.View) : Filter.Include(w.View);
-            if (!keep)
-            {
-                // The PATH, not the qualified address: diagnostics name paths, in every port.
-                uncovered.Add(w.View.Path);
-                continue;
-            }
-            foreach (var unit in RequirementTestIdentities.Units(w, Grain))
-            {
-                var identity = RequirementTestIdentities.IdentityOf(w, unit.Unit);
-                planned.Add(new Planned(identity, ArgsFor(w.Node, identity, unit.Targets)));
-            }
-        }
-        planned.Sort((a, b) => string.CompareOrdinal(a.Identity.Id, b.Identity.Id));
+        var planned = selection.Tests
+            .Select(t => new Planned(t.Identity, ArgsFor(t.Requirement.Node, t.Identity, t.Unit.Targets)))
+            .ToList();
         RefuseCollisions(planned);
-        if (WarnUncovered && uncovered.Count > 0) ctx.Warn(UncoveredWarning(uncovered));
+        if (WarnUncovered && selection.ExcludedPaths.Count > 0) ctx.Warn(UncoveredWarning(selection.ExcludedPaths));
 
         // One pair of files per package key. Two packages that mangle alike share a pair: their tests
         // keep distinct keys, which the collision check above has just proven.
@@ -142,16 +138,78 @@ public class RequirementTestsGenerator : IGenerator
     // options
     // ------------------------------------------------------------------
 
-    /// <summary>An option that is spliced into generated source, so it must be a dotted C# name.</summary>
-    private static string CheckedName(string option, string value)
+    /// <summary>
+    /// A dotted name that is spliced into generated source: the segments without any <c>@</c>, so a comment or a
+    /// message can say the name as it was written, and the spelling that is emitted as code, where a segment that
+    /// is a C# keyword is escaped with <c>@</c>.
+    /// </summary>
+    private sealed record DottedName(IReadOnlyList<string> Segments)
     {
-        var name = value.Trim();
-        if (!CSharpName.IsMatch(name))
+        public string Plain => string.Join('.', Segments);
+
+        public string Code => string.Join('.', Segments.Select(s => Keywords.Contains(s) ? "@" + s : s));
+    }
+
+    private const string GlobalPrefix = "global::";
+
+    /// <summary>
+    /// Parse an option that names a namespace or a class. Each segment must be a legal C# identifier (non-ASCII
+    /// letters included), optionally written verbatim with a leading <c>@</c>. A <c>global::</c> prefix is refused
+    /// on a namespace, which cannot carry one, and accepted and removed on a class, since the generator emits
+    /// <c>global::</c> itself.
+    /// </summary>
+    private static DottedName ParsedName(string option, string value, bool allowGlobal)
+    {
+        var text = value.Trim();
+        if (text.StartsWith(GlobalPrefix, StringComparison.Ordinal))
+        {
+            if (!allowGlobal)
+                throw new InvalidOperationException(
+                    $"requirement-tests: {option} must not start with '{GlobalPrefix}': a namespace declaration cannot be " +
+                    $"qualified. Write '{text[GlobalPrefix.Length..]}', not '{value}'.");
+            text = text[GlobalPrefix.Length..];
+        }
+        var segments = text.Split('.').Select(s => s.StartsWith('@') ? s[1..] : s).ToList();
+        if (!segments.All(IsIdentifier))
             throw new InvalidOperationException(
                 $"requirement-tests: {option} must be a dotted C# name, not '{value}'. Set it on the generator " +
                 "(new RequirementTestsGenerator { " + option + " = \"...\" }); its default is derived from the run namespace.");
-        return name;
+        return new DottedName(segments);
     }
+
+    /// <summary>
+    /// A C# identifier: a letter, a letter number or <c>_</c>, then those and combining marks, decimal digits,
+    /// connector punctuation and formatting characters (ECMA-334, "Identifiers"). The check is by Unicode category,
+    /// so a legal non-ASCII name is accepted.
+    /// </summary>
+    private static bool IsIdentifier(string s)
+    {
+        if (s.Length == 0) return false;
+        for (var i = 0; i < s.Length; i += char.IsSurrogatePair(s, i) ? 2 : 1)
+        {
+            if (char.IsSurrogate(s, i) && !char.IsSurrogatePair(s, i)) return false;
+            var category = char.GetUnicodeCategory(s, i);
+            var start = category is UnicodeCategory.UppercaseLetter or UnicodeCategory.LowercaseLetter
+                or UnicodeCategory.TitlecaseLetter or UnicodeCategory.ModifierLetter or UnicodeCategory.OtherLetter
+                or UnicodeCategory.LetterNumber || s[i] == '_';
+            var part = start || category is UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark
+                or UnicodeCategory.DecimalDigitNumber or UnicodeCategory.ConnectorPunctuation or UnicodeCategory.Format;
+            if (i == 0 ? !start : !part) return false;
+        }
+        return true;
+    }
+
+    /// <summary>The C# keywords: a segment spelt like one is escaped with <c>@</c> where it is emitted.</summary>
+    private static readonly HashSet<string> Keywords = new(StringComparer.Ordinal)
+    {
+        "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char", "checked", "class", "const",
+        "continue", "decimal", "default", "delegate", "do", "double", "else", "enum", "event", "explicit", "extern",
+        "false", "finally", "fixed", "float", "for", "foreach", "goto", "if", "implicit", "in", "int", "interface",
+        "internal", "is", "lock", "long", "namespace", "new", "null", "object", "operator", "out", "override",
+        "params", "private", "protected", "public", "readonly", "ref", "return", "sbyte", "sealed", "short",
+        "sizeof", "stackalloc", "static", "string", "struct", "switch", "this", "throw", "true", "try", "typeof",
+        "uint", "ulong", "unchecked", "unsafe", "ushort", "using", "virtual", "void", "volatile", "while",
+    };
 
     // ------------------------------------------------------------------
     // planning
@@ -185,7 +243,7 @@ public class RequirementTestsGenerator : IGenerator
         throw new InvalidOperationException(sb.ToString());
     }
 
-    private static string UncoveredWarning(List<string> uncovered)
+    private static string UncoveredWarning(IReadOnlyList<string> uncovered)
     {
         var shown = string.Join(", ", uncovered.Take(MaxNamedUncovered));
         var more = uncovered.Count > MaxNamedUncovered
@@ -203,12 +261,16 @@ public class RequirementTestsGenerator : IGenerator
         "// <auto-generated/>\n" +
         "// GENERATED by metaobjects (requirement-tests). DO NOT EDIT: this file is rewritten whole.\n";
 
-    private static string WitnessInterface(string testNamespace, string name, string witnessClass, List<Planned> tests)
+    private static string WitnessInterface(DottedName testNamespace, string name, DottedName witnessClass, List<Planned> tests)
     {
+        // A real member shows the shape; with none (every test skipped) the pattern stands in for a name.
+        var example = tests.FirstOrDefault(t => t.Identity.Skip is null)?.Identity.WitnessKey ?? "req_<address>__<unit>";
         var sb = new StringBuilder(GeneratedHeader)
-            .Append("// Witnesses are project-owned: implement this interface in ").Append(CommentText(witnessClass))
-            .Append(" and override the members it has witnesses for.\n")
-            .Append("namespace ").Append(testNamespace).Append(";\n\n")
+            .Append("// Witnesses are project-owned: implement this interface in ").Append(CommentText(witnessClass.Plain))
+            .Append(", one EXPLICIT member per witness, e.g.\n")
+            .Append("//     void ").Append(name).Append('.').Append(example).Append("() { ... }\n")
+            .Append("// Explicit, so that a member whose requirement is retired or deleted stops compiling instead of going stale silently.\n")
+            .Append("namespace ").Append(testNamespace.Code).Append(";\n\n")
             .Append("public interface ").Append(name).Append("\n{");
         foreach (var p in tests)
         {
@@ -216,9 +278,9 @@ public class RequirementTestsGenerator : IGenerator
             if (id.Skip is not null) continue; // a skipped test claims nothing works yet: no member
             sb.Append('\n').Append(Indent(TestComments(p.Args))).Append('\n')
               .Append("    void ").Append(id.WitnessKey).Append("()\n    {\n")
-              .Append("        throw new Xunit.Sdk.XunitException(\"")
+              .Append("        throw new global::Xunit.Sdk.XunitException(\"")
               .Append(StringLiteral(
-                  "unimplemented requirement: " + id.Id + " - write " + witnessClass + "." + id.WitnessKey +
+                  "unimplemented requirement: " + id.Id + " - write " + witnessClass.Plain + "." + id.WitnessKey +
                   "() so that it fails when: " + p.Args.Counterexample))
               .Append("\");\n    }\n");
         }
@@ -226,7 +288,7 @@ public class RequirementTestsGenerator : IGenerator
     }
 
     private static string TestClass(
-        string testNamespace, string name, string witnesses, string witnessClass, List<Planned> tests, IRequirementTestRenderer? renderer)
+        DottedName testNamespace, string name, string witnesses, DottedName witnessClass, List<Planned> tests, IRequirementTestRenderer? renderer)
     {
         var usings = new SortedSet<string>(StringComparer.Ordinal) { "Xunit" };
         var body = new StringBuilder();
@@ -246,11 +308,12 @@ public class RequirementTestsGenerator : IGenerator
             body.Append('\n').Append(Indent(source.TrimEnd())).Append('\n');
         }
         var sb = new StringBuilder(GeneratedHeader)
-            .Append("// The witnesses are project-owned, in ").Append(CommentText(witnessClass)).Append(".\n");
+            .Append("// The witnesses are project-owned, in ").Append(CommentText(witnessClass.Plain)).Append(".\n")
+            .Append("// Implement each member explicitly, as the witness interface shows, so that a stale one stops compiling.\n");
         foreach (var u in usings) sb.Append("using ").Append(u).Append(";\n");
-        return sb.Append("\nnamespace ").Append(testNamespace).Append(";\n\n")
+        return sb.Append("\nnamespace ").Append(testNamespace.Code).Append(";\n\n")
             .Append("public class ").Append(name).Append("\n{\n")
-            .Append("    private readonly ").Append(witnesses).Append(" witnesses = new ").Append(witnessClass).Append("();\n")
+            .Append("    private readonly ").Append(witnesses).Append(" witnesses = new global::").Append(witnessClass.Code).Append("();\n")
             .Append(body).Append("}\n").ToString();
     }
 

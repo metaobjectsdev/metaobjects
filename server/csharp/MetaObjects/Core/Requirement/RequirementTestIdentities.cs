@@ -36,13 +36,6 @@ public enum RequirementTestGrain
 /// <summary>The spelling a grain has outside code, and the refusal of anything that is not one.</summary>
 public static class RequirementTestGrains
 {
-    /// <summary>The spelling of <paramref name="grain"/> in a config or an option file.</summary>
-    public static string Text(RequirementTestGrain grain)
-    {
-        Require(grain);
-        return grain == RequirementTestGrain.Member ? "member" : "concern";
-    }
-
     /// <summary>
     /// Refuse anything that is not a grain. A grain that arrives as text (an option file, a
     /// config) would otherwise be picked by accident, and not even one grain: each place that
@@ -118,6 +111,18 @@ public sealed record WalkedRequirement(MetaRequirement Node, RequirementView Vie
 
 /// <summary>One fan-out unit of a requirement: the unit's name and the targets it stands for.</summary>
 public sealed record RequirementTestUnit(string Unit, IReadOnlyList<ResolvedClaim> Targets);
+
+/// <summary>One test: the requirement it belongs to, its unit with that unit's targets, and its identity.</summary>
+public sealed record RequirementTestPlan(WalkedRequirement Requirement, RequirementTestUnit Unit, RequirementTestIdentity Identity);
+
+/// <summary>
+/// What a grain and a filter select: how many requirements the model holds, the tests in id order, and the
+/// paths of the requirements the filter excluded.
+/// </summary>
+public sealed record RequirementTestSelection(
+    int RequirementCount,
+    IReadOnlyList<RequirementTestPlan> Tests,
+    IReadOnlyList<string> ExcludedPaths);
 
 /// <summary>The identity function: walk, units, identity, digest, witness key.</summary>
 public static class RequirementTestIdentities
@@ -234,21 +239,42 @@ public static class RequirementTestIdentities
     /// <param name="grain"><c>null</c> means <see cref="RequirementTestGrain.Concern"/>.</param>
     /// <param name="filter"><c>null</c> means <see cref="DefaultFilter"/>; a filter REPLACES the default.</param>
     public static IReadOnlyList<RequirementTestIdentity> Identities(
+        MetaData root, RequirementTestGrain? grain = null, IRequirementTestFilter? filter = null) =>
+        Select(root, grain, filter).Tests.Select(t => t.Identity).ToList();
+
+    /// <summary>
+    /// The one selection both <see cref="Identities"/> (which the corpus pins) and a generator use: every test
+    /// the grain and the filter yield, each with its requirement and the targets of its unit, sorted by id, and
+    /// the paths of the requirements the filter excluded. A generator that selected for itself could disagree
+    /// with the function the corpus pins.
+    /// </summary>
+    /// <param name="grain"><c>null</c> means <see cref="RequirementTestGrain.Concern"/>.</param>
+    /// <param name="filter"><c>null</c> means <see cref="DefaultFilter"/>; a filter REPLACES the default.</param>
+    public static RequirementTestSelection Select(
         MetaData root, RequirementTestGrain? grain = null, IRequirementTestFilter? filter = null)
     {
         // Checked here as well as per requirement, so a bad grain is refused even over a ledger
         // the filter empties: the answer must not depend on what the model holds.
         var g = grain ?? RequirementTestGrain.Concern;
         RequirementTestGrains.Require(g);
-        var output = new List<RequirementTestIdentity>();
-        foreach (var walked in Walk(root))
+        var walked = Walk(root);
+        var tests = new List<RequirementTestPlan>();
+        var excluded = new List<string>();
+        foreach (var requirement in walked)
         {
-            var keep = filter is null ? DefaultFilter(walked.View) : filter.Include(walked.View);
-            if (!keep) continue;
-            foreach (var unit in Units(walked, g)) output.Add(IdentityOf(walked, unit.Unit));
+            var keep = filter is null ? DefaultFilter(requirement.View) : filter.Include(requirement.View);
+            if (!keep)
+            {
+                // The PATH, not the qualified address: diagnostics name paths, in every port.
+                excluded.Add(requirement.View.Path);
+                continue;
+            }
+            foreach (var unit in Units(requirement, g))
+                tests.Add(new RequirementTestPlan(requirement, unit, IdentityOf(requirement, unit.Unit)));
         }
-        output.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
-        return output;
+        // A stable sort: two tests with one id (a collision the caller refuses) keep their walk order.
+        var sorted = tests.OrderBy(t => t.Identity.Id, StringComparer.Ordinal).ToList();
+        return new RequirementTestSelection(walked.Count, sorted, excluded);
     }
 
     // -- witness key ------------------------------------------------------------------------

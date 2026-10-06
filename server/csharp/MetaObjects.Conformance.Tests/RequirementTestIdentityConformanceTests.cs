@@ -111,6 +111,26 @@ public class RequirementTestIdentityConformanceTests
         return Regex.Matches(section!, @"^\| `([^`]+)` \|", RegexOptions.Multiline).Select(m => m.Groups[1].Value).ToList();
     }
 
+    [Theory]
+    [InlineData("""{ "grain": "member", "fliter": "all" }""", "unknown option(s) fliter")]
+    [InlineData("""{ "Grain": "member" }""", "unknown option(s) Grain")]
+    [InlineData("""{ "grain": 1 }""", "'grain' must be a string")]
+    [InlineData("""{ "filter": ["all"] }""", "'filter' must be a string")]
+    public void The_runner_refuses_an_option_file_it_does_not_understand(string optionsJson, string expectedMessage)
+    {
+        var dir = Directory.CreateTempSubdirectory("mo-req-identity-options-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "options.json"), optionsJson);
+            var refused = Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => ReadOptions(dir));
+            Assert.Contains(expectedMessage, refused.Message);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     [Fact]
     public void The_corpus_has_at_least_the_26_cases_it_was_built_with()
     {
@@ -220,7 +240,6 @@ public class RequirementTestIdentityConformanceTests
         Assert.Contains("unknown requirement-test grain 5", refused.Message);
         var walked = RequirementTestIdentities.Walk(load.Root)[0];
         Assert.Throws<ArgumentException>(() => RequirementTestIdentities.Units(walked, undefined));
-        Assert.Throws<ArgumentException>(() => RequirementTestGrains.Text(undefined));
     }
 
     [Fact]
