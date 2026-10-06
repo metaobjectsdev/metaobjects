@@ -237,3 +237,18 @@ describe("requirementTests — grain", () => {
     ]);
   });
 });
+
+describe("requirementTests — an unknown grain", () => {
+  test("is refused when the generator is built, before anything is generated", () => {
+    // `metaobjects.config.ts` is loaded without a typecheck. A typo used to take the
+    // member grouping and the concern paths at once.
+    const typo = { grain: "members" } as unknown as RequirementTestsOpts;
+    expect(() => requirementTests(typo)).toThrow(
+      'unknown requirement-test grain "members": expected "concern" or "member".',
+    );
+  });
+
+  test("an absent grain is the default, not an error", async () => {
+    expect((await emit({})).length).toBe(3);
+  });
+});

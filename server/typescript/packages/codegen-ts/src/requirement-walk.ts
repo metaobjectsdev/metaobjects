@@ -147,13 +147,33 @@ export function groupByConcern(w: WalkedRequirement): Map<string, ResolvedClaim[
 // tests exist.
 // ---------------------------------------------------------------------------
 
+const REQUIREMENT_TEST_GRAINS = ["concern", "member"] as const;
+
 /**
  * The fan-out unit: what one generated test stands for.
  *
  * - `concern` (default): one test per distinct `<type>.<subType>` a requirement claims.
  * - `member`: one test per distinct `@implementedBy` reference that resolves.
  */
-export type RequirementTestGrain = "concern" | "member";
+export type RequirementTestGrain = (typeof REQUIREMENT_TEST_GRAINS)[number];
+
+/**
+ * Refuse anything that is not a grain.
+ *
+ * The type alone does not hold: `metaobjects.config.ts` is loaded without a typecheck,
+ * so a typo arrives here as a plain string. Letting it through picks a grain by
+ * accident — and not even one grain, since each place that branches on it would fall
+ * to its own default. Called wherever a grain enters: the identity functions below and
+ * the generator, built-in or owned.
+ */
+export function assertRequirementTestGrain(grain: unknown): asserts grain is RequirementTestGrain {
+  if (!(REQUIREMENT_TEST_GRAINS as readonly unknown[]).includes(grain)) {
+    throw new Error(
+      `unknown requirement-test grain ${JSON.stringify(grain)}: expected ` +
+        `${REQUIREMENT_TEST_GRAINS.map((g) => JSON.stringify(g)).join(" or ")}.`,
+    );
+  }
+}
 
 /** One generated test. The same record in every language port. */
 export interface RequirementTestIdentity {
@@ -255,6 +275,7 @@ export function requirementTestUnits(
   w: WalkedRequirement,
   grain: RequirementTestGrain = "concern",
 ): Map<string, ResolvedClaim[]> {
+  assertRequirementTestGrain(grain);
   if (grain === "concern") return groupByConcern(w);
   const units = new Map<string, ResolvedClaim[]>();
   for (const t of w.targets) {
@@ -300,10 +321,14 @@ export function requirementTestIdentities(
   opts: { grain?: RequirementTestGrain; filter?: (r: RequirementView) => boolean } = {},
 ): RequirementTestIdentity[] {
   const filter = opts.filter ?? defaultRequirementTestFilter;
+  // Checked here as well as per requirement, so a bad grain is refused even over a
+  // ledger the filter empties — the answer must not depend on what the model holds.
+  const grain = opts.grain ?? "concern";
+  assertRequirementTestGrain(grain);
   const out: RequirementTestIdentity[] = [];
   for (const walked of walkRequirements(root)) {
     if (!filter(walked.view)) continue;
-    for (const unit of requirementTestUnits(walked, opts.grain).keys()) {
+    for (const unit of requirementTestUnits(walked, grain).keys()) {
       out.push(requirementTestIdentity(walked, unit));
     }
   }

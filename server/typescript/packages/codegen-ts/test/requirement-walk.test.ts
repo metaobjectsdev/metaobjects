@@ -13,9 +13,11 @@ import {
   NO_CONCERN,
   requirementDigest,
   witnessKeyOf,
+  requirementTestUnits,
   requirementTestIdentities,
   witnessKeyCollisions,
 } from "../src/requirement-walk.js";
+import type { RequirementTestGrain } from "../src/requirement-walk.js";
 
 // The claimed nodes deliberately span THREE distinct types. A model whose targets
 // are all one type cannot tell the per-type fan-out rule from the per-node rule
@@ -267,6 +269,28 @@ describe("requirementDigest — did the claim change", () => {
     expect(requirementDigest(await requirementAt(shop(reworded), "Gap"))).not.toBe(base);
   });
 
+  test("lengths in the digest are UTF-8 BYTE lengths, not character counts", async () => {
+    // Every other digest in this file hashes ASCII, where the two agree. Here the
+    // statement is 36 characters and 44 bytes, the counterexample 23 and 26.
+    //
+    // The expected value was computed without this code, in a shell:
+    //   printf 'requirement-digest/v1\nsubType 10\nfunctional\nlevel 1\n4\nstatus 4\nlive\n
+    //           statement 44\n<statement>\ncounterexample 26\n<counterexample>\n
+    //           implementedBy 1\nref 5\nOrder\n' | sha256sum
+    // with 44 and 26 taken from `printf %s "<value>" | wc -c`. The same recipe over the
+    // worked example's text reproduces its pinned digest.
+    const accented = functional("Exact", {
+      "@level": 4,
+      "@status": "live",
+      "@statement": "Le total est exact — à l’euro près ✓",
+      "@counterexample": "Un total arrondi à 10 €",
+      "@implementedBy": ["Order"],
+    });
+    expect(requirementDigest(await requirementAt(shop(accented), "Exact"))).toBe(
+      "ba64ffbaad8827f7c4692b49c083bfc8edc754d65690280f20f2257f3377a813",
+    );
+  });
+
   test("the digest normalises CRLF", async () => {
     const withBreak = (br: string): Json =>
       functional("Gap", {
@@ -453,6 +477,34 @@ describe("requirementTestIdentities — one record per generated test", () => {
       "acme::shop::Orders [*]",
       "acme::shop::Orders.Recorded [object.entity]",
     ]);
+  });
+});
+
+describe("an unknown grain is refused", () => {
+  // A config file is loaded without a typecheck, so a typo reaches this code as a
+  // plain string. Falling through to either grain would generate SOMETHING and say
+  // nothing; half of each (one grain's grouping, the other's paths) is worse.
+  const typo = "members" as unknown as RequirementTestGrain;
+  const refusal = 'unknown requirement-test grain "members": expected "concern" or "member".';
+
+  test("by requirementTestIdentities, even when the ledger is empty", async () => {
+    const empty = await loadDocs(shop());
+    expect(walkRequirements(empty)).toEqual([]);
+    expect(() => requirementTestIdentities(empty, { grain: typo })).toThrow(refusal);
+    const root = await loadDocs(WORKED_EXAMPLE);
+    expect(() => requirementTestIdentities(root, { grain: typo })).toThrow(refusal);
+  });
+
+  test("by requirementTestUnits", async () => {
+    const [first] = walkRequirements(await loadDocs(WORKED_EXAMPLE));
+    expect(() => requirementTestUnits(first!, typo)).toThrow(refusal);
+  });
+
+  test("and a value of the wrong type is named as it was given", async () => {
+    const root = await loadDocs(WORKED_EXAMPLE);
+    expect(() =>
+      requirementTestIdentities(root, { grain: 5 as unknown as RequirementTestGrain }),
+    ).toThrow('unknown requirement-test grain 5: expected "concern" or "member".');
   });
 });
 

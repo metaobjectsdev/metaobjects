@@ -36,6 +36,7 @@
 import {
   GENERATED_HEADER,
   NO_CONCERN,
+  assertRequirementTestGrain,
   defaultRequirementTestFilter,
   requirementTestIdentity,
   requirementTestUnits,
@@ -52,6 +53,8 @@ import {
 import {
   REQUIREMENT_ATTR_COUNTEREXAMPLE,
   REQUIREMENT_ATTR_STATEMENT,
+  REQUIREMENT_STATUSES,
+  REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES,
   REQUIREMENT_STATUS_RETIRED,
 } from "@metaobjectsdev/metadata";
 
@@ -65,6 +68,19 @@ import {
 // The load-bearing rule: an empty generated stub must NOT pass. A `live` entry claims the
 // capability works, so an empty green test asserts the opposite of the claim.
 // ---------------------------------------------------------------------------
+
+/**
+ * Statuses whose stub is SKIPPED rather than failing.
+ *
+ * The rule is "does this entry claim the capability works right now?" — only `live` and
+ * `partial` do. A stub for anything else is skipped: a red build for something nobody
+ * intends to build is noise an application silences wholesale, taking the live stubs
+ * with it. Derived from the loader's status list, not restated from it, so a status
+ * added later is skipped by construction instead of being left failing.
+ */
+const SKIPPED_STATUSES: ReadonlySet<string> = new Set(
+  REQUIREMENT_STATUSES.filter((s) => !REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES.includes(s)),
+);
 
 /**
  * Escape an author-supplied value for a double-quoted TS string literal.
@@ -111,11 +127,9 @@ function gapLine(a: RequirementTestArgs): string {
 }
 
 export function renderRequirementTest(a: RequirementTestArgs): string {
-  // `skip` is null only for the statuses that claim the capability works right now
-  // (`live` and `partial`). A stub for anything else is skipped rather than failing: a
-  // red build for something nobody intends to build is noise an application silences
-  // wholesale, taking the live stubs with it.
-  const skipped = a.skip !== null;
+  // Decided from the requirement's STATUS. The identity fields on `a` (`skip`, `id`,
+  // `digest`, …) are there for a renderer of your own; this one reads none of them.
+  const skipped = a.view.status !== undefined && SKIPPED_STATUSES.has(a.view.status);
   const runner = skipped ? "test.skip" : "test";
   // The test NAME is the link between the ledger entry and the assertion, and it is a
   // string literal: an unescaped quote in either value closes it.
@@ -135,7 +149,7 @@ export function renderRequirementTest(a: RequirementTestArgs): string {
       `    "replace this with an assertion that fails when: ${forStringLiteral(a.counterexample)}",`,
       "  );",
     ];
-  } else if (a.skip === REQUIREMENT_STATUS_RETIRED) {
+  } else if (a.view.status === REQUIREMENT_STATUS_RETIRED) {
     body = [
       "  // Retired: this capability was deliberately removed and must not be rebuilt.",
       "  // If you assert anything here, assert that it STAYS removed.",
@@ -258,6 +272,9 @@ function attrString(node: { attr: (n: string) => unknown }, name: string): strin
 export function requirementTests(opts: RequirementTestsOpts = {}): Generator {
   const filter = opts.filter ?? defaultRequirementTestFilter;
   const grain = opts.grain ?? "concern";
+  // Refused here, when the generator is built, rather than on the first requirement:
+  // an unknown grain is a mistake in the config whatever the model holds.
+  assertRequirementTestGrain(grain);
   const toPath = opts.path ?? (grain === "member" ? defaultMemberPath : defaultPath);
   // A custom `path` with no custom `owns` leaves the default namespace pointing
   // somewhere the generator no longer writes, so reconciliation matches nothing. That

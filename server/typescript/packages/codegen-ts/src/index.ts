@@ -359,6 +359,7 @@ export {
   // requirement-test generator agrees on, and what an owned (ejected) generator
   // keeps importing from here.
   defaultRequirementTestFilter,
+  assertRequirementTestGrain,
   requirementDigest,
   witnessKeyOf,
   requirementTestUnits,

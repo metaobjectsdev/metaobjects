@@ -22,6 +22,7 @@ import {
 import type { Generator, EmittedFile, GenContext } from "../generator.js";
 import {
   walkRequirements,
+  assertRequirementTestGrain,
   defaultRequirementTestFilter,
   requirementTestUnits,
   requirementTestIdentity,
@@ -130,6 +131,9 @@ function attrString(node: { attr: (n: string) => unknown }, name: string): strin
 export function requirementTests(opts: RequirementTestsOpts = {}): Generator {
   const filter = opts.filter ?? defaultRequirementTestFilter;
   const grain = opts.grain ?? "concern";
+  // Refused here, when the generator is built, rather than on the first requirement:
+  // an unknown grain is a mistake in the config whatever the model holds.
+  assertRequirementTestGrain(grain);
   const toPath = opts.path ?? (grain === "member" ? defaultMemberPath : defaultPath);
   // A custom `path` with no custom `owns` leaves the default namespace pointing
   // somewhere the generator no longer writes, so reconciliation matches nothing.
