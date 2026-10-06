@@ -65,25 +65,20 @@ def is_served_report(obj: MetaObject) -> bool:
 
 def has_item_route(entity: MetaObject) -> bool:
     """Whether a read-only object gets a ``/{id}`` route, a ``find_by_id`` on its
-    repository seam and the three item-verb refusals (FR-044 open question 4, as ruled).
+    repository seam and the three item-verb refusals.
 
-    Answer 4 removes only what could never serve a row, so the rule is:
+    The object has one exactly when it DECLARES a primary identity (a single field, or a
+    composite one, which binds its FIRST field). Otherwise there is no declared key to
+    address a row by, so no item route is generated:
 
     * a report (the declared node or its read model) NEVER has one, even if a derived
       field is named ``id``: it has no identity, and a row of it is not addressable;
-    * otherwise it has one when it declares a primary identity (a single field, or a
-      composite one, which binds its FIRST field exactly as before this change), or when
-      it declares NO primary identity and has an effective field named ``id`` (the
-      default key ``pk_field_name`` falls back to);
-    * otherwise (no identity and no ``id`` field) the route could only bind an ``int`` it
-      cannot honour, so it is not generated.
+    * a projection with no declared primary identity has none either, even when it has
+      a field named ``id``. "A field called ``id``" is a convention, not a key. This is
+      the rule of C#, Java and Kotlin, and of the cross-port ``projection/`` corpus.
 
-    Every projection whose router had a usable item route before FR-044 renders
-    byte-identically. ADR-0039: ``children()`` / ``fields()`` resolve, so an inherited
-    identity or ``id`` field counts.
+    ADR-0039: ``primary_identity()`` resolves, so an inherited identity counts.
     """
     if entity.sub_type == OBJECT_SUBTYPE_REPORT:
         return False
-    if entity.primary_identity() is not None:
-        return True
-    return any(f.name == "id" for f in entity.fields())
+    return entity.primary_identity() is not None

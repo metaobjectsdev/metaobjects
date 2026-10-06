@@ -26,6 +26,20 @@ the cross-port contract would drop a capability two ports already shipped.
   inherits (`identity.primary extends Invoice.pk`).
 - **`?filter[...]` and `?sort=`** apply, against allowlists generated from the
   **projection's own** declared field set — not the base entity's.
+- **A projection with no declared primary identity has no `/{id}` route**, in any port,
+  even when it has a field named `id` (`InvoiceStub`). `GET /api/invoice_stubs/1` answers
+  the framework's own `404` and never a row, and `PATCH` / `PUT` / `DELETE` on it answer the
+  same `404`: with no item address there is nothing to refuse. The list and the collection
+  `POST` `405` are unchanged. A field named `id` is a convention, not a key.
+- **A declared key need not be called `id`.** `InvoiceLedger` passes `Invoice`'s key through
+  on a field named `number`, and its view has no `id` column at all. `GET
+  /api/invoice_ledgers/2` answers that row, an unknown key answers the
+  `404 {"error": "not_found"}` envelope, and the item write verbs are refused with the `405`
+  envelope. The identity names its key explicitly (`@fields: number`) because that is the form
+  every port reads the key from.
+- **Filters apply to `field.decimal` and `field.float`.** `InvoiceLedger` carries one of each;
+  the scenarios assert only how many rows match, because each port spells a decimal its own way.
+- **The api docs list the same routes** (`docs-routes.json`, see below).
 - **A filter error names the field**, exactly as on a writable route
   (see `docs/features/api-contract.md` → "Error response").
 - **Every write verb answers `405` with `{"error": "method_not_allowed"}`** —
@@ -41,8 +55,9 @@ the cross-port contract would drop a capability two ports already shipped.
 ```
 projection/
 ├── README.md              # this file
-├── meta.json              # writable Invoice + view-only InvoiceSummary projection
-├── seed.json              # 4 seed Invoice rows (the view derives; it is never seeded)
+├── meta.json              # writable Invoice + three view-only projections
+├── seed.json              # 4 seed Invoice rows (the views derive; they are never seeded)
+├── docs-routes.json       # the routes each projection's api docs page lists, in every port
 └── scenarios/
     ├── list.yaml                       # GET list
     ├── get-by-id.yaml                  # GET by the inherited identity
@@ -50,10 +65,20 @@ projection/
     ├── filter-eq.yaml                  # FR-009 filter on a projection field
     ├── filter-invalid-field.yaml       # 400 envelope, naming the field (F20 on the read-only mount)
     ├── sort-desc.yaml                  # ?sort on a projection field
-    └── write-verbs-405.yaml            # POST/PATCH/PUT/DELETE → 405 + envelope
+    ├── write-verbs-405.yaml            # POST/PATCH/PUT/DELETE → 405 + envelope
+    ├── keyless-no-item-route.yaml      # no declared identity (even with an `id` field) → no /{id} route
+    ├── keyed-by-non-id-field.yaml      # key on `number`, view with no `id` column → that row, 404 envelope
+    ├── filter-decimal.yaml             # FR-009 filter on a field.decimal
+    └── filter-float.yaml               # FR-009 filter on a field.float
 ```
 
-`seed.json` seeds the base `invoices` table. The view is created by each port's
+The three projections: `InvoiceSummary` (key passed through from `Invoice` on `id`),
+`InvoiceLedger` (key on `number`; also the decimal and float fields) and `InvoiceStub` (no
+identity). `docs-routes.json` is read by a per-port docs test, not by the scenario runners: it
+lists, for each projection, the `GET` routes its api docs page documents (no write verb, and no
+`/{id}` for a keyless one), spelled without the api prefix and with `{id}`.
+
+`seed.json` seeds the base `invoices` table. The views are created by each port's
 harness after the table, because the ports do not agree on physical column
 spelling: TypeScript and Kotlin default to snake_case (`amount_cents`) while C#,
 Java and Python default to literal (`amountCents`). A view's column aliases have
@@ -76,11 +101,22 @@ nothing about the emitted artifact, which is the thing that was missing.
 
 | Port | Generated lane | Note |
 |---|---|---|
-| TypeScript | **wired, green (7/7)** | `test/api-contract-projection.test.ts` |
-| Python | **wired, green (7/7)** | `tests/integration/test_api_contract_projection.py` |
-| C# | **wired, green (7/7)** | `MetaObjects.IntegrationTests/Api/ApiContractProjectionConformanceTest.cs` |
-| Java | **wired, green (7/7)** | `integration-tests/.../ProjectionGeneratedApiContractConformanceTest.java` |
-| Kotlin | **wired, green (7/7)** | `integration-tests-kotlin/.../ProjectionGeneratedApiContractConformanceTest.kt` |
+| TypeScript | **wired, green (11/11)** | `test/api-contract-projection.test.ts` |
+| Python | **wired, green (11/11)** | `tests/integration/test_api_contract_projection.py` |
+| C# | **wired, green (11/11)** | `MetaObjects.IntegrationTests/Api/ApiContractProjectionConformanceTest.cs` |
+| Java | **wired, green (11/11)** | `integration-tests/.../ProjectionGeneratedApiContractConformanceTest.java` |
+| Kotlin | **wired, green (11/11)** | `integration-tests-kotlin/.../ProjectionGeneratedApiContractConformanceTest.kt` |
+
+The docs half (`docs-routes.json`) runs in each port's unit-test project, over the same
+`meta.json`:
+
+| Port | Docs test |
+|---|---|
+| TypeScript | `server/typescript/packages/codegen-ts/test/projection-docs-routes.test.ts` |
+| C# | `server/csharp/MetaObjects.Codegen.Tests/ProjectionDocsRoutesTests.cs` |
+| Java | `server/java/codegen-spring/src/test/java/com/metaobjects/generator/apidocs/ProjectionDocsRoutesTest.java` |
+| Kotlin | `server/java/codegen-kotlin/src/test/kotlin/com/metaobjects/codegen/kotlin/apidocs/ProjectionDocsRoutesKtTest.kt` |
+| Python | `server/python/tests/codegen/test_projection_docs_routes.py` |
 
 All five ports are wired. The corpus was committed ahead of four of them
 deliberately: it is the contract they were changed to satisfy, and it had

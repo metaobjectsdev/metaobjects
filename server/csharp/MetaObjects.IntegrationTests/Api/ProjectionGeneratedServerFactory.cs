@@ -102,9 +102,10 @@ internal sealed class ProjectionGeneratedServerFactory : IAsyncDisposable
             .Where(o => RoutesGenerator.AppliesTo(o, root))
             .Select(o => CSharpNaming.Pascal(o.Name))
             .ToList();
-        if (routedNames.Count != 2)
+        if (routedNames.Count != 4)
             throw new InvalidOperationException(
-                "expected routes for Invoice AND InvoiceSummary, got: " + string.Join(", ", routedNames));
+                "expected routes for Invoice, InvoiceSummary, InvoiceLedger AND InvoiceStub, got: "
+                + string.Join(", ", routedNames));
 
         var ctx = new GenContext
         {

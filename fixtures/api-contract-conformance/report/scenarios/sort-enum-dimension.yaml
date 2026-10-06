@@ -1,0 +1,28 @@
+name: report-sort-enum-dimension
+description: >
+  ?sort=status — `status` is a field.enum on Invoice, so the report's `status` dimension
+  is an enum. An enum dimension is sortable like any other derived field, in every port:
+  it is accepted (never `invalid_sort`) and orders by the stored value. The members are
+  declared in alphabetical order (OPEN, PAID, VOID), so the stored text and the declared
+  order agree and the assertion does not depend on which a port sorts by.
+requests:
+  - id: asc
+    method: GET
+    path: /api/invoice_status_totals?sort=status:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { status: "OPEN", invoices: 2, totalCents: 130500, paidCents: null }
+          - { status: "PAID", invoices: 2, totalCents: 185000, paidCents: 185000 }
+          - { status: "VOID", invoices: 1, totalCents: 0, paidCents: null }
+  - id: desc
+    method: GET
+    path: /api/invoice_status_totals?sort=status:desc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { status: "VOID", invoices: 1, totalCents: 0, paidCents: null }
+          - { status: "PAID", invoices: 2, totalCents: 185000, paidCents: 185000 }
+          - { status: "OPEN", invoices: 2, totalCents: 130500, paidCents: null }

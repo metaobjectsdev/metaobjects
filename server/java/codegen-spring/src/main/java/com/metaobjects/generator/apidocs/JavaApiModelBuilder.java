@@ -227,18 +227,14 @@ public final class JavaApiModelBuilder {
         if (GeneratorUtil.isReport(obj)) return;
 
         // F22 — a read-only projection's controller serves the reads and REFUSES every write
-        // verb with 405. Documenting it with the writable verb list would be the precise
-        // drift this builder exists to prevent: the emitted controller has no create path,
-        // and a keyless projection has no /{id} route to document at all.
+        // verb with 405. Those refusals are not operations a caller can use, so, like every
+        // other port, the page lists the reads only: GET list, and GET by id when the
+        // projection declares an identity. Documenting the writable verb list would be the
+        // precise drift this builder exists to prevent: the emitted controller has no create
+        // path, and a keyless projection has no /{id} route to document at all.
         if (RestSurfaceGate.isReadOnly(obj)) {
-            boolean hasItem = RestSurfaceGate.hasItemRoute(obj);
-            if (hasItem) addRest(symbols, controllerFqn, "GET " + base + "/{id}", "fetch one by id");
-            String refused = "405 {\"error\": \"method_not_allowed\"} — read-only projection";
-            addRest(symbols, controllerFqn, "POST " + base, refused);
-            if (hasItem) {
-                addRest(symbols, controllerFqn, "PATCH " + base + "/{id}", refused);
-                addRest(symbols, controllerFqn, "PUT " + base + "/{id}", refused);
-                addRest(symbols, controllerFqn, "DELETE " + base + "/{id}", refused);
+            if (RestSurfaceGate.hasItemRoute(obj)) {
+                addRest(symbols, controllerFqn, "GET " + base + "/{id}", "fetch one by id");
             }
             return;   // a projection declares no M:N relationships to traverse
         }

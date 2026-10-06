@@ -1125,13 +1125,14 @@ const READ_WRITE_FIXTURE = JSON.stringify({
         { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
         { "identity.reference": { name: "fkCustomer", "@fields": "customerId", "@references": "Customer" } },
       ] } },
-      // Read-only, keyed: an `id` column by convention addresses a row.
+      // Read-only, keyed: a declared identity addresses a row.
       { "object.projection": { name: "CustomerCard", children: [
         { "source.rdb": { "@kind": "view", "@table": "v_customer_card", "@unmanaged": true } },
-        { "field.long": { name: "id" } },
+        { "field.long": { name: "id", extends: "Customer.id" } },
         { "field.string": { name: "name" } },
+        { "identity.primary": { name: "id", extends: "Customer.id" } },
       ] } },
-      // Read-only, keyless: no identity and no `id` column.
+      // Read-only, keyless: no declared identity (this one has no `id` column either).
       { "object.projection": { name: "RegionTotal", children: [
         { "source.rdb": { "@kind": "view", "@table": "v_region_total", "@unmanaged": true } },
         { "field.string": { name: "region" } },

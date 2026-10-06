@@ -10,6 +10,8 @@
           { "field.string":     { "name": "reference", "@required": true, "@maxLength": 40 } },
           { "field.string":     { "name": "status", "@required": true, "@maxLength": 20 } },
           { "field.long":       { "name": "amountCents", "@required": true } },
+          { "field.decimal":    { "name": "discount", "@precision": 10, "@scale": 2 } },
+          { "field.float":      { "name": "weight" } },
           { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
         ]
       }},
@@ -22,6 +24,25 @@
           { "field.string":     { "name": "status",      "extends": "Invoice.status",      "@filterable": true, "@sortable": false } },
           { "field.long":       { "name": "amountCents", "extends": "Invoice.amountCents", "@filterable": true, "@sortable": true } },
           { "identity.primary": { "name": "pk", "extends": "Invoice.pk" } }
+        ]
+      }},
+      { "object.projection": {
+        "name": "InvoiceLedger",
+        "children": [
+          { "source.rdb":       { "@kind": "view", "@view": "v_invoice_ledger" } },
+          { "field.long":       { "name": "number",    "extends": "Invoice.id",        "@filterable": true, "@sortable": true } },
+          { "field.string":     { "name": "reference", "extends": "Invoice.reference", "@filterable": true, "@sortable": true } },
+          { "field.decimal":    { "name": "discount",  "extends": "Invoice.discount",  "@filterable": true, "@sortable": true } },
+          { "field.float":      { "name": "weight",    "extends": "Invoice.weight",    "@filterable": true, "@sortable": true } },
+          { "identity.primary": { "name": "pk", "extends": "Invoice.pk", "@fields": "number" } }
+        ]
+      }},
+      { "object.projection": {
+        "name": "InvoiceStub",
+        "children": [
+          { "source.rdb":       { "@kind": "view", "@view": "v_invoice_stub" } },
+          { "field.long":       { "name": "id",        "extends": "Invoice.id",        "@filterable": true, "@sortable": true } },
+          { "field.string":     { "name": "reference", "extends": "Invoice.reference", "@filterable": true, "@sortable": true } }
         ]
       }}
     ]

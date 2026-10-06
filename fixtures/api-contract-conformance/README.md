@@ -53,7 +53,7 @@ fixtures/api-contract-conformance/
 ```
 
 Beside the 31 core scenarios above sit six **sub-corpora**, each a directory with its
-own `meta.json`, `seed.json`, `scenarios/` and `README.md` (73 scenarios in all):
+own `meta.json`, `seed.json`, `scenarios/` and `README.md` (78 scenarios in all):
 
 | Directory | Scenarios | Gates | Lanes |
 |---|---|---|---|
@@ -61,8 +61,8 @@ own `meta.json`, `seed.json`, `scenarios/` and `README.md` (73 scenarios in all)
 | `m2m/` | 9 | M:N traversal, and TPH x M:N together | both |
 | `jsonb/` | 2 | typed value-object columns | both |
 | `write-through/` | 2 | an entity that writes a table and reads a view | generated only |
-| `projection/` | 7 | a read-only `object.projection`: reads served, every write `405` | generated only |
-| `report/` | 12 | a view-backed `object.report` (FR-044): list, filter, sort and paging on derived fields, `POST` is `405`, no `/{id}` route. Also carries `schema.postgres.sql`, the TypeScript-produced table and views the C# lane executes | generated only |
+| `projection/` | 11 | a read-only `object.projection`: reads served, every write `405`; no declared identity means no `/{id}` route; a key not named `id` addresses the row; decimal and float filters. Its `docs-routes.json` pins the routes each port documents | generated only |
+| `report/` | 13 | a view-backed `object.report` (FR-044): list, filter, sort and paging on derived fields, `POST` is `405`, no `/{id}` route. Also carries `schema.postgres.sql`, the TypeScript-produced table and views the C# lane executes | generated only |
 
 `meta.json` declares a single canonical `Author` entity in the `acme::blog`
 package:

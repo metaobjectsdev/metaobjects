@@ -107,8 +107,9 @@ it until 1.1 ships._
   with a derived field over a `field.object`. In C# a report's enum dimension is sortable (an
   entity's enum field still is not). A decimal column (`avg`, a ratio, a `sum` of a decimal)
   has no cross-port JSON spelling: each port sends its own, and TypeScript sends a string.
-  Gated by a new api-contract sub-corpus, `fixtures/api-contract-conformance/report/` (12
-  scenarios, generated lane, all five ports; the corpus goes from 61 scenarios to 73), which
+  Gated by a new api-contract sub-corpus, `fixtures/api-contract-conformance/report/` (13
+  scenarios, generated lane, all five ports; the corpus goes from 61 scenarios to 78, the
+  `projection/` sub-corpus gaining four), which
   is also the first to assert a `field.date` literally. Anyone who declared a view-sourced
   report under the unreleased 1.1 vocabulary will see these files on the next `gen`. See
   [docs/features/reporting.md](docs/features/reporting.md#how-a-report-is-served).
@@ -144,28 +145,32 @@ it until 1.1 ships._
 
 ### Changed
 
-Seven corrections that shipped with report serving and reach models that declare no report.
+Eight corrections that shipped with report serving and reach models that declare no report.
 Each one changes generated code on the next `gen`, or generated docs on the next `meta docs`
 or Python api-docs build, as its entry says. A drift gate that covers that output reports it
 until you regenerate.
 
-- **TypeScript and Python: a read-only projection with no declared identity and no field named
-  `id` loses its item surface.** It no longer gets `GET /{id}` or the three item-verb refusals,
-  its by-id query (`find<Name>ById` in TypeScript, `find_by_id` on the Python repository
-  Protocol) or, in TypeScript, its detail hook and `detail` query keys. That surface could not
-  address a row: TypeScript built the query with no `WHERE` and answered the view's first row,
-  and Python bound an `id: int` to nothing. **Unchanged by this entry:** a projection with a
-  declared identity (a composite one still binds its first field; the next entry covers one
-  keyed on a field not named `id`), and a projection with an `id` field and no declared
-  identity. C#, Java and Kotlin are unchanged and remain stricter: they mount
-  `/{id}` only for a declared single-column identity, so a projection with an `id` field and no
-  declared identity has item routes in TypeScript and Python and none in the other three. The
-  TypeScript mounts (`mountReadOnlyCrudRoutes`, Fastify and Hono) take a new `itemRoutes: false`
-  option for this; it defaults to mounting them. **Upgrading:** an owned `routes` or
-  `routes-hono` generator ejected before this release keeps mounting the item routes for this
-  shape until you re-eject it or add `itemRoutes: false` to its read-only mount options, and
-  an owned `mount-read-only.ts` needs the re-sync described under the served-report entry
-  above.
+- **TypeScript and Python: a read-only projection with no declared identity loses its item
+  surface, even when it has a field named `id`.** It no longer gets `GET /{id}` or the three
+  item-verb refusals, its by-id query (`find<Name>ById` in TypeScript, `find_by_id` on the Python
+  repository Protocol) or, in TypeScript, its detail hook and `detail` query keys. This is a
+  **named behaviour change for an adopter whose view-only projection has an `id` field and no
+  `identity.primary`**: that shape kept working in these two ports (TypeScript answered the row
+  whose `id` matched), and now answers the framework's `404` for `/{id}`. To keep the item
+  route, declare the identity: `identity.primary` extending the base entity's, with a
+  pass-through field for its key. A field named `id` is a convention, not a key, and C#, Java
+  and Kotlin never mounted item routes for it, so all five ports now mount `/{id}` for exactly
+  the projections that declare an identity. Without any `id` field the same surface was already
+  unaddressable: TypeScript built the by-id query with no `WHERE` and answered the view's first
+  row, and Python bound an `id: int` to nothing. **Unchanged by this entry:** a projection with
+  a declared identity (a composite one still binds its first field in these two ports; the next
+  entry covers one keyed on a field not named `id`). The TypeScript mounts
+  (`mountReadOnlyCrudRoutes`, Fastify and Hono) take a new `itemRoutes: false` option for this;
+  it defaults to mounting them. **Upgrading:** an owned `routes` or `routes-hono` generator
+  ejected before this release keeps mounting the item routes for this shape until you re-eject
+  it or add `itemRoutes: false` to its read-only mount options, and an owned
+  `mount-read-only.ts` needs the re-sync described under the served-report entry above. Gated
+  in all five ports by `projection/keyless-no-item-route.yaml`.
 - **TypeScript: a read-only projection whose identity is on a field not named `id` now
   addresses that field.** The shape: a view-only `object.projection` whose
   `identity.primary` names a single field such as `code`, or a composite identity whose first
@@ -197,6 +202,13 @@ until you regenerate.
   `GET <path>/{id}` only when the projection has an item route (the rule above), and the
   filter allowlist. No write verb is listed, since the router answers those with `405`.
   Entities and write-through objects are unchanged. Regenerate the docs to pick the pages up.
+- **Java and Kotlin API docs: a read-only projection's page lists the reads only.** The
+  api-docs builders listed `POST`, `PATCH`, `PUT` and `DELETE` on a read-only projection, each
+  described as a `405` refusal, beside `GET`. The other three ports never documented a write
+  verb on one, and a refusal is not an operation a caller can use, so the page now lists `GET
+  <path>` and, when the projection declares an identity, `GET <path>/{id}`. The generated
+  controllers are unchanged. Regenerate the docs to pick it up. Gated in all five ports by
+  `projection/docs-routes.json`.
 - **Java: a filter allowlist with more than ten filterable fields now compiles.**
   `SpringFilterAllowlistGenerator` spelled `OPS_BY_FIELD` with `Map.of`, which has no overload
   past ten pairs, so an entity or projection with eleven or more `@filterable` fields generated

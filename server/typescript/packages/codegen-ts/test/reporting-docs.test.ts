@@ -367,9 +367,10 @@ describe("FR-044 answer 4: a keyless projection documents no item surface", () =
     expect(symbols).not.toContain("findRegionTotalsById");
   });
 
-  test("an id column by convention keeps both (unchanged)", async () => {
+  test("an id column by convention is not a declared key: no item surface either", async () => {
     const symbols = names(await loadJson(model(true)));
-    expect(symbols).toContain("GET /api/region_totals/:id");
-    expect(symbols).toContain("findRegionTotalsById");
+    expect(symbols).toContain("GET /api/region_totals");
+    expect(symbols.filter((n) => n.includes(":id"))).toEqual([]);
+    expect(symbols).not.toContain("findRegionTotalsById");
   });
 });

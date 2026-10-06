@@ -425,21 +425,23 @@ The surface:
   on the collection, `PATCH` / `PUT` / `DELETE` on the item. 405 rather than 404
   because the resource plainly exists: the same path answers `GET`. `message` is free
   prose and is not part of the contract.
-- A **keyless** projection mounts no `/{id}` route at all, so it refuses only the
-  collection verb — refusing an item verb would advertise an address the port never
-  serves. What counts as keyless differs by port, and the corpus does not gate it:
-
-  | Port | Item routes are mounted when |
-  |---|---|
-  | C#, Java, Kotlin | the projection declares or inherits a **single-column** `identity.primary` |
-  | TypeScript, Python | it declares or inherits an `identity.primary` (a composite one binds its first field), **or** it declares none and has a field named `id` |
-
-  So a projection with an `id` field and no declared identity has item routes in
-  TypeScript and Python and none in the other three. Until FR-044, TypeScript and Python
-  mounted the item routes for **every** read-only projection, including one with no
-  identity and no `id` field, where they could not address a row (TypeScript answered the
-  view's first row). That one shape lost its `/{id}` routes, its by-id query and, in
-  TypeScript, its detail hook; every other projection is unchanged.
+- A **keyless** projection, one that declares and inherits no `identity.primary`, mounts no
+  `/{id}` route of any verb in any port, so it refuses only the collection verb —
+  refusing an item verb would advertise an address the port never serves. A field that
+  happens to be named `id` is a convention, not a key: a projection with an `id` field and
+  no declared identity is keyless. `GET /<plural>/1` on one answers the framework's own
+  `404`, never a row. A projection with a declared identity addresses a row by the field
+  that identity names, which need not be called `id` and which the view's column must
+  match: `GET /<plural>/{key}` answers that row, or the `404 {"error": "not_found"}`
+  envelope. One difference remains, and the corpus does not gate it: C#, Java and Kotlin
+  mount item routes only for a **single-column** identity, while TypeScript and Python
+  bind a composite one to its first field.
+- Filters apply to a projection's `field.decimal` and `field.float` fields as they do to
+  an entity's. A decimal's wire spelling is port-specific and is not asserted.
+- **The api docs list the same routes.** A projection's api page documents `GET <path>`,
+  and `GET <path>/{id}` only when the item route exists. The `405` refusals are not
+  operations a caller can use, so no write verb is documented. Pinned in every port by
+  `projection/docs-routes.json`.
 
 Every port mounts those refusals **explicitly**. Left to the framework, ASP.NET and
 Spring each answer an unmatched method on a matched path with an empty-bodied 405 and
@@ -472,7 +474,7 @@ entity's. No request parameter picks dimensions, measures or a grain. No port ge
 client hook, grid or form for a report yet.
 
 Gated by [`fixtures/api-contract-conformance/report/`](../../fixtures/api-contract-conformance/report/)
-(12 scenarios), **generated lane only, on all five ports**, for the reason `projection/`
+(13 scenarios), **generated lane only, on all five ports**, for the reason `projection/`
 gives. The columns, their types and the per-port generated files are in
 [reporting.md](reporting.md#how-a-report-is-served).
 

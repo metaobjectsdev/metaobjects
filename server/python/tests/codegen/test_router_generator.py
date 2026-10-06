@@ -17,6 +17,11 @@ from metaobjects.codegen.generators.router_generator import render_router
 from metaobjects.codegen.runtime.filter_parser import parse_filter
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.field import field_constants as fc
+from metaobjects.meta.core.identity.identity_constants import (
+    IDENTITY_ATTR_FIELDS,
+    IDENTITY_SUBTYPE_PRIMARY,
+)
+from metaobjects.meta.core.identity.meta_identity import MetaIdentity
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.persistence.source.meta_source import MetaSource
 from metaobjects.meta.persistence.source.source_constants import (
@@ -24,7 +29,7 @@ from metaobjects.meta.persistence.source.source_constants import (
     SOURCE_KIND_VIEW,
     SOURCE_SUBTYPE_RDB,
 )
-from metaobjects.shared.base_types import TYPE_FIELD, TYPE_OBJECT, TYPE_SOURCE
+from metaobjects.shared.base_types import TYPE_FIELD, TYPE_IDENTITY, TYPE_OBJECT, TYPE_SOURCE
 
 
 def _entity(
@@ -45,6 +50,15 @@ def _entity(
     for f in fields:
         o.add_child(f)
     return o
+
+
+def _with_primary_identity(obj: MetaObject, *fields: str) -> MetaObject:
+    """Declare ``identity.primary @fields: <fields>``: a read-only object has an item route
+    only when it declares a key (a field merely named ``id`` is a convention, not a key)."""
+    ident = MetaIdentity(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY, "pk")
+    ident.set_attr(IDENTITY_ATTR_FIELDS, list(fields))
+    obj.add_child(ident)
+    return obj
 
 
 def _f(name: str, sub: str, *, required: bool = False) -> MetaField:
@@ -125,12 +139,12 @@ def test_view_kind_gets_a_read_only_router() -> None:
     ever asked which was right. Ruled all-five-serve-projections, so the
     assertion is inverted deliberately — the old one was the defect, written down.
     """
-    view = _entity(
+    view = _with_primary_identity(_entity(
         "AuthorView",
         [_f("id", fc.FIELD_SUBTYPE_INT, required=True)],
         source_kind=SOURCE_KIND_VIEW,
         package="acme::blog",
-    )
+    ), "id")
     out = render_router(view)
     assert out is not None
     # Reads are mounted.
@@ -160,13 +174,13 @@ def test_projection_subtype_gets_a_read_only_router() -> None:
     ERR_ENTITY_PRIMARY_SOURCE_READONLY at load (B4b), so `object.projection` is
     the shape a real model uses — and the generator must key off the SOURCE, not
     the subtype (instance artifacts derive from a declared source)."""
-    proj = _entity(
+    proj = _with_primary_identity(_entity(
         "InvoiceSummary",
         [_f("id", fc.FIELD_SUBTYPE_INT, required=True)],
         source_kind=SOURCE_KIND_VIEW,
         package="acme::sales",
         subtype="projection",
-    )
+    ), "id")
     out = render_router(proj)
     assert out is not None
     assert 'router = APIRouter(prefix="/api/invoice_summaries"' in out

@@ -1,0 +1,20 @@
+name: projection-filter-decimal
+description: >
+  The FR-009 filter grammar applies to a `field.decimal` of a projection, in every
+  port. The operand is parsed as a decimal and compared as one (Kotlin answered a
+  500 on this before the decimal and float coercers were split). Only how many rows
+  match is asserted, because each port spells a decimal its own way on the wire.
+  Seed discounts: 7.25, 12.5, 3.0, 1.0.
+requests:
+  - id: gt
+    method: GET
+    path: "/api/invoice_ledgers?filter[discount][gt]=10"
+    expect: { status: 200, body: { length: 1 } }
+  - id: lte
+    method: GET
+    path: "/api/invoice_ledgers?filter[discount][lte]=7.25"
+    expect: { status: 200, body: { length: 3 } }
+  - id: eq
+    method: GET
+    path: "/api/invoice_ledgers?filter[discount][eq]=12.5"
+    expect: { status: 200, body: { length: 1 } }

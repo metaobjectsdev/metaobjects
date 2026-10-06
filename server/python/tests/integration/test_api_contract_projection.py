@@ -67,7 +67,7 @@ def _load_seed_rows() -> list[dict[str, Any]]:
 _SEED_ROWS = _load_seed_rows()
 _SCENARIOS = _load_scenarios()
 
-_APP, _REPO = build_generated_projection_app(_CORPUS)
+_APP, _REPOS = build_generated_projection_app(_CORPUS)
 _CLIENT = TestClient(_APP)
 
 
@@ -78,10 +78,11 @@ _CLIENT = TestClient(_APP)
 )
 def test_projection_scenario(scenario_name: str, scenario: dict[str, Any]) -> None:
     """Run one projection api-contract scenario against the GENERATED router."""
-    _REPO.reset()
     setup = scenario.get("setup") or {}
-    if not setup.get("truncate"):
-        _REPO.seed(_SEED_ROWS)
+    for repo in _REPOS.values():
+        repo.reset()
+        if not setup.get("truncate"):
+            repo.seed(_SEED_ROWS)
     for req in scenario.get("requests", []):
         _run_request(scenario_name, req)
 

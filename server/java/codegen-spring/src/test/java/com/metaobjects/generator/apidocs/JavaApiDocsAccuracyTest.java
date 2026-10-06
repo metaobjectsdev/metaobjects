@@ -320,11 +320,10 @@ public class JavaApiDocsAccuracyTest extends SharedRegistryTestBase {
             if (sym.kind() == ApiSymbolKind.REST) rest.add(sym.name());
         }
         assertTrue("list route documented: " + rest, rest.contains("GET /api/author_summaries"));
-        assertTrue("every write verb documented as refused: " + rest,
-            summary.symbols().stream()
-                .filter(sym -> sym.kind() == ApiSymbolKind.REST)
-                .filter(sym -> !sym.name().startsWith("GET "))
-                .allMatch(sym -> sym.usage().contains("method_not_allowed")));
+        // The controller answers every write verb with 405, which is a refusal and not an
+        // operation: no write verb is documented (the same rule as every other port).
+        assertTrue("no write verb documented: " + rest,
+            rest.stream().allMatch(name -> name.startsWith("GET ")));
     }
 
     @Test

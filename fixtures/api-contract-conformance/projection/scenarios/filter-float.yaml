@@ -1,0 +1,17 @@
+name: projection-filter-float
+description: >
+  The FR-009 filter grammar applies to a `field.float` of a projection, in every
+  port. Seed weights (all exact in binary, so `eq` is safe): 0.5, 1.5, 2.5, 0.25.
+requests:
+  - id: gte
+    method: GET
+    path: "/api/invoice_ledgers?filter[weight][gte]=1.5"
+    expect: { status: 200, body: { length: 2 } }
+  - id: lt
+    method: GET
+    path: "/api/invoice_ledgers?filter[weight][lt]=0.5"
+    expect: { status: 200, body: { length: 1 } }
+  - id: eq
+    method: GET
+    path: "/api/invoice_ledgers?filter[weight][eq]=0.25"
+    expect: { status: 200, body: { length: 1 } }

@@ -45,9 +45,9 @@ describe("api-contract report corpus", () => {
     expect(Object.keys(seed.reports)).toEqual(["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals"]);
   });
 
-  test("every scenario parses, and there are twelve", () => {
+  test("every scenario parses, and there are thirteen", () => {
     const scenarios = loadScenarios(API_CONTRACT_REPORT_SCENARIOS_DIR);
-    expect(scenarios.length).toBe(12);
+    expect(scenarios.length).toBe(13);
     for (const s of scenarios) expect(s.requests.length).toBeGreaterThan(0);
   });
 

@@ -29,7 +29,14 @@ import { executeSql } from "./postgres-sql.ts";
 import { loadMetadataFile } from "./load-metadata.ts";
 
 export interface ProjectionSeed {
-  invoices: Array<{ id: number; reference: string; status: string; amountCents: number }>;
+  invoices: Array<{
+    id: number;
+    reference: string;
+    status: string;
+    amountCents: number;
+    discount: number;
+    weight: number;
+  }>;
 }
 
 export interface GeneratedProjectionServerHandle {
@@ -84,20 +91,36 @@ export const db = drizzle(pool);
       "id" bigserial PRIMARY KEY,
       "reference" varchar(40) NOT NULL,
       "status" varchar(20) NOT NULL,
-      "amount_cents" bigint NOT NULL
+      "amount_cents" bigint NOT NULL,
+      "discount" numeric(10,2),
+      "weight" real
     );
     CREATE OR REPLACE VIEW "v_invoice_summary" AS
       SELECT "id", "reference", "status", "amount_cents" FROM "invoices";
+    -- InvoiceLedger: its key is the field \`number\`, and the view has NO id column.
+    CREATE OR REPLACE VIEW "v_invoice_ledger" AS
+      SELECT "id" AS "number", "reference", "discount", "weight" FROM "invoices";
+    -- InvoiceStub: no declared identity; the view carries an id column all the same.
+    CREATE OR REPLACE VIEW "v_invoice_stub" AS
+      SELECT "id", "reference" FROM "invoices";
   `);
 
   // 4. Import the EMITTED InvoiceSummary route file unmodified and mount it.
   const routes = (await import(
     pathToFileURL(join(tmp, "InvoiceSummary.routes.ts")).href
   )) as { invoiceSummaryRoutes: (f: FastifyInstance) => Promise<void> };
+  const ledgerRoutes = (await import(
+    pathToFileURL(join(tmp, "InvoiceLedger.routes.ts")).href
+  )) as { invoiceLedgerRoutes: (f: FastifyInstance) => Promise<void> };
+  const stubRoutes = (await import(
+    pathToFileURL(join(tmp, "InvoiceStub.routes.ts")).href
+  )) as { invoiceStubRoutes: (f: FastifyInstance) => Promise<void> };
   const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool };
 
   const fastify = Fastify();
   await fastify.register(routes.invoiceSummaryRoutes);
+  await fastify.register(ledgerRoutes.invoiceLedgerRoutes);
+  await fastify.register(stubRoutes.invoiceStubRoutes);
   await fastify.ready();
   const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });
 
@@ -121,8 +144,8 @@ export async function seedProjection(connectionUri: string, seed: ProjectionSeed
   for (const i of seed.invoices) {
     await executeSql(
       connectionUri,
-      `INSERT INTO "invoices" ("id","reference","status","amount_cents")
-       VALUES (${i.id}, ${str(i.reference)}, ${str(i.status)}, ${i.amountCents})`,
+      `INSERT INTO "invoices" ("id","reference","status","amount_cents","discount","weight")
+       VALUES (${i.id}, ${str(i.reference)}, ${str(i.status)}, ${i.amountCents}, ${i.discount}, ${i.weight})`,
     );
   }
 }
