@@ -1,0 +1,15 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - object.entity:
+        name: Customer
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }

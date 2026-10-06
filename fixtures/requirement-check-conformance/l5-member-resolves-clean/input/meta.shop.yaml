@@ -1,0 +1,47 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - field.currency:
+              name: total
+              currency: USD
+              children:
+                - view.currency: { name: display, locale: en-US }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - requirement.functional:
+        name: Recorded
+        level: 4
+        status: live
+        statement: An order is recorded when it is placed.
+        counterexample: A placed order has no row.
+        implementedBy: [Order]
+        children:
+          # A field.
+          - requirement.functional:
+              name: Quotable
+              level: 5
+              status: live
+              statement: An order carries a reference the customer can quote.
+              counterexample: An order nobody can quote back.
+              implementedBy: [Order.reference]
+          # An identity.
+          - requirement.functional:
+              name: Addressable
+              level: 5
+              status: live
+              statement: An order is addressed by one stable key.
+              counterexample: An order that cannot be pointed at.
+              implementedBy: [Order.pk]
+          # A view under a field.
+          - requirement.functional:
+              name: Priced
+              level: 5
+              status: live
+              statement: An order total is shown in the customer currency.
+              counterexample: A total shown as a bare number.
+              implementedBy: [Order.total.display]

@@ -1,0 +1,22 @@
+{
+  "diagnostics": [
+    {
+      "severity": "warn",
+      "code": "WARN_REQUIREMENT_OBJECT_UNCLAIMED",
+      "message": "no requirement claims 'acme::shop::Customer'. Add it to an L4 requirement's 'implementedBy'."
+    }
+  ],
+  "summary": {
+    "total": 13,
+    "functional": 9,
+    "architectural": 4,
+    "byStatus": {
+      "live": 11,
+      "partial": 2
+    },
+    "undecided": 0,
+    "deferredUntracked": 0,
+    "entitiesClaimed": 10,
+    "entitiesTotal": 11
+  }
+}

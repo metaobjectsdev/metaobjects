@@ -1,0 +1,11 @@
+metadata:
+  package: acme::archive
+  children:
+    # No requirement in acme::archive has this path; a bare path is looked up across the whole ledger.
+    - requirement.functional:
+        name: Telexed
+        level: 4
+        status: retired
+        supersededBy: Orders.Recorded
+        statement: An order confirmation is sent by telex.
+        counterexample: A confirmed order with no telex.

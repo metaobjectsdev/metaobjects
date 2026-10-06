@@ -1,0 +1,25 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - requirement.architectural:
+        name: Identified
+        level: 4
+        status: live
+        statement: Every row is addressed by a uuid.
+        counterexample: A row keyed by a name.
+        implementedBy: [Order, Order.id]
+        children:
+          - requirement.architectural:
+              name: Keyed
+              level: 5
+              status: live
+              statement: Every key is a single uuid column.
+              counterexample: A key made of two columns.
+              implementedBy: [Order, Order.pk]

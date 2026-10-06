@@ -1,0 +1,28 @@
+{
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_L4_NOT_OBJECT",
+      "path": "Quotable",
+      "message": "L4 references an object; 'Order.reference' names a member. Move it to a nested L5 child, or reference the object itself."
+    },
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_L4_NOT_OBJECT",
+      "path": "Totalled",
+      "message": "L4 references an object; 'Order.total' names a member. Move it to a nested L5 child, or reference the object itself."
+    }
+  ],
+  "summary": {
+    "total": 2,
+    "functional": 2,
+    "architectural": 0,
+    "byStatus": {
+      "live": 2
+    },
+    "undecided": 0,
+    "deferredUntracked": 0,
+    "entitiesClaimed": 1,
+    "entitiesTotal": 1
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_L5_NOT_MEMBER",
+      "path": "Recorded",
+      "message": "L5 references a member (field, view or identity); 'Order' names an object. Move it to its L4 parent."
+    },
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_L5_NOT_MEMBER",
+      "path": "Refunded",
+      "message": "L5 references a member (field, view or identity); 'Refund' names an object. Move it to its L4 parent."
+    }
+  ],
+  "summary": {
+    "total": 2,
+    "functional": 2,
+    "architectural": 0,
+    "byStatus": {
+      "live": 2
+    },
+    "undecided": 0,
+    "deferredUntracked": 0,
+    "entitiesClaimed": 1,
+    "entitiesTotal": 1
+  }
+}

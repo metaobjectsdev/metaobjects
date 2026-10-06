@@ -1,0 +1,22 @@
+{
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_DANGLING_REF",
+      "path": "Recorded.Totalled",
+      "message": "'Order.total' does not resolve in the loaded model (status 'live' — the model moved and the requirement is stale). 'acme::shop::Order' has no member 'total'."
+    }
+  ],
+  "summary": {
+    "total": 2,
+    "functional": 2,
+    "architectural": 0,
+    "byStatus": {
+      "live": 2
+    },
+    "undecided": 0,
+    "deferredUntracked": 0,
+    "entitiesClaimed": 1,
+    "entitiesTotal": 1
+  }
+}

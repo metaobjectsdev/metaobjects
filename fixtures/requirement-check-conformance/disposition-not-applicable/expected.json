@@ -1,0 +1,29 @@
+{
+  "diagnostics": [
+    {
+      "severity": "warn",
+      "code": "WARN_REQUIREMENT_DISPOSITION_NOT_APPLICABLE",
+      "path": "Recorded",
+      "message": "carries @disposition 'accepted' but its status is 'live', which has no outstanding work to decide about. A disposition is meaningful on 'planned' and 'partial' only — on any other status the decision IS the status."
+    },
+    {
+      "severity": "warn",
+      "code": "WARN_REQUIREMENT_DISPOSITION_NOT_APPLICABLE",
+      "path": "Faxed",
+      "message": "carries @disposition 'deferred' but its status is 'retired', which has no outstanding work to decide about. A disposition is meaningful on 'planned' and 'partial' only — on any other status the decision IS the status."
+    }
+  ],
+  "summary": {
+    "total": 2,
+    "functional": 2,
+    "architectural": 0,
+    "byStatus": {
+      "live": 1,
+      "retired": 1
+    },
+    "undecided": 0,
+    "deferredUntracked": 0,
+    "entitiesClaimed": 1,
+    "entitiesTotal": 1
+  }
+}

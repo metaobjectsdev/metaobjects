@@ -1,0 +1,29 @@
+{
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS",
+      "path": "Audited",
+      "message": "architectural requirement is 'live' but nothing implements it. Its check is universality — a claim set of zero means the policy is declared and unapplied."
+    },
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS",
+      "path": "Attributed",
+      "message": "architectural requirement is 'partial' but nothing implements it. Its check is universality — a claim set of zero means the policy is declared and unapplied."
+    }
+  ],
+  "summary": {
+    "total": 3,
+    "functional": 0,
+    "architectural": 3,
+    "byStatus": {
+      "live": 2,
+      "partial": 1
+    },
+    "undecided": 1,
+    "deferredUntracked": 0,
+    "entitiesClaimed": 1,
+    "entitiesTotal": 1
+  }
+}

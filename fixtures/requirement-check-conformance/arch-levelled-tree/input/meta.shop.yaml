@@ -1,0 +1,43 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - identity.primary: { name: pk, fields: [id] }
+
+    # An organisational tier that names the model.
+    - requirement.architectural:
+        name: Security
+        level: 1
+        status: live
+        statement: The shop protects the data it holds.
+        counterexample: A record read by someone with no claim to it.
+        implementedBy: [Order]
+
+    # An organisational tier that names nothing: not a policy applied to nothing.
+    - requirement.architectural:
+        name: Reliability
+        level: 2
+        status: live
+        statement: The shop keeps working when a part fails.
+        counterexample: One failed part stops every sale.
+        children:
+          # Re-ascends: a level above its parent.
+          - requirement.architectural:
+              name: Recovery
+              level: 1
+              status: live
+              statement: The shop can be restored from a backup.
+              counterexample: A backup that cannot be restored.
+
+    # Above the ladder.
+    - requirement.architectural:
+        name: Portability
+        level: 7
+        status: live
+        statement: The shop runs on more than one database.
+        counterexample: A query only one database accepts.
+        implementedBy: [Order]

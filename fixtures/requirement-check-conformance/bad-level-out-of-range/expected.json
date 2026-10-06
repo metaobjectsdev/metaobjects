@@ -1,0 +1,28 @@
+{
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_BAD_LEVEL",
+      "path": "Shop",
+      "message": "level must be an integer 1-5 (got 0). L1 solution, L2 segment (app/library), L3 service, L4 object, L5 member."
+    },
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_BAD_LEVEL",
+      "path": "Audited",
+      "message": "level must be an integer 1-5 (got 6). L1 solution, L2 segment (app/library), L3 service, L4 object, L5 member."
+    }
+  ],
+  "summary": {
+    "total": 3,
+    "functional": 3,
+    "architectural": 0,
+    "byStatus": {
+      "live": 3
+    },
+    "undecided": 0,
+    "deferredUntracked": 0,
+    "entitiesClaimed": 1,
+    "entitiesTotal": 1
+  }
+}

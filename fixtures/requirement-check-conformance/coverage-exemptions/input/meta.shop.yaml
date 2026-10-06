@@ -1,0 +1,33 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: BaseEntity
+        abstract: true
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - object.entity:
+        name: Order
+        extends: BaseEntity
+        children:
+          - field.string: { name: reference }
+
+    - object.value:
+        name: Address
+        children:
+          - field.string: { name: city }
+
+    - object.projection:
+        name: OrderSummary
+        children:
+          - field.string: { name: reference, extends: Order.reference }
+
+    - requirement.functional:
+        name: Recorded
+        level: 4
+        status: live
+        statement: An order is recorded when it is placed.
+        counterexample: A placed order has no row.
+        implementedBy: [Order]

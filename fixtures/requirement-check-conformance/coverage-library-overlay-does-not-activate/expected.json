@@ -1,0 +1,14 @@
+{
+  "diagnostics": [],
+  "summary": {
+    "total": 12,
+    "functional": 8,
+    "architectural": 4,
+    "byStatus": {
+      "live": 9,
+      "partial": 3
+    },
+    "undecided": 0,
+    "deferredUntracked": 0
+  }
+}

@@ -1,0 +1,31 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - requirement.functional:
+        name: Recorded
+        level: 4
+        status: live
+        statement: An order is recorded when it is placed.
+        counterexample: A placed order has no row.
+        implementedBy: [Order]
+
+    - requirement.functional:
+        name: Fax
+        level: 1
+        status: retired
+        statement: A customer can order by fax.
+        counterexample: A faxed order that is refused.
+        children:
+          - requirement.functional:
+              name: Faxed
+              level: 4
+              status: retired
+              statement: An order confirmation is sent by fax.
+              counterexample: A confirmed order with no fax.

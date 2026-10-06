@@ -1,0 +1,28 @@
+{
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_LINK_ABOVE_FLOOR",
+      "path": "Shop",
+      "message": "'implementedBy' is legal at L4 (object) and L5 (member) only. L1-L3 are organisational and never reference the model — move the links to a nested L4 child."
+    },
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_LINK_ABOVE_FLOOR",
+      "path": "Shop.Orders",
+      "message": "'implementedBy' is legal at L4 (object) and L5 (member) only. L1-L3 are organisational and never reference the model — move the links to a nested L4 child."
+    }
+  ],
+  "summary": {
+    "total": 2,
+    "functional": 2,
+    "architectural": 0,
+    "byStatus": {
+      "live": 2
+    },
+    "undecided": 0,
+    "deferredUntracked": 0,
+    "entitiesClaimed": 1,
+    "entitiesTotal": 1
+  }
+}

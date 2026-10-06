@@ -1,0 +1,15 @@
+{
+  "diagnostics": [],
+  "summary": {
+    "total": 1,
+    "functional": 0,
+    "architectural": 1,
+    "byStatus": {
+      "live": 1
+    },
+    "undecided": 0,
+    "deferredUntracked": 0,
+    "entitiesClaimed": 2,
+    "entitiesTotal": 2
+  }
+}

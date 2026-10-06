@@ -1,0 +1,26 @@
+{
+  "diagnostics": [
+    {
+      "severity": "warn",
+      "code": "WARN_REQUIREMENT_OBJECT_UNCLAIMED",
+      "message": "no requirement claims 'acme::shop::Order'. Add it to an L4 requirement's 'implementedBy'."
+    },
+    {
+      "severity": "warn",
+      "code": "WARN_REQUIREMENT_OBJECT_UNCLAIMED",
+      "message": "no requirement claims 'acme::shop::ExpressOrder'. Add it to an L4 requirement's 'implementedBy'."
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "functional": 1,
+    "architectural": 0,
+    "byStatus": {
+      "live": 1
+    },
+    "undecided": 0,
+    "deferredUntracked": 0,
+    "entitiesClaimed": 0,
+    "entitiesTotal": 2
+  }
+}

@@ -1,0 +1,29 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: BaseEntity
+        abstract: true
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - object.entity:
+        name: Order
+        extends: BaseEntity
+        children:
+          - field.string: { name: reference }
+
+    - object.entity:
+        name: ExpressOrder
+        extends: Order
+        children:
+          - field.string: { name: courier }
+
+    - requirement.functional:
+        name: Kept
+        level: 4
+        status: live
+        statement: Every record is kept.
+        counterexample: A record that is lost.
+        implementedBy: [BaseEntity]

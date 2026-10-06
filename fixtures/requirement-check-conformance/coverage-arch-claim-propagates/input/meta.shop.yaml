@@ -1,0 +1,28 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: BaseEntity
+        abstract: true
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - object.entity:
+        name: Order
+        extends: BaseEntity
+        children:
+          - field.string: { name: reference }
+
+    - object.entity:
+        name: ExpressOrder
+        extends: Order
+        children:
+          - field.string: { name: courier }
+
+    - requirement.architectural:
+        name: Identified
+        status: live
+        statement: Every row is addressed by a uuid.
+        counterexample: A row keyed by a name.
+        implementedBy: [BaseEntity]

@@ -1,0 +1,11 @@
+# An adopter disagreeing with a requirement the iam library ships. It merges into the
+# library's node, in the library's package, so the project has still authored none.
+metadata:
+  package: metaobjects::iam
+  children:
+    - requirement.architectural:
+        name: noCredentialsOnUser
+        overlay: true
+        status: partial
+        disposition: accepted
+        notes: A password hash is stored on the user row because the login stack predates this library.

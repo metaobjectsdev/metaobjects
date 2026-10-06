@@ -1,0 +1,30 @@
+metadata:
+  package: acme::billing
+  children:
+    - object.entity:
+        name: Invoice
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - requirement.functional:
+        name: Orders
+        level: 3
+        status: live
+        statement: Every placed order is kept.
+        counterexample: A placed order that is lost.
+        children:
+          - requirement.functional:
+              name: Recorded
+              level: 4
+              status: live
+              statement: A billing order is recorded when it is raised.
+              counterexample: A raised billing order has no row.
+              implementedBy: [Invoice]
+          - requirement.functional:
+              name: Posted
+              level: 4
+              status: retired
+              supersededBy: Orders.Recorded
+              statement: An order confirmation is sent by post.
+              counterexample: A confirmed order with no letter.

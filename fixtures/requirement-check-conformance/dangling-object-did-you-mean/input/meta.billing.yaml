@@ -1,0 +1,8 @@
+metadata:
+  package: acme::billing
+  children:
+    - object.entity:
+        name: Invoice
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
