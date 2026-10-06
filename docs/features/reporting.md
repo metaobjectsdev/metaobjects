@@ -447,12 +447,12 @@ The REST surface is gated by thirteen scenarios under
 run in the **generated lane on all five ports**: list (a dimension with a segment-scoped sum
 that is null for one group), a time dimension at a grain (`YYYY-MM-DD`), a no-dimension
 totals report with the `withCount` envelope, a filter on a dimension and on a measure, a sort
-on a measure, paging over groups, the three field-naming `400` envelopes, `405` on `POST`,
-and `404` on every verb at `/{id}`. The corpus model carries one sourceless report, so a port
-that serves every report it finds fails. No scenario asserts a decimal's spelling or a
-timestamp literal. TypeScript and C# run the scenarios against the real views on Postgres;
-Java, Kotlin and Python serve seeded rows behind their repository seam, and a TypeScript test
-holds those rows equal to what the views return.
+on a measure and an enum dimension, paging over groups, the three field-naming `400` envelopes,
+`405` on `POST`, and `404` on every verb at `/{id}`. The corpus model carries one sourceless
+report, so a port that serves every report it finds fails. No scenario asserts a decimal's
+spelling or a timestamp literal. TypeScript and C# run the scenarios against the real views on
+Postgres; Java, Kotlin and Python serve seeded rows behind their repository seam, and a
+TypeScript test holds those rows equal to what the views return.
 
 ## The rules the loader enforces
 
