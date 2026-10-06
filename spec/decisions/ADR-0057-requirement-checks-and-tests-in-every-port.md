@@ -23,9 +23,10 @@ TypeScript only:
 - **The test scaffold.** `requirementTests()` emits one test stub per claim, which the project
   fills in by hand and the three-way merge preserves.
 
-The split was a decision, and the only place it was recorded as one is `docs/CONFORMANCE.md`,
-"Split coverage" (`docs/features/requirements.md` and the pillar summaries stated the split
-without the reasoning):
+The split was a decision, recorded as one in two places: `docs/CONFORMANCE.md`, "Split
+coverage", quoted below, and `spec/capability-ledger.md`, in a section titled "The verify gate
+is TypeScript-only, on purpose" (`docs/features/requirements.md` and the pillar summaries stated
+the split without the reasoning):
 
 > *Checks — TypeScript only, by decision.* The `meta verify` diagnostics over requirements ship
 > in the TypeScript CLI; the other ports load and validate and stop there. Same call as ADR-0015:
@@ -113,8 +114,11 @@ them is open.
     member per test that is not skipped and a failing default for each. The project names one
     class that implements it. There is no run-time lookup by name (ADR-0001). A requirement that
     becomes live adds a failing default, which is a red test and not a compile break. A
-    requirement that is retired or deleted removes its member, so a stale override stops
-    compiling.
+    requirement that is retired or deleted removes its member. Whether a witness left behind
+    then stops compiling depends on the language: always in Kotlin, where `override` is
+    mandatory; in Java only when the witness method carries `@Override`; in C# only when the
+    witness implements the member explicitly. A witness written in the other form goes stale
+    silently, and each generated header names the form that does not.
 14. **A Python generated test looks its witness up by name** in a configured module. Python has
     no static binding to offer, and this is test code, so it is the one by-name lookup in the
     design.
@@ -162,11 +166,16 @@ them is open.
 
 ## Realization status
 
-At acceptance, TypeScript has the gate, the generator and (with this ADR) the strict switch. The
-two corpora and the Python, Java, C# and Kotlin implementations land in the order the plan
-gives. `docs/CONFORMANCE.md`, `docs/features/requirements.md` and the pillar summaries still
-state the TypeScript-only split until the ports that make it false have landed; they are
-corrected with them, not ahead of them.
+Realized by the change this ADR was accepted with. All five ports run the gate in their
+`verify` and ship a `requirement-tests` generator, ejectable through each port's own mechanism.
+Both corpora are asserted by every port; Kotlin has no CLI of its own and takes the gate and the
+identity function from Java, with its emitted names asserted by its own generator test.
+`docs/CONFORMANCE.md`, `docs/features/requirements.md`, `spec/capability-ledger.md` and the
+pillar summaries were corrected in the same change and no longer state the TypeScript-only
+split.
+
+Two things remain TypeScript-only: the seven authoring-lint advisories (Consequences), and the
+structured `--format` payload of `verify`.
 
 ## Alternatives considered
 
@@ -178,7 +187,9 @@ corrected with them, not ahead of them.
   Object coverage already works the other way, with one code and a named severity constant.
 - **A run-time lookup by name for JVM and .NET witnesses, as Python does.** Rejected: it is
   runtime reflection (ADR-0001), and a witness for a deleted requirement would go on existing
-  unnoticed. The interface makes that a compile error.
+  unnoticed. The interface makes that a compile error in Kotlin always, in Java when the
+  witness method carries `@Override`, and in C# when the witness implements the member
+  explicitly (clause 13).
 - **Port the three-way merge to four more languages.** Rejected: none of those ports has one,
   and the witness model keeps hand-written code out of the generated file altogether.
 - **Emit JUnit 4 as well as Jupiter.** Rejected: the renderer hook and eject already cover a

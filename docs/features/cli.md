@@ -340,9 +340,12 @@ by the other port's docs command.
 
 Alongside its flag-only mode (`metaobjects gen <metadata_dir> --out <dir>`), the
 Python `metaobjects` CLI supports a declarative project config,
-`metaobjects.config.yaml` (#267). The **schema keys are identical to the TS
-`metaobjects.config.ts` vocabulary** — a polyglot adopter learns one
-targets-registry shape regardless of port. A JSON Schema ships at
+`metaobjects.config.yaml` (#267). Its **`targets` registry uses the TS
+`metaobjects.config.ts` vocabulary** (named targets, each with its own `outDir`) — a
+polyglot adopter learns one targets-registry shape regardless of port. The keys are not
+identical beyond that: a Python target carries its own `generators` and `entities`, and
+`requirementTests` is a block that exists only here, where TypeScript passes that
+generator's options to `requirementTests({ … })` in code. A JSON Schema ships at
 [`server/python/src/metaobjects/codegen/metaobjects-config.schema.json`](../../server/python/src/metaobjects/codegen/metaobjects-config.schema.json)
 for editor autocomplete and non-Python validation.
 
@@ -351,6 +354,12 @@ metadata: metaobjects            # optional, default "metaobjects" — relative 
 providers:                       # optional; "module:symbol" refs, resolved config-relative (no PYTHONPATH=)
   - my_project.providers:register_custom_types
 libraries: [ai]                  # optional; MetaObjects-shipped library packages (see below)
+requirementTests:                # optional; options of the `requirement-tests` generator, every key optional
+  witnessModule: tests.requirement_witnesses   # the default
+  grain: concern                 # or: member
+  filter: codegen.requirement_hooks:include    # "module:symbol", resolved config-relative
+  renderer: codegen.requirement_hooks:render   # "module:symbol", resolved config-relative
+  warnUncovered: true            # the default
 targets:
   api:
     outDir: src/generated/api

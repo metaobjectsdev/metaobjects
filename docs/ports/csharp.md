@@ -479,7 +479,11 @@ return CodegenCli.Run(args, generators);
 The example is the file as it stands after `dotnet meta eject requirement-tests`: the class
 is your owned copy, in `Codegen.Generators`. If `Program.cs` exists because you ejected
 something else and you are constructing the packaged generator, the class is in
-`MetaObjects.Codegen.Generators`, so add `using MetaObjects.Codegen.Generators;`.
+`MetaObjects.Codegen.Generators`: write it fully qualified, as
+`new MetaObjects.Codegen.Generators.RequirementTestsGenerator { … }`. Do not add
+`using MetaObjects.Codegen.Generators;`, because every generator you ejected has a packaged
+class of the same simple name there, and the second `using` makes each `new <Name>Generator()`
+already in the file ambiguous (CS0104).
 
 | Property | Meaning |
 |---|---|

@@ -57,6 +57,13 @@ it until 1.1 ships._
   already errors in `meta verify`; the other ports loaded the same ledger and said nothing.
   The seven requirement authoring-lint advisories stay TypeScript-only. See
   [docs/features/requirements.md](docs/features/requirements.md), "The gate in every port".
+
+  Metadata that does not load is not a project with no requirement, and the gate fails on
+  it. **Python: `metaobjects verify <dir> --out <dir>` with no `--generators` now exits 1 on
+  metadata the loader refuses, where it exited 0**, because that invocation loads nothing
+  else; the gate's load is strict unless `--lax`, so an unknown attribute counts. `dotnet
+  meta verify` likewise prints the load errors itself when no gate in its own process loaded
+  the model (`--codegen` handed off to an owned `codegen/` project, or given no `--out`).
 - **`--require-implementers`, in every port.** `WARN_REQUIREMENT_NOTHING_IMPLEMENTS` (a
   `live` or `partial` functional requirement that nothing implements) stays a warning by
   default. `meta verify --require-implementers`, `metaobjects verify --require-implementers`,
@@ -305,6 +312,15 @@ until you regenerate.
 - **TypeScript: `requirementTests({ grain })` refuses an unknown grain.** Any value other
   than `"concern"` or `"member"` throws when the generator is built, whatever the model
   holds, instead of running as something in between. Every other port refuses the same way.
+- **Python: project code under a standard-library module name is refused where a
+  `module:symbol` names it.** Affected: a project whose owned generator (a `module:symbol`
+  entry in `generators`) or `requirementTests.renderer` / `requirementTests.filter` hook lives
+  under a top-level name such as `types`, `json`, `code` or `platform`, as a package directory
+  or as a `<name>.py` file. `gen` and `verify --codegen` now stop with `cannot import
+  '<module>': the project package '<name>' (<path>) shadows a standard-library module of the
+  same name; rename it` (`the project module` for a file). Before, an owned generator under
+  such a name loaded, by replacing the standard-library module for the rest of the process.
+  Rename the package or module, and the `module:symbol` that names it.
 
 - **TypeScript: `runValidators` rejects more than it did — a behaviour change for
   `ObjectManager` users.** `ObjectManager.create`, `createMany`, `update`, `updateMany` and

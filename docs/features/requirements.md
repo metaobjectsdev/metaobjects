@@ -358,7 +358,7 @@ the summary at `info`, warnings as warnings and errors as errors.
 |---|---|---|
 | `ERR_REQUIREMENT_BAD_LEVEL` | error | The level is outside 1 to 5, on a functional requirement or a levelled architectural one. |
 | `ERR_REQUIREMENT_LEVEL_NESTING` | error | A levelled requirement sits at or above the level of the requirement it is nested under. |
-| `ERR_REQUIREMENT_LINK_ABOVE_FLOOR` | error | `@implementedBy` on a levelled requirement at L1 to L3. Nothing else is reported for that node. |
+| `ERR_REQUIREMENT_LINK_ABOVE_FLOOR` | error | `@implementedBy` on a levelled requirement at L1 to L3. Nothing further is reported for that node: the checks below this row are skipped, and the two above it have already run. |
 | `ERR_REQUIREMENT_L4_NOT_OBJECT` | error | A functional L4 names a member. |
 | `ERR_REQUIREMENT_L5_NOT_MEMBER` | error | A functional L5 names an object. |
 | `ERR_REQUIREMENT_DANGLING_REF` | error | An `@implementedBy` reference does not resolve on `live` or `partial`, or `@supersededBy` does not name a requirement in the ledger. |
@@ -396,6 +396,12 @@ diagnostics, and when any is an error, `<prefix> <n> error(s).` and a non-zero e
 TypeScript caps the warnings it prints at `--limit` (20 by default); the other ports print
 every one. The structured `--format json|toon` payload is TypeScript-only.
 
+**Metadata that does not load** is not a model with no requirement: `verify` fails on it in
+every port. The load errors are printed once. Where the drift gate that ran loaded the model,
+that gate prints them; where none did (`metaobjects verify` with no generators selected,
+`dotnet meta verify --codegen` handed off to an owned `codegen/` project), the requirement
+gate prints them itself. Its load is strict unless `--lax`, as the drift gates' is.
+
 ### Known differences between ports
 
 - The package a requirement is taken to be in can differ between ports for two multi-file
@@ -403,8 +409,9 @@ every one. The structured `--format json|toon` payload is TypeScript-only.
   from a package-less document into a requirement that declares its own package.
 - Python applies only the dependency-import rule to decide which of a project's own
   entities are counted; TypeScript also applies the project's `scope` patterns.
-- A `level` that is not an integer is refused by some loaders and reaches the gate in
-  TypeScript.
+- A `level` that is not an integer (`4.5`) is refused at load by the Python, Java and C#
+  loaders (`ERR_BAD_ATTR_VALUE`). The TypeScript loader lets it through, and the gate reports
+  it as `ERR_REQUIREMENT_BAD_LEVEL`.
 
 ## Requiring implementers
 

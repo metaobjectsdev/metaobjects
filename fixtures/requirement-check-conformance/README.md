@@ -62,8 +62,9 @@ it is wrong, unless the reference is shown to be wrong first.
   requirement that is not `planned`, whatever its level and whatever the gate says about
   the reference's grain. `link-above-floor`, `l4-names-member`, `l5-names-object` and
   `arch-levelled-tree` each report an error on a claim and no unclaimed entity.
-- **`ERR_REQUIREMENT_LINK_ABOVE_FLOOR` ends that requirement's checks.** Nothing else is
-  reported for the node (`link-above-floor`).
+- **`ERR_REQUIREMENT_LINK_ABOVE_FLOOR` ends that requirement's checks.** Nothing further is
+  reported for the node (`link-above-floor`): the level and nesting checks run before it, so
+  a node can carry those as well.
 - **A grain error replaces the dangling check for that reference.** `l4-names-member` and
   `l5-names-object` each hold a reference that does not resolve and report it once.
 - **Existence is about naming, not resolving.** A requirement whose subtree holds any

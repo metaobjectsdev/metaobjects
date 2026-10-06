@@ -391,7 +391,9 @@ them on every run: it prints the ledger summary, and an error (a dangling refere
 live requirement, a link above the floor, a live policy applied to nothing) exits non-zero.
 `--require-implementers` (or `META_REQUIRE_IMPLEMENTERS=1`) also fails the run on a live
 functional requirement that nothing implements. Those checks are core and are not
-ejectable. A model with no requirement sees no change.
+ejectable. A model with no requirement sees no change. Metadata that does not load is not
+that: `verify` prints the load errors and exits non-zero, also when no generators are
+selected and so no drift gate loaded it.
 
 The `requirement-tests` generator is the other half. It is a reference helper and a
 recommended approach, not a contract: `metaobjects eject requirement-tests` copies it, with
@@ -407,7 +409,7 @@ targets:
 requirementTests:                               # every key optional
   witnessModule: tests.requirement_witnesses    # the default
   grain: concern                                # or: member
-  filter: codegen.requirement_hooks:include     # module:symbol, resolved like `providers`
+  filter: codegen.requirement_hooks:include     # module:symbol, relative to this file's directory
   renderer: codegen.requirement_hooks:render    # module:symbol
   warnUncovered: true                           # the default
 ```
@@ -440,10 +442,15 @@ or deleted is simply never called again: nothing reports it, and you delete it b
 The block is read in config mode. The flag-only form
 (`metaobjects gen ./metaobjects --out ./tests/generated --generators requirement-tests`)
 runs the generator with its defaults. A `filter` or `renderer` whose module raises on
-import is reported with the real cause. `metaobjects verify` goes out of sync when a claim
-changes, because each test carries a digest of its requirement. A package that loses its
-last requirement leaves its file behind: `gen` does not remove it, `verify` lists it as
-`extra:`, and you delete it. The model and the other ports' spelling are in
+import is reported with the real cause. Both hooks, like a `providers` entry, are found
+relative to the config file's directory, with no `PYTHONPATH=`. They differ in how they are
+imported: a provider is imported with plain `importlib`, and a hook goes through the resolver
+an owned generator is imported with, which loads the project's own copy of a module when
+another copy is already cached and refuses a project package or module whose top-level name
+is a standard-library module name (`types`, `json`): rename it. `metaobjects verify` goes
+out of sync when a claim changes, because each test carries a digest of its requirement. A
+package that loses its last requirement leaves its file behind: `gen` does not remove it,
+`verify` lists it as `extra:`, and you delete it. The model and the other ports' spelling are in
 [Generated requirement tests and witnesses](../features/requirements.md#generated-requirement-tests-and-witnesses).
 
 ### Declarative template-codegen (`--template-spec`)
@@ -645,7 +652,9 @@ each as `<Name>.py`. So the prompt+parse story is two generators:
 
 **Own a generator.** Every generator is a reference helper you can copy and change:
 `metaobjects eject <name>` copies it into `codegen/generators/`, and you wire the copy as
-`module:symbol` in place of its name. See
+`module:symbol` in place of its name. A project package or module whose top-level name is a
+standard-library module name (`types`, `json`) is refused there with an error naming it:
+rename it. See
 [Own your codegen → Python](../features/own-your-codegen.md#python-metaobjects-eject).
 
 Ejecting `routes` also hands over the helper runtime the generated routers call:

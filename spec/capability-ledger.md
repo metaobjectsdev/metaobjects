@@ -233,9 +233,11 @@ supersession chain stays walkable.
 ### `implementedBy` resolution, severity conditional on status
 
 References resolve against the loaded model through the loader's own resolver, so the
-package-local contract (ADR-0042) applies uniformly. A ledger entry has no package of its
-own, so a **bare** name binds only a root-level object: fail-closed, and a bare name that
-exists in two packages resolves to nothing rather than to a coin flip.
+package-local contract (ADR-0042) applies uniformly. A **bare** name binds in the ledger
+entry's own package first (the package the loader resolved for it: its own, or its file's),
+then to an unpackaged root-level node of that name. It never reaches into another package:
+fail-closed, and a bare name that exists in two other packages resolves to nothing rather
+than to a coin flip.
 
 | status | dangling reference |
 |---|---|
