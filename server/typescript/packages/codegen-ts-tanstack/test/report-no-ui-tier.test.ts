@@ -101,7 +101,7 @@ describe("a keyless projection gets a list hook and no detail hook", () => {
                   { "identity.primary": { name: "id", extends: "Tag.id" } },
                 ]
               : []),
-            // An `id` column and no declared identity: addressed by convention.
+            // An `id` column and no declared identity: a convention, not a key.
             ...(shape === "id-by-convention" ? [{ "field.long": { name: "id" } }] : []),
             { "field.string": { name: "label", extends: "Tag.label" } },
           ],
@@ -134,17 +134,26 @@ describe("a keyless projection gets a list hook and no detail hook", () => {
     expect(out).not.toContain("/${id}");
   });
 
-  for (const shape of ["identity", "id-by-convention"] as const) {
-    test(`${shape}: the detail hook and its keys are still there`, async () => {
-      const { obj, out } = await projection(shape);
-      expect(obj.primaryIdentity() === undefined).toBe(shape === "id-by-convention");
-      expect(hasItemRoute(obj)).toBe(true);
-      expect(out).toContain("export function useTagLabel(");
-      expect(out).toContain("export function useTagLabels(");
-      expect(out).toContain("details:");
-      expect(out).toContain("detail:");
-    });
-  }
+  test("identity: the detail hook and its keys are still there", async () => {
+    const { obj, out } = await projection("identity");
+    expect(obj.primaryIdentity()).toBeDefined();
+    expect(hasItemRoute(obj)).toBe(true);
+    expect(out).toContain("export function useTagLabel(");
+    expect(out).toContain("export function useTagLabels(");
+    expect(out).toContain("details:");
+    expect(out).toContain("detail:");
+  });
+
+  test("id-by-convention: an `id` field is not a declared key, so no detail hook either", async () => {
+    const { obj, out } = await projection("id-by-convention");
+    expect(obj.primaryIdentity()).toBeUndefined();
+    expect(obj.findField("id")).toBeDefined();
+    expect(hasItemRoute(obj)).toBe(false);
+    expect(out).toContain("export function useTagLabels(");
+    expect(out).not.toContain("export function useTagLabel(");
+    expect(out).not.toContain("details:");
+    expect(out).not.toContain("detail:");
+  });
 });
 
 // The grid generators gate on `servesClientTier` AND on a `layout.dataGrid`. Through

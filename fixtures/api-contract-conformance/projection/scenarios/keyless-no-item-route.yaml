@@ -1,0 +1,23 @@
+name: projection-keyless-no-item-route
+description: >
+  A projection that declares no primary identity has no item address, so no /{id}
+  route of any verb is mounted — even when the view happens to carry a column named
+  `id`. InvoiceStub is that shape: no identity.primary, one field called id. The
+  status is the contract; the body is the framework's own 404 and is not asserted.
+  In particular a GET must never answer a row (it answered the view's first row in
+  TypeScript, and bound an `id: int` to nothing in Python, before this was gated).
+  The list still serves, and the collection POST still answers the 405 envelope.
+requests:
+  - { id: list,        method: GET,    path: "/api/invoice_stubs?sort=id:asc", expect: { status: 200, body: { ids: [1, 2, 3, 4] } } }
+  - { id: get-item,    method: GET,    path: /api/invoice_stubs/1, expect: { status: 404 } }
+  - { id: patch-item,  method: PATCH,  path: /api/invoice_stubs/1, body: { reference: "X" }, expect: { status: 404 } }
+  - { id: put-item,    method: PUT,    path: /api/invoice_stubs/1, body: { id: 1, reference: "X" }, expect: { status: 404 } }
+  - { id: delete-item, method: DELETE, path: /api/invoice_stubs/1, expect: { status: 404 } }
+  - id: post-collection
+    method: POST
+    path: /api/invoice_stubs
+    body: { reference: "X" }
+    expect:
+      status: 405
+      body:
+        error: "method_not_allowed"

@@ -34,6 +34,12 @@ object uses (`InvoicesByMonth` is `/api/invoices_by_months`).
   `null` for a group with no row in the segment.
 - **No typed client hook and no UI tier is generated for a report** (no TanStack hook,
   grid, grid hook or form). The read route and its row type are the whole surface.
+- **An enum dimension sorts and filters like any other.** `Invoice.status` is a `field.enum`
+  (`OPEN`, `PAID`, `VOID`, declared in alphabetical order so the stored text and the declared
+  order agree), so `InvoiceStatusTotals.status` is an enum dimension: `?sort=status:asc|desc` is
+  accepted in every port and orders by the stored value, and `?filter[status][eq]=OPEN` matches
+  it. It reaches the wire as its string symbol; in C# that is host configuration (a
+  `JsonStringEnumConverter`), as for any enum the routes return.
 - **A decimal's spelling is not asserted.** `paidShare` is a ratio, so it is a decimal,
   and each port spells a decimal its own way. The scenarios that touch it assert only
   how many rows match.
@@ -74,6 +80,7 @@ report/
     ├── filter-invalid-field.yaml    # 400 envelope, naming the field
     ├── filter-invalid-op.yaml       # 400 envelope, naming the field
     ├── sort-desc-on-measure.yaml    # ?sort on a measure
+    ├── sort-enum-dimension.yaml     # ?sort on an enum dimension, ascending and descending
     ├── sort-invalid.yaml            # 400 envelope, naming the field
     ├── pagination.yaml              # limit / offset / withCount count groups
     ├── write-verbs-405.yaml         # POST on the collection -> 405 + envelope
@@ -110,11 +117,11 @@ hand-rolled reference server would answer every scenario by construction.
 
 | Port | Generated lane | Note |
 |---|---|---|
-| TypeScript | wired | `server/typescript/packages/integration-tests/test/api-contract-report.test.ts` (12 scenarios + a seed-vs-view check). Full stack: generated Fastify routes over the real views on Testcontainers Postgres |
+| TypeScript | wired | `server/typescript/packages/integration-tests/test/api-contract-report.test.ts` (13 scenarios + a seed-vs-view check). Full stack: generated Fastify routes over the real views on Testcontainers Postgres |
 | C# | wired | `server/csharp/MetaObjects.IntegrationTests/Api/ApiContractReportConformanceTest.cs`. Full stack: generated routes and EF Core over `schema.postgres.sql` on Testcontainers Postgres |
-| Java | wired | `server/java/integration-tests/src/test/java/com/metaobjects/integration/api/ReportGeneratedApiContractConformanceTest.java` (12 scenarios + a scenario-count check). Generated controllers behind an in-memory repository seeded from `reports` |
-| Kotlin | wired | `server/java/integration-tests-kotlin/src/test/kotlin/com/metaobjects/integration/kotlin/api/report/ReportGeneratedApiContractConformanceTest.kt` (12 scenarios, the count check, and a check that the sourceless report generated nothing). Generated controllers over the generated Exposed table objects, seeded from `reports` |
-| Python | wired | `server/python/tests/integration/test_api_contract_report.py` (12 scenarios, a check that exactly the served reports are generated, and `/api/invoice_days` is `404`). Generated routers behind in-memory repositories seeded from `reports` |
+| Java | wired | `server/java/integration-tests/src/test/java/com/metaobjects/integration/api/ReportGeneratedApiContractConformanceTest.java` (13 scenarios + a scenario-count check). Generated controllers behind an in-memory repository seeded from `reports` |
+| Kotlin | wired | `server/java/integration-tests-kotlin/src/test/kotlin/com/metaobjects/integration/kotlin/api/report/ReportGeneratedApiContractConformanceTest.kt` (13 scenarios, the count check, and a check that the sourceless report generated nothing). Generated controllers over the generated Exposed table objects, seeded from `reports` |
+| Python | wired | `server/python/tests/integration/test_api_contract_report.py` (13 scenarios, a check that exactly the served reports are generated, and `/api/invoice_days` is `404`). Generated routers behind in-memory repositories seeded from `reports` |
 
 The scenarios use only assertion keys every runner already has (`equals`,
 `length`, `envelope`, `error` with `field`, and a status with no `body`).

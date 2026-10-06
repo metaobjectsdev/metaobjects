@@ -124,10 +124,17 @@ def test_a_projection_with_a_single_field_identity_has_the_item_surface() -> Non
     assert _has_item_surface(render_router(p))
 
 
-def test_a_projection_with_an_id_field_and_no_identity_has_the_item_surface() -> None:
+def test_a_projection_with_an_id_field_and_no_identity_is_keyless() -> None:
+    # A field named `id` is a convention, not a declared key: nothing addresses a row, so no
+    # item route of any verb and no `find_by_id` on the seam (the JVM and C# rule).
     p = _projection(identity=None, id_field=True)
-    assert has_item_route(p)
-    assert _has_item_surface(render_router(p))
+    assert not has_item_route(p)
+    src = render_router(p)
+    assert src is not None
+    assert not _has_item_surface(src)
+    decorators = re.findall(r'@router\.(\w+)\(("[^"]*")', src)
+    assert decorators == [("get", '""'), ("post", '""')], decorators
+    assert "find_by_id" not in src
 
 
 def test_a_composite_identity_keeps_its_item_route_bound_to_the_first_field() -> None:
@@ -136,7 +143,7 @@ def test_a_composite_identity_keeps_its_item_route_bound_to_the_first_field() ->
     assert _has_item_surface(render_router(p))
 
 
-def test_a_projection_with_no_identity_and_no_id_field_is_keyless() -> None:
+def test_a_projection_with_no_identity_and_no_id_field_is_also_keyless() -> None:
     p = _projection(identity=None, id_field=False)
     assert not has_item_route(p)
     src = render_router(p)

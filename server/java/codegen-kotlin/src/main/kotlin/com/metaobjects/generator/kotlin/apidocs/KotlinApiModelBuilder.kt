@@ -314,18 +314,12 @@ class KotlinApiModelBuilder {
         // an operation of the API.
         if (obj is ReportReadModel) return
         // F22 — a read-only projection serves the reads and REFUSES every write verb with
-        // 405. Documenting it with the writable verb list would be the precise drift this
-        // builder exists to prevent; and a keyless projection has no /{id} route at all.
+        // 405. Those refusals are not operations a caller can use, so, like every other port,
+        // the page lists the reads only: GET list, and GET by id when the projection declares
+        // an identity. Documenting the writable verb list would be the precise drift this
+        // builder exists to prevent.
         if (RestSurfaceGate.isReadOnly(obj)) {
-            val hasItem = RestSurfaceGate.hasItemRoute(obj)
-            if (hasItem) rest("GET $base/{id}", "fetch one by id")
-            val refused = "405 {\"error\": \"method_not_allowed\"} — read-only projection"
-            rest("POST $base", refused)
-            if (hasItem) {
-                rest("PATCH $base/{id}", refused)
-                rest("PUT $base/{id}", refused)
-                rest("DELETE $base/{id}", refused)
-            }
+            if (RestSurfaceGate.hasItemRoute(obj)) rest("GET $base/{id}", "fetch one by id")
             return   // a projection declares no M:N relationships to traverse
         }
         rest("GET $base/{id}", "fetch one by id")

@@ -27,7 +27,7 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import { isAbstract } from "./instance-artifacts.js";
 import { isProjection } from "./projection/projection-detector.js";
 import { hasAnyRdbSource, hasWritableRdbSource, isReport, servedReport } from "./source-detect.js";
-import { DEFAULT_ID_FIELD, getPkFields } from "./templates/queries.js";
+import { getPkFields } from "./templates/queries.js";
 import { resourcePath, restPath } from "./templates/entity-ui-descriptor.js";
 import {
   declaresTphDiscriminator,
@@ -58,23 +58,16 @@ export function servesReadApi(entity: MetaObject): boolean {
 
 /**
  * True when the read-only surface of the object has `/:id` routes, a by-id query and a
- * detail hook: the column a row would be addressed by actually exists on it.
+ * detail hook: the object declares a primary identity, and the column it names is a field
+ * of the object.
  *
  * - A report (the declared node or its read model) never has one, even when a derived
  *   field happens to be named `id`: a report has no identity, and its rows are groups.
- * - Otherwise the answer is whether the by-id column resolves to a field of the object.
- *   That column is `getPkInfo`'s: the first field of the primary identity, or `id` by
- *   convention when the object declares no primary identity. So a projection with an
- *   identity has item routes, a projection with no identity and a field named `id` has
- *   them too (it always did, and they work), and a projection with neither has none.
- *
- * A composite identity answers true, as before this predicate existed: its by-id query
- * reads the first component. Nothing here changes what that shape generates.
- *
- * This is NOT the JVM's `RestSurfaceGate.hasItemRoute`, which requires a DECLARED
- * single-column primary identity. TypeScript has always also served the `id`-by-convention
- * projection, and this keeps doing so. The one thing removed is a surface that could never
- * serve a row: no identity and no `id` column.
+ * - A projection with no declared primary identity has none either, even when it has a
+ *   field named `id`. There is no declared key to address a row by, and "a field called
+ *   `id`" is a convention, not a key. This is the JVM and C# rule
+ *   (`RestSurfaceGate.hasItemRoute`), and the rule of the cross-port `projection/` corpus.
+ * - A composite identity answers true: its by-id query reads the first component.
  *
  * Only the read-only templates ask. The writable surface emits item routes unconditionally.
  */
@@ -95,10 +88,10 @@ export function hasItemRoute(entity: MetaObject): boolean {
 export function itemRouteField(entity: MetaObject): string | undefined {
   if (isReport(entity)) return undefined;
   // ADR-0039: resolving. `getPkFields` reads `primaryIdentity()` and `findField` reads
-  // `fields()`, both of which walk the super chain; a projection's identity and its `id`
+  // `fields()`, both of which walk the super chain; a projection's identity and its key
   // field are typically inherited from its base entity.
-  const idField = getPkFields(entity)[0] ?? DEFAULT_ID_FIELD;
-  return entity.findField(idField) !== undefined ? idField : undefined;
+  const idField = getPkFields(entity)[0];
+  return idField !== undefined && entity.findField(idField) !== undefined ? idField : undefined;
 }
 
 /**

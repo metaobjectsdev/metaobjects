@@ -442,7 +442,7 @@ the Monday boundary, an hour bucket, a relative window). The derived columns are
 by every port. The SQL is produced by TypeScript only, so the other ports read the view the
 TypeScript migrate engine produced and never lower a report themselves.
 
-The REST surface is gated by twelve scenarios under
+The REST surface is gated by thirteen scenarios under
 [`fixtures/api-contract-conformance/report/`](../../fixtures/api-contract-conformance/report/),
 run in the **generated lane on all five ports**: list (a dimension with a segment-scoped sum
 that is null for one group), a time dimension at a grain (`YYYY-MM-DD`), a no-dimension
@@ -561,17 +561,22 @@ Serving reports added no vocabulary (`metamodelVersion` stays 1.1). The same cha
 generated output for models that declare no report. Each is in the
 [CHANGELOG](../../CHANGELOG.md) with the shape it affects:
 
-- **TypeScript and Python: a read-only projection with no declared identity and no field named
-  `id`** no longer gets `/{id}` routes, a by-id query (`find…ById` / `find_by_id`) or, in
-  TypeScript, a detail hook. That surface could not address a row. A projection with a declared
-  identity, or with an `id` field and no declared identity, is unchanged. C#, Java and Kotlin
-  are unchanged and stricter: they mount `/{id}` only for a declared single-column identity.
+- **TypeScript and Python: a read-only projection with no declared identity** (even one with a
+  field named `id`) no longer gets `/{id}` routes, a by-id query (`find…ById` / `find_by_id`) or,
+  in TypeScript, a detail hook. A field named `id` is a convention, not a key, so the surface
+  could not address a row by anything declared. A projection with a declared identity is
+  unchanged. C#, Java and Kotlin already behaved this way, so all five ports now mount `/{id}`
+  for exactly the projections that declare one.
 - **TypeScript: a `field.decimal` in a view read schema** (a projection's or a report's) is
   `z.string()`, not `z.number()`. The value read from the view was always a string.
 - **TypeScript API docs: a read-only object's page documents only what is generated.** A
   read-only projection's page no longer lists create, update or delete
   functions, write verbs or Insert/Update schemas, and a keyless one no longer lists `/:id` or
   the by-id function. `meta verify --docs` reports the page as stale until you regenerate.
+- **Java and Kotlin API docs: a read-only projection's page lists the reads only.** It also
+  listed `POST`, `PATCH`, `PUT` and `DELETE`, each described as a `405` refusal. Those are
+  refusals, not operations, and no other port documented them, so the page now lists `GET <path>`
+  and `GET <path>/{id}` when the projection has an item route. Regenerate the docs to pick it up.
 - **Python API docs: a read-only projection's page gains its read surface.** It listed the
   model alone; it now also lists the repository Protocol, `GET <path>`, `GET <path>/{id}` when
   the projection has an item route, and the filter allowlist, and never a write verb.

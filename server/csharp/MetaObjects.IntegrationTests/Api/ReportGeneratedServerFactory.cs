@@ -68,6 +68,12 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls(baseUrl);
         builder.Logging.ClearProviders();
+        // Host concern, not generator output: the generated routes return the row object and
+        // the host owns serialization, so an enum dimension (InvoiceStatusTotals.status)
+        // reaches the wire as its string symbol only because the host asks for it, exactly
+        // as the TPH lane does for its discriminator.
+        builder.Services.ConfigureHttpJsonOptions(o =>
+            o.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
         RegisterGeneratedDbContext(builder.Services, dbContextType, pg.ConnectionString);
 
         var app = builder.Build();

@@ -336,10 +336,9 @@ class KotlinApiDocsAccuracyKtTest {
         // ...and the documented REST surface must be the READ-ONLY one.
         val rest = sales.symbols.filter { it.kind == ApiSymbolKind.REST }
         assertTrue(rest.any { it.name == "GET /api/sales_reports" }, "list route documented: $rest")
-        assertTrue(
-            rest.filterNot { it.name.startsWith("GET ") }.all { it.usage.contains("method_not_allowed") },
-            "every write verb documented as refused: $rest",
-        )
+        // The controller answers every write verb with 405, which is a refusal and not an
+        // operation: no write verb is documented (the same rule as every other port).
+        assertTrue(rest.all { it.name.startsWith("GET ") }, "no write verb documented: $rest")
     }
 
     @Test

@@ -426,9 +426,9 @@ describe("renderRoutesFile — a served report (FR-044 Plan 3)", () => {
     }
   });
 
-  test("a projection with an `id` column and no declared identity is unchanged", async () => {
-    // The id-by-convention shape: the mount addresses `id` by default and the column is
-    // there, so the item routes work and stay.
+  test("a projection with an `id` column and no declared identity mounts no item routes", async () => {
+    // A field named `id` is a convention, not a declared key: nothing addresses a row, so
+    // no `/:id` route of any verb is mounted (the JVM and C# rule).
     const root = await loadMetadata([
       {
         "object.entity": {
@@ -452,14 +452,14 @@ describe("renderRoutesFile — a served report (FR-044 Plan 3)", () => {
     ]);
     const projection = declared(root, "ProgramRow");
     expect(projection.primaryIdentity()).toBeUndefined();
-    expect(hasItemRoute(projection)).toBe(true);
+    expect(hasItemRoute(projection)).toBe(false);
     const ctx = makeRenderContext({
       dialect: "sqlite", loadedRoot: root, outDir: "/x", dbImport: "~/db",
       pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
     });
     for (const out of [renderRoutesFile(projection, ctx), renderRoutesFileHono(projection, ctx)]) {
-      expect(out).toContain("Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.");
-      expect(out).not.toContain("itemRoutes");
+      expect(out).toContain("itemRoutes: false,");
+      expect(out).not.toContain("GET :id");
     }
   });
 

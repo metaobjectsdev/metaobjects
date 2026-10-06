@@ -118,10 +118,9 @@ Its REST surface is generated and READ-ONLY (F22): GET list + GET by id, the sam
 projection's OWN declared field set, and `POST` / `PATCH` / `PUT` / `DELETE` each
 answering `405 {"error": "method_not_allowed"}` — 405 and not 404 because the same
 path answers GET. A KEYLESS projection mounts no `/{id}` route at all, so it refuses only
-the collection verb, and its repository Protocol has no `find_by_id`. In Python keyless
-means no `identity.primary` AND no field named `id`: a projection with an `id` field and
-no declared identity keeps its item routes (C#, Java and Kotlin are stricter and need a
-declared single-column identity).
+the collection verb, and its repository Protocol has no `find_by_id`. Keyless means no
+declared `identity.primary`: a field that is merely named `id` is a convention, not a key, so
+a projection with an `id` field and no declared identity is keyless too (in every port).
 The read-only router is a separate assembly from the writable one, sharing only the
 emitters they genuinely have in common; `router_generator` and
 `filter_allowlist_generator` ask one shared `emits_router()` predicate.

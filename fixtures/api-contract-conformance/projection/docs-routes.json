@@ -1,0 +1,8 @@
+{
+  "description": "The REST routes the api docs page of each read-only projection in meta.json lists. Spelled without a leading slash or api prefix, with {id} for the item parameter; every port normalizes its own spelling to this one. A keyed projection lists its two read routes, a keyless one its list route only, and no unit lists a write verb.",
+  "units": {
+    "InvoiceSummary": ["GET invoice_summaries", "GET invoice_summaries/{id}"],
+    "InvoiceLedger": ["GET invoice_ledgers", "GET invoice_ledgers/{id}"],
+    "InvoiceStub": ["GET invoice_stubs"]
+  }
+}

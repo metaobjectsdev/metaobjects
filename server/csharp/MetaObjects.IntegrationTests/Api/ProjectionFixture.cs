@@ -24,6 +24,8 @@ internal static class ProjectionFixture
           "reference"   VARCHAR(40) NOT NULL,
           "status"      VARCHAR(20) NOT NULL,
           "amountCents" BIGINT NOT NULL,
+          "discount"    NUMERIC(10,2),
+          "weight"      REAL,
           CONSTRAINT "invoices_pkey" PRIMARY KEY ("id")
         );
         CREATE VIEW "v_invoice_summary" AS
@@ -32,9 +34,21 @@ internal static class ProjectionFixture
                  i."status"      AS "status",
                  i."amountCents" AS "amountCents"
           FROM "invoices" i;
+        -- InvoiceLedger: its key is the field `number`; the view has NO id column.
+        CREATE VIEW "v_invoice_ledger" AS
+          SELECT i."id"        AS "number",
+                 i."reference" AS "reference",
+                 i."discount"  AS "discount",
+                 i."weight"    AS "weight"
+          FROM "invoices" i;
+        -- InvoiceStub: no declared identity; the view carries an id column all the same.
+        CREATE VIEW "v_invoice_stub" AS
+          SELECT i."id"        AS "id",
+                 i."reference" AS "reference"
+          FROM "invoices" i;
         """;
 
-    private static readonly string[] InvoiceCols = { "id", "reference", "status", "amountCents" };
+    private static readonly string[] InvoiceCols = { "id", "reference", "status", "amountCents", "discount", "weight" };
 
     /// <summary>Create the base table + the read-only view on a fresh container.</summary>
     public static async Task ProvisionSchemaAsync(string connString)
@@ -71,6 +85,8 @@ internal static class ProjectionFixture
                 {
                     var v = row[InvoiceCols[i]];
                     object val = v is null ? DBNull.Value
+                        : InvoiceCols[i] == "discount" ? v.GetValue<decimal>()
+                        : InvoiceCols[i] == "weight" ? v.GetValue<float>()
                         : v.GetValueKind() == JsonValueKind.Number ? v.GetValue<long>()
                         : v.GetValue<string>();
                     ins.Parameters.AddWithValue("@p" + i, val);

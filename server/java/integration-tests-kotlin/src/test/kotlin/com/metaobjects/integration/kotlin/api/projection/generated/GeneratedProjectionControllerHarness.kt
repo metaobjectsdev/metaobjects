@@ -26,9 +26,9 @@ import kotlin.io.path.isRegularFile
 import kotlin.io.path.readText
 
 /**
- * F22 — host the GENERATED Kotlin Spring `InvoiceSummaryController` for the view-only
- * projection corpus over real HTTP (an embedded Tomcat) and drive the `projection/` scenarios
- * against it. Mirrors [com.metaobjects.integration.kotlin.api.writethrough.generated.GeneratedWriteThroughControllerHarness].
+ * F22 — host the GENERATED Kotlin Spring controllers (`InvoiceSummaryController`,
+ * `InvoiceLedgerController`, `InvoiceStubController`) for the view-only projection corpus over
+ * real HTTP (one embedded Tomcat) and drive the `projection/` scenarios against them. Mirrors [com.metaobjects.integration.kotlin.api.writethrough.generated.GeneratedWriteThroughControllerHarness].
  *
  * Mechanism:
  *  1. Load `fixtures/api-contract-conformance/projection/meta.json`.
@@ -39,14 +39,14 @@ import kotlin.io.path.readText
  *     that proves the emitted read-only controller COMPILES: the codegen-compile gate
  *     excludes the framework-bound route tier in every port by design.
  *  4. Per scenario: fresh in-memory H2 (PostgreSQL mode), `SchemaUtils.create(InvoiceTable)`,
- *     then HAND-EXEC `CREATE VIEW v_invoice_summary` (Exposed cannot create a view — the
- *     generated `InvoiceSummaryTable` is a SELECT-only binding), then seed `invoices`.
- *  5. Serve the controller from an embedded Tomcat over a real socket ([TomcatHost]).
+ *     then HAND-EXEC `CREATE VIEW` for each projection (Exposed cannot create a view — each
+ *     generated `<Projection>Table` is a SELECT-only binding), then seed `invoices`.
+ *  5. Serve the controllers from an embedded Tomcat over a real socket ([TomcatHost]).
  *
- * The view is `SELECT *` over `invoices` on purpose. The projection declares exactly the base
- * entity's four fields, so both generated Exposed objects derive the same physical column
- * names under the same naming strategy — and `SELECT *` therefore cannot disagree with either
- * of them, whereas a hand-spelled column list silently could.
+ * Each view's column list and aliases are spelled from the generated `<Projection>Table`'s own
+ * columns, so a view cannot disagree with the Exposed binding that reads it. `InvoiceLedger` is
+ * keyed on `number`, which the view aliases from `id`: it has NO `id` column. `InvoiceStub`
+ * declares no identity and carries an `id` column all the same.
  */
 @OptIn(org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi::class)
 class GeneratedProjectionControllerHarness(
@@ -60,8 +60,10 @@ class GeneratedProjectionControllerHarness(
         .registerModule(JavaTimeModule())
         .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
 
-    private val controllerClass: Class<*>
+    private val controllerClasses: List<Class<*>>
     private val invoiceTable: Table
+    /** Generated `<Projection>Table` object per projection name. */
+    private val viewTables: Map<String, Table>
     private val dbSeq = AtomicInteger(0)
     private var host: TomcatHost? = null
 
@@ -83,13 +85,15 @@ class GeneratedProjectionControllerHarness(
             g.execute(loader)
         }
 
-        // The projection's controller must have been emitted at all — otherwise this fails
+        // Every projection's controller must have been emitted at all — otherwise this fails
         // downstream as a ClassNotFoundException with no hint that the emit gate, and not
         // the harness, was the cause.
-        val emittedController = srcDir.resolve("acme/sales/InvoiceSummaryController.kt")
-        check(Files.exists(emittedController)) {
-            "no controller was generated for the InvoiceSummary projection at $emittedController " +
-                "— the F22 emit gate did not admit it"
+        for (name in PROJECTIONS) {
+            val emittedController = srcDir.resolve("acme/sales/${name}Controller.kt")
+            check(Files.exists(emittedController)) {
+                "no controller was generated for the $name projection at $emittedController " +
+                    "— the F22 emit gate did not admit it"
+            }
         }
 
         val sources = Files.walk(srcDir).use { stream ->
@@ -108,9 +112,12 @@ class GeneratedProjectionControllerHarness(
             "generated Kotlin failed to compile:\n${result.messages}"
         }
 
-        this.controllerClass = result.classLoader.loadClass(CONTROLLER_FQCN)
+        this.controllerClasses = PROJECTIONS.map { result.classLoader.loadClass("$ENTITY_PKG.${it}Controller") }
         this.invoiceTable = result.classLoader.loadClass(INVOICE_TABLE_FQCN)
             .getDeclaredField("INSTANCE").get(null) as Table
+        this.viewTables = PROJECTIONS.associateWith {
+            result.classLoader.loadClass("$ENTITY_PKG.${it}Table").getDeclaredField("INSTANCE").get(null) as Table
+        }
     }
 
     /** Rebuild a fresh in-memory H2 + view + seed + controller + Tomcat. */
@@ -119,7 +126,15 @@ class GeneratedProjectionControllerHarness(
         val db = Database.connect("jdbc:h2:mem:$dbName;DB_CLOSE_DELAY=-1;MODE=PostgreSQL", driver = "org.h2.Driver")
         transaction(db) {
             SchemaUtils.create(invoiceTable)
-            exec("CREATE VIEW v_invoice_summary AS SELECT * FROM ${identity(invoiceTable)}")
+            for ((name, view) in VIEWS) {
+                val table = viewTables.getValue(name)
+                // view column (the generated Exposed column's physical name) <- `invoices` column
+                val select = view.columns.joinToString(", ") { (viewCol, baseCol) ->
+                    val target = table.columns.first { it.name == snakeCase(viewCol) }
+                    "${identity(column(baseCol))} AS ${identity(target)}"
+                }
+                exec("CREATE VIEW ${view.name} AS SELECT $select FROM ${identity(invoiceTable)}")
+            }
             val cols = SEED_FIELDS.map { field -> column(field) }
             val colList = cols.joinToString(", ") { identity(it) }
             for (row in invoices) {
@@ -128,9 +143,9 @@ class GeneratedProjectionControllerHarness(
             }
         }
 
-        val controller = controllerClass.getDeclaredConstructor().newInstance()
+        val controllers = controllerClasses.map { it.getDeclaredConstructor().newInstance() }
         host?.close()
-        host = TomcatHost.start(mapper, controller)
+        host = TomcatHost.start(mapper, *controllers.toTypedArray())
     }
 
     /**
@@ -161,11 +176,26 @@ class GeneratedProjectionControllerHarness(
 
     private companion object {
         const val ENTITY_PKG = "acme.sales"
-        const val CONTROLLER_FQCN = "$ENTITY_PKG.InvoiceSummaryController"
         const val INVOICE_TABLE_FQCN = "$ENTITY_PKG.InvoiceTable"
 
+        /** The corpus's view-only projections, each mounted and served. */
+        val PROJECTIONS = listOf("InvoiceSummary", "InvoiceLedger", "InvoiceStub")
+
         /** The seed row keys, in `invoices` column order. */
-        val SEED_FIELDS = listOf("id", "reference", "status", "amountCents")
+        val SEED_FIELDS = listOf("id", "reference", "status", "amountCents", "discount", "weight")
+
+        class ViewSpec(val name: String, val columns: List<Pair<String, String>>)
+
+        /** Each projection's view: (projection field -> `invoices` field) pairs. */
+        val VIEWS = mapOf(
+            "InvoiceSummary" to ViewSpec("v_invoice_summary", listOf(
+                "id" to "id", "reference" to "reference", "status" to "status", "amountCents" to "amountCents")),
+            // Keyed on `number`; the view has NO `id` column.
+            "InvoiceLedger" to ViewSpec("v_invoice_ledger", listOf(
+                "number" to "id", "reference" to "reference", "discount" to "discount", "weight" to "weight")),
+            // No declared identity; the view carries an `id` column all the same.
+            "InvoiceStub" to ViewSpec("v_invoice_stub", listOf("id" to "id", "reference" to "reference")),
+        )
 
         fun snakeCase(s: String): String = buildString {
             for (c in s) {

@@ -26,6 +26,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -33,42 +34,65 @@ import java.util.stream.Stream;
 
 
 /**
- * F22 — host the GENERATED Java Spring {@code @RestController} for the view-only
- * {@code InvoiceSummary} projection over real HTTP (an embedded Tomcat, {@link TomcatHost}) and drive
- * the {@code projection/} api-contract scenarios against it. Sibling of
- * {@link GeneratedJsonbControllerHarness}.
+ * F22 — host the GENERATED Java Spring {@code @RestController} of every view-only
+ * projection in the {@code projection/} corpus ({@code InvoiceSummary}, {@code InvoiceLedger},
+ * {@code InvoiceStub}) over real HTTP (one embedded Tomcat, {@link TomcatHost}) and drive the
+ * api-contract scenarios against them. Sibling of {@link GeneratedJsonbControllerHarness}.
  *
- * <p>The artifact under test is the GENERATED {@code InvoiceSummaryController} —
- * read routes plus a 405 refusal on every write verb — together with the read-only
- * {@code InvoiceSummaryRepository} interface it delegates to. The only hand-written
- * piece is {@link InMemoryInvoiceSummaryRepositorySource}, the consumer seam.</p>
+ * <p>The artifacts under test are the GENERATED {@code <Projection>Controller}s — read
+ * routes plus a 405 refusal on every write verb — together with the read-only
+ * {@code <Projection>Repository} interfaces they delegate to. The only hand-written piece
+ * is {@link InMemoryProjectionRepositorySource}, the consumer seam.</p>
  *
- * <p>Both the projection AND the writable {@code Invoice} entity are generated and
- * compiled, because the interesting failure is a gate that admits one shape and breaks
- * the other. Only the projection's controller is MOUNTED — mounting Invoice's too would
- * need a second in-memory seam for a surface no scenario exercises.</p>
+ * <p>The projections AND the writable {@code Invoice} entity are generated and compiled,
+ * because the interesting failure is a gate that admits one shape and breaks the other.
+ * Only the projections' controllers are MOUNTED — mounting Invoice's too would need a
+ * second in-memory seam for a surface no scenario exercises.</p>
  */
 public final class GeneratedProjectionControllerHarness implements AutoCloseable {
 
     private static final String ENTITY_PKG = "acme.sales";
-    private static final String CONTROLLER_FQCN = ENTITY_PKG + ".InvoiceSummaryController";
-    private static final String DTO_FQCN = ENTITY_PKG + ".InvoiceSummaryDto";
-    private static final String REPO_FQCN = ENTITY_PKG + ".InvoiceSummaryRepository";
+
+    /**
+     * One mounted projection: the columns its view returns (view column to {@code invoices}
+     * column; the view derives from the seeded base table, so the harness models it by
+     * selecting and renaming), the DTO component its {@code findById} matches, or
+     * {@code null} for a projection that declares no primary identity, and that component's
+     * Java type.
+     */
+    private record Spec(Map<String, String> columns, String keyComponent, String keyType) {}
+
+    private static final Map<String, Spec> SPECS = new LinkedHashMap<>();
+    static {
+        SPECS.put("InvoiceSummary", new Spec(columns(
+            "id", "id", "reference", "reference", "status", "status", "amountCents", "amountCents"),
+            "id", "Long"));
+        // Keyed on `number`; the view has NO `id` column.
+        SPECS.put("InvoiceLedger", new Spec(columns(
+            "number", "id", "reference", "reference", "discount", "discount", "weight", "weight"),
+            "number", "Long"));
+        // No declared identity; the view carries an `id` column all the same.
+        SPECS.put("InvoiceStub", new Spec(columns("id", "id", "reference", "reference"), null, null));
+    }
+
+    private static Map<String, String> columns(String... pairs) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (int i = 0; i < pairs.length; i += 2) out.put(pairs[i], pairs[i + 1]);
+        return out;
+    }
+
+    /** A mounted projection's generated row type and the constructors a scenario rebuilds it with. */
+    private record Mount(Class<?> dtoClass, Constructor<?> repoCtor, Constructor<?> controllerCtor,
+                         List<Map<String, Object>> viewRows) {}
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final URLClassLoader classLoader;
-    private final Class<?> dtoClass;
-    private final Constructor<?> controllerCtor;   // (InvoiceSummaryRepository) — no ObjectMapper,
-                                                   // no Validator: nothing here binds a body.
-    private final Constructor<?> repoCtor;         // (List<InvoiceSummaryDto> seed)
-    private final List<Map<String, Object>> seedRows;
+    private final Map<String, Mount> mounts = new LinkedHashMap<>();
 
     private TomcatHost host;
 
     public GeneratedProjectionControllerHarness(Path corpusRoot, Path genDir,
                                                 List<Map<String, Object>> seedRows) throws Exception {
-        this.seedRows = seedRows;
-
         Path srcDir = genDir.resolve("src");
         Path classesDir = genDir.resolve("classes");
         Files.createDirectories(srcDir);
@@ -81,42 +105,64 @@ public final class GeneratedProjectionControllerHarness implements AutoCloseable
         runGenerator(new SpringRepositoryGenerator(), loader, srcDir);
         runGenerator(new SpringFilterAllowlistGenerator(), loader, srcDir);
 
-        // The projection's controller must have been emitted at all — a silently-skipped
-        // generator would otherwise surface downstream as a ClassNotFoundException with no
-        // hint that codegen, not the harness, was the cause.
-        Path emittedController = srcDir.resolve(ENTITY_PKG.replace('.', '/'))
-            .resolve("InvoiceSummaryController.java");
-        if (!Files.exists(emittedController)) {
-            throw new IllegalStateException(
-                "no controller was generated for the InvoiceSummary projection at "
-                    + emittedController + " — the F22 emit gate did not admit it");
+        Path pkgDir = srcDir.resolve(ENTITY_PKG.replace('.', '/'));
+        for (Map.Entry<String, Spec> e : SPECS.entrySet()) {
+            String name = e.getKey();
+            // Every projection's controller must have been emitted at all — a silently-skipped
+            // generator would otherwise surface downstream as a ClassNotFoundException with no
+            // hint that codegen, not the harness, was the cause.
+            Path emittedController = pkgDir.resolve(name + "Controller.java");
+            if (!Files.exists(emittedController)) {
+                throw new IllegalStateException(
+                    "no controller was generated for the " + name + " projection at "
+                        + emittedController + " — the F22 emit gate did not admit it");
+            }
+            // The generated repository is the contract: a keyless projection must not have
+            // grown a findById, and a keyed one must have kept it.
+            boolean hasFindById = Files.readString(pkgDir.resolve(name + "Repository.java")).contains("findById(");
+            if (hasFindById != (e.getValue().keyComponent() != null)) {
+                throw new IllegalStateException(
+                    name + "Repository " + (hasFindById ? "has" : "has no") + " findById, but the corpus "
+                        + (e.getValue().keyComponent() != null ? "declares" : "declares no") + " identity");
+            }
+            Files.writeString(pkgDir.resolve(InMemoryProjectionRepositorySource.simpleName(name) + ".java"),
+                InMemoryProjectionRepositorySource.source(
+                    name, e.getValue().keyComponent(), e.getValue().keyType()));
         }
-
-        Path repoImpl = srcDir.resolve(ENTITY_PKG.replace('.', '/'))
-            .resolve("InMemoryInvoiceSummaryRepository.java");
-        Files.writeString(repoImpl, InMemoryInvoiceSummaryRepositorySource.SOURCE);
 
         compile(srcDir, classesDir);
 
         this.classLoader = new URLClassLoader(
             new URL[]{ classesDir.toUri().toURL() }, getClass().getClassLoader());
-        this.dtoClass = classLoader.loadClass(DTO_FQCN);
-        Class<?> repoInterface = classLoader.loadClass(REPO_FQCN);
-        Class<?> controllerClass = classLoader.loadClass(CONTROLLER_FQCN);
-        this.controllerCtor = controllerClass.getDeclaredConstructor(repoInterface);
-        Class<?> repoImplClass = classLoader.loadClass(InMemoryInvoiceSummaryRepositorySource.FQCN);
-        this.repoCtor = repoImplClass.getDeclaredConstructor(List.class);
+        for (Map.Entry<String, Spec> e : SPECS.entrySet()) {
+            String name = e.getKey();
+            Class<?> dtoClass = classLoader.loadClass(ENTITY_PKG + "." + name + "Dto");
+            Class<?> repoInterface = classLoader.loadClass(ENTITY_PKG + "." + name + "Repository");
+            // (<Projection>Repository) — no ObjectMapper, no Validator: nothing here binds a body.
+            Constructor<?> controllerCtor = classLoader.loadClass(ENTITY_PKG + "." + name + "Controller")
+                .getDeclaredConstructor(repoInterface);
+            Constructor<?> repoCtor = classLoader.loadClass(InMemoryProjectionRepositorySource.fqcn(name))
+                .getDeclaredConstructor(List.class);
+            List<Map<String, Object>> viewRows = new ArrayList<>();
+            for (Map<String, Object> row : seedRows) {
+                Map<String, Object> view = new LinkedHashMap<>();
+                e.getValue().columns().forEach((col, src) -> view.put(col, row.get(src)));
+                viewRows.add(view);
+            }
+            mounts.put(name, new Mount(dtoClass, repoCtor, controllerCtor, viewRows));
+        }
     }
 
-    /** Re-seed for a scenario: fresh repo + controller + Tomcat from the corpus seed. */
+    /** Re-seed for a scenario: fresh repositories and controllers, all on one Tomcat. */
     public void reset() throws Exception {
-        List<Object> dtos = new ArrayList<>();
-        for (Map<String, Object> row : seedRows) dtos.add(mapper.convertValue(row, dtoClass));
-        Object repo = repoCtor.newInstance(dtos);
-        Object controller = controllerCtor.newInstance(repo);
-
+        List<Object> controllers = new ArrayList<>();
+        for (Mount m : mounts.values()) {
+            List<Object> dtos = new ArrayList<>();
+            for (Map<String, Object> row : m.viewRows()) dtos.add(mapper.convertValue(row, m.dtoClass()));
+            controllers.add(m.controllerCtor().newInstance(m.repoCtor().newInstance(dtos)));
+        }
         if (host != null) host.close();
-        this.host = TomcatHost.start(mapper, controller);
+        this.host = TomcatHost.start(mapper, controllers.toArray());
     }
 
     public Response exchange(String method, String path, Object jsonBody) throws Exception {

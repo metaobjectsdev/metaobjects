@@ -1,46 +1,61 @@
 package com.metaobjects.integration.api.generated;
 
 /**
- * The Java SOURCE for an in-memory {@code acme.sales.<Report>Repository} impl: ONE generic
- * template, instantiated once per served report by substituting the report's name. Emitted
+ * The Java SOURCE for an in-memory {@code acme.sales.<Projection>Repository} impl: ONE generic
+ * template, instantiated once per mounted projection by substituting its name. Emitted
  * alongside the GENERATED controller / DTO / interface so it compiles against them, then
- * loaded and instantiated reflectively by {@link GeneratedReportControllerHarness}.
+ * loaded and instantiated reflectively by {@link GeneratedProjectionControllerHarness}.
  *
- * <p>The consumer seam MetaObjects leaves unimplemented, and for a report it is
- * {@code list} and {@code count} only. If the generator ever emitted {@code findById} or a
- * write method on a report's repository interface, this class would stop compiling.</p>
+ * <p>The consumer seam MetaObjects leaves unimplemented. For a projection that declares a
+ * primary identity it is {@code list}, {@code count} and {@code findById}; for a keyless
+ * one it is {@code list} and {@code count} only, and if the generator ever emitted
+ * {@code findById} or a write method on that repository interface, this class would stop
+ * compiling, which is the cheapest possible gate on it.</p>
  *
- * <p>It stands in for the report's SQL view: the seeded rows are what that view returns.
- * Test scaffolding, not a conformance subject. Its job is to apply the controller-supplied
- * {@code List<FilterPredicate>}, {@code SortClause} and {@code limit/offset} faithfully, so
- * the GENERATED controller's qs to predicate to repository translation is exercised end to
- * end. Envelopes and status codes are the generated controller's job.</p>
+ * <p>Test scaffolding, not a conformance subject: its job is to apply the
+ * controller-supplied {@code List<FilterPredicate>}, {@code SortClause} and
+ * {@code limit/offset} to the seeded rows faithfully, so the GENERATED controller's
+ * qs&rarr;predicate&rarr;repository translation is exercised end to end. Envelopes and
+ * status codes are the generated controller's job.</p>
  *
  * <p>Generic over the row: a column is read through the DTO record's own component
  * accessor and an operand is coerced by that component's declared type, so nothing here
- * names a report's fields. A decimal compares as {@link java.math.BigDecimal} (exact, and
- * scale-blind: {@code 0.4} equals {@code 0.40}), never through a double.</p>
+ * names a projection's fields. A decimal compares as {@link java.math.BigDecimal} (exact
+ * and scale-blind), never through a double.</p>
  */
-final class InMemoryReportRepositorySource {
+final class InMemoryProjectionRepositorySource {
 
-    private InMemoryReportRepositorySource() {}
+    private InMemoryProjectionRepositorySource() {}
 
     private static final String PKG = "acme.sales";
-    private static final String NAME = "__REPORT__";
+    private static final String NAME = "__NAME__";
+    private static final String FIND_BY_ID = "__FIND_BY_ID__";
 
-    /** Simple name of the emitted impl for {@code report}. */
-    static String simpleName(String report) {
-        return "InMemory" + report + "Repository";
+    /** Simple name of the emitted impl for {@code projection}. */
+    static String simpleName(String projection) {
+        return "InMemory" + projection + "Repository";
     }
 
-    /** Fully-qualified name of the emitted impl for {@code report}. */
-    static String fqcn(String report) {
-        return PKG + "." + simpleName(report);
+    /** Fully-qualified name of the emitted impl for {@code projection}. */
+    static String fqcn(String projection) {
+        return PKG + "." + simpleName(projection);
     }
 
-    /** The impl source for {@code report}. */
-    static String source(String report) {
-        return TEMPLATE.replace(NAME, report);
+    /**
+     * The impl source for {@code projection}. {@code keyComponent} is the DTO record
+     * component its {@code findById} matches (of Java type {@code keyType}), or {@code null}
+     * for a keyless projection, whose repository has no {@code findById} to implement.
+     */
+    static String source(String projection, String keyComponent, String keyType) {
+        String findById = keyComponent == null ? "" : """
+
+            @Override
+            public Optional<__NAME__Dto> findById(__KEY_TYPE__ id) {
+                for (__NAME__Dto r : rows) if (id.equals(r.__KEY__())) return Optional.of(r);
+                return Optional.empty();
+            }
+""".replace("__KEY__", keyComponent).replace("__KEY_TYPE__", keyType);
+        return TEMPLATE.replace(FIND_BY_ID, findById).replace(NAME, projection);
     }
 
     private static final String TEMPLATE = """
@@ -54,24 +69,25 @@ final class InMemoryReportRepositorySource {
         import java.util.ArrayList;
         import java.util.Comparator;
         import java.util.List;
+import java.util.Optional;
 
         /**
-         * Hand-written in-memory {@link __REPORT__Repository} (the read-only consumer seam).
-         * Stands in for the report's SQL view. NOT a conformance subject: test scaffolding.
+         * Hand-written in-memory {@link __NAME__Repository} (the read-only consumer seam).
+         * Stands in for the projection's SQL view. NOT a conformance subject: test scaffolding.
          */
-        public final class InMemory__REPORT__Repository implements __REPORT__Repository {
+        public final class InMemory__NAME__Repository implements __NAME__Repository {
 
-            private final List<__REPORT__Dto> rows = new ArrayList<>();
+            private final List<__NAME__Dto> rows = new ArrayList<>();
 
-            public InMemory__REPORT__Repository(List<__REPORT__Dto> seed) {
+            public InMemory__NAME__Repository(List<__NAME__Dto> seed) {
                 rows.addAll(seed);
             }
 
             @Override
-            public List<__REPORT__Dto> list(int limit, int offset, SortClause sort, List<FilterPredicate> filters) {
-                List<__REPORT__Dto> out = new ArrayList<>();
-                for (__REPORT__Dto r : rows) if (matchesAll(r, filters)) out.add(r);
-                // No sort: the view's own order, which is the seed's.
+            public List<__NAME__Dto> list(int limit, int offset, SortClause sort, List<FilterPredicate> filters) {
+                List<__NAME__Dto> out = new ArrayList<>();
+                for (__NAME__Dto r : rows) if (matchesAll(r, filters)) out.add(r);
+                // No sort: the view's own order, which is the seed's (ascending by id).
                 if (sort != null) out.sort(comparatorFor(sort));
                 int from = Math.min(offset, out.size());
                 int to = Math.min(from + limit, out.size());
@@ -81,20 +97,21 @@ final class InMemoryReportRepositorySource {
             @Override
             public long count(List<FilterPredicate> filters) {
                 long n = 0;
-                for (__REPORT__Dto r : rows) if (matchesAll(r, filters)) n++;
+                for (__NAME__Dto r : rows) if (matchesAll(r, filters)) n++;
                 return n;
             }
 
+__FIND_BY_ID__
             // --- the row, read generically ------------------------------------------------
 
             private static RecordComponent component(String field) {
-                for (RecordComponent c : __REPORT__Dto.class.getRecordComponents()) {
+                for (RecordComponent c : __NAME__Dto.class.getRecordComponents()) {
                     if (c.getName().equals(field)) return c;
                 }
                 throw new IllegalStateException("unknown column: " + field);
             }
 
-            private static Object column(__REPORT__Dto r, String field) {
+            private static Object column(__NAME__Dto r, String field) {
                 try {
                     return component(field).getAccessor().invoke(r);
                 } catch (ReflectiveOperationException e) {
@@ -114,15 +131,8 @@ final class InMemoryReportRepositorySource {
                 else if (type == LocalDate.class) value = LocalDate.parse(raw);
                 else if (type == Boolean.class) value = Boolean.valueOf(raw);
                 else if (type == String.class) value = raw;
-                else if (type.isEnum()) value = enumConstant(type, raw);
                 else throw new IllegalStateException("no operand coercion for " + type.getName() + " (" + field + ")");
                 return comparable(value);
-            }
-
-            /** A derived enum column's operand: the declared member of that name. */
-            @SuppressWarnings({"unchecked", "rawtypes"})
-            private static Object enumConstant(Class<?> type, String raw) {
-                return Enum.valueOf((Class<? extends Enum>) type, raw);
             }
 
             @SuppressWarnings("unchecked")
@@ -132,14 +142,14 @@ final class InMemoryReportRepositorySource {
 
             // --- predicate application ---------------------------------------------------
 
-            private static boolean matchesAll(__REPORT__Dto r, List<FilterPredicate> filters) {
+            private static boolean matchesAll(__NAME__Dto r, List<FilterPredicate> filters) {
                 if (filters == null) return true;
                 for (FilterPredicate p : filters) if (!matches(r, p)) return false; // implicit AND
                 return true;
             }
 
             @SuppressWarnings("unchecked")
-            private static boolean matches(__REPORT__Dto r, FilterPredicate p) {
+            private static boolean matches(__NAME__Dto r, FilterPredicate p) {
                 Object col = column(r, p.field());
                 switch (p.op()) {
                     case "isNull": {
@@ -187,10 +197,10 @@ final class InMemoryReportRepositorySource {
                 return value.matches(re.toString());
             }
 
-            private static Comparator<__REPORT__Dto> comparatorFor(SortClause sort) {
+            private static Comparator<__NAME__Dto> comparatorFor(SortClause sort) {
                 String field = sort.field();
                 component(field); // an unknown sort column is a harness bug, not an empty sort
-                Comparator<__REPORT__Dto> c = Comparator.comparing(
+                Comparator<__NAME__Dto> c = Comparator.comparing(
                     r -> comparable(column(r, field)), Comparator.nullsLast(Comparator.naturalOrder()));
                 return "desc".equalsIgnoreCase(sort.direction()) ? c.reversed() : c;
             }

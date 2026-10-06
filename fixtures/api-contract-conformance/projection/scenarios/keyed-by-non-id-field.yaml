@@ -1,0 +1,37 @@
+name: projection-keyed-by-non-id-field
+description: >
+  InvoiceLedger passes the Invoice key through on a field named `number`, and its view
+  has NO `id` column. The item route addresses the declared key field, not a column
+  called `id`: a known key answers its row, an unknown one answers the 404 envelope (never
+  the view's first row, which is what a mount that looked for a missing `id` column
+  answered). The item write verbs are still refused with the 405 envelope.
+requests:
+  - id: get-known
+    method: GET
+    path: /api/invoice_ledgers/2
+    expect:
+      status: 200
+      body:
+        row: { number: 2 }
+  - id: get-unknown
+    method: GET
+    path: /api/invoice_ledgers/999
+    expect:
+      status: 404
+      body:
+        error: "not_found"
+  - id: patch-item
+    method: PATCH
+    path: /api/invoice_ledgers/2
+    body: { weight: 9 }
+    expect:
+      status: 405
+      body:
+        error: "method_not_allowed"
+  - id: delete-item
+    method: DELETE
+    path: /api/invoice_ledgers/2
+    expect:
+      status: 405
+      body:
+        error: "method_not_allowed"

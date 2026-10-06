@@ -113,8 +113,10 @@ The codegen emits:
   (`MapGet` list, `MapPost` answering 405, no `{id}` route) and
   `<Report>FilterAllowlist.g.cs`, with every derived field that has filter operators
   filterable and sortable (on a report an enum dimension sorts too; an entity's enum field
-  does not). No names artifact. See
-  [reporting](../features/reporting.md#how-a-report-is-served).
+  does not). No names artifact. An enum dimension reaches the wire as its string symbol only when
+  the host serializes enums as strings (`ConfigureHttpJsonOptions` with a
+  `JsonStringEnumConverter`): the routes return the row object and the host owns serialization.
+  See [reporting](../features/reporting.md#how-a-report-is-served).
 - `AppDbContext.g.cs` — `DbSet<Author>`, projection `.ToView()`, `@storage` owned
   types via `OwnsOne` (single) / `OwnsMany(...).ToJson(...)` (`@isArray` array-of-VO),
   enum-as-string via `HasConversion<string>()`.
