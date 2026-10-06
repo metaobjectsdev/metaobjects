@@ -36,6 +36,7 @@ from metaobjects.meta.core.identity.identity_constants import (
     IDENTITY_SUBTYPE_REFERENCE,
 )
 from metaobjects.meta.meta_data import MetaData
+from metaobjects.parser import expand_package_for_path
 from metaobjects.shared.base_types import (
     SUBTYPE_ROOT,
     TYPE_FIELD,
@@ -78,15 +79,10 @@ def lint_reference_fields(root: MetaData) -> list[FieldLintFinding]:
     out: list[FieldLintFinding] = []
     # OWN-ONLY (ADR-0039 sanctioned case): a root has no super, and its own children
     # are the declared objects.
-    root_pkg = root.package or ""
     for obj in root.own_children():
         if obj.type != TYPE_OBJECT:
             continue
-        own_pkg = obj.package
-        if own_pkg and own_pkg.startswith(PACKAGE_SEP) and root_pkg.strip() != "":
-            address = f"{root_pkg}{own_pkg}{PACKAGE_SEP}{obj.name}"
-        else:
-            address = obj.resolution_key()
+        address = obj.resolution_key()
         # RESOLVING: the effective field set — a field inherited through ``extends`` or
         # added by an overlay file is a field the object has.
         fields = {c.name for c in obj.children() if c.type == TYPE_FIELD}
@@ -185,8 +181,7 @@ def declared_duplicate_fields(content: str, format: str) -> list[FieldLintFindin
             # (a ``::``-prefixed one is relative to the root's), else the root's.
             raw_own_pkg = body.get(_KEY_PACKAGE)
             if isinstance(raw_own_pkg, str) and raw_own_pkg != "":
-                relative = root_pkg.strip() != "" and raw_own_pkg.startswith(PACKAGE_SEP)
-                pkg = root_pkg + raw_own_pkg if relative else raw_own_pkg
+                pkg = expand_package_for_path(root_pkg, raw_own_pkg)
             else:
                 pkg = root_pkg
             address = f"{pkg}{PACKAGE_SEP}{name}" if pkg != "" else name

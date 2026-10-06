@@ -1,0 +1,9 @@
+{
+  "findings": [
+    {
+      "code": "WARN_REFERENCE_FIELD_NOT_FOUND",
+      "path": "beta::other::parts::Gadget.store_fk",
+      "message": "identity.reference \"store_fk\" lists \"storeIdd\" in @fields, but beta::other::parts::Gadget has no field of that name, inherited and overlaid fields included. Nothing checks this at load, so the reference is built on a field that does not exist. Rename the entry to an existing field, or declare the field."
+    }
+  ]
+}

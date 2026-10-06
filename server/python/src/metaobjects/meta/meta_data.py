@@ -95,6 +95,18 @@ class MetaData:
         key. Folding the file-default package keeps the binding correct
         regardless of merge order.
         """
+        pkg = self.effective_package()
+        if pkg:
+            return f"{pkg}{PACKAGE_SEP}{self.name}"
+        return self.name
+
+    def effective_package(self) -> str:
+        """The package this node resolves under: :meth:`resolution_key` minus ``::<name>``.
+
+        ``""`` when there is none. Use this, not ``package``, to ask "which package is
+        this node in": ``package`` is ``None`` on an object that inherits its file's
+        root package. Mirrors C# ``NamingRefs.EffectivePackage``.
+        """
         pkg = self.package or self.file_default_package
         if not pkg:
             node = self.parent
@@ -103,9 +115,7 @@ class MetaData:
                     pkg = node.package
                     break
                 node = node.parent
-        if pkg:
-            return f"{pkg}{PACKAGE_SEP}{self.name}"
-        return self.name
+        return pkg or ""
 
     def _require_mutable(self) -> None:
         if self._frozen:

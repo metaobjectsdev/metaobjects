@@ -1,0 +1,62 @@
+{
+  "metadata.root": {
+    "package": "acme::app",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Store",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Gadget",
+          "package": "beta::other::parts",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "storeId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "store_fk",
+                "@fields": [
+                  "storeId"
+                ],
+                "@references": "acme::app::Store"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

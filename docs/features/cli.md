@@ -139,10 +139,7 @@ Rules of the contract:
   | `metaobjects verify` | `--no-field-lint` | `META_NO_FIELD_LINT=1` |
 
   The codes and message text are identical in every port, gated by
-  [`fixtures/field-lint-conformance/`](../../fixtures/field-lint-conformance/README.md). In
-  Python, for a multi-file collection whose roots declare different packages, the address
-  printed for a `::`-relative package is expanded against the merged root's package and can
-  differ from the other ports.
+  [`fixtures/field-lint-conformance/`](../../fixtures/field-lint-conformance/README.md).
 
 ### The prompt directory: `--prompts` everywhere (F101)
 
