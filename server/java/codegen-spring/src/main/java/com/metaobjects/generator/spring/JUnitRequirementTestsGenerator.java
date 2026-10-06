@@ -114,7 +114,8 @@ public class JUnitRequirementTestsGenerator extends FileEmittingGenerator implem
         for (Walked w : walked) {
             boolean keep = filter == null ? RequirementTestIdentities.defaultFilter(w.view()) : filter.include(w.view());
             if (!keep) {
-                uncovered.add(RequirementTestIdentities.addressOf(w.view().pkg(), w.view().path()));
+                // The PATH, not the qualified address: diagnostics name paths, in every port.
+                uncovered.add(w.view().path());
                 continue;
             }
             for (Map.Entry<String, List<Target>> unit : RequirementTestIdentities.units(w, grain).entrySet()) {
@@ -197,8 +198,14 @@ public class JUnitRequirementTestsGenerator extends FileEmittingGenerator implem
             try {
                 found = Class.forName(className, true, l);
                 break;
-            } catch (ClassNotFoundException | LinkageError ignored) {
-                // try the next loader
+            } catch (ClassNotFoundException ignored) {
+                // not in this loader: try the next
+            } catch (LinkageError e) {
+                // The class IS here and cannot be used (built for a newer JDK, a missing
+                // dependency, a static initialiser that threw): saying it is missing would send
+                // the reader looking for the wrong problem, and the next loader would hide it.
+                throw new GeneratorException("requirement-tests: arg '" + arg + "' names '" + className
+                    + "', which was found but could not be loaded: " + e, null, null, e, Map.of());
             }
         }
         if (found == null) {

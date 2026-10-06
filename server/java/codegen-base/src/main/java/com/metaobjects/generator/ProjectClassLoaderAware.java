@@ -13,6 +13,10 @@ package com.metaobjects.generator;
  */
 public interface ProjectClassLoaderAware {
 
-    /** The loader that sees the project's compile and test classpath. Never {@code null}. */
+    /**
+     * The loader that sees the project's classpath as the running goal builds it: runtime and
+     * compile elements in {@code generate-sources}, and the test classpath and compiled
+     * classes as well in the test-source and cli phases. Never {@code null}.
+     */
     void setProjectClassLoader(ClassLoader projectClassLoader);
 }

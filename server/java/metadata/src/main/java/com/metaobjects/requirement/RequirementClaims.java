@@ -3,6 +3,7 @@ package com.metaobjects.requirement;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaRoot;
 import com.metaobjects.attr.MetaAttribute;
+import com.metaobjects.object.MetaObject;
 import com.metaobjects.validation.SymbolTable;
 
 import java.util.ArrayList;
@@ -59,7 +60,7 @@ public final class RequirementClaims {
 
         List<MetaData> candidates = new ArrayList<>();
         for (MetaData c : structuralChildren(root)) {
-            if (!"object".equals(c.getType()) && !MetaRequirement.TYPE_REQUIREMENT.equals(c.getType())) candidates.add(c);
+            if (!MetaObject.TYPE_OBJECT.equals(c.getType()) && !MetaRequirement.TYPE_REQUIREMENT.equals(c.getType())) candidates.add(c);
         }
 
         // A fully-qualified reference binds exactly, like every other FQN in the model.

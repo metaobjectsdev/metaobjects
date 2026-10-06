@@ -69,7 +69,8 @@ public class RequirementTestsGeneratorMojoTest {
         GeneratorParam.Builder gen = GeneratorParam.builder(JUnitRequirementTestsGenerator.class.getName())
             .withArg("outputDir", outputDir.toString())
             .withArg("testPackage", "com.acme.requirements")
-            .withArg("witnessClass", "com.acme.Witnesses");
+            .withArg("witnessClass", "com.acme.Witnesses")
+            .withArg("warnUncovered", "false");
         for (int i = 0; i < extraArgs.length; i += 2) gen.withArg(extraArgs[i], extraArgs[i + 1]);
         mojo.setGenerators(new ArrayList<>(List.of(gen.build())));
         mojo.setGlobals(Collections.emptyMap());

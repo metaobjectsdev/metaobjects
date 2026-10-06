@@ -269,9 +269,9 @@ public final class GeneratorRegistry {
                     + "LlmCallBase-derived entities only).", Tier.NATIVE, Layer.CAPABILITY,
                 ejectPath(LlmTraceHelperGenerator.class));
         register(m, "requirement-tests", JUnitRequirementTestsGenerator.class.getName(),
-                "Per-package JUnit Jupiter tests, one per tested requirement, calling a project-owned witness "
-                    + "class through a generated interface (an unfilled live test fails; a skipped one is @Disabled). "
-                    + "[The project's test classpath needs org.junit.jupiter:junit-jupiter-api.]",
+                "Per-package JUnit Jupiter tests, one per tested requirement, each calling a project-owned "
+                    + "witness class through a generated interface; a live test with no witness fails and a "
+                    + "planned or retired one is @Disabled.",
                 Tier.NATIVE, Layer.CAPABILITY, ejectPath(JUnitRequirementTestsGenerator.class));
         register(m, "names", SpringNamesGenerator.class.getName(),
                 "Per-object physical database name constants (table/view/schema/column) "

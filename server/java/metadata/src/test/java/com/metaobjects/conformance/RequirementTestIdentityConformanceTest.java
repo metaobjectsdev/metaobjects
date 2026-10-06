@@ -10,7 +10,6 @@ import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.MetaDataSource;
 import com.metaobjects.requirement.MetaRequirement;
-import com.metaobjects.requirement.RequirementCheck;
 import com.metaobjects.requirement.RequirementTestFilter;
 import com.metaobjects.requirement.RequirementTestIdentities;
 import com.metaobjects.requirement.RequirementTestIdentities.Grain;
@@ -28,12 +27,10 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -51,7 +48,7 @@ import static org.junit.Assert.fail;
 @RunWith(Parameterized.class)
 public class RequirementTestIdentityConformanceTest {
 
-    private static final Path CORPUS =
+    static final Path CORPUS =
         CorpusRoot.locate().resolveSibling("requirement-test-identity-conformance");
 
     /** The whole of {@code options.json}: a key outside this list is refused, not ignored. */
@@ -62,7 +59,7 @@ public class RequirementTestIdentityConformanceTest {
      * a file five languages read, so a case NAMES one and every port's runner holds this table
      * in its own language. An unknown name fails the case.
      */
-    private static final Map<String, RequirementTestFilter> FILTERS = Map.of(
+    static final Map<String, RequirementTestFilter> FILTERS = Map.of(
         "all", v -> true,
         "architectural", v -> MetaRequirement.SUBTYPE_ARCHITECTURAL.equals(v.subType()),
         "live", v -> MetaRequirement.STATUS_LIVE.equals(v.status()),
@@ -72,7 +69,7 @@ public class RequirementTestIdentityConformanceTest {
         "path-under-Shop", v -> v.path().equals("Shop") || v.path().startsWith("Shop."),
         "claims-entity", v -> v.implementedByTypes().contains("object.entity"));
 
-    private static final Pattern DOCUMENTED_CASE = Pattern.compile("^\\| `([^`]+)` \\|", Pattern.MULTILINE);
+    static final Pattern DOCUMENTED_CASE = Pattern.compile("^\\| `([^`]+)` \\|", Pattern.MULTILINE);
 
     @Parameterized.Parameters(name = "{0}")
     public static Collection<Object[]> fixtures() throws IOException {
@@ -81,7 +78,7 @@ public class RequirementTestIdentityConformanceTest {
         return params;
     }
 
-    private static List<String> caseNames() throws IOException {
+    static List<String> caseNames() throws IOException {
         try (Stream<Path> dirs = Files.list(CORPUS)) {
             return dirs.filter(Files::isDirectory).map(d -> d.getFileName().toString()).sorted().toList();
         }
@@ -91,26 +88,6 @@ public class RequirementTestIdentityConformanceTest {
 
     public RequirementTestIdentityConformanceTest(String name) {
         this.name = name;
-    }
-
-    @Test
-    public void everyCaseOnDiskIsDocumentedInTheReadmeAndNothingElseIs() throws IOException {
-        String readme = Files.readString(CORPUS.resolve("README.md"), StandardCharsets.UTF_8);
-        String section = readme.substring(readme.indexOf("\n## Cases\n"));
-        int next = section.indexOf("\n## ", 1);
-        if (next > 0) section = section.substring(0, next);
-        List<String> documented = new ArrayList<>();
-        Matcher m = DOCUMENTED_CASE.matcher(section);
-        while (m.find()) documented.add(m.group(1));
-        documented.sort(Comparator.naturalOrder());
-        assertEquals(caseNames(), documented);
-    }
-
-    @Test
-    public void filterTableHoldsExactlyTheEightNamedPredicates() {
-        assertEquals(List.of("all", "architectural", "claims-entity", "level-5", "live",
-            "package-acme-shop", "path-under-Shop", "unlevelled"),
-            FILTERS.keySet().stream().sorted().toList());
     }
 
     @Test
@@ -154,57 +131,6 @@ public class RequirementTestIdentityConformanceTest {
         assertEquals(name, expectedTests(expected.getAsJsonArray("tests")), actualTests(tests));
         assertEquals(name, expectedPairs(expected.getAsJsonArray("collisions")),
             actualPairs(RequirementTestIdentities.witnessKeyCollisions(tests)));
-    }
-
-    // ---------------------------------------------------------------- direct tests
-
-    /** The corpus cannot hold a non-ASCII name (the loaders are not known to agree on one), so
-     *  the key function is pinned directly. {@code Character.isLetterOrDigit} would keep the
-     *  accents and give {@code req_acme_shop_Café_Réglé}. */
-    @Test
-    public void witnessKeyReplacesLettersOutsideAscii() {
-        assertEquals("req_acme_shop_Caf_R_gl_",
-            RequirementTestIdentities.witnessKeyOf("acme::shop::Café.Réglé", "*"));
-    }
-
-    @Test
-    public void witnessKeyKeepsNoUnderscoreAndAddsUnitSuffix() {
-        assertEquals("req_acme_shop_Sales_Orders__object_entity",
-            RequirementTestIdentities.witnessKeyOf("acme::shop::Sales__Orders", "object.entity"));
-        assertEquals("req_Orders_Recorded", RequirementTestIdentities.witnessKeyOf("Orders.Recorded", "*"));
-    }
-
-    /**
-     * What the loader reports for a requirement that declares its own package: the effective-package
-     * rule in {@code RequirementCheck.effectivePackage} reads {@code getPackage()} up the parent
-     * chain, so the declaring node itself must report it (and the walk then gives a nested child
-     * that declares none its parent's package, not its file's).
-     */
-    @Test
-    public void aNestedRequirementThatDeclaresItsOwnPackageReportsItFromGetPackage() throws IOException {
-        MetaDataLoader loader = new MetaDataLoader(LoaderOptions.create(false, false, true),
-            MetaDataLoader.SUBTYPE_MANUAL, "requirement_test_identity_probe_" + name.replace('-', '_'));
-        loader.init();
-        loader.load(new DirectorySource(CORPUS.resolve("filter-by-package").resolve("input"),
-            new DirectorySource.Options()).expandToList());
-        assertTrue(loader.getErrors().toString(), loader.getErrors().isEmpty());
-        Map<String, MetaRequirement> byPath = new java.util.HashMap<>();
-        for (RequirementCheck.Addressed a : RequirementCheck.collectAddressed(loader.getRoot())) byPath.put(a.path(), a.node());
-
-        assertEquals("acme::shop", byPath.get("Settled").getPackage());
-        assertEquals("acme::billing", byPath.get("Invoiced").getPackage());
-        assertEquals("acme::shop", RequirementCheck.effectivePackage(byPath.get("Settled.Timed")));
-        assertEquals("acme::billing", RequirementCheck.effectivePackage(byPath.get("Invoiced.Numbered")));
-        assertEquals("acme::billing", RequirementCheck.effectivePackage(byPath.get("Billed")));
-    }
-
-    @Test
-    public void anUnknownGrainIsRefusedWithAClearError() {
-        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> Grain.parse("hybrid"));
-        assertTrue(e.getMessage(), e.getMessage().contains("\"hybrid\""));
-        assertTrue(e.getMessage(), e.getMessage().contains("\"concern\" or \"member\""));
-        assertEquals(Grain.CONCERN, Grain.parse("concern"));
-        assertEquals(Grain.MEMBER, Grain.parse("member"));
     }
 
     // ---------------------------------------------------------------- comparison

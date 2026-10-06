@@ -5,6 +5,7 @@ import com.metaobjects.MetaRoot;
 import com.metaobjects.io.util.IOUtil;
 import com.metaobjects.library.LibrarySources;
 import com.metaobjects.loader.ValidationPhase;
+import com.metaobjects.object.MetaObject;
 import com.metaobjects.validation.SymbolTable;
 
 import java.util.ArrayList;
@@ -86,9 +87,6 @@ public final class RequirementCheck {
      * incrementally would fail its first verify after authoring one entry.
      */
     public static final Severity OBJECT_COVERAGE_SEVERITY = Severity.WARN;
-
-    private static final String TYPE_OBJECT = "object";
-    private static final String OBJECT_SUBTYPE_ENTITY = "entity";
 
     // ------------------------------------------------------------------
     // the walk
@@ -186,7 +184,7 @@ public final class RequirementCheck {
     private static List<String> subtypesOf(MetaRoot root, MetaData ancestor) {
         List<String> out = new ArrayList<>();
         for (MetaData cand : RequirementClaims.structuralChildren(root)) {
-            if (!TYPE_OBJECT.equals(cand.getType()) || cand == ancestor) continue;
+            if (!MetaObject.TYPE_OBJECT.equals(cand.getType()) || cand == ancestor) continue;
             Set<MetaData> seen = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
             MetaData cur = cand.getSuperData();
             while (cur != null && seen.add(cur)) {
@@ -209,7 +207,7 @@ public final class RequirementCheck {
         for (MetaData n : RequirementClaims.structuralChildren(root)) {
             // ADR-0039 sanctioned own-only read: abstractness describes THIS declaration and is
             // never inherited, so IOUtil.isAbstract reads @isAbstract own-only.
-            if (TYPE_OBJECT.equals(n.getType()) && OBJECT_SUBTYPE_ENTITY.equals(n.getSubType()) && !IOUtil.isAbstract(n)) {
+            if (MetaObject.TYPE_OBJECT.equals(n.getType()) && MetaObject.SUBTYPE_ENTITY.equals(n.getSubType()) && !IOUtil.isAbstract(n)) {
                 out.add(n);
             }
         }

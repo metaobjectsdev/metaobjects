@@ -56,7 +56,9 @@ public class RequirementTestsEjectRoundTripTest {
     private static final Map<String, String> ARGS = Map.of(
         "testPackage", "com.example.requirements",
         "witnessClass", "com.example.Witnesses",
-        "grain", "member");
+        "grain", "member",
+        // the L3 parent would log the uncovered warning from both generators
+        "warnUncovered", "false");
 
     @Before
     public void loadWorkedExample() throws IOException {
