@@ -346,7 +346,7 @@ def requirement_tests(
     # Refused here, when the generator is built, rather than on the first requirement: an
     # unknown grain or a malformed module is a mistake in the config whatever the model holds.
     assert_requirement_test_grain(grain)
-    if not isinstance(witness_module, str) or not _DOTTED_NAME.match(witness_module):
+    if not isinstance(witness_module, str) or not _DOTTED_NAME.fullmatch(witness_module):
         raise ValueError(
             f"requirement-tests witness module {witness_module!r} is not a dotted module name "
             f"such as {DEFAULT_WITNESS_MODULE!r}."

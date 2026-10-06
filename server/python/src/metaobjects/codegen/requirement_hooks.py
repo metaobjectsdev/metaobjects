@@ -21,8 +21,11 @@ class RequirementTestArgs:
     identity: RequirementTestIdentity
     statement: str
     counterexample: str
-    #: ``(ref, "<type>.<subType>")`` per target this test stands for, ref as authored, each
-    #: distinct reference once.
+    #: ``(ref, "<type>.<subType>")`` for the targets this test stands for, ref as authored.
+    #: Under the ``concern`` grain: every resolved target of that concern, in authored order,
+    #: so one reference authored twice appears twice. Under the ``member`` grain: the one
+    #: target of the reference this test is for (a reference authored twice is one test and
+    #: keeps its first claim). A requirement that resolves nothing passes ``()``.
     targets: tuple[tuple[str, str], ...]
     disposition: str | None
     tracked_by: tuple[str, ...]

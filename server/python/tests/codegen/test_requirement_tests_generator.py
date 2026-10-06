@@ -314,9 +314,10 @@ def test_an_unknown_grain_is_refused_with_a_clear_error_by_the_generator(tmp_pat
         requirement_tests(grain="hybrid")
 
 
-def test_a_malformed_witness_module_is_refused() -> None:
+@pytest.mark.parametrize("module", ['x"; import os; "', "tests.w\n", "a b", ""])
+def test_a_malformed_witness_module_is_refused(module: str) -> None:
     with pytest.raises(ValueError, match="not a dotted module name"):
-        requirement_tests(witness_module='x"; import os; "')
+        requirement_tests(witness_module=module)
 
 
 def test_a_renderer_hook_replaces_one_test_and_receives_the_digest(tmp_path: Path) -> None:

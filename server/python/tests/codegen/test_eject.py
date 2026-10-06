@@ -7,6 +7,7 @@ eject never overwrites without --force and never edits the config.
 from __future__ import annotations
 
 import importlib
+import sys
 from pathlib import Path
 
 import pytest
@@ -223,3 +224,35 @@ def test_an_edited_ejected_requirement_tests_copy_drives_gen(tmp_path: Path, mon
     assert main(["gen"]) == 0
     text = (tmp_path / "gen" / "requirements" / "test_acme_shop_requirements.py").read_text(encoding="utf-8")
     assert "NOT YET WITNESSED: " in text and "unimplemented requirement" not in text
+
+
+def test_an_owned_copy_is_imported_from_its_own_project_after_another_projects_config_provider_ran(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Project A's config provider is imported with the config directory on `sys.path` and no
+    help from the owned-generator resolver, so `codegen` is cached from A. Project B, in the
+    same process, must still generate from B's own ejected `entity`."""
+    # A fresh process would hold no `codegen` yet; config providers are imported with plain
+    # importlib, so earlier tests' copies would otherwise answer for project A.
+    for name in [k for k in sys.modules if k == "codegen" or k.startswith("codegen.")]:
+        monkeypatch.delitem(sys.modules, name)
+    a = tmp_path / "a"
+    a.mkdir()
+    cfg_a = _project(a, "names")
+    cfg_a.write_text(f"providers: ['codegen.providers:p']\n{cfg_a.read_text()}", encoding="utf-8")
+    (a / "codegen").mkdir()
+    (a / "codegen" / "__init__.py").write_text("")
+    (a / "codegen" / "providers.py").write_text(
+        "from metaobjects.provider import Provider\n\np = Provider('a-provider', ('metaobjects-core-types',))\n"
+    )
+    monkeypatch.chdir(a)
+    assert main(["gen"]) == 0
+
+    b = tmp_path / "b"
+    b.mkdir()
+    _project(b, "codegen.generators.entity:entity_model")
+    monkeypatch.chdir(b)
+    assert main(["eject", "entity"]) == 0
+    assert main(["gen"]) == 0
+    assert any((b / "gen").rglob("*.py"))
+    assert main(["verify", "--codegen"]) == 0

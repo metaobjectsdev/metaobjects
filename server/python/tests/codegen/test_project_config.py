@@ -262,6 +262,7 @@ def test_an_empty_requirement_tests_block_means_the_defaults(tmp_path: Path) -> 
         ("  witnessModule: 3\n", "'witnessModule' must be a non-empty string"),
         ('  witnessModule: "a b"\n', "'witnessModule' must be a dotted module name"),
         ('  witnessModule: "x.1y"\n', "'witnessModule' must be a dotted module name"),
+        ('  witnessModule: "tests.w\\n"\n', "'witnessModule' must be a dotted module name"),
         ('  witnessModule: "x\\"; import os; \\""\n', "'witnessModule' must be a dotted module name"),
     ],
 )

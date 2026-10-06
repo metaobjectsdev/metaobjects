@@ -195,7 +195,7 @@ def _parse_requirement_tests(raw: object, ctx: str) -> RequirementTestsConfig:
 
     def symbol(key: str) -> str | None:
         value = string(key, None)
-        if value is not None and not re.match(MODULE_SYMBOL_PATTERN, value):
+        if value is not None and not re.fullmatch(MODULE_SYMBOL_PATTERN, value):
             raise ConfigError(
                 f"{ctx}: '{key}' must be in 'module:symbol' form (e.g. codegen.requirement_{key}:{key})."
             )
@@ -211,7 +211,7 @@ def _parse_requirement_tests(raw: object, ctx: str) -> RequirementTestsConfig:
         raise ConfigError(f"{ctx}: 'warnUncovered' must be a boolean.")
     witness = string("witnessModule", defaults.witness_module)
     assert witness is not None and grain is not None  # the defaults are never None
-    if not re.match(DOTTED_MODULE_PATTERN, witness):
+    if not re.fullmatch(DOTTED_MODULE_PATTERN, witness):
         raise ConfigError(
             f"{ctx}: 'witnessModule' must be a dotted module name such as "
             f"{DEFAULT_REQUIREMENT_WITNESS_MODULE!r}, got {witness!r}."
