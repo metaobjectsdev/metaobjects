@@ -146,6 +146,27 @@ Rules of the contract:
 
   The codes and message text are identical in every port, gated by
   [`fixtures/field-lint-conformance/`](../../fixtures/field-lint-conformance/README.md).
+- **The requirement gate runs on every `verify`, in every port**
+  ([ADR-0057](../../spec/decisions/ADR-0057-requirement-checks-and-tests-in-every-port.md)).
+  It is not a subverb and nothing mutes it. A model with no `requirement.*` node gets no
+  line and no change to the exit code. A model with one gets the ledger summary on every
+  run, and an error (a link above the floor, a dangling reference on a `live` or `partial`
+  requirement, a live policy applied to nothing) exits non-zero. Unlike the lints above,
+  this one can fail the build. One of its warnings can be raised to an error, per port:
+
+  | CLI | Flag | Environment |
+  |---|---|---|
+  | Node `meta verify` | `--require-implementers` | `META_REQUIRE_IMPLEMENTERS=1` |
+  | `dotnet meta verify` | `--require-implementers` | `META_REQUIRE_IMPLEMENTERS=1` |
+  | `mvn metaobjects:verify` | `-Dmeta.verify.requireImplementers=true` | `META_REQUIRE_IMPLEMENTERS=1` |
+  | `metaobjects verify` | `--require-implementers` | `META_REQUIRE_IMPLEMENTERS=1` |
+
+  The switch reports `WARN_REQUIREMENT_NOTHING_IMPLEMENTS` (a live functional requirement
+  that nothing implements) at severity `error`, under the same code, and changes no other
+  finding. The codes, severities and message text are identical in every port, gated by
+  [`fixtures/requirement-check-conformance/`](../../fixtures/requirement-check-conformance/README.md).
+  The seven requirement *authoring-lint* advisories are still printed by the Node `meta`
+  only. See [requirements.md](requirements.md#the-gate-in-every-port).
 
 ### The prompt directory: `--prompts` everywhere (F101)
 

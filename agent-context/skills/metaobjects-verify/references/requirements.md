@@ -3,6 +3,22 @@
 This project declares `requirement.*` nodes, so `verify` checks them. **There is no
 subverb**: requirements are metadata, so they are checked on *every* `meta verify` run.
 
+## Which command runs the gate
+
+Every port's `verify` runs the same gate, with the same codes, severities and message
+text (a shared corpus pins them). Run the one for the project's server language:
+
+| port | command |
+|---|---|
+| TypeScript | `meta verify` |
+| Python | `metaobjects verify` |
+| Java, Kotlin | `mvn metaobjects:verify` (one goal for both) |
+| C# | `dotnet meta verify <metadataDir> --templates <dir>` (or `--codegen --out <dir>`) |
+
+The gate is core: it is not a generator and cannot be ejected or replaced. What differs
+by port is the **authoring lint** further down this page, which only the Node `meta verify`
+prints. This page writes `meta verify` throughout; read it as the port's own command.
+
 ## The split, and why it matters when you read a failure
 
 | | owns |
@@ -65,6 +81,25 @@ So on a `planned` entry a dangling reference is the entry doing its job, not dri
 | `@implementedBy` above the L4 link floor | 1 |
 | live `requirement.architectural` claimed by nothing | 1 |
 | an entity no requirement claims | 0 (warning) |
+| a `live`/`partial` functional requirement nothing implements | 0 (warning); **1 under the strict switch** |
+
+## The strict switch — `--require-implementers`
+
+`WARN_REQUIREMENT_NOTHING_IMPLEMENTS` (a `live` or `partial` functional requirement where
+neither it nor anything nested under it names a node) is a warning by default. A project
+whose ledger has caught up with its links can make it fail the build:
+
+| port | flag | environment |
+|---|---|---|
+| TypeScript | `meta verify --require-implementers` | `META_REQUIRE_IMPLEMENTERS=1` |
+| Python | `metaobjects verify --require-implementers` | `META_REQUIRE_IMPLEMENTERS=1` |
+| Java, Kotlin | `mvn metaobjects:verify -Dmeta.verify.requireImplementers=true` | `META_REQUIRE_IMPLEMENTERS=1` |
+| C# | `dotnet meta verify … --require-implementers` | `META_REQUIRE_IMPLEMENTERS=1` |
+
+It raises that one finding to an error and **keeps its code**. Every other warning stays a
+warning. If CI went red on this code, check whether the switch is set before treating it
+as a new defect: the fix is to add the `@implementedBy` link (or drop the entry to
+`planned`), not to unset the switch.
 
 ## The error codes, and the fix for each
 
@@ -91,8 +126,10 @@ reasons, so reading only the code you hit can send you the wrong way. The questi
 
 ## The authoring lint — a second section, never an error
 
-`verify` also prints an **authoring lint** under its own heading, after the gate's own
-warnings:
+The Node `meta verify` also prints an **authoring lint** under its own heading, after the
+gate's own warnings. It is TypeScript-only: `metaobjects verify`, `mvn metaobjects:verify`
+and `dotnet meta verify` run the gate above and never print these codes, so on those ports
+a clean run says nothing about them.
 
 ```
 meta verify — requirements: 6 authoring warning(s) (advisory — does not fail the build):
@@ -135,6 +172,11 @@ way to satisfy the check is to find any name that already exists.
 
 The attribute is retired. Tying a requirement to a test is the job of a generator that emits
 the test **from** the requirement, so the link is structural rather than a name someone chose.
+Every port ships one, `requirement-tests` (see the codegen skill's reference for the
+project's language). `verify` still never reads test results: the codegen drift gate
+(`verify --codegen`) proves the generated tests match the ledger, a live test with nothing
+behind it fails in the project's own test run, and a generated test that passes proves its
+witness ran, not that the witness tests the claim.
 
 ## What a green run does NOT prove
 

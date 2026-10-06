@@ -354,13 +354,20 @@ result is evidence that structured links buy no retrieval value over prose. It s
 about which node carries the link, because direction was never a variable in any round. The
 direction decision is the owner's, on the asymmetry above.
 
-### The verify gate is TypeScript-only, on purpose
+### The verify gate runs in every port
 
-All five ports **load and validate** requirements. Only the TS CLI ships the `meta verify`
-gate, on the D1 / leading-wildcard precedent for single-port tooling: `verify --db` and
-schema migration are already TS-owned (ADR-0015), so the gate lives where the rest of the
-drift checking lives. A JVM or Python project declaring requirements gets the loader's
-guarantees today and would need `meta verify` from the Node CLI for the conditional layer.
+All five ports **load and validate** requirements, and every port's `verify` runs the same
+gate over them: `meta verify`, `metaobjects verify`, `mvn metaobjects:verify` (Java and
+Kotlin) and `dotnet meta verify`. One corpus, `fixtures/requirement-check-conformance/`,
+holds each port's codes, severities, paths, message text and summary counts to the
+TypeScript reference.
+
+This section used to say the gate was TypeScript-only on purpose, on the ADR-0015 precedent
+for single-port tooling.
+[ADR-0057](decisions/ADR-0057-requirement-checks-and-tests-in-every-port.md) reversed that
+and records why the precedent did not carry over: a requirement test is code in the
+project's own language, and generating one needs the gate's walk and claim resolver anyway.
+What stays TypeScript-only is the authoring lint, which never fails a build.
 
 ## What a green check does not prove
 

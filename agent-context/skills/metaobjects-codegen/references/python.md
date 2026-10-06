@@ -110,6 +110,24 @@ a renamed physical column).
 | `names` | `<entity_snake>_names.py` — module-level `Final` constants mirroring the object's metadata tree. Every node carries its own `_TYPE`/`_SUB_TYPE`/`_NAME`; `<ENTITY>_NAME` is the OBJECT's name, and a physical name sits under the member naming what it is: `<ENTITY>_SOURCE_<ROLE>_{TABLE,VIEW,MATERIALIZED_VIEW,PROC,FUNCTION}` (`<ROLE>` is `PRIMARY` or `REPLICA`, so a write-through entity's read view has a slot), plus `<ENTITY>_SOURCE_<ROLE>_{KIND,SCHEMA}`, a `<ENTITY>_<FIELD>_FIELD`/`_COLUMN` pair each, `<ENTITY>_IDENTITY_<NAME>_*` / `<ENTITY>_INDEX_<NAME>_*` carrying `_INDEX` (the database index name) for `identity.secondary` and `index.lookup`, and a complete `<ENTITY>_COLUMNS_BY_FIELD`. No `_READ_ONLY` — it was derived from `@kind`, never declared; ask `_SOURCE_<ROLE>_KIND`. Emitted for every object with a declared or inherited primary source, PLUS a fragment for any abstract base such an object extends (columns and keys only, no `_SOURCE_*` — it has no table and must never acquire one). Python has no static inheritance, so a module whose object extends another **imports and re-exports** the parent's constants (`AUTHOR_CREATED_AT_COLUMN: Final[str] = BASEENTITY_CREATED_AT_COLUMN`) instead of restating the literal; a TPH subtype re-exports `_SOURCE_PRIMARY_*` too, since it shares its base's table. **This port generates no SQL**, so nothing generated consumes these — they exist for the repository `Protocol` implementation you write. |
 | `template` | the generic Mustache `template` primitive. |
 
+**Requirement tests (`requirement-tests`).** A recommended approach, not a contract. For a
+model that declares `requirement.*` nodes it writes
+`requirements/test_<pkgKey>_requirements.py`, one pytest file per metamodel package,
+rewritten whole on every run, so never edit it. Each test calls a **witness**: a function
+named by the test's witness key (`req_acme_shop_Orders_Recorded__object_entity`) in the
+witness module, `tests.requirement_witnesses` by default. A `live` or `partial`
+requirement with no witness fails, naming the function to write; `planned` and `retired`
+are skipped. Nothing reports a witness whose requirement is gone, so delete it with the
+requirement. Options live in the `requirementTests` block of `metaobjects.config.yaml`:
+`witnessModule`, `grain` (`concern` or `member`), `filter` and `renderer` (`module:symbol`;
+a filter REPLACES the default of functional L4/L5; a renderer imports `RenderedTest` from
+`metaobjects.codegen.requirement_hooks`), `warnUncovered`. The generated tests need only
+pytest and run on Python 3.9 or later, while the tool itself needs 3.11
+(`uv tool run --python 3.12 metaobjects gen` runs it on another interpreter).
+`metaobjects eject requirement-tests` copies the generator with its default renderer to
+`codegen/generators/requirement_tests.py`. The requirement checks in `metaobjects verify`
+are core and are not ejectable.
+
 **Projections + entity read-views.** An `object.projection` (read-only `source.rdb`
 `@kind: view` child) gets a read-only Pydantic model from the `entity` generator.
 

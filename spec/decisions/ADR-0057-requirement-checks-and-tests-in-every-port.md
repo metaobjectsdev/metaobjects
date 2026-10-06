@@ -23,8 +23,9 @@ TypeScript only:
 - **The test scaffold.** `requirementTests()` emits one test stub per claim, which the project
   fills in by hand and the three-way merge preserves.
 
-The split was a decision, and the only place it was written down is `docs/CONFORMANCE.md`,
-"Split coverage":
+The split was a decision, and the only place it was recorded as one is `docs/CONFORMANCE.md`,
+"Split coverage" (`docs/features/requirements.md` and the pillar summaries stated the split
+without the reasoning):
 
 > *Checks — TypeScript only, by decision.* The `meta verify` diagnostics over requirements ship
 > in the TypeScript CLI; the other ports load and validate and stop there. Same call as ADR-0015:
@@ -149,7 +150,7 @@ them is open.
   narrower, not gone: the gate is in every port, its advisory lint is in one.
 - **A project that declares requirements on a non-TypeScript port will see diagnostics it did
   not see before, and its `verify` may now fail.** That is the purpose of the change, and the
-  release notes say so.
+  `CHANGELOG.md` entry for the release says so.
 - **JVM and .NET projects pay one setup cost.** The generated test module does not compile
   until the project creates its witness class.
 - **A passing generated test proves that the witness ran**, not that the witness tests the

@@ -50,8 +50,8 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 | [`fixtures/fmt-conformance/`](../fixtures/fmt-conformance/) (#304 — `meta fmt`) | 12 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/field-lint-conformance/`](../fixtures/field-lint-conformance/) (the `verify` field authoring lint) | 15 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
-| [`fixtures/requirement-check-conformance/`](../fixtures/requirement-check-conformance/) (the `verify` requirement gate, ADR-0057) | 43 cases | ✓ (reference) | — (not yet) | — (not yet) | — (not yet) | — (not yet) |
-| [`fixtures/requirement-test-identity-conformance/`](../fixtures/requirement-test-identity-conformance/) (the identity, skip state and digest of each generated requirement test, and the filter seam, ADR-0057) | 26 cases | ✓ (reference) | — (not yet) | — (not yet) | — (not yet) | — (not yet) |
+| [`fixtures/requirement-check-conformance/`](../fixtures/requirement-check-conformance/) (the `verify` requirement gate, ADR-0057) | 43 cases | ✓ (reference) | ✓ | inherits via Java (one Maven `metaobjects:verify` goal) | ✓ | ✓ |
+| [`fixtures/requirement-test-identity-conformance/`](../fixtures/requirement-test-identity-conformance/) (the identity, skip state and digest of each generated requirement test, and the filter seam, ADR-0057) | 26 cases | ✓ (reference) | ✓ | identity function inherits via Java; emitted names asserted by its own generator test | ✓ | ✓ |
 | [`fixtures/naming-conformance/`](../fixtures/naming-conformance/) | 8 cases | ✓ | ✓ | inherits via Java (`RouteNaming.pluralize`) | ✓ | ✓ |
 | [`fixtures/codegen-noop/`](../fixtures/codegen-noop/) (FR-044 — reporting vocabulary: what is lowered, what stays inert) | 1 model pair (`reporting/with` vs `reporting/without`) | ✓ (codegen + migrate) | ✓ | ✓ | ✓ | ✓ |
 
@@ -75,13 +75,17 @@ the corpora above do two different jobs. Only the first is a promise to adopters
   `extract-conformance/`, `verify-conformance/`, `verify-strict-conformance/`,
   `persistence-conformance/` (runtime reads and writes, and the TS-owned migration
   scenarios), `agent-context-conformance/`, `metamodel-docs/`, `fmt-conformance/`
-  (the canonical serializer, surfaced per-file — ADR-0034's "canonical format" is core)
-  and `field-lint-conformance/` (the advisory field lint every port's `verify` prints).
+  (the canonical serializer, surfaced per-file — ADR-0034's "canonical format" is core),
+  `field-lint-conformance/` (the advisory field lint every port's `verify` prints) and
+  `requirement-check-conformance/` (the requirement gate every port's `verify` runs; a
+  drift gate is core, and it is not ejectable in any port).
   A red cell here is a MetaObjects bug.
 - **Template quality checks — not a promise.** The generated lane of
   `api-contract-conformance/`, `generator-registry-conformance/` (stable generator names),
-  `codegen-noop/` (vocabulary with no lowering yet emits nothing) and the codegen-compile
-  gate. They check that the reference generators are correct
+  `codegen-noop/` (vocabulary with no lowering yet emits nothing),
+  `requirement-test-identity-conformance/` (which tests the `requirement-tests` reference
+  generator yields from a ledger and what each is called; the text it writes is not
+  pinned) and the codegen-compile gate. They check that the reference generators are correct
   starting points; an adopter's ejected copy is theirs and is not gated. The hand-rolled
   reference-server lane of `api-contract-conformance/` still pins the wire contract that
   the runtimes and the client speak, which is core.
@@ -99,16 +103,25 @@ are recorded here instead.
   enums travel in `registry-conformance`'s byte-matched manifest, which every port
   reproduces exactly, and accept/reject behaviour is pinned by `requirement-*` fixtures
   in `fixtures/conformance/`. A port that drifts on what it will load fails.
-- *Checks — TypeScript only, by decision.* The `meta verify` diagnostics over
-  requirements ship in the TypeScript CLI; the other ports load and validate and stop
-  there. Same call as [ADR-0015](../spec/decisions/ADR-0015-single-shared-migrate-engine.md):
-  one implementation of a build-time gate rather than five, where the gate is not a
-  per-port runtime concern. `verify-conformance` therefore holds no requirement cases,
-  and that absence is deliberate rather than a gap.
+- *Checks — gated in all five ports.* Every port's `verify` runs the requirement gate
+  ([ADR-0057](../spec/decisions/ADR-0057-requirement-checks-and-tests-in-every-port.md),
+  which reversed a TypeScript-only split recorded here). `requirement-check-conformance`
+  pins each diagnostic's code, severity, path and message text and the summary counts
+  against the TypeScript reference. Kotlin has no CLI of its own and runs the gate through
+  the Java Maven goal. `verify-conformance` still holds no requirement cases: that corpus
+  is template drift, and the gate has its own.
+- *Generated tests — identity gated in all five ports, text in none.*
+  `requirement-test-identity-conformance` pins which tests a ledger yields, each one's id,
+  witness key, skip state and digest, and what a project's filter is shown. The file a
+  port writes is its reference helper's output and is not a cross-port contract.
+- *Authoring lint — TypeScript only, by decision.* The seven `WARN_REQUIREMENT_*`
+  authoring advisories are printed by the Node `meta verify` and by no other port (ADR-0057,
+  Consequences). They never fail a build, and no corpus holds them. The structured
+  `--format json|toon` payload is TypeScript-only too.
 
 Stated as mechanisms rather than as a list of attribute names on purpose — the
 requirement vocabulary has a breaking change scheduled (FR-038), which moves what the
-manifest contains without moving the boundary between the two halves.
+manifest contains without moving these boundaries.
 
 **Does the generated code compile** (`codegen-compile-conformance`, all five ports):
 
@@ -168,8 +181,10 @@ manifest contains without moving the boundary between the two halves.
 
 **How to tell a deliberate split from a real parity gap**, since the two look identical
 in the matrix — both show one port covered and four blank. Ask what the uncovered ports
-*claim*. Here they claim nothing: they load requirement vocabulary and stop, exactly as the
-feature doc says. Contrast `{{#hasField}}` in 0.23.1, where the JVM emitted `has<Field>()`
+*claim*. For the requirement authoring lint they claim nothing: no other port's `verify`
+prints one of those advisories, exactly as the feature doc says. (The requirement *checks*
+were a split of this kind until ADR-0057 moved them into every port, and they stopped
+being one the moment a second port made the claim.) Contrast `{{#hasField}}` in 0.23.1, where the JVM emitted `has<Field>()`
 onto generated payload records **and** `verify` accepted the section, while no render engine
 in any port implemented the other half — two ports shipping halves of one promise, with no
 fixture that could see it. A split is deliberate when no port makes a claim the corpus would
@@ -227,7 +242,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 | `template-*`, `error-template-*` | [features/templates-and-payloads.md](features/templates-and-payloads.md) |
 | `origin-*`, `error-origin-*` | [features/templates-and-payloads.md](features/templates-and-payloads.md) (payload origins) |
 | `projection-*`, `error-projection-*`, `field-readonly-on-view-projection` | [features/source-kinds.md](features/source-kinds.md) (projections + the object taxonomy, ADR-0028) |
-| `requirement-*`, `error-unknown-attr-requirement` | [features/requirements.md](features/requirements.md) (vocabulary only — the `meta verify` checks are TS-owned; see "Split coverage" above) |
+| `requirement-*`, `error-unknown-attr-requirement` | [features/requirements.md](features/requirements.md) (vocabulary only — the gate has its own corpus, `requirement-check-conformance/`; see "Split coverage" above) |
 | `reporting-*`, `error-dimension-*`, `error-measure-*`, `error-ratio-*`, `error-segment-*`, `error-report-*`, `error-relative-date-*` | [features/reporting.md](features/reporting.md) (the `dimension` / `measure` / `segment` / `object.report` vocabulary and its load-time rules; design in the [FR-044 spec](superpowers/specs/2026-10-02-fr-044-core-reporting-design.md)) |
 | `smoke-empty-metadata` | [features/entities.md](features/entities.md) |
 
@@ -406,11 +421,48 @@ own those two functions), and
 `server/python/tests/codegen/test_route_path_naming.py` +
 `server/python/tests/unit/test_fr016_source_name_and_kind_aliases.py` (same split).
 
+### `fixtures/requirement-check-conformance/` (43 cases)
+
+All 43 cases → [features/requirements.md](features/requirements.md) ("The gate in every
+port"). Each case is a directory: `input/` metadata, an optional `options.json`
+(`libraries`, `requireImplementers`) and an `expected.json` holding the gate's diagnostics
+(severity, code, requirement path, message text) and the ledger summary, or `null` for a
+model with no requirement. The expectations are written from the TypeScript reference and
+a port that disagrees with one is wrong. The case list, and what each pins, is in the
+[corpus README](../fixtures/requirement-check-conformance/README.md).
+
+**Every port's `verify` is held to it:**
+`server/typescript/packages/cli/test/requirement-check-conformance.test.ts`,
+`server/python/tests/conformance/test_requirement_check_conformance.py`,
+`server/java/metadata/src/test/java/com/metaobjects/conformance/RequirementCheckConformanceTest.java`
+(Kotlin inherits it, through the shared Maven goal) and
+`server/csharp/MetaObjects.Conformance.Tests/RequirementCheckConformanceTests.cs`.
+
+### `fixtures/requirement-test-identity-conformance/` (26 cases)
+
+All 26 cases → [features/requirements.md](features/requirements.md) ("Generated
+requirement tests and witnesses"). It pins the *identity* of every test the
+`requirement-tests` generator yields from a ledger (package, path, unit, id, witness key,
+status, skip state and digest), witness-key collisions, and the view a project's filter
+receives, through eight named filters each port's runner implements in its own language.
+It does not pin the text of a generated file, the uncovered warning, or a requirement name
+outside ASCII. The case list is in the
+[corpus README](../fixtures/requirement-test-identity-conformance/README.md).
+
+**All five ports run it:**
+`server/typescript/packages/codegen-ts/test/requirement-test-identity-conformance.test.ts`,
+`server/java/metadata/src/test/java/com/metaobjects/conformance/RequirementTestIdentityConformanceTest.java`,
+`server/python/tests/conformance/test_requirement_test_identity_conformance.py` and
+`server/csharp/MetaObjects.Conformance.Tests/RequirementTestIdentityConformanceTests.cs`.
+Kotlin's identity function is the Java one; the names its generator emits are asserted by
+`server/java/codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/KotlinRequirementTestsGeneratorTest.kt`.
+
 ## Orphaned fixtures (tested but not yet documented)
 
 The fixtures in the nine corpora mapped above (metamodel 364 + yaml 16 + verify 31
 + render 15 + persistence 39 + api-contract 78 + source-resolution 25 + scope 10 +
-dependency 23) each map to a feature doc. None are orphaned today. The remaining
+dependency 23) each map to a feature doc, and so do the two requirement corpora, whose
+case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider
 composition, agent context, docs emit) rather than user-facing metamodel behaviour,
 so they have no feature-doc row.

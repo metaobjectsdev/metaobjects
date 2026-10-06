@@ -443,9 +443,18 @@ strategy string to both, by hand (see
 
 ### Requirement tests — `JUnitRequirementTestsGenerator`
 
-Declare what the software must do as `requirement.*` nodes and this writes one JUnit Jupiter
-test per tested requirement. The test does not assert anything itself: it calls a **witness**,
-a method you write, and a live requirement with no witness fails.
+Declare what the software must do as `requirement.*` nodes and `mvn metaobjects:verify`
+checks them on every run, in either mode: it logs the ledger summary, and an error (a
+dangling reference on a live requirement, a link above the floor, a live policy applied to
+nothing) fails the build. `-Dmeta.verify.requireImplementers=true` (or
+`META_REQUIRE_IMPLEMENTERS=1`) also fails it on a live functional requirement that nothing
+implements. Those checks are core and are not ejectable.
+
+This generator is the other half, and it is a reference helper and a recommended approach,
+not a contract: it writes one JUnit Jupiter test per tested requirement. The test does not
+assert anything itself: it calls a **witness**, a method you write, and a live requirement
+with no witness fails. Generated tests are JUnit Jupiter only; a JUnit 4 project replaces
+the text through the `renderer` arg, or ejects the generator.
 
 ```xml
 <generator>
@@ -471,7 +480,9 @@ public class Witnesses implements Requirements_acme_shop_Witnesses {
 ```
 
 A requirement that becomes live adds a failing member (a red test, no compile break). One that
-is retired or deleted removes its member, so a stale override stops compiling. A planned or
+is retired or deleted removes its member, and a witness annotated `@Override` then stops
+compiling. That signal depends on the annotation: without `@Override` a stale witness is an
+ordinary method, compiles, and goes stale silently, so annotate every witness. A planned or
 retired requirement is `@Disabled` and has no member. The generated files are rewritten whole,
 so do not edit them; `mvn metaobjects:verify` reports them stale when a claim changes, and a
 package that loses its last requirement leaves its two files behind, which `verify` reports as
@@ -481,15 +492,25 @@ package that loses its last requirement leaves its two files behind, which `veri
 |---|---|
 | `testPackage`, `witnessClass` | Required once the model holds a requirement. The generated tests are in `testPackage`; `witnessClass` is a fully-qualified class name. |
 | `grain` | `concern` (default): one test per distinct `<type>.<subType>` a requirement claims. `member`: one per distinct `implementedBy` reference that resolves. Anything else is refused. |
-| `filter` | The name of a class implementing `RequirementTestFilter` (`boolean include(View)`) that **replaces** the default of functional requirements at level 4 and above. |
-| `renderer` | The name of a class implementing `RequirementTestRenderer`; it may return a `RenderedTest` to replace the text of one test, or `null` to keep the default. |
+| `filter` | The name of a class implementing `com.metaobjects.requirement.RequirementTestFilter` (`boolean include(RequirementTestIdentities.View view)`) that **replaces** the default of functional requirements at level 4 and above. The view is a record: `subType()`, `level()` (an `Integer`, `null` when the requirement declares none), `status()`, `path()`, `pkg()` (the effective package) and `implementedByTypes()`. |
+| `renderer` | The name of a class implementing `com.metaobjects.generator.requirement.RequirementTestRenderer`; it may return a `RenderedTest` to replace the text of one test, or `null` to keep the default. |
 | `warnUncovered` | `true` (default): one warning naming up to five requirements the filter excluded. `false` silences it. |
 
 `filter` and `renderer` are loaded from your project's classpath, so the class must be
-compiled before the goal runs (a module the build already compiled). Your test classpath needs
+compiled before the goal runs (a module the build already compiled). A class that is found
+but fails to load is reported with its real cause, not as missing. Your test classpath needs
 `org.junit.jupiter:junit-jupiter-api`. Which tests exist, their names and their digests are
-shared by every language port and checked by one corpus; `mvn metaobjects:eject -Dnames=requirement-tests`
-copies this generator into your project when you want different text.
+shared by every language port and checked by one corpus.
+
+To own the generator, `mvn metaobjects:eject -Dnames=requirement-tests -Dport=java` copies
+`JUnitRequirementTestsGenerator.java`, with its default rendering, into a `codegen/` Maven
+module under your package and prints the `<classname>` to wire. `-Dport` is needed because
+`requirement-tests` is ejectable on both JVM ports: the goal infers the port only when your
+project declares a dependency on exactly one of `metaobjects-codegen-spring` and
+`metaobjects-codegen-kotlin`, and otherwise refuses with `ejectable on more than one port`.
+The identity function, the digest and the hook types stay in the package, and the owned
+copy imports them. The model and the other ports' spelling are in
+[Generated requirement tests and witnesses](../features/requirements.md#generated-requirement-tests-and-witnesses).
 
 ### Authoring your own — two paths
 
@@ -656,6 +677,7 @@ configuration model that has not yet been specced.
 | Output parser codegen (FR-006) | Yes — `SpringOutputParserGenerator` (in `metaobjects-codegen-spring`) — see usage below |
 | Migrations | TS-only (`@metaobjectsdev/cli migrate`) — the Java migration engine and the OMDB runtime auto-create path were both removed (ADR-0015); apply the TS-produced DDL to the database |
 | Drift verify | `Verify.check` / `Verify.checkOutputPrompt` (prompts). Live-DB schema-drift verification is part of the TS migration toolchain |
+| Requirement gate + requirement tests | Yes (`mvn metaobjects:verify`, on every run; `JUnitRequirementTestsGenerator` emits JUnit Jupiter and is ejectable) |
 | Runtime metadata | Full — OMDB ObjectManager |
 | REST controller codegen | Spring Web MVC — `metaobjects-codegen-spring` (FR-008 §2.1) |
 

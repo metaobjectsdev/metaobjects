@@ -179,5 +179,20 @@ ambition rather than work.
     implementedBy: ["game::turn::Turn", "game::world::Location"]
 ```
 
+**Which `verify` says what.** The gate — dangling references, links above the floor,
+level and nesting errors, an unclaimed entity, a live requirement nothing implements — runs
+in every port's `verify` (`meta verify`, `metaobjects verify`, `mvn metaobjects:verify`,
+`dotnet meta verify`). The authoring warnings named on this page (`WARN_REQUIREMENT_NAME_*`,
+`WARN_REQUIREMENT_PROSE_*`, `WARN_REQUIREMENT_INERT_DOC_SLOT`,
+`WARN_REQUIREMENT_TITLE_IS_AN_ID`) are printed by the Node `meta verify` only, so on another
+port follow these rules without waiting for a warning.
+
+**A requirement's name and package end up in generated test names.** Every port's
+`requirement-tests` generator names a test from the requirement's package and dotted path
+(`acme::shop::Orders.Recorded` becomes `req_acme_shop_Orders_Recorded…`), and two
+requirements whose names differ only in punctuation (`Orders.Recorded` beside
+`Orders_Recorded`) are refused as a collision outside TypeScript. Another reason to keep
+names plain identifiers.
+
 There is **no `satisfies:` on a field or entity** — links live on the requirement node, not
 on the nodes it claims. Full reference: the repo's `spec/capability-ledger.md`.

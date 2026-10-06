@@ -4,8 +4,10 @@ This project declares `requirement.*` nodes, so the ledger is an auditable surfa
 for **truthfulness**, not volume. A large ledger that lies is worse than a small one that
 does not, because every later reader trusts it.
 
-Run `meta verify` first. It settles referential integrity mechanically — do not spend audit
-effort re-deriving what a green run already proves.
+Run `verify` first — the project's own: `meta verify`, `metaobjects verify`,
+`mvn metaobjects:verify` or `dotnet meta verify`. Every port runs the same requirement
+gate. It settles referential integrity mechanically — do not spend audit effort re-deriving
+what a green run already proves.
 
 ## What verify has already proven (do not re-check by hand)
 
@@ -18,7 +20,9 @@ on `planned`, whose nodes do not exist yet).
 
 **The authoring lint** — printed under its own heading, advisory, and unable to change the
 exit code — settles the naming and prose defects you would otherwise find by reading every
-entry:
+entry. **Only the Node `meta verify` prints it.** On a Python, Java, Kotlin or C# project
+whose pipeline runs that port's `verify` alone, nothing below has been proven: run
+the Node `meta verify` over the same metadata, or audit these by hand.
 
 | code | what a clean run has already proven |
 |---|---|
@@ -30,8 +34,10 @@ entry:
 | `WARN_REQUIREMENT_INERT_DOC_SLOT` | no `summary` is set — nothing reads it, and `@statement` is already the required one-liner |
 | `WARN_REQUIREMENT_TITLE_IS_AN_ID` | no `title` leads with a catalogue or ticket id |
 
-Two limits, and each puts something back on your list:
+Three limits, and each puts something back on your list:
 
+- **It is one port's.** See above: establish which `verify` the project's CI runs before
+  crediting a green pipeline with the table.
 - **The lint is mutable.** `--no-requirement-lint` / `META_NO_REQUIREMENT_LINT=1` silences the
   advisory half while the gate still runs. **Establish whether the project mutes it** (§F of
   the checklist asks this) — against a muted lint the whole table above proves nothing.
@@ -77,6 +83,15 @@ the id-shaped case (`FR-448 …`); it cannot tell a *useless* label from a good 
 titles: one that restates `@statement`, or repeats the path in prose, is now visible noise in
 a heading rather than a private authoring habit. An absent `title` is NOT a finding — the
 entry heads by its path alone, which is what every sibling surface addresses it by.
+
+**7. Witnesses that do not test the claim.** Where the project generates requirement tests
+(the `requirement-tests` generator, in any port), a passing generated test proves only that
+its witness — or, in TypeScript, the hand-filled stub — ran. Sample the witnesses and read
+them against the counterexample each generated test carries: one that asserts nothing, or asserts
+something else, is the same defect `@verifiedBy` had. Check also for witnesses that have
+gone stale silently: a Java witness that lacks the override annotation, a C# witness implemented
+implicitly, and any Python witness keep existing after their requirement is retired or
+deleted, and nothing reports them.
 
 ## Scope — do NOT flag these as defects
 

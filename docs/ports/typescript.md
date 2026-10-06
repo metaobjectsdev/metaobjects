@@ -698,6 +698,49 @@ the feature reference is at
 your `dependencies` (Drizzle / `@metaobjectsdev/runtime-ts` both lean on it);
 if not, `npm i zod`.
 
+## Requirement tests
+
+`requirementTests()` writes one test stub per requirement the model claims: a `live` or
+`partial` requirement gets a stub that fails until you write its assertion, a `planned` or
+`retired` one a skipped stub. It is a reference helper and a recommended approach, not a
+contract. Run it from the package, or own it: `meta eject requirement-tests` copies the
+generator and its default stub renderer into `codegen/generators/requirement-tests.ts`. The
+requirement checks in `meta verify` are core and are not ejectable.
+
+```ts
+// metaobjects.config.ts
+import { defineConfig } from "@metaobjectsdev/cli";
+import { requirementTests } from "@metaobjectsdev/codegen-ts/generators";
+
+export default defineConfig({
+  outDir: "src/generated",
+  generators: [
+    requirementTests({
+      grain: "member",                                                    // default: "concern"
+      filter: (r) => r.subType === "functional" && r.status === "live",   // REPLACES the default
+      warnUncovered: false,                                               // default: true
+    }),
+  ],
+});
+```
+
+| Option | Meaning |
+|---|---|
+| `grain` | `"concern"` (default): one stub per distinct `<type>.<subType>` a requirement claims, at `requirements/<path>.<concern>.test.ts`. `"member"`: one per distinct `@implementedBy` reference that resolves. Anything else is refused when the generator is built. |
+| `filter` | A predicate over the requirement view (`subType`, `level`, `status`, `path`, `package`, `implementedByTypes`) that replaces the default of functional requirements at L4 and L5. `level` is `undefined` on a requirement that declares none. |
+| `warnUncovered` | One warning naming up to five requirements the filter left out. `false` silences it. |
+| `renderers`, `resolveRenderer` | Replace the stub text per concern. A renderer receives the stub's identity too: `package`, `unit`, `id`, `witnessKey`, `skip` and `digest`, the same record every other port generates from. |
+| `path`, `owns` | Where stubs land, and which paths the generator may clean up. |
+
+The stub is yours to fill in, and the three-way merge keeps what you wrote. A stub whose
+requirement is gone is removed on the next run (refused by name when it carries a hand
+edit). The other four ports do not merge: their generated tests call a *witness* you own.
+See [Generated requirement tests and witnesses](../features/requirements.md#generated-requirement-tests-and-witnesses).
+
+`meta verify --require-implementers` (or `META_REQUIRE_IMPLEMENTERS=1`) raises
+`WARN_REQUIREMENT_NOTHING_IMPLEMENTS` to an error. See
+[Requiring implementers](../features/requirements.md#requiring-implementers).
+
 ## Capability snapshot
 
 | Feature | Status |
@@ -708,6 +751,7 @@ if not, `npm i zod`.
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Yes |
 | Templates + render (FR-004) | Yes |
 | Output parser codegen (FR-006) | Yes (`outputParser()` — Zod dual API) |
+| Requirement gate + requirement tests | Yes (`meta verify`; `requirementTests()`, ejectable) |
 | Payload-VO codegen | Yes (via projection codegen) |
 | Migrations | `meta migrate` (Postgres / SQLite / D1) |
 | Drift verify | `meta verify` (DB drift) |

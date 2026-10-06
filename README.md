@@ -153,7 +153,7 @@ first-week wedge plan — and `meta init` picks up from there.
 | DB-drift verify | `meta verify --db <url>` | Template-drift: `Verify.check`; schema-drift is TS-owned (ADR-0015) | Template-drift: `Verify.check`; startup: `MetadataStartupValidator` | `dotnet meta verify` (codegen-drift) | Schema-drift is TS-owned (ADR-0015) |
 | Template-drift verify | Yes | Yes (`Verify.check`) | Yes (via Java) | Yes (`dotnet meta verify`) | Yes (`metaobjects.render.verify`) |
 | YAML authoring (sigil-free → JSON) | Yes | Yes | Yes (via Java) | Yes | Yes |
-| Capability requirements (`requirement.*`) | Registered + `meta verify` gate | Registered (loads + validates) | Registered (via Java) | Registered (loads + validates) | Registered (loads + validates) |
+| Capability requirements (`requirement.*`) | `meta verify` gate + authoring lint; `requirementTests()` stubs | `mvn metaobjects:verify` gate; JUnit Jupiter `requirement-tests` | Gate via the Java Maven goal; JUnit Jupiter `requirement-tests` | `dotnet meta verify` gate; xUnit `requirement-tests` | `metaobjects verify` gate; pytest `requirement-tests` |
 | Reporting vocabulary (`dimension` / `measure` / `segment` / `object.report`, FR-044) | Registered; a view-backed report becomes a SQL view in `meta migrate`, is read by `ObjectManager`, and gets generated read-only list routes (no client hook yet) | Registered; OMDB reads a view-backed report; generates a read-only Spring controller, DTO, repository and filter allowlist | Registered (via Java); generates an Exposed table object, a row data class, a filter allowlist and a read-only Spring controller per view-backed report | Registered; generates a keyless EF Core row type, read-only routes and a filter allowlist per view-backed report | Registered; `ObjectManager` reads a view-backed report; generates a Pydantic row model, a read-only FastAPI router and a filter allowlist |
 | Libraries (`libraries: [...]`) | Yes | Yes | Yes (via Java) | Yes | Yes |
 | Metadata dependencies (`dependencies`) | Yes (`meta deps sync`, `path` transport) | Phase 2 | Phase 2 | Phase 2 | Yes (loads the synced snapshot) |
@@ -226,9 +226,9 @@ sixth ships two libraries at their own stability labels:
    deterministically (snapshot-testable, cache-stable, drift-checked at build
    time, conformance-gated cross-language). See
    [`docs/features/templates-and-payloads.md`](docs/features/templates-and-payloads.md).
-5. **Requirements and testing** *(vocabulary loads and validates in all five ports;
-   the `meta verify` checks run in the Node `meta` CLI; `requirementTests()` scaffolding
-   is TypeScript-only; dogfooded on maintainer-owned projects, no outside adopter yet)* —
+5. **Requirements and testing** *(vocabulary, the `verify` checks and a `requirement-tests`
+   generator in all five ports; the authoring lint is TypeScript-only; dogfooded on
+   maintainer-owned projects, no outside adopter yet)* —
    declare what the software is supposed to *do* in the same model as the entities. The
    other four pillars keep the code honest about the model; this one asks whether a
    claimed capability is actually built. `@implementedBy` is **resolved, not trusted** —

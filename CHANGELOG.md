@@ -41,6 +41,71 @@ it until 1.1 ships._
   (`-Dmeta.verify.noFieldLint=true` in Maven) or `META_NO_FIELD_LINT=1`. In the Node `meta`
   it is the `fields` section of `--format json|toon`.
 
+- **The requirement gate runs in every port's `verify` (ADR-0057).** `metaobjects verify`
+  (Python), `mvn metaobjects:verify` (Java and Kotlin) and `dotnet meta verify` (C#) now run
+  the checks that `meta verify` runs over `requirement.*` nodes: on every run, with no
+  subverb, with the same codes, severities, requirement paths and message text, and the same
+  ledger summary line. The new `fixtures/requirement-check-conformance/` corpus (43 cases)
+  holds all of them to the TypeScript reference.
+
+  **A project with no `requirement.*` node sees no change in any port: no line printed, no
+  exit code changed. A project that DOES declare requirements and runs a Python, Java,
+  Kotlin or C# `verify` now gets diagnostics it did not get before, and its `verify` may
+  now fail** where it passed: on a dangling `@implementedBy` on a `live` or `partial`
+  requirement, a link above the L4 floor, a level or nesting error, a dangling
+  `@supersededBy`, or a live architectural requirement applied to nothing. Those were
+  already errors in `meta verify`; the other ports loaded the same ledger and said nothing.
+  The seven requirement authoring-lint advisories stay TypeScript-only. See
+  [docs/features/requirements.md](docs/features/requirements.md), "The gate in every port".
+- **`--require-implementers`, in every port.** `WARN_REQUIREMENT_NOTHING_IMPLEMENTS` (a
+  `live` or `partial` functional requirement that nothing implements) stays a warning by
+  default. `meta verify --require-implementers`, `metaobjects verify --require-implementers`,
+  `dotnet meta verify --require-implementers`, `mvn metaobjects:verify
+  -Dmeta.verify.requireImplementers=true`, or `META_REQUIRE_IMPLEMENTERS=1` with any of
+  them, reports it as an error under the same code. No other warning changes severity.
+- **A `requirement-tests` generator in Python, Java, Kotlin and C#, ejectable in each.**
+  Python writes pytest, Java and Kotlin JUnit Jupiter, C# xUnit: one test per requirement
+  the filter selects (functional L4 and L5 by default), in one file per metamodel package
+  (an interface and a test class in the three compiled ports), rewritten whole on every
+  run. The project's code lives in a *witness* the generated test calls. A `live` or
+  `partial` requirement with no witness is a failing test that names the function to write;
+  a `planned` or `retired` one is skipped. Generated tests import their test framework and
+  nothing from MetaObjects. This is a reference helper and a recommended approach, not a
+  contract: `metaobjects eject requirement-tests`, `mvn metaobjects:eject
+  -Dnames=requirement-tests -Dport=java|kotlin` and `dotnet meta eject requirement-tests`
+  copy the generator with its default renderer, and the checks in `verify` are not
+  ejectable. What a ledger yields (each test's id, witness key, skip state and digest) is
+  the same in all five ports, pinned by the new
+  `fixtures/requirement-test-identity-conformance/` corpus (26 cases). Two limits: in
+  those four ports a package that loses its last requirement leaves its generated file
+  behind (`gen` does not remove it; the codegen drift gate reports it), and a witness for a
+  retired or deleted requirement stops compiling only in Kotlin, in Java when it carries
+  `@Override`, and in C# when it implements the member explicitly. See
+  [docs/features/requirements.md](docs/features/requirements.md), "Generated requirement
+  tests and witnesses".
+- **The same filter and uncovered-warning options on the generator in every port.** Each
+  port takes a predicate over one requirement view (`subType`, `level`, `status`, `path`,
+  `package`, `implementedByTypes`) that replaces the default selection, and a switch for
+  the warning that names what the filter left out: `filter` / `warnUncovered` in
+  TypeScript and in Python's `requirementTests` config block, `<filter>` /
+  `<warnUncovered>` generator args in Java and Kotlin, `Filter` / `WarnUncovered` in C#.
+  The warning has one text in every port and names requirement paths.
+- **TypeScript: `meta eject requirement-tests` works.** The generator now ships a reference
+  template, holding the generator and its default stub renderer in one file, so eject
+  copies it to `codegen/generators/requirement-tests.ts` instead of answering
+  `package-only`.
+- **TypeScript: `requirementTests({ grain })`, and the test identity on the renderer hook.**
+  `grain: "member"` emits one stub per distinct `@implementedBy` reference that resolves,
+  where the default `"concern"` emits one per distinct `<type>.<subType>`. A renderer now
+  receives the stub's identity (`package`, `unit`, `id`, `witnessKey`, `skip`) and the
+  `digest` of its requirement, and `requirementDigest`, `requirementTestIdentities` and
+  `witnessKeyOf` are exported from `@metaobjectsdev/codegen-ts`. The default stub's bytes
+  do not change.
+- **Python: how to run the tool on a different interpreter than the project's.**
+  `metaobjects` still needs Python 3.11 to run; the tests it generates need only pytest and
+  parse on 3.9. `docs/ports/python.md`, "Selecting the interpreter", gives the `uv tool run
+  --python` and `pipx run --python` forms.
+
 - **Metamodel 1.1: the reporting vocabulary (FR-044), loader-validated in all five ports.**
   Registered: `dimension.attribute`, `dimension.time` (`@grains`: `hour, day, week, month,
   quarter, year`, weeks start Monday), `measure.aggregate` (`@agg`: `count, sum, avg, min, max`),
@@ -231,6 +296,16 @@ until you regenerate.
 
 ### Changed
 
+- **TypeScript: `RequirementTestArgs` and `RequirementView` gained required fields — a
+  compile break for code that builds them by hand.** `RequirementTestArgs` has six new
+  required fields (`package`, `unit`, `id`, `witnessKey`, `skip`, `digest`) and
+  `RequirementView` a required `package`. A renderer or filter that only RECEIVES these is
+  unaffected. Application code that CONSTRUCTS one, for example a test of its own renderer,
+  stops compiling until it supplies them.
+- **TypeScript: `requirementTests({ grain })` refuses an unknown grain.** Any value other
+  than `"concern"` or `"member"` throws when the generator is built, whatever the model
+  holds, instead of running as something in between. Every other port refuses the same way.
+
 - **TypeScript: `runValidators` rejects more than it did — a behaviour change for
   `ObjectManager` users.** `ObjectManager.create`, `createMany`, `update`, `updateMany` and
   `validate` all go through it, so data that was accepted before can now raise a
@@ -302,6 +377,11 @@ until you regenerate.
   now holds the expanded form in a single-file model too, where it held `::parts` before.
   Gated by the new `loader-relative-package-multi-root` conformance fixture and
   `reference-field-missing-multi-root-package` in `fixtures/field-lint-conformance/`.
+- **Python: a YAML node that declares its own `package` under a packaged root now loads.**
+  A node carrying `package:` inside a document whose root already declared one raised
+  `NameError` at load, because the YAML desugar used a constant it never imported. Such a
+  document now loads, and the node resolves under the package it declares (an absolute one
+  as written, a `::`-relative one against its root's).
 - **Python: `MetaData.effective_package()`** returns the package a node resolves under, where
   `package` is `None` for an object that inherits its file's root package. See
   `docs/ports/python.md`, "Use".

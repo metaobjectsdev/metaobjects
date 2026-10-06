@@ -442,6 +442,12 @@ can see when an upgrade changed the generator you copied. A copy imports the sam
 `metaobjects.codegen.*` modules the packaged one does, and those module paths are the
 surface an owned generator builds on.
 
+`requirement-tests` ejects the same way, to `codegen/generators/requirement_tests.py`,
+wired as `codegen.generators.requirement_tests:requirement_tests_generator`. The copy holds
+the generator and its default renderer and keeps reading the `requirementTests` config
+block; the requirement walk, the test identities and the digest stay in the package. See
+[Generated requirement tests and witnesses](requirements.md#generated-requirement-tests-and-witnesses).
+
 ### The runtime your generated code imports comes with it
 
 Owning a generator only helps if you also own the helper code its **output** calls.
@@ -521,6 +527,14 @@ entry for your parent pom, a plugin `<dependency>` on the codegen module for the
 that runs `metaobjects:generate`, and the new `<classname>` for each `<generator>`. It
 never overwrites a copy without `-Dforce`, and `-Dlist` marks each owned copy `identical`
 or `DIFFERS: N behind, M of your own`.
+
+A name that is ejectable on both ports needs `-Dport`, unless your project declares a
+dependency on exactly one of `metaobjects-codegen-spring` and `metaobjects-codegen-kotlin`,
+from which the goal infers it. `requirement-tests` is one such name:
+`mvn metaobjects:eject -Dnames=requirement-tests -Dport=java` copies
+`JUnitRequirementTestsGenerator.java` and `-Dport=kotlin` copies
+`KotlinRequirementTestsGenerator.kt`, each with its default rendering. The identity
+function, the digest and the renderer and filter hook types stay in the package.
 
 ### What eject hands over, and what stays core
 
@@ -632,6 +646,12 @@ not the other eight. The owned project finds metadata exactly as the tool does, 
 `.metaobjects/config.json`'s `sources` and `libraries`. Eject never overwrites a copy without `--force`, and
 `dotnet meta gen --list` marks owned copies `identical` or `DIFFERS: N behind, M of your
 own`. The `template` primitive is not ejectable; it has no emit logic of its own.
+
+`dotnet meta eject requirement-tests` copies `RequirementTestsGenerator.cs`, which holds the
+generator and its default rendering. Its options are public properties you set in
+`codegen/Program.cs` (`new RequirementTestsGenerator { WitnessClass = "…" }`); the hook
+types (`IRequirementTestRenderer`, `IRequirementTestFilter`), the identity function and the
+digest stay in the package.
 
 ### Ejecting routes hands over the helper runtime too
 

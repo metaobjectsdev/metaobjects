@@ -125,10 +125,21 @@ REMOVED their `@metaobjectsdev/codegen-ts/generators` export, so an owned copy i
 path for those. The engine primitives come from the package main entry,
 `@metaobjectsdev/codegen-ts`. The `/generators` subpath itself is NOT deprecated. It
 exports the prompt tier (`promptRender`, `outputParser`, `outputPrompt`, `extractor`,
-`renderHelper`) and `namesFile`, which you may import from there OR eject to own, and it is
-the only home of the package-only generators — `traceHelperFile`, `callableFile`,
-`requirementTests` — which ship no reference template (`meta gen --list` marks them
+`renderHelper`), `namesFile` and `requirementTests`, which you may import from there OR
+eject to own, and it is the only home of the package-only generators — `traceHelperFile`,
+`callableFile` — which ship no reference template (`meta gen --list` marks them
 `package-only`).
+
+**`requirementTests()` — one test stub per requirement the model claims.** A recommended
+approach, not a contract: a `live` or `partial` requirement gets a stub that fails until
+you write its assertion (the three-way merge keeps it), a `planned` or `retired` one a
+skipped stub. Options: `filter` (a predicate over `subType`, `level`, `status`, `path`,
+`package`, `implementedByTypes` that REPLACES the default of functional L4/L5), `grain`
+(`"concern"`, the default, or `"member"`; anything else is refused), `warnUncovered`,
+`renderers` / `resolveRenderer`. `meta eject requirement-tests` copies the generator and
+its default stub renderer into `codegen/generators/requirement-tests.ts`; the requirement
+walk, each test's identity and the claim digest stay in the package. The requirement
+checks in `meta verify` are core and are not ejectable.
 
 The table below is a per-emission reference, NOT the selection surface. Select with
 `meta gen --list --format json --probe`, which is generated from the live registry and

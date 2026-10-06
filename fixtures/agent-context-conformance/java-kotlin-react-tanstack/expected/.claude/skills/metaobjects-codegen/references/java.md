@@ -206,6 +206,24 @@ read-view (#214): OMDB routes reads through the replica view and writes to the t
 row via the view by primary key (read-your-writes). The replica view's DDL is emitted by
 `meta migrate` from the same origin assembly as a projection view.
 
+**Requirement tests (`JUnitRequirementTestsGenerator`, stable name `requirement-tests`).**
+A recommended approach, not a contract. For a model that declares `requirement.*` nodes it
+writes, per metamodel package, `Requirements_<pkgKey>_Witnesses.java` (an interface with
+one default member per non-skipped test, each failing with `unimplemented requirement: …`)
+and `Requirements_<pkgKey>_Test.java` (one JUnit Jupiter `@Test` per requirement;
+`@Disabled` for a `planned` or `retired` one). Both are rewritten whole on every run, so
+never edit them: the project's code goes in the class `witnessClass` names, which
+implements every generated interface and overrides the members it has witnesses for.
+Annotate each witness `@Override`: a witness whose requirement is retired or deleted then
+stops compiling, and without the annotation it goes stale silently. Args: `testPackage`
+and `witnessClass` (required once the model holds a requirement), `grain` (`concern` or
+`member`), `filter` and `renderer` (class names on the project classpath implementing
+`RequirementTestFilter` / `RequirementTestRenderer`; a filter REPLACES the default of
+functional L4/L5), `warnUncovered`. Jupiter only: a JUnit 4 project uses `renderer` or
+ejects. `mvn metaobjects:eject -Dnames=requirement-tests -Dport=java` copies the generator
+with its default rendering (pass `-Dport`: the name is ejectable on both JVM
+ports). The requirement checks in `mvn metaobjects:verify` are core and are not ejectable.
+
 ### Value-object jsonb columns
 
 A `field.object` with `@storage: jsonb` (single or `@isArray`) is a typed jsonb column

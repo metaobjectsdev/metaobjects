@@ -216,6 +216,25 @@ read-view (#214): reads route through the replica view and writes to the table (
 (read-your-writes). The replica view's DDL is emitted by `meta migrate` from the same
 origin assembly as a projection view.
 
+**Requirement tests (`KotlinRequirementTestsGenerator`, stable name `requirement-tests`).**
+A recommended approach, not a contract. For a model that declares `requirement.*` nodes it
+writes, per metamodel package, `Requirements_<pkgKey>_Witnesses.kt` (an interface with one
+default member per non-skipped test, each failing with `unimplemented requirement: …`) and
+`Requirements_<pkgKey>_Test.kt` (one JUnit Jupiter `@Test` per requirement; `@Disabled` for
+a `planned` or `retired` one). Both are rewritten whole on every run, so never edit them:
+the project's code goes in the class `witnessClass` names, which implements every generated
+interface and overrides the members it has witnesses for. Write that class in Kotlin (a
+Java witness class against these interfaces is untested). A witness whose requirement is
+retired or deleted stops compiling, because `override` is mandatory. Args: `testPackage`
+and `witnessClass` (required once the model holds a requirement), `grain` (`concern` or
+`member`), `filter` and `renderer` (class names on the project classpath implementing
+`RequirementTestFilter` / `RequirementTestRenderer`; a filter REPLACES the default of
+functional L4/L5; a renderer returns Kotlin source), `warnUncovered`. Jupiter only: a
+JUnit 4 project uses `renderer` or ejects.
+`mvn metaobjects:eject -Dnames=requirement-tests -Dport=kotlin` copies the generator with
+its default rendering (pass `-Dport`: the name is ejectable on both JVM ports). The
+requirement checks in `mvn metaobjects:verify` are core and are not ejectable.
+
 Metadata lives under `src/main/metaobjects/` in the same canonical JSON the other
 ports read — fused-key form, `source.rdb` + `@table`, `@column` for a renamed
 physical column.
