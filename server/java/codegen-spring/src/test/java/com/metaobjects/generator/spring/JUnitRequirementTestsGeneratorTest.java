@@ -1,5 +1,7 @@
 package com.metaobjects.generator.spring;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.requirement.RenderedTest;
 import com.metaobjects.generator.requirement.RequirementTestArgs;
@@ -13,6 +15,7 @@ import com.metaobjects.requirement.RequirementTestIdentities;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import org.slf4j.LoggerFactory;
 
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
@@ -100,11 +103,45 @@ public class JUnitRequirementTestsGeneratorTest {
         return "metadata:\n  package: acme::shop\n  children:\n" + ORDER_ENTITY + String.join("", requirements);
     }
 
-    private JUnitRequirementTestsGenerator generator(Path out, Map<String, String> extra) {
+    /** The args of a real run, with {@code warnUncovered} left at its default. */
+    private Map<String, String> realArgs(Path out) {
         Map<String, String> args = new HashMap<>();
         args.put("outputDir", out.toString());
         args.put("testPackage", TEST_PACKAGE);
         args.put("witnessClass", WITNESS_CLASS);
+        return args;
+    }
+
+    /**
+     * Runs {@code block} with the generator's logger diverted into a list, so a warning a test
+     * provokes neither reaches the console nor goes unchecked: returns what was logged.
+     */
+    private static List<String> captureLog(Runnable block) {
+        ch.qos.logback.classic.Logger logger =
+            (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(JUnitRequirementTestsGenerator.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        boolean wasAdditive = logger.isAdditive();
+        logger.setAdditive(false);
+        logger.addAppender(appender);
+        try {
+            block.run();
+        } finally {
+            logger.detachAppender(appender);
+            logger.setAdditive(wasAdditive);
+        }
+        List<String> messages = new ArrayList<>();
+        for (ILoggingEvent e : appender.list) messages.add(e.getFormattedMessage());
+        return messages;
+    }
+
+    /** Runs {@code gen} over {@code loader} and returns what it logged. */
+    private static List<String> logged(JUnitRequirementTestsGenerator gen, MetaDataLoader loader) {
+        return captureLog(() -> gen.execute(loader));
+    }
+
+    private JUnitRequirementTestsGenerator generator(Path out, Map<String, String> extra) {
+        Map<String, String> args = realArgs(out);
         // The worked example has an L3 requirement the default filter drops, so most tests would
         // log the uncovered warning. Only the tests that are about it switch it on.
         args.put("warnUncovered", "false");
@@ -141,8 +178,17 @@ public class JUnitRequirementTestsGeneratorTest {
         "package com.acme;\npublic class Witnesses implements com.acme.req.Requirements_acme_shop_Witnesses {\n"
         + "  @Override public void req_acme_shop_Orders_Recorded__object_entity() { }\n}\n";
 
+    /** What the compiler said about a tree: whether it built, its diagnostics, and where the classes went. */
+    private record Compiled(boolean ok, String errors, Path classes) {}
+
     /** Compile the generated tree plus hand-written sources with the real compiler; return a loader over the classes. */
     private URLClassLoader compile(Path generated, Map<String, String> handWritten) throws IOException {
+        Compiled c = tryCompile(generated, handWritten);
+        assertTrue("generated requirement tests failed to compile:\n" + c.errors(), c.ok());
+        return new URLClassLoader(new URL[]{c.classes().toUri().toURL()}, getClass().getClassLoader());
+    }
+
+    private Compiled tryCompile(Path generated, Map<String, String> handWritten) throws IOException {
         List<java.io.File> sources = new ArrayList<>();
         try (Stream<Path> s = Files.walk(generated)) {
             s.filter(p -> p.toString().endsWith(".java")).forEach(p -> sources.add(p.toFile()));
@@ -164,9 +210,8 @@ public class JUnitRequirementTestsGeneratorTest {
                 null, fm.getJavaFileObjectsFromFiles(sources)).call();
             StringBuilder errs = new StringBuilder();
             for (Diagnostic<? extends JavaFileObject> d : diagnostics.getDiagnostics()) errs.append(d).append('\n');
-            assertTrue("generated requirement tests failed to compile:\n" + errs, ok);
+            return new Compiled(ok, errs.toString(), classes);
         }
-        return new URLClassLoader(new URL[]{classes.toUri().toURL()}, getClass().getClassLoader());
     }
 
     /** Invoke one generated test method; returns the AssertionError it threw, or null. */
@@ -199,7 +244,8 @@ public class JUnitRequirementTestsGeneratorTest {
         String iface = read(out, "Requirements_acme_shop_Witnesses.java");
         String test = read(out, "Requirements_acme_shop_Test.java");
         assertTrue(iface, iface.contains("// Witnesses are project-owned: implement this interface in com.acme.Witnesses"
-            + " and override the members it has witnesses for.\n"));
+            + " and override the members it has witnesses for, each annotated with @Override: a witness whose requirement"
+            + " is retired or deleted then stops compiling instead of going stale silently.\n"));
         assertTrue(test, test.contains("// The witnesses are project-owned, in com.acme.Witnesses.\n"));
         assertTrue(iface, iface.startsWith("// GENERATED by metaobjects (requirement-tests). DO NOT EDIT: this file is rewritten whole.\n"));
     }
@@ -289,6 +335,12 @@ public class JUnitRequirementTestsGeneratorTest {
         URLClassLoader cl = compile(run(loadDir(workedExampleInput()), Map.of()), Map.of(WITNESS_CLASS, WITNESS_RECORDED));
         assertEquals(null, invoke(cl, "Requirements_acme_shop_Test", "req_acme_shop_Orders_Recorded__object_entity"));
         assertEquals(null, invoke(cl, "Requirements_acme_shop_Test", "req_acme_shop_Orders_Refunded"));
+        // Without @Test JUnit discovers nothing and the adopter's build stays green.
+        Class<?> testClass = cl.loadClass(TEST_PACKAGE + ".Requirements_acme_shop_Test");
+        assertNotNull("the live test is a @Test", testClass.getDeclaredMethod("req_acme_shop_Orders_Recorded__object_entity")
+            .getAnnotation(org.junit.jupiter.api.Test.class));
+        assertNotNull("the skipped test is a @Test too", testClass.getDeclaredMethod("req_acme_shop_Orders_Refunded")
+            .getAnnotation(org.junit.jupiter.api.Test.class));
     }
 
     @Test
@@ -298,6 +350,45 @@ public class JUnitRequirementTestsGeneratorTest {
         assertTrue(test, test.contains("@Disabled(\"retired - the capability was deliberately removed; assert it stays removed\")"));
         // Every test of the package is skipped: no witness member and no Disabled-free import drift.
         assertFalse(read(run(loader, Map.of()), "Requirements_acme_shop_Witnesses.java").contains("default void"));
+    }
+
+    // ---------------------------------------------------------------- orphan witnesses
+
+    /** A witness for the live Recorded test and, as a stale leftover, one for Gone, which the model retired. */
+    private static String witnessWithStaleGone(String annotation) {
+        return "package com.acme;\npublic class Witnesses implements com.acme.req.Requirements_acme_shop_Witnesses {\n"
+            + "  @Override public void req_acme_shop_Recorded__object_entity() { }\n"
+            + "  " + annotation + " public void req_acme_shop_Gone() { }\n}\n";
+    }
+
+    private Path retiredGoneModelOutput() throws IOException {
+        return run(loadYaml(shop(
+            requirement("Recorded", 4, "live", "S.", "C.", "Order"),
+            requirement("Gone", 4, "retired", "Old thing.", "Old thing returns.", null))), Map.of());
+    }
+
+    @Test
+    public void aStaleOverrideForARetiredRequirementStopsCompilingWhenItIsAnnotatedOverride() throws Exception {
+        Path out = retiredGoneModelOutput();
+        assertFalse("a retired requirement has no member", read(out, "Requirements_acme_shop_Witnesses.java").contains("req_acme_shop_Gone"));
+        // Control: the same witness without the stale method builds, so the failure below is the stale member.
+        Compiled control = tryCompile(out, Map.of(WITNESS_CLASS,
+            "package com.acme;\npublic class Witnesses implements com.acme.req.Requirements_acme_shop_Witnesses {\n"
+                + "  @Override public void req_acme_shop_Recorded__object_entity() { }\n}\n"));
+        assertTrue(control.errors(), control.ok());
+
+        Compiled stale = tryCompile(out, Map.of(WITNESS_CLASS, witnessWithStaleGone("@Override")));
+        assertFalse("an @Override of a member the interface no longer has must not compile", stale.ok());
+        assertTrue(stale.errors(), stale.errors().contains("Witnesses.java"));
+    }
+
+    @Test
+    public void knownLimit_aStaleWitnessMethodWithoutOverrideStillCompilesSoTheHeaderAsksForTheAnnotation() throws Exception {
+        // The drift signal exists only because the project annotates its witnesses. Without
+        // @Override a stale method is an ordinary method; the generated header says so by
+        // asking for the annotation, and this records the limit rather than hiding it.
+        Compiled c = tryCompile(retiredGoneModelOutput(), Map.of(WITNESS_CLASS, witnessWithStaleGone("")));
+        assertTrue(c.errors(), c.ok());
     }
 
     // ---------------------------------------------------------------- escaping
@@ -501,6 +592,14 @@ public class JUnitRequirementTestsGeneratorTest {
 
     // ---------------------------------------------------------------- the uncovered warning
 
+    /** A level 3 requirement {@code parent} holding a level 3 child, both excluded by the default filter. */
+    private static String withChild(String parent, String child) {
+        return requirement(parent, 3, "live", "P.", "Q.", null)
+            + "        children:\n          - requirement.functional:\n"
+            + "              name: " + child + "\n              level: 3\n              status: live\n"
+            + "              statement: A.\n              counterexample: B.\n";
+    }
+
     @Test
     public void excludedRequirementsProduceOneCappedWarningAndWarnUncoveredFalseSilencesIt() throws Exception {
         List<String> reqs = new ArrayList<>();
@@ -509,17 +608,40 @@ public class JUnitRequirementTestsGeneratorTest {
         MetaDataLoader loader = loadYaml(shop(reqs.toArray(new String[0])));
 
         JUnitRequirementTestsGenerator gen = generator(tmp.newFolder().toPath(), Map.of("warnUncovered", "true"));
-        gen.execute(loader);
-        assertEquals(1, gen.warnings().size());
         // Table A: diagnostics name the PATH, never the package-qualified address, so the same
         // model gives the same names in every port.
-        assertEquals("7 requirement(s) matched no filter and get no test. If that is deliberate, set "
-            + "warnUncovered=false to silence this. Uncovered: Area1, Area2, Area3, Area4, Area5, and 2 more.",
-            gen.warnings().get(0));
+        String message = "7 requirement(s) matched no filter and get no test. If that is deliberate, set "
+            + "warnUncovered=false to silence this. Uncovered: Area1, Area2, Area3, Area4, Area5, and 2 more.";
+        assertEquals(List.of(message), logged(gen, loader));
+        assertEquals(List.of(message), gen.warnings());
 
         JUnitRequirementTestsGenerator quiet = generator(tmp.newFolder().toPath(), Map.of("warnUncovered", "false"));
-        quiet.execute(loader);
+        assertEquals(List.of(), logged(quiet, loader));
         assertEquals(List.of(), quiet.warnings());
+    }
+
+    @Test
+    public void theUncoveredWarningIsOnByDefault() throws Exception {
+        // No warnUncovered arg at all: the worked example's excluded L3 parent must be named.
+        JUnitRequirementTestsGenerator gen = new JUnitRequirementTestsGenerator();
+        gen.setArgs(realArgs(tmp.newFolder().toPath()));
+        String message = "1 requirement(s) matched no filter and get no test. If that is deliberate, set "
+            + "warnUncovered=false to silence this. Uncovered: Orders.";
+        assertEquals(List.of(message), logged(gen, loadDir(workedExampleInput())));
+        assertEquals(List.of(message), gen.warnings());
+    }
+
+    @Test
+    public void aNestedExcludedRequirementIsNamedByItsDottedPathNotItsBareNameOrQualifiedAddress() throws Exception {
+        MetaDataLoader loader = loadYaml(shop(
+            requirement("Area1", 3, "live", "S.", "C.", null),
+            withChild("Orders", "Placed"),
+            requirement("Recorded", 4, "live", "S.", "C.", "Order")));
+        JUnitRequirementTestsGenerator gen = generator(tmp.newFolder().toPath(), Map.of("warnUncovered", "true"));
+        String message = "3 requirement(s) matched no filter and get no test. If that is deliberate, set "
+            + "warnUncovered=false to silence this. Uncovered: Area1, Orders, Orders.Placed.";
+        assertEquals(List.of(message), logged(gen, loader));
+        assertEquals(List.of(message), gen.warnings());
     }
 
     // ---------------------------------------------------------------- nothing declared, nothing changes

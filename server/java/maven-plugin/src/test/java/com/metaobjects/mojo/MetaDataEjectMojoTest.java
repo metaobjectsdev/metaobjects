@@ -201,6 +201,41 @@ public class MetaDataEjectMojoTest {
     }
 
     @Test
+    public void ejectingRequirementTestsWithTheKotlinPortCopiesTheShippedKotlinSourceWithItsPackageRewritten() throws Exception {
+        mojo("requirement-tests", false, "kotlin", null).execute();
+        Path target = codegenRoot().resolve("src/main/kotlin/com/acme/codegen/KotlinRequirementTestsGenerator.kt");
+        assertTrue("the Kotlin generator is written under src/main/kotlin", Files.exists(target));
+        assertFalse("and nothing is written for the Java port",
+                Files.exists(codegenRoot().resolve("src/main/java")));
+        String content = Files.readString(target, StandardCharsets.UTF_8);
+        assertEquals("package com.acme.codegen", content.lines().findFirst().orElse(""));
+        assertFalse(content.contains("package com.metaobjects.generator.kotlin"));
+        // It is the real file, read from the resource the jar ships: the generator and its
+        // default rendering together.
+        assertTrue(content.contains("class KotlinRequirementTestsGenerator"));
+        assertTrue(content.contains("@Disabled("));
+        assertTrue(Files.readString(codegenRoot().resolve("pom.xml"), StandardCharsets.UTF_8)
+                .contains("metaobjects-codegen-kotlin"));
+    }
+
+    @Test
+    public void ejectingRequirementTestsWithNoPortAndNothingToInferItFromIsRefusedAsEjectableOnMoreThanOnePort() {
+        // The name is registered by both the Java and the Kotlin registry, and the project
+        // declares no dependency that says which one it uses.
+        MetaDataEjectMojo m = mojo("requirement-tests", false, null, null);
+        try {
+            m.execute();
+            fail("expected MojoFailureException");
+        } catch (MojoFailureException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("\"requirement-tests\" is ejectable on more than one port (java, kotlin)"));
+            assertTrue(expected.getMessage(), expected.getMessage().contains("-Dport=java|kotlin"));
+        } catch (MojoExecutionException e) {
+            fail("expected MojoFailureException, got " + e);
+        }
+        assertFalse("nothing is written when the name is ambiguous", Files.exists(codegenRoot()));
+    }
+
+    @Test
     public void aDeclaredCodegenSpringDependencyInfersJavaForAnAmbiguousName() throws Exception {
         Dependency dep = new Dependency();
         dep.setGroupId("com.metaobjects");

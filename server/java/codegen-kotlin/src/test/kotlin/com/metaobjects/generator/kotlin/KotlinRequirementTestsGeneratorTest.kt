@@ -1,5 +1,7 @@
 package com.metaobjects.generator.kotlin
 
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.metaobjects.generator.Generator
 import com.metaobjects.generator.GeneratorException
@@ -14,6 +16,7 @@ import com.metaobjects.requirement.RequirementTestIdentities
 import com.tschuchort.compiletesting.KotlinCompilation
 import com.tschuchort.compiletesting.SourceFile
 import org.junit.jupiter.api.Disabled
+import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
 import java.lang.reflect.InvocationTargetException
 import java.nio.file.Files
@@ -103,16 +106,34 @@ class KotlinRequirementTestsGeneratorTest {
     private fun shop(vararg requirements: String): String =
         "metadata:\n  package: acme::shop\n  children:\n" + orderEntity + requirements.joinToString("")
 
+    /** The args of a real run, with `warnUncovered` left at its default. */
+    private fun realArgs(out: Path): Map<String, String> =
+        mapOf("outputDir" to out.toString(), "testPackage" to TEST_PACKAGE, "witnessClass" to WITNESS_CLASS)
+
     private fun generator(out: Path, extra: Map<String, String> = emptyMap()): KotlinRequirementTestsGenerator {
         // The worked example has an L3 requirement the default filter drops, so most tests would
         // log the uncovered warning. Only the tests that are about it switch it on.
-        val args = mapOf(
-            "outputDir" to out.toString(),
-            "testPackage" to TEST_PACKAGE,
-            "witnessClass" to WITNESS_CLASS,
-            "warnUncovered" to "false",
-        ) + extra
+        val args = realArgs(out) + ("warnUncovered" to "false") + extra
         return KotlinRequirementTestsGenerator().also { it.setArgs(args) }
+    }
+
+    /**
+     * Runs [block] with the generator's logger diverted into a list, so a warning a test
+     * provokes neither reaches the console nor goes unchecked: returns what was logged.
+     */
+    private fun captureLog(block: () -> Unit): List<String> {
+        val logger = LoggerFactory.getLogger(KotlinRequirementTestsGenerator::class.java) as ch.qos.logback.classic.Logger
+        val appender = ListAppender<ILoggingEvent>().also { it.start() }
+        val wasAdditive = logger.isAdditive
+        logger.isAdditive = false
+        logger.addAppender(appender)
+        try {
+            block()
+        } finally {
+            logger.detachAppender(appender)
+            logger.isAdditive = wasAdditive
+        }
+        return appender.list.map { it.formattedMessage }
     }
 
     private fun run(loader: MetaDataLoader, extra: Map<String, String> = emptyMap()): Path {
@@ -141,6 +162,12 @@ class KotlinRequirementTestsGeneratorTest {
 
     /** Compile the generated tree plus hand-written sources with the real compiler; return a loader over the classes. */
     private fun compile(generated: Path, handWritten: Map<String, String>): ClassLoader {
+        val result = tryCompile(generated, handWritten)
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, "generated requirement tests failed to compile:\n${result.messages}")
+        return result.classLoader
+    }
+
+    private fun tryCompile(generated: Path, handWritten: Map<String, String>): KotlinCompilation.Result {
         val sources = mutableListOf<SourceFile>()
         Files.walk(generated).use { s ->
             s.filter { it.isRegularFile() && it.toString().endsWith(".kt") }
@@ -154,8 +181,7 @@ class KotlinRequirementTestsGeneratorTest {
             allWarningsAsErrors = true
             messageOutputStream = messages
         }.compile()
-        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, "generated requirement tests failed to compile:\n${result.messages}")
-        return result.classLoader
+        return result
     }
 
     /** Invoke one generated test method; returns the AssertionError it threw, or null. */
@@ -329,6 +355,32 @@ class KotlinRequirementTestsGeneratorTest {
         val recorded = cl.loadClass("$TEST_PACKAGE.Requirements_acme_shop_Test")
             .getDeclaredMethod("req_acme_shop_Orders_Recorded__object_entity")
         assertNull(recorded.getAnnotation(Disabled::class.java))
+        // Without @Test JUnit discovers nothing and the adopter's build stays green.
+        assertNotNull(recorded.getAnnotation(org.junit.jupiter.api.Test::class.java), "the live test is a @Test")
+        assertNotNull(refunded.getAnnotation(org.junit.jupiter.api.Test::class.java), "the skipped test is a @Test too")
+    }
+
+    // ---------------------------------------------------------------- orphan witnesses
+
+    @Test
+    fun `a stale override for a retired requirement stops compiling`() {
+        val loader = loadYaml(
+            shop(
+                requirement("Recorded", 4, "live", "S.", "C.", "Order"),
+                requirement("Gone", 4, "retired", "Old thing.", "Old thing returns.", null),
+            ),
+        )
+        val out = run(loader)
+        assertFalse(read(out, "Requirements_acme_shop_Witnesses.kt").contains("req_acme_shop_Gone"), "a retired requirement has no member")
+        val head = "package com.acme\nclass Witnesses : com.acme.req.Requirements_acme_shop_Witnesses {\n" +
+            "    override fun req_acme_shop_Recorded__object_entity() { }\n"
+        // Control: the same witness without the stale method builds, so the failure below is the stale member.
+        val control = tryCompile(out, mapOf(WITNESS_CLASS to head + "}\n"))
+        assertEquals(KotlinCompilation.ExitCode.OK, control.exitCode, control.messages)
+
+        val stale = tryCompile(out, mapOf(WITNESS_CLASS to head + "    override fun req_acme_shop_Gone() { }\n}\n"))
+        assertEquals(KotlinCompilation.ExitCode.COMPILATION_ERROR, stale.exitCode, "an override of a member the interface no longer has must not compile")
+        assertContains(stale.messages, "req_acme_shop_Gone")
     }
 
     // ---------------------------------------------------------------- escaping
@@ -369,6 +421,20 @@ class KotlinRequirementTestsGeneratorTest {
         assertTrue(test.contains("    // second line * / end \\u000a not an escape\n"), test)
         assertTrue(test.contains("    // lone cr\n"), test)
         assertTrue(test.contains("    // Counterexample: it breaks \"here\" at C:\\tmp\n    // then * / and \\u000a\n"), test)
+    }
+
+    @Test
+    fun `triple quotes in author prose cannot end the literal or the comment`() {
+        val statement = "\"quoted \\\"\\\"\\\" statement\""
+        val counterexample = "\"it breaks \\\"\\\"\\\" and \\\"\\\"\\\"\""
+        val loader = loadYaml(shop(requirement("Recorded", 4, "live", statement, counterexample, "Order")))
+        val out = run(loader)
+        val cl = compile(out, mapOf(WITNESS_CLASS to witnessNone))
+        val e = invoke(cl, "Requirements_acme_shop_Test", "req_acme_shop_Recorded__object_entity")
+        assertNotNull(e)
+        assertTrue(e.message!!.endsWith("so that it fails when: it breaks \"\"\" and \"\"\""), e.message)
+        assertTrue(read(out, "Requirements_acme_shop_Test.kt").contains("// quoted \"\"\" statement\n"))
+        assertContains(read(out, "Requirements_acme_shop_Witnesses.kt"), "it breaks \\\"\\\"\\\" and \\\"\\\"\\\"")
     }
 
     @Test
@@ -436,8 +502,40 @@ class KotlinRequirementTestsGeneratorTest {
     @Test
     fun `a test package or witness class that is not a Kotlin name is refused rather than spliced into source`() {
         val loader = loadDir(workedExampleInput())
-        assertFailsWith<GeneratorException> { run(loader, mapOf("witnessClass" to "com.acme.W(); System.exit(1")) }
-        assertFailsWith<GeneratorException> { run(loader, mapOf("testPackage" to "com.acme\nimport x")) }
+        val witness = assertFailsWith<GeneratorException> { run(loader, mapOf("witnessClass" to "com.acme.W(); System.exit(1")) }
+        assertContains(witness.message!!, "arg 'witnessClass' must be a dotted Kotlin name")
+        val pkg = assertFailsWith<GeneratorException> { run(loader, mapOf("testPackage" to "com.acme\nimport x")) }
+        assertContains(pkg.message!!, "arg 'testPackage' must be a dotted Kotlin name")
+        // `$` is a legal JVM name character and the one rule that differs from the Java generator:
+        // in Kotlin source it starts a template, so it is refused in both names.
+        val dollarWitness = assertFailsWith<GeneratorException> { run(loader, mapOf("witnessClass" to "com.acme.Witness\$1")) }
+        assertContains(dollarWitness.message!!, "arg 'witnessClass' must be a dotted Kotlin name")
+        val dollarPackage = assertFailsWith<GeneratorException> { run(loader, mapOf("testPackage" to "com.\$acme")) }
+        assertContains(dollarPackage.message!!, "arg 'testPackage' must be a dotted Kotlin name")
+    }
+
+    @Test
+    fun `a keyword package segment is backtick escaped so the output compiles and runs`() {
+        // `in`, `is` and `as` are real reversed-domain prefixes and Kotlin hard keywords.
+        val out = tempDir()
+        generator(out, mapOf("testPackage" to "in.co.acme.requirements", "witnessClass" to "in.co.acme.Witnesses"))
+            .execute(loadDir(workedExampleInput()))
+        val dir = out.resolve("in/co/acme/requirements")
+        val iface = dir.resolve("Requirements_acme_shop_Witnesses.kt").readText()
+        val test = dir.resolve("Requirements_acme_shop_Test.kt").readText()
+        assertContains(iface, "package `in`.co.acme.requirements\n")
+        assertContains(test, "package `in`.co.acme.requirements\n")
+        assertContains(test, "private val witnesses: Requirements_acme_shop_Witnesses = `in`.co.acme.Witnesses()")
+        // The header comment and the failure message keep the plain name.
+        assertContains(test, "// The witnesses are project-owned, in in.co.acme.Witnesses.\n")
+        assertContains(iface, "write in.co.acme.Witnesses.req_acme_shop_Orders_Recorded__object_entity()")
+
+        val witness = "package `in`.co.acme\nclass Witnesses : `in`.co.acme.requirements.Requirements_acme_shop_Witnesses {\n" +
+            "    override fun req_acme_shop_Orders_Recorded__object_entity() { }\n}\n"
+        val cl = compile(out, mapOf("in.co.acme.Witnesses" to witness))
+        val c = cl.loadClass("in.co.acme.requirements.Requirements_acme_shop_Test")
+        val instance = c.getDeclaredConstructor().newInstance()
+        c.getDeclaredMethod("req_acme_shop_Orders_Recorded__object_entity").invoke(instance)
     }
 
     @Test
@@ -542,6 +640,17 @@ class KotlinRequirementTestsGeneratorTest {
 
     // ---------------------------------------------------------------- the uncovered warning
 
+    /** A level 3 requirement `parent` holding a level 3 child, both excluded by the default filter. */
+    private fun withChild(parent: String, child: String): String =
+        requirement(parent, 3, "live", "P.", "Q.", null) +
+            "        children:\n          - requirement.functional:\n" +
+            "              name: $child\n              level: 3\n              status: live\n" +
+            "              statement: A.\n              counterexample: B.\n"
+
+    /** Runs [gen] over [loader] and returns what it logged. */
+    private fun logged(gen: KotlinRequirementTestsGenerator, loader: MetaDataLoader): List<String> =
+        captureLog { gen.execute(loader) }
+
     @Test
     fun `excluded requirements produce one capped warning and warnUncovered false silences it`() {
         val reqs = (1..7).map { requirement("Area$it", 3, "live", "S.", "C.", null) } +
@@ -549,35 +658,47 @@ class KotlinRequirementTestsGeneratorTest {
         val loader = loadYaml(shop(*reqs.toTypedArray()))
 
         val gen = generator(tempDir(), mapOf("warnUncovered" to "true"))
-        gen.execute(loader)
+        val message =
+            "7 requirement(s) matched no filter and get no test. If that is deliberate, set " +
+                "warnUncovered=false to silence this. Uncovered: Area1, Area2, Area3, Area4, Area5, and 2 more."
         // Table A: diagnostics name the PATH, never the package-qualified address, so the same
         // model gives the same names in every port.
-        assertEquals(
-            listOf(
-                "7 requirement(s) matched no filter and get no test. If that is deliberate, set " +
-                    "warnUncovered=false to silence this. Uncovered: Area1, Area2, Area3, Area4, Area5, and 2 more.",
-            ),
-            gen.warnings(),
-        )
+        assertEquals(listOf(message), logged(gen, loader))
+        assertEquals(listOf(message), gen.warnings())
 
         val quiet = generator(tempDir(), mapOf("warnUncovered" to "false"))
-        quiet.execute(loader)
+        assertEquals(emptyList(), logged(quiet, loader))
         assertEquals(emptyList(), quiet.warnings())
     }
 
     @Test
-    fun `five or fewer excluded requirements are all named and there is no and-more tail`() {
-        val reqs = (1..2).map { requirement("Area$it", 3, "live", "S.", "C.", null) } +
-            requirement("Recorded", 4, "live", "S.", "C.", "Order")
+    fun `the uncovered warning is on by default`() {
+        // No warnUncovered arg at all: the worked example's excluded L3 parent must be named.
+        val gen = KotlinRequirementTestsGenerator().also { it.setArgs(realArgs(tempDir())) }
+        val log = logged(gen, loadDir(workedExampleInput()))
+        val message = "1 requirement(s) matched no filter and get no test. If that is deliberate, set " +
+            "warnUncovered=false to silence this. Uncovered: Orders."
+        assertEquals(listOf(message), log)
+        assertEquals(listOf(message), gen.warnings())
+    }
+
+    @Test
+    fun `five or fewer excluded requirements are all named by path including a nested one and there is no and-more tail`() {
+        // Orders.Placed is nested: its PATH is the dotted one, never its bare name and never the
+        // package-qualified address.
         val gen = generator(tempDir(), mapOf("warnUncovered" to "true"))
-        gen.execute(loadYaml(shop(*reqs.toTypedArray())))
-        assertEquals(
-            listOf(
-                "2 requirement(s) matched no filter and get no test. If that is deliberate, set " +
-                    "warnUncovered=false to silence this. Uncovered: Area1, Area2.",
+        val loader = loadYaml(
+            shop(
+                requirement("Area1", 3, "live", "S.", "C.", null),
+                withChild("Orders", "Placed"),
+                requirement("Recorded", 4, "live", "S.", "C.", "Order"),
             ),
-            gen.warnings(),
         )
+        val log = logged(gen, loader)
+        val message = "3 requirement(s) matched no filter and get no test. If that is deliberate, set " +
+            "warnUncovered=false to silence this. Uncovered: Area1, Orders, Orders.Placed."
+        assertEquals(listOf(message), log)
+        assertEquals(listOf(message), gen.warnings())
     }
 
     // ---------------------------------------------------------------- nothing declared, nothing changes
@@ -594,7 +715,7 @@ class KotlinRequirementTestsGeneratorTest {
     // ---------------------------------------------------------------- stale files
 
     @Test
-    fun `stale file - gen never removes the files of a package that lost its last requirement and verify reports them stale in repo`() {
+    fun `stale file - gen never removes the files of a package that lost its last requirement`() {
         val billing = "metadata:\n  package: acme::billing\n  children:\n" +
             "    - object.entity:\n        name: Invoice\n        children:\n" +
             "          - field.uuid: { name: id }\n          - identity.primary: { name: pk, fields: [id] }\n" +
@@ -615,9 +736,9 @@ class KotlinRequirementTestsGeneratorTest {
         Files.writeString(dir.resolve("meta.billing.yaml"), billing.substring(0, billing.indexOf("    - requirement.functional")))
         generator(out).execute(loadDir(dir))
 
-        // What gen does, as for every JVM generator: it does not delete. The files stay, and
-        // `mvn metaobjects:verify` then reports each as [stale-in-repo] (its codegen-drift goal,
-        // exercised in the maven-plugin module).
+        // What gen does, as for every JVM generator: it does not delete, so the files stay. That
+        // is all this asserts; that the codegen-drift goal then reports them is the plugin's own
+        // behaviour for every generator, not something this generator adds.
         assertEquals(both, files(out))
     }
 

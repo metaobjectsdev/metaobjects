@@ -36,7 +36,9 @@ import java.util.regex.Pattern;
  * The project owns the witnesses: it writes a class implementing every generated witness
  * interface and overrides the members it has witnesses for. A requirement that becomes live
  * adds a failing member, a red test and no compile break; one that is retired or deleted
- * removes the member, so a stale override stops compiling.</p>
+ * removes the member, so a stale override stops compiling. That signal depends on the project
+ * annotating each witness method {@code @Override}: a stale method without the annotation is
+ * an ordinary method and compiles, which is why the generated header asks for it.</p>
  *
  * <p>Which tests exist, what each is called, whether it is skipped and its digest come from
  * {@link RequirementTestIdentities}, which every language port shares and a conformance corpus
@@ -282,7 +284,8 @@ public class JUnitRequirementTestsGenerator extends FileEmittingGenerator implem
     private static String witnessInterface(String testPackage, String name, String witnessClass, List<Planned> tests) {
         StringBuilder sb = new StringBuilder(GENERATED_HEADER)
             .append("// Witnesses are project-owned: implement this interface in ").append(commentText(witnessClass))
-            .append(" and override the members it has witnesses for.\n")
+            .append(" and override the members it has witnesses for, each annotated with @Override: a witness whose requirement")
+            .append(" is retired or deleted then stops compiling instead of going stale silently.\n")
             .append("package ").append(testPackage).append(";\n\n")
             .append("public interface ").append(name).append(" {\n");
         for (Planned p : tests) {

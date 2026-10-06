@@ -143,7 +143,7 @@ open class KotlinRequirementTestsGenerator : FileEmittingGenerator(), ProjectCla
         }
         val name = value.trim()
         if (!KOTLIN_NAME.matches(name)) {
-            throw GeneratorException("requirement-tests: arg '$arg' must be a dotted Kotlin name, not '$value'")
+            throw GeneratorException("requirement-tests: arg '$arg' must be a dotted Kotlin name (letters, digits and underscores), not '$value'")
         }
         return name
     }
@@ -242,7 +242,7 @@ open class KotlinRequirementTestsGenerator : FileEmittingGenerator(), ProjectCla
         val sb = StringBuilder(GENERATED_HEADER)
             .append("// Witnesses are project-owned: implement this interface in ").append(commentText(witnessClass))
             .append(" and override the members it has witnesses for.\n")
-            .append("package ").append(testPackage).append("\n\n")
+            .append("package ").append(sourceName(testPackage)).append("\n\n")
             .append("interface ").append(name).append(" {\n")
         for (p in tests) {
             val id = p.identity
@@ -286,10 +286,10 @@ open class KotlinRequirementTestsGenerator : FileEmittingGenerator(), ProjectCla
         }
         val sb = StringBuilder(GENERATED_HEADER)
             .append("// The witnesses are project-owned, in ").append(commentText(witnessClass)).append(".\n")
-            .append("package ").append(testPackage).append("\n\n")
+            .append("package ").append(sourceName(testPackage)).append("\n\n")
         for (i in imports) sb.append("import ").append(i).append('\n')
         return sb.append("\nclass ").append(name).append(" {\n\n")
-            .append("    private val witnesses: ").append(witnesses).append(" = ").append(witnessClass).append("()\n")
+            .append("    private val witnesses: ").append(witnesses).append(" = ").append(sourceName(witnessClass)).append("()\n")
             .append(body).append("}\n").toString()
     }
 
@@ -327,6 +327,15 @@ open class KotlinRequirementTestsGenerator : FileEmittingGenerator(), ProjectCla
     // ------------------------------------------------------------------
     // escaping: author prose lands in string literals and comments, and must not break either
     // ------------------------------------------------------------------
+
+    /**
+     * A dotted name as it is written in Kotlin source: a segment that is a hard keyword (`in`,
+     * `is` and `as` are real country-code prefixes in a reversed domain) is wrapped in
+     * backticks, since `package in.co.acme` does not parse. The file's directory and every
+     * comment and message keep the plain name.
+     */
+    private fun sourceName(dotted: String): String =
+        dotted.split('.').joinToString(".") { if (it in HARD_KEYWORDS) "`$it`" else it }
 
     private fun indent(block: String): String {
         val sb = StringBuilder()
@@ -385,6 +394,13 @@ open class KotlinRequirementTestsGenerator : FileEmittingGenerator(), ProjectCla
 
         private const val SKIP_PLANNED = "planned - not built yet"
         private const val SKIP_RETIRED = "retired - the capability was deliberately removed; assert it stays removed"
+
+        /** Kotlin's hard keywords: the ones that cannot be an identifier without backticks. */
+        private val HARD_KEYWORDS = setOf(
+            "as", "break", "class", "continue", "do", "else", "false", "for", "fun", "if", "in",
+            "interface", "is", "null", "object", "package", "return", "super", "this", "throw",
+            "true", "try", "typealias", "typeof", "val", "var", "when", "while",
+        )
 
         private val KOTLIN_NAME = Regex("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*")
 
