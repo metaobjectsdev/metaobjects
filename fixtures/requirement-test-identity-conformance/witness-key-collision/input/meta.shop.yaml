@@ -31,3 +31,14 @@ metadata:
         statement: An order is recorded once.
         counterexample: Two rows for one order.
         implementedBy: [Order]
+
+    # A doubled underscore. An underscore is outside the kept class like any other
+    # character, so the pair is one run and becomes one underscore. No other
+    # requirement here mangles to the same key.
+    - requirement.functional:
+        name: Sales__Orders
+        level: 4
+        status: live
+        statement: An order records the sale it belongs to.
+        counterexample: An order with no sale.
+        implementedBy: [Order]

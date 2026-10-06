@@ -46,21 +46,29 @@ interface Expected {
 const OPTION_KEYS = ["grain", "filter"] as const;
 interface Options { grain?: RequirementTestGrain; filter?: string }
 
+type Predicate = (r: RequirementView) => boolean;
+
 /**
  * The corpus's closed list of filters. A predicate cannot be written in a file five
  * languages read, so a case NAMES one and every port's runner holds this table in its own
- * language, handing the predicate to its public filter seam. Between them the seven rows
- * read every field of the requirement view.
+ * language, handing the predicate to its public filter seam. Between them the eight rows
+ * read every field of the requirement view, and `unlevelled` reads a field that is not
+ * there.
+ *
+ * A Map, not an object literal: looking `constructor` up in a literal finds
+ * `Object.prototype`'s, so a misnamed filter would be run as a predicate that keeps
+ * everything instead of being refused.
  */
-const FILTERS: Readonly<Record<string, (r: RequirementView) => boolean>> = {
-  "all": () => true,
-  "architectural": (r) => r.subType === REQUIREMENT_SUBTYPE_ARCHITECTURAL,
-  "live": (r) => r.status === REQUIREMENT_STATUS_LIVE,
-  "level-5": (r) => r.level === REQUIREMENT_LEVEL_MEMBER,
-  "package-acme-shop": (r) => r.package === "acme::shop",
-  "path-under-Shop": (r) => r.path === "Shop" || r.path.startsWith("Shop."),
-  "claims-entity": (r) => r.implementedByTypes.includes(`${TYPE_OBJECT}.${OBJECT_SUBTYPE_ENTITY}`),
-};
+const FILTERS: ReadonlyMap<string, Predicate> = new Map<string, Predicate>([
+  ["all", () => true],
+  ["architectural", (r) => r.subType === REQUIREMENT_SUBTYPE_ARCHITECTURAL],
+  ["live", (r) => r.status === REQUIREMENT_STATUS_LIVE],
+  ["level-5", (r) => r.level === REQUIREMENT_LEVEL_MEMBER],
+  ["unlevelled", (r) => r.level === undefined],
+  ["package-acme-shop", (r) => r.package === "acme::shop"],
+  ["path-under-Shop", (r) => r.path === "Shop" || r.path.startsWith("Shop.")],
+  ["claims-entity", (r) => r.implementedByTypes.includes(`${TYPE_OBJECT}.${OBJECT_SUBTYPE_ENTITY}`)],
+]);
 
 function readOptions(caseDir: string): Options {
   const file = join(caseDir, "options.json");
@@ -71,10 +79,10 @@ function readOptions(caseDir: string): Options {
   return options as Options;
 }
 
-function filterNamed(name: string): (r: RequirementView) => boolean {
-  const filter = FILTERS[name];
+function filterNamed(name: string): Predicate {
+  const filter = FILTERS.get(name);
   if (filter === undefined) {
-    throw new Error(`unknown filter '${name}'. The corpus names: ${Object.keys(FILTERS).join(", ")}`);
+    throw new Error(`unknown filter '${name}'. The corpus names: ${[...FILTERS.keys()].join(", ")}`);
   }
   return filter;
 }

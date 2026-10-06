@@ -1,0 +1,56 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    # Two flat policies: neither declares a level.
+    - requirement.architectural:
+        name: Identified
+        status: live
+        statement: Every row is addressed by a uuid.
+        counterexample: A row keyed by a name.
+        implementedBy: [Order]
+
+    - requirement.architectural:
+        name: Audited
+        status: planned
+        statement: Every row records who last changed it.
+        counterexample: A changed row with no author.
+
+    # A levelled policy.
+    - requirement.architectural:
+        name: Addressable
+        level: 4
+        status: live
+        statement: An order is addressed by one stable key.
+        counterexample: An order that cannot be pointed at.
+        implementedBy: [Order]
+
+    - requirement.functional:
+        name: Recorded
+        level: 4
+        status: live
+        statement: An order is recorded when it is placed.
+        counterexample: A placed order has no row.
+        implementedBy: [Order]
+
+    # Levels 0 and -1 are out of range, and verify reports them. They load, and they
+    # are here because they are the two values most often used to stand for "no
+    # level". Each of these requirements declares a level, so neither is unlevelled.
+    - requirement.functional:
+        name: Shelved
+        level: 0
+        status: planned
+        statement: An order can be set aside and resumed.
+        counterexample: A shelved order that cannot be reopened.
+
+    - requirement.functional:
+        name: Gifted
+        level: -1
+        status: planned
+        statement: An order can be sent to someone else as a gift.
+        counterexample: A gift order that shows its price.

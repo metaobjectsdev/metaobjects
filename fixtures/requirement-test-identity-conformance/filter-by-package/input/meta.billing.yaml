@@ -5,6 +5,7 @@ metadata:
         name: Invoice
         children:
           - field.uuid: { name: id }
+          - field.string: { name: number }
           - identity.primary: { name: pk, fields: [id] }
 
     # Takes this file's package.
@@ -26,3 +27,13 @@ metadata:
         statement: An order records when it was paid.
         counterexample: A paid order with no payment time.
         implementedBy: [Order]
+        children:
+          # Declares no package: it takes its parent's, not this file's. Its bare
+          # reference binds there too.
+          - requirement.functional:
+              name: Timed
+              level: 5
+              status: live
+              statement: A paid order carries the time it was paid.
+              counterexample: A paid order whose payment time is empty.
+              implementedBy: [Order.paidAt]

@@ -7,13 +7,13 @@ metadata:
           - field.uuid: { name: id }
           - identity.primary: { name: pk, fields: [id] }
 
-    # The statement holds two-byte and three-byte characters. The counterexample holds
-    # a CR LF pair and a lone CR, written as escapes so that the value does not depend
-    # on this file's own line endings.
+    # The statement holds two-byte and three-byte characters and a CR LF pair. The
+    # counterexample holds a CR LF pair and a lone CR. Each is written as an escape, so
+    # that the value does not depend on this file's own line endings.
     - requirement.functional:
         name: Recorded
         level: 4
         status: live
-        statement: "Une commande passée au café est enregistrée — 注文は記録される。"
+        statement: "Une commande passée au café est enregistrée.\r\n注文は記録される。"
         counterexample: "A placed order has no row.\r\nIts total reads ¥0.\rNobody is told."
         implementedBy: [Order]

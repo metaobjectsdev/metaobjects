@@ -38,7 +38,8 @@ each port's runner implements this closed list in its own language and hands the
 to the port's filter seam. A name outside the list fails the case.
 
 The predicate receives the **requirement view**: `subType`, `level`, `status`, `path`,
-`package` and `implementedByTypes`. Between them the seven filters read every field.
+`package` and `implementedByTypes`. Between them the eight filters read every field, and
+`unlevelled` asks about one that is not there.
 
 | `filter` | The predicate over the requirement view |
 |---|---|
@@ -46,20 +47,25 @@ The predicate receives the **requirement view**: `subType`, `level`, `status`, `
 | `architectural` | `subType` is `architectural` |
 | `live` | `status` is `live` |
 | `level-5` | `level` is `5` |
+| `unlevelled` | `level` is absent |
 | `package-acme-shop` | `package` is `acme::shop` |
 | `path-under-Shop` | `path` is `Shop` or starts with `Shop.` |
 | `claims-entity` | `implementedByTypes` contains `object.entity` |
 
 - `level` is **absent** on an architectural requirement that declares none. Absent is not
-  `5` and not `0`: the `level-5` predicate must answer false for it without failing.
+  a number: the `level-5` predicate must answer false for it without failing, and
+  `unlevelled` must answer true for it and for nothing else. A requirement that declares
+  level `0` or `-1` has a level. A view that stands a number in for "no level" cannot
+  tell the two apart.
 - `path` is the dotted chain of requirement names from the root, with no package.
 - `package` is the requirement's **effective** package: the one the node declares, else
-  its file's, else the empty string.
+  the one declared by the nearest requirement it is nested under, else its file's, else
+  the empty string.
 - `implementedByTypes` is the distinct `<type>.<subType>` of the references that
   **resolve**, in first-seen order. A reference that does not resolve contributes nothing.
 
 With no `filter`, the port's default applies: a requirement gets a test when it is
-`functional` and its `level` is 4 or 5.
+`functional` and its `level` is 4 or above.
 
 ### What is compared
 
@@ -72,7 +78,7 @@ collation; every `id` in this corpus is ASCII. Each record is one generated test
 | `path` | The dotted chain of requirement names from the root. |
 | `unit` | What this one test stands for. Under `grain: concern` (the default), one test per **distinct** `<type>.<subType>` among the requirement's resolved references. Under `grain: member`, one test per **distinct** reference that resolves, spelt exactly as authored. In both grains a requirement with no resolved reference yields exactly one test, with unit `*`. |
 | `id` | `<address> [<unit>]`, where the address is `<package>::<path>`, or the bare path when the package is `""`. |
-| `witnessKey` | `req_` + mangle(address), then `__` + mangle(unit) unless the unit is `*`. mangle replaces each maximal run of characters outside `[A-Za-z0-9]` with one `_`. |
+| `witnessKey` | `req_` + mangle(address), then `__` + mangle(unit) unless the unit is `*`. mangle replaces each maximal run of characters outside `[A-Za-z0-9]` with one `_`. The class is ASCII and `_` is outside it: `Sales__Orders` mangles to `Sales_Orders`. |
 | `status` | The requirement's status. |
 | `skip` | `null` when the status is `live` or `partial`. Otherwise the status: `planned` or `retired`. |
 | `digest` | The requirement digest, below. The same for every test of one requirement. |
@@ -132,11 +138,19 @@ it is wrong, unless the reference is shown to be wrong first.
 
 - **A filter replaces the default. It does not narrow it.** Every `filter-*` case keeps at
   least one requirement the default would drop, so a port that applies the project's
-  predicate on top of its own default fails all seven. A port that ignores the option
-  fails all seven too.
+  predicate on top of its own default fails every one of them. So does a port that
+  ignores the option.
 - **A filter chooses requirements, not tests.** In `filter-by-claimed-concern` the
   requirement that claims a template and an entity is kept, and its `template.prompt`
   test is kept with it.
+- **A nested requirement takes its package from the nearest one above it that declares
+  one, before its file.** In `filter-by-package` each file holds a requirement that
+  declares the other file's package, with a child that declares none. The child goes
+  where its parent went, and its bare reference binds there.
+- **The witness key keeps ASCII letters and digits and nothing else.** An underscore is
+  replaced like any other character, so a doubled one becomes one
+  (`witness-key-collision`). A language's own word class (`\w`) keeps the underscore and
+  gives a different key.
 - **Under `grain: concern`, distinct means distinct, not adjacent.** `concern-fanout`
   lists an entity, a template and a second entity, and yields two tests.
 - **A reference to a missing member does not fall back to its object.**
@@ -155,8 +169,11 @@ it is wrong, unless the reference is shown to be wrong first.
   (`"\r\n"`, `"\r"`), so the value does not depend on the line endings of the file.
 
 What the corpus does **not** pin: the text of a generated test file; the warning that
-names the requirements a filter excluded; a requirement name outside ASCII; and whether an
-`abstract` requirement gets a test (no case declares one).
+names the requirements a filter excluded; and a requirement name outside ASCII. No input
+declares such a name, because the loaders are not known to agree on one. That a letter
+outside ASCII is replaced in the witness key is pinned instead by a test of the key
+function in each port: the address `acme::shop::Café.Réglé` with unit `*` gives
+`req_acme_shop_Caf_R_gl_` (each `é` is the single code point U+00E9).
 
 ## Cases
 
@@ -172,18 +189,20 @@ names the requirements a filter excluded; a requirement name outside ASCII; and 
 | `member-grain` | `grain: member`: one test per reference. Two entities, which are one concern, are two tests. A bare reference and a package-qualified one each keep the spelling they were authored with, in the unit and in the key, for an object and for a member. |
 | `member-grain-unresolved-dropped` | `grain: member`: a reference that does not resolve yields no test, whether its object is missing or only its member is. A requirement none of whose references resolve yields one test with unit `*`. |
 | `member-grain-duplicate-ref` | `grain: member`: an entity named three times in two spellings yields two tests, one per distinct spelling. |
-| `package-in-address` | The same path, with the same claim, in two packages: two ids and two keys, one digest. A bare reference binds in each requirement's own package. |
+| `package-in-address` | The same path, with the same claim, in two packages: two ids and two keys, one digest. |
 | `unpackaged` | A document with no package: `package` is `""`, the address is the bare path, and the key starts `req_Orders_`. The digests are the worked example's. |
 | `nested-path` | A five-deep path. Two branches end in the same three names (`Orders.Recorded.Quotable`), and their tests are told apart by the rest of the path. |
-| `digest-claim-fields` | Two requirements that differ only in name, `title`, `description`, `notes`, `disposition` and `trackedBy` have one digest. A third that differs from the first by one word of the statement has another. |
+| `digest-claim-fields` | Two requirements that differ only in name, `title`, `description`, `notes`, `disposition` and `trackedBy` have one digest. A third that differs from the first by one word of the statement has another. Two retired requirements that differ only in name and `supersededBy` have one digest. |
 | `digest-inherited` | A requirement that declares only a counterexample and reaches its level, status, statement and `implementedBy` through `extends` has the digest of the same claim written out in full, and the unit its inherited reference resolves to. |
-| `digest-multibyte-and-crlf` | A statement holding two-byte and three-byte characters (55 characters, 78 bytes), and a counterexample holding a CR LF pair and a lone CR (64 bytes as authored, 63 as hashed). |
-| `witness-key-collision` | `Orders.Recorded` beside `Orders_Recorded`: two ids, one key, and one entry in `collisions`. |
+| `digest-multibyte-and-crlf` | A statement holding two-byte and three-byte characters and a CR LF pair (55 characters and 76 bytes as authored; 54 and 75 as hashed), and a counterexample holding a CR LF pair and a lone CR (64 bytes as authored, 63 as hashed). Both fields are normalised. |
+| `witness-key-collision` | `Orders.Recorded` beside `Orders_Recorded`: two ids, one key, and one entry in `collisions`. A third requirement, `Sales__Orders`, has the key `req_acme_shop_Sales_Orders__object_entity` and collides with nothing. |
+| `abstract-collected` | An `abstract` functional L4 gets a test like any other requirement, and so does the concrete requirement that extends it. Pinned as the reference behaves, so that the ports cannot drift apart. The owner has not ruled on whether an abstract requirement should be tested. |
 | `filter-all` | `filter: all` over an L1 to L5 tree and one flat policy: all six requirements get a test, the L1 to L3 nodes with unit `*`. |
 | `filter-by-subtype` | `filter: architectural`: a flat policy and a levelled one get tests, and the functional L4 and L5 get none. Pins `subType`, and that a view with no `level` reaches a predicate. |
 | `filter-by-status` | `filter: live`: a `partial` and a `planned` L4 are dropped, and their live L3 parent is kept beside the live L4. Pins `status`. |
 | `filter-by-level` | `filter: level-5`: two functional L5 nodes and a levelled L5 policy get tests. Their L4 parent gets none, and neither does a flat policy, whose `level` is absent. Pins `level`. |
-| `filter-by-package` | `filter: package-acme-shop` over two files: a root requirement and a nested one take their file's package, and one in each file declares the other file's package. The kept set follows the effective package, not the file. Pins `package`. |
+| `filter-by-absent-level` | `filter: unlevelled`: two flat policies get tests. A levelled policy, a functional L4, and functional requirements that declare level `0` and level `-1` get none. Pins that an absent `level` reaches the predicate as absent. |
+| `filter-by-package` | `filter: package-acme-shop` over two files: a root requirement and a nested one take their file's package; one requirement in each file declares the other file's package, and its child, which declares none, takes that package too. The kept set follows the effective package, not the file, and a kept requirement's bare reference binds in its effective package. Pins `package`. |
 | `filter-by-path` | `filter: path-under-Shop`: `Shop` and both its descendants are kept. `Shopfront` and its child are not. Pins `path` as the whole dotted chain, without the package. |
 | `filter-by-claimed-concern` | `filter: claims-entity`: requirements claiming an entity are kept, a flat policy among them. One claiming only a template and one naming only a node that does not exist are dropped. Pins `implementedByTypes` as the concerns that resolved. |
 

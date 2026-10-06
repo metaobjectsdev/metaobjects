@@ -38,3 +38,19 @@ metadata:
         statement: An order is recorded when it is paid.
         counterexample: A placed order has no row.
         implementedBy: [Order]
+
+    # A retired entry, and the same entry again saying what replaced it.
+    - requirement.functional:
+        name: Faxed
+        level: 4
+        status: retired
+        statement: An order confirmation is sent by fax.
+        counterexample: A confirmed order with no fax.
+
+    - requirement.functional:
+        name: FaxedThenReplaced
+        level: 4
+        status: retired
+        supersededBy: Recorded
+        statement: An order confirmation is sent by fax.
+        counterexample: A confirmed order with no fax.

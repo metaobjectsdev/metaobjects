@@ -19,6 +19,16 @@
       "status": "live",
       "skip": null,
       "digest": "c7583c32576dd584f58627cdc42a03875f9e11af6606e833b2c3a4619c50ebd7"
+    },
+    {
+      "id": "acme::shop::Sales__Orders [object.entity]",
+      "package": "acme::shop",
+      "path": "Sales__Orders",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_Sales_Orders__object_entity",
+      "status": "live",
+      "skip": null,
+      "digest": "b42b0be7e69633d28df90fd05ae28beb5675f778f2c719ea4f27da6b79e218a6"
     }
   ],
   "collisions": [

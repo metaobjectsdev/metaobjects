@@ -125,16 +125,24 @@ function checkExpected(root: MetaData, options: Readonly<Record<string, unknown>
  * (`codegen-ts/test/requirement-test-identity-conformance.test.ts`), on purpose: every
  * port's runner holds its own, and the runner is what fails when this one disagrees
  * with it. The corpus README is the definition of both.
+ *
+ * A Map, not an object literal: looking `constructor` up in a literal finds
+ * `Object.prototype`'s, so a misnamed filter would be written as a predicate that keeps
+ * everything instead of being refused.
  */
-const IDENTITY_FILTERS: Readonly<Record<string, (r: RequirementView) => boolean>> = {
-  "all": () => true,
-  "architectural": (r) => r.subType === REQUIREMENT_SUBTYPE_ARCHITECTURAL,
-  "live": (r) => r.status === REQUIREMENT_STATUS_LIVE,
-  "level-5": (r) => r.level === REQUIREMENT_LEVEL_MEMBER,
-  "package-acme-shop": (r) => r.package === "acme::shop",
-  "path-under-Shop": (r) => r.path === "Shop" || r.path.startsWith("Shop."),
-  "claims-entity": (r) => r.implementedByTypes.includes(`${TYPE_OBJECT}.${OBJECT_SUBTYPE_ENTITY}`),
-};
+const IDENTITY_FILTERS: ReadonlyMap<string, (r: RequirementView) => boolean> = new Map<
+  string,
+  (r: RequirementView) => boolean
+>([
+  ["all", () => true],
+  ["architectural", (r) => r.subType === REQUIREMENT_SUBTYPE_ARCHITECTURAL],
+  ["live", (r) => r.status === REQUIREMENT_STATUS_LIVE],
+  ["level-5", (r) => r.level === REQUIREMENT_LEVEL_MEMBER],
+  ["unlevelled", (r) => r.level === undefined],
+  ["package-acme-shop", (r) => r.package === "acme::shop"],
+  ["path-under-Shop", (r) => r.path === "Shop" || r.path.startsWith("Shop.")],
+  ["claims-entity", (r) => r.implementedByTypes.includes(`${TYPE_OBJECT}.${OBJECT_SUBTYPE_ENTITY}`)],
+]);
 
 /** Key order is fixed so a rewrite produces no diff. `skip` is written as `null`, not
  *  left out, on a test that runs: that it is not skipped is a statement, not an absence. */
@@ -161,11 +169,11 @@ function identityExpected(root: MetaData, options: Readonly<Record<string, unkno
   if (filterName !== undefined && typeof filterName !== "string") {
     throw new Error("'filter' in options.json must be a string");
   }
-  const filter = filterName === undefined ? undefined : IDENTITY_FILTERS[filterName];
+  const filter = filterName === undefined ? undefined : IDENTITY_FILTERS.get(filterName);
   if (filterName !== undefined && filter === undefined) {
     throw new Error(
       `unknown filter '${filterName}' in options.json (the corpus names: ` +
-      `${Object.keys(IDENTITY_FILTERS).join(", ")})`,
+      `${[...IDENTITY_FILTERS.keys()].join(", ")})`,
     );
   }
   // Each option is passed only when the case sets it, so a case without one is written

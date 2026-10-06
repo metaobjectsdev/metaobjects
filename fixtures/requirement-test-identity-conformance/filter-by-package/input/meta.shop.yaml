@@ -5,6 +5,7 @@ metadata:
         name: Order
         children:
           - field.uuid: { name: id }
+          - field.timestamp: { name: paidAt }
           - identity.primary: { name: pk, fields: [id] }
 
     # Neither node declares a package: both take this file's.
@@ -32,3 +33,12 @@ metadata:
         statement: An invoice is raised for every order.
         counterexample: An order with no invoice.
         implementedBy: [Invoice]
+        children:
+          # Declares no package: it takes its parent's, not this file's.
+          - requirement.functional:
+              name: Numbered
+              level: 5
+              status: live
+              statement: An invoice carries a number the customer can quote.
+              counterexample: An invoice nobody can quote back.
+              implementedBy: [Invoice.number]

@@ -1,0 +1,23 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    # A claim written once, for concrete requirements to extend. It names nothing.
+    - requirement.functional:
+        name: Recorded
+        abstract: true
+        level: 4
+        status: live
+        statement: A business event is recorded when it happens.
+        counterexample: An event that happened has no row.
+
+    # Takes its level, status, statement and counterexample from Recorded.
+    - requirement.functional:
+        name: OrderRecorded
+        extends: Recorded
+        implementedBy: [Order]

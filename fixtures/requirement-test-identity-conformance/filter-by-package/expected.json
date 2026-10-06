@@ -29,6 +29,16 @@
       "status": "live",
       "skip": null,
       "digest": "b8a6a5bf7873f5774105fc0ad3ee9d45994144dda20288f20d5245a4043a5461"
+    },
+    {
+      "id": "acme::shop::Settled.Timed [field.timestamp]",
+      "package": "acme::shop",
+      "path": "Settled.Timed",
+      "unit": "field.timestamp",
+      "witnessKey": "req_acme_shop_Settled_Timed__field_timestamp",
+      "status": "live",
+      "skip": null,
+      "digest": "d4e7f45daaccabffd0861b3d917f44d4f53f7973493734ec2bfd8d306edc0829"
     }
   ],
   "collisions": []

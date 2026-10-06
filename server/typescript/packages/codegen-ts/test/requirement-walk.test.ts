@@ -314,6 +314,20 @@ describe("witnessKeyOf", () => {
     expect(witnessKeyOf("acme::shop::Orders.Recorded", "*"))
       .toBe("req_acme_shop_Orders_Recorded");
   });
+
+  test("a letter outside ASCII is replaced, not kept", () => {
+    // The kept class is ASCII [A-Za-z0-9] and nothing else. A language's own notion of
+    // a letter (`\w`, isalnum, isLetterOrDigit) keeps "é" and gives a different key in
+    // each port. Every port carries this test with this value; the shared corpus cannot,
+    // because the loaders are not known to agree on a name outside ASCII.
+    //
+    // "é" is written as the one code point U+00E9, so the result does not depend on how
+    // this file was normalised. Run by run:
+    //   acme  "::"->_  shop  "::"->_  Caf  "é."->_  R  "é"->_  gl  "é"->_
+    // "é." is ONE run, so one underscore, and the final "é" leaves a trailing one. The
+    // unit is "*", so there is no unit suffix.
+    expect(witnessKeyOf("acme::shop::Café.Réglé", "*")).toBe("req_acme_shop_Caf_R_gl_");
+  });
 });
 
 describe("the requirement view's package", () => {
