@@ -25,11 +25,19 @@ const CORPUS_DIR = join(import.meta.dir, "../../../../../fixtures/requirement-ch
 interface Finding { severity: string; code: string; path?: string; message: string }
 interface Expected { diagnostics: Finding[]; summary: RequirementSummary | null }
 
-/** The whole of `options.json`. A key outside this list is refused rather than ignored: a
- *  misspelt `requireImplementers` would otherwise run the case without the strict switch
- *  and pin the wrong severity in every port. */
+/** The whole of `options.json`. A key outside this list, or a value of the wrong type, is
+ *  refused rather than ignored: a misspelt `requireImplementers`, or one written as the
+ *  string "true", would otherwise run the case without the strict switch and pin the
+ *  wrong severity in every port. */
 const OPTION_KEYS = ["libraries", "requireImplementers"] as const;
 interface Options { libraries?: string[]; requireImplementers?: boolean }
+
+/** A case whose `input/` must be, file for file and byte for byte, another case's. The
+ *  pair differs in `options.json` only, so the two expectations isolate what the option
+ *  does; an input edited on one side would quietly end that. */
+const SAME_INPUT_AS: Readonly<Record<string, string>> = {
+  "require-implementers": "nothing-implements-subtree",
+};
 
 type Row = readonly [severity: string, code: string, path: string, message: string];
 
@@ -50,7 +58,25 @@ function readOptions(caseDir: string): Options {
   const options = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
   const unknown = Object.keys(options).filter((k) => !(OPTION_KEYS as readonly string[]).includes(k));
   if (unknown.length > 0) throw new Error(`${file}: unknown option(s) ${unknown.join(", ")}`);
-  return options as Options;
+
+  const { libraries, requireImplementers } = options;
+  if (libraries !== undefined
+      && !(Array.isArray(libraries) && libraries.every((l): l is string => typeof l === "string"))) {
+    throw new Error(`${file}: 'libraries' must be an array of strings`);
+  }
+  if (requireImplementers !== undefined && typeof requireImplementers !== "boolean") {
+    throw new Error(`${file}: 'requireImplementers' must be a boolean`);
+  }
+  return {
+    ...(libraries === undefined ? {} : { libraries }),
+    ...(requireImplementers === undefined ? {} : { requireImplementers }),
+  };
+}
+
+/** Every file under a case's `input/`, by name, with its content. */
+function inputFiles(name: string): Record<string, string> {
+  const dir = join(CORPUS_DIR, name, "input");
+  return Object.fromEntries(readdirSync(dir).sort().map((f) => [f, readFileSync(join(dir, f), "utf8")]));
 }
 
 /** The case names the README's "Cases" table documents, in table order. */
@@ -81,6 +107,9 @@ describe("requirement-check conformance corpus", () => {
       }
       const expected = JSON.parse(readFileSync(expectedFile, "utf8")) as Expected;
       const options = readOptions(caseDir);
+
+      const twin = SAME_INPUT_AS[name];
+      if (twin !== undefined) expect(inputFiles(name)).toEqual(inputFiles(twin));
 
       const result = await MetaDataLoader.fromDirectory(join(caseDir, "input"), {
         strict: true,

@@ -3,12 +3,12 @@
     {
       "severity": "warn",
       "code": "WARN_REQUIREMENT_OBJECT_UNCLAIMED",
-      "message": "no requirement claims 'acme::shop::Order'. Add it to an L4 requirement's 'implementedBy'."
+      "message": "no requirement claims 'acme::express::ExpressOrder'. Add it to an L4 requirement's 'implementedBy'."
     },
     {
       "severity": "warn",
       "code": "WARN_REQUIREMENT_OBJECT_UNCLAIMED",
-      "message": "no requirement claims 'acme::shop::ExpressOrder'. Add it to an L4 requirement's 'implementedBy'."
+      "message": "no requirement claims 'acme::shop::Order'. Add it to an L4 requirement's 'implementedBy'."
     }
   ],
   "summary": {

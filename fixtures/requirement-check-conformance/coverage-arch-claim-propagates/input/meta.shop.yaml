@@ -14,12 +14,6 @@ metadata:
         children:
           - field.string: { name: reference }
 
-    - object.entity:
-        name: ExpressOrder
-        extends: Order
-        children:
-          - field.string: { name: courier }
-
     - requirement.architectural:
         name: Identified
         status: live

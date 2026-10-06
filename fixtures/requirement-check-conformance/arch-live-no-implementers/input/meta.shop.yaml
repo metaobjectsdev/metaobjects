@@ -26,3 +26,11 @@ metadata:
         status: partial
         statement: Every row records when it changed.
         counterexample: A row with no change time.
+
+    # Levelled at the link floor: it may name the model, and it names nothing.
+    - requirement.architectural:
+        name: Encrypted
+        level: 4
+        status: live
+        statement: Every stored row is encrypted at rest.
+        counterexample: A backup that opens in a text editor.

@@ -1,0 +1,41 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - identity.primary: { name: pk, fields: [id] }
+
+    # No requirement claims Customer: a coverage warning the strict switch leaves alone.
+    - object.entity:
+        name: Customer
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - requirement.functional:
+        name: Recorded
+        level: 4
+        status: live
+        statement: An order is recorded when it is placed.
+        counterexample: A placed order has no row.
+        implementedBy: [Order]
+
+    # Live and names nothing: the one finding the strict switch raises to an error.
+    - requirement.functional:
+        name: Refunded
+        level: 4
+        status: live
+        statement: A refund is recorded against its order.
+        counterexample: A refund with no order.
+
+    # Deferred with no ticket: a warning the strict switch leaves alone.
+    - requirement.functional:
+        name: Exchanged
+        level: 4
+        status: planned
+        disposition: deferred
+        statement: An exchange is recorded against its order.
+        counterexample: An exchange with no order.

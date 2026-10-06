@@ -11,14 +11,20 @@
       "code": "ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS",
       "path": "Attributed",
       "message": "architectural requirement is 'partial' but nothing implements it. Its check is universality — a claim set of zero means the policy is declared and unapplied."
+    },
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS",
+      "path": "Encrypted",
+      "message": "architectural requirement is 'live' but nothing implements it. Its check is universality — a claim set of zero means the policy is declared and unapplied."
     }
   ],
   "summary": {
-    "total": 3,
+    "total": 4,
     "functional": 0,
-    "architectural": 3,
+    "architectural": 4,
     "byStatus": {
-      "live": 2,
+      "live": 3,
       "partial": 1
     },
     "undecided": 1,

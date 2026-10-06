@@ -85,3 +85,13 @@ metadata:
               statement: An order is recorded when it leaves.
               counterexample: A dispatched order has no row.
               implementedBy: [Order]
+
+    # Counted, and so is Delivery: DeliveryNote starts with the same letters and is not
+    # beneath it. Ancestry is by path segment, never by string prefix.
+    - requirement.functional:
+        name: DeliveryNote
+        level: 4
+        status: partial
+        statement: A delivery note is recorded for every dispatched order.
+        counterexample: A dispatched order with no delivery note.
+        implementedBy: [Order]
