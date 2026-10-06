@@ -10,7 +10,7 @@
 // Each case drives the real command dispatcher, so a regression in the wiring —
 // requirements silently unhooked from the exit-code max, say — fails here.
 
-import { test, expect, describe, spyOn } from "bun:test";
+import { test, expect, describe, spyOn, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -93,6 +93,19 @@ const L4 = {
 };
 
 describe("meta verify — requirements exit-code contract", () => {
+  // The strict switch is also an environment variable, and these tests assert the DEFAULT
+  // severity. Whatever the shell that runs them has exported must not decide the outcome:
+  // each test starts with the variable unset, and the shell's value is put back after.
+  let ambientRequireImplementers: string | undefined;
+  beforeEach(() => {
+    ambientRequireImplementers = process.env.META_REQUIRE_IMPLEMENTERS;
+    delete process.env.META_REQUIRE_IMPLEMENTERS;
+  });
+  afterEach(() => {
+    if (ambientRequireImplementers === undefined) delete process.env.META_REQUIRE_IMPLEMENTERS;
+    else process.env.META_REQUIRE_IMPLEMENTERS = ambientRequireImplementers;
+  });
+
   test("a clean requirement tree exits 0", async () => {
     const dir = project(req({ ...L4, "@implementedBy": ["Order"] }));
     expect(await run(["verify", "--cwd", dir])).toBe(0);

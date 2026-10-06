@@ -14,6 +14,7 @@
 
 import { createHash } from "node:crypto";
 import {
+  PACKAGE_SEPARATOR,
   TYPE_REQUIREMENT,
   REQUIREMENT_SUBTYPE_FUNCTIONAL,
   REQUIREMENT_LINK_FLOOR_LEVEL,
@@ -292,7 +293,7 @@ export function requirementTestIdentity(
 ): RequirementTestIdentity {
   const { path, status } = w.view;
   const pkg = w.view.package;
-  const address = pkg === "" ? path : `${pkg}::${path}`;
+  const address = pkg === "" ? path : `${pkg}${PACKAGE_SEPARATOR}${path}`;
   // Derived from the loader's status list rather than naming the two skipped statuses:
   // a status that does not claim the capability works right now is skipped by
   // construction, so a status added later cannot be left failing by omission.
