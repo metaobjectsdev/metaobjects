@@ -236,6 +236,18 @@ def test_a_project_package_named_like_a_standard_library_module_is_refused_wheth
     assert not any(k.startswith(f"{name}.generators") for k in sys.modules)
 
 
+def test_a_standard_library_named_module_file_is_refused_naming_the_file_that_exists(tmp_path: Path) -> None:
+    """`<root>/types.py`, a FILE: the message names that file, not a `<root>/types` that is not there."""
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "types.py").write_text("WHO = 'project'\n")
+    obj, err = import_project_symbol("types", "WHO", project)
+    assert obj is None and err is not None
+    assert "shadows a standard-library module" in err and "rename it" in err
+    assert f"({project.resolve() / 'types.py'})" in err
+    assert f"({project.resolve() / 'types'})" not in err
+
+
 def test_the_same_refusal_text_is_given_for_a_loaded_and_an_unloaded_standard_library_name(
     tmp_path: Path,
 ) -> None:
@@ -262,14 +274,16 @@ def test_a_real_standard_library_symbol_with_no_such_directory_in_the_project_ke
 # ---------------------------------------------------------------------------
 
 
-def test_a_project_with_no_such_package_silently_gets_the_one_a_previous_project_left_on_sys_path(
+def test_a_project_with_no_such_package_silently_gets_the_one_a_previous_project_left_cached(
     tmp_path: Path,
 ) -> None:
-    """EXISTING behaviour, pinned and not endorsed: project A's directory stays on `sys.path`,
-    so project B, which has no `codegen` at all, is answered with A's."""
+    """EXISTING behaviour, pinned and not endorsed: project A's module stays cached in
+    `sys.modules`, so project B, which has no `codegen` at all, is answered with A's, even
+    once A's directory is off `sys.path`."""
     a = _project(tmp_path / "a", "A")
     (tmp_path / "b").mkdir()
     assert _who(a) == "A"
+    sys.path.remove(str(a.resolve()))
     assert _who(tmp_path / "b") == "A"
 
 

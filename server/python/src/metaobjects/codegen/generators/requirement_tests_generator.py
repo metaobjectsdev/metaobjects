@@ -56,6 +56,8 @@ from metaobjects.codegen.requirement_walk import (
 from metaobjects.meta.core.requirement.requirement_constants import (
     REQUIREMENT_ATTR_COUNTEREXAMPLE,
     REQUIREMENT_ATTR_STATEMENT,
+    REQUIREMENT_STATUS_PLANNED,
+    REQUIREMENT_STATUS_RETIRED,
 )
 
 if TYPE_CHECKING:  # the registry imports this module; the type is only an annotation here
@@ -146,9 +148,9 @@ def _comment_lines(text: str) -> str:
 
 
 def _skip_reason(skip: str) -> str:
-    if skip == "planned":
+    if skip == REQUIREMENT_STATUS_PLANNED:
         return SKIP_REASON_PLANNED
-    if skip == "retired":
+    if skip == REQUIREMENT_STATUS_RETIRED:
         return SKIP_REASON_RETIRED
     return f"{skip} - skipped"
 
@@ -319,10 +321,13 @@ def _refuse_collisions(identities: list[RequirementTestIdentity]) -> None:
     collisions = witness_key_collisions(identities)
     if not collisions:
         return
-    pairs = "; ".join(f"{first!r} and {second!r}" for first, second in collisions)
+    key_by_id = {identity.id: identity.witness_key for identity in identities}
+    pairs = "".join(
+        f"\n  '{first}' and '{second}' (witness key {key_by_id[first]})" for first, second in collisions
+    )
     raise ValueError(
-        f"{ERR_REQUIREMENT_WITNESS_KEY_COLLISION}: two requirement tests would share one witness "
-        f"key, so one would silently replace the other: {pairs}. Rename one of the requirements."
+        f"{ERR_REQUIREMENT_WITNESS_KEY_COLLISION}: two requirement tests map to one witness key, so "
+        f"one witness could not serve both. Rename one so the names differ in more than punctuation:{pairs}"
     )
 
 

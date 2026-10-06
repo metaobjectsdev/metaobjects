@@ -256,7 +256,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
     ),
     "requirement-tests": GeneratorEntry(
         name="requirement-tests",
-        description="Per-requirement test stub, one per requirement.functional claim in the ledger.",
+        description="Per-package pytest tests, one per tested requirement, each calling a project-owned witness function looked up by name in the witness module; a live test with no witness fails and a planned or retired one is skipped.",
         tier="native",
         layer="capability",
         factory=requirement_tests_generator,

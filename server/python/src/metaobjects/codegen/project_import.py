@@ -24,7 +24,8 @@ What it does NOT do, all as before:
 * A module cached from THIS root is kept: an edit made after the first import is not seen.
 * Returning to root A after root B loaded B's copy loads B's copy again.
 * Project B that has no such package at all is silently answered with project A's, because A's
-  directory is still on ``sys.path``.
+  module is still cached in ``sys.modules`` (it is served even after A's directory has left
+  ``sys.path``).
 * Project B that has the package only as a namespace layout (no ``__init__.py``) still gets A's
   regular package, because a regular package later on ``sys.path`` beats a namespace portion.
 """
@@ -40,9 +41,14 @@ from typing import Any
 _RUNNING_PACKAGE = __name__.partition(".")[0]
 
 
-def _offers(root: Path, top: str) -> bool:
-    """Whether the project provides the top-level name as a package/directory or a module file."""
-    return (root / top).is_dir() or (root / f"{top}.py").is_file()
+def _offered_at(root: Path, top: str) -> Path | None:
+    """Where the project provides the top-level name: its package directory, else its module
+    file, else ``None`` when it offers no such name."""
+    if (root / top).is_dir():
+        return root / top
+    if (root / f"{top}.py").is_file():
+        return root / f"{top}.py"
+    return None
 
 
 def _is_under(module: object, root: Path) -> bool:
@@ -57,13 +63,15 @@ def _is_under(module: object, root: Path) -> bool:
 def import_project_symbol(module_name: str, symbol: str, root: Path) -> tuple[Any, str | None]:
     """``(object, None)``, or ``(None, message)`` naming the module (and the symbol) and the real
     cause: the message of whatever the import raised, which attribute is missing, or that the
-    project package shadows a standard-library module."""
+    project package or module shadows a standard-library module."""
     resolved = root.resolve()
     top = module_name.split(".")[0]
-    offered = _offers(resolved, top)
-    if offered and top in sys.stdlib_module_names:
+    offered_at = _offered_at(resolved, top)
+    offered = offered_at is not None
+    if offered_at is not None and top in sys.stdlib_module_names:
+        kind = "package" if offered_at.is_dir() else "module"
         return None, (
-            f"cannot import {module_name!r}: the project package {top!r} ({resolved / top}) shadows a "
+            f"cannot import {module_name!r}: the project {kind} {top!r} ({offered_at}) shadows a "
             f"standard-library module of the same name; rename it"
         )
     if str(resolved) not in sys.path:

@@ -46,6 +46,7 @@ from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.naming_refs import did_you_mean_hint
 from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_REQUIREMENT
+from metaobjects.shared.separators import PACKAGE_SEP
 
 SEVERITY_ERROR = "error"
 SEVERITY_WARN = "warn"
@@ -163,14 +164,14 @@ def _resolve_requirement_ref(
     for item in addressed:
         pkg = effective_package(item.node)
         if pkg != "":
-            keyed[f"{pkg}::{item.path}"] = item.node
+            keyed[f"{pkg}{PACKAGE_SEP}{item.path}"] = item.node
         if item.path not in keyed:
             keyed[item.path] = item.node
     exact = keyed.get(ref)
     if exact is not None:
         return exact
     if referrer_pkg != "":
-        return keyed.get(f"{referrer_pkg}::{ref}")
+        return keyed.get(f"{referrer_pkg}{PACKAGE_SEP}{ref}")
     return None
 
 
@@ -285,6 +286,8 @@ def _coverable_entities(root: MetaData, coverable: Callable[[str], bool] | None)
         for n in root.children()
         if n.type == TYPE_OBJECT
         and n.sub_type == OBJECT_SUBTYPE_ENTITY
+        # ADR-0039 sanctioned own-only read: abstractness describes THIS declaration and is
+        # never inherited, so `is_abstract` is read as the node's own flag.
         and not n.is_abstract
         and (coverable is None or coverable(n.resolution_key()))
     ]

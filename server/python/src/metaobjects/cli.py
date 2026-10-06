@@ -47,6 +47,7 @@ generator-wiring divergence between the two commands.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
 import json
 import os
@@ -54,7 +55,7 @@ import re
 import sys
 import tempfile
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from metaobjects import MetaDataLoader
 from metaobjects.errors import ErrorCode, MetaError, ParseError
@@ -233,17 +234,22 @@ def _find_config(args: argparse.Namespace) -> Path | None:
     return default if default.is_file() else None
 
 
-def _config_providers(config: ProjectConfig) -> tuple[list[object], bool]:
+def _resolve_config_providers(config: ProjectConfig) -> tuple[list[object], list[str]]:
     """Resolve ``config.providers`` with the config file's directory on ``sys.path``.
 
     #267: prepend the config directory so a ``module:symbol`` provider living beside
     the config imports with no ``PYTHONPATH=``. Idempotent; the entry is left in
-    place (a short-lived CLI process). Prints resolution errors; returns (providers, ok).
+    place (a short-lived CLI process). Prints nothing; returns (providers, errors).
     """
     config_dir = str(config.config_dir)
     if config_dir not in sys.path:
         sys.path.insert(0, config_dir)
-    providers, errors = _resolve_providers(config.providers)
+    return _resolve_providers(config.providers)
+
+
+def _config_providers(config: ProjectConfig) -> tuple[list[object], bool]:
+    """:func:`_resolve_config_providers`, printing resolution errors; returns (providers, ok)."""
+    providers, errors = _resolve_config_providers(config)
     if errors:
         print("error: invalid provider in config:", file=sys.stderr)
         for msg in errors:
@@ -569,6 +575,16 @@ def _strict_load_hint() -> str:
         "properties into an `attr.properties` bag, OR re-run with `--lax` to keep the "
         "legacy open-attr load."
     )
+
+
+def _load_failure_lines(errors: list[str], strict: bool) -> list[str]:
+    """The lines a ``verify`` gate prints for metadata that did not load: the heading, one
+    indented line per loader message, and the strict-load advice when an unknown attribute is
+    among them."""
+    lines = ["error: failed to load metadata:", *(f"  {msg}" for msg in errors)]
+    if strict and any("ERR_UNKNOWN_ATTR" in m for m in errors):
+        lines.append(_strict_load_hint())
+    return lines
 
 
 #: The canonical directory name for authored template bodies. Named `prompts` because
@@ -2385,23 +2401,41 @@ class _VerifyModel:
     collection: Collection | None
 
 
-def _load_verify_model(args: argparse.Namespace) -> "_VerifyModel | None":
+def _load_verify_model(
+    args: argparse.Namespace, failure: "list[str] | None" = None
+) -> "_VerifyModel | None":
     """Load the metadata ``verify`` was pointed at, for the passes that read the model.
 
     Returns ``None`` when there is nothing to read: the metadata could not be located or
-    did not load. Every such failure is already reported by the gate that ran, with its own
-    message and exit code, so the passes that read this stay silent.
+    did not load. Why not is appended to ``failure`` as the lines to print, in the form the
+    gate that normally meets that failure prints it. A gate that ran may have printed the
+    same lines already, or NOT: ``--codegen`` with no generators selected returns before it
+    loads anything, and then this load is the only one in the command. The caller decides
+    (:func:`_report_unloaded_model`); this function only says what went wrong.
 
-    Loads LENIENT, deliberately: the field lint and the requirement gate must report the
-    same findings under ``--lax`` as without it, and an unknown attr is the strict gate's
-    finding, not theirs.
+    Loads STRICT unless ``--lax``, as every other gate of this command does (ADR-0023), so a
+    mistyped attribute on a requirement is refused here and never read as "no such claim".
+    The field lint reads the same load, so it says nothing about a model the load refuses:
+    that model already fails the command.
     """
     from metaobjects.loader.sources import DirectorySource
 
+    strict = not getattr(args, "lax", False)
+
+    def unread(*lines: str) -> "_VerifyModel | None":
+        """Nothing to read: record why, and hand back the ``None`` the caller returns."""
+        if failure is not None:
+            failure.extend(lines)
+        return None
+
     try:
-        providers, _errors = _resolve_providers(getattr(args, "provider", None))
+        providers, provider_errors = _resolve_providers(getattr(args, "provider", None))
         if args.metadata_dir is not None:
-            root, _ = _load_root(args.metadata_dir, providers=providers)
+            if provider_errors:
+                return unread("error: invalid --provider:", *(f"  {m}" for m in provider_errors))
+            root, errors = _load_root(args.metadata_dir, strict=strict, providers=providers)
+            if root is None:
+                return unread(*_load_failure_lines(errors, strict))
             files = [source.path for source in DirectorySource(args.metadata_dir).expand()]
             collection = None
             loaded_files = len(files)
@@ -2410,25 +2444,77 @@ def _load_verify_model(args: argparse.Namespace) -> "_VerifyModel | None":
             config = load_project_config(config_path) if config_path is not None else None
             libraries: "list[str] | None" = None
             if config is not None:
-                # Quiet on purpose: a bad provider is the gate's error to print, once.
-                providers, _errors = _resolve_providers(config.providers)
+                providers, provider_errors = _resolve_config_providers(config)
+                if provider_errors:
+                    return unread(
+                        "error: invalid provider in config:", *(f"  {m}" for m in provider_errors)
+                    )
                 libraries = config.libraries
                 start = project_root_for(config.metadata_dir())
             else:
+                if provider_errors:
+                    return unread("error: invalid --provider:", *(f"  {m}" for m in provider_errors))
                 start = Path.cwd()
-            collection = resolve_metadata_location(config=config, root=start)
-            root, _ = _load_root_from_collection(collection, providers=providers, libraries=libraries)
+            try:
+                collection = resolve_metadata_location(config=config, root=start)
+            except ParseError as exc:
+                return unread(f"error: could not resolve metadata location: {exc}")
+            root, errors = _load_root_from_collection(
+                collection, strict=strict, providers=providers, libraries=libraries
+            )
+            if root is None:
+                return unread(*_load_failure_lines(errors, strict))
             files = list(collection.own_files)
             loaded_files = len(collection.files)
-    except (ConfigError, ParseError, OSError):
-        # The failures the loader and the config readers RAISE for input that cannot be
-        # read: the gate that ran reported each with its own message. Anything else is a
-        # bug, and it must not read as "no requirements declared": this result now also
-        # feeds a build gate, which a swallowed exception would turn off with exit 0.
-        return None
-    if root is None:
-        return None
+    except ConfigError as exc:
+        return unread(f"error: {exc}")
+    except ParseError as exc:
+        return unread(*_load_failure_lines([f"{exc.code}: {exc}"], strict))
+    except OSError as exc:
+        return unread(*_load_failure_lines([str(exc)], strict))
+    # Only the failures the loader and the config readers RAISE for input that cannot be
+    # read are caught above. Anything else is a bug, and it must not read as "no
+    # requirements declared": this result feeds a build gate, which a swallowed exception
+    # would turn off with exit 0.
     return _VerifyModel(root=root, own_files=files, loaded_files=loaded_files, collection=collection)
+
+
+class _RecordedStderr:
+    """``sys.stderr`` for the gates ``verify`` was asked to run, remembering each line they
+    wrote, so a load failure one of them already reported is not printed a second time.
+
+    Asking what was PRINTED, and not which gate returned non-zero or reached its load, is
+    deliberate: it cannot be wrong in the direction that matters. A gate that changes its
+    wording costs a repeated message. Nothing can make a failure nobody printed look reported.
+    """
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+        self._parts: list[str] = []
+
+    def write(self, text: str) -> int:
+        self._parts.append(text)
+        return int(self._inner.write(text))
+
+    def flush(self) -> None:
+        self._inner.flush()
+
+    def lines(self) -> set[str]:
+        return set("".join(self._parts).splitlines())
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
+def _report_unloaded_model(failure: list[str], printed: set[str]) -> int:
+    """The metadata did not load, so ``verify`` fails: an unloadable model is not a model with
+    no ``requirement.*`` node. Prints why, once: skipped when a gate that ran already printed
+    every one of these lines. Always returns 1."""
+    # A loader message can span lines (a YAML parse error does); compare what a terminal shows.
+    if not all(line in printed for line in "\n".join(failure).splitlines()):
+        for line in failure:
+            print(line, file=sys.stderr)
+    return 1
 
 
 def _run_field_lint_advisory(args: argparse.Namespace, model: "_VerifyModel | None") -> None:
@@ -2472,8 +2558,8 @@ def _verify_requirements(args: argparse.Namespace, model: "_VerifyModel | None")
     Prints the summary line on every run that has a requirement, clean or not (a gate that
     says nothing when it passes cannot be told apart from one that checked nothing), then
     every finding, uncapped. Returns 1 when any finding is an error. Returns 0 and prints
-    nothing when the metadata did not load (``model`` is ``None``: the gate that ran already
-    reported that, and a load that failed is not retried here).
+    nothing when the metadata did not load (``model`` is ``None``): that is reported, and
+    fails the command, in :func:`_cmd_verify`, and a load that failed is not retried here.
     """
     if model is None:
         return 0
@@ -2553,14 +2639,19 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         run_codegen = True
 
     exit_code = 0
-    if run_db:
-        exit_code = max(exit_code, _verify_db(args))
-    if run_codegen:
-        exit_code = max(exit_code, _verify_codegen(args))
-    if run_templates:
-        exit_code = max(exit_code, _verify_templates(args))
+    gates_stderr = _RecordedStderr(sys.stderr)
+    with contextlib.redirect_stderr(gates_stderr):
+        if run_db:
+            exit_code = max(exit_code, _verify_db(args))
+        if run_codegen:
+            exit_code = max(exit_code, _verify_codegen(args))
+        if run_templates:
+            exit_code = max(exit_code, _verify_templates(args))
     # One load for both passes that read the model. The requirement gate runs on EVERY verify.
-    model = _load_verify_model(args)
+    load_failure: list[str] = []
+    model = _load_verify_model(args, load_failure)
+    if model is None:
+        exit_code = max(exit_code, _report_unloaded_model(load_failure, gates_stderr.lines()))
     exit_code = max(exit_code, _verify_requirements(args, model))
     _run_field_lint_advisory(args, model)
     return exit_code

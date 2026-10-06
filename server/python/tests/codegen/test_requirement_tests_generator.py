@@ -294,10 +294,13 @@ def test_a_broken_witness_module_raises_its_own_error(tmp_path: Path) -> None:
 def test_a_witness_key_collision_refuses_generation_naming_both_ids(tmp_path: Path) -> None:
     with pytest.raises(ValueError) as exc:
         generate(_load_corpus_case("witness-key-collision"), tmp_path)
-    message = str(exc.value)
-    assert "ERR_REQUIREMENT_WITNESS_KEY_COLLISION" in message
-    assert "acme::shop::Orders.Recorded [object.entity]" in message
-    assert "acme::shop::Orders_Recorded [object.entity]" in message
+    # The message every port outside TypeScript gives: the code, both ids, and the key they share.
+    assert str(exc.value) == (
+        "ERR_REQUIREMENT_WITNESS_KEY_COLLISION: two requirement tests map to one witness key, so one "
+        "witness could not serve both. Rename one so the names differ in more than punctuation:\n"
+        "  'acme::shop::Orders.Recorded [object.entity]' and 'acme::shop::Orders_Recorded [object.entity]' "
+        "(witness key req_acme_shop_Orders_Recorded__object_entity)"
+    )
 
 
 def test_grain_member_emits_one_test_per_reference(tmp_path: Path) -> None:
