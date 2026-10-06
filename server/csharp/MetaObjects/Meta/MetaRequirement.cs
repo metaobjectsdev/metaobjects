@@ -90,6 +90,22 @@ public class MetaRequirement(TypeId typeId, string name) : MetaData(typeId, name
     /// </summary>
     public bool IsPlanned() => Status == REQUIREMENT_STATUS_PLANNED;
 
+    /// <summary>
+    /// Built, then deliberately removed. Exempt from every check that assumes a built
+    /// thing, never counts toward object coverage, and may not carry
+    /// <c>@implementedBy</c> (the loader refuses it).
+    /// </summary>
+    public bool IsRetired() => Status == REQUIREMENT_STATUS_RETIRED;
+
+    /// <summary>
+    /// The requirement that REPLACED this one (FR-039). Legal on <c>retired</c> only;
+    /// <c>verify</c> resolves it against the ledger, so a supersession chain stays
+    /// walkable. A blank value is absent, as in the TypeScript reference.
+    /// ADR-0039: resolving — inheritable via extends.
+    /// </summary>
+    public string? SupersededBy =>
+        Attr(REQUIREMENT_ATTR_SUPERSEDED_BY) is string v && v.Trim() != "" ? v : null;
+
     /// <summary>True when there is outstanding work, so a <c>@disposition</c> says something.</summary>
     public bool HasOutstandingWork()
     {

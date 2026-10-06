@@ -40,6 +40,11 @@ if (args.Length == 0 || helpRequested)
         "                                                       --db         NOT supported in C# (migrate engine)\n" +
         "                                                       --lax        load lax (legacy); strict-by-default\n" +
         "                                                                    rejects an unregistered @attr (ADR-0023)\n" +
+        "                                                       --require-implementers\n" +
+        "                                                                    the requirement gate runs on every verify;\n" +
+        "                                                                    this raises a functional requirement nothing\n" +
+        "                                                                    implements to an error (or\n" +
+        "                                                                    META_REQUIRE_IMPLEMENTERS=1)\n" +
         "    docs <metadataDir> --out <dir> [--namespace <ns>] [--project <name>] [--model-base-url <url>]\n" +
         "                                                     emit the generated C# SDK api reference\n" +
         "                                                     (the api/csharp surface: one page per\n" +
@@ -493,7 +498,7 @@ static int RunVerify(string[] rest)
     string? generatorsCsv = null;
     string? templateRoot = null;
     string? columnNamingRaw = null;
-    bool templates = false, codegen = false, db = false, lax = false, noFieldLint = false;
+    bool templates = false, codegen = false, db = false, lax = false, noFieldLint = false, requireImplementers = false;
 
     for (int i = 0; i < rest.Length; i++)
     {
@@ -521,6 +526,9 @@ static int RunVerify(string[] rest)
         // Mutes the advisory field AUTHORING lint (FieldLint) — never a gate, so this
         // changes what is printed and nothing else. META_NO_FIELD_LINT=1 does the same.
         else if (a == "--no-field-lint") noFieldLint = true;
+        // Raises WARN_REQUIREMENT_NOTHING_IMPLEMENTS to an error (ADR-0057) — for a project whose
+        // ledger has caught up with its links. META_REQUIRE_IMPLEMENTERS=1 does the same.
+        else if (a == "--require-implementers") requireImplementers = true;
         else if (a == "--out" && i + 1 < rest.Length) outDir = rest[++i];
         else if (a == "--namespace" && i + 1 < rest.Length) { ns = rest[++i]; nsExplicit = true; }
         else if (a == "--generators" && i + 1 < rest.Length) generatorsCsv = rest[++i];
@@ -670,6 +678,12 @@ static int RunVerify(string[] rest)
     if (result.DbRejectionMessage is not null)
         Console.Error.WriteLine($"  {result.DbRejectionMessage}");
 
+    // The requirement gate (ADR-0057) — on EVERY verify, whichever gates were selected, and not
+    // muted by --no-field-lint. A model with no requirement.* node sees no line and no exit-code
+    // change. Its errors fold into the exit code like any other gate's. It runs before the
+    // advisory lint so the lint stays the last thing printed, as it was.
+    var requirementExit = VerifyCommand.RunRequirementGate(opts, requireImplementers, Console.Error);
+
     // The field AUTHORING lint — a reference identity over a field the object lacks, a
     // field name declared twice in one children list. Both load clean on every port. Runs
     // on every `verify`, whichever gates were selected; warnings ONLY, never the exit code.
@@ -679,7 +693,8 @@ static int RunVerify(string[] rest)
     // The handed-off codegen gate already printed its own verdict (inherited console);
     // fold its exit code into the aggregate the same way every other subverb does — max,
     // non-zero on any drift.
-    return codegenHandedOff ? Math.Max(result.ExitCode, codegenHandoffExit) : result.ExitCode;
+    var gatesExit = codegenHandedOff ? Math.Max(result.ExitCode, codegenHandoffExit) : result.ExitCode;
+    return Math.Max(gatesExit, requirementExit);
 }
 
 
@@ -693,14 +708,14 @@ partial class Program
     static readonly string[] DocsValueFlags = ["--out", "--namespace", "--project", "--model-base-url"];
     static readonly string[] VerifyValueFlags =
         ["--prompts", "--out", "--namespace", "--generators", "--template-root", "--column-naming"];
-    static readonly string[] VerifyBoolFlags = ["--templates", "--codegen", "--db", "--lax", "--no-field-lint"];
+    static readonly string[] VerifyBoolFlags = ["--templates", "--codegen", "--db", "--lax", "--no-field-lint", "--require-implementers"];
 
     /// <summary>Each command's usage, printed by <c>dotnet meta &lt;command&gt; --help</c>.</summary>
     static readonly Dictionary<string, string> CommandUsage = new()
     {
         ["gen"] = "usage: dotnet meta gen <metadataDir> --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--template-spec <json>] [--emit-abstract-shapes] [--column-naming literal|snake_case|kebab-case] [--baseline default|adopt]\n" +
                   "       dotnet meta gen --list",
-        ["verify"] = "usage: dotnet meta verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--column-naming literal|snake_case|kebab-case]] [--db] [--lax] [--no-field-lint]",
+        ["verify"] = "usage: dotnet meta verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--column-naming literal|snake_case|kebab-case]] [--db] [--lax] [--no-field-lint] [--require-implementers]",
         ["docs"] = "usage: dotnet meta docs <metadataDir> --out <dir> [--namespace <ns>] [--project <name>] [--model-base-url <url>]",
         ["fmt"] = "usage: dotnet meta fmt [<metadataDir>] [--check]",
         ["eject"] = "usage: dotnet meta eject <name>... [--force] [--root <dir>]",

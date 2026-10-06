@@ -143,3 +143,4 @@ it is wrong, unless the reference is shown to be wrong first.
 | Python | `server/python/tests/conformance/test_requirement_check_conformance.py` |
 | Java | `server/java/metadata/src/test/java/com/metaobjects/conformance/RequirementCheckConformanceTest.java` |
 | Kotlin | inherits via Java: Kotlin has no CLI of its own and runs `verify` through the same Maven `metaobjects:verify` goal |
+| C# | `server/csharp/MetaObjects.Conformance.Tests/RequirementCheckConformanceTests.cs` |

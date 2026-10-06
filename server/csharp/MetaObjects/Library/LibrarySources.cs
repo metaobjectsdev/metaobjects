@@ -105,6 +105,36 @@ public static class LibrarySources
     public static IReadOnlyList<string> KnownPackages() =>
         LayersByLibrary.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();
 
+    /// <summary>Resolved once per process: the union of <c>packages</c> across the embedded manifests.</summary>
+    private static readonly Lazy<IReadOnlySet<string>> LibraryPackageSet = new(BuildLibraryPackages);
+
+    private static IReadOnlySet<string> BuildLibraryPackages()
+    {
+        var packages = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var text in EmbeddedLibrary.Manifests.Values)
+        {
+            using var doc = JsonDocument.Parse(text);
+            if (!doc.RootElement.TryGetProperty("packages", out var el)) continue;
+            foreach (var p in el.EnumerateArray())
+            {
+                if (p.GetString() is { } s) packages.Add(s);
+            }
+        }
+        return packages;
+    }
+
+    /// <summary>
+    /// The union of <c>packages</c> across every shipped library manifest: the metamodel
+    /// packages the libraries own (<c>metaobjects::iam</c>, <c>metaobjects::ai</c>).
+    ///
+    /// <para>The provenance key for requirement-coverage activation (FR-043 §5.4): a
+    /// requirement whose effective package is in this set came from a shipped library, not
+    /// from the adopter. Read from the embedded manifests, never from a node's source id,
+    /// which differs between a checkout (a path) and an installed package
+    /// (<c>library:&lt;ref&gt;.yaml</c>). Mirrors the TypeScript <c>libraryPackages</c>.</para>
+    /// </summary>
+    public static IReadOnlySet<string> LibraryPackages() => LibraryPackageSet.Value;
+
     /// <summary>
     /// Locate the repo-root <c>library/</c> directory by walking up from this assembly's
     /// location until a directory contains BOTH <c>library/</c> and <c>server/</c> — the two

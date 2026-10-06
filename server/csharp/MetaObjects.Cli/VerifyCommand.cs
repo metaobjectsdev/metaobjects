@@ -16,8 +16,10 @@
 
 using System.Text.Json;
 using MetaObjects.Codegen;
+using MetaObjects.Core.Requirement;
 using MetaObjects.Loader;
 using MetaObjects.Render;
+using static MetaObjects.Core.Requirement.RequirementConstants;
 using static MetaObjects.Shared.BaseTypes;
 using static MetaObjects.Template.TemplateConstants;
 
@@ -235,6 +237,77 @@ public static class VerifyCommand
     private static LoadResult LoadMetadata(Options opts) => opts.MetadataFiles is { } files
         ? MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList(), opts.Libraries, opts.Strict)
         : MetaDataLoader.FromDirectory(opts.MetadataDir, opts.Libraries, strict: opts.Strict);
+
+    // ------------------------------------------------------------------------
+    // The requirement gate (ADR-0057) — runs on EVERY verify, with no subverb.
+    // ------------------------------------------------------------------------
+
+    /// <summary>Raises <c>WARN_REQUIREMENT_NOTHING_IMPLEMENTS</c> to an error, beside <c>--require-implementers</c>.</summary>
+    public const string REQUIRE_IMPLEMENTERS_ENV = "META_REQUIRE_IMPLEMENTERS";
+
+    /// <summary>The command prefix the gate's summary, recorded-gaps and error-count lines carry.</summary>
+    private const string RequirementPrefix = "dotnet meta verify — requirements: ";
+
+    /// <summary>
+    /// The requirement (capability) gate: reads the <c>requirement.*</c> nodes of the loaded model and
+    /// reports what the loader cannot. <c>requirement.*</c> is metadata, so a model declaring none is
+    /// silent, not in drift: no line is printed and the exit code is unchanged.
+    ///
+    /// <para>Prints the summary line on every run that has a requirement, clean or not (a gate that
+    /// says nothing when it passes cannot be told apart from one that checked nothing), then every
+    /// finding, uncapped, to <paramref name="output"/>. Returns 1 when any finding is an error.
+    /// Returns 0 and prints nothing when the metadata did not load: the gate that ran already reported
+    /// that, and a load that failed is not retried here. That is the ONLY silent path; any other
+    /// exception surfaces, so a gate that broke cannot read as a gate that passed.</para>
+    /// </summary>
+    public static int RunRequirementGate(Options opts, bool requireImplementers, TextWriter output)
+    {
+        var load = LoadMetadata(opts);
+        if (load.Errors.Count > 0) return 0;
+
+        var scan = RequirementCheck.Scan(
+            load.Root, requireImplementers: requireImplementers || Environment.GetEnvironmentVariable(REQUIRE_IMPLEMENTERS_ENV) == "1");
+        var summary = RequirementCheck.Summarise(load.Root, scan);
+        if (summary is null) return 0;
+
+        var files = opts.MetadataFiles?.Count ?? new DirectorySource(opts.MetadataDir).Expand().Count();
+        output.WriteLine(RequirementPrefix + SummaryText(summary, files));
+        if (summary.Undecided > 0)
+        {
+            output.WriteLine(RequirementPrefix +
+                $"{summary.Undecided} recorded gap(s) with no @disposition. These are known problems nobody has " +
+                "ruled on — set 'accepted' or 'deferred' to close the question.");
+        }
+
+        var diagnostics = RequirementCheck.Check(load.Root, scan);
+        var errors = diagnostics.Where(d => d.Severity == RequirementCheck.SeverityError).ToList();
+        var warnings = diagnostics.Where(d => d.Severity != RequirementCheck.SeverityError).ToList();
+        foreach (var d in errors) output.WriteLine(FormatRequirementDiagnostic(d));
+        foreach (var d in warnings) output.WriteLine(FormatRequirementDiagnostic(d));
+        if (errors.Count == 0) return 0;
+
+        output.WriteLine(RequirementPrefix + $"{errors.Count} error(s).");
+        return 1;
+    }
+
+    /// <summary>The summary line, minus its command prefix. Statuses in the closed enum's order, zero counts omitted.</summary>
+    private static string SummaryText(RequirementSummary summary, int files)
+    {
+        var statuses = string.Join(", ", REQUIREMENT_STATUSES
+            .Where(s => summary.ByStatus.GetValueOrDefault(s) > 0)
+            .Select(s => $"{summary.ByStatus[s]} {s}"));
+        var coverage = summary.EntitiesTotal is null
+            // The absence of the ratio is the statement that the project authored no requirement of its own.
+            ? "coverage: not measured (no project-authored requirements)."
+            // The file count is the denominator's provenance: the total is only ever taken over what loaded.
+            : $"{summary.EntitiesClaimed}/{summary.EntitiesTotal} entities claimed, counted over {files} metadata file(s).";
+        return $"{summary.Total} entries ({summary.Functional} functional, {summary.Architectural} architectural) — " +
+               $"{statuses}; {coverage}";
+    }
+
+    /// <summary>A diagnostic line, with no command prefix: <c>  &lt;code&gt; [&lt;path&gt;]: &lt;message&gt;</c>.</summary>
+    private static string FormatRequirementDiagnostic(RequirementDiagnostic d) =>
+        $"  {d.Code}{(d.Path is null ? "" : $" [{d.Path}]")}: {d.Message}";
 
     /// <summary>
     /// Run the codegen-drift gate: load metadata, resolve the generator suite (default

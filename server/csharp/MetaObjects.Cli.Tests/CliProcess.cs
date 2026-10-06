@@ -14,6 +14,11 @@ internal static class CliProcess
     /// pinned to <paramref name="workingDir"/>, so the test exercises Program.cs's
     /// real Main/argument-parsing rather than any method reachable in-process.</summary>
     internal static (int ExitCode, string Stdout, string Stderr) Run(string workingDir, params string[] args)
+        => RunWithEnvironment(workingDir, new Dictionary<string, string>(), args);
+
+    /// <summary>As <see cref="Run"/>, with extra environment variables set for the child process.</summary>
+    internal static (int ExitCode, string Stdout, string Stderr) RunWithEnvironment(
+        string workingDir, IReadOnlyDictionary<string, string> environment, params string[] args)
     {
         var psi = new ProcessStartInfo("dotnet")
         {
@@ -22,6 +27,7 @@ internal static class CliProcess
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+        foreach (var (key, value) in environment) psi.Environment[key] = value;
         psi.ArgumentList.Add(ResolveCliDll());
         foreach (var a in args) psi.ArgumentList.Add(a);
 
