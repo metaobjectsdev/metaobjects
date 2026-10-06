@@ -16,11 +16,8 @@ import pytest
 
 from metaobjects import MetaDataLoader
 from metaobjects.codegen.config import GenConfig
-from metaobjects.codegen.generators.requirement_tests_generator import (
-    RenderedTest,
-    RequirementTestArgs,
-    requirement_tests,
-)
+from metaobjects.codegen.generators.requirement_tests_generator import requirement_tests
+from metaobjects.codegen.requirement_hooks import RenderedTest, RequirementTestArgs
 from metaobjects.codegen.requirement_walk import requirement_test_identities
 from metaobjects.codegen.runner import run_gen
 from metaobjects.loader.sources import FileSource, InMemoryStringSource, MetaDataFormat
@@ -221,15 +218,6 @@ def test_prose_that_would_break_a_string_or_a_comment_still_parses_and_the_failu
         assert ("# " + line.replace("*/", "* /")).rstrip() in lines
 
 
-def _write_project(tmp_path: Path, files: dict[str, str], *, witnesses: str | None) -> None:
-    for rel, content in files.items():
-        target = tmp_path / "gen" / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8")
-    if witnesses is not None:
-        (tmp_path / "req_witnesses.py").write_text(witnesses, encoding="utf-8")
-
-
 def _pytest(tmp_path: Path) -> str:
     done = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-rA", "-p", "no:cacheprovider", "--no-header", "gen"],
@@ -241,28 +229,38 @@ def _pytest(tmp_path: Path) -> str:
     return done.stdout + done.stderr
 
 
-def _four_outcomes_root() -> Any:
-    return _load_yaml(
-        _doc(
-            _requirement("Passes")
-            + _requirement("Missing")
-            + _requirement("Asserts")
-            + _requirement("Later", "planned", implemented_by="")
-        )
+def _four_outcomes_document() -> str:
+    return _doc(
+        _requirement("Passes")
+        + _requirement("Missing")
+        + _requirement("Asserts")
+        + _requirement("Later", "planned", implemented_by="")
     )
+
+
+def _generated_project(tmp_path: Path, witness_module: str, witnesses: str | None) -> None:
+    """The REAL layout: `metaobjects gen` writes `gen/`, `gen/__init__.py` and
+    `gen/requirements/__init__.py` beside the test file, and the tests run from there."""
+    config = _project(
+        tmp_path,
+        f"requirementTests:\n  witnessModule: {witness_module}\n  warnUncovered: false\n",
+        _four_outcomes_document(),
+    )
+    assert main(["gen", "--config", str(config)]) == 0
+    assert (tmp_path / "gen" / "__init__.py").is_file()
+    assert (tmp_path / "gen" / "requirements" / "__init__.py").is_file()
+    if witnesses is not None:
+        (tmp_path / "req_witnesses.py").write_text(witnesses, encoding="utf-8")
 
 
 def test_the_generated_tests_run_one_passes_one_has_no_witness_one_asserts_one_is_skipped(
     tmp_path: Path,
 ) -> None:
-    files, _ = generate(_four_outcomes_root(), tmp_path, witness_module="req_witnesses")
-    _write_project(
+    _generated_project(
         tmp_path,
-        files,
-        witnesses=(
-            "def req_acme_shop_Passes__object_entity():\n    return None\n\n\n"
-            "def req_acme_shop_Asserts__object_entity():\n    assert 1 == 2, 'the witness itself says no'\n"
-        ),
+        "req_witnesses",
+        "def req_acme_shop_Passes__object_entity():\n    return None\n\n\n"
+        "def req_acme_shop_Asserts__object_entity():\n    assert 1 == 2, 'the witness itself says no'\n",
     )
     out = _pytest(tmp_path)
     assert "PASSED gen/requirements/test_acme_shop_requirements.py::test_req_acme_shop_Passes__object_entity" in out
@@ -280,16 +278,14 @@ def test_the_generated_tests_run_one_passes_one_has_no_witness_one_asserts_one_i
 
 
 def test_a_missing_witness_module_is_no_witness_not_an_import_error(tmp_path: Path) -> None:
-    files, _ = generate(_four_outcomes_root(), tmp_path, witness_module="no_such_pkg.requirement_witnesses")
-    _write_project(tmp_path, files, witnesses=None)
+    _generated_project(tmp_path, "no_such_pkg.requirement_witnesses", None)
     out = _pytest(tmp_path)
     assert out.count("unimplemented requirement:") >= 3
     assert "ModuleNotFoundError" not in out
 
 
 def test_a_broken_witness_module_raises_its_own_error(tmp_path: Path) -> None:
-    files, _ = generate(_four_outcomes_root(), tmp_path, witness_module="req_witnesses")
-    _write_project(tmp_path, files, witnesses="import does_not_exist\n")
+    _generated_project(tmp_path, "req_witnesses", "import does_not_exist\n")
     out = _pytest(tmp_path)
     assert "ModuleNotFoundError: No module named 'does_not_exist'" in out
     assert "unimplemented requirement" not in out
@@ -469,7 +465,7 @@ def test_requirement_tests_renderer_and_witness_module_in_the_config_are_applied
     (tmp_path / "codegen").mkdir()
     (tmp_path / "codegen" / "__init__.py").write_text("")
     (tmp_path / "codegen" / "requirement_renderer.py").write_text(
-        "from metaobjects.codegen.generators.requirement_tests_generator import RenderedTest\n\n\n"
+        "from metaobjects.codegen.requirement_hooks import RenderedTest\n\n\n"
         "def render(args):\n"
         "    if args.identity.unit != 'Order':\n        return None\n"
         "    return RenderedTest(imports=('import json',), source='def test_mine():\\n    json.dumps(1)\\n')\n",
@@ -561,8 +557,7 @@ def test_a_carriage_return_in_a_counterexample_is_escaped_the_file_parses_and_th
     expected = "first" + separator.encode().decode("unicode_escape") + "second"
     literals = [n.value for n in ast.walk(tree) if isinstance(n, ast.Constant)]
     assert expected in literals  # the literal holds the exact characters, escaped in the file
-    _write_project(tmp_path, files, witnesses="")
-    out = _pytest(tmp_path)
+    out = _run_files(tmp_path, files)
     assert "unimplemented requirement:" in out and "so that it fails when: first" in out
 
 
@@ -571,6 +566,19 @@ def test_the_file_names_the_witness_module_before_any_test(tmp_path: Path) -> No
     source = files["requirements/test_acme_shop_requirements.py"]
     assert source.index('_WITNESS_MODULE = "app.witnesses"') < source.index("def test_")
     assert "Witnesses are project-owned functions in the module named below." in source.splitlines()[1]
+
+
+def _run_files(tmp_path: Path, files: dict[str, str]) -> str:
+    """Run already-generated files, laid out as `gen` lays them out (with the package markers)."""
+    for rel, content in {
+        "__init__.py": "",
+        "requirements/__init__.py": "",
+        **files,
+    }.items():
+        target = tmp_path / "gen" / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+    return _pytest(tmp_path)
 
 
 def _filter_project(tmp_path: Path, module_body: str, symbol: str = "include") -> Path:
@@ -606,3 +614,144 @@ def test_a_filter_symbol_that_is_missing_names_module_and_symbol(
     assert main(["gen", "--config", str(config)]) == 1
     err = capsys.readouterr().err
     assert "'codegen.requirement_filter' has no attribute 'include'" in err
+
+
+def test_a_filter_naming_a_symbol_inside_the_running_package_does_not_unload_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Resolving a config symbol drops a stale module cached from ANOTHER PROJECT; it must never
+    unload an installed package (here `metaobjects` itself) the run is using."""
+    import sys
+
+    config = _project(
+        tmp_path,
+        "requirementTests:\n"
+        "  filter: metaobjects.codegen.requirement_walk:default_requirement_test_filter\n"
+        "  warnUncovered: false\n",
+        _worked_example_document(),
+    )
+    monkeypatch.chdir(tmp_path)
+    package = sys.modules["metaobjects"]
+    walk = sys.modules["metaobjects.codegen.requirement_walk"]
+    assert main(["gen", "--config", str(config)]) == 0
+    assert sys.modules["metaobjects"] is package
+    assert sys.modules["metaobjects.codegen.requirement_walk"] is walk
+    assert (tmp_path / "gen" / "requirements" / "test_acme_shop_requirements.py").is_file()
+
+
+def test_member_grain_keeps_the_first_of_a_reference_authored_twice(tmp_path: Path) -> None:
+    root = _load_corpus_case("member-grain-duplicate-ref")
+    seen: list[RequirementTestArgs] = []
+
+    def renderer(args: RequirementTestArgs) -> None:
+        seen.append(args)
+
+    files, _ = generate(root, tmp_path, grain="member", renderer=renderer)
+    source = next(iter(files.values()))
+    assert seen
+    for args in seen:
+        refs = [ref for ref, _concern in args.targets]
+        assert len(refs) == len(set(refs)), refs  # one claim per distinct reference
+    claims = [line for line in source.splitlines() if line.startswith("# Claims:")]
+    assert claims and all(line.count("  (object.entity)") == 1 for line in claims), claims
+
+
+# ---------------------------------------------------------------------------
+# A renderer that returns the wrong thing is a clean error naming it.
+# ---------------------------------------------------------------------------
+
+
+def _wrong_renderer(_args: RequirementTestArgs) -> str:
+    return "def test_x(): pass"
+
+
+def _wrong_source_renderer(_args: RequirementTestArgs) -> RenderedTest:
+    return RenderedTest(imports=(), source=b"def test_x(): pass")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("renderer", "returned"),
+    [(_wrong_renderer, "str"), (_wrong_source_renderer, "a RenderedTest whose source is bytes")],
+)
+def test_a_renderer_returning_the_wrong_type_is_a_clean_error_naming_it(
+    tmp_path: Path, renderer: Any, returned: str
+) -> None:
+    with pytest.raises(ValueError) as exc:
+        generate(_load_corpus_case("worked-example"), tmp_path, renderer=renderer)
+    message = str(exc.value)
+    assert renderer.__qualname__ in message and renderer.__module__ in message
+    assert f"returned {returned} for 'acme::shop::Orders.Recorded [object.entity]'" in message
+    assert "expected a RenderedTest" in message
+
+
+def test_a_renderer_returning_the_wrong_type_fails_gen_without_a_traceback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = _project(
+        tmp_path,
+        "requirementTests:\n  renderer: codegen.requirement_renderer:render\n  warnUncovered: false\n",
+        _worked_example_document(),
+    )
+    (tmp_path / "codegen").mkdir()
+    (tmp_path / "codegen" / "__init__.py").write_text("")
+    (tmp_path / "codegen" / "requirement_renderer.py").write_text(
+        "def render(args):\n    return 'not a RenderedTest'\n", encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen", "--config", str(config)]) == 1
+    err = capsys.readouterr().err
+    assert "codegen.requirement_renderer.render" in err and "returned str" in err
+
+
+# ---------------------------------------------------------------------------
+# Output text the other tests only parse.
+# ---------------------------------------------------------------------------
+
+
+def test_a_retired_requirement_is_skipped_with_the_retired_reason(tmp_path: Path) -> None:
+    files, _ = generate(_load_corpus_case("retired-skip"), tmp_path)
+    source = next(iter(files.values()))
+    assert (
+        '@pytest.mark.skip(reason="retired - the capability was deliberately removed; '
+        'assert it stays removed")'
+    ) in source
+    assert "# Status: retired" in source
+
+
+def test_a_missing_status_is_written_as_none_in_the_comment() -> None:
+    from metaobjects.codegen.generators.requirement_tests_generator import render_requirement_test
+    from metaobjects.codegen.requirement_walk import RequirementTestIdentity
+
+    identity = RequirementTestIdentity(
+        package="", path="P", unit="*", id="P [*]", witness_key="req_P",
+        status=None, skip=None, digest="0" * 64,
+    )
+    rendered = render_requirement_test(
+        RequirementTestArgs(identity, "s", "c", (), None, ())
+    )
+    assert "# Status: (none)\n" in rendered.source and "# Claims: (none)\n" in rendered.source
+
+
+def test_the_hook_receives_the_disposition_and_the_tracking_references(tmp_path: Path) -> None:
+    extra = "        disposition: deferred\n        trackedBy: [TRK-1, TRK-2]\n"
+    root = _load_yaml(_doc(_requirement("Gap", "partial", extra=extra)))
+    seen: list[RequirementTestArgs] = []
+
+    def renderer(args: RequirementTestArgs) -> None:
+        seen.append(args)
+
+    generate(root, tmp_path, renderer=renderer)
+    (args,) = seen
+    assert (args.disposition, args.tracked_by) == ("deferred", ("TRK-1", "TRK-2"))
+
+
+def test_a_nul_in_the_statement_is_written_visibly_in_the_comment_and_the_file_still_parses(
+    tmp_path: Path,
+) -> None:
+    root = _load_yaml(_doc(_requirement("Probe", statement='"before\\0after\\x07bell\\ttab"')))
+    files, _ = generate(root, tmp_path)
+    source = files["requirements/test_acme_shop_requirements.py"]
+    ast.parse(source, feature_version=(3, 9))
+    compile(source, "generated", "exec")  # the interpreter itself refuses a NUL in source
+    assert "# before\\x00after\\x07bell\ttab" in source.splitlines()
+    assert "\x00" not in source

@@ -197,7 +197,8 @@ def requirement_digest(node: MetaRequirement) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _mangle(value: str) -> str:
+def mangle(value: str) -> str:
+    """Every maximal run of characters outside ``[A-Za-z0-9]`` becomes one ``_``."""
     # ASCII [A-Za-z0-9] only. `\w` and `str.isalnum()` are both wrong: each keeps `_` and
     # every Unicode letter, so `Orders__Recorded` and `Café` would keep their shape.
     return re.sub(r"[^A-Za-z0-9]+", "_", value)
@@ -207,8 +208,8 @@ def witness_key_of(qualified_address: str, unit: str) -> str:
     """An identifier-safe key for one test: ``req_<address>``, then ``__<unit>`` unless the
     requirement resolves no target. Mangling is lossy, which is what
     :func:`witness_key_collisions` exists to report."""
-    base = f"req_{_mangle(qualified_address)}"
-    return base if unit == NO_CONCERN else f"{base}__{_mangle(unit)}"
+    base = f"req_{mangle(qualified_address)}"
+    return base if unit == NO_CONCERN else f"{base}__{mangle(unit)}"
 
 
 def requirement_test_units(
@@ -217,15 +218,20 @@ def requirement_test_units(
     """The requirement's targets grouped by fan-out unit under *grain*, first-seen order.
 
     ``concern``: one entry per distinct ``<type>.<subType>``, NOT per target. ``member``: one
-    per distinct reference that resolves, as authored, so the bare and qualified spellings of
+    per distinct reference that resolves, as authored, holding its first claim, so the bare and qualified spellings of
     one node are two units. In both grains a requirement resolving no target yields exactly
     one entry, ``*``.
     """
     assert_requirement_test_grain(grain)
     units: dict[str, list[ResolvedClaim]] = {}
     for target in walked.targets:
-        key = target.concern if grain == "concern" else target.ref
-        units.setdefault(key, []).append(target)
+        if grain == "concern":
+            units.setdefault(target.concern, []).append(target)
+        elif target.ref not in units:
+            # A reference authored twice is one test, and its first claim is the one kept
+            # (the reference implementation does the same): the unit is the reference as
+            # written, so a second copy adds nothing a hook or a comment could use.
+            units[target.ref] = [target]
     if not units:
         units[NO_CONCERN] = []
     return units

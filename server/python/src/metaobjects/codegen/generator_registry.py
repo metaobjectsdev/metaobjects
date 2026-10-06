@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from metaobjects.codegen.generator import Generator
+from metaobjects.codegen.project_config import DEFAULT_REQUIREMENT_WITNESS_MODULE
 from metaobjects.codegen.generators.entity_model import entity_model
 from metaobjects.codegen.generators.extractor_generator import extractor_generator
 from metaobjects.codegen.generators.filter_allowlist_generator import (
@@ -78,7 +79,7 @@ class RequirementTestsOptions:
     directory (the way ``providers`` are) so a generator factory, packaged or owned, only
     reads attributes."""
 
-    witness_module: str = "tests.requirement_witnesses"
+    witness_module: str = DEFAULT_REQUIREMENT_WITNESS_MODULE
     grain: str = "concern"
     renderer: Callable[..., object] | None = None
     filter: Callable[..., bool] | None = None

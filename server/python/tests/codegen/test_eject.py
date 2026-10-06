@@ -146,13 +146,31 @@ def test_bad_owned_token_is_a_clear_error(tmp_path: Path, monkeypatch, capsys, t
 
 
 WORKED_EXAMPLE = Path(__file__).parents[4] / "fixtures" / "requirement-test-identity-conformance" / "worked-example"
-_REQUIREMENT_BLOCK = "requirementTests:\n  witnessModule: app.witnesses\n  grain: member\n  warnUncovered: false\n"
+_REQUIREMENT_BLOCK = (
+    "requirementTests:\n  witnessModule: app.witnesses\n  grain: member\n"
+    "  renderer: codegen.requirement_renderer:render\n  warnUncovered: false\n"
+)
+#: A project renderer. It imports the hook types from the PACKAGE, as every adopter's does, so
+#: the generator that receives its result may be the packaged one or an ejected copy of it.
+_RENDERER = (
+    "from metaobjects.codegen.requirement_hooks import RenderedTest\n\n\n"
+    "def render(args):\n"
+    "    if args.identity.skip is not None:\n"
+    "        return None\n"
+    "    return RenderedTest(\n"
+    "        imports=('import json',),\n"
+    "        source='def test_mine():\\n    json.dumps(1)\\n',\n"
+    "    )\n"
+)
 
 
 def _requirement_project(root: Path, generators: str) -> Path:
     (root / "metaobjects").mkdir()
     for doc in sorted((WORKED_EXAMPLE / "input").iterdir()):
         (root / "metaobjects" / doc.name).write_text(doc.read_text(encoding="utf-8"), encoding="utf-8")
+    (root / "codegen").mkdir(exist_ok=True)
+    (root / "codegen" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "codegen" / "requirement_renderer.py").write_text(_RENDERER, encoding="utf-8")
     cfg = root / "metaobjects.config.yaml"
     cfg.write_text(
         f"{_REQUIREMENT_BLOCK}targets:\n  main:\n    outDir: gen\n    generators: [{generators}]\n",
@@ -186,7 +204,9 @@ def test_an_unchanged_ejected_requirement_tests_copy_generates_identical_output(
     # The NON-default block is what proves the owned copy still reads its options.
     text = a[Path("requirements/test_acme_shop_requirements.py")].decode("utf-8")
     assert '_WITNESS_MODULE = "app.witnesses"' in text
-    assert "def test_req_acme_shop_Orders_Recorded__Order():" in text  # grain: member
+    assert "def test_req_acme_shop_Orders_Recorded__Order():" not in text  # the renderer replaced it
+    assert "def test_mine():" in text and "import json" in text  # the project renderer ran
+    assert "def test_req_acme_shop_Orders_Refunded():" in text  # None kept the default (planned)
     assert main(["verify", "--codegen"]) == 0
 
 

@@ -48,7 +48,6 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
-import importlib
 import json
 import os
 import re
@@ -115,6 +114,7 @@ from metaobjects.codegen.generator_registry import (
     list_generators,
     unsatisfied_requires,
 )
+from metaobjects.codegen.project_import import import_project_symbol
 from metaobjects.codegen.runner import run_gen
 from metaobjects.codegen import eject as owned
 from metaobjects.codegen.generators.render_helper_generator import (
@@ -253,29 +253,18 @@ def _config_providers(config: ProjectConfig) -> tuple[list[object], bool]:
 
 
 def _import_config_symbol(spec: str, config_dir: Path) -> tuple[object | None, str | None]:
-    """Import a ``module:symbol`` reference from the config, relative to *config_dir*.
+    """Import a ``module:symbol`` named by the config, relative to *config_dir*.
 
-    Resolved the way ``providers`` are (#267): the config directory goes on ``sys.path``, so a
-    module living beside the config imports with no ``PYTHONPATH=``. A module of the same name
-    cached from another project is dropped first, so two configs in one process cannot read
-    each other's hook. Returns ``(object, None)`` or ``(None, message)``.
+    The same resolver an owned generator is imported with (:func:`import_project_symbol`):
+    the config directory goes on ``sys.path`` so a module beside the config imports with no
+    ``PYTHONPATH=``, and a module cached from another project is dropped, but an installed
+    package never is. Returns ``(callable, None)`` or ``(None, message)``; the message names the
+    spec, the module and the real cause.
     """
     module_name, _sep, symbol = spec.partition(":")
-    root = str(config_dir.resolve())
-    if root not in sys.path:
-        sys.path.insert(0, root)
-    top = module_name.split(".")[0]
-    for key in [k for k in sys.modules if k == top or k.startswith(top + ".")]:
-        file = getattr(sys.modules[key], "__file__", None)
-        if file is None or not str(Path(file).resolve()).startswith(root):
-            del sys.modules[key]
-    try:
-        module = importlib.import_module(module_name)
-    except Exception as exc:  # ImportError and anything raised at import time
-        return None, f"{spec!r}: cannot import {module_name!r}: {exc}"
-    obj = getattr(module, symbol, None)
-    if obj is None:
-        return None, f"{spec!r}: {module_name!r} has no attribute {symbol!r}"
+    obj, err = import_project_symbol(module_name, symbol, config_dir)
+    if err is not None:
+        return None, f"{spec!r}: {err}"
     if not callable(obj):
         return None, f"{spec!r}: {symbol!r} is not callable"
     return obj, None

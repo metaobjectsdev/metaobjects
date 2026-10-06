@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -170,26 +171,43 @@ def test_a_failed_load_is_not_retried_by_the_gate(
     assert len(calls) == 1
 
 
+def _raise_only_for_the_verify_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make `_load_root` raise a bug-shaped error, but only for the verify model's own load, so
+    every earlier pass of the command runs normally and only the gate's input is affected."""
+    real = cli._load_root
+
+    def maybe_boom(*args: Any, **kwargs: Any) -> Any:
+        if sys._getframe(1).f_code.co_name == "_load_verify_model":
+            raise RuntimeError("loader bug")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(cli, "_load_root", maybe_boom)
+
+
 def test_an_unexpected_load_exception_does_not_turn_the_gate_off_with_exit_0(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A bug in the loader is not "no requirements declared": it must reach the caller."""
+    """A bug in the loader is not "no requirements declared": it must reach the caller, at the
+    helper and at the command."""
     meta_dir = _meta_dir(tmp_path, [_requirement("Recorded", "live", implementedBy=["Ordr"])])
-
-    def boom(*_a: Any, **_k: Any) -> Any:
-        raise RuntimeError("loader bug")
-
-    monkeypatch.setattr(cli, "_load_root", boom)
-    args = argparse.Namespace(metadata_dir=meta_dir, provider=None)
+    out = tmp_path / "out"
+    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
+    _raise_only_for_the_verify_model(monkeypatch)
     with pytest.raises(RuntimeError, match="loader bug"):
-        cli._load_verify_model(args)
+        cli._load_verify_model(argparse.Namespace(metadata_dir=meta_dir, provider=None))
+
+    capsys.readouterr()
+    with pytest.raises(RuntimeError, match="loader bug"):
+        main(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])
+    # The gate did not report success on its behalf.
+    assert "requirements:" not in capsys.readouterr().err
 
 
 def test_the_load_errors_the_loader_raises_still_mean_nothing_to_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     meta_dir = _meta_dir(tmp_path, [])
-    for exc in (cli.ParseError("ERR_UNKNOWN", "bad"), OSError("unreadable"), cli.ConfigError("bad config")):
+    for exc in (cli.ParseError("bad"), OSError("unreadable"), cli.ConfigError("bad config")):
 
         def raising(*_a: Any, _exc: Exception = exc, **_k: Any) -> Any:
             raise _exc

@@ -29,7 +29,7 @@
       "properties": {
         "witnessModule": {
           "type": "string",
-          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
           "default": "tests.requirement_witnesses",
           "description": "Dotted module holding the project-owned witness functions: one per generated test, named by the test's witness key."
         },

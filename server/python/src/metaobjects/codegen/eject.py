@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import importlib
 import inspect
-import sys
 import tempfile
 from collections import Counter
 from dataclasses import dataclass
@@ -34,6 +33,7 @@ from metaobjects.codegen.generator_registry import (
     GeneratorBuildContext,
     GeneratorEntry,
 )
+from metaobjects.codegen.project_import import import_project_symbol
 
 #: Where an owned copy lands, relative to the project root. Mirrors the TS layout.
 OWNED_DIR = Path("codegen") / "generators"
@@ -205,23 +205,9 @@ def build_owned(spec: str, root: Path, ctx: GeneratorBuildContext) -> tuple[Gene
     if not sep or not module_name or not symbol:
         return None, (f"generator {spec!r} is neither a registered name nor a "
                       "'module:symbol' reference to an owned copy")
-    root_str = str(root.resolve())
-    if root_str not in sys.path:
-        sys.path.insert(0, root_str)
-    # A module of the same name imported from another project (or an earlier copy) would
-    # be reused from the cache; drop any entry that does not live under this root.
-    top = module_name.split(".")[0]
-    for key in [k for k in sys.modules if k == top or k.startswith(top + ".")]:
-        file = getattr(sys.modules[key], "__file__", None)
-        if file is None or not str(Path(file).resolve()).startswith(root_str):
-            del sys.modules[key]
-    try:
-        module = importlib.import_module(module_name)
-    except Exception as exc:  # ImportError and anything raised at import time
-        return None, f"generator {spec!r}: cannot import {module_name!r}: {exc}"
-    obj = getattr(module, symbol, None)
-    if obj is None:
-        return None, f"generator {spec!r}: {module_name!r} has no attribute {symbol!r}"
+    obj, err = import_project_symbol(module_name, symbol, root)
+    if err is not None:
+        return None, f"generator {spec!r}: {err}"
     if not hasattr(obj, "generate") and callable(obj):
         params = inspect.signature(obj).parameters
         required = [p for p in params.values()

@@ -9,6 +9,8 @@ import pytest
 from metaobjects.codegen.project_config import (
     CONFIG_FILENAME,
     DEFAULT_METADATA_DIR,
+    DEFAULT_REQUIREMENT_WITNESS_MODULE,
+    DOTTED_MODULE_PATTERN,
     REQUIREMENT_TESTS_KEYS,
     REQUIREMENT_TEST_GRAIN_VALUES,
     TARGET_KEYS,
@@ -258,9 +260,38 @@ def test_an_empty_requirement_tests_block_means_the_defaults(tmp_path: Path) -> 
         ("  renderer: not_a_symbol\n", "'renderer' must be in 'module:symbol' form"),
         ("  filter: a:b:c\n", "'filter' must be in 'module:symbol' form"),
         ("  witnessModule: 3\n", "'witnessModule' must be a non-empty string"),
+        ('  witnessModule: "a b"\n', "'witnessModule' must be a dotted module name"),
+        ('  witnessModule: "x.1y"\n', "'witnessModule' must be a dotted module name"),
+        ('  witnessModule: "x\\"; import os; \\""\n', "'witnessModule' must be a dotted module name"),
     ],
 )
 def test_a_bad_requirement_tests_block_is_refused(tmp_path: Path, block: str, message: str) -> None:
     p = _write(tmp_path, "requirementTests:\n" + block + _TARGETS)
     with pytest.raises(ConfigError, match=message):
         load_project_config(p)
+
+
+def test_the_schema_and_the_loader_agree_on_the_witness_module_pattern_and_default() -> None:
+    schema = json.loads(
+        (Path(__file__).parents[2] / "src" / "metaobjects" / "codegen" / "metaobjects-config.schema.json")
+        .read_text(encoding="utf-8")
+    )
+    witness = schema["properties"]["requirementTests"]["properties"]["witnessModule"]
+    assert witness["pattern"] == DOTTED_MODULE_PATTERN
+    assert witness["default"] == DEFAULT_REQUIREMENT_WITNESS_MODULE
+
+
+def test_the_default_witness_module_is_spelled_once_and_every_consumer_agrees() -> None:
+    from metaobjects.codegen.generator_registry import RequirementTestsOptions
+    from metaobjects.codegen.generators.requirement_tests_generator import DEFAULT_WITNESS_MODULE
+
+    assert DEFAULT_REQUIREMENT_WITNESS_MODULE == "tests.requirement_witnesses"
+    assert RequirementTestsConfig().witness_module == DEFAULT_REQUIREMENT_WITNESS_MODULE
+    assert RequirementTestsOptions().witness_module == DEFAULT_REQUIREMENT_WITNESS_MODULE
+    assert DEFAULT_WITNESS_MODULE == DEFAULT_REQUIREMENT_WITNESS_MODULE
+
+
+def test_the_loaders_grain_values_are_the_walks_grains() -> None:
+    from metaobjects.codegen.requirement_walk import REQUIREMENT_TEST_GRAINS
+
+    assert tuple(REQUIREMENT_TEST_GRAIN_VALUES) == tuple(REQUIREMENT_TEST_GRAINS)

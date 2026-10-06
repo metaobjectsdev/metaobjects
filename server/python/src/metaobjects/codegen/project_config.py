@@ -60,6 +60,15 @@ REQUIREMENT_TESTS_KEYS: tuple[str, ...] = (
 #: and the generator's own refusal keep the two in step.
 REQUIREMENT_TEST_GRAIN_VALUES: tuple[str, ...] = ("concern", "member")
 
+#: The module the witnesses are looked up in when the project names none. The ONE spelling:
+#: the generator, the build-context options and this loader all take it from here, and a test
+#: ties the schema's ``default`` to it.
+DEFAULT_REQUIREMENT_WITNESS_MODULE = "tests.requirement_witnesses"
+
+#: A dotted module name: what ``requirementTests.witnessModule`` must be, and what the generated
+#: file interpolates into a string literal and imports. The schema's ``pattern`` is this one.
+DOTTED_MODULE_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$"
+
 #: The ``module:symbol`` form of the ``renderer`` and ``filter`` keys, as ``providers`` are.
 MODULE_SYMBOL_PATTERN = r"^[^:]+:[^:]+$"
 
@@ -101,7 +110,7 @@ class RequirementTestsConfig:
     config directory the way ``providers`` are (the CLI imports them; this loader never does).
     """
 
-    witness_module: str = "tests.requirement_witnesses"
+    witness_module: str = DEFAULT_REQUIREMENT_WITNESS_MODULE
     grain: str = "concern"
     renderer: str | None = None
     filter: str | None = None
@@ -202,6 +211,11 @@ def _parse_requirement_tests(raw: object, ctx: str) -> RequirementTestsConfig:
         raise ConfigError(f"{ctx}: 'warnUncovered' must be a boolean.")
     witness = string("witnessModule", defaults.witness_module)
     assert witness is not None and grain is not None  # the defaults are never None
+    if not re.match(DOTTED_MODULE_PATTERN, witness):
+        raise ConfigError(
+            f"{ctx}: 'witnessModule' must be a dotted module name such as "
+            f"{DEFAULT_REQUIREMENT_WITNESS_MODULE!r}, got {witness!r}."
+        )
     return RequirementTestsConfig(
         witness_module=witness,
         grain=grain,
