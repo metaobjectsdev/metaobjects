@@ -13,9 +13,11 @@ from .requirement_constants import (
     REQUIREMENT_ATTR_IMPLEMENTED_BY,
     REQUIREMENT_ATTR_LEVEL,
     REQUIREMENT_ATTR_STATUS,
+    REQUIREMENT_ATTR_SUPERSEDED_BY,
     REQUIREMENT_ATTR_TRACKED_BY,
     REQUIREMENT_LINK_FLOOR_LEVEL,
     REQUIREMENT_STATUS_PLANNED,
+    REQUIREMENT_STATUS_RETIRED,
     REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES,
     REQUIREMENT_STATUSES_WITH_OUTSTANDING_WORK,
     REQUIREMENT_SUBTYPE_ARCHITECTURAL,
@@ -66,6 +68,19 @@ class MetaRequirement(MetaData):
         checked to exist."""
         v = self.get_meta_attr(REQUIREMENT_ATTR_TRACKED_BY)
         return [str(x) for x in v] if isinstance(v, list) else []
+
+    def superseded_by(self) -> str | None:
+        """ADR-0039: resolving. The requirement that REPLACED this one (FR-039).
+        Legal on ``retired`` only; ``verify`` resolves it against the ledger, so a
+        supersession chain stays walkable. ``None`` when absent or blank."""
+        v = self.get_meta_attr(REQUIREMENT_ATTR_SUPERSEDED_BY)
+        return v if isinstance(v, str) and v.strip() != "" else None
+
+    def is_retired(self) -> bool:
+        """Built, then deliberately removed. Carries no ``@implementedBy`` (the
+        loader refuses it), never counts toward object coverage, and is exempt from
+        the architectural universality check — a withdrawn policy governs nothing."""
+        return self.status() == REQUIREMENT_STATUS_RETIRED
 
     def is_planned(self) -> bool:
         """Intended but not built. Its nodes may legitimately not exist yet, and

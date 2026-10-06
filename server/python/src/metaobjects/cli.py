@@ -65,7 +65,7 @@ from metaobjects.config.dependencies import (
     refuse_unowned_packages,
 )
 from metaobjects.config.neutral_config import read_neutral_config
-from metaobjects.field_lint import FieldLintFinding, lint_duplicate_fields, lint_reference_fields
+from metaobjects.field_lint import lint_duplicate_fields, lint_reference_fields
 from metaobjects.loader.meta_data_loader import LoadResult
 from metaobjects.loader.sources import FileSource
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -74,7 +74,15 @@ from metaobjects.agent_context import (
     agent_context_staleness,
     installed_metaobjects_version,
 )
+from metaobjects.meta.core.requirement.requirement_constants import REQUIREMENT_STATUSES
 from metaobjects.meta.meta_data import MetaData
+from metaobjects.requirement_check import (
+    SEVERITY_ERROR,
+    Diagnostic,
+    check_requirements,
+    scan_requirements,
+    summarise_requirements,
+)
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.overwrite_policy import has_hash_manifest, read_generated_hash
 from metaobjects.codegen.project_config import (
@@ -2299,52 +2307,72 @@ def _verify_db(_args: argparse.Namespace) -> int:
 FIELD_LINT_ENV = "META_NO_FIELD_LINT"
 
 
-def _field_lint_findings(args: argparse.Namespace) -> "list[FieldLintFinding] | None":
-    """Load the metadata ``verify`` was pointed at and run the field lint over it.
+@dataclasses.dataclass(frozen=True)
+class _VerifyModel:
+    """The metadata ``verify`` was pointed at, loaded once for every pass that reads it."""
 
-    Returns ``None`` when there is nothing to lint: the metadata could not be located
-    or did not load. Every such failure is already reported by the gate that ran, with
-    its own message and exit code, so this stays silent.
+    root: MetaData
+    #: The project's OWN files — a dependency artifact is not the adopter's to edit.
+    own_files: list[Path]
+    #: Every file that loaded, dependency artifacts included. The denominator's provenance.
+    loaded_files: int
+    #: ``None`` for an explicit ``<metadata_dir>``, which never resolves one.
+    collection: Collection | None
 
-    Loads LENIENT, deliberately: the lint must report the same findings under
-    ``--lax`` as without it, and an unknown attr is the strict gate's finding, not
-    this one's.
+
+def _load_verify_model(args: argparse.Namespace) -> "_VerifyModel | None":
+    """Load the metadata ``verify`` was pointed at, for the passes that read the model.
+
+    Returns ``None`` when there is nothing to read: the metadata could not be located or
+    did not load. Every such failure is already reported by the gate that ran, with its own
+    message and exit code, so the passes that read this stay silent.
+
+    Loads LENIENT, deliberately: the field lint and the requirement gate must report the
+    same findings under ``--lax`` as without it, and an unknown attr is the strict gate's
+    finding, not theirs.
     """
     from metaobjects.loader.sources import DirectorySource
 
-    providers, _errors = _resolve_providers(getattr(args, "provider", None))
-    if args.metadata_dir is not None:
-        root, _ = _load_root(args.metadata_dir, providers=providers)
-        files = [source.path for source in DirectorySource(args.metadata_dir).expand()]
-    else:
-        config_path = _find_config(args)
-        config = load_project_config(config_path) if config_path is not None else None
-        libraries: "list[str] | None" = None
-        if config is not None:
-            # Quiet on purpose: a bad provider is the gate's error to print, once.
-            providers, _errors = _resolve_providers(config.providers)
-            libraries = config.libraries
-            start = project_root_for(config.metadata_dir())
+    try:
+        providers, _errors = _resolve_providers(getattr(args, "provider", None))
+        if args.metadata_dir is not None:
+            root, _ = _load_root(args.metadata_dir, providers=providers)
+            files = [source.path for source in DirectorySource(args.metadata_dir).expand()]
+            collection = None
+            loaded_files = len(files)
         else:
-            start = Path.cwd()
-        collection = resolve_metadata_location(config=config, root=start)
-        root, _ = _load_root_from_collection(collection, providers=providers, libraries=libraries)
-        # The project's OWN files — a dependency artifact is not the adopter's to edit.
-        files = list(collection.own_files)
+            config_path = _find_config(args)
+            config = load_project_config(config_path) if config_path is not None else None
+            libraries: "list[str] | None" = None
+            if config is not None:
+                # Quiet on purpose: a bad provider is the gate's error to print, once.
+                providers, _errors = _resolve_providers(config.providers)
+                libraries = config.libraries
+                start = project_root_for(config.metadata_dir())
+            else:
+                start = Path.cwd()
+            collection = resolve_metadata_location(config=config, root=start)
+            root, _ = _load_root_from_collection(collection, providers=providers, libraries=libraries)
+            files = list(collection.own_files)
+            loaded_files = len(collection.files)
+    except Exception:  # noqa: BLE001 — a load failure is reported by the gate that ran
+        return None
     if root is None:
         return None
-    return [*lint_reference_fields(root), *lint_duplicate_fields(files)]
+    return _VerifyModel(root=root, own_files=files, loaded_files=loaded_files, collection=collection)
 
 
-def _run_field_lint_advisory(args: argparse.Namespace) -> None:
+def _run_field_lint_advisory(args: argparse.Namespace, model: "_VerifyModel | None") -> None:
     """The field AUTHORING lint (see :mod:`metaobjects.field_lint`) — runs on every
     ``verify``, whichever gates were selected. Warnings ONLY: it prints to stderr and
     never changes the exit code. Muted by ``--no-field-lint`` or ``META_NO_FIELD_LINT=1``.
     """
     if getattr(args, "no_field_lint", False) or os.environ.get(FIELD_LINT_ENV) == "1":
         return
+    if model is None:
+        return
     try:
-        findings = _field_lint_findings(args)
+        findings = [*lint_reference_fields(model.root), *lint_duplicate_fields(model.own_files)]
     except Exception:  # noqa: BLE001 — an advisory scan never breaks verify
         return
     if not findings:
@@ -2356,6 +2384,83 @@ def _run_field_lint_advisory(args: argparse.Namespace) -> None:
     )
     for finding in findings:
         print(f"  {finding.code} [{finding.path}]: {finding.message}", file=sys.stderr)
+
+
+#: Raises ``WARN_REQUIREMENT_NOTHING_IMPLEMENTS`` to an error, beside ``--require-implementers``
+#: (Node `meta` parity, ADR-0057).
+REQUIRE_IMPLEMENTERS_ENV = "META_REQUIRE_IMPLEMENTERS"
+
+
+def _format_requirement_diagnostic(d: Diagnostic) -> str:
+    return f"  {d.code}{'' if d.path is None else f' [{d.path}]'}: {d.message}"
+
+
+def _verify_requirements(args: argparse.Namespace, model: "_VerifyModel | None" = None) -> int:
+    """The requirement (capability) gate (see :mod:`metaobjects.requirement_check`) — runs
+    on EVERY ``verify``, with no subverb to select it: ``requirement.*`` nodes are metadata,
+    so a model declaring none is silent, not in drift.
+
+    Prints the summary line on every run that has a requirement, clean or not (a gate that
+    says nothing when it passes cannot be told apart from one that checked nothing), then
+    every finding, uncapped. Returns 1 when any finding is an error. Returns 0 and prints
+    nothing when the metadata did not load: the gate that ran already reported that.
+    """
+    if model is None:
+        model = _load_verify_model(args)
+    if model is None:
+        return 0
+    collection = model.collection
+    scan = scan_requirements(
+        model.root,
+        coverable=collection.in_scope if collection is not None else None,
+        require_implementers=bool(getattr(args, "require_implementers", False))
+        or os.environ.get(REQUIRE_IMPLEMENTERS_ENV) == "1",
+    )
+    summary = summarise_requirements(model.root, scan)
+    if summary is None:
+        return 0
+
+    statuses = ", ".join(
+        f"{summary.by_status[k]} {k}" for k in REQUIREMENT_STATUSES if summary.by_status.get(k, 0) > 0
+    )
+    if summary.entities_total is None:
+        coverage = "coverage: not measured (no project-authored requirements)."
+    else:
+        # The file count is the DENOMINATOR'S PROVENANCE: `entities_total` is only ever taken
+        # over what actually loaded, so a spine that covers half an estate reports the
+        # covered half as fully claimed unless the count says what it was taken over.
+        from_dependencies = (
+            f", {len(collection.dependencies)} from dependencies."
+            if collection is not None and collection.dependencies
+            else "."
+        )
+        coverage = (
+            f"{summary.entities_claimed}/{summary.entities_total} entities claimed, "
+            f"counted over {model.loaded_files} metadata file(s)" + from_dependencies
+        )
+    print(
+        f"metaobjects verify — requirements: {summary.total} entries ({summary.functional} functional, "
+        f"{summary.architectural} architectural) — {statuses}; {coverage}",
+        file=sys.stderr,
+    )
+    if summary.undecided > 0:
+        print(
+            f"metaobjects verify — requirements: {summary.undecided} recorded gap(s) with no @disposition. "
+            "These are known problems nobody has ruled on — set 'accepted' or 'deferred' to close the question.",
+            file=sys.stderr,
+        )
+
+    diagnostics = check_requirements(model.root, scan)
+    errors = [d for d in diagnostics if d.severity == SEVERITY_ERROR]
+    warnings = [d for d in diagnostics if d.severity != SEVERITY_ERROR]
+    for d in errors:
+        print(_format_requirement_diagnostic(d), file=sys.stderr)
+    for d in warnings:
+        print(_format_requirement_diagnostic(d), file=sys.stderr)
+    if errors:
+        print(f"metaobjects verify — requirements: {len(errors)} error(s).", file=sys.stderr)
+        return 1
+    return 0
 
 
 def _cmd_verify(args: argparse.Namespace) -> int:
@@ -2386,7 +2491,10 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         exit_code = max(exit_code, _verify_codegen(args))
     if run_templates:
         exit_code = max(exit_code, _verify_templates(args))
-    _run_field_lint_advisory(args)
+    # One load for both passes that read the model. The requirement gate runs on EVERY verify.
+    model = _load_verify_model(args)
+    exit_code = max(exit_code, _verify_requirements(args, model))
+    _run_field_lint_advisory(args, model)
     return exit_code
 
 
@@ -2652,6 +2760,15 @@ def _build_parser() -> argparse.ArgumentParser:
             "suppress the advisory field AUTHORING lint (a reference identity over a "
             "missing field; a duplicate field name) — never a gate, it cannot fail the "
             "build. META_NO_FIELD_LINT=1 does the same."
+        ),
+    )
+    verify.add_argument(
+        "--require-implementers",
+        action="store_true",
+        help=(
+            "raise WARN_REQUIREMENT_NOTHING_IMPLEMENTS (a live functional requirement whose "
+            "subtree names no implementing node) from a warning to an error. "
+            "META_REQUIRE_IMPLEMENTERS=1 does the same."
         ),
     )
     verify.add_argument(
