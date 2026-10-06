@@ -96,7 +96,7 @@ it is wrong, unless the reference is shown to be wrong first.
 | `dangling-object-live` | `ERR_REQUIREMENT_DANGLING_REF` on a `live` requirement naming an object that does not exist. No object has that short name, so there is no hint. |
 | `dangling-object-partial` | The same on `partial`. The message carries the status. |
 | `dangling-object-planned-clean` | The same reference on `planned` reports nothing: a planned requirement may name nodes that do not exist yet. |
-| `dangling-object-did-you-mean` | The hint when the short name exists in one other package. |
+| `dangling-object-did-you-mean` | The hint when the short name exists in one other package, for a bare object reference and for a member reference whose owner does not resolve. The second message quotes the whole reference (`Invoice.total`) while its hint names the object (`Invoice`), not the member. |
 | `dangling-bare-name-in-two-packages` | A bare name that exists in two other packages binds neither. The hint lists both, `acme::billing::Order` first. |
 | `dangling-member-of-resolved-object` | The object resolves and its member does not: the hint names the object's resolution key and the missing member. |
 | `dangling-member-first-missing-segment` | Two-segment member paths. The hint names the first segment that did not resolve and the node it was looked for under: once when the first segment resolves, once when it does not. |

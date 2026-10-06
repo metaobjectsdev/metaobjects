@@ -3,16 +3,22 @@
     {
       "severity": "error",
       "code": "ERR_REQUIREMENT_DANGLING_REF",
+      "path": "Invoiced.Totalled",
+      "message": "'Invoice.total' does not resolve in the loaded model (status 'live' — the model moved and the requirement is stale). An object named \"Invoice\" exists in: acme::billing::Invoice. Qualify it with its package (FQN)."
+    },
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_DANGLING_REF",
       "path": "Paid",
       "message": "'Invoice' does not resolve in the loaded model (status 'live' — the model moved and the requirement is stale). An object named \"Invoice\" exists in: acme::billing::Invoice. Qualify it with its package (FQN)."
     }
   ],
   "summary": {
-    "total": 3,
-    "functional": 3,
+    "total": 4,
+    "functional": 4,
     "architectural": 0,
     "byStatus": {
-      "live": 3
+      "live": 4
     },
     "undecided": 0,
     "deferredUntracked": 0,
