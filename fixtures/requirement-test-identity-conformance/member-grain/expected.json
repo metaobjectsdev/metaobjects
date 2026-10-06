@@ -1,0 +1,45 @@
+{
+  "tests": [
+    {
+      "id": "acme::shop::Recorded [Order]",
+      "package": "acme::shop",
+      "path": "Recorded",
+      "unit": "Order",
+      "witnessKey": "req_acme_shop_Recorded__Order",
+      "status": "live",
+      "skip": null,
+      "digest": "92d8d3bdfeb2f3545d489965b4e602dd617c24283bdf987d44ce6e34b53f0361"
+    },
+    {
+      "id": "acme::shop::Recorded [acme::shop::Customer]",
+      "package": "acme::shop",
+      "path": "Recorded",
+      "unit": "acme::shop::Customer",
+      "witnessKey": "req_acme_shop_Recorded__acme_shop_Customer",
+      "status": "live",
+      "skip": null,
+      "digest": "92d8d3bdfeb2f3545d489965b4e602dd617c24283bdf987d44ce6e34b53f0361"
+    },
+    {
+      "id": "acme::shop::Recorded.Quotable [Order.reference]",
+      "package": "acme::shop",
+      "path": "Recorded.Quotable",
+      "unit": "Order.reference",
+      "witnessKey": "req_acme_shop_Recorded_Quotable__Order_reference",
+      "status": "live",
+      "skip": null,
+      "digest": "fcf9ae1e3315cf0eebb22b2e4d51b8d75b518b8959d1b576a388638e5e2bc92b"
+    },
+    {
+      "id": "acme::shop::Recorded.Quotable [acme::shop::Order.pk]",
+      "package": "acme::shop",
+      "path": "Recorded.Quotable",
+      "unit": "acme::shop::Order.pk",
+      "witnessKey": "req_acme_shop_Recorded_Quotable__acme_shop_Order_pk",
+      "status": "live",
+      "skip": null,
+      "digest": "fcf9ae1e3315cf0eebb22b2e4d51b8d75b518b8959d1b576a388638e5e2bc92b"
+    }
+  ],
+  "collisions": []
+}

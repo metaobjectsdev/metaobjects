@@ -1,0 +1,16 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    # A retired requirement cannot carry implementedBy: the loader refuses it.
+    - requirement.functional:
+        name: Faxed
+        level: 4
+        status: retired
+        statement: An order confirmation is sent by fax.
+        counterexample: A confirmed order with no fax.

@@ -1,0 +1,35 @@
+{
+  "tests": [
+    {
+      "id": "acme::shop::Keyed [identity.primary]",
+      "package": "acme::shop",
+      "path": "Keyed",
+      "unit": "identity.primary",
+      "witnessKey": "req_acme_shop_Keyed__identity_primary",
+      "status": "live",
+      "skip": null,
+      "digest": "41eb263a291544d2c37ba4fec8ead24a1ce824ff9bcf8cba977fcbae166f4586"
+    },
+    {
+      "id": "acme::shop::Recorded.Addressable [identity.primary]",
+      "package": "acme::shop",
+      "path": "Recorded.Addressable",
+      "unit": "identity.primary",
+      "witnessKey": "req_acme_shop_Recorded_Addressable__identity_primary",
+      "status": "live",
+      "skip": null,
+      "digest": "3c0921fbc37854c7330ad43523028bd21660998d08833dde92903153c1b3573d"
+    },
+    {
+      "id": "acme::shop::Recorded.Quotable [field.string]",
+      "package": "acme::shop",
+      "path": "Recorded.Quotable",
+      "unit": "field.string",
+      "witnessKey": "req_acme_shop_Recorded_Quotable__field_string",
+      "status": "live",
+      "skip": null,
+      "digest": "b5d7fb7a9657bfda7b30e2629617bf5c56e4337ef7a06abfe55715613ecdda63"
+    }
+  ],
+  "collisions": []
+}

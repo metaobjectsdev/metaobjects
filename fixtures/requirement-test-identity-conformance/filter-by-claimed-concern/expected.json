@@ -1,0 +1,45 @@
+{
+  "tests": [
+    {
+      "id": "acme::shop::Announced [object.entity]",
+      "package": "acme::shop",
+      "path": "Announced",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_Announced__object_entity",
+      "status": "live",
+      "skip": null,
+      "digest": "be7e196cc97f87f5e9742f57fb2254b82e2cfc1a713be57d2424dea9188325cf"
+    },
+    {
+      "id": "acme::shop::Announced [template.prompt]",
+      "package": "acme::shop",
+      "path": "Announced",
+      "unit": "template.prompt",
+      "witnessKey": "req_acme_shop_Announced__template_prompt",
+      "status": "live",
+      "skip": null,
+      "digest": "be7e196cc97f87f5e9742f57fb2254b82e2cfc1a713be57d2424dea9188325cf"
+    },
+    {
+      "id": "acme::shop::Identified [object.entity]",
+      "package": "acme::shop",
+      "path": "Identified",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_Identified__object_entity",
+      "status": "live",
+      "skip": null,
+      "digest": "1665da033b2ecf14f717530ac11fd4927dad2b573c1a48e9ed261135d951e410"
+    },
+    {
+      "id": "acme::shop::Recorded [object.entity]",
+      "package": "acme::shop",
+      "path": "Recorded",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_Recorded__object_entity",
+      "status": "live",
+      "skip": null,
+      "digest": "2714aa3925a47959aa5e48ae39d80ed203fd4e2caa046a90aab9e04691d9881a"
+    }
+  ],
+  "collisions": []
+}

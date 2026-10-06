@@ -4,6 +4,7 @@
  * reference.
  *
  *   bun scripts/write-requirement-corpus-expected.ts check
+ *   bun scripts/write-requirement-corpus-expected.ts identity
  *
  * ── What this is, and what it is not ───────────────────────────────────────────
  *
@@ -27,8 +28,18 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 // RELATIVE, as in `generate-requirement-harness.ts`: `scripts/` sits outside the bun
 // workspace, so a bare `@metaobjectsdev/*` specifier does not resolve from here.
-import { MetaDataLoader, type MetaData } from "../server/typescript/packages/metadata/src/index.js";
-import { REQUIREMENT_STATUSES } from "../server/typescript/packages/metadata/src/core/requirement/requirement-constants.js";
+import {
+  MetaDataLoader,
+  OBJECT_SUBTYPE_ENTITY,
+  TYPE_OBJECT,
+  type MetaData,
+} from "../server/typescript/packages/metadata/src/index.js";
+import {
+  REQUIREMENT_LEVEL_MEMBER,
+  REQUIREMENT_STATUSES,
+  REQUIREMENT_STATUS_LIVE,
+  REQUIREMENT_SUBTYPE_ARCHITECTURAL,
+} from "../server/typescript/packages/metadata/src/core/requirement/requirement-constants.js";
 import {
   checkRequirements,
   scanRequirements,
@@ -36,6 +47,13 @@ import {
   type Diagnostic,
   type RequirementSummary,
 } from "../server/typescript/packages/cli/src/lib/requirement-check.js";
+import {
+  requirementTestIdentities,
+  witnessKeyCollisions,
+  type RequirementTestGrain,
+  type RequirementTestIdentity,
+  type RequirementView,
+} from "../server/typescript/packages/codegen-ts/src/index.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -96,11 +114,84 @@ function checkExpected(root: MetaData, options: Readonly<Record<string, unknown>
   };
 }
 
+// ---------------------------------------------------------------------------
+// identity — fixtures/requirement-test-identity-conformance
+// ---------------------------------------------------------------------------
+
+/**
+ * The corpus's closed list of filters, by the name a case's `options.json` gives.
+ *
+ * A second copy of the table in the corpus's TypeScript runner
+ * (`codegen-ts/test/requirement-test-identity-conformance.test.ts`), on purpose: every
+ * port's runner holds its own, and the runner is what fails when this one disagrees
+ * with it. The corpus README is the definition of both.
+ */
+const IDENTITY_FILTERS: Readonly<Record<string, (r: RequirementView) => boolean>> = {
+  "all": () => true,
+  "architectural": (r) => r.subType === REQUIREMENT_SUBTYPE_ARCHITECTURAL,
+  "live": (r) => r.status === REQUIREMENT_STATUS_LIVE,
+  "level-5": (r) => r.level === REQUIREMENT_LEVEL_MEMBER,
+  "package-acme-shop": (r) => r.package === "acme::shop",
+  "path-under-Shop": (r) => r.path === "Shop" || r.path.startsWith("Shop."),
+  "claims-entity": (r) => r.implementedByTypes.includes(`${TYPE_OBJECT}.${OBJECT_SUBTYPE_ENTITY}`),
+};
+
+/** Key order is fixed so a rewrite produces no diff. `skip` is written as `null`, not
+ *  left out, on a test that runs: that it is not skipped is a statement, not an absence. */
+function identityRecord(t: RequirementTestIdentity): Record<string, string | null> {
+  return {
+    id: t.id,
+    package: t.package,
+    path: t.path,
+    unit: t.unit,
+    witnessKey: t.witnessKey,
+    // `status` is required by the loader, so a case that loaded strict has one.
+    status: t.status ?? null,
+    skip: t.skip,
+    digest: t.digest,
+  };
+}
+
+function identityExpected(root: MetaData, options: Readonly<Record<string, unknown>>): unknown {
+  const grain = options["grain"];
+  if (grain !== undefined && typeof grain !== "string") {
+    throw new Error("'grain' in options.json must be a string");
+  }
+  const filterName = options["filter"];
+  if (filterName !== undefined && typeof filterName !== "string") {
+    throw new Error("'filter' in options.json must be a string");
+  }
+  const filter = filterName === undefined ? undefined : IDENTITY_FILTERS[filterName];
+  if (filterName !== undefined && filter === undefined) {
+    throw new Error(
+      `unknown filter '${filterName}' in options.json (the corpus names: ` +
+      `${Object.keys(IDENTITY_FILTERS).join(", ")})`,
+    );
+  }
+  // Each option is passed only when the case sets it, so a case without one is written
+  // from the reference's own default. A grain the reference does not know is refused
+  // by the reference, which refuses the case.
+  const tests = requirementTestIdentities(root, {
+    ...(grain === undefined ? {} : { grain: grain as RequirementTestGrain }),
+    ...(filter === undefined ? {} : { filter }),
+  });
+  return {
+    // Sorted by id, which is how the reference returns them and how runners compare.
+    tests: tests.map(identityRecord),
+    collisions: witnessKeyCollisions(tests),
+  };
+}
+
 const CORPORA: Readonly<Record<string, Corpus>> = {
   check: {
     dir: "fixtures/requirement-check-conformance",
     optionKeys: ["libraries", "requireImplementers"],
     expected: checkExpected,
+  },
+  identity: {
+    dir: "fixtures/requirement-test-identity-conformance",
+    optionKeys: ["grain", "filter"],
+    expected: identityExpected,
   },
 };
 

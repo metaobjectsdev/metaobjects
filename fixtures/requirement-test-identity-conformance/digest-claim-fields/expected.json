@@ -1,0 +1,35 @@
+{
+  "tests": [
+    {
+      "id": "acme::shop::Annotated [object.entity]",
+      "package": "acme::shop",
+      "path": "Annotated",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_Annotated__object_entity",
+      "status": "partial",
+      "skip": null,
+      "digest": "9c7f098dc9a7c74fd9c13cc705bf174c306a3259208abb2a7acca0d577c4e262"
+    },
+    {
+      "id": "acme::shop::Recorded [object.entity]",
+      "package": "acme::shop",
+      "path": "Recorded",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_Recorded__object_entity",
+      "status": "partial",
+      "skip": null,
+      "digest": "9c7f098dc9a7c74fd9c13cc705bf174c306a3259208abb2a7acca0d577c4e262"
+    },
+    {
+      "id": "acme::shop::Reworded [object.entity]",
+      "package": "acme::shop",
+      "path": "Reworded",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_Reworded__object_entity",
+      "status": "partial",
+      "skip": null,
+      "digest": "f3f4a5ffca04e3257f91c228e77603f35bb7ad638f19fda6d41aee15e6aa6b7a"
+    }
+  ],
+  "collisions": []
+}

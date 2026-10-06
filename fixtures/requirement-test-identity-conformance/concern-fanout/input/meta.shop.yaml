@@ -1,0 +1,34 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - object.entity:
+        name: Customer
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - object.value:
+        name: OrderConfirmationPayload
+        children:
+          - field.string: { name: reference }
+
+    - template.prompt:
+        name: orderConfirmation
+        payloadRef: OrderConfirmationPayload
+        textRef: orders/confirmation
+        format: xml
+
+    # Three references, two concerns. The entities are not adjacent in the list.
+    - requirement.functional:
+        name: Confirmed
+        level: 4
+        status: live
+        statement: A customer is told their order was placed.
+        counterexample: A placed order nobody confirmed.
+        implementedBy: [Order, orderConfirmation, Customer]

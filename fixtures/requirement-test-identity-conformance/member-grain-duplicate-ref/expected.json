@@ -1,0 +1,25 @@
+{
+  "tests": [
+    {
+      "id": "acme::shop::Recorded [Order]",
+      "package": "acme::shop",
+      "path": "Recorded",
+      "unit": "Order",
+      "witnessKey": "req_acme_shop_Recorded__Order",
+      "status": "live",
+      "skip": null,
+      "digest": "5c3e6c7754fd943dd5f00a6b55544c16cb54a47a1d64e4def334760c07c7a501"
+    },
+    {
+      "id": "acme::shop::Recorded [acme::shop::Order]",
+      "package": "acme::shop",
+      "path": "Recorded",
+      "unit": "acme::shop::Order",
+      "witnessKey": "req_acme_shop_Recorded__acme_shop_Order",
+      "status": "live",
+      "skip": null,
+      "digest": "5c3e6c7754fd943dd5f00a6b55544c16cb54a47a1d64e4def334760c07c7a501"
+    }
+  ],
+  "collisions": []
+}

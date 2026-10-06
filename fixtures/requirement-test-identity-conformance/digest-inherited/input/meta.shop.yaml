@@ -1,0 +1,32 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - requirement.functional:
+        name: Recorded
+        level: 4
+        status: live
+        statement: An order is recorded when it is placed.
+        counterexample: A placed order has no row.
+        implementedBy: [Order]
+
+    # Declares one attribute. Its level, status, statement and implementedBy are
+    # Recorded's, reached through extends.
+    - requirement.functional:
+        name: Kept
+        extends: Recorded
+        counterexample: A placed order is gone the next morning.
+
+    # What Kept effectively says, written out in full.
+    - requirement.functional:
+        name: KeptInFull
+        level: 4
+        status: live
+        statement: An order is recorded when it is placed.
+        counterexample: A placed order is gone the next morning.
+        implementedBy: [Order]

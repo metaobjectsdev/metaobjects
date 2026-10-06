@@ -1,0 +1,35 @@
+{
+  "tests": [
+    {
+      "id": "acme::shop::Recorded [Order]",
+      "package": "acme::shop",
+      "path": "Recorded",
+      "unit": "Order",
+      "witnessKey": "req_acme_shop_Recorded__Order",
+      "status": "planned",
+      "skip": "planned",
+      "digest": "1898440ecdffa3941b6e945b5aa0c2ad6135cb3b9d2b2b8cb734be00e00617f6"
+    },
+    {
+      "id": "acme::shop::Recorded.Quotable [Order.reference]",
+      "package": "acme::shop",
+      "path": "Recorded.Quotable",
+      "unit": "Order.reference",
+      "witnessKey": "req_acme_shop_Recorded_Quotable__Order_reference",
+      "status": "planned",
+      "skip": "planned",
+      "digest": "65dc05d07276982476601048513af90df59b0ffabc31e5e9f71b63b37fd0f0cf"
+    },
+    {
+      "id": "acme::shop::Refunded [*]",
+      "package": "acme::shop",
+      "path": "Refunded",
+      "unit": "*",
+      "witnessKey": "req_acme_shop_Refunded",
+      "status": "planned",
+      "skip": "planned",
+      "digest": "0a86fc1665ffb7a53dd99506c0ac0fbb7051311f2e214f061051fc5c60c37c57"
+    }
+  ],
+  "collisions": []
+}

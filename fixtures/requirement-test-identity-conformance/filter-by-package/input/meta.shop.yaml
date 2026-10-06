@@ -1,0 +1,34 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    # Neither node declares a package: both take this file's.
+    - requirement.functional:
+        name: Orders
+        level: 3
+        status: live
+        statement: Every placed order is kept.
+        counterexample: A placed order that is lost.
+        children:
+          - requirement.functional:
+              name: Recorded
+              level: 4
+              status: live
+              statement: An order is recorded when it is placed.
+              counterexample: A placed order has no row.
+              implementedBy: [Order]
+
+    # Declares its own package, which is not this file's.
+    - requirement.functional:
+        name: Invoiced
+        package: acme::billing
+        level: 4
+        status: live
+        statement: An invoice is raised for every order.
+        counterexample: An order with no invoice.
+        implementedBy: [Invoice]

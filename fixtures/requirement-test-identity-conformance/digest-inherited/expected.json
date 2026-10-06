@@ -1,0 +1,35 @@
+{
+  "tests": [
+    {
+      "id": "acme::shop::Kept [object.entity]",
+      "package": "acme::shop",
+      "path": "Kept",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_Kept__object_entity",
+      "status": "live",
+      "skip": null,
+      "digest": "f747d4c611a478cf73bc9b58ae7f477b9625483d42f1bc9b1282f385c3620e75"
+    },
+    {
+      "id": "acme::shop::KeptInFull [object.entity]",
+      "package": "acme::shop",
+      "path": "KeptInFull",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_KeptInFull__object_entity",
+      "status": "live",
+      "skip": null,
+      "digest": "f747d4c611a478cf73bc9b58ae7f477b9625483d42f1bc9b1282f385c3620e75"
+    },
+    {
+      "id": "acme::shop::Recorded [object.entity]",
+      "package": "acme::shop",
+      "path": "Recorded",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_Recorded__object_entity",
+      "status": "live",
+      "skip": null,
+      "digest": "2714aa3925a47959aa5e48ae39d80ed203fd4e2caa046a90aab9e04691d9881a"
+    }
+  ],
+  "collisions": []
+}
