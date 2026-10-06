@@ -157,7 +157,7 @@ One record per generated test. This is what the identity corpus pins, and it is 
 | `skip` | `null` when the status is `live` or `partial`; otherwise the status (`planned` or `retired`). Derived from the status lists, never a literal set. |
 | `digest` | Table G. |
 
-Which requirements get a test: the default filter is **functional and `level >= 4`**. Requirements the filter excludes produce one warning, capped at five names, with the text of `requirement-tests.ts:179-183`.
+Which requirements get a test: the default filter is **functional and `level >= 4`**. Every port lets a project replace it with its own predicate over the requirement view (Table I). Requirements the filter excludes produce one warning, capped at five names, with the text of `requirement-tests.ts:179-183`; every port can switch that warning off.
 
 Two records with the same `witnessKey` are a **collision**. Every generator outside TypeScript refuses to generate, with code `ERR_REQUIREMENT_WITNESS_KEY_COLLISION` and a message naming both `id` values. TypeScript's generator does not use the key in its output and does not refuse.
 
@@ -294,8 +294,10 @@ def test_req_acme_shop_Orders_Refunded():
 | Renderer hook. Receives the Table F record plus `statement`, `counterexample`, `targets` (`ref`, `concern`), `disposition`, `trackedBy`. Its result replaces the default text of that one test. | existing `renderers` and `resolveRenderer`; `RequirementTestArgs` gains `package`, `unit`, `id`, `witnessKey`, `skip`, `digest` | `requirement_tests(renderer=…)`; config `requirementTests.renderer` as `module:symbol`. Returns `RenderedTest(imports, source)` or `None` for the default | generator arg `renderer`: the class name of a `RequirementTestRenderer` | as Java, an `IRequirementTestRenderer` |
 | Strict switch: row 10 of Table C becomes severity `error`, code unchanged | `meta verify --require-implementers`, or `META_REQUIRE_IMPLEMENTERS=1` | `metaobjects verify --require-implementers`, same variable | `-Dmeta.verify.requireImplementers=true`, same variable | `dotnet meta verify --require-implementers`, same variable |
 | Witness location | not applicable | `requirement_tests(witness_module=…)`; config `requirementTests.witnessModule` | generator args `testPackage` and `witnessClass` | the same two, C# names |
+| Filter: a predicate over the requirement view. Absent, the default of Table F applies. | `requirementTests({ filter })` | `requirement_tests(filter=…)`; config `requirementTests.filter` as `module:symbol` | generator arg `filter`: the class name of a `RequirementTestFilter` (`boolean include(RequirementView view)`), loaded the way the renderer is | as Java, an `IRequirementTestFilter` (`bool Include(RequirementView view)`) |
+| Uncovered warning: name the requirements the filter excluded (Table F). Default on. | `requirementTests({ warnUncovered })` | `requirement_tests(warn_uncovered=…)`; config `requirementTests.warnUncovered` | generator arg `warnUncovered` (`true` or `false`) | as Java |
 
-A filter predicate stays a code-level option: TypeScript `filter` and Python `requirement_tests(filter=…)`. Java, Kotlin and C# ship the default filter only in this slice.
+**The filter is uniform (owner's answer 8).** Every port offers the same two options, and every port's predicate receives the same projection, the **requirement view**: `subType`, `level` (absent on an unlevelled architectural requirement), `status`, `path`, `package` (the effective package) and `implementedByTypes` (the distinct `<type>.<subType>` of the resolved targets, first-seen order). The view never hands out the node. A port that cannot express one of the two options is wrong; the identity corpus's `filter-*` cases (Table J) run each port's predicate seam.
 
 The flag is not called `--strict`: `cli/src/lib/args.ts:357` records why a `--strict` beside `--lax` misreads.
 
@@ -351,7 +353,19 @@ Both follow the field-lint corpus shape: each case is a directory with `input/` 
 | `coverage-library-overlay-does-not-activate` | An overlay on a library requirement does not |
 | `summary-undecided-rollup` | A partial parent over a partial child counts once, at the child; a grandchild excludes both ancestors |
 
-**`fixtures/requirement-test-identity-conformance/`**. `options.json` key: `grain`. `expected.json`:
+**`fixtures/requirement-test-identity-conformance/`**. `options.json` keys: `grain`, and `filter`, the **name** of one predicate from the closed list below. A predicate cannot be written in a language-neutral file, so the corpus names it and each port's runner implements the list in its own language and passes the predicate through the port's public filter seam. That is what makes the seam, and every field of the view it receives, a five-port contract. With no `filter` key the port's default applies.
+
+| `filter` | The predicate over the requirement view |
+|---|---|
+| `all` | always true |
+| `architectural` | `subType` is `architectural` |
+| `live` | `status` is `live` |
+| `level-5` | `level` is `5` |
+| `package-acme-shop` | `package` is `acme::shop` |
+| `path-under-Shop` | `path` is `Shop` or starts with `Shop.` |
+| `claims-entity` | `implementedByTypes` contains `object.entity` |
+
+`expected.json`:
 
 ```json
 { "tests": [ { "id": "acme::shop::Orders.Recorded [object.entity]", "package": "acme::shop",
@@ -367,6 +381,7 @@ Both follow the field-lint corpus shape: each case is a directory with `input/` 
 | Case | Pins |
 |---|---|
 | `default-filter` | L1 to L3 and architectural nodes get no test; functional L4 and L5 do |
+| `worked-example` | The model of Tables F, G and H exactly: `Orders.Recorded` (functional, level 4, live, claiming `Order`) and `Orders.Refunded` (functional, level 4, planned, no links) in `acme::shop`. Both digests are the pinned ones. Every port's generator test renders this case |
 | `concern-fanout` | One requirement claiming two entities and a template yields two tests |
 | `no-targets` | A live L4 with no `implementedBy` yields one test, unit `*` |
 | `planned-skip`, `retired-skip`, `partial-not-skipped` | `skip` per status; a planned requirement naming absent nodes has unit `*` |
@@ -378,6 +393,13 @@ Both follow the field-lint corpus shape: each case is a directory with `input/` 
 | `digest-inherited` | A requirement inheriting its statement through `extends` hashes the effective text |
 | `digest-multibyte-and-crlf` | A non-ASCII statement and a `\r\n` in the counterexample |
 | `witness-key-collision` | `Orders.Recorded` beside `Orders_Recorded`: one entry in `collisions` |
+| `filter-all` | `filter: all` over an L1 to L5 tree with one architectural policy: every requirement gets a test, the L1 to L3 nodes with unit `*` |
+| `filter-by-subtype` | `filter: architectural`: an unlevelled policy and a levelled one get tests, the functional nodes none. Pins `subType`, and that an absent `level` reaches the predicate as absent |
+| `filter-by-status` | `filter: live`: a partial and a planned requirement are dropped. Pins `status` |
+| `filter-by-level` | `filter: level-5`: only the L5 nodes. Pins `level` |
+| `filter-by-package` | `filter: package-acme-shop` over two packages, one requirement taking its package from the file default. Pins `package` as the effective package |
+| `filter-by-path` | `filter: path-under-Shop`: `Shop` and its descendants, not a sibling `Shopfront`. Pins `path` |
+| `filter-by-claimed-concern` | `filter: claims-entity`: a requirement claiming an entity is kept, one claiming only a template or only an unresolvable name is dropped. Pins `implementedByTypes` as the resolved concerns |
 
 ### Table K — where the code lives in each port
 
@@ -395,7 +417,7 @@ Each port also adds a library-package accessor beside its embedded manifests: Py
 
 ## File structure
 
-**Shared, new:** `fixtures/requirement-check-conformance/` (a `README.md` and the 42 cases of Table J), `fixtures/requirement-test-identity-conformance/` (a `README.md` and 16 cases), `spec/decisions/ADR-0057-requirement-checks-and-tests-in-every-port.md`, `scripts/write-requirement-corpus-expected.ts`.
+**Shared, new:** `fixtures/requirement-check-conformance/` (a `README.md` and the 42 cases of Table J), `fixtures/requirement-test-identity-conformance/` (a `README.md` and 24 cases), `spec/decisions/ADR-0057-requirement-checks-and-tests-in-every-port.md`, `scripts/write-requirement-corpus-expected.ts`.
 
 **Shared, modified:** `fixtures/generator-registry-conformance/registry.json` (the `requirement-tests` entry's `ports`, one port per generator task).
 
@@ -456,7 +478,7 @@ export interface RequirementScan {
 }
 ```
 
-- [ ] **Step 1: Write the ADR** in Nygard format. Context: the decision recorded only in `docs/CONFORMANCE.md` "Split coverage" ("Checks — TypeScript only, by decision … one implementation of a build-time gate rather than five") and why it was made. Decision: the owner's ruling that every language runs the requirement checks and scaffolds tests from requirements; the gate is implemented per port and held to the TypeScript reference by `requirement-check-conformance`; the generator is implemented per port and held by `requirement-test-identity-conformance`; the witness model replaces the three-way merge outside TypeScript; `verify` still never reads test results. Consequences: a change to a gate code, a message, the identity or the digest is now a five-port change with a corpus edit; the analogy with ADR-0015 no longer applies to requirements and ADR-0015 itself is unchanged; the authoring lint stays TypeScript-only until ruled on (open question 1).
+- [ ] **Step 1: Write the ADR** in Nygard format. Context: the decision recorded only in `docs/CONFORMANCE.md` "Split coverage" ("Checks — TypeScript only, by decision … one implementation of a build-time gate rather than five") and why it was made. Decision: the owner's ruling that every language runs the requirement checks and scaffolds tests from requirements; the gate is implemented per port and held to the TypeScript reference by `requirement-check-conformance`; the generator is implemented per port and held by `requirement-test-identity-conformance`; the witness model replaces the three-way merge outside TypeScript; the filter that selects which requirements get a test offers the same two options in every port (a predicate over one shared requirement view, and the uncovered-warning switch); the generator, its renderer and the witness model are a **recommended approach, not a contract**: the generator is ejectable in every port through that port's existing eject mechanism, and an application may change or replace its copy freely, while the checks in `verify` stay stock because they are the shared contract; `verify` still never reads test results. Consequences: a change to a gate code, a message, the identity or the digest is now a five-port change with a corpus edit; the analogy with ADR-0015 no longer applies to requirements and ADR-0015 itself is unchanged; the seven authoring-lint advisories stay TypeScript-only in this slice, by the owner's ruling, and porting them is a follow-up slice.
 - [ ] **Step 2: Failing tests.** In `requirement-check.test.ts`: `requireImplementers raises nothing-implements to an error and keeps the code` (a live functional L4 with no links: default scan gives severity `warn`; `scanRequirements(root, { requireImplementers: true })` gives severity `error`, code `WARN_REQUIREMENT_NOTHING_IMPLEMENTS`, same path and message) and `requireImplementers changes no other diagnostic`. In `args-verify.test.ts`: `--require-implementers` parses to `requireImplementers: true`, default `false`. In `verify-requirements-e2e.test.ts`: the flag, and `META_REQUIRE_IMPLEMENTERS=1`, each turn a run with only that warning from exit 0 to exit 1.
 
 Run: `cd server/typescript/packages/cli && bun test test/unit/requirement-check.test.ts test/unit/args-verify.test.ts test/verify-requirements-e2e.test.ts`. Expected: the new tests FAIL.
@@ -550,7 +572,7 @@ test("witness keys follow Table F", () => {
 });
 ```
 
-Also: `the view carries the effective package`; `member grain yields one identity per distinct resolving reference`; `a requirement with no resolved target yields unit *` in both grains; `skip is derived from the status lists` (planned and retired skip, live and partial do not); `identities come back sorted by id`; `two addresses that mangle alike are reported as a collision`; `the digest ignores title, notes, disposition and trackedBy`; `the digest normalises CRLF`. In `requirement-tests-generator.test.ts`: `grain: "member"` emits one file per reference and the renderer receives `digest` and `witnessKey`. In `requirement-test-render.test.ts`: `the default output is byte-identical with the new args present` (compare with the existing expected text, unchanged).
+Also: `the view carries the effective package`; `member grain yields one identity per distinct resolving reference`; `a requirement with no resolved target yields unit *` in both grains; `skip is derived from the status lists` (planned and retired skip, live and partial do not); `identities come back sorted by id`; `a filter replaces the default and its view carries the effective package` (a predicate keeping only `package === "acme::shop"` over two packages); `two addresses that mangle alike are reported as a collision`; `the digest ignores title, notes, disposition and trackedBy`; `the digest normalises CRLF`. In `requirement-tests-generator.test.ts`: `grain: "member"` emits one file per reference and the renderer receives `digest` and `witnessKey`. In `requirement-test-render.test.ts`: `the default output is byte-identical with the new args present` (compare with the existing expected text, unchanged).
 
 Run: `cd server/typescript/packages/codegen-ts && bun test test/requirement-walk.test.ts test/requirement-tests-generator.test.ts test/requirement-test-render.test.ts`. Expected: the new tests FAIL.
 - [ ] **Step 2: Implement the digest and key.**
@@ -602,7 +624,7 @@ export function witnessKeyOf(qualifiedAddress: string, unit: string): string {
 ### Task 4: The requirement-test identity corpus and its TypeScript runner
 
 **Files:**
-- Create: `fixtures/requirement-test-identity-conformance/README.md` and the 16 case directories of Table J
+- Create: `fixtures/requirement-test-identity-conformance/README.md` and the 24 case directories of Table J
 - Create: `server/typescript/packages/codegen-ts/test/requirement-test-identity-conformance.test.ts`
 - Modify: `scripts/write-requirement-corpus-expected.ts` (the `identity` corpus)
 
@@ -610,11 +632,11 @@ export function witnessKeyOf(qualifiedAddress: string, unit: string): string {
 - Consumes: `requirementTestIdentities`, `witnessKeyCollisions` (Task 3).
 - Produces: the corpus Tasks 6, 8, 10 and 11 run.
 
-- [ ] **Step 1: Write the runner** on the pattern of Task 2's: load strict, assert no load error, compute `requirementTestIdentities(root, { grain })` and `witnessKeyCollisions(...)`, compare with `expected.tests` (both sorted by `id`) and `expected.collisions`. Include the README-equals-disk test.
-- [ ] **Step 2: Write the inputs** for each row of Table J. `concern-fanout` holds the worked example of Tables F and G exactly, so its expected digest is the pinned one.
+- [ ] **Step 1: Write the runner** on the pattern of Task 2's: load strict, assert no load error, compute `requirementTestIdentities(root, { grain, filter })` (the `filter` option is a name, mapped to a predicate by a table in the runner that holds exactly the seven rows of Table J; an unknown name fails the test) and `witnessKeyCollisions(...)`, compare with `expected.tests` (both sorted by `id`) and `expected.collisions`. Include the README-equals-disk test.
+- [ ] **Step 2: Write the inputs** for each row of Table J. `worked-example` holds the model of Tables F, G and H exactly, so its two expected digests are the pinned ones (`2714aa39…` and `4ddcd781…`). If the second does not come out as pinned, the input differs from the model the plan's author hashed: find the difference (level, statement or counterexample text) before touching Table H. Each `filter-*` case keeps a requirement the default filter would drop, or drops one it would keep, so a runner that ignores the option fails the case.
 - [ ] **Step 3: Write and review the expectations.** `bun scripts/write-requirement-corpus-expected.ts identity`, then check each file by hand: the unit set against Table F, each `witnessKey` by applying the mangle rule on paper, each `skip` against the status, and for `digest-claim-fields` that the digests differ and agree where the case says. Recompute one digest independently (`printf` the text of Table G into `sha256sum`) for `digest-multibyte-and-crlf`.
 - [ ] **Step 4: Write the README** (purpose, format, runner steps, case table, "Who asserts it").
-- [ ] **Step 5: Run.** `cd server/typescript/packages/codegen-ts && bun test test/requirement-test-identity-conformance.test.ts`. Expected: PASS, 17 tests.
+- [ ] **Step 5: Run.** `cd server/typescript/packages/codegen-ts && bun test test/requirement-test-identity-conformance.test.ts`. Expected: PASS, 25 tests.
 - [ ] **Step 6: Commit.** `git commit -m "test(conformance): requirement-test identity corpus, run by the TypeScript reference"`
 
 ---
@@ -697,6 +719,16 @@ class RequirementTestIdentity:
     skip: str | None          # None | "planned" | "retired"
     digest: str
 
+@dataclass(frozen=True)
+class RequirementView:          # what a filter receives; never the node
+    sub_type: str
+    level: int | None
+    status: str | None
+    path: str
+    package: str
+    implemented_by_types: tuple[str, ...]
+
+def default_requirement_test_filter(view: RequirementView) -> bool: ...
 def requirement_digest(node: MetaRequirement) -> str: ...
 def witness_key_of(qualified_address: str, unit: str) -> str: ...
 def requirement_test_identities(root, *, grain="concern", filter=None) -> list[RequirementTestIdentity]: ...
@@ -729,13 +761,15 @@ requirementTests:
   witnessModule: tests.requirement_witnesses
   grain: member
   renderer: codegen.requirement_renderer:render
+  filter: codegen.requirement_filter:include
+  warnUncovered: false
 ```
 
 - [ ] **Step 1: Read first.** `requirement-walk.ts`, `generators/requirement-tests.ts` and `templates/requirement-test.ts` (the escaping comments are the specification of Review Focus 1), then an existing Python generator factory and its registry entry, `eject.build_owned` (how a `module:symbol` is imported relative to the config), and `test_schema_and_loader_accept_EXACTLY_the_same_keys`. **UNVERIFIED:** how `metaobjects gen` reports or removes a generated file that is no longer emitted (`_diff_report`, `_is_ours_for` in `cli.py`), and whether a generator entry needs `source=` to appear in `eject`.
-- [ ] **Step 2: Failing identity runner,** parametrized over `fixtures/requirement-test-identity-conformance/`, comparing records as dicts with the corpus's field names (`witnessKey`, not `witness_key`). Run it. Expected: FAIL.
-- [ ] **Step 3: Implement `requirement_walk.py`** from Tables F and G. Digest lengths use `len(value.encode("utf-8"))`. Sort by `id` with plain string comparison. Run the identity runner. Expected: PASS for all 16 cases.
+- [ ] **Step 2: Failing identity runner,** parametrized over `fixtures/requirement-test-identity-conformance/`, comparing records as dicts with the corpus's field names (`witnessKey`, not `witness_key`). The runner maps the `filter` name of `options.json` to a predicate over `RequirementView` with a table of exactly the seven rows of Table J, and passes it as `filter=`. Run it. Expected: FAIL.
+- [ ] **Step 3: Implement `requirement_walk.py`** from Tables F and G. Digest lengths use `len(value.encode("utf-8"))`. Sort by `id` with plain string comparison. Run the identity runner. Expected: PASS for all 24 cases.
 - [ ] **Step 4: Failing generator tests** in `test_requirement_tests_generator.py`:
-  - `the worked example renders the reference file`: compare with the Python block of Table H, byte for byte.
+  - `the worked example renders the reference file`: generate from the identity corpus's `worked-example` input and compare with the Python block of Table H, byte for byte.
   - `one file per metamodel package`, `an unpackaged ledger writes test_root_requirements.py`.
   - `the output imports only importlib and pytest`: parse with `ast` and collect every `Import` and `ImportFrom`.
   - `the output parses under the Python 3.9 grammar`: `ast.parse(source, feature_version=(3, 9))`.
@@ -746,10 +780,10 @@ requirementTests:
   - `grain="member" emits one test per reference`.
   - `a renderer hook replaces one test and receives the digest`; `a hook returning None keeps the default`; `the hook's imports are merged, deduplicated and sorted`.
   - `a model with no requirement emits nothing and warns nothing`.
-  - `requirements the filter excludes produce one capped warning`.
+  - `requirements the filter excludes produce one capped warning`; `warn_uncovered=False` silences it; `a filter keeps an L3 requirement the default drops, and it renders with unit *`; `requirementTests.filter in the config is imported as module:symbol and applied`.
   - `stale file`: generate for two packages, remove one package's requirements, generate again, and assert what `gen` and `verify --codegen` report for the file that is no longer emitted. Write the assertion to match the port's existing behaviour for any generator and name that behaviour in the test title.
 - [ ] **Step 5: Implement the generator.** The factory returns a generator that reads `ctx.loaded_root`, returns `[]` when it is `None` or holds no requirement, refuses on a collision, groups identities by package and renders each file per Table H. The default renderer is a function with the hook's signature. Register it: name `requirement-tests`, tier `native`, layer `capability`, description equal to the manifest's `concept`.
-- [ ] **Step 6: Config.** Add `requirementTests` to `TOP_LEVEL_KEYS` and to the JSON Schema with its three string keys (`grain` an enum of `concern` and `member`), reject unknown keys, resolve `renderer` the way `providers` are resolved, and carry the block on `GeneratorBuildContext` so the registry factory builds `requirement_tests(...)` from it. With no block, the defaults apply.
+- [ ] **Step 6: Config.** Add `requirementTests` to `TOP_LEVEL_KEYS` and to the JSON Schema with its five keys (`witnessModule`, `renderer` and `filter` strings, `grain` an enum of `concern` and `member`, `warnUncovered` a boolean), reject unknown keys, resolve `renderer` and `filter` the way `providers` are resolved, and carry the block on `GeneratorBuildContext` so the registry factory builds `requirement_tests(...)` from it. With no block, the defaults apply.
 - [ ] **Step 7: Run** `uv run pytest tests/conformance/test_requirement_test_identity_conformance.py tests/conformance/test_generator_registry_conformance.py tests/codegen/test_requirement_tests_generator.py tests/codegen/test_codegen_compile_conformance.py -q` and the config-key parity test. Expected: PASS. The compile gate's model has no requirement, so its output set is unchanged.
 - [ ] **Step 8: Add the Python row** to the identity corpus README.
 - [ ] **Step 9: Commit.** `git commit -m "feat(python): requirement-tests generator emitting pytest with project-owned witnesses"`
@@ -804,7 +838,7 @@ Run: `mvn -q -f server/java/pom.xml -pl metadata test -Dtest=RequirementCheckCon
 ### Task 8: Java `requirement-tests` generator
 
 **Files:**
-- Create: `server/java/metadata/src/main/java/com/metaobjects/requirement/RequirementTestIdentities.java`
+- Create: `server/java/metadata/src/main/java/com/metaobjects/requirement/RequirementTestIdentities.java`, `RequirementTestFilter.java`
 - Create: `server/java/codegen-base/src/main/java/com/metaobjects/generator/requirement/JUnitRequirementTestsGenerator.java`, `RequirementTestRenderer.java`, `RequirementTestArgs.java`, `RenderedTest.java`
 - Modify: `codegen-spring/src/main/java/com/metaobjects/generator/GeneratorRegistry.java`, `codegen-base/pom.xml` (JUnit Jupiter API, test scope, for compiling generated output in the test), `fixtures/generator-registry-conformance/registry.json` (add `"java"`)
 - Test: `metadata/src/test/java/com/metaobjects/conformance/RequirementTestIdentityConformanceTest.java`, `codegen-base/src/test/java/com/metaobjects/generator/requirement/JUnitRequirementTestsGeneratorTest.java`
@@ -820,8 +854,18 @@ public final class RequirementTestIdentities {
                            String status, String skip, String digest) {}
     public static String digest(MetaRequirement node);
     public static String witnessKeyOf(String qualifiedAddress, String unit);
-    public static List<Identity> identities(MetaRoot root, Grain grain);
+    /** What a filter receives; never the node. level and status may be null. */
+    public record View(String subType, Integer level, String status, String path, String pkg,
+                       List<String> implementedByTypes) {}
+    public static boolean defaultFilter(View view);
+    /** A null filter means the default. */
+    public static List<Identity> identities(MetaRoot root, Grain grain, RequirementTestFilter filter);
     public static List<String[]> witnessKeyCollisions(List<Identity> tests);
+}
+
+/** In `metadata`, beside the identities, because the identity function applies it. */
+public interface RequirementTestFilter {
+    boolean include(RequirementTestIdentities.View view);
 }
 
 public interface RequirementTestRenderer {
@@ -830,11 +874,11 @@ public interface RequirementTestRenderer {
 }
 ```
 
-Generator args: `testPackage` (required), `witnessClass` (required, a fully-qualified class name), `grain` (`concern` or `member`), `renderer` (optional class name).
+Generator args: `testPackage` (required), `witnessClass` (required, a fully-qualified class name), `grain` (`concern` or `member`), `renderer` (optional class name), `filter` (optional class name of a `RequirementTestFilter`), `warnUncovered` (`true` by default).
 
 - [ ] **Step 1: Read first.** `GeneratorBase.java` (`getArg`, the output-directory args), one existing `codegen-base` generator that writes Java source and its test, `CodegenCompileConformanceTest.java` in `codegen-spring` (how generated Java is compiled in a test), and how `MetaDataGeneratorMojo` instantiates a generator class by name. **UNVERIFIED:** whether `codegen-base` or the registry module should own the generator given `GeneratorRegistry` lives in `codegen-spring`; how a renderer class named in an arg can be loaded with the same class loader as the generator; how the JUnit Jupiter version is managed in `server/java/pom.xml` (it is used today only by the Kotlin and integration modules).
-- [ ] **Step 2: Failing identity runner,** then implement `RequirementTestIdentities` from Tables F and G (`value.getBytes(StandardCharsets.UTF_8).length`, `MessageDigest` SHA-256, sort with `String.compareTo`). Run: `mvn -q -f server/java/pom.xml -pl metadata test -Dtest=RequirementTestIdentityConformanceTest`. Expected: FAIL, then PASS for all 16 cases.
-- [ ] **Step 3: Failing generator tests:** the worked example emits `Requirements_acme_shop_Witnesses.java` and `Requirements_acme_shop_Test.java` in `testPackage`; the interface has one default member per non-skipped test and none for a skipped one; a skipped test carries `@Disabled` with the reason of Table H; the output imports only `org.junit.jupiter.api.*`; **the output compiles** with `javax.tools` together with a hand-written witness class, and invoking the test method on the compiled class throws `AssertionError` whose message holds `unimplemented requirement:` and the counterexample when the witness class does not override it, and returns normally when it does; prose with `"`, `\`, a newline and `*/` still compiles; a collision throws `GeneratorException` naming `ERR_REQUIREMENT_WITNESS_KEY_COLLISION` and both ids; `grain=member`; a renderer class replaces one test and receives the digest; a missing `witnessClass` arg is a clear `GeneratorException`; a model with no requirement writes nothing; `stale file` as in Task 6.
+- [ ] **Step 2: Failing identity runner,** then implement `RequirementTestIdentities` from Tables F and G (`value.getBytes(StandardCharsets.UTF_8).length`, `MessageDigest` SHA-256, sort with `String.compareTo`). The runner maps the `filter` name of `options.json` to a `RequirementTestFilter` with a table of exactly the seven rows of Table J. Run: `mvn -q -f server/java/pom.xml -pl metadata test -Dtest=RequirementTestIdentityConformanceTest`. Expected: FAIL, then PASS for all 24 cases.
+- [ ] **Step 3: Failing generator tests:** the worked example (the identity corpus's `worked-example` input) emits `Requirements_acme_shop_Witnesses.java` and `Requirements_acme_shop_Test.java` in `testPackage`; the interface has one default member per non-skipped test and none for a skipped one; a skipped test carries `@Disabled` with the reason of Table H; the output imports only `org.junit.jupiter.api.*`; **the output compiles** with `javax.tools` together with a hand-written witness class, and invoking the test method on the compiled class throws `AssertionError` whose message holds `unimplemented requirement:` and the counterexample when the witness class does not override it, and returns normally when it does; prose with `"`, `\`, a newline and `*/` still compiles; a collision throws `GeneratorException` naming `ERR_REQUIREMENT_WITNESS_KEY_COLLISION` and both ids; `grain=member`; a renderer class replaces one test and receives the digest; a `filter` class keeps an L3 requirement the default drops and it renders with unit `*`; the excluded requirements produce one capped warning and `warnUncovered=false` silences it; a `filter` class that cannot be loaded is a clear `GeneratorException`; a missing `witnessClass` arg is a clear `GeneratorException`; a model with no requirement writes nothing; `stale file` as in Task 6.
 - [ ] **Step 4: Implement** per Table H. The test class holds `private final Requirements_<pkgKey>_Witnesses witnesses = new <witnessClass>();`. Register `requirement-tests` with `Tier.NATIVE` and `Layer.CAPABILITY` (the enum's capability constant; read its name).
 - [ ] **Step 5: Run** `mvn -q -f server/java/pom.xml -pl metadata,codegen-base,codegen-spring -am test -Dtest='RequirementTestIdentityConformanceTest,JUnitRequirementTestsGeneratorTest,GeneratorRegistryConformanceTest,CodegenCompileConformanceTest'`. Expected: PASS.
 - [ ] **Step 6: Add the Java row** to the identity corpus README.
@@ -873,11 +917,11 @@ Generator args: `testPackage` (required), `witnessClass` (required, a fully-qual
 
 **Interfaces:**
 - Consumes: Task 9's walk and resolver.
-- Produces: `RequirementTestIdentities.Digest`, `WitnessKeyOf`, `Identities(root, grain)`, `WitnessKeyCollisions`; `record RequirementTestIdentity(string Package, string Path, string Unit, string Id, string WitnessKey, string? Status, string? Skip, string Digest)`; `interface IRequirementTestRenderer { RenderedTest? Render(RequirementTestArgs args); }`.
+- Produces: `RequirementTestIdentities.Digest`, `WitnessKeyOf`, `DefaultFilter`, `Identities(root, grain, filter: null)`, `WitnessKeyCollisions`; `record RequirementView(string SubType, int? Level, string? Status, string Path, string Package, IReadOnlyList<string> ImplementedByTypes)`; `interface IRequirementTestFilter { bool Include(RequirementView view); }`; `record RequirementTestIdentity(string Package, string Path, string Unit, string Id, string WitnessKey, string? Status, string? Skip, string Digest)`; `interface IRequirementTestRenderer { RenderedTest? Render(RequirementTestArgs args); }`.
 
-- [ ] **Step 1: Read first.** `Generator.cs` (`IGenerator`, `GenContext`), an existing generator and its registry entry, `CodegenCompileConformanceTests.cs` (the Roslyn compile helper), `MetaObjects.Cli/GenCommand.cs` and `OwnedCopy.cs`. **UNVERIFIED:** how a per-generator option (`testNamespace`, `witnessClass`, `grain`, a renderer) reaches a C# generator from the CLI or a config file; decide from the code, keep the four names of Table I, and state the surface in the commit. **UNVERIFIED:** that `Xunit.Sdk.XunitException(string)` is usable from generated code under xUnit 2.9.2; if not, throw `System.InvalidOperationException` and say so in Table H when updating the docs.
-- [ ] **Step 2: Failing identity runner,** then implement `RequirementTestIdentities` (`Encoding.UTF8.GetByteCount`, `SHA256.HashData`, lower-case hex, `StringComparer.Ordinal`). Expected: PASS for all 16 cases.
-- [ ] **Step 3: Failing generator tests,** the C# equivalents of Task 8 Step 3: the two files per package; interface members only for non-skipped tests; `[Fact(Skip = "…")]`; only `Xunit` imported; **the output compiles** with Roslyn beside a hand-written witness class, and invoking the test method throws with the unimplemented message when the member is not implemented and returns when it is; the escaping case (`"`, `\`, a newline, `*/`); the collision refusal; member grain; the renderer hook; no requirements writes nothing; `stale file`.
+- [ ] **Step 1: Read first.** `Generator.cs` (`IGenerator`, `GenContext`), an existing generator and its registry entry, `CodegenCompileConformanceTests.cs` (the Roslyn compile helper), `MetaObjects.Cli/GenCommand.cs` and `OwnedCopy.cs`. **UNVERIFIED:** how a per-generator option (`testNamespace`, `witnessClass`, `grain`, a renderer, a filter, `warnUncovered`) reaches a C# generator from the CLI or a config file; decide from the code, keep the six names of Table I, and state the surface in the commit. **UNVERIFIED:** that `Xunit.Sdk.XunitException(string)` is usable from generated code under xUnit 2.9.2; if not, throw `System.InvalidOperationException` and say so in Table H when updating the docs.
+- [ ] **Step 2: Failing identity runner,** the runner mapping the `filter` name of `options.json` to an `IRequirementTestFilter` with a table of exactly the seven rows of Table J; then implement `RequirementTestIdentities` (`Encoding.UTF8.GetByteCount`, `SHA256.HashData`, lower-case hex, `StringComparer.Ordinal`). Expected: PASS for all 24 cases.
+- [ ] **Step 3: Failing generator tests,** the C# equivalents of Task 8 Step 3: the two files per package; interface members only for non-skipped tests; `[Fact(Skip = "…")]`; only `Xunit` imported; **the output compiles** with Roslyn beside a hand-written witness class, and invoking the test method throws with the unimplemented message when the member is not implemented and returns when it is; the escaping case (`"`, `\`, a newline, `*/`); the collision refusal; member grain; the renderer hook; a filter keeps an L3 requirement the default drops; the capped uncovered warning and its switch; no requirements writes nothing; `stale file`.
 - [ ] **Step 4: Implement** per Table H and register `requirement-tests` (`Tier` native, `Layer` capability).
 - [ ] **Step 5: Run** `dotnet test server/csharp --filter "RequirementTestIdentityConformance|RequirementTestsGenerator|GeneratorRegistryConformance|CodegenCompileConformance"`. Expected: PASS.
 - [ ] **Step 6: Add the C# row** to the identity corpus README.
@@ -893,10 +937,10 @@ Generator args: `testPackage` (required), `witnessClass` (required, a fully-qual
 - Test: `codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/KotlinRequirementTestsGeneratorTest.kt`
 
 **Interfaces:**
-- Consumes: `RequirementTestIdentities`, `RequirementTestRenderer`, `RequirementTestArgs`, `RenderedTest` (Task 8). Same four generator args as Java.
+- Consumes: `RequirementTestIdentities`, `RequirementTestRenderer`, `RequirementTestArgs`, `RenderedTest` (Task 8). Same six generator args as Java, the `filter` arg naming a `RequirementTestFilter` class.
 
 - [ ] **Step 1: Read first.** `KotlinNamesGenerator.kt` (a small generator and how it writes), `KotlinGenUtil.kt` (string escaping helpers, including `$`), `CodegenCompileConformanceTest.kt` and `KotlinSpringControllerGeneratorTest.kt` (kotlin-compile-testing). **UNVERIFIED:** that `codegen-kotlin` can see `codegen-base`'s `generator.requirement` types.
-- [ ] **Step 2: Failing tests:** the worked example emits `Requirements_acme_shop_Witnesses.kt` (an interface whose members have default bodies) and `Requirements_acme_shop_Test.kt`; the emitted test function names equal the `witnessKey` values of the identity corpus's `concern-fanout` case (this is how Kotlin asserts the identity contract; the identity function itself is the JVM one Task 8 gates); skipped tests carry `@Disabled`; **the output compiles** with a hand-written witness class and behaves as in Task 8 when invoked; a counterexample containing `$name`, `"`, `\` and a newline compiles and survives into the message; the collision refusal; member grain; the renderer hook; no requirements writes nothing.
+- [ ] **Step 2: Failing tests:** the worked example emits `Requirements_acme_shop_Witnesses.kt` (an interface whose members have default bodies) and `Requirements_acme_shop_Test.kt`; the emitted test function names equal the `witnessKey` values of the identity corpus's `worked-example` and `concern-fanout` cases (this is how Kotlin asserts the identity contract; the identity function itself is the JVM one Task 8 gates); skipped tests carry `@Disabled`; **the output compiles** with a hand-written witness class and behaves as in Task 8 when invoked; a counterexample containing `$name`, `"`, `\` and a newline compiles and survives into the message; the collision refusal; member grain; the renderer hook; a `filter` class keeps an L3 requirement the default drops; the capped uncovered warning and its switch; no requirements writes nothing.
 - [ ] **Step 3: Implement** per Table H and register `requirement-tests`.
 - [ ] **Step 4: Run** the `codegen-kotlin` unit suite for the new test, `GeneratorRegistryConformanceTest`, `CodegenCompileConformanceTest`, and the Exposed 1.x check module (`codegen-kotlin-exposed1x-check`) since it re-runs the Kotlin generators. Expected: PASS.
 - [ ] **Step 5: Add the Kotlin row** to the identity corpus README ("identity function inherits via Java; emitted names asserted by `KotlinRequirementTestsGeneratorTest`").
