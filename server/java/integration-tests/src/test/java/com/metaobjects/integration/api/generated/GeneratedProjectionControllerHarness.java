@@ -36,8 +36,8 @@ import java.util.stream.Stream;
 /**
  * F22 — host the GENERATED Java Spring {@code @RestController} of every view-only
  * projection in the {@code projection/} corpus ({@code InvoiceSummary}, {@code InvoiceLedger},
- * {@code InvoiceStub}) over real HTTP (one embedded Tomcat, {@link TomcatHost}) and drive the
- * api-contract scenarios against them. Sibling of {@link GeneratedJsonbControllerHarness}.
+ * {@code InvoiceRegister}, {@code InvoiceStub}) over real HTTP (one embedded Tomcat,
+ * {@link TomcatHost}) and drive the api-contract scenarios against them. Sibling of {@link GeneratedJsonbControllerHarness}.
  *
  * <p>The artifacts under test are the GENERATED {@code <Projection>Controller}s — read
  * routes plus a 405 refusal on every write verb — together with the read-only
@@ -71,6 +71,10 @@ public final class GeneratedProjectionControllerHarness implements AutoCloseable
         SPECS.put("InvoiceLedger", new Spec(columns(
             "number", "id", "reference", "reference", "discount", "discount", "weight", "weight"),
             "number", "Long"));
+        // Keyed on `regNo`, the identity omitting `@fields` (derived); the view has NO `id` column.
+        SPECS.put("InvoiceRegister", new Spec(columns(
+            "regNo", "id", "reference", "reference"),
+            "regNo", "Long"));
         // No declared identity; the view carries an `id` column all the same.
         SPECS.put("InvoiceStub", new Spec(columns("id", "id", "reference", "reference"), null, null));
     }

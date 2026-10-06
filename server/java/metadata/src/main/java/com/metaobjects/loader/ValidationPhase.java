@@ -4715,26 +4715,10 @@ public final class ValidationPhase {
                 }
                 MetaData extended = identity.getSuperData();
                 if (!(extended instanceof MetaIdentity)) continue; // unresolved/mismatch reported elsewhere
-                MetaData entityNode = extended.getParent();
-                if (!(entityNode instanceof MetaObject)) continue;
-                MetaObject entity = (MetaObject) entityNode;
+                if (!(extended.getParent() instanceof MetaObject)) continue;
 
-                java.util.List<String> extendedFields = ((MetaIdentity) extended).getFields();
-                java.util.List<String> computed = new java.util.ArrayList<>();
-                boolean missing = false;
-                for (String fn : extendedFields) {
-                    MetaField<?> entityField = findFieldByName(entity, fn);
-                    if (entityField == null) { missing = true; break; }
-                    MetaField<?> local = null;
-                    for (MetaData oc : obj.getChildren(MetaData.class, false)) {
-                        if (oc instanceof MetaField && extendsChainReaches(oc, entityField)) {
-                            local = (MetaField<?>) oc; break;
-                        }
-                    }
-                    if (local == null) { missing = true; break; }
-                    computed.add(shortNameOf(local));
-                }
-                if (missing) {
+                java.util.List<String> computed = computePassthroughKey(obj, identity);
+                if (computed == null) {
                     throw new MetaDataException(
                         "ERR_IDENTITY_KEY_MISMATCH"
                             + ": identity '" + identity.getName() + "' on projection '" + obj.getName()
@@ -4754,6 +4738,41 @@ public final class ValidationPhase {
                 }
             }
         }
+    }
+
+    /**
+     * The key a projection's pass-through identity addresses a row by: for each field of
+     * the extended entity identity, in its order, the name of the projection field that
+     * {@code extends} that entity field. Derived on read and never written back into the
+     * tree, so a key renamed on the projection ({@code regNo} extending {@code Invoice.id})
+     * is found even when the identity omits {@code @fields} (the form the loader
+     * recommends). An explicit {@code @fields} must equal it, which
+     * {@link #validateIdentityPassthrough} enforces.
+     *
+     * <p>Returns {@code null} when the identity is not a resolvable pass-through: it has no
+     * extended entity identity, or some extended field has no pass-through field here.</p>
+     */
+    public static java.util.List<String> computePassthroughKey(MetaObject projection, MetaIdentity identity) {
+        MetaData extended = identity.getSuperData();
+        if (!(extended instanceof MetaIdentity)) return null;
+        MetaData entityNode = extended.getParent();
+        if (!(entityNode instanceof MetaObject)) return null;
+        MetaObject entity = (MetaObject) entityNode;
+
+        java.util.List<String> computed = new java.util.ArrayList<>();
+        for (String fn : ((MetaIdentity) extended).getFields()) {
+            MetaField<?> entityField = findFieldByName(entity, fn);
+            if (entityField == null) return null;
+            MetaField<?> local = null;
+            for (MetaData oc : projection.getChildren(MetaData.class, false)) {
+                if (oc instanceof MetaField && extendsChainReaches(oc, entityField)) {
+                    local = (MetaField<?>) oc; break;
+                }
+            }
+            if (local == null) return null;
+            computed.add(shortNameOf(local));
+        }
+        return computed;
     }
 
     private static MetaField<?> findFieldByName(MetaObject entity, String name) {

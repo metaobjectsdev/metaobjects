@@ -372,7 +372,7 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         val primary = entity.getIdentities(true)
             .filterIsInstance<MetaIdentity>()
             .firstOrNull { it.isPrimary } ?: return LONG
-        val pkFieldName = primary.fields.firstOrNull() ?: return LONG
+        val pkFieldName = KotlinGenUtil.keyFields(entity, primary).firstOrNull() ?: return LONG
         val pkField = entity.metaFields.firstOrNull { it.name == pkFieldName } ?: return LONG
         return runCatching { KotlinTypeMapper.kotlinTypeName(pkField) }.getOrDefault(LONG)
     }

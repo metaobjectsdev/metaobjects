@@ -3,6 +3,7 @@
   "units": {
     "InvoiceSummary": ["GET invoice_summaries", "GET invoice_summaries/{id}"],
     "InvoiceLedger": ["GET invoice_ledgers", "GET invoice_ledgers/{id}"],
+    "InvoiceRegister": ["GET invoice_registers", "GET invoice_registers/{id}"],
     "InvoiceStub": ["GET invoice_stubs"]
   }
 }

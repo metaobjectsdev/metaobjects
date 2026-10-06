@@ -15,11 +15,23 @@ namespace MetaObjects.Meta;
 // (MetaSource / MetaRelationship) were reconciled to.
 public class MetaIdentity(TypeId typeId, string name) : MetaData(typeId, name)
 {
-    /// <summary>The field names that form this identity key.</summary>
+    /// <summary>
+    /// The field names that form this identity key. A projection's identity passes the base
+    /// entity's key through, and an <c>@fields</c> it omits is DERIVED: the local fields that
+    /// extend the base key's fields, computed by the loader's own pass-through resolution and
+    /// never written back into the tree. Reading the inherited <c>@fields</c> there would give
+    /// the BASE field names, so a key renamed on the projection (<c>regNo</c> extending
+    /// <c>Invoice.id</c>) would name a field the projection does not have. An explicit
+    /// <c>@fields</c> must equal the computed key (the loader rejects one that disagrees), so
+    /// that form is unchanged.
+    /// </summary>
     public IReadOnlyList<string> Fields
     {
         get
         {
+            if (Parent is { SubType: OBJECT_SUBTYPE_PROJECTION } &&
+                MetaObjects.Loader.ValidationPasses.ResolveIdentityPassthrough(this) is { Missing.Count: 0 } resolved)
+                return resolved.ComputedFields;
             var f = Attr(IDENTITY_ATTR_FIELDS);
             return f is IReadOnlyList<string> list ? list : [];
         }

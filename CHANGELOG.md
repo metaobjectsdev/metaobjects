@@ -348,6 +348,23 @@ until you regenerate.
 
 ### Fixed
 
+- **TypeScript, Kotlin, C#: a read-only projection whose key is renamed and whose identity omits
+  `@fields` now serves its item route.** The shape: a view-only `object.projection` that passes
+  the base entity's key through on a field with another name (`regNo` extending `Invoice.id`) and
+  declares `identity.primary extends Invoice.pk` with no `@fields`, the derived form the loader
+  recommends. The loader computes the key from the pass-through field and never writes it back,
+  but these three ports read the base identity's inherited `@fields` (`id`), which names no field
+  of the projection. TypeScript mounted no `GET /{id}` route and no by-id query, Kotlin emitted a
+  table and controller that did not compile, and C# built a model with no key for the
+  projection, so every request of the application answered `500`. Each now takes the key from
+  the loader's own derivation (TypeScript `getPkFields`, Kotlin `KotlinGenUtil.keyFields`, C#
+  `MetaIdentity.Fields`), so all five ports serve `GET /{id}` on the renamed field, answer an
+  unknown key with the `404 {"error": "not_found"}` envelope and refuse the item write verbs
+  with the `405` envelope. Java and Python already did. A projection with an explicit `@fields`
+  (which must equal the computed key) or a key that keeps its base name generates the same
+  bytes as before. Gated in all five ports by `projection/keyed-by-derived-identity.yaml`.
+  The Java loader's derivation is now a public `ValidationPhase.computePassthroughKey` that its
+  own validation pass calls.
 - **Python, C#, Java: the generic `view.*` controls now load.** A document carrying
   `view.text`, `view.dropdown` or any of the other web-presentation controls (`textarea`, `date`,
   `month`, `hotlink`, `radio`, `checkbox`, `number`, `password`, `hidden`, `web`, `image`)

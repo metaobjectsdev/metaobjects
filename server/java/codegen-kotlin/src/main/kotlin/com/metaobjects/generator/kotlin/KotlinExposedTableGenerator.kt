@@ -787,7 +787,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // (it's part of the primary key). autoIncrement only applies to the
         // single-field case; a composite tuple can't be auto-generated, so the
         // generator falls back to the LLM/DB-side default.
-        val primaryFieldNames = primary?.fields.orEmpty()
+        val primaryFieldNames = primary?.let { KotlinGenUtil.keyFields(entity, it) }.orEmpty()
         val primaryFieldSet = primaryFieldNames.toSet()
         val singlePrimaryFieldName = primaryFieldNames.singleOrNull()
         // Views inherit PKs from underlying tables — never emit autoIncrement on a

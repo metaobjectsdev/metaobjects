@@ -196,7 +196,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val primary = entity.getIdentities(true)
             .filterIsInstance<MetaIdentity>()
             .firstOrNull { it.isPrimary }
-        val pkFieldName = primary?.fields?.firstOrNull() ?: DEFAULT_PK_FIELD
+        val pkFieldName = primary?.let { KotlinGenUtil.keyFields(entity, it).firstOrNull() } ?: DEFAULT_PK_FIELD
         val pkParamType = primaryKeyParamType(entity, pkFieldName)
 
         // FR-035: the PATCH-settable columns = scalar + value-object fields minus the PK. Program D:
@@ -1876,7 +1876,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             .filterIsInstance<MetaIdentity>()
             .firstOrNull { it.isPrimary }
         val hasItem = RestSurfaceGate.hasItemRoute(entity)
-        val pkFieldName = primary?.fields?.firstOrNull() ?: DEFAULT_PK_FIELD
+        val pkFieldName = primary?.let { KotlinGenUtil.keyFields(entity, it).firstOrNull() } ?: DEFAULT_PK_FIELD
         val pkParamType = primaryKeyParamType(entity, pkFieldName)
 
         val sortFields = entity.metaFields

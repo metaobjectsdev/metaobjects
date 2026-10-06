@@ -3,7 +3,7 @@
 Peer of ``generated_router_app.py``, for the view-only projection corpus
 (``fixtures/api-contract-conformance/projection/``). Runs the REAL generators
 (``render_router`` + ``render_filter_allowlist``) for each corpus projection
-(``InvoiceSummary``, ``InvoiceLedger``, ``InvoiceStub``), writes the emitted modules
+(``InvoiceSummary``, ``InvoiceLedger``, ``InvoiceRegister``, ``InvoiceStub``), writes the emitted modules
 to a temp package, imports the generated routers UNMODIFIED, and mounts them.
 
 The generated router is the artifact under test, and for this corpus that is
@@ -51,6 +51,8 @@ PROJECTIONS: dict[str, tuple[dict[str, str], str | None]] = {
         {"number": "id", "reference": "reference", "discount": "discount", "weight": "weight"},
         "number",
     ),
+    # Keyed on `regNo`, the identity omitting `@fields` (derived); the view has NO `id` column.
+    "InvoiceRegister": ({"regNo": "id", "reference": "reference"}, "regNo"),
     # No declared identity; the view carries an `id` column all the same.
     "InvoiceStub": ({"id": "id", "reference": "reference"}, None),
 }

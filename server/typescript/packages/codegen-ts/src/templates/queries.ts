@@ -2,8 +2,13 @@
 // Each returns a ts-poet Code block; composed into a file by queries-file.ts.
 
 import { code, imp, type Code } from "ts-poet";
-import { type MetaObject, stripPackage } from "@metaobjectsdev/metadata";
-import { IDENTITY_ATTR_FIELDS } from "@metaobjectsdev/metadata";
+import {
+  type MetaObject,
+  stripPackage,
+  IDENTITY_ATTR_FIELDS,
+  OBJECT_SUBTYPE_PROJECTION,
+  computedIdentityFields,
+} from "@metaobjectsdev/metadata";
 import type { RenderContext } from "../render-context.js";
 import { supportsReturning } from "../dialect-module.js";
 import {
@@ -46,7 +51,18 @@ export function getPkInfo(entity: MetaObject, ctx: RenderContext): { fieldName: 
  *  create re-read keys on ALL of them so a composite PK re-reads the exact written row
  *  (via the insert's returning() values), not any row sharing the first key component. */
 export function getPkFields(entity: MetaObject): string[] {
-  const rawFields = entity.primaryIdentity()?.attr(IDENTITY_ATTR_FIELDS);
+  const identity = entity.primaryIdentity();
+  // A projection's identity passes the base entity's key through, and an `@fields` it omits
+  // is DERIVED: the local fields that extend the base key's fields, which the loader
+  // computes and never writes back. Reading the effective `@fields` instead yields the BASE
+  // field names, so a key renamed in the projection (`regNo` extending `Invoice.id`) named
+  // a field the projection does not have. An explicit `@fields` equals the computed key
+  // (the loader rejects one that disagrees), so the explicit form is unchanged.
+  if (identity !== undefined && entity.subType === OBJECT_SUBTYPE_PROJECTION) {
+    const computed = computedIdentityFields(identity);
+    if (computed !== undefined) return computed;
+  }
+  const rawFields = identity?.attr(IDENTITY_ATTR_FIELDS);
   if (Array.isArray(rawFields)) return rawFields.filter((f): f is string => typeof f === "string");
   return typeof rawFields === "string" ? [rawFields] : [];
 }

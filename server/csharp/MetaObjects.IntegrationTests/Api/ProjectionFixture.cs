@@ -41,6 +41,11 @@ internal static class ProjectionFixture
                  i."discount"  AS "discount",
                  i."weight"    AS "weight"
           FROM "invoices" i;
+        -- InvoiceRegister: key on `regNo`, identity omits @fields; the view has NO id column.
+        CREATE VIEW "v_invoice_register" AS
+          SELECT i."id"        AS "regNo",
+                 i."reference" AS "reference"
+          FROM "invoices" i;
         -- InvoiceStub: no declared identity; the view carries an id column all the same.
         CREATE VIEW "v_invoice_stub" AS
           SELECT i."id"        AS "id",
