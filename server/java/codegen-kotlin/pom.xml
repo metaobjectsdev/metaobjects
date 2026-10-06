@@ -243,6 +243,7 @@
                     <include>KotlinSpringConfigGenerator.kt</include>
                     <include>KotlinStoredProcGenerator.kt</include>
                     <include>KotlinValidatorGenerator.kt</include>
+                    <include>KotlinRequirementTestsGenerator.kt</include>
                   </includes>
                 </resource>
               </resources>
