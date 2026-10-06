@@ -121,7 +121,7 @@ Source: `server/typescript/packages/cli/src/lib/requirement-check.ts`. Eleven co
 | 11 | `WARN_REQUIREMENT_DEFERRED_UNTRACKED` | warn | `disposition` is `deferred` and `trackedBy` is empty | `is deferred but names no @trackedBy issue. Deferring without a ticket is how a known gap becomes an unknown one — nothing will raise it again.` |
 | 12 | `WARN_REQUIREMENT_OBJECT_UNCLAIMED` | warn (the `OBJECT_COVERAGE_SEVERITY` constant; each port keeps a named constant) | coverage is measured (Table D) and a coverable entity's resolution key is not in the claim set. **No path.** | `no requirement claims '<entity resolution key>'. Add it to an L4 requirement's 'implementedBy'.` |
 
-Reachability, from `spec/metamodel/requirement.json`: `level` is required on functional and is an integer with no range rule, so row 1 is reached with an out-of-range integer and never with an absent level on a functional node. `status` is required on both subtypes. The loader refuses `implementedBy` on `retired`.
+Reachability, from `spec/metamodel/requirement.json`: `level` is required on functional and is an integer with no range rule, so row 1 is reached with an out-of-range integer and never with an absent level on a functional node. (Found while building the corpus: the TypeScript loader also lets a non-integer such as `4.5` through to row 1. The corpus does not pin that, because the other loaders are not known to agree.) `status` is required on both subtypes. The loader refuses `implementedBy` on `retired`.
 
 A printed line is `  <code> [<path>]: <message>`, or `  <code>: <message>` when there is no path (`formatDiagnostic`, `cli/src/commands/verify.ts:1899`).
 
@@ -303,7 +303,7 @@ def test_req_acme_shop_Orders_Refunded():
 
 | Seam | TypeScript | Python | Java and Kotlin | C# |
 |---|---|---|---|---|
-| Grain (`concern` default, or `member`) | `requirementTests({ grain })` | `requirement_tests(grain=…)`; config `requirementTests.grain` | generator arg `grain` | **UNVERIFIED** option surface; a property on the generator |
+| Grain (`concern` default, or `member`; any other value is refused with a clear error, never run as a hybrid) | `requirementTests({ grain })` | `requirement_tests(grain=…)`; config `requirementTests.grain` | generator arg `grain` | **UNVERIFIED** option surface; a property on the generator |
 | Renderer hook. Receives the Table F record plus `statement`, `counterexample`, `targets` (`ref`, `concern`), `disposition`, `trackedBy`. Its result replaces the default text of that one test. | existing `renderers` and `resolveRenderer`; `RequirementTestArgs` gains `package`, `unit`, `id`, `witnessKey`, `skip`, `digest` | `requirement_tests(renderer=…)`; config `requirementTests.renderer` as `module:symbol`. Returns `RenderedTest(imports, source)` or `None` for the default | generator arg `renderer`: the class name of a `RequirementTestRenderer` | as Java, an `IRequirementTestRenderer` |
 | Strict switch: row 10 of Table C becomes severity `error`, code unchanged | `meta verify --require-implementers`, or `META_REQUIRE_IMPLEMENTERS=1` | `metaobjects verify --require-implementers`, same variable | `-Dmeta.verify.requireImplementers=true`, same variable | `dotnet meta verify --require-implementers`, same variable |
 | Witness location | not applicable | `requirement_tests(witness_module=…)`; config `requirementTests.witnessModule` | generator args `testPackage` and `witnessClass` | the same two, C# names |
@@ -316,9 +316,9 @@ The flag is not called `--strict`: `cli/src/lib/args.ts:357` records why a `--st
 
 ### Table J — the two corpora
 
-Both follow the field-lint corpus shape: each case is a directory with `input/` (one or more `.json` or `.yaml` metadata documents), an optional `options.json`, and `expected.json`. A runner (1) loads `input/` with the port's loader, **strict**, with the libraries `options.json` names, and asserts no load error; (2) computes; (3) compares.
+Both follow the field-lint corpus shape: each case is a directory with `input/` (one or more `.json` or `.yaml` metadata documents), an optional `options.json`, and `expected.json`. A runner (1) loads the files of `input/` **in file-name order** with the port's loader, **strict**, with the libraries `options.json` names, and asserts no load error (the order is part of the contract: one did-you-mean hint and the file default package of a later document depend on it); (2) computes; (3) compares.
 
-**`fixtures/requirement-check-conformance/`**. `options.json` keys: `libraries` (string array), `requireImplementers` (boolean). `expected.json`:
+**`fixtures/requirement-check-conformance/`**. `options.json` keys: `libraries` (string array), `requireImplementers` (boolean). A runner passes no scope predicate and does not force the coverage answer: both are left to the port's defaults, or `coverage-library-plus-project` is reachable with the wrong total. `expected.json`:
 
 ```json
 {
@@ -353,6 +353,7 @@ Both follow the field-lint corpus shape: each case is a directory with `input/` 
 | `disposition-not-applicable`, `deferred-untracked` | Rows 9 and 11, with a tracked deferral beside the untracked one |
 | `nothing-implements-subtree`, `nothing-implements-delegating-parent-clean` | Row 10 on every live node of an empty subtree, and not on a parent whose child claims |
 | `require-implementers` | Same input as `nothing-implements-subtree` with the strict option: severity `error`, same code |
+| `require-implementers-raises-only-that-code` | The strict option over a model that also has an untracked deferral and an unclaimed entity: row 10 is `error`, rows 11 and 12 stay `warn`. Added in review: without it a port that raised every warning would pass |
 | `superseded-by-resolves-clean`, `superseded-by-dangling`, `superseded-by-package-local` | Row 7 and Table B's ledger lookup |
 | `retired-clean` | A retired entry reports nothing and claims nothing |
 | `same-name-in-two-branches` | Two requirements with one name are told apart by path |
@@ -400,7 +401,7 @@ Both follow the field-lint corpus shape: each case is a directory with `input/` 
 | `planned-skip`, `retired-skip`, `partial-not-skipped` | `skip` per status; a planned requirement naming absent nodes has unit `*` |
 | `member-grain`, `member-grain-unresolved-dropped`, `member-grain-duplicate-ref` | One test per distinct resolving reference, bare and qualified forms kept as authored |
 | `package-in-address` | The same path in two packages gives two ids and two keys |
-| `unpackaged` | An empty package gives a bare address |
+| `unpackaged` | An empty package gives a bare address. One document only: a package-less document loaded after a packaged one takes that document's package as its file default |
 | `nested-path` | A five-deep path |
 | `digest-claim-fields` | Two requirements differing in statement differ in digest; two differing only in `title`, `notes`, `disposition` and `trackedBy` do not |
 | `digest-inherited` | A requirement inheriting its statement through `extends` hashes the effective text |
@@ -446,7 +447,7 @@ The requirement checks are **not** ejectable in any port. They are the shared co
 
 ## File structure
 
-**Shared, new:** `fixtures/requirement-check-conformance/` (a `README.md` and the 42 cases of Table J), `fixtures/requirement-test-identity-conformance/` (a `README.md` and 24 cases), `spec/decisions/ADR-0057-requirement-checks-and-tests-in-every-port.md`, `scripts/write-requirement-corpus-expected.ts`.
+**Shared, new:** `fixtures/requirement-check-conformance/` (a `README.md` and the 43 cases of Table J), `fixtures/requirement-test-identity-conformance/` (a `README.md` and 24 cases), `spec/decisions/ADR-0057-requirement-checks-and-tests-in-every-port.md`, `scripts/write-requirement-corpus-expected.ts`.
 
 **Shared, modified:** `fixtures/generator-registry-conformance/registry.json` (the `requirement-tests` entry's `ports`, one port per generator task).
 
@@ -520,7 +521,7 @@ Run: `cd server/typescript/packages/cli && bun test test/unit/requirement-check.
 ### Task 2: The requirement-check corpus and its TypeScript runner
 
 **Files:**
-- Create: `fixtures/requirement-check-conformance/README.md` and the 42 case directories of Table J
+- Create: `fixtures/requirement-check-conformance/README.md` and the 43 case directories of Table J
 - Create: `scripts/write-requirement-corpus-expected.ts`
 - Create: `server/typescript/packages/cli/test/requirement-check-conformance.test.ts`
 
@@ -535,7 +536,7 @@ Run: `cd server/typescript/packages/cli && bun test test/unit/requirement-check.
 - [ ] **Step 5: Write the expectations script.** `scripts/write-requirement-corpus-expected.ts` takes a corpus name, loads each case the way the runner does and writes `expected.json`. It imports the reference by relative path, as `scripts/generate-requirement-harness.ts` does. Run `bun scripts/write-requirement-corpus-expected.ts check`.
 - [ ] **Step 6: Review every written file by hand against Table C, D and E.** This is the step that makes the corpus a contract instead of a snapshot. For each case confirm the codes are the ones the row "Pins" names and no others; fix the **input** when a case produces more than it should. A disagreement between Table C and the reference is a finding to report, not something to paper over in the expectation.
 - [ ] **Step 7: Write the README:** the two-line purpose, the format, the three runner steps, the case table, and a "Who asserts it" table (TypeScript now; the other rows are added by Tasks 5, 7 and 9).
-- [ ] **Step 8: Run** the runner. Expected: PASS, 43 tests.
+- [ ] **Step 8: Run** the runner. Expected: PASS, 44 tests.
 - [ ] **Step 9: Commit.** `git commit -m "test(conformance): requirement-check corpus, run by the TypeScript reference"`
 
 ---
@@ -722,7 +723,7 @@ The code constants carry the TypeScript names (`ERR_REQUIREMENT_DANGLING_REF`, a
 Run: `cd server/python && uv run pytest tests/conformance/test_requirement_check_conformance.py -q` (use the repository's usual Python test invocation if it differs). Expected: FAIL, `requirement_check` not importable.
 - [ ] **Step 3: Implement the accessors and the resolver.** `superseded_by()` returns the stripped-non-blank string or `None`; `is_retired()` compares with `REQUIREMENT_STATUS_RETIRED`. Both read through `get_meta_attr()`. `library_packages()` parses `EMBEDDED_LIBRARY_MANIFESTS` and returns the frozen union of every manifest's `packages`. `resolve_claim_target` calls `naming_refs.resolve_object_ref` first, then applies Table B's second row.
 - [ ] **Step 4: Implement the checks,** row by row from Table C, in the order of Table C, with the message text copied from the TypeScript file. Row 3 ends the loop body for that requirement. `scan_requirements` computes the claim set once (Table D) and `measure_coverage` from `library_packages()` unless forced.
-- [ ] **Step 5: Run the conformance runner.** Expected: PASS for all 42 cases. A failing case is a porting error; do not edit an `expected.json`.
+- [ ] **Step 5: Run the conformance runner.** Expected: PASS for all 43 cases. A failing case is a porting error; do not edit an `expected.json`.
 - [ ] **Step 6: Failing CLI tests** in `test_cli_verify_requirements.py`: `a model with no requirements prints nothing and exits as before` (compare stderr and the exit code of `verify` on an existing no-requirement fixture before and after); `a dangling live reference exits 1 and prints the code, the path and the summary line`; `warnings alone exit 0`; `--require-implementers exits 1 on a nothing-implements warning` and so does `META_REQUIRE_IMPLEMENTERS=1`; `the gate runs with --templates alone` (no subverb selects it); `a metadata load failure prints no requirement line`.
 - [ ] **Step 7: Wire `verify`.** Add `--require-implementers` to the `verify` parser. Factor the load inside `_field_lint_findings` into one helper that returns the root, the project's own files and the collection, and use it for both the field lint and the new `_verify_requirements(args) -> int`, so `verify` loads once for the two. `_verify_requirements` returns 0 when the root did not load, prints the lines of Table E to stderr with the `metaobjects verify —` prefix, and returns 1 when any diagnostic has severity `error`. In `_cmd_verify`: `exit_code = max(exit_code, _verify_requirements(args))`, on every run. Pass `coverable=collection.in_scope` when a collection was resolved.
 - [ ] **Step 8: Run** `uv run pytest tests/conformance/test_requirement_check_conformance.py tests/codegen/test_cli_verify_requirements.py tests/codegen/test_cli_verify_field_lint.py -q`, then the port's lint and type check as `scripts/ci-local.sh` runs them (read the Python lane for the commands). Expected: PASS.
@@ -870,7 +871,7 @@ public final class RequirementCheck {
 
 Run: `mvn -q -f server/java/pom.xml -pl metadata test -Dtest=RequirementCheckConformanceTest`. Expected: FAIL to compile. Use `MAVEN_ARGS` for a repository override, never `MAVEN_OPTS`.
 - [ ] **Step 3: Implement** the accessors, `libraryPackages()` (parse each `EmbeddedLibrary.MANIFESTS` value's `packages`, the way `parseLayers` reads `layers`), `RequirementClaims` (objects through one `SymbolTable` built per scan) and `RequirementCheck`, row by row from Table C with the message text copied from the TypeScript file. Expose one did-you-mean helper instead of writing a third copy.
-- [ ] **Step 4: Run** the runner. Expected: PASS for all 42 cases.
+- [ ] **Step 4: Run** the runner. Expected: PASS for all 43 cases.
 - [ ] **Step 5: Failing mojo tests** in `MetaDataVerifyRequirementsTest.java`, on the pattern of `MetaDataVerifyFieldLintTest.java`: no requirements logs nothing and does not fail; a dangling live reference throws `MojoFailureException` after logging the code, path and summary; warnings alone do not fail; `requireImplementers` (the parameter and the environment variable) fails on a nothing-implements warning; the gate runs once per `execute()` whichever of the template and codegen gates ran.
 - [ ] **Step 6: Wire the mojo.** A `@Parameter(property = "meta.verify.requireImplementers", defaultValue = "false")`, and `runRequirementGate(loader)` called once from `execute()`. It logs the summary with `getLog().info`, warnings with `getLog().warn`, errors with `getLog().error`, each prefixed `metaobjects:verify —`, and throws `MojoFailureException` when any error was found. Kotlin projects get the gate through this goal.
 - [ ] **Step 7: Run** `mvn -q -f server/java/pom.xml -pl metadata,maven-plugin -am test -Dtest='RequirementCheckConformanceTest,MetaDataVerifyRequirementsTest,MetaDataVerifyFieldLintTest,RequirementTest'`. Expected: PASS.
@@ -944,7 +945,7 @@ Generator args: `testPackage` (required), `witnessClass` (required, a fully-qual
 - [ ] **Step 1: Read first.** The two TypeScript files; `NamingRefs.cs` (`ResolveObjectRef`, `EffectivePackage`, `DidYouMeanHint`); `MetaObjects.Cli/FieldLint.cs` and `Program.cs:460-650` (flag parsing, `--no-field-lint`, the `FieldLint.RunAdvisory` call and its output prefix); `MetaObjects.Cli.Tests/FieldLintConformanceTests.cs`. `MetaData` has `SuperData`, `Parent`, `ResolutionKey()` and `IsAbstract`. **UNVERIFIED:** whether `DidYouMeanHint`'s text matches TypeScript's; where `verify` computes its exit code so the gate can contribute to it.
 - [ ] **Step 2: Failing conformance runner** on the pattern of `FieldLintConformanceTests.cs`, in `MetaObjects.Conformance.Tests` (the checks are core, not CLI). Run: `dotnet test server/csharp --filter RequirementCheckConformance`. Expected: FAIL to compile.
 - [ ] **Step 3: Implement** the accessors, `LibraryPackages()` and the two classes, row by row from Table C.
-- [ ] **Step 4: Run** the runner. Expected: PASS for all 42 cases.
+- [ ] **Step 4: Run** the runner. Expected: PASS for all 43 cases.
 - [ ] **Step 5: Failing CLI tests** in `VerifyRequirementsTests.cs`, mirroring Task 5 Step 6: silence and an unchanged exit code with no requirements; exit 1 and the printed lines on a dangling live reference; exit 0 on warnings; `--require-implementers` and `META_REQUIRE_IMPLEMENTERS=1`.
 - [ ] **Step 6: Wire the CLI.** Parse `--require-implementers`, add it to the usage line, and run the gate on every `verify` beside the field lint, writing to `Console.Error` and folding a non-zero result into the command's exit code.
 - [ ] **Step 7: Run** `dotnet test server/csharp --filter "RequirementCheckConformance|VerifyRequirements|VerifyFieldLint|FieldLintConformance"`. Expected: PASS.
