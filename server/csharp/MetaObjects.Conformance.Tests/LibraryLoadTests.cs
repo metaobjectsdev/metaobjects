@@ -108,6 +108,40 @@ public class LibraryLoadTests
     }
 
     /// <summary>
+    /// <c>LibraryPackages()</c> decides whether a requirement came from a shipped library, and so
+    /// whether object coverage is measured at all. It is read from the embedded manifests; this
+    /// holds it to exactly the packages of the manifests the repository ships under
+    /// <c>library/*/library.json</c>.
+    /// </summary>
+    [Fact]
+    public void LibraryPackagesIsExactlyThePackagesOfTheShippedManifests()
+    {
+        var libraryDir = RepoLibraryDir();
+        var manifests = Directory.GetFiles(libraryDir, "library.json", SearchOption.AllDirectories);
+        Assert.NotEmpty(manifests);
+
+        var expected = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var manifest in manifests)
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(manifest));
+            foreach (var p in doc.RootElement.GetProperty("packages").EnumerateArray()) expected.Add(p.GetString()!);
+        }
+        Assert.NotEmpty(expected); // a manifest that declares no package would make this vacuous
+
+        Assert.Equal(expected, new SortedSet<string>(LibrarySources.LibraryPackages(), StringComparer.Ordinal));
+    }
+
+    private static string RepoLibraryDir()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        {
+            if (Directory.Exists(Path.Combine(dir.FullName, "library")) && Directory.Exists(Path.Combine(dir.FullName, "server")))
+                return Path.Combine(dir.FullName, "library");
+        }
+        throw new InvalidOperationException("could not locate the repo-root library/ directory from " + AppContext.BaseDirectory);
+    }
+
+    /// <summary>
     /// The freshness gate: the embed must equal the canonical tree byte for byte.
     ///
     /// <para>Skipped per-ref when the repo-root <c>library/</c> tree is unreachable — the

@@ -205,7 +205,7 @@ public sealed class RequirementTestsGeneratorTests : IDisposable
         var files = Run(LoadDir(WorkedExampleInput()));
         Assert.Contains(
             "// Witnesses are project-owned: implement this interface in Acme.Witnesses, one EXPLICIT member per witness, e.g.\n" +
-            "//     void Requirements_acme_shop_Witnesses.req_acme_shop_Orders_Recorded__object_entity() { ... }\n" +
+            "//     void Acme.Req.Requirements_acme_shop_Witnesses.req_acme_shop_Orders_Recorded__object_entity() { ... }\n" +
             "// Explicit, so that a member whose requirement is retired or deleted stops compiling instead of going stale silently.\n",
             files[Interface]);
         Assert.DoesNotContain("override", files[Interface], StringComparison.Ordinal);
@@ -214,7 +214,19 @@ public sealed class RequirementTestsGeneratorTests : IDisposable
 
         // With no member to show (every test skipped) the pattern stands in for a real name.
         var allSkipped = Run(LoadYaml(Shop(Requirement("Gone", 4, "retired", "Old.", "Old returns.", null))))[Interface];
-        Assert.Contains("//     void Requirements_acme_shop_Witnesses.req_<address>__<unit>() { ... }\n", allSkipped);
+        Assert.Contains("//     void Acme.Req.Requirements_acme_shop_Witnesses.req_<address>__<unit>() { ... }\n", allSkipped);
+    }
+
+    [Fact]
+    public void The_headers_example_line_compiles_as_written_in_a_witness_class_outside_the_test_namespace()
+    {
+        // The witness class is in another namespace than the interface by default, so the line a
+        // person copies out of the header must name the interface in a way that resolves from there.
+        var files = Run(LoadDir(WorkedExampleInput()));
+        var example = files[Interface].Split('\n').Single(l => l.StartsWith("//     void ", StringComparison.Ordinal));
+        var member = example["//".Length..].Replace("{ ... }", "{ }");
+
+        Compile(files, Witness(member));
     }
 
     [Fact]

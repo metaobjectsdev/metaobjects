@@ -682,7 +682,12 @@ static int RunVerify(string[] rest)
     // muted by --no-field-lint. A model with no requirement.* node sees no line and no exit-code
     // change. Its errors fold into the exit code like any other gate's. It runs before the
     // advisory lint so the lint stays the last thing printed, as it was.
-    var requirementExit = VerifyCommand.RunRequirementGate(opts, requireImplementers, Console.Error);
+    //
+    // A model that does not LOAD fails here, and is reported here unless a gate above already
+    // printed that (result.LoadFailureReported). The handed-off codegen runner is another process
+    // whose output this one cannot read, so its report is never assumed: when both it and this
+    // load refuse the metadata, each says so.
+    var requirementExit = VerifyCommand.RunRequirementGate(opts, requireImplementers, Console.Error, result.LoadFailureReported);
 
     // The field AUTHORING lint — a reference identity over a field the object lacks, a
     // field name declared twice in one children list. Both load clean on every port. Runs

@@ -53,9 +53,6 @@ public class RequirementTestsGenerator : IGenerator
     private const string SkipPlanned = "planned - not built yet";
     private const string SkipRetired = "retired - the capability was deliberately removed; assert it stays removed";
 
-    private static readonly Regex CSharpName =
-        new(@"^(global::)?[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$", RegexOptions.CultureInvariant);
-
     public string Name => "requirement-tests";
 
     /// <summary>
@@ -265,10 +262,12 @@ public class RequirementTestsGenerator : IGenerator
     {
         // A real member shows the shape; with none (every test skipped) the pattern stands in for a name.
         var example = tests.FirstOrDefault(t => t.Identity.Skip is null)?.Identity.WitnessKey ?? "req_<address>__<unit>";
+        // The interface is named with its namespace: the witness class is in another one by default,
+        // so the bare name would not resolve where this line is pasted.
         var sb = new StringBuilder(GeneratedHeader)
             .Append("// Witnesses are project-owned: implement this interface in ").Append(CommentText(witnessClass.Plain))
             .Append(", one EXPLICIT member per witness, e.g.\n")
-            .Append("//     void ").Append(name).Append('.').Append(example).Append("() { ... }\n")
+            .Append("//     void ").Append(testNamespace.Code).Append('.').Append(name).Append('.').Append(example).Append("() { ... }\n")
             .Append("// Explicit, so that a member whose requirement is retired or deleted stops compiling instead of going stale silently.\n")
             .Append("namespace ").Append(testNamespace.Code).Append(";\n\n")
             .Append("public interface ").Append(name).Append("\n{");

@@ -171,6 +171,14 @@ public static class VerifyCommand
         public Codegen.CodegenDrift.Result? Codegen { get; init; }
         /// <summary>Set when <c>--db</c> was requested (rejection message).</summary>
         public string? DbRejectionMessage { get; init; }
+        /// <summary>
+        /// True when a gate that ran in THIS process loaded the metadata, found that it did not load,
+        /// and put that in its own outcome for the caller to print. False when no gate here reached
+        /// a load at all: <c>--codegen</c> handed off to an owned <c>codegen/</c> project, or stopped
+        /// for want of <c>--out</c>, or only <c>--db</c> was asked for. The requirement gate reads
+        /// this to report a failed load once, and never zero times.
+        /// </summary>
+        public bool LoadFailureReported { get; init; }
     }
 
     /// <summary>
@@ -190,17 +198,22 @@ public static class VerifyCommand
 
         int exit = 0;
 
+        // Whether a gate below loaded the metadata, found it did not load, and reported that.
+        var loadFailureReported = false;
+
         Outcome? templatesOutcome = null;
         if (runTemplates)
         {
             templatesOutcome = Run(LoadMetadata(opts), opts.TemplatesRoot ?? "");
             if (!templatesOutcome.Ok) exit = Math.Max(exit, 1);
+            if (templatesOutcome.LoadErrors.Count > 0) loadFailureReported = true;
         }
 
         Codegen.CodegenDrift.Result? codegenResult = null;
         if (runCodegen)
         {
             codegenResult = RunCodegenDrift(opts, out var codegenLoadFailed);
+            if (codegenLoadFailed) loadFailureReported = true;
             // usage error (nothing to diff against) → exit 2; metadata that does not load →
             // exit 1, the code every port's gen/verify/fmt uses for it; drift → 1; clean → 0.
             int codegenExit = codegenResult.Error is null
@@ -225,6 +238,7 @@ public static class VerifyCommand
             Templates = templatesOutcome,
             Codegen = codegenResult,
             DbRejectionMessage = dbMsg,
+            LoadFailureReported = loadFailureReported,
         };
     }
 
@@ -256,15 +270,31 @@ public static class VerifyCommand
     ///
     /// <para>Prints the summary line on every run that has a requirement, clean or not (a gate that
     /// says nothing when it passes cannot be told apart from one that checked nothing), then every
-    /// finding, uncapped, to <paramref name="output"/>. Returns 1 when any finding is an error.
-    /// Returns 0 and prints nothing when the metadata did not load: the gate that ran already reported
-    /// that, and a load that failed is not retried here. That is the ONLY silent path; any other
-    /// exception surfaces, so a gate that broke cannot read as a gate that passed.</para>
+    /// finding, uncapped, to <paramref name="output"/>. Returns 1 when any finding is an error.</para>
+    ///
+    /// <para>Returns 1 when the metadata did not load: an unloadable model is not a model with no
+    /// requirement. The load errors are printed here unless <paramref name="loadFailureReported"/>
+    /// says a gate that ran in this process already put them in front of the user
+    /// (<see cref="SubverbResult.LoadFailureReported"/>). No gate did when <c>--codegen</c> was handed
+    /// off to an owned <c>codegen/</c> project, stopped for want of <c>--out</c>, or only <c>--db</c>
+    /// was asked for: then this load is the only one in the process, and what it finds is the only
+    /// report there will be. Any other exception surfaces, so a gate that broke cannot read as a gate
+    /// that passed.</para>
     /// </summary>
-    public static int RunRequirementGate(Options opts, bool requireImplementers, TextWriter output)
+    public static int RunRequirementGate(Options opts, bool requireImplementers, TextWriter output, bool loadFailureReported)
     {
         var load = LoadMetadata(opts);
-        if (load.Errors.Count > 0) return 0;
+        if (load.Errors.Count > 0)
+        {
+            if (!loadFailureReported)
+            {
+                foreach (var e in load.Errors) output.WriteLine($"  load error: {e.Code}: {e.Message}");
+                if (opts.Strict && load.Errors.Any(e => e.Code == ErrorCode.ERR_UNKNOWN_ATTR))
+                    output.WriteLine($"  hint: {UNKNOWN_ATTR_HINT}");
+                output.WriteLine("dotnet meta verify: FAILED (metadata did not load cleanly)");
+            }
+            return 1;
+        }
 
         var scan = RequirementCheck.Scan(
             load.Root, requireImplementers: requireImplementers || Environment.GetEnvironmentVariable(REQUIRE_IMPLEMENTERS_ENV) == "1");
