@@ -69,8 +69,10 @@ DEFAULT_REQUIREMENT_WITNESS_MODULE = "tests.requirement_witnesses"
 #: file interpolates into a string literal and imports. The schema's ``pattern`` is this one.
 DOTTED_MODULE_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$"
 
-#: The ``module:symbol`` form of the ``renderer`` and ``filter`` keys, as ``providers`` are.
-MODULE_SYMBOL_PATTERN = r"^[^:]+:[^:]+$"
+#: The ``module:symbol`` form of the ``renderer`` and ``filter`` keys: two non-empty halves with
+#: no whitespace in either (a stray newline would otherwise validate and fail later as a
+#: missing attribute). The schema's ``pattern`` for those two keys is this one.
+MODULE_SYMBOL_PATTERN = r"^[^:\s]+:[^:\s]+$"
 
 
 class ConfigError(ValueError):

@@ -255,11 +255,15 @@ def _config_providers(config: ProjectConfig) -> tuple[list[object], bool]:
 def _import_config_symbol(spec: str, config_dir: Path) -> tuple[object | None, str | None]:
     """Import a ``module:symbol`` named by the config, relative to *config_dir*.
 
-    The same resolver an owned generator is imported with (:func:`import_project_symbol`):
-    the config directory goes on ``sys.path`` so a module beside the config imports with no
-    ``PYTHONPATH=``, and a module cached from another project is dropped, but an installed
-    package never is. Returns ``(callable, None)`` or ``(None, message)``; the message names the
-    spec, the module and the real cause.
+    The same resolver an owned generator is imported with (:func:`import_project_symbol`; its
+    docstring states the rule). In short: the config directory goes on ``sys.path`` so a module
+    beside the config imports with no ``PYTHONPATH=``; a cached module of the spec's top-level
+    name is dropped only when it is not under the config directory AND the config directory
+    offers that name; the running ``metaobjects`` package is never dropped; and a project package
+    named like a standard-library module is refused. A package the project does not provide (an
+    installed hook package) is imported once and shared by every hook that names it. Returns
+    ``(callable, None)`` or ``(None, message)``; the message names the spec, the module and the
+    real cause.
     """
     module_name, _sep, symbol = spec.partition(":")
     obj, err = import_project_symbol(module_name, symbol, config_dir)

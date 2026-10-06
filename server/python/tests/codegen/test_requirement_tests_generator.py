@@ -756,3 +756,39 @@ def test_a_nul_in_the_statement_is_written_visibly_in_the_comment_and_the_file_s
     compile(source, "generated", "exec")  # the interpreter itself refuses a NUL in source
     assert "# before\\x00after\\x07bell\ttab" in source.splitlines()
     assert "\x00" not in source
+
+
+def test_a_package_outside_the_project_that_supplies_a_provider_a_renderer_and_a_filter_is_imported_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sys
+
+    runs = tmp_path / "runs.txt"
+    site = tmp_path / "site"
+    (site / "outside_hooks").mkdir(parents=True)
+    (site / "outside_hooks" / "__init__.py").write_text(
+        f"open({str(runs)!r}, 'a').write('x')\n"
+        "from metaobjects.provider import Provider\n"
+        "from metaobjects.codegen.requirement_hooks import RenderedTest\n"
+        "p = Provider('outside', ('metaobjects-core-types',))\n"
+        "def render(args):\n    return None\n"
+        "def include(view):\n    return view.level == 4\n",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(site))
+    assert "outside_hooks" not in sys.modules
+    project = tmp_path / "project"  # the package lives in tmp_path/site: OUTSIDE this root
+    project.mkdir()
+    config = _project(
+        project,
+        "providers: ['outside_hooks:p']\n"
+        "requirementTests:\n  renderer: outside_hooks:render\n  filter: outside_hooks:include\n"
+        "  warnUncovered: false\n",
+        _worked_example_document(),
+    )
+    monkeypatch.chdir(project)
+    try:
+        assert main(["gen", "--config", str(config)]) == 0
+        assert runs.read_text() == "x", "the outside package's __init__ must run exactly once in one gen"
+    finally:
+        sys.modules.pop("outside_hooks", None)

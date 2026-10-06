@@ -8,7 +8,7 @@ installed package) offer the same dotted name in one process.
 from __future__ import annotations
 
 import importlib
-import json
+import re
 import sys
 from pathlib import Path
 from typing import Iterator
@@ -121,13 +121,11 @@ def test_a_symbol_inside_the_running_package_resolves_from_a_project_with_no_suc
     assert sys.modules["metaobjects"] is metaobjects
 
 
-def test_a_standard_library_module_is_never_unloaded(tmp_path: Path) -> None:
+def test_a_standard_library_module_stays_loaded_when_a_project_package_shadows_its_name(tmp_path: Path) -> None:
     stdlib_json = sys.modules["json"]
-    project = tmp_path / "project"
-    (project / "json").mkdir(parents=True)
-    (project / "json" / "__init__.py").write_text("dumps = 'shadow'\n")
+    project = _shadowing_project(tmp_path / "project", "json")
     obj, err = import_project_symbol("json", "dumps", project)
-    assert err is None and obj is stdlib_json.dumps
+    assert obj is None and err is not None and "shadows a standard-library module" in err
     assert sys.modules["json"] is stdlib_json
 
 
@@ -159,5 +157,130 @@ def test_a_path_that_merely_starts_with_the_root_is_not_under_it(tmp_path: Path)
 def test_the_sys_path_entry_is_the_resolved_root(tmp_path: Path) -> None:
     a = _project(tmp_path / "a", "A")
     _who(a)
-    assert str(a.resolve()) in sys.path
-    json.dumps(sys.path)  # a plain list of str
+    _who(a)
+    assert sys.path.count(str(a.resolve())) == 1  # inserted once, resolved, never duplicated
+
+
+# ---------------------------------------------------------------------------
+# An installed package (outside every project) named by several hooks is ONE module.
+# ---------------------------------------------------------------------------
+
+
+def _outside_package(tmp_path: Path, name: str = "outside_hooks") -> Path:
+    site = tmp_path / "site"
+    (site / name).mkdir(parents=True)
+    (site / name / "__init__.py").write_text(
+        "RUNS = globals().get('RUNS', 0) + 1\n\ndef a():\n    return 'a'\n\ndef b():\n    return 'b'\n"
+    )
+    return site
+
+
+def test_two_symbols_of_the_same_outside_module_come_from_the_same_module_object(tmp_path: Path) -> None:
+    site = _outside_package(tmp_path)
+    sys.path.insert(0, str(site))
+    project = tmp_path / "project"
+    project.mkdir()
+    a, err_a = import_project_symbol("outside_hooks", "a", project)
+    b, err_b = import_project_symbol("outside_hooks", "b", project)
+    assert (err_a, err_b) == (None, None)
+    assert a.__module__ == b.__module__ == "outside_hooks"
+    assert sys.modules["outside_hooks"].a is a and sys.modules["outside_hooks"].b is b
+
+
+def test_a_module_imported_before_the_call_is_the_one_returned_when_the_project_does_not_offer_the_name(
+    tmp_path: Path,
+) -> None:
+    site = _outside_package(tmp_path)
+    sys.path.insert(0, str(site))
+    before = importlib.import_module("outside_hooks")
+    project = tmp_path / "project"
+    project.mkdir()
+    obj, err = import_project_symbol("outside_hooks", "a", project)
+    assert err is None and obj is before.a  # type: ignore[attr-defined]
+    assert sys.modules["outside_hooks"] is before
+
+
+# ---------------------------------------------------------------------------
+# A project package that shadows a standard-library module is refused, deterministically.
+# ---------------------------------------------------------------------------
+
+
+def _shadowing_project(root: Path, name: str) -> Path:
+    (root / name).mkdir(parents=True)
+    (root / name / "__init__.py").write_text("")
+    return root
+
+
+def _refusal(name: str, project: Path) -> str:
+    obj, err = import_project_symbol(f"{name}.generators.thing", "WHO", project)
+    assert obj is None and err is not None
+    return err
+
+
+@pytest.mark.parametrize("loaded", [True, False])
+def test_a_project_package_named_like_a_standard_library_module_is_refused_whether_or_not_it_is_loaded(
+    tmp_path: Path, loaded: bool
+) -> None:
+    if loaded:
+        name = "types"
+        assert name in sys.modules
+    else:
+        name = next(n for n in ("sched", "colorsys", "wave", "mailcap") if n not in sys.modules)
+        assert name not in sys.modules  # a stdlib name NOT yet imported in this process
+    project = _shadowing_project(tmp_path / "project", name)
+    err = _refusal(name, project)
+    assert f"the project package {name!r}" in err
+    assert "shadows a standard-library module" in err and "rename it" in err
+    assert err.startswith(f"cannot import '{name}.generators.thing': ")
+    # Refused before importing anything: no project module was imported, the stdlib one is untouched.
+    assert not any(k.startswith(f"{name}.generators") for k in sys.modules)
+
+
+def test_the_same_refusal_text_is_given_for_a_loaded_and_an_unloaded_standard_library_name(
+    tmp_path: Path,
+) -> None:
+    loaded = _refusal("types", _shadowing_project(tmp_path / "a", "types"))
+    unloaded_name = next(n for n in ("sched", "colorsys", "wave", "mailcap") if n not in sys.modules)
+    unloaded = _refusal(unloaded_name, _shadowing_project(tmp_path / "b", unloaded_name))
+    def shape(text: str, name: str) -> str:  # the project path in the message differs per project
+        return re.sub(r"\(.*?\)", "()", text).replace(name, "X")
+
+    assert shape(loaded, "types") == shape(unloaded, unloaded_name)
+
+
+def test_a_real_standard_library_symbol_with_no_such_directory_in_the_project_keeps_working(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "project").mkdir()
+    stdlib_json = sys.modules["json"]
+    obj, err = import_project_symbol("json", "dumps", tmp_path / "project")
+    assert err is None and obj is stdlib_json.dumps and sys.modules["json"] is stdlib_json
+
+
+# ---------------------------------------------------------------------------
+# Existing behaviour that this resolver does NOT change (see the module docstring).
+# ---------------------------------------------------------------------------
+
+
+def test_a_project_with_no_such_package_silently_gets_the_one_a_previous_project_left_on_sys_path(
+    tmp_path: Path,
+) -> None:
+    """EXISTING behaviour, pinned and not endorsed: project A's directory stays on `sys.path`,
+    so project B, which has no `codegen` at all, is answered with A's."""
+    a = _project(tmp_path / "a", "A")
+    (tmp_path / "b").mkdir()
+    assert _who(a) == "A"
+    assert _who(tmp_path / "b") == "A"
+
+
+def test_a_namespace_layout_in_the_project_loses_to_a_regular_package_earlier_loaded_from_sys_path(
+    tmp_path: Path,
+) -> None:
+    """EXISTING behaviour, pinned and not endorsed: B has `codegen/generators/thing.py` with no
+    `__init__.py` anywhere, but a regular package later on `sys.path` beats a namespace portion."""
+    a = _project(tmp_path / "a", "A")
+    b = tmp_path / "b"
+    (b / "codegen" / "generators").mkdir(parents=True)
+    (b / "codegen" / "generators" / "thing.py").write_text("WHO = 'B'\n")
+    assert _who(a) == "A"
+    assert _who(b) == "A"

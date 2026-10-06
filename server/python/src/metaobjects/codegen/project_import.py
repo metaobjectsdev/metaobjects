@@ -4,18 +4,29 @@ ONE resolver for both places that name project code by ``module:symbol``: an own
 (:func:`metaobjects.codegen.eject.build_owned`) and a config hook (``requirementTests.renderer``
 and ``requirementTests.filter``). It puts the project root on ``sys.path`` and imports.
 
-THE RULE, in one sentence: a cached module of the spec's top-level package that does not live
-under this project's root is dropped before the import, so the project's own copy is the one
-imported, except the running ``metaobjects`` package and the standard library, which are never
-dropped.
+THE RULE, in one sentence: a cached module of the spec's top-level name is dropped before the
+import only when it does not live under this project's root AND this root offers that top-level
+name (``<root>/<name>/`` or ``<root>/<name>.py``), and then the project's copy is the one
+imported, except that the running ``metaobjects`` package is never dropped, and a project name
+that is also a standard-library module name is refused outright.
 
-Why dropped, whoever cached it: two projects in one process (a test run, a long-lived tool) can
-offer the same dotted name, and a config provider is imported with plain ``importlib`` and never
-registers anything here. The test is therefore "not under the current root", not "under some
-other root we know of", so a route added later that puts a project on ``sys.path`` cannot defeat
-it. What it does NOT do, as before: a module cached from THIS root is kept (an edit made after
-the first import is not seen), and asking for root A again after root B loaded B's copy loads
-B's copy again.
+Why: two projects in one process (a test run, a long-lived tool) can offer the same dotted name,
+and a config provider is imported with plain ``importlib`` and never registers anything here, so
+"under the current root" is the test, not "under some other root we know of". Why only when the
+root offers the name: a package the project does NOT provide (an installed hook package) is one
+module for every hook that names it, and is never unloaded or re-imported.
+
+A project package named like a standard-library module (``types/``, ``json/``, ``queue/``) is
+refused with an error naming it, before anything is imported, whether or not the standard-library
+module is already loaded: the import system would otherwise answer by load order.
+
+What it does NOT do, all as before:
+* A module cached from THIS root is kept: an edit made after the first import is not seen.
+* Returning to root A after root B loaded B's copy loads B's copy again.
+* Project B that has no such package at all is silently answered with project A's, because A's
+  directory is still on ``sys.path``.
+* Project B that has the package only as a namespace layout (no ``__init__.py``) still gets A's
+  regular package, because a regular package later on ``sys.path`` beats a namespace portion.
 """
 from __future__ import annotations
 
@@ -29,8 +40,9 @@ from typing import Any
 _RUNNING_PACKAGE = __name__.partition(".")[0]
 
 
-def _must_stay_loaded(top: str) -> bool:
-    return top == _RUNNING_PACKAGE or top in sys.stdlib_module_names
+def _offers(root: Path, top: str) -> bool:
+    """Whether the project provides the top-level name as a package/directory or a module file."""
+    return (root / top).is_dir() or (root / f"{top}.py").is_file()
 
 
 def _is_under(module: object, root: Path) -> bool:
@@ -44,12 +56,19 @@ def _is_under(module: object, root: Path) -> bool:
 
 def import_project_symbol(module_name: str, symbol: str, root: Path) -> tuple[Any, str | None]:
     """``(object, None)``, or ``(None, message)`` naming the module (and the symbol) and the real
-    cause: the message of whatever the import raised, or which attribute is missing."""
+    cause: the message of whatever the import raised, which attribute is missing, or that the
+    project package shadows a standard-library module."""
     resolved = root.resolve()
+    top = module_name.split(".")[0]
+    offered = _offers(resolved, top)
+    if offered and top in sys.stdlib_module_names:
+        return None, (
+            f"cannot import {module_name!r}: the project package {top!r} ({resolved / top}) shadows a "
+            f"standard-library module of the same name; rename it"
+        )
     if str(resolved) not in sys.path:
         sys.path.insert(0, str(resolved))
-    top = module_name.split(".")[0]
-    if not _must_stay_loaded(top):
+    if offered and top != _RUNNING_PACKAGE:
         for key in [k for k in sys.modules if k == top or k.startswith(top + ".")]:
             if not _is_under(sys.modules[key], resolved):
                 del sys.modules[key]

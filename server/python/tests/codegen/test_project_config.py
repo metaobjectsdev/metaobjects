@@ -11,6 +11,7 @@ from metaobjects.codegen.project_config import (
     DEFAULT_METADATA_DIR,
     DEFAULT_REQUIREMENT_WITNESS_MODULE,
     DOTTED_MODULE_PATTERN,
+    MODULE_SYMBOL_PATTERN,
     REQUIREMENT_TESTS_KEYS,
     REQUIREMENT_TEST_GRAIN_VALUES,
     TARGET_KEYS,
@@ -263,6 +264,8 @@ def test_an_empty_requirement_tests_block_means_the_defaults(tmp_path: Path) -> 
         ('  witnessModule: "a b"\n', "'witnessModule' must be a dotted module name"),
         ('  witnessModule: "x.1y"\n', "'witnessModule' must be a dotted module name"),
         ('  witnessModule: "tests.w\\n"\n', "'witnessModule' must be a dotted module name"),
+        ('  renderer: "m:s\\n"\n', "'renderer' must be in 'module:symbol' form"),
+        ('  filter: "m :s"\n', "'filter' must be in 'module:symbol' form"),
         ('  witnessModule: "x\\"; import os; \\""\n', "'witnessModule' must be a dotted module name"),
     ],
 )
@@ -280,6 +283,15 @@ def test_the_schema_and_the_loader_agree_on_the_witness_module_pattern_and_defau
     witness = schema["properties"]["requirementTests"]["properties"]["witnessModule"]
     assert witness["pattern"] == DOTTED_MODULE_PATTERN
     assert witness["default"] == DEFAULT_REQUIREMENT_WITNESS_MODULE
+
+
+def test_the_schema_and_the_loader_agree_on_the_module_symbol_pattern() -> None:
+    schema = json.loads(
+        (Path(__file__).parents[2] / "src" / "metaobjects" / "codegen" / "metaobjects-config.schema.json")
+        .read_text(encoding="utf-8")
+    )
+    props = schema["properties"]["requirementTests"]["properties"]
+    assert props["renderer"]["pattern"] == props["filter"]["pattern"] == MODULE_SYMBOL_PATTERN
 
 
 def test_the_default_witness_module_is_spelled_once_and_every_consumer_agrees() -> None:
