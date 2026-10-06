@@ -9,6 +9,7 @@ import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { requirementTests } from "../src/generators/requirement-tests.js";
 import type { RequirementTestsOpts } from "../src/generators/requirement-tests.js";
 import type { EmittedFile, GenContext } from "../src/generator.js";
+import type { RequirementTestArgs } from "../src/templates/requirement-test.js";
 
 const MODEL = {
   "metadata.root": {
@@ -160,5 +161,79 @@ describe("requirementTests — uncovered warning", () => {
     const seen: string[] = [];
     await emit({ filter: () => true }, (m) => seen.push(m));
     expect(seen).toEqual([]);
+  });
+});
+
+describe("requirementTests — grain", () => {
+  test('grain: "member" emits one file per reference', async () => {
+    const files = await emit({ grain: "member" });
+    // The last segment is the MANGLED reference, so a qualified reference can never
+    // put "::" (or a path separator) into a filename.
+    expect(files.map((f) => f.path).sort()).toEqual([
+      "requirements/links.slugField.Council.test.ts",
+      "requirements/links.slugField.Council_slug.test.ts",
+      "requirements/links.slugField.Council_slug_display.test.ts",
+    ]);
+  });
+
+  test("under member grain each stub is named for, and lists, its one reference", async () => {
+    const files = await emit({ grain: "member" });
+    const slug = files.find((f) => f.path.endsWith(".Council_slug.test.ts"))?.content ?? "";
+    expect(slug).toContain('test("links.slugField [Council.slug]"');
+    expect(slug).toContain(" *   - Council.slug  (field.string)");
+    expect(slug).not.toContain("Council.slug.display");
+  });
+
+  test("a type-keyed renderer still applies under member grain", async () => {
+    // The renderer map is keyed by what the reference RESOLVES to, in both grains —
+    // otherwise switching grain would silently retire every renderer an app registered.
+    const files = await emit({ grain: "member", renderers: { "field.*": () => "FIELD" } });
+    expect(files.filter((f) => f.content === "FIELD").map((f) => f.path)).toEqual([
+      "requirements/links.slugField.Council_slug.test.ts",
+    ]);
+  });
+
+  test("the renderer receives the test identity, digest and witnessKey", async () => {
+    const seen: RequirementTestArgs[] = [];
+    const capture = (a: RequirementTestArgs): string => {
+      seen.push(a);
+      return "";
+    };
+    await emit({ grain: "member", renderers: { "*": capture } });
+    const slug = seen.find((a) => a.unit === "Council.slug");
+    expect(slug?.package).toBe("acme::probe");
+    expect(slug?.id).toBe("acme::probe::links.slugField [Council.slug]");
+    expect(slug?.witnessKey).toBe("req_acme_probe_links_slugField__Council_slug");
+    expect(slug?.skip).toBeNull();
+    expect(slug?.digest).toMatch(/^[0-9a-f]{64}$/);
+    // One claim, so one digest: every test of a requirement carries the same one.
+    expect(new Set(seen.map((a) => a.digest)).size).toBe(1);
+  });
+
+  test("the default grain hands the renderer the same record, keyed by concern", async () => {
+    const seen: RequirementTestArgs[] = [];
+    await emit({
+      renderers: { "*": (a) => (seen.push(a), "") },
+    });
+    expect(seen.map((a) => [a.unit, a.concern, a.id, a.witnessKey])).toEqual([
+      [
+        "object.entity",
+        "object.entity",
+        "acme::probe::links.slugField [object.entity]",
+        "req_acme_probe_links_slugField__object_entity",
+      ],
+      [
+        "field.string",
+        "field.string",
+        "acme::probe::links.slugField [field.string]",
+        "req_acme_probe_links_slugField__field_string",
+      ],
+      [
+        "view.text",
+        "view.text",
+        "acme::probe::links.slugField [view.text]",
+        "req_acme_probe_links_slugField__view_text",
+      ],
+    ]);
   });
 });

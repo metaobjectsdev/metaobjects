@@ -5,12 +5,16 @@
 
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
-import type { MetaData } from "@metaobjectsdev/metadata";
+import type { MetaData, MetaRequirement } from "@metaobjectsdev/metadata";
 import {
   walkRequirements,
   concernOf,
   groupByConcern,
   NO_CONCERN,
+  requirementDigest,
+  witnessKeyOf,
+  requirementTestIdentities,
+  witnessKeyCollisions,
 } from "../src/requirement-walk.js";
 
 // The claimed nodes deliberately span THREE distinct types. A model whose targets
@@ -156,5 +160,321 @@ describe("groupByConcern — the fan-out unit", () => {
     const groups = groupByConcern(twoFields);
     expect([...groups.keys()]).toEqual(["field.string"]);
     expect(groups.get("field.string")?.length).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test identity, digest and grain — the records the other four ports copy.
+// ---------------------------------------------------------------------------
+
+const ORDER = {
+  "object.entity": {
+    name: "Order",
+    children: [
+      { "field.long": { name: "id" } },
+      { "field.currency": { name: "total" } },
+      { "source.rdb": { "@table": "orders" } },
+      { "identity.primary": { name: "pk", "@fields": ["id"] } },
+    ],
+  },
+};
+
+type Json = Record<string, unknown>;
+
+const functional = (name: string, attrs: Json, children: Json[] = []): Json => ({
+  "requirement.functional": {
+    name,
+    "@statement": "s",
+    "@counterexample": "c",
+    ...attrs,
+    ...(children.length > 0 ? { children } : {}),
+  },
+});
+
+/** The worked example of the plan's contract tables, exactly. */
+const RECORDED = functional("Recorded", {
+  "@level": 4,
+  "@status": "live",
+  "@statement": "An order is recorded when it is placed.",
+  "@counterexample": "A placed order has no row.",
+  "@implementedBy": ["Order"],
+});
+const REFUNDED = functional("Refunded", {
+  "@level": 4,
+  "@status": "planned",
+  "@statement": "A refund is recorded against its order.",
+  "@counterexample": "A refund with no order.",
+});
+const RECORDED_DIGEST = "2714aa3925a47959aa5e48ae39d80ed203fd4e2caa046a90aab9e04691d9881a";
+const REFUNDED_DIGEST = "4ddcd781ccc2fe462bc316711d5cedb88b803af1727a0df19fe3a69487aa6f86";
+
+const shop = (...requirements: Json[]): Json => ({
+  "metadata.root": { package: "acme::shop", children: [ORDER, ...requirements] },
+});
+
+const WORKED_EXAMPLE = shop(
+  functional("Orders", { "@level": 3, "@status": "live" }, [RECORDED, REFUNDED]),
+);
+
+async function loadDocs(...docs: Json[]): Promise<MetaData> {
+  const r = await new MetaDataLoader().load(
+    docs.map((d) => new InMemoryStringSource(JSON.stringify(d))),
+  );
+  if (r.errors.length > 0) {
+    throw new Error(`Loader errors:\n${r.errors.map((e) => e.message).join("\n")}`);
+  }
+  return r.root;
+}
+
+async function requirementAt(doc: Json, path: string): Promise<MetaRequirement> {
+  const found = walkRequirements(await loadDocs(doc)).find((w) => w.view.path === path);
+  if (found === undefined) throw new Error(`no requirement at ${path}`);
+  return found.node;
+}
+
+describe("requirementDigest — did the claim change", () => {
+  test("the digest of the worked example is pinned", async () => {
+    // functional, level 4, live, one ref "Order" — Table G
+    const recorded = await requirementAt(WORKED_EXAMPLE, "Orders.Recorded");
+    expect(requirementDigest(recorded)).toBe(
+      "2714aa3925a47959aa5e48ae39d80ed203fd4e2caa046a90aab9e04691d9881a",
+    );
+  });
+
+  test("a requirement with no links hashes an empty reference list", async () => {
+    const refunded = await requirementAt(WORKED_EXAMPLE, "Orders.Refunded");
+    expect(requirementDigest(refunded)).toBe(REFUNDED_DIGEST);
+  });
+
+  test("the digest ignores title, notes, disposition and trackedBy", async () => {
+    const plain = functional("Gap", { "@level": 4, "@status": "partial" });
+    const annotated = functional("Gap", {
+      "@level": 4,
+      "@status": "partial",
+      "@title": "A title",
+      "@notes": "Some notes.",
+      "@disposition": "deferred",
+      "@trackedBy": ["#42"],
+    });
+    const reworded = functional("Gap", {
+      "@level": 4,
+      "@status": "partial",
+      "@statement": "a different claim",
+    });
+    const base = requirementDigest(await requirementAt(shop(plain), "Gap"));
+    expect(requirementDigest(await requirementAt(shop(annotated), "Gap"))).toBe(base);
+    // …and the comparison is not vacuous: a changed claim does move it.
+    expect(requirementDigest(await requirementAt(shop(reworded), "Gap"))).not.toBe(base);
+  });
+
+  test("the digest normalises CRLF", async () => {
+    const withBreak = (br: string): Json =>
+      functional("Gap", {
+        "@level": 4,
+        "@status": "live",
+        "@statement": `first${br}second`,
+        "@counterexample": `one${br}two`,
+      });
+    const lf = requirementDigest(await requirementAt(shop(withBreak("\n")), "Gap"));
+    expect(requirementDigest(await requirementAt(shop(withBreak("\r\n")), "Gap"))).toBe(lf);
+    expect(requirementDigest(await requirementAt(shop(withBreak("\r")), "Gap"))).toBe(lf);
+  });
+});
+
+describe("witnessKeyOf", () => {
+  test("witness keys follow Table F", () => {
+    expect(witnessKeyOf("acme::shop::Orders.Recorded", "object.entity"))
+      .toBe("req_acme_shop_Orders_Recorded__object_entity");
+    expect(witnessKeyOf("acme::shop::Orders.Recorded", "Order.total"))
+      .toBe("req_acme_shop_Orders_Recorded__Order_total");
+    expect(witnessKeyOf("acme::shop::Orders.Recorded", "*"))
+      .toBe("req_acme_shop_Orders_Recorded");
+  });
+});
+
+describe("the requirement view's package", () => {
+  test("the view carries the effective package", async () => {
+    // One requirement takes the file's default package, one declares its own.
+    const root = await loadDocs(
+      shop(
+        functional("Local", { "@level": 4, "@status": "live" }),
+        {
+          "requirement.functional": {
+            name: "Elsewhere",
+            package: "acme::billing",
+            "@level": 4,
+            "@status": "live",
+            "@statement": "s",
+            "@counterexample": "c",
+          },
+        },
+      ),
+    );
+    const packages = Object.fromEntries(
+      walkRequirements(root).map((w) => [w.view.path, w.view.package]),
+    );
+    expect(packages).toEqual({ Local: "acme::shop", Elsewhere: "acme::billing" });
+  });
+
+  test("an unpackaged requirement has the empty package and a bare address", async () => {
+    const root = await loadDocs({
+      "metadata.root": {
+        children: [functional("Bare", { "@level": 4, "@status": "live" })],
+      },
+    });
+    expect(walkRequirements(root)[0]?.view.package).toBe("");
+    const [only] = requirementTestIdentities(root);
+    expect(only?.id).toBe("Bare [*]");
+    expect(only?.witnessKey).toBe("req_Bare");
+  });
+});
+
+describe("requirementTestIdentities — one record per generated test", () => {
+  test("the worked example yields the records of Table F", async () => {
+    expect(requirementTestIdentities(await loadDocs(WORKED_EXAMPLE))).toEqual([
+      {
+        package: "acme::shop",
+        path: "Orders.Recorded",
+        unit: "object.entity",
+        id: "acme::shop::Orders.Recorded [object.entity]",
+        witnessKey: "req_acme_shop_Orders_Recorded__object_entity",
+        status: "live",
+        skip: null,
+        digest: RECORDED_DIGEST,
+      },
+      {
+        package: "acme::shop",
+        path: "Orders.Refunded",
+        unit: "*",
+        id: "acme::shop::Orders.Refunded [*]",
+        witnessKey: "req_acme_shop_Orders_Refunded",
+        status: "planned",
+        skip: "planned",
+        digest: REFUNDED_DIGEST,
+      },
+    ]);
+  });
+
+  // "Missing" does not resolve; "Order" is repeated; the qualified spelling names the
+  // same entity as the bare one and is still a different reference AS AUTHORED.
+  const MEMBERS = shop(
+    functional("Recorded", {
+      "@level": 4,
+      "@status": "live",
+      "@implementedBy": ["Order", "acme::shop::Order", "Order", "Missing", "Order.total"],
+    }),
+  );
+
+  test("member grain yields one identity per distinct resolving reference", async () => {
+    const tests = requirementTestIdentities(await loadDocs(MEMBERS), { grain: "member" });
+    // Sorted by id, and in code units "." sorts before "]".
+    expect(tests.map((t) => t.unit)).toEqual(["Order.total", "Order", "acme::shop::Order"]);
+    expect(tests.map((t) => t.witnessKey)).toEqual([
+      "req_acme_shop_Recorded__Order_total",
+      "req_acme_shop_Recorded__Order",
+      "req_acme_shop_Recorded__acme_shop_Order",
+    ]);
+    // The default grain fans the same requirement out by concern instead.
+    expect(requirementTestIdentities(await loadDocs(MEMBERS)).map((t) => t.unit)).toEqual([
+      "field.currency",
+      "object.entity",
+    ]);
+  });
+
+  test("a requirement with no resolved target yields unit *", async () => {
+    // Nothing declared, and a planned requirement naming only nodes that do not exist.
+    const root = await loadDocs(
+      shop(
+        functional("Unlinked", { "@level": 4, "@status": "live" }),
+        functional("Ahead", { "@level": 4, "@status": "planned", "@implementedBy": ["NotYet"] }),
+      ),
+    );
+    for (const grain of ["concern", "member"] as const) {
+      expect(requirementTestIdentities(root, { grain }).map((t) => t.id)).toEqual([
+        "acme::shop::Ahead [*]",
+        "acme::shop::Unlinked [*]",
+      ]);
+    }
+  });
+
+  test("skip is derived from the status lists", async () => {
+    const root = await loadDocs(
+      shop(
+        functional("A", { "@level": 4, "@status": "planned" }),
+        functional("B", { "@level": 4, "@status": "live" }),
+        functional("C", { "@level": 4, "@status": "partial" }),
+        functional("D", { "@level": 4, "@status": "retired" }),
+      ),
+    );
+    expect(requirementTestIdentities(root).map((t) => [t.path, t.status, t.skip])).toEqual([
+      ["A", "planned", "planned"],
+      ["B", "live", null],
+      ["C", "partial", null],
+      ["D", "retired", "retired"],
+    ]);
+  });
+
+  test("identities come back sorted by id", async () => {
+    // Declared out of order, and mixed-case on purpose: a code-unit comparison puts
+    // every capital before every lower-case letter, where a locale collation would
+    // interleave them — and a collation differs between machines and between ports.
+    const root = await loadDocs(
+      shop(
+        functional("beta", { "@level": 4, "@status": "live" }),
+        functional("Zeta", { "@level": 4, "@status": "live" }),
+        functional("alpha", { "@level": 4, "@status": "live" }),
+        functional("Beta", { "@level": 4, "@status": "live" }),
+      ),
+    );
+    expect(requirementTestIdentities(root).map((t) => t.path)).toEqual([
+      "Beta",
+      "Zeta",
+      "alpha",
+      "beta",
+    ]);
+  });
+
+  test("a filter replaces the default and its view carries the effective package", async () => {
+    const root = await loadDocs(
+      shop(functional("Orders", { "@level": 3, "@status": "live" }, [RECORDED])),
+      {
+        "metadata.root": {
+          package: "acme::billing",
+          children: [functional("Invoiced", { "@level": 4, "@status": "live" })],
+        },
+      },
+    );
+    const tests = requirementTestIdentities(root, {
+      filter: (r) => r.package === "acme::shop",
+    });
+    // The L3 parent is IN — the default would have dropped it, so the predicate
+    // replaced the default rather than narrowing it — and the other package is out.
+    expect(tests.map((t) => t.id)).toEqual([
+      "acme::shop::Orders [*]",
+      "acme::shop::Orders.Recorded [object.entity]",
+    ]);
+  });
+});
+
+describe("witnessKeyCollisions", () => {
+  test("two addresses that mangle alike are reported as a collision", async () => {
+    const root = await loadDocs(
+      shop(
+        functional("Orders_Recorded", { "@level": 4, "@status": "live", "@implementedBy": ["Order"] }),
+        functional("Orders", { "@level": 3, "@status": "live" }, [RECORDED]),
+      ),
+    );
+    const tests = requirementTestIdentities(root);
+    expect(witnessKeyCollisions(tests)).toEqual([
+      [
+        "acme::shop::Orders.Recorded [object.entity]",
+        "acme::shop::Orders_Recorded [object.entity]",
+      ],
+    ]);
+  });
+
+  test("distinct keys report nothing", async () => {
+    const tests = requirementTestIdentities(await loadDocs(WORKED_EXAMPLE));
+    expect(witnessKeyCollisions(tests)).toEqual([]);
   });
 });

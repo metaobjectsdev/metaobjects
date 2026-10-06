@@ -355,11 +355,23 @@ export {
   groupByConcern,
   concernOf,
   NO_CONCERN,
+  // The test identity, the digest and the grain: what every language port's
+  // requirement-test generator agrees on, and what an owned (ejected) generator
+  // keeps importing from here.
+  defaultRequirementTestFilter,
+  requirementDigest,
+  witnessKeyOf,
+  requirementTestUnits,
+  requirementTestIdentity,
+  requirementTestIdentities,
+  witnessKeyCollisions,
 } from "./requirement-walk.js";
 export type {
   RequirementView,
   ResolvedClaim,
   WalkedRequirement,
+  RequirementTestGrain,
+  RequirementTestIdentity,
 } from "./requirement-walk.js";
 export { renderRequirementTest } from "./templates/requirement-test.js";
 export type { RequirementTestArgs } from "./templates/requirement-test.js";

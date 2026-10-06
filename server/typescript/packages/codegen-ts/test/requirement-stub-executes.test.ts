@@ -19,12 +19,19 @@ function args(status: string): RequirementTestArgs {
       level: 4,
       status,
       path: "req.probe",
+      package: "acme::probe",
       implementedByTypes: [],
     },
     concern: "object.entity",
     statement: "A council has a human-readable slug.",
     counterexample: "a council with no slug",
     targets: [],
+    package: "acme::probe",
+    unit: "object.entity",
+    id: "acme::probe::req.probe [object.entity]",
+    witnessKey: "req_acme_probe_req_probe__object_entity",
+    skip: null,
+    digest: "0".repeat(64),
   };
 }
 
