@@ -4195,9 +4195,10 @@ def _validate_index_lookup_fields(root: MetaData, errors: list[MetaError]) -> No
 #   2. `@supersededBy` is legal ONLY on `retired`. Resolution of the reference is
 #      `verify`'s job; the loader owns the shape.
 #
-# `requirement.*` gate logic otherwise lives only in the TS CLI, which is exactly
-# why THIS rule belongs in the loader: a Python estate would otherwise be free to
-# author the shape the rule exists to prevent.
+# The requirement gate runs in every port's `verify` since ADR-0057 (when this rule
+# was written it ran only in the TS CLI), yet the rule stays in the loader: a shape
+# the loader refuses is unreachable in every port and in every program that loads
+# the model, whether or not anyone runs `verify`.
 #
 # ADR-0039: attrs() is the RESOLVING accessor in Python (attr() is own-only), so a
 # requirement inheriting its status through `extends` is judged on its EFFECTIVE one.
