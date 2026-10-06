@@ -31,8 +31,8 @@ there and wrong here, and the difference is worth stating rather than departing 
 quietly.
 
 An adopter generates a handful of stubs for capabilities nothing else checks. This
-generates 109 across five ports for a library whose conformance corpora already check
-a great many of them. Emitting 545 red tests would claim nothing is verified, which is
+generates 115 across five ports for a library whose conformance corpora already check
+a great many of them. Emitting 575 red tests would claim nothing is verified, which is
 false — and a suite red for a false reason gets silenced wholesale, taking with it the
 slots that were telling the truth.
 

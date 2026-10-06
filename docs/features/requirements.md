@@ -665,11 +665,12 @@ visible choice. Its text is the same in every port, and it names requirement pat
 It lists at most five paths and then `, and <k> more`. The switch is spelled the way that
 port spells it, and TypeScript says `stub` where the others say `test`.
 
-Three refusals are the same everywhere. A grain other than `concern` or `member` is an
-error, never a hybrid run. Outside TypeScript, two tests that would share one witness key
-refuse to generate (`ERR_REQUIREMENT_WITNESS_KEY_COLLISION`, naming both ids). And a
-renderer or filter the project names that exists but fails to load is reported with its
-real cause, not as missing.
+Three refusals. In every port, a grain other than `concern` or `member` is an error, never
+a hybrid run. Outside TypeScript, two tests that would share one witness key refuse to
+generate (`ERR_REQUIREMENT_WITNESS_KEY_COLLISION`, naming both ids). And in Python, Java
+and Kotlin, where a renderer or filter is given by name, one that exists but fails to load
+is reported with its real cause, not as missing. TypeScript and C# take the function or
+object itself, so there is nothing to look up.
 
 ### When a claim changes, and when a package empties
 

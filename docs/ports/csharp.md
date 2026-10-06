@@ -476,6 +476,11 @@ IReadOnlyList<IGenerator> generators =
 return CodegenCli.Run(args, generators);
 ```
 
+The example is the file as it stands after `dotnet meta eject requirement-tests`: the class
+is your owned copy, in `Codegen.Generators`. If `Program.cs` exists because you ejected
+something else and you are constructing the packaged generator, the class is in
+`MetaObjects.Codegen.Generators`, so add `using MetaObjects.Codegen.Generators;`.
+
 | Property | Meaning |
 |---|---|
 | `TestNamespace` | Namespace of the generated tests. Default `<namespace>.Requirements`. |

@@ -32,8 +32,9 @@ export default defineConfig({
     promptRender(),
     renderHelper(),
     // The fifth pillar's own evidence — a test stub per claim, carrying the
-    // statement and counterexample in. TypeScript-only; the requirement.*
-    // vocabulary and its verify checks are cross-port.
+    // statement and counterexample in. The hand-filled stub is TypeScript's form;
+    // the other ports generate tests that call a witness you own. The
+    // requirement.* vocabulary and its verify checks are cross-port.
     requirementTests(),
     barrel(),
   ],

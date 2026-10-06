@@ -6,7 +6,7 @@ For the standard itself (metamodel, conformance corpora, ADRs) see the [reposito
 
 ## What ships
 
-The first four MetaObjects pillars ship across all five language ports — TypeScript, Java, Kotlin, C#, Python; the fifth (requirements and testing) ships its vocabulary and `verify` checks in every port and its test scaffolding in TypeScript only. Java's contributions:
+The first four MetaObjects pillars ship across all five language ports — TypeScript, Java, Kotlin, C#, Python; the fifth (requirements and testing) ships its vocabulary, `verify` checks and a `requirement-tests` generator in every port, and its authoring lint in TypeScript only. Java's contributions:
 
 Only the loader and registry, runtime metadata access and the drift gates are a MetaObjects
 guarantee. The generators are reference helpers: copy one into your build with
