@@ -2,6 +2,7 @@ package com.metaobjects.generator;
 
 import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;
 import com.metaobjects.generator.direct.object.javacode.JavaObjectCodeGenerator;
+import com.metaobjects.generator.spring.JUnitRequirementTestsGenerator;
 import com.metaobjects.generator.spring.LlmTraceHelperGenerator;
 import com.metaobjects.generator.spring.SpringControllerGenerator;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
@@ -267,6 +268,11 @@ public final class GeneratorRegistry {
                 "Per-entity typed record<Entity> LLM-trace helper (extract + buildLlmCallRow + persist; "
                     + "LlmCallBase-derived entities only).", Tier.NATIVE, Layer.CAPABILITY,
                 ejectPath(LlmTraceHelperGenerator.class));
+        register(m, "requirement-tests", JUnitRequirementTestsGenerator.class.getName(),
+                "Per-package JUnit Jupiter tests, one per tested requirement, calling a project-owned witness "
+                    + "class through a generated interface (an unfilled live test fails; a skipped one is @Disabled). "
+                    + "[The project's test classpath needs org.junit.jupiter:junit-jupiter-api.]",
+                Tier.NATIVE, Layer.CAPABILITY, ejectPath(JUnitRequirementTestsGenerator.class));
         register(m, "names", SpringNamesGenerator.class.getName(),
                 "Per-object physical database name constants (table/view/schema/column) "
                     + "for a hand-written consumer to reference instead of a string literal.", Tier.NATIVE, Layer.MODEL,

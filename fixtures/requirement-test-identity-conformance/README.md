@@ -211,3 +211,4 @@ function in each port: the address `acme::shop::Café.Réglé` with unit `*` giv
 | Port | Runner |
 |---|---|
 | TypeScript (reference) | `server/typescript/packages/codegen-ts/test/requirement-test-identity-conformance.test.ts` |
+| Java | `server/java/metadata/src/test/java/com/metaobjects/conformance/RequirementTestIdentityConformanceTest.java` |

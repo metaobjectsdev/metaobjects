@@ -7,6 +7,7 @@ import com.metaobjects.MetaDataException;
 import com.metaobjects.agentcontext.AgentContextScaffold;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
+import com.metaobjects.generator.ProjectClassLoaderAware;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.generator.spring.SpringRenderHelperGenerator;
 import com.metaobjects.generator.template.TemplateScopeGenerator;
@@ -158,6 +159,11 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
                     Class<?> generatorClass = projectClassLoader.loadClass(g.getClassname());
                     Constructor<?> constructor = generatorClass.getDeclaredConstructor();
                     Generator impl = (Generator) constructor.newInstance();
+                    // A generator that loads a class the project names in an arg (a requirement
+                    // test renderer or filter) must look in the project's loader, not its own.
+                    if ( impl instanceof ProjectClassLoaderAware ) {
+                        ((ProjectClassLoaderAware) impl).setProjectClassLoader( projectClassLoader );
+                    }
 
                     // Merge generator args and global args
                     Map<String, String> allargs = mergeAndOverwriteArgs(g);

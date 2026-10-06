@@ -54,7 +54,8 @@ public class EjectedGeneratorsCompileTest {
             "SpringDtoGenerator",
             "SpringValueObjectGenerator",
             "LlmTraceHelperGenerator",
-            "SpringNamesGenerator"
+            "SpringNamesGenerator",
+            "JUnitRequirementTestsGenerator"
     );
 
     private static final Pattern PACKAGE_LINE = Pattern.compile("(?m)^package\\s+[\\w.]+\\s*;\\s*$");

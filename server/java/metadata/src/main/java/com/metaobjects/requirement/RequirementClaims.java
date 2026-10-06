@@ -111,10 +111,15 @@ public final class RequirementClaims {
      * so {@code Council.slug.display} yields the view node rather than stopping at the field.
      */
     public static MetaData resolveClaim(MetaRoot root, String ref, String referrerPkg) {
+        return resolveClaim(root, SymbolTable.build(root), ref, referrerPkg);
+    }
+
+    /** {@link #resolveClaim(MetaRoot, String, String)} over a symbol table the caller built once. */
+    public static MetaData resolveClaim(MetaRoot root, SymbolTable symbols, String ref, String referrerPkg) {
         // Segments split on every dot, as the reference does: a package qualifies the root
         // node only and carries no dot, so the first segment is the whole owner.
         String[] segs = ref.split("\\.", -1);
-        MetaData owner = resolveClaimTarget(root, segs[0], referrerPkg);
+        MetaData owner = resolveClaimTarget(root, symbols, segs[0], referrerPkg);
         if (owner == null || segs.length == 1) return owner;
         return resolveMember(owner, Arrays.asList(segs).subList(1, segs.length));
     }

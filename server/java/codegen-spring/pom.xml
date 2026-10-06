@@ -74,6 +74,16 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- compile-and-run test (JUnitRequirementTestsGeneratorTest): the generated requirement
+             tests are JUnit Jupiter, so compiling them needs the Jupiter API. This module's own
+             tests stay JUnit 4. -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- compile-and-run test: generated parser imports Jackson ObjectMapper -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
@@ -127,6 +137,21 @@
 
     <build>
         <plugins>
+            <!-- This module's tests are JUnit 4. With junit-jupiter-api on the test classpath
+                 (for JUnitRequirementTestsGeneratorTest to compile the Jupiter tests it generates)
+                 surefire would switch to the JUnit Platform provider and ask for the vintage
+                 engine. Naming the JUnit 4 provider keeps the provider the tests were written for. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.apache.maven.surefire</groupId>
+                        <artifactId>surefire-junit4</artifactId>
+                        <version>${surefire.plugin.version}</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
             <!-- `mvn metaobjects:eject` (FR — eject in every port, JVM section) ships the
                  verbatim source of every ejectable generator inside the jar that owns it,
                  as a classpath resource under META-INF/metaobjects/reference/java/. Copied
@@ -165,6 +190,7 @@
                                         <include>SpringValueObjectGenerator.java</include>
                                         <include>LlmTraceHelperGenerator.java</include>
                                         <include>SpringNamesGenerator.java</include>
+                                        <include>JUnitRequirementTestsGenerator.java</include>
                                     </includes>
                                 </resource>
                             </resources>

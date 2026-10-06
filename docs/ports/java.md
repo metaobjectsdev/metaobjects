@@ -280,6 +280,7 @@ name in every port.
 | `filter-allowlist` | `SpringFilterAllowlistGenerator` | `metaobjects-codegen-spring` | One `<Entity>FilterAllowlist.java` per writable entity: the filterable field set plus the operator set permitted per field, gated by field subtype (FR-009 §5, identical across ports). Only `@filterable: true` fields appear. Emitted even when no field is filterable (with empty constants), so the generated controller delegates to it unconditionally. |
 | `value-object` | `SpringValueObjectGenerator` | `metaobjects-codegen-spring` | One Java 21 `record` per concrete `object.value` and per sourceless `object.projection`, in the value object's own package. It carries jakarta bean-validation constraints plus `@Valid` on nested members, so a VO jsonb column POSTs and PATCHes with validation cascading to depth ≥ 2. It is THE Java type for the value object (ADR-0056): `<Entity>Dto` / `<Entity>Patch` bind to it, a render helper takes it, and a response parser returns it. The template tier declares no copy, so it needs this generator in the same run. |
 | `names` | `SpringNamesGenerator` | `metaobjects-codegen-spring` | One `<Entity>Names.java` per object with a declared/inherited primary `source.rdb` — `public static final` physical database name constants (table/view name, schema, per-field columns). See "`<Entity>Names`" below. |
+| `requirement-tests` | `JUnitRequirementTestsGenerator` | `metaobjects-codegen-spring` | Per metamodel package that holds a tested requirement, two files in `testPackage`: `Requirements_<pkgKey>_Witnesses.java` (an interface with one default member per non-skipped test, failing with `unimplemented requirement: ...`) and `Requirements_<pkgKey>_Test.java` (one JUnit Jupiter `@Test` per requirement, calling that member on your `witnessClass`; a planned or retired requirement is `@Disabled`). Args: `testPackage` and `witnessClass` (required), `grain` (`concern` or `member`), `filter` and `renderer` (class names on your project classpath), `warnUncovered`. Your test classpath needs `org.junit.jupiter:junit-jupiter-api`. A model with no requirement writes nothing. See "Requirement tests" below. |
 | `entity` | `JavaObjectCodeGenerator` | `metaobjects-codegen-base` | Flavor-selected via the `flavor` generator arg (`com.metaobjects.generator.direct.object.javacode`). `flavor=pojoAware` emits `class <Name> extends PojoObject` — a concrete `MetaObjectAware` class whose inherited `getMetaData()` back-reference breaks a default Jackson/Gson mapper (see [Serializing generated objects](#serializing-generated-objects) below). `flavor=valueObject` emits a map-backed `class <Name> extends ValueObject` instead. Either flavor also emits a `<Name>Extractor` and a self-registering `ObjectClassBindingProvider`. For a plain default-Jackson-friendly type, use the `codegen-spring` record surface instead — never `pojoAware`. |
 | `output-parser` | `SpringOutputParserGenerator` | `metaobjects-codegen-spring` | One `<Template>Parser` per **responding** `template.prompt` (ADR-0052: one carrying `@responseRef`) — a Jackson-backed throw-only parser returning the `@responseRef` value object's own record (ADR-0056). FR-006 / ADR-0010; the Java sibling of TS's `outputParser()`. See [FR-006 — response parsing](#fr-006--response-parsing) below. |
 | `output-prompt` | `SpringOutputPromptGenerator` | `metaobjects-codegen-spring` | One `<Template>ResponseFormat` per responding `template.prompt` — a static `renderFormat()` / `renderFormat(PromptOverrides)` pair emitting the output-format prompt fragment (FR-010). The reply's syntax comes from `@responseFormat`, never `@format` (which is the syntax of the rendered prompt BODY). |
@@ -439,6 +440,56 @@ Codegen cannot see a runtime `SimpleMappingHandlerDB.setColumnNaming(...)`
 call — a project pairing that call with this generator must pass the same
 strategy string to both, by hand (see
 [`features/field-types.md`](../features/field-types.md)).
+
+### Requirement tests — `JUnitRequirementTestsGenerator`
+
+Declare what the software must do as `requirement.*` nodes and this writes one JUnit Jupiter
+test per tested requirement. The test does not assert anything itself: it calls a **witness**,
+a method you write, and a live requirement with no witness fails.
+
+```xml
+<generator>
+  <classname>com.metaobjects.generator.spring.JUnitRequirementTestsGenerator</classname>
+  <args>
+    <outputDir>${project.build.directory}/generated-test-sources/requirements</outputDir>
+    <testPackage>com.acme.requirements</testPackage>
+    <witnessClass>com.acme.requirements.Witnesses</witnessClass>
+  </args>
+</generator>
+```
+
+Per metamodel package it writes `Requirements_<pkgKey>_Witnesses.java` (an interface whose
+default members fail with `unimplemented requirement: <id> - write <witnessClass>.<key>() so
+that it fails when: <counterexample>`) and `Requirements_<pkgKey>_Test.java`. You write the
+class `witnessClass` names, implementing every generated witness interface and overriding the
+members you have witnesses for, with a public no-argument constructor:
+
+```java
+public class Witnesses implements Requirements_acme_shop_Witnesses {
+    @Override public void req_acme_shop_Orders_Recorded__object_entity() { /* fails when a placed order has no row */ }
+}
+```
+
+A requirement that becomes live adds a failing member (a red test, no compile break). One that
+is retired or deleted removes its member, so a stale override stops compiling. A planned or
+retired requirement is `@Disabled` and has no member. The generated files are rewritten whole,
+so do not edit them; `mvn metaobjects:verify` reports them stale when a claim changes, and a
+package that loses its last requirement leaves its two files behind, which `verify` reports as
+`[stale-in-repo]` (delete them: `gen` never removes a file).
+
+| Arg | Meaning |
+|---|---|
+| `testPackage`, `witnessClass` | Required once the model holds a requirement. The generated tests are in `testPackage`; `witnessClass` is a fully-qualified class name. |
+| `grain` | `concern` (default): one test per distinct `<type>.<subType>` a requirement claims. `member`: one per distinct `implementedBy` reference that resolves. Anything else is refused. |
+| `filter` | The name of a class implementing `RequirementTestFilter` (`boolean include(View)`) that **replaces** the default of functional requirements at level 4 and above. |
+| `renderer` | The name of a class implementing `RequirementTestRenderer`; it may return a `RenderedTest` to replace the text of one test, or `null` to keep the default. |
+| `warnUncovered` | `true` (default): one warning naming up to five requirements the filter excluded. `false` silences it. |
+
+`filter` and `renderer` are loaded from your project's classpath, so the class must be
+compiled before the goal runs (a module the build already compiled). Your test classpath needs
+`org.junit.jupiter:junit-jupiter-api`. Which tests exist, their names and their digests are
+shared by every language port and checked by one corpus; `mvn metaobjects:eject -Dnames=requirement-tests`
+copies this generator into your project when you want different text.
 
 ### Authoring your own — two paths
 
