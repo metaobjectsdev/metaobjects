@@ -14,6 +14,7 @@ import com.metaobjects.requirement.RequirementTestIdentities.Grain
 import com.metaobjects.requirement.RequirementTestIdentities.Identity
 import com.metaobjects.requirement.RequirementTestIdentities.Target
 import org.slf4j.LoggerFactory
+import java.lang.reflect.InvocationTargetException
 import java.util.TreeMap
 import java.util.TreeSet
 
@@ -190,6 +191,14 @@ open class KotlinRequirementTestsGenerator : FileEmittingGenerator(), ProjectCla
         }
         try {
             return type.cast(found.getDeclaredConstructor().newInstance())
+        } catch (e: InvocationTargetException) {
+            // The class HAS the constructor, and it ran and threw. The wrapper's own message is
+            // empty, so name what was thrown: "needs a constructor" would point at the wrong problem.
+            val thrown = e.cause ?: e
+            throw GeneratorException(
+                "requirement-tests: arg '$arg' names '$className', and its constructor threw: $thrown",
+                null, null, thrown, emptyMap(),
+            )
         } catch (e: ReflectiveOperationException) {
             throw GeneratorException("requirement-tests: arg '$arg' names '$className', which needs a public no-argument constructor: $e", e)
         }

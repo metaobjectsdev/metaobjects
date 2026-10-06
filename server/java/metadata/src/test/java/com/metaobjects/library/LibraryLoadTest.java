@@ -130,6 +130,41 @@ public class LibraryLoadTest {
     }
 
     /**
+     * {@code libraryPackages()} decides whether a requirement came from a shipped library, and
+     * so whether object coverage is measured at all. It is read from the embedded manifests;
+     * this holds it to exactly the packages of the manifests the repository ships under
+     * {@code library/<name>/library.json}.
+     */
+    @Test
+    public void libraryPackagesIsExactlyThePackagesOfTheShippedManifests() throws IOException {
+        Path libraryDir = repoLibraryDir();
+        java.util.Set<String> expected = new java.util.TreeSet<>();
+        int manifests = 0;
+        try (java.util.stream.Stream<Path> libraries = Files.list(libraryDir)) {
+            for (Path library : (Iterable<Path>) libraries::iterator) {
+                Path manifest = library.resolve("library.json");
+                if (!Files.isRegularFile(manifest)) continue;
+                manifests++;
+                com.google.gson.JsonParser.parseString(new String(Files.readAllBytes(manifest), StandardCharsets.UTF_8))
+                    .getAsJsonObject().getAsJsonArray("packages")
+                    .forEach(p -> expected.add(p.getAsString()));
+            }
+        }
+        assertTrue("no library manifest under " + libraryDir, manifests > 0);
+        assertFalse("a manifest that declares no package would make this vacuous", expected.isEmpty());
+        assertEquals(expected, LibrarySources.libraryPackages());
+    }
+
+    private static Path repoLibraryDir() {
+        for (Path p = java.nio.file.Paths.get("").toAbsolutePath(); p != null; p = p.getParent()) {
+            if (Files.isDirectory(p.resolve("library")) && Files.isDirectory(p.resolve("server"))) {
+                return p.resolve("library");
+            }
+        }
+        throw new IllegalStateException("repo-root library/ directory not found");
+    }
+
+    /**
      * The freshness gate: the embed must equal the canonical tree byte for byte.
      *
      * <p>Skipped when the repo-root {@code library/} tree is unreachable — that is the

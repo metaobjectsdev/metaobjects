@@ -1,5 +1,7 @@
 package com.metaobjects.mojo;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.SystemStreamLog;
 import org.junit.Test;
@@ -33,10 +35,18 @@ public class MetaDataVerifyRequirementsTest {
         final List<String> infos = new ArrayList<>();
         final List<String> warnings = new ArrayList<>();
         final List<String> errors = new ArrayList<>();
+        /** Warnings and errors as they arrived, across both levels. */
+        final List<String> warningsAndErrorsInOrder = new ArrayList<>();
 
         @Override public void info(CharSequence content) { infos.add(content.toString()); }
-        @Override public void warn(CharSequence content) { warnings.add(content.toString()); }
-        @Override public void error(CharSequence content) { errors.add(content.toString()); }
+        @Override public void warn(CharSequence content) {
+            warnings.add(content.toString());
+            warningsAndErrorsInOrder.add(content.toString());
+        }
+        @Override public void error(CharSequence content) {
+            errors.add(content.toString());
+            warningsAndErrorsInOrder.add(content.toString());
+        }
 
         List<String> all() {
             List<String> all = new ArrayList<>(infos);
@@ -86,12 +96,19 @@ public class MetaDataVerifyRequirementsTest {
 
     private static Run run(Path dir, String mode, boolean requireImplementers,
                            Function<String, String> env) throws Exception {
+        return run(dir, "meta.app.json", null, mode, requireImplementers, env);
+    }
+
+    private static Run run(Path dir, String source, List<String> libraries, String mode, boolean requireImplementers,
+                           Function<String, String> env) throws Exception {
         TestMojo mojo = new TestMojo(env);
-        mojo.setLoader(LoaderParam.builder("verify-requirements-test")
+        LoaderParam loaderParam = LoaderParam.builder("verify-requirements-test")
             .withClassname("com.metaobjects.loader.MetaDataLoader")
             .withSourceDir(dir.toString())
-            .withSource("meta.app.json")
-            .build());
+            .withSource(source)
+            .build();
+        loaderParam.setLibraries(libraries);
+        mojo.setLoader(loaderParam);
         mojo.setGenerators(Collections.emptyList());
         mojo.setGlobals(Collections.emptyMap());
         mojo.setMode(mode);
@@ -143,6 +160,77 @@ public class MetaDataVerifyRequirementsTest {
         assertTrue(run.log().warnings.toString(), run.log().warnings.stream().anyMatch(
             w -> w.startsWith("  WARN_REQUIREMENT_OBJECT_UNCLAIMED: no requirement claims 'acme::shop::Order'.")));
         assertTrue(run.log().errors.toString(), run.log().errors.isEmpty());
+    }
+
+    @Test
+    public void everyErrorIsLoggedBeforeAnyWarningWhateverOrderTheChecksFoundThemIn() throws Exception {
+        // In check order: a warning (Idle names nothing), an error (Recorded names a missing
+        // node), then the whole-model warning (Order is unclaimed). Printed: errors, then warnings.
+        Run run = run(model(ORDER_ENTITY, requirement("Idle", "live", null), requirement("Recorded", "live", "Ordr")),
+            "templates", false, NO_ENV);
+        assertNotNull("the build must fail", run.failure());
+        List<String> codes = run.log().warningsAndErrorsInOrder.stream()
+            .filter(l -> l.startsWith("  ERR_REQUIREMENT_") || l.startsWith("  WARN_REQUIREMENT_"))
+            .map(l -> l.strip().split("[ :]")[0])
+            .toList();
+        assertEquals(List.of(
+            "ERR_REQUIREMENT_DANGLING_REF",
+            "WARN_REQUIREMENT_NOTHING_IMPLEMENTS",
+            "WARN_REQUIREMENT_OBJECT_UNCLAIMED"), codes);
+        // The error count closes the gate's output, after the warnings.
+        assertEquals(PREFIX + "requirements: 1 error(s).",
+            run.log().warningsAndErrorsInOrder.get(run.log().warningsAndErrorsInOrder.size() - 1));
+    }
+
+    @Test
+    public void anUndecidedPartialRequirementLogsTheRecordedGapsLine() throws Exception {
+        Run run = run(model(ORDER_ENTITY, requirement("Recorded", "partial", "Order")), "templates", false, NO_ENV);
+        assertNull(run.failure());
+        assertTrue(run.log().infos.toString(), run.log().infos.contains(PREFIX
+            + "requirements: 1 entries (1 functional, 0 architectural) \u2014 1 partial; "
+            + "1/1 entities claimed, counted over 1 metadata file(s)."));
+        assertTrue(run.log().infos.toString(), run.log().infos.contains(PREFIX
+            + "requirements: 1 recorded gap(s) with no @disposition. These are known problems nobody has ruled on "
+            + "\u2014 set 'accepted' or 'deferred' to close the question."));
+    }
+
+    private static Path corpusCase(String name) {
+        for (Path p = Path.of("").toAbsolutePath(); p != null; p = p.getParent()) {
+            if (Files.isDirectory(p.resolve("fixtures")) && Files.isDirectory(p.resolve("server"))) {
+                return p.resolve("fixtures/requirement-check-conformance").resolve(name);
+            }
+        }
+        throw new IllegalStateException("repo root not found");
+    }
+
+    @Test
+    public void theSummaryLineOfALibraryOnlyProjectSaysCoverageIsNotMeasured() throws Exception {
+        // The corpus case pins the counts; this pins the sentence the goal logs them in. The
+        // project opts into a library and authors no requirement of its own.
+        Path corpusCase = corpusCase("coverage-library-only-not-measured");
+        JsonObject options = JsonParser.parseString(Files.readString(corpusCase.resolve("options.json"))).getAsJsonObject();
+        List<String> libraries = new ArrayList<>();
+        options.getAsJsonArray("libraries").forEach(l -> libraries.add(l.getAsString()));
+        JsonObject summary = JsonParser.parseString(Files.readString(corpusCase.resolve("expected.json")))
+            .getAsJsonObject().getAsJsonObject("summary");
+        assertTrue("the case this test is about", !summary.has("entitiesTotal"));
+        JsonObject byStatus = summary.getAsJsonObject("byStatus");
+        List<String> statuses = new ArrayList<>();
+        for (String status : List.of("planned", "live", "partial", "retired")) {
+            if (byStatus.has(status) && byStatus.get(status).getAsInt() > 0) {
+                statuses.add(byStatus.get(status).getAsInt() + " " + status);
+            }
+        }
+
+        Run run = run(corpusCase.resolve("input"), "meta.shop.yaml", libraries, "templates", false, NO_ENV);
+
+        assertNull(run.failure());
+        assertTrue(run.log().infos.toString(), run.log().infos.contains(PREFIX
+            + "requirements: " + summary.get("total").getAsInt() + " entries ("
+            + summary.get("functional").getAsInt() + " functional, "
+            + summary.get("architectural").getAsInt() + " architectural) \u2014 "
+            + String.join(", ", statuses) + "; coverage: not measured (no project-authored requirements)."));
+        assertEquals(run.log().all().toString(), 0, run.log().count("entities claimed"));
     }
 
     @Test

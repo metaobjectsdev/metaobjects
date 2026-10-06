@@ -500,6 +500,19 @@ public class JUnitRequirementTestsGeneratorTest {
         assertFalse(test, test.contains("object_entity"));
     }
 
+    @Test
+    public void memberGrainListsAReferenceAuthoredTwiceOnceInTheClaimsComment() throws Exception {
+        // `implementedBy: [Order, "acme::shop::Order", Order]`: two units, and the one authored
+        // twice claims its node once.
+        MetaDataLoader loader = loadDir(repoRoot().resolve(
+            "fixtures/requirement-test-identity-conformance/member-grain-duplicate-ref/input"));
+        String test = read(run(loader, Map.of("grain", "member")), "Requirements_acme_shop_Test.java");
+        List<String> claims = test.lines().map(String::strip).filter(l -> l.startsWith("// Claims:")).toList();
+        assertEquals(List.of(
+            "// Claims: Order  (object.entity)",
+            "// Claims: acme::shop::Order  (object.entity)"), claims);
+    }
+
     /** A filter that keeps everything, found by name. Public with a public constructor, as a project's would be. */
     public static class KeepEverything implements RequirementTestFilter {
         @Override
@@ -554,6 +567,52 @@ public class JUnitRequirementTestsGeneratorTest {
         assertFalse(e.getMessage(), e.getMessage().contains("not on the project's classpath"));
         assertTrue("the error is the cause: " + e.getCause(), e.getCause() instanceof LinkageError);
         assertTrue(String.valueOf(e.getCause().getCause()), e.getCause().getCause() instanceof IllegalStateException);
+    }
+
+    /** A filter whose class loads and has a public no-argument constructor, which throws. */
+    public static class ThrowingConstructorFilter implements RequirementTestFilter {
+        public ThrowingConstructorFilter() {
+            throw new IllegalStateException("the price list is not configured");
+        }
+
+        @Override
+        public boolean include(RequirementTestIdentities.View view) {
+            return true;
+        }
+    }
+
+    @Test
+    public void aFilterWhoseConstructorThrowsIsReportedWithWhatItThrew() throws Exception {
+        MetaDataLoader loader = loadDir(workedExampleInput());
+        GeneratorException e = assertThrows(GeneratorException.class,
+            () -> run(loader, Map.of("filter", ThrowingConstructorFilter.class.getName())));
+        assertTrue(e.getMessage(), e.getMessage().contains("'filter'"));
+        assertTrue(e.getMessage(), e.getMessage().contains(ThrowingConstructorFilter.class.getName()));
+        assertTrue(e.getMessage(), e.getMessage().contains("its constructor threw"));
+        assertTrue(e.getMessage(), e.getMessage().contains("the price list is not configured"));
+        // The class HAS the constructor: saying it needs one would send the reader to the wrong place.
+        assertFalse(e.getMessage(), e.getMessage().contains("needs a public no-argument constructor"));
+        assertTrue("the cause is what the constructor threw: " + e.getCause(), e.getCause() instanceof IllegalStateException);
+    }
+
+    /** A filter with no no-argument constructor at all: the other reflective failure keeps its wording. */
+    public static class NoDefaultConstructorFilter implements RequirementTestFilter {
+        public NoDefaultConstructorFilter(String unused) {
+        }
+
+        @Override
+        public boolean include(RequirementTestIdentities.View view) {
+            return true;
+        }
+    }
+
+    @Test
+    public void aFilterWithNoNoArgumentConstructorIsStillToldItNeedsOne() throws Exception {
+        MetaDataLoader loader = loadDir(workedExampleInput());
+        GeneratorException e = assertThrows(GeneratorException.class,
+            () -> run(loader, Map.of("filter", NoDefaultConstructorFilter.class.getName())));
+        assertTrue(e.getMessage(), e.getMessage().contains("needs a public no-argument constructor"));
+        assertFalse(e.getMessage(), e.getMessage().contains("its constructor threw"));
     }
 
     /** Records what it is given and replaces the Recorded test. */

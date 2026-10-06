@@ -556,6 +556,19 @@ class KotlinRequirementTestsGeneratorTest {
         assertFalse(test.contains("object_entity"), test)
     }
 
+    @Test
+    fun `member grain lists a reference authored twice once in the claims comment`() {
+        // `implementedBy: [Order, "acme::shop::Order", Order]`: two units, and the one authored
+        // twice claims its node once.
+        val loader = loadDir(corpusCase("member-grain-duplicate-ref/input"))
+        val test = read(run(loader, mapOf("grain" to "member")), "Requirements_acme_shop_Test.kt")
+        val claims = test.lines().map { it.trim() }.filter { it.startsWith("// Claims:") }
+        assertEquals(
+            listOf("// Claims: Order  (object.entity)", "// Claims: acme::shop::Order  (object.entity)"),
+            claims,
+        )
+    }
+
     /** A filter that keeps everything, found by name. Public with a public constructor, as a project's would be. */
     class KeepEverything : RequirementTestFilter {
         override fun include(view: RequirementTestIdentities.View): Boolean = true
@@ -579,6 +592,45 @@ class KotlinRequirementTestsGeneratorTest {
         assertContains(e.message!!, "not on the project's classpath")
         val notAFilter = assertFailsWith<GeneratorException> { run(loader, mapOf("filter" to "java.lang.String")) }
         assertContains(notAFilter.message!!, "does not implement")
+    }
+
+    /** A filter whose class loads and has a public no-argument constructor, which throws. */
+    class ThrowingConstructorFilter : RequirementTestFilter {
+        init {
+            if (System.nanoTime() != 0L) throw IllegalStateException("the price list is not configured")
+        }
+
+        override fun include(view: RequirementTestIdentities.View): Boolean = true
+    }
+
+    @Test
+    fun `a filter whose constructor throws is reported with what it threw`() {
+        val loader = loadDir(workedExampleInput())
+        val e = assertFailsWith<GeneratorException> {
+            run(loader, mapOf("filter" to ThrowingConstructorFilter::class.java.name))
+        }
+        assertContains(e.message!!, "'filter'")
+        assertContains(e.message!!, ThrowingConstructorFilter::class.java.name)
+        assertContains(e.message!!, "its constructor threw")
+        assertContains(e.message!!, "the price list is not configured")
+        // The class HAS the constructor: saying it needs one would send the reader to the wrong place.
+        assertFalse(e.message!!.contains("needs a public no-argument constructor"), e.message)
+        assertIs<IllegalStateException>(e.cause, "the cause is what the constructor threw")
+    }
+
+    /** A filter with no no-argument constructor at all: the other reflective failure keeps its wording. */
+    class NoDefaultConstructorFilter(@Suppress("UNUSED_PARAMETER") unused: String) : RequirementTestFilter {
+        override fun include(view: RequirementTestIdentities.View): Boolean = true
+    }
+
+    @Test
+    fun `a filter with no no-argument constructor is still told it needs one`() {
+        val loader = loadDir(workedExampleInput())
+        val e = assertFailsWith<GeneratorException> {
+            run(loader, mapOf("filter" to NoDefaultConstructorFilter::class.java.name))
+        }
+        assertContains(e.message!!, "needs a public no-argument constructor")
+        assertFalse(e.message!!.contains("its constructor threw"), e.message)
     }
 
     /** A filter that exists and cannot be used: its static initialiser throws. */

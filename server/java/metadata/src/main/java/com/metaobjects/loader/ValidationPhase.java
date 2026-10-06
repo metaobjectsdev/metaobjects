@@ -4216,9 +4216,10 @@ public final class ValidationPhase {
      *  same-short-name objects that DO exist (typically in other packages). Returns "" when
      *  none exist. Mirrors the TS {@code didYouMeanHint}.
      *
-     *  <p>Public because it is the ONE builder of this hint: the requirement gate
-     *  ({@code RequirementCheck}) appends the same text to a dangling claim, and a second copy
-     *  would be a second wording to keep in step with TypeScript.</p> */
+     *  <p>Public because the requirement gate ({@code RequirementCheck}) appends the same text
+     *  to a dangling claim: the gate and this loader pass share this one builder, so the two
+     *  cannot word it differently. It is not the only one: {@code RegisteredValidation} holds
+     *  a second, private builder of the same sentence, which does not strip a dotted tail.</p> */
     public static String didYouMeanHint(MetaRoot root, String ref) {
         if (ref == null) return "";
         int sep = ref.lastIndexOf(MetaData.PKG_SEPARATOR);

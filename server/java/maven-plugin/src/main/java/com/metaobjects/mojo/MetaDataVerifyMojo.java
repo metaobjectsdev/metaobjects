@@ -232,15 +232,18 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         String undecided = RequirementCheck.undecidedText(summary);
         if (undecided != null) getLog().info(PREFIX + undecided);
 
+        // Every error, then every warning, as the reference and the other ports print them: the
+        // checks find them interleaved, and an error must not be lost among the warnings.
         List<RequirementCheck.Diagnostic> diagnostics = RequirementCheck.check(loader.getRoot(), scan);
         int errors = 0;
         for (RequirementCheck.Diagnostic d : diagnostics) {
-            if (d.severity() == RequirementCheck.Severity.ERROR) {
-                errors++;
-                getLog().error(RequirementCheck.formatDiagnostic(d));
-            } else {
-                getLog().warn(RequirementCheck.formatDiagnostic(d));
-            }
+            if (d.severity() != RequirementCheck.Severity.ERROR) continue;
+            errors++;
+            getLog().error(RequirementCheck.formatDiagnostic(d));
+        }
+        for (RequirementCheck.Diagnostic d : diagnostics) {
+            if (d.severity() == RequirementCheck.Severity.ERROR) continue;
+            getLog().warn(RequirementCheck.formatDiagnostic(d));
         }
         if (errors > 0) getLog().error(PREFIX + "requirements: " + errors + " error(s).");
         return errors;

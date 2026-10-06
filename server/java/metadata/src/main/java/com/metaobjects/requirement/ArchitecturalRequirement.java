@@ -26,11 +26,13 @@ import com.metaobjects.registry.MetaDataRegistry;
  * ({@code requirement.architectural}).
  *
  * <p>Its check is UNIVERSALITY, the opposite polarity to {@link FunctionalRequirement}.
- * What the Node {@code meta verify} enforces is that a live or partial policy is applied
- * at all — one claiming nothing is an error — not that each node it claims complies. It carries NO {@code @level} and no parent:
- * levels come from object-in-focus decomposition, and an architectural requirement is
- * object-independent by definition. It therefore also admits no nested requirement
- * children.</p>
+ * What every port's {@code verify} enforces is that a live or partial policy is applied
+ * at all — one claiming nothing is an error — not that each node it claims complies. Its
+ * {@code @level} is OPTIONAL: absent, it is a flat, object-independent policy that may
+ * reference the model directly; present, it sits in a levelled tree under the rules a
+ * functional requirement follows (nesting agrees with the level, and only L4 and L5 carry
+ * {@code @implementedBy}). It admits nested requirement children, so a non-functional tree
+ * can be organised by a quality taxonomy.</p>
  */
 public class ArchitecturalRequirement extends MetaRequirement {
 

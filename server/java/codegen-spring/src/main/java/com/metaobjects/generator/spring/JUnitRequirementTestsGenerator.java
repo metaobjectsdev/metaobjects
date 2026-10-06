@@ -17,6 +17,7 @@ import com.metaobjects.requirement.RequirementTestIdentities.Walked;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,8 +47,8 @@ import java.util.regex.Pattern;
  * (ADR-0034 Amendment 3): {@code mvn metaobjects:eject} copies this one file into your project,
  * and the default rendering is in it, so an owned copy changes the output freely.</p>
  *
- * <p>Args: {@code outputDir} and {@code testPackage} and {@code witnessClass} (required once the
- * model holds a requirement), {@code grain} ({@code concern}, the default, or {@code member}),
+ * <p>Args: {@code outputDir}, {@code testPackage} and {@code witnessClass} (the last two required
+ * once the model holds a requirement), {@code grain} ({@code concern}, the default, or {@code member}),
  * {@code filter} (a {@link RequirementTestFilter} class name that REPLACES the default of
  * functional requirements at level 4 or above), {@code renderer} (a
  * {@link RequirementTestRenderer} class name), and {@code warnUncovered} ({@code true} by
@@ -221,6 +222,12 @@ public class JUnitRequirementTestsGenerator extends FileEmittingGenerator implem
         }
         try {
             return type.cast(found.getDeclaredConstructor().newInstance());
+        } catch (InvocationTargetException e) {
+            // The class HAS the constructor, and it ran and threw. The wrapper's own message is
+            // empty, so name what was thrown: "needs a constructor" would point at the wrong problem.
+            Throwable thrown = e.getCause() == null ? e : e.getCause();
+            throw new GeneratorException("requirement-tests: arg '" + arg + "' names '" + className
+                + "', and its constructor threw: " + thrown, null, null, thrown, Map.of());
         } catch (ReflectiveOperationException e) {
             throw new GeneratorException("requirement-tests: arg '" + arg + "' names '" + className
                 + "', which needs a public no-argument constructor: " + e, e);
