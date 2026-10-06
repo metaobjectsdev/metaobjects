@@ -395,6 +395,8 @@ async function loadKeyedProjectionFixture() {
 
 describe("renderRoutesFile — a served report (FR-044 Plan 3)", () => {
   test("a served report mounts a keyless read-only surface", async () => {
+    // Pins the generated call shape (mount function, options, comment text) that the
+    // booted-server api-contract report corpus exercises at runtime but does not itself pin.
     const root = await loadReportingModel();
     const model = reportReadModel(declared(root, "StoreTotals"), root);
     for (const out of [

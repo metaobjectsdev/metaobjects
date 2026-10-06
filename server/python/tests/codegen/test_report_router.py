@@ -163,6 +163,8 @@ def test_report_router_has_the_collection_routes_and_no_item_route() -> None:
 
 
 def test_report_allowlist_names_the_report_s_own_derived_fields() -> None:
+    # Pins the generated allowlist field set; the booted api-contract report corpus drives
+    # filters through it but does not itself assert which fields are in the allowlist.
     root = _load()
     model = report_read_model(_obj(root, "InvoiceStatusTotals"), root)
     src = render_filter_allowlist(model)

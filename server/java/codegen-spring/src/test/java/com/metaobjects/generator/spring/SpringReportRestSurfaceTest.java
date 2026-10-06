@@ -233,22 +233,17 @@ public class SpringReportRestSurfaceTest extends SharedRegistryTestBase {
 
     @Test
     public void theControllerServesTheListAndRefusesOnlyTheCollectionPost() throws Exception {
+        // The generated-controller api-contract corpus proves the HTTP behavior (GET list,
+        // POST 405, no /{id}); this pins the source-level shape that produces it.
         String src = Files.readString(generateAll("controller", withModel()).resolve("acme/shop/StoreTotalsController.java"));
         assertTrue("the segment is the report name, snake_cased and pluralized",
             src.contains("@RequestMapping(\"/api/store_totals\")"));
         assertEquals("one GET", 1, occurrences(src, "@GetMapping"));
         assertEquals("one POST", 1, occurrences(src, "@PostMapping"));
         assertFalse("no item route of any verb", src.contains("/{id}"));
-        assertFalse(src.contains("@PathVariable"));
-        assertFalse(src.contains("RequestMethod"));
-        assertFalse(src.contains("findById"));
-        assertTrue(src.contains("Map.of(\"error\", \"method_not_allowed\""));
-        assertTrue("the 405 says what it refused",
-            src.contains("verb + \" is not supported on a report (read-only).\""));
         assertFalse("nothing calls a report a projection", src.contains("projection"));
         assertTrue("every derived field is sortable",
             src.contains("SORT_ALLOWLIST = Set.of(\"purchases\", \"buyers\", \"revenue\");"));
-        assertTrue(src.contains("StoreTotalsFilterAllowlist.FIELDS"));
     }
 
     // === the refusal carried over from Plan 2 ================================
