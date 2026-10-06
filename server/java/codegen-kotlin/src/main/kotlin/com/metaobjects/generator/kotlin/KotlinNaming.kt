@@ -84,6 +84,14 @@ object KotlinNaming {
         return if (reserved) name + "Column" else name
     }
 
+    /**
+     * [KotlinSpringControllerGenerator] and the api docs: what a read-only object is called in
+     * generated prose, `"report"` for an `object.report` (the declared node or its read model)
+     * and `"projection"` otherwise. Prose only: no contract asserts it.
+     */
+    fun readOnlyNoun(obj: com.metaobjects.`object`.MetaObject): String =
+        if (obj.subType == com.metaobjects.`object`.MetaObject.SUBTYPE_REPORT) "report" else "projection"
+
     /** [KotlinSpringControllerGenerator]: `shortName + "Controller"`. */
     fun controllerName(shortName: String): String = shortName + "Controller"
 

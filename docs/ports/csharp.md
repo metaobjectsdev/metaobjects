@@ -109,8 +109,12 @@ The codegen emits:
 - `Author.g.cs` — class per entity (a mutable attributed POCO, not a record).
 - `<Report>.g.cs` — keyless row class per **view-backed report** (`object.report` with a
   read-only `@kind: view` source); mapped in `AppDbContext` with `DbSet` +
-  `HasNoKey().ToView(...)`. No routes or filter allowlist for a report. See
-  [reporting](../features/reporting.md).
+  `HasNoKey().ToView(...)`. It is served like a keyless projection: `<Report>Routes.g.cs`
+  (`MapGet` list, `MapPost` answering 405, no `{id}` route) and
+  `<Report>FilterAllowlist.g.cs`, with every derived field that has filter operators
+  filterable and sortable (on a report an enum dimension sorts too; an entity's enum field
+  does not). No names artifact. See
+  [reporting](../features/reporting.md#how-a-report-is-served).
 - `AppDbContext.g.cs` — `DbSet<Author>`, projection `.ToView()`, `@storage` owned
   types via `OwnsOne` (single) / `OwnsMany(...).ToJson(...)` (`@isArray` array-of-VO),
   enum-as-string via `HasConversion<string>()`.
@@ -459,8 +463,9 @@ always sends. Filter operators (`eq` / `ne` / `gt` / `gte` / `lt` / `lte`
 / `in` / `like` / `isNull`) per [`api-contract.md`](../features/api-contract.md)
 ship too — the generated `<Entity>FilterAllowlist` (`FilterAllowlistGenerator`)
 feeds `FilterParser.Parse` + `EfCoreFilterDispatch.ApplyFilter`, both wired
-directly into the generated list handler. The one real gap: read-only
-projections (`source.rdb @kind: view/...`) don't get filter routes today — see
+directly into the generated list handler. A read-only projection
+(`source.rdb @kind: view`) and a view-backed report get the same filter and sort
+on their list route, against an allowlist of their own fields. Remaining gaps are in
 [`server/csharp/MetaObjects.Codegen/Generators/KNOWN_GAPS.md`](../../server/csharp/MetaObjects.Codegen/Generators/KNOWN_GAPS.md).
 
 ## Capability snapshot

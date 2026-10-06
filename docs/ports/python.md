@@ -110,6 +110,18 @@ read a declarative [`metaobjects.config.yaml`](../features/cli.md) (#267) — ru
 either with no positional `<metadata_dir>` to use it; the flag path above stays
 byte-identical.
 
+### Reports
+
+A concrete `object.report` whose read source is a `source.rdb` of `@kind: view` is served
+like a keyless read-only projection. Four generators write one file each for a report `<R>`:
+`entity` writes `<R>.py` (a Pydantic row model, one field per derived field),
+`filter-allowlist` writes `<snake>_filter_allowlist.py`, `routes` writes `<snake>_router.py`
+(`GET` list, `POST` answering 405, no `/{id}` route, and a repository Protocol with `list`
+and `count` only, which you implement against the view), and `names` writes
+`<snake>_names.py`. Every derived field with filter operators is filterable and sortable. A
+report with no view source, or an abstract one, generates nothing. The contract is in
+[reporting](../features/reporting.md#how-a-report-is-served).
+
 ### Taking one tier and not the rest
 
 `--generators <csv>` selects exactly the named generators from the available

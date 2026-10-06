@@ -55,6 +55,11 @@ interface EntityDocData {
   usedBy?: UsedByDoc[];
   hasUsedBy?: boolean;
   generated: GeneratedFileDoc[];    // "Generated code" bullets
+  reportBlock?: string;             // FR-044: pre-rendered body of an object.report page's
+  hasReport?: boolean;              //   "Report" section. Absent for every other object.
+  reportingBlock?: string;          // FR-044: pre-rendered body of the "Reporting" section on an
+  hasReporting?: boolean;           //   entity with dimensions, measures or segments, or that a
+                                    //   report names as @from. Absent otherwise.
 }
 ```
 

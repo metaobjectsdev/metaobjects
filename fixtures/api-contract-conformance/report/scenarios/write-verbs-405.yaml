@@ -1,0 +1,15 @@
+name: report-write-verbs-405
+description: >
+  A report is read-only. POST on the collection answers 405 with the cross-port envelope,
+  not a 404 and not the framework's own body. There is no item address to refuse a
+  PATCH, PUT or DELETE on (see report-no-item-route). `message` is free prose and is
+  not asserted.
+requests:
+  - id: post-collection
+    method: POST
+    path: /api/invoice_status_totals
+    body: { status: "OPEN", invoices: 1, totalCents: 1, paidCents: 1 }
+    expect:
+      status: 405
+      body:
+        error: "method_not_allowed"

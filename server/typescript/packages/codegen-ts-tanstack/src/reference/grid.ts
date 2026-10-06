@@ -29,7 +29,7 @@ import {
   type GeneratorFactory,
   formatTs,
   entityOutputPath,
-  servesReadApi,
+  servesClientTier,
   isTphSubtype,
   withClientDirective,
   effectivePackage,
@@ -88,7 +88,7 @@ export const tanstackGrid = function tanstackGrid(opts?: TanstackGridOpts): Gene
   // Split out so the discoverability note can name exactly the entities the LAYOUT
   // gate alone held back (#287) — an abstract type is not a surprise.
   const passesOtherGates = (e: MetaObject): boolean =>
-    servesReadApi(e)
+    servesClientTier(e)
     && userFilter(e)
     && (!isTphSubtype(e) || tphSubtypeGrids(e));
   const emit = perEntity(async (entity: MetaObject, ctx) => {

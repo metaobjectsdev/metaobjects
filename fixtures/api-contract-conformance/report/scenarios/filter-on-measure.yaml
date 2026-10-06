@@ -1,0 +1,39 @@
+name: report-filter-on-measure
+description: >
+  The FR-009 filter grammar applies to a report's derived fields, measures included.
+  r1 filters on a count, r2 on a null sum, r3 and r4 on a ratio. A ratio is a decimal:
+  its spelling is the port's own and is not asserted, so r3 and r4 assert only how many
+  rows match (the ratio is 2/5).
+requests:
+  - id: r1
+    method: GET
+    path: /api/invoice_status_totals?filter[invoices][gte]=2&sort=status:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { status: "OPEN", invoices: 2, totalCents: 130500, paidCents: null }
+          - { status: "PAID", invoices: 2, totalCents: 185000, paidCents: 185000 }
+  - id: r2
+    method: GET
+    path: /api/invoice_status_totals?filter[paidCents][isNull]=true&sort=status:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { status: "OPEN", invoices: 2, totalCents: 130500, paidCents: null }
+          - { status: "VOID", invoices: 1, totalCents: 0, paidCents: null }
+  - id: r3
+    method: GET
+    path: /api/invoice_totals?filter[paidShare][gt]=0
+    expect:
+      status: 200
+      body:
+        length: 1
+  - id: r4
+    method: GET
+    path: /api/invoice_totals?filter[paidShare][gt]=0.5
+    expect:
+      status: 200
+      body:
+        length: 0

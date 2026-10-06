@@ -7,6 +7,7 @@
   "scripts": {
     "test": "bun test",
     "gen:schema": "bun run src/gen-canonical-schema.ts",
+    "gen:report-api-schema": "bun run src/gen-api-contract-report-schema.ts",
     "gen:report-shapes": "bun run src/gen-report-shapes.ts",
     "oracle": "bun run src/oracle-cli.ts"
   },

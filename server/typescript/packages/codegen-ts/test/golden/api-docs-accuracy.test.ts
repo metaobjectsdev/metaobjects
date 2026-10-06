@@ -1089,3 +1089,150 @@ describe("api-docs ACCURACY gate (T5) — relations / callable / prompt / Hono",
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Read-only vs write-through: a unit documents WRITES only when the generators
+// emit them.
+//
+// The read-only surface (a read-only-kind source and no writable one) is emitted
+// with reads alone, and with no by-id read when no column addresses a row. A
+// write-through object (a writable table plus a replica view) is NOT read-only:
+// its files carry the write helpers, the write verbs and both schemas. The unit
+// used to document create/update/delete and the Insert/Update schemas for every
+// one of them. Both directions are checked against the real generated files.
+// ---------------------------------------------------------------------------
+
+const READ_WRITE_FIXTURE = JSON.stringify({
+  "metadata.root": {
+    package: "acme::orders",
+    children: [
+      { "object.entity": { name: "Customer", children: [
+        { "source.rdb": { "@table": "customers" } },
+        { "field.long": { name: "id" } },
+        { "field.string": { name: "name", "@required": true, "@maxLength": 80 } },
+        { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+      ] } },
+      // Write-through: writes hit the table, reads go through the replica view.
+      { "object.entity": { name: "Order", children: [
+        { "source.rdb": { "@role": "primary", "@table": "orders" } },
+        { "source.rdb": { "@role": "replica", "@kind": "view", "@table": "v_order_with_customer" } },
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "customerId", "@required": true } },
+        { "field.string": { name: "customerName", children: [
+          { "origin.passthrough": { "@from": "Customer.name", "@via": "Order.customer" } },
+        ] } },
+        { "relationship.association": { name: "customer", "@objectRef": "Customer", "@cardinality": "one" } },
+        { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+        { "identity.reference": { name: "fkCustomer", "@fields": "customerId", "@references": "Customer" } },
+      ] } },
+      // Read-only, keyed: an `id` column by convention addresses a row.
+      { "object.projection": { name: "CustomerCard", children: [
+        { "source.rdb": { "@kind": "view", "@table": "v_customer_card", "@unmanaged": true } },
+        { "field.long": { name: "id" } },
+        { "field.string": { name: "name" } },
+      ] } },
+      // Read-only, keyless: no identity and no `id` column.
+      { "object.projection": { name: "RegionTotal", children: [
+        { "source.rdb": { "@kind": "view", "@table": "v_region_total", "@unmanaged": true } },
+        { "field.string": { name: "region" } },
+        { "field.long": { name: "orders" } },
+      ] } },
+    ],
+  },
+});
+
+describe("api-docs ACCURACY gate — writes are documented only where the generators emit them", () => {
+  let model: ApiModel;
+  let entityFiles: EmittedFile[];
+  let queriesFiles: EmittedFile[];
+  let routesFiles: EmittedFile[];
+  let honoFiles: EmittedFile[];
+
+  const unit = (name: string) => {
+    const u = model.units.find((x) => x.node === name);
+    if (u === undefined) throw new Error(`no unit ${name}`);
+    return u;
+  };
+  const names = (name: string, kind: ApiSymbol["kind"]): string[] =>
+    unit(name).symbols.filter((s) => s.kind === kind).map((s) => s.name);
+  const content = (files: EmittedFile[], suffix: string): string => {
+    const f = fileFor(files, suffix);
+    if (f === undefined) throw new Error(`no emitted file ${suffix}`);
+    return f.content;
+  };
+  /** Every `export [async] function <name>(` in a file. */
+  const exportedFns = (src: string): string[] =>
+    [...src.matchAll(/export\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/g)].map((m) => m[1]!);
+  const WRITE_VERBS = /^(POST|PATCH|PUT|DELETE) /;
+
+  test("setup: run the real generators + build the ApiModel on the same root", async () => {
+    const res = await new MetaDataLoader().load([
+      new InMemoryStringSource(READ_WRITE_FIXTURE, { id: "orders.json", format: "json" }),
+    ]);
+    expect(res.errors).toEqual([]);
+    const projectRoot = mkdtempSync(join(tmpdir(), "api-docs-accuracy-rw-"));
+    entityFiles = await runGenerator(entityFile(), res.root, projectRoot);
+    queriesFiles = await runGenerator(queriesFile(), res.root, projectRoot);
+    routesFiles = await runGenerator(routesFile(), res.root, projectRoot);
+    honoFiles = await runGenerator(routesFileHono(), res.root, projectRoot);
+    model = buildApiModel(res.root, { loadedRoot: res.root, includeHonoRoutes: true });
+  });
+
+  for (const name of ["CustomerCard", "RegionTotal", "Order", "Customer"]) {
+    test(`${name}: data-access symbols are EXACTLY the functions its queries file exports`, () => {
+      // Both directions at once: nothing documented that was not emitted, and for these
+      // shapes nothing emitted that is not documented.
+      const emitted = exportedFns(content(queriesFiles, `${name}.queries.ts`));
+      expect(names(name, "data-access").sort()).toEqual(
+        // Reverse finders (`find<Name>sBy<Fk>`) are a documented deferral of this builder.
+        emitted.filter((fn) => !/^find\w+sBy[A-Z]/.test(fn) || fn.endsWith("ById")).sort(),
+      );
+    });
+
+    test(`${name}: Insert/Update schemas are documented exactly when the entity file exports them`, () => {
+      const entity = content(entityFiles, `${name}.ts`);
+      for (const schema of [`${name}InsertSchema`, `${name}UpdateSchema`]) {
+        expect({ schema, documented: names(name, "validation").includes(schema) })
+          .toEqual({ schema, documented: hasExportedDecl(entity, schema) });
+      }
+    });
+
+    for (const [kind, files, suffix] of [
+      ["rest", () => routesFiles, ".routes.ts"],
+      ["rest-hono", () => honoFiles, ".routes.hono.ts"],
+    ] as const) {
+      test(`${name}: ${kind} documents write verbs and /:id exactly as the routes file mounts them`, () => {
+        const routes = content(files(), `${name}${suffix}`);
+        const readOnlyMount = /mountReadOnlyCrudRoutes|mountReadOnlyHonoCrudRoutes|ReadOnly/.test(routes);
+        const documented = names(name, kind);
+        expect(documented.length).toBeGreaterThan(0);
+        expect(documented.some((n) => WRITE_VERBS.test(n))).toBe(!readOnlyMount);
+        const itemRoutes = !routes.includes("itemRoutes: false");
+        expect(documented.some((n) => n.includes("/:id"))).toBe(itemRoutes);
+      });
+    }
+  }
+
+  test("the read-only shapes read as intended: keyed has list + by-id, keyless has list alone", () => {
+    expect(names("CustomerCard", "data-access")).toEqual(["findCustomerCardById", "listCustomerCards"]);
+    expect(names("CustomerCard", "rest")).toEqual(["GET /customer_cards", "GET /customer_cards/:id"]);
+    expect(names("CustomerCard", "validation")).toEqual([]);
+    expect(unit("CustomerCard").example).toBeUndefined();
+
+    expect(names("RegionTotal", "data-access")).toEqual(["listRegionTotals"]);
+    expect(names("RegionTotal", "rest")).toEqual(["GET /region_totals"]);
+    expect(names("RegionTotal", "rest-hono")).toEqual(["GET /region_totals"]);
+    expect(names("RegionTotal", "validation")).toEqual([]);
+  });
+
+  test("a write-through object keeps its whole write surface", () => {
+    expect(names("Order", "data-access")).toEqual([
+      "findOrderById", "listOrders", "createOrder", "updateOrder", "deleteOrderById",
+    ]);
+    expect(names("Order", "validation")).toEqual(["OrderInsertSchema", "OrderUpdateSchema"]);
+    expect(names("Order", "rest")).toEqual([
+      "GET /orders", "GET /orders/:id", "POST /orders", "PATCH /orders/:id", "PUT /orders/:id", "DELETE /orders/:id",
+    ]);
+    expect(unit("Order").example).toBeDefined();
+  });
+});

@@ -37,6 +37,7 @@ from ...persistence.source.meta_source import MetaSource
 from ...persistence.source.source_constants import SOURCE_ATTR_ROLE, SOURCE_ROLE_PRIMARY
 from ..field.field_constants import (
     FIELD_ATTR_CURRENCY,
+    FIELD_ATTR_FILTERABLE,
     FIELD_ATTR_INT_VALUE_MAP,
     FIELD_ATTR_MAX_LENGTH,
     FIELD_ATTR_OBJECT_REF,
@@ -93,6 +94,14 @@ def _derived_field(f: ReportField) -> MetaField:
         # ``is_array`` is a native flag, not an attr; ``resolved_is_array()`` is its resolving read.
         if src.resolved_is_array():
             field.is_array = True
+    # Table C (Plan 3): a report author has no node to put @filterable on, so every
+    # derived field that has a filter band is filterable. Set on this detached model
+    # only; no vocabulary is added and the declared tree is not touched. Imported here
+    # because the loader's validation passes import this package.
+    from ....loader.validation_passes import ops_for_field
+
+    if ops_for_field(field):
+        field.set_attr(FIELD_ATTR_FILTERABLE, True)
     return field
 
 

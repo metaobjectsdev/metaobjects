@@ -1,0 +1,10 @@
+name: report-no-item-route
+description: >
+  A report has no identity, so no /{id} route of any verb is mounted. The status is
+  the contract; the body is the framework's own 404 and is not asserted. In particular
+  a GET must never answer a row.
+requests:
+  - { id: get-item,    method: GET,    path: /api/invoice_status_totals/1, expect: { status: 404 } }
+  - { id: patch-item,  method: PATCH,  path: /api/invoice_status_totals/1, body: { invoices: 9 }, expect: { status: 404 } }
+  - { id: put-item,    method: PUT,    path: /api/invoice_status_totals/1, body: { invoices: 9 }, expect: { status: 404 } }
+  - { id: delete-item, method: DELETE, path: /api/invoice_status_totals/1, expect: { status: 404 } }

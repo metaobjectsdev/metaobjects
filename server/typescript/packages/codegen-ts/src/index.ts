@@ -131,7 +131,7 @@ export type { DocPageNode, DocPagePlacement } from "./docs-paths.js";
 export { isProjection, isWriteThrough } from "./projection/projection-detector.js";
 export { isAbstract, emitsInstanceArtifacts, emitsWriteArtifacts } from "./instance-artifacts.js";
 // The UI tier asks THESE — "is there an endpoint?" — never the storage predicates.
-export { hasGeneratedForm, restPath, servesReadApi, servesWriteApi } from "./api-surface.js";
+export { hasGeneratedForm, hasItemRoute, itemRouteField, restPath, servesClientTier, servesReadApi, servesWriteApi } from "./api-surface.js";
 // #356 — every emitter selects a field's view by the SURFACE it renders, never by
 // declaration position. An owned generator (FR-040) composing the render layer must
 // use this too, or it reinstates the order-dependence in its own copy.
@@ -169,7 +169,7 @@ export type { SortOrder, GridDefaultSort } from "./templates/filter-shared.js";
 // package-internal relative path. These are the assembly pieces the built-in
 // entity/queries composers use; the reference templates relocate that assembly.
 export { renderTphDiscriminatorUnion } from "./templates/tph-discriminator.js";
-export { hasWritableRdbSource, hasAnyRdbSource, isSourcelessEntity } from "./source-detect.js";
+export { generatableObjects, hasWritableRdbSource, hasAnyRdbSource, isReport, isSourcelessEntity, servedReport } from "./source-detect.js";
 export { dialectModule, dbTypeBlock, supportsReturning, normalizeTimestampMode, type DialectModule } from "./dialect-module.js";
 export { renderSharedEnumsFile, SHARED_ENUMS_BASENAME } from "./templates/enums-file.js";
 
@@ -207,6 +207,10 @@ export {
   renderReverseFinderFns,
   reverseFksFor,
   getPkInfo,
+  // The by-id field of an object that declares no primary identity. Public because an
+  // owned routes generator compares `itemRouteField` against it to decide whether the
+  // read-only mount needs an `idColumn`.
+  DEFAULT_ID_FIELD,
 } from "./templates/queries.js";
 export { hasAutoSetFields } from "./templates/zod-validators.js";
 

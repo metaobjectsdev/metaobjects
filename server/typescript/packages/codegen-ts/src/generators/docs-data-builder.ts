@@ -52,7 +52,8 @@ import type { OutputLayout } from "../import-path.js";
 import { docPageHref, docPageNode, effectivePackage } from "../docs-paths.js";
 import { fieldAnchorHtml } from "./field-anchor.js";
 import { enumValues } from "../enum-meta.js";
-import { hasWritableRdbSource } from "../source-detect.js";
+import { hasWritableRdbSource, isReport } from "../source-detect.js";
+import { buildReportBlock, buildReportingBlock } from "./report-doc.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { renderEntityNeighborhoodErBlock } from "../templates/mermaid-er.js";
 // Shape C reuses the SAME walk the stub generator and the requirements index use, so
@@ -842,6 +843,18 @@ export function buildEntityDocData(
   if (claimedBy !== undefined) {
     data.claimedBy = claimedBy;
     data.hasClaimedBy = true;
+  }
+  // FR-044 (Table G): a report's page gets its "Report" section, and the entity a
+  // report reads from (or that declares reporting members) gets "Reporting". Both are
+  // absent for every other object.
+  if (isReport(entity)) {
+    data.reportBlock = buildReportBlock(entity, root, layout);
+    data.hasReport = true;
+  }
+  const reportingBlock = buildReportingBlock(entity, root, layout);
+  if (reportingBlock !== undefined) {
+    data.reportingBlock = reportingBlock;
+    data.hasReporting = true;
   }
   // Cross-link to the api surfaces — present ONLY when the caller computed the
   // hrefs (api surfaces emitted alongside model); model-only runs stay identical.

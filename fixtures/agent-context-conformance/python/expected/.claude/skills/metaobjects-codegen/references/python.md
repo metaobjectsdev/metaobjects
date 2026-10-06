@@ -117,11 +117,23 @@ Its REST surface is generated and READ-ONLY (F22): GET list + GET by id, the sam
 `?filter[...]`/`?sort=` grammar as a table entity against allowlists built from the
 projection's OWN declared field set, and `POST` / `PATCH` / `PUT` / `DELETE` each
 answering `405 {"error": "method_not_allowed"}` — 405 and not 404 because the same
-path answers GET. A KEYLESS projection (no `identity.primary`) mounts no `/{id}` route
-at all, so it refuses only the collection verb.
+path answers GET. A KEYLESS projection mounts no `/{id}` route at all, so it refuses only
+the collection verb, and its repository Protocol has no `find_by_id`. In Python keyless
+means no `identity.primary` AND no field named `id`: a projection with an `id` field and
+no declared identity keeps its item routes (C#, Java and Kotlin are stricter and need a
+declared single-column identity).
 The read-only router is a separate assembly from the writable one, sharing only the
 emitters they genuinely have in common; `router_generator` and
 `filter_allowlist_generator` ask one shared `emits_router()` predicate.
+
+**Reports.** A concrete `object.report` whose read source is `source.rdb @kind: view` is
+served like a keyless projection, from a detached read model of its derived fields. For
+a report `<R>`: `<R>.py` (a Pydantic row model), `<snake>_filter_allowlist.py`,
+`<snake>_router.py` (`GET ""` list, `POST ""` answering 405, no `/{id}` route; its
+repository Protocol has `list` and `count` only) and `<snake>_names.py`. You implement
+the repository against the view. Every derived field with filter operators is filterable
+and sortable. A report with no view source, or an abstract one, generates nothing. The
+route and contract: `references/reporting.md` in the `metaobjects-authoring` skill.
 
 Its `CREATE VIEW` DDL is emitted by the Node `meta migrate` from the projection's `origin.*`
 children (`passthrough` / `aggregate` / `computed` / `first`) — never

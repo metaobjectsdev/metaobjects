@@ -38,6 +38,7 @@ import { loadUris, type MetaRoot, type MetaObject } from "@metaobjectsdev/metada
 import { entityFile } from "../src/generators/entity-file.js";
 import { namesFile } from "../src/generators/names-file.js";
 import { queriesFile } from "../src/generators/queries-file.js";
+import { generatableObjects } from "../src/source-detect.js";
 import { barrel } from "../src/generators/barrel.js";
 import { promptRender } from "../src/generators/prompt-render-file.js";
 import { outputPrompt } from "../src/generators/output-prompt-file.js";
@@ -110,6 +111,11 @@ const DEFAULT_OPTIONS: ts.CompilerOptions = {
   skipLibCheck: true,
 };
 
+/** The corpus's view-backed reports (FR-044). */
+const SERVED_REPORTS = [
+  "ProgramMinutes", "FitnessTotals", "ProgramsByMonth", "ProgramsByWeek", "RecentPrograms", "AssetActivity",
+] as const;
+
 const PROFILES: ReadonlyArray<readonly [string, ts.CompilerOptions]> = [
   ["defaults", DEFAULT_OPTIONS],
   ["tsc --init", TSC_INIT_OPTIONS],
@@ -139,7 +145,10 @@ describe("codegen-compile conformance — the shared fitness corpus", () => {
         // subtype no standalone one — as if they were emit bugs. The gate has to run the
         // generators the way the runner runs them or it measures the harness.
         const genCtx = (generator: { filter?: (e: MetaObject) => boolean }): GenContext => ({
-          entities: root.objects(),
+          // The runner's own entity set: a served report is generated from its read
+          // model, an unserved one not at all. Handing the generators the declared
+          // report nodes compiled an empty view for each and proved nothing about them.
+          entities: generatableObjects(root.objects(), root),
           loadedRoot: root,
           matches: (e) => generator.filter?.(e) ?? true,
           projectRoot: dir,
@@ -188,8 +197,17 @@ describe("codegen-compile conformance — the shared fitness corpus", () => {
           "ProgramBrief.ts",
           "ProgramVerdict.ts",
           "WeekLabel.ts",
+          // FR-044 Plan 3: the six view-backed reports' entity, names and queries files.
+          ...SERVED_REPORTS.flatMap((r) => [`${r}.ts`, `${r}.names.ts`, `${r}.queries.ts`]),
         ]) {
           expect([...emitted]).toContain(expected);
+        }
+        // A report's entity file carries its DERIVED fields (it declares none), and its
+        // queries file the list alone: a by-id query over a keyless view does not compile.
+        const minutes = files.find((f) => f.path === "ProgramMinutes.ts");
+        expect(minutes?.content).toContain("avgMinutes");
+        for (const r of SERVED_REPORTS) {
+          expect(files.find((f) => f.path === `${r}.queries.ts`)?.content).not.toContain("ById");
         }
         // A value object NESTING another (`ProgramBrief.weekLabels: WeekLabel[]`) is the
         // shape whose type import shipped as a value import (TS1484 under the `tsc --init`

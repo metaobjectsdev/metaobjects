@@ -77,6 +77,20 @@
 //     subtype REST subpaths are NOT YET documented by this builder — that fuller
 //     TPH modeling is a tracked follow-up (under-documentation, allowed).
 //
+//   • object.report (FR-044): a unit exists only for a SERVED report (Table A: not
+//     abstract, read source of @kind view), built from its read model. It carries the
+//     row model, `list<Plural>` and `GET <served path>` (plus the Hono GET when wired)
+//     and nothing else: a report has no identity, so no by-id query and no `/:id`; no
+//     write helper; no insert/update schema. No hook is documented for any object here
+//     (see DEFERRALS), and none is generated for a report at all (`servesClientTier`).
+//   • A READ-ONLY object (a read-only-kind source and no writable one: a view-backed
+//     projection, a report's read model) documents reads only: no create/update/delete,
+//     no write verb, no insert/update schema, because its generated files carry none
+//     (`isReadOnlySurface`). A write-through object is not read-only and keeps them all.
+//   • A KEYLESS read-only object (no identity and no `id` column) also documents no
+//     `find<Name>ById` and no `/:id`: the read-only generators emit neither
+//     (`hasItemRoute`).
+//
 // NOT modelled here (stated so the gap is known + intentional): a generator's own
 // `filter` option. `routesFile({ filter })` narrows what the routes generator emits,
 // and this builder reads the MODEL, not the wired generator set, so it cannot see
@@ -121,11 +135,11 @@ import { responseShape } from "../templates/find-inbound.js";
 import { isTphSubtype } from "../templates/zod-validators.js";
 import { isTphDiscriminatorBase } from "../templates/tph-discriminator.js";
 import { isCallableEntity } from "../templates/callable-file.js";
-import { servedPath, servesReadApi } from "../api-surface.js";
+import { hasItemRoute, servedPath, servesReadApi } from "../api-surface.js";
 import { isProjection } from "../projection/projection-detector.js";
 import { buildPkMap } from "../pk-resolver.js";
 import { buildRelationMap, type RelationEntry, type RelationMap } from "../relation-resolver.js";
-import { isReport } from "../source-detect.js";
+import { generatableObjects } from "../source-detect.js";
 import { effectivePackage } from "../docs-paths.js";
 import { entityOutputPath, type OutputLayout } from "../import-path.js";
 import type { RenderContext } from "../render-context.js";
@@ -297,10 +311,11 @@ export function buildApiModel(root: MetaRoot, ctx: ApiModelContext): ApiModel {
 
   const units: ApiUnitDoc[] = [];
 
-  for (const obj of root.objects()) {
-    // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
-    // It has no generated API to document yet.
-    if (isReport(obj)) continue;
+  // FR-044 (Table G): a report has a unit exactly when it is served (Table A), and the
+  // unit is built from its READ MODEL: the declared node has no fields, so the row shape
+  // every symbol documents is the derived one. `generatableObjects` is the same swap
+  // `runGen` hands the generators, so the units are the objects code was emitted for.
+  for (const obj of generatableObjects(root.objects(), root)) {
     units.push(buildEntityUnit(obj, pkCtx, root, layout, relationMap, includeHono, apiPrefix));
   }
 
@@ -380,6 +395,33 @@ function isQueryable(obj: MetaObject): boolean {
   return servesReadApi(obj) && !isTphSubtype(obj);
 }
 
+/**
+ * True when the generators emit the READ-ONLY surface for the object: reads only, no
+ * create/update/delete helper, no write verb, no insert or update schema.
+ *
+ * This is `isProjection` from `projection/projection-detector.ts`, the exact test
+ * `entity-file.ts`, `queries-file.ts`, `routes-file.ts` and `routes-file-hono.ts`
+ * dispatch on, and it is a test of SOURCES, not of the `object.projection` subtype: the
+ * object declares a read-only-kind source and no writable one. So it is true for a
+ * view-backed projection and for a report's read model, and FALSE for a write-through
+ * object (a writable table plus a replica view), whose generated files really do carry
+ * the write helpers, the write verbs and both schemas. Documenting writes for a
+ * read-only object published functions and endpoints that were never generated.
+ */
+function isReadOnlySurface(obj: MetaObject): boolean {
+  return isProjection(obj);
+}
+
+/**
+ * True for a read-only object the generators give no item surface: no `/:id` route and
+ * no by-id query. That is a projection with no identity and no `id` column, and every
+ * report (FR-044). `hasItemRoute` is the generators' own predicate, and only the
+ * read-only surface asks it (a writable entity's by-id helpers are unconditional).
+ */
+function lacksItemSurface(obj: MetaObject): boolean {
+  return isReadOnlySurface(obj) && !hasItemRoute(obj);
+}
+
 function buildEntityUnit(
   obj: MetaObject,
   ctx: RenderContext,
@@ -410,7 +452,9 @@ function buildEntityUnit(
 
   if (isQueryable(obj)) {
     symbols.push(...dataAccessSymbols(obj, ctx, root, layout));
-    symbols.push(...validationSymbols(obj, entityMod));
+    // A read-only object's entity module exports a read schema only: no insert or update
+    // schema exists to document.
+    if (!isReadOnlySurface(obj)) symbols.push(...validationSymbols(obj, entityMod));
     // REST needs no gate of its own: the routes generator's built-in filter is
     // `servesReadApi && !isTphSubtype` — exactly isQueryable — so every queryable
     // object gets routes. (Its `filter` option can narrow that further; this builder
@@ -483,26 +527,36 @@ function dataAccessSymbols(
   const update = updateFnName(name);
   const del = deleteByIdFnName(name);
 
-  const reads: ApiSymbol[] = [
-    {
-      name: find,
-      kind: "data-access",
-      importPath: mod,
-      signature: `${find}(db: Db, ${pk}: ${pkType}): Promise<${name} | null>`,
-      params: [`db: Db`, `${pk}: ${pkType}`],
-      returns: `Promise<${name} | null>`,
-      usage: `Fetch a single ${name} by its primary key; null when not found.`,
-    },
-    {
-      name: list,
-      kind: "data-access",
-      importPath: mod,
-      signature: `${list}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${name}[]>`,
-      params: [`db: Db`, `opts?: { limit?: number; offset?: number }`],
-      returns: `Promise<${name}[]>`,
-      usage: `List ${name} rows with optional limit/offset paging.`,
-    },
-  ];
+  const findSymbol: ApiSymbol = {
+    name: find,
+    kind: "data-access",
+    importPath: mod,
+    signature: `${find}(db: Db, ${pk}: ${pkType}): Promise<${name} | null>`,
+    params: [`db: Db`, `${pk}: ${pkType}`],
+    returns: `Promise<${name} | null>`,
+    usage: `Fetch a single ${name} by its primary key; null when not found.`,
+  };
+  const listSymbol: ApiSymbol = {
+    name: list,
+    kind: "data-access",
+    importPath: mod,
+    signature: `${list}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${name}[]>`,
+    params: [`db: Db`, `opts?: { limit?: number; offset?: number }`],
+    returns: `Promise<${name}[]>`,
+    usage: `List ${name} rows with optional limit/offset paging.`,
+  };
+
+  // A read-only object with no column to address a row by gets the list alone: the
+  // read-only queries file emits `find<Name>ById` only when `hasItemRoute` (a keyless
+  // projection and every report have none). Only the read-only surface asks; a writable
+  // entity's queries file emits its by-id helpers unconditionally.
+  const reads: ApiSymbol[] = lacksItemSurface(obj) ? [listSymbol] : [findSymbol, listSymbol];
+
+  // A read-only object is served by its reads and nothing else: the read-only queries
+  // file emits no create, update or delete, so none is documented.
+  if (isReadOnlySurface(obj)) {
+    return reads;
+  }
 
   // A TPH discriminator base emits ONLY the polymorphic reads — the write
   // helpers are per concrete subtype (create<Sub> …), not on the base.
@@ -616,7 +670,7 @@ function restSymbols(
 ): ApiSymbol[] {
   const name = obj.name;
   const path = servedPath(obj, apiPrefix);
-  const readOnly = isProjection(obj) || isTphDiscriminatorBase(obj, root);
+  const readOnly = isReadOnlySurface(obj) || isTphDiscriminatorBase(obj, root);
 
   // REST endpoints are not importable functions — to WIRE them an adopter
   // imports the entity's route registrar (`<entity>Routes`) from the routes
@@ -636,8 +690,12 @@ function restSymbols(
 
   const symbols: ApiSymbol[] = [
     ep("GET", path, `List ${name} (supports filter/sort/paging query params).`, modelShape),
-    ep("GET", `${path}/:id`, `Fetch a single ${name} by id (404 when not found).`, modelShape),
   ];
+  // `/:id` is mounted only when a row can be addressed (`hasItemRoute`): not for a
+  // keyless projection, and never for a report.
+  if (!lacksItemSurface(obj)) {
+    symbols.push(ep("GET", `${path}/:id`, `Fetch a single ${name} by id (404 when not found).`, modelShape));
+  }
 
   if (!readOnly) {
     symbols.push(
@@ -829,7 +887,7 @@ function restHonoSymbols(
 ): ApiSymbol[] {
   const name = obj.name;
   const path = servedPath(obj, apiPrefix);
-  const readOnly = isProjection(obj);
+  const readOnly = isReadOnlySurface(obj);
 
   const honoMod = entityModulePath(layout, obj, `${name}.routes.hono`);
   const registrar = `register${name}Routes`;
@@ -842,8 +900,11 @@ function restHonoSymbols(
 
   const symbols: ApiSymbol[] = [
     ep("GET", path, `[Hono] List ${name} (filter/sort/paging query params).`, modelShape),
-    ep("GET", `${path}/:id`, `[Hono] Fetch a single ${name} by id (404 when not found).`, modelShape),
   ];
+  // The same rule as the Fastify surface: no `/:id` without an addressable row.
+  if (!lacksItemSurface(obj)) {
+    symbols.push(ep("GET", `${path}/:id`, `[Hono] Fetch a single ${name} by id (404 when not found).`, modelShape));
+  }
 
   if (!readOnly) {
     symbols.push(

@@ -62,8 +62,14 @@ const HEADER_LINES: readonly string[] = [
  * and emit the full-CREATE `up` SQL. Deterministic given the same metadata —
  * table/view order follows declaration order; emit() applies a stable stage
  * sort — so the committed file does not churn.
+ *
+ * `opts.header` replaces the persistence-corpus header for another corpus's artifact
+ * (the api-contract report sub-corpus); absent, the output is byte-identical to before.
  */
-export async function generateCanonicalSchemaSql(root: MetaRoot): Promise<string> {
+export async function generateCanonicalSchemaSql(
+  root: MetaRoot,
+  opts?: { header?: string },
+): Promise<string> {
   const expected = buildExpectedSchema(root, {
     dialect: CANONICAL_SCHEMA_DIALECT,
     columnNamingStrategy: CANONICAL_COLUMN_NAMING,
@@ -74,7 +80,8 @@ export async function generateCanonicalSchemaSql(root: MetaRoot): Promise<string
   });
   const r = await diff({ expected, actual: { tables: [], views: [] } });
   const { up } = emit(r.changes, { dialect: CANONICAL_SCHEMA_DIALECT });
-  return `${HEADER_LINES.join("\n")}\n\n${up}\n`;
+  const header = opts?.header ?? HEADER_LINES.join("\n");
+  return `${header}\n\n${up}\n`;
 }
 
 /** Read the committed canonical Postgres schema artifact. */

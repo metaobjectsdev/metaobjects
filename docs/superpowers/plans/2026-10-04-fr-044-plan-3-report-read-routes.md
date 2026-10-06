@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Serve every view-backed `object.report` over the cross-port REST contract in all five ports (a list route with filter, sort and paging on the derived fields, and a `405` on write), gate it with a new api-contract `report/` sub-corpus, stop the TypeScript, Java and Python generators from skipping reports, and give reports model and API pages in `meta docs`.
+**Goal:** Serve every view-backed `object.report` over the cross-port REST contract in all five ports (a list route with filter, sort and paging on the derived fields, and a `405` on write), gate it with a new api-contract `report/` sub-corpus, stop the TypeScript, Java and Python generators from skipping reports, and give reports model and API pages in `meta docs`. No typed client hook and no other UI-tier output is generated for a report in this plan; the UI tier stays off for reports until Plan 5 (ruled 2026-10-04, see [Answers](#answers-to-the-open-questions)).
 
 **Architecture:** A report is served exactly as a keyless read-only projection is served today. Each port already has a detached, projection-shaped read model of a report (Plan 2); this plan hands that read model to the port's existing read-only generators instead of teaching each generator what a report is. Two things are added to make that work: every derived field is marked filterable on the read model, and the two ports whose read-only surface cannot be keyless yet (TypeScript and Python) learn to be. No SQL changes: the lowering Plan 2 landed is not edited.
 
-**Tech Stack:** TypeScript (Bun, Drizzle, Fastify, Hono, TanStack Query), C# (.NET, EF Core, ASP.NET Minimal API), Java (Maven, Spring MVC), Kotlin (KotlinPoet, Exposed, Spring MVC), Python (pytest, Pydantic, FastAPI). Postgres 16 for the full-stack lanes.
+**Tech Stack:** TypeScript (Bun, Drizzle, Fastify, Hono), C# (.NET, EF Core, ASP.NET Minimal API), Java (Maven, Spring MVC), Kotlin (KotlinPoet, Exposed, Spring MVC), Python (pytest, Pydantic, FastAPI). Postgres 16 for the full-stack lanes.
 
 **Spec:** `docs/superpowers/specs/2026-10-02-fr-044-core-reporting-design.md` (R5 "Read-only everywhere", §3 obligation 4, §7 acceptance "Every port's generated route lists a report with `?filter` and `?sort` on derived fields, and answers writes `405`"). Plan 2: `docs/superpowers/plans/2026-10-03-fr-044-plan-2-report-view-lowering.md`. What Plans 1 and 2 shipped: `docs/features/reporting.md`. The REST contract: `docs/features/api-contract.md`.
 
@@ -49,7 +49,7 @@ What the code does that the documents do not say, found while verifying. Each on
 - **The route segment rule is unchanged:** the object name, `snake_case`d, then pluralized (`docs/features/api-contract.md`). No report-specific spelling.
 - **Default physical table-name pluralization is frozen** (1.0.13). This plan derives no physical name.
 - **Routes, DTOs, allowlists, hooks and controllers are reference helpers** (ADR-0034 Amendment 3). TypeScript's ejectable copies under `codegen-ts/src/reference/` change in the same commit as the package generators; `reference-byte-identical.test.ts` holds them together.
-- **No-churn:** a model with no `object.report` produces byte-identical output in every generator and every docs surface, with the two exceptions open questions 4 and 5 name (a keyless projection in TypeScript and Python; a decimal in a TypeScript view read schema).
+- **No-churn:** a model with no `object.report` produces byte-identical output in every generator and every docs surface, with seven exceptions, each a named behaviour change with its own row in the [proof table](#no-churn-and-back-compat-proof) (behaviour changes 2 to 8) and its own entry under "Changed" in the CHANGELOG: the two that open questions 4 and 5 name (a read-only projection with no declared identity and no `id` field, in TypeScript and Python; a decimal in a TypeScript view read schema), four found during execution (TypeScript API pages of a read-only object lose never-generated symbols; Python API pages of a read-only projection gain the read symbols they lacked; a Kotlin controller over a decimal or float field; a Java filter allowlist of more than ten fields), and one found by the whole-branch review (a TypeScript read-only projection keyed on a field not named `id` passes that field to its mount as `idColumn`).
 - ADR-0039: read effective properties with resolving accessors. Any `own*()` call carries a comment naming its sanctioned case. Python `attr()` is OWN.
 - TS: named constants for metamodel strings, no `any`, never `instanceof` a node from another package.
 - Public repo: no private project names, no absolute home paths, in code, fixtures, docs or commit messages.
@@ -112,6 +112,8 @@ Mechanism, the same in every port: the read model sets `@filterable: true` on ea
 
 A report author cannot narrow this set. There is no node to put `@filterable` on, and registering it on a dimension or measure would be new vocabulary (open question 1).
 
+As built: an array-valued derived field (a dimension over an `isArray` field) follows its subtype's band. It is filterable in every port; TypeScript, Java, Kotlin and Python list it in the sort allowlist and C# leaves an array out. Python's sort allowlist drops only `object` fields, so it would also list a `map`-typed derived field, which the other four leave out. The corpus has no array or map dimension. Also as built: "the other four ports sort on every orderable scalar already" was false for an enum in C#, so C# makes an enum dimension sortable on a report only.
+
 ### Table D — wire encoding of a derived field
 
 The existing Tier 1 encodings (`docs/features/api-contract.md`), applied to Plan 2's Table B subtypes. Nothing is new here except the last column.
@@ -131,13 +133,13 @@ The existing Tier 1 encodings (`docs/features/api-contract.md`), applied to Plan
 
 | Port | Before this plan | This plan adds |
 |---|---|---|
-| TypeScript | nothing | `<R>.ts` (Drizzle view binding, Zod read schema, row type, descriptor with `$path`, filter and sort allowlists, filter type), `<R>.queries.ts` (`list…` only), `<R>.routes.ts` and `<R>.routes.hono.ts`, `<R>.names.ts`, the barrel export, `<R>.hooks.ts` (the list hook only) with `<R>.meta.ts` |
+| TypeScript | nothing | `<R>.ts` (Drizzle view binding, Zod read schema, row type, descriptor with `$path`, filter and sort allowlists, filter type), `<R>.queries.ts` (`list…` only), `<R>.routes.ts` and `<R>.routes.hono.ts`, `<R>.names.ts`, the barrel export. No `<R>.hooks.ts`, `<R>.meta.ts`, grid or form: the UI tier is off for reports until Plan 5 |
 | C# | `<R>.g.cs` (keyless row), the `DbContext` mapping | `<R>Routes.g.cs`, `<R>FilterAllowlist.g.cs` |
 | Java | nothing | `<R>Dto`, `<R>Repository` (`list` and `count`), `<R>FilterAllowlist`, `<R>Controller` |
 | Kotlin | `<R>Table` (Exposed) | the `<R>` data class, `<R>FilterAllowlist`, `<R>Controller` |
 | Python | nothing | `<R>.py` (Pydantic row), `<snake>_filter_allowlist.py`, `<snake>_router.py`, `<snake>_names.py` |
 
-Nothing generates a form, a create or update schema, a repository write method, a `findById`, or a detail hook for a report. A names artifact appears in TypeScript and Python because their read model flows through the names generator; C#, Java and Kotlin keep binding the view and columns by literal (open question 7).
+Nothing generates a form, a grid, a hook of any kind, a create or update schema, a repository write method or a `findById` for a report. A names artifact appears in TypeScript and Python because their read model flows through the names generator; C#, Java and Kotlin keep binding the view and columns by literal (open question 7).
 
 Two refusals carry over from Plan 2 and now also stop the route tier: Java, Kotlin and C# refuse `gen` for a served report with a derived field over a `field.object`; C# refuses a derived field whose Pascal name equals the report's class name; Kotlin refuses a derived field named after a hard keyword or colliding on a column property. TypeScript and Python serve a report over a `field.object` and return the parsed JSON.
 
@@ -299,8 +301,8 @@ The api-contract corpus goes from 61 scenarios to 73 (`+ 12 report`).
 | Surface | A served report | A sourceless report | The `@from` entity |
 |---|---|---|---|
 | Model page (`--model`, `docsFile`) | A page: kind `report`, its `@from` (linked), its view, its row scope (`@segment`, `@filter`), and a column table from `reportShape`: name, type, nullable, role, and a definition written from the dimension or measure ("`Invoice.issuedOn` truncated to month, UTC"; "sum of `Invoice.amountCents` where segment `paid`"; "`paidInvoices` / `invoices`, null when the denominator is 0") | The same page, with "Not served: declares no view source" in place of the view | A "Reporting" section: its dimensions, measures and segments, and the reports that name it |
-| API page (`--api`, `apiDocsFile`, and each port's api-docs builder) | One unit: the row model, `GET <served path>` and nothing else, the list query function, the list hook | No unit | unchanged |
-| Agent pages (`--agent`) | `agent/ui.md` lists the list hook and says there is no detail hook and no form; `agent/schema.md` is unchanged (it already lists the view) | nothing | unchanged |
+| API page (`--api`, `apiDocsFile`, and each port's api-docs builder) | One unit: the row model, `GET <served path>` and nothing else, the list query function (or, in a port without one, the repository seam). No hook | No unit | unchanged |
+| Agent pages (`--agent`) | `agent/ui.md` does not list a report: no UI tier is generated for one (Plan 5). `agent/schema.md` is unchanged (it already lists the view) | nothing | unchanged |
 | Site (`--site`, `docs-site`) | A report page and an entry in the object index; the reporting nodes count as rendered in the coverage audit | A report page, marked not served | The same "Reporting" section |
 
 ### Table H — fixtures and gates
@@ -333,7 +335,7 @@ The api-contract corpus goes from 61 scenarios to 73 (`+ 12 report`).
 | `integration-tests/test/api-contract-report.test.ts` | the generated lane |
 | `runtime-ts/test/hono/mount-read-only.test.ts` | keyless Hono mount |
 
-**TypeScript, modified:** `metadata/src/core/reporting/report-read-model.ts`; `codegen-ts/src/source-detect.ts`, `runner.ts`, `api-surface.ts`; `codegen-ts/src/templates/routes-file.ts`, `routes-file-hono.ts`, `queries-file.ts`, `field-meta.ts`; `codegen-ts/src/reference/routes.ts`, `routes-hono.ts`, `queries.ts`; `codegen-ts/src/generators/docs-file.ts`, `docs-data-builder.ts`, `api-model.ts`, `agent-ui-page.ts`; `codegen-ts-tanstack/src/templates/hooks-file.ts`; `runtime-ts/src/drizzle-fastify/mount-read-only.ts`, `runtime-ts/src/hono/mount-read-only.ts`; `docs-site/src/coverage.ts`, `link-graph.ts`; `integration-tests/src/paths.ts`, `canonical-schema.ts`, `package.json`; `cli/test/unit/reporting-inert.test.ts`.
+**TypeScript, modified:** `metadata/src/core/reporting/report-read-model.ts`; `codegen-ts/src/source-detect.ts`, `runner.ts`, `api-surface.ts`; `codegen-ts/src/templates/routes-file.ts`, `routes-file-hono.ts`, `queries-file.ts`, `field-meta.ts`; `codegen-ts/src/reference/routes.ts`, `routes-hono.ts`, `queries.ts`; `codegen-ts/src/generators/docs-file.ts`, `docs-data-builder.ts`, `api-model.ts`, `agent-ui-page.ts`; `codegen-ts-tanstack/src/tanstack-query.ts`, `tanstack-grid.ts`, `tanstack-grid-hook.ts` (and their `reference/` copies: gate on `servesClientTier`), `codegen-ts-tanstack/src/templates/hooks-file.ts` (keyless projection only); `runtime-ts/src/drizzle-fastify/mount-read-only.ts`, `runtime-ts/src/hono/mount-read-only.ts`; `docs-site/src/coverage.ts`, `link-graph.ts`; `integration-tests/src/paths.ts`, `canonical-schema.ts`, `package.json`; `cli/test/unit/reporting-inert.test.ts`.
 
 **Other ports:** listed in Tasks 6 to 9.
 
@@ -764,8 +766,8 @@ export function generateReportApiSchemaSql(root: MetaRoot): Promise<string> {
 
 ```ts
   /**
-   * False for an object with no single-column primary identity: an `object.report`, or
-   * a keyless projection. Mounts the list route and the collection POST refusal only,
+   * False for an object whose rows cannot be addressed by key: an `object.report`, or a
+   * keyless projection (as built: no declared identity AND no field named `id`). Mounts the list route and the collection POST refusal only,
    * and no `/:id` route of any verb. Default true, which is today's behaviour.
    */
   readonly itemRoutes?: boolean;
@@ -815,7 +817,7 @@ The Hono file holds the same two tests against `app.request(...)`.
 - Modify: `server/typescript/packages/codegen-ts/src/source-detect.ts` (after `isReport`, line 96), `runner.ts` (line 413), `api-surface.ts` (line 47)
 - Modify: `codegen-ts/src/templates/routes-file.ts` (projection branch, line 76), `routes-file-hono.ts` (line 78), `queries-file.ts` (`renderProjectionQueriesFile`, line 154), `field-meta.ts` (line 163), `projection-decl.ts` (comment wording only)
 - Modify: `codegen-ts/src/reference/routes.ts`, `routes-hono.ts`, `queries.ts` (the ejectable copies)
-- Modify: `server/typescript/packages/codegen-ts-tanstack/src/templates/hooks-file.ts` (`renderReadOnlyHooksFile`, reached from line 58)
+- Modify: `server/typescript/packages/codegen-ts-tanstack/src/templates/hooks-file.ts` (`renderReadOnlyHooksFile`, reached from line 58; for a keyless **projection** only) and the three TanStack generators `tanstack-query.ts`, `tanstack-grid.ts`, `tanstack-grid-hook.ts` with their `reference/` copies (gate on `servesClientTier`, so no report reaches them); `codegen-ts/src/generators/agent-ui-page.ts` (`hasUiSurface`)
 - Modify: `server/typescript/packages/cli/test/unit/reporting-inert.test.ts`
 - Test: `metadata/test/report-read-model.test.ts`, `codegen-ts/test/projection/routes-file.test.ts`, `codegen-ts/test/projection/queries-file.test.ts`, `codegen-ts/test/codegen-compile-conformance.test.ts` (existing), `codegen-ts/test/reference-byte-identical.test.ts` (existing), `codegen-ts/test/routes-hono-parity.test.ts` (existing)
 
@@ -829,12 +831,19 @@ The Hono file holds the same two tests against `app.request(...)`.
 export function servedReport(obj: MetaObject): boolean;
 
 // codegen-ts/src/api-surface.ts
-/** True iff the object has a single-column primary identity, so its REST surface has
- *  /:id routes. Mirrors the JVM RestSurfaceGate.hasItemRoute. */
+/** As built (ruled during Task 3): false for every report; otherwise true when the by-id
+ *  column exists on the object (a declared primary identity, or no identity and a field
+ *  named `id`); false otherwise. This is NOT the JVM RestSurfaceGate.hasItemRoute, which
+ *  requires a DECLARED single-column primary identity; C#, Java and Kotlin keep that rule. */
 export function hasItemRoute(entity: MetaObject): boolean;
+
+/** True when the client UI tier (hooks, grids, `agent/ui.md`) is generated for the
+ *  object: `servesReadApi(entity)` and not a report. A served report has a route and no
+ *  UI tier until Plan 5. Exported from the package index beside `servesReadApi`. */
+export function servesClientTier(entity: MetaObject): boolean;
 ```
 
-**What the spike showed.** With the runner swapping a view-backed report for its read model, the existing generators already emit a correct Drizzle view binding, Zod read schema, descriptor (`$path: "/store_totals"`), names artifact, barrel export, Fastify and Hono route files and a hooks file. Five things were wrong, and they are this task: both allowlists were empty; `<R>.queries.ts` had a `find…ById` that does not compile; the route files mounted item routes; the hooks file had a detail hook; a decimal was typed `number`. A report with an enum dimension emitted an inline `z.enum([...])` and compiled.
+**What the spike showed.** With the runner swapping a view-backed report for its read model, the existing generators already emit a correct Drizzle view binding, Zod read schema, descriptor (`$path: "/store_totals"`), names artifact, barrel export, Fastify and Hono route files and a hooks file. Four things were wrong, and they are this task: both allowlists were empty; `<R>.queries.ts` had a `find…ById` that does not compile; the route files mounted item routes; a decimal was typed `number`. The spike also emitted a hooks file; this plan emits none for a report (answer 6), so the hook, grid and grid-hook generators are gated off for reports instead. A report with an enum dimension emitted an inline `z.enum([...])` and compiled.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -860,6 +869,7 @@ test("a served report mounts a keyless read-only surface", ...);
   // and its doc comment says "report", not "projection"
 
 test("a projection with a single-column identity is unchanged", ...);
+  // (as built, a projection with an `id` field and no declared identity is unchanged too)
   // the existing projection golden is byte-identical: no `itemRoutes` key at all
 
 test("a served report gets a list query and no by-id query", ...);
@@ -868,6 +878,14 @@ test("a served report gets a list query and no by-id query", ...);
 test("a decimal derived field is a string in the read schema", ...);
   // ProgramMinutes.ts (from meta.fitness.json): avgMinutes: z.string().nullable(),
   // longShare: z.string().nullable(); totalMinutes stays z.number().int().nullable()
+
+test("no UI-tier generator emits for a served report", ...);
+  // tanstackQuery, tanstackGrid, tanstackGridHook and formFile over the `with` model emit
+  // no file whose path starts with StoreTotals; servesReadApi(StoreTotals read model) is
+  // true and servesClientTier is false; hasUiSurface is false for it
+
+test("a keyless projection gets a list hook and no detail hook", ...);
+  // renderReadOnlyHooksFile for a projection with no declared identity and no `id` field
 
 test("a report and an entity that share a route segment are a generation error", ...);
   // a model with entity Invoice and view-backed report Invoices throws the existing
@@ -899,15 +917,15 @@ test("a report and an entity that share a route segment are a generation error",
 
 Reword the warning below it: every selected object is a report with no view source, which generates nothing.
 
-- [ ] **Step 5: Answer `servesReadApi` and `hasItemRoute`.** `servesReadApi` returns `servedReport(entity)` for a report (declared node or read model) and its existing answer otherwise. Add `hasItemRoute`.
+- [ ] **Step 5: Answer `servesReadApi`, `hasItemRoute` and `servesClientTier`.** `servesReadApi` returns `servedReport(entity)` for a report (declared node or read model) and its existing answer otherwise. Add `hasItemRoute`. Add `servesClientTier` (`servesReadApi(entity) && !isReport(entity)`), export it from the package index, and switch every UI-tier gate from `servesReadApi` to it: `tanstack-query.ts`, `tanstack-grid.ts`, `tanstack-grid-hook.ts`, their `reference/` copies, and `hasUiSurface` in `agent-ui-page.ts`. `formFile` needs no change: `hasGeneratedForm` requires a writable source. The route and queries generators keep `servesReadApi`.
 
-- [ ] **Step 6: Make the read-only templates keyless-aware.** In `routes-file.ts` and `routes-file-hono.ts`, when `!hasItemRoute(entity)` add `itemRoutes: false,` to the mount options, and when `isReport(entity)` add `resource: "report",` and say "report" in the doc comment ("Exposes GET list only. POST returns 405."). In `renderProjectionQueriesFile`, emit the by-id function only when `hasItemRoute(obj)`, and write "report (read-only)" instead of "projection (read-only)" in the file header for a report. In `renderReadOnlyHooksFile`, emit the detail hook and the `details`/`detail` keys only when `hasItemRoute(entity)`. Apply the same edits to `reference/routes.ts`, `reference/routes-hono.ts` and `reference/queries.ts`. **UNVERIFIED:** how `test-generators/src/` and `codegen-ts-tanstack/src/reference/hooks.ts` stay in step with these; `reference-byte-identical.test.ts` and `reference-templates.test.ts` say, so read them first.
+- [ ] **Step 6: Make the read-only templates keyless-aware.** In `routes-file.ts` and `routes-file-hono.ts`, when `!hasItemRoute(entity)` add `itemRoutes: false,` to the mount options, and when `isReport(entity)` add `resource: "report",` and say "report" in the doc comment ("Exposes GET list only. POST returns 405."). In `renderProjectionQueriesFile`, emit the by-id function only when `hasItemRoute(obj)`, and write "report (read-only)" instead of "projection (read-only)" in the file header for a report. In `renderReadOnlyHooksFile`, emit the detail hook and the `details`/`detail` keys only when `hasItemRoute(entity)`; no report reaches it, so this is the keyless-projection correction only. Apply the same edits to `reference/routes.ts`, `reference/routes-hono.ts` and `reference/queries.ts`. **UNVERIFIED:** how `test-generators/src/` and `codegen-ts-tanstack/src/reference/hooks.ts` stay in step with these; `reference-byte-identical.test.ts` and `reference-templates.test.ts` say, so read them first.
 
 This step also corrects a keyless **projection**, which today gets item routes and a by-id query it cannot serve (open question 4).
 
 - [ ] **Step 7: Type a decimal as a string in a view read schema.** In `field-meta.ts`, move `FIELD_SUBTYPE_DECIMAL` out of the `z.number()` arm into a `z.string()` arm, with a comment that Drizzle's `numeric` reads a string and `field.decimal` is a `string` in TypeScript. This changes the read schema of an existing **projection** with a decimal field (open question 5).
 
-- [ ] **Step 8: Re-state the inert test.** In `cli/test/unit/reporting-inert.test.ts`: the codegen `describe` becomes "a sourceless report is inert; a served report emits exactly its read-only files". For each catalog generator, the files added by the `with` model are exactly the Table E TypeScript list for `StoreTotals`, and nothing is added for `ProgramEngagement` or `DailyRevenue`. Every file the `without` model emits is byte-identical in the `with` run, the barrel excepted. Update the header comment and `fixtures/codegen-noop/reporting/README.md`.
+- [ ] **Step 8: Re-state the inert test.** In `cli/test/unit/reporting-inert.test.ts`: the codegen `describe` becomes "a sourceless report is inert; a served report emits exactly its read-only files". For each catalog generator, the files added by the `with` model are exactly the Table E TypeScript list for `StoreTotals` (and none at all from a UI-tier generator: hooks, grid, grid hook, form), and nothing is added for `ProgramEngagement` or `DailyRevenue`. Every file the `without` model emits is byte-identical in the `with` run, the barrel excepted. Update the header comment and `fixtures/codegen-noop/reporting/README.md`.
 
 - [ ] **Step 9: Run.**
 
@@ -952,20 +970,20 @@ test("the seeded report rows are what the views return", async () => {
 ### Task 5: Reports in `meta docs`
 
 **Files:**
-- Modify: `codegen-ts/src/generators/docs-file.ts` (line 118), `docs-data-builder.ts`, `api-model.ts` (line 303 and `restSymbols`), `agent-ui-page.ts`
+- Modify: `codegen-ts/src/generators/docs-file.ts` (line 118), `docs-data-builder.ts`, `api-model.ts` (line 303 and `restSymbols`)
 - Modify: `docs-site/src/coverage.ts` (the `isReportingVocabulary` predicate and `deferred`), `docs-site/src/link-graph.ts` (line 41), and the site's object page template
 - Modify: `cli/test/unit/reporting-inert.test.ts` (the `meta docs` `describe`)
 
 Required content is Table G. **UNVERIFIED:** the shape `buildEntityDocData` returns and which template renders a model page; the docs-site page templates; which golden tests pin model and API pages (`codegen-ts/test/golden/` holds `api-docs-accuracy.test.ts`); whether `GET /_meta` lists a report (this plan does not change it).
 
-- [ ] **Step 1: Read first.** `docs-data-builder.ts` (`buildEntityDocData`), the model page template it feeds, `api-model.ts` `buildEntityUnit` and `restSymbols` (line 617), `agent-ui-page.ts`, `docs-site/src/coverage.ts` and `link-graph.ts`.
+- [ ] **Step 1: Read first.** `docs-data-builder.ts` (`buildEntityDocData`), the model page template it feeds, `api-model.ts` `buildEntityUnit` and `restSymbols` (line 617), `agent-ui-page.ts` (read only; Task 3 already gated it on `servesClientTier`), `docs-site/src/coverage.ts` and `link-graph.ts`.
 - [ ] **Step 2: Write failing tests** over `fixtures/codegen-noop/reporting/with/meta.shop.json`:
   - the model surface has a page for each of `StoreTotals`, `ProgramEngagement` and `DailyRevenue`; `StoreTotals`'s page names `v_store_totals` and lists `purchases`, `buyers`, `revenue` with their Table B types; the two sourceless pages say they are not served; `Purchase`'s page has a Reporting section naming its dimensions, measures, segments and reports;
   - the API surface has one unit for `StoreTotals` whose only REST symbol is `GET /store_totals`, and no unit for the other two;
-  - `agent/ui.md` names `useStoreTotalsList` and no `useStoreTotals(id)`;
+  - `agent/ui.md` does not mention `StoreTotals` at all, and the API unit for `StoreTotals` lists no hook symbol;
   - the site's coverage report has an empty `deferred` and no "not rendered" warning for a reporting kind;
   - a model with no report renders every surface byte-identically to before (the `without` model against a snapshot taken before this task).
-- [ ] **Step 3: Implement.** Remove the two `isReport` skips and the `link-graph.ts` skip. Build a report's model page from `reportShape` (which resolves for a sourceless report too), not from `reportReadModel`. In `restSymbols`, emit the `/:id` symbol only when `hasItemRoute(obj)`, which also corrects the documented endpoints of a keyless projection. In `buildApiModel`, skip a report that is not `servedReport`, and build a served report's unit from `reportReadModel(obj, root)`, since the declared node has no fields for `modelFieldShapes` to read. Delete `isReportingVocabulary`, `deferred` and the branch in `walk`, as the comment at `coverage.ts:16` asks.
+- [ ] **Step 3: Implement.** Remove the two `isReport` skips and the `link-graph.ts` skip. Build a report's model page from `reportShape` (which resolves for a sourceless report too), not from `reportReadModel`. In `restSymbols`, emit the `/:id` symbol only when `hasItemRoute(obj)`, which also corrects the documented endpoints of a keyless projection. In `buildApiModel`, skip a report that is not `servedReport`, and build a served report's unit from `reportReadModel(obj, root)`, since the declared node has no fields for `modelFieldShapes` to read. The unit's hook symbols are emitted only when `servesClientTier(obj)`, so a report's unit names no hook. Delete `isReportingVocabulary`, `deferred` and the branch in `walk`, as the comment at `coverage.ts:16` asks.
 - [ ] **Step 4: Re-state the docs `describe`** of `reporting-inert.test.ts` as "differs by exactly" the additions of Step 2.
 - [ ] **Step 5: Run.** `cd server/typescript && bun test packages/codegen-ts/test packages/docs-site packages/cli/test/unit/reporting-inert.test.ts`. Expected: PASS.
 - [ ] **Step 6: Commit (local).** `git commit -m "feat(docs): model and API pages for reports in meta docs (FR-044)"`.
@@ -1056,7 +1074,7 @@ Kotlin already emits `<R>Table`. The read-only controller reads that object by n
 **What the spike showed.** With the runner swap, `entity`, `filter-allowlist`, `names` and `routes` each emit one file for `StoreTotals` and nothing else changes. The model is a correct Pydantic class (`revenue: int | None = None`). Three things were wrong: the allowlist was empty; the router had `GET`, `PATCH`, `PUT` and `DELETE` on `/{store_totals_id}`; and the repository `Protocol` had `find_by_id(self, id: int)`.
 
 - [ ] **Step 1: Failing tests.** In `test_report_read_model.py`: every derived field is filterable (read with the resolving accessor; Python `attr()` is OWN). A new `tests/codegen/test_report_router.py`: the rendered `store_totals_router.py` has exactly `@router.get("")` and `@router.post("")`, no path with `{`, and a `StoreTotalsRepository` with `list` and `count` only; `store_totals_filter_allowlist.py` names `purchases`, `buyers`, `revenue`; a projection with a single-column identity renders byte-identically to before. `cd server/python && uv run pytest -q tests/test_report_read_model.py tests/codegen/test_report_router.py`: FAIL.
-- [ ] **Step 2: Implement.** Mark derived fields filterable in `report_read_model.py`. Add `is_served_report` and `has_item_route(entity)` (true iff a primary identity with exactly one field) to `instance_artifacts.py`. Replace the drop at `runner.py:106` with the swap, and reword the warning:
+- [ ] **Step 2: Implement.** Mark derived fields filterable in `report_read_model.py`. Add `is_served_report` and `has_item_route(entity)` (as built: false for every report; otherwise true when a primary identity is declared, or none is declared and a field named `id` exists; false otherwise) to `instance_artifacts.py`. Replace the drop at `runner.py:106` with the swap, and reword the warning:
 
 ```python
     # FR-044: a served report (Table A) is generated from its read model, which the
@@ -1068,7 +1086,7 @@ Kotlin already emits `<R>Table`. The read-only controller reads that object by n
     ]
 ```
 
-In `_render_readonly_router`, emit the `get` handler, the three item refusals and `find_by_id` only when `has_item_route(entity)`, and say "report" for a report. This also corrects a keyless projection (open question 4). In `apidocs/builder.py`, document a served report and skip an unserved one.
+In `_render_readonly_router`, emit the `get` handler, the three item refusals and `find_by_id` only when `has_item_route(entity)`, and say "report" for a report. This also corrects a keyless projection (open question 4; as built, only one with no declared identity and no `id` field). In `apidocs/builder.py`, document a served report and skip an unserved one.
 - [ ] **Step 3: Write the lane** on the pattern of `test_api_contract_projection.py` and `generated_projection_app.py`: one app with the three generated routers, each behind an in-memory repository seeded from `seed.json`'s `reports` (`paidShare` as `Decimal("0.4")`, `issuedOnMonth` as a `date`).
 - [ ] **Step 4: Update `test_reporting_inert.py`:** the `with` model adds exactly four files, all for `StoreTotals`.
 - [ ] **Step 5: Run.** `uv run pytest -q`, the lane, and `tests/codegen/test_codegen_compile_conformance.py` (which now imports six report models). Expected: green.
@@ -1080,7 +1098,7 @@ In `_render_readonly_router`, emit the `get` handler, the three item refusals an
 
 **Files:**
 - Modify: `docs/features/reporting.md` ("What does not exist yet", "What the runtime does with it", the last sentence of that section, "Known limits", "What the corpus gates"), `docs/features/api-contract.md` (a "Reports" section after "Read-only projections"; a `date` and a `decimal` note under "Type encodings"), `docs/CONFORMANCE.md` (line 37, the heading at line 258, line 260, the total at line 401), `fixtures/api-contract-conformance/README.md` (the layout and the sub-corpus list)
-- Modify: `agent-context/skills/metaobjects-authoring/SKILL.md` (line 750) and `references/reporting.md`; the five `metaobjects-codegen` references (`typescript.md`, `csharp.md`, `java.md`, `kotlin.md`, `python.md`: a "Reports" paragraph after "Projections"); `agent-context/skills/metaobjects-runtime-ui/SKILL.md` (the list hook)
+- Modify: `agent-context/skills/metaobjects-authoring/SKILL.md` (line 750) and `references/reporting.md`; the five `metaobjects-codegen` references (`typescript.md`, `csharp.md`, `java.md`, `kotlin.md`, `python.md`: a "Reports" paragraph after "Projections"); `agent-context/skills/metaobjects-runtime-ui/SKILL.md` (one sentence: a report has a route and no generated hook, grid or form until Plan 5)
 - Regenerate: `fixtures/agent-context-conformance/*/expected/`
 - Modify: `docs/ports/typescript.md`, `csharp.md`, `java.md`, `kotlin.md`, `python.md`; `README.md` (line 157, "no routes yet"); `CHANGELOG.md` `[Unreleased]`; `.claude/rules/cross-language-porting.md` and `AGENTS.md` wherever they say a report has no routes
 - Modify: `metaobjects/meta.requirements.yaml`, then regenerate `fixtures/requirement-harness/*`
@@ -1099,7 +1117,7 @@ cd ../../../.. && bun scripts/check-doc-examples.ts
 Expected: PASS.
 - [ ] **Step 4: Counts.** Update the four places in `docs/CONFORMANCE.md` (61 → 73, "+ 12 report") and run `bun test scripts/site/counts.test.ts`. **UNVERIFIED:** whether that test counts api-contract scenarios or only the metamodel corpus; read it first.
 - [ ] **Step 5: The project's own requirements ledger.** `metaobjects/meta.requirements.yaml` has `objectReport` (near line 525) and the `reporting` branch (line 1153), all `status: planned`; its description says "how it is served is the API surface". Read those entries and `fixtures/requirement-harness/README.md`. Move to a non-`planned` status only what this plan makes true, with an `@implementedBy` that resolves, then run `bun scripts/generate-requirement-harness.ts` and the five harness tests. **UNVERIFIED:** which entries those are; if none is about serving, change nothing and say so in the commit.
-- [ ] **Step 6: CHANGELOG `[Unreleased]`:** a view-backed report is served by a generated list route in every port; TypeScript, Java and Python now generate a report's row type; a report has model and API pages in `meta docs`; and, under their own bullets, the two corrections that reach beyond reports (keyless projections in TypeScript and Python; a decimal in a TypeScript view read schema), each with the model shape it affects.
+- [ ] **Step 6: CHANGELOG `[Unreleased]`:** a view-backed report is served by a generated list route in every port; TypeScript, Java and Python now generate a report's row type; a report has model and API pages in `meta docs`; no client hook or other UI-tier output is generated for a report yet; and, under their own bullets, the two corrections that reach beyond reports (keyless projections in TypeScript and Python; a decimal in a TypeScript view read schema), each with the model shape it affects.
 - [ ] **Step 7: Commit (local).** `git commit -m "docs(reporting): report routes, the report api-contract corpus, and the per-port generators (FR-044)"`.
 
 ---
@@ -1110,7 +1128,7 @@ Expected: PASS.
 - [ ] **Step 2:** `scripts/integration-test.sh` for the api-contract and persistence lanes in all five ports. The persistence lanes prove the read models still read with `@filterable` set.
 - [ ] **Step 3:** `node scripts/check-metamodel-version.mjs` (no `--set`). Expected: passes with no vocabulary change reported.
 - [ ] **Step 4:** Independent review of the whole change by a fresh reviewer over `git diff origin/main..HEAD`; fix findings.
-- [ ] **Step 5:** Push and open the pull request. Comment on the FR-044 issue with the commit range and "Plan 3 of 5 done".
+- [ ] **Step 5:** Rebase on the current `origin/main`, re-run the full `scripts/ci-local.sh`, and hand the branch to the validation gate, which pushes and opens the pull request. The FR-044 issue comment is made after merge.
 
 ---
 
@@ -1128,8 +1146,13 @@ Expected: PASS.
 | Existing api-contract scenarios are unchanged | No runner changes; the new sub-corpus uses existing assertion keys only |
 | C# and Kotlin output from Plan 2 is unchanged | The row class, the `DbContext` mapping and the Exposed table keep their bytes; `IntegrationFixtureDriftTests` and `KotlinCodegenMatchesReferenceTest` |
 | **Behaviour change 1** (unreleased vocabulary) | A view-backed report now generates code and mounts a route. Nothing released carries `object.report` |
-| **Behaviour change 2** (released behaviour, open question 4) | A keyless read-only projection in TypeScript and Python loses its `/{id}` routes, its by-id query and its detail hook. They were never able to serve a row by key. The CHANGELOG names it |
+| **Behaviour change 2** (released behaviour, open question 4) | In TypeScript and Python, a read-only projection with **no declared identity and no field named `id`** loses its `/{id}` routes, its by-id query (`find…ById` / `find_by_id`) and, in TypeScript, its detail hook. That shape could not serve a row by key. A projection with a declared identity, or with an `id` field and no declared identity, served rows by key before and is unchanged (ruled during Task 3: `hasItemRoute` / `has_item_route`). C#, Java and Kotlin keep requiring a declared single-column identity. The CHANGELOG names it |
 | **Behaviour change 3** (released output, open question 5) | In TypeScript, a decimal field of a view read schema is `z.string()`, not `z.number()`. The runtime value was always a string. The CHANGELOG names it |
+| **Behaviour change 4** (released docs output, found in Task 5) | TypeScript (`meta docs` API pages): a read-only object's API unit documents exactly what is generated. A read-only projection's page LOSES create/update/delete functions, write verbs and Insert/Update schemas that were never generated, and a keyless one loses `/:id` and the by-id function. Entities and write-through objects are unchanged. The CHANGELOG names it |
+| **Behaviour change 5** (released docs output, found in Task 9) | Python (the api-docs builder), the same rule moving the other way: a read-only projection's unit had only its model symbol and GAINS the repository seam, `GET <path>`, `GET <path>/{id}` only when it has an item route, and the filter allowlist; never a write verb. A served report's unit uses the same helper. Entities and write-through objects are unchanged. The CHANGELOG names it |
+| **Behaviour change 6** (released output, found in Task 8) | Kotlin: the generated Spring controller (writable, write-through and read-only: projection or report) of any object with a `field.decimal` or `field.float` scalar field, filterable or not, regenerates with different bytes (`coerce<E>Decimal` / `coerce<E>Float` in place of `coerce<E>Double`), because a filter on such a column threw `ClassCastException` (a 500). A TPH controller changes for a `field.float` only, on the base or a subtype (decimals are excluded from the TPH filter list). `field.double` is unchanged. The CHANGELOG names it |
+| **Behaviour change 7** (released output, found in Task 7) | Java: a filter allowlist of more than ten fields is spelled with `Map.ofEntries` (it did not compile before); ten or fewer keep their bytes. The CHANGELOG names it |
+| **Behaviour change 8** (released output and runtime behaviour, found by the whole-branch review) | TypeScript: a read-only projection whose by-id field (the first field of its primary identity) is not named `id` gains one line, `idColumn: "<field>"`, in the read-only mount options of its Fastify and Hono route files, so `GET /:id` reads the column `find…ById` reads. Before, the mount looked for `id`, found no column and answered with the view's first row. A projection keyed on `id` keeps its bytes (`routes-file.test.ts`, "a keyed-on-`id` projection passes no idColumn"). Both read-only mounts also answer `404 not_found` when the view has no column under `idColumn`, where they ran the query with no `WHERE`. The CHANGELOG names it |
 
 ## Unverified items
 
@@ -1149,6 +1172,30 @@ Each is the first step of the task that touches it.
 | That a `LocalDate`, a C# `DateOnly`, a Python `date` and a Kotlin date each reach the wire as `YYYY-MM-DD` (the corpus has never asserted a date) | 4, 6, 7, 8, 9 |
 | What `scripts/site/counts.test.ts` counts | 10 |
 | Which entries of the project's own requirements ledger this plan makes true | 10 |
+
+## Answers to the open questions
+
+Ruled 2026-10-04, before execution. The questions are kept below as asked.
+
+1. All derived fields are filterable and sortable. No new `@filterable` vocabulary.
+2. The existing pluralized snake_case rule (`InvoicesByMonth` at `/invoices_by_months`).
+3. `/{id}` is not mounted; only the framework's own `404` status is asserted.
+4. Fix keyless projections in TypeScript and Python here, with the same switch a report needs. Unit tests only, no new `projection/` scenario. Recorded as behaviour change 2.
+5. Both parts confirmed: the corpus asserts a ratio is present and filterable, not its spelling; the TypeScript view read schema types a decimal as a string for reports and projections alike. Recorded as behaviour change 3.
+6. **Different from the plan as first written:** no typed client list hook (TanStack) and no other UI-tier output for a report in Plan 3. The UI tier stays off for reports until Plan 5. The tasks, tables and expected outputs above were changed to match: `servesReadApi` still answers true for a served report, so the route and queries generators emit; a new `servesClientTier` gate keeps the hook, grid and grid-hook generators and `agent/ui.md` off.
+7. Both asymmetries stay as described.
+
+### As built
+
+What execution changed or added, beyond the answers above. The tables and tasks were edited to match.
+
+- **A. No UI tier for a report (answer 6).** TypeScript gates the UI tier (the TanStack generators and the source-only Angular generators) on a new `servesClientTier` predicate, while `servesReadApi` is true for a served report. `agent/ui.md` lists no report. An adopter-owned (ejected) hook generator that still gates on `servesReadApi` would emit for a report; the CHANGELOG tells owners to switch to `servesClientTier`.
+- **B. The item-route rule (answer 4).** TypeScript `hasItemRoute` and Python `has_item_route`: false for every report; otherwise true when the by-id column exists on the object (a declared primary identity, or no identity and a field named `id`); false otherwise. Only a read-only projection with no identity and no `id` field loses its `/{id}` routes, by-id query and, in TypeScript, its detail hook. This differs from C#, Java and Kotlin, which require a declared single-column identity and are unchanged.
+- **C. Decimal (answer 5).** A `field.decimal` in a TypeScript view read schema is `z.string()`, for reports and projections.
+- **D. API docs accuracy (new, behaviour changes 4 and 5).** A read-only object's API unit documents exactly what is generated. In TypeScript a read-only projection's page loses the write and (when keyless) by-id symbols that were never generated. In Python a read-only projection's unit, which had only its model symbol, gains the repository seam, `GET <path>`, `GET <path>/{id}` when it has an item route, and the filter allowlist.
+- **E. Per-port fixes found on the way.** C#: a report's enum dimension is sortable (report-only; an entity's enum field is still not sortable in C#). Java: the filter-allowlist generator handles more than ten filterable fields (`Map.ofEntries`, behaviour change 7). Kotlin: a filter on a decimal or float column no longer throws, which changes the generated controller of any object with such a field, filterable or not, and of a TPH base for a float only (behaviour change 6); reads of a field whose name needs `safeColumnProperty` compile, byte-neutral for every other name.
+- **F. A non-`id` key on a read-only projection (new, behaviour change 8; found by the whole-branch review).** TypeScript's routes templates pass `idColumn` to the read-only mount when the by-id field is not `id`, through a new `itemRouteField` (`hasItemRoute` is now "it is defined"). Both read-only mounts answer `404 not_found` when the view has no column under `idColumn`. C#, Java, Kotlin and Python are not changed by this.
+- **Requirements ledger (Task 10 Step 5).** Nothing moved. No entry of `metaobjects/meta.requirements.yaml` is about serving a report: `objectReport` and the `reporting` branch describe declaring the vocabulary, and the ledger carries no `@implementedBy` on any node by design.
 
 ## Open questions for the captain
 

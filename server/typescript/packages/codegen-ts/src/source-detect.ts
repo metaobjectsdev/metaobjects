@@ -17,11 +17,14 @@
 import {
   OBJECT_SUBTYPE_PROJECTION,
   OBJECT_SUBTYPE_REPORT,
+  SOURCE_KIND_VIEW,
   SOURCE_SUBTYPE_RDB,
   isMetaSource,
   isWritableSource,
+  reportReadModel,
+  reportReadSource,
 } from "@metaobjectsdev/metadata";
-import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
+import type { MetaData, MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 
 /** True when the child is a source.rdb node (subType-scoped — the rdb paradigm only). */
 function isRdbSource(child: MetaData): boolean {
@@ -87,12 +90,39 @@ export function isSourcelessEntity(obj: MetaObject): boolean {
 }
 
 /**
- * True for an `object.report` (FR-044). Plan 1 registers and validates the reporting
- * vocabulary but gives a report no lowering yet, so the runner drops it from the entity
- * set every generator reads — including a report that declares a read-only
- * `source.rdb @kind: view` (R5 allows one), which would otherwise pass every
- * source-keyed gate below and emit an empty projection tier.
+ * True for an `object.report` (FR-044): the declared node AND its read model, which keeps
+ * the report subtype. A report has no identity and no write surface, so the generators
+ * that emit for one (see `servedReport`) take the keyless read-only path.
  */
 export function isReport(obj: MetaObject): boolean {
   return obj.subType === OBJECT_SUBTYPE_REPORT;
+}
+
+/** Table A: a non-abstract object.report whose read source is @kind: view. */
+export function servedReport(obj: MetaObject): boolean {
+  if (!isReport(obj) || obj.isAbstract === true) return false;
+  // `reportReadSource` is Plan 2's rule (own read-only source with @role: primary, else
+  // the first own read-only source), so the report that is served is exactly the report
+  // whose view the lowering names. It holds for the read model too: its one source is a
+  // copy of that source.
+  return reportReadSource(obj)?.effectiveKind === SOURCE_KIND_VIEW;
+}
+
+/**
+ * The objects a generator run reads: every non-report object as declared, each served
+ * report (Table A) replaced by its read model, and every other report dropped.
+ *
+ * A report declares no fields; its read shape is derived. The read model carries that
+ * shape as real `field.*` children plus a copy of the report's view source, which makes
+ * it a keyless read-only object the projection generators already know how to emit. So
+ * the swap happens once, here, and no generator has a report branch for its shape.
+ *
+ * `runGen` applies this to its selection. Anything that drives generators without
+ * `runGen` must apply it too, or it hands them a declared report with no fields.
+ */
+export function generatableObjects(objects: readonly MetaObject[], root: MetaRoot): MetaObject[] {
+  return objects.flatMap((o) => {
+    if (!isReport(o)) return [o];
+    return servedReport(o) ? [reportReadModel(o, root)] : [];
+  });
 }

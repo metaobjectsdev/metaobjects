@@ -35,9 +35,10 @@ public static class CodegenRunner
             // gate and emit an empty projection tier (routes, allowlist, names).
             //
             // A view-backed report DOES generate its keyless row and DbContext mapping
-            // (Plan 2). The two generators that emit those ask for the report's row model
-            // themselves, through ReportRows, so every other generator stays report-free
-            // without having to know what a report is.
+            // (Plan 2), and its filter allowlist and read-only routes (Plan 3). The four
+            // generators that emit those ask for the report's row model themselves, through
+            // ReportRows, so every other generator stays report-free without having to know
+            // what a report is.
             Entities = root.Objects().Where(o => !o.IsReport()).ToList(),
             Root = root,
             Config = config,

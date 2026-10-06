@@ -1,0 +1,14 @@
+name: report-filter-invalid-field
+description: >
+  `reference` is a field of Invoice, the report's @from entity, and not a derived field
+  of the report. The allowlist comes from the report's own derived fields, so it is
+  rejected with the envelope that names it.
+requests:
+  - id: r1
+    method: GET
+    path: /api/invoice_status_totals?filter[reference][eq]=INV-1001
+    expect:
+      status: 400
+      body:
+        error: "invalid_filter_field"
+        field: "reference"

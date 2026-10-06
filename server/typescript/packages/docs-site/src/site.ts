@@ -189,6 +189,7 @@ export async function generateSite(opts: SiteOptions): Promise<SiteResult> {
   const objectTocHtml = (d: ObjectPageData): string => {
     const sections: { id: string; label: string; present: boolean }[] = [
       { id: "s-overview", label: "Overview", present: !!d.desc },
+      { id: "s-report", label: "Report", present: d.report !== undefined },
       { id: "s-fields", label: "Fields", present: d.ownFields.length > 0 },
       { id: "s-indexes", label: "Indexes &amp; keys", present: d.indexes.length > 0 },
       { id: "s-validators", label: "Validators", present: d.validators.length > 0 },
@@ -196,6 +197,7 @@ export async function generateSite(opts: SiteOptions): Promise<SiteResult> {
       { id: "s-provenance", label: "Field provenance", present: d.origins.length > 0 },
       { id: "s-inheritance", label: "Inheritance", present: !!d.inheritanceMermaid },
       { id: "s-neighborhood", label: "Neighborhood", present: !!d.neighborhoodMermaid },
+      { id: "s-reporting", label: "Reporting", present: d.reporting !== undefined },
       { id: "s-referenced-by", label: "Referenced by", present: d.referencedBy.length > 0 },
     ];
     return sections

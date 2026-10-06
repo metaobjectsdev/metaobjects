@@ -1,0 +1,13 @@
+name: report-filter-invalid-op
+description: >
+  A count is a long, so it takes the numeric operators and not `like`. The operator set
+  of a derived field is the one its derived subtype has on any other object.
+requests:
+  - id: r1
+    method: GET
+    path: /api/invoice_status_totals?filter[invoices][like]=2
+    expect:
+      status: 400
+      body:
+        error: "invalid_filter_op"
+        field: "invoices"

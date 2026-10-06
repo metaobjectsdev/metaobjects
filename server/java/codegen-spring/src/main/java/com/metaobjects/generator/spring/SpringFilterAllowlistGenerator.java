@@ -68,6 +68,9 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
     /** Metadata attribute marking a field as filterable in the generated allowlist. */
     static final String ATTR_FILTERABLE = "filterable";
 
+    /** {@code Map.of} has overloads up to ten key/value pairs and no more. */
+    private static final int MAP_OF_MAX_PAIRS = 10;
+
     @Override
     protected Class<MetaObject> getFilterClass() {
         return MetaObject.class;
@@ -77,7 +80,12 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
     public void execute(MetaDataLoader loader) {
         parseArgs();
         Path outRoot = Paths.get(outDir.getAbsolutePath());
-        for (MetaObject entity : loader.getMetaObjects()) {
+        for (MetaObject declared : loader.getMetaObjects()) {
+            // FR-044: a served report is emitted from its read model, whose derived fields
+            // all carry @filterable (Table C), so there is no report branch below. Any
+            // other report has no shape and emits nothing.
+            MetaObject entity = RestSurfaceGate.restShapeOf(declared);
+            if (entity == null) continue;
             if (TphPlan.isTphSubtype(entity)) continue; // folded into the base — no own allowlist
             if (!appliesTo(entity)) continue;
             emit(entity, outRoot, loader);
@@ -204,17 +212,24 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
         if (opsByField.isEmpty()) {
             src.append("Map.of();\n");
         } else {
-            src.append("Map.of(\n");
+            // Map.of stops at ten pairs; past that the same map is spelled with
+            // Map.ofEntries. Ten or fewer keep the Map.of form, so every allowlist that
+            // compiled before is byte-identical. (A served report makes EVERY derived field
+            // filterable, FR-044 Table C, so a wide report crosses ten where a hand-marked
+            // entity rarely did.)
+            boolean entries = opsByField.size() > MAP_OF_MAX_PAIRS;
+            src.append(entries ? "Map.ofEntries(\n" : "Map.of(\n");
             int i = 0;
             for (Map.Entry<String, Set<String>> e : opsByField.entrySet()) {
-                src.append("        \"").append(e.getKey()).append("\", Set.of(");
+                src.append("        ").append(entries ? "Map.entry(" : "")
+                   .append('"').append(e.getKey()).append("\", Set.of(");
                 boolean firstOp = true;
                 for (String op : e.getValue()) {
                     if (!firstOp) src.append(", ");
                     firstOp = false;
                     src.append('"').append(op).append('"');
                 }
-                src.append(')');
+                src.append(entries ? "))" : ")");
                 if (i++ < opsByField.size() - 1) src.append(',');
                 src.append('\n');
             }

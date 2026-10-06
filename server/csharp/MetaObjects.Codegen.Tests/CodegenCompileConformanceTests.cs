@@ -146,8 +146,10 @@ public class CodegenCompileConformanceTests
         var files = generators.SelectMany(g => g.Generate(ctx)).ToList();
         Assert.True(files.Count > 0, $"selection '{selection}' generated no files at all");
 
-        // FR-044 — the corpus's six view-backed reports each generate a keyless row class.
-        // Named, because a compile gate passes trivially over a file that was never emitted.
+        // FR-044 — the corpus's six view-backed reports each generate a keyless row class and
+        // a filter allowlist (their routes file is in the excluded framework tier), and no
+        // names artifact. Named, because a compile gate passes trivially over a file that
+        // was never emitted.
         foreach (var report in new[]
                  {
                      "ProgramMinutes", "FitnessTotals", "ProgramsByMonth", "ProgramsByWeek",
@@ -155,9 +157,10 @@ public class CodegenCompileConformanceTests
                  })
         {
             Assert.True(files.Any(f => f.Path == report + ".g.cs"), $"no row class was generated for report {report}");
-            Assert.False(files.Any(f => f.Path.StartsWith(report + "Names", StringComparison.Ordinal)
-                                        || f.Path.StartsWith(report + "FilterAllowlist", StringComparison.Ordinal)),
-                $"report {report} leaked into the names or filter-allowlist tier");
+            Assert.True(files.Any(f => f.Path == report + "FilterAllowlist.g.cs"),
+                $"no filter allowlist was generated for report {report}");
+            Assert.False(files.Any(f => f.Path.StartsWith(report + "Names", StringComparison.Ordinal)),
+                $"report {report} leaked into the names tier");
         }
 
         if (isTemplateTier)

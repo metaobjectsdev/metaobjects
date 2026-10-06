@@ -1,0 +1,22 @@
+name: report-list-totals
+description: >
+  GET /api/invoice_totals — a report with no dimensions is exactly one row. It carries
+  a ratio, whose spelling is not asserted, so the row is counted rather than compared.
+  withCount=1 wraps the same list in the { rows, total } envelope.
+requests:
+  - id: r1
+    method: GET
+    path: /api/invoice_totals
+    expect:
+      status: 200
+      body:
+        length: 1
+  - id: r2
+    method: GET
+    path: /api/invoice_totals?withCount=1
+    expect:
+      status: 200
+      body:
+        envelope: true
+        rowsLength: 1
+        total: 1

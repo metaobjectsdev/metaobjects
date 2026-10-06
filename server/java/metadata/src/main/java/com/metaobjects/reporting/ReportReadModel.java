@@ -32,6 +32,7 @@ import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.object.ReportMetaObject;
+import com.metaobjects.query.FilterOps;
 import com.metaobjects.source.MetaSource;
 
 import java.util.List;
@@ -72,7 +73,8 @@ public final class ReportReadModel extends ReportMetaObject {
      * with the RESOLVING accessor (ADR-0039) so a value the {@code @of} field inherits
      * through {@code extends} is carried too. {@code @dbColumnType} and array-ness are
      * handled separately. Nothing else is carried: no {@code @column}, {@code @required},
-     * {@code @default}, validators or views.
+     * {@code @default}, validators or views. ({@code @required} and {@code @filterable} are
+     * SET on a derived field from the derived shape, never copied from the type source.)
      */
     private static final List<String> CARRIED_ATTRS = List.of(
             CurrencyField.ATTR_CURRENCY,
@@ -196,8 +198,20 @@ public final class ReportReadModel extends ReportMetaObject {
         // is still nullable, and a dimension reached by @via is nullable.
         field.addMetaAttr(BooleanAttribute.create(MetaField.ATTR_REQUIRED, f.required()));
         MetaField<?> src = f.typeSource();
-        if (src == null) return field;
+        if (src != null) carryTypeShape(src, field);
+        // Table C (Plan 3): a report author has no node to put @filterable on, so every
+        // derived field whose subtype has a filter band is filterable (a measure as much as
+        // a dimension). Set on this detached model only: no vocabulary is added and the
+        // declared tree is not touched. Read after the type shape is carried, because the
+        // band is field-level (an int-backed enum drops `like`), and resolving (ADR-0039).
+        if (!FilterOps.opsForField(field).isEmpty()) {
+            field.addMetaAttr(BooleanAttribute.create(MetaField.ATTR_FILTERABLE, true));
+        }
+        return field;
+    }
 
+    /** Copy the Table B type-shaping attrs and the array-ness of {@code src} onto {@code field}. */
+    private static void carryTypeShape(MetaField<?> src, MetaField<?> field) {
         for (String name : CARRIED_ATTRS) {
             if (src.hasMetaAttr(name)) field.addMetaAttr(copyAttr(src.getMetaAttr(name)));
         }
@@ -210,7 +224,6 @@ public final class ReportReadModel extends ReportMetaObject {
         }
         // Array-ness is a native flag, not an attr; isArrayType() is its resolving read.
         if (src.isArrayType()) field.setArray(true);
-        return field;
     }
 
     /**

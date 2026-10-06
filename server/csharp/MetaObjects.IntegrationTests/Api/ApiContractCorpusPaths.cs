@@ -51,6 +51,17 @@ internal static class ApiContractCorpusPaths
     public static readonly string ProjectionSeedFile = Path.Combine(ProjectionDir, "seed.json");
     public static readonly string ProjectionMetaJson = Path.Combine(ProjectionDir, "meta.json");
 
+    // FR-044 report subcorpus — a writable Invoice table plus four object.report nodes,
+    // three served (each declares a view) and one sourceless. The list GET is served; POST
+    // answers the cross-port 405 envelope; no /{id} address is mounted. The schema is the
+    // committed TypeScript-produced artifact (ADR-0015): this port executes it and writes
+    // no view SQL of its own.
+    public static readonly string ReportDir = Path.Combine(Corpus, "report");
+    public static readonly string ReportScenariosDir = Path.Combine(ReportDir, "scenarios");
+    public static readonly string ReportSeedFile = Path.Combine(ReportDir, "seed.json");
+    public static readonly string ReportMetaJson = Path.Combine(ReportDir, "meta.json");
+    public static readonly string ReportSchemaSql = Path.Combine(ReportDir, "schema.postgres.sql");
+
     // #214 write-through read-your-writes subcorpus.
     public static readonly string WriteThroughDir = Path.Combine(Corpus, "write-through");
     public static readonly string WriteThroughScenariosDir = Path.Combine(WriteThroughDir, "scenarios");

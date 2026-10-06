@@ -281,4 +281,16 @@ export interface EntityDocData {
   /** Cross-links to this entity's generated-SDK api page, one per api surface
    *  (per language). Present only when api surfaces are emitted with the model. */
   apiRefs?: Array<{ label: string; href: string; last?: boolean }>;
+
+  /** FR-044: the body of an `object.report` page's "Report" section (its `@from`, its
+   *  view or why it is not served, its row scope, its derived columns). Pre-rendered
+   *  markdown, built by `report-doc.ts`. ABSENT for every other object. */
+  reportBlock?: string;
+  hasReport?: boolean;
+
+  /** FR-044: the body of the "Reporting" section on an entity that declares dimensions,
+   *  measures or segments, or that a report names as its `@from`. ABSENT otherwise, so
+   *  the page of an entity with no reporting nodes is byte-identical. */
+  reportingBlock?: string;
+  hasReporting?: boolean;
 }

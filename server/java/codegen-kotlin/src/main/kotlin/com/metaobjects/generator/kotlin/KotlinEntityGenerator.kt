@@ -49,6 +49,8 @@ import java.io.PrintWriter
 import java.nio.file.Path
 import java.nio.file.Paths
 import com.metaobjects.generator.util.GeneratedFileWriter
+import com.metaobjects.generator.util.RestSurfaceGate
+import com.metaobjects.reporting.ReportReadModel
 
 /**
  * Generator: one plain Kotlin data class (Jackson-compatible) per `object.entity` and
@@ -99,8 +101,11 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // typed property to resolve.
         // Local-only abstract check (own attribute, not inherited) so concrete subtypes
         // extending an abstract base still emit normally.
-        for (obj in loader.metaObjects) {
-            if (obj.subType !in EMITTED_SUBTYPES) continue
+        for (declared in loader.metaObjects) {
+            // FR-044: a served report is emitted from its read model (one field per derived
+            // column); any other report maps to null and emits nothing.
+            val obj = RestSurfaceGate.restShapeOf(declared) ?: continue
+            if (!emitsDataClass(obj)) continue
             if (KotlinGenUtil.isAbstractEntity(obj)) {
                 if (emitAbstractShapes) emitAbstractShape(obj, outRoot, loader, emittedEnumFqns)
                 continue
@@ -130,6 +135,8 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     private fun emitNetJsonSupport(loader: MetaDataLoader, outRoot: Path) {
         val packages = linkedSetOf<String>()
         for (obj in loader.metaObjects) {
+            // A report's row carries no deserializer (it is never bound from a request), so
+            // a report is not counted here.
             if (obj.subType !in EMITTED_SUBTYPES) continue
             if (KotlinGenUtil.isAbstractEntity(obj)) continue
             if (KotlinTphPlan.isTphSubtype(obj)) continue
@@ -151,9 +158,41 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     }
 
     protected open fun emit(obj: MetaObject, outRoot: Path, loader: MetaDataLoader, emittedEnumFqns: MutableSet<String>) {
+        // FR-044: a report's row gets no enum of its own. A derived enum field is typed by
+        // the class already emitted for the entity it reads from, the same class the
+        // report's Exposed table types the column by, so the generated row mapper compiles.
+        // Empty for every other object.
+        reportEnumClasses = KotlinGenUtil.reportEnumClasses(obj, loader)
+        try {
+            emitDataClass(obj, outRoot, loader, emittedEnumFqns)
+        } finally {
+            reportEnumClasses = emptyMap()
+        }
+    }
+
+    /**
+     * The enum classes of the report row being emitted, by derived field name, for the
+     * duration of one [emit] call; empty outside it and for any object that is not a report.
+     * It reaches [resolveElementType] this way, not as a parameter, because that function is
+     * `protected open` and an adopter's subclass may override it.
+     */
+    private var reportEnumClasses: Map<String, ClassName> = emptyMap()
+
+    /**
+     * Whether [obj] gets a data class: an entity, value object or projection, and the read
+     * model of a served report (FR-044), whose row a query returns. A declared report node
+     * never reaches here: [execute] maps it to its read model or drops it.
+     */
+    private fun emitsDataClass(obj: MetaObject): Boolean =
+        obj.subType in EMITTED_SUBTYPES || obj is ReportReadModel
+
+    private fun emitDataClass(obj: MetaObject, outRoot: Path, loader: MetaDataLoader, emittedEnumFqns: MutableSet<String>) {
+        val reportRow = obj is ReportReadModel
         // Emit one Kotlin enum class file per `field.enum` child BEFORE the data class
         // so the resolved property type (a ClassName) points at a real file. Deduped per run.
         for (field in obj.metaFields) {
+            // A report's enum field references an entity's class; nothing is materialized.
+            if (reportRow) break
             // FR-019: a @provided shared enum is referenced externally, never materialized — skip it.
             if (field is EnumField && !Fr019SharedEnum.isProvidedEnumField(field))
                 KotlinEnumEmitter.emitEnumFile(obj, field, outRoot, emittedEnumFqns)
@@ -228,7 +267,10 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 .build()
             ctorBuilder.addParameter(param)
             val propBuilder = PropertySpec.builder(propName, propType).initializer(propName)
-            if (!tphBase && !derivedReadOnly && !serverOwned) {
+            // FR-044: a report's row carries no constraint either. Nothing binds or validates
+            // it (it is read from the view, never sent), and a `@Size(min = 1)` on a required
+            // dimension would claim a rule the view does not have: an empty string is a group.
+            if (!tphBase && !derivedReadOnly && !serverOwned && !reportRow) {
                 for (annotation in validationAnnotations(field)) {
                     propBuilder.addAnnotation(annotation)
                 }
@@ -387,6 +429,8 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // FR-019: a @provided shared enum is referenced at its configured external namespace
         // (<ns>.E) instead of the materialized in-package class; an unresolved namespace throws.
         Fr019SharedEnum.providedClassName(field, fr019Config)?.let { return it }
+        // FR-044: a report's derived enum field → the class of the entity field it reads.
+        if (owner is ReportReadModel) reportEnumClasses[field.name]?.let { return it }
         // field.enum → typed enum class generated alongside this entity.
         KotlinTypeMapper.enumTypeName(field, owner)?.let { return it }
         if (field is ObjectField) {
@@ -787,6 +831,8 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // into a type KotlinProjectionCompileTest requires to be immutable, which is how this
         // exclusion was found rather than reasoned about.
         if (obj.subType == MetaObject.SUBTYPE_PROJECTION) return
+        // Nor on a report's row (FR-044), for the same reason: it arrives from the view.
+        if (obj is ReportReadModel) return
 
         val builderClass = ClassName(className.packageName, className.simpleName, "Builder")
         val builder = TypeSpec.classBuilder("Builder")

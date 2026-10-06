@@ -10,11 +10,13 @@ from metaobjects.meta.meta_root import MetaRoot
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_REPORT
+from metaobjects.meta.core.reporting.report_read_model import report_read_model
 from metaobjects.shared.base_types import TYPE_OBJECT
 from .collection_name_collision import assert_no_collection_name_collisions
 from .config import GenConfig
 from .constants import generated_package_init
 from .generator import GenContext, Generator
+from .instance_artifacts import is_served_report
 from .overwrite_policy import decide_and_write, has_hash_manifest
 
 _VALID_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -98,16 +100,19 @@ def run_gen(
         result.warnings.append(f"No entities to generate — {reason}.")
         return result
 
-    # FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
-    # Dropped here, at the entity set every generator reads, and not per generator: a
-    # report may declare a read-only `source.rdb @kind: view` (R5), which would otherwise
-    # pass every source-keyed gate and emit routes, names and an allowlist. A selection made
-    # only of reports gets the same "nothing to generate" warning as an empty one.
-    objs = [o for o in objs if o.sub_type != OBJECT_SUBTYPE_REPORT]
+    # FR-044: a served report (Table A) is generated from its read model, which the
+    # read-only generators emit as a keyless object. Every other report generates nothing:
+    # a sourceless report, or one over a kind the lowering skips, has no relation to read.
+    # Decided here, at the entity set every generator reads, and not per generator.
+    objs = [
+        report_read_model(o, metadata) if o.sub_type == OBJECT_SUBTYPE_REPORT else o
+        for o in objs
+        if o.sub_type != OBJECT_SUBTYPE_REPORT or is_served_report(o)
+    ]
     if not objs:
         result.warnings.append(
-            "No entities to generate — every selected object is an object.report, which has "
-            "no generated output until its lowering lands (FR-044 Plan 2/3)."
+            "No entities to generate — every selected object is an object.report with no "
+            "view source, which has no generated output (FR-044)."
         )
         return result
 

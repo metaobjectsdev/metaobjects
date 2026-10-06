@@ -1,13 +1,14 @@
-import type { MetaData, MetaObject, MetaRelationship } from "@metaobjectsdev/metadata";
+import type { MetaData, MetaObject, MetaRelationship, MetaRoot } from "@metaobjectsdev/metadata";
 import {
-  deriveM2MFields, resolveRelationshipReference, stripPackage, OBJECT_SUBTYPE_REPORT, TYPE_OBJECT,
+  deriveM2MFields, reportFrom, resolveRelationshipReference, stripPackage,
+  OBJECT_REPORT_ATTR_FROM, OBJECT_SUBTYPE_REPORT, TYPE_OBJECT,
 } from "@metaobjectsdev/metadata";
 import { type LoadedModel, treeOf } from "./load.js";
 
 export interface DocNode { kind: "object" | "prompt" | "output"; name: string; pkg: string; pkgPath: string; href: string; node: MetaData; tree: string; }
 export interface Ref {
   from: string; to: string; via: string;
-  kind: "field" | "fk" | "extends" | "payload" | "response" | "relationship" | "origin";
+  kind: "field" | "fk" | "extends" | "payload" | "response" | "relationship" | "origin" | "report";
   cardinality?: "one" | "many" | undefined;
   through?: string | undefined;         // junction FQN (M:N)
   sourceJoinField?: string | undefined; // junction source FK (M:N)
@@ -32,13 +33,12 @@ export class LinkGraph {
   private _to = new Map<string, Ref[]>();
   private _extBy = new Map<string, DocNode[]>();
   private _origins = new Map<string, OriginRef[]>();
+  /** The loaded root the graph was built from (a report's derived columns resolve against it). */
+  readonly root: MetaRoot;
 
   constructor(model: LoadedModel) {
+    this.root = model.root;
     for (const o of model.root.ownChildren()) {
-      // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
-      // Dropped from the graph every page, index and nav list is built from: its fields
-      // are derived by that lowering, so a page today would show none of them.
-      if (o.type === TYPE_OBJECT && o.subType === OBJECT_SUBTYPE_REPORT) continue;
       let kind: DocNode["kind"] | undefined;
       if (o.type === "object") kind = "object";
       else if (o.type === "template") kind = o.subType === "prompt" ? "prompt" : "output";
@@ -146,6 +146,13 @@ export class LinkGraph {
             const to = srcRef ? resolveRef(srcRef, dn.pkg) : undefined;
             if (to && to !== fqn) addRef({ from: fqn, to, via: `${f.name} (origin)`, kind: "origin" });
           }
+        }
+        // FR-044: a report reads from its @from entity. The edge is what puts the report on
+        // that entity's page and diagrams, and keeps a report from reading as an orphan.
+        if (dn.node.type === TYPE_OBJECT && dn.node.subType === OBJECT_SUBTYPE_REPORT) {
+          const from = reportFrom(dn.node);
+          const to = from !== undefined ? resolveRef(from, dn.pkg) : undefined;
+          if (to) addRef({ from: fqn, to, via: OBJECT_REPORT_ATTR_FROM, kind: "report" });
         }
         const sup = dn.node.superResolved;
         if (sup) {

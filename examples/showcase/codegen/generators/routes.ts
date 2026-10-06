@@ -17,7 +17,7 @@
 //                discovers a sibling module: a `<Entity>.extra.ts` next to the output is a naming
 //                convention, not a plugin point, so its handlers only mount if your server calls them.
 // emits:         <target>/<Entity>.routes.ts — full CRUD for write-through entities, read-only
-//                (GET list + GET :id) for projections, polymorphic + per-subtype for TPH bases.
+//                (GET list + GET :id) for projections (GET list alone for a keyless one or a report), polymorphic + per-subtype for TPH bases.
 //                Skipped for any sourceless object (incl. every object.value, source-less by
 //                value purity) and for TPH subtypes — no source.rdb means no table/allowlist
 //                for a routes file to import (#248 R2).
@@ -71,6 +71,9 @@ import {
   tphStorageObject,
   isProjection,
   isWriteThrough,
+  isReport,
+  itemRouteField,
+  DEFAULT_ID_FIELD,
   servesReadApi,
   formatTs,
   renderRoutesIndex,
@@ -92,7 +95,8 @@ import {
 
 // --- composition (OWNED) — assembles one <Entity>.routes.ts. Change this to change the output. ---
 // Dispatch: a TPH discriminator base → polymorphic list/get + a per-subtype CRUD set; a
-// projection → mountReadOnlyCrudRoutes (GET list + GET :id); every other writable entity →
+// projection or served report → mountReadOnlyCrudRoutes (GET list, + GET :id when it has
+// an id column to address a row by); every other writable entity →
 // mountCrudRoutes (+ one mountM2mRoute per M:N navigation). Under an `apiPrefix` the mounts
 // are wrapped in `fastify.register(..., { prefix })`.
 
@@ -133,9 +137,29 @@ function renderRoutes(
   // Where the mount helpers come from: the package, or an owned copy (owned-runtime.ts).
   const runtimeSpec = httpRuntimeSpecifier("drizzle-fastify", ctx, entityPkg);
 
-  // --- Projection path: read-only routes (GET list + GET :id) ---
+  // --- Projection / report path: read-only routes (GET list, + GET :id when keyed) ---
   if (isProjection(entity)) {
     const camelName = entityName.charAt(0).toLowerCase() + entityName.slice(1);
+    // A keyless read-only object (a projection with no identity and no `id` column, and
+    // every report: FR-044) has no row to address, so it mounts GET list and the collection 405
+    // and no `/:id` route of any verb. Every key is absent for a projection keyed on `id`, which
+    // keeps its output byte-identical.
+    const idField = itemRouteField(entity);
+    const keyless = idField === undefined;
+    const report = isReport(entity);
+    const noun = report ? "report" : "projection";
+    const exposes = keyless
+      ? "Exposes GET list only. POST returns 405."
+      : "Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.";
+    // The mount addresses `id` by default. A projection keyed on another field names it
+    // (the view's key for that column, which is the field name), so `GET /:id` reads the
+    // same column the by-id query does. Absent for `id`, which keeps that output's bytes.
+    const keylessOpts = (indent: string): string =>
+      (idField !== undefined && idField !== DEFAULT_ID_FIELD
+        ? `\n${indent}idColumn: ${JSON.stringify(idField)},`
+        : "") +
+      (keyless ? `\n${indent}itemRoutes: false,` : "") +
+      (report ? `\n${indent}resource: "report",` : "");
     const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
     const mountReadOnlyCrudRoutesSym = imp(`mountReadOnlyCrudRoutes@${runtimeSpec}`);
     // A projection mount is read-only by construction, so `expose` cannot narrow it —
@@ -159,9 +183,9 @@ import {
     const body = ctx.apiPrefix
       ? code`
 /**
- * Mount read-only REST endpoints for ${entityName} (projection — view-backed, no writes).
+ * Mount read-only REST endpoints for ${entityName} (${noun} — view-backed, no writes).
  *
- * Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.
+ * ${exposes}
  * Customize: register this as-is, or import individual route helpers from
  * ${runtimeSpec}.
 ${readOnlyAuthJsDoc}
@@ -175,16 +199,16 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
       view: ${camelName}View,
       filterAllowlist: ${entityName}FilterAllowlist,
       sortAllowlist: ${entityName}SortAllowlist,
-      dialect: ${JSON.stringify(ctx.dialect)},
+      dialect: ${JSON.stringify(ctx.dialect)},${keylessOpts("      ")}
     });
   }, { prefix: ${JSON.stringify(ctx.apiPrefix)} });
 }
 `
       : code`
 /**
- * Mount read-only REST endpoints for ${entityName} (projection — view-backed, no writes).
+ * Mount read-only REST endpoints for ${entityName} (${noun} — view-backed, no writes).
  *
- * Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.
+ * ${exposes}
  * Customize: register this as-is, or import individual route helpers from
  * ${runtimeSpec}.
 ${readOnlyAuthJsDoc}
@@ -197,7 +221,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
     view: ${camelName}View,
     filterAllowlist: ${entityName}FilterAllowlist,
     sortAllowlist: ${entityName}SortAllowlist,
-    dialect: ${JSON.stringify(ctx.dialect)},
+    dialect: ${JSON.stringify(ctx.dialect)},${keylessOpts("    ")}
   });
 }
 `;

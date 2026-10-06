@@ -1,23 +1,28 @@
 // FR-044 — what a report generates, and what it does not.
 //
 // Plan 1 registered `dimension.*`, `measure.*`, `segment.*` and `object.report` and gave
-// them no output. Plan 2 lowers exactly ONE thing: a report that declares a read-only
-// `source.rdb @kind: view` becomes that view in TypeScript migrate (and so on the
-// `meta docs` agent schema page, which lists the views migrate would create). Everything
-// else stays inert, and this file holds it there: a sourceless report is inert everywhere,
-// every catalog generator emits the same files with and without the reporting nodes (no
-// TypeScript generator emits for a report; routes and the typed row are Plan 3), and every
-// docs surface other than that one schema entry is byte-identical.
+// them no output. Plan 2 lowers a report that declares a read-only `source.rdb @kind: view`
+// to that view in TypeScript migrate (and so on the `meta docs` agent schema page, which
+// lists the views migrate would create). Plan 3 serves that same report: the TypeScript
+// generators emit its keyless read-only surface, and nothing else.
+//
+// So this file holds two lines. A SOURCELESS report is inert everywhere. A SERVED report
+// (`StoreTotals`) adds exactly its read-only files: the entity module (Drizzle view
+// binding, Zod read schema, descriptor, allowlists), the list query, the Fastify and Hono
+// routes, the names artifact and its barrel export. It adds nothing from the UI tier
+// (hooks, grid, grid hook, form), which is off for reports until Plan 5, and every file
+// the model without reporting nodes emits is byte-identical, the barrel excepted.
 //
 // The model pair lives in fixtures/codegen-noop/reporting/ and is shared with the other
 // four ports' copies of this test. `with/` carries a report that declares a read-only
-// `source.rdb @kind: view` (R5 allows one): that is the case that leaked in C#, where it
-// emitted a keyless DbSet, a GET route and a filter allowlist for an object with no fields.
+// `source.rdb @kind: view` (R5 allows one): that is the case that once leaked in C#, where
+// it emitted a keyless DbSet, a GET route and a filter allowlist for an object with no fields.
 //
-// `meta docs` is held to the same rule (controller ruling, 2026-10-03): a report's fields
-// are derived by its lowering, so a page for one today would show none of them. Every docs
-// surface — model pages, agent pages, requirements, the HTML site, and the api surface —
-// must come out identical with and without the reporting nodes, bar the one view entry.
+// `meta docs` documents reports since Plan 3 (Table G), and the last describe states the
+// difference exactly: a model page and a site page for every report, served or not; a
+// "Reporting" section on each entity that declares reporting nodes; one api unit, for the
+// served report alone; the schema page's one view entry. `agent/ui.md` does not move: no
+// UI tier is generated for a report. Everything else is byte-identical.
 
 import { describe, test, expect, beforeAll } from "bun:test";
 import { mkdtempSync, mkdirSync, copyFileSync, rmSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -98,7 +103,42 @@ beforeAll(async () => {
   withoutReporting = await load("without");
 });
 
-describe("FR-044 reporting nodes are inert in codegen", () => {
+/** Table E, TypeScript: the files a served report adds, by the catalog generator that
+ *  writes them. A generator that is not listed adds none. */
+const OUT = "src/generated";
+const SERVED_REPORT_FILES: Readonly<Record<string, readonly string[]>> = {
+  entity: [`${OUT}/StoreTotals.ts`],
+  names: [`${OUT}/StoreTotals.names.ts`],
+  queries: [`${OUT}/StoreTotals.queries.ts`],
+  routes: [`${OUT}/StoreTotals.routes.ts`],
+  "routes-hono": [`${OUT}/StoreTotals.routes.hono.ts`],
+};
+/** The one existing file a served report changes: it gains the report's export line. */
+const BARREL = `${OUT}/index.ts`;
+/** The client UI tier, off for reports until Plan 5 (answer 6). */
+const UI_TIER = ["hooks", "grid", "grid-hook", "form"] as const;
+const SOURCELESS_REPORTS = ["ProgramEngagement", "DailyRevenue"] as const;
+
+/** Assert `actual` is `expected` plus exactly `added`, with every shared file
+ *  byte-identical except the barrel. */
+function expectOnlyAdds(
+  expected: Record<string, string>,
+  actual: Record<string, string>,
+  added: readonly string[],
+): void {
+  expect(Object.keys(actual).filter((p) => !(p in expected)).sort()).toEqual([...added].sort());
+  expect(Object.keys(expected).filter((p) => !(p in actual))).toEqual([]);
+  for (const [path, content] of Object.entries(expected)) {
+    if (path === BARREL) continue;
+    expect({ path, content: actual[path] }).toEqual({ path, content });
+  }
+  // Nothing at all for a sourceless report, in any file name.
+  for (const name of SOURCELESS_REPORTS) {
+    expect(Object.keys(actual).filter((p) => p.includes(name))).toEqual([]);
+  }
+}
+
+describe("FR-044 a sourceless report is inert; a served report emits exactly its read-only files", () => {
   test("the with-model really carries the vocabulary (else every check below is vacuous)", () => {
     const reports = withReporting.objects().filter((o) => o.subType === OBJECT_SUBTYPE_REPORT);
     expect(reports.map((o) => o.name).sort()).toEqual(["DailyRevenue", "ProgramEngagement", "StoreTotals"]);
@@ -106,12 +146,53 @@ describe("FR-044 reporting nodes are inert in codegen", () => {
   });
 
   const catalog = composeCatalog();
+
+  test("every generator named in the expected-files table is in the catalog", () => {
+    // A renamed catalog entry would otherwise turn its row into dead text and its
+    // generator into one that is expected to add nothing.
+    for (const name of [...Object.keys(SERVED_REPORT_FILES), "barrel", ...UI_TIER]) {
+      expect(Object.keys(catalog)).toContain(name);
+    }
+  });
+
   for (const [name, entry] of Object.entries(catalog)) {
-    test(`generator "${name}" emits the same files with and without reporting nodes`, async () => {
+    test(`generator "${name}" adds exactly the served report's files and changes nothing else`, async () => {
       const expected = await emit(withoutReporting, [entry.factory()]);
       const actual = await emit(withReporting, [entry.factory()]);
-      expect(Object.keys(actual)).toEqual(Object.keys(expected));
-      expect(actual).toEqual(expected);
+      if ("<threw>" in expected) {
+        // Cannot run from a bare model (pinned by name below): the same throw both ways.
+        expect(actual).toEqual(expected);
+        return;
+      }
+      expectOnlyAdds(expected, actual, SERVED_REPORT_FILES[name] ?? []);
+      if (name === "barrel") {
+        // The barrel is the one shared file that moves, and it moves by the report's
+        // export alone: every line it had is still there, in order.
+        const before = expected[BARREL]!.split("\n");
+        const after = actual[BARREL]!.split("\n");
+        const addedLines = after.filter((l) => !before.includes(l));
+        expect(addedLines.length).toBeGreaterThan(0);
+        for (const l of addedLines) expect(l).toContain("StoreTotals");
+        expect(after.filter((l) => before.includes(l))).toEqual(before);
+      } else if (BARREL in expected) {
+        expect(actual[BARREL]).toBe(expected[BARREL]!);
+      }
+    });
+  }
+
+  for (const name of UI_TIER) {
+    test(`UI-tier generator "${name}" emits no file for any report`, async () => {
+      const actual = await emit(withReporting, [catalog[name]!.factory()]);
+      expect(actual["<threw>"]).toBeUndefined();
+      // Not vacuous for hooks and form: they do emit for the entities beside the reports.
+      // The two grid generators emit only for an object with a `layout.dataGrid`, which
+      // nothing in this model declares, so for them this run shows only that nothing
+      // leaks; their gate (`servesClientTier`) is asserted directly in codegen-ts and
+      // codegen-ts-tanstack.
+      if (name === "hooks" || name === "form") {
+        expect(Object.keys(actual).some((p) => p.includes("Program"))).toBe(true);
+      }
+      expect(Object.keys(actual).filter((p) => p.includes("StoreTotals"))).toEqual([]);
     });
   }
 
@@ -126,10 +207,10 @@ describe("FR-044 reporting nodes are inert in codegen", () => {
     expect(threw.sort()).toEqual(["shared-model"]);
   });
 
-  test("every runnable generator in ONE run emits the same files (barrels see the whole suite)", async () => {
+  test("every runnable generator in ONE run adds exactly the Table E list (barrels see the whole suite)", async () => {
     // A generator that cannot run from a bare model (shared-model needs a `files`
-    // selection, render-helper a template root) throws in both variants above, which is
-    // equal and so passes; it would sink the whole combined run, so it sits this one out.
+    // selection) throws in both variants above, which is equal and so passes; it would
+    // sink the whole combined run, so it sits this one out.
     const runnable: string[] = [];
     for (const [name, entry] of Object.entries(catalog)) {
       const alone = await emit(withoutReporting, [entry.factory()]);
@@ -139,27 +220,48 @@ describe("FR-044 reporting nodes are inert in codegen", () => {
     const expected = await emit(withoutReporting, suite());
     const actual = await emit(withReporting, suite());
     expect(expected["<threw>"]).toBeUndefined();
+    expect(actual["<threw>"]).toBeUndefined();
     expect(Object.keys(expected).length).toBeGreaterThan(10);
-    expect(Object.keys(actual)).toEqual(Object.keys(expected));
-    expect(actual).toEqual(expected);
+    expectOnlyAdds(expected, actual, Object.values(SERVED_REPORT_FILES).flat());
+    // In the full suite the barrel re-exports the report's modules.
+    expect(actual[BARREL]).toContain("StoreTotals");
+    expect(expected[BARREL]).not.toContain("StoreTotals");
   });
 });
 
 describe("FR-044 a selection of only reports", () => {
-  test("warns that there is nothing to generate, like an empty selection", async () => {
+  const allGenerators = (): Generator[] =>
+    Object.values(composeCatalog()).filter((e) => e.name !== "shared-model").map((e) => e.factory());
+  const run = async (entityFilter: string[]) => {
     const root = mkdtempSync(join(tmpdir(), "reporting-inert-only-"));
     try {
-      const result = await runGen({
-        config: { outDir: "src/generated", extStyle: "js", dialect: "postgres", dbImport: "../db", generators: Object.values(composeCatalog()).filter((e) => e.name !== "shared-model").map((e) => e.factory()) },
+      return await runGen({
+        config: { outDir: "src/generated", extStyle: "js", dialect: "postgres", dbImport: "../db", generators: allGenerators() },
         metadata: withReporting,
         projectRoot: root,
         genStateDir: join(root, GEN_STATE),
-        entityFilter: ["DailyRevenue", "ProgramEngagement", "StoreTotals"],
+        entityFilter,
       });
-      expect(result.files).toEqual([]);
-      expect(result.warnings.some((w) => w.startsWith("No entities to generate") && w.includes("object.report"))).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  };
+
+  test("only sourceless reports: warns that there is nothing to generate, like an empty selection", async () => {
+    const result = await run([...SOURCELESS_REPORTS]);
+    expect(result.files).toEqual([]);
+    expect(result.warnings.some((w) => w.startsWith("No entities to generate") && w.includes("object.report"))).toBe(true);
+  });
+
+  test("a served report among them generates, and only for itself", async () => {
+    const result = await run(["DailyRevenue", "ProgramEngagement", "StoreTotals"]);
+    expect(result.warnings.some((w) => w.startsWith("No entities to generate"))).toBe(false);
+    const names = result.files.map((f) => f.path.split(sep).pop()!);
+    for (const file of Object.values(SERVED_REPORT_FILES).flat()) {
+      expect(names).toContain(file.split("/").pop()!);
+    }
+    for (const name of SOURCELESS_REPORTS) {
+      expect(names.filter((n) => n.includes(name))).toEqual([]);
     }
   });
 });
@@ -192,7 +294,7 @@ describe("FR-044 a sourceless report is inert in migrate; a view-backed report p
   });
 });
 
-describe("FR-044 reporting nodes are inert in meta docs, bar the one view entry", () => {
+describe("FR-044 meta docs differs by exactly the report pages, the Reporting sections and one api unit", () => {
   /** Run `meta docs` over a project holding one variant, once per surface flag set, and
    *  read back everything written. The project directory has the SAME basename for both
    *  variants: the site stamps it into every page title. */
@@ -211,7 +313,7 @@ describe("FR-044 reporting nodes are inert in meta docs, bar the one view entry"
       const files: Record<string, string> = {};
       for (const rel of walkFiles(root)) {
         if (rel.split(sep)[0] === "metaobjects") continue;
-        files[rel] = readFileSync(join(root, rel), "utf8");
+        files[rel.split(sep).join("/")] = readFileSync(join(root, rel), "utf8");
       }
       return files;
     } finally {
@@ -219,13 +321,93 @@ describe("FR-044 reporting nodes are inert in meta docs, bar the one view entry"
     }
   }
 
-  test("model, agent, requirements and site output are identical", async () => {
+  const REPORTS = ["DailyRevenue", "ProgramEngagement", "StoreTotals"] as const;
+  /** The entities that declare dimensions, measures or segments in the with-model. */
+  const REPORTING_ENTITIES = ["Purchase", "WorkoutEvent"] as const;
+  const SITE = "out--site/site";
+  const SITE_PKG = `${SITE}/acme/shop`;
+
+  /** The lines of `after` that are not the next unmatched line of `before`: what was
+   *  inserted. Throws when `before` is not a subsequence of `after`, i.e. when a line
+   *  was removed or rewritten rather than added. */
+  function insertedLines(before: string, after: string): string[] {
+    const want = before.split("\n");
+    const added: string[] = [];
+    let i = 0;
+    for (const line of after.split("\n")) {
+      if (i < want.length && line === want[i]) i++;
+      else added.push(line);
+    }
+    if (i !== want.length) throw new Error(`a line was removed or rewritten: ${JSON.stringify(want[i])}`);
+    return added;
+  }
+
+  test("model pages: a page per report, a Reports index list, a Reporting section on Purchase and WorkoutEvent", async () => {
     const expected = await docsOutput("without");
     const actual = await docsOutput("with");
-    expect(Object.keys(expected).some((p) => p.endsWith(".html"))).toBe(true);
-    expect(Object.keys(expected).some((p) => p.endsWith(".md"))).toBe(true);
-    expect(Object.keys(actual)).toEqual(Object.keys(expected));
-    expect(actual).toEqual(expected);
+    const model = (files: Record<string, string>): string[] =>
+      Object.keys(files).filter((p) => p.startsWith("out/"));
+
+    expect(model(actual).filter((p) => !(p in expected))).toEqual(REPORTS.map((n) => `out/${n}.md`));
+    expect(model(expected).filter((p) => !(p in actual))).toEqual([]);
+
+    // A served report names its view; a sourceless one says it is not served (answer 7).
+    expect(actual["out/StoreTotals.md"]).toContain("**View:** `v_store_totals`");
+    for (const name of SOURCELESS_REPORTS) {
+      expect(actual[`out/${name}.md`]).toContain("**View:** Not served: declares no view source");
+    }
+
+    for (const path of model(expected)) {
+      const before = expected[path]!;
+      const after = actual[path]!;
+      if (path === "out/README.md") {
+        // The index gains the Reports list and nothing else: no entity entry and no
+        // diagram line moves.
+        expect(insertedLines(before, after)).toEqual(["## Reports", "", ...REPORTS.map((n) => `- [${n}](./${n}.md)`), ""]);
+      } else if (REPORTING_ENTITIES.some((e) => path === `out/${e}.md`)) {
+        // The page is what it was, with the Reporting section appended.
+        expect(after.startsWith(before + "\n## Reporting\n")).toBe(true);
+      } else {
+        expect({ path, content: after }).toEqual({ path, content: before });
+      }
+    }
+  });
+
+  test("agent and requirements output (no gen config) is identical", async () => {
+    const expected = await docsOutput("without");
+    const actual = await docsOutput("with");
+    const other = (files: Record<string, string>): Record<string, string> =>
+      Object.fromEntries(Object.entries(files).filter(([p]) => !p.startsWith("out/") && !p.startsWith(`${SITE}/`)));
+    expect(other(actual)).toEqual(other(expected));
+  });
+
+  test("site: a page per report, the Reporting sections, and no page lost", async () => {
+    const expected = await docsOutput("without");
+    const actual = await docsOutput("with");
+    const site = (files: Record<string, string>): string[] =>
+      Object.keys(files).filter((p) => p.startsWith(`${SITE}/`));
+    expect(site(expected).some((p) => p.endsWith(".html"))).toBe(true);
+
+    expect(site(actual).filter((p) => !(p in expected))).toEqual(REPORTS.map((n) => `${SITE_PKG}/${n}.html`));
+    expect(site(expected).filter((p) => !(p in actual))).toEqual([]);
+
+    expect(actual[`${SITE_PKG}/StoreTotals.html`]).toContain("<code>v_store_totals</code>");
+    for (const name of SOURCELESS_REPORTS) {
+      expect(actual[`${SITE_PKG}/${name}.html`]).toContain("Not served: declares no view source");
+    }
+    for (const name of REPORTING_ENTITIES) {
+      expect(actual[`${SITE_PKG}/${name}.html`]).toContain('id="s-reporting"');
+      expect(expected[`${SITE_PKG}/${name}.html`]).not.toContain('id="s-reporting"');
+    }
+    // An entity with no reporting nodes changes by its sidebar alone: the three report
+    // links, in the package it shares with them.
+    const added = insertedLines(expected[`${SITE_PKG}/Program.html`]!, actual[`${SITE_PKG}/Program.html`]!);
+    expect(added.length).toBe(REPORTS.length);
+    for (const [i, name] of REPORTS.entries()) expect(added[i]).toContain(`${name}.html`);
+    // The stylesheet and script are the same bytes either way.
+    for (const asset of [`${SITE}/assets/site.css`, `${SITE}/assets/site.js`]) {
+      expect(actual[asset]).toBe(expected[asset]!);
+    }
   });
 
   /** The GenContext `meta docs` builds, with a full generator suite wired: the Hono
@@ -251,7 +433,7 @@ describe("FR-044 reporting nodes are inert in meta docs, bar the one view entry"
     expect(actual).toEqual(expected);
   };
 
-  test("the api surface is identical", async () => {
+  test("the api surface gains one unit, for the served report: its row model, list query and GET", async () => {
     // `meta docs --api` materializes only with a loadable gen config, which a temp project
     // cannot import; so drive the generator with the GenContext `meta docs` builds.
     const api = async (metadata: MetaRoot): Promise<Record<string, string>> => {
@@ -261,7 +443,36 @@ describe("FR-044 reporting nodes are inert in meta docs, bar the one view entry"
     };
     const expected = await api(withoutReporting);
     expect(Object.keys(expected).length).toBeGreaterThan(2);
-    compare(expected, await api(withReporting));
+    const actual = await api(withReporting);
+
+    // One new page, and no page for a report that is not served (answer 7).
+    expect(Object.keys(actual).filter((p) => !(p in expected))).toEqual(["api/StoreTotals.md"]);
+    expect(Object.keys(expected).filter((p) => !(p in actual))).toEqual([]);
+
+    // Answer 6: the unit is the row model, the list query function and GET <served path>
+    // (once per wired route surface). No by-id, no write, no schema, no hook.
+    const page = actual["api/StoreTotals.md"]!;
+    expect(page.split("\n").filter((l) => l.startsWith("### "))).toEqual([
+      "### `interface StoreTotals`",
+      "### `listStoreTotals(db: Db, opts?: { limit?: number; offset?: number }): Promise<StoreTotals[]>`",
+      "### `GET /api/store_totals`",
+      "### `GET /api/store_totals`",
+    ]);
+    expect(page).not.toMatch(/\buse[A-Z]\w*/);
+
+    // Every other page is byte-identical, bar the two indexes, which gain the report's
+    // entry and lose nothing.
+    for (const [path, before] of Object.entries(expected)) {
+      const after = actual[path]!;
+      if (path === "api/README.md" || path === "api/AGENT-API.md") {
+        const added = after.split("\n").filter((l) => !before.split("\n").includes(l));
+        expect(added.length).toBeGreaterThan(0);
+        for (const l of added) expect(l).toContain("StoreTotals");
+        for (const name of SOURCELESS_REPORTS) expect(after).not.toContain(name);
+        continue;
+      }
+      expect({ path, content: after }).toEqual({ path, content: before });
+    }
   });
 
   test("the agent surface differs only by the schema page's v_store_totals view, with the UI tier wired", async () => {
@@ -307,5 +518,8 @@ describe("FR-044 reporting nodes are inert in meta docs, bar the one view entry"
     const rest = { ...expected };
     delete rest[schemaPage];
     compare(rest, actual);
+    // Answer 6: no UI tier is generated for a report, so the UI page names none.
+    const uiPage = Object.keys(actual).find((p) => p.endsWith("ui.md"))!;
+    for (const name of ["StoreTotals", ...SOURCELESS_REPORTS]) expect(actual[uiPage]).not.toContain(name);
   });
 });

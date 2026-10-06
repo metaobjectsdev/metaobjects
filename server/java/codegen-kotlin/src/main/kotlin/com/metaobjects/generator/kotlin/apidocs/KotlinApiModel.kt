@@ -19,7 +19,7 @@ data class ApiUnit(
     val node: String,
     /** The unit's metadata package (`acme::shop`) — drives the doc-page layout path. */
     val pkg: String,
-    /** `"entity"` | `"value"` | `"template"` — drives the index's entities-vs-templates split. */
+    /** `"entity"` | `"value"` | `"projection"` | `"report"` | `"template"` — drives the index's entities-vs-templates split. */
     val kind: String,
     val symbols: List<ApiSymbol>,
 )

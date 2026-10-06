@@ -88,10 +88,15 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         runtimePackage = getArg(ARG_RUNTIME_PACKAGE, RUNTIME_PACKAGE);
         this.loader = loader;
         Path outRoot = Paths.get(outDir.getAbsolutePath());
-        for (MetaObject entity : loader.getMetaObjects()) {
+        for (MetaObject declared : loader.getMetaObjects()) {
+            // FR-044: a served report is emitted from its read model; any other report
+            // has no shape and emits nothing.
+            MetaObject entity = RestSurfaceGate.restShapeOf(declared);
+            if (entity == null) continue;
             if (TphPlan.isTphSubtype(entity)) continue; // folded into the base — no own repository
             if (!appliesTo(entity)) continue;
-            // F22 — a view-only projection gets a READ-ONLY seam: nothing that writes.
+            // F22 — a view-only projection gets a READ-ONLY seam: nothing that writes. A
+            // served report (FR-044) takes the same path: list and count, no findById.
             if (RestSurfaceGate.isReadOnly(entity)) emitReadOnly(entity, outRoot);
             // FR-017 TPH: the discriminator base gets a polymorphic + per-subtype-scoped repository.
             else if (TphPlan.isTphBase(entity, loader)) emitTph(entity, outRoot);
@@ -219,8 +224,12 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
      * <p>{@code findById} appears only when the projection is addressable by a
      * single-column primary key, matching the controller's {@code /{id}} routes
      * ({@link RestSurfaceGate#hasItemRoute}).</p>
+     *
+     * <p>FR-044: a served {@code object.report} is emitted here from its read model. It
+     * has no identity, so its seam is {@code list} and {@code count} only.</p>
      */
     protected void emitReadOnly(MetaObject entity, Path outRoot) {
+        String noun = SpringNaming.readOnlyNoun(entity);
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
@@ -245,7 +254,7 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
            .append(shortName).append("Controller delegates to this interface.\n");
         src.append(" *\n");
         src.append(" * <p>READ-ONLY: ").append(shortName)
-           .append(" is a projection over a database view, so there is no write method to\n");
+           .append(" is a ").append(noun).append(" over a database view, so there is no write method to\n");
         src.append(" * implement. Its controller answers every write verb with 405.</p>\n");
         src.append(" */\n");
         src.append("public interface ").append(repoName).append(" {\n\n");
@@ -264,7 +273,7 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
             GeneratedFileWriter.write(outFile, src.toString());
         } catch (IOException e) {
             throw new GeneratorException(
-                "failed writing " + repoName + ".java for projection " + entity.getName() + ": " + e, e);
+                "failed writing " + repoName + ".java for " + noun + " " + entity.getName() + ": " + e, e);
         }
     }
 

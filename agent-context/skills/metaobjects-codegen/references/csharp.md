@@ -66,11 +66,24 @@ Its REST surface is generated and READ-ONLY (F22): GET list + GET by id, the sam
 `?filter[...]`/`?sort=` grammar as a table entity against allowlists built from the
 projection's OWN declared field set, and `POST` / `PATCH` / `PUT` / `DELETE` each
 answering `405 {"error": "method_not_allowed"}` — 405 and not 404 because the same
-path answers GET. A KEYLESS projection (no `identity.primary`) mounts no `/{id}` route
-at all, so it refuses only the collection verb.
+path answers GET. A KEYLESS projection mounts no `/{id}` route at all, so it refuses only
+the collection verb. Keyless here means anything but a declared single-column
+`identity.primary`: no identity, or a composite one.
 
 Those refusals are mounted EXPLICITLY, not left to ASP.NET: unmounted, the framework
 answers its own 405 with an EMPTY body, which is a wire shape no other port sends.
+
+**Reports.** A concrete `object.report` whose read source is `source.rdb @kind: view` is
+served like a keyless projection. For a report `<R>`: `<R>.g.cs` (a keyless row class,
+one property per derived field) mapped in the `DbContext` with a `DbSet` and
+`HasNoKey().ToView(...)`, `<R>Routes.g.cs` (`MapGet` list, `MapPost` answering 405, no
+`{id}` route) and `<R>FilterAllowlist.g.cs`. Every derived field with filter operators
+is filterable and sortable; on a report an enum dimension sorts too (an entity's enum
+field is still not sortable in C#). The view and its columns are bound by literal, with
+no names artifact. `gen` refuses a served report with a derived field over a
+`field.object`, or one whose Pascal name equals the report's class name. A report with
+no view source, or an abstract one, generates nothing. The route and contract:
+`references/reporting.md` in the `metaobjects-authoring` skill.
 
 **Entity read-view (write-through).** An `object.entity` that keeps its writable `table`
 primary source and adds a `@role: replica` `@kind: view` source is a write-through

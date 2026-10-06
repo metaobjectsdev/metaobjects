@@ -27,6 +27,15 @@ import com.metaobjects.source.RdbSource;
  */
 public final class SpringNaming {
 
+    /**
+     * What generated prose (javadoc, the 405 {@code message}, a write-failure message)
+     * calls a read-only object: {@code "report"} for an {@code object.report} (FR-044),
+     * {@code "projection"} for everything else that reaches the read-only emit path.
+     */
+    public static String readOnlyNoun(MetaObject entity) {
+        return MetaObject.SUBTYPE_REPORT.equals(entity.getSubType()) ? "report" : "projection";
+    }
+
     private SpringNaming() { /* no instances */ }
 
     /**

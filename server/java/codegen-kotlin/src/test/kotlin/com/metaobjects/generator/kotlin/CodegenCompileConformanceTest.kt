@@ -161,7 +161,13 @@ class CodegenCompileConformanceTest {
             "KotlinRelationsGenerator" to KotlinRelationsGenerator(),
             "KotlinFilterAllowlistGenerator" to KotlinFilterAllowlistGenerator(),
             "KotlinValidatorGenerator" to KotlinValidatorGenerator(),
-        ), minFiles = 17)
+        ), minFiles = 17, expectedFiles = listOf(
+            // FR-044 Plan 3: a view-backed report's row and allowlist compile beside its
+            // table. ProgramsByMonth carries an enum typed by Program's class; ProgramMinutes
+            // derives eleven fields, the arity that broke the Java allowlist.
+            "ProgramsByMonth.kt", "ProgramsByMonthTable.kt", "ProgramsByMonthFilterAllowlist.kt",
+            "ProgramMinutes.kt", "ProgramMinutesTable.kt", "ProgramMinutesFilterAllowlist.kt",
+        ))
     }
 
     /**

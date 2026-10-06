@@ -8,8 +8,16 @@
   {{#pkHtml}} · pk {{{pkHtml}}}{{/pkHtml}}{{#generation}} · gen {{generation}}{{/generation}}{{#storageAttrs}} · {{name}} <code>{{value}}</code>{{/storageAttrs}}</div>
 {{#desc}}<section id="s-overview" class="mt-4"><p class="text-sm leading-relaxed">{{desc}}</p></section>{{/desc}}
 {{#objectAttrs.length}}<section id="s-attributes" class="mt-4 text-xs"><span class="opacity-50 mr-1">attributes</span>{{#objectAttrs}}<span class="badge badge-soft badge-ghost badge-xs mr-1 font-mono">@{{name}}={{value}}</span>{{/objectAttrs}}</section>{{/objectAttrs.length}}
+{{#report}}
+<section id="s-report" class="mt-6"><h2 class="text-lg font-semibold">Report</h2>
+<div class="font-mono text-xs opacity-70 mt-1">from <a class="link font-mono" href="{{fromHref}}">{{fromName}}</a>{{#viewName}} · view <code>{{viewName}}</code>{{/viewName}}{{#notServed}} · <span class="badge badge-soft badge-warning badge-xs">{{notServed}}</span>{{/notServed}}{{#scopeHtml}} · row scope {{{scopeHtml}}}{{/scopeHtml}}</div>
+<div class="overflow-x-auto"><table class="table table-xs"><thead><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Role</th><th>Definition</th></tr></thead><tbody>
+{{#columns}}<tr><td class="font-mono">{{name}}</td><td class="opacity-60">{{type}}</td><td class="opacity-60">{{nullable}}</td><td class="opacity-60">{{role}}</td><td class="text-xs">{{{definitionHtml}}}</td></tr>
+{{/columns}}
+</tbody></table></div></section>
+{{/report}}
 
-<section id="s-fields" class="mt-6"><h2 class="text-lg font-semibold">Fields</h2>
+{{^report}}<section id="s-fields" class="mt-6"><h2 class="text-lg font-semibold">Fields</h2>
 <div class="overflow-x-auto"><table class="table table-xs"><thead><tr><th>Field</th><th>Type</th><th></th><th>Description</th></tr></thead><tbody>
 {{#ownFields}}<tr id="{{anchor}}"><td class="font-mono">{{name}}{{#isArray}}[]{{/isArray}}</td><td class="opacity-60">{{type}}</td><td>{{{badgesHtml}}}</td><td class="text-xs">{{desc}}</td></tr>
 {{#enumValues.length}}<tr><td></td><td colspan="3" class="pl-4">{{#enumValues}}<span class="badge badge-soft badge-accent badge-xs mr-1">{{value}}{{#deflt}} ★{{/deflt}}</span>{{/enumValues}}</td></tr>{{/enumValues.length}}
@@ -18,7 +26,7 @@
 </tbody></table></div>
 {{#inheritedFields.length}}<div class="collapse collapse-arrow bg-base-100 border border-base-300 mt-2"><input type="checkbox"><div class="collapse-title text-sm font-semibold opacity-70">Inherited fields ({{inheritedFields.length}})</div><div class="collapse-content"><table class="table table-xs opacity-80"><tbody>
 {{#inheritedFields}}<tr id="{{anchor}}"><td class="font-mono">{{name}}{{#isArray}}[]{{/isArray}} <span class="text-[10px] opacity-50">↑ <a class="link" href="{{inheritedFrom.href}}">{{inheritedFrom.name}}</a></span></td><td class="opacity-60">{{type}}</td><td>{{{badgesHtml}}}</td></tr>{{/inheritedFields}}
-</tbody></table></div></div>{{/inheritedFields.length}}</section>
+</tbody></table></div></div>{{/inheritedFields.length}}</section>{{/report}}
 
 {{#indexes.length}}<section id="s-indexes" class="mt-6"><h2 class="text-lg font-semibold">Indexes &amp; keys</h2>
 <table class="table table-xs"><thead><tr><th>Name</th><th>Kind</th><th>Fields</th><th>Detail</th></tr></thead><tbody>
@@ -46,6 +54,14 @@
 <div class="text-[11px] opacity-50 mt-1"><span class="font-mono">▭</span> entity · <span class="font-mono">⬭</span> value object · <span class="font-mono">▱</span> view <span class="opacity-70">(ER boxes: dashed = value, dotted = view)</span></div>
 {{#neighborhoodMore}}<div class="text-xs opacity-50 mt-1">+{{neighborhoodMore}} more neighbor(s){{#referencedBy.length}} — see <a class="link" href="#s-referenced-by">Referenced by</a>{{/referencedBy.length}}.</div>{{/neighborhoodMore}}</section>{{/neighborhoodMermaid}}
 
-{{#referencedBy.length}}<section id="s-referenced-by" class="mt-6 text-sm"><span class="opacity-50">referenced by</span> {{#referencedBy}}<a class="link font-mono text-xs" href="{{href}}" title="{{via}}">{{name}}</a> {{/referencedBy}}</section>{{/referencedBy.length}}
+{{#reporting}}<section id="s-reporting" class="mt-6"><h2 class="text-lg font-semibold">Reporting</h2>
+<table class="table table-xs"><tbody>
+{{#dimensions}}<tr><td class="text-xs opacity-50">dimension</td><td class="font-mono">{{name}}</td><td class="text-xs opacity-60">{{kind}}</td><td class="text-xs">{{{definitionHtml}}}</td></tr>
+{{/dimensions}}{{#measures}}<tr><td class="text-xs opacity-50">measure</td><td class="font-mono">{{name}}</td><td class="text-xs opacity-60">{{kind}}</td><td class="text-xs">{{{definitionHtml}}}</td></tr>
+{{/measures}}{{#segments}}<tr><td class="text-xs opacity-50">segment</td><td class="font-mono">{{name}}</td><td class="text-xs opacity-60">{{kind}}</td><td class="text-xs">{{{definitionHtml}}}</td></tr>
+{{/segments}}</tbody></table>
+{{#reports.length}}<div class="text-sm mt-1"><span class="opacity-50">reports</span> {{#reports}}<a class="link font-mono text-xs" href="{{href}}">{{name}}</a> {{/reports}}</div>{{/reports.length}}</section>
+
+{{/reporting}}{{#referencedBy.length}}<section id="s-referenced-by" class="mt-6 text-sm"><span class="opacity-50">referenced by</span> {{#referencedBy}}<a class="link font-mono text-xs" href="{{href}}" title="{{via}}">{{name}}</a> {{/referencedBy}}</section>{{/referencedBy.length}}
 {{#usedByTemplates.length}}<div class="text-sm mt-1"><span class="opacity-50">used by templates</span> {{#usedByTemplates}}<a class="link font-mono text-xs" href="{{href}}">{{name}}</a> {{/usedByTemplates}}</div>{{/usedByTemplates.length}}
 <div class="text-[10px] opacity-40 mt-6 font-mono">{{sourceFile}}</div>

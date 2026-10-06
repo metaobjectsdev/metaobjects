@@ -1,0 +1,14 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`FR-044 no-churn: a model with no report renders the site it always did every file of the no-report site hashes to the pre-feature snapshot 1`] = `
+{
+  "acme/shop/Program.html": "1d194f318ee7ae3e7ba8a93d5fcdae3c67d602d8f750781085e7dbc6d854619c",
+  "acme/shop/Purchase.html": "fbacc248ffeb56d5f958137056baa474e5f2f1c0a3cc6dbdf4fb9ed657d69925",
+  "acme/shop/WorkoutEvent.html": "eabbbef84680f72161f56dd85fa42102f51276bceb673d71f2f1c669dbdd9d7d",
+  "acme/shop/index.html": "659e175d771c27b44abf24358400f5dff50a4a478d6019a0c5360533637e894f",
+  "assets/search-index.json": "e196eebb688eef4921346b4f72fb3e44d08ae94fdbb63bfd749ebcdf071dbf7c",
+  "coverage.html": "669758ac5f91d8af1e7e20e484aed61a103414e1ab1bc914a0a9f8ac672a369d",
+  "enums.html": "a018067aa6e52f4e500c8526675161d613132b538d131b5f1a6924b4b2240919",
+  "index.html": "c828cef22198f9d58139c87555368240481e78a746a5dacaf6f11266c8f75d45",
+}
+`;

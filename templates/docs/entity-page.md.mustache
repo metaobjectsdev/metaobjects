@@ -15,6 +15,12 @@
 {{/apiRefs.0}}
 
 {{{preambleHeader}}}
+{{#hasReport}}
+
+## Report
+
+{{{reportBlock}}}
+{{/hasReport}}
 {{#hasIdentities}}
 
 ## Identity
@@ -72,3 +78,9 @@
 - {{{bullet}}}
 {{/claimedBy}}
 {{/hasClaimedBy}}
+{{#hasReporting}}
+
+## Reporting
+
+{{{reportingBlock}}}
+{{/hasReporting}}

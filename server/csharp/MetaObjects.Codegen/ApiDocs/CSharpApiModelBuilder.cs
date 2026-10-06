@@ -12,7 +12,9 @@
 //     DATA_ACCESS / REST / VALIDATION / FILTER, each gated by the matching generator's
 //     AppliesTo. A read-only projection (object.projection) adds a read-only DbSet +
 //     read routes only (the write surfaces gate on a writable entity). A value object
-//     → MODEL only.
+//     → MODEL only. A served object.report (FR-044) is documented from its row model:
+//     MODEL, its read-only DbSet, the list GET (no item route, no write verb) and FILTER.
+//     A report with no view source generates nothing and gets no unit.
 //   • Templates (root.RootTemplates()): each template.output → PAYLOAD / RENDER /
 //     PROMPT / OUTPUT_PARSER, gated by the matching generator's AppliesTo.
 //
@@ -47,10 +49,12 @@ public sealed class CSharpApiModelBuilder
         // Objects: one unit per concrete object.entity / object.value.
         foreach (var obj in root.Objects())
         {
-            // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
-            // It has no generated API to document, and its derived fields do not exist yet.
-            if (obj.IsReport()) continue;
-            var unit = BuildObjectUnit(obj, root);
+            // FR-044: a SERVED report (its read source is a view) is documented from its row
+            // model, the same object the generators emit from, so its unit carries exactly
+            // what is generated: the keyless row, its DbSet, the list GET and the allowlist.
+            // A report that is not served generates nothing and gets no unit.
+            if (obj.IsReport() && !ReportRows.IsViewBacked(obj)) continue;
+            var unit = BuildObjectUnit(obj.IsReport() ? ReportRows.RowModel(obj, root) : obj, root);
             if (unit is not null) units.Add(unit);
         }
 
@@ -68,7 +72,8 @@ public sealed class CSharpApiModelBuilder
         var entity = obj.IsEntity();
         var projection = obj.IsProjection();
         var ns = ResolveNamespace(obj);
-        var unitKind = entity ? "entity" : projection ? "projection" : "value";
+        var report = obj.IsReport(); // a served report's row model (see Build)
+        var unitKind = entity ? "entity" : projection ? "projection" : report ? "report" : "value";
 
         var symbols = new List<ApiSymbol>();
 
@@ -84,6 +89,7 @@ public sealed class CSharpApiModelBuilder
                 $"class {model}",
                 entity ? "the EF Core entity / in-memory model object"
                     : projection ? "the EF Core read-model / read-only projection POCO"
+                    : report ? "the keyless EF Core row of the report's view, one property per derived field"
                     : "the value-object POCO"));
         }
 
@@ -126,7 +132,7 @@ public sealed class CSharpApiModelBuilder
         if (RoutesGenerator.AppliesTo(obj, root))
             AddRestSymbols(symbols, obj, ns, root);
 
-        // FILTER — the per-entity sort/filter allowlist (writable entity only).
+        // FILTER — the per-entity filter allowlist (every routed read surface).
         if (FilterAllowlistGenerator.AppliesTo(obj))
         {
             var filter = CSharpNaming.FilterAllowlistName(obj);

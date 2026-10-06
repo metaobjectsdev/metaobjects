@@ -169,12 +169,24 @@ Its REST surface is generated and READ-ONLY (F22): GET list + GET by id, the sam
 `?filter[...]`/`?sort=` grammar as a table entity against allowlists built from the
 projection's OWN declared field set, and `POST` / `PATCH` / `PUT` / `DELETE` each
 answering `405 {"error": "method_not_allowed"}` — 405 and not 404 because the same
-path answers GET. A KEYLESS projection (no `identity.primary`) mounts no `/{id}` route
-at all, so it refuses only the collection verb.
+path answers GET. A KEYLESS projection mounts no `/{id}` route at all, so it refuses only
+the collection verb. Keyless here means anything but a declared single-column
+`identity.primary`: no identity, or a composite one.
 `SpringControllerGenerator`, `SpringRepositoryGenerator` and `SpringFilterAllowlistGenerator`
 move together here — they share one emit predicate, because the generated controller names
 the other two. The repository interface a projection gets is the read-only one:
 `list` / `count` / `findById` and nothing that writes.
+
+**Reports.** A concrete `object.report` whose read source is `source.rdb @kind: view` is
+served like a keyless projection. For a report `<R>`: `<R>Dto` (a record, one component
+per derived field; an enum dimension is an enum nested in the DTO), `<R>Repository`
+(`list` and `count` only, no `findById`), `<R>FilterAllowlist` and `<R>Controller` (one
+`@GetMapping`, a `@PostMapping` answering 405, no `/{id}` mapping). You implement the
+repository against the view. Every derived field with filter operators is filterable
+and sortable. No names artifact is written for a report. `gen` refuses a served report
+with a derived field over a `field.object`. A report with no view source, or an abstract
+one, generates nothing. The route and contract: `references/reporting.md` in the
+`metaobjects-authoring` skill.
 
 Its `CREATE VIEW` DDL is emitted by the Node `meta migrate` from the
 projection's `origin.*` children — `origin.passthrough`, `origin.aggregate` (`@agg`

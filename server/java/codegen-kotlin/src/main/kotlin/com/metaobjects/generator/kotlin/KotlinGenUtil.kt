@@ -17,6 +17,8 @@ import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.origin.AggregateOrigin
 import com.metaobjects.origin.MetaOrigin
+import com.metaobjects.reporting.ReportReadModel
+import com.metaobjects.reporting.ReportShape
 import com.metaobjects.source.MetaSource
 import com.metaobjects.source.RdbSource
 import com.metaobjects.source.SourceResolution
@@ -657,6 +659,54 @@ public object KotlinGenUtil {
      */
     fun isIntBackedEnum(field: MetaField<*>): Boolean =
         field is com.metaobjects.field.EnumField && field.hasMetaAttr(com.metaobjects.field.EnumField.ATTR_INT_VALUE_MAP)
+
+    /**
+     * FR-044: the generated enum class each derived enum field of a served report is typed
+     * by, keyed by derived field name. A report gets no enum of its own: its enum field
+     * carries the values of the field the dimension (or min/max measure) reads, and is typed
+     * by THAT field's class, the one [KotlinEntityGenerator] emits for the entity the item
+     * reads from. Without `@via` that is the report's `@from` entity (which is how a field
+     * `@from` inherits from an abstract base still names a class that exists); with `@via` it
+     * is the entity the `@of` reference names. [ReportShape.ofEntity] answers both, by the
+     * rule that derived the field.
+     *
+     * The ONE answer for every generator that names the class: the Exposed table types the
+     * column by it, the data class types the property by it, and the controller's int-backed
+     * filter arm resolves a member through it. Three answers would be a row mapper that does
+     * not compile.
+     *
+     * @throws GeneratorException naming the report and the item when the entity does not
+     *   resolve. The shape resolved the same reference to derive the field, so a loaded model
+     *   cannot reach this; it guards a tree built in code, where typing the column by a
+     *   guessed class would compile against the wrong enum.
+     */
+    fun reportEnumClasses(shape: ReportShape): Map<String, com.squareup.kotlinpoet.ClassName> {
+        val report = shape.report()
+        val out = LinkedHashMap<String, com.squareup.kotlinpoet.ClassName>()
+        for (f in shape.fields()) {
+            if (f.typeSource !is com.metaobjects.field.EnumField) continue
+            val item = "${f.role.wireName()} \"${f.name}\""
+            // The entity the field is read from, by the rule that derived the field: nothing
+            // about packages or @via is restated here.
+            val owner = shape.ofEntity(f)
+                ?: throw GeneratorException(
+                    "report \"${report.shortName}\": its $item reads the enum \"${f.typeSourceKey()}\", and the " +
+                        "entity that reference names does not resolve, so the generated column has no enum " +
+                        "class to be typed by."
+                )
+            out[f.name] = KotlinTypeMapper.enumTypeName(f.typeSource, owner)
+                ?: throw GeneratorException(
+                    "report \"${report.shortName}\": its $item is an enum with no generated enum class."
+                )
+        }
+        return out
+    }
+
+    /** [reportEnumClasses] for a report's read model; empty for any other object. */
+    fun reportEnumClasses(obj: MetaObject, loader: MetaDataLoader): Map<String, com.squareup.kotlinpoet.ClassName> {
+        val report = (obj as? ReportReadModel)?.report() ?: return emptyMap()
+        return reportEnumClasses(ReportShape.of(report, loader.root))
+    }
 
     /**
      * Whether the generated data-class property for [field] is nullable (with a `null` default),

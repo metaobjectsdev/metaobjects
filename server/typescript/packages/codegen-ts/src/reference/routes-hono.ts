@@ -15,7 +15,8 @@
 //                framework-neutral and stays as-is.
 // use-when:      you want generated Hono CRUD routes per entity.
 // emits:         <target>/<Entity>.routes.hono.ts — full CRUD for write-through entities,
-//                read-only (GET list + GET :id) for projections. Skipped for any sourceless
+//                read-only (GET list + GET :id) for projections, GET list alone for a keyless
+//                projection or a served report. Skipped for any sourceless
 //                object and for TPH subtypes.
 // owns:          ALL of it. The route COMPOSITION is below (`renderRoutesHono`), not a call
 //                into the engine. And the emitted file does not import its mount helpers from
@@ -55,6 +56,9 @@ import {
   isTphSubtype,
   isProjection,
   isWriteThrough,
+  isReport,
+  itemRouteField,
+  DEFAULT_ID_FIELD,
   servesReadApi,
   formatTs,
   renderRoutesIndex,
@@ -70,7 +74,8 @@ import {
 } from "@metaobjectsdev/codegen-ts";
 
 // --- composition (OWNED) — assembles one <Entity>.routes.hono.ts. Change this to change the output. ---
-// Dispatch: a projection → mountReadOnlyCrudRoutes (GET list + GET :id); every other
+// Dispatch: a projection or served report → mountReadOnlyCrudRoutes (GET list, + GET :id
+// when it has an id column to address a row by); every other
 // writable entity → mountCrudRoutes. `apiPrefix` is composed into the path string (Hono has
 // no register-with-prefix primitive). TPH subtypes never reach here — see the filter below.
 
@@ -113,9 +118,29 @@ function renderRoutesHono(
     ? `\`${ctx.apiPrefix}\${${entityName}.$path}/*\``
     : `\`\${${entityName}.$path}/*\``;
 
-  // --- Projection path: read-only routes (GET list + GET :id) ---
+  // --- Projection / report path: read-only routes (GET list, + GET :id when keyed) ---
   if (isProjection(entity)) {
     const camelName = entityName.charAt(0).toLowerCase() + entityName.slice(1);
+    // A keyless read-only object (a projection with no identity and no `id` column, and
+    // every report: FR-044) has no row to address, so it mounts GET list and the collection 405
+    // and no `/:id` route of any verb. Every key is absent for a projection keyed on `id`, which
+    // keeps its output byte-identical.
+    const idField = itemRouteField(entity);
+    const keyless = idField === undefined;
+    const report = isReport(entity);
+    const noun = report ? "report" : "projection";
+    const exposes = keyless
+      ? "Exposes GET list only. POST returns 405."
+      : "Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.";
+    // The mount addresses `id` by default. A projection keyed on another field names it
+    // (the view's key for that column, which is the field name), so `GET /:id` reads the
+    // same column the by-id query does. Absent for `id`, which keeps that output's bytes.
+    const keylessOpts = (indent: string): string =>
+      (idField !== undefined && idField !== DEFAULT_ID_FIELD
+        ? `\n${indent}idColumn: ${JSON.stringify(idField)},`
+        : "") +
+      (keyless ? `\n${indent}itemRoutes: false,` : "") +
+      (report ? `\n${indent}resource: "report",` : "");
     const HonoSym = imp("t:Hono@hono");
     const mountReadOnlyCrudRoutesSym = imp(`mountReadOnlyCrudRoutes@${runtimeSpec}`);
 
@@ -130,9 +155,9 @@ import {
 
     const body = code`
 /**
- * Mount read-only REST endpoints for ${entityName} (projection — view-backed, no writes).
+ * Mount read-only REST endpoints for ${entityName} (${noun} — view-backed, no writes).
  *
- * Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.
+ * ${exposes}
  * Customize: register this as-is, or import individual route helpers from
  * ${runtimeSpec}.
 ${authSeamJsDoc({ framework: "hono", handlerName, mountPathExpr: authPathExpr, narrowable: false })}
@@ -146,7 +171,7 @@ export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unkno
     view: ${camelName}View,
     filterAllowlist: ${entityName}FilterAllowlist,
     sortAllowlist: ${entityName}SortAllowlist,
-    dialect: ${JSON.stringify(ctx.dialect)},
+    dialect: ${JSON.stringify(ctx.dialect)},${keylessOpts("    ")}
   });
 }
 `;

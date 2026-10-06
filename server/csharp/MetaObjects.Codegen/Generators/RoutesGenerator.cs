@@ -18,6 +18,8 @@
 //   - 404 responses carry a JSON envelope: { "error": "not_found" }.
 //   - A read-only projection mounts the reads AND every write verb, each answering
 //     405 { "error": "method_not_allowed" } (F22) — see AppendProjectionRejects.
+//   - A view-backed report (FR-044) is served as a keyless read: the list GET and a 405
+//     on POST, with no /{id} address at all (a report has no identity).
 //
 // Filter operators (eq/ne/gt/gte/lt/lte/in/like/isNull) ship via FR-009 — the
 // generated list handler calls FilterParser.Parse against the per-entity
@@ -47,8 +49,10 @@ public class RoutesGenerator : PerEntityGenerator
     private const string HelperRuntimeNamespace = "MetaObjects.Codegen.Runtime";
 
     public override bool Filter(MetaObject entity) =>
-        !entity.IsReport() // FR-044: a report has no routes (see AppliesTo)
-        && (entity.IsEntity() || entity.DbView is not null) && InstanceArtifacts.EmitsInstanceArtifacts(entity);
+        // FR-044: a report has routes iff it is served (see AppliesTo).
+        entity.IsReport()
+            ? ReportRows.IsViewBacked(entity)
+            : (entity.IsEntity() || entity.DbView is not null) && InstanceArtifacts.EmitsInstanceArtifacts(entity);
 
     /// <summary>
     /// True iff this entity gets a generated routes file: it passes <see cref="Filter"/>
@@ -57,20 +61,25 @@ public class RoutesGenerator : PerEntityGenerator
     /// loop AND the api-docs builder (so docs never claim REST a routes-off entity lacks).
     /// </summary>
     public static bool AppliesTo(MetaObject entity, MetaRoot root) =>
-        // FR-044 — a report has no routes. CodegenRunner already keeps reports out of the
-        // entity set; this holds for a caller that builds its context from the unfiltered
-        // root, where a view-backed report would otherwise pass as a projection.
-        !entity.IsReport()
-        && (entity.IsEntity() || entity.DbView is not null)
-        && InstanceArtifacts.EmitsInstanceArtifacts(entity)
-        && !TphPlanBuilder.IsTphSubtype(entity, root);
+        // FR-044 — a report applies iff it is served: its read source is a view (contract
+        // Table A). Asked of the report itself, so the declared node (what the api-docs
+        // builder and a test harness pass) and its row model (what Generate iterates) get
+        // the same answer. A sourceless report mounts nothing.
+        entity.IsReport()
+            ? ReportRows.IsViewBacked(entity)
+            : (entity.IsEntity() || entity.DbView is not null)
+                && InstanceArtifacts.EmitsInstanceArtifacts(entity)
+                && !TphPlanBuilder.IsTphSubtype(entity, root);
 
     // FR-017 TPH: a concrete subtype is served via its base's per-subtype routes — it
     // emits NO standalone routes file (the base mounts polymorphic + per-subtype CRUD).
     // The subtype skip needs the root, which Filter doesn't receive, so it is applied
     // here where the GenContext is in scope.
+    // FR-044 — a served report joins the set as its ROW MODEL (ReportRows): a keyless,
+    // projection-shaped object, so GenerateStandardRoutes emits the list GET and the POST
+    // refusal and nothing else. A raw report node in the entity set is dropped.
     public override IEnumerable<EmittedFile> Generate(GenContext ctx) =>
-        ctx.Entities
+        ReportRows.WithReportRows(ctx)
             .Where(e => AppliesTo(e, ctx.Root))
             .Select(e => GenerateOne(e, ctx));
 
@@ -151,14 +160,25 @@ public class RoutesGenerator : PerEntityGenerator
         var pkColumnRef = pkFields.Count == 1 && entity.Fields().FirstOrDefault(f => f.Name == pkFields[0]) is { } pkf
             ? CSharpNaming.ColumnRef(entity, pkf, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames)
             : "\"id\"";
-        if (!hasItem)
+        // A report has no identity by definition, so "no primary key" is not a finding on one.
+        bool isReport = entity.IsReport();
+        if (!hasItem && !isReport)
             ctx.Warn($"{Name}: \"{entity.Name}\" has no single-column primary key — emitting collection GET only.");
 
         // Sort allowlist: every scalar field on the entity is sortable. The
         // generated handler does case-insensitive lookup so the wire grammar
         // (?sort=createdAt:desc) matches the C# property name (CreatedAt).
+        //
+        // FR-044 — on a REPORT an enum dimension sorts too (contract Table C: every derived
+        // field with a filter band is filterable and sortable). Report-only, so an entity's
+        // or projection's allowlist keeps its bytes. The sort arm is the same
+        // EF.Property<object>(x, "<Name>") as any other field; the row maps the enum with
+        // HasConversion<string>() (or to its integer under @intValueMap), so the ORDER BY is
+        // over the stored column.
         var sortFields = entity.Fields()
-            .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray())
+            .Where(f => (CSharpNaming.ScalarFor(f.SubType) is not null
+                         || (isReport && f.SubType == FIELD_SUBTYPE_ENUM))
+                        && !f.ResolvedIsArray())
             .Select(f => CSharpNaming.Pascal(f.Name))
             .ToList();
 
@@ -323,7 +343,7 @@ public class RoutesGenerator : PerEntityGenerator
         }
         else if (isProjection)
         {
-            AppendProjectionRejects(sb, route, pkType, hasItem);
+            AppendProjectionRejects(sb, route, pkType, hasItem, isReport ? "report" : "projection");
         }
 
         // FR-018 M:N traversal — GET /<source-plural>/{id}/<relationName> through the
@@ -375,25 +395,28 @@ public class RoutesGenerator : PerEntityGenerator
     // The item verbs follow the item GET: a keyless projection mounts no /{id} route at
     // all, so refusing a PATCH there would claim an address the port does not serve.
     // `message` is free prose and is deliberately not part of the asserted contract.
-    private static void AppendProjectionRejects(StringBuilder sb, string route, string? pkType, bool hasItem)
+    //
+    // A view-backed report (FR-044) takes the keyless arm: POST only. `noun` is what the
+    // free-prose message calls the resource ("projection" or "report").
+    private static void AppendProjectionRejects(StringBuilder sb, string route, string? pkType, bool hasItem, string noun)
     {
         sb.AppendLine();
-        AppendReject(sb, "MapPost", "/" + route, "POST", null);
+        AppendReject(sb, "MapPost", "/" + route, "POST", null, noun);
         if (!hasItem) return;
-        AppendReject(sb, "MapPatch", "/" + route + "/{id}", "PATCH", pkType);
-        AppendReject(sb, "MapPut", "/" + route + "/{id}", "PUT", pkType);
-        AppendReject(sb, "MapDelete", "/" + route + "/{id}", "DELETE", pkType);
+        AppendReject(sb, "MapPatch", "/" + route + "/{id}", "PATCH", pkType, noun);
+        AppendReject(sb, "MapPut", "/" + route + "/{id}", "PUT", pkType, noun);
+        AppendReject(sb, "MapDelete", "/" + route + "/{id}", "DELETE", pkType, noun);
     }
 
     // The item handlers take the route's `id` even though they ignore it: a typed
     // parameter makes an unparsable id a 404 from routing rather than a 405 claiming
     // the write was refused on a row that could never have been addressed.
-    private static void AppendReject(StringBuilder sb, string map, string path, string verb, string? pkType)
+    private static void AppendReject(StringBuilder sb, string map, string path, string verb, string? pkType, string noun)
     {
         var parms = pkType is null ? "()" : "(" + pkType + " id)";
         sb.AppendLine("        app." + map + "(prefix + \"" + path + "\", " + parms + " =>");
         sb.AppendLine("            Results.Json(new { error = \"method_not_allowed\", message = \"" + verb
-            + " is not supported on a projection (read-only).\" }, statusCode: 405));");
+            + " is not supported on a " + noun + " (read-only).\" }, statusCode: 405));");
     }
 
     // FR-017 TPH routes for a discriminator base. Mirrors the TS routes-file TPH branch:

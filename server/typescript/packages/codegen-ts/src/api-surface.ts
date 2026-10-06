@@ -17,11 +17,17 @@
 // So the reach-through lives in exactly one place now, named for what it means. When
 // route derivation grows a second source of truth, this function changes and every
 // UI generator follows for free.
+//
+// Two questions since FR-044 Plan 3: `servesReadApi` asks whether a read endpoint exists
+// (the route and queries generators), and `servesClientTier` asks whether the client UI
+// tier is generated for it (hooks, grids, `agent/ui.md`). They differ for a served
+// report, which has a route and no UI tier until Plan 5.
 
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { isAbstract } from "./instance-artifacts.js";
 import { isProjection } from "./projection/projection-detector.js";
-import { hasAnyRdbSource, hasWritableRdbSource, isReport } from "./source-detect.js";
+import { hasAnyRdbSource, hasWritableRdbSource, isReport, servedReport } from "./source-detect.js";
+import { DEFAULT_ID_FIELD, getPkFields } from "./templates/queries.js";
 import { resourcePath, restPath } from "./templates/entity-ui-descriptor.js";
 import {
   declaresTphDiscriminator,
@@ -32,19 +38,76 @@ import {
 import { tphRouteSegment } from "./templates/tph-discriminator.js";
 
 /**
- * True when the object is served by a generated READ endpoint — so a hook has
- * something to fetch and a grid has something to render.
+ * True when the object is served by a generated READ endpoint.
  *
  * Abstract types are excluded (no instance to address). Today the endpoint test is
  * "declares or inherits a `source.rdb`", which is precisely the predicate
- * `routesFile` / `routesFileHono` gate on, so hooks exist exactly where routes do.
+ * `routesFile` / `routesFileHono` gate on. The UI tier asks `servesClientTier`, which
+ * is this answer minus reports.
  */
 export function servesReadApi(entity: MetaObject): boolean {
-  // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
-  // A report may declare a read-only `source.rdb @kind: view` (R5), which would pass the
-  // source test below although no route serves it; runGen already drops reports, so this
-  // matters to the doors that read the model directly (agent/ui.md, owned generators).
-  return !isAbstract(entity) && !isReport(entity) && hasAnyRdbSource(entity);
+  // FR-044 Plan 3: a report is served exactly when Table A says so (`servedReport`: not
+  // abstract, read source `@kind: view`). The question is asked of the declared report
+  // node by the doors that read the model directly (docs, owned generators) and of its
+  // read model by the generators `runGen` drives; both answer the same. A report whose
+  // read-only source is any other kind passes the source test below and is served by
+  // nothing, so a report never reaches that test.
+  if (isReport(entity)) return servedReport(entity);
+  return !isAbstract(entity) && hasAnyRdbSource(entity);
+}
+
+/**
+ * True when the read-only surface of the object has `/:id` routes, a by-id query and a
+ * detail hook: the column a row would be addressed by actually exists on it.
+ *
+ * - A report (the declared node or its read model) never has one, even when a derived
+ *   field happens to be named `id`: a report has no identity, and its rows are groups.
+ * - Otherwise the answer is whether the by-id column resolves to a field of the object.
+ *   That column is `getPkInfo`'s: the first field of the primary identity, or `id` by
+ *   convention when the object declares no primary identity. So a projection with an
+ *   identity has item routes, a projection with no identity and a field named `id` has
+ *   them too (it always did, and they work), and a projection with neither has none.
+ *
+ * A composite identity answers true, as before this predicate existed: its by-id query
+ * reads the first component. Nothing here changes what that shape generates.
+ *
+ * This is NOT the JVM's `RestSurfaceGate.hasItemRoute`, which requires a DECLARED
+ * single-column primary identity. TypeScript has always also served the `id`-by-convention
+ * projection, and this keeps doing so. The one thing removed is a surface that could never
+ * serve a row: no identity and no `id` column.
+ *
+ * Only the read-only templates ask. The writable surface emits item routes unconditionally.
+ */
+export function hasItemRoute(entity: MetaObject): boolean {
+  return itemRouteField(entity) !== undefined;
+}
+
+/**
+ * The field a read-only object's item routes address a row by, or `undefined` when it has
+ * none (`hasItemRoute` is exactly "this is defined"). It is `getPkInfo`'s field, so the
+ * by-id query and the mounted `GET /:id` read the same column.
+ *
+ * The read-only mount addresses `id` unless told otherwise, so a routes template passes
+ * this as the mount's `idColumn` whenever it is not `id`. Without that, a projection keyed
+ * on `code` mounted a `/:id` route that compared nothing and answered with the view's
+ * first row.
+ */
+export function itemRouteField(entity: MetaObject): string | undefined {
+  if (isReport(entity)) return undefined;
+  // ADR-0039: resolving. `getPkFields` reads `primaryIdentity()` and `findField` reads
+  // `fields()`, both of which walk the super chain; a projection's identity and its `id`
+  // field are typically inherited from its base entity.
+  const idField = getPkFields(entity)[0] ?? DEFAULT_ID_FIELD;
+  return entity.findField(idField) !== undefined ? idField : undefined;
+}
+
+/**
+ * True when the client UI tier (hooks, grids, `agent/ui.md`) is generated for the
+ * object: `servesReadApi(entity)` and not a report. A served report has a route and no
+ * UI tier until Plan 5.
+ */
+export function servesClientTier(entity: MetaObject): boolean {
+  return servesReadApi(entity) && !isReport(entity);
 }
 
 /**

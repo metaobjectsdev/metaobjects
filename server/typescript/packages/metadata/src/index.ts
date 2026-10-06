@@ -65,6 +65,18 @@ export {
   type ReportShape,
 } from "./core/reporting/report-shape.js";
 export { reportReadModel, reportReadSource } from "./core/reporting/report-read-model.js";
+export {
+  describeDimension,
+  describeDimensionColumn,
+  describeFilter,
+  describeMeasure,
+  describeReportField,
+  describeRowScope,
+  describeSegment,
+  reportFieldTypeName,
+  reportNotServedReason,
+  reportingDescribedAttrs,
+} from "./core/reporting/report-describe.js";
 // Shared `@implementedBy` resolution — one resolver for the CLI's requirement
 // checks and codegen's requirement-test fan-out (FR-038).
 export {

@@ -13,6 +13,11 @@ from metaobjects.codegen.generators.entity_model import render_entity_model
 from metaobjects.codegen.generators.router_generator import render_router
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
+from metaobjects.meta.core.identity.identity_constants import (
+    IDENTITY_ATTR_FIELDS,
+    IDENTITY_SUBTYPE_PRIMARY,
+)
+from metaobjects.meta.core.identity.meta_identity import MetaIdentity
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.persistence.source.meta_source import MetaSource
 from metaobjects.meta.persistence.source.source_constants import (
@@ -20,7 +25,7 @@ from metaobjects.meta.persistence.source.source_constants import (
     SOURCE_KIND_VIEW,
     SOURCE_SUBTYPE_RDB,
 )
-from metaobjects.shared.base_types import TYPE_FIELD, TYPE_OBJECT, TYPE_SOURCE
+from metaobjects.shared.base_types import TYPE_FIELD, TYPE_IDENTITY, TYPE_OBJECT, TYPE_SOURCE
 
 
 def _f(name: str, sub: str, *, required: bool = False) -> MetaField:
@@ -30,14 +35,20 @@ def _f(name: str, sub: str, *, required: bool = False) -> MetaField:
     return f
 
 
-def _view_projection() -> MetaObject:
+def _view_projection(*, keyed: bool = True) -> MetaObject:
     o = MetaObject(TYPE_OBJECT, "entity", "ProgramSummary")
     o.package = "acme::test"
     src = MetaSource(TYPE_SOURCE, SOURCE_SUBTYPE_RDB, "")
     src.set_attr(SOURCE_ATTR_KIND, SOURCE_KIND_VIEW, sub_type="string")
     o.add_child(src)
-    o.add_child(_f("id", fc.FIELD_SUBTYPE_INT, required=True))
+    # A keyless projection has neither a primary identity nor a field named `id`: only
+    # then is there nothing a by-id route could bind.
+    o.add_child(_f("id" if keyed else "code", fc.FIELD_SUBTYPE_INT, required=True))
     o.add_child(_f("weekCount", fc.FIELD_SUBTYPE_INT))  # non-required derived field
+    if keyed:
+        identity = MetaIdentity(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY, "pk")
+        identity.set_attr(IDENTITY_ATTR_FIELDS, ["id"])
+        o.add_child(identity)
     return o
 
 
@@ -82,3 +93,20 @@ def test_projection_router_is_read_only() -> None:
     assert "ProgramSummaryCreate" not in src
     assert "ProgramSummaryPatch" not in src
     assert "classify_constraint_error" not in src
+
+
+def test_keyless_projection_router_has_no_item_routes() -> None:
+    """FR-044 open question 4 (as ruled): a projection with no primary identity AND no
+    ``id`` field has no item address, so it gets GET list and the collection POST refusal
+    only, and its repository seam has no ``find_by_id``. (Before, it bound an ``id: int``
+    it could not honour.)"""
+    src = render_router(_view_projection(keyed=False))
+    assert src is not None
+    compile(src, "<ProgramSummary router>", "exec")
+    assert '@router.get("")' in src and '@router.post("")' in src
+    assert "{" not in "".join(
+        line for line in src.splitlines() if line.startswith("@router.")
+    )
+    assert "find_by_id" not in src
+    assert src.count('"error": "method_not_allowed",') == 1
+    assert "not supported on a projection" in src

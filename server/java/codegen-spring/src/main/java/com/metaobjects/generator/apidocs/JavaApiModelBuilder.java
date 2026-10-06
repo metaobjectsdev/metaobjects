@@ -44,7 +44,11 @@ import java.util.List;
  *       projection ({@code object.projection}) is a read-only model and yields a
  *       read DTO only (no VALIDATION / DATA_ACCESS / REST / FILTER — those
  *       generators gate on a writable table entity and skip a projection). A value
- *       object ({@code object.value}) yields MODEL only.</li>
+ *       object ({@code object.value}) yields MODEL only. A SERVED report
+ *       ({@code object.report} over a view, FR-044) is documented from its read model
+ *       ({@code RestSurfaceGate.restShapeOf}): the row DTO, the read-only repository
+ *       seam, the one {@code GET} list route and the filter allowlist, and no MODEL.
+ *       A report that is not served yields no unit.</li>
  *   <li><b>Templates</b> (iterated via the resolving
  *       {@code loader.getRoot().getChildren(MetaTemplate.class, true)}): each template yields PAYLOAD / RENDER /
  *       PROMPT / OUTPUT_PARSER symbols gated by the matching {@code appliesTo}.</li>
@@ -85,10 +89,12 @@ public final class JavaApiModelBuilder {
         // Objects: one unit per object.entity / object.value (entity vs value drives
         // which symbol categories appliesTo lets through).
         for (MetaObject obj : loader.getMetaObjects()) {
-            // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
-            // It has no generated API to document, and its derived fields do not exist yet.
-            if (GeneratorUtil.isReport(obj)) continue;
-            ApiUnit unit = buildObjectUnit(obj, loader);
+            // FR-044 Plan 3: a SERVED report (its read source is a view) is documented from
+            // its read model, the same object the generators emit from, so documented ==
+            // generated. A report that is not served generates nothing and gets no unit.
+            MetaObject shape = RestSurfaceGate.restShapeOf(obj);
+            if (shape == null) continue;
+            ApiUnit unit = buildObjectUnit(shape, loader);
             if (unit != null) {
                 units.add(unit);
             }
@@ -111,7 +117,8 @@ public final class JavaApiModelBuilder {
         String shortName = split[1];
         boolean entity = MetaObject.SUBTYPE_ENTITY.equals(obj.getSubType());
         boolean projection = MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType());
-        String unitKind = entity ? "entity" : projection ? "projection" : "value";
+        boolean report = GeneratorUtil.isReport(obj); // a served report's read model (see build)
+        String unitKind = entity ? "entity" : projection ? "projection" : report ? "report" : "value";
 
         List<ApiSymbol> symbols = new ArrayList<>();
 
@@ -119,7 +126,9 @@ public final class JavaApiModelBuilder {
         // instantiated, so we do not document a MODEL symbol for them (documented is a
         // subset of generated). A concrete value object / projection → MODEL only (plus
         // a read DTO for a projection, below).
-        if (!IOUtil.isAbstract(obj)) {
+        // A report has NO model symbol: the Java model tier generates no class for one
+        // (GeneratorUtil.getFilteredMetaData drops reports); its row is the DTO below.
+        if (!IOUtil.isAbstract(obj) && !report) {
             symbols.add(symbol(
                 shortName, ApiSymbolKind.MODEL, fqn(javaPkg, shortName),
                 "class " + shortName,
@@ -138,6 +147,7 @@ public final class JavaApiModelBuilder {
                 dto, ApiSymbolKind.DTO, fqn(javaPkg, dto),
                 "record " + dto,
                 projection ? "the read-only wire / serialization shape"
+                    : report ? "the read-only row of the report's view, one component per derived field"
                     : "the wire / serialization shape",
                 dtoFields));
 
@@ -210,6 +220,11 @@ public final class JavaApiModelBuilder {
         String controllerFqn = fqn(javaPkg, SpringNaming.controllerName(shortName));
         String base = SpringNaming.controllerPath(shortName);
         addRest(symbols, controllerFqn, "GET " + base, "list with pagination / sort / filters");
+
+        // FR-044 — a served report is a list and nothing else (Table G): it has no identity,
+        // so no item route, and the collection POST it refuses is not an operation a caller
+        // can use.
+        if (GeneratorUtil.isReport(obj)) return;
 
         // F22 — a read-only projection's controller serves the reads and REFUSES every write
         // verb with 405. Documenting it with the writable verb list would be the precise

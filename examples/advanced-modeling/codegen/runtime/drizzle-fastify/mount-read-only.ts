@@ -20,7 +20,15 @@ export interface MountReadOnlyOptions {
   readonly filterAllowlist: FilterAllowlist;
   readonly sortAllowlist: SortAllowlist;
   readonly dialect: SqlDialect;
-  /** Override default ID column name (defaults to "id"). */
+  /**
+   * The column `GET /:id` addresses a row by: the KEY of that column in the Drizzle view
+   * (the field name), not its physical name. Defaults to "id". For a view declared with
+   * no columns (the raw-SQL path) it is the physical column name instead, because there
+   * is no key to look up.
+   *
+   * A view that declares columns and has none under this key has no row to address, so
+   * `GET /:id` answers `404 not_found` for every id.
+   */
   readonly idColumn?: string;
   /**
    * Fastify route-level hooks applied to every route this mounts — the same option
@@ -33,15 +41,23 @@ export interface MountReadOnlyOptions {
    * mount from an enclosing plugin scope works here too, and needs no option at all.)
    */
   readonly routeOptions?: RouteShorthandOptions;
+  /**
+   * False for an object with no single-column primary identity: an `object.report`, or
+   * a keyless projection. Mounts the list route and the collection POST refusal only,
+   * and no `/:id` route of any verb. Default true, which is today's behaviour.
+   */
+  readonly itemRoutes?: boolean;
+  /** The noun in the 405 message, which is free prose. Default "projection". */
+  readonly resource?: "projection" | "report";
 }
 
-const REJECT_MUTATION = async (
+const rejectMutation = (resource: string) => async (
   request: { method: string },
   reply: { code: (n: number) => { send: (b: unknown) => unknown } },
 ) => {
   reply
     .code(405)
-    .send({ error: "method_not_allowed", message: `${request.method} is not supported on a projection (read-only).` });
+    .send({ error: "method_not_allowed", message: `${request.method} is not supported on a ${resource} (read-only).` });
 };
 
 function resolveViewName(view: AnyView): string | undefined {
@@ -128,6 +144,8 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   // Route-scoped contract error handler: an unexpected error answers
   // `500 { error: "internal" }` rather than Fastify's default (which echoes the SQL).
   const ro = withContractErrorHandler(opts.routeOptions);
+  const reject = rejectMutation(opts.resource ?? "projection");
+  const itemRoutes = opts.itemRoutes !== false;
 
   const viewName = resolveViewName(view);
   const useRawSql = isEmptyColumnView(view) && !!viewName;
@@ -205,37 +223,46 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
     }
   });
 
-  // ── Get by ID ─────────────────────────────────────────────────────────────
-  fastify.get(`${path}/:id`, ro, async (req, reply) => {
-    const { id } = req.params as { id: string };
-    if (useRawSql) {
-      // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
-      const rows = await rawRows(db, dialect, sql.raw(`SELECT * FROM ${quoteIdent(dialect, viewName)} WHERE ${quoteIdent(dialect, idCol)} = ${rawIdLiteral(id)} LIMIT 1`)) as any[];
-      const row = rows[0] ? camelizeRow(rows[0]) : undefined;
-      return row ?? reply.code(404).send({ error: "not_found" });
-    }
-    // biome-ignore lint/suspicious/noExplicitAny: Drizzle table/view column ref
-    const colRef = (view as any)[idCol];
-    // Compare against the PK's real type — a uuid/text key must NOT go through Number().
-    const idValue = coerceIdForColumn(colRef, id);
-    if (idValue === undefined) {
-      return reply.code(400).send({ error: "invalid_id" });
-    }
-    // Await + first row rather than `.get()` (libsql/better-sqlite3-only).
-    const rows = await db.select().from(view).where(
-      colRef !== undefined ? eq(colRef, idValue) : undefined
-    ).limit(1);
-    const row = (rows as unknown[])[0];
-    return row ? toWire(row) : reply.code(404).send({ error: "not_found" });
-  });
+  // A keyless object (`itemRoutes: false`) has nothing to address by id: no `/:id` route
+  // of any verb, so the framework's own 404 answers.
+  if (itemRoutes) {
+    // ── Get by ID ─────────────────────────────────────────────────────────────
+    fastify.get(`${path}/:id`, ro, async (req, reply) => {
+      const { id } = req.params as { id: string };
+      if (useRawSql) {
+        // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
+        const rows = await rawRows(db, dialect, sql.raw(`SELECT * FROM ${quoteIdent(dialect, viewName)} WHERE ${quoteIdent(dialect, idCol)} = ${rawIdLiteral(id)} LIMIT 1`)) as any[];
+        const row = rows[0] ? camelizeRow(rows[0]) : undefined;
+        return row ?? reply.code(404).send({ error: "not_found" });
+      }
+      // biome-ignore lint/suspicious/noExplicitAny: Drizzle table/view column ref
+      const colRef = (view as any)[idCol];
+      // No column under `idColumn`: there is nothing to compare the id against, and a query
+      // with no WHERE would answer with the view's first row. No row is addressable.
+      if (colRef === undefined) {
+        return reply.code(404).send({ error: "not_found" });
+      }
+      // Compare against the PK's real type — a uuid/text key must NOT go through Number().
+      const idValue = coerceIdForColumn(colRef, id);
+      if (idValue === undefined) {
+        return reply.code(400).send({ error: "invalid_id" });
+      }
+      // Await + first row rather than `.get()` (libsql/better-sqlite3-only).
+      const rows = await db.select().from(view).where(eq(colRef, idValue)).limit(1);
+      const row = (rows as unknown[])[0];
+      return row ? toWire(row) : reply.code(404).send({ error: "not_found" });
+    });
+  }
 
   // ── Mutations explicitly rejected (405) ───────────────────────────────────
   // PUT is here because the WRITABLE mount serves it (an alias of PATCH), so a
   // projection must reject it the same way the other three are rejected. Omitting it
   // left `PUT /<collection>/:id` falling through to Fastify's 404 — telling a caller
   // the resource does not exist when it plainly does and answers GET.
-  fastify.post(path, ro, REJECT_MUTATION);
-  fastify.patch(`${path}/:id`, ro, REJECT_MUTATION);
-  fastify.put(`${path}/:id`, ro, REJECT_MUTATION);
-  fastify.delete(`${path}/:id`, ro, REJECT_MUTATION);
+  fastify.post(path, ro, reject);
+  if (itemRoutes) {
+    fastify.patch(`${path}/:id`, ro, reject);
+    fastify.put(`${path}/:id`, ro, reject);
+    fastify.delete(`${path}/:id`, ro, reject);
+  }
 }

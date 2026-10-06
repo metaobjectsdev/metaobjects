@@ -182,7 +182,8 @@ public class CodegenCompileConformanceTest extends SharedRegistryTestBase {
 
     /**
      * The Spring request/response tier: the DTO/Patch pair, the value-object records they
-     * bind, the repositories and the filter allowlists.
+     * bind, the repositories and the filter allowlists, including the read-only surface of
+     * every served report.
      *
      * <p>{@code entity} is deliberately NOT in this selection, and not for tidiness.
      * {@code entity} and {@code value-object} BOTH emit a Java type for an
@@ -198,7 +199,14 @@ public class CodegenCompileConformanceTest extends SharedRegistryTestBase {
         selection.put("repository", PLAIN);
         selection.put("filter-allowlist", PLAIN);
         selection.put("names", PLAIN);
-        generateAndCompile("web", selection, 17);
+        // FR-044 Plan 3: the corpus's six view-backed reports are served, so their row
+        // DTOs, repository seams and filter allowlists are in this compile. Named, so a
+        // gate that stops admitting a report fails here instead of compiling less.
+        // ProgramMinutes derives eleven filterable fields, one past Map.of's ten pairs.
+        generateAndCompile("web", selection, 17,
+            "ProgramMinutesDto", "FitnessTotalsDto", "ProgramsByMonthDto", "ProgramsByWeekDto",
+            "RecentProgramsDto", "AssetActivityDto",
+            "ProgramMinutesRepository", "ProgramMinutesFilterAllowlist");
     }
 
     /**

@@ -112,7 +112,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
 
-        for (entity in loader.metaObjects) {
+        for (declared in loader.metaObjects) {
+            // FR-044: a served report is emitted from its read model, the same object the
+            // filter-allowlist, entity and table generators emit from, so the four files name
+            // the same fields. Any other report maps to null and gets no controller.
+            val entity = RestSurfaceGate.restShapeOf(declared) ?: continue
             // Abstract entities are inheritance scaffolding — never emit a CRUD controller.
             if (KotlinGenUtil.isAbstractEntity(entity)) continue
             // FR-017 TPH: a subtype is folded into its base's single table + base controller (it
@@ -1387,8 +1391,18 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                     out.append("coerce${shortName}Int(op, raw)\n")
                 LongField.SUBTYPE_LONG, CurrencyField.SUBTYPE_CURRENCY ->
                     out.append("coerce${shortName}Long(op, raw)\n")
-                FloatField.SUBTYPE_FLOAT, DoubleField.SUBTYPE_DOUBLE, DecimalField.SUBTYPE_DECIMAL ->
+                DoubleField.SUBTYPE_DOUBLE ->
                     out.append("coerce${shortName}Double(op, raw)\n")
+                // The dispatch arm casts the coerced value to the COLUMN's Kotlin type
+                // (`p.value as Float`, `p.value as BigDecimal`), so the coercer must produce
+                // exactly that type. Both used to ride on the Double coercer, and a boxed
+                // Double is neither: every filter on a float or decimal column threw
+                // ClassCastException out of the handler, a 500 on a request the allowlist
+                // had admitted.
+                FloatField.SUBTYPE_FLOAT ->
+                    out.append("coerce${shortName}Float(op, raw)\n")
+                DecimalField.SUBTYPE_DECIMAL ->
+                    out.append("coerce${shortName}Decimal(op, raw)\n")
                 BooleanField.SUBTYPE_BOOLEAN ->
                     out.append("coerce${shortName}Boolean(op, raw)\n")
                 DateField.SUBTYPE_DATE ->
@@ -1420,6 +1434,13 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         emitTypedCoercer(out, shortName, "Long", "java.lang.Long.parseLong")
         emitTypedCoercer(out, shortName, "Int", "java.lang.Integer.parseInt")
         emitTypedCoercer(out, shortName, "Double", "java.lang.Double.parseDouble")
+        // Emitted only when such a column exists, so a model without one keeps its bytes.
+        if (scalarFields.any { it.subType == FloatField.SUBTYPE_FLOAT }) {
+            emitTypedCoercer(out, shortName, "Float", "java.lang.Float.parseFloat")
+        }
+        if (scalarFields.any { it.subType == DecimalField.SUBTYPE_DECIMAL }) {
+            emitTypedCoercer(out, shortName, "Decimal", "java.math.BigDecimal")
+        }
         emitTypedCoercer(out, shortName, "Date", "LocalDate.parse")
         emitTypedCoercer(out, shortName, "Time", "LocalTime.parse")
         // uuid coercer — emitted only when a uuid column exists (its `UUID.fromString`
@@ -1541,6 +1562,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         isEnum: Boolean,
         intBackedEnumType: String? = null,
     ) {
+        // The column PROPERTY, not the field name: the table generator declares a field named
+        // after a member of Exposed's Table under a `Column` suffix (`source` is
+        // `sourceColumn`), and `Table.source` is that member, not the column. Identity for
+        // every other name, so existing output is unchanged.
+        val column = "${tableObjectName}.${KotlinNaming.safeColumnProperty(fieldName, exposedApi())}"
         // An INT-BACKED enum (@intValueMap) stores the member's declared INTEGER, so the CAST(col AS
         // text) comparison below — right for a string-backed enum — compared '30' to 'DELIVERED':
         // eq/in matched nothing and ne matched everything, all with a 200. Compare through the
@@ -1549,7 +1575,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // int-backed band has no `like` (the allowlist omits it), so no arm is emitted for it.
         if (intBackedEnumType != null) {
             val member = "$intBackedEnumType.entries.firstOrNull { it.name == (p.value as String) }"
-            val col = "${tableObjectName}.${fieldName}"
+            val col = column
             out.append("                \"$fieldName\" -> when (p.op) {\n")
             out.append("                    \"eq\" -> $member?.let { $col eq it } ?: Op.FALSE\n")
             out.append("                    \"ne\" -> $member?.let { $col neq it } ?: $col.isNotNull()\n")
@@ -1571,8 +1597,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // port's string-band enum-filter semantics — so eq/ne/in/like all compare Strings.
         // (`isNull` still checks the raw column's nullability.)
         val band = fieldFilterBand(subType, null)
-        val col = if (isEnum) "${tableObjectName}.${fieldName}.castTo<String>(TextColumnType())"
-                  else "${tableObjectName}.${fieldName}"
+        val col = if (isEnum) "$column.castTo<String>(TextColumnType())"
+                  else column
         out.append("                \"$fieldName\" -> when (p.op) {\n")
         out.append("                    \"eq\" -> $col eq (p.value as $elementType)\n")
         if (FilterOps.FILTER_OP_NE in band) {
@@ -1597,10 +1623,10 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // matching the coercer's and the native-uuid/field.uuid arm's existing per-op
             // native-type precedent).
             val likeCol = if (isEnum || elementType == "String") col
-                          else "${tableObjectName}.${fieldName}.castTo<String>(TextColumnType())"
+                          else "$column.castTo<String>(TextColumnType())"
             out.append("                    \"like\" -> $likeCol like (p.value as String)\n")
         }
-        out.append("                    \"isNull\" -> if (p.value as Boolean) ${tableObjectName}.${fieldName}.isNull() else ${tableObjectName}.${fieldName}.isNotNull()\n")
+        out.append("                    \"isNull\" -> if (p.value as Boolean) $column.isNull() else $column.isNotNull()\n")
         out.append("                    else -> throw IllegalStateException(\"unsupported op for $fieldName: \" + p.op)\n")
         out.append("                }\n")
     }
@@ -1856,10 +1882,21 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val sortFields = entity.metaFields
             .filterNot { it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it) }
             .map { it.name }
+        // FR-044: a report's int-backed enum column is typed by the enum of the entity it
+        // reads (the class its table and data class use), so its filter arm compares through
+        // that class. Empty for a projection, whose arms are unchanged.
+        val reportEnums = KotlinGenUtil.reportEnumClasses(entity, loader)
         val scalarFields: List<ScalarFieldSpec> = entity.metaFields
             .filterNot { it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it) }
-            .map { ScalarFieldSpec(it.name, it.subType, columnElementType(it)) }
+            .map {
+                ScalarFieldSpec(
+                    it.name, it.subType, columnElementType(it),
+                    if (KotlinGenUtil.isIntBackedEnum(it)) reportEnums[it.name]?.canonicalName else null,
+                )
+            }
         val allowlistName = "${shortName}FilterAllowlist"
+        // "report" or "projection", for generated prose only.
+        val noun = KotlinNaming.readOnlyNoun(entity)
 
         val source = buildString {
             if (pkg.isNotEmpty()) {
@@ -1929,7 +1966,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             appendRowToMapper(this, shortName, entity, readObj)
 
             append("/**\n")
-            append(" * GENERATED — READ-ONLY REST controller for the ${shortName} projection.\n")
+            append(" * GENERATED — READ-ONLY REST controller for the ${shortName} $noun.\n")
             append(" *\n")
             // No `/**` glob in the example: Kotlin NESTS block comments (see emit()).
             append(" * Auth: these read endpoints are unauthenticated. In your Spring Security config, require\n")
@@ -1965,7 +2002,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("        ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(\n")
             append("            mapOf(\n")
             append("                \"error\" to \"method_not_allowed\",\n")
-            append("                \"message\" to \"writes are not supported on a projection (read-only).\",\n")
+            append("                \"message\" to \"writes are not supported on a $noun (read-only).\",\n")
             append("            ) as Any\n")
             append("        )\n")
             append("}\n")
@@ -2042,7 +2079,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // MapField (staged out) and a flattened object field (materialised as per-subfield
             // columns, no single `Table.<field>`) are skipped — the data class defaults them.
             if (field is MapField || (field is ObjectField && !isJsonbObjectColumn(field))) continue
-            append("    ${field.name} = row[${readObj}.${field.name}],\n")
+            // The column PROPERTY, which the table generator renames when the field name is a
+            // member of Exposed's Table (`source` is declared `sourceColumn`). Identity otherwise.
+            append("    ${field.name} = row[${readObj}.${KotlinNaming.safeColumnProperty(field.name, exposedApi())}],\n")
         }
         append(")\n\n")
     }
