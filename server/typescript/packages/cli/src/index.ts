@@ -141,6 +141,11 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
   --no-antipatterns     Suppress the advisory "you hand-rolled what MetaObjects can
                         model" pass (aggregate/currency/enum hints; warnings only)
   --no-requirement-lint Suppress the advisory requirement AUTHORING lint (not the gate)
+  --require-implementers
+                        Fail (exit 1) when a live functional requirement has nothing
+                        implementing it. That finding is a warning without this flag;
+                        with it, the same WARN_REQUIREMENT_NOTHING_IMPLEMENTS code is
+                        reported as an error. Also: META_REQUIRE_IMPLEMENTERS=1.
   --no-overlay-lint     Suppress the advisory overlay-redeclaration AUTHORING lint
                         (never a gate — this lint can't fail the build)
   --no-name-lint        Suppress the advisory node-name AUTHORING lint (whitespace
@@ -341,6 +346,11 @@ FLAGS:
                         migrating a model onto a registered provider.
   --no-antipatterns     Suppress the advisory "hand-rolled what MetaObjects can model" pass
   --no-requirement-lint Suppress the advisory requirement AUTHORING lint (not the gate)
+  --require-implementers
+                        Fail (exit 1) when a live functional requirement has nothing
+                        implementing it. That finding is a warning without this flag;
+                        with it, the same WARN_REQUIREMENT_NOTHING_IMPLEMENTS code is
+                        reported as an error. Also: META_REQUIRE_IMPLEMENTERS=1.
   --no-overlay-lint     Suppress the advisory overlay-redeclaration AUTHORING lint —
                         never a gate; this lint can't fail the build
   --no-name-lint        Suppress the advisory node-name AUTHORING lint (whitespace in
@@ -373,6 +383,9 @@ lint in its own section: names that are not addressable, prose slots holding one
 sentence twice, content written where no surface reads it. Warnings only — it can
 never fail the build. Opt out with --no-requirement-lint or META_NO_REQUIREMENT_LINT=1.
 The requirements GATE itself (dangling refs, link floor, levels) always runs.
+One of its findings is a warning you can raise: a live functional requirement that
+nothing implements fails the build under --require-implementers or
+META_REQUIRE_IMPLEMENTERS=1. The diagnostic keeps its code; only its severity moves.
 
 verify also prints an ADVISORY overlay authoring lint, in its own section: a
 top-level declaration redeclared in two or more files where more than one

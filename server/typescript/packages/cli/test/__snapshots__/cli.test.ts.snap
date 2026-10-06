@@ -121,6 +121,11 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
   --no-antipatterns     Suppress the advisory "you hand-rolled what MetaObjects can
                         model" pass (aggregate/currency/enum hints; warnings only)
   --no-requirement-lint Suppress the advisory requirement AUTHORING lint (not the gate)
+  --require-implementers
+                        Fail (exit 1) when a live functional requirement has nothing
+                        implementing it. That finding is a warning without this flag;
+                        with it, the same WARN_REQUIREMENT_NOTHING_IMPLEMENTS code is
+                        reported as an error. Also: META_REQUIRE_IMPLEMENTERS=1.
   --no-overlay-lint     Suppress the advisory overlay-redeclaration AUTHORING lint
                         (never a gate — this lint can't fail the build)
   --no-name-lint        Suppress the advisory node-name AUTHORING lint (whitespace

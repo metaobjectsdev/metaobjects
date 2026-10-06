@@ -684,7 +684,14 @@ export async function verifyCommand(
     // ONE scan for all three passes. The gate and the summary each used to walk the
     // model AND resolve every @implementedBy claim for themselves — the resolution
     // being the expensive half — and the lint added a third walk on top.
-    const scan = scanRequirements(root, { coverable: collection.inScope });
+    // The strict switch (ADR-0057) is decided here, once, and travels on the scan: the
+    // flag or META_REQUIRE_IMPLEMENTERS=1 — a flag-or-variable pair, as
+    // --no-requirement-lint has below, so a CI job can turn it on without editing a
+    // command line it shares with local runs.
+    const scan = scanRequirements(root, {
+      coverable: collection.inScope,
+      requireImplementers: flags.requireImplementers || process.env.META_REQUIRE_IMPLEMENTERS === "1",
+    });
     const diags = [...checkRequirements(root, scan)];
 
     // Printed on EVERY run, clean or not — a gate that says nothing when it
