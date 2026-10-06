@@ -46,7 +46,7 @@ from .meta.core.attr.attr_constants import (
     ATTR_SUBTYPE_STRINGARRAY,
 )
 from .registry import AttrSchema, TypeRegistry
-from .shared.separators import ATTR_PREFIX, FUSED_KEY_SEP
+from .shared.separators import ATTR_PREFIX, FUSED_KEY_SEP, PACKAGE_SEP
 from .shared.structural import (
     KEY_ABSTRACT,
     KEY_CHILDREN,

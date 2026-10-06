@@ -6,6 +6,9 @@ shared corpus end-to-end; this file pins down per-rule behavior in isolation.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
+from metaobjects import MetaDataLoader
 from metaobjects.core_types import core_providers
 from metaobjects.errors import ErrorCode
 from metaobjects.provider import compose_registry
@@ -305,3 +308,26 @@ def test_top_level_multi_key_collects_error() -> None:
     result = desugar({"a": 1, "b": 2}, _registry())
     assert len(result.errors) == 1
     assert "exactly one type key" in result.errors[0].message
+
+
+# ---------------------------------------------------------------------------
+# FR-032 - a node's own `package` under a packaged root
+# ---------------------------------------------------------------------------
+
+
+def test_node_level_package_under_a_packaged_root_loads_strict(tmp_path: Path) -> None:
+    """An absolute `package` is taken literally and a leading `::` is relative to the
+    parent's. Both used to raise NameError (PACKAGE_SEP was never imported here)."""
+    (tmp_path / "meta.acme.yaml").write_text(
+        "metadata:\n"
+        "  package: acme\n"
+        "  children:\n"
+        "    - object.entity: { name: Plain }\n"
+        "    - object.entity: { name: Absolute, package: other::shop }\n"
+        "    - object.entity: { name: Relative, package: '::billing' }\n",
+        encoding="utf-8",
+    )
+    result = MetaDataLoader.from_directory(str(tmp_path), strict=True)
+    assert [str(e) for e in result.errors] == []
+    keys = sorted(c.resolution_key() for c in result.root.children())
+    assert keys == ["acme::Plain", "acme::billing::Relative", "other::shop::Absolute"]
