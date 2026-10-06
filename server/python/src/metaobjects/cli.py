@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import importlib
 import json
 import os
 import re
@@ -109,6 +110,7 @@ from metaobjects.codegen.generators.router_generator import router_generator
 from metaobjects.codegen.generator_registry import (
     GENERATOR_REGISTRY,
     GeneratorBuildContext,
+    RequirementTestsOptions,
     get_generator,
     list_generators,
     unsatisfied_requires,
@@ -248,6 +250,69 @@ def _config_providers(config: ProjectConfig) -> tuple[list[object], bool]:
             print(f"  {msg}", file=sys.stderr)
         return providers, False
     return providers, True
+
+
+def _import_config_symbol(spec: str, config_dir: Path) -> tuple[object | None, str | None]:
+    """Import a ``module:symbol`` reference from the config, relative to *config_dir*.
+
+    Resolved the way ``providers`` are (#267): the config directory goes on ``sys.path``, so a
+    module living beside the config imports with no ``PYTHONPATH=``. A module of the same name
+    cached from another project is dropped first, so two configs in one process cannot read
+    each other's hook. Returns ``(object, None)`` or ``(None, message)``.
+    """
+    module_name, _sep, symbol = spec.partition(":")
+    root = str(config_dir.resolve())
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    top = module_name.split(".")[0]
+    for key in [k for k in sys.modules if k == top or k.startswith(top + ".")]:
+        file = getattr(sys.modules[key], "__file__", None)
+        if file is None or not str(Path(file).resolve()).startswith(root):
+            del sys.modules[key]
+    try:
+        module = importlib.import_module(module_name)
+    except Exception as exc:  # ImportError and anything raised at import time
+        return None, f"{spec!r}: cannot import {module_name!r}: {exc}"
+    obj = getattr(module, symbol, None)
+    if obj is None:
+        return None, f"{spec!r}: {module_name!r} has no attribute {symbol!r}"
+    if not callable(obj):
+        return None, f"{spec!r}: {symbol!r} is not callable"
+    return obj, None
+
+
+def _requirement_tests_options(
+    config: ProjectConfig,
+) -> tuple[RequirementTestsOptions | None, list[str]]:
+    """The ``requirementTests`` block with its ``renderer`` and ``filter`` imported.
+
+    ``(None, [])`` when the config carries no block, so the generator's defaults apply.
+    """
+    block = config.requirement_tests
+    if block is None:
+        return None, []
+    errors: list[str] = []
+    hooks: dict[str, object | None] = {}
+    for key, spec in (("renderer", block.renderer), ("filter", block.filter)):
+        if spec is None:
+            hooks[key] = None
+            continue
+        obj, err = _import_config_symbol(spec, config.config_dir)
+        if err is not None:
+            errors.append(f"requirementTests.{key}: {err}")
+        hooks[key] = obj
+    if errors:
+        return None, errors
+    return (
+        RequirementTestsOptions(
+            witness_module=block.witness_module,
+            grain=block.grain,
+            renderer=hooks["renderer"],  # type: ignore[arg-type]
+            filter=hooks["filter"],  # type: ignore[arg-type]
+            warn_uncovered=block.warn_uncovered,
+        ),
+        [],
+    )
 
 
 def _select_targets(
@@ -1400,12 +1465,19 @@ def _run_gen_targets(
     all_written: list[str] = []
     seen: dict[str, str] = {}  # full path -> target name
     errors: list[str] = []
+    # The `requirementTests` block reaches a generator factory (packaged or owned) through
+    # the build context, so `gen` and `verify --codegen` build it identically.
+    requirement_tests, hook_errors = _requirement_tests_options(config)
+    if hook_errors:
+        return [], hook_errors
+    ctx = dataclasses.replace(
+        build_ctx or GeneratorBuildContext(), requirement_tests=requirement_tests
+    )
     for t in targets:
         gens: list[Generator] | None = None
         if t.generators is not None:
             gens, gen_errors = _resolve_generators(
-                ",".join(t.generators), build_ctx or GeneratorBuildContext(),
-                owned_root=config.config_dir)
+                ",".join(t.generators), ctx, owned_root=config.config_dir)
             if gen_errors:
                 errors.extend(f"target '{t.name}': {m}" for m in gen_errors)
                 continue

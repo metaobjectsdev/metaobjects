@@ -122,7 +122,12 @@ class RequirementScan:
     coverable: Callable[[str], bool] | None = None
 
 
-def _effective_package(req: MetaRequirement) -> str:
+def effective_package(req: MetaRequirement) -> str:
+    """A requirement's effective package (contract Table A): the one it declares, else the
+    one the loader carried down from the nearest enclosing node that declares one, else its
+    file's default, else ``""``. Public because the requirement-test identity function must
+    use this ONE answer, not a second copy of it: it is also the referrer package every
+    ``@implementedBy`` reference binds in."""
     return req.package or req.file_default_package or ""
 
 
@@ -156,7 +161,7 @@ def _resolve_requirement_ref(
     bare path (first one wins, so a bare path ambiguous across packages still binds)."""
     keyed: dict[str, MetaRequirement] = {}
     for item in addressed:
-        pkg = _effective_package(item.node)
+        pkg = effective_package(item.node)
         if pkg != "":
             keyed[f"{pkg}::{item.path}"] = item.node
         if item.path not in keyed:
@@ -218,7 +223,7 @@ def _project_authored_requirements(addressed: list[AddressedRequirement]) -> boo
     differs between a checkout and an installed wheel. An adopter OVERLAYING a library
     requirement stays in the library's package and is deliberately not authoring one."""
     lib_pkgs = library_packages()
-    return any(_effective_package(item.node) not in lib_pkgs for item in addressed)
+    return any(effective_package(item.node) not in lib_pkgs for item in addressed)
 
 
 def _claimed_object_keys(root: MetaData, reqs: list[MetaRequirement]) -> frozenset[str]:
@@ -230,7 +235,7 @@ def _claimed_object_keys(root: MetaData, reqs: list[MetaRequirement]) -> frozens
         # to clear an unclaimed-entity warning would be to declare an intention.
         if req.is_planned():
             continue
-        referrer_pkg = _effective_package(req)
+        referrer_pkg = effective_package(req)
         for ref in req.implemented_by():
             owner, path = split_member_ref(ref)
             node = resolve_claim_target(root, owner, referrer_pkg)
@@ -354,7 +359,7 @@ def check_requirements(root: MetaData, scan: RequirementScan | None = None) -> l
 
         for ref in refs:
             owner, path = split_member_ref(ref)
-            referrer_pkg = _effective_package(req)
+            referrer_pkg = effective_package(req)
             node = resolve_claim_target(root, owner, referrer_pkg)
             is_object_ref = not path
 
@@ -403,7 +408,7 @@ def check_requirements(root: MetaData, scan: RequirementScan | None = None) -> l
         # package-locally under ADR-0042 through the requirement's own effective package.
         superseded = req.superseded_by()
         if superseded is not None:
-            if _resolve_requirement_ref(scan.addressed, superseded, _effective_package(req)) is None:
+            if _resolve_requirement_ref(scan.addressed, superseded, effective_package(req)) is None:
                 out.append(
                     Diagnostic(
                         SEVERITY_ERROR,

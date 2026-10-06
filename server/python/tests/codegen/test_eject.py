@@ -143,3 +143,63 @@ def test_bad_owned_token_is_a_clear_error(tmp_path: Path, monkeypatch, capsys, t
     monkeypatch.chdir(tmp_path)
     assert main(["gen"]) != 0
     assert token.split(":")[0] in capsys.readouterr().err
+
+
+WORKED_EXAMPLE = Path(__file__).parents[4] / "fixtures" / "requirement-test-identity-conformance" / "worked-example"
+_REQUIREMENT_BLOCK = "requirementTests:\n  witnessModule: app.witnesses\n  grain: member\n  warnUncovered: false\n"
+
+
+def _requirement_project(root: Path, generators: str) -> Path:
+    (root / "metaobjects").mkdir()
+    for doc in sorted((WORKED_EXAMPLE / "input").iterdir()):
+        (root / "metaobjects" / doc.name).write_text(doc.read_text(encoding="utf-8"), encoding="utf-8")
+    cfg = root / "metaobjects.config.yaml"
+    cfg.write_text(
+        f"{_REQUIREMENT_BLOCK}targets:\n  main:\n    outDir: gen\n    generators: [{generators}]\n",
+        encoding="utf-8",
+    )
+    return cfg
+
+
+def test_an_unchanged_ejected_requirement_tests_copy_generates_identical_output(
+    tmp_path: Path, monkeypatch
+) -> None:
+    packaged = tmp_path / "packaged"
+    packaged.mkdir()
+    _requirement_project(packaged, "requirement-tests")
+    monkeypatch.chdir(packaged)
+    assert main(["gen"]) == 0
+
+    owned = tmp_path / "owned"
+    owned.mkdir()
+    _requirement_project(owned, "codegen.generators.requirement_tests:requirement_tests_generator")
+    monkeypatch.chdir(owned)
+    assert main(["eject", "requirement-tests"]) == 0
+    assert (owned / "codegen" / "generators" / "requirement_tests.py").read_text(encoding="utf-8") == (
+        _packaged_source("requirement-tests")
+    )
+    assert main(["gen"]) == 0
+
+    a = {p.relative_to(packaged / "gen"): p.read_bytes() for p in (packaged / "gen").rglob("*.py")}
+    b = {p.relative_to(owned / "gen"): p.read_bytes() for p in (owned / "gen").rglob("*.py")}
+    assert a and a == b
+    # The NON-default block is what proves the owned copy still reads its options.
+    text = a[Path("requirements/test_acme_shop_requirements.py")].decode("utf-8")
+    assert '_WITNESS_MODULE = "app.witnesses"' in text
+    assert "def test_req_acme_shop_Orders_Recorded__Order():" in text  # grain: member
+    assert main(["verify", "--codegen"]) == 0
+
+
+def test_an_edited_ejected_requirement_tests_copy_drives_gen(tmp_path: Path, monkeypatch) -> None:
+    _requirement_project(tmp_path, "codegen.generators.requirement_tests:requirement_tests_generator")
+    monkeypatch.chdir(tmp_path)
+    assert main(["eject", "requirement-tests"]) == 0
+    copy = tmp_path / "codegen" / "generators" / "requirement_tests.py"
+    source = copy.read_text(encoding="utf-8")
+    assert source.count('"unimplemented requirement: "') == 1
+    copy.write_text(
+        source.replace('"unimplemented requirement: "', '"NOT YET WITNESSED: "'), encoding="utf-8"
+    )
+    assert main(["gen"]) == 0
+    text = (tmp_path / "gen" / "requirements" / "test_acme_shop_requirements.py").read_text(encoding="utf-8")
+    assert "NOT YET WITNESSED: " in text and "unimplemented requirement" not in text
