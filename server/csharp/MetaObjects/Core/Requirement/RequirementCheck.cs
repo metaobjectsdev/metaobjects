@@ -20,6 +20,7 @@
 // What a clean run proves is referential integrity. It never proves that a status is true,
 // or that a claimed node implements the requirement claiming it.
 
+using System.Globalization;
 using MetaObjects.Library;
 using MetaObjects.Meta;
 
@@ -125,13 +126,15 @@ public static class RequirementCheck
     /// </summary>
     /// <remarks>
     /// Read through <see cref="NamingRefs.EffectivePackage"/>, which cuts the node's
-    /// <see cref="MetaData.ResolutionKey"/>. For a NESTED node that is right, because the C#
-    /// parser hands every child the package of the nearest enclosing declaring node as its
-    /// file-default (<c>Parser.ParseNodeFresh</c>), so a child of a package-declaring
-    /// requirement takes the parent's package. The one case it answers differently from the
-    /// specification is a package-less document loaded after a packaged one: the loader carries
-    /// the accumulating root's (first file's) package down to it, as the TypeScript loader does.
-    /// No corpus case has such a model.
+    /// <see cref="MetaData.ResolutionKey"/>: its own package, else its file-default package, else the
+    /// package of the nearest ancestor that declares one. That is Table A's wording, and it is what
+    /// the Java port does. It agrees with TypeScript on every shape the corpus pins (a nested
+    /// requirement takes its parent's package, not the file's, because the C# parser hands each
+    /// child the nearest declaring node's package as its file-default) and on a package-less
+    /// document loaded after a packaged one (both parsers fall back to the accumulating root's
+    /// package). It differs in one known shape: a child merged into a package-declaring node from a
+    /// package-less document. C# takes the declaring ancestor's package; TypeScript takes none.
+    /// That is a loader-level difference outside the gate, recorded for the owner.
     /// </remarks>
     public static string EffectivePackage(MetaData node) => NamingRefs.EffectivePackage(node);
 
@@ -306,7 +309,8 @@ public static class RequirementCheck
         foreach (var (req, reqPath) in scan.Addressed)
         {
             var architectural = req.IsArchitectural();
-            var level = req.Level;
+            // The number as authored: an integer beyond `int` must be reported as itself, not wrapped.
+            var level = req.RawLevel;
             var refs = req.ImplementedBy;
 
             // -- the level rules ------------------------------------------------------------
@@ -317,8 +321,8 @@ public static class RequirementCheck
             {
                 if (level is null || level < REQUIREMENT_MIN_LEVEL || level > REQUIREMENT_MAX_LEVEL)
                 {
-                    output.Add(Error(ERR_REQUIREMENT_BAD_LEVEL, reqPath,
-                        $"level must be an integer {REQUIREMENT_MIN_LEVEL}-{REQUIREMENT_MAX_LEVEL} (got {Show(level)}). " +
+                    output.Add(Error(ERR_REQUIREMENT_BAD_LEVEL, reqPath, Invariant(
+                        $"level must be an integer {REQUIREMENT_MIN_LEVEL}-{REQUIREMENT_MAX_LEVEL} (got {Show(level)}). ") +
                         "L1 solution, L2 segment (app/library), L3 service, L4 object, L5 member." +
                         (architectural
                             ? " On an architectural requirement the level is optional — omit it for a flat policy."
@@ -327,11 +331,11 @@ public static class RequirementCheck
                 // Nesting IS the hierarchy, so a child must sit strictly below its parent.
                 if (req.Parent is { Type: TYPE_REQUIREMENT } parent)
                 {
-                    var parentLevel = ((MetaRequirement)parent).Level;
+                    var parentLevel = ((MetaRequirement)parent).RawLevel;
                     if (parentLevel is not null && level is not null && level <= parentLevel)
                     {
-                        output.Add(Error(ERR_REQUIREMENT_LEVEL_NESTING, reqPath,
-                            $"nested under \"{parent.Name}\" (level {parentLevel}) but declares level {level}. " +
+                        output.Add(Error(ERR_REQUIREMENT_LEVEL_NESTING, reqPath, Invariant(
+                            $"nested under \"{parent.Name}\" (level {parentLevel}) but declares level {level}. ") +
                             "Nesting is the hierarchy — a child sits strictly below its parent."));
                     }
                 }
@@ -480,7 +484,15 @@ public static class RequirementCheck
         new(SeverityWarn, code, path, message);
 
     /// <summary>The reference prints a missing value as <c>undefined</c>.</summary>
-    private static string Show(object? value) => value?.ToString() ?? "undefined";
+    private static string Show(object? value) => value switch
+    {
+        null => "undefined",
+        // Invariant: a message is bytes the other ports reproduce, whatever the machine's culture.
+        IFormattable f => f.ToString(null, CultureInfo.InvariantCulture),
+        _ => value.ToString() ?? "undefined",
+    };
+
+    private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>
     /// Names the FIRST segment of a non-empty, unresolvable <paramref name="path"/> under

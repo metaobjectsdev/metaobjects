@@ -157,7 +157,30 @@ public sealed class VerifyRequirementsTests : IDisposable
     }
 
     [Fact]
-    public void The_gate_runs_whichever_gate_was_selected_and_ignores_no_field_lint()
+    public void The_gate_runs_under_codegen_alone_and_its_errors_reach_the_exit_code()
+    {
+        // `--codegen` with no generators selected is clean on its own (exit 0), so the exit code here
+        // is the requirement gate's. The templates gate does not run at all.
+        var args = Project(Requirement("Recorded", "live", "Refund"));
+        var model = args[1];
+        var codegenArgs = new[] { "verify", model, "--codegen", "--out", Path.Combine(_tmp, "out") };
+
+        var (exitCode, stdout, stderr) = CliProcess.Run(_tmp, codegenArgs);
+
+        Assert.True(exitCode == 1, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
+        Assert.DoesNotContain("--templates", stdout);
+        Assert.Contains("ERR_REQUIREMENT_DANGLING_REF [Recorded]", stderr);
+        Assert.Contains("dotnet meta verify — requirements: 1 error(s).", stderr);
+
+        // The same selection over a model whose only findings are warnings stays at exit 0.
+        File.WriteAllText(Path.Combine(model, "meta.shop.yaml"), Order + Requirement("Recorded", "live", implementedBy: null));
+        var (warnExit, _, warnErr) = CliProcess.Run(_tmp, codegenArgs);
+        Assert.Equal(0, warnExit);
+        Assert.Contains("  WARN_REQUIREMENT_NOTHING_IMPLEMENTS [Recorded]: ", warnErr);
+    }
+
+    [Fact]
+    public void The_gate_ignores_no_field_lint()
     {
         var (exitCode, _, stderr) = CliProcess.Run(_tmp,
             Project(Requirement("Recorded", "live", "Refund"), "--no-field-lint"));

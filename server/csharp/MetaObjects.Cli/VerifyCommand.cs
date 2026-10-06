@@ -14,6 +14,7 @@
 //
 // Runs at the last fixed point before serve, never on the request path.
 
+using System.Globalization;
 using System.Text.Json;
 using MetaObjects.Codegen;
 using MetaObjects.Core.Requirement;
@@ -274,8 +275,8 @@ public static class VerifyCommand
         output.WriteLine(RequirementPrefix + SummaryText(summary, files));
         if (summary.Undecided > 0)
         {
-            output.WriteLine(RequirementPrefix +
-                $"{summary.Undecided} recorded gap(s) with no @disposition. These are known problems nobody has " +
+            output.WriteLine(RequirementPrefix + string.Create(CultureInfo.InvariantCulture,
+                $"{summary.Undecided} recorded gap(s) with no @disposition. These are known problems nobody has ") +
                 "ruled on — set 'accepted' or 'deferred' to close the question.");
         }
 
@@ -286,7 +287,7 @@ public static class VerifyCommand
         foreach (var d in warnings) output.WriteLine(FormatRequirementDiagnostic(d));
         if (errors.Count == 0) return 0;
 
-        output.WriteLine(RequirementPrefix + $"{errors.Count} error(s).");
+        output.WriteLine(RequirementPrefix + string.Create(CultureInfo.InvariantCulture, $"{errors.Count} error(s)."));
         return 1;
     }
 
@@ -295,13 +296,14 @@ public static class VerifyCommand
     {
         var statuses = string.Join(", ", REQUIREMENT_STATUSES
             .Where(s => summary.ByStatus.GetValueOrDefault(s) > 0)
-            .Select(s => $"{summary.ByStatus[s]} {s}"));
+            .Select(s => string.Create(CultureInfo.InvariantCulture, $"{summary.ByStatus[s]} {s}")));
         var coverage = summary.EntitiesTotal is null
             // The absence of the ratio is the statement that the project authored no requirement of its own.
             ? "coverage: not measured (no project-authored requirements)."
             // The file count is the denominator's provenance: the total is only ever taken over what loaded.
-            : $"{summary.EntitiesClaimed}/{summary.EntitiesTotal} entities claimed, counted over {files} metadata file(s).";
-        return $"{summary.Total} entries ({summary.Functional} functional, {summary.Architectural} architectural) — " +
+            : string.Create(CultureInfo.InvariantCulture, $"{summary.EntitiesClaimed}/{summary.EntitiesTotal} entities claimed, counted over {files} metadata file(s).");
+        return string.Create(CultureInfo.InvariantCulture,
+                   $"{summary.Total} entries ({summary.Functional} functional, {summary.Architectural} architectural) — ") +
                $"{statuses}; {coverage}";
     }
 

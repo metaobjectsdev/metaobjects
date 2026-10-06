@@ -26,20 +26,27 @@ public class MetaRequirement(TypeId typeId, string name) : MetaData(typeId, name
     /// present opts the node into a levelled tree (e.g. a quality taxonomy).
     /// ADR-0039: resolving — @level may be inherited via extends.
     /// </summary>
-    public int? Level
+    public int? Level => RawLevel switch
     {
-        get
+        // Saturating, never wrapping: an out-of-range integer must not read as a valid level.
+        // Callers that need the number as authored (the gate's message) read RawLevel.
+        long l => (int)Math.Clamp(l, int.MinValue, int.MaxValue),
+        _ => null,
+    };
+
+    /// <summary>
+    /// <c>@level</c> as authored, without narrowing: the number a diagnostic must print, and the one
+    /// range checks compare, so a value beyond <c>int</c> is reported as itself.
+    /// ADR-0039: resolving — @level may be inherited via extends.
+    /// </summary>
+    public long? RawLevel =>
+        // An `int`-typed attr arrives as long OR int (ValueMatchesType accepts both).
+        Attr(REQUIREMENT_ATTR_LEVEL) switch
         {
-            // An `int`-typed attr arrives as long OR int (ValueMatchesType accepts both).
-            var v = Attr(REQUIREMENT_ATTR_LEVEL);
-            return v switch
-            {
-                int i => i,
-                long l => (int)l,
-                _ => null,
-            };
-        }
-    }
+            int i => i,
+            long l => l,
+            _ => null,
+        };
 
     /// <summary>
     /// The lifecycle status (a closed enum: planned / live / partial).
