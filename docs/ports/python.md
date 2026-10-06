@@ -437,6 +437,20 @@ name_field = [f for f in author.children() if f.name == "name"][0]
 print(name_field.get_meta_attr("maxLength"))   # -> 200
 ```
 
+To ask which package a node is in, call `effective_package()`. The `package` attribute holds
+only a package the node declares itself, so it is `None` on an object that inherits its
+file's root package:
+
+```python
+author.package              # -> None (declared no package of its own)
+author.effective_package()  # -> "myapp::library"
+author.resolution_key()     # -> "myapp::library::Author"
+```
+
+A `::`-relative package (`"package": "::parts"`) is expanded when the file is parsed, against
+that file's root package, so `package` on such a node is already the full
+`beta::other::parts`.
+
 ### Run-time validation
 
 `run_validators` checks a data mapping against an entity's metadata, with no generated

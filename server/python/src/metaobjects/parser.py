@@ -18,7 +18,7 @@ from .shared.base_types import (
     TYPE_METADATA,
     TYPE_OBJECT,
 )
-from .shared.separators import ATTR_PREFIX, FUSED_KEY_SEP
+from .shared.separators import ATTR_PREFIX, FUSED_KEY_SEP, PACKAGE_SEP
 from .shared.structural import (
     KEY_ABSTRACT,
     KEY_CHILDREN,
@@ -284,6 +284,18 @@ def _abstract_subtype_message(type_: str) -> str:
     )
 
 
+def expand_package_for_path(base_pkg: str, pkg_path: str) -> str:
+    """Expand a ``::``-relative package against *base_pkg*; anything else is as-is.
+
+    ``("acme", "::parts")`` is ``"acme::parts"``. Mirrors TS ``expandPackageForPath``,
+    and is shared with the raw-file walk in ``field_lint`` so the two cannot disagree
+    on the address of a node that declares a relative package.
+    """
+    if base_pkg.strip() == "" or not pkg_path.startswith(PACKAGE_SEP):
+        return pkg_path
+    return base_pkg + pkg_path
+
+
 def _build(
     wrapper: str,
     body: object,
@@ -395,6 +407,11 @@ def _build(
     node.set_source(_current_envelope(source, builder, yaml_position))
 
     pkg = body_dict.get(KEY_PACKAGE)
+    if isinstance(pkg, str):
+        # A ``::``-relative package is expanded HERE, against the declaring file's
+        # context package — never later against the merged root, whose package is
+        # the first file's. Mirrors TS ``applyReservedKeys``.
+        pkg = expand_package_for_path(ctx_pkg, pkg)
     # Capture the file-default package at PARSE time so cross-package
     # fully-qualified ``extends`` resolves over the MERGED tree (where per-file
     # root packages are no longer reachable via the parent chain). The node's

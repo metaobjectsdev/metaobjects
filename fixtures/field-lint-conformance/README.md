@@ -32,9 +32,8 @@ A runner does three things, in this order:
    `(code, path, message)`.
 
 `path` is the declaring object's resolution key (`<package>::<name>`), a dot, then the
-identity name or the field name. In Python, for a multi-file collection whose roots declare
-different packages, the address printed for a `::`-relative package is expanded against the
-merged root's package and can differ from the other ports.
+identity name or the field name. A `::`-relative package is expanded against the declaring
+file's root package in every port (`reference-field-missing-multi-root-package`).
 
 ## The two halves read different things
 

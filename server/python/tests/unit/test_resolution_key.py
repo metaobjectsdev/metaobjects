@@ -69,3 +69,16 @@ def test_resolution_key_file_default_beats_ancestor_walk() -> None:
 def test_resolution_key_bare_name_when_no_package_anywhere() -> None:
     n = _Node("object", "entity", "Person")
     assert n.resolution_key() == "Person"
+
+
+def test_effective_package_is_file_default_when_own_unset() -> None:
+    """``package`` is None on an object that inherits its file's root package;
+    ``effective_package()`` is the accessor that answers "which package"."""
+    n = _Node("object", "entity", "Person")
+    n.file_default_package = "com::example::om"
+    assert n.package is None
+    assert n.effective_package() == "com::example::om"
+
+
+def test_effective_package_is_empty_without_any_package() -> None:
+    assert _Node("object", "entity", "Person").effective_package() == ""

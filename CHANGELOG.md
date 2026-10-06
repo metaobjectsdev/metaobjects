@@ -146,6 +146,21 @@ it until 1.1 ships._
   used to split it on commas, which left stray quotes in the items; TypeScript and Python
   already kept it whole. All three now agree, so a Java model that relied on the split (a
   comma-separated string where a list belongs) now reads one item, as the other ports always did.
+- **Python: a `::`-relative package is expanded against the declaring file's root package.**
+  An object that declares `"package": "::parts"` in a file whose root package is `beta::other`
+  now loads as `beta::other::parts`, the same as in TypeScript, C# and Java. The Python parser
+  used to keep the raw `::parts`, and the code that expanded it later used the merged root's
+  package, which is the first file's. The result differed only in a multi-file collection
+  whose files declare different root packages: there the node's `package`, its
+  `resolution_key()`, its canonical JSON and the address in a `metaobjects verify` field-lint
+  warning now carry the declaring file's package (`beta::other::parts::Gadget`, not
+  `acme::app::parts::Gadget`). Everything that loaded before still loads. A node's `package`
+  now holds the expanded form in a single-file model too, where it held `::parts` before.
+  Gated by the new `loader-relative-package-multi-root` conformance fixture and
+  `reference-field-missing-multi-root-package` in `fixtures/field-lint-conformance/`.
+- **Python: `MetaData.effective_package()`** returns the package a node resolves under, where
+  `package` is `None` for an object that inherits its file's root package. See
+  `docs/ports/python.md`, "Use".
 - **Python: the `@filter` desugar now matches TypeScript.** It recurses into `and` / `or`;
   previously it turned each list into an `in` clause on a field named `and` or `or`, so the
   clauses inside a composition were never checked. A dangling field reference inside an `or`
