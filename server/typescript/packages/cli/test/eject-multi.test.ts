@@ -91,6 +91,29 @@ describe("meta eject takes many names", () => {
     }
   });
 
+  test("requirement-tests ejects — it ships a reference template", async () => {
+    // It used to answer `package-only`: the registry listed it and no template existed.
+    const dir = tmp();
+    try {
+      expect(await ejectCommand(["requirement-tests"], dir, "json")).toBe(0);
+      expect(erred.join("\n")).not.toContain("package-only");
+      const copy = join(dir, "codegen/generators/requirement-tests.ts");
+      expect(existsSync(copy)).toBe(true);
+      // One eject hands over the generator AND the default stub renderer.
+      const source = readFileSync(copy, "utf8");
+      expect(source).toContain("export function requirementTests(");
+      expect(source).toContain("export function renderRequirementTest(");
+      const [row] = payload().ejected;
+      expect(row?.status).toBe("created");
+      expect(row?.wire.entry).toBe("requirementTests()");
+      expect(row?.wire.import).toBe(
+        'import { requirementTests } from "./codegen/generators/requirement-tests.js";',
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("a repeated name is a usage error, not a silent second write", async () => {
     const dir = tmp();
     try {

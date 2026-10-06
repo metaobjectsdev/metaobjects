@@ -400,7 +400,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Per-requirement test stub, one per requirement.functional claim in the ledger.",
     tier: "native",
     factory: () => requirementTests(),
-    options: "filter?, target?",
+    options: "filter?, grain?, target?",
     ejectable: ejectable("requirement-tests"),
   },
   "shared-model": {

@@ -15,6 +15,7 @@ describe("reference-templates reader", () => {
     expect([...REFERENCE_GENERATOR_NAMES]).toEqual([
       "entity", "queries", "routes", "routes-hono", "barrel", "names",
       "prompt-render", "output-parser", "extractor", "output-prompt", "render-helper",
+      "requirement-tests",
     ]);
   });
 

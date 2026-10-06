@@ -29,7 +29,10 @@ import { outputParser as refOutputParser } from "../src/reference/output-parser.
 import { extractor as refExtractor } from "../src/reference/extractor.js";
 import { outputPrompt as refOutputPrompt } from "../src/reference/output-prompt.js";
 import { renderHelper as refRenderHelper } from "../src/reference/render-helper.js";
-import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { requirementTests as builtinRequirementTests } from "../src/generators/requirement-tests.js";
+import { requirementTests as refRequirementTests } from "../src/reference/requirement-tests.js";
+import type { RequirementTestsOpts } from "../src/index.js";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 
 const FIXTURE_DIR = resolve(import.meta.dir, "fixtures");
@@ -114,6 +117,7 @@ const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () 
   extractor: { builtin: builtinExtractor, ref: refExtractor },
   "output-prompt": { builtin: builtinOutputPrompt, ref: refOutputPrompt },
   "render-helper": { builtin: builtinRenderHelper, ref: refRenderHelper },
+  "requirement-tests": { builtin: builtinRequirementTests, ref: refRequirementTests },
 };
 
 // The prompt tier emits nothing for the entity-shaped fixtures above — none declares a
@@ -294,6 +298,163 @@ describe("ADR-0034 — the prompt-tier reference templates over corpora that dec
         rmSync(bDir, { recursive: true, force: true });
         rmSync(projectRoot, { recursive: true, force: true });
       }
+    });
+  }
+});
+
+// The requirement-test reference is the one template that carries a RENDERER as well as a
+// generator: an eject copies one file, and the stub text is what an application is most
+// likely to change, so both live in it. That makes the copy larger than its siblings —
+// every status branch, both escaping paths, the gap line, the uncovered warning — and no
+// fixture above declares a requirement, so each of those would be compared over two empty
+// sets. This ledger reaches every one of them.
+const REQUIREMENT_LEDGER = {
+  "metadata.root": {
+    package: "acme::shop",
+    children: [
+      {
+        "object.entity": {
+          name: "Order",
+          children: [
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "note" } },
+            { "field.string": { name: "memo" } },
+            { "source.rdb": { "@table": "orders" } },
+            { "identity.primary": { name: "pk", "@fields": ["id"] } },
+          ],
+        },
+      },
+      {
+        "requirement.functional": {
+          name: "Orders",
+          "@level": 3,
+          "@status": "live",
+          "@statement": "Orders are taken.",
+          "@counterexample": "an order nobody can place",
+          children: [
+            {
+              // L4, live, claiming the entity twice over — bare and package-qualified.
+              "requirement.functional": {
+                name: "Recorded",
+                "@level": 4,
+                "@status": "live",
+                "@statement": "An order is recorded when it is placed.",
+                "@counterexample": "A placed order has no row.",
+                "@implementedBy": ["Order", "acme::shop::Order"],
+                children: [
+                  {
+                    // L5, partial with a tracked gap, two members of ONE concern, and
+                    // prose that must be escaped in a string literal and in a comment.
+                    "requirement.functional": {
+                      name: "Annotated",
+                      "@level": 5,
+                      "@status": "partial",
+                      "@disposition": "deferred",
+                      "@trackedBy": ["#12", "a */ tracker"],
+                      "@statement": "The note is kept \"verbatim\" */ as typed.\nOn every order.",
+                      "@counterexample": "a note with a \\ dropped\r\nor a \"tidied\" one",
+                      "@implementedBy": ["Order.note", "Order.memo"],
+                    },
+                  },
+                ],
+              },
+            },
+            {
+              // Planned: skipped, and naming a node that does not exist yet.
+              "requirement.functional": {
+                name: "Refunded",
+                "@level": 4,
+                "@status": "planned",
+                "@statement": "A refund is recorded against its order.",
+                "@counterexample": "A refund with no order.",
+                "@implementedBy": ["Refund"],
+              },
+            },
+            {
+              // Retired: skipped, with its own body.
+              "requirement.functional": {
+                name: "Faxed",
+                "@level": 4,
+                "@status": "retired",
+                "@statement": "An order can be faxed in.",
+                "@counterexample": "a fax line that answers",
+              },
+            },
+            {
+              // Live with no targets at all.
+              "requirement.functional": {
+                name: "Acknowledged",
+                "@level": 4,
+                "@status": "live",
+                "@statement": "An order is acknowledged.",
+                "@counterexample": "a silent checkout",
+              },
+            },
+          ],
+        },
+      },
+      {
+        "requirement.architectural": {
+          name: "Audited",
+          "@status": "live",
+          "@statement": "Every entity is audited.",
+          "@counterexample": "an entity with no audit trail",
+          "@implementedBy": ["Order"],
+        },
+      },
+    ],
+  },
+};
+
+describe("ADR-0034 — the requirement-tests reference over a ledger that declares requirements", () => {
+  const RUNS: ReadonlyArray<{ label: string; opts: RequirementTestsOpts; files: number }> = [
+    // Recorded, Annotated, Refunded, Faxed, Acknowledged — one concern each.
+    { label: "the defaults", opts: {}, files: 5 },
+    // Every requirement (the L3 parent and the architectural policy included), one stub
+    // per reference: Orders 1, Recorded 2, Annotated 2, Refunded 1, Faxed 1,
+    // Acknowledged 1, Audited 1.
+    { label: 'grain: "member" under a filter that keeps everything', opts: { grain: "member", filter: () => true }, files: 9 },
+    // A filter that drops requirements while the warning is on, in the default grain.
+    { label: "a filter by package and status", opts: { filter: (r) => r.package === "acme::shop" && r.status !== "retired" }, files: 6 },
+    { label: "the uncovered warning switched off", opts: { warnUncovered: false }, files: 5 },
+  ];
+
+  for (const run of RUNS) {
+    test(run.label, async () => {
+      const loaded = await new MetaDataLoader().load([
+        new InMemoryStringSource(JSON.stringify(REQUIREMENT_LEDGER)),
+      ]);
+      expect(loaded.errors).toEqual([]);
+
+      const emit = async (generator: Generator) => {
+        const dir = mkdtempSync(join(tmpdir(), "codegen-req-"));
+        try {
+          const result = await runGen({
+            config: defineConfig({ outDir: join(dir, "out"), extStyle: "none", dbImport: "~/server/db", dialect: "sqlite", generators: [generator] }),
+            metadata: loaded.root,
+            projectRoot: dir,
+          });
+          const files: Record<string, string> = {};
+          for (const f of readdirSync(join(dir, "out"), { recursive: true, withFileTypes: true })) {
+            if (!f.isFile()) continue;
+            const abs = join(f.parentPath, f.name);
+            files[abs.slice(join(dir, "out").length + 1)] = readFileSync(abs, "utf-8");
+          }
+          return { files, warnings: result.warnings };
+        } finally {
+          rmSync(dir, { recursive: true, force: true });
+        }
+      };
+
+      const a = await emit(builtinRequirementTests(run.opts));
+      const b = await emit(refRequirementTests(run.opts));
+      const aKeys = Object.keys(a.files).sort();
+      // A gate over an empty emit passes trivially.
+      expect(aKeys.length).toBe(run.files);
+      expect(Object.keys(b.files).sort()).toEqual(aKeys);
+      for (const k of aKeys) expect(`${k}:\n${b.files[k]}`).toBe(`${k}:\n${a.files[k]}`);
+      // The warning text is duplicated in the copy too, so it is compared too.
+      expect(b.warnings).toEqual(a.warnings);
     });
   }
 });
