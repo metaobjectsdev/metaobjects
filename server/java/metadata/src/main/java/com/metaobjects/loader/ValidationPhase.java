@@ -4214,8 +4214,12 @@ public final class ValidationPhase {
 
     /** ADR-0042 §5 — a did-you-mean suffix for an UNRESOLVED object reference: the FQNs of
      *  same-short-name objects that DO exist (typically in other packages). Returns "" when
-     *  none exist. Mirrors the TS {@code didYouMeanHint}. */
-    private static String didYouMeanHint(MetaRoot root, String ref) {
+     *  none exist. Mirrors the TS {@code didYouMeanHint}.
+     *
+     *  <p>Public because it is the ONE builder of this hint: the requirement gate
+     *  ({@code RequirementCheck}) appends the same text to a dangling claim, and a second copy
+     *  would be a second wording to keep in step with TypeScript.</p> */
+    public static String didYouMeanHint(MetaRoot root, String ref) {
         if (ref == null) return "";
         int sep = ref.lastIndexOf(MetaData.PKG_SEPARATOR);
         String shortName = (sep >= 0) ? ref.substring(sep + MetaData.PKG_SEPARATOR.length()) : ref;

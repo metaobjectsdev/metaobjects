@@ -140,3 +140,5 @@ it is wrong, unless the reference is shown to be wrong first.
 | Port | Runner |
 |---|---|
 | TypeScript (reference) | `server/typescript/packages/cli/test/requirement-check-conformance.test.ts` |
+| Java | `server/java/metadata/src/test/java/com/metaobjects/conformance/RequirementCheckConformanceTest.java` |
+| Kotlin | inherits via Java: Kotlin has no CLI of its own and runs `verify` through the same Maven `metaobjects:verify` goal |

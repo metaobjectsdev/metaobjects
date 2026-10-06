@@ -278,6 +278,23 @@ public abstract class MetaRequirement extends MetaData {
         return stringList(ATTR_TRACKED_BY);
     }
 
+    /**
+     * The requirement that REPLACED this one (FR-039), or {@code null} when absent or blank.
+     * Legal on {@link #STATUS_RETIRED} only; {@code verify} resolves it against the ledger.
+     */
+    public String getSupersededBy() {
+        if (!hasMetaAttr(ATTR_SUPERSEDED_BY)) {
+            return null;
+        }
+        String value = getMetaAttr(ATTR_SUPERSEDED_BY).getValueAsString();
+        return value == null || value.trim().isEmpty() ? null : value;
+    }
+
+    /** Built, then deliberately removed -- exempt from the checks that assume a built thing. */
+    public boolean isRetired() {
+        return STATUS_RETIRED.equals(getStatus());
+    }
+
     /** Intended but not built -- exempt from the checks that assume a built thing. */
     public boolean isPlanned() {
         return STATUS_PLANNED.equals(getStatus());

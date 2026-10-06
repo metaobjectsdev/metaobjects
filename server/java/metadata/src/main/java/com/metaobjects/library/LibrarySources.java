@@ -113,6 +113,28 @@ public final class LibrarySources {
         return out;
     }
 
+    /**
+     * The package names the shipped libraries declare, across every embedded manifest
+     * ({@code "packages"}), e.g. {@code metaobjects::iam} and {@code metaobjects::ai}.
+     *
+     * <p>The provenance key for requirement-coverage activation (FR-043 &sect;5.4): a
+     * requirement whose package is NOT in this set was authored by the adopter. Read from the
+     * manifests, hand-parsed for the reason {@link #parseLayers} is, and never regenerated.</p>
+     *
+     * @return the declared package names, sorted
+     */
+    public static java.util.Set<String> libraryPackages() {
+        java.util.Set<String> out = new TreeSet<>();
+        for (String manifest : EmbeddedLibrary.MANIFESTS.values()) {
+            java.util.regex.Matcher block = java.util.regex.Pattern
+                .compile("\"packages\"\\s*:\\s*\\[([^\\]]*)\\]").matcher(manifest);
+            if (!block.find()) continue;
+            java.util.regex.Matcher pkg = java.util.regex.Pattern.compile("\"([^\"]+)\"").matcher(block.group(1));
+            while (pkg.find()) out.add(pkg.group(1));
+        }
+        return out;
+    }
+
     /** One {@code "key": "value"} string field out of a flat JSON object body. */
     private static String manifestField(String objectBody, String key) {
         java.util.regex.Matcher m = java.util.regex.Pattern
