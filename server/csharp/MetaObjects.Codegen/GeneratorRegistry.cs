@@ -254,6 +254,22 @@ public static class GeneratorRegistry
                 Factory = _ => new CallableGenerator(),
                 SourceFileName = "CallableGenerator.cs",
             },
+            // ADR-0057 — one xUnit test per declared requirement, calling a project-owned witness.
+            // Its six options (TestNamespace, WitnessClass, Grain, Filter, Renderer, WarnUncovered) are
+            // public init properties: this port has no per-generator option channel, and a project sets
+            // them where it constructs the generator (its owned codegen/Program.cs). With none set, a
+            // run derives the namespace and witness class name from the run namespace.
+            ["requirement-tests"] = new()
+            {
+                Name = "requirement-tests",
+                Description = "Per-package xUnit tests, one per requirement, calling a project-owned witness class through a generated interface.",
+                Tier = GeneratorTier.Native,
+                Layer = GeneratorLayer.Capability,
+                Factory = _ => new RequirementTestsGenerator(),
+                Options = "TestNamespace, WitnessClass, Grain, Filter, Renderer, WarnUncovered (properties on the generator, set in an owned codegen/Program.cs; none needed)",
+                Note = "Writes nothing for a model with no requirement. The project class named by WitnessClass must exist for the tests to compile.",
+                SourceFileName = "RequirementTestsGenerator.cs",
+            },
         };
 
     /// <summary>All entries, native first then neutral, alphabetical within tier.</summary>

@@ -47,7 +47,7 @@ public sealed class GenListAndSelectionTests : IDisposable
     public void ListLines_prints_all_generators_with_stable_names_and_descriptions()
     {
         var lines = GenCommand.ListLines(_tmp);
-        Assert.Equal(11, lines.Count);
+        Assert.Equal(12, lines.Count);
         foreach (var name in new[]
         {
             "entity", "db-context", "routes", "output-parser", "extractor",
@@ -56,6 +56,8 @@ public sealed class GenListAndSelectionTests : IDisposable
             "callable",
             // Program A / §A5 — per-object physical database name constants.
             "names",
+            // ADR-0057 — per-requirement xUnit tests calling a project-owned witness.
+            "requirement-tests",
         })
         {
             Assert.Contains(lines, l => l.Contains($" {name} —"));

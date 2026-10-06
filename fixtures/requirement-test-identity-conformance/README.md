@@ -214,3 +214,4 @@ function in each port: the address `acme::shop::Café.Réglé` with unit `*` giv
 | Java | `server/java/metadata/src/test/java/com/metaobjects/conformance/RequirementTestIdentityConformanceTest.java` |
 | Kotlin | identity function inherits via Java; emitted names asserted by `server/java/codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/KotlinRequirementTestsGeneratorTest.kt` |
 | Python | `server/python/tests/conformance/test_requirement_test_identity_conformance.py` |
+| C# | `server/csharp/MetaObjects.Conformance.Tests/RequirementTestIdentityConformanceTests.cs` |

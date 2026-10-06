@@ -67,6 +67,19 @@ public class EjectableGeneratorsTests
     }
 
     [Fact]
+    public void Requirement_tests_is_ejectable_and_its_source_is_one_file_in_the_packaged_namespace()
+    {
+        var entry = Assert.Single(EjectableGenerators.Entries(), e => e.Name == "requirement-tests");
+        Assert.Equal("RequirementTestsGenerator.cs", entry.SourceFileName);
+        var source = EjectableGenerators.ReadSource("requirement-tests")!;
+        Assert.Contains("namespace MetaObjects.Codegen.Generators;", source);
+        Assert.Contains("class RequirementTestsGenerator", source);
+        // The default rendering lives in this one file, so one eject takes the generator and its renderer together.
+        Assert.Contains("DefaultTest(", source);
+        Assert.Contains("WitnessInterface(", source);
+    }
+
+    [Fact]
     public void ReadSource_resolves_by_stable_registry_name()
     {
         var text = EjectableGenerators.ReadSource("entity");

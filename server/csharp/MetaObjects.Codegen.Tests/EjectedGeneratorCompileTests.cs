@@ -16,6 +16,8 @@
 using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using MetaObjects.Codegen.Generators;
+using MetaObjects.Core.Requirement;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
 using Xunit;
@@ -188,5 +190,64 @@ public class EjectedGeneratorCompileTests
         Assert.Equal(packagedFiles.Select(f => f.Path), ejectedFiles.Select(f => f.Path));
         for (int i = 0; i < packagedFiles.Count; i++)
             Assert.Equal(packagedFiles[i].Content, ejectedFiles[i].Content);
+    }
+
+    /// <summary>
+    /// <c>requirement-tests</c>, over the identity corpus's <c>worked-example</c>: <c>meta.fitness.json</c> has
+    /// no requirement, so the parameterless theory above compares two empty lists for this generator and
+    /// proves nothing. Both generators are set to NON-default options so a copy that ignored a property, or
+    /// that fell back to its own defaults, could not agree with the packaged one by accident.
+    /// </summary>
+    [Fact]
+    public void Ejected_requirement_tests_compiles_against_the_public_API_and_matches_the_packaged_generator_over_the_worked_example()
+    {
+        var input = Path.Combine(CorpusPaths.RepoRoot(), "fixtures", "requirement-test-identity-conformance", "worked-example", "input");
+        var load = MetaDataLoader.FromDirectory(input, strict: true);
+        Assert.Empty(load.Errors.Select(e => e.Code + ": " + e.Message));
+
+        const string testNamespace = "Acme.Owned.Req";
+        const string witnessClass = "Acme.Owned.Witnesses";
+        var ejected = CompileAndInstantiate("requirement-tests", "RequirementTestsGenerator", []);
+        Assert.Equal("Codegen.Generators", ejected.GetType().Namespace);
+        foreach (var (property, value) in new (string, object)[]
+                 {
+                     ("TestNamespace", testNamespace),
+                     ("WitnessClass", witnessClass),
+                     ("Grain", RequirementTestGrain.Member),
+                     ("WarnUncovered", true),
+                 })
+            ejected.GetType().GetProperty(property)!.SetValue(ejected, value);
+
+        var packaged = new RequirementTestsGenerator
+        {
+            TestNamespace = testNamespace,
+            WitnessClass = witnessClass,
+            Grain = RequirementTestGrain.Member,
+            WarnUncovered = true,
+        };
+
+        List<EmittedFile> Run(IGenerator generator, List<string> warnings) =>
+            generator.Generate(new GenContext
+            {
+                Entities = load.Root.Objects(),
+                Root = load.Root,
+                Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+                Warn = warnings.Add,
+            }).OrderBy(f => f.Path, StringComparer.Ordinal).ToList();
+
+        var ejectedWarnings = new List<string>();
+        var packagedWarnings = new List<string>();
+        var ejectedFiles = Run(ejected, ejectedWarnings);
+        var packagedFiles = Run(packaged, packagedWarnings);
+
+        Assert.Equal(2, packagedFiles.Count);
+        Assert.Contains($"namespace {testNamespace};", packagedFiles[0].Content);
+        Assert.Contains("req_acme_shop_Orders_Recorded__Order", packagedFiles[0].Content + packagedFiles[1].Content);
+        Assert.Equal(packagedFiles.Select(f => f.Path), ejectedFiles.Select(f => f.Path));
+        for (var i = 0; i < packagedFiles.Count; i++)
+            Assert.Equal(packagedFiles[i].Content, ejectedFiles[i].Content);
+        // The worked example has one requirement the default filter drops, so each says so, in the same words.
+        Assert.Single(packagedWarnings);
+        Assert.Equal(packagedWarnings, ejectedWarnings);
     }
 }
