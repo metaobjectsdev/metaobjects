@@ -2355,7 +2355,11 @@ def _load_verify_model(args: argparse.Namespace) -> "_VerifyModel | None":
             root, _ = _load_root_from_collection(collection, providers=providers, libraries=libraries)
             files = list(collection.own_files)
             loaded_files = len(collection.files)
-    except Exception:  # noqa: BLE001 — a load failure is reported by the gate that ran
+    except (ConfigError, ParseError, OSError):
+        # The failures the loader and the config readers RAISE for input that cannot be
+        # read: the gate that ran reported each with its own message. Anything else is a
+        # bug, and it must not read as "no requirements declared": this result now also
+        # feeds a build gate, which a swallowed exception would turn off with exit 0.
         return None
     if root is None:
         return None
@@ -2395,7 +2399,7 @@ def _format_requirement_diagnostic(d: Diagnostic) -> str:
     return f"  {d.code}{'' if d.path is None else f' [{d.path}]'}: {d.message}"
 
 
-def _verify_requirements(args: argparse.Namespace, model: "_VerifyModel | None" = None) -> int:
+def _verify_requirements(args: argparse.Namespace, model: "_VerifyModel | None") -> int:
     """The requirement (capability) gate (see :mod:`metaobjects.requirement_check`) — runs
     on EVERY ``verify``, with no subverb to select it: ``requirement.*`` nodes are metadata,
     so a model declaring none is silent, not in drift.
@@ -2403,10 +2407,9 @@ def _verify_requirements(args: argparse.Namespace, model: "_VerifyModel | None" 
     Prints the summary line on every run that has a requirement, clean or not (a gate that
     says nothing when it passes cannot be told apart from one that checked nothing), then
     every finding, uncapped. Returns 1 when any finding is an error. Returns 0 and prints
-    nothing when the metadata did not load: the gate that ran already reported that.
+    nothing when the metadata did not load (``model`` is ``None``: the gate that ran already
+    reported that, and a load that failed is not retried here).
     """
-    if model is None:
-        model = _load_verify_model(args)
     if model is None:
         return 0
     collection = model.collection

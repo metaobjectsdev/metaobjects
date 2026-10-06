@@ -9,7 +9,9 @@ a model that declares no ``requirement.*`` node.
 
 from __future__ import annotations
 
+import argparse
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -144,3 +146,122 @@ def test_a_metadata_load_failure_prints_no_requirement_line(
     err = capsys.readouterr().err
     assert code != 0
     assert "requirements" not in err
+
+
+def test_a_failed_load_is_not_retried_by_the_gate(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``None`` from the loader means "did not load"; the gate must not read it as "not supplied"."""
+    meta_dir = tmp_path / "broken"
+    meta_dir.mkdir()
+    (meta_dir / "meta.app.json").write_text("{ not json")
+    prompts = tmp_path / "prompts"
+    prompts.mkdir()
+    real = cli._load_verify_model
+    calls: list[int] = []
+
+    def counting(args: argparse.Namespace) -> Any:
+        calls.append(1)
+        return real(args)
+
+    monkeypatch.setattr(cli, "_load_verify_model", counting)
+    capsys.readouterr()
+    assert main(["verify", "--templates", "--prompts", str(prompts), str(meta_dir)]) != 0
+    assert len(calls) == 1
+
+
+def test_an_unexpected_load_exception_does_not_turn_the_gate_off_with_exit_0(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A bug in the loader is not "no requirements declared": it must reach the caller."""
+    meta_dir = _meta_dir(tmp_path, [_requirement("Recorded", "live", implementedBy=["Ordr"])])
+
+    def boom(*_a: Any, **_k: Any) -> Any:
+        raise RuntimeError("loader bug")
+
+    monkeypatch.setattr(cli, "_load_root", boom)
+    args = argparse.Namespace(metadata_dir=meta_dir, provider=None)
+    with pytest.raises(RuntimeError, match="loader bug"):
+        cli._load_verify_model(args)
+
+
+def test_the_load_errors_the_loader_raises_still_mean_nothing_to_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    meta_dir = _meta_dir(tmp_path, [])
+    for exc in (cli.ParseError("ERR_UNKNOWN", "bad"), OSError("unreadable"), cli.ConfigError("bad config")):
+
+        def raising(*_a: Any, _exc: Exception = exc, **_k: Any) -> Any:
+            raise _exc
+
+        monkeypatch.setattr(cli, "_load_root", raising)
+        assert cli._load_verify_model(argparse.Namespace(metadata_dir=meta_dir, provider=None)) is None
+
+
+_ARTIFACT = (
+    Path(__file__).resolve().parents[4]
+    / "fixtures"
+    / "dependency-conformance"
+    / "artifacts"
+    / "acme-common-v1.json"
+)
+_LOCK_V1 = {
+    "schema_version": 1,
+    "dependencies": {
+        "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {"path": "../acme-common/metaobjects"},
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": ["acme::common"],
+            "nodes": ["acme::common::Address", "acme::common::Audited", "acme::common::Customer"],
+        }
+    },
+}
+
+
+def test_config_mode_counts_only_in_scope_entities_and_says_how_many_files_came_from_dependencies(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The collection path: ``coverable=collection.in_scope``, the file count, the
+    ``, <n> from dependencies.`` suffix and the undecided-gap line."""
+    (tmp_path / "metaobjects").mkdir()
+    doc = {
+        "metadata.root": {
+            "package": "app",
+            "children": [
+                {"object.entity": {"name": "Order", "children": [{"field.long": {"name": "id"}}, _PK]}},
+                _requirement("Recorded", "partial"),
+            ],
+        }
+    }
+    (tmp_path / "metaobjects" / "meta.app.json").write_text(json.dumps(doc))
+    deps = tmp_path / ".metaobjects" / "deps" / "acme-common"
+    deps.mkdir(parents=True)
+    shutil.copyfile(_ARTIFACT, deps / "acme-common.metaobjects.json")
+    (tmp_path / ".metaobjects" / "config.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "sources": [],
+                "dependencies": [{"name": "acme-common", "path": "../acme-common/metaobjects"}],
+            }
+        )
+    )
+    (tmp_path / ".metaobjects" / "deps.lock.json").write_text(json.dumps(_LOCK_V1))
+    cfg = tmp_path / "metaobjects.config.yaml"
+    cfg.write_text("metadata: metaobjects\ntargets:\n  main:\n    outDir: gen\n    generators: [names]\n")
+
+    assert main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
+    capsys.readouterr()
+    code = main(["verify", "--codegen", "--generators", GEN_SUITE, "--config", str(cfg)])
+    err = capsys.readouterr().err
+
+    assert code == 0
+    # Order is the only entity in scope: the dependency's three are not the project's to claim.
+    assert (
+        "requirements: 1 entries (1 functional, 0 architectural) — 1 partial; "
+        "0/1 entities claimed, counted over 2 metadata file(s), 1 from dependencies." in err
+    )
+    assert "requirements: 1 recorded gap(s) with no @disposition." in err
