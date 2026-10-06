@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **25 shared conformance corpora** under
+The MetaObjects standard ships **26 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -49,6 +49,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 | [`fixtures/fmt-conformance/`](../fixtures/fmt-conformance/) (#304 — `meta fmt`) | 12 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/field-lint-conformance/`](../fixtures/field-lint-conformance/) (the `verify` field authoring lint) | 14 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/naming-conformance/`](../fixtures/naming-conformance/) | 8 cases | ✓ | ✓ | inherits via Java (`RouteNaming.pluralize`) | ✓ | ✓ |
 | [`fixtures/codegen-noop/`](../fixtures/codegen-noop/) (FR-044 — reporting vocabulary is inert) | 1 model pair (`reporting/with` vs `reporting/without`) | ✓ (codegen + migrate) | ✓ | ✓ | ✓ | ✓ |
 
@@ -71,8 +72,9 @@ the corpora above do two different jobs. Only the first is a promise to adopters
   Mustache engine), `template-output-render-conformance/`, `output-prompt-conformance/`,
   `extract-conformance/`, `verify-conformance/`, `verify-strict-conformance/`,
   `persistence-conformance/` (runtime reads and writes, and the TS-owned migration
-  scenarios), `agent-context-conformance/`, `metamodel-docs/` and `fmt-conformance/`
-  (the canonical serializer, surfaced per-file — ADR-0034's "canonical format" is core).
+  scenarios), `agent-context-conformance/`, `metamodel-docs/`, `fmt-conformance/`
+  (the canonical serializer, surfaced per-file — ADR-0034's "canonical format" is core)
+  and `field-lint-conformance/` (the advisory field lint every port's `verify` prints).
   A red cell here is a MetaObjects bug.
 - **Template quality checks — not a promise.** The generated lane of
   `api-contract-conformance/`, `generator-registry-conformance/` (stable generator names),

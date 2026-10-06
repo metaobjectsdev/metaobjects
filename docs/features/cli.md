@@ -121,6 +121,28 @@ Rules of the contract:
   `deprecated` inherited through the TARGET's own `extends` chain still counts. Advisory
   only, appears as `deprecations` in `--format json|toon`, and is muted with
   `--no-deprecation-lint` or `META_NO_DEPRECATION_LINT=1`.
+- **The field authoring lint runs on every `verify`, in every port.** It reports two
+  mistakes that load with no error. `WARN_REFERENCE_FIELD_NOT_FOUND` flags an
+  `identity.reference` whose `@fields` names a field the object does not have; a field
+  inherited through `extends` or added by an overlay file counts as present.
+  `WARN_DUPLICATE_FIELD_NAME` flags a field name declared more than once in one object's
+  `children` list; a subtype overriding an inherited field and an overlay redeclaring a
+  field are not findings. This lint is advisory only and never changes the exit code. In
+  the Node `meta` it appears as `fields` in `--format json|toon`. The other ports print it
+  as text on stderr (Maven logs it as warnings). Mute it per port:
+
+  | CLI | Flag | Environment |
+  |---|---|---|
+  | Node `meta verify` | `--no-field-lint` | `META_NO_FIELD_LINT=1` |
+  | `dotnet meta verify` | `--no-field-lint` | `META_NO_FIELD_LINT=1` |
+  | `mvn metaobjects:verify` | `-Dmeta.verify.noFieldLint=true` | `META_NO_FIELD_LINT=1` |
+  | `metaobjects verify` | `--no-field-lint` | `META_NO_FIELD_LINT=1` |
+
+  The codes and message text are identical in every port, gated by
+  [`fixtures/field-lint-conformance/`](../../fixtures/field-lint-conformance/README.md). In
+  Python, for a multi-file collection whose roots declare different packages, the address
+  printed for a `::`-relative package is expanded against the merged root's package and can
+  differ from the other ports.
 
 ### The prompt directory: `--prompts` everywhere (F101)
 

@@ -1,0 +1,48 @@
+{
+  "metadata.root": {
+    "package": "acme::app",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Base",
+          "abstract": true,
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label",
+                "@maxLength": 10
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Item",
+          "extends": "Base",
+          "children": [
+            {
+              "field.string": {
+                "name": "label",
+                "@maxLength": 20
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
