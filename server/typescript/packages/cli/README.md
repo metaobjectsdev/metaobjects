@@ -92,7 +92,7 @@ These apply to every command:
 
 Running `meta` with no arguments prints a concise status line (whether a `metaobjects/` directory is present) plus the most relevant next-step commands, rather than the full manual.
 
-**Exit codes:** `0` success (including idempotent no-op runs), `1` runtime error, `2` usage error (bad flag, missing required argument, invalid `--format`). For agent-friendliness, structured errors and next-step hints are emitted on **stdout** in the active `--format` (not stderr), so callers can parse them without scraping stderr.
+**Exit codes:** `0` success (including idempotent no-op runs, such as `meta init` on an initialized project), `1` runtime error (including metadata that does not load, in every command), `2` usage error (bad flag, missing required argument, invalid `--format`). An unknown flag is refused by name with the command's valid flags listed. Under `--format json|toon` stdout carries exactly one document — narration goes to stderr — and `meta verify` and `meta migrate` put their errors in that document too; the other commands print errors on stderr.
 
 ## Commands
 
@@ -169,7 +169,7 @@ Flags:
 - `--allow <csv>` — destructive-change permissions: `drop-column,drop-table,type-change,drop-index,drop-fk,drop-check,drop-view,drop-view-cascade,adopt-view,nullable-to-not-null,drop-identity-default`
 - `--on-ambiguous abort|rename|drop-add` (default `abort`) — non-interactive
 - `--rename-table [schema.]old=new` / `--rename-column [schema.]table.old=new` — declare a rename (repeatable), so the migration is `RENAME` instead of drop+add whatever the rename heuristic makes of the names. Refused if nothing matches. See [Renames and populated tables](../../../../docs/features/migrations-and-drift.md#renames-and-populated-tables).
-- `--dry-run` — print SQL pair to stdout, write nothing
+- `--dry-run` — print the SQL pair, write nothing (under `--format json|toon` the pair is the document's `sql` field, so stdout stays one parseable document)
 - `--apply` — after writing migration files, immediately apply all pending migrations against the DB (runs `up.sql` for each unapplied entry, tracked in the migration ledger). Mutually exclusive with `--rollback`. Postgres and SQLite only (D1 uses `--apply` to invoke `wrangler d1 migrations apply` instead).
 - `--rollback <version>` — roll back applied migrations newer than `<version>` by running their `down.sql` in reverse order, ledger-tracked. Pass an empty string (`--rollback ""`) to roll back everything. Mutually exclusive with `--apply`. Postgres and SQLite only.
 

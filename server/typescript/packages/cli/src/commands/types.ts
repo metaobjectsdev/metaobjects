@@ -25,6 +25,7 @@ import { defaultLoadMemoryProviders } from "@metaobjectsdev/sdk";
 import { log } from "../lib/log.js";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
 import { describeError } from "../lib/error-text.js";
+import { unknownFlagMessage } from "../lib/strict-args.js";
 
 interface TypesFlags {
   query: string | null;
@@ -73,6 +74,21 @@ three TEXT display controls — do not change it. The terse line's [base] / [ts-
 markers are the sharedRoot / tsOnly fields there, a closed-enum attr carries its
 allowedValues, and no match is an empty matches list rather than a prose hint.`;
 
+/** The flags `parse` below accepts, for the unknown-flag refusal. */
+const TYPES_FLAGS: readonly string[] = ["--all", "--desc", "--detail", "--no-headers", "--limit", "--type", "--kind"];
+
+/**
+ * `--limit <N>`: a non-negative integer, 0 meaning unlimited. Anything else is refused
+ * (exit 2) rather than read as a number: `Number("abc") || 0` used to turn a typo into
+ * `0`, the UNLIMITED sentinel, so `--limit abc` silently printed all 500-odd rows.
+ */
+function parseTypesLimit(raw: string | undefined): number {
+  if (raw === undefined || !/^\d+$/.test(raw)) {
+    throw new Error(`invalid --limit '${raw ?? ""}'; expected a non-negative integer (0 = unlimited)`);
+  }
+  return Number(raw);
+}
+
 function parse(args: string[]): TypesFlags {
   const f: TypesFlags = {
     query: null, desc: false, kind: new Set(), type: null,
@@ -91,12 +107,12 @@ function parse(args: string[]): TypesFlags {
     // one the removed `--json` broke.
     else if (a === "--format") i++;
     else if (a.startsWith("--format=")) { /* value is inline; nothing to consume */ }
-    else if (a === "--limit") { f.limit = Math.max(0, Number(args[++i] ?? "20") || 0); f.limitExplicit = true; }
+    else if (a === "--limit") { f.limit = parseTypesLimit(args[++i]); f.limitExplicit = true; }
     else if (a === "--type") f.type = (args[++i] ?? "").toLowerCase() || null;
     else if (a === "--kind") {
       for (const k of (args[++i] ?? "").split(","))
         if (k === "type" || k === "subtype" || k === "attr") f.kind.add(k);
-    } else if (a.startsWith("-")) throw new Error(`unknown flag: ${a}`);
+    } else if (a.startsWith("-")) throw new Error(unknownFlagMessage("types", a, TYPES_FLAGS));
     else if (f.query === null) f.query = a;
     else throw new Error(`unexpected argument: ${a}`);
   }

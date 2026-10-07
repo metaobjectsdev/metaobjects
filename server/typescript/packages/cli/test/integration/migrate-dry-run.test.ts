@@ -17,7 +17,9 @@ describe("meta migrate --dry-run", () => {
     console.log = (msg: string) => { captured.push(msg); };
 
     try {
-      const exit = await run(["migrate", "--from-db", "--cwd", root, "--db", dbUrl, "--slug", "initial", "--dry-run"]);
+      // `--format text`: the SQL preview is the text rendering. A structured run carries
+      // the same SQL in the document's `sql` field instead (agent-output-contract.test.ts).
+      const exit = await run(["migrate", "--from-db", "--cwd", root, "--db", dbUrl, "--slug", "initial", "--dry-run", "--format", "text"]);
       expect(exit).toBe(0);
 
       const stdout = captured.join("\n");

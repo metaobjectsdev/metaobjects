@@ -287,11 +287,9 @@ def test_db_is_rejected_exit_2(tmp_path: Path, capsys) -> None:
 
 
 def test_invalid_flag_exit_2() -> None:
-    import pytest
-
-    with pytest.raises(SystemExit) as exc:
-        main(["verify", "--generators", GEN_SUITE, "--bogus", "x"])
-    assert exc.value.code == 2
+    # Refused by `main` itself (named, with verify's valid flags), not by argparse's
+    # top-level SystemExit — so it is a return code, not an exception.
+    assert main(["verify", "--generators", GEN_SUITE, "--bogus", "x"]) == 2
 
 
 # --- aggregation: combining --codegen + --templates -------------------------

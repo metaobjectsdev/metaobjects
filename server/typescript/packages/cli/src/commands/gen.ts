@@ -27,7 +27,7 @@ import {
   buildCatalogListing, renderCatalogText, wiredGeneratorNames, ownedGeneratorNames,
   declaredDepsOf,
 } from "../lib/catalog-listing.js";
-import { emitStructured } from "../lib/format.js";
+import { emitStructured, narrate } from "../lib/format.js";
 import { composeCatalog } from "../lib/catalog.js";
 import { describeError } from "../lib/error-text.js";
 import { findRuntimeBoundaryCrossings, runtimeBoundaryWarnings } from "../lib/runtime-boundary-advisory.js";
@@ -151,7 +151,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     metadata = await loadMemory(genCollection.configDir, loadOptions);
   } catch (err) {
     reportLoadError(log, "failed to load metadata", err);
-    return 2;
+    return 1;
   }
 
   // ADR-0023: gen loads leniently, so an unknown attribute (`isAbstrakt: true`, a
@@ -216,7 +216,9 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   // fresh `meta init`, so calling it a problem would make every new project start with
   // one. It says what to do next and disappears the moment anything is wired.
   if ((forgeConfig.generators?.length ?? 0) === 0) {
-    log.info(
+    // stdout only in text format: a structured run carries the same pointer in the
+    // document's `help`, and a sentence in front of the document breaks `| jq`.
+    narrate(fmt,
       "\nNothing is generated until you choose it — `generators: []` is what `meta init` " +
         "scaffolds, by design.\n" +
         "  meta gen --list --probe    the catalog, with how many files each generator " +
@@ -436,7 +438,7 @@ async function listCatalogCommand(
       });
     } catch (err) {
       reportLoadError(log, "failed to load metadata", err);
-      return 2;
+      return 1;
     }
 
     opts = {

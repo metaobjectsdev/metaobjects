@@ -27,7 +27,7 @@ COMMANDS:
   upgrade               Rewrite retired metadata vocabulary (previews; --apply writes)
   prompt-snapshot       Snapshot rendered template.* output; --check gates drift
   migrate               Diff metadata vs live DB; emit migration SQL files
-  --version, -v         Print version
+  --version, -v, -V     Print version
   --help, -h            Print this help
 
 GLOBAL OPTIONS:
@@ -158,8 +158,8 @@ MIGRATE FLAGS:
   --remote              Target remote D1 instead of local (only with --dialect d1)
   --apply               Run 'wrangler d1 migrations apply' after writing files
   --yes                 Skip the --remote --apply confirmation pause
-  --dry-run             Print SQL to stdout, don't write
+  --dry-run             Print the SQL, don't write (json/toon: in the document's sql field)
 
-See https://metaobjects.com for docs.
+See https://metaobjects.dev for docs.
 "
 `;

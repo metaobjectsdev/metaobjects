@@ -96,7 +96,13 @@ Rules of the contract:
   `.gitignore` says which of them it COMMITS.** Narrowing `surfaces` to silence the
   gate also stops `meta docs` producing those pages, which is usually not what you
   want.
-- **Unknown/invalid flag → exit 2** with usage.
+- **Unknown/invalid flag → exit 2**, refused by name with that command's valid flags listed
+  — one wording in every port's CLI (`unknown flag --x for \`meta gen\`. Valid flags: …`).
+  A numeric flag given a non-number (`--limit abc`) is the same usage error.
+- **Exit codes agree across the CLIs** (`meta`, `dotnet meta`, `metaobjects`): `0` success,
+  including a no-op re-run; `1` a runtime failure, including metadata that does not load,
+  in every command; `2` a usage error. `--version`, `-v` and `-V` print the bare version
+  in each.
 - **The overlay authoring lint runs on every `meta verify`, not gated on any
   subverb** (FR-023) — a top-level `(type, resolutionKey)` declared in two or more
   collection files (dependency artifacts included) where more than one declaration

@@ -25,6 +25,6 @@ describe("parseFmtArgs", () => {
   });
 
   test("unknown flag throws", () => {
-    expect(() => parseFmtArgs(["--bogus"])).toThrow(/Unknown option '--bogus'/);
+    expect(() => parseFmtArgs(["--bogus"])).toThrow(/unknown flag --bogus for `meta fmt`\. Valid flags: .*--check/);
   });
 });

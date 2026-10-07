@@ -81,7 +81,7 @@ describe("parseMigrateArgs", () => {
   });
 
   test("unknown flag throws", () => {
-    expect(() => parseMigrateArgs(["--foo"])).toThrow(/Unknown option '--foo'/);
+    expect(() => parseMigrateArgs(["--foo"])).toThrow(/unknown flag --foo for `meta migrate`\. Valid flags: .*--slug/);
   });
 });
 

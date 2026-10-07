@@ -148,7 +148,7 @@ describe("parseVerifyArgs", () => {
     );
   });
   test("throws on an unknown flag", () => {
-    expect(() => parseVerifyArgs(["--bogus"])).toThrow(/Unknown option '--bogus'/);
+    expect(() => parseVerifyArgs(["--bogus"])).toThrow(/unknown flag --bogus for `meta verify`\. Valid flags: .*--codegen/);
   });
   test("throws on a positional argument", () => {
     expect(() => parseVerifyArgs(["extra"])).toThrow(/Unexpected argument 'extra'/);

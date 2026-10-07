@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { log } from "./lib/log.js";
-import { cliVersion } from "./lib/version.js";
+import { cliVersion, isVersionFlag } from "./lib/version.js";
 import { resolveFormat, isValidFormat, VALID_FORMATS, type OutputFormat } from "./lib/format.js";
 import { resolveCollection } from "@metaobjectsdev/sdk";
 import { GENERATOR_HELP } from "./commands/generator-help.js";
@@ -47,7 +47,7 @@ COMMANDS:
   upgrade               Rewrite retired metadata vocabulary (previews; --apply writes)
   prompt-snapshot       Snapshot rendered template.* output; --check gates drift
   migrate               Diff metadata vs live DB; emit migration SQL files
-  --version, -v         Print version
+  --version, -v, -V     Print version
   --help, -h            Print this help
 
 GLOBAL OPTIONS:
@@ -178,9 +178,9 @@ MIGRATE FLAGS:
   --remote              Target remote D1 instead of local (only with --dialect d1)
   --apply               Run 'wrangler d1 migrations apply' after writing files
   --yes                 Skip the --remote --apply confirmation pause
-  --dry-run             Print SQL to stdout, don't write
+  --dry-run             Print the SQL, don't write (json/toon: in the document's sql field)
 
-See https://metaobjects.com for docs.
+See https://metaobjects.dev for docs.
 `;
 
 /** Focused per-subcommand usage slices shown by `<cmd> --help`. */
@@ -616,7 +616,7 @@ export async function run(argv: string[]): Promise<number> {
   }
 
   // Intercept per-subcommand --help / -h before dispatching (mirrors migrate's own pattern).
-  if (cmd !== undefined && cmd !== "--help" && cmd !== "-h" && cmd !== "--version" && cmd !== "-v") {
+  if (cmd !== undefined && cmd !== "--help" && cmd !== "-h" && !isVersionFlag(cmd)) {
     if (rest.includes("--help") || rest.includes("-h")) {
       const helpText = COMMAND_HELP[cmd];
       if (helpText !== undefined) {
@@ -663,6 +663,7 @@ export async function run(argv: string[]): Promise<number> {
       return 0;
     case "--version":
     case "-v":
+    case "-V":
       log.info(VERSION);
       return 0;
     case "init": {

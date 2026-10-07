@@ -323,37 +323,82 @@ export async function runtimeCopyLines(cwd: string): Promise<string[]> {
  * gate green. Marking each owned copy `identical` / `differs` makes it a one-command
  * answer instead of a diff nobody thinks to run.
  */
-async function listOutput(cwd: string): Promise<string> {
-  const lines: string[] = [];
-  lines.push("Ejectable generators (copy any of these into codegen/generators/ and own it):");
-  lines.push("");
-  let anyStale = false;
+/** One reference generator as `--list` reports it: is a copy owned, and how far it moved. */
+interface GeneratorListRow {
+  name: string;
+  package: string;
+  /** `available` = not ejected; `owned` = ejected but the reference could not be read. */
+  status: "available" | "owned" | "identical" | "reformatted" | "differs";
+  behind: number;
+  own: number;
+}
+
+/** One `SOURCES` entry and the rows walked for it — the grouping the text list prints. */
+interface GeneratorListGroup {
+  packageName: string;
+  rows: GeneratorListRow[];
+}
+
+async function generatorListGroups(cwd: string): Promise<GeneratorListGroup[]> {
+  const groups: GeneratorListGroup[] = [];
   for (const source of SOURCES) {
-    lines.push(`${source.packageName}:`);
+    const rows: GeneratorListRow[] = [];
+    groups.push({ packageName: source.packageName, rows });
     for (const name of source.names) {
+      const row: GeneratorListRow = { name, package: source.packageName, status: "available", behind: 0, own: 0 };
+      rows.push(row);
       const abs = join(cwd, OWNED_GENERATORS_DIR, `${name}.ts`);
-      if (!(await fileExists(abs))) {
-        lines.push(`  ${name}`);
-        continue;
-      }
+      if (!(await fileExists(abs))) continue;
       let ref: string;
       try {
         ref = await readFile(join(source.root(), `${name}.ts`), "utf8");
       } catch {
-        lines.push(`  ${name}  [owned]`);
+        row.status = "owned";
         continue;
       }
-      const owned = await readFile(abs, "utf8");
-      const cmp = await compareOwnedCopy(owned, ref);
-      if (cmp.verdict === "identical") {
-        lines.push(`  ${name}  [owned — identical to the reference]`);
-      } else if (cmp.verdict === "reformatted") {
-        lines.push(`  ${name}  [owned — same content as the reference, your formatting]`);
+      const cmp = await compareOwnedCopy(await readFile(abs, "utf8"), ref);
+      if (cmp.verdict === "identical" || cmp.verdict === "reformatted") {
+        row.status = cmp.verdict;
       } else {
-        anyStale = true;
+        row.status = "differs";
+        row.behind = cmp.referenceOnly;
+        row.own = cmp.localOnly;
+      }
+    }
+  }
+  return groups;
+}
+
+/** `--list` as one structured document: the generators and the shipped libraries. */
+async function listData(cwd: string): Promise<Record<string, unknown>> {
+  const generators = (await generatorListGroups(cwd)).flatMap((g) => g.rows);
+  return {
+    generators,
+    libraries: ejectableLibraryNames(),
+    help: [
+      "run `meta eject <name>...` to copy a generator into codegen/generators/ and own it",
+      "`meta eject --list --format text` also reports owned runtime copies and ejected-library drift",
+    ],
+  };
+}
+
+async function listOutput(cwd: string): Promise<string> {
+  const lines: string[] = [];
+  lines.push("Ejectable generators (copy any of these into codegen/generators/ and own it):");
+  lines.push("");
+  const groups = await generatorListGroups(cwd);
+  const anyStale = groups.some((g) => g.rows.some((r) => r.status === "differs"));
+  for (const group of groups) {
+    lines.push(`${group.packageName}:`);
+    for (const r of group.rows) {
+      if (r.status === "available") lines.push(`  ${r.name}`);
+      else if (r.status === "owned") lines.push(`  ${r.name}  [owned]`);
+      else if (r.status === "identical") lines.push(`  ${r.name}  [owned — identical to the reference]`);
+      else if (r.status === "reformatted") lines.push(`  ${r.name}  [owned — same content as the reference, your formatting]`);
+      else {
         lines.push(
-          `  ${name}  [owned — DIFFERS: ${cmp.referenceOnly} line(s) behind, ` +
-            `${cmp.localOnly} line(s) of your own]`,
+          `  ${r.name}  [owned — DIFFERS: ${r.behind} line(s) behind, ` +
+            `${r.own} line(s) of your own]`,
         );
       }
     }
@@ -624,7 +669,8 @@ export async function ejectCommand(
   }
 
   if (flags.list) {
-    log.info(await listOutput(cwd));
+    if (fmt === "text") log.info(await listOutput(cwd));
+    else emitStructured(await listData(cwd), fmt);
     return 0;
   }
 

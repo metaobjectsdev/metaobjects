@@ -56,6 +56,6 @@ describe("parseDepsArgs", () => {
   });
 
   test("an unknown flag is a usage error", () => {
-    expect(() => parseDepsArgs(["sync", "--foo"])).toThrow(/Unknown option '--foo'/);
+    expect(() => parseDepsArgs(["sync", "--foo"])).toThrow(/unknown flag --foo for `meta deps`\. Valid flags: /);
   });
 });

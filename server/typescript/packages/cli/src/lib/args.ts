@@ -1,4 +1,4 @@
-import { parseArgs } from "node:util";
+import { parseCommandArgs } from "./strict-args.js";
 import type { DeclaredRename } from "@metaobjectsdev/migrate-ts";
 import { parseAdvisoryLimit } from "./advisory.js";
 
@@ -36,7 +36,7 @@ export const INIT_OPTIONS = {
 } as const;
 
 export function parseInitArgs(argv: string[]): InitFlags {
-  const { values } = parseArgs({
+  const { values } = parseCommandArgs("init", {
     args: argv,
     options: INIT_OPTIONS,
     strict: true,
@@ -79,7 +79,7 @@ export const AGENT_DOCS_OPTIONS = {
 } as const;
 
 export function parseAgentDocsArgs(argv: string[]): AgentDocsFlags {
-  const { values } = parseArgs({
+  const { values } = parseCommandArgs("agent-docs", {
     args: argv,
     options: AGENT_DOCS_OPTIONS,
     strict: true,
@@ -135,7 +135,7 @@ export const GEN_OPTIONS = {
 } as const;
 
 export function parseGenArgs(argv: string[]): GenFlags {
-  const { values, positionals } = parseArgs({
+  const { values, positionals } = parseCommandArgs("gen", {
     args: argv,
     options: GEN_OPTIONS,
     strict: true,
@@ -179,7 +179,7 @@ export const EXPORT_OPTIONS = {
 } as const;
 
 export function parseExportArgs(argv: string[]): ExportFlags {
-  const { values } = parseArgs({
+  const { values } = parseCommandArgs("export", {
     args: argv,
     options: EXPORT_OPTIONS,
     strict: true,
@@ -207,7 +207,7 @@ export const FMT_OPTIONS = {
 } as const;
 
 export function parseFmtArgs(argv: string[]): FmtFlags {
-  const { values, positionals } = parseArgs({
+  const { values, positionals } = parseCommandArgs("fmt", {
     args: argv,
     options: FMT_OPTIONS,
     strict: true,
@@ -490,7 +490,7 @@ function parseAllowTokens(raw: string | string[] | undefined): AllowToken[] {
 }
 
 export function parseVerifyArgs(argv: string[]): VerifyFlags {
-  const { values } = parseArgs({
+  const { values } = parseCommandArgs("verify", {
     args: argv,
     options: VERIFY_OPTIONS,
     strict: true,
@@ -570,7 +570,7 @@ export const PROMPT_SNAPSHOT_OPTIONS = {
 } as const;
 
 export function parsePromptSnapshotArgs(argv: string[]): PromptSnapshotFlags {
-  const { values } = parseArgs({
+  const { values } = parseCommandArgs("prompt-snapshot", {
     args: argv,
     options: PROMPT_SNAPSHOT_OPTIONS,
     strict: true,
@@ -641,7 +641,7 @@ export const MIGRATE_OPTIONS = {
 } as const;
 
 export function parseMigrateArgs(argv: string[]): MigrateFlags {
-  const { values, positionals } = parseArgs({
+  const { values, positionals } = parseCommandArgs("migrate", {
     args: argv,
     options: MIGRATE_OPTIONS,
     strict: true,
@@ -758,7 +758,7 @@ export const EJECT_OPTIONS = {
 } as const;
 
 export function parseEjectArgs(argv: string[]): EjectFlags {
-  const { values, positionals } = parseArgs({
+  const { values, positionals } = parseCommandArgs("eject", {
     args: argv,
     options: EJECT_OPTIONS,
     strict: true,
@@ -820,7 +820,7 @@ export const DEPS_OPTIONS = {
 } as const;
 
 export function parseDepsArgs(argv: string[]): DepsFlags {
-  const { values, positionals } = parseArgs({
+  const { values, positionals } = parseCommandArgs("deps", {
     args: argv,
     options: DEPS_OPTIONS,
     strict: true,

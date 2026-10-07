@@ -15,6 +15,7 @@ import { cliVersion } from "../lib/version.js";
 import { findWranglerConfig, parseWranglerConfig } from "@metaobjectsdev/migrate-ts";
 import { DEFAULT_DOCS_DIR } from "@metaobjectsdev/codegen-ts";
 import { describeError } from "../lib/error-text.js";
+import { SUBTYPE_ROOT, TYPE_METADATA, TYPE_SUBTYPE_SEPARATOR } from "@metaobjectsdev/metadata/constants";
 
 // ADR-0034 scaffold-and-own — `meta init` copies the codegen reference templates into
 // the consumer's repo so they OWN them; metaobjects.config.ts imports them locally.
@@ -31,13 +32,10 @@ const OWNED_GENERATORS_DIR = "codegen/generators";
 // `meta gen --list` and by `meta eject routes`, to the adopter who actually chose it.
 const SCAFFOLD_OUT_DIR = "src/generated";
 
+// The canonical form of an empty root, byte-for-byte what `meta fmt` writes, so a
+// freshly scaffolded project passes `meta fmt --check` (it used to fail it at once).
 const META_COMMON_JSON = JSON.stringify(
-  {
-    metadata: {
-      package: "",
-      children: [] as unknown[],
-    },
-  },
+  { [`${TYPE_METADATA}${TYPE_SUBTYPE_SEPARATOR}${SUBTYPE_ROOT}`]: {} },
   null,
   2,
 ) + "\n";
@@ -205,6 +203,13 @@ export interface InitResult {
    * just scaffolded over your work.
    */
   refreshedDocsOnly?: boolean;
+  /**
+   * True when the project was already initialized (`metaobjects/` or `.metaobjects/`
+   * exists) and the run was neither `--force` nor `--refresh-docs`: nothing was written.
+   * A re-run asks for a state that already holds, so it is a no-op that exits 0, not
+   * the error it used to be.
+   */
+  alreadyInitialized?: boolean;
 }
 
 async function readManifest(cwd: string): Promise<Manifest | undefined> {
@@ -585,9 +590,10 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   }
 
   if (exists && !opts.force && !opts.refreshDocs) {
-    throw new Error(
-      "metaobjects/ or .metaobjects/ already exists; use --force to overwrite scaffold files (existing records are preserved), or --refresh-docs to update only agent docs",
-    );
+    if (metaobjectsExists) result.preserved.push(DEFAULT_METADATA_DIR);
+    if (agentDirExists) result.preserved.push(DEFAULT_METAOBJECTS_DIR);
+    result.alreadyInitialized = true;
+    return result;
   }
 
   const dirs = [
@@ -603,7 +609,10 @@ export async function init(opts: InitOptions): Promise<InitResult> {
       ".metaobjects/config.json",
       ".metaobjects/.gitignore",
     );
-    result.created.push(".metaobjects/AGENTS.md", ".metaobjects/CLAUDE.md", ".claude/skills/metaobjects-*", AGENT_CONTEXT_MANIFEST_PATH);
+    // The agent context forecasts itself: writeAgentContext is dry-run aware and
+    // reports exactly the paths a real run writes — the root CLAUDE.md/AGENTS.md wiring
+    // included, which a hand-kept list here used to leave out.
+    await writeAgentContext(opts, result);
     result.created.push(OWNED_GENERATORS_DIR, CODEGEN_TSCONFIG_REL);
     result.created.push("metaobjects.config.ts", ".gitignore");
     return result;
@@ -884,9 +893,19 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
       configOnly: flags.configOnly,
     });
 
+    if (result.alreadyInitialized) {
+      log.info(
+        `meta init: already initialized (${result.preserved.join(" and ")} exist) — nothing written (no-op).\n` +
+          "  meta init --refresh-docs   update the agent docs after a CLI upgrade\n" +
+          "  meta init --force          re-scaffold the project files (your metadata is preserved)",
+      );
+      return 0;
+    }
+
     if (flags.printOnly) {
       log.info("Would create:");
       for (const path of result.created) log.info(`  ${path}`);
+      for (const w of result.warnings) log.info(`  ${w}`);
       return 0;
     }
 

@@ -10,12 +10,24 @@ using MetaObjects.Cli;
 using MetaObjects.Codegen;
 using MetaObjects.Config;
 
-if (args.Length == 0)
+// `--version`, `-v` and `-V` print the bare version and exit 0 — the same three spellings
+// every port's CLI answers. Checked before anything else so a version probe never parses
+// a command.
+if (args.Length == 1 && args[0] is "--version" or "-v" or "-V")
 {
-    Console.Error.WriteLine(
+    Console.WriteLine(EjectCommand.ToolVersion());
+    return 0;
+}
+
+// `--help`/`-h` print the command reference on stdout and exit 0: asked-for help is
+// output, not an error. A bare `dotnet meta` is still a usage error (stderr, exit 2).
+bool helpRequested = args.Length > 0 && args[0] is "--help" or "-h";
+if (args.Length == 0 || helpRequested)
+{
+    (helpRequested ? Console.Out : Console.Error).WriteLine(
         "usage: dotnet meta <command> [options]\n" +
         "  commands:\n" +
-        "    gen <metadataDir> --out <dir> --namespace <ns> [--emit-abstract-shapes]\n" +
+        "    gen <metadataDir> --out <dir> [--namespace <ns>] [--emit-abstract-shapes]\n" +
         "        [--generators <a,b,c>] [--template-root <dir>]\n" +
         "                                                     generate EF Core code from metadata\n" +
         "    gen --list                                       list available generators (stable names) and exit\n" +
@@ -37,8 +49,18 @@ if (args.Length == 0)
         "                                                     see `dotnet meta gen --list`\n" +
         "    fmt [<metadataDir>] [--check]                    rewrite metadata into canonical form (#304);\n" +
         "                                                     --check lists drift, exits non-zero, changes nothing\n" +
-        "    agent-docs                                           see `npx meta agent-docs`");
-    return 2;
+        "    agent-docs                                           see `npx meta agent-docs`\n" +
+        "    --version, -v, -V                                print the version\n" +
+        "    <command> --help                                 that command's usage");
+    return helpRequested ? 0 : 2;
+}
+
+// `<command> --help` answers with that command's usage on stdout, exit 0, before the
+// command parses anything — so help is never refused as an unknown flag.
+if (args.Length > 1 && CommandUsage.TryGetValue(args[0], out var usage) && args[1..].Any(a => a is "--help" or "-h"))
+{
+    Console.WriteLine(usage);
+    return 0;
 }
 
 return args[0] switch
@@ -77,6 +99,9 @@ static int RunGen(string[] rest)
         else if (rest[i] == "--baseline" && i + 1 < rest.Length) baseline = rest[++i];
         else if (rest[i].StartsWith("--baseline=", StringComparison.Ordinal)) baseline = rest[i]["--baseline=".Length..];
         else if (!rest[i].StartsWith('-')) metadataDir ??= rest[i];
+        // An unrecognised flag used to be dropped here: `gen ... --bogus` generated and
+        // exited 0, as if the flag had been honoured.
+        else return RefuseFlag("gen", rest[i], GenValueFlags, GenBoolFlags);
     }
 
     // How a field with NO explicit `@column` becomes a physical column name. The
@@ -229,6 +254,7 @@ static int RunDocs(string[] rest)
         else if (rest[i] == "--project" && i + 1 < rest.Length) project = rest[++i];
         else if (rest[i] == "--model-base-url" && i + 1 < rest.Length) modelBaseUrl = rest[++i];
         else if (!rest[i].StartsWith('-')) metadataDir ??= rest[i];
+        else return RefuseFlag("docs", rest[i], DocsValueFlags, []);
     }
 
     // Usage-first — see the identical comment in RunGen above; a missing --out
@@ -284,12 +310,7 @@ static int RunFmt(string[] rest)
     foreach (var a in rest)
     {
         if (a == "--check") check = true;
-        else if (a.StartsWith('-'))
-        {
-            Console.Error.WriteLine($"dotnet meta fmt: unknown option \"{a}\"");
-            Console.Error.WriteLine("usage: dotnet meta fmt [<metadataDir>] [--check]");
-            return 2;
-        }
+        else if (a.StartsWith('-')) return RefuseFlag("fmt", a, [], ["--check"]);
         else metadataDir ??= a;
     }
 
@@ -366,12 +387,7 @@ static int RunEject(string[] rest)
         if (rest[i] == "--force") force = true;
         else if (rest[i] == "--root" && i + 1 < rest.Length) root = rest[++i];
         else if (!rest[i].StartsWith('-')) names.Add(rest[i]);
-        else
-        {
-            Console.Error.WriteLine($"dotnet meta eject: unknown option \"{rest[i]}\"");
-            Console.Error.WriteLine("usage: dotnet meta eject <name>... [--force] [--root <dir>]");
-            return 2;
-        }
+        else return RefuseFlag("eject", rest[i], ["--root"], ["--force"]);
     }
 
     var result = EjectCommand.Run(names, root ?? Directory.GetCurrentDirectory(), force);
@@ -428,6 +444,26 @@ static ResolvedMetadata ResolveMetadataDirOrExit(string? metadataDir)
         Environment.Exit(2);
         throw;
     }
+}
+
+/// <summary>
+/// The one refusal for a flag a command does not accept, in every command — the same
+/// shape the Node <c>meta</c> CLI uses. A known value flag with its value missing says
+/// so; anything else is named as unknown and the command's valid flags are listed, so the
+/// refusal corrects itself in one step. Exit 2 (usage).
+/// </summary>
+static int RefuseFlag(string command, string flag, string[] valueFlags, string[] boolFlags)
+{
+    if (valueFlags.Contains(flag))
+    {
+        Console.Error.WriteLine($"dotnet meta {command}: {flag} needs a value");
+        return 2;
+    }
+    var valid = valueFlags.Concat(boolFlags).Order(StringComparer.Ordinal);
+    Console.Error.WriteLine(
+        $"unknown flag {flag} for `dotnet meta {command}`. Valid flags: {string.Join(", ", valid)} " +
+        "(also accepted everywhere: --help)");
+    return 2;
 }
 
 static int Unknown(string cmd)
@@ -495,12 +531,7 @@ static int RunVerify(string[] rest)
         // wrong strategy and every one reports spurious drift on an otherwise-clean
         // project.
         else if (a == "--column-naming" && i + 1 < rest.Length) columnNamingRaw = rest[++i];
-        else if (a.StartsWith('-'))
-        {
-            Console.Error.WriteLine($"dotnet meta verify: unknown option \"{a}\"");
-            Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>] [--column-naming literal|snake_case|kebab-case]] [--db] [--lax] [--no-field-lint]");
-            return 2;
-        }
+        else if (a.StartsWith('-')) return RefuseFlag("verify", a, VerifyValueFlags, VerifyBoolFlags);
         else if (metadataDir is null) metadataDir = a;
         // A second positional is the templates root for a BARE verify
         // (`verify <metadataDir> <templatesRoot>`) — keeps the historical default
@@ -651,3 +682,27 @@ static int RunVerify(string[] rest)
     return codegenHandedOff ? Math.Max(result.ExitCode, codegenHandoffExit) : result.ExitCode;
 }
 
+
+/// <summary>The flags each command parses, for <see cref="RefuseFlag"/>. Kept beside the
+/// parsers' own branches; a flag added to one must be added here.</summary>
+partial class Program
+{
+    static readonly string[] GenValueFlags =
+        ["--out", "--namespace", "--generators", "--template-root", "--template-spec", "--column-naming", "--baseline"];
+    static readonly string[] GenBoolFlags = ["--list", "--emit-abstract-shapes"];
+    static readonly string[] DocsValueFlags = ["--out", "--namespace", "--project", "--model-base-url"];
+    static readonly string[] VerifyValueFlags =
+        ["--prompts", "--out", "--namespace", "--generators", "--template-root", "--column-naming"];
+    static readonly string[] VerifyBoolFlags = ["--templates", "--codegen", "--db", "--lax", "--no-field-lint"];
+
+    /// <summary>Each command's usage, printed by <c>dotnet meta &lt;command&gt; --help</c>.</summary>
+    static readonly Dictionary<string, string> CommandUsage = new()
+    {
+        ["gen"] = "usage: dotnet meta gen <metadataDir> --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--template-spec <json>] [--emit-abstract-shapes] [--column-naming literal|snake_case|kebab-case] [--baseline default|adopt]\n" +
+                  "       dotnet meta gen --list",
+        ["verify"] = "usage: dotnet meta verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--column-naming literal|snake_case|kebab-case]] [--db] [--lax] [--no-field-lint]",
+        ["docs"] = "usage: dotnet meta docs <metadataDir> --out <dir> [--namespace <ns>] [--project <name>] [--model-base-url <url>]",
+        ["fmt"] = "usage: dotnet meta fmt [<metadataDir>] [--check]",
+        ["eject"] = "usage: dotnet meta eject <name>... [--force] [--root <dir>]",
+    };
+}
