@@ -197,9 +197,12 @@ public static class VerifyCommand
         Codegen.CodegenDrift.Result? codegenResult = null;
         if (runCodegen)
         {
-            codegenResult = RunCodegenDrift(opts);
-            // error (nothing to diff against) → exit 2; drift → exit 1; clean → 0.
-            int codegenExit = codegenResult.Error is not null ? 2 : (codegenResult.Clean ? 0 : 1);
+            codegenResult = RunCodegenDrift(opts, out var codegenLoadFailed);
+            // usage error (nothing to diff against) → exit 2; metadata that does not load →
+            // exit 1, the code every port's gen/verify/fmt uses for it; drift → 1; clean → 0.
+            int codegenExit = codegenResult.Error is null
+                ? (codegenResult.Clean ? 0 : 1)
+                : (codegenLoadFailed ? 1 : 2);
             exit = Math.Max(exit, codegenExit);
         }
 
@@ -237,10 +240,13 @@ public static class VerifyCommand
     /// Run the codegen-drift gate: load metadata, resolve the generator suite (default
     /// or the <c>--generators</c> selection), and diff a fresh regen against the
     /// committed <c>--out</c> dir. Loader / unknown-generator problems surface as a
-    /// drift <see cref="Codegen.CodegenDrift.Result.Error"/> (exit 2), never a throw.
+    /// drift <see cref="Codegen.CodegenDrift.Result.Error"/>, never a throw;
+    /// <paramref name="loadFailed"/> says the metadata itself did not load (exit 1, not
+    /// the usage exit 2 a missing <c>--out</c> or an unknown generator gets).
     /// </summary>
-    private static Codegen.CodegenDrift.Result RunCodegenDrift(Options opts)
+    private static Codegen.CodegenDrift.Result RunCodegenDrift(Options opts, out bool loadFailed)
     {
+        loadFailed = false;
         if (opts.OutDir is null)
             return new Codegen.CodegenDrift.Result
             {
@@ -250,7 +256,8 @@ public static class VerifyCommand
             };
 
         var load = LoadMetadata(opts);
-        if (load.Errors.Count > 0)
+        loadFailed = load.Errors.Count > 0;
+        if (loadFailed)
             return new Codegen.CodegenDrift.Result
             {
                 Clean = false,

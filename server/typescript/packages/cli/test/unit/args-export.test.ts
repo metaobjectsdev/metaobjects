@@ -19,7 +19,7 @@ describe("parseExportArgs", () => {
   });
 
   test("unknown flag throws", () => {
-    expect(() => parseExportArgs(["--foo"])).toThrow(/Unknown option '--foo'/);
+    expect(() => parseExportArgs(["--foo"])).toThrow(/unknown flag --foo for `meta export`\. Valid flags: .*--out/);
   });
 
   test("positionals are rejected", () => {

@@ -2409,6 +2409,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "owned by the Node `meta` CLI (ADR-0015) — there is no `migrate` "
             "subcommand here."
         ),
+        epilog="--version, -v, -V  print the version and exit",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -2759,10 +2760,53 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+# The three spellings that print the bare version — the same set every port's CLI answers.
+VERSION_FLAGS = ("--version", "-v", "-V")
+
+
+def _refuse_extras(parser: argparse.ArgumentParser, command: str, extras: list[str]) -> int:
+    """Refuse what a subcommand did not consume, naming the subcommand and its flags.
+
+    argparse attributes a subcommand's unknown flag to the TOP-LEVEL parser: it printed
+    ``usage: metaobjects [-h] {gen,docs,...}`` and ``unrecognized arguments: --x``, which
+    names neither the command nor a flag that would have worked. This is the one wording
+    every port's CLI uses for it, and it exits 2.
+    """
+    subparser = next(
+        (
+            action.choices.get(command)
+            for action in parser._actions  # noqa: SLF001 — argparse exposes no public accessor
+            if isinstance(action, argparse._SubParsersAction)  # noqa: SLF001
+        ),
+        None,
+    )
+    first = extras[0]
+    if not first.startswith("-") or subparser is None:
+        print(f"unexpected argument {first!r} for `metaobjects {command}`", file=sys.stderr)
+        return 2
+    valid = sorted(
+        ", ".join(action.option_strings)
+        for action in subparser._actions  # noqa: SLF001
+        if action.option_strings and "--help" not in action.option_strings
+    )
+    print(
+        f"unknown flag {first} for `metaobjects {command}`. Valid flags: {', '.join(valid)} "
+        "(also accepted everywhere: --help)",
+        file=sys.stderr,
+    )
+    return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     """Entry point. Returns the process exit code (does not call ``sys.exit``)."""
+    raw = sys.argv[1:] if argv is None else argv
+    if len(raw) == 1 and raw[0] in VERSION_FLAGS:
+        print(installed_metaobjects_version())
+        return 0
     parser = _build_parser()
-    args = parser.parse_args(argv)
+    args, extras = parser.parse_known_args(raw)
+    if extras:
+        return _refuse_extras(parser, args.command, extras)
     return int(args.func(args))
 
 

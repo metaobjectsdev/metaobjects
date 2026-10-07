@@ -13,9 +13,9 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { parseArgs } from "node:util";
 import { catalogEntry } from "../lib/catalog.js";
 import { log } from "../lib/log.js";
+import { parseCommandArgs } from "../lib/strict-args.js";
 import { dependencyNotesForTemplate } from "./eject.js";
 import {
   CONFIG_FILE,
@@ -333,7 +333,7 @@ export async function generatorCommand(args: string[], cwd: string): Promise<num
   let values: { scope?: string; force?: boolean; "no-wire"?: boolean };
   let positionals: string[];
   try {
-    ({ values, positionals } = parseArgs({ args, options: GENERATOR_OPTIONS, strict: true, allowPositionals: true }));
+    ({ values, positionals } = parseCommandArgs("generator", { args, options: GENERATOR_OPTIONS, strict: true, allowPositionals: true }));
   } catch (err) {
     log.error(describeError(err));
     return 2;

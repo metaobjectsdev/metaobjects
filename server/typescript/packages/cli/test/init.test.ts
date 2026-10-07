@@ -289,9 +289,22 @@ describe("init() — the owned-codegen tier is empty on purpose", () => {
 });
 
 describe("init() — re-run safety", () => {
-  test("throws when metaobjects/ exists and --force is not set", async () => {
+  test("is a no-op when metaobjects/ exists and --force is not set", async () => {
     mkdirSync(join(cwd, "metaobjects"));
-    await expect(init({ cwd })).rejects.toThrow(/already exists/);
+    const result = await init({ cwd });
+    expect(result.alreadyInitialized).toBe(true);
+    expect(result.created).toEqual([]);
+    expect(result.preserved).toEqual(["metaobjects"]);
+    expect(existsSync(join(cwd, ".metaobjects"))).toBe(false);
+  });
+
+  test("a second init on a fully initialized project writes nothing", async () => {
+    await init({ cwd });
+    const configBefore = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
+    const second = await init({ cwd });
+    expect(second.alreadyInitialized).toBe(true);
+    expect(second.created).toEqual([]);
+    expect(readFileSync(join(cwd, "metaobjects.config.ts"), "utf8")).toBe(configBefore);
   });
 
   test("succeeds when --force is set", async () => {
@@ -301,6 +314,24 @@ describe("init() — re-run safety", () => {
     expect(result.created).toContain(".metaobjects/config.json");
     // Records in metaobjects/ are preserved
     expect(existsSync(join(cwd, "metaobjects", "entity-preserve-me.json"))).toBe(true);
+  });
+
+  test("--print-only forecasts the root CLAUDE.md a real run writes", async () => {
+    // wireRoot: the CLI's default (parseInitArgs); a direct init() call opts in explicitly.
+    const forecast = await init({ cwd, printOnly: true, wireRoot: true });
+    expect(existsSync(join(cwd, "CLAUDE.md"))).toBe(false);
+    const real = await init({ cwd, wireRoot: true });
+    expect(existsSync(join(cwd, "CLAUDE.md"))).toBe(true);
+    expect(forecast.created.some((p) => p.startsWith("CLAUDE.md"))).toBe(true);
+    // Every file the real run created was forecast.
+    for (const p of real.created) expect(forecast.created).toContain(p.replace("(created", "(would be created"));
+  });
+
+  test("--print-only forecasts wiring an existing root AGENTS.md", async () => {
+    writeFileSync(join(cwd, "AGENTS.md"), "# mine\n");
+    const forecast = await init({ cwd, printOnly: true, wireRoot: true });
+    expect(forecast.warnings.join("\n")).toContain("would be wired @.metaobjects/AGENTS.md into AGENTS.md");
+    expect(readFileSync(join(cwd, "AGENTS.md"), "utf8")).toBe("# mine\n");
   });
 
   test("--print-only writes nothing to disk", async () => {
@@ -315,9 +346,9 @@ describe("initCommand argv wrapper", () => {
   test("returns 0 on success", async () => {
     expect(await initCommand([], cwd)).toBe(0);
   });
-  test("returns 1 when metaobjects/ exists without --force", async () => {
+  test("returns 0 (no-op) when metaobjects/ exists without --force", async () => {
     mkdirSync(join(cwd, "metaobjects"));
-    expect(await initCommand([], cwd)).toBe(1);
+    expect(await initCommand([], cwd)).toBe(0);
   });
   test("returns 2 on unknown flag", async () => {
     expect(await initCommand(["--foo"], cwd)).toBe(2);

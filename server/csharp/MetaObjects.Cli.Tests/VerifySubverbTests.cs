@@ -201,6 +201,18 @@ public sealed class VerifySubverbTests : IDisposable
         Assert.NotNull(r.Codegen!.Error);
     }
 
+    [Fact]
+    public void Codegen_with_metadata_that_does_not_load_is_exit1_not_the_usage_exit2()
+    {
+        // Metadata that does not load is a runtime failure: exit 1, the code gen, fmt,
+        // docs and the templates gate already used and every other port uses. It used to
+        // share exit 2 with "no --out given", a usage error.
+        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), """{ "metadata.root": { "children": [ """);
+        var r = VerifyCommand.RunSubverbs(TemplatesOpts(templates: false, codegen: true));
+        Assert.Equal(1, r.ExitCode);
+        Assert.Contains("did not load", r.Codegen!.Error);
+    }
+
     // -------------------- the namespace-inference footgun --------------------
     // gen used a CUSTOM namespace; verify --codegen WITHOUT --namespace must infer
     // it from the committed output (else every file would spuriously drift on the
@@ -363,7 +375,8 @@ public sealed class VerifySubverbTests : IDisposable
         ]}}
         """);
         var r = VerifyCommand.RunSubverbs(TemplatesOpts(templates: false, codegen: true));
-        Assert.Equal(2, r.ExitCode);
+        // A load failure exits 1 (runtime), as the Node `meta verify` does for the same file.
+        Assert.Equal(1, r.ExitCode);
         Assert.NotNull(r.Codegen?.Error);
         Assert.Contains("noSuchAttr", r.Codegen!.Error);
         Assert.Contains("Thing", r.Codegen!.Error);

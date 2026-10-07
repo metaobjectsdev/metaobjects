@@ -57,6 +57,6 @@ describe("parseGenArgs", () => {
   });
 
   test("unknown flag throws", () => {
-    expect(() => parseGenArgs(["--foo"])).toThrow(/Unknown option '--foo'/);
+    expect(() => parseGenArgs(["--foo"])).toThrow(/unknown flag --foo for `meta gen`\. Valid flags: .*--dry-run/);
   });
 });

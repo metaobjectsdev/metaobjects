@@ -379,6 +379,9 @@ export async function verifyCommand(
   // subverb so ANY kind of drift fails CI. Each gate only runs when its mode is
   // selected; an unselected gate contributes 0.
   const templateExit = runTemplates ? runTemplateVerify() : 0;
+  // Set when the schema gate could not reach or read the database: a failure, but not
+  // drift, and the payload must not report it as drift.
+  let schemaRunError: string | undefined;
   const schemaExit = await runSchemaVerify();
   const codegenExit = runCodegen ? await runCodegenVerify() : 0;
   const docsExit = runDocs ? await runDocsVerify() : 0;
@@ -464,6 +467,7 @@ export async function verifyCommand(
         names: nameSection,
         deprecations: deprecationSection,
         fields: fieldSection,
+        errors: schemaRunError !== undefined ? [{ gate: "schema", error: schemaRunError }] : [],
       }),
       fmt,
     );
@@ -1269,7 +1273,8 @@ export async function verifyCommand(
     try {
       kysely = await buildKyselyFromUrl(flags.db as string, flags.dialect as Dialect | undefined);
     } catch (err) {
-      log.error(`verify: ${describeError(err)}`);
+      schemaRunError = describeError(err);
+      log.error(`verify: ${schemaRunError}`);
       return 1;
     }
 
@@ -1295,7 +1300,8 @@ export async function verifyCommand(
           ...importedOption(collection),
         });
       } catch (err) {
-        log.error(`verify: failed to introspect ${kysely.displayUrl}: ${describeError(err)}`);
+        schemaRunError = `failed to introspect ${kysely.displayUrl}: ${describeError(err)}`;
+        log.error(`verify: ${schemaRunError}`);
         return 1;
       }
 
@@ -1561,7 +1567,7 @@ export async function verifyCommand(
         // and the loader's own remedies. It printed a bare message plus a hand-rolled
         // suggestions read — the half-true rule this file's sibling comment warns about.
         reportLoadError(log, "verify --codegen: failed to load this package's metadata", err);
-        return 2;
+        return 1;
       }
     }
 
@@ -1935,14 +1941,23 @@ function buildVerifyPayload(input: {
   names: AdvisorySection<AdvisoryDiagnosticRow>;
   deprecations: AdvisorySection<AdvisoryDiagnosticRow>;
   fields: AdvisorySection<AdvisoryDiagnosticRow>;
+  /** Gates that could not run at all (an unreachable database) — failures, not drift. */
+  errors?: readonly { gate: string; error: string }[];
 }): Record<string, unknown> {
   const ran = input.gates.filter((g) => g.ran);
   const failed = ran.filter((g) => !g.ok);
-  const parts: string[] = [
-    failed.length === 0
-      ? `${ran.length} gate(s) ran, all clean`
-      : `${failed.length} of ${ran.length} gate(s) failed (${failed.map((g) => g.gate).join(", ")})`,
-  ];
+  const errors = input.errors ?? [];
+  const drifted = failed.filter((g) => !errors.some((e) => e.gate === g.gate));
+  const parts: string[] = failed.length === 0
+    ? [`${ran.length} gate(s) ran, all clean`]
+    : [
+        ...(drifted.length > 0
+          ? [`${drifted.length} of ${ran.length} gate(s) failed (${drifted.map((g) => g.gate).join(", ")})`]
+          : []),
+        ...(errors.length > 0
+          ? [`${errors.length} gate(s) could not run (${errors.map((e) => e.gate).join(", ")})`]
+          : []),
+      ];
   if (input.antiPatterns.status === "ran" && input.antiPatterns.total > 0) {
     // "advisory", not "anti-pattern": the section also carries unindexed foreign keys, a
     // missing baseUrl and the other non-scanner rows — `help` breaks the count down by kind.
@@ -1964,8 +1979,9 @@ function buildVerifyPayload(input: {
     parts.push(`${input.fields.total} field authoring finding(s)`);
   }
 
-  const help: string[] = [];
-  if (failed.length > 0) {
+  const help: string[] = errors.map((e) =>
+    `the ${e.gate} gate could not run, which is not drift: ${e.error} — fix the connection and re-run`);
+  if (drifted.length > 0) {
     help.push(
       `the failing gate's drift DETAIL is printed as text on stderr — this payload carries the verdict only`,
     );
@@ -2007,6 +2023,7 @@ function buildVerifyPayload(input: {
 
   return {
     verify: input.gates,
+    ...(errors.length > 0 ? { errors } : {}),
     exitCode: input.exitCode,
     summary: parts.join("; "),
     help,

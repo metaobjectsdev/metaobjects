@@ -14,6 +14,7 @@
 import { resolve as resolvePath, basename, dirname } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { log } from "../lib/log.js";
+import { unknownFlagMessage } from "../lib/strict-args.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from "@metaobjectsdev/sdk";
@@ -125,6 +126,12 @@ function parseLayout(v: string | undefined, flag: string): DocsLayout {
   return v;
 }
 
+/** The flags `parseDocsArgs` below accepts, for the unknown-flag refusal. */
+const DOCS_FLAGS: readonly string[] = [
+  "--out, -o", "--layout", "--model", "--api", "--requirements", "--agent", "--metamodel",
+  "--site", "--scaffold-site", "--base-url", "--templates", "--prompts",
+];
+
 function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
   let projectRoot: string | undefined;
   let out: string | undefined;
@@ -190,7 +197,7 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
     } else if (a.startsWith("--prompts=")) {
       prompts = a.slice("--prompts=".length);
     } else if (a.startsWith("-")) {
-      throw new Error(`unknown flag: ${a}`);
+      throw new Error(unknownFlagMessage("docs", a, DOCS_FLAGS));
     } else if (projectRoot === undefined) {
       projectRoot = a;
     } else {
@@ -528,7 +535,7 @@ export async function docsCommand(
     });
   } catch (err) {
     reportLoadError(log, "docs: failed to load metadata", err);
-    return 2;
+    return 1;
   }
 
   // Build the same GenContext the codegen runner builds for docsFile(). The

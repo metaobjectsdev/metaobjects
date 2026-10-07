@@ -30,6 +30,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { log } from "../lib/log.js";
 import { describeError } from "../lib/error-text.js";
+import { unknownFlagMessage } from "../lib/strict-args.js";
 
 /** YAML authoring (ADR-0006). Rewritten by the `yaml`-backed arm, loaded on demand below. */
 const YAML_EXTENSIONS = new Set([".yaml", ".yml"]);
@@ -39,6 +40,9 @@ interface UpgradeFlags {
   maxVersion?: string;
   projectRoot?: string;
 }
+
+/** The flags `parseArgs` below accepts, for the unknown-flag refusal. */
+const UPGRADE_FLAGS: readonly string[] = ["--apply", "--to"];
 
 function parseArgs(argv: string[]): UpgradeFlags {
   const flags: UpgradeFlags = { apply: false };
@@ -52,7 +56,7 @@ function parseArgs(argv: string[]): UpgradeFlags {
     } else if (a.startsWith("--to=")) flags.maxVersion = a.slice("--to=".length);
     else if (a === "--help" || a === "-h") throw new Error("__help__");
     else if (!a.startsWith("-")) flags.projectRoot = a;
-    else throw new Error(`unknown option: ${a}`);
+    else throw new Error(unknownFlagMessage("upgrade", a, UPGRADE_FLAGS));
   }
   return flags;
 }

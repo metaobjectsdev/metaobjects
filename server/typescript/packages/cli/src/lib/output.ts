@@ -203,6 +203,8 @@ export interface MigrateResultShape {
    * caller sees the risk before applying.
    */
   warnings?: string[];
+  /** A dry run's SQL. Text format prints it as a preview; JSON/toon carry it here. */
+  sql?: { up: string; down: string };
 }
 
 export function formatMigrateResult(result: MigrateResultShape, _opts: FormatOptions): string {
@@ -329,6 +331,7 @@ export function migrateResultToData(result: MigrateResultShape): {
   summary: string;
   help: string[];
   warnings?: string[];
+  sql?: { up: string; down: string };
 } {
   const changeEntries = Object.entries(result.changeCounts).filter(([, v]) => v > 0);
   const changes = changeEntries.map(([kind, count]) => ({ kind, count }));
@@ -395,6 +398,7 @@ export function migrateResultToData(result: MigrateResultShape): {
     changes, written: result.writtenPaths, summary, help,
     // Only when present, so a run with no hazard keeps its existing shape.
     ...(warnings.length > 0 ? { warnings } : {}),
+    ...(result.sql !== undefined ? { sql: result.sql } : {}),
   };
 }
 

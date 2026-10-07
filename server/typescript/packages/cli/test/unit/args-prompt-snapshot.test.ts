@@ -15,7 +15,7 @@ describe("parsePromptSnapshotArgs", () => {
     });
   });
   test("throws on an unknown flag", () => {
-    expect(() => parsePromptSnapshotArgs(["--bogus"])).toThrow(/Unknown option '--bogus'/);
+    expect(() => parsePromptSnapshotArgs(["--bogus"])).toThrow(/unknown flag --bogus for `meta prompt-snapshot`\. Valid flags: .*--check/);
   });
   test("throws on a positional argument", () => {
     expect(() => parsePromptSnapshotArgs(["extra"])).toThrow(/Unexpected argument 'extra'/);

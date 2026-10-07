@@ -80,7 +80,9 @@ describe("meta gen — does not mask ParseErrors", () => {
     console.error = (...args: unknown[]) => { stderr.push(String(args[0])); };
     try {
       const exit = await run(["gen", "--cwd", root]);
-      expect(exit).toBe(2);
+      // Metadata that does not load is a runtime failure (exit 1) in every command and
+      // every port — not the usage code (2) it once shared with a bad flag.
+      expect(exit).toBe(1);
       const joined = stderr.join("\n");
       // The real ParseError must surface…
       expect(joined).toContain("no such relationship");

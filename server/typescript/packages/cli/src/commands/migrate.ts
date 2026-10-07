@@ -5,11 +5,11 @@ import { spawn } from "node:child_process";
 import { parseMigrateArgs } from "../lib/args.js";
 import { resolveMigrateConfig, MIGRATE_DEFAULT_OUT_DIR } from "../lib/config.js";
 import type { ResolvedMigrateConfig } from "../lib/config.js";
-import { formatMigrateResult, formatMigrateResultToon, type BlockedEntry, type AmbiguousEntry } from "../lib/output.js";
+import { formatMigrateResult, formatMigrateResultToon, type BlockedEntry, type AmbiguousEntry, type MigrateResultShape, migrateResultToData } from "../lib/output.js";
 import { formatMigrateResultJson } from "../lib/output-json.js";
 import type { OutputFormat } from "../lib/format.js";
-import { toonEncode } from "../lib/format.js";
-import { buildKyselyFromUrl, redactUrl } from "../lib/kysely.js";
+import { emitStructured, narrate, toonEncode } from "../lib/format.js";
+import { buildKyselyFromUrl, inferDialect, redactUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
 import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from "@metaobjectsdev/sdk";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
@@ -135,7 +135,7 @@ MIGRATE FLAGS:
   --d1 <binding>       D1 binding name from wrangler.toml (only with --dialect d1)
   --remote             Target remote D1 instead of local (only with --dialect d1)
   --yes                Skip the --remote --apply confirmation pause
-  --dry-run            Print SQL to stdout, don't write
+  --dry-run            Print the SQL, don't write (json/toon: in the document's sql field)
   --help, -h           Print this help
 
 EXAMPLES:
@@ -234,10 +234,28 @@ function logOutOfScope(
   fromDependencies: readonly string[],
   fmt: OutputFormat,
 ): void {
-  for (const msg of exclusionNotes("migrate", names, fromDependencies)) {
-    if (fmt === "text") log.info(msg);
-    else log.warn(msg);
-  }
+  for (const msg of exclusionNotes("migrate", names, fromDependencies)) narrate(fmt, msg);
+}
+
+/**
+ * End a migrate path that reports in prose. Text format prints the lines on stdout as it
+ * always has. A structured format sends the same lines to STDERR and puts exactly ONE
+ * document on stdout — `doc` — so `--format json | jq` always has something to parse
+ * and never a sentence in front of it (the rule `logOutOfScope` states above).
+ */
+function finishMigrate(fmt: OutputFormat, lines: readonly string[], doc: Record<string, unknown>): void {
+  for (const line of lines) narrate(fmt, line);
+  if (fmt !== "text") emitStructured(doc, fmt);
+}
+
+/** The result fields both the offline and the d1 pipeline report when they have none of their own. */
+function migrateResultDefaults(dryRun: boolean): Pick<MigrateResultShape, "blocked" | "ambiguous" | "writtenPaths" | "dryRun"> {
+  return { blocked: [], ambiguous: [], writtenPaths: [], dryRun };
+}
+
+/** The `-- UP -- / -- DOWN --` preview a dry run prints in text format. */
+function sqlPreview(sql: { up: string; down: string }): string {
+  return `-- UP --\n${sql.up}\n\n-- DOWN --\n${sql.down}`;
 }
 
 /**
@@ -671,7 +689,7 @@ export async function migrateCommand(
   // every applied migration NEWER than <target> (target retained), in reverse
   // order, ledger-tracked + advisory-locked. postgres/sqlite only.
   if (config.rollback !== undefined) {
-    return await runRollback(config, metaRoot);
+    return await runRollback(config, metaRoot, fmt);
   }
 
   // Best-effort load of metaobjects.config.ts to pick up consumer-supplied
@@ -705,7 +723,7 @@ export async function migrateCommand(
     });
   } catch (err) {
     reportLoadError(log, "failed to load metadata", err);
-    return 2;
+    return 1;
   }
   warnReferentialActionConflicts(metadata, collection);
 
@@ -719,6 +737,8 @@ export async function migrateCommand(
 
   let exitCode = 0;
   let writtenPaths: string[] = [];
+  /** A dry run's SQL: printed in text format, carried in the document otherwise. */
+  let dryRunSql: { up: string; down: string } | undefined;
   let appliedNames: string[] = [];
   let applyFailed = false;
   let blocked: BlockedEntry[] = [];
@@ -896,6 +916,11 @@ export async function migrateCommand(
       if (exitCode === 0 && emitted) {
         if (config.slug === undefined) {
           log.error(`migrate: --slug <name> required when there are changes (e.g., --slug add-user-shipping)`);
+          emitStructuredError(
+            "migrate: --slug <name> required when there are changes",
+            "re-run with --slug <name>; for a new database whose migrations are already committed, run `meta migrate apply-pending --db <url>`",
+            fmt,
+          );
           // The common way to land here is a NEW database (a fresh clone, CI, another
           // environment) whose migrations are already committed: the diff against an empty
           // database is every table, so it asks to author a new migration. That database
@@ -909,7 +934,8 @@ export async function migrateCommand(
         }
 
         if (config.dryRun) {
-          log.info(`-- UP --\n${emitted.up}\n\n-- DOWN --\n${emitted.down}`);
+          dryRunSql = { up: emitted.up, down: emitted.down };
+          if (fmt === "text") log.info(sqlPreview(dryRunSql));
         } else {
           const outDir = resolveFormatOutDir(config, metaRoot);
           await mkdir(outDir, { recursive: true });
@@ -1025,6 +1051,7 @@ export async function migrateCommand(
     applied: appliedNames,
     applyFailed,
     warnings: hazardWarnings,
+    ...(dryRunSql !== undefined ? { sql: dryRunSql } : {}),
   };
   const output =
     fmt === "toon" ? formatMigrateResultToon(migrateResult)
@@ -1033,10 +1060,12 @@ export async function migrateCommand(
 
   log.info(output);
   if (config.apply && exitCode === 0) {
+    // The document's summary already says what was applied; this line is narration,
+    // so a structured run sends it to stderr rather than after the document.
     if (appliedNames.length > 0) {
-      log.info(`migrate: applied ${appliedNames.length} migration(s): ${appliedNames.join(", ")}`);
+      narrate(fmt, `migrate: applied ${appliedNames.length} migration(s): ${appliedNames.join(", ")}`);
     } else {
-      log.info(`migrate: no pending migrations to apply`);
+      narrate(fmt, `migrate: no pending migrations to apply`);
     }
   }
   return exitCode;
@@ -1151,19 +1180,23 @@ export async function runBaseline(
       });
     } catch (err) {
       reportLoadError(log, "migrate baseline: failed to load metadata", err);
-      return 2;
+      return 1;
     }
     const baselineViews = buildProjectionViews(metadata, { dialect: config.dialect, columnNamingStrategy: baselineStrategy });
     snapshot = baselineFromMetadata(metadata, config.dialect, baselineStrategy, baselineViews);
   }
 
   if (config.dryRun) {
-    log.info(`migrate baseline (dry-run): would write schema snapshot ${path}`);
+    finishMigrate(fmt, [`migrate baseline (dry-run): would write schema snapshot ${path}`], {
+      snapshot: path, written: [], summary: "baseline preview only (nothing written)", help: ["re-run without --dry-run to write the snapshot"],
+    });
     return 0;
   }
 
   await writeSnapshot(path, snapshot);
-  log.info(`migrate: wrote schema snapshot ${path}`);
+  finishMigrate(fmt, [`migrate: wrote schema snapshot ${path}`], {
+    snapshot: path, written: [path], summary: "wrote schema snapshot", help: ["commit the snapshot; later runs diff against it"],
+  });
   return 0;
 }
 
@@ -1263,8 +1296,26 @@ export async function runOfflineGenerate(
    *  `genRoot`. Defaults to `metaRoot`, the co-located case. */
   genRoot: string = metaRoot,
 ): Promise<number> {
+  // `--dialect` is optional wherever a URL is known: the offline path reads the
+  // committed snapshot rather than the database, but `--db` (or DATABASE_URL /
+  // migrate.databaseUrl) still names which dialect that snapshot is for. The help has
+  // always said "auto-detected from URL scheme"; this path used to refuse instead.
+  if (config.dialect === undefined && config.databaseUrl !== undefined) {
+    try {
+      config = { ...config, dialect: inferDialect(config.databaseUrl) };
+    } catch (err) {
+      log.error(`migrate: ${describeError(err)}`);
+      emitStructuredError(`migrate: ${describeError(err)}`, "pass --dialect sqlite|postgres|d1", fmt);
+      return 2;
+    }
+  }
   if (config.dialect === undefined) {
-    log.error(`migrate: --dialect required for offline generation (or use --from-db)`);
+    log.error(`migrate: --dialect required for offline generation — pass --dialect sqlite|postgres, or --db <url> to infer it (or use --from-db)`);
+    emitStructuredError(
+      "migrate: --dialect required for offline generation",
+      "pass --dialect sqlite|postgres, or --db <url> to infer it from the URL scheme",
+      fmt,
+    );
     return 2;
   }
   // Load metaobjects.config.ts ONCE, up front, for BOTH the consumer providers/libraries
@@ -1290,7 +1341,7 @@ export async function runOfflineGenerate(
     });
   } catch (err) {
     reportLoadError(log, "migrate: failed to load metadata", err);
-    return 2;
+    return 1;
   }
   warnReferentialActionConflicts(metadata, collection);
 
@@ -1374,19 +1425,30 @@ export async function runOfflineGenerate(
   const { diff: diffResult, nextSnapshot, expected: governedExpected } = plan;
   logOutOfScope(plan.outOfScope, plan.importedOutOfScope ?? [], fmt);
 
+  const offlineResult = (extra: Partial<MigrateResultShape>): MigrateResultShape => ({
+    dialect: offlineDialect,
+    displayUrl: "",
+    changeCounts: summarizeChanges(diffResult.changes),
+    ...migrateResultDefaults(config.dryRun),
+    format: config.format,
+    ...extra,
+  });
   if (diffResult.blocked.length > 0) {
-    logBlocked(blockedEntriesFor(diffResult.blocked, diffResult.changes));
+    const blocked = blockedEntriesFor(diffResult.blocked, diffResult.changes);
+    logBlocked(blocked);
+    if (fmt !== "text") emitStructured(migrateResultToData(offlineResult({ blocked })), fmt);
     return 1;
   }
   if (diffResult.changes.length === 0) {
-    log.info(`migrate: no changes`);
+    finishMigrate(fmt, [`migrate: no changes`], migrateResultToData(offlineResult({})));
     return 0;
   }
   if (config.slug === undefined) {
     log.error(`migrate: --slug <name> required when there are changes (e.g., --slug add-user-shipping)`);
+    emitStructuredError("migrate: --slug <name> required when there are changes", "re-run with --slug <name>", fmt);
     return 2;
   }
-  warnDataHazards(diffResult.hazards);
+  const offlineWarnings = warnDataHazards(diffResult.hazards);
 
   const emitResult = emit(diffResult.changes, {
     dialect: config.dialect,
@@ -1396,7 +1458,8 @@ export async function runOfflineGenerate(
   });
 
   if (config.dryRun) {
-    log.info(`-- UP --\n${emitResult.up}\n\n-- DOWN --\n${emitResult.down}`);
+    const sql = { up: emitResult.up, down: emitResult.down };
+    finishMigrate(fmt, [sqlPreview(sql)], migrateResultToData(offlineResult({ sql, warnings: offlineWarnings })));
     return 0;
   }
 
@@ -1417,8 +1480,11 @@ export async function runOfflineGenerate(
         { dir: writeDir, slug: config.slug },
       );
   await writeSnapshot(path, nextSnapshot);
-  log.info(`migrate: wrote ${res.upPath}`);
-  log.info(`migrate: wrote ${res.downPath}`);
+  finishMigrate(
+    fmt,
+    [`migrate: wrote ${res.upPath}`, `migrate: wrote ${res.downPath}`],
+    migrateResultToData(offlineResult({ writtenPaths: [res.upPath, res.downPath], warnings: offlineWarnings })),
+  );
   return 0;
 }
 
@@ -1432,6 +1498,7 @@ export async function runOfflineGenerate(
 async function runRollback(
   config: ResolvedMigrateConfig,
   metaRoot: string,
+  fmt: OutputFormat,
 ): Promise<number> {
   // databaseUrl is guaranteed defined by the caller's guard above.
   const databaseUrl = config.databaseUrl as string;
@@ -1459,11 +1526,10 @@ async function runRollback(
 
   try {
     const result = await rollbackTo(kysely.db, outDir, target, { dialect });
-    if (result.rolledBack.length > 0) {
-      log.info(`migrate: rolled back ${result.rolledBack.length} migration(s): ${result.rolledBack.join(", ")}`);
-    } else {
-      log.info(`migrate: nothing to roll back${target ? ` newer than '${target}'` : ""}`);
-    }
+    const summary = result.rolledBack.length > 0
+      ? `rolled back ${result.rolledBack.length} migration(s): ${result.rolledBack.join(", ")}`
+      : `nothing to roll back${target ? ` newer than '${target}'` : ""}`;
+    finishMigrate(fmt, [`migrate: ${summary}`], { rolledBack: result.rolledBack, summary });
     return 0;
   } catch (err) {
     log.error(`migrate: rollback failed: ${describeError(err)}`);
@@ -1560,7 +1626,7 @@ async function runD1Migrate(
     });
   } catch (err) {
     reportLoadError(log, "migrate: failed to load metadata", err);
-    return 2;
+    return 1;
   }
   warnReferentialActionConflicts(metadata, collection);
 
@@ -1641,13 +1707,23 @@ async function runD1Migrate(
   // BEGIN/COMMIT + PRAGMA that recreate-and-copy emits). There is no separate
   // view-migration emitter; introspectD1 now reads view bodies so unchanged views
   // produce no change and body changes emit a DROP+CREATE.
+  const d1Result = (extra: Partial<MigrateResultShape>): MigrateResultShape => ({
+    dialect: "d1",
+    displayUrl: binding.binding,
+    changeCounts,
+    // No `format` key here on purpose: every d1 output this build ships was produced
+    // without it; adding it would change bytes the tests pin.
+    ...migrateResultDefaults(config.dryRun),
+    ...extra,
+  });
   if (diffResult.changes.length === 0) {
-    log.info(`migrate: no schema changes for d1 binding '${binding.binding}'`);
+    finishMigrate(fmt, [`migrate: no schema changes for d1 binding '${binding.binding}'`], migrateResultToData(d1Result({})));
     return 0;
   }
 
   if (config.slug === undefined) {
     log.error(`migrate: --slug <name> required when there are changes`);
+    emitStructuredError("migrate: --slug <name> required when there are changes", "re-run with --slug <name>", fmt);
     return 2;
   }
 
@@ -1671,7 +1747,8 @@ async function runD1Migrate(
   const migrationsDir = resolveD1OutDir(config, metaRoot, binding.migrations_dir);
 
   if (config.dryRun) {
-    log.info(`-- UP --\n${combinedUp}\n\n-- DOWN --\n${combinedDown}`);
+    const sql = { up: combinedUp, down: combinedDown };
+    finishMigrate(fmt, [sqlPreview(sql)], migrateResultToData(d1Result({ sql })));
     return 0;
   }
 
@@ -1679,11 +1756,15 @@ async function runD1Migrate(
     { up: combinedUp, down: combinedDown },
     { dir: migrationsDir, slug: config.slug },
   );
-  log.info(`migrate: wrote ${writeResult.upPath}`);
-  log.info(`migrate: wrote ${writeResult.downPath}`);
-  for (const [kind, count] of Object.entries(changeCounts)) {
-    log.info(`  ${kind}: ${count}`);
-  }
+  finishMigrate(
+    fmt,
+    [
+      `migrate: wrote ${writeResult.upPath}`,
+      `migrate: wrote ${writeResult.downPath}`,
+      ...Object.entries(changeCounts).map(([kind, count]) => `  ${kind}: ${count}`),
+    ],
+    migrateResultToData(d1Result({ writtenPaths: [writeResult.upPath, writeResult.downPath] })),
+  );
 
   // 7. Optional --apply: run `wrangler d1 migrations apply`.
   if (config.d1.autoApply) {
@@ -1707,7 +1788,8 @@ async function runWranglerApply(
   yes: boolean,
 ): Promise<number> {
   if (remote && !yes) {
-    log.info(
+    // Progress, not output: stderr, so it never lands in front of a document on stdout.
+    log.warn(
       `Applying to remote D1 '${databaseName}' (binding=${bindingName}) in 2s — Ctrl+C to abort or pass --yes to skip this pause.`,
     );
     await new Promise<void>((r) => setTimeout(r, 2000));

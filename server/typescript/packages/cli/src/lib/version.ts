@@ -25,3 +25,10 @@ export function cliVersion(): string {
   }
   return "0.0.0";
 }
+
+/** The three spellings that print the bare version: `--version`, `-v` and `-V`. */
+const VERSION_FLAGS: readonly string[] = ["--version", "-v", "-V"];
+
+export function isVersionFlag(arg: string | undefined): boolean {
+  return arg !== undefined && VERSION_FLAGS.includes(arg);
+}

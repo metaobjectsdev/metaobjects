@@ -31,7 +31,7 @@ describe("parseInitArgs", () => {
     expect(parseInitArgs(["--config-only"])).toEqual({ ...defaultInitFlags, configOnly: true });
   });
   test("throws on unknown flag", () => {
-    expect(() => parseInitArgs(["--foo"])).toThrow(/Unknown option '--foo'/);
+    expect(() => parseInitArgs(["--foo"])).toThrow(/unknown flag --foo for `meta init`\. Valid flags: .*--force/);
   });
 });
 

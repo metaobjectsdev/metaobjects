@@ -1,4 +1,5 @@
 import { encode } from "@toon-format/toon";
+import { log } from "./log.js";
 
 export type OutputFormat = "toon" | "json" | "text";
 
@@ -34,4 +35,15 @@ export function toonEncode(value: unknown): string {
 export function emitStructured(payload: unknown, fmt: OutputFormat): void {
   if (fmt === "json") console.log(JSON.stringify(payload, null, 2));
   else if (fmt === "toon") console.log(toonEncode(payload));
+}
+
+/**
+ * One narration line, on the other side of the split {@link emitStructured} states:
+ * stdout in text format, stderr in a structured run, so a document never has a
+ * sentence in front of it. Every command that prints prose alongside a document
+ * routes it through here.
+ */
+export function narrate(fmt: OutputFormat, line: string): void {
+  if (fmt === "text") log.info(line);
+  else log.warn(line);
 }

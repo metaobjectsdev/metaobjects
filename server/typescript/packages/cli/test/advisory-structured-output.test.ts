@@ -352,7 +352,7 @@ describe("text mode caps, --limit raises it, and every site honors one constant"
       const bad = await capture(["verify", "--limit", "nonsense", "--cwd", dir]);
       expect(bad.exit).toBe(2);
       // The MESSAGE is asserted, not only the code: an unrecognised flag also
-      // exits 2 ("Unknown option '--limit'"), so a code-only assertion would pass
+      // exits 2 ("unknown flag --limit"), so a code-only assertion would pass
       // just as well on a build where --limit does not exist at all.
       expect(bad.err).toContain("invalid --limit 'nonsense'");
       expect(bad.err).toContain("all");
