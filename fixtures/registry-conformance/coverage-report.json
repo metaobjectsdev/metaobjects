@@ -301,6 +301,24 @@
       ]
     },
     {
+      "key": "measure.aggregate",
+      "untestedAttrs": [
+        "default"
+      ]
+    },
+    {
+      "key": "measure.ratio",
+      "untestedAttrs": [
+        "default"
+      ]
+    },
+    {
+      "key": "object.report",
+      "untestedAttrs": [
+        "spine"
+      ]
+    },
+    {
       "key": "relationship.aggregation",
       "untestedAttrs": [
         "onDelete",

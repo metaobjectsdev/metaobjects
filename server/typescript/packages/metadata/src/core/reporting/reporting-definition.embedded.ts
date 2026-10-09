@@ -127,6 +127,14 @@ export const REPORTING_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Optional name of a segment declared on the same entity. Combines with @filter by AND."
+        },
+        {
+          "type": "attr",
+          "subType": "int",
+          "name": "default",
+          "min": 0,
+          "max": 1,
+          "description": "Optional integer the measure reads when it would otherwise be null: nothing matched, every matched value is null, or (a ratio) the denominator is zero or null. The derived report field is then never null. Refused on @agg: count (a count is never null) and on min/max over a field that is not numeric. A ratio's operand carries its own @default into the ratio."
         }
       ]
     },
@@ -151,6 +159,14 @@ export const REPORTING_DEFINITION: ProviderDefinition = {
           "min": 1,
           "max": 1,
           "description": "Name of a measure.aggregate on the same entity."
+        },
+        {
+          "type": "attr",
+          "subType": "int",
+          "name": "default",
+          "min": 0,
+          "max": 1,
+          "description": "Optional integer the measure reads when it would otherwise be null: nothing matched, every matched value is null, or (a ratio) the denominator is zero or null. The derived report field is then never null. Refused on @agg: count (a count is never null) and on min/max over a field that is not numeric. A ratio's operand carries its own @default into the ratio."
         }
       ]
     },

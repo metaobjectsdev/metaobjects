@@ -214,6 +214,15 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>metaobjects-core-types</td>
 <td>Optional segment of @from scoping the rows.</td>
 </tr>
+<tr>
+<td><code>@spine</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Optional to-one path from @from to the entity whose rows supply the report&#39;s rows (e.g. &#39;Purchase.program&#39;), written like a dimension&#39;s @via. With it the report has one row per distinct dimension tuple among THAT entity&#39;s rows, including the ones no row of @from refers to: a count there is 0 and any other measure is null unless it declares @default. Every listed dimension must be reached through this path. @segment and @filter still scope the rows of @from and never remove a row. A row of @from whose reference is null or matches nothing is in no row of the report.</td>
+</tr>
 </tbody></table>
 <p><strong>Allowed children</strong></p>
 <ul>

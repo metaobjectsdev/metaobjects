@@ -57,6 +57,8 @@ export const REPORTING_ATTR_SEGMENT = "segment";
 /** `measure.ratio` operand names. */
 export const REPORTING_ATTR_NUMERATOR = "numerator";
 export const REPORTING_ATTR_DENOMINATOR = "denominator";
+/** Integer a measure reads when it would otherwise be null (`measure.aggregate` / `measure.ratio`). */
+export const REPORTING_ATTR_DEFAULT = "default";
 
 // ---------------------------------------------------------------------------
 // Closed sets — mirrored by `allowedValues` in spec/metamodel/reporting.json.

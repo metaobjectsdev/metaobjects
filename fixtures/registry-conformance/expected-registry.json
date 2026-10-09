@@ -3146,6 +3146,13 @@
           "description": "The aggregate function. sum/avg need a numeric field; min/max refuse boolean, object and map fields."
         },
         {
+          "name": "default",
+          "valueType": "int",
+          "isArray": false,
+          "required": false,
+          "description": "Optional integer the measure reads when it would otherwise be null: nothing matched, every matched value is null, or (a ratio) the denominator is zero or null. The derived report field is then never null. Refused on @agg: count (a count is never null) and on min/max over a field that is not numeric. A ratio's operand carries its own @default into the ratio."
+        },
+        {
           "name": "distinct",
           "valueType": "boolean",
           "isArray": false,
@@ -3182,6 +3189,13 @@
       "description": "A named quotient of two measure.aggregate siblings (FR-044), lowered as numerator / NULLIF(denominator, 0) and typed decimal. A zero denominator yields null.",
       "whenToUse": "Averages per unit that are not a plain avg: average days engaged per starter.",
       "attrs": [
+        {
+          "name": "default",
+          "valueType": "int",
+          "isArray": false,
+          "required": false,
+          "description": "Optional integer the measure reads when it would otherwise be null: nothing matched, every matched value is null, or (a ratio) the denominator is zero or null. The derived report field is then never null. Refused on @agg: count (a count is never null) and on min/max over a field that is not numeric. A ratio's operand carries its own @default into the ratio."
+        },
         {
           "name": "denominator",
           "valueType": "string",
@@ -3484,6 +3498,13 @@
           "isArray": false,
           "required": false,
           "description": "Optional segment of @from scoping the rows."
+        },
+        {
+          "name": "spine",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "Optional to-one path from @from to the entity whose rows supply the report's rows (e.g. 'Purchase.program'), written like a dimension's @via. With it the report has one row per distinct dimension tuple among THAT entity's rows, including the ones no row of @from refers to: a count there is 0 and any other measure is null unless it declares @default. Every listed dimension must be reached through this path. @segment and @filter still scope the rows of @from and never remove a row. A row of @from whose reference is null or matches nothing is in no row of the report."
         }
       ],
       "children": [

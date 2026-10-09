@@ -202,6 +202,14 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Optional row scope over @from's fields; may use relative-date values."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "spine",
+          "min": 0,
+          "max": 1,
+          "description": "Optional to-one path from @from to the entity whose rows supply the report's rows (e.g. 'Purchase.program'), written like a dimension's @via. With it the report has one row per distinct dimension tuple among THAT entity's rows, including the ones no row of @from refers to: a count there is 0 and any other measure is null unless it declares @default. Every listed dimension must be reached through this path. @segment and @filter still scope the rows of @from and never remove a row. A row of @from whose reference is null or matches nothing is in no row of the report."
         }
       ]
     }

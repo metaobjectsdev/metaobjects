@@ -13,6 +13,7 @@ import { ISO_DURATION_RE } from "../src/core/reporting/reporting-constants.js";
 import {
   reportDerivedFieldName,
   reportDimensionItems,
+  reportSpine,
 } from "../src/core/reporting/report-accessors.js";
 import { MetaMeasure } from "../src/core/reporting/meta-measure.js";
 import type { MetaData } from "../src/shared/meta-data.js";
@@ -1098,5 +1099,43 @@ describe("report accessors", () => {
       "WorkoutEvent.weekNumber",
       "WorkoutEvent.dayNumber",
     ]);
+  });
+
+  test("MetaMeasure.defaultValue: the declared integer (0 and negatives included), else undefined", async () => {
+    const m = edit((model) => {
+      patchMember(model, "Purchase", "revenue", { "@default": 0 });
+      setChild(model, "Purchase", "net", {
+        "measure.aggregate": { name: "net", "@agg": "avg", "@of": "Purchase.amountCents", "@default": -1 },
+      });
+      patchMember(model, "WorkoutEvent", "avgDaysPerStarter", { "@default": 0 });
+    });
+    const { root, errors } = await loadInline(m);
+    expect(errors).toEqual([]);
+    const measure = (entity: string, name: string): MetaMeasure =>
+      root.children().find((c) => c.name === entity)!.children().find((c) => c.name === name) as MetaMeasure;
+    expect(measure("Purchase", "revenue").defaultValue()).toBe(0);
+    expect(measure("Purchase", "net").defaultValue()).toBe(-1);
+    expect(measure("WorkoutEvent", "avgDaysPerStarter").defaultValue()).toBe(0);
+    expect(measure("Purchase", "purchases").defaultValue()).toBeUndefined();
+    expect(measure("WorkoutEvent", "avgDaysPerStarter").isRatio()).toBe(true);
+  });
+
+  test("reportSpine returns the declared path, and undefined when the report declares none", async () => {
+    const m = edit((model) => {
+      model["metadata.root"].children.push({
+        "object.report": {
+          name: "ProgramPurchases",
+          "@from": "Purchase",
+          "@spine": "Purchase.program",
+          "@dimensions": ["programTitle"],
+          "@measures": ["purchases", "revenue"],
+        },
+      });
+    });
+    const { root, errors } = await loadInline(m);
+    expect(errors).toEqual([]);
+    const report = (name: string) => root.children().find((c) => c.name === name)!;
+    expect(reportSpine(report("ProgramPurchases"))).toBe("Purchase.program");
+    expect(reportSpine(report("DailyRevenue"))).toBeUndefined();
   });
 });

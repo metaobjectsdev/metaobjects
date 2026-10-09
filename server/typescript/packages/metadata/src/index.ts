@@ -48,6 +48,7 @@ export { MetaMeasure } from "./core/reporting/meta-measure.js";
 export { MetaSegment } from "./core/reporting/meta-segment.js";
 export {
   reportFrom,
+  reportSpine,
   reportDimensionItems,
   reportMeasureNames,
   reportMeasureItemName,

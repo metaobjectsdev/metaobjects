@@ -66,3 +66,5 @@ export const OBJECT_REPORT_ATTR_MEASURES = "measures";
 export const OBJECT_REPORT_ATTR_SEGMENT = "segment";
 /** Optional row scope over @from's fields (an attr.filter). */
 export const OBJECT_REPORT_ATTR_FILTER = "filter";
+/** Optional to-one path from @from to the entity whose rows supply the report's rows (R8). */
+export const OBJECT_REPORT_ATTR_SPINE = "spine";

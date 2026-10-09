@@ -24,14 +24,16 @@
         { "type": "attr", "subType": "string", "name": "of", "isArray": true, "min": 1, "max": 1, "description": "Dotted Entity.field reference(s) on the declaring entity. A bare string is one column; more than one requires @agg: count and @distinct: true." },
         { "type": "attr", "subType": "boolean", "name": "distinct", "min": 0, "max": 1, "description": "Count distinct values. Legal only with @agg: count." },
         { "type": "attr", "subType": "filter", "name": "filter", "min": 0, "max": 1, "description": "Optional row scope (a portable attr.filter over the declaring entity's fields). May use relative-date values ({ now: \"-P7D\" }). Combines with @segment by AND." },
-        { "type": "attr", "subType": "string", "name": "segment", "min": 0, "max": 1, "description": "Optional name of a segment declared on the same entity. Combines with @filter by AND." }
+        { "type": "attr", "subType": "string", "name": "segment", "min": 0, "max": 1, "description": "Optional name of a segment declared on the same entity. Combines with @filter by AND." },
+        { "type": "attr", "subType": "int", "name": "default", "min": 0, "max": 1, "description": "Optional integer the measure reads when it would otherwise be null: nothing matched, every matched value is null, or (a ratio) the denominator is zero or null. The derived report field is then never null. Refused on @agg: count (a count is never null) and on min/max over a field that is not numeric. A ratio's operand carries its own @default into the ratio." }
       ] },
     { "type": "measure", "subType": "ratio",
       "description": "A named quotient of two measure.aggregate siblings (FR-044), lowered as numerator / NULLIF(denominator, 0) and typed decimal. A zero denominator yields null.",
       "whenToUse": "Averages per unit that are not a plain avg: average days engaged per starter.",
       "children": [
         { "type": "attr", "subType": "string", "name": "numerator", "min": 1, "max": 1, "description": "Name of a measure.aggregate on the same entity." },
-        { "type": "attr", "subType": "string", "name": "denominator", "min": 1, "max": 1, "description": "Name of a measure.aggregate on the same entity." }
+        { "type": "attr", "subType": "string", "name": "denominator", "min": 1, "max": 1, "description": "Name of a measure.aggregate on the same entity." },
+        { "type": "attr", "subType": "int", "name": "default", "min": 0, "max": 1, "description": "Optional integer the measure reads when it would otherwise be null: nothing matched, every matched value is null, or (a ratio) the denominator is zero or null. The derived report field is then never null. Refused on @agg: count (a count is never null) and on min/max over a field that is not numeric. A ratio's operand carries its own @default into the ratio." }
       ] },
     { "type": "segment", "subType": "filter",
       "description": "A named, reusable row filter on the declaring entity (FR-044). Measures and reports reference it by name; exporters emit it as a named segment.",

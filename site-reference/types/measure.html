@@ -76,6 +76,15 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>The aggregate function. sum/avg need a numeric field; min/max refuse boolean, object and map fields.</td>
 </tr>
 <tr>
+<td><code>@default</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>Optional integer the measure reads when it would otherwise be null: nothing matched, every matched value is null, or (a ratio) the denominator is zero or null. The derived report field is then never null. Refused on @agg: count (a count is never null) and on min/max over a field that is not numeric. A ratio&#39;s operand carries its own @default into the ratio.</td>
+</tr>
+<tr>
 <td><code>@distinct</code></td>
 <td>boolean</td>
 <td>no</td>
@@ -131,6 +140,15 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 </tr>
 </thead>
 <tbody><tr>
+<td><code>@default</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>Optional integer the measure reads when it would otherwise be null: nothing matched, every matched value is null, or (a ratio) the denominator is zero or null. The derived report field is then never null. Refused on @agg: count (a count is never null) and on min/max over a field that is not numeric. A ratio&#39;s operand carries its own @default into the ratio.</td>
+</tr>
+<tr>
 <td><code>@denominator</code></td>
 <td>string</td>
 <td>yes</td>
