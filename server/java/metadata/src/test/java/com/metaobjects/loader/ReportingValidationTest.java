@@ -158,7 +158,7 @@ public class ReportingValidationTest extends SharedRegistryTestBase {
         expect.put("error-measure-sum-non-numeric", new String[]{"ERR_INVALID_MEASURE",
                 "measure 'revenue' on entity 'acme::shop::Purchase': @agg 'sum' needs a numeric field (field.int, long, double, float, decimal or currency), but 'Purchase.status' is field.string."});
         expect.put("error-measure-tuple-without-distinct", new String[]{"ERR_INVALID_MEASURE",
-                "measure 'daysEngaged' on entity 'acme::shop::WorkoutEvent': @of lists 3 columns; a tuple is legal only with @agg: count and @distinct: true (a distinct count of the tuple)."});
+                "measure 'daysEngaged' on entity 'acme::shop::WorkoutEvent': @of lists 4 columns; a tuple is legal only with @agg: count and @distinct: true (a distinct count of the tuple)."});
         expect.put("error-ratio-operand-not-aggregate", new String[]{"ERR_INVALID_MEASURE",
                 "measure 'ratioOfRatio' on entity 'acme::shop::WorkoutEvent': @numerator 'avgDaysPerStarter' is a measure.ratio; a ratio's operands must be measure.aggregate (a ratio of ratios is not supported)."});
         expect.put("error-relative-date-bad-duration", new String[]{"ERR_BAD_ATTR_FILTER",
@@ -227,7 +227,7 @@ public class ReportingValidationTest extends SharedRegistryTestBase {
         member(doc, "WorkoutEvent", "measure.aggregate", "daysEngaged").addProperty("@agg", "sum");
         List<MetaDataException> got = ValidationPhase.validateReporting(loadJson(doc));
         assertEquals(List.of("ERR_INVALID_MEASURE"), codes(got));
-        assertTrue(got.get(0).getMessage(), got.get(0).getMessage().contains("@of lists 3 columns"));
+        assertTrue(got.get(0).getMessage(), got.get(0).getMessage().contains("@of lists 4 columns"));
     }
 
     @Test

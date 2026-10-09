@@ -183,8 +183,8 @@ because time owns `@grains` and truncation behaviour that attribute dimensions d
 - measure.aggregate: { name: buyers, "@agg": count, "@distinct": true,
                        "@of": "Purchase.customerEmail", "@segment": active }
 - measure.aggregate: { name: daysEngaged, "@agg": count, "@distinct": true,
-                       "@of": ["WorkoutEvent.programId", "WorkoutEvent.weekNumber",
-                               "WorkoutEvent.dayNumber"] }
+                       "@of": ["WorkoutEvent.programId", "WorkoutEvent.customerEmail",
+                               "WorkoutEvent.weekNumber", "WorkoutEvent.dayNumber"] }
 - measure.aggregate: { name: revenue, "@agg": sum, "@of": "Purchase.amountCents",
                        "@segment": active }
 - measure.aggregate: { name: starters, "@agg": count, "@distinct": true,
@@ -194,6 +194,14 @@ because time owns `@grains` and truncation behaviour that attribute dimensions d
                        "@denominator": starters }
 - measure.derived:   { name: netRevenue, "@expr": { fn: sub, args: [ ... ] } }
 ```
+
+`daysEngaged` counts customer-days: the tuple includes the customer, so a report grouped by
+program counts each customer's distinct days and sums them over customers. Without
+`customerEmail` the tuple would count the distinct days that *anyone* did. Take one customer
+with three days and two customers who share one day: the right numerator is 3 + 1 + 1 = 5, so
+`avgDaysPerStarter` is 5 / 3 = 1.667, where the tuple without the customer gives 3 / 3 = 1.0.
+`programId` stays in the tuple so the measure is also right in a report that is not grouped by
+program.
 
 - `measure.aggregate` — `@agg` in `count | sum | avg | min | max`; `@of` one column or a
   list (a list is legal only with `@distinct: true` and means a distinct count of the

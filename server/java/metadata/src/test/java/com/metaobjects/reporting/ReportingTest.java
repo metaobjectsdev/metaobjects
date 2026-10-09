@@ -163,7 +163,8 @@ public class ReportingTest extends SharedRegistryTestBase {
         assertEquals(List.of("Purchase.amountCents,Purchase.id"),
                 member(purchase, MetaMeasure.class, "revenue").getOfColumns());
         // A JSON-array @of keeps its items.
-        assertEquals(List.of("WorkoutEvent.programId", "WorkoutEvent.weekNumber", "WorkoutEvent.dayNumber"),
+        assertEquals(List.of("WorkoutEvent.programId", "WorkoutEvent.customerEmail", "WorkoutEvent.weekNumber",
+                        "WorkoutEvent.dayNumber"),
                 member(object(loader.getRoot(), "WorkoutEvent"), MetaMeasure.class, "daysEngaged").getOfColumns());
     }
 
@@ -171,7 +172,8 @@ public class ReportingTest extends SharedRegistryTestBase {
     public void aListOfIsTheTupleForm() throws IOException {
         MetaObject workout = object(loadFixture("reporting-vocabulary"), "WorkoutEvent");
         MetaMeasure days = member(workout, MetaMeasure.class, "daysEngaged");
-        assertEquals(List.of("WorkoutEvent.programId", "WorkoutEvent.weekNumber", "WorkoutEvent.dayNumber"),
+        assertEquals(List.of("WorkoutEvent.programId", "WorkoutEvent.customerEmail", "WorkoutEvent.weekNumber",
+                        "WorkoutEvent.dayNumber"),
                 days.getOfColumns());
         assertTrue(days.isDistinct());
         assertFalse(days.isRatio());

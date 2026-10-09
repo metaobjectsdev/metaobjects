@@ -267,6 +267,40 @@ describe("report views — canonical model on real SQLite", () => {
   });
 });
 
+/**
+ * The spec's nested average (FR-044 design, R2): `avgDaysPerStarter = daysEngaged / starters`,
+ * grouped by program. `daysEngaged` is a distinct count of a tuple, and the tuple has to
+ * include the customer: without it the numerator is the number of distinct days ANYONE did,
+ * not the sum over customers of the days each did.
+ */
+function engagementModel(tuple: readonly string[]): string {
+  return JSON.stringify({ "metadata.root": { package: "acme", children: [
+    { "object.entity": { name: "WorkoutEvent", children: [
+      { "source.rdb": { "@table": "workout_events" } },
+      { "field.long": { name: "id" } },
+      { "field.long": { name: "programId", "@required": true } },
+      { "field.string": { name: "customerEmail", "@required": true } },
+      { "field.int": { name: "weekNumber", "@required": true } },
+      { "field.int": { name: "dayNumber", "@required": true } },
+      { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+      { "dimension.attribute": { name: "program", "@of": "WorkoutEvent.programId" } },
+      { "measure.aggregate": { name: "starters", "@agg": "count", "@distinct": true, "@of": "WorkoutEvent.customerEmail" } },
+      { "measure.aggregate": { name: "daysEngaged", "@agg": "count", "@distinct": true, "@of": tuple.map((c) => `WorkoutEvent.${c}`) } },
+      { "measure.ratio": { name: "avgDaysPerStarter", "@numerator": "daysEngaged", "@denominator": "starters" } },
+    ] } },
+    { "object.report": { name: "ProgramEngagement", "@from": "WorkoutEvent", "@dimensions": ["program"],
+      "@measures": ["starters", "daysEngaged", "avgDaysPerStarter"], children: [
+      { "source.rdb": { "@kind": "view", "@view": "v_program_engagement" } } ] } },
+  ]}});
+}
+
+/** One customer with three days, two customers who share one day: 5 customer-days, 3 starters. */
+const ENGAGEMENT_ROWS = `
+  INSERT INTO "workout_events" ("programId","customerEmail","weekNumber","dayNumber") VALUES
+    (1, 'a@x.test', 1, 1), (1, 'a@x.test', 1, 2), (1, 'a@x.test', 1, 3),
+    (1, 'b@x.test', 1, 1), (1, 'c@x.test', 1, 1),
+    (1, 'a@x.test', 1, 1)`;
+
 describe("report views — inline model on real SQLite", () => {
   /** A Stamp table with date and naive-timestamp columns for the quarter / year grains. */
   const STAMP_MODEL = JSON.stringify({ "metadata.root": { package: "acme", children: [
@@ -297,6 +331,25 @@ describe("report views — inline model on real SQLite", () => {
     { "object.report": { name: "PairTotals", "@from": "Pair", "@measures": ["combos"], children: [
       { "source.rdb": { "@kind": "view", "@view": "v_pair_totals" } } ] } },
   ]}});
+
+  test("NESTED AVERAGE: the tuple includes the customer, so 3 + 1 + 1 customer-days over 3 starters is 5 / 3", async () => {
+    const root = await loadInline(engagementModel(["programId", "customerEmail", "weekNumber", "dayNumber"]));
+    const { expected } = await migrate(root);
+    await assertConverged(expected);
+    await applyRaw(ENGAGEMENT_ROWS);
+    const [row] = await select(`SELECT * FROM "v_program_engagement"`);
+    expect(row).toMatchObject({ program: 1, starters: 3, daysEngaged: 5 });
+    expect(row!.avgDaysPerStarter as number).toBeCloseTo(5 / 3, 9);
+  });
+
+  test("NESTED AVERAGE, the slip it replaces: a tuple without the customer counts days anyone did, 3 / 3", async () => {
+    const root = await loadInline(engagementModel(["programId", "weekNumber", "dayNumber"]));
+    const { expected } = await migrate(root);
+    await assertConverged(expected);
+    await applyRaw(ENGAGEMENT_ROWS);
+    const [row] = await select(`SELECT * FROM "v_program_engagement"`);
+    expect(row).toMatchObject({ program: 1, starters: 3, daysEngaged: 3, avgDaysPerStarter: 1 });
+  });
 
   test("a tuple with a NULL component is not counted, read through the lowered view", async () => {
     const root = await loadInline(PAIR_MODEL);

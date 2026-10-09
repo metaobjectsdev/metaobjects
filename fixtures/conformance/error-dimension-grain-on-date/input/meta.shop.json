@@ -283,6 +283,7 @@
                 "@distinct": true,
                 "@of": [
                   "WorkoutEvent.programId",
+                  "WorkoutEvent.customerEmail",
                   "WorkoutEvent.weekNumber",
                   "WorkoutEvent.dayNumber"
                 ]

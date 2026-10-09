@@ -41,7 +41,8 @@ import {
 } from "@metaobjectsdev/metadata";
 import type { MetaData, MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER } from "../constants.js";
-import { hasGeneratedForm, restPath, servedPath, servesClientTier } from "../api-surface.js";
+import { generatableObjects, isReport } from "../source-detect.js";
+import { hasGeneratedForm, restPath, servedPath, servesClientHooks } from "../api-surface.js";
 import {
   buildEntityUiDescriptor,
   type UiFieldDescriptor,
@@ -120,6 +121,14 @@ function flag(value: unknown): string {
  */
 function endpointLine(obj: MetaObject, root: MetaRoot, apiPrefix: string): string {
   const endpoint = servedPath(obj, apiPrefix);
+  // A served report: a list route, a list hook, and no form, grid, detail hook or writes.
+  if (isReport(obj)) {
+    return (
+      `Endpoint \`${endpoint}\` — list only. The generated client is the list hook; ` +
+      "**no form, grid or detail view is generated** for a report. The fields below " +
+      "describe the row and the filters."
+    );
+  }
   if (hasGeneratedForm(obj)) return `Endpoint \`${endpoint}\`.`;
   // `isTphDiscriminatorBase`, which requires at least one CONCRETE subtype — the same
   // predicate `routes-file.ts` switches on. `@discriminator` with no subtype yet is a
@@ -155,11 +164,10 @@ function dataGrids(obj: MetaObject): MetaData[] {
 /**
  * True when a UI generator would emit for this object.
  *
- * `servesClientTier` — the api-surface predicate the hook and grid generators
- * themselves gate on — NOT "has fields". A form, a grid and a hook are all clients of a
- * generated endpoint, so an object with no endpoint has no UI to document. A served
- * report (FR-044) has an endpoint and no UI tier until Plan 5, which is the one place
- * this differs from `servesReadApi`.
+ * `servesClientHooks` — the api-surface predicate the hook generator itself gates on —
+ * NOT "has fields". A form, a grid and a hook are all clients of a generated endpoint, so
+ * an object with no endpoint has no UI to document. A served report (FR-044) has an
+ * endpoint and a list hook, so it is listed.
  *
  * Getting this wrong is not cosmetic. Gating on "has fields" put a prompt payload
  * (`object.value`, no source, no routes) on the page under a heading that announced an
@@ -168,7 +176,7 @@ function dataGrids(obj: MetaObject): MetaData[] {
  * UI tier asks the endpoint question and never a storage or subtype one.
  */
 export function hasUiSurface(obj: MetaObject): boolean {
-  return servesClientTier(obj);
+  return servesClientHooks(obj);
 }
 
 function gridSection(obj: MetaObject, grid: MetaData): string[] {
@@ -197,8 +205,9 @@ function gridSection(obj: MetaObject, grid: MetaData): string[] {
  * then emits no FILE, so a headless project sees nothing rather than an empty page.
  */
 export function renderAgentUiPage(root: MetaRoot, apiPrefix = ""): string {
-  const objects = root.objects();
-  const withUi = objects.filter(hasUiSurface);
+  // A served report declares no fields; its row shape lives on its read model, which is
+  // what the hook and the route are generated from, so the page describes that.
+  const withUi = generatableObjects(root.objects(), root).filter(hasUiSurface);
   if (withUi.length === 0) return "";
 
   const out: string[] = [];

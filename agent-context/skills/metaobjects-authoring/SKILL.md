@@ -752,7 +752,7 @@ no `source.*` is checked at load and generates nothing.
 A report `@from` a TPH subtype is refused when its view is derived (the subtype shares its
 base's table): declare it `@from` the base with an `@filter` on the discriminator field.
 
-What does not exist: no client hook, grid or form for a report yet, no way to narrow which
+What does not exist: no grid or form for a report (TypeScript generates a list hook; no other port has a client tier), no way to narrow which
 derived fields are filterable, no `measure.derived`
 (arithmetic between measures beyond `measure.ratio`), no query-time choice of dimensions or
 measures (a report is a fixed, compiled combination), and no time-zone vocabulary (grains and

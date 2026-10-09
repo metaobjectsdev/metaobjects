@@ -159,6 +159,7 @@ function fullReportingModel(): Model {
                   "@distinct": true,
                   "@of": [
                     "WorkoutEvent.programId",
+                    "WorkoutEvent.customerEmail",
                     "WorkoutEvent.weekNumber",
                     "WorkoutEvent.dayNumber",
                   ],
@@ -1093,6 +1094,7 @@ describe("report accessors", () => {
     const days = event.children().find((c) => c.name === "daysEngaged") as MetaMeasure;
     expect(days.ofColumns()).toEqual([
       "WorkoutEvent.programId",
+      "WorkoutEvent.customerEmail",
       "WorkoutEvent.weekNumber",
       "WorkoutEvent.dayNumber",
     ]);

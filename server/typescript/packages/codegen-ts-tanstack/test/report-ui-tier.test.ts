@@ -1,20 +1,21 @@
-// FR-044 Plan 3, answer 6 — a served report has a route and NO client tier, and a keyless
-// projection gets a list hook and no detail hook.
+// FR-044 — a served report has a route, a row type and a LIST HOOK, and no grid, grid hook
+// or form; a keyless projection gets a list hook and no detail hook.
 //
 // A view-backed report passes every source-keyed gate (`servesReadApi` is true for it: the
-// route and queries generators emit), so the UI generators gate on `servesClientTier`
-// instead. Hooks, grids and grid hooks for a report are Plan 5; until then nothing here may
-// emit a file for one. `formFile` is held by the same model pair in
-// cli/test/unit/reporting-inert.test.ts, which runs every catalog generator.
+// route and queries generators emit). The hook generator gates on `servesClientHooks`,
+// which a report passes; the grid generators gate on `servesClientTier`, which it fails.
+// A grid, grid hook or form over reports belongs to the later `reporting` library.
+// `formFile` is held by the same model pair in cli/test/unit/reporting-inert.test.ts,
+// which runs every catalog generator.
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { InMemoryStringSource, MetaDataLoader, loadUris, reportReadModel } from "@metaobjectsdev/metadata";
 import {
   buildPkMap, buildRelationMap, defineConfig, hasItemRoute, makeRenderContext, runGen,
-  servesClientTier, servesReadApi,
+  servesClientHooks, servesClientTier, servesReadApi,
 } from "@metaobjectsdev/codegen-ts";
 import type { Generator } from "@metaobjectsdev/codegen-ts";
 import { tanstackGrid, tanstackGridHook, tanstackQuery } from "../src/index.js";
@@ -48,28 +49,70 @@ async function emittedPaths(generators: Generator[]): Promise<string[]> {
   }
 }
 
-describe("no UI-tier generator emits for a served report", () => {
-  test("the report is served and has no client tier", async () => {
+describe("a served report gets a list hook and no other UI-tier file", () => {
+  test("the report is served, has a hook and has no grid tier", async () => {
     const root = await loadWith();
     const report = root.objects().find((o) => o.name === "StoreTotals");
     if (!report) throw new Error("StoreTotals not found");
     for (const o of [report, reportReadModel(report, root)]) {
       expect(servesReadApi(o)).toBe(true);
+      expect(servesClientHooks(o)).toBe(true);
       expect(servesClientTier(o)).toBe(false);
     }
   });
 
-  for (const [name, generators] of [
-    ["built-in", () => [tanstackQuery(), tanstackGrid(), tanstackGridHook()]],
-    ["reference", () => [refHooks(), refGrid(), refGridHook()]],
+  for (const [name, hooks, others] of [
+    ["built-in", () => [tanstackQuery()], () => [tanstackGrid(), tanstackGridHook()]],
+    ["reference", () => [refHooks()], () => [refGrid(), refGridHook()]],
   ] as const) {
-    test(`${name} hooks, grid and grid hook emit nothing named for the report`, async () => {
-      const paths = await emittedPaths(generators());
-      // Not vacuous: the entities beside the report do get their hooks.
+    test(`${name} hook generator emits the report's list hook and its descriptor`, async () => {
+      const paths = await emittedPaths(hooks());
       expect(paths).toContain("Program.hooks.ts");
+      expect(paths.filter((p) => p.startsWith("StoreTotals")).sort()).toEqual([
+        "StoreTotals.hooks.ts",
+        "StoreTotals.meta.ts",
+      ]);
+      // A sourceless report is not served, so it has no hook.
+      for (const sourceless of ["ProgramEngagement", "DailyRevenue"]) {
+        expect(paths.filter((p) => p.startsWith(sourceless))).toEqual([]);
+      }
+    });
+
+    test(`${name} grid and grid hook generators emit nothing named for the report`, async () => {
+      const paths = await emittedPaths(others());
       expect(paths.filter((p) => p.startsWith("StoreTotals"))).toEqual([]);
       for (const sourceless of ["ProgramEngagement", "DailyRevenue"]) {
         expect(paths.filter((p) => p.startsWith(sourceless))).toEqual([]);
+      }
+    });
+  }
+
+  for (const [name, make] of [
+    ["built-in", tanstackQuery],
+    ["reference", refHooks],
+  ] as const) {
+    test(`${name} hooks file for a report: the list hook and its keys, no detail hook, no mutations`, async () => {
+      const dir = mkdtempSync(join(tmpdir(), "report-hooks-"));
+      try {
+        await runGen({
+          config: defineConfig({ outDir: dir, extStyle: "none", dbImport: "../db", dialect: "postgres", generators: [make()] }),
+          metadata: await loadWith(),
+        });
+        const out = readFileSync(join(dir, "StoreTotals.hooks.ts"), "utf8");
+        // `Totals` is already plural, so the list hook does not double it (hookListNameSegment).
+        expect(out).toContain("export function useStoreTotalsList(");
+        expect(out).toContain("filter?: StoreTotalsFilter");
+        expect(out).toContain("type StoreTotals as StoreTotalsRow");
+        expect(out).toContain("lists:");
+        expect(out).not.toContain("details:");
+        expect(out).not.toContain("detail:");
+        expect(out).not.toContain("useCreate");
+        expect(out).not.toContain("useUpdate");
+        expect(out).not.toContain("useDelete");
+        expect(out).not.toContain("/${id}");
+        expect(out).not.toContain("useMutation");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
       }
     });
   }
@@ -164,7 +207,7 @@ describe("a keyless projection gets a list hook and no detail hook", () => {
 // and has the layout, so it passes every other gate: reverting any of these generators to
 // `servesReadApi` turns its row red. This is also the door an adopter driving a generator
 // outside `runGen` comes through.
-describe("each UI-tier gate refuses a served report that passes its other gates", () => {
+describe("each grid-tier gate refuses a served report that passes its other gates", () => {
   async function reportWithGrid() {
     const json = JSON.stringify({ "metadata.root": { package: "test", children: [
       {
@@ -203,10 +246,8 @@ describe("each UI-tier gate refuses a served report that passes its other gates"
   }
 
   for (const [name, make] of [
-    ["tanstackQuery", tanstackQuery],
     ["tanstackGrid", tanstackGrid],
     ["tanstackGridHook", tanstackGridHook],
-    ["reference hooks", refHooks],
     ["reference grid", refGrid],
     ["reference grid-hook", refGridHook],
   ] as const) {
@@ -220,6 +261,28 @@ describe("each UI-tier gate refuses a served report that passes its other gates"
       // Not vacuous: the same filter admits the entity beside it.
       expect(filter(entity)).toBe(true);
       expect(filter(report)).toBe(false);
+    });
+  }
+});
+
+// The hook generator admits a served report and still refuses what is not served: the same
+// filter, asked of a report with no view, answers false. Reverting it to `servesClientTier`
+// turns the first row red; widening it past `servesReadApi` turns the second red.
+describe("the hook gate", () => {
+  for (const [name, make] of [
+    ["tanstackQuery", tanstackQuery],
+    ["reference hooks", refHooks],
+  ] as const) {
+    test(name, async () => {
+      const root = await loadWith();
+      const filter = make().filter;
+      if (!filter) throw new Error(`${name} has no filter`);
+      const served = root.objects().find((o) => o.name === "StoreTotals");
+      const sourceless = root.objects().find((o) => o.name === "DailyRevenue");
+      if (!served || !sourceless) throw new Error("fixture reports not found");
+      expect(filter(served)).toBe(true);
+      expect(filter(reportReadModel(served, root))).toBe(true);
+      expect(filter(sourceless)).toBe(false);
     });
   }
 });

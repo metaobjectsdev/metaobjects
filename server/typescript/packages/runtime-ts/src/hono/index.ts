@@ -53,6 +53,7 @@ import { guardRoute, readJsonBody } from "./route-guard.js";
 // shared (deprecated) helper so the three adapters can't silently diverge.
 export { parseId } from "../drizzle-fastify/util.js";
 export { timestampWire, canonicalTimestamp } from "../timestamp-wire.js";
+export { decimalWire } from "../decimal-wire.js";
 
 // ---------------------------------------------------------------------------
 // Loose types — we don't bind to a specific Drizzle backend so the helper

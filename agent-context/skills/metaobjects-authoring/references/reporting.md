@@ -98,4 +98,4 @@ The files each port generates are in the `metaobjects-codegen` skill's reference
 
 ## What a report does not have
 
-No client hook, grid or form is generated for a report in any port yet; you get the route and the row type. There is no `measure.derived`, no query-time choice of dimensions or measures, and no time-zone vocabulary.
+In TypeScript a served report gets a generated list hook; no port generates a grid or a form for a report, and the other ports have no client tier, so there you get the route and the row type. There is no `measure.derived`, no query-time choice of dimensions or measures, and no time-zone vocabulary.

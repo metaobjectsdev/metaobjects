@@ -197,7 +197,7 @@ describe("extractReportSpec", () => {
     const s = await spec("ProgramEngagement");
     const days = s.columns.find((c) => c.fieldName === "daysEngaged")!;
     if (days.kind !== "aggregate") throw new Error("expected an aggregate");
-    expect(days.aggregate.refs).toEqual(["w.program_id", "w.week_number", "w.day_number"]);
+    expect(days.aggregate.refs).toEqual(["w.program_id", "w.customer_email", "w.week_number", "w.day_number"]);
     expect(days.aggregate.distinct).toBe(true);
     expect(days.aggregate.cast).toBeUndefined();
     // The report's @segment scopes the whole report, not each measure.
@@ -208,7 +208,7 @@ describe("extractReportSpec", () => {
     const s = await spec("ProgramEngagement");
     const ratio = s.columns.find((c) => c.fieldName === "avgDaysPerStarter")!;
     if (ratio.kind !== "ratio") throw new Error("expected a ratio");
-    expect(ratio.numerator.refs).toHaveLength(3);
+    expect(ratio.numerator.refs).toHaveLength(4);
     expect(ratio.numerator.distinct).toBe(true);
     expect(ratio.denominator.refs).toEqual(["w.customer_email"]);
     expect(ratio.denominator.distinct).toBe(true);
@@ -231,7 +231,7 @@ describe("extractReportSpec", () => {
     if (same.kind !== "ratio") throw new Error("expected a ratio");
     expect(ratio.numerator).toEqual(same.numerator);
     expect(ratio.denominator).toEqual(same.denominator);
-    expect(ratio.numerator.refs).toHaveLength(3);
+    expect(ratio.numerator.refs).toHaveLength(4);
     expect(ratio.denominator.refs).toEqual(["w.customer_email"]);
   });
 

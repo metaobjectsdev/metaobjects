@@ -178,7 +178,7 @@ it until 1.1 ships._
   nothing for a report before. Java `gen` now joins Kotlin and C# in refusing a served report
   with a derived field over a `field.object`. In C# a report's enum dimension is sortable (an
   entity's enum field still is not). A decimal column (`avg`, a ratio, a `sum` of a decimal)
-  has no cross-port JSON spelling: each port sends its own, and TypeScript sends a string.
+  has no cross-port JSON spelling: each port sends its own, and TypeScript sends a string (on SQLite as well as Postgres: see **Fixed**).
   Gated by a new api-contract sub-corpus, `fixtures/api-contract-conformance/report/` (13
   scenarios, generated lane, all five ports; the corpus goes from 61 scenarios to 78, the
   `projection/` sub-corpus gaining four), which
@@ -196,7 +196,8 @@ it until 1.1 ships._
   routes generator passes them, and its output fails typecheck against the older
   `MountReadOnlyOptions`. A hand-written generator that gates on `servesReadApi`, or on
   `!isAbstract` as the `meta generator` scaffold does, now receives a served report's read
-  model: gate UI output on `servesClientTier`.
+  model: gate grid or form output on `servesClientTier` (a hook is wanted for a report: see the
+  list hook below).
 - **Reports have model and API pages in `meta docs` (FR-044).** Every report gets a model page
   (its `@from`, its view or "Not served" with the reason, its row scope, and a column table
   with a definition per column) listed under `## Reports` on the model index, and a page on the
@@ -206,14 +207,26 @@ it until 1.1 ships._
   gets none. `EntityDocData` gains four optional keys for an owned `docs/entity-page.md`
   template: `hasReport`, `reportBlock`, `hasReporting`, `reportingBlock`. A model with no
   reporting nodes renders the same model pages as before.
-- **No client hook or other UI-tier output is generated for a report yet (FR-044).** No
-  TanStack hook, grid, grid hook or form, no Angular service or grid, and `agent/ui.md` lists
-  no report. In TypeScript the UI-tier generators now gate on a new exported predicate,
-  `servesClientTier` (`servesReadApi` and not a report); `servesReadApi` is true for a served
-  report so that its routes and queries emit. **If you own an ejected hook or grid generator
-  that gates on `servesReadApi`, it will emit for every served report: switch it to
-  `servesClientTier`.** `hasItemRoute`, `isReport`, `servedReport` and `generatableObjects` are
-  exported from `@metaobjectsdev/codegen-ts` beside it.
+- **A served report gets a generated TanStack list hook in TypeScript (FR-044).** `tanstackQuery()`
+  writes `<R>.hooks.ts` and the `<R>.meta.ts` descriptor it imports for a served report:
+  `use<R>List` (or `use<R>s` when the name is not already plural), typed with the report's row
+  type, its filter type and its sort, and the `<r>Keys` query-key factory with `all`, `lists` and
+  `list`. It writes no detail hook, no mutation hook, no form and no grid: a report has no item
+  route and no write, and a grid, form or dashboard over reports waits for the `reporting`
+  library. `agent/ui.md` lists the report, with a line saying so. An adopter whose pages read
+  everything through generated hooks no longer swaps a generated hook for a hand-written one
+  when it replaces a projection with a report. TypeScript is the only port with a generated
+  client tier, so no other port gains a file. Two predicates, both exported from
+  `@metaobjectsdev/codegen-ts`: the hook generator gates on `servesClientHooks` (`servesReadApi`,
+  true for a served report) and the grid generators, the Angular service and grid and the
+  Angular barrel gate on `servesClientTier` (`servesReadApi` and not a report). `hasItemRoute`,
+  `isReport`, `servedReport` and `generatableObjects` are exported beside them.
+  **Upgrading an owned `hooks` generator.** A copy ejected before this release keeps the gate it
+  was copied with, so it writes no hook for a report until you resync it (`meta eject hooks
+  --force`, or merge the reference by hand: its filter is now `servesClientHooks(e)`). Nothing
+  else breaks: an owned `grid`, `grid-hook` or `form` copy needs no change, and a hand-written
+  generator that gates on `servesReadApi` receives a served report's read model and emits
+  its list hook, which is what a hook generator wants; gate a grid or form on `servesClientTier`.
 
 ### Changed
 
@@ -347,6 +360,45 @@ until you regenerate.
   admits the empty string, as the generated schema already did.
 
 ### Fixed
+
+- **TypeScript: a report's decimal fields reach the wire as strings on SQLite, as on Postgres
+  (FR-044).** A ratio is typed `decimal`, the TypeScript read schema types a decimal as
+  `string`, and SQLite has no decimal: the view computes a `REAL`, which the driver hands the
+  route as a JS number. A generated report route on SQLite therefore answered
+  `"paidShare": 0.4` where Postgres answers `"paidShare": "0.4"`, and the row type said
+  `string` for both, so `.toFixed(1)` compiled on neither and ran on one. The route is now
+  corrected, not the type. **Behaviour note:** on SQLite a report's `avg`, ratio and
+  `sum` of a decimal field arrive as strings (`"0.4"`, `"1.6666666666666667"`, null stays
+  null); convert with `Number(x)` where you did arithmetic or formatting on the number. The
+  generated report route passes the decimal field names to the mount as `decimalColumns`
+  (`mountReadOnlyCrudRoutes` in the Fastify and Hono adapters, new optional option), which sends
+  a number under one of them as its string. Filtering and sorting on the column are unchanged
+  and stay numeric, because the view column is still a REAL. The digits are JavaScript's
+  shortest spelling of the double, not Postgres' fixed scale, and a decimal's digits stay
+  outside the cross-port contract. Postgres and MySQL are untouched, and so is a projection on
+  SQLite (released behaviour; its decimals still arrive as numbers). **Upgrading an owned
+  `routes` or `routes-hono` generator:** a copy ejected before this release passes no
+  `decimalColumns`, so a SQLite report keeps answering a number until you resync it
+  (`meta eject routes --force`, `meta eject routes-hono --force`, which also refreshes the
+  adapter copy under `codegen/runtime/`). Gated by a new TypeScript lane,
+  `integration-tests/test/api-contract-report-sqlite.test.ts`, which boots the emitted report
+  routes on a real SQLite and runs the thirteen shared report scenarios as well as the
+  decimal's wire type; the cross-port corpus still runs TypeScript on Postgres only.
+- **The spec's worked example for the nested average counted the wrong thing (FR-044).**
+  `daysEngaged` was declared as a distinct count of `(programId, weekNumber, dayNumber)` and
+  `avgDaysPerStarter` as `daysEngaged / starters`. Grouped by program, that numerator is the
+  number of distinct days anyone did, not the sum over customers of the days each did: for one
+  customer with three days and two customers sharing one day it gives 3 / 3 = 1.0 where the
+  answer is (3 + 1 + 1) / 3 = 1.667. The tuple now includes the customer:
+  `(programId, customerEmail, weekNumber, dayNumber)`. `docs/superpowers/specs/2026-10-02-fr-044-core-reporting-design.md`
+  states why. The same declaration was copied into the conformance fixtures, so the positive
+  fixture `reporting-vocabulary`, its canonical `expected.json`, the `codegen-noop/reporting`
+  model and the error-fixture models derived from it carry the four-column tuple, and the
+  per-port accessor tests and the Java tuple-size message ("@of lists 4 columns") follow. No
+  loader rule changes, no vocabulary moves and `metamodelVersion` stays `1.1`; a model that
+  used the three-column form still loads, and keeps counting the distinct days anyone did.
+  A value test on a real SQLite and a real Postgres holds the example's numbers (5 customer-days
+  over 3 starters, 1.667), and its slip form (3 / 3) as the thing it replaces.
 
 - **TypeScript, Kotlin, C#: a read-only projection whose key is renamed and whose identity omits
   `@fields` now serves its item route.** The shape: a view-only `object.projection` that passes

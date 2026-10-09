@@ -13,6 +13,7 @@ import type {
 } from "../drizzle-fastify/filter-allowlist.js";
 import { isTruthyFlag, coerceIdForColumn, rawIdLiteral, contractErrorCode, viewBaseConfig } from "../drizzle-fastify/util.js";
 import { timestampWire } from "../timestamp-wire.js";
+import { decimalWire } from "../decimal-wire.js";
 // An unexpected error on a mounted route answers `500 { error: "internal" }`.
 import { guardRoute } from "./route-guard.js";
 
@@ -48,6 +49,14 @@ export interface MountReadOnlyOptions {
   readonly itemRoutes?: boolean;
   /** The noun in the 405 message, which is free prose. Default "projection". */
   readonly resource?: "projection" | "report";
+  /**
+   * The names of the view's decimal fields, for a dialect that has no decimal. SQLite hands
+   * a computed decimal (a report's ratio, average or sum) back as a REAL, a JS number, where
+   * Postgres and MySQL return the string the read schema types it as. A number under one of
+   * these keys is sent as its string, so the route answers the same on every engine. The
+   * generated route passes it for a report on SQLite and omits it otherwise. Default none.
+   */
+  readonly decimalColumns?: readonly string[];
 }
 
 function resolveViewName(view: AnyView): string | undefined {
@@ -129,7 +138,9 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   const viewName = resolveViewName(view);
   const useRawSql = isEmptyColumnView(view) && !!viewName;
   // The raw-SQL branch has no declared columns, so nothing names a timestamp there.
-  const toWire = timestampWire(view);
+  const timestamps = timestampWire(view);
+  const decimals = decimalWire(opts.decimalColumns);
+  const toWire = decimals === undefined ? timestamps : (row: unknown) => decimals(timestamps(row));
 
   // ── List ──────────────────────────────────────────────────────────────────
   app.get(path, guardRoute(async (c) => {

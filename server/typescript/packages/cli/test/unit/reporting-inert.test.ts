@@ -13,6 +13,10 @@
 // (hooks, grid, grid hook, form), which is off for reports until Plan 5, and every file
 // the model without reporting nodes emits is byte-identical, the barrel excepted.
 //
+// The one UI-tier exception is the list hook (and the `.meta.ts` descriptor it imports):
+// the hook generator emits `StoreTotals.hooks.ts` and `StoreTotals.meta.ts`, and no other UI
+// generator emits anything for a report.
+//
 // The model pair lives in fixtures/codegen-noop/reporting/ and is shared with the other
 // four ports' copies of this test. `with/` carries a report that declares a read-only
 // `source.rdb @kind: view` (R5 allows one): that is the case that once leaked in C#, where
@@ -21,8 +25,8 @@
 // `meta docs` documents reports since Plan 3 (Table G), and the last describe states the
 // difference exactly: a model page and a site page for every report, served or not; a
 // "Reporting" section on each entity that declares reporting nodes; one api unit, for the
-// served report alone; the schema page's one view entry. `agent/ui.md` does not move: no
-// UI tier is generated for a report. Everything else is byte-identical.
+// served report alone; the schema page's one view entry; one section in `agent/ui.md` for
+// the served report's list hook. Everything else is byte-identical.
 
 import { describe, test, expect, beforeAll } from "bun:test";
 import { mkdtempSync, mkdirSync, copyFileSync, rmSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -112,11 +116,14 @@ const SERVED_REPORT_FILES: Readonly<Record<string, readonly string[]>> = {
   queries: [`${OUT}/StoreTotals.queries.ts`],
   routes: [`${OUT}/StoreTotals.routes.ts`],
   "routes-hono": [`${OUT}/StoreTotals.routes.hono.ts`],
+  // The list hook, and the DB-free descriptor module it imports.
+  hooks: [`${OUT}/StoreTotals.hooks.ts`, `${OUT}/StoreTotals.meta.ts`],
 };
 /** The one existing file a served report changes: it gains the report's export line. */
 const BARREL = `${OUT}/index.ts`;
-/** The client UI tier, off for reports until Plan 5 (answer 6). */
-const UI_TIER = ["hooks", "grid", "grid-hook", "form"] as const;
+/** The client UI generators that emit NOTHING for a report: a report has a list hook and no
+ *  grid, grid hook or form. */
+const UI_TIER = ["grid", "grid-hook", "form"] as const;
 const SOURCELESS_REPORTS = ["ProgramEngagement", "DailyRevenue"] as const;
 
 /** Assert `actual` is `expected` plus exactly `added`, with every shared file
@@ -184,12 +191,12 @@ describe("FR-044 a sourceless report is inert; a served report emits exactly its
     test(`UI-tier generator "${name}" emits no file for any report`, async () => {
       const actual = await emit(withReporting, [catalog[name]!.factory()]);
       expect(actual["<threw>"]).toBeUndefined();
-      // Not vacuous for hooks and form: they do emit for the entities beside the reports.
+      // Not vacuous for the form: it emits for the entities beside the reports.
       // The two grid generators emit only for an object with a `layout.dataGrid`, which
       // nothing in this model declares, so for them this run shows only that nothing
       // leaks; their gate (`servesClientTier`) is asserted directly in codegen-ts and
       // codegen-ts-tanstack.
-      if (name === "hooks" || name === "form") {
+      if (name === "form") {
         expect(Object.keys(actual).some((p) => p.includes("Program"))).toBe(true);
       }
       expect(Object.keys(actual).filter((p) => p.includes("StoreTotals"))).toEqual([]);
@@ -515,11 +522,20 @@ describe("FR-044 meta docs differs by exactly the report pages, the Reporting se
     expect(actual[schemaPage]).toContain(entry);
     expect(actual[schemaPage]!.replace(entry, "")).toBe(expected[schemaPage]!);
     delete actual[schemaPage];
+    // The UI page gains one section: the served report's list hook. A sourceless report
+    // is not served and so is not on it.
+    const uiPage = Object.keys(actual).find((p) => p.endsWith("ui.md"))!;
+    const uiActual = actual[uiPage]!;
+    delete actual[uiPage];
     const rest = { ...expected };
     delete rest[schemaPage];
+    delete rest[uiPage];
     compare(rest, actual);
-    // Answer 6: no UI tier is generated for a report, so the UI page names none.
-    const uiPage = Object.keys(actual).find((p) => p.endsWith("ui.md"))!;
-    for (const name of ["StoreTotals", ...SOURCELESS_REPORTS]) expect(actual[uiPage]).not.toContain(name);
+    const section = uiActual.split("\n## ").find((s) => s.startsWith("`acme::shop::StoreTotals`"));
+    expect(section).toBeDefined();
+    expect(section).toContain("list only");
+    expect(section).toContain("no form, grid or detail view");
+    expect(uiActual.replace(`\n## ${section}`, "").replace(/\n+$/, "\n")).toBe(expected[uiPage]!);
+    for (const name of SOURCELESS_REPORTS) expect(uiActual).not.toContain(name);
   });
 });

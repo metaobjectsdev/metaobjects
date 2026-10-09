@@ -146,6 +146,7 @@ def test_measure_accessors(vocab: MetaData) -> None:
     assert isinstance(days, MetaMeasure)
     assert days.of_columns() == [
         "WorkoutEvent.programId",
+        "WorkoutEvent.customerEmail",
         "WorkoutEvent.weekNumber",
         "WorkoutEvent.dayNumber",
     ]

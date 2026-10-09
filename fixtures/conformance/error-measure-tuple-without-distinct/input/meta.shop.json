@@ -272,6 +272,7 @@
                 "@agg": "count",
                 "@of": [
                   "WorkoutEvent.programId",
+                  "WorkoutEvent.customerEmail",
                   "WorkoutEvent.weekNumber",
                   "WorkoutEvent.dayNumber"
                 ]

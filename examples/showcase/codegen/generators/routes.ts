@@ -73,6 +73,7 @@ import {
   isWriteThrough,
   isReport,
   itemRouteField,
+  reportDecimalColumns,
   DEFAULT_ID_FIELD,
   servesReadApi,
   formatTs,
@@ -154,12 +155,15 @@ function renderRoutes(
     // The mount addresses `id` by default. A projection keyed on another field names it
     // (the view's key for that column, which is the field name), so `GET /:id` reads the
     // same column the by-id query does. Absent for `id`, which keeps that output's bytes.
+    // A decimal a SQLite report computes is a REAL; the mount sends it as the string it is elsewhere.
+    const decimalColumns = reportDecimalColumns(entity, ctx.dialect);
     const keylessOpts = (indent: string): string =>
       (idField !== undefined && idField !== DEFAULT_ID_FIELD
         ? `\n${indent}idColumn: ${JSON.stringify(idField)},`
         : "") +
       (keyless ? `\n${indent}itemRoutes: false,` : "") +
-      (report ? `\n${indent}resource: "report",` : "");
+      (report ? `\n${indent}resource: "report",` : "") +
+      (decimalColumns.length > 0 ? `\n${indent}decimalColumns: ${JSON.stringify(decimalColumns)},` : "");
     const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
     const mountReadOnlyCrudRoutesSym = imp(`mountReadOnlyCrudRoutes@${runtimeSpec}`);
     // A projection mount is read-only by construction, so `expose` cannot narrow it —

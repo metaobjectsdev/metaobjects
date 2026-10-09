@@ -82,7 +82,7 @@
 //     row model, `list<Plural>` and `GET <served path>` (plus the Hono GET when wired)
 //     and nothing else: a report has no identity, so no by-id query and no `/:id`; no
 //     write helper; no insert/update schema. No hook is documented for any object here
-//     (see DEFERRALS), and none is generated for a report at all (`servesClientTier`).
+//     (see DEFERRALS); a report does get a generated list hook (`servesClientHooks`).
 //   • A READ-ONLY object (a read-only-kind source and no writable one: a view-backed
 //     projection, a report's read model) documents reads only: no create/update/delete,
 //     no write verb, no insert/update schema, because its generated files carry none

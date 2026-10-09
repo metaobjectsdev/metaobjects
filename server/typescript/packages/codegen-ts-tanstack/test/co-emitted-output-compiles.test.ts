@@ -54,6 +54,22 @@ const META = JSON.stringify({
         { "field.string": { name: "name", extends: "Author.name" } },
         { "identity.primary": { name: "pk", extends: "Author.pk" } },
       ] } },
+      // Served report (FR-044) — a route, a row type and a LIST hook, and no grid. The row
+      // that proves the report's hook imports only names its siblings really export.
+      { "object.entity": { name: "Sale", children: [
+        { "source.rdb": { "@table": "sales" } },
+        { "field.long": { name: "id" } },
+        { "field.string": { name: "region" } },
+        { "field.decimal": { name: "amount", "@precision": 12, "@scale": 2 } },
+        { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+        { "dimension.attribute": { name: "region", "@of": "Sale.region" } },
+        { "measure.aggregate": { name: "sales", "@agg": "count", "@of": "Sale.id" } },
+        { "measure.aggregate": { name: "avgAmount", "@agg": "avg", "@of": "Sale.amount" } },
+      ] } },
+      { "object.report": { name: "SalesByRegion", "@from": "Sale", "@dimensions": ["region"],
+        "@measures": ["sales", "avgAmount"], children: [
+        { "source.rdb": { "@kind": "view", "@table": "v_sales_by_region" } },
+      ] } },
       // object.value — a pure shape. No identity, no source, ever (ADR-0028).
       { "object.value": { name: "NotePayload", children: [
         { "field.string": { name: "text" } },
@@ -105,6 +121,12 @@ describe("co-emitted generated output", () => {
       // The VIEW-BACKED projection keeps read hooks — the row that catches an
       // over-broad fix. It has a source, so a route exists to read from.
       expect(files).toContain("AuthorSummary.hooks.ts");
+
+      // A served report gets the list hook and no grid: it is a client of a route, and has
+      // no grid to feed. A report with no source would get nothing, as the sourceless rows do.
+      expect(files).toContain("SalesByRegion.hooks.ts");
+      expect(files).not.toContain("SalesByRegion.columns.tsx");
+      expect(files).not.toContain("SalesByRegion.grid.ts");
 
       // Nothing that has no source gets a client for a route it does not have.
       for (const name of ["NotePayload", "Sourceless", "AuthorCard"]) {
