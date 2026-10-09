@@ -1,7 +1,8 @@
 // FR-044 Plan 4 — buildCubeModel, the pure stage of the cube-model reference generator: a
 // loaded model's reporting vocabulary (dimension.*, measure.*, segment.filter on entities) as
-// Cube data-model data (contract Tables A to E and G). It writes no file; the YAML renderer
-// does.
+// Cube data-model data (contract Tables A to G), and each served object.report as a rollup and
+// a scope segment on its @from cube (Table F, cube-reports.ts). It writes no file; the YAML
+// renderer does.
 //
 // One definition of the SQL. `@of`, `@via`, segments and filters resolve through the functions
 // the report view lowering calls (projection/report-resolve.ts, report-sql.ts), so a reference
@@ -26,6 +27,7 @@ import {
   TYPE_RELATIONSHIP,
   TYPE_SEGMENT,
   isMetaObject,
+  reportShape,
   resolveObjectRef,
   resolveTableName,
   resolveTableSchema,
@@ -40,7 +42,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { intValueMapOf } from "../enum-meta.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
-import { hasWritableRdbSource } from "../source-detect.js";
+import { hasWritableRdbSource, servedReport } from "../source-detect.js";
 import { isTphSubtype, tphDiscriminatorBase, tphDiscriminatorPin } from "../templates/zod-validators.js";
 import {
   encodeIntEnumFilterValue,
@@ -76,16 +78,22 @@ import type {
   CubeJoinSpec,
   CubeMeasureSpec,
   CubeModel,
+  CubeRollupSpec,
   CubeSegmentSpec,
   CubeSpec,
 } from "./cube-model-spec.js";
 import { assertCubeNames, MemberNamespace } from "./cube-names.js";
+import { reportContribution } from "./cube-reports.js";
 import { cubeColumn, cubeSqlRenderer, joinedColumn, memberRef, tableRef } from "./cube-sql.js";
 
 export interface CubeModelOptions {
   readonly dialect: CubeDialect;
   readonly columnNamingStrategy: ColumnNamingStrategy;
-  /** The generator's selection: an entity's cube is emitted only when it matches. */
+  /**
+   * The generator's selection: an entity's cube is emitted only when it matches. A served
+   * report is not matched itself: its rollup and scope segment are members of its @from cube,
+   * written whenever that cube is emitted as the entity's own (Table F).
+   */
   readonly matches?: (obj: MetaObject) => boolean;
 }
 
@@ -126,7 +134,10 @@ interface CubeDraft {
   readonly viaPaths: Map<MetaDimension, Path>;
   readonly addedDims: CubeDimensionSpec[];
   readonly measures: CubeMeasureSpec[];
+  /** Declared segments, then the served reports' scope segments in report order. */
   readonly segments: CubeSegmentSpec[];
+  /** One rollup per served report written into this cube, in report order (Table F). */
+  readonly preAggregations: CubeRollupSpec[];
   /** Field name → the first declared dimension without `@via` over it (Table E reuse). */
   readonly declaredByField: Map<string, string>;
   /** Field name → the member the exporter added over it (a key or reached-column dimension). */
@@ -245,6 +256,8 @@ class CubeModelBuilder {
     for (const draft of this.drafts.values()) {
       for (const [dim, path] of draft.viaPaths) draft.declaredDims.set(dim, this.viaDimension(draft, dim, path, graph));
     }
+    // Table F: in model order, so rollups and scope segments are in report order.
+    for (const o of objects) if (servedReport(o)) this.addReport(o);
 
     return {
       cubes: [
@@ -278,6 +291,7 @@ class CubeModelBuilder {
       addedDims: [],
       measures: [],
       segments: [],
+      preAggregations: [],
       declaredByField: new Map(),
       addedByField: new Map(),
     };
@@ -541,6 +555,40 @@ class CubeModelBuilder {
   }
 
   /**
+   * Table F: a served report's scope segment and rollup, on the cube of its @from entity when
+   * that cube is emitted as the entity's own. An unselected @from contributes nothing; a
+   * selected one that cannot be a cube (abstract, or no table) is refused, as the view
+   * lowering refuses it: neither the report's view nor a rollup that agrees with it can exist.
+   */
+  private addReport(report: MetaObject): void {
+    const shape = reportShape(report, this.root);
+    const from = shape.from;
+    const draft = this.drafts.get(from.resolutionKey());
+    if (draft?.kind !== "entity") {
+      // Not selected: the report's members belong to a cube this run does not write.
+      if (!(this.options.matches?.(from) ?? true)) return;
+      // Selected, and @from declares the measures the report lists, so the only reason it has no
+      // cube of its own is Table A's: it is abstract or has no table.
+      throw new Error(
+        `report '${report.resolutionKey()}': @from '${from.resolutionKey()}' has no table (it is abstract or ` +
+          `declares no writable source.rdb), so it has no cube to hold the report's rollup, and no view can be ` +
+          `derived from it either. Give '${from.name}' a source, or remove the report's source.`,
+      );
+    }
+    const key = report.resolutionKey();
+    const { scope, rollup } = reportContribution(shape, draft.name, this.mc);
+    if (scope !== undefined) {
+      draft.namespace.add(scope.name, `the segment '${scope.name}' the exporter adds for the @filter of report '${key}'`);
+      draft.segments.push(scope);
+    }
+    if (rollup !== undefined) {
+      // Cube reports a pre-aggregation named like a member as "defined more than once".
+      draft.namespace.add(rollup.name, `the rollup '${rollup.name}' of report '${key}'`);
+      draft.preAggregations.push(rollup);
+    }
+  }
+
+  /**
    * A join's ON predicate: the view's (renderJoin), with `{CUBE}` for this cube and `{<join>}`
    * for the other, over EVERY column pair of the reference, ANDed in position order. The key
    * side is the reference's explicit `@references` fields, else the referenced entity's
@@ -606,7 +654,7 @@ class CubeModelBuilder {
       dimensions: [...draft.keyDims, ...draft.declaredOrder.map((dim) => draft.declaredDims.get(dim)!), ...draft.addedDims],
       measures: draft.measures,
       segments: draft.segments,
-      preAggregations: [],
+      preAggregations: draft.preAggregations,
     };
   }
 }

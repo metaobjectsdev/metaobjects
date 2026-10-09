@@ -42,8 +42,10 @@ export function assertCubeName(name: string, what: string): void {
 }
 
 /**
- * One cube's member namespace. Cube's dimensions, measures and segments share it, and the
- * members the exporter adds (primary-key and reached-column dimensions) are in it too.
+ * One cube's member namespace. Cube's dimensions, measures, segments and pre-aggregations share
+ * it (Cube 1.7's compiler reports a name in two of them as "defined more than once"), and the
+ * names the exporter adds (primary-key and reached-column dimensions, report scope segments and
+ * rollups) are in it too.
  */
 export class MemberNamespace {
   private readonly owners = new Map<string, string>();
@@ -58,7 +60,7 @@ export class MemberNamespace {
       throw new CubeModelError(
         ERR_CUBE_MEMBER_COLLISION,
         `cube '${this.cube}': ${prior} and ${what} are both named '${name}', and a cube's dimensions, ` +
-          `measures and segments share one namespace. Rename one of them in the model.`,
+          `measures, segments and pre-aggregations share one namespace. Rename one of them in the model.`,
       );
     }
     this.owners.set(name, what);

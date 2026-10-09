@@ -1,7 +1,8 @@
 // FR-044 Plan 4, Task 2 — buildCubeModel, the pure stage of the cube-model reference
 // generator. One test per row of the plan's Tables A, C, D and E, the Table G errors this
-// stage raises, and the canonical model against Table H's data (rollups and the report scope
-// segment are Task 3's). Every model is loaded with the real loader.
+// stage raises, and the canonical model against Table H's data, rollups and the report scope
+// segment included (Table F's rows are report-rollups.test.ts). Every model is loaded with the
+// real loader.
 
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
@@ -1113,7 +1114,7 @@ describe("Table G — names and escaping", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Table H — the canonical model's data (rollups and the scope segment are Task 3's)
+// Table H — the canonical model's data, rollups and the scope segment included
 // ---------------------------------------------------------------------------
 
 describe("Table H — the canonical model", () => {
@@ -1149,8 +1150,21 @@ describe("Table H — the canonical model", () => {
           },
           { name: "programs", sql: '{CUBE}."id"', type: "count" },
         ],
-        segments: [{ name: "published", sql: `{CUBE}."status" = 'PUBLISHED'` }],
-        preAggregations: [],
+        segments: [
+          { name: "published", sql: `{CUBE}."status" = 'PUBLISHED'` },
+          // RecentPrograms' relative @filter: a scope segment, and no rollup.
+          { name: "recentProgramsScope", sql: `{CUBE}."created_ts" >= ((now() AT TIME ZONE 'UTC') - INTERVAL 'P30D')` },
+        ],
+        preAggregations: [
+          {
+            name: "ProgramsByMonth", type: "rollup", measures: ["programs", "listValue"], dimensions: ["status"],
+            segments: [], timeDimension: "createdAt", granularity: "month",
+          },
+          {
+            name: "ProgramsByWeek", type: "rollup", measures: ["programs"], dimensions: [], segments: ["published"],
+            timeDimension: "createdAt", granularity: "week",
+          },
+        ],
       },
       {
         name: "Week",
@@ -1179,7 +1193,14 @@ describe("Table H — the canonical model", () => {
           { name: "longShare", sql: "CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0)", type: "number" },
         ],
         segments: [{ name: "long", sql: '{CUBE}."durationMinutes" >= 60' }],
-        preAggregations: [],
+        preAggregations: [
+          {
+            name: "ProgramMinutes", type: "rollup",
+            measures: ["weeks", "longWeeks", "labels", "slots", "totalMinutes", "avgMinutes", "minMinutes", "maxMinutes", "longShare"],
+            dimensions: ["program", "programTitle"], segments: [],
+          },
+          { name: "FitnessTotals", type: "rollup", measures: ["weeks", "totalMinutes", "longShare"], dimensions: [], segments: [] },
+        ],
       },
       {
         name: "Asset",
@@ -1195,7 +1216,15 @@ describe("Table H — the canonical model", () => {
         ],
         measures: [{ name: "assets", sql: '{CUBE}."id"', type: "count" }],
         segments: [],
-        preAggregations: [],
+        preAggregations: [
+          {
+            name: "AssetActivity", type: "rollup", measures: ["assets"], dimensions: [], segments: [],
+            timeDimensions: [
+              { dimension: "recordedAt", granularity: "hour" },
+              { dimension: "asOfDate", granularity: "week" },
+            ],
+          },
+        ],
       },
     ]);
   });
