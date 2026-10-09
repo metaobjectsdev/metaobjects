@@ -1,9 +1,13 @@
-// FR-044 — the SQL fragments of a report, in one place. The report VIEW lowering
-// (report-ddl-emit.ts) renders them into `CREATE VIEW` text, and any other consumer of a
-// report's filters, segments and relative dates (the Cube exporter) reuses them from here, so
-// there is exactly one filter-to-SQL translator and one rule for quoting a column or writing a
-// literal. Moved verbatim out of report-ddl-emit.ts and extract-report-spec.ts: not a byte of
-// any view changes.
+// FR-044 — the SQL fragments of a report: identifier quoting, literals, filter clauses,
+// relative dates, and the resolution of a reporting `@filter` or named segment over an entity's
+// fields. The report VIEW lowering (report-ddl-emit.ts, extract-report-spec.ts) renders views
+// from them, and the Cube exporter renders its members' SQL from them, so there is exactly one
+// filter-to-SQL translator and one rule for quoting a column or writing a literal.
+//
+// `ref` and `cond` take an optional `SqlRenderer`. Omitted, identifiers and literals are written
+// as the view lowering writes them (VIEW_SQL). The Cube exporter passes one that also escapes
+// Cube's `{...}` reference syntax and Jinja (cube/cube-sql.ts); the clause structure, the
+// operators and the relative-date SQL are the same for both.
 import {
   FIELD_ATTR_LOCAL_TIME,
   FIELD_SUBTYPE_DATE,
@@ -36,9 +40,9 @@ export function q(ident: string, d: ReportDialect): string {
 }
 
 /** `alias.column` → `alias."column"`. The alias is generated, never quoted. */
-export function ref(r: string, d: ReportDialect): string {
+export function ref(r: string, d: ReportDialect, renderer: SqlRenderer = VIEW_SQL): string {
   const dot = r.indexOf(".");
-  return dot < 0 ? q(r, d) : `${r.slice(0, dot)}.${q(r.slice(dot + 1), d)}`;
+  return dot < 0 ? renderer.identifier(r, d) : `${r.slice(0, dot)}.${renderer.identifier(r.slice(dot + 1), d)}`;
 }
 
 export function literal(v: unknown, d: ReportDialect): string {
@@ -50,28 +54,42 @@ export function literal(v: unknown, d: ReportDialect): string {
   return `'${d === "mysql" ? s.replace(/\\/g, "\\\\") : s}'`;
 }
 
+/**
+ * How a fragment writes its identifiers and literals. Everything else in a clause (operators,
+ * grouping, `IS NULL`, the relative-date SQL inside `literal`) is the same for every renderer.
+ */
+export interface SqlRenderer {
+  /** One identifier, quoted. */
+  readonly identifier: (ident: string, d: ReportDialect) => string;
+  /** One filter operand as SQL. */
+  readonly literal: (v: unknown, d: ReportDialect) => string;
+}
+
+/** The report view lowering's renderer: `q` and `literal`, unchanged. */
+export const VIEW_SQL: SqlRenderer = { identifier: q, literal };
+
 export const FILTER_OP_SQL: Readonly<Record<string, string>> = {
   eq: "=", ne: "<>", gt: ">", gte: ">=", lt: "<", lte: "<=", like: "LIKE",
 };
 
 /** A resolved filter clause as a SQL boolean expression; `and` / `or` groups are parenthesised. */
-export function cond(clause: ViewFilterClause, d: ReportDialect): string {
+export function cond(clause: ViewFilterClause, d: ReportDialect, renderer: SqlRenderer = VIEW_SQL): string {
   switch (clause.kind) {
     case "and":
     case "or":
-      return `(${clause.clauses.map((c) => cond(c, d)).join(clause.kind === "and" ? " AND " : " OR ")})`;
+      return `(${clause.clauses.map((c) => cond(c, d, renderer)).join(clause.kind === "and" ? " AND " : " OR ")})`;
     case "exprCmp":
-      throw new Error("report-ddl-emit: a report filter never lowers to an exprCmp clause.");
+      throw new Error("report-sql: a report filter never lowers to an exprCmp clause.");
     case "cmp": {
-      const lhs = ref(clause.ref, d);
+      const lhs = ref(clause.ref, d, renderer);
       if (clause.op === "isNull") return clause.value === false ? `${lhs} IS NOT NULL` : `${lhs} IS NULL`;
       if (clause.op === "in") {
-        const vals = (Array.isArray(clause.value) ? clause.value : [clause.value]).map((v) => literal(v, d));
+        const vals = (Array.isArray(clause.value) ? clause.value : [clause.value]).map((v) => renderer.literal(v, d));
         return `${lhs} IN (${vals.join(", ")})`;
       }
       const op = FILTER_OP_SQL[clause.op];
-      if (op === undefined) throw new Error(`report-ddl-emit: unsupported filter operator "${clause.op}".`);
-      return `${lhs} ${op} ${literal(clause.value, d)}`;
+      if (op === undefined) throw new Error(`report-sql: unsupported filter operator "${clause.op}".`);
+      return `${lhs} ${op} ${renderer.literal(clause.value, d)}`;
     }
   }
 }
@@ -126,7 +144,7 @@ export function resolveReportFilter(
     if (field === undefined) {
       throw new Error(`${where}: filter field "${key}" is not a field of '${entity.name}'.`);
     }
-    const ref = `${alias}.${sourceColumnNameFor(field, ctx)}`;
+    const columnRef = `${alias}.${sourceColumnNameFor(field, ctx)}`;
     for (const [op, raw] of Object.entries(desugarClause(val))) {
       // `IN ()` is a syntax error on Postgres and MySQL, so it would fail when the migration is
       // applied, far from the report. The loader accepts the empty list; refuse it here by name.
@@ -136,7 +154,7 @@ export function resolveReportFilter(
             `as SQL (IN ()). List at least one value, or remove the clause.`,
         );
       }
-      clauses.push({ kind: "cmp", ref, op, value: lowerFilterValue(raw, op, field, key, where) });
+      clauses.push({ kind: "cmp", ref: columnRef, op, value: lowerFilterValue(raw, op, field, key, where) });
     }
   }
   return andOf(clauses);

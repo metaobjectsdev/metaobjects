@@ -125,7 +125,7 @@ function aliasAtEndOf(path: Path, joins: readonly JoinNode[]): string {
  * (rules D2 and R8) accepts a to-one `relationship.*` with no `identity.reference` behind it,
  * so the missing-foreign-key case is reachable from a model that loads clean.
  */
-function viaHopError(where: string, attr: string, via: string, hop: string, at: MetaData, root: MetaRoot): Error {
+export function viaHopError(where: string, attr: string, via: string, hop: string, at: MetaData, root: MetaRoot): Error {
   const head = `${where} ${attr} '${via}' cannot be joined at hop '${hop}' on '${at.resolutionKey()}'`;
   // ADR-0039: resolving children(), so an inherited relationship or reference is found.
   const node = at
