@@ -73,7 +73,6 @@
         "formExclude",
         "instruction",
         "mutability",
-        "sortable",
         "sortableDefaultOrder",
         "unique",
         "xmlText"
@@ -121,7 +120,6 @@
         "formExclude",
         "instruction",
         "mutability",
-        "sortable",
         "sortableDefaultOrder",
         "unique",
         "xmlText"
@@ -298,24 +296,6 @@
       "key": "index.lookup",
       "untestedAttrs": [
         "using"
-      ]
-    },
-    {
-      "key": "measure.aggregate",
-      "untestedAttrs": [
-        "default"
-      ]
-    },
-    {
-      "key": "measure.ratio",
-      "untestedAttrs": [
-        "default"
-      ]
-    },
-    {
-      "key": "object.report",
-      "untestedAttrs": [
-        "spine"
       ]
     },
     {

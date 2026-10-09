@@ -1,0 +1,139 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "BaseEvent",
+          "abstract": true,
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId"
+              }
+            },
+            {
+              "field.int": {
+                "name": "minutes"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkProgram",
+                "@references": "Program",
+                "@fields": [
+                  "programId"
+                ]
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "program",
+                "@objectRef": "Program",
+                "@cardinality": "one"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "programId",
+                "@of": "Program.id",
+                "@via": "BaseEvent.program"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "programTitle",
+                "@of": "Program.title",
+                "@via": "BaseEvent.program"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "totalMinutes",
+                "@agg": "sum",
+                "@of": "BaseEvent.minutes",
+                "@default": 0
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "WorkoutEvent",
+          "extends": "BaseEvent",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "workout_events"
+              }
+            },
+            {
+              "field.string": {
+                "name": "eventType"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "ProgramMinutes",
+          "@from": "WorkoutEvent",
+          "@spine": "BaseEvent.program",
+          "@dimensions": [
+            "programId",
+            "programTitle"
+          ],
+          "@measures": [
+            "totalMinutes"
+          ]
+        }
+      }
+    ]
+  }
+}

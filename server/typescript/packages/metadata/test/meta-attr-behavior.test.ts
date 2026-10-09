@@ -8,6 +8,8 @@ import {
   TYPE_ATTR,
   ATTR_SUBTYPE_STRING,
   ATTR_SUBTYPE_INT,
+  ATTR_SUBTYPE_LONG,
+  ATTR_SUBTYPE_DOUBLE,
   ATTR_SUBTYPE_BOOLEAN,
   ATTR_SUBTYPE_STRINGARRAY,
   ATTR_SUBTYPE_FILTER,
@@ -49,6 +51,33 @@ describe("MetaAttr.coerce", () => {
   });
   it("string subtype keeps a string", () => {
     expect(attr(ATTR_SUBTYPE_STRING).coerce("hi")).toBe("hi");
+  });
+});
+
+describe("MetaAttr.validateValue — int and long hold whole numbers", () => {
+  it("int and long accept whole numbers, negative included", () => {
+    for (const subType of [ATTR_SUBTYPE_INT, ATTR_SUBTYPE_LONG]) {
+      expect(attr(subType).validateValue(0)).toEqual([]);
+      expect(attr(subType).validateValue(-1)).toEqual([]);
+      expect(attr(subType).validateValue(42)).toEqual([]);
+    }
+  });
+  it("int and long refuse a fractional number (it coerces through unchanged, so the check must catch it)", () => {
+    for (const subType of [ATTR_SUBTYPE_INT, ATTR_SUBTYPE_LONG]) {
+      const a = attr(subType, "default");
+      const errors = a.validateValue(a.coerce(0.5));
+      expect(errors).toEqual([
+        { message: `attribute '@default' must be of type '${subType}' but got non-integer number 0.5` },
+      ]);
+    }
+  });
+  it("int still refuses a non-number with the existing message", () => {
+    expect(attr(ATTR_SUBTYPE_INT, "default").validateValue("zero")).toEqual([
+      { message: "attribute '@default' must be of type 'int' but got string" },
+    ]);
+  });
+  it("double keeps accepting a fractional number", () => {
+    expect(attr(ATTR_SUBTYPE_DOUBLE).validateValue(0.5)).toEqual([]);
   });
 });
 
