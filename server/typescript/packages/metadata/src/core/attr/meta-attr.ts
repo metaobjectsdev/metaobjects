@@ -95,15 +95,7 @@ export class MetaAttr extends MetaData implements DataTypeAware {
     if (dt === DATA_TYPE_STRING) {
       return typeof value === "string" ? [] : [this._typeError("string", value)];
     }
-    if (dt === DATA_TYPE_INT || dt === DATA_TYPE_LONG) {
-      if (typeof value !== "number") return [this._typeError("number", value)];
-      // A fraction coerces through unchanged (coerce keeps a number as-is), and an
-      // int/long attr has no meaning for it: refuse it here, never round it.
-      return Number.isInteger(value)
-        ? []
-        : [{ message: `attribute '@${this.name}' must be of type '${this.subType}' but got non-integer number ${value}` }];
-    }
-    if (dt === DATA_TYPE_DOUBLE) {
+    if (dt === DATA_TYPE_INT || dt === DATA_TYPE_LONG || dt === DATA_TYPE_DOUBLE) {
       return typeof value === "number" ? [] : [this._typeError("number", value)];
     }
     if (dt === DATA_TYPE_BOOLEAN) {

@@ -7,8 +7,9 @@
 // Two design rules hold throughout, so one broken rule yields exactly one error:
 //   - No cascades. A member that fails a structural rule is not checked further
 //     (a dimension whose @via fails D2 skips D1/D3/D4; a measure that fails one
-//     of M1–M4 skips M7/M8; a report whose @from fails R1 skips R2/R3/R6/R7,
-//     R8/R9 and its @filter; a report whose @spine fails R8 skips R9, and R9
+//     of M1–M4, or whose @default is a fraction, skips M7/M8; a report whose
+//     @from fails R1 skips R2/R3/R6/R7, R8/R9 and its @filter; a report whose
+//     @spine fails R8 skips R9, and R9
 //     skips a dimension whose @via fails D2; an invalid @dimensions/@measures
 //     item derives no report field for R6).
 //   - Each error's `source` is the offending node (the dimension / measure /
@@ -134,6 +135,7 @@ const ERR_INVALID_MEASURE: ErrorCode = "ERR_INVALID_MEASURE";
 const ERR_INVALID_REPORT: ErrorCode = "ERR_INVALID_REPORT";
 const ERR_REPORT_FOREIGN_MEASURE: ErrorCode = "ERR_REPORT_FOREIGN_MEASURE";
 const ERR_BAD_ATTR_FILTER: ErrorCode = "ERR_BAD_ATTR_FILTER";
+const ERR_BAD_ATTR_VALUE: ErrorCode = "ERR_BAD_ATTR_VALUE";
 
 // ---------------------------------------------------------------------------
 // Entry point
@@ -518,6 +520,22 @@ function checkMeasure(ctx: MemberCtx, measure: MetaMeasure): void {
   const err = (message: string): void =>
     ctx.sink.push(measure, ERR_INVALID_MEASURE, ctx.label, `: ${message}`, ctx.suffix);
 
+  // The type rule — a measure's @default is a whole number. Checked here, not by
+  // tightening attr.int, whose other users (validator @min/@max) take a fraction.
+  // A non-number is the attribute type check's error and is not repeated. It runs
+  // first; when it fires, M7/M8 are skipped (one mistake, one error).
+  const declaredDefault = measure.attr(REPORTING_ATTR_DEFAULT);
+  const fractionalDefault = typeof declaredDefault === "number" && !Number.isInteger(declaredDefault);
+  if (fractionalDefault) {
+    ctx.sink.push(
+      measure,
+      ERR_BAD_ATTR_VALUE,
+      ctx.label,
+      `: @default '${declaredDefault}' is not an integer. A measure's @default is a whole number (for example 0).`,
+      ctx.suffix,
+    );
+  }
+
   if (measure.isRatio()) {
     checkRatioOperands(ctx, measure, err);
     return;
@@ -528,9 +546,10 @@ function checkMeasure(ctx: MemberCtx, measure: MetaMeasure): void {
   const clean = checked !== undefined;
   const ofField = checked?.field;
 
-  // M7 / M8 — where a @default can apply. Only when M1–M4 passed: one mistake, one error.
-  // The presence test reads the raw attribute, so a mistyped value on a count still reports M7.
-  if (clean && measure.attr(REPORTING_ATTR_DEFAULT) !== undefined) {
+  // M7 / M8 — where a @default can apply. Only when M1–M4 passed and the @default is
+  // not a fraction: one mistake, one error. The presence test reads the raw attribute,
+  // so a non-number value on a count still reports M7 beside the attribute type error.
+  if (clean && !fractionalDefault && declaredDefault !== undefined) {
     const agg = measure.agg();
     if (agg === AGG_COUNT) {
       err(

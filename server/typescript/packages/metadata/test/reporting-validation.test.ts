@@ -1416,6 +1416,54 @@ describe("validateReporting — measure @default (M7, M8)", () => {
     );
   });
 
+  test("a fractional @default on a sum is ERR_BAD_ATTR_VALUE on the measure node, once", async () => {
+    const m = edit((x) => patchMember(x, "Purchase", "revenue", { "@default": 0.5 }));
+    const { errors } = await loadInline(m);
+    expect(errors.map((e) => e.code)).toEqual(["ERR_BAD_ATTR_VALUE"]);
+    expect(errors[0]!.message).toBe(
+      "measure 'revenue' on entity 'acme::shop::Purchase': @default '0.5' is not an integer. A measure's " +
+        "@default is a whole number (for example 0).",
+    );
+    expect(jsonPathOf(errors[0]!.source)).toContain("['measure.aggregate']");
+  });
+
+  test("a fractional @default on a ratio is ERR_BAD_ATTR_VALUE on the ratio", async () => {
+    const m = edit((x) => patchMember(x, "WorkoutEvent", "avgDaysPerStarter", { "@default": 0.5 }));
+    const { errors } = await loadInline(m);
+    expect(errors.map((e) => e.code)).toEqual(["ERR_BAD_ATTR_VALUE"]);
+    expect(errors[0]!.message).toBe(
+      "measure 'avgDaysPerStarter' on entity 'acme::shop::WorkoutEvent': @default '0.5' is not an integer. " +
+        "A measure's @default is a whole number (for example 0).",
+    );
+    expect(jsonPathOf(errors[0]!.source)).toContain("['measure.ratio']");
+  });
+
+  test("the integer check runs first: a fractional @default on a count skips M7", async () => {
+    const m = edit((x) => patchMember(x, "Purchase", "purchases", { "@default": 0.5 }));
+    const msg = await single(m, "ERR_BAD_ATTR_VALUE");
+    expect(msg).toContain("@default '0.5' is not an integer");
+  });
+
+  test("the integer check runs first: a fractional @default on a max of a timestamp skips M8", async () => {
+    const m = edit((x) => patchMember(x, "WorkoutEvent", "lastActivityAt", { "@default": -1.5 }));
+    const msg = await single(m, "ERR_BAD_ATTR_VALUE");
+    expect(msg).toBe(
+      "measure 'lastActivityAt' on entity 'acme::shop::WorkoutEvent': @default '-1.5' is not an integer. " +
+        "A measure's @default is a whole number (for example 0).",
+    );
+  });
+
+  test("a fractional @default on a sum declared on an abstract base is reported ONCE", async () => {
+    const m = inheritedModel();
+    const base = objectBody(m, "BaseEvent").children as Wrapper[];
+    base[3] = { "measure.aggregate": { name: "events", "@agg": "sum", "@of": "BaseEvent.id", "@default": 0.5 } };
+    const msg = await single(m, "ERR_BAD_ATTR_VALUE");
+    expect(msg).toBe(
+      "measure 'events' on entity 'acme::shop::BaseEvent': @default '0.5' is not an integer. A measure's " +
+        "@default is a whole number (for example 0).",
+    );
+  });
+
   test("@default on a sum, an avg, a min of an int and a ratio is fine", async () => {
     const m = edit((x) => {
       patchMember(x, "Purchase", "revenue", { "@default": 0 });

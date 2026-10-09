@@ -73,6 +73,7 @@
         "formExclude",
         "instruction",
         "mutability",
+        "sortable",
         "sortableDefaultOrder",
         "unique",
         "xmlText"
@@ -120,6 +121,7 @@
         "formExclude",
         "instruction",
         "mutability",
+        "sortable",
         "sortableDefaultOrder",
         "unique",
         "xmlText"
