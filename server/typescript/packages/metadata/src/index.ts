@@ -57,7 +57,9 @@ export {
   type ReportDimensionItem,
 } from "./core/reporting/report-accessors.js";
 export {
+  measureDerivedSubType,
   reportShape,
+  reportSpineHops,
   reportingMemberOwner,
   reportingViaHops,
   resolveReportingFieldRef,
