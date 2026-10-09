@@ -1067,6 +1067,356 @@ describe("validateReporting — inherited members", () => {
 });
 
 // ---------------------------------------------------------------------------
+// R8 / R9 — a report's @spine (docs/superpowers/plans/2026-10-09-fr-044-zero-rows-and-measure-defaults.md, Table B)
+// ---------------------------------------------------------------------------
+
+/** Append report `ProgramPurchases` over Purchase with `@spine: Purchase.program`; `attrs` override
+ *  (undefined deletes). */
+function addSpineReport(m: Model, attrs: Body = {}): void {
+  m["metadata.root"].children.push({
+    "object.report": {
+      name: "ProgramPurchases",
+      "@from": "Purchase",
+      "@spine": "Purchase.program",
+      "@dimensions": ["programTitle"],
+      "@measures": ["purchases", "revenue"],
+    },
+  });
+  patchObject(m, "ProgramPurchases", attrs);
+}
+
+/** Program -> Coach -> Agency, both to-one, plus Purchase dimensions at the end of each hop. */
+function addCoachChain(m: Model): void {
+  childrenOf(m, "Program").push(
+    field("long", "coachId"),
+    { "identity.reference": { name: "coachRef", "@references": "Coach", "@fields": ["coachId"] } },
+    { "relationship.association": { name: "coach", "@objectRef": "Coach", "@cardinality": "one" } },
+  );
+  m["metadata.root"].children.push(
+    {
+      "object.entity": {
+        name: "Coach",
+        children: [
+          { "source.rdb": { "@table": "coaches" } },
+          field("long", "id"),
+          field("string", "name"),
+          field("long", "agencyId"),
+          primary(),
+          { "identity.reference": { name: "agencyRef", "@references": "Agency", "@fields": ["agencyId"] } },
+          { "relationship.association": { name: "agency", "@objectRef": "Agency", "@cardinality": "one" } },
+        ],
+      },
+    },
+    {
+      "object.entity": {
+        name: "Agency",
+        children: [{ "source.rdb": { "@table": "agencies" } }, field("long", "id"), field("string", "name"), primary()],
+      },
+    },
+  );
+  childrenOf(m, "Purchase").push(
+    { "dimension.attribute": { name: "coachName", "@of": "Coach.name", "@via": "Purchase.program.coach" } },
+    { "dimension.attribute": { name: "agencyName", "@of": "Agency.name", "@via": "Purchase.program.coach.agency" } },
+  );
+}
+
+/** A dimension of Purchase reaching Program.title through the identity.reference, not the relationship. */
+function programTitleByRef(): Wrapper {
+  return {
+    "dimension.attribute": { name: "programTitleByRef", "@of": "Program.title", "@via": "Purchase.programRef" },
+  };
+}
+
+describe("validateReporting — @spine (R8, R9)", () => {
+  test("a spine report whose dimensions are all reached through the spine loads clean", async () => {
+    const m = edit((x) => addSpineReport(x));
+    expect(await codes(m)).toEqual([]);
+  });
+
+  test("R8: a to-many spine hop is refused, naming the report and the hop's entity", async () => {
+    const m = edit((x) => {
+      setChild(x, "Program", "programs", {
+        "measure.aggregate": { name: "programs", "@agg": "count", "@of": "Program.id" },
+      });
+      x["metadata.root"].children.push({
+        "object.report": {
+          name: "ProgramReach",
+          "@from": "Program",
+          "@spine": "Program.purchases",
+          "@measures": ["programs"],
+        },
+      });
+    });
+    const msg = await single(m, "ERR_INVALID_REPORT");
+    expect(msg).toBe(
+      "report 'acme::shop::ProgramReach': @spine 'Program.purchases' crosses relationship 'purchases' on " +
+        "'acme::shop::Program', which is not to-one. A dimension follows only @cardinality: one relationships " +
+        "and identity.reference hops, so grouping can never multiply the measured rows.",
+    );
+  });
+
+  test("R8: a spine whose owner is another entity is refused", async () => {
+    const m = edit((x) => addSpineReport(x, { "@spine": "Program.purchases" }));
+    const msg = await single(m, "ERR_INVALID_REPORT");
+    expect(msg).toBe(
+      "report 'acme::shop::ProgramPurchases': @spine 'Program.purchases' must start at @from 'acme::shop::Purchase'.",
+    );
+  });
+
+  test("R8: a spine hop that names nothing is refused, naming @from (not the report) as the hop's entity", async () => {
+    const m = edit((x) => addSpineReport(x, { "@spine": "Purchase.nope" }));
+    const msg = await single(m, "ERR_INVALID_REPORT");
+    expect(msg).toBe(
+      "report 'acme::shop::ProgramPurchases': @spine 'Purchase.nope' names 'nope', which is not a relationship " +
+        "or identity.reference of 'acme::shop::Purchase'.",
+    );
+  });
+
+  test("R8: a spine with no hop is refused", async () => {
+    const m = edit((x) => addSpineReport(x, { "@spine": "Purchase" }));
+    const msg = await single(m, "ERR_INVALID_REPORT");
+    expect(msg).toContain("report 'acme::shop::ProgramPurchases': @spine 'Purchase' must be Owner.hop[.hop...]");
+  });
+
+  test("D2's own wording is unchanged by the walk's wording argument", async () => {
+    const d2 = async (via: string): Promise<string> =>
+      single(edit((x) => patchMember(x, "Purchase", "programTitle", { "@via": via })), "ERR_INVALID_DIMENSION");
+    const head = "dimension 'programTitle' on entity 'acme::shop::Purchase': ";
+    expect(await d2("Purchase")).toBe(
+      `${head}@via 'Purchase' must be Owner.hop[.hop...], starting at the owning entity.`,
+    );
+    expect(await d2("WorkoutEvent.program")).toBe(
+      `${head}@via 'WorkoutEvent.program' must start at the owning entity 'acme::shop::Purchase'.`,
+    );
+    expect(await d2("Purchase.nope")).toBe(
+      `${head}@via 'Purchase.nope' names 'nope', which is not a relationship or identity.reference of ` +
+        `'acme::shop::Purchase'.`,
+    );
+  });
+
+  test("R8: the error source is the report node", async () => {
+    const m = edit((x) => addSpineReport(x, { "@spine": "Purchase.nope" }));
+    const { errors } = await loadInline(m);
+    expect(jsonPathOf(errors[0]!.source)).toMatch(/\['object\.report'\]$/);
+  });
+
+  test("R8 failing skips R9: a broken spine with an off-spine dimension is ONE error", async () => {
+    const m = edit((x) => addSpineReport(x, { "@spine": "Purchase.nope", "@dimensions": ["purchasedAt:day"] }));
+    const msg = await single(m, "ERR_INVALID_REPORT");
+    expect(msg).toContain("@spine 'Purchase.nope' names 'nope'");
+  });
+
+  test("R8: an inherited spine (owner written as the abstract base) loads clean", async () => {
+    const m = inheritedModel();
+    m["metadata.root"].children.push({
+      "object.entity": {
+        name: "Program",
+        children: [
+          { "source.rdb": { "@table": "programs" } },
+          field("long", "id"),
+          field("string", "title"),
+          primary(),
+        ],
+      },
+    });
+    (objectBody(m, "BaseEvent").children as Wrapper[]).push(
+      field("long", "programId"),
+      { "identity.reference": { name: "programRef", "@references": "Program", "@fields": ["programId"] } },
+      { "relationship.association": { name: "program", "@objectRef": "Program", "@cardinality": "one" } },
+      { "dimension.attribute": { name: "programTitle", "@of": "Program.title", "@via": "BaseEvent.program" } },
+    );
+    m["metadata.root"].children.push({
+      "object.report": {
+        name: "ProgramEvents",
+        "@from": "WorkoutEvent",
+        "@spine": "BaseEvent.program",
+        "@dimensions": ["programTitle"],
+        "@measures": ["events"],
+      },
+    });
+    expect(await codes(m)).toEqual([]);
+  });
+
+  test("R9: a spine report with no dimensions is refused", async () => {
+    const m = edit((x) => addSpineReport(x, { "@dimensions": undefined }));
+    const msg = await single(m, "ERR_INVALID_REPORT");
+    expect(msg).toBe(
+      "report 'acme::shop::ProgramPurchases': @spine 'Purchase.program' needs at least one dimension. The " +
+        "report's rows are the dimension tuples of 'acme::shop::Program'; with no dimension it would be one " +
+        "totals row.",
+    );
+  });
+
+  test("R9: a dimension with no @via (read from the fact row) is refused", async () => {
+    const m = edit((x) => addSpineReport(x, { "@dimensions": ["programTitle", "program"] }));
+    const msg = await single(m, "ERR_INVALID_REPORT");
+    expect(msg).toBe(
+      "report 'acme::shop::ProgramPurchases': dimension 'program' is read from @from 'acme::shop::Purchase', so " +
+        "it has no value in a row that has no facts. With @spine 'Purchase.program' every dimension must be " +
+        "reached through it: declare the dimension over a field of 'acme::shop::Program' (or an entity to-one " +
+        "from it) with an @via that begins 'Purchase.program'.",
+    );
+  });
+
+  test("R9: a time dimension over a fact column is refused", async () => {
+    const m = edit((x) => addSpineReport(x, { "@dimensions": ["programTitle", "purchasedAt:day"] }));
+    const msg = await single(m, "ERR_INVALID_REPORT");
+    expect(msg).toContain("report 'acme::shop::ProgramPurchases': dimension 'purchasedAt' is read from @from");
+  });
+
+  test("R9: each offending dimension is reported once, even when listed at two grains", async () => {
+    const m = edit((x) =>
+      addSpineReport(x, { "@dimensions": ["program", "purchasedAt:day", "purchasedAt:week", "programTitle"] }),
+    );
+    const { errors } = await loadInline(m);
+    expect(errors.map((e) => e.code)).toEqual(["ERR_INVALID_REPORT", "ERR_INVALID_REPORT"]);
+    expect(errors[0]!.message).toContain("dimension 'program' is read from @from");
+    expect(errors[1]!.message).toContain("dimension 'purchasedAt' is read from @from");
+  });
+
+  test("R9: a dimension through a second reference to the same entity is refused", async () => {
+    const m = edit((x) => {
+      childrenOf(x, "Purchase").push(
+        field("long", "giftProgramId"),
+        { "identity.reference": { name: "giftProgramRef", "@references": "Program", "@fields": ["giftProgramId"] } },
+        programTitleByRef(),
+        {
+          "dimension.attribute": {
+            name: "giftProgramTitle",
+            "@of": "Program.title",
+            "@via": "Purchase.giftProgramRef",
+          },
+        },
+      );
+      addSpineReport(x, { "@spine": "Purchase.programRef", "@dimensions": ["programTitleByRef", "giftProgramTitle"] });
+    });
+    const msg = await single(m, "ERR_INVALID_REPORT");
+    expect(msg).toBe(
+      "report 'acme::shop::ProgramPurchases': dimension 'giftProgramTitle' is reached by @via " +
+        "'Purchase.giftProgramRef', which does not begin with the hops of @spine 'Purchase.programRef'. Hop names " +
+        "are compared as written; write the same hops.",
+    );
+  });
+
+  test("R9: the same join, named by the relationship in @spine and by the reference in @via, is refused", async () => {
+    const m = edit((x) => {
+      childrenOf(x, "Purchase").push(programTitleByRef());
+      addSpineReport(x, { "@spine": "Purchase.program", "@dimensions": ["programTitleByRef"] });
+    });
+    const msg = await single(m, "ERR_INVALID_REPORT");
+    expect(msg).toContain("dimension 'programTitleByRef' is reached by @via 'Purchase.programRef'");
+    expect(msg).toContain("@spine 'Purchase.program'");
+  });
+
+  test("R9: the owner segment is not compared (an FQN spine owner, a bare dimension @via)", async () => {
+    const m = edit((x) => addSpineReport(x, { "@spine": "acme::shop::Purchase.program" }));
+    expect(await codes(m)).toEqual([]);
+  });
+
+  test("R9: a time dimension over a column of the spine entity is legal", async () => {
+    const m = edit((x) => {
+      childrenOf(x, "Program").push(field("timestamp", "publishedAt"));
+      childrenOf(x, "Purchase").push({
+        "dimension.time": {
+          name: "programPublishedAt",
+          "@of": "Program.publishedAt",
+          "@via": "Purchase.program",
+          "@grains": ["month"],
+        },
+      });
+      addSpineReport(x, { "@dimensions": ["programTitle", "programPublishedAt:month"] });
+    });
+    expect(await codes(m)).toEqual([]);
+  });
+
+  test("R9: a two-hop spine with a dimension at it and one beyond it is legal", async () => {
+    const m = edit((x) => {
+      addCoachChain(x);
+      addSpineReport(x, { "@spine": "Purchase.program.coach", "@dimensions": ["coachName", "agencyName"] });
+    });
+    expect(await codes(m)).toEqual([]);
+  });
+
+  test("R9: a dimension that stops short of a two-hop spine is refused", async () => {
+    const m = edit((x) => {
+      addCoachChain(x);
+      addSpineReport(x, { "@spine": "Purchase.program.coach", "@dimensions": ["coachName", "programTitle"] });
+    });
+    const msg = await single(m, "ERR_INVALID_REPORT");
+    expect(msg).toContain("dimension 'programTitle' is reached by @via 'Purchase.program'");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M7 / M8 — where a measure's @default can apply (Table B)
+// ---------------------------------------------------------------------------
+
+describe("validateReporting — measure @default (M7, M8)", () => {
+  test("M7: @default on a count is refused, on the measure node", async () => {
+    const m = edit((x) => patchMember(x, "Purchase", "purchases", { "@default": 0 }));
+    const { errors } = await loadInline(m);
+    expect(errors.map((e) => e.code)).toEqual(["ERR_INVALID_MEASURE"]);
+    expect(errors[0]!.message).toBe(
+      "measure 'purchases' on entity 'acme::shop::Purchase': @default cannot apply to @agg: count. A count is " +
+        "never null (it is 0 when nothing matches); remove @default.",
+    );
+    expect(jsonPathOf(errors[0]!.source)).toContain("['measure.aggregate']");
+  });
+
+  test("M7: @default on a distinct count of a tuple is refused", async () => {
+    const m = edit((x) => patchMember(x, "WorkoutEvent", "daysEngaged", { "@default": 0 }));
+    const msg = await single(m, "ERR_INVALID_MEASURE");
+    expect(msg).toContain("measure 'daysEngaged'");
+    expect(msg).toContain("@default cannot apply to @agg: count");
+  });
+
+  test("M8: @default on a max of a timestamp is refused", async () => {
+    const m = edit((x) => patchMember(x, "WorkoutEvent", "lastActivityAt", { "@default": 0 }));
+    const msg = await single(m, "ERR_INVALID_MEASURE");
+    expect(msg).toBe(
+      "measure 'lastActivityAt' on entity 'acme::shop::WorkoutEvent': @default is a number, but @agg 'max' of " +
+        "'WorkoutEvent.occurredAt' is a field.timestamp. A default is supported on numeric measures only.",
+    );
+  });
+
+  test("@default on a sum, an avg, a min of an int and a ratio is fine", async () => {
+    const m = edit((x) => {
+      patchMember(x, "Purchase", "revenue", { "@default": 0 });
+      setChild(x, "Purchase", "avgRevenue", {
+        "measure.aggregate": { name: "avgRevenue", "@agg": "avg", "@of": "Purchase.amountCents", "@default": 0 },
+      });
+      setChild(x, "WorkoutEvent", "firstDay", {
+        "measure.aggregate": { name: "firstDay", "@agg": "min", "@of": "WorkoutEvent.dayNumber", "@default": 1 },
+      });
+      patchMember(x, "WorkoutEvent", "avgDaysPerStarter", { "@default": 0 });
+    });
+    expect(await codes(m)).toEqual([]);
+  });
+
+  test("a measure that breaks M4 and declares @default reports M4 only", async () => {
+    const m = edit((x) => patchMember(x, "Purchase", "revenue", { "@of": "Purchase.status", "@default": 0 }));
+    const msg = await single(m, "ERR_INVALID_MEASURE");
+    expect(msg).toContain("field.string");
+    expect(msg).not.toContain("@default");
+  });
+
+  test("a measure that breaks M1 and declares @default on a count reports M1 only", async () => {
+    const m = edit((x) => patchMember(x, "Purchase", "purchases", { "@of": "Purchase.nope", "@default": 0 }));
+    const msg = await single(m, "ERR_INVALID_MEASURE");
+    expect(msg).toContain("names no field 'nope'");
+    expect(msg).not.toContain("@default");
+  });
+
+  test("M7 on a count declared on an abstract base is reported ONCE", async () => {
+    const m = inheritedModel();
+    const base = objectBody(m, "BaseEvent").children as Wrapper[];
+    base[3] = { "measure.aggregate": { name: "events", "@agg": "count", "@of": "BaseEvent.id", "@default": 0 } };
+    const msg = await single(m, "ERR_INVALID_MEASURE");
+    expect(msg).toContain("measure 'events' on entity 'acme::shop::BaseEvent'");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Accessors (Task 1 follow-up)
 // ---------------------------------------------------------------------------
 
