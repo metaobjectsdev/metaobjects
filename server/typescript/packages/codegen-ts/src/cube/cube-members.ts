@@ -1,7 +1,7 @@
 // FR-044 Plan 4, Tables C and D — one dimension's type and SQL, one measure, one segment, on
-// the cube of the entity they are read over. `@of`, `@segment` and `@filter` resolve exactly as
-// the report view lowering resolves them (extract-report-spec.ts), and conditions render
-// through its own `cond`, with the Cube renderer (cube-sql.ts). Which members a cube has, and
+// the cube of the entity they are read over. `@of`, `@segment`, `@filter` and ratio operands
+// resolve through the same functions the report view lowering calls (report-resolve.ts), and
+// conditions render through its own `cond`, with the Cube renderer (cube-sql.ts). Which members a cube has, and
 // in what order, is build-cube-model.ts's concern.
 
 import {
@@ -16,6 +16,7 @@ import {
   FIELD_SUBTYPE_DOUBLE,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_FLOAT,
+  FIELD_SUBTYPE_INET,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_MAP,
@@ -23,10 +24,8 @@ import {
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
+  FIELD_SUBTYPE_URI,
   FIELD_SUBTYPE_UUID,
-  TYPE_MEASURE,
-  reportingMemberOwner,
-  resolveReportingFieldRef,
   type MetaData,
   type MetaDimension,
   type MetaField,
@@ -37,7 +36,8 @@ import {
 } from "@metaobjectsdev/metadata";
 import { intValueMapOf } from "../enum-meta.js";
 import { sourceColumnNameFor, type ExtractContext } from "../projection/extract-view-spec.js";
-import { andOf, cond, declared, resolveReportFilter, segmentClause, type SqlRenderer } from "../projection/report-sql.js";
+import { ratioOperand, resolveAggregate } from "../projection/report-resolve.js";
+import { cond, resolveReportFilter, type SqlRenderer } from "../projection/report-sql.js";
 import { CubeModelError, ERR_CUBE_UNMAPPABLE_DIMENSION } from "./cube-errors.js";
 import type {
   CubeDialect,
@@ -60,8 +60,10 @@ const NUMBER_SUBTYPES: ReadonlySet<string> = new Set([
   FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_CURRENCY,
 ]);
+// uri and inet are string-typed on the wire; Cube reads them as strings (controller ruling).
 const STRING_SUBTYPES: ReadonlySet<string> = new Set([
-  FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_TIME,
+  FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_URI,
+  FIELD_SUBTYPE_INET,
 ]);
 
 /** `<owner resolution key>.<name>`: a member's address, as `@of` and `@via` spell it. */
@@ -130,8 +132,8 @@ export function dimensionColumn(
   throw new CubeModelError(
     ERR_CUBE_UNMAPPABLE_DIMENSION,
     `${where} reads ${read} (field.${field.subType}), and the exporter maps no Cube dimension type for ` +
-      `field.${field.subType}: it maps string, enum, uuid, time, int, long, double, float, decimal, currency, ` +
-      `boolean, date and timestamp. Group by a field of one of those subtypes, or remove the dimension.`,
+      `field.${field.subType}: it maps string, enum, uuid, time, uri, inet, int, long, double, float, decimal, ` +
+      `currency, boolean, date and timestamp. Group by a field of one of those subtypes, or remove the dimension.`,
   );
 }
 
@@ -140,44 +142,25 @@ export function measureSpec(entity: MetaObject, m: MetaMeasure, where: string, m
   const d = mc.dialect;
   const renderer = cubeSqlRenderer(where);
   if (m.isRatio()) {
-    const operand = (name: string | undefined): string => {
-      const o = name === undefined ? undefined : (declared(entity, TYPE_MEASURE, name) as MetaMeasure | undefined);
-      if (o === undefined || o.isRatio()) {
-        throw new Error(`${where}: ratio operand '${name ?? ""}' is not a measure.aggregate on '${entity.name}'.`);
-      }
-      return memberRef(o.name);
-    };
     // Member references: each operand is its full Cube expression, condition included.
-    const num = operand(m.numerator());
-    const den = operand(m.denominator());
+    const num = memberRef(ratioOperand(entity, m, m.numerator(), where).name);
+    const den = memberRef(ratioOperand(entity, m, m.denominator(), where).name);
     const sql = d === "postgres" ? `CAST(${num} AS NUMERIC) / NULLIF(${den}, 0)` : `${num} / NULLIF(${den}, 0)`;
     return { name: m.name, sql, type: "number", ...docOf(m) };
   }
-  const agg = m.agg();
-  if (agg === undefined) throw new Error(`${where}: has no @agg.`);
-  // The same rule as the view: the entity half resolves in the DECLARING entity's package,
-  // and the column is read from the cube's entity (a measure aggregates its own rows).
-  const declaring = reportingMemberOwner(m, entity);
-  const cols = m.ofColumns().map((r) => {
-    const f = resolveReportingFieldRef(r, declaring, mc.root, entity);
-    if (f === undefined) throw new Error(`${where}: @of '${r}' does not resolve.`);
-    return cubeColumn(sourceColumnNameFor(f, mc.extract), d, renderer);
-  });
+  // The view's own resolution: @of read from the cube's entity, then its condition.
+  const { agg, distinct, fields, condition } = resolveAggregate(m, entity, mc.root, CUBE_SELF, mc.extract, where);
+  const cols = fields.map((f) => cubeColumn(sourceColumnNameFor(f, mc.extract), d, renderer));
   if (cols.length === 0) throw new Error(`${where}: has no @of.`);
-  // Its @segment filter, then its @filter, ANDed by the lowering's own andOf.
-  const condition = andOf([
-    segmentClause(m.segmentName(), entity, CUBE_SELF, mc.extract, where),
-    resolveReportFilter(m.filter(), entity, CUBE_SELF, mc.extract, `${where} @filter`),
-  ]);
   const c = condition === undefined ? undefined : cond(condition, d, renderer);
   if (cols.length > 1) {
-    if (agg !== AGG_COUNT || !m.distinct()) throw new Error(`${where}: a column tuple needs @agg: count with @distinct.`);
+    if (agg !== AGG_COUNT || !distinct) throw new Error(`${where}: a column tuple needs @agg: count with @distinct.`);
     // A tuple with any NULL component is not counted, as in the view.
     const tuple = d === "postgres" ? `ROW(${cols.join(", ")})` : `JSON_ARRAY(${cols.join(", ")})`;
     const filter = [...cols.map((x) => `${x} IS NOT NULL`), ...(c === undefined ? [] : [c])].join(" AND ");
     return { name: m.name, sql: tuple, type: "count_distinct", filters: [{ sql: filter }], ...docOf(m) };
   }
-  const type: CubeMeasureType = agg === AGG_COUNT ? (m.distinct() ? "count_distinct" : "count") : agg;
+  const type: CubeMeasureType = agg === AGG_COUNT ? (distinct ? "count_distinct" : "count") : agg;
   return { name: m.name, sql: cols[0]!, type, ...(c === undefined ? {} : { filters: [{ sql: c }] }), ...docOf(m) };
 }
 

@@ -22,26 +22,37 @@ const JINJA_OPENER = /\{[%#]/;
 const JINJA_RAW_END = "endraw";
 
 /**
+ * Table G's rule for one SQL-quoted identifier or literal: braces escaped for Cube's reference
+ * syntax, then, when the text holds `{%` or `{#`, the whole token wrapped in `{% raw %}` for
+ * Jinja (a backslash does not stop Jinja). Text holding `endraw` cannot be carried: it would end
+ * that raw block.
+ */
+function escapeToken(sql: string, kind: "identifier" | "literal", where: string): string {
+  if (sql.includes(JINJA_RAW_END)) {
+    throw new CubeModelError(
+      ERR_CUBE_UNESCAPABLE_LITERAL,
+      `${where}: the ${kind} ${sql} contains "${JINJA_RAW_END}", which would end the {% raw %} block ` +
+        `that keeps Jinja away from it, so Cube cannot be given it intact. ` +
+        (kind === "literal"
+          ? `Change the value, or express the condition another way (for example a 'like' pattern).`
+          : `Rename it in the model (@column, or the source's table or schema).`),
+    );
+  }
+  const escaped = escapeCubeBraces(sql);
+  return JINJA_OPENER.test(sql) ? `{% raw %}${escaped}{% endraw %}` : escaped;
+}
+
+/**
  * A renderer for `cond` / `ref` that writes Cube SQL. `where` names the node whose SQL it
- * renders, for the one literal no escaping can carry.
+ * renders, for the one token no escaping can carry.
  */
 export function cubeSqlRenderer(where: string): SqlRenderer {
   return {
-    identifier: (ident, d) => escapeCubeBraces(q(ident, d)),
+    identifier: (ident, d) => escapeToken(q(ident, d), "identifier", where),
     literal: (v, d) => {
       const sql = literal(v, d);
-      if (isRelativeNow(v)) return sql;
-      if (sql.includes(JINJA_RAW_END)) {
-        throw new CubeModelError(
-          ERR_CUBE_UNESCAPABLE_LITERAL,
-          `${where}: the literal ${sql} contains "${JINJA_RAW_END}", which would end the ` +
-            `{% raw %} block that keeps Jinja away from a literal, so Cube cannot be given it intact. ` +
-            `Change the value, or express the condition another way (for example a 'like' pattern).`,
-        );
-      }
-      const escaped = escapeCubeBraces(sql);
-      // A backslash does not stop Jinja: a literal holding `{%` or `{#` is wrapped whole.
-      return JINJA_OPENER.test(sql) ? `{% raw %}${escaped}{% endraw %}` : escaped;
+      // A relative date is the view's own SQL (`relativeNowSql`), written by the exporter.
+      return isRelativeNow(v) ? sql : escapeToken(sql, "literal", where);
     },
   };
 }

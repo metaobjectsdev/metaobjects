@@ -2,8 +2,10 @@
 // (Table H's shape). `buildCubeModel` produces it from the reporting vocabulary; the YAML
 // renderer writes one file per cube from it. Field names follow Cube's own keys in camelCase
 // (`sqlTable` is `sql_table`, `primaryKey` is `primary_key`, `preAggregations` is
-// `pre_aggregations`). Every `sql` value is the SQL text as Cube reads it, already escaped for
-// Cube's `{...}` reference syntax and Jinja (Table G): a renderer only YAML-quotes it.
+// `pre_aggregations`). Every SQL fragment (`sql`, `sqlTable`, a filter's or a join's `sql`)
+// arrives escaped for Cube's `{...}` reference syntax and Jinja (Table G), so a renderer only
+// YAML-quotes it. Free text (`title`, `description`) arrives raw, as the model declares it: the
+// YAML renderer escapes it for Jinja.
 
 import type { TimeGrain } from "@metaobjectsdev/metadata";
 
@@ -72,22 +74,39 @@ export interface CubeRollupTimeDimension {
   readonly granularity: TimeGrain;
 }
 
-/**
- * A `rollup` pre-aggregation (Table F). Member lists hold member names on this cube, in the
- * report's listed order; the renderer writes each `CUBE.<name>`. A rollup with one time
- * dimension uses `timeDimension` + `granularity` (the documented form); one with two or more
- * uses `timeDimensions`; never both.
- */
-export interface CubeRollupSpec {
+interface CubeRollupBase {
   readonly name: string;
   readonly type: "rollup";
+  /** Member names on this cube, in the report's listed order; the renderer writes `CUBE.<name>`. */
   readonly measures: readonly string[];
   readonly dimensions: readonly string[];
   readonly segments: readonly string[];
-  readonly timeDimension?: string;
-  readonly granularity?: TimeGrain;
-  readonly timeDimensions?: readonly CubeRollupTimeDimension[];
 }
+
+/** A rollup with one time dimension: the documented `time_dimension` + `granularity` form. */
+export interface CubeRollupOneTime extends CubeRollupBase {
+  /** A member name on this cube. */
+  readonly timeDimension: string;
+  readonly granularity: TimeGrain;
+  readonly timeDimensions?: never;
+}
+
+/** A rollup with two or more time dimensions: the `time_dimensions` list (executed on Cube 1.7.43). */
+export interface CubeRollupTimeList extends CubeRollupBase {
+  readonly timeDimensions: readonly CubeRollupTimeDimension[];
+  readonly timeDimension?: never;
+  readonly granularity?: never;
+}
+
+/** A rollup with no time dimension. */
+export interface CubeRollupNoTime extends CubeRollupBase {
+  readonly timeDimension?: never;
+  readonly granularity?: never;
+  readonly timeDimensions?: never;
+}
+
+/** A `rollup` pre-aggregation (Table F): one of the three time forms, never two at once. */
+export type CubeRollupSpec = CubeRollupOneTime | CubeRollupTimeList | CubeRollupNoTime;
 
 export interface CubeSpec {
   readonly name: string;

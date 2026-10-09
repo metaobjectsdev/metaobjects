@@ -63,10 +63,6 @@ export class MemberNamespace {
     }
     this.owners.set(name, what);
   }
-
-  has(name: string): boolean {
-    return this.owners.has(name);
-  }
 }
 
 /** Every cube name valid and distinct. `cubes` pairs each name with what it was made from. */

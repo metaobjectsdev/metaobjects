@@ -11,23 +11,12 @@ import {
   FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
-  IDENTITY_REFERENCE_ATTR_REFERENCES,
-  IDENTITY_SUBTYPE_REFERENCE,
   OBJECT_REPORT_ATTR_FILTER,
   OBJECT_REPORT_ATTR_SEGMENT,
-  RELATIONSHIP_ATTR_OBJECT_REF,
-  TYPE_IDENTITY,
-  TYPE_MEASURE,
-  TYPE_RELATIONSHIP,
   measureDerivedSubType,
   reportShape,
   reportSpine,
   reportSpineHops,
-  reportingMemberOwner,
-  reportingViaHops,
-  resolveObjectRef,
-  resolveReportingFieldRef,
-  type MetaData,
   type MetaField,
   type MetaMeasure,
   type MetaObject,
@@ -47,8 +36,15 @@ import {
   type ExtractContext,
   type Path,
 } from "./extract-view-spec.js";
+import {
+  dimensionOfField,
+  ratioOperand,
+  resolveAggregate,
+  resolveDimensionViaPath,
+  viaHopError,
+} from "./report-resolve.js";
 import type { ReportAggregate, ReportColumn, ReportViewSpec } from "./report-spec.js";
-import { andOf, declared, resolveReportFilter, segmentClause, temporalOf } from "./report-sql.js";
+import { andOf, resolveReportFilter, segmentClause, temporalOf } from "./report-sql.js";
 import type { JoinNode } from "./view-spec.js";
 
 // `temporalOf` lives with the other report SQL helpers; this module keeps exporting it.
@@ -76,20 +72,7 @@ function aggregateOf(
   ctx: ExtractContext,
 ): ReportAggregate {
   const where = `report '${report.name}' measure '${measure.name}'`;
-  const agg = measure.agg();
-  if (agg === undefined) throw new Error(`${where}: has no @agg.`);
-  // The same rule as reportShape: the entity half resolves in the DECLARING entity's package,
-  // and the column is read from `from` (a measure aggregates `from`'s own rows).
-  const declaring = reportingMemberOwner(measure, from);
-  const fields = measure.ofColumns().map((ref) => {
-    const f = resolveReportingFieldRef(ref, declaring, root, from);
-    if (f === undefined) throw new Error(`${where}: @of '${ref}' does not resolve.`);
-    return f;
-  });
-  const filter = andOf([
-    segmentClause(measure.segmentName(), from, baseAlias, ctx, where),
-    resolveReportFilter(measure.filter(), from, baseAlias, ctx, `${where} @filter`),
-  ]);
+  const { agg, distinct, fields, condition } = resolveAggregate(measure, from, root, baseAlias, ctx, where);
   const cast = castFor(agg, fields[0]);
   // Table D: `@default` is read through the measure itself, so a ratio operand that the report
   // does not list still carries its own.
@@ -98,9 +81,9 @@ function aggregateOf(
     value === undefined ? undefined : { value, real: REAL_SUBTYPES.has(measureDerivedSubType(measure, from, root)) };
   return {
     agg,
-    distinct: measure.distinct(),
+    distinct,
     refs: fields.map((f) => `${baseAlias}.${sourceColumnNameFor(f, ctx)}`),
-    ...(filter !== undefined ? { filter } : {}),
+    ...(condition !== undefined ? { filter: condition } : {}),
     ...(cast !== undefined ? { cast } : {}),
     ...(defaultValue !== undefined ? { defaultValue } : {}),
   };
@@ -117,38 +100,6 @@ function aliasAtEndOf(path: Path, joins: readonly JoinNode[]): string {
     level = node.children;
   }
   return alias;
-}
-
-/**
- * Why a dimension's `@via` (or a report's `@spine`, `attr`) walk stopped at `hop`: the error
- * names the hop, the entity it was looked up on, and what the model is missing. The loader
- * (rules D2 and R8) accepts a to-one `relationship.*` with no `identity.reference` behind it,
- * so the missing-foreign-key case is reachable from a model that loads clean.
- */
-export function viaHopError(where: string, attr: string, via: string, hop: string, at: MetaData, root: MetaRoot): Error {
-  const head = `${where} ${attr} '${via}' cannot be joined at hop '${hop}' on '${at.resolutionKey()}'`;
-  // ADR-0039: resolving children(), so an inherited relationship or reference is found.
-  const node = at
-    .children()
-    .find(
-      (c) =>
-        c.name === hop &&
-        (c.type === TYPE_RELATIONSHIP || (c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_REFERENCE)),
-    );
-  if (node === undefined) {
-    return new Error(`${head}: it names no relationship or identity.reference of that entity.`);
-  }
-  const targetRef = node.attr(
-    node.type === TYPE_IDENTITY ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF,
-  );
-  const target = typeof targetRef === "string" ? resolveObjectRef(root, targetRef, packageOf(at)).node : undefined;
-  if (target === undefined) {
-    return new Error(`${head}: its target '${String(targetRef ?? "")}' does not resolve to an object.`);
-  }
-  return new Error(
-    `${head}: the model declares no foreign key for it. A view joins a hop through an identity.reference; ` +
-      `declare one on '${at.name}' whose @references is '${target.name}' (with the foreign-key field in @fields).`,
-  );
 }
 
 /** The object a join step lands on, by the resolution key the walk recorded. */
@@ -257,33 +208,15 @@ export function extractReportSpec(report: MetaObject, root: MetaRoot, ctx: Extra
       throw notThroughSpine(where, `it has no @via, so it reads @from '${from.name}', which a spine row with no facts lacks`);
     }
     if (dim === undefined || via === undefined) continue;
-    // The loader's rule D2: the owner half resolves in the DECLARING entity's package and must be
-    // `from` or an entity it extends; the walk then starts AT `from`.
-    const hops = reportingViaHops(via, reportingMemberOwner(dim, from), from, root);
-    if (hops === undefined) {
-      throw new Error(
-        `${where} @via '${via}' must be Owner.hop[.hop...], starting at @from '${from.name}' or an entity it extends.`,
-      );
-    }
-    if (spineHops !== undefined && !spineHops.every((h, i) => hops[i] === h)) {
-      throw notThroughSpine(
-        where,
-        `its @via '${via}' does not begin with the spine's hops, so the view has no join to place it on`,
-      );
-    }
-    // The head is `from`'s SHORT name, resolved in `from`'s own package: a bare name binds the
-    // referrer's package first, so it is `from` itself even when another package has an entity
-    // of that name. Never its resolution key: walkViaPath splits on every `.`, and a package
-    // name may contain one (`com.acme::F`).
-    const path = walkViaPath([from.name, ...hops].join("."), root, packageOf(from), ctx);
-    // walkViaPath stops at the first hop it cannot resolve; a partial path would pin the
-    // dimension to the wrong alias, so the whole chain must be walked.
-    if (path.length !== hops.length) {
-      const last = path[path.length - 1];
-      const at = last === undefined ? from : root.objects().find((o) => o.resolutionKey() === last.targetEntity);
-      throw viaHopError(where, "@via", via, hops[path.length]!, at ?? from, root);
-    }
-    pathOf.set(f, path);
+    const throughSpine = (hops: readonly string[]): void => {
+      if (spineHops !== undefined && !spineHops.every((h, i) => hops[i] === h)) {
+        throw notThroughSpine(
+          where,
+          `its @via '${via}' does not begin with the spine's hops, so the view has no join to place it on`,
+        );
+      }
+    };
+    pathOf.set(f, resolveDimensionViaPath(dim, from, root, ctx, where, throughSpine));
   }
   // Under @spine its path goes in FIRST, so it is the first (and, by R9, the only) child at every
   // level of the trie down to the spine entity. Every dimension path begins with it, so inserting
@@ -299,16 +232,7 @@ export function extractReportSpec(report: MetaObject, root: MetaRoot, ctx: Extra
     if (f.role === "dimension") {
       const dim = f.dimension;
       // A time dimension below the hour grain carries no typeSource; resolve by reportShape's rule.
-      const of =
-        f.typeSource ??
-        (dim === undefined
-          ? undefined
-          : resolveReportingFieldRef(
-              dim.of() ?? "",
-              reportingMemberOwner(dim, from),
-              root,
-              dim.via() === undefined ? from : undefined,
-            ));
+      const of = f.typeSource ?? (dim === undefined ? undefined : dimensionOfField(dim, from, root));
       if (of === undefined) throw new Error(`report '${report.name}': dimension '${f.name}' @of does not resolve.`);
       const path = pathOf.get(f);
       const alias = path === undefined ? baseAlias : aliasAtEndOf(path, joins);
@@ -320,15 +244,8 @@ export function extractReportSpec(report: MetaObject, root: MetaRoot, ctx: Extra
     }
     const measure = f.measure!;
     if (measure.isRatio()) {
-      const operand = (name: string | undefined): ReportAggregate => {
-        const m = name === undefined ? undefined : (declared(from, TYPE_MEASURE, name) as MetaMeasure | undefined);
-        if (m === undefined || m.isRatio()) {
-          throw new Error(
-            `report '${report.name}': ratio '${measure.name}' operand '${name ?? ""}' is not a measure.aggregate on '${from.name}'.`,
-          );
-        }
-        return aggregateOf(m, report, from, baseAlias, root, ctx);
-      };
+      const operand = (name: string | undefined): ReportAggregate =>
+        aggregateOf(ratioOperand(from, measure, name, `report '${report.name}'`), report, from, baseAlias, root, ctx);
       const defaultValue = measure.defaultValue();
       return {
         kind: "ratio",
