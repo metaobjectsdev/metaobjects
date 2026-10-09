@@ -1,0 +1,22 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - requirement.architectural:
+        name: Identified
+        status: live
+        statement: Every row is addressed by a uuid.
+        counterexample: A row keyed by a name.
+        implementedBy: [Order]
+
+    - requirement.architectural:
+        name: Audited
+        status: planned
+        statement: Every row records who changed it.
+        counterexample: A row with no change attribution.

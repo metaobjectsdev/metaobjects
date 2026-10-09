@@ -279,6 +279,11 @@ export interface RequirementScan {
    *  printed a ratio the gate had not enforced would be a measurement nobody could
    *  reconcile with the diagnostics beneath it. */
   readonly measureCoverage: boolean;
+  /** ADR-0057 — the strict switch. When true, the functional EXISTENCE finding
+   *  (`WARN_REQUIREMENT_NOTHING_IMPLEMENTS`) is reported at severity `error`; the code,
+   *  path and message do not change, and no other diagnostic is touched. Carried on
+   *  the scan, like `measureCoverage`, so a caller decides it once per run. */
+  readonly requireImplementers: boolean;
 }
 
 /**
@@ -321,6 +326,8 @@ export function scanRequirements(
      *  by its own ledger" is exactly what is being asserted — so the derivation would
      *  switch the check off precisely where it is the point. */
     measureCoverage?: boolean;
+    /** Raise WARN_REQUIREMENT_NOTHING_IMPLEMENTS to severity "error". Default false. */
+    requireImplementers?: boolean;
   },
 ): RequirementScan {
   const addressed = collectAddressedRequirements(root);
@@ -328,6 +335,7 @@ export function scanRequirements(
     addressed,
     claimedObjects: claimedObjectKeys(root, addressed.map((r) => r.node)),
     measureCoverage: opts?.measureCoverage ?? projectAuthoredRequirements(addressed),
+    requireImplementers: opts?.requireImplementers ?? false,
     // `exactOptionalPropertyTypes` — an omitted key, never an explicit `undefined`.
     ...(opts?.coverable !== undefined ? { coverable: opts.coverable } : {}),
   };
@@ -593,9 +601,15 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
     // tree. So the question is not "does this node claim anything" but "does
     // anything in this subtree claim anything". A live L1 whose entire subtree
     // is empty is a capability declared and built by nobody.
+    //
+    // The strict switch (ADR-0057, `meta verify --require-implementers`) raises the
+    // SEVERITY for a project whose ledger has caught up with its links. The code
+    // keeps its `WARN_` name on purpose: it identifies the finding, and one finding
+    // under two codes would split every suppression and corpus case that keys on it.
     if (!architectural && live && !subtreeClaimsAnything(req)) {
       out.push({
-        severity: "warn", code: WARN_REQUIREMENT_NOTHING_IMPLEMENTS, path: reqPath,
+        severity: scan.requireImplementers ? "error" : "warn",
+        code: WARN_REQUIREMENT_NOTHING_IMPLEMENTS, path: reqPath,
         message: `is '${String(status)}' but neither it nor anything nested under it names an ` +
           `implementing node. A functional requirement's check is existence — a subtree that claims ` +
           `nothing is a capability nobody built.`,

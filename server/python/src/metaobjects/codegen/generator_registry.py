@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from metaobjects.codegen.generator import Generator
+from metaobjects.codegen.project_config import DEFAULT_REQUIREMENT_WITNESS_MODULE
 from metaobjects.codegen.generators.entity_model import entity_model
 from metaobjects.codegen.generators.extractor_generator import extractor_generator
 from metaobjects.codegen.generators.filter_allowlist_generator import (
@@ -39,6 +40,9 @@ from metaobjects.codegen.generators.output_prompt_generator import (
 )
 from metaobjects.codegen.generators.render_helper_generator import (
     render_helper_generator,
+)
+from metaobjects.codegen.generators.requirement_tests_generator import (
+    requirement_tests_generator,
 )
 from metaobjects.codegen.generators.router_generator import (
     RUNTIME_MODULES as _ROUTER_RUNTIME,
@@ -69,6 +73,20 @@ GeneratorLayer = str  # one of GENERATOR_LAYERS
 
 
 @dataclass(frozen=True)
+class RequirementTestsOptions:
+    """The ``requirementTests`` config block, RESOLVED: ``renderer`` and ``filter`` are the
+    callables their ``module:symbol`` strings named. The CLI resolves them against the config
+    directory (the way ``providers`` are) so a generator factory, packaged or owned, only
+    reads attributes."""
+
+    witness_module: str = DEFAULT_REQUIREMENT_WITNESS_MODULE
+    grain: str = "concern"
+    renderer: Callable[..., object] | None = None
+    filter: Callable[..., bool] | None = None
+    warn_uncovered: bool = True
+
+
+@dataclass(frozen=True)
 class GeneratorBuildContext:
     """Extra inputs a factory may need to construct a generator.
 
@@ -88,6 +106,9 @@ class GeneratorBuildContext:
     #: The on-disk directory template refs resolve under. ``None`` = not supplied
     #: (``--list``, registry identity), which every factory must tolerate.
     template_root: str | None = None
+    #: The ``requirementTests`` block of ``metaobjects.config.yaml``, resolved. ``None`` =
+    #: no block (flag mode, ``--list``): the ``requirement-tests`` generator uses its defaults.
+    requirement_tests: RequirementTestsOptions | None = None
 
 
 @dataclass(frozen=True)
@@ -168,7 +189,7 @@ def _render_helper_default(ctx: GeneratorBuildContext) -> Generator:
         template_root=ctx.template_root or tempfile.gettempdir())
 
 
-#: Stable name -> GeneratorEntry. The 10 native generators whose manifest `ports`
+#: Stable name -> GeneratorEntry. The 11 native generators whose manifest `ports`
 #: include `python` (ADR-0021 D3). Set equality, tier AND layer are conformance-tested
 #: against the manifest.
 GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
@@ -232,6 +253,14 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         factory=lambda _ctx: extractor_generator(),
         requires=("entity",),
         source=extractor_generator,
+    ),
+    "requirement-tests": GeneratorEntry(
+        name="requirement-tests",
+        description="Per-package pytest tests, one per tested requirement, each calling a project-owned witness function looked up by name in the witness module; a live test with no witness fails and a planned or retired one is skipped.",
+        tier="native",
+        layer="capability",
+        factory=requirement_tests_generator,
+        source=requirement_tests_generator,
     ),
     "template": GeneratorEntry(
         name="template",

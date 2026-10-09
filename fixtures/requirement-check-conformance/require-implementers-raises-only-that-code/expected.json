@@ -1,0 +1,34 @@
+{
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "WARN_REQUIREMENT_NOTHING_IMPLEMENTS",
+      "path": "Refunded",
+      "message": "is 'live' but neither it nor anything nested under it names an implementing node. A functional requirement's check is existence — a subtree that claims nothing is a capability nobody built."
+    },
+    {
+      "severity": "warn",
+      "code": "WARN_REQUIREMENT_DEFERRED_UNTRACKED",
+      "path": "Exchanged",
+      "message": "is deferred but names no @trackedBy issue. Deferring without a ticket is how a known gap becomes an unknown one — nothing will raise it again."
+    },
+    {
+      "severity": "warn",
+      "code": "WARN_REQUIREMENT_OBJECT_UNCLAIMED",
+      "message": "no requirement claims 'acme::shop::Customer'. Add it to an L4 requirement's 'implementedBy'."
+    }
+  ],
+  "summary": {
+    "total": 3,
+    "functional": 3,
+    "architectural": 0,
+    "byStatus": {
+      "planned": 1,
+      "live": 2
+    },
+    "undecided": 0,
+    "deferredUntracked": 1,
+    "entitiesClaimed": 1,
+    "entitiesTotal": 2
+  }
+}

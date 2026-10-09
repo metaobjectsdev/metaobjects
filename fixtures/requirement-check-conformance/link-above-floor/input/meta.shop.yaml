@@ -1,0 +1,27 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - identity.primary: { name: pk, fields: [id] }
+
+    # The disposition on a live node would be a warning of its own; the link error stops the node's checks first.
+    - requirement.functional:
+        name: Shop
+        level: 1
+        status: live
+        disposition: accepted
+        statement: A customer can buy from the shop.
+        counterexample: A customer who cannot place an order.
+        implementedBy: [Order]
+        children:
+          - requirement.functional:
+              name: Orders
+              level: 3
+              status: live
+              statement: Every placed order is kept.
+              counterexample: A placed order that is lost.
+              implementedBy: [Order]

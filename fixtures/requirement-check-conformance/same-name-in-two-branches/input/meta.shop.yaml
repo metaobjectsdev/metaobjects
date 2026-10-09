@@ -1,0 +1,46 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - requirement.functional:
+        name: Shop
+        level: 1
+        status: live
+        statement: A customer can buy from the shop.
+        counterexample: A customer who cannot place an order.
+        children:
+          - requirement.functional:
+              name: Orders
+              level: 3
+              status: live
+              statement: Every placed order is kept.
+              counterexample: A placed order that is lost.
+              children:
+                # No object is named Ordr.
+                - requirement.functional:
+                    name: Recorded
+                    level: 4
+                    status: live
+                    statement: An order is recorded when it is placed.
+                    counterexample: A placed order has no row.
+                    implementedBy: [Order, Ordr]
+          - requirement.functional:
+              name: Returns
+              level: 3
+              status: live
+              statement: A customer can send an order back.
+              counterexample: An order that cannot be returned.
+              children:
+                - requirement.functional:
+                    name: Recorded
+                    level: 4
+                    status: live
+                    statement: A return is recorded when it is received.
+                    counterexample: A received return has no row.
+                    implementedBy: [Order, Ordr]

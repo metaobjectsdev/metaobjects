@@ -1,0 +1,49 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - requirement.functional:
+        name: Recorded
+        level: 4
+        status: live
+        statement: An order is recorded when it is placed.
+        counterexample: A placed order has no row.
+        implementedBy: [Order]
+        children:
+          - requirement.functional:
+              name: Quotable
+              level: 5
+              status: live
+              statement: An order carries a reference the customer can quote.
+              counterexample: An order nobody can quote back.
+              implementedBy: [Order.reference]
+          - requirement.functional:
+              name: Addressable
+              level: 5
+              status: live
+              statement: An order is addressed by one stable key.
+              counterexample: An order that cannot be pointed at.
+              implementedBy: [Order.pk]
+
+    # A levelled policy at L5.
+    - requirement.architectural:
+        name: Keyed
+        level: 5
+        status: live
+        statement: Every primary key is a single uuid column.
+        counterexample: A composite primary key.
+        implementedBy: [Order.pk]
+
+    # A flat policy: it has no level, which is not the same as level 5.
+    - requirement.architectural:
+        name: Identified
+        status: live
+        statement: Every row is addressed by a uuid.
+        counterexample: A row keyed by a name.
+        implementedBy: [Order]

@@ -1,0 +1,56 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - requirement.functional:
+        name: Recorded
+        level: 4
+        status: partial
+        statement: An order is recorded when it is placed.
+        counterexample: A placed order has no row.
+        implementedBy: [Order]
+
+    # The same claim under another name, with everything a ledger entry can carry
+    # that is not the claim.
+    - requirement.functional:
+        name: Annotated
+        level: 4
+        status: partial
+        title: Orders are recorded
+        description: Covers orders placed through the shop.
+        notes: Orders placed by telephone are keyed in the next morning.
+        disposition: deferred
+        trackedBy: ["acme/shop#12"]
+        statement: An order is recorded when it is placed.
+        counterexample: A placed order has no row.
+        implementedBy: [Order]
+
+    # The same entry as Recorded with one word of the statement changed.
+    - requirement.functional:
+        name: Reworded
+        level: 4
+        status: partial
+        statement: An order is recorded when it is paid.
+        counterexample: A placed order has no row.
+        implementedBy: [Order]
+
+    # A retired entry, and the same entry again saying what replaced it.
+    - requirement.functional:
+        name: Faxed
+        level: 4
+        status: retired
+        statement: An order confirmation is sent by fax.
+        counterexample: A confirmed order with no fax.
+
+    - requirement.functional:
+        name: FaxedThenReplaced
+        level: 4
+        status: retired
+        supersededBy: Recorded
+        statement: An order confirmation is sent by fax.
+        counterexample: A confirmed order with no fax.

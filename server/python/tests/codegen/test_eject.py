@@ -7,6 +7,7 @@ eject never overwrites without --force and never edits the config.
 from __future__ import annotations
 
 import importlib
+import sys
 from pathlib import Path
 
 import pytest
@@ -143,3 +144,115 @@ def test_bad_owned_token_is_a_clear_error(tmp_path: Path, monkeypatch, capsys, t
     monkeypatch.chdir(tmp_path)
     assert main(["gen"]) != 0
     assert token.split(":")[0] in capsys.readouterr().err
+
+
+WORKED_EXAMPLE = Path(__file__).parents[4] / "fixtures" / "requirement-test-identity-conformance" / "worked-example"
+_REQUIREMENT_BLOCK = (
+    "requirementTests:\n  witnessModule: app.witnesses\n  grain: member\n"
+    "  renderer: codegen.requirement_renderer:render\n  warnUncovered: false\n"
+)
+#: A project renderer. It imports the hook types from the PACKAGE, as every adopter's does, so
+#: the generator that receives its result may be the packaged one or an ejected copy of it.
+_RENDERER = (
+    "from metaobjects.codegen.requirement_hooks import RenderedTest\n\n\n"
+    "def render(args):\n"
+    "    if args.identity.skip is not None:\n"
+    "        return None\n"
+    "    return RenderedTest(\n"
+    "        imports=('import json',),\n"
+    "        source='def test_mine():\\n    json.dumps(1)\\n',\n"
+    "    )\n"
+)
+
+
+def _requirement_project(root: Path, generators: str) -> Path:
+    (root / "metaobjects").mkdir()
+    for doc in sorted((WORKED_EXAMPLE / "input").iterdir()):
+        (root / "metaobjects" / doc.name).write_text(doc.read_text(encoding="utf-8"), encoding="utf-8")
+    (root / "codegen").mkdir(exist_ok=True)
+    (root / "codegen" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "codegen" / "requirement_renderer.py").write_text(_RENDERER, encoding="utf-8")
+    cfg = root / "metaobjects.config.yaml"
+    cfg.write_text(
+        f"{_REQUIREMENT_BLOCK}targets:\n  main:\n    outDir: gen\n    generators: [{generators}]\n",
+        encoding="utf-8",
+    )
+    return cfg
+
+
+def test_an_unchanged_ejected_requirement_tests_copy_generates_identical_output(
+    tmp_path: Path, monkeypatch
+) -> None:
+    packaged = tmp_path / "packaged"
+    packaged.mkdir()
+    _requirement_project(packaged, "requirement-tests")
+    monkeypatch.chdir(packaged)
+    assert main(["gen"]) == 0
+
+    owned = tmp_path / "owned"
+    owned.mkdir()
+    _requirement_project(owned, "codegen.generators.requirement_tests:requirement_tests_generator")
+    monkeypatch.chdir(owned)
+    assert main(["eject", "requirement-tests"]) == 0
+    assert (owned / "codegen" / "generators" / "requirement_tests.py").read_text(encoding="utf-8") == (
+        _packaged_source("requirement-tests")
+    )
+    assert main(["gen"]) == 0
+
+    a = {p.relative_to(packaged / "gen"): p.read_bytes() for p in (packaged / "gen").rglob("*.py")}
+    b = {p.relative_to(owned / "gen"): p.read_bytes() for p in (owned / "gen").rglob("*.py")}
+    assert a and a == b
+    # The NON-default block is what proves the owned copy still reads its options.
+    text = a[Path("requirements/test_acme_shop_requirements.py")].decode("utf-8")
+    assert '_WITNESS_MODULE = "app.witnesses"' in text
+    assert "def test_req_acme_shop_Orders_Recorded__Order():" not in text  # the renderer replaced it
+    assert "def test_mine():" in text and "import json" in text  # the project renderer ran
+    assert "def test_req_acme_shop_Orders_Refunded():" in text  # None kept the default (planned)
+    assert main(["verify", "--codegen"]) == 0
+
+
+def test_an_edited_ejected_requirement_tests_copy_drives_gen(tmp_path: Path, monkeypatch) -> None:
+    _requirement_project(tmp_path, "codegen.generators.requirement_tests:requirement_tests_generator")
+    monkeypatch.chdir(tmp_path)
+    assert main(["eject", "requirement-tests"]) == 0
+    copy = tmp_path / "codegen" / "generators" / "requirement_tests.py"
+    source = copy.read_text(encoding="utf-8")
+    assert source.count('"unimplemented requirement: "') == 1
+    copy.write_text(
+        source.replace('"unimplemented requirement: "', '"NOT YET WITNESSED: "'), encoding="utf-8"
+    )
+    assert main(["gen"]) == 0
+    text = (tmp_path / "gen" / "requirements" / "test_acme_shop_requirements.py").read_text(encoding="utf-8")
+    assert "NOT YET WITNESSED: " in text and "unimplemented requirement" not in text
+
+
+def test_an_owned_copy_is_imported_from_its_own_project_after_another_projects_config_provider_ran(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Project A's config provider is imported with the config directory on `sys.path` and no
+    help from the owned-generator resolver, so `codegen` is cached from A. Project B, in the
+    same process, must still generate from B's own ejected `entity`."""
+    # A fresh process would hold no `codegen` yet; config providers are imported with plain
+    # importlib, so earlier tests' copies would otherwise answer for project A.
+    for name in [k for k in sys.modules if k == "codegen" or k.startswith("codegen.")]:
+        monkeypatch.delitem(sys.modules, name)
+    a = tmp_path / "a"
+    a.mkdir()
+    cfg_a = _project(a, "names")
+    cfg_a.write_text(f"providers: ['codegen.providers:p']\n{cfg_a.read_text()}", encoding="utf-8")
+    (a / "codegen").mkdir()
+    (a / "codegen" / "__init__.py").write_text("")
+    (a / "codegen" / "providers.py").write_text(
+        "from metaobjects.provider import Provider\n\np = Provider('a-provider', ('metaobjects-core-types',))\n"
+    )
+    monkeypatch.chdir(a)
+    assert main(["gen"]) == 0
+
+    b = tmp_path / "b"
+    b.mkdir()
+    _project(b, "codegen.generators.entity:entity_model")
+    monkeypatch.chdir(b)
+    assert main(["eject", "entity"]) == 0
+    assert main(["gen"]) == 0
+    assert any((b / "gen").rglob("*.py"))
+    assert main(["verify", "--codegen"]) == 0

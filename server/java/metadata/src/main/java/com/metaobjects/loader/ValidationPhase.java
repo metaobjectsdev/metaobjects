@@ -4214,8 +4214,13 @@ public final class ValidationPhase {
 
     /** ADR-0042 §5 — a did-you-mean suffix for an UNRESOLVED object reference: the FQNs of
      *  same-short-name objects that DO exist (typically in other packages). Returns "" when
-     *  none exist. Mirrors the TS {@code didYouMeanHint}. */
-    private static String didYouMeanHint(MetaRoot root, String ref) {
+     *  none exist. Mirrors the TS {@code didYouMeanHint}.
+     *
+     *  <p>Public because the requirement gate ({@code RequirementCheck}) appends the same text
+     *  to a dangling claim: the gate and this loader pass share this one builder, so the two
+     *  cannot word it differently. It is not the only one: {@code RegisteredValidation} holds
+     *  a second, private builder of the same sentence, which does not strip a dotted tail.</p> */
+    public static String didYouMeanHint(MetaRoot root, String ref) {
         if (ref == null) return "";
         int sep = ref.lastIndexOf(MetaData.PKG_SEPARATOR);
         String shortName = (sep >= 0) ? ref.substring(sep + MetaData.PKG_SEPARATOR.length()) : ref;

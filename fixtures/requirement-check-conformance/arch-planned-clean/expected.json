@@ -1,0 +1,16 @@
+{
+  "diagnostics": [],
+  "summary": {
+    "total": 2,
+    "functional": 0,
+    "architectural": 2,
+    "byStatus": {
+      "planned": 1,
+      "live": 1
+    },
+    "undecided": 1,
+    "deferredUntracked": 0,
+    "entitiesClaimed": 1,
+    "entitiesTotal": 1
+  }
+}

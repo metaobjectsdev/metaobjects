@@ -1,0 +1,11 @@
+metadata:
+  package: acme
+  children:
+    # Completed with this file's package: acme::shop::Orders.Recorded.
+    - requirement.functional:
+        name: Wired
+        level: 4
+        status: retired
+        supersededBy: shop::Orders.Recorded
+        statement: An order confirmation is sent by wire.
+        counterexample: A confirmed order with no wire.

@@ -2706,9 +2706,10 @@ function checkProjectionFilterRefs(
 //      Resolution of the reference itself is `verify`'s job (it owns every other
 //      @implementedBy-style resolution) — the loader owns the shape.
 //
-// Runs in every port. `requirement.*` gate logic otherwise lives only in the TS
-// CLI, which is exactly why THIS rule belongs in the loader: a Java or Python
-// estate would otherwise be free to author the shape the rule exists to prevent.
+// Runs in every port. The requirement gate runs in every port's `verify` since
+// ADR-0057 (when this rule was written it ran only in the TS CLI), yet the rule
+// stays in the loader: a shape the loader refuses is unreachable in every port
+// and in every program that loads the model, whether or not anyone runs `verify`.
 //
 // ADR-0039: children()/attr() throughout — never own* — so a requirement that
 // inherits its status through `extends` is judged on its EFFECTIVE status.

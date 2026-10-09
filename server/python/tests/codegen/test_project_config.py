@@ -9,10 +9,16 @@ import pytest
 from metaobjects.codegen.project_config import (
     CONFIG_FILENAME,
     DEFAULT_METADATA_DIR,
+    DEFAULT_REQUIREMENT_WITNESS_MODULE,
+    DOTTED_MODULE_PATTERN,
+    MODULE_SYMBOL_PATTERN,
+    REQUIREMENT_TESTS_KEYS,
+    REQUIREMENT_TEST_GRAIN_VALUES,
     TARGET_KEYS,
     TOP_LEVEL_KEYS,
     ConfigError,
     ProjectConfig,
+    RequirementTestsConfig,
     TargetConfig,
     load_project_config,
 )
@@ -204,7 +210,101 @@ def test_schema_and_loader_accept_EXACTLY_the_same_keys(tmp_path: Path) -> None:
     assert set(schema["properties"]) == set(TOP_LEVEL_KEYS)
     target_props = schema["properties"]["targets"]["additionalProperties"]["properties"]
     assert set(target_props) == set(TARGET_KEYS)
+    # The `requirementTests` block is a third level with its own closed key set.
+    block = schema["properties"]["requirementTests"]
+    assert set(block["properties"]) == set(REQUIREMENT_TESTS_KEYS)
+    assert block["additionalProperties"] is False
+    assert block["properties"]["grain"]["enum"] == list(REQUIREMENT_TEST_GRAIN_VALUES)
     # Both levels must keep saying unknown keys are invalid — that claim is what the
     # loader now enforces.
     assert schema["additionalProperties"] is False
     assert schema["properties"]["targets"]["additionalProperties"]["additionalProperties"] is False
+
+
+_TARGETS = "targets:\n  m:\n    outDir: out\n"
+
+
+def test_requirement_tests_block_is_parsed_with_its_five_keys(tmp_path: Path) -> None:
+    p = _write(
+        tmp_path,
+        "requirementTests:\n"
+        "  witnessModule: app.witnesses\n"
+        "  grain: member\n"
+        "  renderer: codegen.requirement_renderer:render\n"
+        "  filter: codegen.requirement_filter:include\n"
+        "  warnUncovered: false\n" + _TARGETS,
+    )
+    assert load_project_config(p).requirement_tests == RequirementTestsConfig(
+        witness_module="app.witnesses",
+        grain="member",
+        renderer="codegen.requirement_renderer:render",
+        filter="codegen.requirement_filter:include",
+        warn_uncovered=False,
+    )
+
+
+def test_no_requirement_tests_block_means_no_options(tmp_path: Path) -> None:
+    assert load_project_config(_write(tmp_path, _TARGETS)).requirement_tests is None
+
+
+def test_an_empty_requirement_tests_block_means_the_defaults(tmp_path: Path) -> None:
+    p = _write(tmp_path, "requirementTests: {}\n" + _TARGETS)
+    assert load_project_config(p).requirement_tests == RequirementTestsConfig()
+
+
+@pytest.mark.parametrize(
+    ("block", "message"),
+    [
+        ("  witnessmodule: x\n", "witnessmodule"),
+        ("  grain: hybrid\n", "'grain' must be one of"),
+        ("  warnUncovered: \"no\"\n", "'warnUncovered' must be a boolean"),
+        ("  renderer: not_a_symbol\n", "'renderer' must be in 'module:symbol' form"),
+        ("  filter: a:b:c\n", "'filter' must be in 'module:symbol' form"),
+        ("  witnessModule: 3\n", "'witnessModule' must be a non-empty string"),
+        ('  witnessModule: "a b"\n', "'witnessModule' must be a dotted module name"),
+        ('  witnessModule: "x.1y"\n', "'witnessModule' must be a dotted module name"),
+        ('  witnessModule: "tests.w\\n"\n', "'witnessModule' must be a dotted module name"),
+        ('  renderer: "m:s\\n"\n', "'renderer' must be in 'module:symbol' form"),
+        ('  filter: "m :s"\n', "'filter' must be in 'module:symbol' form"),
+        ('  witnessModule: "x\\"; import os; \\""\n', "'witnessModule' must be a dotted module name"),
+    ],
+)
+def test_a_bad_requirement_tests_block_is_refused(tmp_path: Path, block: str, message: str) -> None:
+    p = _write(tmp_path, "requirementTests:\n" + block + _TARGETS)
+    with pytest.raises(ConfigError, match=message):
+        load_project_config(p)
+
+
+def test_the_schema_and_the_loader_agree_on_the_witness_module_pattern_and_default() -> None:
+    schema = json.loads(
+        (Path(__file__).parents[2] / "src" / "metaobjects" / "codegen" / "metaobjects-config.schema.json")
+        .read_text(encoding="utf-8")
+    )
+    witness = schema["properties"]["requirementTests"]["properties"]["witnessModule"]
+    assert witness["pattern"] == DOTTED_MODULE_PATTERN
+    assert witness["default"] == DEFAULT_REQUIREMENT_WITNESS_MODULE
+
+
+def test_the_schema_and_the_loader_agree_on_the_module_symbol_pattern() -> None:
+    schema = json.loads(
+        (Path(__file__).parents[2] / "src" / "metaobjects" / "codegen" / "metaobjects-config.schema.json")
+        .read_text(encoding="utf-8")
+    )
+    props = schema["properties"]["requirementTests"]["properties"]
+    assert props["renderer"]["pattern"] == props["filter"]["pattern"] == MODULE_SYMBOL_PATTERN
+
+
+def test_the_default_witness_module_is_spelled_once_and_every_consumer_agrees() -> None:
+    from metaobjects.codegen.generator_registry import RequirementTestsOptions
+    from metaobjects.codegen.generators.requirement_tests_generator import DEFAULT_WITNESS_MODULE
+
+    assert DEFAULT_REQUIREMENT_WITNESS_MODULE == "tests.requirement_witnesses"
+    assert RequirementTestsConfig().witness_module == DEFAULT_REQUIREMENT_WITNESS_MODULE
+    assert RequirementTestsOptions().witness_module == DEFAULT_REQUIREMENT_WITNESS_MODULE
+    assert DEFAULT_WITNESS_MODULE == DEFAULT_REQUIREMENT_WITNESS_MODULE
+
+
+def test_the_loaders_grain_values_are_the_walks_grains() -> None:
+    from metaobjects.codegen.requirement_walk import REQUIREMENT_TEST_GRAINS
+
+    assert tuple(REQUIREMENT_TEST_GRAIN_VALUES) == tuple(REQUIREMENT_TEST_GRAINS)

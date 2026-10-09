@@ -1,0 +1,28 @@
+{
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_LEVEL_NESTING",
+      "path": "Recorded.Duplicated",
+      "message": "nested under \"Recorded\" (level 4) but declares level 4. Nesting is the hierarchy — a child sits strictly below its parent."
+    },
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_LEVEL_NESTING",
+      "path": "Recorded.Quotable.Inverted",
+      "message": "nested under \"Quotable\" (level 5) but declares level 4. Nesting is the hierarchy — a child sits strictly below its parent."
+    }
+  ],
+  "summary": {
+    "total": 4,
+    "functional": 4,
+    "architectural": 0,
+    "byStatus": {
+      "live": 4
+    },
+    "undecided": 0,
+    "deferredUntracked": 0,
+    "entitiesClaimed": 1,
+    "entitiesTotal": 1
+  }
+}

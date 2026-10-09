@@ -39,8 +39,8 @@ def test_gen_list_prints_all_and_exits_zero(capsys, tmp_path: Path) -> None:
     # Every registered stable name appears in the listing.
     for name in GENERATOR_REGISTRY:
         assert name in out, f"--list omitted {name!r}"
-    # Exactly the 10 python-slice names are registered (ADR-0056 removed `payload`).
-    assert len(GENERATOR_REGISTRY) == 10
+    # Exactly the 11 python-slice names are registered (ADR-0056 removed `payload`).
+    assert len(GENERATOR_REGISTRY) == 11
     assert "payload" not in GENERATOR_REGISTRY
     # A template-tier generator says it needs the entity generator's models.
     assert "output-parser — " in out

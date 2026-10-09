@@ -1,0 +1,33 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - object.entity:
+        name: Customer
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    # Two entities are one concern and two references. Each requirement names one
+    # node by its bare name and one by its qualified name.
+    - requirement.functional:
+        name: Recorded
+        level: 4
+        status: live
+        statement: An order is recorded against its customer.
+        counterexample: An order with no customer.
+        implementedBy: [Order, "acme::shop::Customer"]
+        children:
+          - requirement.functional:
+              name: Quotable
+              level: 5
+              status: live
+              statement: An order carries a reference the customer can quote.
+              counterexample: An order nobody can quote back.
+              implementedBy: [Order.reference, "acme::shop::Order.pk"]

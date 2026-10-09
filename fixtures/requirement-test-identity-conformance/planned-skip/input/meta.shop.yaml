@@ -1,0 +1,26 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    # Planned, naming a node that exists: the unit is its concern.
+    - requirement.functional:
+        name: Recorded
+        level: 4
+        status: planned
+        statement: An order is recorded when it is placed.
+        counterexample: A placed order has no row.
+        implementedBy: [Order]
+
+    # Planned, naming a node that does not exist yet: nothing resolves.
+    - requirement.functional:
+        name: Refunded
+        level: 4
+        status: planned
+        statement: A refund is recorded against its order.
+        counterexample: A refund with no order.
+        implementedBy: [Refund]

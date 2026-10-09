@@ -14,11 +14,12 @@
 // Stable names mirror the canonical manifest exactly for the kotlin slice:
 //   entity, routes, output-parser, output-prompt, render-helper, extractor,
 //   filter-allowlist, names, exposed-table, relations, spring-config,
-//   stored-proc, validator. (Kotlin has NO `template` generator — the manifest
+//   stored-proc, validator, requirement-tests. (Kotlin has NO `template` generator — the manifest
 //   deliberately omits kotlin from it.)
 
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.generator.Generator
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 
 /** Tier of a registered generator (ADR-0020 / ADR-0021 D1). */
@@ -80,8 +81,12 @@ data class GeneratorInfo(
     val tier: GeneratorTier,
     /** The selection axis — see [GeneratorLayer]. Gated cross-port. */
     val layer: GeneratorLayer,
-    /** Constructs the generator with sensible defaults. Calling it must not throw. */
-    val factory: () -> MultiFileDirectGeneratorBase<*>,
+    /**
+     * Constructs the generator with sensible defaults. Calling it must not throw. Typed as
+     * [Generator], not [MultiFileDirectGeneratorBase]: a generator that returns its files
+     * (`FileEmittingGenerator`, ADR-0034 Amendment 4) is not a per-object one.
+     */
+    val factory: () -> Generator,
     /**
      * Classpath location of this generator's reference source, as shipped inside this jar
      * (e.g. `META-INF/metaobjects/reference/kotlin/KotlinEntityGenerator.kt`), or `null`
@@ -223,6 +228,17 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.API,
         factory = ::KotlinValidatorGenerator,
         ejectResourcePath = ejectPath("KotlinValidatorGenerator"),
+    ),
+    "requirement-tests" to GeneratorInfo(
+        name = "requirement-tests",
+        description = "Per-package JUnit Jupiter tests, one per declared requirement, each calling a " +
+            "project-owned witness through a generated witness interface. [The project's test " +
+            "classpath needs org.junit.jupiter:junit-jupiter-api, and the `testPackage` and " +
+            "`witnessClass` args name where the tests go and the class that implements the witnesses.]",
+        tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.CAPABILITY,
+        factory = ::KotlinRequirementTestsGenerator,
+        ejectResourcePath = ejectPath("KotlinRequirementTestsGenerator"),
     ),
 )
 

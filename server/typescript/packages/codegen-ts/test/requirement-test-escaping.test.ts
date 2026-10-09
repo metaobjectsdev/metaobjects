@@ -25,7 +25,18 @@ const view = {
   level: 4,
   status: "live",
   path: "req.probe",
+  package: "acme::probe",
   implementedByTypes: [],
+} as const;
+
+// The test identity every renderer is handed. The default renderer reads none of it.
+const identity = {
+  package: "acme::probe",
+  unit: "object.entity",
+  id: "acme::probe::req.probe [object.entity]",
+  witnessKey: "req_acme_probe_req_probe__object_entity",
+  skip: null,
+  digest: "0".repeat(64),
 } as const;
 
 function render(statement: string, counterexample: string): string {
@@ -35,6 +46,7 @@ function render(statement: string, counterexample: string): string {
     statement,
     counterexample,
     targets: [],
+    ...identity,
   });
 }
 
@@ -107,6 +119,7 @@ describe("every author-supplied field is escaped, not just the two obvious ones"
       statement: "Notes are private.",
       counterexample: "the GM sees a player's notes",
       targets: [],
+      ...identity,
       ...extra,
     });
   }
@@ -186,6 +199,7 @@ describe("a retired requirement does not redden the suite forever", () => {
         statement: "s",
         counterexample: "v",
         targets: [],
+        ...identity,
       });
       expect(src).toContain("test.skip");
       expect(src).not.toContain("expect.unreachable");
@@ -200,6 +214,7 @@ describe("a retired requirement does not redden the suite forever", () => {
         statement: "s",
         counterexample: "v",
         targets: [],
+        ...identity,
       });
       expect(src).toContain("expect.unreachable");
       expect(src).not.toContain("test.skip");

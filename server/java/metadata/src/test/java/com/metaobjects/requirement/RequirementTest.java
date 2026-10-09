@@ -4,6 +4,7 @@ import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaRoot;
+import com.metaobjects.attr.LongAttribute;
 import com.metaobjects.loader.InMemoryStringSource;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
@@ -307,6 +308,28 @@ public class RequirementTest extends SharedRegistryTestBase {
         assertTrue("a typo'd @status must be refused by the loader; messages=" + messages, rejected);
         assertTrue("the error names the offending value; messages=" + messages,
             messages.contains("abandonned"));
+    }
+
+    // ---------------------------------------------------------------------------
+    // getLevel() saturates: a value beyond int never reads as a valid level
+    // ---------------------------------------------------------------------------
+
+    @Test
+    public void aLevelBeyondIntSaturatesInsteadOfWrapping() {
+        // The loader refuses such a value today, so this is the accessor's own defence:
+        // 4294967300 is 2^32 + 4, which narrows to 4 and would read as a legal object level.
+        FunctionalRequirement high = new FunctionalRequirement("tooHigh");
+        high.addMetaAttr(LongAttribute.create(MetaRequirement.ATTR_LEVEL, 4294967300L));
+        assertEquals(Integer.valueOf(Integer.MAX_VALUE), high.getLevel());
+
+        FunctionalRequirement low = new FunctionalRequirement("tooLow");
+        low.addMetaAttr(LongAttribute.create(MetaRequirement.ATTR_LEVEL, -4294967300L));
+        assertEquals(Integer.valueOf(Integer.MIN_VALUE), low.getLevel());
+
+        // A value that fits is unchanged.
+        FunctionalRequirement ordinary = new FunctionalRequirement("ordinary");
+        ordinary.addMetaAttr(LongAttribute.create(MetaRequirement.ATTR_LEVEL, 4L));
+        assertEquals(Integer.valueOf(4), ordinary.getLevel());
     }
 
     // ---------------------------------------------------------------------------

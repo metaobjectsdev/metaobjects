@@ -1,0 +1,26 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - requirement.functional:
+        name: Quotable
+        level: 4
+        status: live
+        statement: An order carries a reference the customer can quote.
+        counterexample: An order nobody can quote back.
+        implementedBy: [Order.reference]
+
+    # Order has no member named total. The grain error is reported and the dangling check is skipped.
+    - requirement.functional:
+        name: Totalled
+        level: 4
+        status: live
+        statement: An order carries the total the customer pays.
+        counterexample: An order with no total.
+        implementedBy: [Order.total]

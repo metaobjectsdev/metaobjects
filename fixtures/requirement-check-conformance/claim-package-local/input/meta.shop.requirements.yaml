@@ -1,0 +1,10 @@
+metadata:
+  package: acme::shop
+  children:
+    - requirement.functional:
+        name: Recorded
+        level: 4
+        status: live
+        statement: An order is recorded when it is placed.
+        counterexample: A placed order has no row.
+        implementedBy: [Order]

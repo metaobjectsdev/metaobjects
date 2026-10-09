@@ -146,6 +146,27 @@ Rules of the contract:
 
   The codes and message text are identical in every port, gated by
   [`fixtures/field-lint-conformance/`](../../fixtures/field-lint-conformance/README.md).
+- **The requirement gate runs on every `verify`, in every port**
+  ([ADR-0057](../../spec/decisions/ADR-0057-requirement-checks-and-tests-in-every-port.md)).
+  It is not a subverb and nothing mutes it. A model with no `requirement.*` node gets no
+  line and no change to the exit code. A model with one gets the ledger summary on every
+  run, and an error (a link above the floor, a dangling reference on a `live` or `partial`
+  requirement, a live policy applied to nothing) exits non-zero. Unlike the lints above,
+  this one can fail the build. One of its warnings can be raised to an error, per port:
+
+  | CLI | Flag | Environment |
+  |---|---|---|
+  | Node `meta verify` | `--require-implementers` | `META_REQUIRE_IMPLEMENTERS=1` |
+  | `dotnet meta verify` | `--require-implementers` | `META_REQUIRE_IMPLEMENTERS=1` |
+  | `mvn metaobjects:verify` | `-Dmeta.verify.requireImplementers=true` | `META_REQUIRE_IMPLEMENTERS=1` |
+  | `metaobjects verify` | `--require-implementers` | `META_REQUIRE_IMPLEMENTERS=1` |
+
+  The switch reports `WARN_REQUIREMENT_NOTHING_IMPLEMENTS` (a live functional requirement
+  that nothing implements) at severity `error`, under the same code, and changes no other
+  finding. The codes, severities and message text are identical in every port, gated by
+  [`fixtures/requirement-check-conformance/`](../../fixtures/requirement-check-conformance/README.md).
+  The seven requirement *authoring-lint* advisories are still printed by the Node `meta`
+  only. See [requirements.md](requirements.md#the-gate-in-every-port).
 
 ### The prompt directory: `--prompts` everywhere (F101)
 
@@ -319,9 +340,12 @@ by the other port's docs command.
 
 Alongside its flag-only mode (`metaobjects gen <metadata_dir> --out <dir>`), the
 Python `metaobjects` CLI supports a declarative project config,
-`metaobjects.config.yaml` (#267). The **schema keys are identical to the TS
-`metaobjects.config.ts` vocabulary** — a polyglot adopter learns one
-targets-registry shape regardless of port. A JSON Schema ships at
+`metaobjects.config.yaml` (#267). Its **`targets` registry uses the TS
+`metaobjects.config.ts` vocabulary** (named targets, each with its own `outDir`) — a
+polyglot adopter learns one targets-registry shape regardless of port. The keys are not
+identical beyond that: a Python target carries its own `generators` and `entities`, and
+`requirementTests` is a block that exists only here, where TypeScript passes that
+generator's options to `requirementTests({ … })` in code. A JSON Schema ships at
 [`server/python/src/metaobjects/codegen/metaobjects-config.schema.json`](../../server/python/src/metaobjects/codegen/metaobjects-config.schema.json)
 for editor autocomplete and non-Python validation.
 
@@ -330,6 +354,12 @@ metadata: metaobjects            # optional, default "metaobjects" — relative 
 providers:                       # optional; "module:symbol" refs, resolved config-relative (no PYTHONPATH=)
   - my_project.providers:register_custom_types
 libraries: [ai]                  # optional; MetaObjects-shipped library packages (see below)
+requirementTests:                # optional; options of the `requirement-tests` generator, every key optional
+  witnessModule: tests.requirement_witnesses   # the default
+  grain: concern                 # or: member
+  filter: codegen.requirement_hooks:include    # "module:symbol", resolved config-relative
+  renderer: codegen.requirement_hooks:render   # "module:symbol", resolved config-relative
+  warnUncovered: true            # the default
 targets:
   api:
     outDir: src/generated/api

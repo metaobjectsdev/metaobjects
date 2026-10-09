@@ -29,7 +29,14 @@ import { outputParser as refOutputParser } from "../src/reference/output-parser.
 import { extractor as refExtractor } from "../src/reference/extractor.js";
 import { outputPrompt as refOutputPrompt } from "../src/reference/output-prompt.js";
 import { renderHelper as refRenderHelper } from "../src/reference/render-helper.js";
-import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { requirementTests as builtinRequirementTests } from "../src/generators/requirement-tests.js";
+import {
+  requirementTests as refRequirementTests,
+  renderRequirementTest as refRenderRequirementTest,
+} from "../src/reference/requirement-tests.js";
+import { renderRequirementTest as builtinRenderRequirementTest } from "../src/templates/requirement-test.js";
+import type { RequirementTestArgs, RequirementTestsOpts } from "../src/index.js";
+import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 
 const FIXTURE_DIR = resolve(import.meta.dir, "fixtures");
@@ -114,6 +121,7 @@ const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () 
   extractor: { builtin: builtinExtractor, ref: refExtractor },
   "output-prompt": { builtin: builtinOutputPrompt, ref: refOutputPrompt },
   "render-helper": { builtin: builtinRenderHelper, ref: refRenderHelper },
+  "requirement-tests": { builtin: builtinRequirementTests, ref: refRequirementTests },
 };
 
 // The prompt tier emits nothing for the entity-shaped fixtures above — none declares a
@@ -295,5 +303,366 @@ describe("ADR-0034 — the prompt-tier reference templates over corpora that dec
         rmSync(projectRoot, { recursive: true, force: true });
       }
     });
+  }
+});
+
+// The requirement-test reference is the one template that carries a RENDERER as well as a
+// generator: an eject copies one file, and the stub text is what an application is most
+// likely to change, so both live in it. That makes the copy larger than its siblings —
+// every status branch, both escaping paths, the gap line, the uncovered warning — and no
+// fixture above declares a requirement, so each of those would be compared over two empty
+// sets. This ledger reaches every one of them.
+const REQUIREMENT_LEDGER = {
+  "metadata.root": {
+    package: "acme::shop",
+    children: [
+      {
+        "object.entity": {
+          name: "Order",
+          children: [
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "note" } },
+            { "field.string": { name: "memo" } },
+            { "source.rdb": { "@table": "orders" } },
+            { "identity.primary": { name: "pk", "@fields": ["id"] } },
+          ],
+        },
+      },
+      {
+        "requirement.functional": {
+          name: "Orders",
+          "@level": 3,
+          "@status": "live",
+          "@statement": "Orders are taken.",
+          "@counterexample": "an order nobody can place",
+          children: [
+            {
+              // L4, live, claiming the entity twice over — bare and package-qualified.
+              "requirement.functional": {
+                name: "Recorded",
+                "@level": 4,
+                "@status": "live",
+                "@statement": "An order is recorded when it is placed.",
+                "@counterexample": "A placed order has no row.",
+                "@implementedBy": ["Order", "acme::shop::Order"],
+                children: [
+                  {
+                    // L5, partial with a tracked gap, two members of ONE concern, and
+                    // prose that must be escaped in a string literal and in a comment.
+                    "requirement.functional": {
+                      name: "Annotated",
+                      "@level": 5,
+                      "@status": "partial",
+                      "@disposition": "deferred",
+                      "@trackedBy": ["#12", "a */ tracker"],
+                      "@statement": "The note is kept \"verbatim\" */ as typed.\nOn every order.",
+                      "@counterexample": "a note with a \\ dropped\r\nor a \"tidied\" one",
+                      "@implementedBy": ["Order.note", "Order.memo"],
+                    },
+                  },
+                ],
+              },
+            },
+            {
+              // Planned: skipped, and naming a node that does not exist yet.
+              "requirement.functional": {
+                name: "Refunded",
+                "@level": 4,
+                "@status": "planned",
+                "@statement": "A refund is recorded against its order.",
+                "@counterexample": "A refund with no order.",
+                "@implementedBy": ["Refund"],
+              },
+            },
+            {
+              // Retired: skipped, with its own body.
+              "requirement.functional": {
+                name: "Faxed",
+                "@level": 4,
+                "@status": "retired",
+                "@statement": "An order can be faxed in.",
+                "@counterexample": "a fax line that answers",
+              },
+            },
+            {
+              // Live with no targets at all.
+              "requirement.functional": {
+                name: "Acknowledged",
+                "@level": 4,
+                "@status": "live",
+                "@statement": "An order is acknowledged.",
+                "@counterexample": "a silent checkout",
+              },
+            },
+            {
+              // A gap somebody is tracking and nobody has ruled on: `@trackedBy` with no
+              // `@disposition`, which the stub records as "undecided".
+              "requirement.functional": {
+                name: "Chased",
+                "@level": 4,
+                "@status": "partial",
+                "@trackedBy": ["#77"],
+                "@statement": "An unpaid order is chased.",
+                "@counterexample": "an unpaid order nobody hears about",
+              },
+            },
+          ],
+        },
+      },
+      {
+        "requirement.architectural": {
+          name: "Audited",
+          "@status": "live",
+          "@statement": "Every entity is audited.",
+          "@counterexample": "an entity with no audit trail",
+          "@implementedBy": ["Order"],
+        },
+      },
+    ],
+  },
+};
+
+describe("ADR-0034 — the requirement-tests reference over a ledger that declares requirements", () => {
+  // Where a run moves the stubs to, and the namespace that goes with it.
+  const specPath: NonNullable<RequirementTestsOpts["path"]> = (view, key) =>
+    `specs/${view.path}__${key.replace(/[^A-Za-z0-9]+/g, "_")}.spec.ts`;
+  const ownsSpecs = (relPath: string): boolean => relPath.startsWith("specs/");
+
+  // `warns` names a sentence the run MUST produce. The warnings are compared between the
+  // two generators either way; this is what stops that comparison passing over two
+  // empty lists when the branch under test was never reached.
+  const RUNS: ReadonlyArray<{ label: string; opts: RequirementTestsOpts; files: number; warns?: string }> = [
+    // Recorded, Annotated, Refunded, Faxed, Acknowledged, Chased — one concern each.
+    { label: "the defaults", opts: {}, files: 6, warns: "2 requirement(s) matched no filter" },
+    // Every requirement (the L3 parent and the architectural policy included), one stub
+    // per reference: Orders 1, Recorded 2, Annotated 2, Refunded 1, Faxed 1,
+    // Acknowledged 1, Chased 1, Audited 1.
+    { label: 'grain: "member" under a filter that keeps everything', opts: { grain: "member", filter: () => true }, files: 10 },
+    // A filter that drops requirements while the warning is on, in the default grain.
+    { label: "a filter by package and status", opts: { filter: (r) => r.package === "acme::shop" && r.status !== "retired" }, files: 7, warns: "Uncovered: Orders.Faxed." },
+    { label: "the uncovered warning switched off", opts: { warnUncovered: false }, files: 6 },
+    // Seven of the eight requirements uncovered: five are named and the rest counted.
+    { label: "more uncovered requirements than the warning names", opts: { filter: (r) => r.path === "Orders.Recorded" }, files: 1, warns: ", and 2 more." },
+    // A custom `path` with no `owns`: the stubs move and the generator says it can no
+    // longer clean up after a deleted requirement.
+    { label: "a custom path without owns", opts: { path: specPath }, files: 6, warns: "a custom 'path' was supplied without a matching 'owns'" },
+    { label: "a custom path with its owns, under member grain", opts: { path: specPath, owns: ownsSpecs, grain: "member", forceOrphanDelete: true }, files: 8, warns: "2 requirement(s) matched no filter" },
+    { label: "a custom path with orphan reconciliation off", opts: { path: specPath, reconcileOrphans: false, warnUncovered: false }, files: 6 },
+  ];
+
+  for (const run of RUNS) {
+    test(run.label, async () => {
+      const loaded = await new MetaDataLoader().load([
+        new InMemoryStringSource(JSON.stringify(REQUIREMENT_LEDGER)),
+      ]);
+      expect(loaded.errors).toEqual([]);
+
+      const emit = async (generator: Generator) => {
+        const dir = mkdtempSync(join(tmpdir(), "codegen-req-"));
+        try {
+          const result = await runGen({
+            config: defineConfig({ outDir: join(dir, "out"), extStyle: "none", dbImport: "~/server/db", dialect: "sqlite", generators: [generator] }),
+            metadata: loaded.root,
+            projectRoot: dir,
+          });
+          const files: Record<string, string> = {};
+          for (const f of readdirSync(join(dir, "out"), { recursive: true, withFileTypes: true })) {
+            if (!f.isFile()) continue;
+            const abs = join(f.parentPath, f.name);
+            files[abs.slice(join(dir, "out").length + 1)] = readFileSync(abs, "utf-8");
+          }
+          return { files, warnings: result.warnings };
+        } finally {
+          rmSync(dir, { recursive: true, force: true });
+        }
+      };
+
+      const a = await emit(builtinRequirementTests(run.opts));
+      const b = await emit(refRequirementTests(run.opts));
+      const aKeys = Object.keys(a.files).sort();
+      // A gate over an empty emit passes trivially.
+      expect(aKeys.length).toBe(run.files);
+      expect(Object.keys(b.files).sort()).toEqual(aKeys);
+      for (const k of aKeys) expect(`${k}:\n${b.files[k]}`).toBe(`${k}:\n${a.files[k]}`);
+      // The warning text is duplicated in the copy too, so it is compared too.
+      expect(b.warnings).toEqual(a.warnings);
+      if (run.warns === undefined) expect(a.warnings).toEqual([]);
+      else expect(a.warnings.join("\n")).toContain(run.warns);
+    });
+  }
+
+  test("the ledger reaches the undecided gap line", async () => {
+    // Vacuity guard for the one stub branch only this requirement takes.
+    const loaded = await new MetaDataLoader().load([
+      new InMemoryStringSource(JSON.stringify(REQUIREMENT_LEDGER)),
+    ]);
+    const ctx = { loadedRoot: loaded.root, warn: () => {} } as unknown as Parameters<Generator["generate"]>[0];
+    const files = await refRequirementTests().generate(ctx);
+    const chased = files.find((f) => f.path === "requirements/Orders.Chased.test.ts");
+    expect(chased?.content).toContain(" * Known gap: undecided — #77");
+  });
+});
+
+// Everything above compares what a generator WRITES. A generator is also an object the
+// runner reads: its name, its target, and above all its orphan policy, which decides
+// which previously-generated files the runner may DELETE. A copy whose `owns` claimed
+// more than the built-in's would remove another generator's output, and no emitted
+// file would show it.
+describe("ADR-0034 — the requirement-tests reference is the same GENERATOR, not just the same output", () => {
+  const specPath: NonNullable<RequirementTestsOpts["path"]> = (view, key) => `specs/${view.path}.${key}.spec.ts`;
+  const SAMPLE_PATHS = [
+    "requirements/Orders.Recorded.object.entity.test.ts",
+    "requirements/deep/nested.test.ts",
+    "requirements",
+    "requirementsElsewhere/a.test.ts",
+    "specs/Orders.Recorded.object.entity.spec.ts",
+    "Order.ts",
+    "",
+  ];
+
+  const shape = (g: Generator) => ({
+    name: g.name,
+    target: g.target,
+    reconciles: g.orphanPolicy !== undefined,
+    force: g.orphanPolicy?.force,
+    owns: g.orphanPolicy === undefined ? null : SAMPLE_PATHS.filter((p) => g.orphanPolicy?.owns(p)),
+  });
+
+  // `expected` is the built-in's shape written out, so the comparison below cannot
+  // pass by both sides being wrong together (or both claiming nothing at all).
+  const CASES: ReadonlyArray<{ label: string; opts: RequirementTestsOpts; expected: ReturnType<typeof shape> }> = [
+    {
+      label: "the defaults own the default stub directory, and nothing beside it",
+      opts: {},
+      expected: {
+        name: "requirement-tests",
+        target: undefined,
+        reconciles: true,
+        force: undefined,
+        owns: ["requirements/Orders.Recorded.object.entity.test.ts", "requirements/deep/nested.test.ts"],
+      },
+    },
+    {
+      label: "member grain owns the same directory",
+      opts: { grain: "member" },
+      expected: {
+        name: "requirement-tests",
+        target: undefined,
+        reconciles: true,
+        force: undefined,
+        owns: ["requirements/Orders.Recorded.object.entity.test.ts", "requirements/deep/nested.test.ts"],
+      },
+    },
+    {
+      label: "the name and the target are the application's",
+      opts: { name: "req-api", target: "api-tests" },
+      expected: {
+        name: "req-api",
+        target: "api-tests",
+        reconciles: true,
+        force: undefined,
+        owns: ["requirements/Orders.Recorded.object.entity.test.ts", "requirements/deep/nested.test.ts"],
+      },
+    },
+    {
+      label: "a custom path without owns claims NOTHING",
+      opts: { path: specPath },
+      expected: { name: "requirement-tests", target: undefined, reconciles: true, force: undefined, owns: [] },
+    },
+    {
+      label: "a custom path with owns claims exactly what owns says",
+      opts: { path: specPath, owns: (p) => p.startsWith("specs/") },
+      expected: {
+        name: "requirement-tests",
+        target: undefined,
+        reconciles: true,
+        force: undefined,
+        owns: ["specs/Orders.Recorded.object.entity.spec.ts"],
+      },
+    },
+    {
+      label: "forceOrphanDelete sets force",
+      opts: { forceOrphanDelete: true },
+      expected: {
+        name: "requirement-tests",
+        target: undefined,
+        reconciles: true,
+        force: true,
+        owns: ["requirements/Orders.Recorded.object.entity.test.ts", "requirements/deep/nested.test.ts"],
+      },
+    },
+    {
+      label: "reconcileOrphans: false declares no policy at all",
+      opts: { reconcileOrphans: false, forceOrphanDelete: true },
+      expected: { name: "requirement-tests", target: undefined, reconciles: false, force: undefined, owns: null },
+    },
+  ];
+
+  for (const c of CASES) {
+    test(c.label, () => {
+      const builtin = shape(builtinRequirementTests(c.opts));
+      expect(builtin).toEqual(c.expected);
+      expect(shape(refRequirementTests(c.opts))).toEqual(builtin);
+    });
+  }
+
+  test("an unknown grain is refused by both, in the same words", () => {
+    const typo = { grain: "members" } as unknown as RequirementTestsOpts;
+    const refusal = (make: () => Generator): string => {
+      try {
+        make();
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+      return "(did not throw)";
+    };
+    const builtin = refusal(() => builtinRequirementTests(typo));
+    expect(builtin).toBe('unknown requirement-test grain "members": expected "concern" or "member".');
+    expect(refusal(() => refRequirementTests(typo))).toBe(builtin);
+  });
+});
+
+// The renderer is exported from the copy too, and an application may call it with
+// arguments it built itself. Rendering through a generator only ever supplies arguments
+// that agree with each other, so the two renderers are also compared directly — over
+// every status, with the identity's `skip` field set to agree with it and to contradict
+// it. The default renderer reads the STATUS; a copy that read `skip` instead passed
+// every generator run above and diverged here.
+describe("ADR-0034 — the requirement-tests reference renders hand-built arguments identically", () => {
+  const STATUSES = ["live", "partial", "planned", "retired", undefined] as const;
+  const SKIPS = [null, "planned", "retired"] as const;
+  const EXTRAS: ReadonlyArray<Partial<RequirementTestArgs>> = [
+    {},
+    { disposition: "accepted" },
+    { trackedBy: ["#1", "a */ b"] },
+    {
+      disposition: "deferred",
+      trackedBy: ["#2"],
+      targets: [{ ref: "Order.note", concern: "field.string", node: {} as never }],
+    },
+  ];
+
+  for (const status of STATUSES) {
+    for (const skip of SKIPS) {
+      test(`status ${status ?? "(absent)"}, skip ${skip ?? "null"}`, () => {
+        for (const extra of EXTRAS) {
+          const args: RequirementTestArgs = {
+            view: { subType: "functional", level: 4, status, path: 'Orders."Quoted"', package: "acme::shop", implementedByTypes: [] },
+            concern: "object.entity",
+            statement: "A statement */ with a break.\nAnd a second line.",
+            counterexample: 'a "quoted" \\ counterexample\r\nover two lines',
+            targets: [],
+            package: "acme::shop",
+            unit: "object.entity",
+            id: 'acme::shop::Orders."Quoted" [object.entity]',
+            witnessKey: "req_acme_shop_Orders_Quoted__object_entity",
+            skip,
+            digest: "0".repeat(64),
+            ...extra,
+          };
+          expect(refRenderRequirementTest(args)).toBe(builtinRenderRequirementTest(args));
+        }
+      });
+    }
   }
 });

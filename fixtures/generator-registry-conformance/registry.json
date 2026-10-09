@@ -187,7 +187,7 @@
       "concept": "Per-requirement test stub, one per requirement.functional claim in the ledger.",
       "tier": "native",
       "layer": "capability",
-      "ports": ["typescript"]
+      "ports": ["typescript", "java", "kotlin", "python", "csharp"]
     },
     "docs": {
       "concept": "Neutral per-entity / per-template Markdown documentation pages.",

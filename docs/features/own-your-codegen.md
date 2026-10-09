@@ -289,7 +289,7 @@ generator code. The 20-line programmatic shape for each port is in
 
 | Port | Invocation | Programmatic — write a `Generator` | Declarative — template + scope |
 |---|---|---|---|
-| **TypeScript** | `meta init` → `meta gen --list --probe` → `meta eject <names...>` → `meta gen` (Bun/Node CLI) | **Yes.** `meta generator new <name>` writes a working generator of your own into `codegen/generators/` and wires it — the first move for an output nothing ships. To start from a reference instead: `meta init` scaffolds the LAYOUT and an empty selection (ADR-0034 Amendment 2); `meta eject <name>...` copies each generator you choose into `codegen/generators/*.ts` and prints the import to add to `metaobjects.config.ts`. Edit them freely. The prompt tier (`prompt-render`, `output-parser`, `extractor`, `output-prompt`, `render-helper`) ejects like the rest: you own which templates get a module and where it lands, while the render and extract engines those modules call stay in the package. Not every registered generator is ejectable: `callable`, `trace-helper`, `requirement-tests`, the `template` primitive, the docs tier (`docs`, `api-docs`, `mermaid-er`, whose door is `meta docs`) and `shared-model` ship no reference template, so they are **package-only** — `meta gen --list` marks them so and `meta eject` names them as such. `shared-model` (FR-023's publisher generator) stays package-only deliberately, since it emits a hash-pinned cross-port contract artifact. | **Yes** — `templateGenerator({ template, scope, outputPattern })` in the config's `generators: [...]`. No CLI flag: the config already takes generator values. |
+| **TypeScript** | `meta init` → `meta gen --list --probe` → `meta eject <names...>` → `meta gen` (Bun/Node CLI) | **Yes.** `meta generator new <name>` writes a working generator of your own into `codegen/generators/` and wires it — the first move for an output nothing ships. To start from a reference instead: `meta init` scaffolds the LAYOUT and an empty selection (ADR-0034 Amendment 2); `meta eject <name>...` copies each generator you choose into `codegen/generators/*.ts` and prints the import to add to `metaobjects.config.ts`. Edit them freely. The prompt tier (`prompt-render`, `output-parser`, `extractor`, `output-prompt`, `render-helper`) ejects like the rest: you own which templates get a module and where it lands, while the render and extract engines those modules call stay in the package. `requirement-tests` ejects as one file holding the generator and its default stub renderer, so the stub text is yours to change; the requirement walk, each test's identity and the claim digest stay in the package. Not every registered generator is ejectable: `callable`, `trace-helper`, the `template` primitive, the docs tier (`docs`, `api-docs`, `mermaid-er`, whose door is `meta docs`) and `shared-model` ship no reference template, so they are **package-only** — `meta gen --list` marks them so and `meta eject` names them as such. `shared-model` (FR-023's publisher generator) stays package-only deliberately, since it emits a hash-pinned cross-port contract artifact. | **Yes** — `templateGenerator({ template, scope, outputPattern })` in the config's `generators: [...]`. No CLI flag: the config already takes generator values. |
 | **Java / Kotlin** | `mvn metaobjects:generate` / `mvn metaobjects:verify` (`metaobjects-maven-plugin`) | **Yes.** Extend `FileEmittingGenerator` and read the model through `ModelWalk` (both in `metaobjects-codegen-base`) for one of your own. Every generator — built-in or your own — is named in `<generator><classname>` and loaded from the project classpath: one seam, not two. There is no default suite, so `<generators>` is the complete list. Kotlin runs through the same goal. | **Yes** — `TemplateScopeGenerator` wired as an ordinary `<generator>`. No CLI flag: `<generator>` is already the seam. |
 | **C#** | `dotnet meta gen` / `dotnet meta verify` (.NET tool) | **Yes.** Implement `IGenerator` in the owned console project `codegen/` and list it in `codegen/Program.cs`; `dotnet meta gen` / `verify --codegen` hand off to that project whenever `codegen/Codegen.csproj` exists. `dotnet meta eject <name>` scaffolds the project, or write its two files by hand. An owned generator the `--generators` selection does not name still runs. | **Yes** — `dotnet meta gen --template-spec <json> --template-root <dir>`. |
 | **Python** | `metaobjects gen` / `metaobjects verify` (console-script) | **Yes.** Name your generator as `module:symbol` in `--generators` or a target's `generators` in `metaobjects.config.yaml`; the symbol is an instance or a function returning one. Read the model through `metaobjects.codegen.model_walk`. (`--provider module:symbol` registers **metamodel vocabulary**, not a generator.) | **Yes** — `metaobjects gen --template-spec <json> --templates <dir>`. |
@@ -442,6 +442,12 @@ can see when an upgrade changed the generator you copied. A copy imports the sam
 `metaobjects.codegen.*` modules the packaged one does, and those module paths are the
 surface an owned generator builds on.
 
+`requirement-tests` ejects the same way, to `codegen/generators/requirement_tests.py`,
+wired as `codegen.generators.requirement_tests:requirement_tests_generator`. The copy holds
+the generator and its default renderer and keeps reading the `requirementTests` config
+block; the requirement walk, the test identities and the digest stay in the package. See
+[Generated requirement tests and witnesses](requirements.md#generated-requirement-tests-and-witnesses).
+
 ### The runtime your generated code imports comes with it
 
 Owning a generator only helps if you also own the helper code its **output** calls.
@@ -521,6 +527,14 @@ entry for your parent pom, a plugin `<dependency>` on the codegen module for the
 that runs `metaobjects:generate`, and the new `<classname>` for each `<generator>`. It
 never overwrites a copy without `-Dforce`, and `-Dlist` marks each owned copy `identical`
 or `DIFFERS: N behind, M of your own`.
+
+A name that is ejectable on both ports needs `-Dport`, unless your project declares a
+dependency on exactly one of `metaobjects-codegen-spring` and `metaobjects-codegen-kotlin`,
+from which the goal infers it. `requirement-tests` is one such name:
+`mvn metaobjects:eject -Dnames=requirement-tests -Dport=java` copies
+`JUnitRequirementTestsGenerator.java` and `-Dport=kotlin` copies
+`KotlinRequirementTestsGenerator.kt`, each with its default rendering. The identity
+function, the digest and the renderer and filter hook types stay in the package.
 
 ### What eject hands over, and what stays core
 
@@ -632,6 +646,12 @@ not the other eight. The owned project finds metadata exactly as the tool does, 
 `.metaobjects/config.json`'s `sources` and `libraries`. Eject never overwrites a copy without `--force`, and
 `dotnet meta gen --list` marks owned copies `identical` or `DIFFERS: N behind, M of your
 own`. The `template` primitive is not ejectable; it has no emit logic of its own.
+
+`dotnet meta eject requirement-tests` copies `RequirementTestsGenerator.cs`, which holds the
+generator and its default rendering. Its options are public properties you set in
+`codegen/Program.cs` (`new RequirementTestsGenerator { WitnessClass = "…" }`); the hook
+types (`IRequirementTestRenderer`, `IRequirementTestFilter`), the identity function and the
+digest stay in the package.
 
 ### Ejecting routes hands over the helper runtime too
 

@@ -1,0 +1,35 @@
+{
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "WARN_REQUIREMENT_NOTHING_IMPLEMENTS",
+      "path": "Returns",
+      "message": "is 'live' but neither it nor anything nested under it names an implementing node. A functional requirement's check is existence — a subtree that claims nothing is a capability nobody built."
+    },
+    {
+      "severity": "error",
+      "code": "WARN_REQUIREMENT_NOTHING_IMPLEMENTS",
+      "path": "Returns.Refunds",
+      "message": "is 'partial' but neither it nor anything nested under it names an implementing node. A functional requirement's check is existence — a subtree that claims nothing is a capability nobody built."
+    },
+    {
+      "severity": "error",
+      "code": "WARN_REQUIREMENT_NOTHING_IMPLEMENTS",
+      "path": "Returns.Refunds.Refunded",
+      "message": "is 'live' but neither it nor anything nested under it names an implementing node. A functional requirement's check is existence — a subtree that claims nothing is a capability nobody built."
+    }
+  ],
+  "summary": {
+    "total": 4,
+    "functional": 4,
+    "architectural": 0,
+    "byStatus": {
+      "live": 3,
+      "partial": 1
+    },
+    "undecided": 1,
+    "deferredUntracked": 0,
+    "entitiesClaimed": 1,
+    "entitiesTotal": 1
+  }
+}

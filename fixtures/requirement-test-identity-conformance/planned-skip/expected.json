@@ -1,0 +1,25 @@
+{
+  "tests": [
+    {
+      "id": "acme::shop::Recorded [object.entity]",
+      "package": "acme::shop",
+      "path": "Recorded",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_Recorded__object_entity",
+      "status": "planned",
+      "skip": "planned",
+      "digest": "a3f7627d0bea3eb3af8a3a22b03a8c4bc217aac64407e62ec7fb0b1981f3cfd2"
+    },
+    {
+      "id": "acme::shop::Refunded [*]",
+      "package": "acme::shop",
+      "path": "Refunded",
+      "unit": "*",
+      "witnessKey": "req_acme_shop_Refunded",
+      "status": "planned",
+      "skip": "planned",
+      "digest": "0a86fc1665ffb7a53dd99506c0ac0fbb7051311f2e214f061051fc5c60c37c57"
+    }
+  ],
+  "collisions": []
+}

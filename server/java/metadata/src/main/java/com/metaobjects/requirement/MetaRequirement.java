@@ -224,8 +224,13 @@ public abstract class MetaRequirement extends MetaData {
     }
 
     /**
-     * 1 solution · 2 segment · 3 service · 4 object · 5 member. Architectural
-     * requirements carry none — they are object-independent by definition.
+     * 1 solution · 2 segment · 3 service · 4 object · 5 member. An architectural
+     * requirement carries it OPTIONALLY: absent means a flat, object-independent policy,
+     * present opts the node into a levelled tree (a quality taxonomy, for example).
+     *
+     * <p>Saturating, never wrapping: a value beyond {@code int} reads as
+     * {@link Integer#MAX_VALUE} or {@link Integer#MIN_VALUE}, so it cannot narrow to a
+     * number that looks like a valid level (4294967300 would otherwise read as 4).</p>
      *
      * @return the declared/inherited level, or {@code null} when absent
      */
@@ -235,17 +240,21 @@ public abstract class MetaRequirement extends MetaData {
         }
         Object value = getMetaAttr(ATTR_LEVEL).getValue();
         if (value instanceof Number) {
-            return ((Number) value).intValue();
+            return saturate(((Number) value).longValue());
         }
         String raw = getMetaAttr(ATTR_LEVEL).getValueAsString();
         if (raw == null || raw.trim().isEmpty()) {
             return null;
         }
         try {
-            return Integer.valueOf(raw.trim());
+            return saturate(Long.parseLong(raw.trim()));
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    private static int saturate(long level) {
+        return (int) Math.max(Integer.MIN_VALUE, Math.min(Integer.MAX_VALUE, level));
     }
 
     /** The lifecycle status, or {@code null} when absent. */
@@ -276,6 +285,23 @@ public abstract class MetaRequirement extends MetaData {
     /** Issue/ticket references for outstanding work. Never resolved. */
     public List<String> getTrackedBy() {
         return stringList(ATTR_TRACKED_BY);
+    }
+
+    /**
+     * The requirement that REPLACED this one (FR-039), or {@code null} when absent or blank.
+     * Legal on {@link #STATUS_RETIRED} only; {@code verify} resolves it against the ledger.
+     */
+    public String getSupersededBy() {
+        if (!hasMetaAttr(ATTR_SUPERSEDED_BY)) {
+            return null;
+        }
+        String value = getMetaAttr(ATTR_SUPERSEDED_BY).getValueAsString();
+        return value == null || value.trim().isEmpty() ? null : value;
+    }
+
+    /** Built, then deliberately removed -- exempt from the checks that assume a built thing. */
+    public boolean isRetired() {
+        return STATUS_RETIRED.equals(getStatus());
     }
 
     /** Intended but not built -- exempt from the checks that assume a built thing. */

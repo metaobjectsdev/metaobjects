@@ -22,6 +22,39 @@
       "items": { "type": "string" },
       "description": "MetaObjects-shipped library packages to load alongside `metadata` (e.g. [\"ai\"]). An unknown package name is refused."
     },
+    "requirementTests": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Options of the `requirement-tests` generator (one pytest file per metamodel package, one test per declared requirement). Every key is optional.",
+      "properties": {
+        "witnessModule": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "default": "tests.requirement_witnesses",
+          "description": "Dotted module holding the project-owned witness functions: one per generated test, named by the test's witness key."
+        },
+        "grain": {
+          "enum": ["concern", "member"],
+          "default": "concern",
+          "description": "What one test stands for. `concern`: one per distinct <type>.<subType> a requirement claims. `member`: one per distinct @implementedBy reference that resolves."
+        },
+        "renderer": {
+          "type": "string",
+          "pattern": "^[^:\\s]+:[^:\\s]+$",
+          "description": "A 'module:symbol' renderer hook, resolved relative to this config file's directory. It is called with the test's RequirementTestArgs and returns a RenderedTest, or None to keep the default."
+        },
+        "filter": {
+          "type": "string",
+          "pattern": "^[^:\\s]+:[^:\\s]+$",
+          "description": "A 'module:symbol' predicate over the requirement view that chooses which requirements get a test, replacing the default (functional, level 4 or above)."
+        },
+        "warnUncovered": {
+          "type": "boolean",
+          "default": true,
+          "description": "Name the requirements the filter excluded, once, capped at five. It never fails the build."
+        }
+      }
+    },
     "targets": {
       "type": "object",
       "minProperties": 1,

@@ -1,0 +1,44 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - requirement.functional:
+        name: Recorded
+        level: 4
+        status: live
+        statement: An order is recorded when it is placed.
+        counterexample: A placed order has no row.
+        implementedBy: [Order]
+
+    - requirement.functional:
+        name: Invoiced
+        level: 4
+        status: live
+        statement: An invoice is raised for every order.
+        counterexample: An order with no invoice.
+        implementedBy: ["acme::billing::Invoice"]
+        children:
+          # A member reference whose owner does not bind: Invoice is not local to acme::shop.
+          # The hint is about the object, Invoice, and never about the member.
+          - requirement.functional:
+              name: Totalled
+              level: 5
+              status: live
+              statement: An invoice carries the total the customer pays.
+              counterexample: An invoice with no total.
+              implementedBy: [Invoice.total]
+
+    # Invoice lives in acme::billing, so the bare name does not bind from acme::shop.
+    - requirement.functional:
+        name: Paid
+        level: 4
+        status: live
+        statement: A payment is recorded against its invoice.
+        counterexample: A payment with no invoice.
+        implementedBy: [Invoice]

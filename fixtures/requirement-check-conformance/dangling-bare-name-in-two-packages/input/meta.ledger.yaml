@@ -1,0 +1,27 @@
+metadata:
+  package: acme::ledger
+  children:
+    - requirement.functional:
+        name: ShopOrders
+        level: 4
+        status: live
+        statement: A shop order is recorded when it is placed.
+        counterexample: A placed shop order has no row.
+        implementedBy: ["acme::shop::Order"]
+
+    - requirement.functional:
+        name: BillingOrders
+        level: 4
+        status: live
+        statement: A billing order is recorded when it is invoiced.
+        counterexample: An invoice with no billing order.
+        implementedBy: ["acme::billing::Order"]
+
+    # Order exists in acme::billing and in acme::shop, and in neither is it local to acme::ledger.
+    - requirement.functional:
+        name: Reconciled
+        level: 4
+        status: live
+        statement: Every shop order is matched to a billing order.
+        counterexample: A shop order billing never saw.
+        implementedBy: [Order]

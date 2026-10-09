@@ -1,10 +1,11 @@
 # Capability requirements
 
 _`requirement.functional` / `requirement.architectural` — record what your system is
-supposed to do, as metadata, checked by `meta verify`._
+supposed to do, as metadata, checked by `verify` in every port._
 
 **Status:** registered vocabulary in all five ports (TypeScript, Java, C#, Python, Kotlin).
-The `meta verify` gate is TypeScript-CLI-only; the other ports load and validate.
+The requirement gate runs in every port's `verify`, and every port ships a
+`requirement-tests` generator. The authoring lint is TypeScript-only.
 
 **Entirely opt-in.** A model with no `requirement.*` nodes gets no diagnostics, generates
 nothing, and reads nothing — no codegen, migrate or runtime path touches the type. You opt in
@@ -143,8 +144,8 @@ Two failure modes are worth naming because both look like diligence:
 
 A requirement's `name` is the segment of its **dotted path** — `Ordering.Placement.Recorded`,
 the same addressing every other node uses — and that path is also the filename of its
-generated test stub (`requirements/<path>.test.ts`). So a name is an identifier, and two
-habits break it:
+generated TypeScript test stub (`requirements/<path>.test.ts`) and part of the name of its
+generated test in every other port. So a name is an identifier, and two habits break it:
 
 - **A `.` in the name** makes it indistinguishable from nesting. A single node named
   `Orders.Recorded` and a node `Orders` containing a node `Recorded` produce the *identical*
@@ -160,7 +161,7 @@ cleanly. `verify` warns about them.
 
 ## Two kinds, opposite checks
 
-| | check | what `meta verify` does |
+| | check | what `verify` does |
 |---|---|---|
 | `requirement.functional` (levelled) | **existence** | **warns** when nothing in a live/partial node's subtree implements it; **fails** when a node it names no longer exists |
 | `requirement.architectural` (flat by default) | **universality** | **fails** a live/partial policy applied to nothing, or one naming a node that no longer exists; it does not check that each claimed node complies |
@@ -201,6 +202,8 @@ branch of their own.
 ## What `meta verify` checks
 
 Requirements are metadata, so they are checked on **every** `meta verify` — no subverb.
+The same gate runs in the other ports' `verify`; [The gate in every port](#the-gate-in-every-port)
+gives each command and the full list of codes.
 
 The rule worth knowing before you read a failure: **a dangling `@implementedBy` is an error
 on `live`/`partial` and allowed on `planned`.** On `planned` the nodes do not exist *yet* —
@@ -275,7 +278,7 @@ your agents never read it, restoring the entry buys you a coin flip. Point at it
 
 ```
 meta verify — requirements: 235 entries (226 functional, 9 architectural) —
-  173 live, 62 partial; 55/55 entities claimed.
+  173 live, 62 partial; 55/55 entities claimed, counted over 14 metadata file(s).
 meta verify — requirements: 62 recorded gap(s) with no @disposition.
 ```
 
@@ -284,7 +287,8 @@ nothing — and a ledger that skipped an entire grain reads exactly like a compl
 
 ### The authoring lint
 
-Alongside the gate, `verify` runs an **authoring lint** and prints it under its own heading:
+Alongside the gate, `meta verify` runs an **authoring lint** and prints it under its own
+heading. The lint is TypeScript-only: the other ports' `verify` run the gate and not the lint.
 
 ```
 meta verify — requirements: 6 authoring warning(s) (advisory — does not fail the build):
@@ -326,6 +330,105 @@ exact repeat — because a similarity threshold on prose produces findings an au
 with, and a gate people argue with is a gate people mute. And it never asks whether a
 statement is *true*, a description *useful*, or a counterexample *sufficient*; those are the
 judgements the ledger exists to record, and no check reaches them.
+
+## The gate in every port
+
+The gate is the same in all five ports. Each port's `verify` runs it on every run, with no
+subverb to ask for it, from the port's own core library
+([ADR-0057](../../spec/decisions/ADR-0057-requirement-checks-and-tests-in-every-port.md)).
+A shared corpus,
+[`fixtures/requirement-check-conformance/`](../../fixtures/requirement-check-conformance/README.md),
+holds every port to the TypeScript reference: the code, severity, requirement path and
+message text of each diagnostic, and the summary counts.
+
+| Port | Command | Its lines start |
+|---|---|---|
+| TypeScript | `meta verify` | `meta verify — requirements:` |
+| Python | `metaobjects verify` | `metaobjects verify — requirements:` |
+| Java, Kotlin | `mvn metaobjects:verify` (one goal for both, in either mode) | `metaobjects:verify — requirements:` |
+| C# | `dotnet meta verify ./metadata --templates ./prompts` | `dotnet meta verify — requirements:` |
+
+The C# tool has to be given one of its drift gates (`--templates <dir>`, or `--codegen
+--out <dir>`); the requirement gate then runs beside whichever one it was given. Maven logs
+the summary at `info`, warnings as warnings and errors as errors.
+
+**What it reports**, checked per requirement in this order:
+
+| Code | Severity | Fires when |
+|---|---|---|
+| `ERR_REQUIREMENT_BAD_LEVEL` | error | The level is outside 1 to 5, on a functional requirement or a levelled architectural one. |
+| `ERR_REQUIREMENT_LEVEL_NESTING` | error | A levelled requirement sits at or above the level of the requirement it is nested under. |
+| `ERR_REQUIREMENT_LINK_ABOVE_FLOOR` | error | `@implementedBy` on a levelled requirement at L1 to L3. Nothing further is reported for that node: the checks below this row are skipped, and the two above it have already run. |
+| `ERR_REQUIREMENT_L4_NOT_OBJECT` | error | A functional L4 names a member. |
+| `ERR_REQUIREMENT_L5_NOT_MEMBER` | error | A functional L5 names an object. |
+| `ERR_REQUIREMENT_DANGLING_REF` | error | An `@implementedBy` reference does not resolve on `live` or `partial`, or `@supersededBy` does not name a requirement in the ledger. |
+| `ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS` | error | A `live` or `partial` architectural requirement that may name the model (a flat policy, or one at L4 or L5) names nothing. |
+| `WARN_REQUIREMENT_DISPOSITION_NOT_APPLICABLE` | warn | `@disposition` on a status other than `planned` or `partial`. |
+| `WARN_REQUIREMENT_NOTHING_IMPLEMENTS` | warn | A `live` or `partial` functional requirement where neither it nor anything nested under it names a node. An error under [the strict switch](#requiring-implementers). |
+| `WARN_REQUIREMENT_DEFERRED_UNTRACKED` | warn | `@disposition: deferred` with no `@trackedBy`. |
+| `WARN_REQUIREMENT_OBJECT_UNCLAIMED` | warn | Coverage is measured and no requirement claims a concrete entity. The line has no requirement path, because its subject is the entity. |
+
+A diagnostic prints as `  <code> [<path>]: <message>`.
+
+**What counts as claimed.** A requirement that is not `planned` contributes its claims, and
+each reference that resolves adds the object it names (a member reference adds the member's
+owner). An **architectural** claim on a base also covers every object whose `extends` chain
+reaches that base; a functional claim does not spread. What is counted is concrete
+`object.entity` nodes: abstract entities, `object.value` and `object.projection` are not.
+
+**When coverage is measured.** Only when the project authored at least one requirement of
+its own. A project whose only requirements came from a shipped library, with or without an
+overlay on one of them, is not measured, and the summary says so instead of printing a
+ratio.
+
+**The summary**, one line whenever the model declares a requirement:
+
+```
+<prefix> <total> entries (<n> functional, <n> architectural) — <n> planned, <n> live,
+  <n> partial, <n> retired; <claimed>/<total> entities claimed, counted over <n> metadata file(s).
+```
+
+A status with no entry is left out. When coverage is not measured the line ends
+`coverage: not measured (no project-authored requirements).` TypeScript and Python end it
+`, <n> from dependencies.` when the project declares metadata dependencies. A second line
+counts the recorded gaps with no `@disposition`, when there are any. Then come the
+diagnostics, and when any is an error, `<prefix> <n> error(s).` and a non-zero exit.
+TypeScript caps the warnings it prints at `--limit` (20 by default); the other ports print
+every one. The structured `--format json|toon` payload is TypeScript-only.
+
+**Metadata that does not load** is not a model with no requirement: `verify` fails on it in
+every port. The load errors are printed once. Where the drift gate that ran loaded the model,
+that gate prints them; where none did (`metaobjects verify` with no generators selected,
+`dotnet meta verify --codegen` handed off to an owned `codegen/` project), the requirement
+gate prints them itself. Its load is strict unless `--lax`, as the drift gates' is.
+
+### Known differences between ports
+
+- The package a requirement is taken to be in can differ between ports for two multi-file
+  shapes: a root document with no package loaded beside packaged ones, and a child merged
+  from a package-less document into a requirement that declares its own package.
+- Python applies only the dependency-import rule to decide which of a project's own
+  entities are counted; TypeScript also applies the project's `scope` patterns.
+- A `level` that is not an integer (`4.5`) is refused at load by the Python, Java and C#
+  loaders (`ERR_BAD_ATTR_VALUE`). The TypeScript loader lets it through, and the gate reports
+  it as `ERR_REQUIREMENT_BAD_LEVEL`.
+
+## Requiring implementers
+
+`WARN_REQUIREMENT_NOTHING_IMPLEMENTS` is a warning because a young ledger usually claims
+more than it links. A project whose ledger has caught up can make it fail the build:
+
+| Port | Flag | Environment |
+|---|---|---|
+| TypeScript | `meta verify --require-implementers` | `META_REQUIRE_IMPLEMENTERS=1` |
+| Python | `metaobjects verify --require-implementers` | `META_REQUIRE_IMPLEMENTERS=1` |
+| Java, Kotlin | `mvn metaobjects:verify -Dmeta.verify.requireImplementers=true` | `META_REQUIRE_IMPLEMENTERS=1` |
+| C# | `dotnet meta verify ./metadata --templates ./prompts --require-implementers` | `META_REQUIRE_IMPLEMENTERS=1` |
+
+The switch raises that one finding to an error and keeps its code, so a report or a
+suppression keyed on the code still matches. No other warning changes severity. It is not
+called `--strict`, because `verify` already has `--lax` on a different axis and a `--strict`
+beside it would read as that flag's opposite.
 
 ## Recording gaps: `partial` is a feature, not a failure
 
@@ -387,10 +490,238 @@ nothing.
 
 Pair it with `@trackedBy` to link the ticket it will be built under.
 
-### What a green run does not prove
+## Generated requirement tests and witnesses
+
+**This is a recommended approach, not a contract.** The `requirement-tests` generator, its
+default renderer and the witness model described here are a reference helper
+([ADR-0034 Amendment 3](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md#amendment-3-2026-09-22--generators-are-reference-helpers-the-core-is-what-metaobjects-guarantees)).
+Every port ships one and every port can eject it, and an application may change its copy or
+replace it. The checks in `verify` are the part MetaObjects guarantees. They are not
+ejectable in any port, because they are the contract the ports share.
+
+The generator writes one test per requirement its filter selects. By default that is every
+functional requirement at L4 or L5. A `live` or `partial` requirement gets a test that
+fails until the project supplies the proof; a `planned` or `retired` one gets a skipped
+test.
+
+Each test has an identity, and the identity is the same in all five ports:
+
+| Part | What it is |
+|---|---|
+| id | `<package>::<path> [<unit>]`, or `<path> [<unit>]` when the requirement has no package. |
+| unit | By default (`grain: concern`) one test per distinct `<type>.<subType>` the requirement's resolved references name. Under `grain: member`, one test per distinct reference that resolves. A requirement that resolves no reference gets one test, with unit `*`. |
+| witness key | An identifier-safe spelling of the id: `req_`, the package and path, then `__` and the unit unless the unit is `*`, with every run of characters outside `A-Z`, `a-z` and `0-9` written as one `_`. `acme::shop::Orders.Recorded [object.entity]` gives `req_acme_shop_Orders_Recorded__object_entity`. |
+| digest | A SHA-256 over the requirement's subtype, level, status, statement, counterexample and `@implementedBy` list. It answers "did the claim change", so a title, a note or a disposition does not move it. |
+
+[`fixtures/requirement-test-identity-conformance/`](../../fixtures/requirement-test-identity-conformance/README.md)
+pins those identities in every port. It does not pin the text of a generated file, which is
+each port's own language and the application's to change. TypeScript's default stub keeps
+the test name it always had, `<path> [<concern>]`, with no package; there the identity is
+what a renderer receives.
+
+### What each port writes
+
+| Port | Framework | Files | The project supplies |
+|---|---|---|---|
+| TypeScript | `bun:test` in the default stub | One stub per test: `requirements/<path>.<concern>.test.ts`, or `requirements/<path>.test.ts` for a requirement that resolves no reference. | The assertion, written into the stub. The three-way merge keeps it. |
+| Python | pytest | `requirements/test_<pkgKey>_requirements.py`, one per metamodel package. | A function named by the witness key, in the witness module (`tests.requirement_witnesses` by default). |
+| Java | JUnit Jupiter | `Requirements_<pkgKey>_Witnesses.java` and `Requirements_<pkgKey>_Test.java`, in `testPackage`. | The class `witnessClass` names, implementing each generated interface. |
+| Kotlin | JUnit Jupiter | `Requirements_<pkgKey>_Witnesses.kt` and `Requirements_<pkgKey>_Test.kt`, in `testPackage`. | As Java. |
+| C# | xUnit | `Requirements_<pkgKey>_Witnesses.g.cs` and `Requirements_<pkgKey>_Tests.g.cs`. | The class `WitnessClass` names, implementing each generated interface. |
+
+`<pkgKey>` is the metamodel package with each run of non-alphanumeric characters as one
+`_` (`acme::shop` gives `acme_shop`), or `root` for a requirement with no package.
+
+Generated Java and Kotlin tests are JUnit Jupiter only. A JUnit 4 project uses the renderer
+hook or ejects the generator. Generated tests import their test framework (and, in Python,
+`importlib`) and nothing from MetaObjects.
+
+### Witnesses
+
+TypeScript keeps the model it had: you fill in the stub, and regeneration preserves what
+you wrote. In the other four ports the generated file is machine-owned and rewritten whole
+on every run, so your code goes somewhere else: in a **witness**, a function or method you
+own that the generated test calls. A `live` or `partial` requirement with no witness is a
+failing test that names what to write:
+
+```
+unimplemented requirement: acme::shop::Orders.Recorded [object.entity] - write
+  tests.requirement_witnesses.req_acme_shop_Orders_Recorded__object_entity() so that it
+  fails when: A placed order has no row.
+```
+
+**Python.** Create the witness module and add a function per test. There is nothing else to
+set up: a missing module or function is "no witness", and the test fails with the message
+above. A witness module that exists and fails to import raises its own error.
+
+```python
+# tests/requirement_witnesses.py
+def req_acme_shop_Orders_Recorded__object_entity():
+    order = place_order()
+    assert find_order_row(order.id) is not None
+```
+
+**Java and Kotlin.** The generator writes an interface with one member per test that is not
+skipped, each with a default body that fails. You write one class, with a public
+no-argument constructor, that implements every generated interface. This is a one-time
+setup with a cost: the generated tests construct that class with `new`, so the test module
+does not compile until it exists.
+
+```java
+public class Witnesses implements Requirements_acme_shop_Witnesses {
+    @Override
+    public void req_acme_shop_Orders_Recorded__object_entity() {
+        Order order = placeOrder();
+        assertNotNull(findOrderRow(order.id()));
+    }
+}
+```
+
+```kotlin
+class Witnesses : Requirements_acme_shop_Witnesses {
+    override fun req_acme_shop_Orders_Recorded__object_entity() {
+        val order = placeOrder()
+        assertNotNull(findOrderRow(order.id))
+    }
+}
+```
+
+**C#.** The same shape: an interface with default members, and one class of yours, with a
+public parameterless constructor, that the generated tests construct.
+
+```csharp
+using Acme.Shop.Requirements;
+using Xunit;
+
+namespace Acme.Shop;
+
+public class RequirementWitnesses : Requirements_acme_shop_Witnesses
+{
+    void Requirements_acme_shop_Witnesses.req_acme_shop_Orders_Recorded__object_entity()
+    {
+        var order = PlaceOrder();
+        Assert.NotNull(FindOrderRow(order.Id));
+    }
+}
+```
+
+In the three compiled ports a requirement that becomes `live` adds an interface member with
+a failing default, which is a red test and not a compile break. A requirement that is
+retired or deleted removes its member, and whether a witness left behind then stops
+compiling depends on how it was written:
+
+- **Kotlin:** always. `override` is mandatory.
+- **Java:** only when the method carries `@Override`. Without it a stale method is an
+  ordinary method and compiles.
+- **C#:** only when the member is implemented explicitly, as above. A `public void req_…()`
+  implements it implicitly, and a stale one keeps compiling.
+- **Python:** never. There is no compile step, and a witness whose requirement is gone is
+  simply not called.
+
+The examples use the form that signals. A witness written in the other form goes stale
+silently when its requirement is retired or deleted.
+
+Two cautions. In C#, a method that does not actually implement the interface member (an
+implicit one that is not `public`, or one whose name is off by a character) leaves the
+failing default in place, so the test reports `unimplemented requirement` for a witness you
+believe you wrote: check the signature against the generated interface. In Kotlin, write
+the witness class in Kotlin. A witness class written in Java is untested: unless your
+Kotlin compiler is set to emit JVM default methods for interface members, Java sees every
+member as abstract, and each new live requirement becomes a compile break instead of a red
+test.
+
+### Choosing which requirements get a test
+
+Every port offers the same seams. Only the spelling differs.
+
+| Seam | TypeScript | Python | Java, Kotlin | C# |
+|---|---|---|---|---|
+| Grain: `concern` (default) or `member` | `grain` | `grain` | `<grain>` | `Grain` |
+| Filter: a predicate that **replaces** the default | `filter` | `filter`, a `module:symbol` | `<filter>`, a class implementing `RequirementTestFilter` | `Filter`, an `IRequirementTestFilter` |
+| The uncovered warning, on by default | `warnUncovered: false` | `warnUncovered: false` | `<warnUncovered>false</warnUncovered>` | `WarnUncovered = false` |
+| Renderer: replaces the text of one test | `renderers`, `resolveRenderer` | `renderer`, a `module:symbol` | `<renderer>`, a class implementing `RequirementTestRenderer` | `Renderer`, an `IRequirementTestRenderer` |
+| Where the witnesses are | not applicable | `witnessModule` | `<testPackage>`, `<witnessClass>` | `TestNamespace`, `WitnessClass` |
+
+Where they are set: in TypeScript, the options of `requirementTests({ … })` in
+`metaobjects.config.ts`. In Python, the `requirementTests` block of
+`metaobjects.config.yaml` (the flag-only `metaobjects gen <dir> --out <dir>` mode runs the
+generator with its defaults). In Java and Kotlin, the `<args>` of the `<generator>` entry.
+In C#, public properties set where the generator is constructed, in the owned
+`codegen/Program.cs`; the packaged `dotnet meta gen --generators requirement-tests` runs
+with the defaults. The per-port pages have a worked configuration each:
+[TypeScript](../ports/typescript.md#requirement-tests),
+[Python](../ports/python.md#requirement-tests),
+[Java](../ports/java.md#requirement-tests--junitrequirementtestsgenerator),
+[Kotlin](../ports/kotlin.md), [C#](../ports/csharp.md#requirement-tests).
+
+**The filter sees one view of a requirement, never the node:** `subType`, `level` (absent
+when the requirement declares none, which is not the same as zero), `status`, `path`,
+`package` and `implementedByTypes` (the distinct `<type>.<subType>` of the references that
+resolve). Python spells two of them `sub_type` and `implemented_by_types`; Java and Kotlin
+read them through accessors and spell the package `pkg()`; C# capitalises them and types
+`Level` as `int?`.
+
+**The uncovered warning** names the requirements the filter left out, so "no test here" is a
+visible choice. Its text is the same in every port, and it names requirement paths:
+
+```
+3 requirement(s) matched no filter and get no test. If that is deliberate, set
+  warnUncovered: false to silence this. Uncovered: Shop, Shop.Orders, Shop.Billing.
+```
+
+It lists at most five paths and then `, and <k> more`. The switch is spelled the way that
+port spells it, and TypeScript says `stub` where the others say `test`.
+
+Three refusals. In every port, a grain other than `concern` or `member` is an error, never
+a hybrid run. Outside TypeScript, two tests that would share one witness key refuse to
+generate (`ERR_REQUIREMENT_WITNESS_KEY_COLLISION`, naming both ids). And in Python, Java
+and Kotlin, where a renderer or filter is given by name, one that exists but fails to load
+is reported with its real cause, not as missing. TypeScript and C# take the function or
+object itself, so there is nothing to look up.
+
+### When a claim changes, and when a package empties
+
+Outside TypeScript each generated test carries its digest in a comment. Edit a statement, a
+counterexample, a status, a level or an `@implementedBy` list and the committed file no
+longer matches a fresh run, so the port's codegen drift gate (`metaobjects verify`,
+`mvn metaobjects:verify`, `dotnet meta verify --codegen`) fails until you regenerate. That
+is the prompt to re-read the witness against the new claim.
+
+**A known limit.** In Python, Java, Kotlin and C#, a package that loses its last
+requirement leaves its generated test file behind. `gen` does not remove it. The port's
+codegen drift gate reports it, and you delete it by hand. TypeScript's generator reconciles
+these itself: it removes the stub of a requirement that is gone, and refuses, by name, one
+that carries a hand edit.
+
+### Owning the generator
+
+| Port | Command | The copy |
+|---|---|---|
+| TypeScript | `meta eject requirement-tests` | `codegen/generators/requirement-tests.ts` |
+| Python | `metaobjects eject requirement-tests` | `codegen/generators/requirement_tests.py` |
+| Java | `mvn metaobjects:eject -Dnames=requirement-tests -Dport=java` | `JUnitRequirementTestsGenerator.java`, in a `codegen/` Maven module under your package |
+| Kotlin | `mvn metaobjects:eject -Dnames=requirement-tests -Dport=kotlin` | `KotlinRequirementTestsGenerator.kt`, likewise |
+| C# | `dotnet meta eject requirement-tests` | `codegen/generators/RequirementTestsGenerator.cs` |
+
+The copy holds the generator and its default renderer, so the text of a generated test is
+yours to change. What stays in the package is what the ports agree on: the walk over the
+ledger, the claim resolver, the identity function, the digest and the hook types. An owned
+generator imports those like any other code. The Maven goal needs `-Dport` because the name
+is ejectable on both JVM ports; it infers the port only when your project declares a
+dependency on exactly one of `metaobjects-codegen-spring` and `metaobjects-codegen-kotlin`.
+Each command prints what to wire. See [Own your codegen](own-your-codegen.md).
+
+## What a green run does not prove
 
 It proves **referential integrity**. It cannot prove a status is *true*, or that a node
 genuinely implements the requirement claiming it — no test can.
+
+The generated tests do not change that. `verify` never reads test results: it checks the
+ledger, the drift gate checks that the generated tests match it, and your own test run
+supplies "passing". A generated test that passes proves the witness ran, not that the
+witness tests the claim. And a witness written without the compile signal (a Java method
+with no `@Override`, a C# member implemented implicitly, any Python function) goes stale
+silently when its requirement is retired or deleted.
 
 Coverage is also narrower than it sounds: entity grain only. `object.value` and
 `object.projection` are exempt, and fields, views, validators and identities are never

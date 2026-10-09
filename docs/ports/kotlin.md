@@ -106,6 +106,7 @@ The 15 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 | `KotlinSpringConfigGenerator` | `MetadataExposedConfig.kt` — `@Configuration` wiring `Database.connect()` + auto-validator | once per project |
 | `KotlinStoredProcGenerator` | Stored-procedure call wrappers | entities with `source.rdb @kind="storedProc"` |
 | `KotlinSpringControllerGenerator` | `<Entity>Controller.kt` — Spring `@RestController` (5 CRUD endpoints; cross-port API contract). **Select `KotlinRelationsGenerator` with it** when the model has a M:N relationship: the traversal routes call the `<rel>Query` helpers only that generator emits, and without it the controller does not compile | entities with `source.rdb @kind="table"` |
+| `KotlinRequirementTestsGenerator` | Per metamodel package that holds a tested requirement, two files in `testPackage`: `Requirements_<pkgKey>_Witnesses.kt` (an interface whose default members fail with `unimplemented requirement: ...`) and `Requirements_<pkgKey>_Test.kt` (one JUnit Jupiter `@Test` per requirement, calling a project-owned witness). See "Requirement tests" below | every tested `requirement.*` (functional, level 4 or above by default) |
 
 Maven wiring:
 
@@ -150,6 +151,29 @@ Maven wiring:
   </configuration>
 </plugin>
 ```
+
+**Requirement tests.** `mvn metaobjects:verify` checks the model's `requirement.*` nodes on every run (the Java goal; Kotlin has no CLI of its own), and `-Dmeta.verify.requireImplementers=true` or `META_REQUIRE_IMPLEMENTERS=1` also fails the build on a live functional requirement that nothing implements. Those checks are core and are not ejectable. `KotlinRequirementTestsGenerator` is the other half: a reference helper and a recommended approach, not a contract. It is the Kotlin sibling of the Java `JUnitRequirementTestsGenerator` (the same args, the same test identities, one conformance corpus for both). It writes one JUnit Jupiter test per tested requirement; the test calls a **witness**, a function you write, and a live requirement with no witness fails. A JUnit 4 project replaces the text through the `renderer` arg, or ejects the generator.
+
+```xml
+<generator>
+  <classname>com.metaobjects.generator.kotlin.KotlinRequirementTestsGenerator</classname>
+  <args>
+    <outputDir>${project.build.directory}/generated-test-sources/requirements</outputDir>
+    <testPackage>com.acme.requirements</testPackage>
+    <witnessClass>com.acme.requirements.Witnesses</witnessClass>
+  </args>
+</generator>
+```
+
+You write the class `witnessClass` names, with a public no-argument constructor, implementing every generated `Requirements_<pkgKey>_Witnesses` interface and overriding the members you have witnesses for:
+
+```kotlin
+class Witnesses : Requirements_acme_shop_Witnesses {
+    override fun req_acme_shop_Orders_Recorded__object_entity() { /* fails when a placed order has no row */ }
+}
+```
+
+A requirement that becomes live adds a failing member (a red test, no compile break); one that is retired or deleted removes its member, so a stale override stops compiling (always, in Kotlin: `override` is mandatory). A planned or retired requirement is `@Disabled` and has no member. Write the witness class in Kotlin. The interface's members have default bodies, and a witness class written in **Java** against it is untested: unless your Kotlin compiler is set to emit JVM default methods for interface members (a compiler setting of your build, which this generator does not control), Java sees every member as abstract and has to implement all of them, which turns each new live requirement into a compile break instead of a red test. The args are `grain` (`concern`, the default, or `member`), `filter` and `renderer` (class names on your project's classpath implementing `RequirementTestFilter` and `RequirementTestRenderer`; a renderer's `source` is Kotlin and its `imports` are Kotlin import names) and `warnUncovered` (`true` by default). The generated files are rewritten whole and import only `org.junit.jupiter.api`, so the test classpath needs `org.junit.jupiter:junit-jupiter-api`. A package that loses its last requirement leaves its two files behind (`gen` never removes a file), and `mvn metaobjects:verify` reports them stale. `mvn metaobjects:eject -Dnames=requirement-tests -Dport=kotlin` copies `KotlinRequirementTestsGenerator.kt`, with its default rendering, into a `codegen/` module under your package; `-Dport` is needed because the name is ejectable on both JVM ports, and the goal infers it only when your project declares a dependency on exactly one of `metaobjects-codegen-kotlin` and `metaobjects-codegen-spring`. The identity function, the digest and the hook types stay in the package. The Java page, [Requirement tests](java.md#requirement-tests--junitrequirementtestsgenerator), has the full arg table.
 
 **Own a generator.** `mvn metaobjects:eject -Dnames=<name,...>` copies a reference generator into a `codegen/` Maven module under your own package, and prints the module, dependency and `<classname>` to wire. See [Own your codegen → Java and Kotlin](../features/own-your-codegen.md#java-and-kotlin-mvn-metaobjectseject).
 
@@ -658,6 +682,7 @@ the contract is universal.
 | Payload-VO codegen | Yes — the payload IS the value object's own data class, from `KotlinEntityGenerator` (ADR-0056); no separate payload generator |
 | Migrations | Via the TS toolchain (`@metaobjectsdev/cli migrate`) |
 | Drift verify | Template-drift: `Renderer.verify` (build-time); generated-table drift: `MetadataStartupValidator` (startup) |
+| Requirement gate + requirement tests | Yes (`mvn metaobjects:verify`, the Java goal; `KotlinRequirementTestsGenerator` emits JUnit Jupiter and is ejectable) |
 | Runtime metadata | Via Java OMDB (or hand-written Exposed transactions) |
 
 ## Test count

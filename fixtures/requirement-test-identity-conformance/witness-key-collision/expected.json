@@ -1,0 +1,40 @@
+{
+  "tests": [
+    {
+      "id": "acme::shop::Orders.Recorded [object.entity]",
+      "package": "acme::shop",
+      "path": "Orders.Recorded",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_Orders_Recorded__object_entity",
+      "status": "live",
+      "skip": null,
+      "digest": "2714aa3925a47959aa5e48ae39d80ed203fd4e2caa046a90aab9e04691d9881a"
+    },
+    {
+      "id": "acme::shop::Orders_Recorded [object.entity]",
+      "package": "acme::shop",
+      "path": "Orders_Recorded",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_Orders_Recorded__object_entity",
+      "status": "live",
+      "skip": null,
+      "digest": "c7583c32576dd584f58627cdc42a03875f9e11af6606e833b2c3a4619c50ebd7"
+    },
+    {
+      "id": "acme::shop::Sales__Orders [object.entity]",
+      "package": "acme::shop",
+      "path": "Sales__Orders",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_Sales_Orders__object_entity",
+      "status": "live",
+      "skip": null,
+      "digest": "b42b0be7e69633d28df90fd05ae28beb5675f778f2c719ea4f27da6b79e218a6"
+    }
+  ],
+  "collisions": [
+    [
+      "acme::shop::Orders.Recorded [object.entity]",
+      "acme::shop::Orders_Recorded [object.entity]"
+    ]
+  ]
+}

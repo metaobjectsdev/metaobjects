@@ -18,6 +18,10 @@ export const REFERENCE_GENERATOR_NAMES = [
   // The prompt tier (ADR-0034 Amendment 3): each is a thin generator over a public
   // `render*` composer, so an adopter owns WHICH prompts get a module and where it lands.
   "prompt-render", "output-parser", "extractor", "output-prompt", "render-helper",
+  // The requirement-test stubs: ONE file holding the generator and the default stub
+  // renderer, because an eject copies one file and the stub text is what an application
+  // is most likely to change.
+  "requirement-tests",
 ] as const;
 export type ReferenceGeneratorName = (typeof REFERENCE_GENERATOR_NAMES)[number];
 

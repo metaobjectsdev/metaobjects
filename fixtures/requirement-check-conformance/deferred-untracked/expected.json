@@ -1,0 +1,23 @@
+{
+  "diagnostics": [
+    {
+      "severity": "warn",
+      "code": "WARN_REQUIREMENT_DEFERRED_UNTRACKED",
+      "path": "Refunded",
+      "message": "is deferred but names no @trackedBy issue. Deferring without a ticket is how a known gap becomes an unknown one — nothing will raise it again."
+    }
+  ],
+  "summary": {
+    "total": 3,
+    "functional": 3,
+    "architectural": 0,
+    "byStatus": {
+      "planned": 2,
+      "live": 1
+    },
+    "undecided": 0,
+    "deferredUntracked": 1,
+    "entitiesClaimed": 1,
+    "entitiesTotal": 1
+  }
+}

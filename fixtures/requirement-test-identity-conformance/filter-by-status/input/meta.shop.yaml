@@ -1,0 +1,37 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    # Live, and at L3.
+    - requirement.functional:
+        name: Orders
+        level: 3
+        status: live
+        statement: Every placed order is kept.
+        counterexample: A placed order that is lost.
+        children:
+          - requirement.functional:
+              name: Recorded
+              level: 4
+              status: live
+              statement: An order is recorded when it is placed.
+              counterexample: A placed order has no row.
+              implementedBy: [Order]
+          - requirement.functional:
+              name: Shipped
+              level: 4
+              status: partial
+              statement: An order records when it left the warehouse.
+              counterexample: A shipped order with no dispatch time.
+              implementedBy: [Order]
+          - requirement.functional:
+              name: Refunded
+              level: 4
+              status: planned
+              statement: A refund is recorded against its order.
+              counterexample: A refund with no order.

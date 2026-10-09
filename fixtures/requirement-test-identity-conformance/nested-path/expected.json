@@ -1,0 +1,45 @@
+{
+  "tests": [
+    {
+      "id": "acme::shop::Shop.Returns.Orders.Recorded [object.entity]",
+      "package": "acme::shop",
+      "path": "Shop.Returns.Orders.Recorded",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_Shop_Returns_Orders_Recorded__object_entity",
+      "status": "live",
+      "skip": null,
+      "digest": "121f87a83cbd2575f5510c1798e08915fd48f3c9c06833693a7102b5458a1364"
+    },
+    {
+      "id": "acme::shop::Shop.Returns.Orders.Recorded.Quotable [field.string]",
+      "package": "acme::shop",
+      "path": "Shop.Returns.Orders.Recorded.Quotable",
+      "unit": "field.string",
+      "witnessKey": "req_acme_shop_Shop_Returns_Orders_Recorded_Quotable__field_string",
+      "status": "live",
+      "skip": null,
+      "digest": "c2ee5f69bad2f3c4d8cb4b1f0c299c187ff82ebd419f3ddfa8897ff947330434"
+    },
+    {
+      "id": "acme::shop::Shop.Sales.Orders.Recorded [object.entity]",
+      "package": "acme::shop",
+      "path": "Shop.Sales.Orders.Recorded",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_Shop_Sales_Orders_Recorded__object_entity",
+      "status": "live",
+      "skip": null,
+      "digest": "2714aa3925a47959aa5e48ae39d80ed203fd4e2caa046a90aab9e04691d9881a"
+    },
+    {
+      "id": "acme::shop::Shop.Sales.Orders.Recorded.Quotable [field.string]",
+      "package": "acme::shop",
+      "path": "Shop.Sales.Orders.Recorded.Quotable",
+      "unit": "field.string",
+      "witnessKey": "req_acme_shop_Shop_Sales_Orders_Recorded_Quotable__field_string",
+      "status": "live",
+      "skip": null,
+      "digest": "b5d7fb7a9657bfda7b30e2629617bf5c56e4337ef7a06abfe55715613ecdda63"
+    }
+  ],
+  "collisions": []
+}

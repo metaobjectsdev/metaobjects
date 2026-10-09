@@ -1,0 +1,28 @@
+{
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_DANGLING_REF",
+      "path": "Shop.Orders.Recorded",
+      "message": "'Ordr' does not resolve in the loaded model (status 'live' — the model moved and the requirement is stale)."
+    },
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_DANGLING_REF",
+      "path": "Shop.Returns.Recorded",
+      "message": "'Ordr' does not resolve in the loaded model (status 'live' — the model moved and the requirement is stale)."
+    }
+  ],
+  "summary": {
+    "total": 5,
+    "functional": 5,
+    "architectural": 0,
+    "byStatus": {
+      "live": 5
+    },
+    "undecided": 0,
+    "deferredUntracked": 0,
+    "entitiesClaimed": 1,
+    "entitiesTotal": 1
+  }
+}

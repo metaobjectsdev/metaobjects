@@ -1,0 +1,16 @@
+metadata:
+  package: acme::billing
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - requirement.functional:
+        name: Billed
+        level: 4
+        status: live
+        statement: A billing order is recorded when it is raised.
+        counterexample: A raised billing order has no row.
+        implementedBy: [Order]

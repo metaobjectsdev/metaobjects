@@ -1,0 +1,10 @@
+# A subtype of a subtype, in a second package: its extends is a qualified name, so the
+# claim reaches it only through the resolved super chain.
+metadata:
+  package: acme::express
+  children:
+    - object.entity:
+        name: ExpressOrder
+        extends: acme::shop::Order
+        children:
+          - field.string: { name: courier }

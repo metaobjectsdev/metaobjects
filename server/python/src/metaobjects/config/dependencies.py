@@ -658,7 +658,9 @@ class Collection:
         return package_of_resolution_key(fqn) in self.imported_packages
 
     def in_scope(self, fqn: str) -> bool:
-        """Output filter for codegen (`run_gen`'s `select`) and `verify --codegen`.
+        """Output filter for codegen (`run_gen`'s `select`) and `verify --codegen`, and the
+        requirement gate's coverable set (`scan_requirements`' `coverable`): an entity this
+        project imports is not its own to claim.
 
         `(not imported(fqn)) or explicitly_includes(scope_include, packageOf(fqn))`
         — UNLIKE TypeScript this does NOT also apply `matches_scope` to the

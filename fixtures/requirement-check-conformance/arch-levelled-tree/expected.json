@@ -1,0 +1,34 @@
+{
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_LINK_ABOVE_FLOOR",
+      "path": "Security",
+      "message": "'implementedBy' is legal at L4 (object) and L5 (member) only. L1-L3 are organisational and never reference the model — move the links to a nested L4 child."
+    },
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_LEVEL_NESTING",
+      "path": "Reliability.Recovery",
+      "message": "nested under \"Reliability\" (level 2) but declares level 1. Nesting is the hierarchy — a child sits strictly below its parent."
+    },
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_BAD_LEVEL",
+      "path": "Portability",
+      "message": "level must be an integer 1-5 (got 7). L1 solution, L2 segment (app/library), L3 service, L4 object, L5 member. On an architectural requirement the level is optional — omit it for a flat policy."
+    }
+  ],
+  "summary": {
+    "total": 4,
+    "functional": 0,
+    "architectural": 4,
+    "byStatus": {
+      "live": 4
+    },
+    "undecided": 0,
+    "deferredUntracked": 0,
+    "entitiesClaimed": 1,
+    "entitiesTotal": 1
+  }
+}

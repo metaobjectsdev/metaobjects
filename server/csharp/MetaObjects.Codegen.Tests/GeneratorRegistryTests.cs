@@ -22,6 +22,8 @@ public sealed class GeneratorRegistryTests
         "callable",
         // Program A / §A5 — per-object physical database name constants.
         "names",
+        // ADR-0057 — per-requirement xUnit tests calling a project-owned witness.
+        "requirement-tests",
     ];
 
     [Fact]

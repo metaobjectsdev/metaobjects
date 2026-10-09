@@ -1,0 +1,22 @@
+{
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_DANGLING_REF",
+      "path": "Reconciled",
+      "message": "'Order' does not resolve in the loaded model (status 'live' — the model moved and the requirement is stale). An object named \"Order\" exists in: acme::billing::Order, acme::shop::Order. Qualify it with its package (FQN)."
+    }
+  ],
+  "summary": {
+    "total": 3,
+    "functional": 3,
+    "architectural": 0,
+    "byStatus": {
+      "live": 3
+    },
+    "undecided": 0,
+    "deferredUntracked": 0,
+    "entitiesClaimed": 2,
+    "entitiesTotal": 2
+  }
+}

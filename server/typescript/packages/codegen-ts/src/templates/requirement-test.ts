@@ -20,12 +20,27 @@ import type { RequirementView, ResolvedClaim } from "../requirement-walk.js";
 
 export interface RequirementTestArgs {
   readonly view: RequirementView;
+  /** The fan-out key this stub stands for: `<type>.<subType>` under the default grain,
+   *  the reference as authored under `grain: "member"`, `*` when the requirement
+   *  resolves no target. Always equal to `unit`, which is the name the other language
+   *  ports use for it. */
   readonly concern: string;
   readonly statement: string;
   readonly counterexample: string;
+  /** The claims this stub covers. Each carries its own `concern`, which stays the
+   *  target's `<type>.<subType>` in both grains. */
   readonly targets: readonly ResolvedClaim[];
   readonly disposition?: string | undefined;
   readonly trackedBy?: readonly string[] | undefined;
+  // The test's identity record (`RequirementTestIdentity`) — the same six values in
+  // every language port. They are DATA for an application's renderer: the default
+  // renderer below reads none of them, so its output does not move when they do.
+  readonly package: string;
+  readonly unit: string;
+  readonly id: string;
+  readonly witnessKey: string;
+  readonly skip: "planned" | "retired" | null;
+  readonly digest: string;
 }
 
 /**

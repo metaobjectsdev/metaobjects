@@ -382,6 +382,21 @@ export interface VerifyFlags {
    */
   noRequirementLint: boolean;
   /**
+   * The requirement gate's strict switch (ADR-0057): report a live functional
+   * requirement that nothing implements (`WARN_REQUIREMENT_NOTHING_IMPLEMENTS`) at
+   * severity `error`, so it fails the build. The code is unchanged and no other
+   * diagnostic moves. Off by default because a ledger authored ahead of its links is
+   * the normal incremental state.
+   *
+   * Named for what it requires, not `--strict`: `--lax` below is a different axis
+   * (ADR-0023 attribute strictness), and a `--strict` beside it would read as that
+   * flag's opposite rather than as a requirement-gate setting — the same reason
+   * `--replay-snapshot` above is a subverb and not a `--strict` modifier. It is not
+   * an explicit subverb either: the requirement gate runs on every `verify`, so this
+   * flag modifies a gate that is already selected.
+   */
+  requireImplementers: boolean;
+  /**
    * Suppress the advisory overlay AUTHORING lint (FR-023 §11.1 item 4) — the
    * finding that an unflagged cross-file redeclaration works today only
    * because the parser's default merge rule reuses the existing node by
@@ -452,6 +467,7 @@ export const VERIFY_OPTIONS = {
   "replay-snapshot": { type: "boolean", default: false },
   "no-antipatterns": { type: "boolean", default: false },
   "no-requirement-lint": { type: "boolean", default: false },
+  "require-implementers": { type: "boolean", default: false },
   "no-overlay-lint": { type: "boolean", default: false },
   "no-name-lint": { type: "boolean", default: false },
   "no-deprecation-lint": { type: "boolean", default: false },
@@ -539,6 +555,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     anyExplicit,
     noAntipatterns: !!values["no-antipatterns"],
     noRequirementLint: !!values["no-requirement-lint"],
+    requireImplementers: !!values["require-implementers"],
     noOverlayLint: !!values["no-overlay-lint"],
     noNameLint: !!values["no-name-lint"],
     noDeprecationLint: !!values["no-deprecation-lint"],

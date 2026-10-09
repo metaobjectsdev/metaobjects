@@ -1,0 +1,97 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - object.entity:
+        name: Customer
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    # Counted once, at the child: a parent is partial because its child is.
+    - requirement.functional:
+        name: Shop
+        level: 1
+        status: partial
+        statement: A customer can buy from the shop.
+        counterexample: A customer who cannot place an order.
+        children:
+          - requirement.functional:
+              name: Recorded
+              level: 4
+              status: partial
+              statement: An order is recorded when it is placed.
+              counterexample: A placed order has no row.
+              implementedBy: [Order]
+
+    # Counted once, at the grandchild: both ancestors are roll-ups.
+    - requirement.functional:
+        name: Returns
+        level: 1
+        status: partial
+        statement: A customer can send an order back.
+        counterexample: An order that cannot be returned.
+        children:
+          - requirement.functional:
+              name: Refunds
+              level: 3
+              status: partial
+              statement: Every refund is kept.
+              counterexample: A refund that is lost.
+              children:
+                - requirement.functional:
+                    name: Refunded
+                    level: 4
+                    status: partial
+                    statement: A refund is recorded against its order.
+                    counterexample: A refund with no order.
+                    implementedBy: [Order]
+
+    # Not counted: the child is ruled on, and it still makes its parent a roll-up.
+    - requirement.functional:
+        name: Loyalty
+        level: 1
+        status: partial
+        statement: A returning customer is recognised.
+        counterexample: A returning customer treated as new.
+        children:
+          - requirement.functional:
+              name: Enrolled
+              level: 4
+              status: partial
+              disposition: accepted
+              statement: A customer is recorded once.
+              counterexample: Two rows for one customer.
+              implementedBy: [Customer]
+
+    # Counted at the parent: nothing beneath it has outstanding work.
+    - requirement.functional:
+        name: Delivery
+        level: 1
+        status: partial
+        statement: An order reaches the customer.
+        counterexample: An order that never arrives.
+        children:
+          - requirement.functional:
+              name: Dispatched
+              level: 4
+              status: live
+              statement: An order is recorded when it leaves.
+              counterexample: A dispatched order has no row.
+              implementedBy: [Order]
+
+    # Counted, and so is Delivery: DeliveryNote starts with the same letters and is not
+    # beneath it. Ancestry is by path segment, never by string prefix.
+    - requirement.functional:
+        name: DeliveryNote
+        level: 4
+        status: partial
+        statement: A delivery note is recorded for every dispatched order.
+        counterexample: A dispatched order with no delivery note.
+        implementedBy: [Order]

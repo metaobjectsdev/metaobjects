@@ -1,0 +1,15 @@
+{
+  "tests": [
+    {
+      "id": "acme::shop::Faxed [*]",
+      "package": "acme::shop",
+      "path": "Faxed",
+      "unit": "*",
+      "witnessKey": "req_acme_shop_Faxed",
+      "status": "retired",
+      "skip": "retired",
+      "digest": "ef38b10d440646c90a3f9a0a1fd0b331a0c6326ca23eab7462f3e10a961881fa"
+    }
+  ],
+  "collisions": []
+}

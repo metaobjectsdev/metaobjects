@@ -21,6 +21,7 @@ Python-only, additive: no metamodel/vocabulary change; the existing positional
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -37,10 +38,41 @@ DEFAULT_METADATA_DIR = "metaobjects"
 #: shipped schema has always said an unknown key is invalid; naming the set here is what
 #: lets the loader — the thing that actually runs — say the same. Kept in step with the
 #: schema by ``test_schema_and_loader_accept_EXACTLY_the_same_keys``.
-TOP_LEVEL_KEYS: tuple[str, ...] = ("metadata", "providers", "libraries", "targets")
+TOP_LEVEL_KEYS: tuple[str, ...] = ("metadata", "providers", "libraries", "targets", "requirementTests")
 
 #: Every key a ``targets.<name>`` mapping may carry. Same contract as above.
 TARGET_KEYS: tuple[str, ...] = ("outDir", "generators", "entities")
+
+
+#: Every key the ``requirementTests`` block may carry (the ``requirement-tests`` generator's
+#: options). Same contract as above.
+REQUIREMENT_TESTS_KEYS: tuple[str, ...] = (
+    "witnessModule",
+    "grain",
+    "renderer",
+    "filter",
+    "warnUncovered",
+)
+
+#: The grains the ``requirementTests.grain`` key accepts. Spelled out here, in the loader
+#: that validates it, rather than imported from the generator, so this module keeps loading
+#: a config without importing the codegen engine; ``test_schema_and_loader_accept_EXACTLY_the_same_keys``
+#: and the generator's own refusal keep the two in step.
+REQUIREMENT_TEST_GRAIN_VALUES: tuple[str, ...] = ("concern", "member")
+
+#: The module the witnesses are looked up in when the project names none. The ONE spelling:
+#: the generator, the build-context options and this loader all take it from here, and a test
+#: ties the schema's ``default`` to it.
+DEFAULT_REQUIREMENT_WITNESS_MODULE = "tests.requirement_witnesses"
+
+#: A dotted module name: what ``requirementTests.witnessModule`` must be, and what the generated
+#: file interpolates into a string literal and imports. The schema's ``pattern`` is this one.
+DOTTED_MODULE_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$"
+
+#: The ``module:symbol`` form of the ``renderer`` and ``filter`` keys: two non-empty halves with
+#: no whitespace in either (a stray newline would otherwise validate and fail later as a
+#: missing attribute). The schema's ``pattern`` for those two keys is this one.
+MODULE_SYMBOL_PATTERN = r"^[^:\s]+:[^:\s]+$"
 
 
 class ConfigError(ValueError):
@@ -73,6 +105,21 @@ class TargetConfig:
 
 
 @dataclass(frozen=True)
+class RequirementTestsConfig:
+    """The ``requirementTests`` block: options of the ``requirement-tests`` generator.
+
+    ``renderer`` and ``filter`` are ``module:symbol`` strings, resolved relative to the
+    config directory the way ``providers`` are (the CLI imports them; this loader never does).
+    """
+
+    witness_module: str = DEFAULT_REQUIREMENT_WITNESS_MODULE
+    grain: str = "concern"
+    renderer: str | None = None
+    filter: str | None = None
+    warn_uncovered: bool = True
+
+
+@dataclass(frozen=True)
 class ProjectConfig:
     #: Directory containing the config file — the base for resolving ``metadata``,
     #: ``providers`` (sys.path), and each target's ``outDir``.
@@ -88,6 +135,8 @@ class ProjectConfig:
     libraries: list[str]
     #: Ordered run-specs (YAML map insertion order preserved).
     targets: list[TargetConfig]
+    #: Options of the ``requirement-tests`` generator; ``None`` => its defaults.
+    requirement_tests: RequirementTestsConfig | None = None
 
     def metadata_dir(self) -> str:
         """The metadata dir resolved against ``config_dir`` (absolute path string)."""
@@ -130,6 +179,52 @@ def _require_str_list(value: object, ctx: str) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
         raise ConfigError(f"{ctx} must be a list of strings.")
     return list(value)
+
+
+def _parse_requirement_tests(raw: object, ctx: str) -> RequirementTestsConfig:
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{ctx} must be a mapping.")
+    _reject_unknown_keys(raw, REQUIREMENT_TESTS_KEYS, ctx)
+    defaults = RequirementTestsConfig()
+
+    def string(key: str, default: str | None) -> str | None:
+        if key not in raw:
+            return default
+        value = raw[key]
+        if not isinstance(value, str) or not value:
+            raise ConfigError(f"{ctx}: '{key}' must be a non-empty string.")
+        return value
+
+    def symbol(key: str) -> str | None:
+        value = string(key, None)
+        if value is not None and not re.fullmatch(MODULE_SYMBOL_PATTERN, value):
+            raise ConfigError(
+                f"{ctx}: '{key}' must be in 'module:symbol' form (e.g. codegen.requirement_{key}:{key})."
+            )
+        return value
+
+    grain = string("grain", defaults.grain)
+    if grain not in REQUIREMENT_TEST_GRAIN_VALUES:
+        raise ConfigError(
+            f"{ctx}: 'grain' must be one of {list(REQUIREMENT_TEST_GRAIN_VALUES)}, got {grain!r}."
+        )
+    warn = raw.get("warnUncovered", defaults.warn_uncovered)
+    if not isinstance(warn, bool):
+        raise ConfigError(f"{ctx}: 'warnUncovered' must be a boolean.")
+    witness = string("witnessModule", defaults.witness_module)
+    assert witness is not None and grain is not None  # the defaults are never None
+    if not re.fullmatch(DOTTED_MODULE_PATTERN, witness):
+        raise ConfigError(
+            f"{ctx}: 'witnessModule' must be a dotted module name such as "
+            f"{DEFAULT_REQUIREMENT_WITNESS_MODULE!r}, got {witness!r}."
+        )
+    return RequirementTestsConfig(
+        witness_module=witness,
+        grain=grain,
+        renderer=symbol("renderer"),
+        filter=symbol("filter"),
+        warn_uncovered=warn,
+    )
 
 
 def load_project_config(path: Path) -> ProjectConfig:
@@ -205,10 +300,17 @@ def load_project_config(path: Path) -> ProjectConfig:
             TargetConfig(name=str(name), out_dir=out_dir, generators=generators, entities=entities)
         )
 
+    requirement_tests = (
+        _parse_requirement_tests(raw["requirementTests"], f"{path}: 'requirementTests'")
+        if "requirementTests" in raw
+        else None
+    )
+
     return ProjectConfig(
         config_dir=path.parent.resolve(),
         metadata=metadata,
         providers=providers,
         libraries=libraries,
         targets=targets,
+        requirement_tests=requirement_tests,
     )

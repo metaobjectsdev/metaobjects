@@ -42,6 +42,7 @@ class EjectedGeneratorsCompileTest {
         "KotlinSpringConfigGenerator",
         "KotlinStoredProcGenerator",
         "KotlinValidatorGenerator",
+        "KotlinRequirementTestsGenerator",
     )
 
     private val packageLine = Regex("(?m)^package\\s+[\\w.]+\\s*$")

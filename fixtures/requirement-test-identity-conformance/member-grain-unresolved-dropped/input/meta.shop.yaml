@@ -1,0 +1,37 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - identity.primary: { name: pk, fields: [id] }
+
+    # Planned, so naming nodes that do not exist yet is legal. No Refund is declared.
+    - requirement.functional:
+        name: Recorded
+        level: 4
+        status: planned
+        statement: An order and its refund are recorded.
+        counterexample: A refund with no row.
+        implementedBy: [Order, Refund]
+        children:
+          # One member that exists, one missing from an object that exists, and one
+          # under an object that does not.
+          - requirement.functional:
+              name: Quotable
+              level: 5
+              status: planned
+              statement: An order and its refund carry a reference the customer can quote.
+              counterexample: A refund nobody can quote back.
+              implementedBy: [Order.reference, Order.refundReference, Refund.reference]
+
+    # Nothing it names resolves.
+    - requirement.functional:
+        name: Refunded
+        level: 4
+        status: planned
+        statement: A refund is recorded against its order.
+        counterexample: A refund with no order.
+        implementedBy: [Refund]

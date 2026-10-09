@@ -14,10 +14,13 @@
 //
 // Runs at the last fixed point before serve, never on the request path.
 
+using System.Globalization;
 using System.Text.Json;
 using MetaObjects.Codegen;
+using MetaObjects.Core.Requirement;
 using MetaObjects.Loader;
 using MetaObjects.Render;
+using static MetaObjects.Core.Requirement.RequirementConstants;
 using static MetaObjects.Shared.BaseTypes;
 using static MetaObjects.Template.TemplateConstants;
 
@@ -168,6 +171,14 @@ public static class VerifyCommand
         public Codegen.CodegenDrift.Result? Codegen { get; init; }
         /// <summary>Set when <c>--db</c> was requested (rejection message).</summary>
         public string? DbRejectionMessage { get; init; }
+        /// <summary>
+        /// True when a gate that ran in THIS process loaded the metadata, found that it did not load,
+        /// and put that in its own outcome for the caller to print. False when no gate here reached
+        /// a load at all: <c>--codegen</c> handed off to an owned <c>codegen/</c> project, or stopped
+        /// for want of <c>--out</c>, or only <c>--db</c> was asked for. The requirement gate reads
+        /// this to report a failed load once, and never zero times.
+        /// </summary>
+        public bool LoadFailureReported { get; init; }
     }
 
     /// <summary>
@@ -187,17 +198,22 @@ public static class VerifyCommand
 
         int exit = 0;
 
+        // Whether a gate below loaded the metadata, found it did not load, and reported that.
+        var loadFailureReported = false;
+
         Outcome? templatesOutcome = null;
         if (runTemplates)
         {
             templatesOutcome = Run(LoadMetadata(opts), opts.TemplatesRoot ?? "");
             if (!templatesOutcome.Ok) exit = Math.Max(exit, 1);
+            if (templatesOutcome.LoadErrors.Count > 0) loadFailureReported = true;
         }
 
         Codegen.CodegenDrift.Result? codegenResult = null;
         if (runCodegen)
         {
             codegenResult = RunCodegenDrift(opts, out var codegenLoadFailed);
+            if (codegenLoadFailed) loadFailureReported = true;
             // usage error (nothing to diff against) → exit 2; metadata that does not load →
             // exit 1, the code every port's gen/verify/fmt uses for it; drift → 1; clean → 0.
             int codegenExit = codegenResult.Error is null
@@ -222,6 +238,7 @@ public static class VerifyCommand
             Templates = templatesOutcome,
             Codegen = codegenResult,
             DbRejectionMessage = dbMsg,
+            LoadFailureReported = loadFailureReported,
         };
     }
 
@@ -235,6 +252,94 @@ public static class VerifyCommand
     private static LoadResult LoadMetadata(Options opts) => opts.MetadataFiles is { } files
         ? MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList(), opts.Libraries, opts.Strict)
         : MetaDataLoader.FromDirectory(opts.MetadataDir, opts.Libraries, strict: opts.Strict);
+
+    // ------------------------------------------------------------------------
+    // The requirement gate (ADR-0057) — runs on EVERY verify, with no subverb.
+    // ------------------------------------------------------------------------
+
+    /// <summary>Raises <c>WARN_REQUIREMENT_NOTHING_IMPLEMENTS</c> to an error, beside <c>--require-implementers</c>.</summary>
+    public const string REQUIRE_IMPLEMENTERS_ENV = "META_REQUIRE_IMPLEMENTERS";
+
+    /// <summary>The command prefix the gate's summary, recorded-gaps and error-count lines carry.</summary>
+    private const string RequirementPrefix = "dotnet meta verify — requirements: ";
+
+    /// <summary>
+    /// The requirement (capability) gate: reads the <c>requirement.*</c> nodes of the loaded model and
+    /// reports what the loader cannot. <c>requirement.*</c> is metadata, so a model declaring none is
+    /// silent, not in drift: no line is printed and the exit code is unchanged.
+    ///
+    /// <para>Prints the summary line on every run that has a requirement, clean or not (a gate that
+    /// says nothing when it passes cannot be told apart from one that checked nothing), then every
+    /// finding, uncapped, to <paramref name="output"/>. Returns 1 when any finding is an error.</para>
+    ///
+    /// <para>Returns 1 when the metadata did not load: an unloadable model is not a model with no
+    /// requirement. The load errors are printed here unless <paramref name="loadFailureReported"/>
+    /// says a gate that ran in this process already put them in front of the user
+    /// (<see cref="SubverbResult.LoadFailureReported"/>). No gate did when <c>--codegen</c> was handed
+    /// off to an owned <c>codegen/</c> project, stopped for want of <c>--out</c>, or only <c>--db</c>
+    /// was asked for: then this load is the only one in the process, and what it finds is the only
+    /// report there will be. Any other exception surfaces, so a gate that broke cannot read as a gate
+    /// that passed.</para>
+    /// </summary>
+    public static int RunRequirementGate(Options opts, bool requireImplementers, TextWriter output, bool loadFailureReported)
+    {
+        var load = LoadMetadata(opts);
+        if (load.Errors.Count > 0)
+        {
+            if (!loadFailureReported)
+            {
+                foreach (var e in load.Errors) output.WriteLine($"  load error: {e.Code}: {e.Message}");
+                if (opts.Strict && load.Errors.Any(e => e.Code == ErrorCode.ERR_UNKNOWN_ATTR))
+                    output.WriteLine($"  hint: {UNKNOWN_ATTR_HINT}");
+                output.WriteLine("dotnet meta verify: FAILED (metadata did not load cleanly)");
+            }
+            return 1;
+        }
+
+        var scan = RequirementCheck.Scan(
+            load.Root, requireImplementers: requireImplementers || Environment.GetEnvironmentVariable(REQUIRE_IMPLEMENTERS_ENV) == "1");
+        var summary = RequirementCheck.Summarise(load.Root, scan);
+        if (summary is null) return 0;
+
+        var files = opts.MetadataFiles?.Count ?? new DirectorySource(opts.MetadataDir).Expand().Count();
+        output.WriteLine(RequirementPrefix + SummaryText(summary, files));
+        if (summary.Undecided > 0)
+        {
+            output.WriteLine(RequirementPrefix + string.Create(CultureInfo.InvariantCulture,
+                $"{summary.Undecided} recorded gap(s) with no @disposition. These are known problems nobody has ") +
+                "ruled on — set 'accepted' or 'deferred' to close the question.");
+        }
+
+        var diagnostics = RequirementCheck.Check(load.Root, scan);
+        var errors = diagnostics.Where(d => d.Severity == RequirementCheck.SeverityError).ToList();
+        var warnings = diagnostics.Where(d => d.Severity != RequirementCheck.SeverityError).ToList();
+        foreach (var d in errors) output.WriteLine(FormatRequirementDiagnostic(d));
+        foreach (var d in warnings) output.WriteLine(FormatRequirementDiagnostic(d));
+        if (errors.Count == 0) return 0;
+
+        output.WriteLine(RequirementPrefix + string.Create(CultureInfo.InvariantCulture, $"{errors.Count} error(s)."));
+        return 1;
+    }
+
+    /// <summary>The summary line, minus its command prefix. Statuses in the closed enum's order, zero counts omitted.</summary>
+    private static string SummaryText(RequirementSummary summary, int files)
+    {
+        var statuses = string.Join(", ", REQUIREMENT_STATUSES
+            .Where(s => summary.ByStatus.GetValueOrDefault(s) > 0)
+            .Select(s => string.Create(CultureInfo.InvariantCulture, $"{summary.ByStatus[s]} {s}")));
+        var coverage = summary.EntitiesTotal is null
+            // The absence of the ratio is the statement that the project authored no requirement of its own.
+            ? "coverage: not measured (no project-authored requirements)."
+            // The file count is the denominator's provenance: the total is only ever taken over what loaded.
+            : string.Create(CultureInfo.InvariantCulture, $"{summary.EntitiesClaimed}/{summary.EntitiesTotal} entities claimed, counted over {files} metadata file(s).");
+        return string.Create(CultureInfo.InvariantCulture,
+                   $"{summary.Total} entries ({summary.Functional} functional, {summary.Architectural} architectural) — ") +
+               $"{statuses}; {coverage}";
+    }
+
+    /// <summary>A diagnostic line, with no command prefix: <c>  &lt;code&gt; [&lt;path&gt;]: &lt;message&gt;</c>.</summary>
+    private static string FormatRequirementDiagnostic(RequirementDiagnostic d) =>
+        $"  {d.Code}{(d.Path is null ? "" : $" [{d.Path}]")}: {d.Message}";
 
     /// <summary>
     /// Run the codegen-drift gate: load metadata, resolve the generator suite (default

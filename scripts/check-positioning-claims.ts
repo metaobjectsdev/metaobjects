@@ -59,7 +59,7 @@ export const BANNED: Banned[] = [
   },
   {
     pattern: /four pillars\.\s*all shipping\./i,
-    because: "there are six, and they are not equally deep (the fifth ships test scaffolding in TypeScript only)",
+    because: "there are six, and they are not equally deep (the fifth ships its authoring lint in TypeScript only)",
     instead: 'name the depth: "the first four ship per-language across all five ports; the fifth …"',
   },
   {

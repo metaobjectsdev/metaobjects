@@ -1,0 +1,26 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - requirement.functional:
+        name: Recorded
+        level: 5
+        status: live
+        statement: An order is recorded when it is placed.
+        counterexample: A placed order has no row.
+        implementedBy: [Order]
+
+    # No object is named Refund. The grain error is reported and the dangling check is skipped.
+    - requirement.functional:
+        name: Refunded
+        level: 5
+        status: live
+        statement: A refund is recorded against its order.
+        counterexample: A refund with no order.
+        implementedBy: [Refund]

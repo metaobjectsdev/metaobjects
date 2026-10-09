@@ -50,6 +50,7 @@
     <EmbeddedResource Include="Generators/FilterAllowlistGenerator.cs" />
     <EmbeddedResource Include="Generators/NamesGenerator.cs" />
     <EmbeddedResource Include="Generators/CallableGenerator.cs" />
+    <EmbeddedResource Include="Generators/RequirementTestsGenerator.cs" />
   </ItemGroup>
   <!--
     The HELPER RUNTIME (HelperRuntime.cs) — the Runtime/ files generated routes import.

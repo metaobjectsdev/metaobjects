@@ -94,6 +94,26 @@ create/update re-reads the row via the view by primary key (read-your-writes). T
 view's DDL is emitted by the Node `meta migrate` from the same origin assembly as a
 projection view.
 
+**Requirement tests (`requirement-tests`).** A recommended approach, not a contract. For a
+model that declares `requirement.*` nodes it writes, per metamodel package,
+`Requirements_<pkgKey>_Witnesses.g.cs` (an interface with one default member per
+non-skipped test, each failing with `unimplemented requirement: …`) and
+`Requirements_<pkgKey>_Tests.g.cs` (one xUnit `[Fact]` per requirement; `[Fact(Skip = …)]`
+for a `planned` or `retired` one), in `<namespace>.Requirements`. Both are rewritten whole
+on every run, so never edit them: the project's code goes in one witness class
+(`<namespace>.RequirementWitnesses` by default) that implements every generated interface.
+Implement each member EXPLICITLY (`void Requirements_<pkgKey>_Witnesses.req_…() { … }`): a
+witness whose requirement is retired or deleted then stops compiling (CS0539), where an
+implicit `public void req_…()` goes stale silently. Give the generator its own
+`dotnet meta gen … --out <test project dir> --generators requirement-tests` run (a run has
+one `--out`, and the test project needs xunit), and pass `--namespace` to
+`verify --codegen` for that directory. Options (`TestNamespace`, `WitnessClass`, `Grain`,
+`Filter`, `Renderer`, `WarnUncovered`) are public properties set in an owned
+`codegen/Program.cs`; `Grain` needs `using MetaObjects.Core.Requirement;`. A filter
+REPLACES the default of functional L4/L5. `dotnet meta eject requirement-tests` copies the
+generator with its default rendering. The requirement checks in `dotnet meta verify` are
+core and are not ejectable.
+
 ## Docs — `dotnet meta docs`
 
 ```bash

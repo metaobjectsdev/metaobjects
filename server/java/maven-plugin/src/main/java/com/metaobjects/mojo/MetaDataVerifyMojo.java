@@ -4,6 +4,7 @@ import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.verify.TemplateVerify;
 import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.requirement.RequirementCheck;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
@@ -75,6 +76,9 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     /** Arg used by {@link GeneratorBase} to locate each generator's output root. */
     static final String ARG_OUTPUT_DIR = GeneratorBase.ARG_OUTPUTDIR;
 
+    /** What every line of this goal's requirement report starts with, as the field lint's does. */
+    private static final String PREFIX = "metaobjects:verify \u2014 ";
+
     /** The gen goal to suggest in the failure message ({@code groupId:artifactId:goal}). */
     private static final String GEN_GOAL = "metaobjects:generate";
 
@@ -116,6 +120,24 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
 
     public void setNoFieldLint(boolean noFieldLint) { this.noFieldLint = noFieldLint; }
     public boolean isNoFieldLint() { return noFieldLint; }
+
+    /** Environment variable that turns {@link #requireImplementers} on for a CI job. */
+    static final String ENV_REQUIRE_IMPLEMENTERS = "META_REQUIRE_IMPLEMENTERS";
+
+    /**
+     * The strict switch of the requirement gate (ADR-0057): raise
+     * {@code WARN_REQUIREMENT_NOTHING_IMPLEMENTS} to an error, for a project whose ledger has
+     * caught up with its links. No other diagnostic changes severity.
+     * {@code META_REQUIRE_IMPLEMENTERS=1} does the same.
+     */
+    @Parameter(property = "meta.verify.requireImplementers", defaultValue = "false")
+    private boolean requireImplementers = false;
+
+    public void setRequireImplementers(boolean requireImplementers) { this.requireImplementers = requireImplementers; }
+    public boolean isRequireImplementers() { return requireImplementers; }
+
+    /** The process environment, overridable so a test can set a variable. */
+    String getEnv(String name) { return System.getenv(name); }
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
@@ -187,6 +209,54 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     }
 
     // ------------------------------------------------------------------------
+    // the requirement gate — every mode (ADR-0057)
+    // ------------------------------------------------------------------------
+
+    /**
+     * Runs once per {@code execute()}, whichever mode was selected, as soon as the metadata has
+     * loaded, so what it found is printed even when the drift gate then fails the build. A model
+     * that declares no {@code requirement.*} node sees no change at all: nothing is logged.
+     *
+     * @return the number of errors found; the caller fails the build once its own gate has reported
+     */
+    private int runRequirementGate(MetaDataLoader loader) {
+        RequirementCheck.Scan scan = RequirementCheck.scan(loader.getRoot(),
+                new RequirementCheck.Options(null,
+                        requireImplementers || "1".equals(getEnv(ENV_REQUIRE_IMPLEMENTERS))));
+        RequirementCheck.Summary summary = RequirementCheck.summarise(loader.getRoot(), scan);
+        if (summary == null) return 0;
+
+        // Printed on every run, clean or not: a gate that says nothing when it passes cannot be
+        // told apart from a gate that checked nothing.
+        getLog().info(PREFIX + RequirementCheck.summaryText(summary, sourceFiles(loader).size()));
+        String undecided = RequirementCheck.undecidedText(summary);
+        if (undecided != null) getLog().info(PREFIX + undecided);
+
+        // Every error, then every warning, as the reference and the other ports print them: the
+        // checks find them interleaved, and an error must not be lost among the warnings.
+        List<RequirementCheck.Diagnostic> diagnostics = RequirementCheck.check(loader.getRoot(), scan);
+        int errors = 0;
+        for (RequirementCheck.Diagnostic d : diagnostics) {
+            if (d.severity() != RequirementCheck.Severity.ERROR) continue;
+            errors++;
+            getLog().error(RequirementCheck.formatDiagnostic(d));
+        }
+        for (RequirementCheck.Diagnostic d : diagnostics) {
+            if (d.severity() == RequirementCheck.Severity.ERROR) continue;
+            getLog().warn(RequirementCheck.formatDiagnostic(d));
+        }
+        if (errors > 0) getLog().error(PREFIX + "requirements: " + errors + " error(s).");
+        return errors;
+    }
+
+    private static void failOnRequirementErrors(int errors) throws MojoFailureException {
+        if (errors > 0) {
+            throw new MojoFailureException("metaobjects:verify \u2014 requirements: " + errors
+                    + " error(s); see the lines above.");
+        }
+    }
+
+    // ------------------------------------------------------------------------
     // mode=templates — template/prompt {{field}}<->payload drift (ADR-0021 D2)
     // ------------------------------------------------------------------------
 
@@ -200,6 +270,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         ClassLoader projectClassLoader = createProjectClassLoader();
         MetaDataLoader loader = createLoader(projectClassLoader);
         runFieldLintAdvisory(loader);
+        int requirementErrors = runRequirementGate(loader);
 
         TemplateVerify.Outcome outcome = TemplateVerify.run(loader, Paths.get(templateRoot));
 
@@ -223,6 +294,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         }
 
         getLog().info("MetaData Verify Mojo > No template/prompt drift detected.");
+        failOnRequirementErrors(requirementErrors);
     }
 
     // ------------------------------------------------------------------------
@@ -233,6 +305,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         ClassLoader projectClassLoader = createProjectClassLoader();
         MetaDataLoader loader = createLoader(projectClassLoader);
         runFieldLintAdvisory(loader);
+        int requirementErrors = runRequirementGate(loader);
 
         // Per-generator: resolve its committed (real) outputDir from the merged args, then
         // stage an arg-override so the regenerate writes to a temp dir instead. Keep the
@@ -313,6 +386,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         } finally {
             deleteRecursively(tempRoot);
         }
+        failOnRequirementErrors(requirementErrors);
     }
 
     /**

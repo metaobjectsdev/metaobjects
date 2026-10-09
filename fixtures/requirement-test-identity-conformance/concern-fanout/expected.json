@@ -1,0 +1,25 @@
+{
+  "tests": [
+    {
+      "id": "acme::shop::Confirmed [object.entity]",
+      "package": "acme::shop",
+      "path": "Confirmed",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_Confirmed__object_entity",
+      "status": "live",
+      "skip": null,
+      "digest": "7432d838dbd4601ec8735162f497a2cc9c100440af803568c974a88b7a85bf3c"
+    },
+    {
+      "id": "acme::shop::Confirmed [template.prompt]",
+      "package": "acme::shop",
+      "path": "Confirmed",
+      "unit": "template.prompt",
+      "witnessKey": "req_acme_shop_Confirmed__template_prompt",
+      "status": "live",
+      "skip": null,
+      "digest": "7432d838dbd4601ec8735162f497a2cc9c100440af803568c974a88b7a85bf3c"
+    }
+  ],
+  "collisions": []
+}

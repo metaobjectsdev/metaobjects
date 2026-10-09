@@ -10,7 +10,7 @@
 // Each case drives the real command dispatcher, so a regression in the wiring —
 // requirements silently unhooked from the exit-code max, say — fails here.
 
-import { test, expect, describe, spyOn } from "bun:test";
+import { test, expect, describe, spyOn, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,6 +29,14 @@ async function captureInfo(fn: () => Promise<unknown>): Promise<string[]> {
 async function captureWarn(fn: () => Promise<unknown>): Promise<string[]> {
   const seen: string[] = [];
   const spy = spyOn(log, "warn").mockImplementation((m: string) => { seen.push(m); });
+  try { await fn(); } finally { spy.mockRestore(); }
+  return seen;
+}
+
+/** Collects `log.error` lines emitted while `fn` runs. */
+async function captureError(fn: () => Promise<unknown>): Promise<string[]> {
+  const seen: string[] = [];
+  const spy = spyOn(log, "error").mockImplementation((m: string) => { seen.push(m); });
   try { await fn(); } finally { spy.mockRestore(); }
   return seen;
 }
@@ -85,6 +93,19 @@ const L4 = {
 };
 
 describe("meta verify — requirements exit-code contract", () => {
+  // The strict switch is also an environment variable, and these tests assert the DEFAULT
+  // severity. Whatever the shell that runs them has exported must not decide the outcome:
+  // each test starts with the variable unset, and the shell's value is put back after.
+  let ambientRequireImplementers: string | undefined;
+  beforeEach(() => {
+    ambientRequireImplementers = process.env.META_REQUIRE_IMPLEMENTERS;
+    delete process.env.META_REQUIRE_IMPLEMENTERS;
+  });
+  afterEach(() => {
+    if (ambientRequireImplementers === undefined) delete process.env.META_REQUIRE_IMPLEMENTERS;
+    else process.env.META_REQUIRE_IMPLEMENTERS = ambientRequireImplementers;
+  });
+
   test("a clean requirement tree exits 0", async () => {
     const dir = project(req({ ...L4, "@implementedBy": ["Order"] }));
     expect(await run(["verify", "--cwd", dir])).toBe(0);
@@ -266,6 +287,89 @@ describe("meta verify — requirements exit-code contract", () => {
     } finally {
       delete process.env.META_NO_REQUIREMENT_LINT;
     }
+  }, TIMEOUT_MS);
+
+  // -- the strict switch (ADR-0057) -------------------------------------------
+  // The unit tests prove the scan option raises the severity. These prove the flag
+  // and the environment variable each REACH that option, and that the raised
+  // diagnostic reaches the exit code. `Order` is claimed by a second requirement so
+  // the existence warning is the only finding: an unclaimed-entity warning beside it
+  // would leave it unclear which of the two the switch had acted on.
+  const NOTHING_IMPLEMENTS_ONLY = JSON.stringify({
+    "metadata.root": {
+      package: "acme::shop",
+      children: [
+        { "requirement.functional": { ...L4, "@implementedBy": ["Order"] } },
+        {
+          "requirement.functional": {
+            name: "orderExport",
+            "@level": 4,
+            "@status": "live",
+            "@statement": "A customer can export their order history.",
+            "@counterexample": "A customer asks for their orders and gets nothing.",
+          },
+        },
+      ],
+    },
+  });
+  const NOTHING_IMPLEMENTS_LINE = "WARN_REQUIREMENT_NOTHING_IMPLEMENTS [orderExport]";
+
+  test("a live requirement nothing implements WARNS and exits 0 by default", async () => {
+    const dir = project(NOTHING_IMPLEMENTS_ONLY);
+    let warns: string[] = [];
+    const errors = await captureError(async () => {
+      warns = await captureWarn(async () => {
+        expect(await run(["verify", "--cwd", dir])).toBe(0);
+      });
+    });
+    expect(warns.some((w) => w.includes(NOTHING_IMPLEMENTS_LINE))).toBe(true);
+    // The ONLY finding — which is what makes the two tests below about this warning.
+    expect(warns.filter((w) => w.includes("_REQUIREMENT_"))).toHaveLength(1);
+    expect(errors.filter((e) => e.includes("_REQUIREMENT_"))).toEqual([]);
+  }, TIMEOUT_MS);
+
+  test("--require-implementers turns that same run into exit 1, under the same code", async () => {
+    const dir = project(NOTHING_IMPLEMENTS_ONLY);
+    let warns: string[] = [];
+    const errors = await captureError(async () => {
+      warns = await captureWarn(async () => {
+        expect(await run(["verify", "--cwd", dir, "--require-implementers"])).toBe(1);
+      });
+    });
+    // Printed as an ERROR now, and no longer among the warnings — one finding, moved.
+    expect(errors.some((e) => e.includes(NOTHING_IMPLEMENTS_LINE))).toBe(true);
+    expect(warns.some((w) => w.includes(NOTHING_IMPLEMENTS_LINE))).toBe(false);
+  }, TIMEOUT_MS);
+
+  test("META_REQUIRE_IMPLEMENTERS=1 does the same without the flag", async () => {
+    const dir = project(NOTHING_IMPLEMENTS_ONLY);
+    process.env.META_REQUIRE_IMPLEMENTERS = "1";
+    try {
+      const errors = await captureError(async () => {
+        expect(await run(["verify", "--cwd", dir])).toBe(1);
+      });
+      expect(errors.some((e) => e.includes(NOTHING_IMPLEMENTS_LINE))).toBe(true);
+    } finally {
+      delete process.env.META_REQUIRE_IMPLEMENTERS;
+    }
+  }, TIMEOUT_MS);
+
+  test("--require-implementers is not warnings-as-errors: other warnings still exit 0", async () => {
+    // A planned, deferred, untracked requirement: it is not live, so the existence
+    // check does not apply, and a planned claim never counts toward coverage. That
+    // leaves two OTHER warnings (deferred-untracked, and `Order` unclaimed) and the
+    // switch must raise neither.
+    const dir = project(req({ ...L4, "@status": "planned", "@disposition": "deferred" }));
+    const warns = await captureWarn(async () => {
+      expect(await run(["verify", "--cwd", dir, "--require-implementers"])).toBe(0);
+    });
+    expect(warns.some((w) => w.includes("WARN_REQUIREMENT_DEFERRED_UNTRACKED"))).toBe(true);
+    expect(warns.some((w) => w.includes("WARN_REQUIREMENT_OBJECT_UNCLAIMED"))).toBe(true);
+  }, TIMEOUT_MS);
+
+  test("--require-implementers changes nothing for a model with no requirements", async () => {
+    const dir = project();
+    expect(await run(["verify", "--cwd", dir, "--require-implementers"])).toBe(0);
   }, TIMEOUT_MS);
 
   test("a project with no requirements is never linted", async () => {

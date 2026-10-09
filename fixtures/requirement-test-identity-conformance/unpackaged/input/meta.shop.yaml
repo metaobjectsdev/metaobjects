@@ -1,0 +1,29 @@
+# No package anywhere in this document, and it is the only document of the case.
+metadata:
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - requirement.functional:
+        name: Orders
+        level: 3
+        status: live
+        statement: Every placed order is kept.
+        counterexample: A placed order that is lost.
+        children:
+          - requirement.functional:
+              name: Recorded
+              level: 4
+              status: live
+              statement: An order is recorded when it is placed.
+              counterexample: A placed order has no row.
+              implementedBy: [Order]
+          - requirement.functional:
+              name: Refunded
+              level: 4
+              status: planned
+              statement: A refund is recorded against its order.
+              counterexample: A refund with no order.

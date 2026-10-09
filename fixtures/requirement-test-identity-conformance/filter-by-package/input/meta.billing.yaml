@@ -1,0 +1,39 @@
+metadata:
+  package: acme::billing
+  children:
+    - object.entity:
+        name: Invoice
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: number }
+          - identity.primary: { name: pk, fields: [id] }
+
+    # Takes this file's package.
+    - requirement.functional:
+        name: Billed
+        level: 4
+        status: live
+        statement: An invoice is recorded when it is raised.
+        counterexample: A raised invoice has no row.
+        implementedBy: [Invoice]
+
+    # Declares its own package, which is not this file's. Its bare reference binds
+    # in the package it declares.
+    - requirement.functional:
+        name: Settled
+        package: acme::shop
+        level: 4
+        status: live
+        statement: An order records when it was paid.
+        counterexample: A paid order with no payment time.
+        implementedBy: [Order]
+        children:
+          # Declares no package: it takes its parent's, not this file's. Its bare
+          # reference binds there too.
+          - requirement.functional:
+              name: Timed
+              level: 5
+              status: live
+              statement: A paid order carries the time it was paid.
+              counterexample: A paid order whose payment time is empty.
+              implementedBy: [Order.paidAt]

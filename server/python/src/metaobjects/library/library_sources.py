@@ -46,6 +46,21 @@ LIBRARY_MANIFESTS: dict[str, dict] = {
 }
 
 
+def library_packages() -> frozenset[str]:
+    """The union of ``packages`` across every shipped library manifest — the metamodel
+    packages the libraries own (``metaobjects::iam``, ``metaobjects::ai``).
+
+    The provenance key for requirement-coverage activation (FR-043 §5.4): a requirement
+    whose effective package is in this set came from a shipped library, not from the
+    adopter. Read from the embedded manifests, never from a node's source id — an id
+    differs between a checkout (a path) and an installed wheel (``library:<ref>.yaml``).
+    Mirrors the TS ``libraryPackages``.
+    """
+    return frozenset(
+        pkg for manifest in LIBRARY_MANIFESTS.values() for pkg in manifest.get("packages", [])
+    )
+
+
 #: The prefix every library source id carries — the discriminator for "did a shipped
 #: library contribute this file", and the reason the id is stable rather than derived
 #: from a path (see :func:`library_file_id`).

@@ -34,6 +34,28 @@ dependencies = [
 > `uv run --extra dev pytest` from `server/python/` (the in-repo dev workflow is
 > `uv`-based, with `pytest` / `mypy` / `ruff` as the `dev` extra).
 
+## Selecting the interpreter
+
+`metaobjects` needs Python 3.11 or later to **run**. That floor is not being lowered. What
+it generates has a lower one: the requirement tests it writes need only pytest and parse
+under the Python 3.9 grammar, so they run on your project's own interpreter.
+
+A project on an older interpreter therefore runs the tool with a different one, without
+changing its own:
+
+```bash
+uv tool run --python 3.12 metaobjects gen
+uv tool run --python 3.12 metaobjects verify
+
+# or, with pipx (the interpreter is named by its executable)
+pipx run --python python3.12 metaobjects gen
+pipx run --python python3.12 metaobjects verify
+```
+
+Each fetches `metaobjects` into an environment of its own on the interpreter you name and
+runs the console-script there. Your project's virtualenv, and the interpreter your tests
+run on, are untouched.
+
 ## Configure
 
 Drop metadata under `metaobjects/`:
@@ -362,6 +384,75 @@ than the one a row actually lands in. `metaobjects verify` also takes
 regen resolves the same column strings `gen` did instead of reporting
 spurious drift against a differently-configured run.
 
+### Requirement tests
+
+Declare what the software must do as `requirement.*` nodes and `metaobjects verify` checks
+them on every run: it prints the ledger summary, and an error (a dangling reference on a
+live requirement, a link above the floor, a live policy applied to nothing) exits non-zero.
+`--require-implementers` (or `META_REQUIRE_IMPLEMENTERS=1`) also fails the run on a live
+functional requirement that nothing implements. Those checks are core and are not
+ejectable. A model with no requirement sees no change. Metadata that does not load is not
+that: `verify` prints the load errors and exits non-zero, also when no generators are
+selected and so no drift gate loaded it.
+
+The `requirement-tests` generator is the other half. It is a reference helper and a
+recommended approach, not a contract: `metaobjects eject requirement-tests` copies it, with
+its default renderer, to `codegen/generators/requirement_tests.py`, wired as
+`codegen.generators.requirement_tests:requirement_tests_generator`.
+
+```yaml
+# metaobjects.config.yaml
+targets:
+  tests:
+    outDir: tests/generated
+    generators: [requirement-tests]
+requirementTests:                               # every key optional
+  witnessModule: tests.requirement_witnesses    # the default
+  grain: concern                                # or: member
+  filter: codegen.requirement_hooks:include     # module:symbol, relative to this file's directory
+  renderer: codegen.requirement_hooks:render    # module:symbol
+  warnUncovered: true                           # the default
+```
+
+It writes `requirements/test_<pkgKey>_requirements.py` under the target's `outDir`, one
+file per metamodel package, rewritten whole on every run. Each test looks up a **witness**:
+a function named by the test's witness key, in the witness module. A `live` or `partial`
+requirement with no witness fails, naming the function to write; a `planned` or `retired`
+one is skipped and never looks one up.
+
+```python
+# tests/requirement_witnesses.py
+def req_acme_shop_Orders_Recorded__object_entity():
+    order = place_order()
+    assert find_order_row(order.id) is not None
+```
+
+A missing witness module is "no witness". A witness module that exists and fails to import
+raises its own error. There is no compile step, so a witness whose requirement is retired
+or deleted is simply never called again: nothing reports it, and you delete it by hand.
+
+| Key | Meaning |
+|---|---|
+| `witnessModule` | The dotted module the witnesses live in. |
+| `grain` | `concern` (default): one test per distinct `<type>.<subType>` a requirement claims. `member`: one per distinct `implementedBy` reference that resolves. Anything else is a config error. |
+| `filter` | A function taking the requirement view and returning a bool. It **replaces** the default of functional requirements at L4 and L5. The view has `sub_type`, `level` (`None` when the requirement declares none), `status`, `path`, `package` and `implemented_by_types`. |
+| `renderer` | A function taking a `RequirementTestArgs` and returning a `RenderedTest(imports, source)` to replace the text of one test, or `None` to keep the default. Import both types from `metaobjects.codegen.requirement_hooks`, never from an ejected copy of the generator. |
+| `warnUncovered` | `true` (default): one warning naming up to five requirements the filter left out. |
+
+The block is read in config mode. The flag-only form
+(`metaobjects gen ./metaobjects --out ./tests/generated --generators requirement-tests`)
+runs the generator with its defaults. A `filter` or `renderer` whose module raises on
+import is reported with the real cause. Both hooks, like a `providers` entry, are found
+relative to the config file's directory, with no `PYTHONPATH=`. They differ in how they are
+imported: a provider is imported with plain `importlib`, and a hook goes through the resolver
+an owned generator is imported with, which loads the project's own copy of a module when
+another copy is already cached and refuses a project package or module whose top-level name
+is a standard-library module name (`types`, `json`): rename it. `metaobjects verify` goes
+out of sync when a claim changes, because each test carries a digest of its requirement. A
+package that loses its last requirement leaves its file behind: `gen` does not remove it,
+`verify` lists it as `extra:`, and you delete it. The model and the other ports' spelling are in
+[Generated requirement tests and witnesses](../features/requirements.md#generated-requirement-tests-and-witnesses).
+
 ### Declarative template-codegen (`--template-spec`)
 
 Beyond the built-in Pydantic/FastAPI suite, the `metaobjects gen` console-script
@@ -561,7 +652,9 @@ each as `<Name>.py`. So the prompt+parse story is two generators:
 
 **Own a generator.** Every generator is a reference helper you can copy and change:
 `metaobjects eject <name>` copies it into `codegen/generators/`, and you wire the copy as
-`module:symbol` in place of its name. See
+`module:symbol` in place of its name. A project package or module whose top-level name is a
+standard-library module name (`types`, `json`) is refused there with an error naming it:
+rename it. See
 [Own your codegen → Python](../features/own-your-codegen.md#python-metaobjects-eject).
 
 Ejecting `routes` also hands over the helper runtime the generated routers call:
@@ -703,6 +796,7 @@ import lines are stable.
 | Declarative template-codegen | Yes — `metaobjects gen --template-spec` (scope perEntity/perPackage/perModel + outputPattern; the cross-port JSON contract shared with C#) |
 | Migrations | TS-only by design (ADR-0015) — no Python `migrate` command; consume the canonical `schema.postgres.sql` |
 | Drift verify | Yes — template / payload drift (`metaobjects.render.verify`) |
+| Requirement gate + requirement tests | Yes (`metaobjects verify`, on every run; `requirement-tests` emits pytest and is ejectable) |
 | Runtime metadata | Yes (`metaobjects.runtime.ObjectManager` — DB-API 2 driver, pg8000/psycopg) + loader API + render engine |
 
 ## Conformance status (as of 2026-05-27)

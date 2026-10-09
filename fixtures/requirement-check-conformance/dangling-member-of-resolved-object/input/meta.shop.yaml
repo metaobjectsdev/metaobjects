@@ -1,0 +1,26 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - requirement.functional:
+        name: Recorded
+        level: 4
+        status: live
+        statement: An order is recorded when it is placed.
+        counterexample: A placed order has no row.
+        implementedBy: [Order]
+        children:
+          # Order resolves; it has no member named total.
+          - requirement.functional:
+              name: Totalled
+              level: 5
+              status: live
+              statement: An order carries the total the customer pays.
+              counterexample: An order with no total.
+              implementedBy: [Order.total]

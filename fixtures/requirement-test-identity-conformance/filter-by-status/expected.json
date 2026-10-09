@@ -1,0 +1,25 @@
+{
+  "tests": [
+    {
+      "id": "acme::shop::Orders [*]",
+      "package": "acme::shop",
+      "path": "Orders",
+      "unit": "*",
+      "witnessKey": "req_acme_shop_Orders",
+      "status": "live",
+      "skip": null,
+      "digest": "e84c69fda54cb9f04f3949af069c2c5d56027e008be3198a08c4ee4fbcad8be6"
+    },
+    {
+      "id": "acme::shop::Orders.Recorded [object.entity]",
+      "package": "acme::shop",
+      "path": "Orders.Recorded",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_Orders_Recorded__object_entity",
+      "status": "live",
+      "skip": null,
+      "digest": "2714aa3925a47959aa5e48ae39d80ed203fd4e2caa046a90aab9e04691d9881a"
+    }
+  ],
+  "collisions": []
+}

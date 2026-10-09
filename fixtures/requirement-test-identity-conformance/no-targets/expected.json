@@ -1,0 +1,15 @@
+{
+  "tests": [
+    {
+      "id": "acme::shop::Recorded [*]",
+      "package": "acme::shop",
+      "path": "Recorded",
+      "unit": "*",
+      "witnessKey": "req_acme_shop_Recorded",
+      "status": "live",
+      "skip": null,
+      "digest": "09628ddb7bec2fd406e0fc69833994bb96bc283493b1484c3079b6995c3a694c"
+    }
+  ],
+  "collisions": []
+}

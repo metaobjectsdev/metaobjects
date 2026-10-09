@@ -23,6 +23,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import {
   checkRequirements,
+  scanRequirements,
   summariseRequirements,
   collectRequirements,
   splitMemberRef,
@@ -36,6 +37,8 @@ import {
   ERR_REQUIREMENT_L5_NOT_MEMBER,
   ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS,
   WARN_REQUIREMENT_OBJECT_UNCLAIMED,
+  WARN_REQUIREMENT_NOTHING_IMPLEMENTS,
+  WARN_REQUIREMENT_DEFERRED_UNTRACKED,
   type Diagnostic,
 } from "../../src/lib/requirement-check.js";
 
@@ -134,7 +137,13 @@ interface Loaded { diags: Diagnostic[]; }
 /** Load a model + requirement declarations and run the check. Returns the loader
  *  error instead when the load itself is rejected — several tests assert that the
  *  LOADER, not this CLI, is what refuses bad input. */
-async function run(capsYaml: string, extraModel = ""): Promise<Loaded & { loadError?: string }> {
+async function run(
+  capsYaml: string,
+  extraModel = "",
+  /** Options for the scan the check reads. Omitted, the check builds its own default
+   *  scan — the path every test that does not care about an option goes through. */
+  scanOpts?: Parameters<typeof scanRequirements>[1],
+): Promise<Loaded & { loadError?: string }> {
   const dir = mkdtempSync(join(tmpdir(), "req-check-"));
   try {
     mkdirSync(join(dir, "metaobjects"));
@@ -147,7 +156,11 @@ async function run(capsYaml: string, extraModel = ""): Promise<Loaded & { loadEr
     } catch (err) {
       return { diags: [], loadError: (err as Error).message };
     }
-    return { diags: checkRequirements(root) };
+    return {
+      diags: scanOpts === undefined
+        ? checkRequirements(root)
+        : checkRequirements(root, scanRequirements(root, scanOpts)),
+    };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -696,6 +709,86 @@ describe("requirement.* — planned, disposition and tracking", () => {
     // node-local check would fire on all of them.
     const r = await run(caps(COVER), OTHER);
     expect(r.diags.map((d) => d.code)).not.toContain("WARN_REQUIREMENT_NOTHING_IMPLEMENTS");
+  });
+
+  // -- the strict switch (ADR-0057) -------------------------------------------
+  // `meta verify --require-implementers` reaches the check as this one scan option.
+  // It RAISES the existence warning; it does not rename it. A second `ERR_` code for
+  // the same finding would make every tool that keys on the code — a suppression, a
+  // dashboard, the cross-port corpus — treat one condition as two.
+  test("requireImplementers raises nothing-implements to an error and keeps the code", async () => {
+    const model = caps(COVER + `
+          - requirement.functional:
+              name: BuiltByNobody
+              level: 4
+              status: live
+              statement: "Customers can export their order history"
+              counterexample: "A customer who asks for their data and cannot be given it"
+`);
+    const byDefault = await run(model, OTHER);
+    expect(byDefault.loadError).toBeUndefined();
+    // Exactly one diagnostic: COVER claims every entity, so nothing else is in play.
+    expect(byDefault.diags).toHaveLength(1);
+    const warned = byDefault.diags[0]!;
+    expect(warned.severity).toBe("warn");
+    expect(warned.code).toBe(WARN_REQUIREMENT_NOTHING_IMPLEMENTS);
+    expect(warned.path).toBe("Solution.OrderService.BuiltByNobody");
+
+    const strict = await run(model, OTHER, { requireImplementers: true });
+    // Same code, same path, same message — the severity is the only thing that moved.
+    expect(strict.diags).toEqual([{ ...warned, severity: "error" }]);
+
+    // An explicit `false` is the default, not a third state.
+    expect((await run(model, OTHER, { requireImplementers: false })).diags).toEqual(byDefault.diags);
+  });
+
+  test("requireImplementers changes no other diagnostic", async () => {
+    // One of each neighbour the switch must leave alone: a gate ERROR (dangling ref),
+    // a different gate WARNING (deferred, untracked) and the coverage warning (neither
+    // entity is claimed by a reference that resolves) — beside one nothing-implements.
+    const model = caps(`
+          - requirement.functional:
+              name: OrderRecording
+              level: 4
+              status: live
+              statement: "Orders are recorded"
+              counterexample: "An order placed and never stored"
+              implementedBy: ["acme::shop::Ordr"]
+          - requirement.functional:
+              name: BuiltByNobody
+              level: 4
+              status: live
+              statement: "Customers can export their order history"
+              counterexample: "A customer who asks for their data and cannot be given it"
+          - requirement.functional:
+              name: Refunds
+              level: 4
+              status: planned
+              disposition: deferred
+              statement: "A refund is recorded against its order"
+              counterexample: "A refund with no order behind it"
+`);
+    const byDefault = await run(model);
+    const strict = await run(model, "", { requireImplementers: true });
+    expect(byDefault.loadError).toBeUndefined();
+
+    // The fixture really does hold the neighbours, at the severities they ship with —
+    // otherwise "nothing else changed" below would be true of an empty list.
+    const severityOf = (d: Diagnostic[], code: string): string[] =>
+      d.filter((x) => x.code === code).map((x) => x.severity);
+    expect(severityOf(byDefault.diags, ERR_REQUIREMENT_DANGLING_REF)).toEqual(["error"]);
+    expect(severityOf(byDefault.diags, WARN_REQUIREMENT_DEFERRED_UNTRACKED)).toEqual(["warn"]);
+    expect(severityOf(byDefault.diags, WARN_REQUIREMENT_OBJECT_UNCLAIMED))
+      .toEqual([OBJECT_COVERAGE_SEVERITY, OBJECT_COVERAGE_SEVERITY]);
+    expect(severityOf(byDefault.diags, WARN_REQUIREMENT_NOTHING_IMPLEMENTS)).toEqual(["warn"]);
+
+    // The switch reached its own row...
+    expect(severityOf(strict.diags, WARN_REQUIREMENT_NOTHING_IMPLEMENTS)).toEqual(["error"]);
+    // ...and nothing else: same diagnostics, same order, once that one row is set back.
+    const lowered = strict.diags.map((d) =>
+      d.code === WARN_REQUIREMENT_NOTHING_IMPLEMENTS ? { ...d, severity: "warn" as const } : d,
+    );
+    expect(lowered).toEqual(byDefault.diags);
   });
 
   test("an ARCHITECTURAL claim on an abstract base covers everything extending it", async () => {

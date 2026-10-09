@@ -1,0 +1,64 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - identity.primary: { name: pk, fields: [id] }
+
+    # L1 to L3 are organisational: no test. L4 and L5 each get one.
+    - requirement.functional:
+        name: Shop
+        level: 1
+        status: live
+        statement: A customer can buy from the shop.
+        counterexample: A customer who cannot place an order.
+        children:
+          - requirement.functional:
+              name: Sales
+              level: 2
+              status: live
+              statement: Sales are taken through the shop.
+              counterexample: A sale made outside the shop.
+              children:
+                - requirement.functional:
+                    name: Orders
+                    level: 3
+                    status: live
+                    statement: Every placed order is kept.
+                    counterexample: A placed order that is lost.
+                    children:
+                      - requirement.functional:
+                          name: Recorded
+                          level: 4
+                          status: live
+                          statement: An order is recorded when it is placed.
+                          counterexample: A placed order has no row.
+                          implementedBy: [Order]
+                          children:
+                            - requirement.functional:
+                                name: Quotable
+                                level: 5
+                                status: live
+                                statement: An order carries a reference the customer can quote.
+                                counterexample: An order nobody can quote back.
+                                implementedBy: [Order.reference]
+
+    # A flat policy: architectural, so no test.
+    - requirement.architectural:
+        name: Identified
+        status: live
+        statement: Every row is addressed by a uuid.
+        counterexample: A row keyed by a name.
+        implementedBy: [Order]
+
+    # A levelled policy at L4: the level alone does not earn a test.
+    - requirement.architectural:
+        name: Addressable
+        level: 4
+        status: live
+        statement: An order is addressed by one stable key.
+        counterexample: An order that cannot be pointed at.
+        implementedBy: [Order]

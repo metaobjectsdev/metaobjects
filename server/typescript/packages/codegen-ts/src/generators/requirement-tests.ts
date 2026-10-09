@@ -16,16 +16,18 @@
 // package.
 
 import {
-  REQUIREMENT_SUBTYPE_FUNCTIONAL,
-  REQUIREMENT_LINK_FLOOR_LEVEL,
   REQUIREMENT_ATTR_STATEMENT,
   REQUIREMENT_ATTR_COUNTEREXAMPLE,
 } from "@metaobjectsdev/metadata";
 import type { Generator, EmittedFile, GenContext } from "../generator.js";
 import {
   walkRequirements,
-  groupByConcern,
+  assertRequirementTestGrain,
+  defaultRequirementTestFilter,
+  requirementTestUnits,
+  requirementTestIdentity,
   NO_CONCERN,
+  type RequirementTestGrain,
   type RequirementView,
 } from "../requirement-walk.js";
 import {
@@ -40,11 +42,20 @@ export interface RequirementTestsOpts {
   name?: string;
   /** WHICH requirements get stubs. This is the app's policy declaration. */
   filter?: (r: RequirementView) => boolean;
-  /** Renderer per concern key: exact `type.subType`, `type.*`, or `*`. */
+  /**
+   * What one stub stands for. `"concern"` (the default): one per distinct
+   * `type.subType` a requirement claims. `"member"`: one per distinct `@implementedBy`
+   * reference that resolves, for an application that wants a test per claimed node.
+   */
+  grain?: RequirementTestGrain;
+  /** Renderer per concern key: exact `type.subType`, `type.*`, or `*`. In both grains
+   *  the key is what the stub's target RESOLVES to, never the reference text. */
   renderers?: Record<string, RequirementTestRenderer>;
   /** Full control over renderer selection — beats `renderers` when it returns one. */
   resolveRenderer?: (concern: string) => RequirementTestRenderer | undefined;
-  /** Where each stub lands. */
+  /** Where each stub lands. The second argument is the stub's fan-out key: the
+   *  concern, or under `grain: "member"` the reference exactly as authored — which
+   *  may hold `::`, so mangle it before it reaches a filename. */
   path?: (view: RequirementView, concern: string) => string;
   /** Named output target (registry key). */
   target?: string;
@@ -83,21 +94,22 @@ const MAX_NAMED_UNCOVERED = 5;
  *  default policy claims. Kept beside it so the pair cannot drift. */
 const DEFAULT_STUB_DIR = "requirements/";
 
-/**
- * RECOMMENDATION, not a rule: functional requirements at or below the link floor.
- *
- * Architectural requirements are excluded by default because `verify`'s
- * universality check already proves them structurally, so a test there is usually
- * redundant — usually, not never, which is exactly why this is overridable.
- */
-const defaultFilter = (r: RequirementView): boolean =>
-  r.subType === REQUIREMENT_SUBTYPE_FUNCTIONAL &&
-  (r.level ?? 0) >= REQUIREMENT_LINK_FLOOR_LEVEL;
-
 const defaultPath = (view: RequirementView, concern: string): string =>
   concern === NO_CONCERN
     ? `${DEFAULT_STUB_DIR}${view.path}.test.ts`
     : `${DEFAULT_STUB_DIR}${view.path}.${concern}.test.ts`;
+
+/**
+ * The default path under `grain: "member"`, where the fan-out key is a reference.
+ *
+ * The reference is MANGLED into the last segment — every run of characters outside
+ * `[A-Za-z0-9]` becomes one `_` — because a reference may be package-qualified and
+ * `::` is not a legal filename on every platform this output is checked out on. The
+ * concern grain keeps its unmangled segment: those paths are already in adopters'
+ * repositories with hand-written bodies in them.
+ */
+const defaultMemberPath = (view: RequirementView, ref: string): string =>
+  defaultPath(view, ref === NO_CONCERN ? ref : ref.replace(/[^A-Za-z0-9]+/g, "_"));
 
 /** Exact concern → `type.*` → `*` → the built-in renderer. */
 function pickRenderer(
@@ -117,8 +129,12 @@ function attrString(node: { attr: (n: string) => unknown }, name: string): strin
 }
 
 export function requirementTests(opts: RequirementTestsOpts = {}): Generator {
-  const filter = opts.filter ?? defaultFilter;
-  const toPath = opts.path ?? defaultPath;
+  const filter = opts.filter ?? defaultRequirementTestFilter;
+  const grain = opts.grain ?? "concern";
+  // Refused here, when the generator is built, rather than on the first requirement:
+  // an unknown grain is a mistake in the config whatever the model holds.
+  assertRequirementTestGrain(grain);
+  const toPath = opts.path ?? (grain === "member" ? defaultMemberPath : defaultPath);
   // A custom `path` with no custom `owns` leaves the default namespace pointing
   // somewhere the generator no longer writes, so reconciliation matches nothing.
   // That degrades safely — it can only ever delete less — but silently, and a
@@ -144,19 +160,31 @@ export function requirementTests(opts: RequirementTestsOpts = {}): Generator {
           uncovered.push(walked.view.path);
           continue;
         }
-        for (const [concern, targets] of groupByConcern(walked)) {
+        for (const [unit, targets] of requirementTestUnits(walked, grain)) {
+          const identity = requirementTestIdentity(walked, unit);
           const args: RequirementTestArgs = {
             view: walked.view,
-            concern,
+            concern: unit,
             targets,
             statement: attrString(walked.node, REQUIREMENT_ATTR_STATEMENT),
             counterexample: attrString(walked.node, REQUIREMENT_ATTR_COUNTEREXAMPLE),
             disposition: walked.node.disposition(),
             trackedBy: walked.node.trackedBy(),
+            package: identity.package,
+            unit,
+            id: identity.id,
+            witnessKey: identity.witnessKey,
+            skip: identity.skip,
+            digest: identity.digest,
           };
+          // The renderer is chosen by what the stub's target IS, in both grains. Under
+          // the concern grain that is the unit itself; under the member grain the unit
+          // is a reference, and keying on it would match no `type.subType` entry and
+          // silently retire every renderer the application registered.
+          const rendererKey = targets[0]?.concern ?? NO_CONCERN;
           files.push({
-            path: toPath(walked.view, concern),
-            content: pickRenderer(concern, opts)(args),
+            path: toPath(walked.view, unit),
+            content: pickRenderer(rendererKey, opts)(args),
           });
         }
       }

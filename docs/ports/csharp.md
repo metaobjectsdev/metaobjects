@@ -393,6 +393,114 @@ the feature reference is at
 NuGet package to add. The generated parser uses the strict (case-sensitive)
 default options.
 
+## Requirement tests
+
+Declare what the software must do as `requirement.*` nodes and `dotnet meta verify` checks
+them on every run; the `requirement-tests` generator then writes one xUnit test per tested
+requirement. The generator is a reference helper and a recommended approach, not a
+contract: `dotnet meta eject requirement-tests` copies it to
+`codegen/generators/RequirementTestsGenerator.cs` for you to change. The checks in `verify`
+are core and are not ejectable.
+
+```bash
+# The gate: runs beside whichever drift gate verify was given
+dotnet meta verify ./metadata --templates ./prompts
+dotnet meta verify ./metadata --templates ./prompts --require-implementers
+
+# The tests: their own run, into a test project that references xunit
+dotnet meta gen ./metadata --out ./tests/Acme.Shop.Tests/Generated \
+  --namespace Acme.Shop --generators requirement-tests
+dotnet meta verify ./metadata --codegen --out ./tests/Acme.Shop.Tests/Generated \
+  --namespace Acme.Shop --generators requirement-tests
+```
+
+A `gen` run has one `--out`, so give this generator a run of its own rather than adding it
+to the run that writes your entities. Pass `--namespace` to `verify --codegen` as well:
+without it the namespace is inferred from the first generated file in `--out`, and in a
+directory that holds only these tests that is the tests' own namespace, which regenerates
+one level too deep and reports drift.
+
+Per metamodel package the generator writes `Requirements_<pkgKey>_Witnesses.g.cs`, an
+interface with one default member per test that is not skipped, and
+`Requirements_<pkgKey>_Tests.g.cs`, one `[Fact]` per requirement (`[Fact(Skip = "…")]` for
+a `planned` or `retired` one). Both are in `<namespace>.Requirements` and are rewritten
+whole on every run. The tests construct one class of yours, `<namespace>.RequirementWitnesses`
+by default, which implements every generated interface. Until that class exists the test
+project does not compile. Implement each member **explicitly**:
+
+```csharp
+using Acme.Shop.Requirements;
+using Xunit;
+
+namespace Acme.Shop;
+
+public class RequirementWitnesses : Requirements_acme_shop_Witnesses
+{
+    void Requirements_acme_shop_Witnesses.req_acme_shop_Orders_Recorded__object_entity()
+    {
+        // fails when a placed order has no row
+    }
+}
+```
+
+A requirement that becomes `live` adds a member whose default fails the test
+(`unimplemented requirement: <id> - write <WitnessClass>.<key>() so that it fails when:
+<counterexample>`), with no compile break. One that is retired or deleted removes its
+member, and an explicit implementation of it then stops compiling (CS0539). A
+`public void req_…()` implements the member implicitly, and a stale one keeps compiling, so
+it goes stale silently. If a test reports `unimplemented requirement` for a witness you
+believe you wrote, the method is not implementing the member: in the implicit form it must
+be `public`, non-static, parameterless and named exactly as the interface names it.
+
+The six options are public properties on the generator. This port has no per-generator
+option channel, so they are reachable only where the generator is constructed, in an owned
+`codegen/Program.cs`. That file exists once you have ejected something (or written it by
+hand); the packaged `dotnet meta gen --generators requirement-tests` runs with the defaults.
+
+```csharp
+// codegen/Program.cs
+using Codegen.Generators;
+using MetaObjects.Codegen;
+using MetaObjects.Core.Requirement;   // RequirementTestGrain, IRequirementTestFilter
+
+IReadOnlyList<IGenerator> generators =
+[
+    new RequirementTestsGenerator
+    {
+        WitnessClass = "Acme.Shop.Tests.Witnesses",
+        Grain = RequirementTestGrain.Member,
+        WarnUncovered = false,
+    },
+];
+
+return CodegenCli.Run(args, generators);
+```
+
+The example is the file as it stands after `dotnet meta eject requirement-tests`: the class
+is your owned copy, in `Codegen.Generators`. If `Program.cs` exists because you ejected
+something else and you are constructing the packaged generator, the class is in
+`MetaObjects.Codegen.Generators`: write it fully qualified, as
+`new MetaObjects.Codegen.Generators.RequirementTestsGenerator { … }`. Do not add
+`using MetaObjects.Codegen.Generators;`, because every generator you ejected has a packaged
+class of the same simple name there, and the second `using` makes each `new <Name>Generator()`
+already in the file ambiguous (CS0104).
+
+| Property | Meaning |
+|---|---|
+| `TestNamespace` | Namespace of the generated tests. Default `<namespace>.Requirements`. |
+| `WitnessClass` | Full name of your witness class. Default `<namespace>.RequirementWitnesses`. |
+| `Grain` | `RequirementTestGrain.Concern` (default): one test per distinct `<type>.<subType>` a requirement claims. `Member`: one per distinct `implementedBy` reference that resolves. |
+| `Filter` | An `IRequirementTestFilter` (`bool Include(RequirementView view)`) that **replaces** the default of functional requirements at L4 and L5. The view carries `SubType`, `Level` (`int?`, null when not declared), `Status`, `Path`, `Package` and `ImplementedByTypes`. |
+| `Renderer` | An `IRequirementTestRenderer` (in `MetaObjects.Codegen`); it returns a `RenderedTest` to replace the text of one test, or `null` to keep the default. |
+| `WarnUncovered` | `true` (default): one warning naming up to five requirements the filter left out. |
+
+The hook types, the identity function and the digest stay in the package when you eject;
+the owned copy uses them from there. A package that loses its last requirement leaves its
+two files behind: `gen` does not remove them, `dotnet meta verify --codegen` reports each as
+`committed but a fresh regen would not emit it`, and you delete them. The model and the
+other ports' spelling are in
+[Generated requirement tests and witnesses](../features/requirements.md#generated-requirement-tests-and-witnesses).
+
 ## Declarative template-codegen (`--template-spec`)
 
 Beyond the built-in EF Core / routes suite, `dotnet meta gen` runs **declarative
@@ -484,6 +592,7 @@ on their list route, against an allowlist of their own fields. Remaining gaps ar
 | Declarative template-codegen | Yes — `dotnet meta gen --template-spec` (scope perEntity/perPackage/perModel + outputPattern; the cross-port JSON contract shared with Python) |
 | Migrations | Owned by the Node `meta` CLI (ADR-0015) — no C# migrate surface |
 | Drift verify | `dotnet meta verify` (template drift, FR-004) |
+| Requirement gate + requirement tests | Yes (`dotnet meta verify`, on every run; `requirement-tests` emits xUnit and is ejectable) |
 | Runtime metadata | Loader API + render engine; ObjectManager-style runtime tier on the roadmap |
 
 ## Conformance status

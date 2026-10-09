@@ -1,0 +1,63 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - object.value:
+        name: OrderConfirmationPayload
+        children:
+          - field.string: { name: reference }
+
+    - template.prompt:
+        name: orderConfirmation
+        payloadRef: OrderConfirmationPayload
+        textRef: orders/confirmation
+        format: xml
+
+    # Claims an entity.
+    - requirement.functional:
+        name: Recorded
+        level: 4
+        status: live
+        statement: An order is recorded when it is placed.
+        counterexample: A placed order has no row.
+        implementedBy: [Order]
+
+    # Claims only a template.
+    - requirement.functional:
+        name: Confirmed
+        level: 4
+        status: live
+        statement: A customer is told their order was placed.
+        counterexample: A placed order nobody confirmed.
+        implementedBy: [orderConfirmation]
+
+    # Claims a template and then an entity.
+    - requirement.functional:
+        name: Announced
+        level: 4
+        status: live
+        statement: The confirmation names the order it is about.
+        counterexample: A confirmation that names no order.
+        implementedBy: [orderConfirmation, Order]
+
+    # Names only a node that does not exist yet. No Refund is declared.
+    - requirement.functional:
+        name: Refunded
+        level: 4
+        status: planned
+        statement: A refund is recorded against its order.
+        counterexample: A refund with no order.
+        implementedBy: [Refund]
+
+    # A flat policy that claims an entity.
+    - requirement.architectural:
+        name: Identified
+        status: live
+        statement: Every row is addressed by a uuid.
+        counterexample: A row keyed by a name.
+        implementedBy: [Order]

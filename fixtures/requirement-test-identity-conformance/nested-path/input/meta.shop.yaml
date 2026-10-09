@@ -1,0 +1,83 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - identity.primary: { name: pk, fields: [id] }
+
+    - object.entity:
+        name: Return
+        children:
+          - field.uuid: { name: id }
+          - field.string: { name: reference }
+          - identity.primary: { name: pk, fields: [id] }
+
+    # Two branches end in the same three names. Only the path tells their tests apart.
+    - requirement.functional:
+        name: Shop
+        level: 1
+        status: live
+        statement: A customer can buy from the shop.
+        counterexample: A customer who cannot place an order.
+        children:
+          - requirement.functional:
+              name: Sales
+              level: 2
+              status: live
+              statement: Sales are taken through the shop.
+              counterexample: A sale made outside the shop.
+              children:
+                - requirement.functional:
+                    name: Orders
+                    level: 3
+                    status: live
+                    statement: Every placed order is kept.
+                    counterexample: A placed order that is lost.
+                    children:
+                      - requirement.functional:
+                          name: Recorded
+                          level: 4
+                          status: live
+                          statement: An order is recorded when it is placed.
+                          counterexample: A placed order has no row.
+                          implementedBy: [Order]
+                          children:
+                            - requirement.functional:
+                                name: Quotable
+                                level: 5
+                                status: live
+                                statement: An order carries a reference the customer can quote.
+                                counterexample: An order nobody can quote back.
+                                implementedBy: [Order.reference]
+          - requirement.functional:
+              name: Returns
+              level: 2
+              status: live
+              statement: Goods are taken back through the shop.
+              counterexample: A return made outside the shop.
+              children:
+                - requirement.functional:
+                    name: Orders
+                    level: 3
+                    status: live
+                    statement: Every returned order is kept.
+                    counterexample: A returned order that is lost.
+                    children:
+                      - requirement.functional:
+                          name: Recorded
+                          level: 4
+                          status: live
+                          statement: A return is recorded when it is accepted.
+                          counterexample: An accepted return has no row.
+                          implementedBy: [Return]
+                          children:
+                            - requirement.functional:
+                                name: Quotable
+                                level: 5
+                                status: live
+                                statement: A return carries a reference the customer can quote.
+                                counterexample: A return nobody can quote back.
+                                implementedBy: [Return.reference]

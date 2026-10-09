@@ -1,0 +1,29 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.value:
+        name: OrderConfirmationPayload
+        children:
+          - field.string: { name: reference }
+
+    - template.prompt:
+        name: orderConfirmation
+        payloadRef: OrderConfirmationPayload
+        textRef: orders/confirmation
+        format: xml
+
+    - requirement.functional:
+        name: Confirmed
+        level: 4
+        status: live
+        statement: A customer is told their order was placed.
+        counterexample: A placed order nobody confirmed.
+        implementedBy: [orderConfirmation]
+
+    - requirement.functional:
+        name: Acknowledged
+        level: 4
+        status: live
+        statement: The confirmation names the order it is about.
+        counterexample: A confirmation that names no order.
+        implementedBy: ["acme::shop::orderConfirmation"]

@@ -1,0 +1,65 @@
+{
+  "tests": [
+    {
+      "id": "acme::shop::Identified [object.entity]",
+      "package": "acme::shop",
+      "path": "Identified",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_Identified__object_entity",
+      "status": "live",
+      "skip": null,
+      "digest": "1665da033b2ecf14f717530ac11fd4927dad2b573c1a48e9ed261135d951e410"
+    },
+    {
+      "id": "acme::shop::Shop [*]",
+      "package": "acme::shop",
+      "path": "Shop",
+      "unit": "*",
+      "witnessKey": "req_acme_shop_Shop",
+      "status": "live",
+      "skip": null,
+      "digest": "edc8a9b8159eb03a08d020427683253d6d1471032e0cf48115956362fc121653"
+    },
+    {
+      "id": "acme::shop::Shop.Sales [*]",
+      "package": "acme::shop",
+      "path": "Shop.Sales",
+      "unit": "*",
+      "witnessKey": "req_acme_shop_Shop_Sales",
+      "status": "live",
+      "skip": null,
+      "digest": "5af1c1f490460147c7f5680c62348910f3c90065703b0ec696b4250e102f68e0"
+    },
+    {
+      "id": "acme::shop::Shop.Sales.Orders [*]",
+      "package": "acme::shop",
+      "path": "Shop.Sales.Orders",
+      "unit": "*",
+      "witnessKey": "req_acme_shop_Shop_Sales_Orders",
+      "status": "live",
+      "skip": null,
+      "digest": "e84c69fda54cb9f04f3949af069c2c5d56027e008be3198a08c4ee4fbcad8be6"
+    },
+    {
+      "id": "acme::shop::Shop.Sales.Orders.Recorded [object.entity]",
+      "package": "acme::shop",
+      "path": "Shop.Sales.Orders.Recorded",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_shop_Shop_Sales_Orders_Recorded__object_entity",
+      "status": "live",
+      "skip": null,
+      "digest": "2714aa3925a47959aa5e48ae39d80ed203fd4e2caa046a90aab9e04691d9881a"
+    },
+    {
+      "id": "acme::shop::Shop.Sales.Orders.Recorded.Quotable [field.string]",
+      "package": "acme::shop",
+      "path": "Shop.Sales.Orders.Recorded.Quotable",
+      "unit": "field.string",
+      "witnessKey": "req_acme_shop_Shop_Sales_Orders_Recorded_Quotable__field_string",
+      "status": "live",
+      "skip": null,
+      "digest": "b5d7fb7a9657bfda7b30e2629617bf5c56e4337ef7a06abfe55715613ecdda63"
+    }
+  ],
+  "collisions": []
+}

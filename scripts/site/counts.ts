@@ -40,9 +40,10 @@ export interface Counts {
  */
 export const NOT_A_CORPUS: Record<string, string> = {
   "requirement-harness":
-    "The requirement-test scaffold's own fixture, not a shared corpus: it exercises " +
-    "requirementTests(), which is TypeScript-only, so no other port runs it and it " +
-    "gates no cross-port claim.",
+    "This repository's own skipped requirement scaffold, not a shared corpus: " +
+    "scripts/generate-requirement-harness.ts writes it from the project ledger, only " +
+    "the TypeScript slot file is run, and it gates no cross-port claim. The shipped " +
+    "requirement-tests generators are held by requirement-test-identity-conformance.",
 };
 
 const dirsIn = (root: string, rel: string): string[] =>
