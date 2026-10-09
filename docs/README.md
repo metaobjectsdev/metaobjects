@@ -66,7 +66,7 @@ this tree is documentation, not the source of truth.
 | Build on a metadata model another repository publishes (`dependencies`, `meta deps sync`, overlay/extend across the boundary) | [`features/metadata-dependencies.md`](features/metadata-dependencies.md) |
 | Adopt a design MetaObjects already ships — users/groups/roles, an LLM trace envelope — instead of authoring it (`libraries`, `meta eject <library>`) | [`features/libraries.md`](features/libraries.md) |
 | Record what the system is supposed to do, and stop agents reviving retired features | [`features/requirements.md`](features/requirements.md) |
-| Declare what a dashboard groups by and counts (`dimension`, `measure`, `segment`, `object.report`; load-time checked; a view-backed report becomes a SQL view served by a generated read-only list route; no client hook yet) | [`features/reporting.md`](features/reporting.md) |
+| Declare what a dashboard groups by and counts (`dimension`, `measure`, `segment`, `object.report`; load-time checked; a view-backed report becomes a SQL view served by a generated read-only list route and a TypeScript list hook) | [`features/reporting.md`](features/reporting.md) |
 | Wire prompt construction (FR-004) | [`features/templates-and-payloads.md`](features/templates-and-payloads.md) |
 | Share a metadata shape across multiple instances (abstracts, `extends:`) | [`features/abstracts-and-inheritance.md`](features/abstracts-and-inheritance.md) |
 | Add a custom metamodel subtype or attribute to a downstream project | [`features/extending-with-providers.md`](features/extending-with-providers.md) + [`recipes/extending-metaobjects-with-providers.md`](recipes/extending-metaobjects-with-providers.md) |
