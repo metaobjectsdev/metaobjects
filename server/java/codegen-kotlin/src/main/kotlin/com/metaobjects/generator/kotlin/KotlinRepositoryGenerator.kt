@@ -138,7 +138,7 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         val writeObj = KotlinNaming.tableObjectName(shortName)
         val readObj = if (writeThrough) KotlinNaming.viewObjectName(shortName) else writeObj
         val repoName = KotlinNaming.repositoryBaseName(shortName)
-        val pkFieldName = primary?.fields?.firstOrNull() ?: DEFAULT_PK_FIELD
+        val pkFieldName = primary?.let { KotlinGenUtil.keyFields(entity, it).firstOrNull() } ?: DEFAULT_PK_FIELD
         val pkParamType = primaryKeyParamType(entity, pkFieldName)
 
         // Scalar columns only — ObjectField / MapField carry a jsonb/flattened shape the mapper

@@ -27,7 +27,7 @@ import kotlin.io.path.readText
 
 /**
  * F22 — host the GENERATED Kotlin Spring controllers (`InvoiceSummaryController`,
- * `InvoiceLedgerController`, `InvoiceStubController`) for the view-only projection corpus over
+ * `InvoiceLedgerController`, `InvoiceRegisterController`, `InvoiceStubController`) for the view-only projection corpus over
  * real HTTP (one embedded Tomcat) and drive the `projection/` scenarios against them. Mirrors [com.metaobjects.integration.kotlin.api.writethrough.generated.GeneratedWriteThroughControllerHarness].
  *
  * Mechanism:
@@ -179,7 +179,7 @@ class GeneratedProjectionControllerHarness(
         const val INVOICE_TABLE_FQCN = "$ENTITY_PKG.InvoiceTable"
 
         /** The corpus's view-only projections, each mounted and served. */
-        val PROJECTIONS = listOf("InvoiceSummary", "InvoiceLedger", "InvoiceStub")
+        val PROJECTIONS = listOf("InvoiceSummary", "InvoiceLedger", "InvoiceRegister", "InvoiceStub")
 
         /** The seed row keys, in `invoices` column order. */
         val SEED_FIELDS = listOf("id", "reference", "status", "amountCents", "discount", "weight")
@@ -193,6 +193,8 @@ class GeneratedProjectionControllerHarness(
             // Keyed on `number`; the view has NO `id` column.
             "InvoiceLedger" to ViewSpec("v_invoice_ledger", listOf(
                 "number" to "id", "reference" to "reference", "discount" to "discount", "weight" to "weight")),
+            // Keyed on `regNo`, the identity omitting `@fields` (derived); the view has NO `id` column.
+            "InvoiceRegister" to ViewSpec("v_invoice_register", listOf("regNo" to "id", "reference" to "reference")),
             // No declared identity; the view carries an `id` column all the same.
             "InvoiceStub" to ViewSpec("v_invoice_stub", listOf("id" to "id", "reference" to "reference")),
         )

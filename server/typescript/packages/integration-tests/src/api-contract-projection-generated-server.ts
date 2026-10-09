@@ -100,6 +100,9 @@ export const db = drizzle(pool);
     -- InvoiceLedger: its key is the field \`number\`, and the view has NO id column.
     CREATE OR REPLACE VIEW "v_invoice_ledger" AS
       SELECT "id" AS "number", "reference", "discount", "weight" FROM "invoices";
+    -- InvoiceRegister: key on \`regNo\`, identity omits @fields; no id column either.
+    CREATE OR REPLACE VIEW "v_invoice_register" AS
+      SELECT "id" AS "reg_no", "reference" FROM "invoices";
     -- InvoiceStub: no declared identity; the view carries an id column all the same.
     CREATE OR REPLACE VIEW "v_invoice_stub" AS
       SELECT "id", "reference" FROM "invoices";
@@ -112,6 +115,9 @@ export const db = drizzle(pool);
   const ledgerRoutes = (await import(
     pathToFileURL(join(tmp, "InvoiceLedger.routes.ts")).href
   )) as { invoiceLedgerRoutes: (f: FastifyInstance) => Promise<void> };
+  const registerRoutes = (await import(
+    pathToFileURL(join(tmp, "InvoiceRegister.routes.ts")).href
+  )) as { invoiceRegisterRoutes: (f: FastifyInstance) => Promise<void> };
   const stubRoutes = (await import(
     pathToFileURL(join(tmp, "InvoiceStub.routes.ts")).href
   )) as { invoiceStubRoutes: (f: FastifyInstance) => Promise<void> };
@@ -120,6 +126,7 @@ export const db = drizzle(pool);
   const fastify = Fastify();
   await fastify.register(routes.invoiceSummaryRoutes);
   await fastify.register(ledgerRoutes.invoiceLedgerRoutes);
+  await fastify.register(registerRoutes.invoiceRegisterRoutes);
   await fastify.register(stubRoutes.invoiceStubRoutes);
   await fastify.ready();
   const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });

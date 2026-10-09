@@ -38,6 +38,15 @@
         ]
       }},
       { "object.projection": {
+        "name": "InvoiceRegister",
+        "children": [
+          { "source.rdb":       { "@kind": "view", "@view": "v_invoice_register" } },
+          { "field.long":       { "name": "regNo",     "extends": "Invoice.id",        "@filterable": true, "@sortable": true } },
+          { "field.string":     { "name": "reference", "extends": "Invoice.reference", "@filterable": true, "@sortable": true } },
+          { "identity.primary": { "name": "pk", "extends": "Invoice.pk" } }
+        ]
+      }},
+      { "object.projection": {
         "name": "InvoiceStub",
         "children": [
           { "source.rdb":       { "@kind": "view", "@view": "v_invoice_stub" } },

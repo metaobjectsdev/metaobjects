@@ -291,10 +291,10 @@ scenarios the corpus carries six sub-corpora — `tph/` (10, single-table
 inheritance), `m2m/` (9 — 3 plain, 5 gating TPH x M:N together, the combination
 each corpus alone could not reach, and 1 pinning the collection-URL spelling),
 `jsonb/` (2, typed value-object columns),
-`write-through/` (2, table-write + view-read entities), `projection/` (11, a
+`write-through/` (2, table-write + view-read entities), `projection/` (12, a
 read-only view answers reads and refuses writes with 405; a projection with no declared
 identity has no item route; a projection keyed on a field not named `id` is addressed by
-it; decimal and float fields filter) and `report/` (13,
+it, whether its identity names `@fields` or derives them; decimal and float fields filter) and `report/` (13,
 FR-044: a view-backed `object.report` is listed, filtered, sorted and paged on
 its derived fields, answers `POST` with 405 and mounts no `/{id}`). All 5 ports — TS, Java,
 Kotlin, C#, Python — run it in BOTH lanes: a hand-rolled reference server and

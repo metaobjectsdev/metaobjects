@@ -14,6 +14,7 @@ import com.metaobjects.index.Index
 import com.metaobjects.index.LookupIndex
 import com.metaobjects.generator.GeneratorException
 import com.metaobjects.loader.MetaDataLoader
+import com.metaobjects.loader.ValidationPhase
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.origin.AggregateOrigin
 import com.metaobjects.origin.MetaOrigin
@@ -612,6 +613,21 @@ public object KotlinGenUtil {
      * allowed); otherwise nullable. MVP heuristic — refined when richer required-detection
      * lands (see fr-003 spec).
      */
+    /**
+     * The field names [identity] addresses a row of [entity] by. A projection's identity
+     * passes the base entity's key through, and an `@fields` it omits is DERIVED, so reading
+     * `identity.fields` gives the BASE entity's field names: a key renamed on the projection
+     * (`regNo` extending `Invoice.id`) then names a column the projection's table does not
+     * have. The loader's own derivation ([ValidationPhase.computePassthroughKey]) finds the
+     * projection's field; an explicit `@fields` must equal it, so that form is unchanged.
+     */
+    fun keyFields(entity: MetaObject, identity: MetaIdentity): List<String> {
+        if (entity.subType == MetaObject.SUBTYPE_PROJECTION) {
+            ValidationPhase.computePassthroughKey(entity, identity)?.let { return it }
+        }
+        return identity.fields
+    }
+
     /**
      * True when [field] participates in its owner's ASSIGNED primary key — an
      * `identity.primary` carrying no `@generation` (or an explicit `assigned`) — and has

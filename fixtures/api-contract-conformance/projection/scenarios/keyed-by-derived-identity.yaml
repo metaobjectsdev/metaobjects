@@ -1,0 +1,57 @@
+name: projection-keyed-by-derived-identity
+description: >
+  InvoiceRegister passes the Invoice key through on a field named `regNo` (its view has
+  NO `id` column) and its identity omits `@fields` — the derived form the loader
+  recommends: the key is computed from the pass-through field, never restated. The item
+  route addresses that computed field, exactly as it does for InvoiceLedger's explicit
+  `@fields: number`. A known key answers its row, an unknown one answers the 404 envelope,
+  and the item write verbs are refused with the 405 envelope.
+requests:
+  - id: list
+    method: GET
+    path: "/api/invoice_registers?sort=regNo:asc"
+    expect:
+      status: 200
+      body:
+        equals:
+          - { regNo: 1, reference: "INV-1001" }
+          - { regNo: 2, reference: "INV-1002" }
+          - { regNo: 3, reference: "INV-1003" }
+          - { regNo: 4, reference: "INV-1004" }
+  - id: get-known
+    method: GET
+    path: /api/invoice_registers/2
+    expect:
+      status: 200
+      body:
+        row: { regNo: 2 }
+  - id: get-unknown
+    method: GET
+    path: /api/invoice_registers/999
+    expect:
+      status: 404
+      body:
+        error: "not_found"
+  - id: patch-item
+    method: PATCH
+    path: /api/invoice_registers/2
+    body: { reference: "X" }
+    expect:
+      status: 405
+      body:
+        error: "method_not_allowed"
+  - id: put-item
+    method: PUT
+    path: /api/invoice_registers/2
+    body: { regNo: 2, reference: "X" }
+    expect:
+      status: 405
+      body:
+        error: "method_not_allowed"
+  - id: delete-item
+    method: DELETE
+    path: /api/invoice_registers/2
+    expect:
+      status: 405
+      body:
+        error: "method_not_allowed"

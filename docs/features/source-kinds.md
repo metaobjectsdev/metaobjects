@@ -124,6 +124,17 @@ owning entity's own columns, declare it as an `object.projection`, not an `objec
 present, MUST extend an entity identity; the example below omits it (a keyless read
 model).
 
+> **Projection identities and the `@fields` attribute.** When a projection declares an
+> identity by extending an entity's identity, the `@fields` attribute is optional. When
+> omitted, the loader derives the identity key from the projection's fields that pass
+> through the base identity's key field(s). When a projection passes the key through on a
+> renamed field, omitting `@fields` (the recommended form) lets the loader automatically
+> compute the key — if you instead declare `@fields` explicitly and name a different field,
+> the declaration is honored but diverges from what the key actually is. Use the derived
+> form (omit `@fields`) whenever the projection's key field is derived from or passed
+> through from the base identity, and use explicit `@fields` only when the key is redefined
+> to an unrelated field.
+
 **The view's SQL is generated — never hand-write it.** The `CREATE VIEW` body is
 derived from the projection's `origin.*` children (passthrough columns, aggregates,
 collections) and emitted by the Node `meta migrate` (schema migrations are Node-owned

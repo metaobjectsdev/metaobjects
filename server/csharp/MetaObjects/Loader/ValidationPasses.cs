@@ -1507,7 +1507,7 @@ public static partial class ValidationPasses
     private static List<string>? IdentityEffectiveFields(MetaData identity)
         => NormalizeIdentityFields(identity.Attr(IDENTITY_ATTR_FIELDS));
 
-    private static (MetaData Entity, List<string> ComputedFields, List<string> Missing)?
+    internal static (MetaData Entity, List<string> ComputedFields, List<string> Missing)?
         ResolveIdentityPassthrough(MetaData identity)
     {
         var extended = identity.SuperData;

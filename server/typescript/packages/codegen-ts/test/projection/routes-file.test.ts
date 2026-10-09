@@ -539,6 +539,43 @@ describe("renderRoutesFile — a served report (FR-044 Plan 3)", () => {
     expect(queries).toContain("eq(productCardView.code, code)");
   });
 
+  test("a projection whose key is RENAMED and whose identity omits @fields addresses the renamed field", async () => {
+    const root = await loadMetadata([
+      {
+        "object.entity": {
+          name: "Product",
+          children: [
+            { "source.rdb": { "@table": "products" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "title" } },
+            { "identity.primary": { name: "pk", "@fields": "id" } },
+          ],
+        },
+      },
+      {
+        "object.projection": {
+          name: "ProductCard",
+          children: [
+            { "source.rdb": { "@kind": "view", "@table": "v_product_card" } },
+            { "field.long": { name: "number", extends: "Product.id" } },
+            { "field.string": { name: "title", extends: "Product.title" } },
+            // No @fields: the key is derived from the pass-through field, never restated.
+            { "identity.primary": { name: "pk", extends: "Product.pk" } },
+          ],
+        },
+      },
+    ]);
+    const projection = declared(root, "ProductCard");
+    expect(hasItemRoute(projection)).toBe(true);
+    expect(itemRouteField(projection)).toBe("number");
+    const ctx = makeRenderContext({
+      dialect: "sqlite", loadedRoot: root, outDir: "/x", dbImport: "~/db", apiPrefix: "",
+      pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+    });
+    expect(renderRoutesFile(projection, ctx)).toContain('    idColumn: "number",\n  });');
+    expect(renderQueriesFile(projection, ctx)).toContain("eq(productCardView.number, number)");
+  });
+
   test("a keyed-on-`id` projection passes no idColumn and ends its options at `dialect`", async () => {
     const { projection, ctx } = await loadKeyedProjectionFixture();
     expect(itemRouteField(projection)).toBe("id");
