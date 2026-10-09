@@ -103,6 +103,6 @@ describe("read-only mounts send a named decimal as a string", () => {
 
   test("without decimalColumns the mount is unchanged: the REAL reaches the wire as a number", async () => {
     const res = await plainFastify.inject({ method: "GET", url: "/shares" });
-    expect(byKind(JSON.parse(res.body))).toEqual([{ kind: "a", n: 2, share: 0.5 }, { kind: "b", n: 1, share: 0 }]);
+    expect(byKind(JSON.parse(res.body) as Array<{ kind: string; n: number; share: number }>)).toEqual([{ kind: "a", n: 2, share: 0.5 }, { kind: "b", n: 1, share: 0 }]);
   });
 });
