@@ -75,7 +75,7 @@ describe("read-only mounts send a named decimal as a string", () => {
   });
 
   const expected = [{ kind: "a", n: 2, share: "0.5" }, { kind: "b", n: 1, share: "0" }];
-  const byKind = (rows: Array<{ kind: string }>) => [...rows].sort((x, y) => x.kind.localeCompare(y.kind));
+  const byKind = <T extends { kind: string }>(rows: T[]): T[] => [...rows].sort((x, y) => x.kind.localeCompare(y.kind));
 
   test("fastify", async () => {
     const res = await fastify.inject({ method: "GET", url: "/shares" });
