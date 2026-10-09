@@ -73,7 +73,15 @@ function castType(cast: "bigint" | "double", d: ReportDialect): string | undefin
   }
 }
 
-/** One aggregate (Table C): the bare aggregate, the condition by dialect, the cast last. */
+/** Table D: `COALESCE(E, n)` for a measure with a `@default`; `E` unchanged without one. */
+function withDefault(sql: string, dv: ReportAggregate["defaultValue"], d: ReportDialect): string {
+  if (dv === undefined) return sql;
+  // SQLite: a REAL column keeps one storage class in every row, so its default is a REAL literal.
+  return `COALESCE(${sql}, ${d === "sqlite" && dv.real ? `${dv.value}.0` : String(dv.value)})`;
+}
+
+/** One aggregate (Table C): the bare aggregate, the condition by dialect, the cast, then the
+ *  Table D default around all of it. */
 function aggregate(a: ReportAggregate, d: ReportDialect): string {
   const refs = a.refs.map((r) => ref(r, d));
   const c = a.filter === undefined ? undefined : cond(a.filter, d);
@@ -106,7 +114,7 @@ function aggregate(a: ReportAggregate, d: ReportDialect): string {
     else sql = `${fn}(${distinct}CASE WHEN ${c} THEN ${x} END)`;
   }
   const type = a.cast === undefined ? undefined : castType(a.cast, d);
-  return type === undefined ? sql : `CAST(${sql} AS ${type})`;
+  return withDefault(type === undefined ? sql : `CAST(${sql} AS ${type})`, a.defaultValue, d);
 }
 
 interface RenderedColumn {
@@ -126,34 +134,79 @@ function column(c: ReportColumn, d: ReportDialect): RenderedColumn {
     case "aggregate":
       return { expr: aggregate(c.aggregate, d), alias, grouped: false };
     case "ratio": {
-      // Each operand is its FULL Table C expression (condition and cast included).
+      // Each operand is its FULL Table C expression (condition and cast included), and its own
+      // Table D default; the ratio's default wraps the whole quotient, which is always real.
       const num = aggregate(c.numerator, d);
       const den = aggregate(c.denominator, d);
       const top = d === "postgres" ? "NUMERIC" : d === "sqlite" ? "REAL" : undefined;
-      return {
-        expr: `${top === undefined ? num : `CAST(${num} AS ${top})`} / NULLIF(${den}, 0)`,
-        alias,
-        grouped: false,
-      };
+      const quotient = `${top === undefined ? num : `CAST(${num} AS ${top})`} / NULLIF(${den}, 0)`;
+      const dv = c.defaultValue === undefined ? undefined : { value: c.defaultValue, real: true };
+      return { expr: withDefault(quotient, dv, d), alias, grouped: false };
     }
   }
 }
 
-function renderJoin(node: JoinNode, parentAlias: string, options: ReportEmitOptions): string {
-  const table = options.joinTables[node.targetEntity];
+/** The table of a joined entity, refused by name when none is registered. */
+function tableOf(entity: string, options: ReportEmitOptions): string {
+  const table = options.joinTables[entity];
   if (!table) {
-    throw new Error(`report-ddl-emit: no table name registered for joined entity "${node.targetEntity}".`);
+    throw new Error(`report-ddl-emit: no table name registered for joined entity "${entity}".`);
   }
-  const d = options.dialect;
+  return table;
+}
+
+/** The `ON` predicate of the hop `node` from `parentAlias`. An equality, so the same text
+ *  serves the hop walked backwards (Table D's spine chain). */
+function onPredicate(node: JoinNode, parentAlias: string, d: ReportDialect): string {
   const fk = q(node.fkColumn, d);
   const pk = q(node.pkColumn, d);
   // referenceHolder "source": FK on the parent (belongs-to); "target": FK on the child (has-many).
-  const on = node.referenceHolder === "source"
+  return node.referenceHolder === "source"
     ? `${node.alias}.${pk} = ${parentAlias}.${fk}`
     : `${node.alias}.${fk} = ${parentAlias}.${pk}`;
+}
+
+function renderJoin(node: JoinNode, parentAlias: string, options: ReportEmitOptions): string {
+  const table = tableOf(node.targetEntity, options);
+  const d = options.dialect;
   const kw = node.joinType === "inner" ? "INNER JOIN" : "LEFT OUTER JOIN";
-  let sql = `  ${kw} ${q(table, d)} ${node.alias} ON ${on}`;
+  let sql = `  ${kw} ${q(table, d)} ${node.alias} ON ${onPredicate(node, parentAlias, d)}`;
   for (const child of node.children) sql += "\n" + renderJoin(child, node.alias, options);
+  return sql;
+}
+
+/**
+ * Table D, a report with `@spine`: FROM the spine entity S, then the spine's hops walked from S
+ * back to @from, one LEFT OUTER JOIN each with the ON its forward join renders; the last one
+ * introduces @from's table under the base alias. The report scope is ANDed onto that join's ON:
+ * it filters facts, never spine rows, so there is no WHERE. Onward joins hang off S's alias.
+ */
+function spineFrom(spec: ReportViewSpec, depth: number, options: ReportEmitOptions): string {
+  const d = options.dialect;
+  // The chain: the single root, then its single child, down to S. Rule R9 routes every dimension
+  // through the spine, so nothing branches off above S; a tree that does would hold a join this
+  // FROM has no place for, so it is refused rather than half-rendered.
+  const chain: JoinNode[] = [];
+  let level = spec.joinTree.joins;
+  while (chain.length < depth && level.length === 1) {
+    chain.push(level[0]!);
+    level = level[0]!.children;
+  }
+  if (depth < 1 || chain.length !== depth) {
+    throw new Error(
+      `report-ddl-emit: view '${spec.viewName}' declares a @spine of ${depth} hop(s), but its join tree is not ` +
+        `one chain of that many hops from @from, so the spine cannot be placed.`,
+    );
+  }
+  const spine = chain[chain.length - 1]!;
+  let sql = `  FROM ${q(tableOf(spine.targetEntity, options), d)} ${spine.alias}`;
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const parentAlias = i === 0 ? spec.joinTree.baseAlias : chain[i - 1]!.alias;
+    const parentTable = i === 0 ? options.baseTableName : tableOf(chain[i - 1]!.targetEntity, options);
+    const scope = i === 0 && spec.where !== undefined ? ` AND ${cond(spec.where, d)}` : "";
+    sql += `\n  LEFT OUTER JOIN ${q(parentTable, d)} ${parentAlias} ON ${onPredicate(chain[i]!, parentAlias, d)}${scope}`;
+  }
+  for (const child of spine.children) sql += "\n" + renderJoin(child, spine.alias, options);
   return sql;
 }
 
@@ -164,13 +217,18 @@ export function emitReportViewDdl(spec: ReportViewSpec, options: ReportEmitOptio
   const select = cols.map((c) => `    ${c.expr} AS ${c.alias}`).join(",\n");
   const groupBy = cols.filter((c) => c.grouped).map((c) => c.expr);
 
-  const base = spec.joinTree.baseAlias;
-  const joins = spec.joinTree.joins.map((j) => renderJoin(j, base, options)).join("\n");
-  const body =
-    `  SELECT\n${select}\n  FROM ${q(options.baseTableName, d)} ${base}` +
-    (joins === "" ? "" : `\n${joins}`) +
-    (spec.where === undefined ? "" : `\n  WHERE ${cond(spec.where, d)}`) +
-    (groupBy.length === 0 ? "" : `\n  GROUP BY ${groupBy.join(", ")}`);
+  let from: string;
+  if (spec.spineDepth === undefined) {
+    const base = spec.joinTree.baseAlias;
+    const joins = spec.joinTree.joins.map((j) => renderJoin(j, base, options)).join("\n");
+    from =
+      `  FROM ${q(options.baseTableName, d)} ${base}` +
+      (joins === "" ? "" : `\n${joins}`) +
+      (spec.where === undefined ? "" : `\n  WHERE ${cond(spec.where, d)}`);
+  } else {
+    from = spineFrom(spec, spec.spineDepth, options);
+  }
+  const body = `  SELECT\n${select}\n${from}` + (groupBy.length === 0 ? "" : `\n  GROUP BY ${groupBy.join(", ")}`);
 
   if (options.bodyOnly) return body;
   return `CREATE VIEW ${q(spec.viewName, d)} AS\n${body};`;

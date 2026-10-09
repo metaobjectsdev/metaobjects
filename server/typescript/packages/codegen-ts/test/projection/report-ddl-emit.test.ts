@@ -1,7 +1,8 @@
 // FR-044 Plan 2 Task 5 — emitReportViewDdl. Specs are hand-built (not extracted): this
 // file pins the TEXT of contract Tables C, E, F and the golden bodies of Table G.
 import { describe, test, expect } from "bun:test";
-import type { TimeGrain } from "@metaobjectsdev/metadata";
+import { InMemoryStringSource, MetaDataLoader, type TimeGrain } from "@metaobjectsdev/metadata";
+import { buildReportViews } from "../../src/projection/build-projection-views.js";
 import { emitReportViewDdl, type ReportEmitOptions } from "../../src/projection/report-ddl-emit.js";
 import { emitViewDdl } from "../../src/projection/view-ddl-emit.js";
 import type {
@@ -481,5 +482,403 @@ describe("emitReportViewDdl — rules", () => {
     expect(emitViewDdl(spec, { dialect: "postgres", baseTableName: "programs", joinTables: {} })).toBe(
       "CREATE VIEW v_program_summary AS\n  SELECT\n    p.id AS id,\n    p.title AS title\n  FROM programs p;",
     );
+  });
+});
+
+// ── FR-044 Table D: a measure @default and a report @spine ───────────────────────────
+
+const sumOf = (ref: string, extra: Partial<ReportAggregate> = {}): ReportAggregate =>
+  ({ agg: "sum", distinct: false, refs: [ref], ...extra });
+
+describe("emitReportViewDdl — Table D, a measure @default", () => {
+  test("COALESCE wraps the cast, per dialect", () => {
+    const spec = baseSpec("w", "Week", [
+      col("t", sumOf("w.m", { cast: "bigint", defaultValue: { value: 0, real: false } })),
+    ]);
+    expect(emitReportViewDdl(spec, pg("weeks"))).toContain(`    COALESCE(CAST(SUM(w."m") AS BIGINT), 0) AS "t"`);
+    expect(emitReportViewDdl(spec, sqlite("weeks"))).toContain(`    COALESCE(SUM(w."m"), 0) AS "t"`);
+    expect(emitReportViewDdl(spec, mysql("weeks"))).toContain("    COALESCE(CAST(SUM(w.`m`) AS SIGNED), 0) AS `t`");
+  });
+
+  test("COALESCE wraps the condition too: the full Table C expression is E", () => {
+    const spec = baseSpec("w", "Week", [
+      col("t", sumOf("w.m", { cast: "bigint", filter: longWeek, defaultValue: { value: 0, real: false } })),
+    ]);
+    expect(emitReportViewDdl(spec, pg("weeks")))
+      .toContain(`COALESCE(CAST(SUM(w."m") FILTER (WHERE w."durationMinutes" >= 60) AS BIGINT), 0) AS "t"`);
+    expect(emitReportViewDdl(spec, sqlite("weeks")))
+      .toContain(`COALESCE(SUM(CASE WHEN w."durationMinutes" >= 60 THEN w."m" END), 0) AS "t"`);
+  });
+
+  test("a negative default: -1, and -1.0 on SQLite only for a real measure", () => {
+    const real = baseSpec("w", "Week", [
+      col("a", { agg: "avg", distinct: false, refs: ["w.m"], defaultValue: { value: -1, real: true } }),
+    ]);
+    expect(emitReportViewDdl(real, pg("weeks"))).toContain(`    COALESCE(AVG(w."m"), -1) AS "a"`);
+    expect(emitReportViewDdl(real, sqlite("weeks"))).toContain(`    COALESCE(AVG(w."m"), -1.0) AS "a"`);
+    expect(emitReportViewDdl(real, mysql("weeks"))).toContain("    COALESCE(AVG(w.`m`), -1) AS `a`");
+    const integral = baseSpec("w", "Week", [
+      col("t", sumOf("w.m", { cast: "bigint", defaultValue: { value: -1, real: false } })),
+    ]);
+    expect(emitReportViewDdl(integral, sqlite("weeks"))).toContain(`    COALESCE(SUM(w."m"), -1) AS "t"`);
+  });
+
+  test("a defaulted operand inside a ratio keeps its COALESCE, under the ratio's cast", () => {
+    const num = sumOf("w.m", { cast: "bigint", defaultValue: { value: 0, real: false } });
+    const ratio: ReportColumn = { kind: "ratio", fieldName: "r", dbColAlias: "r", numerator: num, denominator: count("w.id") };
+    const spec = baseSpec("w", "Week", [ratio]);
+    expect(emitReportViewDdl(spec, pg("weeks"))).toContain(
+      `    CAST(COALESCE(CAST(SUM(w."m") AS BIGINT), 0) AS NUMERIC) / NULLIF(COUNT(w."id"), 0) AS "r"`);
+    expect(emitReportViewDdl(spec, sqlite("weeks"))).toContain(
+      `    CAST(COALESCE(SUM(w."m"), 0) AS REAL) / NULLIF(COUNT(w."id"), 0) AS "r"`);
+    expect(emitReportViewDdl(spec, mysql("weeks"))).toContain(
+      "    COALESCE(CAST(SUM(w.`m`) AS SIGNED), 0) / NULLIF(COUNT(w.`id`), 0) AS `r`");
+    // The ratio's own default wraps the whole quotient, a REAL literal on SQLite.
+    const both = baseSpec("w", "Week", [{ ...ratio, defaultValue: 0 }]);
+    expect(emitReportViewDdl(both, pg("weeks"))).toContain(
+      `    COALESCE(CAST(COALESCE(CAST(SUM(w."m") AS BIGINT), 0) AS NUMERIC) / NULLIF(COUNT(w."id"), 0), 0) AS "r"`);
+    expect(emitReportViewDdl(both, sqlite("weeks"))).toContain(
+      `    COALESCE(CAST(COALESCE(SUM(w."m"), 0) AS REAL) / NULLIF(COUNT(w."id"), 0), 0.0) AS "r"`);
+    expect(emitReportViewDdl(both, mysql("weeks"))).toContain(
+      "    COALESCE(COALESCE(CAST(SUM(w.`m`) AS SIGNED), 0) / NULLIF(COUNT(w.`id`), 0), 0) AS `r`");
+  });
+});
+
+/** Week -> Program, the spine of the hand-built specs below. */
+const spineProgram = (children: readonly JoinNode[] = []): JoinNode => ({
+  relationship: "fkProgram", targetEntity: "Program", alias: "p", cardinality: "one",
+  fkColumn: "programId", pkColumn: "id", referenceHolder: "source", joinType: "left", children,
+});
+
+function spineSpec(where: ViewFilterClause | undefined, joins: readonly JoinNode[] = [spineProgram()], spineDepth = 1): ReportViewSpec {
+  return {
+    ...baseSpec("w", "Week", [
+      { kind: "dimension", fieldName: "programTitle", dbColAlias: "programTitle", ref: "p.title" },
+      col("weeks", count("w.id")),
+    ], where === undefined ? { joins } : { joins, where }),
+    spineDepth,
+  };
+}
+
+describe("emitReportViewDdl — Table D, a report @spine", () => {
+  const tables = { Program: "programs", Week: "weeks" };
+
+  test("FROM the spine entity, the hop reversed, the fact table LEFT OUTER, no WHERE", () => {
+    expect(emitReportViewDdl(spineSpec(undefined), pg("weeks", tables))).toBe(lines(
+      `  SELECT`,
+      `    p."title" AS "programTitle",`,
+      `    COUNT(w."id") AS "weeks"`,
+      `  FROM "programs" p`,
+      `  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId"`,
+      `  GROUP BY p."title"`,
+    ));
+  });
+
+  test("the report scope is in the join condition", () => {
+    const segmentAndFilter: ViewFilterClause = {
+      kind: "and", clauses: [cmp("w.durationMinutes", "gte", 60), cmp("w.label", "eq", "x")],
+    };
+    const sql = emitReportViewDdl(spineSpec(segmentAndFilter), pg("weeks", tables));
+    expect(sql).not.toContain("WHERE");
+    expect(sql).toContain(`  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId" AND (w."durationMinutes" >= 60 AND w."label" = 'x')\n`);
+    // An `or` scope is parenthesised inside the ON, so it cannot capture the join predicate.
+    const or: ViewFilterClause = { kind: "or", clauses: [cmp("w.label", "eq", "a"), cmp("w.label", "eq", "b")] };
+    const mySql = emitReportViewDdl(spineSpec(or), mysql("weeks", tables));
+    expect(mySql).not.toContain("WHERE");
+    expect(mySql).toContain("  LEFT OUTER JOIN `weeks` w ON p.`id` = w.`programId` AND (w.`label` = 'a' OR w.`label` = 'b')\n");
+  });
+
+  test("an onward join hangs off the spine alias", () => {
+    const owner: JoinNode = {
+      relationship: "ownerRef", targetEntity: "Owner", alias: "o", cardinality: "one",
+      fkColumn: "ownerId", pkColumn: "id", referenceHolder: "source", joinType: "left", children: [],
+    };
+    const sql = emitReportViewDdl(spineSpec(undefined, [spineProgram([owner])]), sqlite("weeks", { ...tables, Owner: "owners" }));
+    expect(sql).toContain(lines(
+      `  FROM "programs" p`,
+      `  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId"`,
+      `  LEFT OUTER JOIN "owners" o ON o."id" = p."ownerId"`,
+    ));
+  });
+
+  test("a spec whose join tree is not one chain of spineDepth hops is refused, not half-rendered", () => {
+    expect(() => emitReportViewDdl(spineSpec(undefined, [spineProgram()], 2), pg("weeks", tables)))
+      .toThrow(/v_test.*@spine/);
+    const other: JoinNode = { ...spineProgram(), relationship: "other", alias: "p0" };
+    expect(() => emitReportViewDdl(spineSpec(undefined, [spineProgram(), other]), pg("weeks", tables)))
+      .toThrow(/v_test.*@spine/);
+    expect(() => emitReportViewDdl(spineSpec(undefined, [spineProgram()], 0), pg("weeks", tables)))
+      .toThrow(/v_test.*@spine/);
+  });
+
+  test("a spine entity with no registered table is refused", () => {
+    expect(() => emitReportViewDdl(spineSpec(undefined), pg("weeks", { Week: "weeks" }))).toThrow(/Program/);
+  });
+});
+
+// ── Table D goldens, end to end: an inline model through buildReportViews ────────────
+
+type Json = Record<string, unknown>;
+
+const tableSrc = (t: string): Json => ({ "source.rdb": { "@table": t } });
+const viewSrc = (v: string): Json => ({ "source.rdb": { "@kind": "view", "@view": v } });
+const field = (subType: string, name: string, extra: Json = {}): Json => ({ [`field.${subType}`]: { name, ...extra } });
+const idPk: Json = { "identity.primary": { name: "id", "@fields": "id" } };
+const ent = (name: string, children: Json[]): Json => ({ "object.entity": { name, children } });
+const rpt = (name: string, attrs: Json, view: string): Json =>
+  ({ "object.report": { name, ...attrs, children: [viewSrc(view)] } });
+
+/** The canonical fitness model's Program and Week, with Table D's three reports (Task 6). */
+const fitness = (extra: Json[] = [], programExtra: Json[] = [], weekExtra: Json[] = []): Json[] => [
+  ent("Program", [
+    tableSrc("programs"),
+    field("long", "id"),
+    field("string", "title", { "@required": true, "@maxLength": 200 }),
+    idPk,
+    ...programExtra,
+  ]),
+  ent("Week", [
+    tableSrc("weeks"),
+    field("long", "id"),
+    field("long", "programId", { "@required": true }),
+    field("string", "label", { "@maxLength": 80 }),
+    field("int", "durationMinutes", { "@required": true }),
+    idPk,
+    { "identity.reference": { name: "fkProgram", "@fields": "programId", "@references": "Program" } },
+    { "segment.filter": { name: "long", "@filter": { durationMinutes: { gte: 60 } } } },
+    { "dimension.attribute": { name: "programTitle", "@of": "Program.title", "@via": "Week.fkProgram" } },
+    { "measure.aggregate": { name: "weeks", "@agg": "count", "@of": "Week.id" } },
+    { "measure.aggregate": { name: "longWeeks", "@agg": "count", "@of": "Week.id", "@segment": "long" } },
+    { "measure.aggregate": { name: "totalMinutes", "@agg": "sum", "@of": "Week.durationMinutes" } },
+    { "measure.ratio": { name: "longShare", "@numerator": "longWeeks", "@denominator": "weeks" } },
+    { "dimension.attribute": { name: "programKey", "@of": "Program.id", "@via": "Week.fkProgram" } },
+    { "measure.aggregate": { name: "totalMinutesOrZero", "@agg": "sum", "@of": "Week.durationMinutes", "@default": 0 } },
+    { "measure.ratio": { name: "longShareOrZero", "@numerator": "longWeeks", "@denominator": "weeks", "@default": 0 } },
+    ...weekExtra,
+  ]),
+  rpt("ProgramRoster", {
+    "@from": "Week", "@spine": "Week.fkProgram", "@dimensions": ["programKey", "programTitle"],
+    "@measures": ["weeks", "totalMinutes", "totalMinutesOrZero", "longShare", "longShareOrZero"],
+  }, "v_program_roster"),
+  rpt("ProgramLongWeeks", {
+    "@from": "Week", "@spine": "Week.fkProgram", "@dimensions": ["programKey"],
+    "@measures": ["weeks", "totalMinutesOrZero"], "@segment": "long",
+  }, "v_program_long_weeks"),
+  rpt("FitnessTotalsFilled", {
+    "@from": "Week", "@measures": ["weeks", "totalMinutesOrZero", "longShareOrZero"],
+  }, "v_fitness_totals_filled"),
+  ...extra,
+];
+
+async function viewsOf(children: Json[], dialect: "postgres" | "sqlite" | "d1" | "mysql"): Promise<Record<string, string>> {
+  const source = new InMemoryStringSource(JSON.stringify({ "metadata.root": { package: "fitness", children } }));
+  const { root, errors } = await new MetaDataLoader().load([source]);
+  expect(errors).toEqual([]);
+  const out: Record<string, string> = {};
+  for (const v of buildReportViews(root, { dialect, columnNamingStrategy: "literal" })) out[v.name] = v.sql;
+  return out;
+}
+
+describe("Table D goldens (the bodies Task 6's canonical reports must produce)", () => {
+  test("postgres", async () => {
+    const v = await viewsOf(fitness(), "postgres");
+    expect(v["v_program_roster"]).toBe(lines(
+      `  SELECT`,
+      `    p."id" AS "programKey",`,
+      `    p."title" AS "programTitle",`,
+      `    COUNT(w."id") AS "weeks",`,
+      `    CAST(SUM(w."durationMinutes") AS BIGINT) AS "totalMinutes",`,
+      `    COALESCE(CAST(SUM(w."durationMinutes") AS BIGINT), 0) AS "totalMinutesOrZero",`,
+      `    CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0) AS "longShare",`,
+      `    COALESCE(CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0), 0) AS "longShareOrZero"`,
+      `  FROM "programs" p`,
+      `  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId"`,
+      `  GROUP BY p."id", p."title"`,
+    ));
+    expect(v["v_program_long_weeks"]).toBe(lines(
+      `  SELECT`,
+      `    p."id" AS "programKey",`,
+      `    COUNT(w."id") AS "weeks",`,
+      `    COALESCE(CAST(SUM(w."durationMinutes") AS BIGINT), 0) AS "totalMinutesOrZero"`,
+      `  FROM "programs" p`,
+      `  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId" AND w."durationMinutes" >= 60`,
+      `  GROUP BY p."id"`,
+    ));
+    expect(v["v_fitness_totals_filled"]).toBe(lines(
+      `  SELECT`,
+      `    COUNT(w."id") AS "weeks",`,
+      `    COALESCE(CAST(SUM(w."durationMinutes") AS BIGINT), 0) AS "totalMinutesOrZero",`,
+      `    COALESCE(CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0), 0) AS "longShareOrZero"`,
+      `  FROM "weeks" w`,
+    ));
+  });
+
+  test("sqlite, and d1 identical", async () => {
+    const v = await viewsOf(fitness(), "sqlite");
+    expect(v["v_program_roster"]).toBe(lines(
+      `  SELECT`,
+      `    p."id" AS "programKey",`,
+      `    p."title" AS "programTitle",`,
+      `    COUNT(w."id") AS "weeks",`,
+      `    SUM(w."durationMinutes") AS "totalMinutes",`,
+      `    COALESCE(SUM(w."durationMinutes"), 0) AS "totalMinutesOrZero",`,
+      `    CAST(COUNT(CASE WHEN w."durationMinutes" >= 60 THEN w."id" END) AS REAL) / NULLIF(COUNT(w."id"), 0) AS "longShare",`,
+      `    COALESCE(CAST(COUNT(CASE WHEN w."durationMinutes" >= 60 THEN w."id" END) AS REAL) / NULLIF(COUNT(w."id"), 0), 0.0) AS "longShareOrZero"`,
+      `  FROM "programs" p`,
+      `  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId"`,
+      `  GROUP BY p."id", p."title"`,
+    ));
+    expect(v["v_program_long_weeks"]).toBe(lines(
+      `  SELECT`,
+      `    p."id" AS "programKey",`,
+      `    COUNT(w."id") AS "weeks",`,
+      `    COALESCE(SUM(w."durationMinutes"), 0) AS "totalMinutesOrZero"`,
+      `  FROM "programs" p`,
+      `  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId" AND w."durationMinutes" >= 60`,
+      `  GROUP BY p."id"`,
+    ));
+    expect(v["v_fitness_totals_filled"]).toBe(lines(
+      `  SELECT`,
+      `    COUNT(w."id") AS "weeks",`,
+      `    COALESCE(SUM(w."durationMinutes"), 0) AS "totalMinutesOrZero",`,
+      `    COALESCE(CAST(COUNT(CASE WHEN w."durationMinutes" >= 60 THEN w."id" END) AS REAL) / NULLIF(COUNT(w."id"), 0), 0.0) AS "longShareOrZero"`,
+      `  FROM "weeks" w`,
+    ));
+    expect(await viewsOf(fitness(), "d1")).toEqual(v);
+  });
+
+  test("mysql", async () => {
+    const v = await viewsOf(fitness(), "mysql");
+    expect(v["v_program_roster"]).toBe(lines(
+      "  SELECT",
+      "    p.`id` AS `programKey`,",
+      "    p.`title` AS `programTitle`,",
+      "    COUNT(w.`id`) AS `weeks`,",
+      "    CAST(SUM(w.`durationMinutes`) AS SIGNED) AS `totalMinutes`,",
+      "    COALESCE(CAST(SUM(w.`durationMinutes`) AS SIGNED), 0) AS `totalMinutesOrZero`,",
+      "    COUNT(CASE WHEN w.`durationMinutes` >= 60 THEN w.`id` END) / NULLIF(COUNT(w.`id`), 0) AS `longShare`,",
+      "    COALESCE(COUNT(CASE WHEN w.`durationMinutes` >= 60 THEN w.`id` END) / NULLIF(COUNT(w.`id`), 0), 0) AS `longShareOrZero`",
+      "  FROM `programs` p",
+      "  LEFT OUTER JOIN `weeks` w ON p.`id` = w.`programId`",
+      "  GROUP BY p.`id`, p.`title`",
+    ));
+    expect(v["v_program_long_weeks"]).toBe(lines(
+      "  SELECT",
+      "    p.`id` AS `programKey`,",
+      "    COUNT(w.`id`) AS `weeks`,",
+      "    COALESCE(CAST(SUM(w.`durationMinutes`) AS SIGNED), 0) AS `totalMinutesOrZero`",
+      "  FROM `programs` p",
+      "  LEFT OUTER JOIN `weeks` w ON p.`id` = w.`programId` AND w.`durationMinutes` >= 60",
+      "  GROUP BY p.`id`",
+    ));
+    expect(v["v_fitness_totals_filled"]).toBe(lines(
+      "  SELECT",
+      "    COUNT(w.`id`) AS `weeks`,",
+      "    COALESCE(CAST(SUM(w.`durationMinutes`) AS SIGNED), 0) AS `totalMinutesOrZero`,",
+      "    COALESCE(COUNT(CASE WHEN w.`durationMinutes` >= 60 THEN w.`id` END) / NULLIF(COUNT(w.`id`), 0), 0) AS `longShareOrZero`",
+      "  FROM `weeks` w",
+    ));
+  });
+
+  test("an onward join from the spine alias is LEFT OUTER even over a required reference", async () => {
+    const owner = ent("Owner", [tableSrc("owners"), field("long", "id"), field("string", "name"), idPk]);
+    const programRef = [
+      field("long", "ownerId", { "@required": true }),
+      { "identity.reference": { name: "ownerRef", "@fields": "ownerId", "@references": "Owner" } },
+    ];
+    const dim = [{ "dimension.attribute": { name: "ownerName", "@of": "Owner.name", "@via": "Week.fkProgram.ownerRef" } }];
+    const report = (name: string, spine: boolean): Json => rpt(name, {
+      "@from": "Week", ...(spine ? { "@spine": "Week.fkProgram" } : {}),
+      "@dimensions": ["programTitle", "ownerName"], "@measures": ["weeks"],
+    }, `v_${name}`);
+    const v = await viewsOf(fitness([owner, report("Spined", true), report("Plain", false)], programRef, dim), "postgres");
+    expect(v["v_Spined"]).toBe(lines(
+      `  SELECT`,
+      `    p."title" AS "programTitle",`,
+      `    o."name" AS "ownerName",`,
+      `    COUNT(w."id") AS "weeks"`,
+      `  FROM "programs" p`,
+      `  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId"`,
+      `  LEFT OUTER JOIN "owners" o ON o."id" = p."ownerId"`,
+      `  GROUP BY p."title", o."name"`,
+    ));
+    // The same report without @spine keeps #209: both required hops are INNER.
+    expect(v["v_Plain"]).toContain(lines(
+      `  FROM "weeks" w`,
+      `  INNER JOIN "programs" p ON p."id" = w."programId"`,
+      `  INNER JOIN "owners" o ON o."id" = p."ownerId"`,
+    ));
+  });
+});
+
+describe("Table D: the spine chain, end to end", () => {
+  /** Program <- Week <- Session (Table D's two-hop case), each hop an identity.reference. */
+  const sessions: Json[] = [
+    ent("Program", [tableSrc("programs"), field("long", "id"), field("string", "title"), idPk]),
+    ent("Week", [
+      tableSrc("weeks"), field("long", "id"), field("long", "programId"), idPk,
+      { "identity.reference": { name: "program", "@fields": "programId", "@references": "Program" } },
+    ]),
+    ent("Session", [
+      tableSrc("sessions"), field("long", "id"), field("long", "weekId"), field("int", "minutes"), idPk,
+      { "identity.reference": { name: "week", "@fields": "weekId", "@references": "Week" } },
+      { "dimension.attribute": { name: "programTitle", "@of": "Program.title", "@via": "Session.week.program" } },
+      { "measure.aggregate": { name: "sessions", "@agg": "count", "@of": "Session.id" } },
+    ]),
+    rpt("SessionsByProgram", {
+      "@from": "Session", "@spine": "Session.week.program", "@dimensions": ["programTitle"],
+      "@measures": ["sessions"], "@filter": { minutes: { gte: 10 } },
+    }, "v_sessions_by_program"),
+  ];
+
+  test("the two-hop chain, per dialect", async () => {
+    expect((await viewsOf(sessions, "postgres"))["v_sessions_by_program"]).toBe(lines(
+      `  SELECT`,
+      `    p."title" AS "programTitle",`,
+      `    COUNT(s."id") AS "sessions"`,
+      `  FROM "programs" p`,
+      `  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId"`,
+      `  LEFT OUTER JOIN "sessions" s ON w."id" = s."weekId" AND s."minutes" >= 10`,
+      `  GROUP BY p."title"`,
+    ));
+    expect((await viewsOf(sessions, "sqlite"))["v_sessions_by_program"]).toContain(lines(
+      `  FROM "programs" p`,
+      `  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId"`,
+      `  LEFT OUTER JOIN "sessions" s ON w."id" = s."weekId" AND s."minutes" >= 10`,
+    ));
+    expect((await viewsOf(sessions, "mysql"))["v_sessions_by_program"]).toContain(lines(
+      "  FROM `programs` p",
+      "  LEFT OUTER JOIN `weeks` w ON p.`id` = w.`programId`",
+      "  LEFT OUTER JOIN `sessions` s ON w.`id` = s.`weekId` AND s.`minutes` >= 10",
+    ));
+  });
+
+  test("a one-to-one hop whose reference is held by the far entity, reversed", async () => {
+    // Account.profile is @cardinality one, but the foreign key is Profile.accountId.
+    const accounts: Json[] = [
+      ent("Account", [
+        tableSrc("accounts"), field("long", "id"), idPk,
+        { "relationship.association": { name: "profile", "@objectRef": "Profile", "@cardinality": "one" } },
+        { "dimension.attribute": { name: "tier", "@of": "Profile.tier", "@via": "Account.profile" } },
+        { "measure.aggregate": { name: "accounts", "@agg": "count", "@of": "Account.id" } },
+      ]),
+      ent("Profile", [
+        tableSrc("profiles"), field("long", "id"), field("long", "accountId"), field("string", "tier"), idPk,
+        { "identity.reference": { name: "accountRef", "@fields": "accountId", "@references": "Account" } },
+      ]),
+      rpt("ByTier", { "@from": "Account", "@spine": "Account.profile", "@dimensions": ["tier"], "@measures": ["accounts"] }, "v_by_tier"),
+      rpt("ByTierPlain", { "@from": "Account", "@dimensions": ["tier"], "@measures": ["accounts"] }, "v_by_tier_plain"),
+    ];
+    const v = await viewsOf(accounts, "postgres");
+    expect(v["v_by_tier"]).toBe(lines(
+      `  SELECT`,
+      `    p."tier" AS "tier",`,
+      `    COUNT(a."id") AS "accounts"`,
+      `  FROM "profiles" p`,
+      `  LEFT OUTER JOIN "accounts" a ON p."accountId" = a."id"`,
+      `  GROUP BY p."tier"`,
+    ));
+    // The forward join renders the same predicate: reversing the hop moves no column.
+    expect(v["v_by_tier_plain"]).toContain(`  LEFT OUTER JOIN "profiles" p ON p."accountId" = a."id"`);
   });
 });

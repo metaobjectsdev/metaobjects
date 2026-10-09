@@ -9,6 +9,7 @@ import {
   MetaDataLoader,
   InMemoryStringSource,
   OBJECT_REPORT_ATTR_FILTER,
+  OBJECT_REPORT_ATTR_SPINE,
   reportReadModel,
   type MetaObject,
   type MetaRoot,
@@ -614,5 +615,314 @@ describe("extractReportSpec: refusals that name what is wrong", () => {
       `report 'NoStatuses' @filter: the 'in' list on "status" is empty, which no row can match and no ` +
         `database accepts as SQL (IN ()). List at least one value, or remove the clause.`,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FR-044 Table D: a report's @spine and a measure's @default.
+// ---------------------------------------------------------------------------
+
+const table = (t: string): Json => ({ "source.rdb": { "@table": t } });
+const longField = (name: string, extra: Json = {}): Json => ({ "field.long": { name, ...extra } });
+const idPk = (): Json => ({ "identity.primary": { name: "pk", "@fields": ["id"] } });
+const reference = (name: string, field: string, target: string): Json =>
+  ({ "identity.reference": { name, "@fields": [field], "@references": target } });
+const entity = (name: string, children: Json[], extra: Json = {}): Json =>
+  ({ "object.entity": { name, ...extra, children } });
+const viewReport = (name: string, attrs: Json): Json =>
+  ({ "object.report": { name, ...attrs, children: [view(`v_${name}`)] } });
+
+/** Owner <- Program <- Week: the fitness shape, plus an owner one hop beyond the spine. */
+function roster(reports: Json[], opts: { entities?: Json[]; week?: Json[] } = {}): InMemoryStringSource {
+  return file("acme", [
+    entity("Owner", [table("owners"), longField("id"), { "field.string": { name: "name" } }, idPk()]),
+    entity("Program", [
+      table("programs"),
+      longField("id"),
+      { "field.string": { name: "title", "@required": true } },
+      longField("ownerId", { "@required": true }),
+      idPk(),
+      reference("ownerRef", "ownerId", "Owner"),
+    ]),
+    entity("Week", [
+      table("weeks"),
+      longField("id"),
+      longField("programId", { "@required": true }),
+      { "field.string": { name: "label" } },
+      { "field.int": { name: "durationMinutes", "@required": true } },
+      idPk(),
+      reference("fkProgram", "programId", "Program"),
+      { "segment.filter": { name: "long", "@filter": { durationMinutes: { gte: 60 } } } },
+      { "dimension.attribute": { name: "programKey", "@of": "Program.id", "@via": "Week.fkProgram" } },
+      { "dimension.attribute": { name: "programTitle", "@of": "Program.title", "@via": "Week.fkProgram" } },
+      { "dimension.attribute": { name: "ownerName", "@of": "Owner.name", "@via": "Week.fkProgram.ownerRef" } },
+      { "dimension.attribute": { name: "label", "@of": "Week.label" } },
+      { "measure.aggregate": { name: "weeks", "@agg": "count", "@of": "Week.id" } },
+      { "measure.aggregate": { name: "longWeeks", "@agg": "count", "@of": "Week.id", "@segment": "long" } },
+      { "measure.aggregate": { name: "totalMinutes", "@agg": "sum", "@of": "Week.durationMinutes" } },
+      { "measure.aggregate": { name: "totalMinutesOrZero", "@agg": "sum", "@of": "Week.durationMinutes", "@default": 0 } },
+      { "measure.aggregate": { name: "avgMinutesOrNone", "@agg": "avg", "@of": "Week.durationMinutes", "@default": -1 } },
+      { "measure.ratio": { name: "longShare", "@numerator": "longWeeks", "@denominator": "weeks" } },
+      { "measure.ratio": { name: "longShareOrZero", "@numerator": "longWeeks", "@denominator": "weeks", "@default": 0 } },
+      { "measure.ratio": { name: "minutesPerWeek", "@numerator": "totalMinutesOrZero", "@denominator": "weeks" } },
+      ...(opts.week ?? []),
+    ]),
+    ...(opts.entities ?? []),
+    ...reports,
+  ]);
+}
+
+const ownerRoster = (spine: boolean): Json =>
+  viewReport("OwnerRoster", {
+    "@from": "Week",
+    ...(spine ? { "@spine": "Week.fkProgram" } : {}),
+    "@dimensions": ["programTitle", "ownerName"],
+    "@measures": ["weeks", "totalMinutesOrZero"],
+    "@segment": "long",
+  });
+
+type Joins = ReportViewSpec["joinTree"]["joins"];
+
+function joinsOfTree(nodes: Joins): unknown[] {
+  return nodes.map((n) => [n.relationship, n.alias, joinsOfTree(n.children)]);
+}
+
+function joinTypes(nodes: Joins): string[] {
+  return nodes.flatMap((n) => [n.joinType, ...joinTypes(n.children)]);
+}
+
+/** Every alias the spec names: the base, each join with its hop, and every column reference. */
+function aliasesOf(s: ReportViewSpec): unknown[] {
+  const refs = s.columns.map((c) =>
+    c.kind === "aggregate" ? c.aggregate.refs : c.kind === "ratio" ? [c.numerator.refs, c.denominator.refs] : c.ref,
+  );
+  return [s.joinTree.baseAlias, joinsOfTree(s.joinTree.joins), refs];
+}
+
+describe("extractReportSpec: @spine (Table D)", () => {
+  test("a spine report has spineDepth, one root join, and every join LEFT", async () => {
+    const root = await loadFiles([roster([ownerRoster(true)])]);
+    const s = extractReportSpec(root.findObject("OwnerRoster")!, root, CTX);
+    expect(s.spineDepth).toBe(1);
+    expect(joinsOfTree(s.joinTree.joins)).toEqual([["fkProgram", "p", [["ownerRef", "o", []]]]]);
+    // Both foreign keys are @required: without @spine both hops are INNER (#209), with it neither.
+    expect(joinTypes(s.joinTree.joins)).toEqual(["left", "left"]);
+  });
+
+  test("without @spine the same report has no spineDepth and keeps the #209 join types", async () => {
+    const root = await loadFiles([roster([ownerRoster(false)])]);
+    const s = extractReportSpec(root.findObject("OwnerRoster")!, root, CTX);
+    expect("spineDepth" in s).toBe(false);
+    expect(joinTypes(s.joinTree.joins)).toEqual(["inner", "inner"]);
+  });
+
+  test("aliases equal those of the same report with @spine removed, and the scope is the same clause", async () => {
+    const withSpine = await loadFiles([roster([ownerRoster(true)])]);
+    const without = await loadFiles([roster([ownerRoster(false)])]);
+    const a = extractReportSpec(withSpine.findObject("OwnerRoster")!, withSpine, CTX);
+    const b = extractReportSpec(without.findObject("OwnerRoster")!, without, CTX);
+    expect(aliasesOf(a)).toEqual(aliasesOf(b));
+    expect(aliasesOf(a)).toEqual([
+      "w",
+      [["fkProgram", "p", [["ownerRef", "o", []]]]],
+      ["p.title", "o.name", ["w.id"], ["w.duration_minutes"]],
+    ]);
+    expect(a.where).toEqual({ kind: "cmp", ref: "w.duration_minutes", op: "gte", value: 60 });
+    expect(a.where).toEqual(b.where);
+  });
+
+  test("a two-hop spine has spineDepth 2 and one chain", async () => {
+    const root = await loadFiles([
+      file("acme", [
+        entity("Program", [table("programs"), longField("id"), { "field.string": { name: "title" } }, idPk()]),
+        entity("Week", [table("weeks"), longField("id"), longField("programId"), idPk(), reference("program", "programId", "Program")]),
+        entity("Session", [
+          table("sessions"),
+          longField("id"),
+          longField("weekId"),
+          idPk(),
+          reference("week", "weekId", "Week"),
+          { "dimension.attribute": { name: "programTitle", "@of": "Program.title", "@via": "Session.week.program" } },
+          { "measure.aggregate": { name: "sessions", "@agg": "count", "@of": "Session.id" } },
+        ]),
+        viewReport("SessionsByProgram", {
+          "@from": "Session", "@spine": "Session.week.program", "@dimensions": ["programTitle"], "@measures": ["sessions"],
+        }),
+      ]),
+    ]);
+    const s = extractReportSpec(root.findObject("SessionsByProgram")!, root, CTX);
+    expect(s.spineDepth).toBe(2);
+    expect(joinsOfTree(s.joinTree.joins)).toEqual([["week", "w", [["program", "p", []]]]]);
+    expect(joinTypes(s.joinTree.joins)).toEqual(["left", "left"]);
+  });
+
+  /** A Week report whose @spine is `Week.<hop>`, grouped by `<dim>` reached through it. */
+  const spineTo = (hop: string, dim: string): Json =>
+    viewReport("Spined", { "@from": "Week", "@spine": `Week.${hop}`, "@dimensions": [dim], "@measures": ["weeks"] });
+
+  test("a spine entity with no writable source is refused, naming the report, the spine and the entity", async () => {
+    const root = await loadFiles([
+      roster([spineTo("ghostRef", "ghostName")], {
+        entities: [entity("Ghost", [longField("id"), { "field.string": { name: "name" } }, idPk()])],
+        week: [
+          longField("ghostId"),
+          reference("ghostRef", "ghostId", "Ghost"),
+          { "dimension.attribute": { name: "ghostName", "@of": "Ghost.name", "@via": "Week.ghostRef" } },
+        ],
+      }),
+    ]);
+    expect(() => extractReportSpec(root.findObject("Spined")!, root, CTX)).toThrow(
+      "report 'Spined': @spine 'Week.ghostRef' reaches 'Ghost', which has no table (it is abstract or declares " +
+        "no writable source.rdb), so its rows cannot be the report's rows. Give 'Ghost' a source, or end " +
+        "@spine at an entity that has one.",
+    );
+  });
+
+  test("an abstract spine entity is refused", async () => {
+    const root = await loadFiles([
+      roster([spineTo("catalogRef", "catalogName")], {
+        entities: [
+          entity("Catalog", [table("catalogs"), longField("id"), { "field.string": { name: "name" } }, idPk()], { abstract: true }),
+        ],
+        week: [
+          longField("catalogId"),
+          reference("catalogRef", "catalogId", "Catalog"),
+          { "dimension.attribute": { name: "catalogName", "@of": "Catalog.name", "@via": "Week.catalogRef" } },
+        ],
+      }),
+    ]);
+    expect(() => extractReportSpec(root.findObject("Spined")!, root, CTX)).toThrow(
+      /^report 'Spined': @spine 'Week.catalogRef' reaches 'Catalog', which has no table \(it is abstract/,
+    );
+  });
+
+  test("an entity on the chain with no table is refused, not only the last one", async () => {
+    const root = await loadFiles([
+      file("acme", [
+        entity("Program", [table("programs"), longField("id"), { "field.string": { name: "title" } }, idPk()]),
+        entity("Week", [longField("id"), longField("programId"), idPk(), reference("program", "programId", "Program")]),
+        entity("Session", [
+          table("sessions"),
+          longField("id"),
+          longField("weekId"),
+          idPk(),
+          reference("week", "weekId", "Week"),
+          { "dimension.attribute": { name: "programTitle", "@of": "Program.title", "@via": "Session.week.program" } },
+          { "measure.aggregate": { name: "sessions", "@agg": "count", "@of": "Session.id" } },
+        ]),
+        viewReport("SessionsByProgram", {
+          "@from": "Session", "@spine": "Session.week.program", "@dimensions": ["programTitle"], "@measures": ["sessions"],
+        }),
+      ]),
+    ]);
+    expect(() => extractReportSpec(root.findObject("SessionsByProgram")!, root, CTX)).toThrow(
+      /^report 'SessionsByProgram': @spine 'Session.week.program' reaches 'Week', which has no table/,
+    );
+  });
+
+  test("a TPH subtype on the spine is refused, naming the report, the spine, the subtype and its base", async () => {
+    const root = await loadFiles([
+      roster([spineTo("adminRef", "adminName")], {
+        entities: [
+          entity(
+            "User",
+            [table("users"), longField("id"), { "field.string": { name: "kind" } }, { "field.string": { name: "name" } }, idPk()],
+            { "@discriminator": "kind" },
+          ),
+          entity("Admin", [], { extends: "User", "@discriminatorValue": "ADMIN" }),
+        ],
+        week: [
+          longField("adminId"),
+          reference("adminRef", "adminId", "Admin"),
+          { "dimension.attribute": { name: "adminName", "@of": "Admin.name", "@via": "Week.adminRef" } },
+        ],
+      }),
+    ]);
+    expect(() => extractReportSpec(root.findObject("Spined")!, root, CTX)).toThrow(
+      "report 'Spined': @spine 'Week.adminRef' reaches 'Admin', a TPH subtype: it shares the table of 'User' " +
+        "with every other subtype, so the report would have a row for each row of all of them. End @spine at " +
+        "an entity with a table of its own.",
+    );
+  });
+
+  test("a spine hop with no identity.reference is refused with the hop error, naming @spine", async () => {
+    // The loader (rule R8, like D2) accepts a to-one relationship with no identity.reference behind it.
+    const root = await loadFiles([
+      roster([spineTo("coach", "coachName")], {
+        entities: [entity("Coach", [table("coaches"), longField("id"), { "field.string": { name: "name" } }, idPk()])],
+        week: [
+          { "relationship.association": { name: "coach", "@objectRef": "Coach", "@cardinality": "one" } },
+          { "dimension.attribute": { name: "coachName", "@of": "Coach.name", "@via": "Week.coach" } },
+        ],
+      }),
+    ]);
+    expect(() => extractReportSpec(root.findObject("Spined")!, root, CTX)).toThrow(
+      "report 'Spined': @spine 'Week.coach' cannot be joined at hop 'coach' on 'acme::Week': the model declares " +
+        "no foreign key for it. A view joins a hop through an identity.reference; declare one on 'Week' whose " +
+        "@references is 'Coach' (with the foreign-key field in @fields).",
+    );
+  });
+
+  test("a dimension that is not reached through the spine is refused (a tree built past the loader)", async () => {
+    const byLabel = viewReport("ByLabel", { "@from": "Week", "@dimensions": ["label"], "@measures": ["weeks"] });
+    const root = await loadFiles([roster([ownerRoster(false), byLabel])]);
+    const report = withAttr(root.findObject("OwnerRoster")!, OBJECT_REPORT_ATTR_SPINE, "Week.fkProgram.ownerRef");
+    expect(() => extractReportSpec(report, root, CTX)).toThrow(
+      "report 'OwnerRoster': dimension 'programTitle' is not reached through @spine 'Week.fkProgram.ownerRef': " +
+        "its @via 'Week.fkProgram' does not begin with the spine's hops, so the view has no join to place it on.",
+    );
+    const labels = withAttr(root.findObject("ByLabel")!, OBJECT_REPORT_ATTR_SPINE, "Week.fkProgram");
+    expect(() => extractReportSpec(labels, root, CTX)).toThrow(
+      "report 'ByLabel': dimension 'label' is not reached through @spine 'Week.fkProgram': it has no @via, so " +
+        "it reads @from 'Week', which a spine row with no facts lacks.",
+    );
+  });
+});
+
+describe("extractReportSpec: a measure @default (Table D)", () => {
+  const defaults = viewReport("Defaults", {
+    "@from": "Week",
+    "@measures": ["totalMinutes", "totalMinutesOrZero", "avgMinutesOrNone", "longShare", "longShareOrZero", "minutesPerWeek"],
+  });
+  const columnOf = async (name: string) => {
+    const root = await loadFiles([roster([defaults])]);
+    const s = extractReportSpec(root.findObject("Defaults")!, root, CTX);
+    return s.columns.find((c) => c.fieldName === name)!;
+  };
+
+  test("an aggregate carries its default, and whether its derived type is real", async () => {
+    const sum = await columnOf("totalMinutesOrZero");
+    if (sum.kind !== "aggregate") throw new Error("expected an aggregate");
+    // sum of an int derives long: an integral default.
+    expect(sum.aggregate.defaultValue).toEqual({ value: 0, real: false });
+    expect(sum.aggregate.cast).toBe("bigint");
+    const avg = await columnOf("avgMinutesOrNone");
+    if (avg.kind !== "aggregate") throw new Error("expected an aggregate");
+    // avg of an int derives decimal: a real default.
+    expect(avg.aggregate.defaultValue).toEqual({ value: -1, real: true });
+  });
+
+  test("an aggregate with no @default has no defaultValue key", async () => {
+    const plain = await columnOf("totalMinutes");
+    if (plain.kind !== "aggregate") throw new Error("expected an aggregate");
+    expect("defaultValue" in plain.aggregate).toBe(false);
+  });
+
+  test("a ratio carries its own default; its operands carry none they do not declare", async () => {
+    const ratio = await columnOf("longShareOrZero");
+    if (ratio.kind !== "ratio") throw new Error("expected a ratio");
+    expect(ratio.defaultValue).toBe(0);
+    expect("defaultValue" in ratio.numerator).toBe(false);
+    expect("defaultValue" in ratio.denominator).toBe(false);
+    const plain = await columnOf("longShare");
+    expect("defaultValue" in plain).toBe(false);
+  });
+
+  test("an operand that is not listed in @measures carries its own default", async () => {
+    const ratio = await columnOf("minutesPerWeek");
+    if (ratio.kind !== "ratio") throw new Error("expected a ratio");
+    expect("defaultValue" in ratio).toBe(false);
+    expect(ratio.numerator.defaultValue).toEqual({ value: 0, real: false });
+    expect("defaultValue" in ratio.denominator).toBe(false);
   });
 });
