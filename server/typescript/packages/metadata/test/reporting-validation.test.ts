@@ -1150,8 +1150,9 @@ describe("validateReporting — @spine (R8, R9)", () => {
     const msg = await single(m, "ERR_INVALID_REPORT");
     expect(msg).toBe(
       "report 'acme::shop::ProgramReach': @spine 'Program.purchases' crosses relationship 'purchases' on " +
-        "'acme::shop::Program', which is not to-one. A dimension follows only @cardinality: one relationships " +
-        "and identity.reference hops, so grouping can never multiply the measured rows.",
+        "'acme::shop::Program', which is not to-one. A @spine follows only @cardinality: one relationships " +
+        "and identity.reference hops, so each fact row joins at most one row of the spine entity and is never " +
+        "counted twice.",
     );
   });
 
@@ -1175,7 +1176,23 @@ describe("validateReporting — @spine (R8, R9)", () => {
   test("R8: a spine with no hop is refused", async () => {
     const m = edit((x) => addSpineReport(x, { "@spine": "Purchase" }));
     const msg = await single(m, "ERR_INVALID_REPORT");
-    expect(msg).toContain("report 'acme::shop::ProgramPurchases': @spine 'Purchase' must be Owner.hop[.hop...]");
+    expect(msg).toBe(
+      "report 'acme::shop::ProgramPurchases': @spine 'Purchase' must be Owner.hop[.hop...], starting at " +
+        "@from 'acme::shop::Purchase'.",
+    );
+  });
+
+  test("D2's to-many wording is unchanged by the walk's wording argument", async () => {
+    const m = edit((x) =>
+      setChild(x, "Program", "buyerEmail", {
+        "dimension.attribute": { name: "buyerEmail", "@of": "Purchase.customerEmail", "@via": "Program.purchases" },
+      }),
+    );
+    expect(await single(m, "ERR_INVALID_DIMENSION")).toBe(
+      "dimension 'buyerEmail' on entity 'acme::shop::Program': @via 'Program.purchases' crosses relationship " +
+        "'purchases' on 'acme::shop::Program', which is not to-one. A dimension follows only @cardinality: one " +
+        "relationships and identity.reference hops, so grouping can never multiply the measured rows.",
+    );
   });
 
   test("D2's own wording is unchanged by the walk's wording argument", async () => {
@@ -1294,8 +1311,18 @@ describe("validateReporting — @spine (R8, R9)", () => {
     expect(msg).toBe(
       "report 'acme::shop::ProgramPurchases': dimension 'giftProgramTitle' is reached by @via " +
         "'Purchase.giftProgramRef', which does not begin with the hops of @spine 'Purchase.programRef'. Hop names " +
-        "are compared as written; write the same hops.",
+        "are compared as written: if both name the same join, write the same hops; otherwise the dimension is " +
+        "not reached through the spine.",
     );
+  });
+
+  test("R9: a dimension whose own @via fails D2 is reported once, by D2, not also by R9", async () => {
+    const m = edit((x) => {
+      patchMember(x, "Purchase", "programTitle", { "@via": "Purchase.programm" });
+      addSpineReport(x);
+    });
+    const msg = await single(m, "ERR_INVALID_DIMENSION");
+    expect(msg).toContain("@via 'Purchase.programm' names 'programm'");
   });
 
   test("R9: the same join, named by the relationship in @spine and by the reference in @via, is refused", async () => {
@@ -1374,8 +1401,18 @@ describe("validateReporting — measure @default (M7, M8)", () => {
     const m = edit((x) => patchMember(x, "WorkoutEvent", "lastActivityAt", { "@default": 0 }));
     const msg = await single(m, "ERR_INVALID_MEASURE");
     expect(msg).toBe(
-      "measure 'lastActivityAt' on entity 'acme::shop::WorkoutEvent': @default is a number, but @agg 'max' of " +
-        "'WorkoutEvent.occurredAt' is a field.timestamp. A default is supported on numeric measures only.",
+      "measure 'lastActivityAt' on entity 'acme::shop::WorkoutEvent': @default is a number, but " +
+        "'WorkoutEvent.occurredAt', the @of of @agg 'max', is a field.timestamp. A default is supported on " +
+        "numeric measures only.",
+    );
+  });
+
+  test("a non-integer @default on a count reports M7 and the attribute type error", async () => {
+    const m = edit((x) => patchMember(x, "Purchase", "purchases", { "@default": "zero" }));
+    const { errors } = await loadInline(m);
+    expect(errors.map((e) => e.code).sort()).toEqual(["ERR_BAD_ATTR_VALUE", "ERR_INVALID_MEASURE"]);
+    expect(errors.find((e) => e.code === "ERR_INVALID_MEASURE")!.message).toContain(
+      "measure 'purchases' on entity 'acme::shop::Purchase': @default cannot apply to @agg: count.",
     );
   });
 

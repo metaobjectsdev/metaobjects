@@ -6,9 +6,11 @@
 //
 // Two design rules hold throughout, so one broken rule yields exactly one error:
 //   - No cascades. A member that fails a structural rule is not checked further
-//     (a dimension whose @via fails D2 skips D1/D3/D4; a report whose @from fails
-//     R1 skips R2/R3/R6/R7 and its @filter; an invalid @dimensions/@measures item
-//     derives no report field for R6).
+//     (a dimension whose @via fails D2 skips D1/D3/D4; a measure that fails one
+//     of M1–M4 skips M7/M8; a report whose @from fails R1 skips R2/R3/R6/R7,
+//     R8/R9 and its @filter; a report whose @spine fails R8 skips R9, and R9
+//     skips a dimension whose @via fails D2; an invalid @dimensions/@measures
+//     item derives no report field for R6).
 //   - Each error's `source` is the offending node (the dimension / measure /
 //     segment / report, or for R4/R5 the declared child), so a conformance
 //     fixture's jsonPath points at it.
@@ -305,8 +307,7 @@ interface MemberCtx {
   readonly root: MetaData;
   /** The entity whose children() the member was reached through. */
   readonly host: MetaData;
-  /** The entity that declares the member (the host, or an ancestor of it). For a report's @spine
-   *  walk (R8) it is the report, so the spine's Owner resolves in the report's package. */
+  /** The entity that declares the member (the host, or an ancestor of it). */
   readonly declaring: MetaData;
   /** `<kind> '<name>' on entity '<declaring FQN>'` — every member message starts with it. */
   readonly label: string;
@@ -319,12 +320,9 @@ interface MemberCtx {
  * The FQN a member message names for `entity`: the DECLARING entity in place of
  * the host, so a failure is worded identically whichever entity reached the
  * member (the suffix names the inheritor) and the ErrorSink repeat test holds.
- * A report's @spine walk (R8) has no declaring entity (`declaring` is the
- * report), so there every entity names itself.
  */
 function shown(ctx: MemberCtx, entity: MetaData): string {
-  const declaredByEntity = isSelfOrAncestor(ctx.declaring, ctx.host);
-  return (entity === ctx.host && declaredByEntity ? ctx.declaring : entity).resolutionKey();
+  return (entity === ctx.host ? ctx.declaring : entity).resolutionKey();
 }
 
 function checkEntityMembers(root: MetaData, entity: MetaData, declaredHere: boolean, sink: ErrorSink): void {
@@ -360,7 +358,7 @@ function checkDimension(ctx: MemberCtx, dim: MetaDimension): void {
   let ofEntity = ctx.host;
   const via = dim.via();
   if (via !== undefined) {
-    const terminal = walkToOneVia(ctx, via, err);
+    const terminal = walkToOneVia(ctx.root, ctx.host, via, err, d2Walk(ctx.declaring));
     if (terminal === undefined) return;
     ofEntity = terminal;
   }
@@ -406,38 +404,82 @@ function checkDimension(ctx: MemberCtx, dim: MetaDimension): void {
   }
 }
 
-/** How a to-one walk's messages name it: the attribute that holds the path (`via`, `spine`) and
- *  what its Owner must be (`the owning entity '<FQN>'`, `@from '<FQN>'`). */
-interface WalkWording {
+/**
+ * What a to-one walk resolves against and how its messages name it. D2 walks a
+ * dimension's @via (`d2Walk`); R8 walks a report's @spine from @from
+ * (`spineWalk`). Every difference between the two is a field here, so each port
+ * copies one explicit rule.
+ */
+interface ToOneWalk {
+  /** The attribute holding the path: `via` (D2) or `spine` (R8). */
   readonly attr: string;
+  /** The package Owner resolves in (ADR-0042): the declaring entity's (D2) or the report's (R8). */
+  readonly ownerPkg: string;
+  /** The FQN named for the walk's first entity: the declaring entity (D2) or @from (R8). */
+  readonly hostName: string;
+  /** What Owner must be: `the owning entity '<FQN>'` (D2) or `@from '<FQN>'` (R8). */
   readonly start: string;
+  /** The same, in the malformed-path message: `the owning entity` (D2) or `@from '<FQN>'` (R8). */
+  readonly startShort: string;
+  /** The sentence that ends the to-many message: why only to-one hops are followed. */
+  readonly toOneReason: string;
+}
+
+/** D2 — a dimension's @via, declared on `declaring`. Reproduces D2's messages exactly. */
+function d2Walk(declaring: MetaData): ToOneWalk {
+  const declaringKey = declaring.resolutionKey();
+  return {
+    attr: REPORTING_ATTR_VIA,
+    ownerPkg: pkgOf(declaring),
+    hostName: declaringKey,
+    start: `the owning entity '${declaringKey}'`,
+    startShort: "the owning entity",
+    toOneReason:
+      "A dimension follows only @cardinality: one relationships and identity.reference hops, so grouping " +
+      "can never multiply the measured rows.",
+  };
+}
+
+/** R8 — a report's @spine, started at @from (`fromKey`); Owner resolves in the report's package. */
+function spineWalk(report: MetaData, fromKey: string): ToOneWalk {
+  return {
+    attr: OBJECT_REPORT_ATTR_SPINE,
+    ownerPkg: pkgOf(report),
+    hostName: fromKey,
+    start: `@from '${fromKey}'`,
+    startShort: `@from '${fromKey}'`,
+    toOneReason:
+      "A @spine follows only @cardinality: one relationships and identity.reference hops, so each fact row " +
+      "joins at most one row of the spine entity and is never counted twice.",
+  };
 }
 
 /**
- * D2 — walk `Owner.hop[.hop...]`: Owner is the owning entity, and every hop is a
- * to-one `relationship.*` or an `identity.reference`. Returns the terminal
- * entity, or undefined after reporting the first failure. R8 runs the same walk
- * over a report's @spine, started at @from; `wording` names it (the default is
- * D2's own wording).
+ * Walk `Owner.hop[.hop...]` from `host`: Owner is `host` or an entity it
+ * extends, and every hop is a to-one `relationship.*` or an
+ * `identity.reference`. Returns the terminal entity, or undefined after
+ * reporting the first failure. D2 and R8 both run it; `walk` says which.
  */
 function walkToOneVia(
-  ctx: MemberCtx,
+  root: MetaData,
+  host: MetaData,
   via: string,
   err: (message: string) => void,
-  wording: WalkWording = { attr: REPORTING_ATTR_VIA, start: `the owning entity '${ctx.declaring.resolutionKey()}'` },
+  walk: ToOneWalk,
 ): MetaData | undefined {
-  const named = `@${wording.attr} '${via}'`;
+  const named = `@${walk.attr} '${via}'`;
+  const nameOf = (entity: MetaData): string => (entity === host ? walk.hostName : entity.resolutionKey());
   const parts = splitDotted(via);
   if (parts === undefined) {
-    err(`${named} must be Owner.hop[.hop...], starting at the owning entity.`);
+    err(`${named} must be Owner.hop[.hop...], starting at ${walk.startShort}.`);
     return undefined;
   }
-  const owner = resolveObjectRef(ctx.root, parts.owner, pkgOf(ctx.declaring)).node;
-  if (!isSelfOrAncestor(owner, ctx.host)) {
-    err(`${named} must start at ${wording.start}.`);
+  const owner = resolveObjectRef(root, parts.owner, walk.ownerPkg).node;
+  if (!isSelfOrAncestor(owner, host)) {
+    err(`${named} must start at ${walk.start}.`);
     return undefined;
   }
-  let current = ctx.host;
+  let current = host;
   for (const hopName of parts.path) {
     const hop =
       childOfType(current, TYPE_RELATIONSHIP, hopName) ??
@@ -447,25 +489,24 @@ function walkToOneVia(
     if (hop === undefined) {
       err(
         `${named} names '${hopName}', which is not a relationship or identity.reference of ` +
-          `'${shown(ctx, current)}'.`,
+          `'${nameOf(current)}'.`,
       );
       return undefined;
     }
     const isReference = hop.type === TYPE_IDENTITY;
     if (!isReference && hop.attr(RELATIONSHIP_ATTR_CARDINALITY) !== CARDINALITY_ONE) {
       err(
-        `${named} crosses relationship '${hopName}' on '${shown(ctx, current)}', which is not to-one. ` +
-          `A dimension follows only @cardinality: one relationships and identity.reference hops, so grouping ` +
-          `can never multiply the measured rows.`,
+        `${named} crosses relationship '${hopName}' on '${nameOf(current)}', which is not to-one. ` +
+          walk.toOneReason,
       );
       return undefined;
     }
     const targetRef = hop.attr(isReference ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF);
     // ADR-0042 — a hop target resolves in the package of the entity declaring the hop.
     const target =
-      typeof targetRef === "string" ? resolveObjectRef(ctx.root, targetRef, pkgOf(current)).node : undefined;
+      typeof targetRef === "string" ? resolveObjectRef(root, targetRef, pkgOf(current)).node : undefined;
     if (target === undefined) {
-      err(`${named} hop '${hopName}' on '${shown(ctx, current)}' targets no object.`);
+      err(`${named} hop '${hopName}' on '${nameOf(current)}' targets no object.`);
       return undefined;
     }
     current = target;
@@ -502,8 +543,8 @@ function checkMeasure(ctx: MemberCtx, measure: MetaMeasure): void {
       !NUMERIC_FIELD_SUBTYPES.includes(ofField.subType)
     ) {
       err(
-        `@default is a number, but @agg '${agg}' of '${measure.ofColumns()[0]}' is a field.${ofField.subType}. ` +
-          `A default is supported on numeric measures only.`,
+        `@default is a number, but '${measure.ofColumns()[0]}', the @of of @agg '${agg}', is a ` +
+          `field.${ofField.subType}. A default is supported on numeric measures only.`,
       );
     }
   }
@@ -728,8 +769,8 @@ function checkReport(root: MetaData, report: MetaData, sink: ErrorSink): void {
     }
   }
 
-  // R1 — @from resolves to an object.entity. Without it, R2/R3/R6/R7 and the
-  // @filter have nothing to resolve against, so they are skipped.
+  // R1 — @from resolves to an object.entity. Without it, R2/R3/R6/R7, R8/R9 and
+  // the @filter have nothing to resolve against, so they are skipped.
   const fromRef = reportFrom(report);
   if (fromRef === undefined) return; // missing @from is ERR_MISSING_REQUIRED_ATTR
   const from = resolveObjectRef(root, fromRef, pkgOf(report)).node;
@@ -817,12 +858,7 @@ function checkReport(root: MetaData, report: MetaData, sink: ErrorSink): void {
   // R8 — @spine is a to-one path from @from: rule D2's walk, started at @from.
   const spine = reportSpine(report);
   if (spine !== undefined) {
-    const terminal = walkToOneVia(
-      { root, host: from, declaring: report, label, suffix: "", sink },
-      spine,
-      (message) => err(`: ${message}`),
-      { attr: OBJECT_REPORT_ATTR_SPINE, start: `@from '${fromKey}'` },
-    );
+    const terminal = walkToOneVia(root, from, spine, (message) => err(`: ${message}`), spineWalk(report, fromKey));
     // R9 — every listed dimension is reached through the spine. Skipped when R8 failed.
     if (terminal !== undefined) {
       const spineHops = splitDotted(spine)?.path ?? [];
@@ -833,21 +869,33 @@ function checkReport(root: MetaData, report: MetaData, sink: ErrorSink): void {
             `'${terminal.resolutionKey()}'; with no dimension it would be one totals row.`,
         );
       }
+      // One verdict per dimension, however many grains list it.
+      const checkedDimensions = new Set<string>();
       for (const item of items) {
+        if (checkedDimensions.has(item.name)) continue;
+        checkedDimensions.add(item.name);
         const dim = childOfType(from, TYPE_DIMENSION, item.name);
         if (!(dim instanceof MetaDimension)) continue; // R2 already reported it
         const via = dim.via();
-        const hops = via === undefined ? undefined : splitDotted(via)?.path;
+        if (via === undefined) {
+          err(
+            `: dimension '${item.name}' is read from @from '${fromKey}', so it has no value in a row that has ` +
+              `no facts. With @spine '${spine}' every dimension must be reached through it: declare the ` +
+              `dimension over a field of '${terminal.resolutionKey()}' (or an entity to-one from it) with an ` +
+              `@via that begins '${spine}'.`,
+          );
+          continue;
+        }
+        // A @via that does not walk is D2's error, on the dimension; R9 does not report it again.
+        const discard = (): void => undefined;
+        if (walkToOneVia(root, from, via, discard, d2Walk(dim.parent ?? from)) === undefined) continue;
         // Hop names are compared as written; the owner segment is not compared.
-        if (hops !== undefined && spineHops.every((h, i) => hops[i] === h)) continue;
+        const hops = splitDotted(via)?.path ?? [];
+        if (spineHops.every((h, i) => hops[i] === h)) continue;
         err(
-          via === undefined
-            ? `: dimension '${item.name}' is read from @from '${fromKey}', so it has no value in a row that has ` +
-                `no facts. With @spine '${spine}' every dimension must be reached through it: declare the ` +
-                `dimension over a field of '${terminal.resolutionKey()}' (or an entity to-one from it) with an ` +
-                `@via that begins '${spine}'.`
-            : `: dimension '${item.name}' is reached by @via '${via}', which does not begin with the hops of ` +
-                `@spine '${spine}'. Hop names are compared as written; write the same hops.`,
+          `: dimension '${item.name}' is reached by @via '${via}', which does not begin with the hops of ` +
+            `@spine '${spine}'. Hop names are compared as written: if both name the same join, write the same ` +
+            `hops; otherwise the dimension is not reached through the spine.`,
         );
       }
     }
