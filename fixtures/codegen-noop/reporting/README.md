@@ -21,8 +21,8 @@ these places and no others:
   `StoreTotals.ts` (Drizzle view binding, Zod read schema, row type, descriptor, filter and sort
   allowlists), `StoreTotals.queries.ts` (the list query only), `StoreTotals.routes.ts` and
   `StoreTotals.routes.hono.ts` (GET list, `POST` answers 405, no `/:id` route) and
-  `StoreTotals.names.ts`. It writes nothing from the client UI tier (hooks, grid, grid hook,
-  form): that tier is off for reports until Plan 5.
+  `StoreTotals.names.ts`. From the client UI tier it writes the list hook `StoreTotals.hooks.ts`
+  and its descriptor `StoreTotals.meta.ts` and nothing else (no grid, grid hook or form).
 - C# codegen (`dotnet meta gen`) writes three extra files: the keyless row class
   `StoreTotals.g.cs`, `StoreTotalsRoutes.g.cs` (GET list, `POST` answers 405, no `{id}` route)
   and `StoreTotalsFilterAllowlist.g.cs`; and two extra lines in `AppDbContext.g.cs` (a `DbSet`
@@ -44,7 +44,8 @@ these places and no others:
 
 What stays inert: a report with no read-only source (`ProgramEngagement`, `DailyRevenue`), in
 every generator, migration and runtime (its only output is the model page above); the client
-UI tier for every report, in every port. No port but TypeScript emits SQL for a report
+UI tier for every unserved report, and every port's client tier but the TypeScript list hook
+(no other port has one). No port but TypeScript emits SQL for a report
 (ADR-0015). The per-port tests that hold this:
 
 | Port | Test |

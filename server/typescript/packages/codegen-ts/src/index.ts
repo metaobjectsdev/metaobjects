@@ -131,7 +131,7 @@ export type { DocPageNode, DocPagePlacement } from "./docs-paths.js";
 export { isProjection, isWriteThrough } from "./projection/projection-detector.js";
 export { isAbstract, emitsInstanceArtifacts, emitsWriteArtifacts } from "./instance-artifacts.js";
 // The UI tier asks THESE — "is there an endpoint?" — never the storage predicates.
-export { hasGeneratedForm, hasItemRoute, itemRouteField, restPath, servesClientTier, servesReadApi, servesWriteApi } from "./api-surface.js";
+export { hasGeneratedForm, hasItemRoute, itemRouteField, reportDecimalColumns, restPath, servesClientHooks, servesClientTier, servesReadApi, servesWriteApi } from "./api-surface.js";
 // #356 — every emitter selects a field's view by the SURFACE it renders, never by
 // declaration position. An owned generator (FR-040) composing the render layer must
 // use this too, or it reinstates the order-dependence in its own copy.

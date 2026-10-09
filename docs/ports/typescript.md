@@ -311,14 +311,18 @@ like a keyless read-only projection. For a report `<R>` the generators you have 
 | `queriesFile()` | `<R>.queries.ts` | `list<Plural>` only. No by-id query |
 | `routesFile()` / `routesFileHono()` | `<R>.routes.ts` / `<R>.routes.hono.ts` | GET list; `POST` answers 405; no `/:id` route |
 | `namesFile()` | `<R>.names.ts` | the view and column names |
+| `tanstackQuery()` | `<R>.hooks.ts`, `<R>.meta.ts` | the list hook (`use<R>List`, with the report's filter type) and its descriptor. No detail hook, no mutation |
 | `barrel()` | `index.ts` | one export |
 
 Every derived field with filter operators is filterable and sortable. A decimal column (an
-`avg`, a ratio) is a `string` in the read schema and on the wire. The UI tier writes nothing
-for a report (no hooks, grid, grid hook or form) and `agent/ui.md` lists none: those
-generators gate on `servesClientTier`, which is false for a report, while `servesReadApi` is
-true. If you own an ejected hook generator that gates on `servesReadApi`, switch it to
-`servesClientTier`, or it emits a list hook for every served report. A report with no view
+`avg`, a ratio) is a `string` in the read schema and on the wire, on SQLite too: SQLite
+computes it as a REAL, so on that dialect the generated route passes the decimal field names to
+the mount as `decimalColumns` and the mount sends each as its string. The UI tier writes the
+list hook and nothing else for a report (no grid, grid hook or form), and `agent/ui.md` lists
+it: the hook generator gates on `servesClientHooks`, which is true for a served report, and
+the grid generators on `servesClientTier`, which is false. An ejected hook generator keeps
+the gate it was copied with and writes no report hook until you resync it with `meta eject`.
+A report with no view
 source, or an abstract one, generates nothing. The contract is in
 [reporting](../features/reporting.md#how-a-report-is-served).
 

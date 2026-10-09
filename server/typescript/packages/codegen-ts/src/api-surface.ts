@@ -18,12 +18,13 @@
 // route derivation grows a second source of truth, this function changes and every
 // UI generator follows for free.
 //
-// Two questions since FR-044 Plan 3: `servesReadApi` asks whether a read endpoint exists
-// (the route and queries generators), and `servesClientTier` asks whether the client UI
-// tier is generated for it (hooks, grids, `agent/ui.md`). They differ for a served
-// report, which has a route and no UI tier until Plan 5.
+// Three questions since FR-044: `servesReadApi` asks whether a read endpoint exists (the
+// route and queries generators), `servesClientHooks` asks whether a typed client hook is
+// generated for it, and `servesClientTier` asks whether the rest of the client UI tier (a
+// grid, its grid hook, the Angular service) is. They differ for a served report, which has
+// a route and a list hook and no grid, form or detail hook.
 
-import type { MetaObject } from "@metaobjectsdev/metadata";
+import { FIELD_SUBTYPE_DECIMAL, type MetaObject } from "@metaobjectsdev/metadata";
 import { isAbstract } from "./instance-artifacts.js";
 import { isProjection } from "./projection/projection-detector.js";
 import { hasAnyRdbSource, hasWritableRdbSource, isReport, servedReport } from "./source-detect.js";
@@ -42,8 +43,9 @@ import { tphRouteSegment } from "./templates/tph-discriminator.js";
  *
  * Abstract types are excluded (no instance to address). Today the endpoint test is
  * "declares or inherits a `source.rdb`", which is precisely the predicate
- * `routesFile` / `routesFileHono` gate on. The UI tier asks `servesClientTier`, which
- * is this answer minus reports.
+ * `routesFile` / `routesFileHono` gate on. The hook generator asks `servesClientHooks`
+ * (this answer) and the grid generators ask `servesClientTier`, which is this answer
+ * minus reports.
  */
 export function servesReadApi(entity: MetaObject): boolean {
   // FR-044 Plan 3: a report is served exactly when Table A says so (`servedReport`: not
@@ -95,12 +97,42 @@ export function itemRouteField(entity: MetaObject): string | undefined {
 }
 
 /**
- * True when the client UI tier (hooks, grids, `agent/ui.md`) is generated for the
- * object: `servesReadApi(entity)` and not a report. A served report has a route and no
- * UI tier until Plan 5.
+ * True when a typed client hook is generated for the object: `servesReadApi(entity)`.
+ * A served report is included. It gets the list hook (`use<Report>s`, with the report's
+ * filter and sort types) and nothing else: `hasItemRoute` is false for it, so no detail
+ * hook, and it has no writable source, so no mutation hooks. `agent/ui.md` lists the
+ * objects this answers true for.
+ */
+export function servesClientHooks(entity: MetaObject): boolean {
+  return servesReadApi(entity);
+}
+
+/**
+ * True when the rest of the client UI tier (a grid, its grid hook, the Angular service)
+ * is generated for the object: `servesReadApi(entity)` and not a report. A served report
+ * has a route and a list hook (`servesClientHooks`) and no grid; a grid over reports
+ * belongs to the later `reporting` library.
  */
 export function servesClientTier(entity: MetaObject): boolean {
   return servesReadApi(entity) && !isReport(entity);
+}
+
+/**
+ * The decimal fields a report's read-only mount must send as strings: a report on SQLite.
+ *
+ * A decimal is a string on the wire. SQLite has no decimal, so the REAL a report's view
+ * computes (a ratio, an average, a sum of a decimal field) reaches the route as a JS number
+ * where Postgres and MySQL return a string, and the read schema says string for all of them.
+ * The generated route passes these names to the mount as `decimalColumns` and the mount sends
+ * a number under one of them as its string. Empty for every other object and dialect, which
+ * keeps their routes byte-identical. A projection on SQLite is not covered: it is released
+ * behaviour and its decimals keep reaching the wire as numbers.
+ */
+export function reportDecimalColumns(entity: MetaObject, dialect: string): readonly string[] {
+  if (dialect !== "sqlite" || !isReport(entity)) return [];
+  // ADR-0039: resolving. A report read model's fields are its own, but the resolving call is
+  // the rule everywhere a field set is read.
+  return entity.fields().filter((f) => f.subType === FIELD_SUBTYPE_DECIMAL).map((f) => f.name);
 }
 
 /**

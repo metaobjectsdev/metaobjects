@@ -102,7 +102,7 @@ describe("FR-044 the site renders reports", () => {
     expect(engagement).toContain("row scope segment completions");
     expect(engagement).toContain("program long yes dimension WorkoutEvent.programId");
     expect(engagement).toContain(
-      "daysEngaged long no measure count of distinct (WorkoutEvent.programId, WorkoutEvent.weekNumber, WorkoutEvent.dayNumber)",
+      "daysEngaged long no measure count of distinct (WorkoutEvent.programId, WorkoutEvent.customerEmail, WorkoutEvent.weekNumber, WorkoutEvent.dayNumber)",
     );
     expect(engagement).toContain("avgDaysPerStarter decimal yes measure daysEngaged / starters, null when the denominator is 0");
     expect(engagement).toContain("lastActivityAt timestamp yes measure max of WorkoutEvent.occurredAt");

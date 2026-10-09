@@ -10,7 +10,7 @@ import { MetaDataLoader, InMemoryStringSource, loadUris, reportReadModel } from 
 import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import { renderRoutesFile } from "../../src/templates/routes-file.js";
 import { renderRoutesFileHono } from "../../src/templates/routes-file-hono.js";
-import { hasGeneratedForm, hasItemRoute, itemRouteField, servesClientTier, servesReadApi } from "../../src/api-surface.js";
+import { hasGeneratedForm, hasItemRoute, itemRouteField, reportDecimalColumns, servesClientHooks, servesClientTier, servesReadApi } from "../../src/api-surface.js";
 import { renderQueriesFile } from "../../src/templates/queries-file.js";
 import { servedReport } from "../../src/source-detect.js";
 import { hasUiSurface } from "../../src/generators/agent-ui-page.js";
@@ -663,6 +663,74 @@ describe("renderRoutesFile — a served report (FR-044 Plan 3)", () => {
     }
   });
 
+  describe("a decimal a SQLite report computes is sent as a string (decimalColumns)", () => {
+    // A ratio is typed decimal, SQLite has no decimal, and the view hands the route a REAL.
+    const ratioModel = () => loadMetadata([
+      {
+        "object.entity": {
+          name: "Invoice",
+          children: [
+            { "source.rdb": { "@table": "invoices" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "status" } },
+            { "field.decimal": { name: "amount", "@precision": 12, "@scale": 2 } },
+            { "identity.primary": { name: "id", "@fields": "id" } },
+            { "dimension.attribute": { name: "status", "@of": "Invoice.status" } },
+            { "measure.aggregate": { name: "invoices", "@agg": "count", "@of": "Invoice.id" } },
+            { "measure.aggregate": { name: "paidInvoices", "@agg": "count", "@of": "Invoice.id", "@filter": { status: "PAID" } } },
+            { "measure.aggregate": { name: "avgAmount", "@agg": "avg", "@of": "Invoice.amount" } },
+            { "measure.ratio": { name: "paidShare", "@numerator": "paidInvoices", "@denominator": "invoices" } },
+          ],
+        },
+      },
+      {
+        "object.report": {
+          name: "InvoiceTotals",
+          "@from": "Invoice",
+          "@dimensions": ["status"],
+          "@measures": ["invoices", "avgAmount", "paidShare"],
+          children: [{ "source.rdb": { "@kind": "view", "@table": "v_invoice_totals" } }],
+        },
+      },
+    ]);
+    const sqliteCtx = (root: MetaRoot) => makeRenderContext({
+      dialect: "sqlite", loadedRoot: root, outDir: "/x", dbImport: "~/db",
+      pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+    });
+
+    test("every decimal field of the report is named, on both route flavours and on SQLite only", async () => {
+      const root = await ratioModel();
+      const model = reportReadModel(declared(root, "InvoiceTotals"), root);
+      // Not vacuous: the ratio and the average really are decimal fields of the read model.
+      expect(model.findField("paidShare")?.subType).toBe("decimal");
+      expect(model.findField("avgAmount")?.subType).toBe("decimal");
+      expect(reportDecimalColumns(model, "sqlite")).toEqual(["avgAmount", "paidShare"]);
+      const ctx = sqliteCtx(root);
+      for (const out of [renderRoutesFile(model, ctx), renderRoutesFileHono(model, ctx)]) {
+        expect(out).toContain('decimalColumns: ["avgAmount", "paidShare"],');
+      }
+      for (const dialect of ["postgres", "mysql"] as const) {
+        expect(reportDecimalColumns(model, dialect)).toEqual([]);
+        const other = makeRenderContext({
+          dialect, loadedRoot: root, outDir: "/x", dbImport: "~/db",
+          pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+        });
+        expect(renderRoutesFile(model, other)).not.toContain("decimalColumns");
+        expect(renderRoutesFileHono(model, other)).not.toContain("decimalColumns");
+      }
+    });
+
+    test("a report with no decimal field, a projection and an entity pass none", async () => {
+      const root = await loadReportingModel();
+      const storeTotals = reportReadModel(declared(root, "StoreTotals"), root);
+      // StoreTotals' measures are counts and a currency sum: no decimal.
+      expect(reportDecimalColumns(storeTotals, "sqlite")).toEqual([]);
+      expect(renderRoutesFile(storeTotals, sqliteCtx(root))).not.toContain("decimalColumns");
+      // A projection on SQLite is released behaviour and is not covered.
+      expect(reportDecimalColumns(declared(root, "Program"), "sqlite")).toEqual([]);
+    });
+  });
+
   test("a keyless projection (no identity, no `id` column) mounts no item routes and is still called a projection", async () => {
     const { projection, ctx } = await loadProjectionFixture();
     expect(projection.primaryIdentity()).toBeUndefined();
@@ -676,15 +744,16 @@ describe("renderRoutesFile — a served report (FR-044 Plan 3)", () => {
     }
   });
 
-  test("a served report has a read API and no client tier; an unserved one has neither", async () => {
+  test("a served report has a read API and a list hook and no grid tier; an unserved one has none of them", async () => {
     const root = await loadReportingModel();
     const storeTotals = declared(root, "StoreTotals");
     // The declared node and its read model answer the same.
     for (const o of [storeTotals, reportReadModel(storeTotals, root)]) {
       expect(servedReport(o)).toBe(true);
       expect(servesReadApi(o)).toBe(true);
+      expect(servesClientHooks(o)).toBe(true);
       expect(servesClientTier(o)).toBe(false);
-      expect(hasUiSurface(o)).toBe(false);
+      expect(hasUiSurface(o)).toBe(true);
       expect(hasGeneratedForm(o)).toBe(false);
       expect(hasItemRoute(o)).toBe(false);
     }
@@ -692,11 +761,13 @@ describe("renderRoutesFile — a served report (FR-044 Plan 3)", () => {
       const sourceless = declared(root, name);
       expect(servedReport(sourceless)).toBe(false);
       expect(servesReadApi(sourceless)).toBe(false);
+      expect(servesClientHooks(sourceless)).toBe(false);
       expect(servesClientTier(sourceless)).toBe(false);
     }
     // An entity is untouched by the split: both answers are the old one.
     const program = declared(root, "Program");
     expect(servesReadApi(program)).toBe(true);
+    expect(servesClientHooks(program)).toBe(true);
     expect(servesClientTier(program)).toBe(true);
   });
 

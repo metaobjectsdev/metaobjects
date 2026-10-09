@@ -71,7 +71,7 @@ public class ReportingAccessorsTests
 
         var days = Assert.IsType<MetaMeasure>(Root(r, "WorkoutEvent").Children().Single(c => c.Name == "daysEngaged"));
         Assert.Equal(
-            ["WorkoutEvent.programId", "WorkoutEvent.weekNumber", "WorkoutEvent.dayNumber"],
+            ["WorkoutEvent.programId", "WorkoutEvent.customerEmail", "WorkoutEvent.weekNumber", "WorkoutEvent.dayNumber"],
             days.OfColumns());
         Assert.True(days.Distinct());
 

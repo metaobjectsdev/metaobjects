@@ -338,24 +338,29 @@ encodings"), applied to the column types above:
 | `currency` | integer minor units |
 | `date` (a time dimension at `day`, `week`, `month`, `quarter` or `year`) | `YYYY-MM-DD`, the first day of the bucket |
 | `timestamp` (a time dimension at `hour`) | an instant with `Z`, or naive without for a `@localTime` field |
-| `decimal` (`avg`, a ratio, a `sum` of a decimal) | **the port's own decimal spelling.** Not part of the contract: precision is the engine's, and the ports do not agree on one JSON form (TypeScript sends a string) |
+| `decimal` (`avg`, a ratio, a `sum` of a decimal) | **the port's own decimal spelling.** Not part of the contract: precision is the engine's, and the ports do not agree on one JSON form (TypeScript sends a string, on SQLite as on Postgres: SQLite computes the value as a REAL and the generated route sends it as its string) |
 | a null value | `null`, with the key present |
 
 **What each port generates for a served report.** `<R>` is the report's name.
 
 | Port | Generated |
 |---|---|
-| TypeScript | `<R>.ts` (Drizzle view binding, Zod read schema, row type, descriptor, filter and sort allowlists), `<R>.queries.ts` (the list query only), `<R>.routes.ts` (and `<R>.routes.hono.ts` from the Hono routes generator), `<R>.names.ts`, the barrel export |
+| TypeScript | `<R>.ts` (Drizzle view binding, Zod read schema, row type, descriptor, filter and sort allowlists), `<R>.queries.ts` (the list query only), `<R>.routes.ts` (and `<R>.routes.hono.ts` from the Hono routes generator), `<R>.names.ts`, `<R>.hooks.ts` (the TanStack list hook only) with the `<R>.meta.ts` descriptor it imports, the barrel export |
 | C# | `<R>.g.cs` (keyless row class) and its `DbContext` mapping, `<R>Routes.g.cs`, `<R>FilterAllowlist.g.cs` |
 | Java | `<R>Dto`, `<R>Repository` (`list` and `count` only), `<R>FilterAllowlist`, `<R>Controller` |
 | Kotlin | `<R>Table` (Exposed), the `<R>` data class, `<R>FilterAllowlist`, `<R>Controller` |
 | Python | `<R>.py` (Pydantic row model), `<snake>_filter_allowlist.py`, `<snake>_router.py`, `<snake>_names.py` |
 
 No port generates a by-id query, a `findById` on a repository seam, a create or update
-schema, a write method, a form, a grid or a client hook for a report. In TypeScript the UI
-tier asks a separate predicate, `servesClientTier`, which is false for a report while
-`servesReadApi` is true; a hook generator you own that still gates on `servesReadApi` will
-emit a list hook for a served report, so switch it to `servesClientTier`. TypeScript and
+schema, a write method, a form or a grid for a report. Only TypeScript has a generated client
+tier, so only TypeScript generates a hook: the list hook, `use<R>List` (or `use<R>s` when the
+name is not already plural), typed with the report's row, its filter and its sort. It has no
+detail hook and no mutation hook, because the report has no item route and no write. The
+hook generator asks `servesClientHooks`, which is true for a served report; the grid
+generators ask `servesClientTier`, which is false for one. A hook generator you own was
+copied with the predicate it had then and emits no report hook until you resync it
+(`meta eject hooks`, then merge your edits); the other UI generators you own need
+nothing. TypeScript and
 Python write a names artifact because their read model flows through the names generator;
 C#, Java and Kotlin bind the view and its columns by literal. These are reference helpers,
 not core: copy and own them with your port's `eject`.
@@ -423,8 +428,9 @@ the bodies are valid under MySQL's default `ONLY_FULL_GROUP_BY`.
   router drops only `object` fields, so it would list a `map` one. The corpus has no array or
   map dimension, so none of this is asserted: do not rely on filtering or sorting one across
   ports.
-- **No generated client.** A served report has a route and a row type; a hook, grid or form
-  for it is yours to write until the UI tier covers reports.
+- **A list hook and nothing else of a client.** A served report has a route, a row type and,
+  in TypeScript, the list hook. A grid, a form or a dashboard over reports is yours to write
+  until the `reporting` library covers it.
 - **With `@via`, `@of` must name an entity that has the field** (declared on it or inherited by
   it); naming a base of the reached entity for a field only the subtype declares loads and then
   fails `meta migrate`. The quiet form of the same rule: a `@via` dimension reads its field from
@@ -451,7 +457,9 @@ on a measure and an enum dimension, paging over groups, the three field-naming `
 `405` on `POST`, and `404` on every verb at `/{id}`. The corpus model carries one sourceless
 report, so a port that serves every report it finds fails. No scenario asserts a decimal's
 spelling or a timestamp literal. TypeScript and C# run the scenarios against the real views on
-Postgres; Java, Kotlin and Python serve seeded rows behind their repository seam, and a
+Postgres, and TypeScript runs the same thirteen against SQLite as well
+(`api-contract-report-sqlite.test.ts`), where it also holds that a ratio reaches the wire as a
+string, as it does on Postgres; Java, Kotlin and Python serve seeded rows behind their repository seam, and a
 TypeScript test holds those rows equal to what the views return.
 
 ## The rules the loader enforces

@@ -34,6 +34,7 @@ import { withContractErrorHandler } from "./route-error-handler.js";
 import { validationErrorBody } from "../route-errors.js";
 export { isTruthyFlag, contractErrorCode, parseId, coerceIdForColumn } from "./util.js";
 export { timestampWire, canonicalTimestamp } from "../timestamp-wire.js";
+export { decimalWire } from "../decimal-wire.js";
 
 // ---------------------------------------------------------------------------
 // Loose types — we don't bind to a specific Drizzle backend so the helper

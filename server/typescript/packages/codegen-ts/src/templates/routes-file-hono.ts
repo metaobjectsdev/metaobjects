@@ -31,7 +31,7 @@ import { entityModuleSpecifier } from "../import-path.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import { isReport } from "../source-detect.js";
-import { itemRouteField } from "../api-surface.js";
+import { itemRouteField, reportDecimalColumns } from "../api-surface.js";
 import { DEFAULT_ID_FIELD } from "./queries.js";
 import { authSeamJsDoc, type CrudVerb, exposeLine } from "../routes-expose.js";
 import { effectivePackage } from "../docs-paths.js";
@@ -94,12 +94,15 @@ export function renderRoutesFileHono(
     // The mount addresses `id` by default. A projection keyed on another field names it
     // (the view's key for that column, which is the field name), so `GET /:id` reads the
     // same column the by-id query does. Absent for `id`, which keeps that output's bytes.
+    // A decimal a SQLite report computes is a REAL; the mount sends it as the string it is elsewhere.
+    const decimalColumns = reportDecimalColumns(entity, ctx.dialect);
     const keylessOpts = (indent: string): string =>
       (idField !== undefined && idField !== DEFAULT_ID_FIELD
         ? `\n${indent}idColumn: ${JSON.stringify(idField)},`
         : "") +
       (keyless ? `\n${indent}itemRoutes: false,` : "") +
-      (report ? `\n${indent}resource: "report",` : "");
+      (report ? `\n${indent}resource: "report",` : "") +
+      (decimalColumns.length > 0 ? `\n${indent}decimalColumns: ${JSON.stringify(decimalColumns)},` : "");
     const HonoSym = imp("t:Hono@hono");
     const mountReadOnlyCrudRoutesSym = imp(`mountReadOnlyCrudRoutes@${runtimeSpec}`);
 

@@ -32,8 +32,9 @@ object uses (`InvoicesByMonth` is `/api/invoices_by_months`).
   `date`, spelled `YYYY-MM-DD` (`issuedOnMonth`).
 - **A sum scoped by a segment is nullable**: the key is present and its value is
   `null` for a group with no row in the segment.
-- **No typed client hook and no UI tier is generated for a report** (no TanStack hook,
-  grid, grid hook or form). The read route and its row type are the whole surface.
+- **No grid or form is generated for a report in any port.** The read route and its row type
+  are the surface in every port; TypeScript, the one port with a client tier, also generates
+  the list hook. The corpus gates the route, not the hook.
 - **An enum dimension sorts and filters like any other.** `Invoice.status` is a `field.enum`
   (`OPEN`, `PAID`, `VOID`, declared in alphabetical order so the stored text and the declared
   order agree), so `InvoiceStatusTotals.status` is an enum dimension: `?sort=status:asc|desc` is
@@ -43,6 +44,8 @@ object uses (`InvoicesByMonth` is `/api/invoices_by_months`).
 - **A decimal's spelling is not asserted.** `paidShare` is a ratio, so it is a decimal,
   and each port spells a decimal its own way. The scenarios that touch it assert only
   how many rows match.
+  TypeScript sends a string, on SQLite as well as Postgres, and holds that in its own SQLite lane
+  (`integration-tests/test/api-contract-report-sqlite.test.ts`), outside this cross-port corpus.
 - The default page size stays per port, as documented: TypeScript and C# return every
   row when `limit` is omitted, Java, Kotlin and Python the first 50. The scenarios
   that page pass `limit` explicitly.
