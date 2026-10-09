@@ -158,13 +158,20 @@ function hopLabel(node: MetaData): string {
 }
 
 /** True when `hop` is the join a `@via` step crosses. */
-function crosses(hop: Hop, step: PathStep): boolean {
+function crosses(hop: Hop, step: PathStep, root: MetaRoot): boolean {
   if (hop.step.targetEntity !== step.targetEntity) return false;
   // A belongs-to step (through a reference, or a relationship backed by one) crosses the
-  // reference's join; a step whose reference the far entity holds crosses its relationship's.
-  return step.referenceHolder === "source"
-    ? hop.relationship === "many_to_one" && hop.step.fkColumn === step.fkColumn
-    : hop.relationship === "one_to_one" && hop.hop === step.relationship;
+  // reference's join, matched by the reference itself: two composite references onto one
+  // entity may share their first column (tenantId), so the step's fkColumn cannot tell them
+  // apart. A step whose reference the far entity holds crosses its relationship's join.
+  if (step.referenceHolder === "source") {
+    return (
+      hop.relationship === "many_to_one" &&
+      isMetaObject(step.entity) &&
+      hop.reference === hopReferenceIdentity(step.entity, step.relationship, root)
+    );
+  }
+  return hop.relationship === "one_to_one" && hop.hop === step.relationship;
 }
 
 /** Every simple path from `from` to `to` in the cube join graph, up to `limit`. */
@@ -480,7 +487,7 @@ class CubeModelBuilder {
     // The cubes the dimension's joins pass through, the owning cube first.
     const cubes = [draft.name];
     for (const step of path) {
-      const hop = this.drafts.get(step.entity.resolutionKey())?.hops.find((h) => crosses(h, step));
+      const hop = this.drafts.get(step.entity.resolutionKey())?.hops.find((h) => crosses(h, step, this.root));
       if (hop === undefined) throw new Error(`${where}: no join crosses its @via hop '${step.relationship}'.`);
       cubes.push(hop.joinName);
     }

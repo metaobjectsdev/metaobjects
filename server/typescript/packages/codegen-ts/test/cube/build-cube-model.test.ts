@@ -769,6 +769,41 @@ describe("Table E — joins and reached members", () => {
     expect(cube(model, "Team").dimensions.map((d) => d.name)).toEqual(["id", "name"]);
   });
 
+  test("two composite references sharing a leading column: each @via reads its own alias cube", async () => {
+    // Both references start with tenantId, so their first FK column is the same: a hop must be
+    // matched by the reference it crosses, never by that column.
+    const model = await build([
+      entity("Program", [
+        table("programs"),
+        { "field.long": { name: "tenantId" } },
+        longId,
+        { "field.string": { name: "title" } },
+        { "identity.primary": { name: "id", "@fields": ["tenantId", "id"] } },
+      ]),
+      entity("Week", [
+        table("weeks"),
+        { "field.long": { name: "tenantId" } },
+        longId,
+        { "field.long": { name: "programId" } },
+        { "field.long": { name: "formerProgramId" } },
+        { "identity.primary": { name: "id", "@fields": ["tenantId", "id"] } },
+        { "identity.reference": { name: "fkProgram", "@fields": ["tenantId", "programId"], "@references": "Program" } },
+        {
+          "identity.reference": {
+            name: "fkFormerProgram", "@fields": ["tenantId", "formerProgramId"], "@references": "Program",
+          },
+        },
+        { "dimension.attribute": { name: "formerTitle", "@of": "Program.title", "@via": "Week.fkFormerProgram" } },
+        { "dimension.attribute": { name: "programTitle", "@of": "Program.title", "@via": "Week.fkProgram" } },
+      ]),
+    ]);
+    expect(cube(model, "Week").joins.map((j) => j.name)).toEqual(["Week_fkProgram", "Week_fkFormerProgram"]);
+    expect(cube(model, "Week").dimensions.filter((d) => !d.primaryKey)).toEqual([
+      { name: "formerTitle", sql: "{Week_fkFormerProgram.title}", type: "string" },
+      { name: "programTitle", sql: "{Week_fkProgram.title}", type: "string" },
+    ]);
+  });
+
   test("a relationship backed by a reference the cube holds is that reference's join, not a second hop", async () => {
     const model = await build([
       program(),
