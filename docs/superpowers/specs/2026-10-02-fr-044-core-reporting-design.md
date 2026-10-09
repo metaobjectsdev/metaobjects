@@ -7,6 +7,12 @@ who need a full semantic layer get one through exporters to established tools. O
 the maintainer accepted all six open decisions as recommended (§8) and gave the explicit
 ADR-0023 agreement for the new vocabulary listed in §3.1, with the justifications written
 there. Ready for an implementation plan.
+**Amended 2026-10-09:** two additions to the 1.1 vocabulary, requested by the maintainer after
+a reference adopter's report pages were measured against Plans 1 to 3: a report's rows can come
+from a dimension's entity (`@spine`, R8), and a measure can declare its value when it is null
+(`@default`, R9). The register entries are in §3.2. Both are additive and `metamodelVersion`
+stays `1.1`. Plan:
+`docs/superpowers/plans/2026-10-09-fr-044-zero-rows-and-measure-defaults.md`.
 **Target:** metamodel `1.1` (additive vocabulary is a MINOR — `docs/compatibility-policy.md`,
 `scripts/check-metamodel-version.mjs`). Nothing here is a PATCH.
 **Relates to:** [ADR-0037](../../../spec/decisions/ADR-0037-metamodel-vocabulary-expansion-decision-framework.md)
@@ -137,6 +143,24 @@ port's provider and in `fixtures/registry-conformance/expected-registry.json`.
 **Change from the first draft:** the report's `@window` attribute is dropped. A report's row
 scope is the existing `@filter` (which carries R4's relative-date values), so no new
 attribute is needed for it.
+
+### 3.2 ADR-0023 register amendment (2026-10-09)
+
+The maintainer asked for these two capabilities on 2026-10-09, for the 1.1 release, so that
+vocabulary a first adopter needs does not force a second metamodel move straight after 1.1.
+The names, the placement and the rules are this amendment's proposal (R8 and R9 below, and
+the plan named in the header). Merging that plan is the ADR-0023 agreement to them. Nothing
+else is added: `measure.derived` stays absent.
+
+| New name | Kind | Why it cannot be computed from existing metadata |
+|---|---|---|
+| `@spine` | attr, `string`, on `object.report` | Whether a report shows a dimension tuple that has no fact rows is the report author's choice, and the same dimensions serve both kinds of report: a sales table that lists only products with sales, and a catalogue table that lists every product with zero beside the ones that never sold. Nothing in the model says which a given report wants. The value is a to-one path because an entity can be reached from `@from` by more than one reference, so the entity's name alone would not say which rows are meant. |
+| `@default` | attr, `int`, on `measure.aggregate` and `measure.ratio` | Null and zero mean different things ("no purchases" against "not applicable"), and which one a measure reads when it has nothing to aggregate is the author's statement about that measure. A `count` already derives its own zero, so the attribute is refused there. |
+
+`@default` reuses the name a field already has, under ADR-0037's "same concept, same
+attribute name": on a field it is the value used when none is supplied, on a measure the
+value used when there is none to aggregate. Unlike a field's, which follows the field's
+type, a measure's is registered as an integer (see R9 for why).
 
 ## 4. Requirements
 
@@ -328,6 +352,115 @@ A FR-043 library, `stability: preview`, opt-in as `"libraries": ["reporting"]`:
 
 Composes only R1–R5 vocabulary; adds none.
 
+### R8 — `@spine`: a report's rows from a dimension's entity (added 2026-10-09)
+
+Part of the 1.1 change set, with R1 to R5.
+
+```yaml
+# on Purchase
+- dimension.attribute: { name: programId,    "@of": "Program.id",    "@via": "Purchase.program" }
+- dimension.attribute: { name: programTitle, "@of": "Program.title", "@via": "Purchase.program" }
+
+- object.report:
+    name: ProgramSales
+    "@from": Purchase
+    "@spine": "Purchase.program"
+    "@dimensions": [programId, programTitle]
+    "@measures": [purchases, buyers, revenue]
+    "@segment": active
+```
+
+**The gap.** A report has one row per dimension tuple that has fact rows. A reference
+adopter's pages need the rows that have none: a published program with no purchases still
+belongs in the per-program table, and a scheduled day nobody completed is an empty bar in a
+chart whose whole point is the empty bars. R7's calendar spine covers the time case only.
+
+**Proposed shape.** One optional attribute on `object.report`. Without it nothing changes.
+With it, the report's dimension tuples come from the rows of the entity at the end of the
+path (the *spine entity*) instead of from the fact rows: one row per distinct dimension
+tuple among **that entity's** rows, whether or not any row of `@from` refers to it.
+
+- `@spine` is a to-one path with `@via`'s grammar, `Owner.hop[.hop…]`. `Owner` is `@from`
+  (or an entity it extends) and every hop is to-one, exactly as for a dimension's `@via`.
+  The lowering needs a declared `identity.reference` on every hop, as it does for a dimension.
+- **Every listed dimension is reached through the spine:** its `@via` begins with the
+  spine's hops. So a dimension is a column of the spine entity, or of an entity to-one from
+  it. A dimension read from the fact row (no `@via`, or a `@via` that leaves `@from` through
+  another reference) is refused, because it has no value in a row that has no facts. A
+  report with `@spine` lists at least one dimension.
+- **A time dimension follows the same rule.** It is legal when its column belongs to the
+  spine entity or beyond (the month a program was published), and refused over a fact column
+  (the month of a purchase). Zero-filled time buckets remain R7's calendar spine.
+- **`@segment` and `@filter` on the report scope fact rows, never spine rows.** A spine row
+  whose facts are all filtered out keeps its row. Both still name fields of `@from`.
+- **A row with no facts** reads `0` for a `count`, null for `sum`, `avg`, `min` and `max`
+  (unless the measure declares R9's `@default`), and a ratio is computed from its operands as
+  they read.
+- **A fact row whose reference is null, or matches no spine row, is in no row of the
+  report.** Without `@spine` such rows form a null group; with it there is no spine row to
+  hold them.
+- The grain is unchanged: one row per distinct dimension tuple. To get exactly one row per
+  row of the spine entity, list a dimension over its identity (`programId` above).
+- One spine per report.
+
+**ADR-0037 walk.** (0) Not derivable: the same dimensions serve a report that hides the empty
+tuples and one that shows them, so the choice is the report's. (1) Not physical-only: it
+changes the row set. (2) It configures an existing type and needs a reference (the path), so
+it is an **attribute**; it is not a structural variant with its own generated shape, so not a
+`@kind`, and it owns no behaviour of its own, so not a subtype. It lives on the report, not
+on the dimension, because one dimension is listed by both kinds of report.
+
+**Admission.** RDB: the spine entity's table is the `FROM` and the fact table is
+`LEFT JOIN`ed, with the report's row scope in the join condition. MongoDB: `$lookup` from
+the spine collection, then `$group`. In memory: iterate the spine rows. Search: refused (no
+join).
+
+### R9 — `@default`: a measure's value when it is null (added 2026-10-09)
+
+Part of the 1.1 change set, with R1 to R5.
+
+```yaml
+- measure.aggregate: { name: revenue, "@agg": sum, "@of": "Purchase.amountCents",
+                       "@segment": active, "@default": 0 }
+- measure.ratio:     { name: revenuePerBuyer, "@numerator": revenue,
+                       "@denominator": buyers, "@default": 0 }
+```
+
+**The gap.** A `sum` of nothing and a ratio over zero are null by contract (R2), so every
+caller defaults in the client where a hand-written view would have written
+`COALESCE(…, 0)`.
+
+**Proposed shape.** One optional integer attribute on `measure.aggregate` and
+`measure.ratio`: the value the measure reads when it would otherwise be null. That is the
+case when nothing matched (an empty table, a row with no facts under R8, a measure `@filter`
+or `@segment` that matched none of a group's rows), when every matched value is null, and
+for a ratio whose denominator is zero or null.
+
+- Legal on a `sum` or `avg`, on a `min` or `max` over a numeric field, and on a ratio.
+- **Refused on a `count`**: a count is never null (it is `0`), so a default could never
+  apply.
+- **Refused on a `min` or `max` over a field that is not numeric** (a string, an enum, a
+  date): a default is a number.
+- A measure with a `@default` is never null, so its derived report field is not nullable in
+  any port.
+- A ratio's operand carries its own `@default` into the ratio: each operand is its full
+  expression, as it already is for conditions.
+
+**Why an integer.** Every case found is zero. An integer is a valid value of every numeric
+type a measure can have (`long`, `currency` minor units, `decimal`, `double`), so the value
+needs no rule per measure type. dbt MetricFlow's `fill_nulls_with` takes an integer, so the
+§5 mapping stays lossless. A fractional default would need a spelling that five canonical
+serializers and three SQL dialects agree on, for a case nobody has. Widening it later is
+additive.
+
+**ADR-0037 walk.** (0) Not derivable: null and zero mean different things, and which one a
+measure reads is the author's statement. (1) Not physical-only: it changes the value and the
+nullability on the wire. (2) It configures an existing type: an **attribute**, under the
+name fields already use for the same concept.
+
+**Admission.** RDB `COALESCE`; MongoDB `$ifNull`; Search the aggregation's `missing` value or
+adapter code; in memory trivial.
+
 ## 5. Mapping contract (core → Cube → MetricFlow)
 
 | MetaObjects | Cube | dbt MetricFlow |
@@ -345,6 +478,8 @@ Composes only R1–R5 vocabulary; adds none.
 | `segment` | segment | metric `filter` / saved query filter |
 | relative filter `{ now: "-P7D" }` | query `dateRange` "last 7 days" | `{{ TimeDimension(...) }} >= dateadd(...)` |
 | `object.report` | a pre-aggregation (rollup) | a saved query |
+| measure `@default: n` (R9) | a `number` measure `COALESCE({measure}, n)` | `fill_nulls_with: n` on the metric |
+| report `@spine` (R8) | the spine entity's cube joins the fact cube `one_to_many`, and the rollup is rooted on it | none: `join_to_timespine` covers time only. The exporter must refuse a `@spine` report, never drop the attribute silently (§3 obligation 3) |
 
 ## 6. Dependencies and order
 
@@ -354,7 +489,8 @@ Composes only R1–R5 vocabulary; adds none.
 2. **R1, R2 (aggregate + ratio), R3, R4, R5** — one metamodel `1.1` change set: register in
    five ports, registry-conformance, loader fixtures, TS lowering for Postgres, SQLite/D1 and
    MySQL, persistence-conformance (read each report view in every port), api-contract
-   `report/` sub-corpus (list, filter, sort, paging, 405 on writes) in every port.
+   `report/` sub-corpus (list, filter, sort, paging, 405 on writes) in every port. **R8 and
+   R9** (added 2026-10-09) join this change set and are gated the same way.
 3. **R2 `measure.derived`** — once FR-037 R5's arithmetic lands.
 4. **R6** — Cube exporter. MetricFlow on first adopter demand (D5).
 5. **R7** — the library.
@@ -377,6 +513,13 @@ Composes only R1–R5 vocabulary; adds none.
   result equals the report view result on the conformance data. (MetricFlow: golden fixtures
   and `dbt parse`, when it is built.)
 - No-churn: the existing corpora produce byte-identical output.
+- R8 and R9: loader error fixtures for a `@spine` over a to-many hop, a listed dimension not
+  reached through the spine, a `@spine` report with no dimensions, a `@default` on a `count`,
+  on a non-numeric `min`/`max`, and one that is not an integer. Value tests on Postgres and
+  SQLite with a spine row that has no facts: its row is present, a `count` is `0`, a `sum`
+  and a ratio are null without a `@default` and the declared value with one, and the view has
+  exactly as many rows as the spine entity has distinct dimension tuples. Every port reads
+  those rows and types a defaulted measure as not nullable.
 - The reference adopter's admin analytics are rebuilt from declarations, and its hand-written
   report code shrinks accordingly (measured and recorded in the release notes).
 
@@ -403,3 +546,17 @@ The maintainer accepted every recommendation on 2026-10-03.
 - **Percentile/median, approximate distinct, conversion/funnel metrics, rolling windows,
   period-over-period**: advanced features present in only one or two surveyed tools.
   Available through the exported semantic layer.
+
+Parked with R8 and R9 (2026-10-09). Each is refused at load today, so admitting it later is
+additive:
+
+- **Two spines in one report** (every program against every customer): a cross join whose
+  size is the product of both tables. Re-entry: an adopter case a single spine with onward
+  dimensions cannot serve.
+- **A row scope on the spine entity** (only published programs). A report `@filter` names
+  `@from`'s fields. Until then, list the column as a dimension and filter it on the request.
+- **A fact-row dimension beside a spine** (every program, split by purchase month). The row
+  for a program with no purchases would carry a null month. Zero-filled time buckets are R7.
+- **A dimension over the reference column itself** (`Purchase.programId`) in a `@spine`
+  report. Declare the dimension over the spine entity's identity instead.
+- **A fractional or non-numeric `@default`.**
