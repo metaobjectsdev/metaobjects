@@ -29,9 +29,9 @@
             },
             {
               "segment.filter": {
-                "name": "notRaw",
+                "name": "endsRaw",
                 "@filter": {
-                  "title": "x endraw y"
+                  "title": "x {% endraw %} y"
                 }
               }
             }

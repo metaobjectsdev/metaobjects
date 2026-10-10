@@ -14,7 +14,7 @@ cubes:
       - name: braces
         sql: '{CUBE}."title" = ''a\{b\}c'''
       - name: doubleBraces
-        sql: '{CUBE}."title" = ''\{\{x\}\}'''
+        sql: '{CUBE}."title" = {% raw %}''\{\{x\}\}''{% endraw %}'
       - name: jinja
         sql: '{CUBE}."title" = {% raw %}''\{\{y\}\} \{% z %\} \{# c #\}''{% endraw %}'
       - name: quote

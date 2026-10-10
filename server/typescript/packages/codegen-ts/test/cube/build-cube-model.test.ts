@@ -430,13 +430,25 @@ describe("Table D — measures", () => {
     ]);
   });
 
-  test("a distinct tuple on MySQL → JSON_ARRAY(...) with the same filter", async () => {
+  // The view's MySQL form, as a number measure: MySQL's multi-argument COUNT(DISTINCT a, b) skips a
+  // tuple with a NULL component and compares by column collation, which a JSON_ARRAY key does not
+  // (on mysql:8.4, 'abc'/'ABC' and 'café'/'cafe' under utf8mb4_0900_ai_ci: 4 tuples, JSON_ARRAY 6).
+  test("a distinct tuple on MySQL → the view's COUNT(DISTINCT a, b), a number measure", async () => {
     expect(await weekMeasures([tuple], "mysql")).toEqual([
+      { name: "slots", sql: "COUNT(DISTINCT {CUBE}.`programId`, {CUBE}.`durationMinutes`)", type: "number" },
+    ]);
+  });
+
+  test("a distinct tuple on MySQL with a condition puts it on the first component, as the view does", async () => {
+    const measures = await weekMeasures(
+      [{ "measure.aggregate": { ...(tuple["measure.aggregate"] as Json), "@segment": "long" } }],
+      "mysql",
+    );
+    expect(measures).toEqual([
       {
         name: "slots",
-        sql: "JSON_ARRAY({CUBE}.`programId`, {CUBE}.`durationMinutes`)",
-        type: "count_distinct",
-        filters: [{ sql: "{CUBE}.`programId` IS NOT NULL AND {CUBE}.`durationMinutes` IS NOT NULL" }],
+        sql: "COUNT(DISTINCT CASE WHEN {CUBE}.`durationMinutes` >= 60 THEN {CUBE}.`programId` END, {CUBE}.`durationMinutes`)",
+        type: "number",
       },
     ]);
   });
@@ -914,6 +926,92 @@ describe("Table E — joins and reached members", () => {
     expect(cube(model, "Week").dimensions[1]!.sql).toBe("{Program.title}");
   });
 
+  // crosses() matches a relationship hop to the join of the reference behind it by node identity
+  // (hopReferenceIdentity === the hop's reference). With two references onto one entity, a wrong
+  // match reads the other alias; no match at all throws. Both resolve the same node.
+  test("a relationship-backed @via hop crosses its own reference's alias, not the other one", async () => {
+    const model = await build([
+      program(),
+      entity("Week", [
+        table("weeks"),
+        longId,
+        { "field.long": { name: "programId" } },
+        { "field.long": { name: "formerProgramId" } },
+        pk,
+        { "identity.reference": { name: "fkProgram", "@fields": "programId", "@references": "Program" } },
+        { "identity.reference": { name: "fkFormerProgram", "@fields": "formerProgramId", "@references": "Program" } },
+        {
+          "relationship.association": {
+            name: "formerProgram", "@objectRef": "Program", "@cardinality": "one", "@sourceRefField": "formerProgramId",
+          },
+        },
+        { "dimension.attribute": { name: "formerTitle", "@of": "Program.title", "@via": "Week.formerProgram" } },
+        { "dimension.attribute": { name: "programTitle", "@of": "Program.title", "@via": "Week.fkProgram" } },
+      ]),
+    ]);
+    expect(cube(model, "Week").joins.map((j) => j.name)).toEqual(["Week_fkProgram", "Week_fkFormerProgram"]);
+    expect(cube(model, "Week").dimensions.filter((d) => !d.primaryKey)).toEqual([
+      { name: "formerTitle", sql: "{Week_fkFormerProgram.title}", type: "string" },
+      { name: "programTitle", sql: "{Week_fkProgram.title}", type: "string" },
+    ]);
+  });
+
+  test("a relationship-backed @via hop inherited from an abstract base crosses the inherited reference's join", async () => {
+    const model = await build([
+      program(),
+      entity(
+        "BaseWeek",
+        [
+          longId,
+          { "field.long": { name: "programId" } },
+          pk,
+          { "identity.reference": { name: "fkProgram", "@fields": "programId", "@references": "Program" } },
+          { "relationship.association": { name: "program", "@objectRef": "Program", "@cardinality": "one" } },
+          { "dimension.attribute": { name: "programTitle", "@of": "Program.title", "@via": "BaseWeek.program" } },
+        ],
+        { abstract: true },
+      ),
+      entity("Week", [table("weeks")], { extends: "BaseWeek" }),
+    ]);
+    expect(cube(model, "Week").joins).toEqual([
+      { name: "Program", relationship: "many_to_one", sql: '{CUBE}."programId" = {Program}."id"' },
+    ]);
+    expect(cube(model, "Week").dimensions[1]).toEqual({ name: "programTitle", sql: "{Program.title}", type: "string" });
+  });
+
+  test("ERR_CUBE_AMBIGUOUS_PATH: past the routes it lists, the message says more exist", async () => {
+    // Nine hubs, each joining Org: Week reaches Org by nine routes, and the message lists eight.
+    const hubs = Array.from({ length: 9 }, (_, i) => `Hub${String(i + 1)}`);
+    const fk = (hub: string): string => `${hub.toLowerCase()}Id`;
+    const err = await buildError([
+      entity("Org", [table("orgs"), longId, { "field.string": { name: "name" } }, pk]),
+      ...hubs.map((hub) =>
+        entity(hub, [
+          table(hub.toLowerCase()),
+          longId,
+          { "field.long": { name: "orgId" } },
+          pk,
+          { "identity.reference": { name: "fkOrg", "@fields": "orgId", "@references": "Org" } },
+        ]),
+      ),
+      entity("Week", [
+        table("weeks"),
+        longId,
+        ...hubs.map((hub) => ({ "field.long": { name: fk(hub) } })),
+        pk,
+        ...hubs.map((hub) => ({ "identity.reference": { name: `fk${hub}`, "@fields": fk(hub), "@references": hub } })),
+        ...hubs.map((hub) => ({
+          "dimension.attribute": { name: `org${hub}`, "@of": "Org.name", "@via": `Week.fk${hub}.fkOrg` },
+        })),
+      ]),
+    ]);
+    expect(err.code).toBe("ERR_CUBE_AMBIGUOUS_PATH");
+    const listed = hubs.slice(0, 8).map((hub) => `Week -> ${hub} -> Org`).join("; ");
+    expect(err.message).toContain(`(${listed}; and more paths, not listed), so Cube could join it by any of them.`);
+    expect(err.message).not.toContain("Week -> Hub9 -> Org");
+    expect(err.message).toContain("that makes the other paths");
+  });
+
   test("ERR_CUBE_AMBIGUOUS_PATH: a multi-hop @via whose far cube the graph reaches by two paths", async () => {
     const err = await buildError([
       entity("Org", [table("orgs"), longId, { "field.string": { name: "name" } }, pk]),
@@ -1214,10 +1312,10 @@ describe("Table G — names and escaping", () => {
 
   test("a literal's braces are escaped for Cube's reference syntax", async () => {
     expect(await segmentSql("a{b}c")).toBe(String.raw`{CUBE}."title" = 'a\{b\}c'`);
-    expect(await segmentSql("{{x}}")).toBe(String.raw`{CUBE}."title" = '\{\{x\}\}'`);
   });
 
-  test("a literal holding a Jinja statement or comment is wrapped in raw, braces escaped", async () => {
+  test("a literal holding a Jinja opener ({{, {% or {#) is wrapped in raw, braces escaped", async () => {
+    expect(await segmentSql("{{x}}")).toBe(String.raw`{CUBE}."title" = {% raw %}'\{\{x\}\}'{% endraw %}`);
     expect(await segmentSql("{% z %}")).toBe(String.raw`{CUBE}."title" = {% raw %}'\{% z %\}'{% endraw %}`);
     expect(await segmentSql("{# c #}")).toBe(String.raw`{CUBE}."title" = {% raw %}'\{# c #\}'{% endraw %}`);
   });
@@ -1234,7 +1332,8 @@ describe("Table G — names and escaping", () => {
     expect(await segmentSql(String.raw`a\b`)).toBe(String.raw`{CUBE}."title" = 'a\\b'`);
     expect(await segmentSql(String.raw`A\_%`)).toBe(String.raw`{CUBE}."title" = 'A\\_%'`);
     expect(await segmentSql("ends\\")).toBe(`{CUBE}."title" = 'ends\\\\'`);
-    // Plain strings, not String.raw: Bun cooks a `\u` escape inside String.raw.
+    // `\u0041` must reach the SQL as six characters, never as `A`; written as plain strings, with
+    // each backslash escaped, it reads the same as String.raw would.
     expect(await segmentSql("\\u0041")).toBe(`{CUBE}."title" = '\\\\u0041'`);
     // Doubled first, so the backslash before a brace stays a backslash: `\\` then `\{`.
     expect(await segmentSql(String.raw`a\{b}`)).toBe(String.raw`{CUBE}."title" = 'a\\\{b\}'`);
@@ -1253,10 +1352,14 @@ describe("Table G — names and escaping", () => {
     expect(cube(model, "Thing").dimensions[1]!.sql).toBe(String.raw`{CUBE}."co\\de"`);
   });
 
-  test("ERR_CUBE_UNESCAPABLE_LITERAL: a literal containing endraw", async () => {
+  test("a literal holding endraw and no Jinja opener is carried as it is: it is never inside a raw block", async () => {
+    expect(await segmentSql("x endraw y")).toBe(`{CUBE}."title" = 'x endraw y'`);
+  });
+
+  test("ERR_CUBE_UNESCAPABLE_LITERAL: a literal that is raw-wrapped and contains endraw", async () => {
     let err: unknown;
     try {
-      await segmentSql("x endraw y");
+      await segmentSql("x {% endraw %} y");
     } catch (e) {
       err = e;
     }
@@ -1297,10 +1400,14 @@ describe("Table G — names and escaping", () => {
     expect(await columnSql("co{#de")).toBe(String.raw`{CUBE}.{% raw %}"co\{#de"{% endraw %}`);
   });
 
-  test("ERR_CUBE_UNESCAPABLE_LITERAL: an identifier containing endraw", async () => {
+  test("an identifier holding endraw and no Jinja opener is quoted as it is", async () => {
+    expect(await columnSql("x_endraw")).toBe(`{CUBE}."x_endraw"`);
+  });
+
+  test("ERR_CUBE_UNESCAPABLE_LITERAL: an identifier that is raw-wrapped and contains endraw", async () => {
     let err: unknown;
     try {
-      await columnSql("x_endraw");
+      await columnSql("x{#endraw");
     } catch (e) {
       err = e;
     }

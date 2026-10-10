@@ -40,7 +40,8 @@ export interface CubeModelGeneratorOptions {
    * Which entities the Cube model covers, ANDed with Table A. It is the build's universe, so an
    * entity it excludes gets no cube of its own (no measures, segments or rollups) and its
    * dimensions add no member to a cube they would reach. If another cube's `@via` reaches an
-   * excluded entity, it is still written, as a join-target cube.
+   * excluded entity, it is still written, as a join-target cube, unless every hop onto it goes
+   * through an alias cube.
    */
   readonly filter?: (obj: MetaObject) => boolean;
   /** Named output target: the files land at `model/cubes/<Cube>.yml` under its outDir. */

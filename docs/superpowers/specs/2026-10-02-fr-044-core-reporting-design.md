@@ -481,7 +481,7 @@ adapter code; in memory trivial.
 | `dimension.time` + `@grains` | `time` dimension; `@grains` carried as `meta.grains` (Cube offers every granularity and cannot restrict them) | time dimension, `time_granularity` |
 | `measure.aggregate` count | `count` | `count` (or `sum` of 1) |
 | `measure.aggregate` count + `@distinct` (one column) | `count_distinct` | `count_distinct` |
-| `measure.aggregate` count + `@distinct` (tuple) | `count_distinct` over `ROW(…)` (MySQL `JSON_ARRAY(…)`) with a not-null filter on each column | `count_distinct` over an expression |
+| `measure.aggregate` count + `@distinct` (tuple) | `count_distinct` over `ROW(…)` with a not-null filter on each column (MySQL: the view's own `COUNT(DISTINCT a, b)` as a `number` measure) | `count_distinct` over an expression |
 | `measure.aggregate` sum/avg/min/max | `sum`/`avg`/`min`/`max` | `sum`/`average`/`min`/`max` |
 | `measure.ratio` | `number` measure `{a} / NULLIF({b}, 0)`; on Postgres `CAST({a} AS NUMERIC) / NULLIF({b}, 0)`, with no cast on MySQL | `ratio` metric |
 | `measure.derived` | `number` measure | `derived` metric |

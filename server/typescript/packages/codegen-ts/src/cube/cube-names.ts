@@ -79,7 +79,7 @@ export function assertCubeNames(cubes: readonly { readonly name: string; readonl
         `${prior} and ${what} would both be cube '${name}'. A cube is named after its entity and the name ` +
           `is kept as written, so rename one of them, or narrow the generator's filter to leave one out. The ` +
           `filter helps only when no @via dimension reaches the entity it leaves out: an entity a @via reaches ` +
-          `is still written, as a join-target cube.`,
+          `is still written, as a join-target cube, unless every hop onto it goes through an alias cube.`,
       );
     }
     seen.set(name, what);

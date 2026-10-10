@@ -199,8 +199,11 @@ function crosses(hop: Hop, step: PathStep, root: MetaRoot): boolean {
   return hop.relationship === "one_to_one" && hop.hop === step.relationship;
 }
 
+/** How many routes an ERR_CUBE_AMBIGUOUS_PATH message lists before it says more exist. */
+const LISTED_PATHS = 8;
+
 /** Every simple path from `from` to `to` in the cube join graph, up to `limit`. */
-function simplePaths(graph: ReadonlyMap<string, readonly string[]>, from: string, to: string, limit = 8): string[][] {
+function simplePaths(graph: ReadonlyMap<string, readonly string[]>, from: string, to: string, limit: number): string[][] {
   const out: string[][] = [];
   const walk = (node: string, path: string[]): void => {
     if (out.length >= limit) return;
@@ -573,14 +576,19 @@ class CubeModelBuilder {
     // A multi-hop path: Cube follows the joins itself, so exactly one route may reach the cube.
     // An alias cube's routes are its own joins only (it extends nothing).
     if (cubes.length > 2) {
-      const paths = simplePaths(graph, draft.name, joined.name);
+      // One more than is listed, so the message can say when the search stopped short.
+      const paths = simplePaths(graph, draft.name, joined.name, LISTED_PATHS + 1);
       if (paths.length > 1) {
+        const listed = paths.slice(0, LISTED_PATHS).map((p) => p.join(" -> "));
+        const more = paths.length > LISTED_PATHS ? "; and more paths, not listed" : "";
+        const two = paths.length === 2;
         throw new CubeModelError(
           ERR_CUBE_AMBIGUOUS_PATH,
           `${where} reads '${joined.name}' through @via '${dim.via() ?? ""}', and the cube graph reaches ` +
             `'${joined.name}' from '${draft.name}' by more than one path ` +
-            `(${paths.map((p) => p.join(" -> ")).join("; ")}), so Cube could join it by either. Remove the ` +
-            `identity.reference that makes the other path, or read the value through a single hop.`,
+            `(${listed.join("; ")}${more}), so Cube could join it by ${two ? "either" : "any of them"}. Remove ` +
+            `the identity.reference that makes the other ${two ? "path" : "paths"}, or read the value through a ` +
+            `single hop.`,
         );
       }
     }

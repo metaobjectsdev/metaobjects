@@ -666,8 +666,13 @@ describe("free text", () => {
     expect(err.message).toContain("endraw");
   });
 
-  test("text containing endraw is refused on each member, naming the member", () => {
-    const bad = "endraw";
+  test("text holding endraw is carried as it is when it holds no Jinja opener: it is never inside a raw block", () => {
+    expect(title("ends endraw early")).toBe('"ends endraw early"');
+    expect(title("{x} endraw")).toBe('"\\\\{x\\\\} endraw"');
+  });
+
+  test("text that is raw-wrapped and holds endraw is refused on each member, naming the member", () => {
+    const bad = "{{x}} then endraw";
     const cases: [CubeSpec, string][] = [
       [spec({ title: bad }), "cube 'Thing' title"],
       [spec({ dimensions: [dim({ name: "status", title: bad })] }), "dimension 'status' title"],

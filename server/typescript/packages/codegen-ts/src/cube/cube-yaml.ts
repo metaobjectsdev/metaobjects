@@ -36,6 +36,7 @@ import type {
   CubeSegmentSpec,
   CubeSpec,
 } from "./cube-model-spec.js";
+import { escapeCubeTemplate, jinjaSafe, JINJA_RAW_END } from "./cube-template.js";
 
 const INDENT = "  ";
 
@@ -81,31 +82,20 @@ function sqlScalar(sql: string): string {
   return NOT_SINGLE_QUOTABLE.test(sql) ? doubleQuoted(sql) : singleQuoted(sql);
 }
 
-const JINJA_OPENER = /\{[{%#]/;
-const JINJA_RAW_END = "endraw";
-
-/** Free text as Cube's template reader must see it: backslashes doubled, then braces escaped. */
-function cubeTemplateText(text: string): string {
-  return text.replace(/\\/g, "\\\\").replace(/[{}]/g, (brace) => `\\${brace}`);
-}
-
 /**
  * Free text as a double-quoted scalar that Cube hands back unchanged: Cube-template escaped, then
- * Jinja-wrapped when the original holds an opener. `where` names its place for the refusal.
+ * Jinja-wrapped when the original holds an opener (cube-template.ts, the rule SQL follows too).
+ * `where` names its place for the refusal.
  */
 function textScalar(text: string, where: string): string {
-  if (text.includes(JINJA_RAW_END)) {
-    throw new CubeModelError(
+  const safe = jinjaSafe(text, escapeCubeTemplate(text), () =>
+    new CubeModelError(
       ERR_CUBE_UNESCAPABLE_LITERAL,
       `${where}: the text ${JSON.stringify(text)} contains "${JINJA_RAW_END}", which would end the {% raw %} block ` +
         `that keeps Jinja away from it, so Cube cannot be given it intact. Reword it in the model.`,
-    );
-  }
-  const escaped = cubeTemplateText(text);
-  // Decided from the ORIGINAL text: escaping turns `{{` into `\{\{`, which Jinja no longer reads,
-  // but leaves `{%` and `{#` inside `\{%` and `\{#`, which it still does.
-  const jinjaSafe = JINJA_OPENER.test(text) ? `{% raw %}${escaped}{% endraw %}` : escaped;
-  return doubleQuoted(jinjaSafe);
+    ),
+  );
+  return doubleQuoted(safe);
 }
 
 function indented(lines: Lines): Lines {
@@ -214,7 +204,8 @@ function renderCube(cube: CubeSpec): Lines {
 
 /**
  * The YAML file for one cube, as `model/cubes/<name>.yml` holds it. Throws `CubeModelError`
- * (`ERR_CUBE_UNESCAPABLE_LITERAL`, naming the cube and member) for free text holding `endraw`.
+ * (`ERR_CUBE_UNESCAPABLE_LITERAL`, naming the cube and member) for free text that is raw-wrapped
+ * (it holds a Jinja opener) and holds `endraw`.
  */
 export function renderCubeYaml(cube: CubeSpec): string {
   const lines = [`# ${GENERATED_HEADER} — ${HEADER_NOTE}`, "cubes:", ...indented(listItem(renderCube(cube)))];

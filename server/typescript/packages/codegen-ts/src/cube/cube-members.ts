@@ -156,10 +156,20 @@ export function measureSpec(entity: MetaObject, m: MetaMeasure, where: string, m
   const c = condition === undefined ? undefined : cond(condition, d, renderer);
   if (cols.length > 1) {
     if (agg !== AGG_COUNT || !distinct) throw new Error(`${where}: a column tuple needs @agg: count with @distinct.`);
+    if (d === "mysql") {
+      // The view's own MySQL form (report-ddl-emit.ts): the multi-argument COUNT(DISTINCT a, b),
+      // which skips a tuple with a NULL component and compares each component by its column's
+      // collation. A count_distinct over JSON_ARRAY(a, b) compares JSON strings byte for byte, so
+      // under MySQL's default utf8mb4_0900_ai_ci it counts 'abc' and 'ABC' twice where the view
+      // counts them once (executed on mysql:8.4: 6 against the view's 4). Cube takes the
+      // aggregate as written in a `number` measure.
+      const [first, ...rest] = cols;
+      const head = c === undefined ? first! : `CASE WHEN ${c} THEN ${first!} END`;
+      return { name: m.name, sql: `COUNT(DISTINCT ${[head, ...rest].join(", ")})`, type: "number", ...docOf(m) };
+    }
     // A tuple with any NULL component is not counted, as in the view.
-    const tuple = d === "postgres" ? `ROW(${cols.join(", ")})` : `JSON_ARRAY(${cols.join(", ")})`;
     const filter = [...cols.map((x) => `${x} IS NOT NULL`), ...(c === undefined ? [] : [c])].join(" AND ");
-    return { name: m.name, sql: tuple, type: "count_distinct", filters: [{ sql: filter }], ...docOf(m) };
+    return { name: m.name, sql: `ROW(${cols.join(", ")})`, type: "count_distinct", filters: [{ sql: filter }], ...docOf(m) };
   }
   const type: CubeMeasureType = agg === AGG_COUNT ? (distinct ? "count_distinct" : "count") : agg;
   return { name: m.name, sql: cols[0]!, type, ...(c === undefined ? {} : { filters: [{ sql: c }] }), ...docOf(m) };

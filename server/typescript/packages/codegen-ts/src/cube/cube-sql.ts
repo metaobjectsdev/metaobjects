@@ -11,42 +11,28 @@ import { isRelativeNow } from "../projection/report-spec.js";
 import { literal, q, ref, type SqlRenderer } from "../projection/report-sql.js";
 import { CubeModelError, ERR_CUBE_UNESCAPABLE_LITERAL } from "./cube-errors.js";
 import type { CubeDialect } from "./cube-model-spec.js";
+import { escapeCubeTemplate, jinjaSafe, JINJA_RAW_END } from "./cube-template.js";
 
 /** The owning cube, in a member's or a join's SQL. */
 export const CUBE_SELF = "{CUBE}";
 
 /**
- * SQL text as Cube's template reader hands it back unchanged: every `\` doubled, THEN `{` and `}`
- * escaped. The order matters: doubling after the braces would turn the `\{` just written into
- * `\\{`, an escaped backslash followed by a live brace. The same order free text uses
- * (cube-yaml.ts, `cubeTemplateText`).
- */
-function escapeCubeTemplate(sql: string): string {
-  return sql.replace(/\\/g, "\\\\").replace(/[{}]/g, (brace) => `\\${brace}`);
-}
-
-const JINJA_OPENER = /\{[%#]/;
-const JINJA_RAW_END = "endraw";
-
-/**
- * Table G's rule for one SQL-quoted identifier or literal: backslashes doubled and braces escaped
- * for Cube's template reader, then, when the text holds `{%` or `{#`, the whole token wrapped in
- * `{% raw %}` for Jinja (a backslash does not stop Jinja). Text holding `endraw` cannot be
- * carried: it would end that raw block.
+ * Table G's rule for one SQL-quoted identifier or literal (cube-template.ts): backslashes doubled
+ * and braces escaped for Cube's template reader, then, when the text holds a Jinja opener, the
+ * whole token wrapped in `{% raw %}`. A wrapped token holding `endraw` cannot be carried: it
+ * would end that raw block.
  */
 function escapeToken(sql: string, kind: "identifier" | "literal", where: string): string {
-  if (sql.includes(JINJA_RAW_END)) {
-    throw new CubeModelError(
+  return jinjaSafe(sql, escapeCubeTemplate(sql), () =>
+    new CubeModelError(
       ERR_CUBE_UNESCAPABLE_LITERAL,
       `${where}: the ${kind} ${sql} contains "${JINJA_RAW_END}", which would end the {% raw %} block ` +
         `that keeps Jinja away from it, so Cube cannot be given it intact. ` +
         (kind === "literal"
           ? `Change the value, or express the condition another way (for example a 'like' pattern).`
           : `Rename it in the model (@column, or the source's table or schema).`),
-    );
-  }
-  const escaped = escapeCubeTemplate(sql);
-  return JINJA_OPENER.test(sql) ? `{% raw %}${escaped}{% endraw %}` : escaped;
+    ),
+  );
 }
 
 /**

@@ -78,7 +78,7 @@ YAML writer (`renderCubeYaml`) stay in the package, both exported from
 | Option | Meaning |
 |---|---|
 | `dialect` | `"postgres"` or `"mysql"`, the database Cube reads. Default: the config's `dialect`. |
-| `filter` | A predicate over entities, ANDed with the gate in the table above. It is the universe of the build: an entity it excludes gets no cube of its own, and its dimensions add no member to another cube. If another cube's `@via` reaches an excluded entity, it is still written as a join-target cube, without its own measures, segments or rollups. |
+| `filter` | A predicate over entities, ANDed with the gate in the table above. It is the universe of the build: an entity it excludes gets no cube of its own, and its dimensions add no member to another cube. If another cube's `@via` reaches an excluded entity, it is still written as a join-target cube, without its own measures, segments or rollups, unless every hop onto it goes through an alias cube. |
 | `target` | The named output target the files are written under. |
 
 The config's `columnNamingStrategy` (default `snake_case`) names the columns in the SQL, as it
@@ -322,7 +322,7 @@ somewhere to go: an `identity.reference` onto an entity that is not a cube makes
 |---|---|
 | `count` | `type: count`, `sql: x` |
 | `count` with `@distinct` | `type: count_distinct`, `sql: x` |
-| `count` with `@distinct` over a tuple `x1, x2` | `type: count_distinct`, `sql: 'ROW(x1, x2)'` on Postgres (`JSON_ARRAY(x1, x2)` on MySQL), with one `filters` entry `x1 IS NOT NULL AND x2 IS NOT NULL`, so a tuple with a null component is not counted, as in the view |
+| `count` with `@distinct` over a tuple `x1, x2` | Postgres: `type: count_distinct`, `sql: 'ROW(x1, x2)'`, with one `filters` entry `x1 IS NOT NULL AND x2 IS NOT NULL`, so a tuple with a null component is not counted, as in the view. MySQL: the view's own `COUNT(DISTINCT x1, x2)` as a `type: number` measure (a condition `c` makes it `COUNT(DISTINCT CASE WHEN c THEN x1 END, x2)`); MySQL's multi-argument form skips a tuple with a null component and compares by the columns' collation, which a `JSON_ARRAY(x1, x2)` key does not: on mysql:8.4 under the default `utf8mb4_0900_ai_ci` it counted `'abc'` and `'ABC'` as two tuples where the view counts one |
 | `sum`, `avg`, `min`, `max` | `type: sum`, `avg`, `min`, `max`, `sql: x` |
 | any of the above with a condition `c` | the same, with one `filters` entry `c`. For a tuple, `c` is ANDed after the not-null terms in that one entry. |
 | `measure.ratio` | `type: number`. Postgres: `CAST({num} AS NUMERIC) / NULLIF({den}, 0)`. MySQL: `{num} / NULLIF({den}, 0)`. |
@@ -394,13 +394,13 @@ both parts in snake case, joined by two underscores (`week__program_minutes`).
 
 | Rule | Behaviour |
 |---|---|
-| cube name | the entity's name. Two entities of one name in two packages, or an alias cube named like a cube, is `ERR_CUBE_NAME_COLLISION`, naming both. Rename one, or narrow the generator's `filter` to leave one out; the filter helps only when no `@via` reaches the entity it leaves out, since an entity a `@via` reaches is still written as a join-target cube. |
+| cube name | the entity's name. Two entities of one name in two packages, or an alias cube named like a cube, is `ERR_CUBE_NAME_COLLISION`, naming both. Rename one, or narrow the generator's `filter` to leave one out; the filter helps only when no `@via` reaches the entity it leaves out, since an entity a `@via` reaches is still written as a join-target cube, unless every hop onto it goes through an alias cube. |
 | member name | the dimension, measure or segment name as written, so a report field and its Cube member share a name |
 | a name Cube refuses | Cube names start with a letter, hold only letters, digits and `_`, and are not a Python keyword (`from`, `class`, `in`, `is`, `not`, `and`, `or`, `if`, `else`, `for`, `while`, `with`, `as`, `def`, `return`, `yield`, `import`, `pass`, `global`, `nonlocal`, `lambda`, `del`, `assert`, `break`, `continue`, `try`, `except`, `finally`, `raise`, `async`, `await`, `True`, `False`, `None`, `elif`). That is `ERR_CUBE_INVALID_NAME`, naming the node. The exporter never renames: the name is the report field's. |
 | members the exporter adds | primary-key dimensions, reached-column dimensions, `<report>Scope` segments, rollups. A name that collides with another member of the cube is `ERR_CUBE_MEMBER_COLLISION`, naming both. The one exception is a declared dimension over a key field under its own name, which is that key dimension (see [Cubes and primary keys](#cubes-and-primary-keys)). |
 | identifiers | every table, schema and column is quoted: `"…"` on Postgres, backticks on MySQL |
-| string literals | SQL quoting first (`'` doubled; MySQL also doubles `\`). Cube compiles every `sql` as a template literal, where a backslash is an escape (`\b` a backspace, `\_` a plain `_`, a trailing `\` swallows the closing quote) and `{x}` a member reference. So every `\` is then doubled, and after that `{` becomes `\{` and `}` becomes `\}` (in that order, so a backslash before a brace stays a backslash). Then, when the literal holds `{%` or `{#`, it is wrapped in `{% raw %}…{% endraw %}` for Jinja, because a backslash does not stop Jinja. A literal holding `endraw` is `ERR_CUBE_UNESCAPABLE_LITERAL`. A column name written with `@column` gets the same treatment. The `cube` lane reads each literal of the `escaping` case back from Cube's `/v1/sql`, where it is the view's own SQL. |
-| free text | `title` and `description`. Cube reads them as templates too: `{x}` is a member reference, `${x}` an interpolation and a backslash an escape. Each `\` is doubled, each brace escaped, the text raw-wrapped when the original holds `{{`, `{%` or `{#`, and the result is written as a JSON string. Text holding `endraw` is `ERR_CUBE_UNESCAPABLE_LITERAL`. |
+| string literals | SQL quoting first (`'` doubled; MySQL also doubles `\`). Cube compiles every `sql` as a template literal, where a backslash is an escape (`\b` a backspace, `\_` a plain `_`, a trailing `\` swallows the closing quote) and `{x}` a member reference. So every `\` is then doubled, and after that `{` becomes `\{` and `}` becomes `\}` (in that order, so a backslash before a brace stays a backslash). Then, when the literal holds a Jinja opener (`{{`, `{%` or `{#`), it is wrapped in `{% raw %}…{% endraw %}` for Jinja, because a backslash does not stop Jinja. A wrapped literal holding `endraw` is `ERR_CUBE_UNESCAPABLE_LITERAL`; one that is not wrapped is never inside a raw block, so `endraw` there is plain text. A column name written with `@column` gets the same treatment. The `cube` lane reads each literal of the `escaping` case back from Cube's `/v1/sql`, where it is the view's own SQL. |
+| free text | `title` and `description`. Cube reads them as templates too: `{x}` is a member reference, `${x}` an interpolation and a backslash an escape. Each `\` is doubled, each brace escaped, the text raw-wrapped when the original holds `{{`, `{%` or `{#` (the same rule as a SQL literal), and the result is written as a JSON string. Raw-wrapped text holding `endraw` is `ERR_CUBE_UNESCAPABLE_LITERAL`. |
 | YAML scalars | A `sql`, `sql_table` or filter value is single-quoted (`'` doubled), or written as a JSON double-quoted string when it holds a line break, a control character, U+007F to U+009F, U+2028, U+2029 or U+FEFF. Names, types and `CUBE.<member>` references are plain, except a name a YAML reader would take for a boolean or null (`true`, `false`, `null`, `yes`, `no`, `on`, `off`, `y`, `n`, in any case), which is single-quoted. The emitter is hand-written, with no YAML dependency, so the bytes are the same on every run: two-space indent, LF line endings, one trailing newline, no trailing spaces. |
 
 ### What the exporter refuses
@@ -419,7 +419,7 @@ are printed in its messages and are not loader codes.
 | `ERR_CUBE_INVALID_NAME` | a cube or member name Cube cannot take |
 | `ERR_CUBE_MEMBER_COLLISION` | two members of one cube would have one name |
 | `ERR_CUBE_NAME_COLLISION` | two cubes would have one name |
-| `ERR_CUBE_UNESCAPABLE_LITERAL` | a literal, an identifier or free text holds `endraw` |
+| `ERR_CUBE_UNESCAPABLE_LITERAL` | a literal, an identifier or free text that is raw-wrapped (it holds a Jinja opener) holds `endraw` |
 | `ERR_CUBE_UNSUPPORTED_DIALECT` | the dialect is neither `postgres` nor `mysql` and the run would write a cube |
 | `ERR_CUBE_UNMAPPED_VOCABULARY` | a served report declares `@spine`, or a measure written on a cube declares `@default`: the mapping does not cover them yet (see [Known limits](#known-limits)) |
 

@@ -75,6 +75,18 @@
             },
             {
               "measure.aggregate": {
+                "name": "longSlots",
+                "@agg": "count",
+                "@of": [
+                  "Week.programId",
+                  "Week.durationMinutes"
+                ],
+                "@distinct": true,
+                "@segment": "long"
+              }
+            },
+            {
+              "measure.aggregate": {
                 "name": "totalMinutes",
                 "@agg": "sum",
                 "@of": "Week.durationMinutes"

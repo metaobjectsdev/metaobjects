@@ -15,10 +15,11 @@ cubes:
         sql: '{CUBE}.`label`'
         type: count_distinct
       - name: slots
-        sql: 'JSON_ARRAY({CUBE}.`program_id`, {CUBE}.`duration_minutes`)'
-        type: count_distinct
-        filters:
-          - sql: '{CUBE}.`program_id` IS NOT NULL AND {CUBE}.`duration_minutes` IS NOT NULL'
+        sql: 'COUNT(DISTINCT {CUBE}.`program_id`, {CUBE}.`duration_minutes`)'
+        type: number
+      - name: longSlots
+        sql: 'COUNT(DISTINCT CASE WHEN {CUBE}.`duration_minutes` >= 60 THEN {CUBE}.`program_id` END, {CUBE}.`duration_minutes`)'
+        type: number
       - name: totalMinutes
         sql: '{CUBE}.`duration_minutes`'
         type: sum
