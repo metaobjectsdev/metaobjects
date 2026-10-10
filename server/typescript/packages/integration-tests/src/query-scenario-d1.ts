@@ -15,7 +15,7 @@ import { CANONICAL_COLUMN_NAMING, generateCanonicalSchemaSql } from "./canonical
 import { d1Dialect, type D1Like } from "./d1-kysely.ts";
 import { loadMetadataDir } from "./load-metadata.ts";
 import { runScenarioQueries } from "./query-scenario.ts";
-import { stripSqlComments } from "./query-scenario-sqlite.ts";
+import { splitStatements } from "./sql-script.ts";
 import type { QueryScenario } from "./scenario.ts";
 
 interface D1Database extends D1Like {
@@ -43,7 +43,7 @@ export async function startLocalD1(): Promise<LocalD1> {
 
 /** D1's `exec` runs one statement per line; fold each statement onto one line first. */
 export async function execScript(d1: D1Database, script: string): Promise<void> {
-  for (const stmt of stripSqlComments(script).split(";").map((s) => s.trim()).filter(Boolean)) {
+  for (const stmt of splitStatements(script)) {
     await d1.exec(stmt.replace(/\s*\n\s*/g, " "));
   }
 }

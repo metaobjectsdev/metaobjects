@@ -18,6 +18,10 @@ import { Kysely, MysqlDialect } from "kysely";
 import { createPool } from "mysql2";
 import mysql from "mysql2/promise";
 
+import { splitStatements } from "./sql-script.ts";
+
+export { splitStatements };
+
 import { CANONICAL_COLUMN_NAMING } from "./canonical-schema.ts";
 import { readCanonicalMysqlSchemaSql } from "./canonical-schema-mysql.ts";
 import { loadMetadataDir } from "./load-metadata.ts";
@@ -53,13 +57,6 @@ export function toMysqlSeed(seed: string): string {
   }
   // '2026-05-04T03:30:00Z' -> '2026-05-04T03:30:00' (DATETIME is the UTC wall clock).
   return out.replace(/'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?)Z'/g, "'$1'");
-}
-
-/** The statements of a script: split on `;` at the end of a line (no body carries one mid-line). */
-export function splitStatements(script: string): string[] {
-  return script
-    .split("\n").filter((l) => !l.trim().startsWith("--")).join("\n")
-    .split(/;[ \t]*(?:\n|$)/).map((s) => s.trim()).filter(Boolean);
 }
 
 /** Every table and view the schema artifact creates, dropped first so a rerun starts clean. */

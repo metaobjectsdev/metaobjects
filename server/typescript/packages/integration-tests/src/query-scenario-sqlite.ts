@@ -19,18 +19,14 @@ import { join } from "node:path";
 import { CANONICAL_COLUMN_NAMING, readCanonicalSchemaSql } from "./canonical-schema.ts";
 import { loadMetadataDir } from "./load-metadata.ts";
 import { runScenarioQueries } from "./query-scenario.ts";
+import { splitStatements } from "./sql-script.ts";
 import type { QueryScenario } from "./scenario.ts";
 
-/** libsql executes one statement per call; no schema or seed statement carries an inner `;`. */
+/** libsql executes one statement per call. */
 export async function applySqlScript(db: Kysely<never>, script: string): Promise<void> {
-  for (const stmt of script.split(";").map((s) => s.trim()).filter(Boolean)) {
+  for (const stmt of splitStatements(script)) {
     await sql.raw(stmt).execute(db);
   }
-}
-
-/** `sql` is `--` comment lines + statements; drop the comments before splitting on `;`. */
-export function stripSqlComments(script: string): string {
-  return script.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
 }
 
 export async function runQueryScenarioSqlite(
@@ -41,7 +37,7 @@ export async function runQueryScenarioSqlite(
   const dir = mkdtempSync(join(tmpdir(), "query-scenario-sqlite-"));
   const kysely = new Kysely<never>({ dialect: new LibsqlDialect({ url: `file:${join(dir, "test.db")}` }) });
   try {
-    await applySqlScript(kysely, stripSqlComments(schemaSql));
+    await applySqlScript(kysely, schemaSql);
     const seed = scenario.seedDataEngine?.sqlite ?? scenario.seedData;
     if (seed && seed.trim().length > 0) await applySqlScript(kysely, seed);
 

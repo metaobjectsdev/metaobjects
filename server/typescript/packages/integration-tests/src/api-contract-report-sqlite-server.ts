@@ -12,6 +12,7 @@
 // EMITTED <Report>.routes.ts files unmodified and mount them.
 
 import Fastify, { type FastifyInstance } from "fastify";
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -161,17 +162,19 @@ export async function startSqliteReportServer(
 async function openEngine(engine: SqliteReportEngine, tmp: string): Promise<EngineClient> {
   if (engine === "d1") {
     const local = await startLocalD1();
-    (globalThis as { __reportD1?: unknown }).__reportD1 = local.d1;
+    // One key per server, so two servers in flight never read each other's binding.
+    const key = `__reportD1_${randomUUID().replaceAll("-", "")}`;
+    (globalThis as Record<string, unknown>)[key] = local.d1;
     writeFileSync(join(tmp, "db.ts"), `
 import { drizzle } from "drizzle-orm/d1";
-export const db = drizzle((globalThis as { __reportD1?: never }).__reportD1 as never);
+export const db = drizzle((globalThis as Record<string, never>)[${JSON.stringify(key)}]);
 `, "utf8");
     return {
       run: async (sql, params = []) => {
         await local.d1.prepare(sql).bind(...params).all();
       },
       close: async () => {
-        delete (globalThis as { __reportD1?: unknown }).__reportD1;
+        delete (globalThis as Record<string, unknown>)[key];
         await local.dispose();
       },
     };
