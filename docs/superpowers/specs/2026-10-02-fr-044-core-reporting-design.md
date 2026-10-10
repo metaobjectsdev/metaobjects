@@ -476,20 +476,24 @@ adapter code; in memory trivial.
 | MetaObjects | Cube | dbt MetricFlow |
 |---|---|---|
 | entity with dimensions/measures | cube (`sql_table`) | semantic model (`model: ref(...)`) |
-| to-one relationship | `joins` (`many_to_one`) | foreign entity |
+| to-one relationship | `joins` (`many_to_one`; `one_to_one` from the side that does not hold the key) | foreign entity |
 | `dimension.attribute` | dimension (`string`/`number`/`boolean`) | categorical dimension |
-| `dimension.time` + `@grains` | `time` dimension + granularities | time dimension, `time_granularity` |
+| `dimension.time` + `@grains` | `time` dimension; `@grains` carried as `meta.grains` (Cube offers every granularity and cannot restrict them) | time dimension, `time_granularity` |
 | `measure.aggregate` count | `count` | `count` (or `sum` of 1) |
 | `measure.aggregate` count + `@distinct` (one column) | `count_distinct` | `count_distinct` |
-| `measure.aggregate` count + `@distinct` (tuple) | `count_distinct` over a concatenated key | `count_distinct` over an expression |
+| `measure.aggregate` count + `@distinct` (tuple) | `count_distinct` over `ROW(…)` with a not-null filter on each column | `count_distinct` over an expression |
 | `measure.aggregate` sum/avg/min/max | `sum`/`avg`/`min`/`max` | `sum`/`average`/`min`/`max` |
 | `measure.ratio` | `number` measure `{a} / NULLIF({b}, 0)` | `ratio` metric |
 | `measure.derived` | `number` measure | `derived` metric |
 | `segment` | segment | metric `filter` / saved query filter |
-| relative filter `{ now: "-P7D" }` | query `dateRange` "last 7 days" | `{{ TimeDimension(...) }} >= dateadd(...)` |
-| `object.report` | a pre-aggregation (rollup) | a saved query |
+| relative filter `{ now: "-P7D" }` | the view's SQL in a segment or measure filter (no rollup for such a report) | `{{ TimeDimension(...) }} >= dateadd(...)` |
+| `object.report` | a rollup on the `@from` cube (coarsest first) | a saved query |
 | measure `@default: n` (R9) | a `number` measure `COALESCE({measure}, n)` | `fill_nulls_with: n` on the metric |
-| report `@spine` (R8) | the spine entity's cube joins the fact cube `one_to_many`, and the rollup is rooted on it | none: `join_to_timespine` covers time only. The exporter must refuse a `@spine` report, never drop the attribute silently (§3 obligation 3) |
+| report `@spine` (R8) | a Cube view rooted at the spine cube; no rollup (a rollup on the spine cube is built from the fact cube and loses the zero rows) | none: `join_to_timespine` covers time only. The exporter must refuse a `@spine` report, never drop the attribute silently (§3 obligation 3) |
+
+FR-044 Plan 4 ([plan](../plans/2026-10-09-fr-044-plan-4-cube-exporter.md)) built the Cube
+column as written above, except the `@spine` and `@default` rows, which wait for those
+attributes to be registered. The MetricFlow column waits for the first adopter who asks (D5).
 
 ## 6. Dependencies and order
 
