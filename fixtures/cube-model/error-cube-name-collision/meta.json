@@ -1,0 +1,121 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Team",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "teams"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "teams",
+                "@agg": "count",
+                "@of": "Team.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Match",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "matches"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "homeTeamId"
+              }
+            },
+            {
+              "field.long": {
+                "name": "awayTeamId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "homeRef",
+                "@fields": "homeTeamId",
+                "@references": "Team"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "awayRef",
+                "@fields": "awayTeamId",
+                "@references": "Team"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "matches",
+                "@agg": "count",
+                "@of": "Match.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Match_homeRef",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "home_refs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "homeRefs",
+                "@agg": "count",
+                "@of": "Match_homeRef.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

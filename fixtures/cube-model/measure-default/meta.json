@@ -1,0 +1,141 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Sale",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "sales"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "region"
+              }
+            },
+            {
+              "field.decimal": {
+                "name": "amount",
+                "@precision": 12,
+                "@scale": 2
+              }
+            },
+            {
+              "field.int": {
+                "name": "quantity"
+              }
+            },
+            {
+              "field.int": {
+                "name": "discount"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "big",
+                "@filter": {
+                  "quantity": {
+                    "gte": 10
+                  }
+                }
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "region",
+                "@of": "Sale.region"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "sales",
+                "@agg": "count",
+                "@of": "Sale.id"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "revenue",
+                "@agg": "sum",
+                "@of": "Sale.amount",
+                "@default": 0,
+                "@description": "Revenue, 0 when there is none."
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "bigUnits",
+                "@agg": "sum",
+                "@of": "Sale.quantity",
+                "@segment": "big",
+                "@default": 0
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "avgDiscount",
+                "@agg": "avg",
+                "@of": "Sale.discount",
+                "@default": -1
+              }
+            },
+            {
+              "measure.ratio": {
+                "name": "revenuePerSale",
+                "@numerator": "revenue",
+                "@denominator": "sales"
+              }
+            },
+            {
+              "measure.ratio": {
+                "name": "revenuePerSaleOrZero",
+                "@numerator": "revenue",
+                "@denominator": "sales",
+                "@default": 0
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "SalesByRegion",
+          "@from": "Sale",
+          "@dimensions": [
+            "region"
+          ],
+          "@measures": [
+            "sales",
+            "revenue",
+            "bigUnits",
+            "avgDiscount",
+            "revenuePerSale",
+            "revenuePerSaleOrZero"
+          ],
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_sales_by_region"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,119 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Org",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "orgs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "orgId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkOrg",
+                "@fields": "orgId",
+                "@references": "Org"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Week",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "weeks"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkProgram",
+                "@fields": "programId",
+                "@references": "Program"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "orgName",
+                "@of": "Org.name",
+                "@via": "Week.fkProgram.fkOrg"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "weeks",
+                "@agg": "count",
+                "@of": "Week.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

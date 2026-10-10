@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "bun test",
+    "test:cube": "bun test ./cube-live/cube-model.live.ts",
     "gen:schema": "bun run src/gen-canonical-schema.ts",
     "gen:report-api-schema": "bun run src/gen-api-contract-report-schema.ts",
     "gen:report-shapes": "bun run src/gen-report-shapes.ts",

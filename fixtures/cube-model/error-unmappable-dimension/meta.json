@@ -1,0 +1,42 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Tagged",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "tagged"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "tags",
+                "isArray": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "tag",
+                "@of": "Tagged.tags"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

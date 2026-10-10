@@ -32,6 +32,7 @@ const EXPECTED_NATIVE = [
   "api-docs",
   "trace-helper",
   "requirement-tests",
+  "cube-model",
   "shared-model",
 ] as const;
 
@@ -131,6 +132,22 @@ describe("generator-registry (ADR-0021 D3)", () => {
     for (const name of templates) {
       expect(Object.keys(generatorRegistry), `template ${name} has a registry entry`).toContain(name);
     }
+  });
+
+  test("cube-model is a capability-layer reference helper whose output needs nothing installed", () => {
+    // FR-044 Plan 4: Cube reads the YAML from its own project, so the emitted files import no
+    // MetaObjects package and no third-party one, and depend on no other generator's output.
+    const entry = getGenerator("cube-model") as GeneratorRegistryEntry;
+    expect(entry.layer).toBe("capability");
+    expect(entry.tier).toBe("native");
+    expect(entry.ejectable).toBe(true);
+    expect(entry.requires).toEqual([]);
+    expect(entry.runtimePackages).toEqual([]);
+    expect(entry.runtimePeers).toEqual([]);
+    expect(entry.configKeys).toEqual(["dialect", "columnNamingStrategy"]);
+    expect(entry.options).toBe("dialect?, filter?, target?");
+    expect(entry.description).toContain("model/cubes/*.yml");
+    expect(entry.factory().name).toBe("cube-model");
   });
 
   test("requires only names entries this slice actually contains", () => {

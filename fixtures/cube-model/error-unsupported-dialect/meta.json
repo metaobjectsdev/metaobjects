@@ -1,0 +1,37 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "programs",
+                "@agg": "count",
+                "@of": "Program.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

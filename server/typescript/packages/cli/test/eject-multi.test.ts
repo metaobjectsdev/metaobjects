@@ -114,6 +114,36 @@ describe("meta eject takes many names", () => {
     }
   });
 
+  test("cube-model ejects — it ships a reference template, and its YAML needs nothing installed", async () => {
+    // FR-044 Plan 4: the owned part is which entities get a cube, the file layout and the YAML
+    // call; buildCubeModel and renderCubeYaml stay in the package.
+    const dir = tmp();
+    try {
+      expect(await ejectCommand(["cube-model"], dir, "json")).toBe(0);
+      expect(erred.join("\n")).not.toContain("package-only");
+      const copy = join(dir, "codegen/generators/cube-model.ts");
+      expect(existsSync(copy)).toBe(true);
+      const source = readFileSync(copy, "utf8");
+      expect(source).toContain("export function cubeModel(");
+      expect(source).toContain("buildCubeModel");
+      expect(source).toContain("renderCubeYaml");
+      const [row] = payload().ejected;
+      expect(row?.status).toBe("created");
+      expect(row?.wire.entry).toBe("cubeModel()");
+      expect(row?.wire.import).toBe(
+        'import { cubeModel } from "./codegen/generators/cube-model.js";',
+      );
+      // The emitted YAML imports no package, so there is nothing to install at runtime. The dev
+      // installs are the packages the copy itself imports: the engine and the metadata types.
+      const { install } = payload();
+      expect(install.runtime).toEqual([]);
+      expect(install.dev.some((d) => d.startsWith("@metaobjectsdev/codegen-ts@"))).toBe(true);
+      expect(install.dev.some((d) => d.startsWith("@metaobjectsdev/metadata@"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("a repeated name is a usage error, not a silent second write", async () => {
     const dir = tmp();
     try {

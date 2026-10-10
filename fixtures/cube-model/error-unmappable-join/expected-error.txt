@@ -1,0 +1,1 @@
+ERR_CUBE_UNMAPPABLE_JOIN: cube 'Week': join 'Program' (identity.reference 'shop::Week.fkProgram'): identity.reference 'shop::Week.fkProgram' pairs @fields [programId] of 'shop::Week' with the key [tenantId, id] of 'shop::Program', and the counts differ, so the join cannot be written column for column. Make the reference's @fields match the referenced key one for one.

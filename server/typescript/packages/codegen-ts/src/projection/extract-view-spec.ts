@@ -407,6 +407,22 @@ function resolveHopReference(
   return findReferencesBetween(holder, target);
 }
 
+/**
+ * The identity.reference one hop from `holder` crosses, resolved exactly as `walkViaPath`
+ * resolves that hop (`resolveHop`, then `resolveHopReference`). Undefined when the hop does not
+ * resolve or its reference is ambiguous; `walkViaPath` is what reports those. The Cube exporter
+ * reads it for the reference's full `@fields` list, where a view join reads the first.
+ */
+export function hopReferenceIdentity(holder: MetaObject, hopName: string, root: MetaRoot): MetaReferenceIdentity | undefined {
+  const resolved = resolveHop(holder, hopName);
+  if (!resolved) return undefined;
+  const target = resolveEntityRef(root, resolved.targetName, packageOf(holder));
+  if (!target) return undefined;
+  const ref = resolveHopReference(holder, resolved.hop, hopName, target);
+  if (Array.isArray(ref)) return ref.length === 1 ? ref[0]!.referenceIdentity : undefined;
+  return ref.referenceIdentity;
+}
+
 function viewName(projection: MetaObject, ctx: ExtractContext): string {
   // The read-only source carries the physical view name. FR-016: physicalName
   // implements the four-step rule (kind-matching alias → legacy @table →
@@ -657,7 +673,7 @@ function baseColumnNameFor(
  * The JOIN ON clause must use the real column, not a hardcoded snake_case guess,
  * or it breaks under the `literal`/`kebab-case` strategies.
  */
-function joinColumnFor(entity: MetaObject, fieldName: string, ctx: ExtractContext): string {
+export function joinColumnFor(entity: MetaObject, fieldName: string, ctx: ExtractContext): string {
   const f = entity.fields().find((x) => x.name === fieldName);
   return f ? sourceColumnNameFor(f, ctx) : columnNameFromField(fieldName, ctx.columnNamingStrategy);
 }

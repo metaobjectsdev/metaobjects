@@ -1,0 +1,134 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Week",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "weeks"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId"
+              }
+            },
+            {
+              "field.int": {
+                "name": "durationMinutes"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label"
+              }
+            },
+            {
+              "field.string": {
+                "name": "kind"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "long",
+                "@filter": {
+                  "durationMinutes": {
+                    "gte": 60
+                  }
+                }
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "weekdayOrUnlabelled",
+                "@filter": {
+                  "or": [
+                    {
+                      "kind": "weekday"
+                    },
+                    {
+                      "label": {
+                        "isNull": true
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "slotsLong",
+                "@agg": "count",
+                "@distinct": true,
+                "@of": [
+                  "Week.programId",
+                  "Week.durationMinutes"
+                ],
+                "@segment": "long"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "slotsLabelled",
+                "@agg": "count",
+                "@distinct": true,
+                "@of": [
+                  "Week.programId",
+                  "Week.durationMinutes"
+                ],
+                "@filter": {
+                  "label": {
+                    "isNull": false
+                  }
+                }
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "slotsLongLabelled",
+                "@agg": "count",
+                "@distinct": true,
+                "@of": [
+                  "Week.programId",
+                  "Week.durationMinutes"
+                ],
+                "@segment": "long",
+                "@filter": {
+                  "label": {
+                    "isNull": false
+                  }
+                }
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "slotsWeekdayOrUnlabelled",
+                "@agg": "count",
+                "@distinct": true,
+                "@of": [
+                  "Week.programId",
+                  "Week.durationMinutes"
+                ],
+                "@segment": "weekdayOrUnlabelled"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Node",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "nodes"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label"
+              }
+            },
+            {
+              "field.long": {
+                "name": "parentId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkParent",
+                "@fields": "parentId",
+                "@references": "Node"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "parentLabel",
+                "@of": "Node.label",
+                "@via": "Node.fkParent"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "nodes",
+                "@agg": "count",
+                "@of": "Node.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

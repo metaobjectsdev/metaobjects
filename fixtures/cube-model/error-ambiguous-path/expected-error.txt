@@ -1,0 +1,1 @@
+ERR_CUBE_AMBIGUOUS_PATH: cube 'Week': dimension 'shop::Week.orgName' reads 'Org' through @via 'Week.fkProgram.fkOrg', and the cube graph reaches 'Org' from 'Week' by more than one path (Week -> Program -> Org; Week -> Org), so Cube could join it by either. Remove the identity.reference that makes the other path, or read the value through a single hop.

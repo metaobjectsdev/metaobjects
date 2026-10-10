@@ -16,7 +16,8 @@
 # Usage:
 #   scripts/ci-local.sh              # FULL parity: all-port conformance + full Java
 #                                    #   reactor + drift/mutation gates + docker
-#                                    #   integration suite. Run before a PR or tag.
+#                                    #   integration suite + the cube live check.
+#                                    #   Run before a PR or tag.
 #   scripts/ci-local.sh --quick      # FAST inner-loop tier: the cheap TS-centric
 #                                    #   gates only (leak-scan, pom parity, fixture-
 #                                    #   lint, ts build+typecheck, ts conformance,
@@ -51,6 +52,13 @@
 #                                    #   python → full python test suite + integration-tests
 #                                    #   csharp → full csharp codegen suite + conformance
 #                                    #            + integration-tests
+#                                    #   cube   → the cube-model live check: a real Cube
+#                                    #            (cubejs/cube, pinned) over a private
+#                                    #            Postgres, both in docker (FR-044). Its
+#                                    #            own lane: the full run adds it after the
+#                                    #            integration suite; --quick and
+#                                    #            --no-integration drop it; no other
+#                                    #            section includes it
 #   scripts/ci-local.sh --no-integration
 #                                    # Drop the docker/Postgres half of the selected
 #                                    #   sections: the integration suites, the
@@ -108,8 +116,8 @@ while [ $# -gt 0 ]; do
     --no-integration) NO_INTEG=1 ;;
     --integration-only) INTEG_ONLY=1 ;;
     --only) shift; case "${1:-}" in
-        gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|java|java-fast|java-slow|python|csharp) ONLY="$ONLY ${1}" ;;
-        *) echo "--only expects gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|java|java-fast|java-slow|python|csharp, got '${1:-}'" >&2; exit 2 ;;
+        gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|java|java-fast|java-slow|python|csharp|cube) ONLY="$ONLY ${1}" ;;
+        *) echo "--only expects gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|java|java-fast|java-slow|python|csharp|cube, got '${1:-}'" >&2; exit 2 ;;
       esac ;;
     -h|--help) awk 'NR==1{next} /^set -uo/{exit} {sub(/^# ?/,""); print}' "$0"; exit 0 ;;
     *) echo "unknown arg: $1 (see --help)" >&2; exit 2 ;;
@@ -676,6 +684,32 @@ gate_embedded_library_drift() {
 gate_integration() { scripts/integration-test.sh all; }
 gate_integration_port() { scripts/integration-test.sh "$1"; }
 
+# The cube-model live check (FR-044 Plan 4): the generator's output loaded into a real Cube
+# (cubejs/cube, pinned) over a throwaway Postgres holding the persistence-conformance schema,
+# each served report's Cube query compared with its SQL view, then every Postgres case of the
+# mapping corpus compiled in the same Cube. It owns its containers and a private network, binds
+# only an ephemeral 127.0.0.1 port, and never uses the Postgres sidecar below. Its own lane
+# because the image is about 1 GB: `--only cube`, and the full run after the integration suite.
+gate_cube() { scripts/integration-test.sh cube; }
+
+# Docker down is a SKIP with a banner, never a quiet pass; --strict-toolchains makes it a FAIL.
+run_cube_lane() {
+  if docker info >/dev/null 2>&1; then
+    step_if bun "cube-model live check (Cube + Postgres)" gate_cube
+    return
+  fi
+  echo "" >&2
+  echo "  ════════════════════════════════════════════════════════════════════════" >&2
+  echo "  CUBE LIVE CHECK NOT RUN: docker is DOWN. Nothing was checked against a" >&2
+  echo "  real Cube. Start docker and run: scripts/ci-local.sh --only cube" >&2
+  echo "  ════════════════════════════════════════════════════════════════════════" >&2
+  if [ "$STRICT" -eq 1 ]; then
+    FAIL+=("cube-model live check (docker down, strict)")
+  else
+    SKIP+=("cube-model live check (docker down)")
+  fi
+}
+
 # The Postgres SIDECAR every integration lane shares.
 #
 # This is the single biggest wall-clock lever in the repo and it used to exist ONLY in
@@ -796,6 +830,7 @@ if [ "${MO_CI_LIST_ONLY:-0}" = "1" ]; then
   step()    { echo "  + $1"; }
   step_if() { local t="$1" n="$2"; have "$t" && echo "  + $n" || echo "  ⊘ $n (no $t, would skip)"; }
   run_integration_for() { local label="$1"; shift; local r; for r in "$@"; do echo "  + integration-tests ($r)"; done; }
+  run_cube_lane() { echo "  + cube-model live check (Cube + Postgres)"; }
   echo "Steps that would run:"
 fi
 
@@ -856,11 +891,13 @@ if want gates; then step_if bun "embedded-library drift"       gate_embedded_lib
 if [ "$QUICK" -eq 1 ]; then
   echo ""
   echo "── ⊘ --quick: SKIPPING the other-language ports (csharp/java/python/kotlin),"
-  echo "        the full Java reactor, and the docker integration suite. Run the full"
-  echo "        \`scripts/ci-local.sh\` (no flag) before opening/merging a PR or tagging."
+  echo "        the full Java reactor, the docker integration suite and the cube live"
+  echo "        check. Run the full \`scripts/ci-local.sh\` (no flag) before opening/merging"
+  echo "        a PR or tagging."
   SKIP+=("csharp/java/python/kotlin conformance (--quick)")
   SKIP+=("java-reactor (--quick)")
   SKIP+=("integration-tests (--quick)")
+  SKIP+=("cube-model live check (--quick)")
 else
   # Heavy tier — other-language ports + full reactor + docker integration suite.
   #
@@ -890,6 +927,7 @@ else
       echo ""; echo "  ✖ docker is DOWN — cannot run the integration suite. Start docker, or use --quick." >&2
       FAIL+=("integration-tests (docker down)")
     fi
+    run_cube_lane
   else
     # ts-slow needs the workspace dist/ to run integration. When the fast lane also
     # runs (umbrella `ts` / local full), its build already produced it — only build
@@ -914,6 +952,15 @@ else
     in_lane_any java java-slow && run_integration_for java   java kotlin
     in_lane python             && run_integration_for python python
     in_lane csharp             && run_integration_for csharp csharp
+    # The cube lane needs the workspace installed (and builds it, as ts-slow does) when no
+    # earlier step in this selection did: `--only cube`, alone or with --integration-only. Docker
+    # is asked first, so a docker-down run records its SKIP without paying for an install/build.
+    if in_lane cube; then
+      if docker info >/dev/null 2>&1 && ! want_any ts ts-fast && ! in_lane_any ts ts-slow; then
+        step_if bun "ts build (for the cube lane)" gate_ts_build
+      fi
+      run_cube_lane
+    fi
   fi
 fi
 

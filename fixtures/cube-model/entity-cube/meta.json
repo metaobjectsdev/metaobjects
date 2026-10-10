@@ -1,0 +1,78 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "@title": "Programs",
+          "@description": "Every program on sale.",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs",
+                "@schema": "sales"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "programs",
+                "@agg": "count",
+                "@of": "Program.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Coupon",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "coupons"
+              }
+            },
+            {
+              "field.string": {
+                "name": "code"
+              }
+            },
+            {
+              "field.string": {
+                "name": "region"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "code",
+                  "region"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "coupons",
+                "@agg": "count",
+                "@of": "Coupon.code"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

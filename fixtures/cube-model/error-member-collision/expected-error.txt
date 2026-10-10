@@ -1,0 +1,1 @@
+ERR_CUBE_MEMBER_COLLISION: cube 'Program': measure 'shop::Program.title' and the dimension 'title' the exporter adds for dimension 'shop::Week.programTitle' to read are both named 'title', and a cube's dimensions, measures, segments and pre-aggregations share one namespace. Rename one of them in the model.

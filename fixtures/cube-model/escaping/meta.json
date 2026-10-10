@@ -1,0 +1,111 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "field.string": {
+                "name": "code",
+                "@column": "co{de}"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "code",
+                "@of": "Program.code"
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "braces",
+                "@filter": {
+                  "title": "a{b}c"
+                }
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "doubleBraces",
+                "@filter": {
+                  "title": "{{x}}"
+                }
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "jinja",
+                "@filter": {
+                  "title": "{{y}} {% z %} {# c #}"
+                }
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "quote",
+                "@filter": {
+                  "title": "it's"
+                }
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "backslash",
+                "@filter": {
+                  "title": "a\\b"
+                }
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "trailingBackslash",
+                "@filter": {
+                  "title": "ends\\"
+                }
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "backslashBrace",
+                "@filter": {
+                  "title": "a\\{b}"
+                }
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "lineBreak",
+                "@filter": {
+                  "title": "two\nlines"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

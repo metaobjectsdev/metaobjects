@@ -189,6 +189,13 @@
       "layer": "capability",
       "ports": ["typescript", "java", "kotlin", "python", "csharp"]
     },
+    "cube-model": {
+      "concept": "Cube data model files (model/cubes/*.yml, model/views/*.yml) exported from the reporting vocabulary.",
+      "tier": "native",
+      "layer": "capability",
+      "note": "TYPESCRIPT ONLY by design (FR-044 Plan 4, reporting design R6): a reference helper (ADR-0034 Amendment 3) writing YAML that imports nothing; no other port ships an exporter.",
+      "ports": ["typescript"]
+    },
     "docs": {
       "concept": "Neutral per-entity / per-template Markdown documentation pages.",
       "tier": "neutral",

@@ -22,6 +22,9 @@ export const REFERENCE_GENERATOR_NAMES = [
   // renderer, because an eject copies one file and the stub text is what an application
   // is most likely to change.
   "requirement-tests",
+  // The Cube exporter (FR-044 Plan 4): the owned part is which entities get a cube, the
+  // file layout and the YAML call; `buildCubeModel` and `renderCubeYaml` stay in the package.
+  "cube-model",
 ] as const;
 export type ReferenceGeneratorName = (typeof REFERENCE_GENERATOR_NAMES)[number];
 

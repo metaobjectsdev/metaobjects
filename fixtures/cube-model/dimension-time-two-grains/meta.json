@@ -1,0 +1,73 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "dimension.time": {
+                "name": "createdAt",
+                "@of": "Program.createdAt",
+                "@grains": [
+                  "week",
+                  "month"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "programs",
+                "@agg": "count",
+                "@of": "Program.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "ProgramGrains",
+          "@from": "Program",
+          "@dimensions": [
+            "createdAt:week",
+            "createdAt:month"
+          ],
+          "@measures": [
+            "programs"
+          ],
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_programgrains"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

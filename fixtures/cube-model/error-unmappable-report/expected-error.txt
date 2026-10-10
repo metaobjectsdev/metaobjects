@@ -1,0 +1,1 @@
+ERR_CUBE_UNMAPPABLE_REPORT: report 'shop::LooseTotals' is served, and its @from 'shop::Loose' has no cube to hold its rollup: 'shop::Loose' declares no writable source.rdb, so it has no table of its own, and no view can be derived from it either. Report @from a concrete entity with a table, or remove the report's view source.

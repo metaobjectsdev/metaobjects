@@ -1,0 +1,64 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "@title": "Programs",
+          "@description": "Use `{{ program }}` for one row.",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "title",
+                "@of": "Program.title",
+                "@description": "The {{title}} as written."
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "programs",
+                "@agg": "count",
+                "@of": "Program.id",
+                "@title": "Program count",
+                "@description": "Share of {weeks}, cost ${x} at C:\\path, in `code`"
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "titled",
+                "@filter": {
+                  "title": {
+                    "isNull": false
+                  }
+                },
+                "@description": "Titled \"programs\" only {# not drafts #}"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Host",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "hosts"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.uri": {
+                "name": "homepage"
+              }
+            },
+            {
+              "field.inet": {
+                "name": "address"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "homepage",
+                "@of": "Host.homepage"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "address",
+                "@of": "Host.address"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

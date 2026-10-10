@@ -1,0 +1,103 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Team",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "teams"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Match",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "matches"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "homeTeamId"
+              }
+            },
+            {
+              "field.long": {
+                "name": "awayTeamId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "homeRef",
+                "@fields": "homeTeamId",
+                "@references": "Team"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "awayRef",
+                "@fields": "awayTeamId",
+                "@references": "Team"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "homeName",
+                "@of": "Team.name",
+                "@via": "Match.homeRef"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "awayName",
+                "@of": "Team.name",
+                "@via": "Match.awayRef"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "matches",
+                "@agg": "count",
+                "@of": "Match.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

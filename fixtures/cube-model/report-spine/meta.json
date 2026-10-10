@@ -1,0 +1,185 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Week",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "weeks"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId",
+                "@required": true
+              }
+            },
+            {
+              "field.int": {
+                "name": "durationMinutes",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkProgram",
+                "@fields": "programId",
+                "@references": "Program"
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "long",
+                "@filter": {
+                  "durationMinutes": {
+                    "gte": 60
+                  }
+                }
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "programKey",
+                "@of": "Program.id",
+                "@via": "Week.fkProgram"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "programTitle",
+                "@of": "Program.title",
+                "@via": "Week.fkProgram",
+                "@description": "The program's title."
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "programName",
+                "@of": "Program.title",
+                "@via": "Week.fkProgram"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "weeks",
+                "@agg": "count",
+                "@of": "Week.id"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "totalMinutes",
+                "@agg": "sum",
+                "@of": "Week.durationMinutes"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "totalMinutesOrZero",
+                "@agg": "sum",
+                "@of": "Week.durationMinutes",
+                "@default": 0
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "ProgramRoster",
+          "@from": "Week",
+          "@spine": "Week.fkProgram",
+          "@dimensions": [
+            "programKey",
+            "programTitle",
+            "programName"
+          ],
+          "@measures": [
+            "weeks",
+            "totalMinutes",
+            "totalMinutesOrZero"
+          ],
+          "@description": "Every program, with or without weeks.",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_program_roster"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "ProgramLongWeeks",
+          "@from": "Week",
+          "@spine": "Week.fkProgram",
+          "@dimensions": [
+            "programKey"
+          ],
+          "@measures": [
+            "weeks",
+            "totalMinutesOrZero"
+          ],
+          "@segment": "long",
+          "@filter": {
+            "durationMinutes": {
+              "lt": 600
+            }
+          },
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_program_long_weeks"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

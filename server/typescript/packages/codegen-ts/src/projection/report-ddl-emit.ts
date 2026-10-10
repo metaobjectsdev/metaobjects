@@ -2,10 +2,10 @@
 // Postgres, SQLite and MySQL. Kept apart from view-ddl-emit.ts on purpose: the projection
 // emitter quotes conditionally (`quoteIfNeeded`) and is Postgres/SQLite only; a report
 // quotes every identifier unconditionally, so a measure named `order` is valid DDL.
-import type { JoinNode, ViewFilterClause } from "./view-spec.js";
+import type { JoinNode } from "./view-spec.js";
 import type { ReportAggregate, ReportColumn, ReportViewSpec } from "./report-spec.js";
-import { isRelativeNow } from "./report-spec.js";
-import { relativeNowSql, truncateToGrain, type ReportDialect } from "./time-sql.js";
+import { cond, mysqlTupleCount, q, ref } from "./report-sql.js";
+import { truncateToGrain, type ReportDialect } from "./time-sql.js";
 
 export interface ReportEmitOptions {
   readonly dialect: ReportDialect;
@@ -14,52 +14,6 @@ export interface ReportEmitOptions {
   readonly joinTables: Readonly<Record<string, string>>;
   /** Body only (no CREATE VIEW wrapper, no trailing `;`), as migrate-ts consumes it. */
   readonly bodyOnly?: boolean;
-}
-
-/** An identifier, quoted unconditionally. */
-function q(ident: string, d: ReportDialect): string {
-  return d === "mysql" ? "`" + ident.replace(/`/g, "``") + "`" : `"${ident.replace(/"/g, '""')}"`;
-}
-
-/** `alias.column` → `alias."column"`. The alias is generated, never quoted. */
-function ref(r: string, d: ReportDialect): string {
-  const dot = r.indexOf(".");
-  return dot < 0 ? q(r, d) : `${r.slice(0, dot)}.${q(r.slice(dot + 1), d)}`;
-}
-
-function literal(v: unknown, d: ReportDialect): string {
-  if (isRelativeNow(v)) return relativeNowSql(v.duration, v.temporal, d);
-  if (v === null || v === undefined) return "NULL";
-  if (typeof v === "number") return String(v);
-  if (typeof v === "boolean") return d === "sqlite" ? (v ? "1" : "0") : v ? "TRUE" : "FALSE";
-  const s = String(v).replace(/'/g, "''");
-  return `'${d === "mysql" ? s.replace(/\\/g, "\\\\") : s}'`;
-}
-
-const FILTER_OP_SQL: Readonly<Record<string, string>> = {
-  eq: "=", ne: "<>", gt: ">", gte: ">=", lt: "<", lte: "<=", like: "LIKE",
-};
-
-/** A resolved filter clause as a SQL boolean expression; `and` / `or` groups are parenthesised. */
-function cond(clause: ViewFilterClause, d: ReportDialect): string {
-  switch (clause.kind) {
-    case "and":
-    case "or":
-      return `(${clause.clauses.map((c) => cond(c, d)).join(clause.kind === "and" ? " AND " : " OR ")})`;
-    case "exprCmp":
-      throw new Error("report-ddl-emit: a report filter never lowers to an exprCmp clause.");
-    case "cmp": {
-      const lhs = ref(clause.ref, d);
-      if (clause.op === "isNull") return clause.value === false ? `${lhs} IS NOT NULL` : `${lhs} IS NULL`;
-      if (clause.op === "in") {
-        const vals = (Array.isArray(clause.value) ? clause.value : [clause.value]).map((v) => literal(v, d));
-        return `${lhs} IN (${vals.join(", ")})`;
-      }
-      const op = FILTER_OP_SQL[clause.op];
-      if (op === undefined) throw new Error(`report-ddl-emit: unsupported filter operator "${clause.op}".`);
-      return `${lhs} ${op} ${literal(clause.value, d)}`;
-    }
-  }
 }
 
 function castType(cast: "bigint" | "double", d: ReportDialect): string | undefined {
@@ -98,13 +52,10 @@ function aggregate(a: ReportAggregate, d: ReportDialect): string {
       case "sqlite":
         sql = `COUNT(DISTINCT CASE WHEN ${both} THEN json_array(${refs.join(", ")}) END)`;
         break;
-      case "mysql": {
+      case "mysql":
         // MySQL's multi-argument COUNT(DISTINCT …) already skips a tuple with a NULL component.
-        const [first, ...rest] = refs;
-        const head = c === undefined ? first! : `CASE WHEN ${c} THEN ${first} END`;
-        sql = `COUNT(DISTINCT ${[head, ...rest].join(", ")})`;
+        sql = mysqlTupleCount(refs, c);
         break;
-      }
     }
   } else {
     const x = refs[0]!;

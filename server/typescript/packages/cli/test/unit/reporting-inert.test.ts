@@ -17,6 +17,13 @@
 // the hook generator emits `StoreTotals.hooks.ts` and `StoreTotals.meta.ts`, and no other UI
 // generator emits anything for a report.
 //
+// One catalog generator is held to a different line: `cube-model` (FR-044 Plan 4) writes Cube
+// data-model files from the reporting vocabulary on the ENTITIES (`dimension.*`, `measure.*`,
+// `segment.filter`), not from a served report. For `without/` it writes nothing; for `with/` it
+// writes exactly the cubes in CUBE_MODEL_FILES, whichever reports are served. A report adds to
+// a cube only the rollup of a served one (here StoreTotals), and a selection that matches no
+// entity with that vocabulary gets no cube at all.
+//
 // The model pair lives in fixtures/codegen-noop/reporting/ and is shared with the other
 // four ports' copies of this test. `with/` carries a report that declares a read-only
 // `source.rdb @kind: view` (R5 allows one): that is the case that once leaked in C#, where
@@ -119,6 +126,28 @@ const SERVED_REPORT_FILES: Readonly<Record<string, readonly string[]>> = {
   // The list hook, and the DB-free descriptor module it imports.
   hooks: [`${OUT}/StoreTotals.hooks.ts`, `${OUT}/StoreTotals.meta.ts`],
 };
+/**
+ * FR-044 Plan 4: the files `cube-model` writes for `with/`, and none for `without/`. It writes
+ * them from the entity vocabulary, not from a served report, so they sit apart from the table
+ * above. Worked out by hand from the plan's Table A and Table E, then pinned:
+ *   Purchase       declares dimensions, measures and a segment: an entity cube. It also holds
+ *                  StoreTotals's rollup (the one served report); the two sourceless reports add
+ *                  nothing to it or to WorkoutEvent.
+ *   WorkoutEvent   declares a dimension, measures and a segment: an entity cube.
+ *   Program        declares none, but Purchase's `programTitle` and `programCreatedAt` read
+ *                  its fields through `@via Purchase.program`: a join-target cube.
+ * No alias cube: Purchase has one to-one hop onto Program, not two.
+ */
+const CUBE_MODEL_FILES: readonly string[] = [
+  `${OUT}/model/cubes/Program.yml`,
+  `${OUT}/model/cubes/Purchase.yml`,
+  `${OUT}/model/cubes/WorkoutEvent.yml`,
+];
+/** What each catalog generator adds for `with/`. A generator that is not listed adds none. */
+const ADDED_FOR_WITH: Readonly<Record<string, readonly string[]>> = {
+  ...SERVED_REPORT_FILES,
+  "cube-model": CUBE_MODEL_FILES,
+};
 /** The one existing file a served report changes: it gains the report's export line. */
 const BARREL = `${OUT}/index.ts`;
 /** The client UI generators that emit NOTHING for a report: a report has a list hook and no
@@ -159,7 +188,7 @@ describe("FR-044 a sourceless report is inert; a served report emits exactly its
   test("every generator named in the expected-files table is in the catalog", () => {
     // A renamed catalog entry would otherwise turn its row into dead text and its
     // generator into one that is expected to add nothing.
-    for (const name of [...Object.keys(SERVED_REPORT_FILES), "barrel", ...UI_TIER]) {
+    for (const name of [...Object.keys(ADDED_FOR_WITH), "barrel", ...UI_TIER]) {
       expect(Object.keys(catalog)).toContain(name);
     }
   });
@@ -173,7 +202,7 @@ describe("FR-044 a sourceless report is inert; a served report emits exactly its
         expect(actual).toEqual(expected);
         return;
       }
-      expectOnlyAdds(expected, actual, SERVED_REPORT_FILES[name] ?? []);
+      expectOnlyAdds(expected, actual, ADDED_FOR_WITH[name] ?? []);
       if (name === "barrel") {
         // The barrel is the one shared file that moves, and it moves by the report's
         // export alone: every line it had is still there, in order.
@@ -205,6 +234,52 @@ describe("FR-044 a sourceless report is inert; a served report emits exactly its
     });
   }
 
+  describe("cube-model writes from the entity vocabulary, not from a served report", () => {
+    const cubeModel = (): Generator => catalog["cube-model"]!.factory();
+
+    test("a model without the vocabulary gets no file, and no error", async () => {
+      expect(await emit(withoutReporting, [cubeModel()])).toEqual({});
+    });
+
+    test("the model with it gets exactly the cubes Table A names, nothing from the reports' own names", async () => {
+      const actual = await emit(withReporting, [cubeModel()]);
+      expect(Object.keys(actual).sort()).toEqual([...CUBE_MODEL_FILES]);
+      for (const name of SOURCELESS_REPORTS) {
+        expect(Object.values(actual).filter((text) => text.includes(name))).toEqual([]);
+      }
+    });
+
+    test("the served report is a rollup on its @from cube; the sourceless reports are not", async () => {
+      const purchase = (await emit(withReporting, [cubeModel()]))[`${OUT}/model/cubes/Purchase.yml`]!;
+      expect(purchase).toContain("pre_aggregations:\n      - name: StoreTotals\n        type: rollup");
+      expect(purchase.match(/type: rollup/g)).toHaveLength(1);
+    });
+
+    test("the join-target cube holds only the key and the members a @via reads, and is not public", async () => {
+      const program = (await emit(withReporting, [cubeModel()]))[`${OUT}/model/cubes/Program.yml`]!;
+      expect(program).toContain("public: false");
+      expect(program.match(/^      - name: /gm)).toHaveLength(3); // id, title, createdAt
+      expect(program).not.toContain("measures:");
+    });
+
+    test("the defaulted ratio is written with its @default, whichever report lists it", async () => {
+      // `avgDaysPerStarter` declares `@default: 0`; it is a measure of the WorkoutEvent cube, so it
+      // is written though only a sourceless report lists it. A ratio's default wraps its quotient.
+      const workoutEvent = (await emit(withReporting, [cubeModel()]))[`${OUT}/model/cubes/WorkoutEvent.yml`]!;
+      expect(workoutEvent).toContain(
+        "      - name: avgDaysPerStarter\n" +
+          "        sql: 'COALESCE(CAST({daysEngaged} AS NUMERIC) / NULLIF({starters}, 0), 0)'\n" +
+          "        type: number\n",
+      );
+    });
+
+    test("a report leaves one trace: the name of the served report, once, in its @from cube", async () => {
+      const actual = await emit(withReporting, [cubeModel()]);
+      const traces = Object.entries(actual).map(([path, text]) => [path, text.split("StoreTotals").length - 1] as const);
+      expect(traces.filter(([, n]) => n > 0)).toEqual([[`${OUT}/model/cubes/Purchase.yml`, 1]]);
+    });
+  });
+
   test("exactly these generators cannot run from a bare model — the list may only shrink", async () => {
     // Each is compared above on its error message alone, which proves nothing about its
     // output. Pinned by name so a generator that starts throwing cannot drop out silently.
@@ -231,7 +306,7 @@ describe("FR-044 a sourceless report is inert; a served report emits exactly its
     expect(expected["<threw>"]).toBeUndefined();
     expect(actual["<threw>"]).toBeUndefined();
     expect(Object.keys(expected).length).toBeGreaterThan(10);
-    expectOnlyAdds(expected, actual, Object.values(SERVED_REPORT_FILES).flat());
+    expectOnlyAdds(expected, actual, Object.values(ADDED_FOR_WITH).flat());
     // In the full suite the barrel re-exports the report's modules.
     expect(actual[BARREL]).toContain("StoreTotals");
     expect(expected[BARREL]).not.toContain("StoreTotals");
@@ -272,6 +347,16 @@ describe("FR-044 a selection of only reports", () => {
     for (const name of SOURCELESS_REPORTS) {
       expect(names.filter((n) => n.includes(name))).toEqual([]);
     }
+    // A report is never an entity of its own to cube: its rollup rides with its @from cube,
+    // and a selection that names no entity with the vocabulary writes no cube file.
+    expect(names.filter((n) => n.endsWith(".yml"))).toEqual([]);
+  });
+
+  test("a selection that matches an entity with the vocabulary writes that cube and the cubes it reaches", async () => {
+    const result = await run(["Purchase"]);
+    const cubes = result.files.map((f) => f.path.split(sep).join("/")).filter((p) => p.endsWith(".yml"));
+    // Purchase's own, and Program's (a @via on Purchase adds members to it); not WorkoutEvent's.
+    expect(cubes.map((p) => p.slice(p.lastIndexOf("/") + 1)).sort()).toEqual(["Program.yml", "Purchase.yml"]);
   });
 });
 

@@ -50,6 +50,7 @@ import {
   traceHelperFile,
   sharedModelFile,
   requirementTests,
+  cubeModel,
 } from "./generators/index.js";
 
 export type GeneratorTier = "native" | "neutral";
@@ -402,6 +403,21 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     factory: () => requirementTests(),
     options: "filter?, grain?, target?",
     ejectable: ejectable("requirement-tests"),
+  },
+  "cube-model": {
+    name: "cube-model",
+    kind: "generator",
+    layer: "capability",
+    description: "Cube data model files (model/cubes/*.yml, model/views/*.yml) for the reporting vocabulary: cubes, joins, dimensions, measures, segments, a rollup per served report and a view per served @spine report.",
+    tier: "native",
+    factory: () => cubeModel(),
+    options: "dialect?, filter?, target?",
+    // The emitted YAML imports nothing: Cube reads it from its own project.
+    requires: [],
+    runtimePackages: [],
+    runtimePeers: [],
+    configKeys: ["dialect", "columnNamingStrategy"],
+    ejectable: ejectable("cube-model"),
   },
   "shared-model": {
     name: "shared-model",

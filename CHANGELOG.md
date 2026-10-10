@@ -18,6 +18,41 @@ it until 1.1 ships._
 
 ### Added
 
+- **TypeScript: the `cube-model` reference generator (FR-044 Plan 4).** `cubeModel()` writes the
+  reporting vocabulary as Cube data-model files, `model/cubes/<Cube>.yml`: a cube for each
+  table-backed entity that declares dimensions, measures or segments, a join for each to-one
+  reference between cubes, dimensions (a time dimension carries its `@grains` as
+  `meta.grains`), measures, segments, and a `rollup` pre-aggregation for each served report. A
+  report with a relative date (in its `@filter`, its `@segment` or a listed measure's condition)
+  gets no rollup, and a `<report>Scope` segment when it has a `@filter`. A served report that
+  declares `@spine` is a Cube view, `model/views/<Report>.yml`, rooted at the spine cube over a
+  `public: false` `<Report>Facts` cube whose own `sql` holds the report's scope (so a spine row
+  whose facts are all filtered out keeps its row), with no rollup; the ordinary cubes gain no
+  reverse join. It is opt-in
+  (`meta init` wires nothing), listed by `meta gen --list` in the `capability` layer, ejectable
+  (`meta eject cube-model`) and drift-checked by `meta verify --codegen`. It writes Postgres
+  and MySQL SQL and refuses `sqlite` and `d1`. What Cube cannot hold is an `ERR_CUBE_*`
+  generation error that names the node; the exporter never renames or drops. **No vocabulary
+  change:** `metamodelVersion` stays 1.1 and `expected-registry.json` is untouched. The report
+  view lowering and the exporter now share one SQL module, moved without changing a byte of
+  any view. A measure's `@default` is a `public: false` `<m>Raw` aggregate and the measure as
+  `COALESCE({<m>Raw}, n)` (a ratio's default wraps its quotient, and an operand's own default
+  reaches the ratio), so Cube reads the default where the view does. A MySQL tuple distinct
+  count is the view's own `COUNT(DISTINCT a, b)`. Gated by the new `fixtures/cube-model/` corpus
+  (44 cases and a canonical golden; the 29th shared corpus in `docs/CONFORMANCE.md`, run by
+  TypeScript only).
+  See [docs/features/cube-export.md](docs/features/cube-export.md).
+- **A `cube` lane checks the exporter against a real Cube.** `scripts/ci-local.sh --only cube`
+  (also `scripts/integration-test.sh cube`, `bun run test:cube` in `integration-tests`, and a
+  `cube` entry in `integration-tests.yml`) loads the canonical model's output into
+  `cubejs/cube:v1.7.43` over a private `postgres:16-alpine`, requires the Cube query for each
+  served report to return the rows of its view (a `@spine` report through its Cube view, its
+  empty spine rows included), requires each of the 34 corpus cases that hold a tree to compile
+  (the two MySQL ones included), and reads the escaping case's literals and a ratio over a
+  defaulted operand back from Cube's `/v1/sql`. It owns a private Docker network and an ephemeral `127.0.0.1` port and
+  never uses the shared Postgres sidecar. Without Docker it is a SKIP behind a banner (a failure
+  under `--strict-toolchains`). The full `scripts/ci-local.sh` runs it; `--quick` and
+  `--no-integration` do not.
 - **Python: a run-time validator runner, `run_validators`.** `metaobjects.runtime.run_validators(entity, data)`
   validates a data mapping against an entity's metadata with no generated code and no database,
   and `ObjectManager.validate(entity_name, data)` does the same for a loaded entity. It is the

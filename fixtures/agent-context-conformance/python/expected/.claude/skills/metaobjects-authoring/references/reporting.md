@@ -155,6 +155,20 @@ A concrete report whose read source is `@kind: view` is served by every port's g
 
 The files each port generates are in the `metaobjects-codegen` skill's reference for that language ("Reports").
 
+## Exporting to Cube
+
+The TypeScript `cube-model` generator (`meta eject cube-model`; see the `metaobjects-codegen` skill's
+TypeScript reference) writes this vocabulary as Cube data-model files: a cube for each table-backed
+entity that declares dimensions, measures or segments, and a rollup for each served report. It keeps
+your names as written, so an entity, dimension, measure or segment name must be one Cube accepts (a
+letter first, then letters, digits and `_`, and not a Python keyword such as `from`, `class` or `in`);
+otherwise the export fails with `ERR_CUBE_INVALID_NAME` and renames nothing. It also refuses a
+dimension over an array, object or map field. A report with a relative date in its `@filter`,
+its `@segment`'s filter or a listed measure's condition gets no rollup. Its `<report>Scope`
+segment is written only when it has a `@filter`. A served report with `@spine` becomes a Cube view
+with its scope inside a facts cube and no rollup, so the spine's empty rows survive, and a measure's
+`@default` is a `COALESCE`, as in the view. A report that is not served contributes nothing. Reference: `docs/features/cube-export.md`.
+
 ## What a report does not have
 
 In TypeScript a served report gets a generated list hook; no port generates a grid or a form for a report, and the other ports have no client tier, so there you get the route and the row type. There is no `measure.derived`, no query-time choice of dimensions or measures, and no time-zone vocabulary.

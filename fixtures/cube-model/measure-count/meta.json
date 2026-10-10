@@ -1,0 +1,59 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Week",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "weeks"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId"
+              }
+            },
+            {
+              "field.int": {
+                "name": "durationMinutes"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "weeks",
+                "@agg": "count",
+                "@of": "Week.id"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "labelled",
+                "@agg": "count",
+                "@of": "Week.label"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

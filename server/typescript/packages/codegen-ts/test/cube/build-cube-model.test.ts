@@ -1,0 +1,1607 @@
+// FR-044 Plan 4, Task 2 — buildCubeModel, the pure stage of the cube-model reference
+// generator. One test per row of the plan's Tables A, C, D and E, the Table G errors this
+// stage raises, and the canonical model against Table H's data, rollups and the report scope
+// segment included (Table F's rows are report-rollups.test.ts). Every model is loaded with the
+// real loader.
+
+import { describe, test, expect } from "bun:test";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { InMemoryStringSource, MetaDataLoader, loadUris, type MetaRoot } from "@metaobjectsdev/metadata";
+import { buildCubeModel } from "../../src/cube/build-cube-model.js";
+import { CubeModelError } from "../../src/cube/cube-errors.js";
+import type { CubeDialect, CubeDimensionSpec, CubeMeasureSpec, CubeModel, CubeSpec } from "../../src/cube/cube-model-spec.js";
+
+type Json = Record<string, unknown>;
+
+const PKG = "acme::shop";
+
+function entity(name: string, children: Json[], extra: Json = {}): Json {
+  return { "object.entity": { name, ...extra, children } };
+}
+
+function table(name: string, extra: Json = {}): Json {
+  return { "source.rdb": { "@table": name, ...extra } };
+}
+
+const longId: Json = { "field.long": { name: "id" } };
+const pk: Json = { "identity.primary": { name: "id", "@fields": "id" } };
+
+/** Program: a table, a key and a title. `extra` children go last. */
+function program(extra: Json[] = []): Json {
+  return entity("Program", [table("programs"), longId, { "field.string": { name: "title" } }, pk, ...extra]);
+}
+
+/** Week: holds a reference onto Program. */
+function week(extra: Json[] = []): Json {
+  return entity("Week", [
+    table("weeks"),
+    longId,
+    { "field.long": { name: "programId", "@required": true } },
+    { "field.int": { name: "durationMinutes" } },
+    pk,
+    { "identity.reference": { name: "fkProgram", "@fields": "programId", "@references": "Program" } },
+    ...extra,
+  ]);
+}
+
+const weeksCount: Json = { "measure.aggregate": { name: "weeks", "@agg": "count", "@of": "Week.id" } };
+
+function rootOf(children: Json[], pkg = PKG): Json {
+  return { "metadata.root": { package: pkg, children } };
+}
+
+async function loadRoots(...models: Json[]): Promise<MetaRoot> {
+  const { root, errors } = await new MetaDataLoader().load(
+    models.map((m) => new InMemoryStringSource(JSON.stringify(m))),
+  );
+  expect(errors.map((e) => e.message)).toEqual([]);
+  return root;
+}
+
+async function build(
+  children: Json[],
+  opts: { dialect?: CubeDialect; strategy?: "literal" | "snake_case"; matches?: (name: string) => boolean } = {},
+): Promise<CubeModel> {
+  const root = await loadRoots(rootOf(children));
+  const matches = opts.matches;
+  return buildCubeModel(root, {
+    dialect: opts.dialect ?? "postgres",
+    columnNamingStrategy: opts.strategy ?? "literal",
+    ...(matches !== undefined ? { matches: (o) => matches(o.name) } : {}),
+  });
+}
+
+function cube(model: CubeModel, name: string): CubeSpec {
+  const hit = model.cubes.find((c) => c.name === name);
+  if (hit === undefined) throw new Error(`no cube ${name} in [${model.cubes.map((c) => c.name).join(", ")}]`);
+  return hit;
+}
+
+async function buildError(children: Json[], opts: { dialect?: CubeDialect } = {}): Promise<CubeModelError> {
+  try {
+    await build(children, opts);
+  } catch (e) {
+    if (e instanceof CubeModelError) return e;
+    throw e;
+  }
+  throw new Error("expected a CubeModelError");
+}
+
+// ---------------------------------------------------------------------------
+// Table A — what becomes a cube
+// ---------------------------------------------------------------------------
+
+describe("Table A — what becomes a cube", () => {
+  test("a model with no reporting vocabulary has no cube", async () => {
+    const model = await build([program(), week()]);
+    expect(model).toEqual({ cubes: [], views: [] });
+  });
+
+  test("a concrete entity with a table and a member is one cube over its table", async () => {
+    const model = await build([program([{ "measure.aggregate": { name: "programs", "@agg": "count", "@of": "Program.id" } }])]);
+    expect(model.cubes).toEqual([
+      {
+        name: "Program",
+        sqlTable: '"programs"',
+        joins: [],
+        dimensions: [{ name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true }],
+        measures: [{ name: "programs", sql: '{CUBE}."id"', type: "count" }],
+        segments: [],
+        preAggregations: [],
+      },
+    ]);
+    expect(model.views).toEqual([]);
+  });
+
+  test("@schema qualifies sql_table", async () => {
+    const model = await build([
+      entity("Program", [
+        table("programs", { "@schema": "sales" }),
+        longId,
+        pk,
+        { "measure.aggregate": { name: "programs", "@agg": "count", "@of": "Program.id" } },
+      ]),
+    ]);
+    expect(cube(model, "Program").sqlTable).toBe('"sales"."programs"');
+  });
+
+  test("an abstract base's members land on each concrete entity, and the base has no cube", async () => {
+    const model = await build([
+      entity(
+        "Base",
+        [
+          longId,
+          { "field.string": { name: "status" } },
+          pk,
+          { "dimension.attribute": { name: "status", "@of": "Base.status" } },
+          { "measure.aggregate": { name: "rows", "@agg": "count", "@of": "Base.id" } },
+          { "segment.filter": { name: "open", "@filter": { status: "OPEN" } } },
+        ],
+        { abstract: true },
+      ),
+      entity("Ticket", [table("tickets")], { extends: "Base" }),
+      entity("Order", [table("orders")], { extends: "Base" }),
+    ]);
+    expect(model.cubes.map((c) => c.name)).toEqual(["Ticket", "Order"]);
+    for (const [name, tbl] of [["Ticket", '"tickets"'], ["Order", '"orders"']] as const) {
+      const c = cube(model, name);
+      expect(c.sqlTable).toBe(tbl);
+      expect(c.dimensions).toEqual([
+        { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true },
+        { name: "status", sql: '{CUBE}."status"', type: "string" },
+      ]);
+      expect(c.measures).toEqual([{ name: "rows", sql: '{CUBE}."id"', type: "count" }]);
+      expect(c.segments).toEqual([{ name: "open", sql: `{CUBE}."status" = 'OPEN'` }]);
+    }
+  });
+
+  test("an entity with members and no table has no cube (inert)", async () => {
+    const model = await build([
+      entity("Loose", [longId, pk, { "measure.aggregate": { name: "n", "@agg": "count", "@of": "Loose.id" } }]),
+    ]);
+    expect(model.cubes).toEqual([]);
+  });
+
+  test("a TPH subtype's cube selects the base table with its discriminator predicate", async () => {
+    const model = await build([
+      entity(
+        "Auth",
+        [
+          table("auths"),
+          longId,
+          { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+          pk,
+        ],
+        { "@discriminator": "type" },
+      ),
+      entity(
+        "BridgeAuth",
+        [{ "measure.aggregate": { name: "bridges", "@agg": "count", "@of": "BridgeAuth.id" } }],
+        { extends: "Auth", "@discriminatorValue": "Bridge" },
+      ),
+    ]);
+    expect(model.cubes.map((c) => c.name)).toEqual(["BridgeAuth"]);
+    const c = cube(model, "BridgeAuth");
+    expect(c.sqlTable).toBeUndefined();
+    expect(c.sql).toBe(`SELECT * FROM "auths" WHERE "type" = 'Bridge'`);
+    expect(c.measures).toEqual([{ name: "bridges", sql: '{CUBE}."id"', type: "count" }]);
+  });
+
+  test("matches selects the cubes; a cube a matched cube reaches is emitted anyway", async () => {
+    const children = [
+      program([{ "measure.aggregate": { name: "programs", "@agg": "count", "@of": "Program.id" } }]),
+      week([
+        weeksCount,
+        { "dimension.attribute": { name: "programTitle", "@of": "Program.title", "@via": "Week.fkProgram" } },
+      ]),
+    ];
+    const onlyProgram = await build(children, { matches: (n) => n === "Program" });
+    expect(onlyProgram.cubes.map((c) => c.name)).toEqual(["Program"]);
+    expect(cube(onlyProgram, "Program").measures.map((m) => m.name)).toEqual(["programs"]);
+
+    // Week is matched and reaches Program, which is not: Program is a join-target cube with
+    // only its key and the reached member, not its own measures.
+    const onlyWeek = await build(children, { matches: (n) => n === "Week" });
+    expect(onlyWeek.cubes.map((c) => c.name)).toEqual(["Program", "Week"]);
+    expect(cube(onlyWeek, "Program")).toEqual({
+      name: "Program",
+      sqlTable: '"programs"',
+      public: false,
+      joins: [],
+      dimensions: [
+        { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true },
+        { name: "title", sql: '{CUBE}."title"', type: "string", public: false },
+      ],
+      measures: [],
+      segments: [],
+      preAggregations: [],
+    });
+  });
+
+  test("title and description are copied onto the cube and its declared members; notes never are", async () => {
+    const model = await build([
+      entity(
+        "Program",
+        [
+          table("programs"),
+          longId,
+          { "field.string": { name: "title" } },
+          pk,
+          {
+            "dimension.attribute": {
+              name: "titleDim", "@of": "Program.title", "@title": "Title", "@description": "The title.", "@notes": "internal",
+            },
+          },
+          { "measure.aggregate": { name: "programs", "@agg": "count", "@of": "Program.id", "@title": "Programs" } },
+          { "segment.filter": { name: "named", "@filter": { title: { ne: "" } }, "@description": "Has a title." } },
+        ],
+        { "@title": "Programs", "@description": "Every program.", "@notes": "internal" },
+      ),
+    ]);
+    const c = cube(model, "Program");
+    expect(c.title).toBe("Programs");
+    expect(c.description).toBe("Every program.");
+    expect(c.dimensions[1]).toEqual({
+      name: "titleDim", sql: '{CUBE}."title"', type: "string", title: "Title", description: "The title.",
+    });
+    expect(c.measures[0]).toEqual({ name: "programs", sql: '{CUBE}."id"', type: "count", title: "Programs" });
+    expect(c.segments[0]).toEqual({ name: "named", sql: `{CUBE}."title" <> ''`, description: "Has a title." });
+    expect(JSON.stringify(model)).not.toContain("internal");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Table C — dimension types
+// ---------------------------------------------------------------------------
+
+describe("Table C — dimension types", () => {
+  async function dimensionOf(field: Json, dimension: Json = {}, dialect: CubeDialect = "postgres") {
+    const name = (Object.values(field)[0] as { name: string }).name;
+    const model = await build(
+      [
+        entity("Thing", [
+          table("things"),
+          longId,
+          field,
+          pk,
+          { "dimension.attribute": { name: "d", "@of": `Thing.${name}`, ...dimension } },
+        ]),
+      ],
+      { dialect },
+    );
+    return cube(model, "Thing").dimensions.find((x) => x.name === "d");
+  }
+
+  test.each([
+    ["string", { "field.string": { name: "x" } }],
+    ["enum (string-backed)", { "field.enum": { name: "x", "@values": ["A", "B"] } }],
+    ["uuid", { "field.uuid": { name: "x" } }],
+    ["time", { "field.time": { name: "x" } }],
+    ["uri", { "field.uri": { name: "x" } }],
+    ["inet", { "field.inet": { name: "x" } }],
+  ])("%s → string, the column", async (_label, field) => {
+    expect(await dimensionOf(field)).toEqual({ name: "d", sql: '{CUBE}."x"', type: "string" });
+  });
+
+  test("enum with @intValueMap → string, a CASE that carries the member symbol", async () => {
+    expect(
+      await dimensionOf({ "field.enum": { name: "x", "@values": ["A", "B"], "@intValueMap": { A: 1, B: 2 } } }),
+    ).toEqual({ name: "d", sql: `CASE {CUBE}."x" WHEN 1 THEN 'A' WHEN 2 THEN 'B' END`, type: "string" });
+  });
+
+  test.each([
+    ["int", { "field.int": { name: "x" } }],
+    ["long", { "field.long": { name: "x" } }],
+    ["double", { "field.double": { name: "x" } }],
+    ["float", { "field.float": { name: "x" } }],
+    ["decimal", { "field.decimal": { name: "x", "@precision": 10, "@scale": 2 } }],
+    ["currency", { "field.currency": { name: "x", "@currency": "USD" } }],
+  ])("%s → number, the column", async (_label, field) => {
+    expect(await dimensionOf(field)).toEqual({ name: "d", sql: '{CUBE}."x"', type: "number" });
+  });
+
+  test("boolean → boolean, the column", async () => {
+    expect(await dimensionOf({ "field.boolean": { name: "x" } })).toEqual({
+      name: "d", sql: '{CUBE}."x"', type: "boolean",
+    });
+  });
+
+  test("date → time, cast to TIMESTAMP (attribute dimension)", async () => {
+    expect(await dimensionOf({ "field.date": { name: "x" } })).toEqual({
+      name: "d", sql: 'CAST({CUBE}."x" AS TIMESTAMP)', type: "time",
+    });
+  });
+
+  test("date on MySQL casts to DATETIME (MySQL's CAST has no TIMESTAMP target)", async () => {
+    expect(await dimensionOf({ "field.date": { name: "x" } }, {}, "mysql")).toEqual({
+      name: "d", sql: "CAST({CUBE}.`x` AS DATETIME)", type: "time",
+    });
+  });
+
+  test.each([
+    ["timestamp", { "field.timestamp": { name: "x" } }],
+    ["timestamp @localTime", { "field.timestamp": { name: "x", "@localTime": true } }],
+  ])("%s → time, the column", async (_label, field) => {
+    expect(await dimensionOf(field)).toEqual({ name: "d", sql: '{CUBE}."x"', type: "time" });
+  });
+
+  test("a time dimension carries @grains as meta.grains, and a date one is cast", async () => {
+    const model = await build([
+      entity("Thing", [
+        table("things"),
+        longId,
+        { "field.date": { name: "on" } },
+        { "field.timestamp": { name: "at", "@column": "at_ts" } },
+        pk,
+        { "dimension.time": { name: "onDay", "@of": "Thing.on", "@grains": ["week", "month"] } },
+        { "dimension.time": { name: "at", "@of": "Thing.at", "@grains": ["hour", "day"] } },
+      ]),
+    ]);
+    expect(cube(model, "Thing").dimensions.slice(1)).toEqual([
+      { name: "onDay", sql: 'CAST({CUBE}."on" AS TIMESTAMP)', type: "time", meta: { grains: ["week", "month"] } },
+      { name: "at", sql: '{CUBE}."at_ts"', type: "time", meta: { grains: ["hour", "day"] } },
+    ]);
+  });
+
+  test("the column honours the naming strategy and @column", async () => {
+    const model = await build(
+      [
+        entity("Thing", [
+          table("things"),
+          longId,
+          { "field.string": { name: "displayName" } },
+          { "field.string": { name: "code", "@column": "CODE_X" } },
+          pk,
+          { "dimension.attribute": { name: "displayName", "@of": "Thing.displayName" } },
+          { "dimension.attribute": { name: "code", "@of": "Thing.code" } },
+        ]),
+      ],
+      { strategy: "snake_case" },
+    );
+    expect(cube(model, "Thing").dimensions.slice(1).map((d) => d.sql)).toEqual([
+      '{CUBE}."display_name"',
+      '{CUBE}."CODE_X"',
+    ]);
+  });
+
+  test.each([
+    ["isArray", { "field.string": { name: "x", isArray: true } }, /field\.string, isArray/],
+    ["object", { "field.object": { name: "x", "@objectRef": "Label" } }, /field\.object/],
+    ["map", { "field.map": { name: "x", "@valueType": "string" } }, /field\.map/],
+  ])("%s → ERR_CUBE_UNMAPPABLE_DIMENSION naming the dimension and its field", async (_label, field, detail) => {
+    const err = await buildError([
+      { "object.value": { name: "Label", children: [{ "field.string": { name: "text" } }] } },
+      entity("Thing", [table("things"), longId, field, pk, { "dimension.attribute": { name: "d", "@of": "Thing.x" } }]),
+    ]);
+    expect(err.code).toBe("ERR_CUBE_UNMAPPABLE_DIMENSION");
+    expect(err.message).toStartWith("ERR_CUBE_UNMAPPABLE_DIMENSION: ");
+    expect(err.message).toContain("dimension 'acme::shop::Thing.d'");
+    expect(err.message).toContain("field 'acme::shop::Thing.x'");
+    expect(err.message).toMatch(detail);
+    expect(err.message).toContain("Cube has no array or JSON dimension type");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Table D — measures
+// ---------------------------------------------------------------------------
+
+describe("Table D — measures", () => {
+  async function weekMeasures(measures: Json[], dialect: CubeDialect = "postgres") {
+    const model = await build(
+      [
+        program(),
+        week([
+          { "field.string": { name: "label" } },
+          { "segment.filter": { name: "long", "@filter": { durationMinutes: { gte: 60 } } } },
+          ...measures,
+        ]),
+      ],
+      { dialect },
+    );
+    return cube(model, "Week").measures;
+  }
+
+  test("count → count over the column", async () => {
+    expect(await weekMeasures([weeksCount])).toEqual([{ name: "weeks", sql: '{CUBE}."id"', type: "count" }]);
+  });
+
+  test("count + @distinct → count_distinct", async () => {
+    expect(
+      await weekMeasures([{ "measure.aggregate": { name: "labels", "@agg": "count", "@distinct": true, "@of": "Week.label" } }]),
+    ).toEqual([{ name: "labels", sql: '{CUBE}."label"', type: "count_distinct" }]);
+  });
+
+  const tuple: Json = {
+    "measure.aggregate": {
+      name: "slots", "@agg": "count", "@distinct": true, "@of": ["Week.programId", "Week.durationMinutes"],
+    },
+  };
+
+  test("a distinct tuple → count_distinct over ROW(...) plus a not-null filter (Postgres)", async () => {
+    expect(await weekMeasures([tuple])).toEqual([
+      {
+        name: "slots",
+        sql: 'ROW({CUBE}."programId", {CUBE}."durationMinutes")',
+        type: "count_distinct",
+        filters: [{ sql: '{CUBE}."programId" IS NOT NULL AND {CUBE}."durationMinutes" IS NOT NULL' }],
+      },
+    ]);
+  });
+
+  // The view's MySQL form, as a number measure: MySQL's multi-argument COUNT(DISTINCT a, b) skips a
+  // tuple with a NULL component and compares by column collation, which a JSON_ARRAY key does not
+  // (on mysql:8.4, 'abc'/'ABC' and 'café'/'cafe' under utf8mb4_0900_ai_ci: 4 tuples, JSON_ARRAY 6).
+  test("a distinct tuple on MySQL → the view's COUNT(DISTINCT a, b), a number measure", async () => {
+    expect(await weekMeasures([tuple], "mysql")).toEqual([
+      { name: "slots", sql: "COUNT(DISTINCT {CUBE}.`programId`, {CUBE}.`durationMinutes`)", type: "number" },
+    ]);
+  });
+
+  test("a distinct tuple on MySQL with a condition puts it on the first component, as the view does", async () => {
+    const measures = await weekMeasures(
+      [{ "measure.aggregate": { ...(tuple["measure.aggregate"] as Json), "@segment": "long" } }],
+      "mysql",
+    );
+    expect(measures).toEqual([
+      {
+        name: "slots",
+        sql: "COUNT(DISTINCT CASE WHEN {CUBE}.`durationMinutes` >= 60 THEN {CUBE}.`programId` END, {CUBE}.`durationMinutes`)",
+        type: "number",
+      },
+    ]);
+  });
+
+  test("a distinct tuple with a condition ANDs it after the not-null terms", async () => {
+    const measures = await weekMeasures([
+      { "measure.aggregate": { ...(tuple["measure.aggregate"] as Json), "@segment": "long" } },
+    ]);
+    expect(measures[0]!.filters).toEqual([
+      {
+        sql:
+          '{CUBE}."programId" IS NOT NULL AND {CUBE}."durationMinutes" IS NOT NULL AND {CUBE}."durationMinutes" >= 60',
+      },
+    ]);
+  });
+
+  test.each(["sum", "avg", "min", "max"] as const)("%s → %s over the column", async (agg) => {
+    expect(
+      await weekMeasures([{ "measure.aggregate": { name: "m", "@agg": agg, "@of": "Week.durationMinutes" } }]),
+    ).toEqual([{ name: "m", sql: '{CUBE}."durationMinutes"', type: agg }]);
+  });
+
+  test("@segment and @filter become one filters entry, ANDed by the lowering's own andOf", async () => {
+    expect(
+      await weekMeasures([
+        {
+          "measure.aggregate": {
+            name: "longFirst", "@agg": "count", "@of": "Week.id", "@segment": "long", "@filter": { programId: 1 },
+          },
+        },
+        { "measure.aggregate": { name: "longOnly", "@agg": "count", "@of": "Week.id", "@segment": "long" } },
+      ]),
+    ).toEqual([
+      {
+        name: "longFirst",
+        sql: '{CUBE}."id"',
+        type: "count",
+        filters: [{ sql: '({CUBE}."durationMinutes" >= 60 AND {CUBE}."programId" = 1)' }],
+      },
+      { name: "longOnly", sql: '{CUBE}."id"', type: "count", filters: [{ sql: '{CUBE}."durationMinutes" >= 60' }] },
+    ]);
+  });
+
+  test("a relative date in a measure filter is the view's own SQL", async () => {
+    const model = await build([
+      entity("Thing", [
+        table("things"),
+        longId,
+        { "field.timestamp": { name: "at", "@localTime": true } },
+        pk,
+        { "measure.aggregate": { name: "recent", "@agg": "count", "@of": "Thing.id", "@filter": { at: { gte: { now: "-P7D" } } } } },
+      ]),
+    ]);
+    expect(cube(model, "Thing").measures[0]!.filters).toEqual([
+      { sql: `{CUBE}."at" >= ((now() AT TIME ZONE 'UTC') - INTERVAL 'P7D')` },
+    ]);
+  });
+
+  const ratio: Json[] = [
+    weeksCount,
+    { "measure.aggregate": { name: "longWeeks", "@agg": "count", "@of": "Week.id", "@segment": "long" } },
+    { "measure.ratio": { name: "longShare", "@numerator": "longWeeks", "@denominator": "weeks" } },
+  ];
+
+  test("measure.ratio → number over member references (Postgres casts to NUMERIC)", async () => {
+    expect((await weekMeasures(ratio))[2]).toEqual({
+      name: "longShare", sql: "CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0)", type: "number",
+    });
+  });
+
+  test("measure.ratio on MySQL divides without a cast", async () => {
+    expect((await weekMeasures(ratio, "mysql"))[2]).toEqual({
+      name: "longShare", sql: "{longWeeks} / NULLIF({weeks}, 0)", type: "number",
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Table E — joins, reached members, join-target and alias cubes
+// ---------------------------------------------------------------------------
+
+describe("Table E — joins and reached members", () => {
+  const programTitle: Json = {
+    "dimension.attribute": { name: "programTitle", "@of": "Program.title", "@via": "Week.fkProgram" },
+  };
+
+  test("a reference the cube holds onto a cube is a many_to_one join", async () => {
+    const model = await build([
+      program([{ "measure.aggregate": { name: "programs", "@agg": "count", "@of": "Program.id" } }]),
+      week([weeksCount]),
+    ]);
+    expect(cube(model, "Week").joins).toEqual([
+      { name: "Program", relationship: "many_to_one", sql: '{CUBE}."programId" = {Program}."id"' },
+    ]);
+    // Program holds no reference, and a to-many relationship is no join.
+    expect(cube(model, "Program").joins).toEqual([]);
+  });
+
+  test("MySQL quotes the table and the join columns with backticks", async () => {
+    const model = await build(
+      [
+        program([{ "measure.aggregate": { name: "programs", "@agg": "count", "@of": "Program.id" } }]),
+        week([weeksCount]),
+      ],
+      { dialect: "mysql" },
+    );
+    expect(cube(model, "Week").sqlTable).toBe("`weeks`");
+    expect(cube(model, "Week").joins).toEqual([
+      { name: "Program", relationship: "many_to_one", sql: "{CUBE}.`programId` = {Program}.`id`" },
+    ]);
+  });
+
+  test("a composite reference joins on every column pair, ANDed in position order", async () => {
+    const model = await build([
+      entity("Program", [
+        table("programs"),
+        { "field.long": { name: "tenantId" } },
+        longId,
+        { "identity.primary": { name: "id", "@fields": ["tenantId", "id"] } },
+        { "measure.aggregate": { name: "programs", "@agg": "count", "@of": "Program.id" } },
+      ]),
+      entity("Week", [
+        table("weeks"),
+        { "field.long": { name: "tenantId" } },
+        longId,
+        { "field.long": { name: "programId" } },
+        { "identity.primary": { name: "id", "@fields": ["tenantId", "id"] } },
+        { "identity.reference": { name: "fkProgram", "@fields": ["tenantId", "programId"], "@references": "Program" } },
+        weeksCount,
+      ]),
+    ]);
+    expect(cube(model, "Week").joins).toEqual([
+      {
+        name: "Program",
+        relationship: "many_to_one",
+        sql: '{CUBE}."tenantId" = {Program}."tenantId" AND {CUBE}."programId" = {Program}."id"',
+      },
+    ]);
+    expect(cube(model, "Program").dimensions.filter((d) => d.primaryKey).map((d) => d.name)).toEqual(["tenantId", "id"]);
+  });
+
+  test("ERR_CUBE_UNMAPPABLE_JOIN: a reference whose @fields do not pair with the key", async () => {
+    const err = await buildError([
+      entity("Program", [
+        table("programs"),
+        { "field.long": { name: "tenantId" } },
+        longId,
+        { "identity.primary": { name: "id", "@fields": ["tenantId", "id"] } },
+        { "measure.aggregate": { name: "programs", "@agg": "count", "@of": "Program.id" } },
+      ]),
+      week([weeksCount]),
+    ]);
+    expect(err.code).toBe("ERR_CUBE_UNMAPPABLE_JOIN");
+    expect(err.message).toStartWith("ERR_CUBE_UNMAPPABLE_JOIN: cube 'Week': join 'Program'");
+    expect(err.message).toContain("identity.reference 'acme::shop::Week.fkProgram'");
+    expect(err.message).toContain("@fields [programId]");
+    expect(err.message).toContain("the key [tenantId, id]");
+  });
+
+  test("ERR_CUBE_UNMAPPABLE_JOIN: a to-one relationship the view walk cannot resolve, with its reason", async () => {
+    const err = await buildError([
+      program([
+        { "relationship.association": { name: "profile", "@objectRef": "Profile", "@cardinality": "one" } },
+        { "measure.aggregate": { name: "programs", "@agg": "count", "@of": "Program.id" } },
+      ]),
+      entity("Profile", [
+        table("profiles"),
+        longId,
+        { "field.long": { name: "programId" } },
+        { "field.long": { name: "formerProgramId" } },
+        pk,
+        { "identity.reference": { name: "fkProgram", "@fields": "programId", "@references": "Program" } },
+        { "identity.reference": { name: "fkFormerProgram", "@fields": "formerProgramId", "@references": "Program" } },
+        { "measure.aggregate": { name: "profiles", "@agg": "count", "@of": "Profile.id" } },
+      ]),
+    ]);
+    expect(err.code).toBe("ERR_CUBE_UNMAPPABLE_JOIN");
+    expect(err.message).toStartWith(
+      "ERR_CUBE_UNMAPPABLE_JOIN: cube 'Program': relationship.association 'acme::shop::Program.profile' cannot be joined: ",
+    );
+    expect(err.message).toContain("is ambiguous: fkProgram, fkFormerProgram");
+  });
+
+  test("a join is emitted between cubes only", async () => {
+    // Program has no vocabulary and no dimension reaches it, so it is no cube and no join.
+    const model = await build([program(), week([weeksCount])]);
+    expect(model.cubes.map((c) => c.name)).toEqual(["Week"]);
+    expect(cube(model, "Week").joins).toEqual([]);
+  });
+
+  test("a to-one relationship whose reference the target holds is a one_to_one join", async () => {
+    const model = await build([
+      program([
+        { "relationship.association": { name: "profile", "@objectRef": "Profile", "@cardinality": "one" } },
+        { "measure.aggregate": { name: "programs", "@agg": "count", "@of": "Program.id" } },
+      ]),
+      entity("Profile", [
+        table("profiles"),
+        longId,
+        { "field.long": { name: "programId" } },
+        { "field.string": { name: "bio" } },
+        pk,
+        { "identity.reference": { name: "fkProgram", "@fields": "programId", "@references": "Program" } },
+        { "measure.aggregate": { name: "profiles", "@agg": "count", "@of": "Profile.id" } },
+      ]),
+    ]);
+    expect(cube(model, "Program").joins).toEqual([
+      { name: "Profile", relationship: "one_to_one", sql: '{CUBE}."id" = {Profile}."programId"' },
+    ]);
+    expect(cube(model, "Profile").joins).toEqual([
+      { name: "Program", relationship: "many_to_one", sql: '{CUBE}."programId" = {Program}."id"' },
+    ]);
+  });
+
+  test("a @via dimension reads {Program.title}, and title is added to Program once for two dimensions", async () => {
+    const model = await build([
+      program([{ "measure.aggregate": { name: "programs", "@agg": "count", "@of": "Program.id" } }]),
+      week([
+        programTitle,
+        { "dimension.attribute": { name: "programName", "@of": "Program.title", "@via": "Week.fkProgram" } },
+      ]),
+    ]);
+    expect(cube(model, "Week").dimensions.slice(1)).toEqual([
+      { name: "programTitle", sql: "{Program.title}", type: "string" },
+      { name: "programName", sql: "{Program.title}", type: "string" },
+    ]);
+    expect(cube(model, "Program").dimensions).toEqual([
+      { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true },
+      { name: "title", sql: '{CUBE}."title"', type: "string", public: false },
+    ]);
+  });
+
+  test("a declared Program dimension over title is reused instead of adding one", async () => {
+    const model = await build([
+      program([{ "dimension.attribute": { name: "name", "@of": "Program.title" } }]),
+      week([programTitle]),
+    ]);
+    expect(cube(model, "Week").dimensions[1]).toEqual({ name: "programTitle", sql: "{Program.name}", type: "string" });
+    expect(cube(model, "Program").dimensions.map((d) => d.name)).toEqual(["id", "name"]);
+  });
+
+  test("a declared time dimension over the field is reused too (same Table C SQL)", async () => {
+    const model = await build([
+      program([
+        { "field.timestamp": { name: "createdAt" } },
+        { "dimension.time": { name: "createdAt", "@of": "Program.createdAt", "@grains": ["month"] } },
+      ]),
+      week([{ "dimension.attribute": { name: "programCreated", "@of": "Program.createdAt", "@via": "Week.fkProgram" } }]),
+    ]);
+    expect(cube(model, "Week").dimensions[1]).toEqual({
+      name: "programCreated", sql: "{Program.createdAt}", type: "time",
+    });
+    expect(cube(model, "Program").dimensions.map((d) => d.name)).toEqual(["id", "createdAt"]);
+  });
+
+  test("a @via onto the target's key field reads the key dimension", async () => {
+    const model = await build([
+      program(),
+      week([{ "dimension.attribute": { name: "programKey", "@of": "Program.id", "@via": "Week.fkProgram" } }]),
+    ]);
+    expect(cube(model, "Week").dimensions[1]).toEqual({ name: "programKey", sql: "{Program.id}", type: "number" });
+    expect(cube(model, "Program").dimensions).toEqual([
+      { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true },
+    ]);
+  });
+
+  test("a @via onto an entity that is not a cube makes a join-target cube", async () => {
+    const model = await build([program(), week([programTitle])]);
+    expect(model.cubes.map((c) => c.name)).toEqual(["Program", "Week"]);
+    expect(cube(model, "Program").public).toBe(false);
+    expect(cube(model, "Week").joins).toEqual([
+      { name: "Program", relationship: "many_to_one", sql: '{CUBE}."programId" = {Program}."id"' },
+    ]);
+  });
+
+  test("a multi-hop @via joins on each hop's holder and reads the far cube's member", async () => {
+    const model = await build([
+      entity("Org", [table("orgs"), longId, { "field.string": { name: "name" } }, pk]),
+      program([
+        { "field.long": { name: "orgId" } },
+        { "identity.reference": { name: "fkOrg", "@fields": "orgId", "@references": "Org" } },
+      ]),
+      week([{ "dimension.attribute": { name: "orgName", "@of": "Org.name", "@via": "Week.fkProgram.fkOrg" } }]),
+    ]);
+    expect(model.cubes.map((c) => c.name)).toEqual(["Org", "Program", "Week"]);
+    expect(cube(model, "Week").dimensions[1]).toEqual({ name: "orgName", sql: "{Org.name}", type: "string" });
+    expect(cube(model, "Week").joins).toEqual([
+      { name: "Program", relationship: "many_to_one", sql: '{CUBE}."programId" = {Program}."id"' },
+    ]);
+    expect(cube(model, "Program").joins).toEqual([
+      { name: "Org", relationship: "many_to_one", sql: '{CUBE}."orgId" = {Org}."id"' },
+    ]);
+    expect(cube(model, "Program").dimensions.map((d) => d.name)).toEqual(["id"]);
+    expect(cube(model, "Org").dimensions).toEqual([
+      { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true },
+      { name: "name", sql: '{CUBE}."name"', type: "string", public: false },
+    ]);
+  });
+
+  test("two references onto one entity give two alias cubes, and the joins and dimensions use them", async () => {
+    const model = await build([
+      entity("Team", [table("teams"), longId, { "field.string": { name: "name" } }, pk]),
+      entity("Match", [
+        table("matches"),
+        longId,
+        { "field.long": { name: "homeTeamId" } },
+        { "field.long": { name: "awayTeamId" } },
+        pk,
+        { "identity.reference": { name: "homeRef", "@fields": "homeTeamId", "@references": "Team" } },
+        { "identity.reference": { name: "awayRef", "@fields": "awayTeamId", "@references": "Team" } },
+        { "dimension.attribute": { name: "homeName", "@of": "Team.name", "@via": "Match.homeRef" } },
+        { "dimension.attribute": { name: "awayName", "@of": "Team.name", "@via": "Match.awayRef" } },
+      ]),
+    ]);
+    // Team is reached only through the aliases, so it has no cube of its own: nothing joins it.
+    expect(model.cubes.map((c) => c.name)).toEqual(["Match", "Match_homeRef", "Match_awayRef"]);
+    expect(cube(model, "Match").joins).toEqual([
+      { name: "Match_homeRef", relationship: "many_to_one", sql: '{CUBE}."homeTeamId" = {Match_homeRef}."id"' },
+      { name: "Match_awayRef", relationship: "many_to_one", sql: '{CUBE}."awayTeamId" = {Match_awayRef}."id"' },
+    ]);
+    expect(cube(model, "Match").dimensions.slice(1)).toEqual([
+      { name: "homeName", sql: "{Match_homeRef.name}", type: "string" },
+      { name: "awayName", sql: "{Match_awayRef.name}", type: "string" },
+    ]);
+    // Each alias is a standalone cube over Team's table: its key and the member read from it.
+    for (const alias of ["Match_homeRef", "Match_awayRef"]) {
+      expect(cube(model, alias)).toEqual({
+        name: alias, sqlTable: '"teams"', public: false,
+        joins: [],
+        dimensions: [
+          { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true },
+          { name: "name", sql: '{CUBE}."name"', type: "string", public: false },
+        ],
+        measures: [], segments: [], preAggregations: [],
+      });
+    }
+  });
+
+  // Team: a cube with a measure, a segment and a served report; Match: two references onto it.
+  const team = (extra: Json[] = []): Json =>
+    entity("Team", [
+      table("teams"),
+      longId,
+      { "field.string": { name: "name" } },
+      { "field.long": { name: "cityId" } },
+      pk,
+      { "identity.reference": { name: "fkCity", "@fields": "cityId", "@references": "City" } },
+      { "dimension.attribute": { name: "teamName", "@of": "Team.name" } },
+      { "measure.aggregate": { name: "teams", "@agg": "count", "@of": "Team.id" } },
+      { "segment.filter": { name: "named", "@filter": { name: { isNull: false } } } },
+      ...extra,
+    ]);
+  const city: Json = entity("City", [table("cities"), longId, { "field.string": { name: "name" } }, pk]);
+  const match = (extra: Json[]): Json =>
+    entity("Match", [
+      table("matches"),
+      longId,
+      { "field.long": { name: "homeTeamId" } },
+      { "field.long": { name: "awayTeamId" } },
+      pk,
+      { "identity.reference": { name: "homeRef", "@fields": "homeTeamId", "@references": "Team" } },
+      { "identity.reference": { name: "awayRef", "@fields": "awayTeamId", "@references": "Team" } },
+      ...extra,
+    ]);
+  const teamsReport: Json = {
+    "object.report": {
+      name: "TeamTotals", "@from": "Team", "@dimensions": ["teamName"], "@measures": ["teams"], "@segment": "named",
+      children: [{ "source.rdb": { "@kind": "view", "@view": "v_team_totals" } }],
+    },
+  };
+
+  test("an alias cube carries none of its target's measures, segments or rollups", async () => {
+    const model = await build([
+      city,
+      team(),
+      teamsReport,
+      match([{ "dimension.attribute": { name: "homeName", "@of": "Team.name", "@via": "Match.homeRef" } }]),
+    ]);
+    // The target cube keeps its measure, segment and rollup (its fkCity reference joins nothing,
+    // because City is no cube); each alias carries none of the three and no join.
+    const t = cube(model, "Team");
+    expect(t.measures.map((m) => m.name)).toEqual(["teams"]);
+    expect(t.segments.map((x) => x.name)).toEqual(["named"]);
+    expect(t.preAggregations.map((r) => r.name)).toEqual(["TeamTotals"]);
+    for (const alias of ["Match_homeRef", "Match_awayRef"]) {
+      const a = cube(model, alias);
+      expect(Object.keys(a)).not.toContain("extends");
+      expect(a.measures).toEqual([]);
+      expect(a.segments).toEqual([]);
+      expect(a.preAggregations).toEqual([]);
+      expect(a.joins).toEqual([]);
+    }
+    // A declared dimension of the target is not reused on an alias: the alias adds the field's own.
+    expect(cube(model, "Match").dimensions[1]).toEqual({ name: "homeName", sql: "{Match_homeRef.name}", type: "string" });
+    expect(cube(model, "Match_homeRef").dimensions.map((d) => d.name)).toEqual(["id", "name"]);
+    expect(cube(model, "Match_awayRef").dimensions.map((d) => d.name)).toEqual(["id"]);
+  });
+
+  test("a multi-hop @via through an alias: the alias holds the next join, rendered from itself", async () => {
+    const model = await build([
+      city,
+      team([]),
+      match([{ "dimension.attribute": { name: "homeCity", "@of": "City.name", "@via": "Match.homeRef.fkCity" } }]),
+    ]);
+    expect(cube(model, "Match").dimensions[1]).toEqual({ name: "homeCity", sql: "{City.name}", type: "string" });
+    expect(cube(model, "Match_homeRef").joins).toEqual([
+      { name: "City", relationship: "many_to_one", sql: '{CUBE}."cityId" = {City}."id"' },
+    ]);
+    // The other alias carries no join, so the graph reaches City by one path only: an alias that
+    // copied its target's joins would make Match -> Match_awayRef -> City a second one.
+    expect(cube(model, "Match_awayRef").joins).toEqual([]);
+    expect(cube(model, "City").dimensions.map((d) => d.name)).toEqual(["id", "name"]);
+  });
+
+  test("ERR_CUBE_AMBIGUOUS_PATH: an alias's own joins still count", async () => {
+    const err = await buildError([
+      city,
+      team([]),
+      match([
+        { "field.long": { name: "cityId" } },
+        { "identity.reference": { name: "fkCity", "@fields": "cityId", "@references": "City" } },
+        { "dimension.attribute": { name: "homeCity", "@of": "City.name", "@via": "Match.homeRef.fkCity" } },
+      ]),
+    ]);
+    expect(err.code).toBe("ERR_CUBE_AMBIGUOUS_PATH");
+    expect(err.message).toContain("(Match -> Match_homeRef -> City; Match -> City)");
+  });
+
+  test("two composite references sharing a leading column: each @via reads its own alias cube", async () => {
+    // Both references start with tenantId, so their first FK column is the same: a hop must be
+    // matched by the reference it crosses, never by that column.
+    const model = await build([
+      entity("Program", [
+        table("programs"),
+        { "field.long": { name: "tenantId" } },
+        longId,
+        { "field.string": { name: "title" } },
+        { "identity.primary": { name: "id", "@fields": ["tenantId", "id"] } },
+      ]),
+      entity("Week", [
+        table("weeks"),
+        { "field.long": { name: "tenantId" } },
+        longId,
+        { "field.long": { name: "programId" } },
+        { "field.long": { name: "formerProgramId" } },
+        { "identity.primary": { name: "id", "@fields": ["tenantId", "id"] } },
+        { "identity.reference": { name: "fkProgram", "@fields": ["tenantId", "programId"], "@references": "Program" } },
+        {
+          "identity.reference": {
+            name: "fkFormerProgram", "@fields": ["tenantId", "formerProgramId"], "@references": "Program",
+          },
+        },
+        { "dimension.attribute": { name: "formerTitle", "@of": "Program.title", "@via": "Week.fkFormerProgram" } },
+        { "dimension.attribute": { name: "programTitle", "@of": "Program.title", "@via": "Week.fkProgram" } },
+      ]),
+    ]);
+    expect(cube(model, "Week").joins.map((j) => j.name)).toEqual(["Week_fkProgram", "Week_fkFormerProgram"]);
+    expect(cube(model, "Week").dimensions.filter((d) => !d.primaryKey)).toEqual([
+      { name: "formerTitle", sql: "{Week_fkFormerProgram.title}", type: "string" },
+      { name: "programTitle", sql: "{Week_fkProgram.title}", type: "string" },
+    ]);
+  });
+
+  test("a relationship backed by a reference the cube holds is that reference's join, not a second hop", async () => {
+    const model = await build([
+      program(),
+      week([
+        { "relationship.association": { name: "program", "@objectRef": "Program", "@cardinality": "one" } },
+        { "dimension.attribute": { name: "programTitle", "@of": "Program.title", "@via": "Week.program" } },
+      ]),
+    ]);
+    expect(cube(model, "Week").joins).toEqual([
+      { name: "Program", relationship: "many_to_one", sql: '{CUBE}."programId" = {Program}."id"' },
+    ]);
+    expect(cube(model, "Week").dimensions[1]!.sql).toBe("{Program.title}");
+  });
+
+  // crosses() matches a relationship hop to the join of the reference behind it by node identity
+  // (hopReferenceIdentity === the hop's reference). With two references onto one entity, a wrong
+  // match reads the other alias; no match at all throws. Both resolve the same node.
+  test("a relationship-backed @via hop crosses its own reference's alias, not the other one", async () => {
+    const model = await build([
+      program(),
+      entity("Week", [
+        table("weeks"),
+        longId,
+        { "field.long": { name: "programId" } },
+        { "field.long": { name: "formerProgramId" } },
+        pk,
+        { "identity.reference": { name: "fkProgram", "@fields": "programId", "@references": "Program" } },
+        { "identity.reference": { name: "fkFormerProgram", "@fields": "formerProgramId", "@references": "Program" } },
+        {
+          "relationship.association": {
+            name: "formerProgram", "@objectRef": "Program", "@cardinality": "one", "@sourceRefField": "formerProgramId",
+          },
+        },
+        { "dimension.attribute": { name: "formerTitle", "@of": "Program.title", "@via": "Week.formerProgram" } },
+        { "dimension.attribute": { name: "programTitle", "@of": "Program.title", "@via": "Week.fkProgram" } },
+      ]),
+    ]);
+    expect(cube(model, "Week").joins.map((j) => j.name)).toEqual(["Week_fkProgram", "Week_fkFormerProgram"]);
+    expect(cube(model, "Week").dimensions.filter((d) => !d.primaryKey)).toEqual([
+      { name: "formerTitle", sql: "{Week_fkFormerProgram.title}", type: "string" },
+      { name: "programTitle", sql: "{Week_fkProgram.title}", type: "string" },
+    ]);
+  });
+
+  test("a relationship-backed @via hop inherited from an abstract base crosses the inherited reference's join", async () => {
+    const model = await build([
+      program(),
+      entity(
+        "BaseWeek",
+        [
+          longId,
+          { "field.long": { name: "programId" } },
+          pk,
+          { "identity.reference": { name: "fkProgram", "@fields": "programId", "@references": "Program" } },
+          { "relationship.association": { name: "program", "@objectRef": "Program", "@cardinality": "one" } },
+          { "dimension.attribute": { name: "programTitle", "@of": "Program.title", "@via": "BaseWeek.program" } },
+        ],
+        { abstract: true },
+      ),
+      entity("Week", [table("weeks")], { extends: "BaseWeek" }),
+    ]);
+    expect(cube(model, "Week").joins).toEqual([
+      { name: "Program", relationship: "many_to_one", sql: '{CUBE}."programId" = {Program}."id"' },
+    ]);
+    expect(cube(model, "Week").dimensions[1]).toEqual({ name: "programTitle", sql: "{Program.title}", type: "string" });
+  });
+
+  test("ERR_CUBE_AMBIGUOUS_PATH: past the routes it lists, the message says more exist", async () => {
+    // Nine hubs, each joining Org: Week reaches Org by nine routes, and the message lists eight.
+    const hubs = Array.from({ length: 9 }, (_, i) => `Hub${String(i + 1)}`);
+    const fk = (hub: string): string => `${hub.toLowerCase()}Id`;
+    const err = await buildError([
+      entity("Org", [table("orgs"), longId, { "field.string": { name: "name" } }, pk]),
+      ...hubs.map((hub) =>
+        entity(hub, [
+          table(hub.toLowerCase()),
+          longId,
+          { "field.long": { name: "orgId" } },
+          pk,
+          { "identity.reference": { name: "fkOrg", "@fields": "orgId", "@references": "Org" } },
+        ]),
+      ),
+      entity("Week", [
+        table("weeks"),
+        longId,
+        ...hubs.map((hub) => ({ "field.long": { name: fk(hub) } })),
+        pk,
+        ...hubs.map((hub) => ({ "identity.reference": { name: `fk${hub}`, "@fields": fk(hub), "@references": hub } })),
+        ...hubs.map((hub) => ({
+          "dimension.attribute": { name: `org${hub}`, "@of": "Org.name", "@via": `Week.fk${hub}.fkOrg` },
+        })),
+      ]),
+    ]);
+    expect(err.code).toBe("ERR_CUBE_AMBIGUOUS_PATH");
+    const listed = hubs.slice(0, 8).map((hub) => `Week -> ${hub} -> Org`).join("; ");
+    expect(err.message).toContain(`(${listed}; and more paths, not listed), so Cube could join it by any of them.`);
+    expect(err.message).not.toContain("Week -> Hub9 -> Org");
+    expect(err.message).toContain("that makes the other paths");
+  });
+
+  test("ERR_CUBE_AMBIGUOUS_PATH: a multi-hop @via whose far cube the graph reaches by two paths", async () => {
+    const err = await buildError([
+      entity("Org", [table("orgs"), longId, { "field.string": { name: "name" } }, pk]),
+      program([
+        { "field.long": { name: "orgId" } },
+        { "identity.reference": { name: "fkOrg", "@fields": "orgId", "@references": "Org" } },
+      ]),
+      week([
+        { "field.long": { name: "orgId" } },
+        { "identity.reference": { name: "fkOrg", "@fields": "orgId", "@references": "Org" } },
+        { "dimension.attribute": { name: "orgName", "@of": "Org.name", "@via": "Week.fkProgram.fkOrg" } },
+      ]),
+    ]);
+    expect(err.code).toBe("ERR_CUBE_AMBIGUOUS_PATH");
+    expect(err.message).toStartWith("ERR_CUBE_AMBIGUOUS_PATH: ");
+    expect(err.message).toContain("dimension 'acme::shop::Week.orgName'");
+    expect(err.message).toContain("(Week -> Program -> Org; Week -> Org)");
+  });
+
+  test("ERR_CUBE_NO_PRIMARY_KEY: a cube in a join with no identity.primary", async () => {
+    const err = await buildError([
+      entity("Program", [table("programs"), longId, { "field.string": { name: "title" } }]),
+      week([programTitle]),
+    ]);
+    expect(err.code).toBe("ERR_CUBE_NO_PRIMARY_KEY");
+    expect(err.message).toStartWith("ERR_CUBE_NO_PRIMARY_KEY: ");
+    expect(err.message).toContain("'acme::shop::Program'");
+    expect(err.message).toContain("identity.primary");
+  });
+
+  const node = (extra: Json[]): Json =>
+    entity("Node", [
+      table("nodes"),
+      longId,
+      { "field.string": { name: "label" } },
+      { "field.long": { name: "parentId" } },
+      pk,
+      { "identity.reference": { name: "fkParent", "@fields": "parentId", "@references": "Node" } },
+      ...extra,
+    ]);
+
+  test("a self-reference joins an alias cube of the cube, and a @via through it reads the alias", async () => {
+    const model = await build([
+      node([{ "dimension.attribute": { name: "parentLabel", "@of": "Node.label", "@via": "Node.fkParent" } }]),
+    ]);
+    expect(model.cubes.map((c) => c.name)).toEqual(["Node", "Node_fkParent"]);
+    const c = cube(model, "Node");
+    expect(c.joins).toEqual([
+      { name: "Node_fkParent", relationship: "many_to_one", sql: '{CUBE}."parentId" = {Node_fkParent}."id"' },
+    ]);
+    // The member the @via reads is the alias's, so Node itself adds none.
+    expect(c.dimensions).toEqual([
+      { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true },
+      { name: "parentLabel", sql: "{Node_fkParent.label}", type: "string" },
+    ]);
+    // A standalone cube over the same table: no join onto itself, none of Node's members.
+    expect(cube(model, "Node_fkParent")).toEqual({
+      name: "Node_fkParent", sqlTable: '"nodes"', public: false,
+      joins: [],
+      dimensions: [
+        { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true },
+        { name: "label", sql: '{CUBE}."label"', type: "string", public: false },
+      ],
+      measures: [], segments: [], preAggregations: [],
+    });
+  });
+
+  test("ERR_CUBE_AMBIGUOUS_PATH: a @via through two self-references reaches Node's own alias a second way", async () => {
+    const err = await buildError([
+      entity("Node", [
+        table("nodes"),
+        longId,
+        { "field.string": { name: "label" } },
+        { "field.long": { name: "parentId" } },
+        { "field.long": { name: "mentorId" } },
+        pk,
+        { "identity.reference": { name: "fkParent", "@fields": "parentId", "@references": "Node" } },
+        { "identity.reference": { name: "fkMentor", "@fields": "mentorId", "@references": "Node" } },
+        { "dimension.attribute": { name: "parentMentor", "@of": "Node.label", "@via": "Node.fkParent.fkMentor" } },
+      ]),
+    ]);
+    // Node_fkParent continues by Node's own fkMentor join, onto Node_fkMentor, which Node also joins
+    // directly (its own mentor): reading {Node_fkMentor.label} could mean either, so it is refused.
+    expect(err.code).toBe("ERR_CUBE_AMBIGUOUS_PATH");
+    expect(err.message).toContain("dimension 'acme::shop::Node.parentMentor'");
+    expect(err.message).toContain("(Node -> Node_fkParent -> Node_fkMentor; Node -> Node_fkMentor)");
+  });
+
+  test("a self-reference gets its alias cube with no dimension reading it", async () => {
+    const model = await build([node([{ "measure.aggregate": { name: "nodes", "@agg": "count", "@of": "Node.id" } }])]);
+    expect(model.cubes.map((c) => c.name)).toEqual(["Node", "Node_fkParent"]);
+    expect(cube(model, "Node").joins.map((j) => j.name)).toEqual(["Node_fkParent"]);
+  });
+
+  test("a @via that crosses one alias cube twice is refused, naming the path", async () => {
+    const err = await buildError([
+      node([{ "dimension.attribute": { name: "grandLabel", "@of": "Node.label", "@via": "Node.fkParent.fkParent" } }]),
+    ]);
+    expect(err.code).toBe("ERR_CUBE_UNMAPPABLE_DIMENSION");
+    expect(err.message).toContain("dimension 'acme::shop::Node.grandLabel'");
+    expect(err.message).toContain("(Node -> Node_fkParent -> Node_fkParent)");
+  });
+
+  test("a @via that comes back to an entity on its path is refused, naming the path", async () => {
+    const err = await buildError([
+      program([
+        { "field.long": { name: "featuredWeekId" } },
+        { "identity.reference": { name: "fkFeaturedWeek", "@fields": "featuredWeekId", "@references": "Week" } },
+      ]),
+      week([
+        { "field.string": { name: "label" } },
+        {
+          "dimension.attribute": {
+            name: "featuredLabel", "@of": "Week.label", "@via": "Week.fkProgram.fkFeaturedWeek",
+          },
+        },
+      ]),
+    ]);
+    expect(err.code).toBe("ERR_CUBE_UNMAPPABLE_DIMENSION");
+    expect(err.message).toContain("dimension 'acme::shop::Week.featuredLabel'");
+    expect(err.message).toContain("(Week -> Program -> Week)");
+  });
+
+  test("a @via that cannot be walked is refused with the view lowering's own message", async () => {
+    let err: unknown;
+    try {
+      await build([
+        program(),
+        entity("Sale", [
+          table("sales"),
+          longId,
+          { "field.long": { name: "programId" } },
+          pk,
+          { "relationship.association": { name: "program", "@objectRef": "Program", "@cardinality": "one" } },
+          { "dimension.attribute": { name: "programTitle", "@of": "Program.title", "@via": "Sale.program" } },
+        ]),
+      ]);
+    } catch (e) {
+      err = e;
+    }
+    expect((err as Error).message).toBe(
+      "cube 'Sale': dimension 'acme::shop::Sale.programTitle' @via 'Sale.program' cannot be joined at hop " +
+        "'program' on 'acme::shop::Sale': the model declares no foreign key for it. A view joins a hop through " +
+        "an identity.reference; declare one on 'Sale' whose @references is 'Program' (with the foreign-key " +
+        "field in @fields).",
+    );
+  });
+
+  test("a @via onto an entity with no table is refused", async () => {
+    const err = await buildError([
+      entity("Program", [longId, { "field.string": { name: "title" } }, pk]),
+      week([programTitle]),
+    ]);
+    expect(err.code).toBe("ERR_CUBE_UNMAPPABLE_DIMENSION");
+    expect(err.message).toContain("'acme::shop::Program'");
+    expect(err.message).toContain("no table");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Table G — names, collisions and escaping this stage enforces
+// ---------------------------------------------------------------------------
+
+describe("Table G — names and escaping", () => {
+  test("ERR_CUBE_INVALID_NAME: a member named with a Python keyword", async () => {
+    const err = await buildError([program([{ "dimension.attribute": { name: "from", "@of": "Program.title" } }])]);
+    expect(err.code).toBe("ERR_CUBE_INVALID_NAME");
+    expect(err.message).toStartWith("ERR_CUBE_INVALID_NAME: ");
+    expect(err.message).toContain("dimension 'acme::shop::Program.from'");
+    expect(err.message).toContain("Python keyword");
+  });
+
+  test("ERR_CUBE_INVALID_NAME: a member starting with an underscore", async () => {
+    const err = await buildError([program([{ "dimension.attribute": { name: "_t", "@of": "Program.title" } }])]);
+    expect(err.code).toBe("ERR_CUBE_INVALID_NAME");
+    expect(err.message).toContain("'_t'");
+  });
+
+  test("ERR_CUBE_MEMBER_COLLISION: two declared members of one name", async () => {
+    const err = await buildError([
+      program([
+        { "dimension.attribute": { name: "t", "@of": "Program.title" } },
+        { "measure.aggregate": { name: "t", "@agg": "count", "@of": "Program.id" } },
+      ]),
+    ]);
+    expect(err.code).toBe("ERR_CUBE_MEMBER_COLLISION");
+    expect(err.message).toContain("dimension 'acme::shop::Program.t'");
+    expect(err.message).toContain("measure 'acme::shop::Program.t'");
+  });
+
+  test("ERR_CUBE_MEMBER_COLLISION: a reached member against a declared one", async () => {
+    const err = await buildError([
+      program([{ "measure.aggregate": { name: "title", "@agg": "count", "@of": "Program.id" } }]),
+      week([{ "dimension.attribute": { name: "programTitle", "@of": "Program.title", "@via": "Week.fkProgram" } }]),
+    ]);
+    expect(err.code).toBe("ERR_CUBE_MEMBER_COLLISION");
+    expect(err.message).toContain("cube 'Program'");
+    expect(err.message).toContain("measure 'acme::shop::Program.title'");
+    expect(err.message).toContain("acme::shop::Week.programTitle");
+  });
+
+  test("a dimension named after a key field and over it is the key dimension, made public, with its docs", async () => {
+    const model = await build([
+      program([
+        { "dimension.attribute": { name: "id", "@of": "Program.id", "@title": "Program", "@description": "The key." } },
+        { "dimension.attribute": { name: "title", "@of": "Program.title" } },
+      ]),
+      week([{ "dimension.attribute": { name: "programKey", "@of": "Program.id", "@via": "Week.fkProgram" } }]),
+    ]);
+    // One dimension, not two: Cube would report a second `id` as defined twice.
+    expect(cube(model, "Program").dimensions).toEqual([
+      { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true, public: true, title: "Program", description: "The key." },
+      { name: "title", sql: '{CUBE}."title"', type: "string" },
+    ]);
+    // A @via onto the key field reads that one member; nothing is added for it.
+    expect(cube(model, "Week").dimensions.find((d) => d.name === "programKey")?.sql).toBe("{Program.id}");
+  });
+
+  test("a time dimension over a key field carries its grains onto the key dimension; a composite key's other field is unchanged", async () => {
+    const model = await build([
+      entity("Slot", [
+        table("slots"),
+        { "field.long": { name: "roomId" } },
+        { "field.timestamp": { name: "startsAt" } },
+        { "identity.primary": { name: "pk", "@fields": ["roomId", "startsAt"] } },
+        { "dimension.time": { name: "startsAt", "@of": "Slot.startsAt", "@grains": ["day", "week"] } },
+        { "measure.aggregate": { name: "slots", "@agg": "count", "@of": "Slot.roomId" } },
+      ]),
+    ]);
+    expect(cube(model, "Slot").dimensions).toEqual([
+      { name: "roomId", sql: '{CUBE}."roomId"', type: "number", primaryKey: true },
+      { name: "startsAt", sql: '{CUBE}."startsAt"', type: "time", primaryKey: true, public: true, meta: { grains: ["day", "week"] } },
+    ]);
+  });
+
+  test("ERR_CUBE_MEMBER_COLLISION: a dimension named after a key field over another field", async () => {
+    const err = await buildError([program([{ "dimension.attribute": { name: "id", "@of": "Program.title" } }])]);
+    expect(err.code).toBe("ERR_CUBE_MEMBER_COLLISION");
+    expect(err.message).toContain("primary-key dimension 'id' (identity.primary 'acme::shop::Program.id') and dimension 'acme::shop::Program.id'");
+  });
+
+  test("ERR_CUBE_MEMBER_COLLISION: a @via dimension named after the cube's own key field", async () => {
+    const err = await buildError([
+      program(),
+      week([{ "dimension.attribute": { name: "id", "@of": "Program.id", "@via": "Week.fkProgram" } }]),
+    ]);
+    expect(err.code).toBe("ERR_CUBE_MEMBER_COLLISION");
+    expect(err.message).toContain("cube 'Week'");
+    expect(err.message).toContain("primary-key dimension 'id'");
+  });
+
+  test("ERR_CUBE_NAME_COLLISION: two entities of one name in two packages", async () => {
+    const counted = (pkg: string): Json =>
+      rootOf(
+        [entity("Program", [table(`${pkg}_programs`), longId, pk, { "measure.aggregate": { name: "n", "@agg": "count", "@of": "Program.id" } }])],
+        `acme::${pkg}`,
+      );
+    const root = await loadRoots(counted("a"), counted("b"));
+    let err: unknown;
+    try {
+      buildCubeModel(root, { dialect: "postgres", columnNamingStrategy: "literal" });
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(CubeModelError);
+    expect((err as CubeModelError).code).toBe("ERR_CUBE_NAME_COLLISION");
+    expect((err as CubeModelError).message).toContain("'acme::a::Program'");
+    expect((err as CubeModelError).message).toContain("'acme::b::Program'");
+  });
+
+  test("ERR_CUBE_NAME_COLLISION: an alias cube named like an entity's cube", async () => {
+    const err = await buildError([
+      entity("Team", [table("teams"), longId, pk, { "measure.aggregate": { name: "teams", "@agg": "count", "@of": "Team.id" } }]),
+      entity("Match", [
+        table("matches"),
+        longId,
+        { "field.long": { name: "homeTeamId" } },
+        { "field.long": { name: "awayTeamId" } },
+        pk,
+        { "identity.reference": { name: "homeRef", "@fields": "homeTeamId", "@references": "Team" } },
+        { "identity.reference": { name: "awayRef", "@fields": "awayTeamId", "@references": "Team" } },
+        { "measure.aggregate": { name: "matches", "@agg": "count", "@of": "Match.id" } },
+      ]),
+      entity("Match_homeRef", [
+        table("home_refs"), longId, pk,
+        { "measure.aggregate": { name: "n", "@agg": "count", "@of": "Match_homeRef.id" } },
+      ]),
+    ]);
+    expect(err.code).toBe("ERR_CUBE_NAME_COLLISION");
+    expect(err.message).toContain("entity 'acme::shop::Match_homeRef'");
+    expect(err.message).toContain("the alias cube 'Match_homeRef' of 'acme::shop::Team'");
+  });
+
+  async function segmentSql(value: string, dialect: CubeDialect = "postgres"): Promise<string> {
+    const model = await build([program([{ "segment.filter": { name: "s", "@filter": { title: value } } }])], { dialect });
+    return cube(model, "Program").segments[0]!.sql;
+  }
+
+  test("a literal's braces are escaped for Cube's reference syntax", async () => {
+    expect(await segmentSql("a{b}c")).toBe(String.raw`{CUBE}."title" = 'a\{b\}c'`);
+  });
+
+  test("a literal holding a Jinja opener ({{, {% or {#) is wrapped in raw, braces escaped", async () => {
+    expect(await segmentSql("{{x}}")).toBe(String.raw`{CUBE}."title" = {% raw %}'\{\{x\}\}'{% endraw %}`);
+    expect(await segmentSql("{% z %}")).toBe(String.raw`{CUBE}."title" = {% raw %}'\{% z %\}'{% endraw %}`);
+    expect(await segmentSql("{# c #}")).toBe(String.raw`{CUBE}."title" = {% raw %}'\{# c #\}'{% endraw %}`);
+  });
+
+  test("SQL quoting comes first: quotes doubled, and MySQL also doubles backslashes", async () => {
+    expect(await segmentSql("it's")).toBe(`{CUBE}."title" = 'it''s'`);
+    // MySQL's own `a\\b`, then each of those backslashes doubled for Cube.
+    expect(await segmentSql(String.raw`a\b`, "mysql")).toBe(String.raw`{CUBE}.` + "`title`" + String.raw` = 'a\\\\b'`);
+  });
+
+  // Cube compiles every `sql` as a JS template literal, so a backslash is an escape there: `\b` a
+  // backspace, `\_` a plain `_`, a trailing `\` swallows the closing quote, `\u` breaks the compile.
+  test("a literal's backslashes are doubled for Cube, before its braces are escaped", async () => {
+    expect(await segmentSql(String.raw`a\b`)).toBe(String.raw`{CUBE}."title" = 'a\\b'`);
+    expect(await segmentSql(String.raw`A\_%`)).toBe(String.raw`{CUBE}."title" = 'A\\_%'`);
+    expect(await segmentSql("ends\\")).toBe(`{CUBE}."title" = 'ends\\\\'`);
+    // `\u0041` must reach the SQL as six characters, never as `A`; written as plain strings, with
+    // each backslash escaped, it reads the same as String.raw would.
+    expect(await segmentSql("\\u0041")).toBe(`{CUBE}."title" = '\\\\u0041'`);
+    // Doubled first, so the backslash before a brace stays a backslash: `\\` then `\{`.
+    expect(await segmentSql(String.raw`a\{b}`)).toBe(String.raw`{CUBE}."title" = 'a\\\{b\}'`);
+  });
+
+  test("an identifier's backslashes are doubled for Cube too", async () => {
+    const model = await build([
+      entity("Thing", [
+        table("things"),
+        longId,
+        { "field.string": { name: "code", "@column": String.raw`co\de` } },
+        pk,
+        { "dimension.attribute": { name: "code", "@of": "Thing.code" } },
+      ]),
+    ]);
+    expect(cube(model, "Thing").dimensions[1]!.sql).toBe(String.raw`{CUBE}."co\\de"`);
+  });
+
+  test("a literal holding endraw and no Jinja opener is carried as it is: it is never inside a raw block", async () => {
+    expect(await segmentSql("x endraw y")).toBe(`{CUBE}."title" = 'x endraw y'`);
+  });
+
+  test("ERR_CUBE_UNESCAPABLE_LITERAL: a literal that is raw-wrapped and contains endraw", async () => {
+    let err: unknown;
+    try {
+      await segmentSql("x {% endraw %} y");
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(CubeModelError);
+    expect((err as CubeModelError).code).toBe("ERR_CUBE_UNESCAPABLE_LITERAL");
+    expect((err as CubeModelError).message).toContain("segment 'acme::shop::Program.s'");
+    expect((err as CubeModelError).message).toContain("endraw");
+  });
+
+  test("an identifier's braces are escaped too", async () => {
+    const model = await build([
+      entity("Thing", [
+        table("things"),
+        longId,
+        { "field.string": { name: "code", "@column": "co{de}" } },
+        pk,
+        { "dimension.attribute": { name: "code", "@of": "Thing.code" } },
+      ]),
+    ]);
+    expect(cube(model, "Thing").dimensions[1]!.sql).toBe(String.raw`{CUBE}."co\{de\}"`);
+  });
+
+  async function columnSql(column: string): Promise<string> {
+    const model = await build([
+      entity("Thing", [
+        table("things"),
+        longId,
+        { "field.string": { name: "code", "@column": column } },
+        pk,
+        { "dimension.attribute": { name: "code", "@of": "Thing.code" } },
+      ]),
+    ]);
+    return cube(model, "Thing").dimensions[1]!.sql;
+  }
+
+  test("an identifier holding a Jinja opener is wrapped in raw, braces escaped", async () => {
+    expect(await columnSql("co{%de")).toBe(String.raw`{CUBE}.{% raw %}"co\{%de"{% endraw %}`);
+    expect(await columnSql("co{#de")).toBe(String.raw`{CUBE}.{% raw %}"co\{#de"{% endraw %}`);
+  });
+
+  test("an identifier holding endraw and no Jinja opener is quoted as it is", async () => {
+    expect(await columnSql("x_endraw")).toBe(`{CUBE}."x_endraw"`);
+  });
+
+  test("ERR_CUBE_UNESCAPABLE_LITERAL: an identifier that is raw-wrapped and contains endraw", async () => {
+    let err: unknown;
+    try {
+      await columnSql("x{#endraw");
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(CubeModelError);
+    expect((err as CubeModelError).code).toBe("ERR_CUBE_UNESCAPABLE_LITERAL");
+    expect((err as CubeModelError).message).toContain("the identifier");
+    expect((err as CubeModelError).message).toContain("dimension 'acme::shop::Thing.code'");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Table H — the canonical model's data, rollups and the scope segment included
+// ---------------------------------------------------------------------------
+
+describe("Table H — the canonical model", () => {
+  // test → codegen-ts → packages → typescript → server → repo root
+  const CANONICAL = resolve(
+    import.meta.dir, "..", "..", "..", "..", "..", "..",
+    "fixtures", "persistence-conformance", "canonical", "meta.fitness.json",
+  );
+
+  test("Program, Week and Asset are Table H's cubes; the @spine reports add facts cubes and views", async () => {
+    const result = await loadUris([pathToFileURL(CANONICAL).href]);
+    expect(result.errors.map((e) => e.message)).toEqual([]);
+    const model = buildCubeModel(result.root, { dialect: "postgres", columnNamingStrategy: "literal" });
+    expect(model.views).toEqual([
+      {
+        name: "ProgramRoster",
+        cubes: [
+          { joinPath: "Program", includes: [{ name: "id", alias: "programKey" }, { name: "title", alias: "programTitle" }] },
+          {
+            joinPath: "Program.ProgramRosterFacts",
+            includes: [
+              { name: "weeks" }, { name: "totalMinutes" }, { name: "totalMinutesOrZero" }, { name: "longShare" },
+              { name: "longShareOrZero" },
+            ],
+          },
+        ],
+      },
+      {
+        name: "ProgramLongWeeks",
+        cubes: [
+          { joinPath: "Program", includes: [{ name: "id", alias: "programKey" }] },
+          { joinPath: "Program.ProgramLongWeeksFacts", includes: [{ name: "weeks" }, { name: "totalMinutesOrZero" }] },
+        ],
+      },
+    ]);
+    const weeks: CubeMeasureSpec = { name: "weeks", sql: '{CUBE}."id"', type: "count" };
+    const longWeeks: CubeMeasureSpec = { name: "longWeeks", sql: '{CUBE}."id"', type: "count", filters: [{ sql: '{CUBE}."durationMinutes" >= 60' }] };
+    const totalMinutesOrZeroRaw: CubeMeasureSpec = { name: "totalMinutesOrZeroRaw", sql: '{CUBE}."durationMinutes"', type: "sum", public: false };
+    const totalMinutesOrZero: CubeMeasureSpec = { name: "totalMinutesOrZero", sql: "COALESCE({totalMinutesOrZeroRaw}, 0)", type: "number" };
+    const longShare: CubeMeasureSpec = { name: "longShare", sql: "CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0)", type: "number" };
+    const longShareOrZero: CubeMeasureSpec = { name: "longShareOrZero", sql: "COALESCE(CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0), 0)", type: "number" };
+    const key: CubeDimensionSpec = { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true };
+    expect(model.cubes).toEqual([
+      {
+        name: "Program",
+        sqlTable: '"programs"',
+        // The spine cube of both @spine reports: one one_to_many join onto each one's facts.
+        joins: [
+          { name: "ProgramRosterFacts", relationship: "one_to_many", sql: '{CUBE}."id" = {ProgramRosterFacts}."programId"' },
+          { name: "ProgramLongWeeksFacts", relationship: "one_to_many", sql: '{CUBE}."id" = {ProgramLongWeeksFacts}."programId"' },
+        ],
+        dimensions: [
+          { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true },
+          {
+            name: "createdAt", sql: '{CUBE}."created_ts"', type: "time",
+            meta: { grains: ["day", "week", "month", "quarter", "year"] },
+          },
+          { name: "status", sql: '{CUBE}."status"', type: "string" },
+          { name: "title", sql: '{CUBE}."title"', type: "string", public: false },
+        ],
+        measures: [
+          {
+            name: "listValue", sql: '{CUBE}."priceCents"', type: "sum",
+            filters: [{ sql: `{CUBE}."status" = 'PUBLISHED'` }],
+          },
+          { name: "programs", sql: '{CUBE}."id"', type: "count" },
+        ],
+        segments: [
+          { name: "published", sql: `{CUBE}."status" = 'PUBLISHED'` },
+          // RecentPrograms' relative @filter: a scope segment, and no rollup.
+          { name: "recentProgramsScope", sql: `{CUBE}."created_ts" >= ((now() AT TIME ZONE 'UTC') - INTERVAL 'P30D')` },
+        ],
+        // Coarsest first: ProgramsByWeek groups by one column, ProgramsByMonth by two.
+        preAggregations: [
+          {
+            name: "ProgramsByWeek", type: "rollup", measures: ["programs"], dimensions: [], segments: ["published"],
+            timeDimension: "createdAt", granularity: "week",
+          },
+          {
+            name: "ProgramsByMonth", type: "rollup", measures: ["programs", "listValue"], dimensions: ["status"],
+            segments: [], timeDimension: "createdAt", granularity: "month",
+          },
+        ],
+      },
+      {
+        name: "Week",
+        sqlTable: '"weeks"',
+        joins: [{ name: "Program", relationship: "many_to_one", sql: '{CUBE}."programId" = {Program}."id"' }],
+        dimensions: [
+          { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true },
+          { name: "program", sql: '{CUBE}."programId"', type: "number" },
+          { name: "programTitle", sql: "{Program.title}", type: "string" },
+          // Read through the @via onto Program's key dimension.
+          { name: "programKey", sql: "{Program.id}", type: "number" },
+        ],
+        measures: [
+          weeks,
+          longWeeks,
+          { name: "labels", sql: '{CUBE}."label"', type: "count_distinct" },
+          {
+            name: "slots", sql: 'ROW({CUBE}."programId", {CUBE}."durationMinutes")', type: "count_distinct",
+            filters: [{ sql: '{CUBE}."programId" IS NOT NULL AND {CUBE}."durationMinutes" IS NOT NULL' }],
+          },
+          { name: "totalMinutes", sql: '{CUBE}."durationMinutes"', type: "sum" },
+          { name: "avgMinutes", sql: '{CUBE}."durationMinutes"', type: "avg" },
+          { name: "minMinutes", sql: '{CUBE}."durationMinutes"', type: "min" },
+          { name: "maxMinutes", sql: '{CUBE}."durationMinutes"', type: "max" },
+          longShare,
+          // @default: 0 (Task 9): the aggregate as <m>Raw, the measure its COALESCE.
+          totalMinutesOrZeroRaw,
+          totalMinutesOrZero,
+          longShareOrZero,
+        ],
+        segments: [{ name: "long", sql: '{CUBE}."durationMinutes" >= 60' }],
+        // Coarsest first: FitnessTotals and FitnessTotalsFilled group by nothing, so Cube's first
+        // match for each one's query is a rollup of no dimensions and not ProgramMinutes'. The two
+        // @spine reports are views, with no rollup and no scope segment on Week.
+        preAggregations: [
+          { name: "FitnessTotals", type: "rollup", measures: ["weeks", "totalMinutes", "longShare"], dimensions: [], segments: [] },
+          {
+            name: "FitnessTotalsFilled", type: "rollup", measures: ["weeks", "totalMinutesOrZero", "longShareOrZero"],
+            dimensions: [], segments: [],
+          },
+          {
+            name: "ProgramMinutes", type: "rollup",
+            measures: ["weeks", "longWeeks", "labels", "slots", "totalMinutes", "avgMinutes", "minMinutes", "maxMinutes", "longShare"],
+            dimensions: ["program", "programTitle"], segments: [],
+          },
+        ],
+      },
+      {
+        name: "Asset",
+        sqlTable: '"assets"',
+        joins: [],
+        dimensions: [
+          { name: "id", sql: '{CUBE}."id"', type: "string", primaryKey: true },
+          { name: "recordedAt", sql: '{CUBE}."recordedAt"', type: "time", meta: { grains: ["hour", "day"] } },
+          {
+            name: "asOfDate", sql: 'CAST({CUBE}."asOfDate" AS TIMESTAMP)', type: "time",
+            meta: { grains: ["week", "month"] },
+          },
+        ],
+        measures: [{ name: "assets", sql: '{CUBE}."id"', type: "count" }],
+        segments: [],
+        preAggregations: [
+          {
+            name: "AssetActivity", type: "rollup", measures: ["assets"], dimensions: [], segments: [],
+            timeDimensions: [
+              { dimension: "recordedAt", granularity: "hour" },
+              { dimension: "asOfDate", granularity: "week" },
+            ],
+          },
+        ],
+      },
+      {
+        name: "ProgramRosterFacts",
+        sql: 'SELECT * FROM "weeks" w',
+        public: false,
+        joins: [],
+        dimensions: [key],
+        measures: [
+          weeks,
+          { ...longWeeks, public: false },
+          { name: "totalMinutes", sql: '{CUBE}."durationMinutes"', type: "sum" },
+          longShare,
+          totalMinutesOrZeroRaw,
+          totalMinutesOrZero,
+          longShareOrZero,
+        ],
+        segments: [],
+        preAggregations: [],
+      },
+      {
+        name: "ProgramLongWeeksFacts",
+        sql: 'SELECT * FROM "weeks" w WHERE w."durationMinutes" >= 60',
+        public: false,
+        joins: [],
+        dimensions: [key],
+        measures: [weeks, totalMinutesOrZeroRaw, totalMinutesOrZero],
+        segments: [],
+        preAggregations: [],
+      },
+    ]);
+  });
+});

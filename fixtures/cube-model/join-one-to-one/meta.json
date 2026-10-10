@@ -1,0 +1,86 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "profile",
+                "@objectRef": "Profile",
+                "@cardinality": "one"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "programs",
+                "@agg": "count",
+                "@of": "Program.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Profile",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "profiles"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkProgram",
+                "@fields": "programId",
+                "@references": "Program"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "profiles",
+                "@agg": "count",
+                "@of": "Profile.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

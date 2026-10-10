@@ -16,9 +16,15 @@ the standard filter, sort and paging on the derived fields.
 stays inert: it is a checked statement of intent. No generator, migration or runtime acts on
 it, and the one thing written about it is a `meta docs` model page marked "not served".
 
+**Exporting to Cube.** A TypeScript reference generator, `cube-model`, writes the same
+vocabulary as Cube data-model files: a cube for each concrete, table-backed entity that declares
+dimensions, measures or segments (plus the join-target and alias cubes its `@via` dimensions
+need), a rollup pre-aggregation for each served report, and a Cube view for a served report
+with `@spine`. See [Exporting to Cube](#exporting-to-cube) and [cube-export.md](cube-export.md).
+
 **What does not exist yet.** No grid, form or other UI-tier output is generated for a report
 in any port; TypeScript's list hook is the one client piece (a later plan of FR-044 adds the
-rest). There is no `measure.derived`,
+rest). There is no dbt MetricFlow exporter (it is built when an adopter asks), no `measure.derived`,
 no query-time choice of dimensions or measures (a report is a fixed combination, compiled
 once), and no time-zone vocabulary: time grains and relative dates are UTC.
 
@@ -641,6 +647,36 @@ Postgres, and TypeScript runs the same sixteen against SQLite as well
 (`api-contract-report-sqlite.test.ts`), where it also holds that a ratio reaches the wire as a
 string, as it does on Postgres; Java, Kotlin and Python serve seeded rows behind their repository seam, and a
 TypeScript test holds those rows equal to what the views return.
+
+## Exporting to Cube
+
+The `cube-model` generator writes the reporting vocabulary as [Cube](https://cube.dev)
+data-model files, `model/cubes/<Entity>.yml`. It is a TypeScript reference helper: it is listed
+by `meta gen --list`, copied into your repo with `meta eject cube-model`, and drift-checked by
+`meta verify --codegen`. It adds no vocabulary, and a project that does not configure it gets
+no file.
+
+| In the model | In Cube |
+|---|---|
+| an entity that declares dimensions, measures or segments | a cube over its table |
+| a to-one `identity.reference` between two cubes | a `many_to_one` join |
+| `dimension.attribute`, and `@via` through a join | a dimension (`@via` reads a member of the joined cube) |
+| `dimension.time` | a `time` dimension, with `@grains` carried as `meta.grains` |
+| `measure.aggregate` | a measure, its `@segment` and `@filter` as one `filters` entry |
+| `measure.ratio` | a `number` measure over its two operand measures |
+| a measure's `@default` | `COALESCE` over the measure (a `measure.aggregate` keeps its aggregate as a `public: false` `<m>Raw` member) |
+| `segment.filter` | a segment |
+| a served `object.report` | a `rollup` pre-aggregation on its `@from` cube, and a segment for its `@filter` |
+| a served `object.report` with `@spine` | a Cube view rooted at the spine cube, over a `public: false` facts cube that holds the report's scope; no rollup |
+
+The SQL in the files comes from the same functions that write a report's view, so a filter
+means the same thing in both. A report with a relative date in its `@filter`, its `@segment` or
+a listed measure's condition gets no rollup, because a rollup would freeze "now" at build time;
+it still gets its scope segment when it has a `@filter`. A `@spine` report gets no rollup either:
+Cube would build it from the fact cube, without the spine's empty rows. On the conformance data, the
+Cube query for each canonical report returns the rows of its view; a live check against a real
+Cube holds that. What the generator writes, wires, refuses and does not cover is in
+[cube-export.md](cube-export.md).
 
 ## The rules the loader enforces
 

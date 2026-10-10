@@ -1,0 +1,102 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "@values": [
+                  "DRAFT",
+                  "PUBLISHED",
+                  "ARCHIVED"
+                ]
+              }
+            },
+            {
+              "field.currency": {
+                "name": "priceCents",
+                "@currency": "USD"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "published",
+                "@filter": {
+                  "status": "PUBLISHED"
+                }
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "live",
+                "@filter": {
+                  "status": {
+                    "in": [
+                      "PUBLISHED",
+                      "ARCHIVED"
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "pricedIntro",
+                "@filter": {
+                  "title": {
+                    "like": "Intro%"
+                  },
+                  "priceCents": {
+                    "gt": 0
+                  }
+                }
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "draftOrUntitled",
+                "@filter": {
+                  "or": [
+                    {
+                      "status": "DRAFT"
+                    },
+                    {
+                      "title": {
+                        "isNull": true
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

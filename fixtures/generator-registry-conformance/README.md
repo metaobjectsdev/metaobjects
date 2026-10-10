@@ -36,7 +36,7 @@ to make the choice cheap, and `layer` is the axis it is cheap along.
 | `api` | routes, routes-hono, filter-allowlist, validator, spring-config | app shape |
 | `client` | form, hooks, grid, grid-hook | app shape |
 | `docs` | docs, mermaid-er, api-docs | on by default (`meta docs`) |
-| `capability` | prompt-render, output-parser, output-prompt, extractor, render-helper, trace-helper, requirement-tests, shared-model, template, callable | `meta gen --list --probe` |
+| `capability` | prompt-render, output-parser, output-prompt, extractor, render-helper, trace-helper, requirement-tests, cube-model, shared-model, template, callable | `meta gen --list --probe` |
 
 Six, not ten. An earlier draft split `capability` into `trace` / `requirements` /
 `publish` / `primitive`, each with **one member** — a layer with one member does
