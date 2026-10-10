@@ -3,7 +3,7 @@ cubes:
   - name: Program
     sql_table: '"programs"'
     title: "Programs"
-    description: "{% raw %}Use \\{\\{ program \\}\\} for one row.{% endraw %}"
+    description: "{% raw %}Use `\\{\\{ program \\}\\}` for one row.{% endraw %}"
     dimensions:
       - name: id
         sql: '{CUBE}."id"'
@@ -18,7 +18,7 @@ cubes:
         sql: '{CUBE}."id"'
         type: count
         title: "Program count"
-        description: "Share of \\{weeks\\}, cost $\\{x\\} at C:\\\\path"
+        description: "Share of \\{weeks\\}, cost $\\{x\\} at C:\\\\path, in `code`"
     segments:
       - name: titled
         sql: '{CUBE}."title" IS NOT NULL'

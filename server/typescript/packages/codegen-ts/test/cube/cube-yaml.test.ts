@@ -598,6 +598,13 @@ describe("free text", () => {
     expect(title("Share of {weeks}, a{b}c")).toBe('"Share of \\\\{weeks\\\\}, a\\\\{b\\\\}c"');
   });
 
+  test("a backtick is written as it is: Cube hands it back unchanged (executed on 1.7.43)", () => {
+    // Cube reads free text as a template, yet the live lane's free-text-jinja case (a backtick in
+    // a raw-wrapped and in a plain description) comes back from /v1/meta as declared: no escape.
+    expect(title("in `code`")).toBe('"in `code`"');
+    expect(title("`{{x}}`")).toBe('"{% raw %}`\\\\{\\\\{x\\\\}\\\\}`{% endraw %}"');
+  });
+
   test("${ is covered by the brace escape: Cube would read it as an interpolation", () => {
     expect(title("cost ${x}")).toBe('"cost $\\\\{x\\\\}"');
   });
@@ -867,7 +874,7 @@ describe("parse oracle", () => {
     const cube = (parsed(c) as { cubes: Json[] }).cubes[0];
     // The parsed value is the Cube-escaped text, spelled out once by hand (Ruling 28).
     expect(cube?.["title"]).toBe(
-      `{% raw %}He said "hi" \\\\ it's\n\\{\\{x\\}\\} \\{% y %\\} \\{# z #\\} a\\{b\\}c   \u0085 café — ü{% endraw %}`,
+      `{% raw %}He said "hi" \\\\ it's\n\\{\\{x\\}\\} \\{% y %\\} \\{# z #\\} a\\{b\\}c \u2028 \u0085 café — ü{% endraw %}`,
     );
     expect(cube?.["description"]).toBe("plain \\{braces\\} only");
   });

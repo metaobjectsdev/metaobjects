@@ -953,11 +953,14 @@ else
     in_lane python             && run_integration_for python python
     in_lane csharp             && run_integration_for csharp csharp
     # The cube lane needs the workspace installed (and builds it, as ts-slow does) when no
-    # earlier step in this selection did: `--only cube`, alone or with --integration-only.
-    if in_lane cube && ! want_any ts ts-fast && ! in_lane_any ts ts-slow; then
-      step_if bun "ts build (for the cube lane)" gate_ts_build
+    # earlier step in this selection did: `--only cube`, alone or with --integration-only. Docker
+    # is asked first, so a docker-down run records its SKIP without paying for an install/build.
+    if in_lane cube; then
+      if docker info >/dev/null 2>&1 && ! want_any ts ts-fast && ! in_lane_any ts ts-slow; then
+        step_if bun "ts build (for the cube lane)" gate_ts_build
+      fi
+      run_cube_lane
     fi
-    in_lane cube               && run_cube_lane
   fi
 fi
 

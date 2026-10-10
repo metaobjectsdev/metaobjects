@@ -11,8 +11,10 @@
 import {
   OBJECT_REPORT_ATTR_FILTER,
   OBJECT_REPORT_ATTR_SEGMENT,
+  TIME_GRAINS,
   type MetaMeasure,
   type ReportShape,
+  type TimeGrain,
 } from "@metaobjectsdev/metadata";
 import { ratioOperand, resolveAggregate } from "../projection/report-resolve.js";
 import { isRelativeNow } from "../projection/report-spec.js";
@@ -39,18 +41,51 @@ export function rollupDimensionCount(rollup: CubeRollupSpec): number {
   return rollup.dimensions.length + times;
 }
 
+/** A rollup's time grains in listed order: the `time_dimensions` entries, or its one granularity. */
+function rollupGrains(rollup: CubeRollupSpec): readonly TimeGrain[] {
+  if (rollup.timeDimensions !== undefined) return rollup.timeDimensions.map((t) => t.granularity);
+  return rollup.granularity !== undefined ? [rollup.granularity] : [];
+}
+
 /**
- * A cube's rollups as they are written (Ruling 29): coarsest first, by
- * {@link rollupDimensionCount} ascending, ties in report order. Cube answers a query from the
- * FIRST rollup in definition order that can serve it, and a finer rollup can serve a coarser
- * query whose measures are additive (executed on 1.7.43: in report order, FitnessTotals' query,
- * with no dimensions, was answered from ProgramMinutes' rollup, grouped by two). A rollup with
- * fewer grouping columns cannot serve a query that groups by more, so with this order each
- * report's query reaches its own rollup before a finer one.
+ * Coarser grain first, compared position by position in listed order. TIME_GRAINS runs from the
+ * finest (hour) to the coarsest (year), so a higher index sorts earlier. Where only one of the
+ * two has a time dimension at a position, the one without sorts first.
+ */
+function compareGrains(a: readonly TimeGrain[], b: readonly TimeGrain[]): number {
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const ga = a[i];
+    const gb = b[i];
+    if (ga === gb) continue;
+    if (ga === undefined) return -1;
+    if (gb === undefined) return 1;
+    return TIME_GRAINS.indexOf(gb) - TIME_GRAINS.indexOf(ga);
+  }
+  return 0;
+}
+
+/**
+ * A cube's rollups as they are written (Ruling 29). Cube answers a query from the FIRST
+ * rollup in definition order that can serve it, and a finer rollup can serve a coarser query
+ * whose measures are additive. Executed on 1.7.43: in report order, FitnessTotals' query (no
+ * dimensions) was answered from ProgramMinutes' rollup (grouped by two). Rows are correct either
+ * way. The order exists so that each report's query reaches a rollup that matches it exactly
+ * before any strictly finer one. The keys, in turn:
+ *
+ *   1. {@link rollupDimensionCount} ascending: fewer grouping columns first;
+ *   2. the coarser time grain first, the time dimensions compared in listed order (a month
+ *      rollup can serve nothing a day rollup's query asks, but a day rollup can serve a month
+ *      query);
+ *   3. fewer measures first (a rollup holding a superset of measures can serve the other's query);
+ *   4. report declaration order (the sort is stable).
  */
 export function coarsestFirst(rollups: readonly CubeRollupSpec[]): CubeRollupSpec[] {
-  // Array.prototype.sort is stable, so equal counts keep report order.
-  return [...rollups].sort((a, b) => rollupDimensionCount(a) - rollupDimensionCount(b));
+  return [...rollups].sort(
+    (a, b) =>
+      rollupDimensionCount(a) - rollupDimensionCount(b) ||
+      compareGrains(rollupGrains(a), rollupGrains(b)) ||
+      a.measures.length - b.measures.length,
+  );
 }
 
 /** `RecentPrograms` → `recentProgramsScope`: the segment a report's `@filter` becomes (Table G). */

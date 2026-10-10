@@ -261,13 +261,13 @@ describe("Table F — a rollup per served report, on its @from cube", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Relative dates — a rollup would freeze "now" at its build
+// Rollup order — Cube answers from the first rollup that can serve a query (Ruling 29)
 // ---------------------------------------------------------------------------
 
 describe("Ruling 29 — a cube's rollups are written coarsest first", () => {
   // Cube answers a query from the FIRST rollup in definition order that can serve it, and a finer
-  // rollup serves a coarser query whose measures are additive (executed on Cube 1.7.43). Written
-  // by grouping-column count ascending, each report's query reaches its own rollup first.
+  // rollup serves a coarser query whose measures are additive (executed on Cube 1.7.43). So a
+  // rollup that matches a report's query exactly is written before any strictly finer one.
   test("by attribute + time dimension count ascending, ties in report order", async () => {
     const c = await programCube(
       report("ByStatusAndMonth", { "@from": "Program", "@dimensions": ["status", "createdAt:month"], "@measures": ["programs"] }),
@@ -277,9 +277,30 @@ describe("Ruling 29 — a cube's rollups are written coarsest first", () => {
       report("TotalsB", { "@from": "Program", "@measures": ["listValue"] }),
       report("ByStatus", { "@from": "Program", "@dimensions": ["status"], "@measures": ["programs"] }),
     );
-    // 0: TotalsA, TotalsB; 1: ByMonth (a time dimension), ByStatus (an attribute);
-    // 2: ByStatusAndMonth, TwoTimes (the time_dimensions list counts each entry).
-    expect(c.preAggregations.map((r) => r.name)).toEqual(["TotalsA", "TotalsB", "ByMonth", "ByStatus", "ByStatusAndMonth", "TwoTimes"]);
+    // 0: TotalsA, TotalsB; 1: ByStatus (no time dimension) then ByMonth; 2: ByStatusAndMonth
+    // (an attribute at position 0, so before TwoTimes, which has a time dimension there).
+    expect(c.preAggregations.map((r) => r.name)).toEqual(["TotalsA", "TotalsB", "ByStatus", "ByMonth", "ByStatusAndMonth", "TwoTimes"]);
+  });
+
+  test("a tie on dimension count: the coarser grain first, so a month query is not answered by a day rollup", async () => {
+    const c = await programCube(
+      report("ByDay", { "@from": "Program", "@dimensions": ["createdAt:day"], "@measures": ["programs"] }),
+      report("ByMonth", { "@from": "Program", "@dimensions": ["createdAt:month"], "@measures": ["programs"] }),
+      report("ByWeekThenWeek", { "@from": "Program", "@dimensions": ["createdAt:week", "publishedOn:week"], "@measures": ["programs"] }),
+      report("ByWeekThenMonth", { "@from": "Program", "@dimensions": ["createdAt:week", "publishedOn:month"], "@measures": ["programs"] }),
+    );
+    // Grains compare position by position: week = week, then month before week.
+    expect(c.preAggregations.map((r) => r.name)).toEqual(["ByMonth", "ByDay", "ByWeekThenMonth", "ByWeekThenWeek"]);
+  });
+
+  test("a tie on dimensions and grain: fewer measures first, so a superset rollup does not take the subset's query", async () => {
+    const c = await programCube(
+      report("Both", { "@from": "Program", "@dimensions": ["status"], "@measures": ["programs", "listValue"] }),
+      report("CountOnly", { "@from": "Program", "@dimensions": ["status"], "@measures": ["programs"] }),
+      report("ValueOnly", { "@from": "Program", "@dimensions": ["status"], "@measures": ["listValue"] }),
+    );
+    // CountOnly and ValueOnly tie on every key and keep report order.
+    expect(c.preAggregations.map((r) => r.name)).toEqual(["CountOnly", "ValueOnly", "Both"]);
   });
 
   test("the scope segments keep report order: only the rollups are reordered", async () => {
@@ -291,6 +312,10 @@ describe("Ruling 29 — a cube's rollups are written coarsest first", () => {
     expect(c.segments.map((x) => x.name)).toEqual(["published", "fineScope", "coarseScope"]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Relative dates — a rollup would freeze "now" at its build
+// ---------------------------------------------------------------------------
 
 describe("Table F — no rollup where a relative date would be frozen", () => {
   const recentFilter = { createdAt: { gte: { now: "-P30D" } } };

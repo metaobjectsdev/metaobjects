@@ -66,10 +66,25 @@ const CANONICAL_SEED = join(CUBE_CANONICAL_DIR, "seed.sql");
 const GEN_CONFIG = { dialect: "postgres", columnNamingStrategy: "literal" } as const;
 
 const TEST_TIMEOUT_MS = 600_000;
-/** How long one `/v1/load` may keep answering `Continue wait` while Cube builds a rollup. */
-const LOAD_DEADLINE_MS = 480_000;
-/** How long a corpus case may take to appear in `/v1/meta` after its files are swapped in. */
-const CASE_DEADLINE_MS = 120_000;
+/** One HTTP request to Cube; a stalled socket is aborted and counts as a transport error. */
+const REQUEST_TIMEOUT_MS = 60_000;
+/**
+ * How long one `/v1/load` may keep retrying (`Continue wait` while a rollup builds, or a
+ * transport error). The worst case stays inside TEST_TIMEOUT_MS: this deadline, one request
+ * timeout and the last backoff, then a `/v1/sql` request and the view read.
+ */
+const LOAD_DEADLINE_MS = 300_000;
+/** Consecutive transport errors (refused, reset, aborted, a body that is not JSON) a load survives. */
+const LOAD_TRANSPORT_RETRIES = 6;
+/** Backoff after a transport error: 1 s, doubling, capped here. */
+const LOAD_BACKOFF_CAP_MS = 10_000;
+/** Each corpus case's share of the corpus pass's budget: its empty-model wait plus its load. */
+const CASE_BUDGET_MS = 60_000;
+
+/** The corpus cases the compile pass loads, known when the tests are defined (its timeout scales with them). */
+const CORPUS_CASES = postgresCorpusCases();
+/** The corpus pass's one budget, which every case's deadline is drawn from. */
+const CORPUS_BUDGET_MS = CORPUS_CASES.length * CASE_BUDGET_MS;
 
 /**
  * Table I: what each served canonical report must produce. `preAggregation` is the table Cube
@@ -131,15 +146,17 @@ beforeAll(async () => {
       metadata: canonical,
       genStateDir: join(work, ".gen-state"),
     });
+    // Before Cube starts: the lane loads the reviewed golden or nothing at all.
+    assertCanonicalGolden();
 
     const t0 = Date.now();
-    const started = await startCubeStack(modelDir());
+    // The schema and seed go in before Cube starts, so no rollup can be built over empty tables.
+    const started = await startCubeStack(modelDir(), {
+      initSql: [readFileSync(CANONICAL_SCHEMA, "utf8"), readFileSync(CANONICAL_SEED, "utf8")],
+    });
     if (started.kind === "skipped") throw new Error(`docker answered a moment ago and no longer does: ${started.reason}`);
     stack = started.stack;
-    timings.push(`stack up (pull if needed, Postgres, Cube /meta): ${Date.now() - t0} ms`);
-
-    stack.psql(readFileSync(CANONICAL_SCHEMA, "utf8"));
-    stack.psql(readFileSync(CANONICAL_SEED, "utf8"));
+    timings.push(`stack up (pull if needed, Postgres + schema + seed, Cube /meta): ${Date.now() - t0} ms`);
   } catch (e) {
     // Clean up here as well as in afterAll: a failed setup must not depend on the runner
     // calling the after hook.
@@ -159,6 +176,25 @@ function cleanUp(): void {
   stack?.stop();
   stack = undefined;
   if (work !== "") rmSync(work, { recursive: true, force: true });
+}
+
+/** The command that rewrites the canonical golden, for a drift message. */
+const REGEN_CANONICAL = "cd server/typescript/packages/codegen-ts && bun run gen:cube-canonical";
+
+/** Throw, naming each drifted file, unless the generated tree is the committed golden. */
+function assertCanonicalGolden(): void {
+  const got = readTree(outDir);
+  const want = readTree(CANONICAL_EXPECTED_DIR);
+  const drift = [...new Set([...got.keys(), ...want.keys()])]
+    .sort()
+    .filter((path) => got.get(path) !== want.get(path))
+    .map((path) => (!got.has(path) ? `${path} (in the golden, not generated)` : !want.has(path) ? `${path} (generated, not in the golden)` : `${path} (differs)`));
+  if (drift.length > 0) {
+    throw new Error(
+      `the generated canonical Cube model is not fixtures/cube-model/canonical/expected/: ${drift.join(", ")}. ` +
+        `Review the change, then regenerate the golden: ${REGEN_CANONICAL}`,
+    );
+  }
 }
 
 /** The directory mounted at /cube/conf/model: the generator's `model/` (it holds `cubes/`). */
@@ -182,6 +218,7 @@ function requireCanonical(): MetaRoot {
 
 describe(`cube-model live check (${CUBE_IMAGE}, development mode)`, () => {
   test.skipIf(skip)("the model Cube loads is the reviewed canonical golden", () => {
+    // Already required in beforeAll, before Cube started; restated so a green run lists it.
     expect(Object.fromEntries(readTree(outDir))).toEqual(Object.fromEntries(readTree(CANONICAL_EXPECTED_DIR)));
   });
 
@@ -213,15 +250,23 @@ describe(`cube-model live check (${CUBE_IMAGE}, development mode)`, () => {
       const result = await load(s, plan.query);
       const loadMs = Date.now() - t0;
 
-      const used = Object.keys(result.usedPreAggregations ?? {}).sort();
-      expect(used).toEqual(want.preAggregation === undefined ? [] : [want.preAggregation]);
-
+      // Rows first, so a rollup mismatch can say whether the numbers were right anyway.
       const cubeRows = sortRows(result.data.map((row) => fromCubeRow(row, plan)), plan);
       const viewRows = sortRows(selectView(s, want.view).map((row) => fromViewRow(row, plan, want.view)), plan);
+      const rowsMatch = Bun.deepEquals(cubeRows, viewRows);
+      const used = Object.keys(result.usedPreAggregations ?? {}).sort();
+      const wantUsed = want.preAggregation === undefined ? [] : [want.preAggregation];
       timings.push(`${want.report}: ${cubeRows.length} row(s) compared, served from ${used[0] ?? "the source table"}, load ${loadMs} ms`);
 
+      if (!Bun.deepEquals(used, wantUsed)) {
+        throw new Error(
+          `${want.report}: Cube answered from [${used.join(", ")}], expected [${wantUsed.join(", ")}]; ` +
+            `the rows ${rowsMatch ? "DID" : "did NOT"} equal ${want.view}.\n` +
+            `query: ${JSON.stringify(plan.query)}\nCube's SQL: ${await cubeSql(s, plan.query)}`,
+        );
+      }
       expect(viewRows.length).toBe(want.rows);
-      if (!Bun.deepEquals(cubeRows, viewRows)) {
+      if (!rowsMatch) {
         console.error(`${want.report}: Cube's SQL for ${JSON.stringify(plan.query)}:\n${await cubeSql(s, plan.query)}`);
       }
       expect(cubeRows).toEqual(viewRows);
@@ -230,12 +275,22 @@ describe(`cube-model live check (${CUBE_IMAGE}, development mode)`, () => {
 
   test.skipIf(skip)("every Postgres case of the mapping corpus compiles in Cube (Ruling 11)", async () => {
     const s = requireStack();
-    const cases = postgresCorpusCases();
+    const cases = CORPUS_CASES;
     expect(cases.length).toBeGreaterThan(0);
     const rejected: string[] = [];
     const t0 = Date.now();
-    for (const name of cases) {
-      const outcome = await swapInCase(s, name);
+    const budgetEnd = t0 + CORPUS_BUDGET_MS;
+    for (const [i, name] of cases.entries()) {
+      if (Date.now() >= budgetEnd) {
+        throw new Error(
+          `the corpus pass spent its ${CORPUS_BUDGET_MS / 1000}s budget before case '${name}' ` +
+            `(${i}/${cases.length} done; not reached: ${cases.slice(i).join(", ")}); ` +
+            `rejected so far: ${rejected.length === 0 ? "none" : rejected.join(" | ")}`,
+        );
+      }
+      // Each case's own deadline, drawn from the one budget: a slow Cube is named on the case it was on.
+      const deadline = Math.min(Date.now() + CASE_BUDGET_MS, budgetEnd);
+      const outcome = await swapInCase(s, name, deadline);
       if (outcome !== undefined) rejected.push(`${name}: ${outcome}`);
     }
     timings.push(
@@ -245,7 +300,7 @@ describe(`cube-model live check (${CUBE_IMAGE}, development mode)`, () => {
     expect(rejected).toEqual([]);
     // The free-text check is not vacuous: free-text-jinja alone declares six values.
     expect(freeTextChecked).toBeGreaterThanOrEqual(6);
-  }, TEST_TIMEOUT_MS);
+  }, CORPUS_BUDGET_MS + 60_000);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -436,13 +491,22 @@ interface LoadResponse {
   readonly usedPreAggregations?: Record<string, unknown>;
 }
 
-async function getJson(url: string): Promise<{ status: number; body: unknown }> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(120_000) });
-  const text = await res.text();
+/** A request that never produced a JSON answer: refused, reset, aborted, or a body that is not JSON. */
+class TransportError extends Error {}
+
+async function getJson(url: string, timeoutMs = REQUEST_TIMEOUT_MS): Promise<{ status: number; body: unknown }> {
+  let res: Response;
+  let text: string;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(Math.max(1000, timeoutMs)) });
+    text = await res.text();
+  } catch (e) {
+    throw new TransportError(`${url.split("?")[0]}: ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`, { cause: e });
+  }
   try {
     return { status: res.status, body: JSON.parse(text) };
   } catch {
-    throw new Error(`${url}: HTTP ${res.status}, not JSON: ${text.slice(0, 500)}`);
+    throw new TransportError(`${url.split("?")[0]}: HTTP ${res.status}, not JSON: ${text.slice(0, 500)}`);
   }
 }
 
@@ -452,8 +516,8 @@ function errorOf(body: unknown): string | undefined {
   return e === undefined ? undefined : String(e);
 }
 
-async function getMeta(s: CubeStack): Promise<MetaResponse> {
-  const { body } = await getJson(`${s.apiBase}/meta`);
+async function getMeta(s: CubeStack, timeoutMs = REQUEST_TIMEOUT_MS): Promise<MetaResponse> {
+  const { body } = await getJson(`${s.apiBase}/meta`, timeoutMs);
   const error = errorOf(body);
   if (error !== undefined) return { error, cubes: [] };
   const cubes = (body as { cubes?: unknown }).cubes;
@@ -466,10 +530,29 @@ function queryUrl(s: CubeStack, path: "load" | "sql", query: CubeQuery): string 
 }
 
 /** `/v1/load`, retried every second while Cube answers `Continue wait` (a rollup is building). */
+/**
+ * `/v1/load`, retried every second while Cube answers `Continue wait` (a rollup is building), and
+ * with backoff after a transport error (at most LOAD_TRANSPORT_RETRIES in a row), all within
+ * LOAD_DEADLINE_MS.
+ */
 async function load(s: CubeStack, query: CubeQuery): Promise<LoadResponse> {
   const deadline = Date.now() + LOAD_DEADLINE_MS;
+  let transportErrors = 0;
   for (;;) {
-    const { status, body } = await getJson(queryUrl(s, "load", query));
+    let answer: { status: number; body: unknown };
+    try {
+      answer = await getJson(queryUrl(s, "load", query));
+      transportErrors = 0;
+    } catch (e) {
+      if (!(e instanceof TransportError)) throw e;
+      transportErrors++;
+      if (transportErrors > LOAD_TRANSPORT_RETRIES || Date.now() > deadline) {
+        throw new Error(`/v1/load failed ${transportErrors} time(s) in a row, last: ${e.message}\n${s.cubeLogs(40)}`, { cause: e });
+      }
+      await Bun.sleep(Math.min(1000 * 2 ** (transportErrors - 1), LOAD_BACKOFF_CAP_MS));
+      continue;
+    }
+    const { status, body } = answer;
     const error = errorOf(body);
     if (error === "Continue wait") {
       if (Date.now() > deadline) throw new Error(`Cube kept answering 'Continue wait' for ${LOAD_DEADLINE_MS / 1000}s:\n${s.cubeLogs(40)}`);
@@ -621,13 +704,16 @@ let swapCount = 0;
  * in. Passing through the empty model is what makes "the names match" mean "Cube compiled THIS
  * case": many cases share a cube name with the case before them.
  */
-async function swapInCase(s: CubeStack, name: string): Promise<string | undefined> {
+async function swapInCase(s: CubeStack, name: string, deadline: number): Promise<string | undefined> {
   const n = swapCount++;
   const model = modelDir();
+  const started = Date.now();
+  const spent = (): string => `${((Date.now() - started) / 1000).toFixed(1)}s`;
   for (const entry of readdirSync(model)) renameSync(join(model, entry), join(work, `retired-${n}-${entry}`));
-  const emptied = await waitForMeta(s, (m) => m.error === undefined && m.cubes.length === 0);
-  if (emptied.error !== undefined || emptied.cubes.length !== 0) {
-    return `the model did not empty before loading it (last /meta: ${emptied.error ?? emptied.cubes.map((c) => c.name).join(", ")})`;
+  const emptied = await waitForMeta(s, (m) => m.error === undefined && m.cubes.length === 0, deadline);
+  if (emptied === undefined || emptied.error !== undefined || emptied.cubes.length !== 0) {
+    const last = emptied === undefined ? "no answer" : emptied.error ?? emptied.cubes.map((c) => c.name).join(", ");
+    return `the model did not empty before loading it, after ${spent()} of its deadline (last /meta: ${last})`;
   }
 
   const expected = join(CUBE_CORPUS_DIR, name, "expected", "model");
@@ -638,10 +724,11 @@ async function swapInCase(s: CubeStack, name: string): Promise<string | undefine
 
   const tree = readTree(expected);
   const wantNames = Object.keys(declaredSummary(tree)).sort();
-  const loaded = await waitForMeta(s, (m) => m.error !== undefined || sameNames(m, wantNames));
+  const loaded = await waitForMeta(s, (m) => m.error !== undefined || sameNames(m, wantNames), deadline);
+  if (loaded === undefined) return `Cube did not answer /v1/meta within the case's deadline (${spent()})`;
   if (loaded.error !== undefined) return `Cube refused it: ${loaded.error}`;
   if (!sameNames(loaded, wantNames)) {
-    return `Cube listed [${loaded.cubes.map((c) => c.name).sort().join(", ")}] within ${CASE_DEADLINE_MS / 1000}s, not [${wantNames.join(", ")}]`;
+    return `Cube listed [${loaded.cubes.map((c) => c.name).sort().join(", ")}] within the case's deadline (${spent()}), not [${wantNames.join(", ")}]`;
   }
   const got = metaSummary(loaded.cubes);
   const want = declaredSummary(tree);
@@ -702,14 +789,21 @@ function sameNames(m: MetaResponse, want: readonly string[]): boolean {
   return m.error === undefined && Bun.deepEquals(m.cubes.map((c) => c.name).sort(), want);
 }
 
-async function waitForMeta(s: CubeStack, done: (m: MetaResponse) => boolean): Promise<MetaResponse> {
-  const deadline = Date.now() + CASE_DEADLINE_MS;
-  let last = await getMeta(s);
-  while (!done(last) && Date.now() < deadline) {
+/**
+ * Poll `/v1/meta` until `done` or `deadline`; the last answer, or undefined when none came. A
+ * transport error is polled past: Cube may be busy recompiling.
+ */
+async function waitForMeta(s: CubeStack, done: (m: MetaResponse) => boolean, deadline: number): Promise<MetaResponse | undefined> {
+  let last: MetaResponse | undefined;
+  for (;;) {
+    try {
+      last = await getMeta(s, deadline - Date.now());
+    } catch (e) {
+      if (!(e instanceof TransportError)) throw e;
+    }
+    if ((last !== undefined && done(last)) || Date.now() >= deadline) return last;
     await Bun.sleep(500);
-    last = await getMeta(s);
   }
-  return last;
 }
 
 // ---------------------------------------------------------------------------------------------

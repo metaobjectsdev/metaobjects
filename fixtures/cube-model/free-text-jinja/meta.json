@@ -6,7 +6,7 @@
         "object.entity": {
           "name": "Program",
           "@title": "Programs",
-          "@description": "Use {{ program }} for one row.",
+          "@description": "Use `{{ program }}` for one row.",
           "children": [
             {
               "source.rdb": {
@@ -42,7 +42,7 @@
                 "@agg": "count",
                 "@of": "Program.id",
                 "@title": "Program count",
-                "@description": "Share of {weeks}, cost ${x} at C:\\path"
+                "@description": "Share of {weeks}, cost ${x} at C:\\path, in `code`"
               }
             },
             {

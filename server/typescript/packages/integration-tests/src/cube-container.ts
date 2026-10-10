@@ -30,10 +30,21 @@ export const CUBE_POSTGRES_IMAGE = "postgres:16-alpine";
 /** Prefix of every container and network a run creates; the leftover check filters on it. */
 export const CUBE_RESOURCE_PREFIX = "mo-cube-";
 
+/** A positive number of seconds from `name`, or `fallback` when it is unset; anything else is refused. */
+function secondsFromEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(`${name} must be a positive number of seconds, got '${raw}'`);
+  }
+  return n;
+}
+
 /** Seconds Cube gets to answer `/v1/meta` once its container is started. */
-const READY_TIMEOUT_S = Number(process.env["MO_CUBE_READY_TIMEOUT_S"] ?? "300");
+const READY_TIMEOUT_S = secondsFromEnv("MO_CUBE_READY_TIMEOUT_S", 300);
 /** Seconds the throwaway Postgres gets to accept a TCP connection inside its container. */
-const PG_READY_TIMEOUT_S = Number(process.env["MO_PG_READY_TIMEOUT_S"] ?? "120");
+const PG_READY_TIMEOUT_S = secondsFromEnv("MO_PG_READY_TIMEOUT_S", 120);
 /** Budget for one `docker pull`, outside the readiness clock. */
 const PULL_TIMEOUT_MS = 15 * 60_000;
 /** Per-request timeout for a readiness probe, so a stalled socket cannot eat the deadline. */
@@ -56,8 +67,17 @@ export interface CubeStack {
   psql(sqlText: string): string;
   /** The last `lines` lines of the Cube container's log, for a failure message. */
   cubeLogs(lines?: number): string;
-  /** Force-remove both containers and the network. Idempotent; never throws. */
+  /** Force-remove both containers and the network. Idempotent; never throws, but warns on stderr when a removal fails. */
   stop(): void;
+}
+
+export interface CubeStackOptions {
+  /**
+   * SQL scripts applied, in order, once Postgres is ready and BEFORE Cube starts: the schema and
+   * the seed. Cube builds a rollup on the first query that needs it and keeps it for its refresh
+   * window, so data loaded after Cube is up could meet a rollup already built over empty tables.
+   */
+  readonly initSql?: readonly string[];
 }
 
 export type CubeStackStart =
@@ -77,7 +97,7 @@ export function dockerUnavailableReason(): string | undefined {
  * holds `cubes/`). Returns `skipped` when docker is unavailable; throws, after removing
  * everything it created, when any step fails.
  */
-export async function startCubeStack(modelDir: string): Promise<CubeStackStart> {
+export async function startCubeStack(modelDir: string, options: CubeStackOptions = {}): Promise<CubeStackStart> {
   const unavailable = dockerUnavailableReason();
   if (unavailable !== undefined) return { kind: "skipped", reason: unavailable };
 
@@ -98,8 +118,8 @@ export async function startCubeStack(modelDir: string): Promise<CubeStackStart> 
     process.off("SIGTERM", onSignal);
     // Containers first: a network with an attached container cannot be removed. `-v` takes the
     // postgres image's anonymous data volume with its container.
-    spawnSync("docker", ["rm", "-f", "-v", cubeContainer, pgContainer], { stdio: "ignore", timeout: 120_000 });
-    spawnSync("docker", ["network", "rm", network], { stdio: "ignore", timeout: 60_000 });
+    for (const name of [cubeContainer, pgContainer]) removeQuietly(["rm", "-f", "-v", name], `container '${name}'`, NO_SUCH_CONTAINER);
+    removeQuietly(["network", "rm", network], `network '${network}'`, NO_SUCH_NETWORK);
   };
   // An interrupted run (Ctrl-C, a cancelled job) is an exit path too: remove what this run
   // created, then exit as the signal would have.
@@ -116,6 +136,7 @@ export async function startCubeStack(modelDir: string): Promise<CubeStackStart> 
     docker(["run", "-d", "--name", pgContainer, "--network", network,
       "-e", `POSTGRES_PASSWORD=${PG_PASSWORD}`, CUBE_POSTGRES_IMAGE]);
     await waitForPostgres(pgContainer);
+    for (const script of options.initSql ?? []) psql(pgContainer, script);
 
     docker([
       "run", "-d", "--name", cubeContainer, "--network", network,
@@ -154,6 +175,22 @@ export async function startCubeStack(modelDir: string): Promise<CubeStackStart> 
     stop();
     throw new Error(`cube stack failed to start: ${e instanceof Error ? e.message : String(e)}\n${logs}`, { cause: e });
   }
+}
+
+/** What docker prints when the thing to remove was never created, or is already gone. */
+const NO_SUCH_CONTAINER = /no such container/i;
+const NO_SUCH_NETWORK = /network \S+ not found|no such network/i;
+
+/**
+ * Cleanup never throws, but it never hides a failure either: a removal that exits non-zero for
+ * any reason other than "it is not there" is printed to stderr, naming what may be left behind.
+ */
+function removeQuietly(args: string[], what: string, absent: RegExp): void {
+  const r = spawnSync("docker", args, { encoding: "utf8", timeout: 120_000 });
+  if (r.status === 0) return;
+  const why = `${r.stderr ?? ""}${r.stdout ?? ""}`.trim() || r.error?.message || `exit ${String(r.status)}`;
+  if (absent.test(why)) return;
+  process.stderr.write(`warning: cube stack cleanup could not remove ${what}; remove it by hand (docker ${args.join(" ")}): ${why}\n`);
 }
 
 /** Pull `image` unless it is already present, with the pull's own budget. */
