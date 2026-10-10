@@ -35,6 +35,10 @@ public static class ReportAccessors
     /// <summary>The <c>@from</c> entity name of a report.</summary>
     public static string? ReportFrom(MetaData obj) => obj.Attr(OBJECT_REPORT_ATTR_FROM) as string;
 
+    /// <summary><c>@spine</c>: the to-one path to the entity whose rows supply the report's rows; null when absent or empty.</summary>
+    public static string? ReportSpine(MetaData obj) =>
+        obj.Attr(OBJECT_REPORT_ATTR_SPINE) is string s && s != "" ? s : null;
+
     /// <summary>The <c>@dimensions</c> items, each <c>name</c> or <c>name:grain</c> (split at the first <c>:</c>).</summary>
     public static IReadOnlyList<ReportDimensionItem> ReportDimensionItems(MetaData obj) =>
         ReportingValues.StringList(obj.Attr(OBJECT_REPORT_ATTR_DIMENSIONS))

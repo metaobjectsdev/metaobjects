@@ -79,6 +79,9 @@ public static class ObjectConstants
     /// <summary>Optional row scope over @from's fields (an attr.filter).</summary>
     public const string OBJECT_REPORT_ATTR_FILTER = "filter";
 
+    /// <summary>Optional to-one path from @from to the entity whose rows supply the report's rows (R8).</summary>
+    public const string OBJECT_REPORT_ATTR_SPINE = "spine";
+
     public static readonly string[] OBJECT_SUBTYPES =
     [
         BaseTypes.SUBTYPE_BASE,

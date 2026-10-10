@@ -79,6 +79,12 @@ public final class ReportingConstants {
     /** {@code measure.ratio} operand names. */
     public static final String ATTR_NUMERATOR = "numerator";
     public static final String ATTR_DENOMINATOR = "denominator";
+    /**
+     * The integer a {@code measure.aggregate} / {@code measure.ratio} reads when it would
+     * otherwise be null (an attr.int). Same name as a field's {@code @default}, a different
+     * registration: a field's is an untyped string re-read by the field's subtype.
+     */
+    public static final String ATTR_DEFAULT = "default";
 
     // ------------------------------------------------------------------
     // Closed sets — mirrored by allowedValues in spec/metamodel/reporting.json.

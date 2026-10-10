@@ -31,7 +31,7 @@ Core metaobjects metamodel types and subtypes.
 - `identity.secondary`: `@fields`
 - `object.entity`: `@discriminator`, `@discriminatorValue`
 - `object.projection`: `@filter`
-- `object.report`: `@dimensions`, `@filter`, `@from`, `@measures`, `@segment`
+- `object.report`: `@dimensions`, `@filter`, `@from`, `@measures`, `@segment`, `@spine`
 - `origin.aggregate`: `@agg`, `@distinct`, `@filter`, `@of`, `@orderBy`, `@via`
 - `origin.computed`: `@expr`
 - `origin.first`: `@filter`, `@of`, `@orderBy`, `@via`

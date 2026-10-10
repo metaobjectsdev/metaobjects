@@ -48,6 +48,7 @@ export { MetaMeasure } from "./core/reporting/meta-measure.js";
 export { MetaSegment } from "./core/reporting/meta-segment.js";
 export {
   reportFrom,
+  reportSpine,
   reportDimensionItems,
   reportMeasureNames,
   reportMeasureItemName,
@@ -56,7 +57,10 @@ export {
   type ReportDimensionItem,
 } from "./core/reporting/report-accessors.js";
 export {
+  measureDerivedSubType,
   reportShape,
+  reportSpineEntity,
+  reportSpineHops,
   reportingMemberOwner,
   reportingViaHops,
   resolveReportingFieldRef,
@@ -71,6 +75,8 @@ export {
   describeFilter,
   describeMeasure,
   describeReportField,
+  describeReportRowScope,
+  describeReportRows,
   describeRowScope,
   describeSegment,
   reportFieldTypeName,

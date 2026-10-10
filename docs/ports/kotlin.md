@@ -406,7 +406,10 @@ object ProgramMinutesTable : Table("v_program_minutes") {
 - A report has no identity, so the object has no `primaryKey`. List it and count it; there is
   no by-id read and no write.
 - A column is nullable exactly when the derived field can be null: a `sum`, `avg`, `min`, `max`
-  or ratio, and a dimension reached through `@via`.
+  or ratio, and a dimension reached through `@via`. Two exceptions: a measure that declares
+  `@default` is never null, and in a `@spine` report neither is a dimension over a `@required`
+  or primary-key column of the spine entity. Each gets a column with no `.nullable()` and a
+  property with no `?` and no `= null`.
 - A derived decimal with no declared precision (an `avg`, a ratio, a `sum` of a decimal) is
   read as `decimal(name, 38, 18)`. Exposed rounds a decimal to the column's scale when it reads
   it, so the value is exact to 18 places. The object maps a view, so those numbers never reach

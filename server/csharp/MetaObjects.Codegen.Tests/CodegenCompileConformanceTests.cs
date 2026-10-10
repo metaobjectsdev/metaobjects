@@ -146,14 +146,15 @@ public class CodegenCompileConformanceTests
         var files = generators.SelectMany(g => g.Generate(ctx)).ToList();
         Assert.True(files.Count > 0, $"selection '{selection}' generated no files at all");
 
-        // FR-044 — the corpus's six view-backed reports each generate a keyless row class and
+        // FR-044 — the corpus's nine view-backed reports each generate a keyless row class and
         // a filter allowlist (their routes file is in the excluded framework tier), and no
         // names artifact. Named, because a compile gate passes trivially over a file that
-        // was never emitted.
+        // was never emitted. The last three carry @spine / a measure @default.
         foreach (var report in new[]
                  {
                      "ProgramMinutes", "FitnessTotals", "ProgramsByMonth", "ProgramsByWeek",
-                     "RecentPrograms", "AssetActivity",
+                     "RecentPrograms", "AssetActivity", "ProgramRoster", "ProgramLongWeeks",
+                     "FitnessTotalsFilled",
                  })
         {
             Assert.True(files.Any(f => f.Path == report + ".g.cs"), $"no row class was generated for report {report}");

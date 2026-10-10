@@ -1,7 +1,7 @@
 """FR-044 — cross-port API contract conformance for a VIEW-BACKED ``object.report``.
 
 Drives ``fixtures/api-contract-conformance/report/`` against the GENERATED routers for the
-three served reports (the deployed artifact), with a read-only in-memory repo behind each
+four served reports (the deployed artifact), with a read-only in-memory repo behind each
 generated consumer seam, seeded from ``seed.json``'s ``reports`` half.
 
 Generated lane only, by design — see the corpus README. The thing under test is whether
@@ -60,7 +60,7 @@ def _load_scenarios() -> list[tuple[str, dict[str, Any]]]:
 
 
 def _load_seed_reports() -> dict[str, list[dict[str, Any]]]:
-    """The seam lane's half of the seed: what the three views return for the base rows."""
+    """The seam lane's half of the seed: what the four views return for the base rows."""
     parsed = json.loads((_CORPUS / "seed.json").read_text())
     reports = parsed.get("reports")
     if not isinstance(reports, dict):
@@ -79,13 +79,15 @@ def test_exactly_the_served_reports_are_generated() -> None:
     """The sourceless report generates nothing; each served one generates its row model,
     allowlist and router (and the names module is not a route concern, so it is not asked
     for here: only the three generators the lane runs)."""
+    assert len(SERVED_REPORTS) == 4
     for report, stem in SERVED_REPORTS.items():
         assert f"{report}.py" in _EMITTED
         assert f"{stem}_filter_allowlist.py" in _EMITTED
         assert f"{stem}_router.py" in _EMITTED
     assert not any(UNSERVED_REPORT in f or "invoice_days" in f for f in _EMITTED), _EMITTED
-    # The base entity was not asked for, so no writable router sits beside the reports.
-    assert "invoice_router.py" not in _EMITTED
+    # The base entities were not asked for, so no writable router sits beside the reports.
+    for base in ("invoice", "product", "sale"):
+        assert f"{base}_router.py" not in _EMITTED
 
 
 def test_the_unserved_report_mounts_no_route() -> None:

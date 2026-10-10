@@ -27,6 +27,7 @@ import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.LongField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.TimestampField;
+import com.metaobjects.identity.PrimaryIdentity;
 import com.metaobjects.loader.ValidationPhase;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.reporting.ReportAccessors.ReportDimensionItem;
@@ -42,7 +43,9 @@ import java.util.Set;
  * A report's derived fields (FR-044, contract Table B): the read shape of an
  * {@code object.report}, which declares no fields of its own. One field per
  * {@code @dimensions} item in listed order, then one per {@code @measures} item in
- * listed order.
+ * listed order. {@code required} follows Table C of
+ * {@code docs/superpowers/plans/2026-10-09-fr-044-zero-rows-and-measure-defaults.md}, which
+ * amends Table B for a report with {@code @spine} and a measure with {@code @default}.
  *
  * <p>The single definition in the JVM ports — the Kotlin generators consume this class
  * rather than restating the table. Rule-for-rule the TypeScript {@code report-shape.ts};
@@ -111,6 +114,9 @@ public final class ReportShape {
 
     /** The member separator of an {@code Entity.field} reference. */
     private static final String SEP = ".";
+
+    /** The package separator of a qualified entity name. */
+    private static final String PKG_SEP = MetaData.PKG_SEPARATOR;
 
     private static final Set<String> SUM_LONG = Set.of(IntegerField.SUBTYPE_INT, LongField.SUBTYPE_LONG);
     private static final Set<String> FLOATING = Set.of(DoubleField.SUBTYPE_DOUBLE, FloatField.SUBTYPE_FLOAT);
@@ -201,7 +207,7 @@ public final class ReportShape {
     }
 
     /**
-     * Table B.
+     * Table B, with Table C's {@code required}.
      *
      * @param report an {@code object.report}
      * @param root   the model its references resolve in
@@ -214,9 +220,10 @@ public final class ReportShape {
         MetaObject from = ValidationPhase.resolveRootObject(root, fromName, packageOf(report));
         if (from == null) throw unresolved(report, "@from '" + fromName + "'");
 
+        List<String> spine = reportSpineHops(report, from, root);
         List<Field> fields = new ArrayList<>();
         for (ReportDimensionItem item : ReportAccessors.reportDimensionItems(report)) {
-            fields.add(dimensionField(item, from, root, report));
+            fields.add(dimensionField(item, from, root, report, spine));
         }
         for (String item : ReportAccessors.reportMeasureNames(report)) {
             fields.add(measureField(item, from, root, report));
@@ -279,6 +286,75 @@ public final class ReportShape {
         return ValidationPhase.resolveRootObject(root, ref.substring(0, dot), packageOf(declaring));
     }
 
+    /**
+     * The hop names of a dimension's {@code @via} ({@code Owner.hop[.hop...]}), read as the
+     * loader reads it (reporting validation rule D2): {@code Owner} resolves in the package of
+     * {@code declaring} ({@link #memberOwner}) and must be {@code from} or an entity
+     * {@code from} extends. The walk itself then starts AT {@code from}, whichever of the two
+     * {@code Owner} named. {@code null} when the reference has no owner, no hop, or an owner
+     * that is not {@code from} or an ancestor of it.
+     */
+    public static List<String> reportingViaHops(String via, MetaData declaring, MetaObject from, MetaRoot root) {
+        // The owner ends at the first `.` after the last `::` (a package qualifier has no `.`).
+        int lastSep = via.lastIndexOf(PKG_SEP);
+        int segStart = lastSep == -1 ? 0 : lastSep + PKG_SEP.length();
+        int dot = via.indexOf(SEP, segStart);
+        if (dot <= segStart) return null;
+        List<String> hops = List.of(via.substring(dot + SEP.length()).split(java.util.regex.Pattern.quote(SEP), -1));
+        for (String h : hops) {
+            if (h.isEmpty()) return null;
+        }
+        MetaObject owner = ValidationPhase.resolveRootObject(root, via.substring(0, dot), packageOf(declaring));
+        if (owner == null || !isSelfOrAncestor(owner, from)) return null;
+        return hops;
+    }
+
+    /**
+     * The hop names of a report's {@code @spine} ({@code Owner.hop[.hop...]}), read as
+     * {@link #reportingViaHops} reads a {@code @via}, the owner resolving in the REPORT's
+     * package (loader rule R8). {@code null} when the report declares no {@code @spine}.
+     *
+     * @throws MetaDataException naming the report, when a declared {@code @spine} does not
+     *                           resolve (a report that passed the loader's reporting validation
+     *                           always resolves): reading it as "no spine" would claim a column
+     *                           non-null that a spine row with no facts leaves null
+     */
+    public static List<String> reportSpineHops(MetaObject report, MetaObject from, MetaRoot root) {
+        String spine = ReportAccessors.reportSpine(report);
+        if (spine == null) return null;
+        List<String> hops = reportingViaHops(spine, report, from, root);
+        if (hops == null) throw unresolved(report, "@spine '" + spine + "'");
+        return hops;
+    }
+
+    /** True when {@code field} is one of the {@code @fields} of {@code entity}'s {@code identity.primary}. */
+    private static boolean isPrimaryKeyField(MetaObject entity, MetaField<?> field) {
+        // ADR-0039: resolving — an identity.primary (and its @fields) inherited from an
+        // abstract base counts (getPrimaryIdentity and getFields both read through extends).
+        PrimaryIdentity pk = entity.getPrimaryIdentity();
+        return pk != null && pk.getFields().contains(field.getName());
+    }
+
+    /**
+     * Table C ({@code required} of a dimension). Without {@code @spine}: only a dimension with
+     * no {@code @via} over an {@code @of} field whose effective {@code @required} is true. With
+     * {@code @spine}: only a dimension whose {@code @via} hops equal the spine's (a column of
+     * the spine entity itself, whose rows are the report's rows) over an {@code @of} field that
+     * is {@code @required} or a primary-key column of the entity {@code @of} names. A dimension
+     * beyond the spine is reached by a LEFT OUTER join.
+     */
+    private static boolean dimensionRequired(MetaDimension dim, MetaObject named, MetaField<?> of, MetaObject from,
+                                             MetaRoot root, List<String> spine, MetaObject report) {
+        String via = dim.getVia();
+        // Attr only: a validator.required child does not make the column non-null.
+        boolean ofRequired = ReportingAttrs.isTrue(of, MetaField.ATTR_REQUIRED);
+        if (spine == null) return via == null && ofRequired;
+        if (via == null) return false; // a column of @from: null in a spine row with no facts
+        List<String> hops = reportingViaHops(via, memberOwner(dim, from), from, root);
+        if (hops == null) throw unresolved(report, "dimension '" + dim.getShortName() + "' @via '" + via + "'");
+        return hops.equals(spine) && (ofRequired || isPrimaryKeyField(named, of));
+    }
+
     /** True when {@code candidate} is {@code entity} or an entity it extends (the super chain). */
     private static boolean isSelfOrAncestor(MetaData candidate, MetaData entity) {
         Set<MetaData> visited = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -289,17 +365,21 @@ public final class ReportShape {
         return false;
     }
 
-    private static Field dimensionField(ReportDimensionItem item, MetaObject from, MetaRoot root, MetaObject report) {
+    private static Field dimensionField(ReportDimensionItem item, MetaObject from, MetaRoot root, MetaObject report,
+                                        List<String> spine) {
         MetaDimension dim = declaredMember(from, MetaDimension.class, item.name());
         if (dim == null) throw unresolved(report, "dimension '" + item.name() + "' on '" + from.getShortName() + "'");
         boolean vialess = dim.getVia() == null;
+        MetaData declaring = memberOwner(dim, from);
         MetaField<?> of = dim.getOf() == null ? null
-                : resolveFieldRef(dim.getOf(), memberOwner(dim, from), root, vialess ? from : null);
+                : resolveFieldRef(dim.getOf(), declaring, root, vialess ? from : null);
         if (of == null) throw unresolved(report, "dimension '" + item.name() + "' @of");
+        // The entity @of names (with a host, it may be an ancestor of the entity the field is
+        // read from); Table C reads its primary identity. Non-null: resolveFieldRef resolved it.
+        MetaObject named = resolveFieldRefEntity(dim.getOf(), declaring, root);
 
         String name = ReportAccessors.reportDerivedFieldName(item);
-        // Attr only: a validator.required child does not make the column non-null.
-        boolean required = vialess && ReportingAttrs.isTrue(of, MetaField.ATTR_REQUIRED);
+        boolean required = dimensionRequired(dim, named, of, from, root, spine, report);
         if (dim.isTime()) {
             // Loader rule R2 guarantees a grain from the closed set; a tree built in code does not.
             String grain = item.grain();
@@ -332,13 +412,15 @@ public final class ReportShape {
         }
         MetaMeasure m = declaredMember(from, MetaMeasure.class, name);
         if (m == null) throw unresolved(report, "measure '" + item + "' on '" + from.getShortName() + "'");
-        if (m.isRatio()) {
-            return new Field(name, Role.MEASURE, DecimalField.SUBTYPE_DECIMAL, false, null, null, null, m);
-        }
         String agg = m.getAgg();
+        // Table C: a count is never null (with or without @distinct); any other measure is
+        // not null when it has a @default.
+        boolean required = (!m.isRatio() && ReportingConstants.AGG_COUNT.equals(agg)) || m.getDefaultValue() != null;
+        if (m.isRatio()) {
+            return new Field(name, Role.MEASURE, DecimalField.SUBTYPE_DECIMAL, required, null, null, null, m);
+        }
         if (ReportingConstants.AGG_COUNT.equals(agg)) {
-            // A count is never null, with or without @distinct.
-            return new Field(name, Role.MEASURE, LongField.SUBTYPE_LONG, true, null, null, null, m);
+            return new Field(name, Role.MEASURE, LongField.SUBTYPE_LONG, required, null, null, null, m);
         }
         List<String> columns = m.getOfColumns();
         MetaField<?> of = columns.isEmpty() ? null
@@ -347,19 +429,19 @@ public final class ReportShape {
         String src = of.getSubType();
         if (ReportingConstants.AGG_SUM.equals(agg)) {
             if (CurrencyField.SUBTYPE_CURRENCY.equals(src)) {
-                return new Field(name, Role.MEASURE, CurrencyField.SUBTYPE_CURRENCY, false, of, null, null, m);
+                return new Field(name, Role.MEASURE, CurrencyField.SUBTYPE_CURRENCY, required, of, null, null, m);
             }
             String subType = SUM_LONG.contains(src) ? LongField.SUBTYPE_LONG
                     : FLOATING.contains(src) ? DoubleField.SUBTYPE_DOUBLE
                     : DecimalField.SUBTYPE_DECIMAL;
-            return new Field(name, Role.MEASURE, subType, false, null, null, null, m);
+            return new Field(name, Role.MEASURE, subType, required, null, null, null, m);
         }
         if (ReportingConstants.AGG_AVG.equals(agg)) {
             String subType = FLOATING.contains(src) ? DoubleField.SUBTYPE_DOUBLE : DecimalField.SUBTYPE_DECIMAL;
-            return new Field(name, Role.MEASURE, subType, false, null, null, null, m);
+            return new Field(name, Role.MEASURE, subType, required, null, null, null, m);
         }
         // min / max keep the source field's type.
-        return new Field(name, Role.MEASURE, src, false, of, null, null, m);
+        return new Field(name, Role.MEASURE, src, required, of, null, null, m);
     }
 
     private static <T extends MetaData> T declaredMember(MetaObject from, Class<T> type, String name) {

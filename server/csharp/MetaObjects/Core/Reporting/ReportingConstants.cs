@@ -79,6 +79,9 @@ public static class ReportingConstants
 
     public const string REPORTING_ATTR_DENOMINATOR = "denominator";
 
+    /// <summary>Integer a measure reads when it would otherwise be null (<c>measure.aggregate</c> / <c>measure.ratio</c>).</summary>
+    public const string REPORTING_ATTR_DEFAULT = "default";
+
     // -----------------------------------------------------------------------
     // Closed sets — mirrored by `allowedValues` in spec/metamodel/reporting.json.
     // Order is part of the contract (it is the order the registry manifest records).

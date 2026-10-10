@@ -3,7 +3,8 @@
 // Drives the fixtures/api-contract-conformance/report/ scenarios over HTTP against the
 // GENERATED report routes (the deployed artifact): the emitted <Report>Routes booted
 // unmodified on Kestrel against a Postgres testcontainer in which the committed
-// TypeScript-produced schema has created the `invoices` table and the three views.
+// TypeScript-produced schema has created the base tables (`invoices`, `products`, `sales`)
+// and the four views.
 //
 // Generated lane ONLY, on purpose and on every port (see the subcorpus README). What is
 // under test is whether the port's GENERATOR emits a read route for a view-backed report

@@ -27,6 +27,17 @@ public class ReportingAccessorsTests
 
     private static MetaData Root(LoadResult r, string name) => r.Root.Children().Single(c => c.Name == name);
 
+    private static LoadResult LoadFixture(string fixture)
+    {
+        string path = Path.Combine(CorpusRoot.Path, fixture, "input", "meta.shop.json");
+        var result = new MetaDataLoader().Load([new InMemoryStringSource(File.ReadAllText(path), id: "meta.shop.json")]);
+        Assert.Empty(result.Errors);
+        return result;
+    }
+
+    private static MetaMeasure MeasureOf(LoadResult r, string entity, string name) =>
+        Assert.IsType<MetaMeasure>(Root(r, entity).ChildByTypeAndName(TYPE_MEASURE, name));
+
     [Fact]
     public void ReportDimensionItems_parses_name_and_name_colon_grain()
     {
@@ -113,6 +124,55 @@ public class ReportingAccessorsTests
         Assert.NotNull(filter);
         var clause = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(filter!["status"]);
         Assert.Equal("active", clause[FILTER_OP_EQ]);
+    }
+
+    [Fact]
+    public void MeasureDefaultValue_is_the_declared_integer_zero_and_negatives_included_else_null()
+    {
+        // fixtures/conformance/reporting-spine-and-default: revenue @default 0, smallest
+        // @default -1, the ratio revenuePerPurchase @default 0, the count purchases none.
+        var r = LoadFixture("reporting-spine-and-default");
+        Assert.Equal(0L, MeasureOf(r, "Purchase", "revenue").DefaultValue());
+        Assert.Equal(-1L, MeasureOf(r, "Purchase", "smallest").DefaultValue());
+        var ratio = MeasureOf(r, "Purchase", "revenuePerPurchase");
+        Assert.True(ratio.IsRatio());
+        Assert.Equal(0L, ratio.DefaultValue());
+        Assert.Null(MeasureOf(r, "Purchase", "purchases").DefaultValue());
+        Assert.Null(MeasureOf(r, "Purchase", "lastPurchaseAt").DefaultValue());
+    }
+
+    [Fact]
+    public void MeasureDefaultValue_of_a_measure_inherited_from_an_abstract_base_is_its_default()
+    {
+        // ADR-0039: resolving — WorkoutEvent reaches BaseEvent's totalMinutes through extends.
+        var r = LoadFixture("reporting-spine-inherited");
+        var inherited = Root(r, "WorkoutEvent").Children()
+            .OfType<MetaMeasure>().Single(m => m.Name == "totalMinutes");
+        Assert.Equal(0L, inherited.DefaultValue());
+    }
+
+    [Theory]
+    // A tree built in code, past the loader (whose attr.int check refuses every double).
+    [InlineData(0.0, 0L)]
+    [InlineData(-3.0, -3L)]
+    [InlineData(0.5, null)]
+    [InlineData(-1.5, null)]
+    public void MeasureDefaultValue_reads_an_integral_number_as_its_integer_and_a_fraction_as_null(double value, long? expected)
+    {
+        var measure = new MetaMeasure(new TypeId(TYPE_MEASURE, MEASURE_SUBTYPE_AGGREGATE), "m");
+        measure.SetAttr(REPORTING_ATTR_DEFAULT, value);
+        Assert.Equal(expected, measure.DefaultValue());
+        measure.SetAttr(REPORTING_ATTR_DEFAULT, "zero");
+        Assert.Null(measure.DefaultValue());
+    }
+
+    [Fact]
+    public void ReportSpine_is_the_declared_path_and_null_when_the_report_declares_none()
+    {
+        var r = LoadFixture("reporting-spine-and-default");
+        Assert.Equal("Purchase.program", ReportAccessors.ReportSpine(Root(r, "ProgramSales")));
+        Assert.Equal("Purchase.program.catalog", ReportAccessors.ReportSpine(Root(r, "CatalogSales")));
+        Assert.Null(ReportAccessors.ReportSpine(Root(r, "SalesByDay")));
     }
 
     [Fact]

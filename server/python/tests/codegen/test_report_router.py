@@ -1,8 +1,9 @@
 """FR-044 Plan 3 — the Python port generates a keyless read-only surface for a served
 report (Table A/B/C/E) and no item routes for ANY keyless object (open question 4).
 
-The model is the shared ``fixtures/api-contract-conformance/report`` corpus: three
-view-backed reports and one sourceless one (``InvoiceDays``), over a writable ``Invoice``.
+The model is the shared ``fixtures/api-contract-conformance/report`` corpus: four
+view-backed reports and one sourceless one (``InvoiceDays``), over a writable ``Invoice``
+and, for the ``@spine`` report ``ProductRevenue``, ``Product`` and its child ``Sale``.
 """
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ from pathlib import Path
 from metaobjects import MetaDataLoader
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.generator_registry import GeneratorBuildContext, list_generators
+from metaobjects.codegen.generators.entity_model import render_entity_model
 from metaobjects.codegen.generators.filter_allowlist_generator import render_filter_allowlist
 from metaobjects.codegen.generators.router_generator import render_router
 from metaobjects.codegen.instance_artifacts import has_item_route, is_served_report
@@ -42,6 +44,7 @@ def test_served_report_predicate_follows_table_a() -> None:
     root = _load()
     assert is_served_report(_obj(root, "InvoiceStatusTotals"))
     assert is_served_report(_obj(root, "InvoiceTotals"))
+    assert is_served_report(_obj(root, "ProductRevenue"))
     assert not is_served_report(_obj(root, "InvoiceDays"))  # sourceless
     assert not is_served_report(_obj(root, "Invoice"))  # an entity
     # the read model keeps the report subtype and a copy of the source: also served
@@ -181,7 +184,7 @@ def test_report_allowlist_names_the_report_s_own_derived_fields() -> None:
     assert '"reference"' not in src
 
 
-def test_run_gen_serves_three_reports_and_nothing_for_the_sourceless_one(tmp_path: Path) -> None:
+def test_run_gen_serves_four_reports_and_nothing_for_the_sourceless_one(tmp_path: Path) -> None:
     root = _load()
     templates = tmp_path / "t"
     templates.mkdir()
@@ -193,9 +196,41 @@ def test_run_gen_serves_three_reports_and_nothing_for_the_sourceless_one(tmp_pat
     out = tmp_path / "out"
     run_gen(GenConfig(out_dir=str(out)), root, generators=gens)
     files = {p.name for p in out.rglob("*.py")}
-    for snake in ("invoice_status_totals", "invoices_by_month", "invoice_totals"):
+    for snake in ("invoice_status_totals", "invoices_by_month", "invoice_totals", "product_revenue"):
         assert f"{snake}_router.py" in files
         assert f"{snake}_filter_allowlist.py" in files
         assert f"{snake}_names.py" in files
     assert not any(f.startswith("invoice_days") for f in files)
     assert not any("invoice_days" in f for f in files)
+
+
+def _row_fields(report: str) -> list[str]:
+    """The field lines of a served report's generated Pydantic row model."""
+    root = _load()
+    src = render_entity_model(report_read_model(_obj(root, report), root))
+    body = src.split(f"class {report}(BaseModel):\n", 1)[1]
+    return [ln.strip() for ln in body.splitlines() if ln.startswith("    ") and ln.strip()]
+
+
+def test_a_count_is_not_optional_and_a_plain_sum_is() -> None:
+    """The spelling a required read-model field takes today: the bare type, no default."""
+    assert _row_fields("InvoiceStatusTotals") == [
+        'status: Literal["OPEN", "PAID", "VOID"]',
+        "invoices: int",
+        "totalCents: int | None = None",
+        "paidCents: int | None = None",
+    ]
+
+
+def test_the_spine_key_and_a_defaulted_measure_are_not_optional() -> None:
+    """Table F: under ``@spine`` the spine entity's key (``Product.id``, no ``@required``)
+    and a ``@required`` spine column are the bare type; a sum with ``@default: 0`` is the
+    bare type; the same sum without ``@default`` keeps ``| None``. No generator changed:
+    the read model's ``@required`` (Table C) is what the row model reads."""
+    assert _row_fields("ProductRevenue") == [
+        "productId: int",
+        "productName: str",
+        "sales: int",
+        "revenueCents: int | None = None",
+        "revenueOrZero: int",
+    ]

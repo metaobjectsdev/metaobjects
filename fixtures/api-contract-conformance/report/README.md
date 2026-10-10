@@ -2,7 +2,8 @@
 
 Cross-port REST contract for an **`object.report` that declares a read-only view**
 (`source.rdb @kind:view @view:v_invoice_status_totals`), over the writable `Invoice`
-entity it reads from.
+entity it reads from, and for a **`@spine` report** (`ProductRevenue`) whose rows are the
+`Product`s, including one with no `Sale`.
 
 ## What this gates
 
@@ -32,6 +33,15 @@ object uses (`InvoicesByMonth` is `/api/invoices_by_months`).
   `date`, spelled `YYYY-MM-DD` (`issuedOnMonth`).
 - **A sum scoped by a segment is nullable**: the key is present and its value is
   `null` for a group with no row in the segment.
+- **A `@spine` report has a row for every spine row, facts or not.** `ProductRevenue`
+  declares `@spine: "Sale.fkProduct"`, so `Cinder`, a product with no sale, is listed and
+  counted by `withCount`. On that row a count is `0`, a sum without `@default`
+  (`revenueCents`) is `null` with the key present, and the sum with `@default: 0`
+  (`revenueOrZero`) is `0`. `?filter[sales][gt]=0` removes the empty row at request time.
+- **A defaulted measure filters and sorts as its default.** `?filter[revenueOrZero][eq]=0`
+  matches the empty row, and `?sort=revenueOrZero:asc` puts it first on every engine. The
+  corpus never sorts a measure without a `@default` across a null row: where a null sorts is
+  the engine's choice (Postgres last ascending, SQLite and MySQL first).
 - **No grid or form is generated for a report in any port.** The read route and its row type
   are the surface in every port; TypeScript, the one port with a client tier, also generates
   the list hook. The corpus gates the route, not the hook.
@@ -52,7 +62,8 @@ object uses (`InvoicesByMonth` is `/api/invoices_by_months`).
 
 ## The model
 
-One fact entity and four reports, three served and one sourceless on purpose.
+Three entities (`Invoice`; `Product` and its child `Sale`) and five reports, four served
+and one sourceless on purpose.
 
 | Report | Route | View | Derived fields |
 |---|---|---|---|
@@ -60,6 +71,11 @@ One fact entity and four reports, three served and one sourceless on purpose.
 | `InvoicesByMonth` | `/api/invoices_by_months` | `v_invoices_by_month` | `issuedOnMonth`, `invoices`, `totalCents` |
 | `InvoiceTotals` | `/api/invoice_totals` | `v_invoice_totals` | `invoices`, `totalCents`, `paidShare` |
 | `InvoiceDays` | none | none | `issuedOnDay`, `invoices` |
+| `ProductRevenue` | `/api/product_revenues` | `v_product_revenue` | `productId`, `productName`, `sales`, `revenueCents`, `revenueOrZero` |
+
+`ProductRevenue` is `@from: Sale` with `@spine: "Sale.fkProduct"`: its view reads FROM
+`products` and LEFT JOINs `sales`, so its spine key `productId` and `productName` are never
+null, and neither is `revenueOrZero` (`@default: 0`, a `COALESCE`).
 
 `InvoiceDays` declares no `source.rdb`. **A report is served only when it declares a
 view**, so a sourceless one must stay inert in every generator and mount nothing. It
@@ -71,9 +87,9 @@ sits in the model so that a port which serves every report it finds fails this c
 ```
 report/
 ├── README.md               # this file
-├── meta.json               # Invoice + four object.report nodes (three served, one sourceless)
-├── seed.json               # `invoices` (the base table) and `reports` (what the views return)
-├── schema.postgres.sql     # TypeScript-produced: the table and the three views
+├── meta.json               # Invoice, Product, Sale + five object.report nodes (four served, one sourceless)
+├── seed.json               # the base tables (`invoices`, `products`, `sales`) and `reports` (what the views return)
+├── schema.postgres.sql     # TypeScript-produced: the three tables and the four views
 └── scenarios/
     ├── list.yaml                    # GET list, dimension + segment-scoped sum
     ├── list-time-grain.yaml         # a time dimension at a grain
@@ -87,18 +103,24 @@ report/
     ├── sort-invalid.yaml            # 400 envelope, naming the field
     ├── pagination.yaml              # limit / offset / withCount count groups
     ├── write-verbs-405.yaml         # POST on the collection -> 405 + envelope
-    └── no-item-route.yaml           # GET/PATCH/PUT/DELETE on /{id} -> 404, no body assertion
+    ├── no-item-route.yaml           # GET/PATCH/PUT/DELETE on /{id} -> 404, no body assertion
+    ├── list-spine.yaml              # @spine: the product with no sale has a row; withCount counts it
+    ├── filter-on-defaulted-measure.yaml  # eq=0 on a defaulted sum, isNull on the plain sum, gt=0 on the count
+    └── sort-on-defaulted-measure.yaml    # a defaulted sum sorts its empty row as 0, both directions
 ```
 
 ### Why `seed.json` has two halves
 
-`invoices` is the base table. The full-stack lanes (TypeScript, C#) insert it and let
-the real view derive the report rows from it. `reports` is what the three views return
-for those invoices, and it is what the **seam lanes** (Java, Kotlin, Python) serve:
-their in-memory repository or H2 table stands in for the view behind the consumer seam.
-A TypeScript test holds the two halves together, so the seam lanes cannot drift from
-what the SQL returns. `paidShare` is a string in the seed so a seam lane can build its
-own decimal from it without a float in between.
+Every top-level key but `reports` is a **base table**, named by its table name and listed
+**parents first** (`products` before `sales`, which references it): a lane inserts the
+keys in file order and every foreign key holds. The full-stack lanes (TypeScript, C#)
+insert them and let the real views derive the report rows. `reports` is what the four
+views return for those rows, and it is what the **seam lanes** (Java, Kotlin, Python)
+serve: their in-memory repository or H2 table stands in for the view behind the consumer
+seam. A TypeScript test holds the two halves together, so the seam lanes cannot drift
+from what the SQL returns, and another holds the base tables to the model and to that
+order. `paidShare` is a string in the seed so a seam lane can build its own decimal from
+it without a float in between.
 
 ### Why the view SQL is a committed artifact
 
@@ -120,11 +142,11 @@ hand-rolled reference server would answer every scenario by construction.
 
 | Port | Generated lane | Note |
 |---|---|---|
-| TypeScript | wired | `server/typescript/packages/integration-tests/test/api-contract-report.test.ts` (13 scenarios + a seed-vs-view check). Full stack: generated Fastify routes over the real views on Testcontainers Postgres |
+| TypeScript | wired | `server/typescript/packages/integration-tests/test/api-contract-report.test.ts` (16 scenarios + a seed-vs-view check). Full stack: generated Fastify routes over the real views on Testcontainers Postgres. `api-contract-report-sqlite.test.ts` runs the same 16 on SQLite |
 | C# | wired | `server/csharp/MetaObjects.IntegrationTests/Api/ApiContractReportConformanceTest.cs`. Full stack: generated routes and EF Core over `schema.postgres.sql` on Testcontainers Postgres |
-| Java | wired | `server/java/integration-tests/src/test/java/com/metaobjects/integration/api/ReportGeneratedApiContractConformanceTest.java` (13 scenarios + a scenario-count check). Generated controllers behind an in-memory repository seeded from `reports` |
-| Kotlin | wired | `server/java/integration-tests-kotlin/src/test/kotlin/com/metaobjects/integration/kotlin/api/report/ReportGeneratedApiContractConformanceTest.kt` (13 scenarios, the count check, and a check that the sourceless report generated nothing). Generated controllers over the generated Exposed table objects, seeded from `reports` |
-| Python | wired | `server/python/tests/integration/test_api_contract_report.py` (13 scenarios, a check that exactly the served reports are generated, and `/api/invoice_days` is `404`). Generated routers behind in-memory repositories seeded from `reports` |
+| Java | wired | `server/java/integration-tests/src/test/java/com/metaobjects/integration/api/ReportGeneratedApiContractConformanceTest.java` (16 scenarios + a scenario-count check). Generated controllers behind an in-memory repository seeded from `reports` |
+| Kotlin | wired | `server/java/integration-tests-kotlin/src/test/kotlin/com/metaobjects/integration/kotlin/api/report/ReportGeneratedApiContractConformanceTest.kt` (16 scenarios, the count check, and a check that the sourceless report generated nothing). Generated controllers over the generated Exposed table objects, seeded from `reports` |
+| Python | wired | `server/python/tests/integration/test_api_contract_report.py` (16 scenarios, a check that exactly the served reports are generated, and `/api/invoice_days` is `404`). Generated routers behind in-memory repositories seeded from `reports` |
 
 The scenarios use only assertion keys every runner already has (`equals`,
 `length`, `envelope`, `error` with `field`, and a status with no `body`).

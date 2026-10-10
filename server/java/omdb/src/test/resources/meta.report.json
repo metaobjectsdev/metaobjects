@@ -32,6 +32,30 @@
         { "source.rdb": { "name": "main", "@kind": "view", "@view": "RPT_V_PRIMARY" } }
       ] } },
       { "object.report": { "name": "InertSales", "@from": "Sale", "@measures": ["sales"] } },
+      { "object.entity": { "name": "Territory", "children": [
+        { "source.rdb": { "@table": "RPT_TERRITORIES" } },
+        { "field.long": { "name": "id" } },
+        { "field.string": { "name": "name", "@required": true, "@maxLength": 16 } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "assigned" } }
+      ] } },
+      { "object.entity": { "name": "Visit", "children": [
+        { "source.rdb": { "@table": "RPT_VISITS" } },
+        { "field.long": { "name": "id" } },
+        { "field.long": { "name": "territoryId" } },
+        { "field.long": { "name": "minutes", "@required": true } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "assigned" } },
+        { "identity.reference": { "name": "fkTerritory", "@references": "Territory", "@fields": ["territoryId"] } },
+        { "dimension.attribute": { "name": "territoryKey", "@of": "Territory.id", "@via": "Visit.fkTerritory" } },
+        { "dimension.attribute": { "name": "territoryName", "@of": "Territory.name", "@via": "Visit.fkTerritory" } },
+        { "measure.aggregate": { "name": "visits", "@agg": "count", "@of": "Visit.id" } },
+        { "measure.aggregate": { "name": "totalMinutes", "@agg": "sum", "@of": "Visit.minutes" } },
+        { "measure.aggregate": { "name": "totalMinutesOrZero", "@agg": "sum", "@of": "Visit.minutes", "@default": 0 } }
+      ] } },
+      { "object.report": { "name": "VisitsByTerritory", "@from": "Visit", "@spine": "Visit.fkTerritory",
+          "@dimensions": ["territoryKey", "territoryName"],
+          "@measures": ["visits", "totalMinutes", "totalMinutesOrZero"], "children": [
+        { "source.rdb": { "@kind": "view", "@view": "RPT_V_VISITS_BY_TERRITORY" } }
+      ] } },
       { "object.projection": { "name": "SaleRegionView", "children": [
         { "source.rdb": { "@kind": "view", "@view": "RPT_V_SALE_REGIONS" } },
         { "field.long": { "name": "id", "extends": "reporttest::Sale.id" } },

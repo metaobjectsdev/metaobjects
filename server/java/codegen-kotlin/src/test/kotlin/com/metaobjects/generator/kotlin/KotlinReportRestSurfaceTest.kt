@@ -110,7 +110,8 @@ class KotlinReportRestSurfaceTest {
     @Test
     fun `a sourceless report emits nothing`() {
         val files = emit(withModel())
-        for (report in listOf("ProgramEngagement", "DailyRevenue")) {
+        // ProgramCatalogue declares @spine; a sourceless report is inert with it too.
+        for (report in listOf("ProgramEngagement", "DailyRevenue", "ProgramCatalogue")) {
             val hits = files.filter { (path, text) -> report in path || report in text }.keys
             assertTrue(hits.isEmpty(), "$report leaked into $hits")
         }
@@ -362,10 +363,11 @@ class KotlinReportRestSurfaceTest {
     }
 
     @Test
-    fun `the six canonical reports' rows, tables and allowlists compile beside their entities`() {
+    fun `the nine canonical reports' rows, tables and allowlists compile beside their entities`() {
         val files = emit(canonical(), args = mapOf("columnNaming" to "literal"))
         for (report in listOf(
             "ProgramMinutes", "FitnessTotals", "ProgramsByMonth", "ProgramsByWeek", "RecentPrograms", "AssetActivity",
+            "ProgramRoster", "ProgramLongWeeks", "FitnessTotalsFilled",
         )) {
             for (suffix in listOf("", "Table", "FilterAllowlist", "Controller")) {
                 assertTrue("fitness/$report$suffix.kt" in files, "$report$suffix missing from ${files.keys}")
@@ -390,7 +392,7 @@ class KotlinReportRestSurfaceTest {
             ),
             unit.symbols.map { it.kind to it.signature },
         )
-        assertFalse(model.units.any { it.node == "DailyRevenue" || it.node == "ProgramEngagement" })
+        assertFalse(model.units.any { it.node in setOf("DailyRevenue", "ProgramEngagement", "ProgramCatalogue") })
     }
 
     private companion object {

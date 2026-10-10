@@ -208,6 +208,35 @@ describe("reportReadModel (FR-044 Table B as a detached read model)", () => {
     expect(resolveTableName(model(root, "AssetActivity"))).toBe("v_asset_activity");
   });
 
+  test("a measure with @default yields a detached field with @required: true (Table C)", async () => {
+    const result = await new MetaDataLoader().load([
+      new InMemoryStringSource(
+        JSON.stringify({
+          "metadata.root": {
+            package: "acme",
+            children: [
+              { "object.entity": { name: "Sale", children: [
+                { "source.rdb": { "@table": "sales" } },
+                { "field.long": { name: "id" } },
+                { "field.currency": { name: "amountCents", "@currency": "EUR" } },
+                { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+                { "measure.aggregate": { name: "revenue", "@agg": "sum", "@of": "Sale.amountCents", "@default": 0 } },
+                { "measure.aggregate": { name: "revenueRaw", "@agg": "sum", "@of": "Sale.amountCents" } },
+              ] } },
+              { "object.report": { name: "Revenue", "@from": "Sale", "@measures": ["revenue", "revenueRaw"] } },
+            ],
+          },
+        }),
+      ),
+    ]);
+    expect(result.errors.map((e) => e.message)).toEqual([]);
+    const m = model(result.root, "Revenue");
+    expect(m.fields().map((f) => [f.name, f.attr(FIELD_ATTR_REQUIRED)])).toEqual([
+      ["revenue", true],
+      ["revenueRaw", false],
+    ]);
+  });
+
   test("a sourceless report yields a model with the fields and no source", async () => {
     const result = await new MetaDataLoader().load([
       new InMemoryStringSource(

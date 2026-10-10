@@ -155,6 +155,13 @@
               }
             },
             {
+              "dimension.attribute": {
+                "name": "programKey",
+                "@of": "Program.id",
+                "@via": "Purchase.program"
+              }
+            },
+            {
               "measure.aggregate": {
                 "name": "refundedPurchases",
                 "@agg": "count",
@@ -290,7 +297,8 @@
               "measure.ratio": {
                 "name": "avgDaysPerStarter",
                 "@numerator": "daysEngaged",
-                "@denominator": "starters"
+                "@denominator": "starters",
+                "@default": 0
               }
             },
             {
@@ -357,6 +365,24 @@
               }
             }
           ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "ProgramCatalogue",
+          "@from": "Purchase",
+          "@spine": "Purchase.program",
+          "@dimensions": [
+            "programKey",
+            "programTitle"
+          ],
+          "@measures": [
+            "purchases",
+            "revenue"
+          ],
+          "@filter": {
+            "refunded": false
+          }
         }
       }
     ]

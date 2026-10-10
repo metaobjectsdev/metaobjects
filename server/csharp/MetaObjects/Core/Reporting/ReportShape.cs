@@ -1,5 +1,7 @@
 // A report's derived fields (FR-044, contract Table B): one field per `@dimensions` item
-// in listed order, then one per `@measures` item in listed order.
+// in listed order, then one per `@measures` item in listed order. `required` follows
+// Table C of docs/superpowers/plans/2026-10-09-fr-044-zero-rows-and-measure-defaults.md,
+// which amends Table B for a report with `@spine` and a measure with `@default`.
 //
 // Ported rule for rule from
 // server/typescript/packages/metadata/src/core/reporting/report-shape.ts, and gated
@@ -80,7 +82,16 @@ public static class ReportShapes
     /// Null when any step fails.
     /// </summary>
     public static MetaField? ResolveReportingFieldRef(
-        string reference, MetaData declaring, MetaRoot root, MetaObject? host = null)
+        string reference, MetaData declaring, MetaRoot root, MetaObject? host = null) =>
+        ResolveReportingFieldRefNamed(reference, declaring, root, host)?.Field;
+
+    /// <summary>
+    /// <see cref="ResolveReportingFieldRef"/>, also returning <c>Named</c>: the entity the
+    /// reference's entity half names (which, with <paramref name="host"/>, may be an ancestor
+    /// of the entity the field is read from). Table C reads <c>Named</c>'s primary identity.
+    /// </summary>
+    private static (MetaObject Named, MetaField Field)? ResolveReportingFieldRefNamed(
+        string reference, MetaData declaring, MetaRoot root, MetaObject? host)
     {
         // `Entity.field`; a package qualifier uses `::`, so the member separator is the LAST dot.
         int dot = reference.LastIndexOf(CHILD_REF_SEPARATOR, StringComparison.Ordinal);
@@ -89,26 +100,98 @@ public static class ReportShapes
             is not MetaObject named) return null;
         if (host is not null && !ValidationPasses.IsSelfOrAncestor(named, host)) return null;
         // ADR-0039: resolving, so a field inherited through extends is found.
-        return (host ?? named).FindField(reference[(dot + CHILD_REF_SEPARATOR.Length)..]);
+        var field = (host ?? named).FindField(reference[(dot + CHILD_REF_SEPARATOR.Length)..]);
+        return field is null ? null : (named, field);
+    }
+
+    /// <summary>
+    /// The hop names of a dimension's <c>@via</c> (<c>Owner.hop[.hop...]</c>), read as the
+    /// loader reads it (<c>ValidateReporting</c> rule D2): <c>Owner</c> resolves in the package
+    /// of <paramref name="declaring"/> (<see cref="ReportingMemberOwner"/>) and must be
+    /// <paramref name="from"/> or an entity <paramref name="from"/> extends. The walk itself
+    /// then starts AT <paramref name="from"/>, whichever of the two <c>Owner</c> named. Null
+    /// when the reference has no owner, no hop, or an owner that is not <paramref name="from"/>
+    /// or an ancestor of it.
+    /// </summary>
+    public static string[]? ReportingViaHops(string via, MetaData declaring, MetaObject from, MetaRoot root)
+    {
+        // The owner ends at the first `.` after the last `::` (a package qualifier has no `.`).
+        int lastSep = via.LastIndexOf(PACKAGE_SEPARATOR, StringComparison.Ordinal);
+        int segStart = lastSep == -1 ? 0 : lastSep + PACKAGE_SEPARATOR.Length;
+        int dot = via.IndexOf(CHILD_REF_SEPARATOR, segStart, StringComparison.Ordinal);
+        if (dot <= segStart) return null;
+        string[] hops = via[(dot + CHILD_REF_SEPARATOR.Length)..].Split(CHILD_REF_SEPARATOR);
+        if (hops.Any(h => h == "")) return null;
+        var owner = NamingRefs.ResolveObjectRef(root, via[..dot], NamingRefs.EffectivePackage(declaring));
+        if (owner is null || !ValidationPasses.IsSelfOrAncestor(owner, from)) return null;
+        return hops;
     }
 
     private static InvalidOperationException Unresolved(string reportName, string what) =>
         new($"report '{reportName}': {what} does not resolve.");
 
+    /// <summary>
+    /// The hop names of a report's <c>@spine</c> (<c>Owner.hop[.hop...]</c>), read as
+    /// <see cref="ReportingViaHops"/> reads a <c>@via</c>, the owner resolving in the REPORT's
+    /// package (loader rule R8). Null when the report declares no <c>@spine</c>. Throws
+    /// <see cref="InvalidOperationException"/> naming the report when a declared <c>@spine</c>
+    /// does not resolve (a report that passed <c>ValidateReporting</c> always resolves):
+    /// reading it as "no spine" would claim a column non-null that a spine row with no facts
+    /// leaves null.
+    /// </summary>
+    public static string[]? ReportSpineHops(MetaObject report, MetaObject from, MetaRoot root)
+    {
+        string? spine = ReportAccessors.ReportSpine(report);
+        if (spine is null) return null;
+        return ReportingViaHops(spine, report, from, root) ?? throw Unresolved(report.Name, $"@spine '{spine}'");
+    }
+
+    /// <summary>True when <paramref name="field"/> is one of the <c>@fields</c> of <paramref name="entity"/>'s <c>identity.primary</c>.</summary>
+    private static bool IsPrimaryKeyField(MetaObject entity, MetaField field)
+    {
+        // ADR-0039: resolving — an identity.primary (and its @fields) inherited from an
+        // abstract base counts.
+        var pk = entity.PrimaryIdentity();
+        return pk is not null && (ValidationPasses.IdentityEffectiveFields(pk) ?? []).Contains(field.Name);
+    }
+
+    /// <summary>
+    /// Table C (<c>required</c> of a dimension). Without <c>@spine</c>: only a dimension with
+    /// no <c>@via</c> over an <c>@of</c> field whose effective <c>@required</c> is true. With
+    /// <c>@spine</c>: only a dimension whose <c>@via</c> hops equal the spine's (a column of
+    /// the spine entity itself, whose rows are the report's rows) over an <c>@of</c> field that
+    /// is <c>@required</c> or a primary-key column of the entity <c>@of</c> names. A dimension
+    /// beyond the spine is reached by a LEFT OUTER join.
+    /// </summary>
+    private static bool DimensionRequired(
+        MetaDimension dim, MetaObject named, MetaField of, MetaObject from, MetaRoot root,
+        string[]? spine, string reportName)
+    {
+        string? via = dim.Via();
+        // The @required ATTR only, read resolving (ADR-0039); a validator.required child does not count.
+        bool ofRequired = of.Attr(FIELD_ATTR_REQUIRED) is true;
+        if (spine is null) return via is null && ofRequired;
+        if (via is null) return false; // a column of @from: null in a spine row with no facts
+        var hops = ReportingViaHops(via, ReportingMemberOwner(dim, from), from, root)
+            ?? throw Unresolved(reportName, $"dimension '{dim.Name}' @via '{via}'");
+        bool onSpine = hops.SequenceEqual(spine, StringComparer.Ordinal);
+        return onSpine && (ofRequired || IsPrimaryKeyField(named, of));
+    }
+
     private static T? DeclaredMember<T>(MetaObject from, string type, string name) where T : MetaData =>
         // ADR-0039: resolving Children(), so a member declared on an abstract base is found.
         from.Children().OfType<T>().FirstOrDefault(c => c.Type == type && c.Name == name);
 
-    private static ReportField DimensionField(ReportDimensionItem item, MetaObject from, MetaRoot root, string reportName)
+    private static ReportField DimensionField(
+        ReportDimensionItem item, MetaObject from, MetaRoot root, string reportName, string[]? spine)
     {
         var dim = DeclaredMember<MetaDimension>(from, TYPE_DIMENSION, item.Name)
             ?? throw Unresolved(reportName, $"dimension '{item.Name}' on '{from.Name}'");
         bool vialess = dim.Via() is null;
-        var of = ResolveReportingFieldRef(dim.Of() ?? "", ReportingMemberOwner(dim, from), root, vialess ? from : null)
+        var (named, of) = ResolveReportingFieldRefNamed(dim.Of() ?? "", ReportingMemberOwner(dim, from), root, vialess ? from : null)
             ?? throw Unresolved(reportName, $"dimension '{item.Name}' @of");
         string name = ReportAccessors.ReportDerivedFieldName(item);
-        // The @required ATTR only, read resolving (ADR-0039); a validator.required child does not count.
-        bool required = vialess && of.Attr(FIELD_ATTR_REQUIRED) is true;
+        bool required = DimensionRequired(dim, named, of, from, root, spine, reportName);
         if (dim.IsTime())
         {
             // Loader rule R2 guarantees a grain from the closed set; a tree built in code does not.
@@ -140,45 +223,48 @@ public static class ReportShapes
         }
         var m = DeclaredMember<MetaMeasure>(from, TYPE_MEASURE, name)
             ?? throw Unresolved(reportName, $"measure '{item}' on '{from.Name}'");
-        if (m.IsRatio())
-            return new ReportField(name, ReportFieldRole.Measure, FIELD_SUBTYPE_DECIMAL, false, Measure: m);
         string? agg = m.Agg();
+        // Table C: a count is never null; any other measure is not null when it has a @default.
+        bool required = (!m.IsRatio() && agg == AGG_COUNT) || m.DefaultValue() is not null;
+        if (m.IsRatio())
+            return new ReportField(name, ReportFieldRole.Measure, FIELD_SUBTYPE_DECIMAL, required, Measure: m);
         if (agg == AGG_COUNT)
-            return new ReportField(name, ReportFieldRole.Measure, FIELD_SUBTYPE_LONG, true, Measure: m);
+            return new ReportField(name, ReportFieldRole.Measure, FIELD_SUBTYPE_LONG, required, Measure: m);
         var of = ResolveReportingFieldRef(m.OfColumns().FirstOrDefault() ?? "", ReportingMemberOwner(m, from), root, from)
             ?? throw Unresolved(reportName, $"measure '{name}' @of");
         string src = of.SubType;
         if (agg == AGG_SUM)
         {
             if (src == FIELD_SUBTYPE_CURRENCY)
-                return new ReportField(name, ReportFieldRole.Measure, FIELD_SUBTYPE_CURRENCY, false, of, Measure: m);
+                return new ReportField(name, ReportFieldRole.Measure, FIELD_SUBTYPE_CURRENCY, required, of, Measure: m);
             string sumType = SumLong.Contains(src) ? FIELD_SUBTYPE_LONG
                 : Floating.Contains(src) ? FIELD_SUBTYPE_DOUBLE
                 : FIELD_SUBTYPE_DECIMAL;
-            return new ReportField(name, ReportFieldRole.Measure, sumType, false, Measure: m);
+            return new ReportField(name, ReportFieldRole.Measure, sumType, required, Measure: m);
         }
         if (agg == AGG_AVG)
         {
             string avgType = Floating.Contains(src) ? FIELD_SUBTYPE_DOUBLE : FIELD_SUBTYPE_DECIMAL;
-            return new ReportField(name, ReportFieldRole.Measure, avgType, false, Measure: m);
+            return new ReportField(name, ReportFieldRole.Measure, avgType, required, Measure: m);
         }
         // min / max keep the source field's type.
-        return new ReportField(name, ReportFieldRole.Measure, src, false, of, Measure: m);
+        return new ReportField(name, ReportFieldRole.Measure, src, required, of, Measure: m);
     }
 
     /// <summary>
-    /// Table B. Throws <see cref="InvalidOperationException"/> naming the report when a
-    /// reference does not resolve (a report that passed the loader's report validation
-    /// always resolves).
+    /// Table B, with Table C's <c>required</c>. Throws <see cref="InvalidOperationException"/>
+    /// naming the report when a reference does not resolve (a report that passed the loader's
+    /// report validation always resolves).
     /// </summary>
     public static ReportShape Of(MetaObject report, MetaRoot root)
     {
         string fromName = ReportAccessors.ReportFrom(report) ?? throw Unresolved(report.Name, "@from");
         var from = NamingRefs.ResolveObjectRef(root, fromName, NamingRefs.EffectivePackage(report)) as MetaObject
             ?? throw Unresolved(report.Name, $"@from '{fromName}'");
+        string[]? spine = ReportSpineHops(report, from, root);
         var fields = new List<ReportField>();
         foreach (var item in ReportAccessors.ReportDimensionItems(report))
-            fields.Add(DimensionField(item, from, root, report.Name));
+            fields.Add(DimensionField(item, from, root, report.Name, spine));
         foreach (string item in ReportAccessors.ReportMeasureNames(report))
             fields.Add(MeasureField(item, report, from, root));
         return new ReportShape(report, from, fields.AsReadOnly());

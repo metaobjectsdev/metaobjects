@@ -4,11 +4,16 @@ Two models that differ ONLY by the FR-044 reporting vocabulary:
 
 - `without/meta.shop.json` — three entities (`Program`, `Purchase`, `WorkoutEvent`).
 - `with/meta.shop.json` — the same entities plus their `dimension.*`, `measure.*` and
-  `segment.filter` children and three `object.report` nodes. It is the positive
-  conformance fixture `fixtures/conformance/reporting-vocabulary/` with one addition:
-  `StoreTotals` declares a read-only `source.rdb @kind: view` (rule R5 allows one), because
-  a view-backed report passes every source-keyed codegen gate and is the shape most likely
-  to leak output.
+  `segment.filter` children and four `object.report` nodes. It is the positive
+  conformance fixture `fixtures/conformance/reporting-vocabulary/` with these additions:
+  - `StoreTotals` declares a read-only `source.rdb @kind: view` (rule R5 allows one), because
+    a view-backed report passes every source-keyed codegen gate and is the shape most likely
+    to leak output.
+  - `ProgramCatalogue` declares `@spine: "Purchase.program"` and a report `@filter`, and lists
+    `programKey`, a dimension over `Program.id` reached by `@via: "Purchase.program"`. It
+    declares no source, so it is inert like the other sourceless reports.
+  - The ratio `avgDaysPerStarter` declares `@default: 0`. Only the sourceless
+    `ProgramEngagement` lists it, so no served output moves.
 
 What is lowered (FR-044 Plan 2): a report that declares a read-only `source.rdb @kind: view`
 becomes that view. What is served (FR-044 Plan 3): that same report gets a keyless read-only
@@ -37,12 +42,13 @@ these places and no others:
 - Python codegen (`metaobjects gen`) writes four extra files, one per generator:
   `StoreTotals.py` (the Pydantic row model), `store_totals_filter_allowlist.py`,
   `store_totals_router.py` and `store_totals_names.py`.
-- Documentation: `meta docs` writes a model page per report (all three, the two sourceless
+- Documentation: `meta docs` writes a model page per report (all four, the three sourceless
   ones marked "Not served"), lists them under `## Reports` on the model index, adds a
   "Reporting" section to the pages of `Purchase` and `WorkoutEvent`, and writes one API page,
   for `StoreTotals`. Every other port's api-docs builder gains exactly the `StoreTotals` page.
 
-What stays inert: a report with no read-only source (`ProgramEngagement`, `DailyRevenue`), in
+What stays inert: a report with no read-only source (`ProgramEngagement`, `DailyRevenue`,
+`ProgramCatalogue`), in
 every generator, migration and runtime (its only output is the model page above); the client
 UI tier for every unserved report, and every port's client tier but the TypeScript list hook
 (no other port has one). No port but TypeScript emits SQL for a report

@@ -14,19 +14,22 @@ import java.util.Map;
  * Locates the FR-044 view-backed-report sub-corpus
  * ({@code fixtures/api-contract-conformance/report/}) and loads its seed rows.
  *
- * <p>{@code seed.json} has two halves. {@code invoices} is the base table, used by the
- * full-stack lanes. This lane is a SEAM lane: its in-memory repository stands in for the
- * view, so it is seeded from {@code reports}, which is what the three views return for
- * those invoices. No SQL for a report is produced or run here (ADR-0015: view SQL is
- * TypeScript's). A TypeScript test holds the two halves together.</p>
+ * <p>{@code seed.json} has two halves. Every top-level key but {@code reports} is a base
+ * table ({@code invoices}, {@code products}, {@code sales}), used by the full-stack lanes.
+ * This lane is a SEAM lane: its in-memory repository stands in for the view, so it is
+ * seeded from {@code reports} alone, which is what the four views return for those rows.
+ * No SQL for a report is produced or run here (ADR-0015: view SQL is TypeScript's). A
+ * TypeScript test holds the two halves together.</p>
  */
 final class ReportCorpus {
     private ReportCorpus() {}
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /** The three served reports, in declaration order. */
-    static final List<String> SERVED = List.of("InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals");
+    /** The four served reports, in declaration order. {@code ProductRevenue} declares
+     *  {@code @spine} and a measure with {@code @default}. */
+    static final List<String> SERVED =
+        List.of("InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "ProductRevenue");
 
     /** The report that declares no view and must generate nothing. */
     static final String SOURCELESS = "InvoiceDays";

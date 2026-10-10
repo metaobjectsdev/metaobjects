@@ -444,4 +444,294 @@ public class ReportShapeTest extends SharedRegistryTestBase {
         assertUnresolved("report 'Stray': time dimension 'createdAt' grain 'fortnight' does not resolve.",
                 stray("fitness::Stray", "Program", MetaObject.ATTR_REPORT_DIMENSIONS, "createdAt:fortnight"), canonical);
     }
+
+    // ---------------------------------------------------------------------------
+    // Table C of docs/superpowers/plans/2026-10-09-fr-044-zero-rows-and-measure-defaults.md:
+    // under @spine a column of the spine entity is not nullable when it is @required or a
+    // primary-key column; a dimension beyond the spine is; a measure with @default is not.
+    // The same cases as the TypeScript report-shape.test.ts.
+    // ---------------------------------------------------------------------------
+
+    private static final String CATALOG = """
+          { "object.entity": { "name": "Catalog", "children": [
+            { "source.rdb": { "@table": "catalogs" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "name", "@required": true } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+          ] } },
+        """;
+
+    /** Program's members after its key (Program declares {@code id} + {@code pk} itself, or inherits them). */
+    private static final String PROGRAM_MEMBERS = """
+            { "field.string": { "name": "title", "@required": true } },
+            { "field.string": { "name": "subtitle" } },
+            { "field.timestamp": { "name": "publishedAt", "@required": true } },
+            { "field.long": { "name": "catalogId" } },
+            { "identity.reference": { "name": "fkCatalog", "@references": "Catalog", "@fields": ["catalogId"] } },
+            { "relationship.association": { "name": "catalog", "@objectRef": "Catalog", "@cardinality": "one" } }
+        """;
+
+    private static final String PROGRAM = """
+          { "object.entity": { "name": "Program", "children": [
+            { "source.rdb": { "@table": "programs" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+        """ + PROGRAM_MEMBERS + """
+          ] } },
+        """;
+
+    /** Purchase, with {@code countDefault} spliced into its count measure (empty for none). */
+    private static String purchase(String countDefault, String subtitleVia) {
+        return """
+          { "object.entity": { "name": "Purchase", "children": [
+            { "source.rdb": { "@table": "purchases" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "programId" } },
+            { "field.int": { "name": "minutes", "@required": true } },
+            { "field.currency": { "name": "amountCents", "@currency": "USD" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+            { "identity.reference": { "name": "fkProgram", "@references": "Program", "@fields": ["programId"] } },
+            { "relationship.association": { "name": "program", "@objectRef": "Program", "@cardinality": "one" } },
+            { "dimension.attribute": { "name": "programId", "@of": "Program.id", "@via": "Purchase.program" } },
+            { "dimension.attribute": { "name": "programTitle", "@of": "Program.title", "@via": "Purchase.program" } },
+            { "dimension.attribute": { "name": "programSubtitle", "@of": "Program.subtitle", "@via": "SUBTITLE_VIA" } },
+            { "dimension.time": { "name": "publishedAt", "@of": "Program.publishedAt", "@via": "Purchase.program",
+                "@grains": ["hour", "month"] } },
+            { "dimension.attribute": { "name": "catalogId", "@of": "Catalog.id", "@via": "Purchase.program.catalog" } },
+            { "dimension.attribute": { "name": "catalogName", "@of": "Catalog.name", "@via": "Purchase.program.catalog" } },
+            { "dimension.attribute": { "name": "minutes", "@of": "Purchase.minutes" } },
+            { "measure.aggregate": { "name": "purchases", "@agg": "count", "@of": "Purchase.id"COUNT_DEFAULT } },
+            { "measure.aggregate": { "name": "revenue", "@agg": "sum", "@of": "Purchase.amountCents", "@default": 0 } },
+            { "measure.aggregate": { "name": "revenueRaw", "@agg": "sum", "@of": "Purchase.amountCents" } },
+            { "measure.aggregate": { "name": "avgMinutes", "@agg": "avg", "@of": "Purchase.minutes", "@default": 0 } },
+            { "measure.aggregate": { "name": "avgMinutesRaw", "@agg": "avg", "@of": "Purchase.minutes" } },
+            { "measure.aggregate": { "name": "minMinutes", "@agg": "min", "@of": "Purchase.minutes", "@default": -1 } },
+            { "measure.aggregate": { "name": "minMinutesRaw", "@agg": "min", "@of": "Purchase.minutes" } },
+            { "measure.ratio": { "name": "share", "@numerator": "revenue", "@denominator": "purchases", "@default": 0 } },
+            { "measure.ratio": { "name": "shareRaw", "@numerator": "revenue", "@denominator": "purchases" } }
+          ] } },
+        """.replace("COUNT_DEFAULT", countDefault).replace("SUBTITLE_VIA", subtitleVia);
+    }
+
+    private static final String ALL_MEASURES = """
+        ["purchases", "revenue", "revenueRaw", "avgMinutes", "avgMinutesRaw", "minMinutes", "minMinutesRaw",
+         "share", "shareRaw"]""";
+
+    private static final String SPINE_SALES = """
+          { "object.report": { "name": "SpineSales", "@from": "Purchase", "@spine": "Purchase.program",
+              "@dimensions": ["programId", "programTitle", "programSubtitle", "publishedAt:hour", "publishedAt:month",
+                              "catalogId", "catalogName"],
+              "@measures": """ + ALL_MEASURES + " } }";
+
+    private static final String PLAIN_SALES = """
+          { "object.report": { "name": "PlainSales", "@from": "Purchase",
+              "@dimensions": ["programId", "programTitle", "programSubtitle", "catalogId", "catalogName", "minutes"],
+              "@measures": """ + ALL_MEASURES + " } }";
+
+    private static final String CATALOG_SALES = """
+          { "object.report": { "name": "CatalogSales", "@from": "Purchase", "@spine": "Purchase.program.catalog",
+              "@dimensions": ["catalogId", "catalogName"], "@measures": ["purchases", "revenue"] } }""";
+
+    private static String acme(String children) {
+        return "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" + children + "] } }";
+    }
+
+    private static MetaRoot salesModel() {
+        return loadJson(acme(CATALOG + PROGRAM + purchase("", "Purchase.program")
+                + SPINE_SALES + "," + PLAIN_SALES + "," + CATALOG_SALES));
+    }
+
+    /** Loads a model the loader refuses (a rule broken on purpose); returns the built tree and the errors. */
+    private static MetaRoot loadPastTheLoader(List<MetaDataException> errors, String... files) {
+        MetaDataLoader loader = new MetaDataLoader(
+                LoaderOptions.create(false, false, true), MetaDataLoader.SUBTYPE_MANUAL, "report-shape-past-loader");
+        loader.setSourceURIs(java.util.Collections.emptyList());
+        loader.init();
+        List<com.metaobjects.loader.MetaDataSource> sources = new java.util.ArrayList<>();
+        for (int i = 0; i < files.length; i++) {
+            sources.add(new InMemoryStringSource(files[i], "meta.inline" + i + ".json"));
+        }
+        try {
+            loader.load(sources);
+        } catch (MetaDataException thrown) {
+            errors.addAll(loader.getErrors());
+            errors.add(thrown);
+        }
+        return loader.getRoot();
+    }
+
+    private static java.util.Map<String, Boolean> requiredOf(MetaRoot root, String report) {
+        java.util.Map<String, Boolean> out = new java.util.LinkedHashMap<>();
+        for (ReportShape.Field f : ReportShape.of(object(root, report), root).fields()) out.put(f.name(), f.required());
+        return out;
+    }
+
+    private static MetaRoot inheritedSpineFixture() {
+        Path dir = corpusDir().getParent().resolve("conformance/reporting-spine-inherited/input");
+        try {
+            return loadJson(Files.readString(dir.resolve("meta.shop.json"), StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    @Test
+    public void underSpineAColumnOfTheSpineEntityIsRequiredWhenItIsAKeyOrRequired() {
+        java.util.Map<String, Boolean> required = requiredOf(salesModel(), "SpineSales");
+        assertEquals("Program.id: no @required, in identity.primary", true, required.get("programId"));
+        assertEquals("Program.title: @required", true, required.get("programTitle"));
+        assertEquals("Program.subtitle: optional", false, required.get("programSubtitle"));
+        // A time dimension over a @required spine column, at either grain path (timestamp / date).
+        assertEquals(true, required.get("publishedAtHour"));
+        assertEquals(true, required.get("publishedAtMonth"));
+    }
+
+    @Test
+    public void underSpineADimensionOneHopBeyondTheSpineIsNotRequiredEvenOverAKeyOrARequiredField() {
+        java.util.Map<String, Boolean> required = requiredOf(salesModel(), "SpineSales");
+        assertEquals("Catalog.id: a key, beyond the spine", false, required.get("catalogId"));
+        assertEquals("Catalog.name: @required, beyond the spine", false, required.get("catalogName"));
+    }
+
+    @Test
+    public void aTwoHopSpineMakesADimensionWhoseViaEqualsTheWholeSpineRequired() {
+        java.util.Map<String, Boolean> required = requiredOf(salesModel(), "CatalogSales");
+        assertEquals(true, required.get("catalogId"));
+        assertEquals(true, required.get("catalogName"));
+    }
+
+    @Test
+    public void theSameDimensionsWithoutSpineKeepTodaysValues() {
+        java.util.Map<String, Boolean> required = requiredOf(salesModel(), "PlainSales");
+        assertEquals(false, required.get("programId"));
+        assertEquals(false, required.get("programTitle"));
+        assertEquals(false, required.get("programSubtitle"));
+        assertEquals(false, required.get("catalogId"));
+        assertEquals(false, required.get("catalogName"));
+        assertEquals("no @via, @of @required: unchanged", true, required.get("minutes"));
+    }
+
+    @Test
+    public void aMeasureIsRequiredWithDefaultAndNotWithoutACountAlwaysIs() {
+        MetaRoot root = salesModel();
+        for (String report : List.of("SpineSales", "PlainSales")) {
+            java.util.Map<String, Boolean> required = requiredOf(root, report);
+            java.util.Map<String, Boolean> measures = new java.util.LinkedHashMap<>();
+            for (String m : List.of("purchases", "revenue", "revenueRaw", "avgMinutes", "avgMinutesRaw",
+                    "minMinutes", "minMinutesRaw", "share", "shareRaw")) {
+                measures.put(m, required.get(m));
+            }
+            assertEquals(report, "{purchases=true, revenue=true, revenueRaw=false, avgMinutes=true, "
+                    + "avgMinutesRaw=false, minMinutes=true, minMinutesRaw=false, share=true, shareRaw=false}",
+                    measures.toString());
+        }
+    }
+
+    @Test
+    public void aCountWithADefaultPastTheLoaderIsStillRequired() {
+        List<MetaDataException> errors = new java.util.ArrayList<>();
+        MetaRoot root = loadPastTheLoader(errors,
+                acme(CATALOG + PROGRAM + purchase(", \"@default\": 5", "Purchase.program") + PLAIN_SALES));
+        assertEquals(1, errors.size());
+        assertTrue(errors.get(0).getMessage(), errors.get(0).getMessage().contains("@default cannot apply to @agg: count"));
+        assertEquals(true, requiredOf(root, "PlainSales").get("purchases"));
+    }
+
+    @Test
+    public void subtypesAndTypeSourcesAreUntouchedByDefault() {
+        MetaRoot root = salesModel();
+        List<String> typed = ReportShape.of(object(root, "SpineSales"), root).fields().stream()
+                .map(f -> f.name() + " " + f.subType() + " " + (f.typeSource() == null ? null : f.typeSource().getName()))
+                .collect(Collectors.toList());
+        assertEquals(List.of(
+                "programId long id",
+                "programTitle string title",
+                "programSubtitle string subtitle",
+                "publishedAtHour timestamp publishedAt",
+                "publishedAtMonth date null",
+                "catalogId long id",
+                "catalogName string name",
+                "purchases long null",
+                "revenue currency amountCents",
+                "revenueRaw currency amountCents",
+                "avgMinutes decimal null",
+                "avgMinutesRaw decimal null",
+                "minMinutes int minutes",
+                "minMinutesRaw int minutes",
+                "share decimal null",
+                "shareRaw decimal null"), typed);
+    }
+
+    @Test
+    public void anIdentityPrimaryInheritedFromAnAbstractBaseMakesTheKeyColumnRequired() {
+        String keyed = """
+          { "object.entity": { "name": "Keyed", "abstract": true, "children": [
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+          ] } },
+        """;
+        String inheritedProgram = """
+          { "object.entity": { "name": "Program", "extends": "Keyed", "children": [
+            { "source.rdb": { "@table": "programs" } },
+        """ + PROGRAM_MEMBERS + """
+          ] } },
+        """;
+        MetaRoot root = loadJson(acme(keyed + CATALOG + inheritedProgram + purchase("", "Purchase.program") + SPINE_SALES));
+        assertEquals(true, requiredOf(root, "SpineSales").get("programId"));
+    }
+
+    @Test
+    public void underSpineADimensionWhoseViaDoesNotResolveThrowsNamingTheReport() {
+        // An owner that is not @from (or an entity it extends): reportingViaHops does not resolve it.
+        // Past the loader, which refuses the @via under rule D2.
+        List<MetaDataException> errors = new java.util.ArrayList<>();
+        MetaRoot root = loadPastTheLoader(errors,
+                acme(CATALOG + PROGRAM + purchase("", "Program.catalog") + SPINE_SALES));
+        assertEquals(1, errors.size());
+        assertUnresolved("report 'SpineSales': dimension 'programSubtitle' @via 'Program.catalog' does not resolve.",
+                object(root, "SpineSales"), root);
+    }
+
+    @Test
+    public void aSpineWrittenWithAnAbstractBaseAsItsOwnerOverAConcreteFrom() {
+        MetaRoot root = inheritedSpineFixture();
+        assertEquals("{programId=true, programTitle=true, totalMinutes=true}",
+                requiredOf(root, "ProgramMinutes").toString());
+    }
+
+    @Test
+    public void reportSpineHopsIsNullWithoutSpineAndTheHopNamesWithOne() {
+        MetaRoot root = salesModel();
+        MetaObject from = object(root, "Purchase");
+        assertNull(ReportShape.reportSpineHops(object(root, "PlainSales"), from, root));
+        assertEquals(List.of("program"), ReportShape.reportSpineHops(object(root, "SpineSales"), from, root));
+        assertEquals(List.of("program", "catalog"), ReportShape.reportSpineHops(object(root, "CatalogSales"), from, root));
+    }
+
+    @Test
+    public void reportSpineHopsOwnerMayBeAnEntityFromExtendsResolvedInTheReportsPackage() {
+        MetaRoot root = inheritedSpineFixture();
+        assertEquals(List.of("program"),
+                ReportShape.reportSpineHops(object(root, "ProgramMinutes"), object(root, "WorkoutEvent"), root));
+    }
+
+    @Test
+    public void aSpineThatDoesNotResolveThrowsNamingTheReport() {
+        MetaRoot root = salesModel();
+        MetaObject from = object(root, "Purchase");
+        // Past the loader, which refuses these under rule R8: a report built in code.
+        for (String spine : List.of("Program.catalog", "Purchase", "Purchase..program")) {
+            com.metaobjects.object.ReportMetaObject report =
+                    stray("acme::SpineSales", "Purchase", MetaObject.ATTR_REPORT_MEASURES, "purchases");
+            report.addMetaAttr(com.metaobjects.attr.StringAttribute.create(MetaObject.ATTR_REPORT_SPINE, spine));
+            String expected = "report 'SpineSales': @spine '" + spine + "' does not resolve.";
+            try {
+                ReportShape.reportSpineHops(report, from, root);
+                fail("expected: " + expected);
+            } catch (MetaDataException e) {
+                assertEquals(expected, e.getMessage());
+            }
+            assertUnresolved(expected, report, root);
+        }
+    }
 }

@@ -36,6 +36,21 @@ public class MetaMeasure(TypeId typeId, string name) : MetaData(typeId, name)
     public IReadOnlyDictionary<string, object?>? Filter() =>
         Attr(REPORTING_ATTR_FILTER) as IReadOnlyDictionary<string, object?>;
 
+    /// <summary>
+    /// <c>@default</c>: the integer this measure reads when it would otherwise be null (rules
+    /// M7/M8 decide where it is legal). Null when none is declared or the value is not an
+    /// integer. ADR-0039: resolving, so an inherited measure keeps it.
+    /// </summary>
+    public long? DefaultValue() => Attr(REPORTING_ATTR_DEFAULT) switch
+    {
+        long l => l,
+        int i => i,
+        // A JSON number written with a fraction part (`0.0`) parses as a double; TypeScript
+        // reads the same text as the integer 0.
+        double d when double.IsFinite(d) && d == Math.Floor(d) && Math.Abs(d) <= 9007199254740991d => (long)d,
+        _ => null,
+    };
+
     /// <summary>Name of the <c>measure.aggregate</c> sibling used as the numerator (<c>measure.ratio</c> only).</summary>
     public string? Numerator() => Attr(REPORTING_ATTR_NUMERATOR) as string;
 

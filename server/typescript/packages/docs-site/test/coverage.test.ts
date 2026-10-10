@@ -41,6 +41,9 @@ test("FR-044 reporting vocabulary is audited like any other kind: unrendered mea
     "dimension.attribute", "dimension.time", "measure.aggregate", "measure.ratio", "object.report", "segment.filter",
   ]);
   expect(reportingKinds.every((r) => !r.consumed)).toBe(true);
-  expect(rep.warnings).toContain("coverage: object.report (3) not rendered by any page");
+  expect(rep.warnings).toContain("coverage: object.report (4) not rendered by any page");
+  // Unrendered too: the @spine of a report and the @default of a measure.
+  expect(rep.attrs.find((r) => r.key === "object:@spine")).toEqual({ key: "object:@spine", count: 1, consumed: false });
+  expect(rep.attrs.find((r) => r.key === "measure:@default")).toEqual({ key: "measure:@default", count: 1, consumed: false });
   expect(rep.warnings.some((w) => w.includes("deferred"))).toBe(false);
 });

@@ -115,12 +115,13 @@ describe("FR-044 no-churn: a model with no report renders every docs page as bef
 describe("FR-044 model surface: a page for every report", () => {
   test("each report has a page, linked from the index under Reports", async () => {
     const pages = await modelPages(withReporting);
-    for (const name of ["StoreTotals", "ProgramEngagement", "DailyRevenue"]) {
+    for (const name of ["StoreTotals", "ProgramEngagement", "DailyRevenue", "ProgramCatalogue"]) {
       expect(Object.keys(pages)).toContain(`${name}.md`);
     }
     const index = pages["README.md"]!;
     expect(index).toContain(
-      "## Reports\n\n- [DailyRevenue](./DailyRevenue.md)\n- [ProgramEngagement](./ProgramEngagement.md)\n- [StoreTotals](./StoreTotals.md)\n",
+      "## Reports\n\n- [DailyRevenue](./DailyRevenue.md)\n- [ProgramCatalogue](./ProgramCatalogue.md)\n" +
+        "- [ProgramEngagement](./ProgramEngagement.md)\n- [StoreTotals](./StoreTotals.md)\n",
     );
     // A report is not an entity: the entity list is the one the model without reports has.
     const entities = (md: string): string => {
@@ -158,8 +159,9 @@ describe("FR-044 model surface: a page for every report", () => {
     expect(engagement).toContain(
       "| `daysEngaged` | `long` | no | measure | count of distinct (`WorkoutEvent.programId`, `WorkoutEvent.customerEmail`, `WorkoutEvent.weekNumber`, `WorkoutEvent.dayNumber`) |",
     );
+    // `@default: 0`: never null, so the ratio's null rule gives way to the default.
     expect(engagement).toContain(
-      "| `avgDaysPerStarter` | `decimal` | yes | measure | `daysEngaged` / `starters`, null when the denominator is 0 |",
+      "| `avgDaysPerStarter` | `decimal` | no | measure | `daysEngaged` / `starters`; `0` when there is nothing to aggregate |",
     );
     expect(engagement).toContain("| `lastActivityAt` | `timestamp` | yes | measure | max of `WorkoutEvent.occurredAt` |");
     // No api unit exists for it, so nothing links to one.
@@ -171,6 +173,27 @@ describe("FR-044 model surface: a page for every report", () => {
     expect(daily).toContain('**Row scope:** filter `{"purchasedAt":{"gte":{"now":"-P90D"}}}`');
     expect(daily).toContain("| `purchasedAtDay` | `date` | yes | dimension | `Purchase.purchasedAt` truncated to day, UTC |");
     expect(daily).not.toContain("API reference");
+    // Neither declares @spine: no Rows line, and a row scope reads as it always did.
+    for (const page of [engagement, daily]) expect(page).not.toContain("**Rows:**");
+  });
+
+  test("a @spine report says where its rows come from, and its row scope aggregates only", async () => {
+    const page = (await modelPages(withReporting))["ProgramCatalogue.md"]!;
+    const block = page.slice(page.indexOf("## Report\n"));
+    expect(block.slice(0, block.indexOf("\n\n| Column"))).toBe(
+      "## Report\n\n" +
+      "**From:** [Purchase](./Purchase.md)\n" +
+      "**View:** Not served: declares no view source\n" +
+      "**Rows:** one row per distinct dimension tuple among the rows of `Program`, reached by `Purchase.program`, " +
+        "including those no `Purchase` refers to\n" +
+      '**Row scope:** aggregating only filter `{"refunded":{"eq":false}}`',
+    );
+    // A dimension over the spine entity's primary key is never null; one over another of
+    // its columns follows that column.
+    expect(page).toContain("| `programKey` | `long` | no | dimension | `Program.id` via `Purchase.program` |");
+    expect(page).toContain("| `programTitle` | `string` | yes | dimension | `Program.title` via `Purchase.program` |");
+    expect(page).toContain("| `revenue` | `currency` | yes | measure | sum of `Purchase.amountCents` where segment `active` |");
+    expect(page).not.toContain("API reference");
   });
 
   test("the @from entity's page has a Reporting section: dimensions, measures, segments, reports", async () => {
@@ -182,7 +205,8 @@ describe("FR-044 model surface: a page for every report", () => {
       "- `program` — `Purchase.programId`\n" +
       "- `programTitle` — `Program.title` via `Purchase.program`\n" +
       "- `purchasedAt` (time) — `Purchase.purchasedAt`; grains: day, week, month, quarter, year\n" +
-      "- `programCreatedAt` (time) — `Program.createdAt` via `Purchase.program`; grains: month, year\n\n" +
+      "- `programCreatedAt` (time) — `Program.createdAt` via `Purchase.program`; grains: month, year\n" +
+      "- `programKey` — `Program.id` via `Purchase.program`\n\n" +
       "**Measures**\n\n" +
       "- `refundedPurchases` — count of `Purchase.id` where filter `{\"refunded\":{\"eq\":true}}`\n" +
       "- `purchases` — count of `Purchase.id` where segment `active`\n" +
@@ -192,6 +216,7 @@ describe("FR-044 model surface: a page for every report", () => {
       "- `active` — `{\"status\":{\"eq\":\"active\"}}`\n\n" +
       "**Reports**\n\n" +
       "- [DailyRevenue](./DailyRevenue.md)\n" +
+      "- [ProgramCatalogue](./ProgramCatalogue.md)\n" +
       "- [StoreTotals](./StoreTotals.md)\n",
     );
     // Everything above the section is the page the model without reporting nodes has.
@@ -255,6 +280,7 @@ describe("FR-044 api surface: one unit for a served report, none for the rest", 
     expect(names).toContain("StoreTotals");
     expect(names).not.toContain("ProgramEngagement");
     expect(names).not.toContain("DailyRevenue");
+    expect(names).not.toContain("ProgramCatalogue");
   });
 
   test("the unit is the row model, the list query and GET <served path>, per route surface", () => {
@@ -330,6 +356,7 @@ describe("FR-044 api surface: one unit for a served report, none for the rest", 
         expect(after[path]).toContain("StoreTotals");
         expect(after[path]).not.toContain("ProgramEngagement");
         expect(after[path]).not.toContain("DailyRevenue");
+        expect(after[path]).not.toContain("ProgramCatalogue");
         continue;
       }
       expect({ path, content: after[path] }).toEqual({ path, content });

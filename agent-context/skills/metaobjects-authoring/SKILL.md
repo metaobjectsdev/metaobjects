@@ -29,7 +29,7 @@ This file covers what almost every model needs. The topics below live in
 | `references/read-views-and-projections.md` | an `object.projection`, `origin.*` vocabulary, `@filter` / `@expr`, or an `@sql` / `@unmanaged` view |
 | `references/inheritance-tph.md` | several entities are variants of one thing sharing a single table (`@discriminator`) |
 | `references/metadata-dependencies.md` | the project builds on another package's metadata (`dependencies`, cross-package `overlay`) |
-| `references/reporting.md` | a dashboard number, count or total over one entity's rows: what columns a report gets, time grains, null rules, engine differences |
+| `references/reporting.md` | a dashboard number, count or total over one entity's rows: what columns a report gets, time grains, null rules, rows with no facts (`@spine`), defaults (`@default`), engine differences |
 | `references/requirements.md` | installed only when the project declares `requirement.*` nodes |
 
 ## The operating principle: model-first, generate-first
@@ -739,6 +739,20 @@ Three rules an author trips on:
 3. **A report declares no fields.** Its columns are derived: one per dimension, then one per
    measure (a time dimension at a grain is `<name><Grain>`, so `purchasedAt:day` is
    `purchasedAtDay`). A `field.*` or `identity.*` child on a report is an error.
+
+Two questions to answer for every report:
+
+- **Do I want the rows that have no facts?** A report's rows come from the facts, so a
+  program nobody bought has no row. If the page should list it, add `"@spine":
+  "Purchase.program"` to the report (a to-one path from `@from`, written like `@via`), and
+  **reach every listed dimension through it**: each needs an `@via` that begins with the
+  spine's hops (`programId` as `Program.id` via `Purchase.program`). A dimension on the fact
+  row is a load error under `@spine`. List the spine entity's key to get one row per program.
+- **Is zero true here, or is null?** A `sum`, `avg`, `min`, `max` or ratio with nothing to
+  aggregate is null. If zero is the true answer (revenue of a program nobody bought), declare
+  `"@default": 0` on the measure; if the value is unknown (an average rating with no
+  ratings), leave it null. **Never on a `count`**: it is already `0`, and `@default` there is a
+  load error. Write `0`, never `0.0`.
 
 **A report is served only when it declares `source.rdb` with `@kind: view`.** That declaration
 is what makes `meta migrate` create the view (Postgres, SQLite, D1), what every port's

@@ -65,6 +65,20 @@ public abstract class MetaMeasure extends MetaData {
         return ReportingAttrs.filterMap(this, ReportingConstants.ATTR_FILTER);
     }
 
+    /**
+     * {@code @default}: the integer this measure reads when it would otherwise be null
+     * (loader rules M7/M8 decide where it is legal). {@code null} when none is declared or
+     * the value is not an integer. Resolving (ADR-0039), so an inherited measure keeps it.
+     */
+    public Long getDefaultValue() {
+        if (!hasMetaAttr(ReportingConstants.ATTR_DEFAULT)) return null;
+        Object v = getMetaAttr(ReportingConstants.ATTR_DEFAULT).getValue();
+        if (v instanceof Integer || v instanceof Long || v instanceof Short || v instanceof Byte) {
+            return ((Number) v).longValue();
+        }
+        return null;
+    }
+
     /** Name of the {@code measure.aggregate} sibling used as the numerator ({@code measure.ratio} only). */
     public String getNumerator() {
         return ReportingAttrs.optionalString(this, ReportingConstants.ATTR_NUMERATOR);

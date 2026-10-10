@@ -236,3 +236,35 @@ CREATE VIEW "v_asset_activity" AS
   FROM "assets" a
   GROUP BY date_trunc('hour', a."recordedAt", 'UTC'), CAST(date_trunc('week', CAST(a."asOfDate" AS TIMESTAMP)) AS DATE);
 COMMENT ON VIEW "v_asset_activity" IS 'metaobjects:v1:sha256:02b68a9ec0c67e11c6e505a47591c24e8dece737a46161549167c2cafece0a26';
+
+CREATE VIEW "v_program_roster" AS
+  SELECT
+    p."id" AS "programKey",
+    p."title" AS "programTitle",
+    COUNT(w."id") AS "weeks",
+    CAST(SUM(w."durationMinutes") AS BIGINT) AS "totalMinutes",
+    COALESCE(CAST(SUM(w."durationMinutes") AS BIGINT), 0) AS "totalMinutesOrZero",
+    CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0) AS "longShare",
+    COALESCE(CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0), 0) AS "longShareOrZero"
+  FROM "programs" p
+  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId"
+  GROUP BY p."id", p."title";
+COMMENT ON VIEW "v_program_roster" IS 'metaobjects:v1:sha256:7f6860157cb86898940ea877ae4874138a0053f1aa1f6e848e2b853ad6478b47';
+
+CREATE VIEW "v_program_long_weeks" AS
+  SELECT
+    p."id" AS "programKey",
+    COUNT(w."id") AS "weeks",
+    COALESCE(CAST(SUM(w."durationMinutes") AS BIGINT), 0) AS "totalMinutesOrZero"
+  FROM "programs" p
+  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId" AND w."durationMinutes" >= 60
+  GROUP BY p."id";
+COMMENT ON VIEW "v_program_long_weeks" IS 'metaobjects:v1:sha256:f9eaf671509f579d4d4f0345947ff383c8192707d66b1fb24a2ece5580aaa86e';
+
+CREATE VIEW "v_fitness_totals_filled" AS
+  SELECT
+    COUNT(w."id") AS "weeks",
+    COALESCE(CAST(SUM(w."durationMinutes") AS BIGINT), 0) AS "totalMinutesOrZero",
+    COALESCE(CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0), 0) AS "longShareOrZero"
+  FROM "weeks" w;
+COMMENT ON VIEW "v_fitness_totals_filled" IS 'metaobjects:v1:sha256:b3ea9f392eb506a9d70ffa39f7b66e1e7f987b5913b0f3e74d0b84a4d6c299a9';

@@ -1,0 +1,332 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Catalog",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "catalogs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title",
+                "@required": true
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "publishedAt"
+              }
+            },
+            {
+              "field.long": {
+                "name": "catalogId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkCatalog",
+                "@fields": [
+                  "catalogId"
+                ],
+                "@references": "Catalog"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "catalog",
+                "@cardinality": "one",
+                "@objectRef": "Catalog"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Purchase",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "purchases"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId"
+              }
+            },
+            {
+              "field.string": {
+                "name": "customerEmail"
+              }
+            },
+            {
+              "field.currency": {
+                "name": "amountCents"
+              }
+            },
+            {
+              "field.string": {
+                "name": "status"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "purchasedAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkProgram",
+                "@fields": [
+                  "programId"
+                ],
+                "@references": "Program"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "program",
+                "@cardinality": "one",
+                "@objectRef": "Program"
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "active",
+                "@filter": {
+                  "status": {
+                    "eq": "active"
+                  }
+                }
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "programId",
+                "@of": "Program.id",
+                "@via": "Purchase.program"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "programTitle",
+                "@of": "Program.title",
+                "@via": "Purchase.program"
+              }
+            },
+            {
+              "dimension.time": {
+                "name": "publishedAt",
+                "@grains": [
+                  "month",
+                  "year"
+                ],
+                "@of": "Program.publishedAt",
+                "@via": "Purchase.program"
+              }
+            },
+            {
+              "dimension.time": {
+                "name": "purchasedAt",
+                "@grains": [
+                  "day",
+                  "month"
+                ],
+                "@of": "Purchase.purchasedAt"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "programByRef",
+                "@of": "Program.title",
+                "@via": "Purchase.fkProgram"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "catalogName",
+                "@of": "Catalog.name",
+                "@via": "Purchase.program.catalog"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "purchases",
+                "@agg": "count",
+                "@of": [
+                  "Purchase.id"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "revenue",
+                "@agg": "sum",
+                "@default": 0,
+                "@of": [
+                  "Purchase.amountCents"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "avgAmount",
+                "@agg": "avg",
+                "@default": 0,
+                "@of": [
+                  "Purchase.amountCents"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "smallest",
+                "@agg": "min",
+                "@default": -1,
+                "@of": [
+                  "Purchase.amountCents"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "lastPurchaseAt",
+                "@agg": "max",
+                "@of": [
+                  "Purchase.purchasedAt"
+                ]
+              }
+            },
+            {
+              "measure.ratio": {
+                "name": "revenuePerPurchase",
+                "@default": 0,
+                "@denominator": "purchases",
+                "@numerator": "revenue"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "ProgramSales",
+          "@dimensions": [
+            "programId",
+            "programTitle",
+            "publishedAt:month",
+            "catalogName"
+          ],
+          "@from": "Purchase",
+          "@measures": [
+            "purchases",
+            "revenue",
+            "avgAmount",
+            "smallest",
+            "lastPurchaseAt",
+            "revenuePerPurchase"
+          ],
+          "@segment": "active",
+          "@spine": "Purchase.program",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_program_sales"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "CatalogSales",
+          "@dimensions": [
+            "catalogName"
+          ],
+          "@from": "Purchase",
+          "@measures": [
+            "purchases",
+            "revenue"
+          ],
+          "@spine": "Purchase.program.catalog"
+        }
+      },
+      {
+        "object.report": {
+          "name": "SalesByDay",
+          "@dimensions": [
+            "purchasedAt:day"
+          ],
+          "@from": "Purchase",
+          "@measures": [
+            "revenue"
+          ]
+        }
+      }
+    ]
+  }
+}

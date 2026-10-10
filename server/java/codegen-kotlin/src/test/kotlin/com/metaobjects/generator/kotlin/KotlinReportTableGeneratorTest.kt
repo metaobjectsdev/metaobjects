@@ -24,9 +24,14 @@ import kotlin.test.assertTrue
  * `object.report`, with one column per derived field (contract Table B), and nothing for a
  * report that has no view.
  *
- * The six canonical reports are generated from the shared persistence corpus, the same
+ * The nine canonical reports are generated from the shared persistence corpus, the same
  * model the hand-written reference tables in `integration-tests-kotlin` map and the
  * persistence lane reads.
+ *
+ * A report's `@spine` and a measure's `@default` change only which columns are nullable
+ * (contract Table C). No Kotlin generator reads either attribute: the shape Java's
+ * `ReportShape` derives marks the field required, and a required field is already a
+ * non-null column and a non-null property.
  */
 @OptIn(org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi::class)
 class KotlinReportTableGeneratorTest {
@@ -114,6 +119,8 @@ class KotlinReportTableGeneratorTest {
             "ProgramMinutes" to "v_program_minutes", "FitnessTotals" to "v_fitness_totals",
             "ProgramsByMonth" to "v_programs_by_month", "ProgramsByWeek" to "v_programs_by_week",
             "RecentPrograms" to "v_recent_programs", "AssetActivity" to "v_asset_activity",
+            "ProgramRoster" to "v_program_roster", "ProgramLongWeeks" to "v_program_long_weeks",
+            "FitnessTotalsFilled" to "v_fitness_totals_filled",
         )
         for ((report, view) in reports) {
             val src = files.getValue("fitness/${report}Table.kt")
@@ -184,6 +191,141 @@ class KotlinReportTableGeneratorTest {
         assertTrue("    val weeks = long(\"weeks\")\n" in src, src)
         assertFalse("Names" in src, src)
         assertFalse(files.keys.any { it.endsWith("ProgramMinutesNames.kt") }, files.keys.toString())
+    }
+
+    // --- @spine and @default: what is nullable (Table C) -----------------------------------
+
+    @Test
+    fun `a spine report's key and defaulted measures are non-null columns, the rest stay nullable`() {
+        // ProgramRoster: @spine Week.fkProgram. Its two dimensions are columns of the spine
+        // entity (Program.id, a primary key, and Program.title, @required); the pairs
+        // totalMinutes/totalMinutesOrZero and longShare/longShareOrZero are the same measure
+        // without and with @default 0.
+        assertEquals(
+            """
+            |package fitness
+            |
+            |import org.jetbrains.exposed.sql.Table
+            |
+            |/** READ-ONLY VIEW — generated from view metadata; do not insert/update/delete directly. */
+            |/** GENERATED — do not hand-edit. Regenerated from metadata. */
+            |object ProgramRosterTable : Table("v_program_roster") {
+            |    val programKey = long("programKey")
+            |    val programTitle = varchar("programTitle", 200)
+            |    val weeks = long("weeks")
+            |    val totalMinutes = long("totalMinutes").nullable()
+            |    val totalMinutesOrZero = long("totalMinutesOrZero")
+            |    val longShare = decimal("longShare", 38, 18).nullable()
+            |    val longShareOrZero = decimal("longShareOrZero", 38, 18)
+            |}
+            |""".trimMargin(),
+            canonical().getValue("fitness/ProgramRosterTable.kt"),
+        )
+        // The same Program.title dimension in ProgramMinutes, which has no @spine, stays
+        // nullable: without @spine Table C changes nothing, and a dimension reached by @via
+        // is never required there.
+        assertTrue(
+            "    val programTitle = varchar(\"programTitle\", 200).nullable()\n" in
+                canonical().getValue("fitness/ProgramMinutesTable.kt"),
+        )
+        // With no dimensions and no @spine, a defaulted sum and ratio are still non-null.
+        val filled = canonical().getValue("fitness/FitnessTotalsFilledTable.kt")
+        assertTrue("    val totalMinutesOrZero = long(\"totalMinutesOrZero\")\n" in filled, filled)
+        assertTrue("    val longShareOrZero = decimal(\"longShareOrZero\", 38, 18)\n" in filled, filled)
+        assertFalse(".nullable()" in filled, filled)
+    }
+
+    /** A `measure.aggregate` on Sale: its name to its node. */
+    private fun aggregate(name: String, attrs: String) =
+        name to """{ "measure.aggregate": { "name": "$name", $attrs } }"""
+
+    /** A `measure.ratio` on Sale: its name to its node. */
+    private fun ratio(name: String, attrs: String) =
+        name to """{ "measure.ratio": { "name": "$name", $attrs } }"""
+
+    /**
+     * `Product` and `Sale` (a to-one `fkProduct` reference), and `ProductRevenue` over Sale
+     * with [reportAttrs] (a `@spine`, or nothing). [measures] are declared on Sale beside a
+     * `sales` count; the report lists the product key, `sales` and every one of them.
+     */
+    private fun productRevenue(reportAttrs: String, measures: List<Pair<String, String>>): String = """{
+      "metadata.root": { "package": "acme::shop", "children": [
+        { "object.entity": { "name": "Product", "children": [
+            { "source.rdb": { "@table": "products" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "name", "@maxLength": 80 } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+        ] } },
+        { "object.entity": { "name": "Sale", "children": [
+            { "source.rdb": { "@table": "sales" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "productId", "@required": true } },
+            { "field.long": { "name": "amountCents" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } },
+            { "identity.reference": { "name": "fkProduct", "@fields": ["productId"], "@references": "Product" } },
+            { "dimension.attribute": { "name": "productId", "@of": "Product.id", "@via": "Sale.fkProduct" } },
+            { "measure.aggregate": { "name": "sales", "@agg": "count", "@of": "Sale.id" } },
+            ${measures.joinToString(",\n            ") { it.second }}
+        ] } },
+        { "object.report": { "name": "ProductRevenue", "@from": "Sale", $reportAttrs
+            "@dimensions": ["productId"],
+            "@measures": ["sales", ${measures.joinToString(", ") { "\"${it.first}\"" }}],
+            "children": [ { "source.rdb": { "@kind": "view", "@view": "v_product_revenue" } } ] } }
+      ] }
+    }"""
+
+    /** The table and the row data class of `ProductRevenue`. */
+    private fun productRevenueFiles(json: String): Pair<String, String> {
+        val files = emit(
+            loadString("report-table-spine-default", json),
+            mapOf("columnNaming" to "literal"),
+            listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator()),
+        )
+        assertCompiles(files)
+        return files.getValue("acme/shop/ProductRevenueTable.kt") to files.getValue("acme/shop/ProductRevenue.kt")
+    }
+
+    @Test
+    fun `a defaulted measure is a non-null column and property, and the same measure without default stays nullable`() {
+        val (table, row) = productRevenueFiles(productRevenue(
+            """"@spine": "Sale.fkProduct",""",
+            listOf(
+                aggregate("revenue", """"@agg": "sum", "@of": "Sale.amountCents""""),
+                aggregate("revenueOrZero", """"@agg": "sum", "@of": "Sale.amountCents", "@default": 0"""),
+                aggregate("smallestOrZero", """"@agg": "min", "@of": "Sale.amountCents", "@default": 0"""),
+                ratio("perSale", """"@numerator": "revenue", "@denominator": "sales""""),
+                ratio("perSaleOrZero", """"@numerator": "revenue", "@denominator": "sales", "@default": 0"""),
+            ),
+        ))
+        // The Exposed columns.
+        assertTrue("    val revenueOrZero = long(\"revenueOrZero\")\n" in table, table)
+        assertTrue("    val smallestOrZero = long(\"smallestOrZero\")\n" in table, table)
+        assertTrue("    val perSaleOrZero = decimal(\"perSaleOrZero\", 38, 18)\n" in table, table)
+        assertTrue("    val revenue = long(\"revenue\").nullable()\n" in table, table)
+        assertTrue("    val perSale = decimal(\"perSale\", 38, 18).nullable()\n" in table, table)
+        // The row data class: a non-null property has no `?` and no `= null` default.
+        assertTrue("  public val revenueOrZero: Long,\n" in row, row)
+        assertTrue("  public val smallestOrZero: Long,\n" in row, row)
+        assertTrue("  public val perSaleOrZero: BigDecimal,\n" in row, row)
+        assertTrue("  public val revenue: Long? = null,\n" in row, row)
+        assertTrue("  public val perSale: BigDecimal? = null,\n" in row, row)
+    }
+
+    @Test
+    fun `under spine the key of the spine entity is non-null, and without spine the same dimension is nullable`() {
+        val sum = listOf(aggregate("revenue", """"@agg": "sum", "@of": "Sale.amountCents""""))
+        // Product.id is the spine entity's primary key and carries no @required.
+        val (spineTable, spineRow) = productRevenueFiles(productRevenue(""""@spine": "Sale.fkProduct",""", sum))
+        assertTrue("    val productId = long(\"productId\")\n" in spineTable, spineTable)
+        assertTrue("  public val productId: Long,\n" in spineRow, spineRow)
+        // A count is non-null either way, and nothing else moved.
+        assertTrue("    val sales = long(\"sales\")\n" in spineTable, spineTable)
+        assertTrue("    val revenue = long(\"revenue\").nullable()\n" in spineTable, spineTable)
+
+        val (plainTable, plainRow) = productRevenueFiles(productRevenue("", sum))
+        assertTrue("    val productId = long(\"productId\").nullable()\n" in plainTable, plainTable)
+        assertTrue("  public val productId: Long? = null,\n" in plainRow, plainRow)
+        assertTrue("    val sales = long(\"sales\")\n" in plainTable, plainTable)
     }
 
     // --- Which reports emit (Table A) --------------------------------------------------

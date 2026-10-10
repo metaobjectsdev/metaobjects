@@ -2,16 +2,17 @@
 // corpus.
 //
 // Runs the real MetaObjects.Codegen generators (Entity + DbContext + FilterAllowlist
-// + Routes + Names) on the report model (the Invoice table, three view-backed reports and
-// one sourceless report), Roslyn-compiles the emitted sources in-memory, and hosts them on
-// Kestrel against Testcontainers Postgres with the three views present. A failing scenario
-// is a real generator bug (RoutesGenerator / DbContextGenerator / FilterAllowlistGenerator
-// / ReportRows), never something fixed by hand-editing emitted code.
+// + Routes + Names) on the report model (the Invoice, Product and Sale tables, four
+// view-backed reports — one of them, ProductRevenue, a @spine report with a defaulted
+// measure — and one sourceless report), Roslyn-compiles the emitted sources in-memory, and
+// hosts them on Kestrel against Testcontainers Postgres with the four views present. A
+// failing scenario is a real generator bug (RoutesGenerator / DbContextGenerator /
+// FilterAllowlistGenerator / ReportRows), never something fixed by hand-editing emitted code.
 //
 // Mirrors ProjectionGeneratedServerFactory. The routes to mount are chosen by
-// RoutesGenerator.AppliesTo over the DECLARED nodes, and must be exactly Invoice and the
-// three served reports: the sourceless InvoiceDays sits in the model so that a generator
-// which serves every report it finds fails here.
+// RoutesGenerator.AppliesTo over the DECLARED nodes, and must be exactly the three entities
+// and the four served reports: the sourceless InvoiceDays sits in the model so that a
+// generator which serves every report it finds fails here.
 //
 // No JSON options are configured on the host. The date wire format under test
 // (`issuedOnMonth` as YYYY-MM-DD) is what the generated row's DateOnly property gives by
@@ -39,7 +40,7 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
 
     // Ordinal order. InvoiceDays is in the model and declares no source.
     private static readonly string[] ExpectedRoutedNames =
-        ["Invoice", "InvoiceStatusTotals", "InvoiceTotals", "InvoicesByMonth"];
+        ["Invoice", "InvoiceStatusTotals", "InvoiceTotals", "InvoicesByMonth", "Product", "ProductRevenue", "Sale"];
     private const string SourcelessReport = "InvoiceDays";
 
     private readonly PostgresContainer _pg;
@@ -78,9 +79,9 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
 
         var app = builder.Build();
 
-        // Mount every generated Map<Name>Routes(app, "/api") — Invoice's writable set and
-        // the three served reports' read-only ones. Invoice is mounted so the lane also
-        // proves the two coexist; only the reports' routes carry scenarios.
+        // Mount every generated Map<Name>Routes(app, "/api") — the three entities' writable
+        // sets and the four served reports' read-only ones. The entities are mounted so the
+        // lane also proves the two coexist; only the reports' routes carry scenarios.
         foreach (var name in routedNames)
         {
             var routesType = assembly.GetType($"{GeneratedNamespace}.{name}Routes")
@@ -112,9 +113,9 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
                 string.Join("; ", loadResult.Errors.Select(e => e.ToString())));
 
         var root = loadResult.Root;
-        // Asked of the DECLARED nodes: Invoice and the three served reports, and not the
-        // sourceless InvoiceDays. Exactly these, so a generator that serves every report it
-        // finds (or none) fails here by name instead of as twelve unexplained 404s.
+        // Asked of the DECLARED nodes: the three entities and the four served reports, and not
+        // the sourceless InvoiceDays. Exactly these, so a generator that serves every report it
+        // finds (or none) fails here by name instead of as a run of unexplained 404s.
         var routedNames = root.Objects()
             .Where(o => RoutesGenerator.AppliesTo(o, root))
             .Select(o => CSharpNaming.Pascal(o.Name))
@@ -135,7 +136,7 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
                 Namespace = GeneratedNamespace,
                 ColumnNamingStrategy = ColumnNamingStrategy.Literal,
                 EmitAbstractShapes = false,
-                // Invoice binds through its names artifact. A report has none (it binds its
+                // The entities bind through their names artifacts. A report has none (it binds its
                 // view and columns by literal), so this also proves no generated report file
                 // references a <Report>Names class that was never emitted.
                 IncludeNames = true,

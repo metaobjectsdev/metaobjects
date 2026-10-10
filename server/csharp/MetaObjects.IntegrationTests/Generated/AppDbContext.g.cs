@@ -14,6 +14,7 @@ public class AppDbContext : DbContext
     public DbSet<AssetActivity> AssetActivities { get; set; } = default!;
     public DbSet<Auth> Auths { get; set; } = default!;
     public DbSet<FitnessTotals> FitnessTotals { get; set; } = default!;
+    public DbSet<FitnessTotalsFilled> FitnessTotalsFilleds { get; set; } = default!;
     public DbSet<Follow> Follows { get; set; } = default!;
     public DbSet<Friendship> Friendships { get; set; } = default!;
     public DbSet<Measurement> Measurements { get; set; } = default!;
@@ -23,7 +24,9 @@ public class AppDbContext : DbContext
     public DbSet<PostReferral> PostReferrals { get; set; } = default!;
     public DbSet<PostTag> PostTags { get; set; } = default!;
     public DbSet<Program> Programs { get; set; } = default!;
+    public DbSet<ProgramLongWeeks> ProgramLongWeeks { get; set; } = default!;
     public DbSet<ProgramMinutes> ProgramMinutes { get; set; } = default!;
+    public DbSet<ProgramRoster> ProgramRosters { get; set; } = default!;
     public DbSet<ProgramStat> ProgramStats { get; set; } = default!;
     public DbSet<ProgramView> ProgramViews { get; set; } = default!;
     public DbSet<ProgramsByMonth> ProgramsByMonths { get; set; } = default!;
@@ -36,7 +39,10 @@ public class AppDbContext : DbContext
     {
         modelBuilder.Entity<AssetActivity>().HasNoKey().ToView("v_asset_activity");
         modelBuilder.Entity<FitnessTotals>().HasNoKey().ToView("v_fitness_totals");
+        modelBuilder.Entity<FitnessTotalsFilled>().HasNoKey().ToView("v_fitness_totals_filled");
+        modelBuilder.Entity<ProgramLongWeeks>().HasNoKey().ToView("v_program_long_weeks");
         modelBuilder.Entity<ProgramMinutes>().HasNoKey().ToView("v_program_minutes");
+        modelBuilder.Entity<ProgramRoster>().HasNoKey().ToView("v_program_roster");
         modelBuilder.Entity<ProgramStat>().ToView(ProgramStatNames.SourcePrimaryView);
         modelBuilder.Entity<ProgramView>().ToView(ProgramViewNames.SourcePrimaryView);
         modelBuilder.Entity<ProgramView>().Property(x => x.Status).HasConversion<string>();

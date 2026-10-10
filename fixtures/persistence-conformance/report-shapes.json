@@ -209,6 +209,118 @@
           "typeSource": null
         }
       ]
+    },
+    {
+      "report": "fitness::ProgramRoster",
+      "from": "fitness::Week",
+      "view": "v_program_roster",
+      "fields": [
+        {
+          "name": "programKey",
+          "role": "dimension",
+          "subType": "long",
+          "required": true,
+          "typeSource": "fitness::Program.id"
+        },
+        {
+          "name": "programTitle",
+          "role": "dimension",
+          "subType": "string",
+          "required": true,
+          "typeSource": "fitness::Program.title"
+        },
+        {
+          "name": "weeks",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "totalMinutes",
+          "role": "measure",
+          "subType": "long",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "totalMinutesOrZero",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "longShare",
+          "role": "measure",
+          "subType": "decimal",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "longShareOrZero",
+          "role": "measure",
+          "subType": "decimal",
+          "required": true,
+          "typeSource": null
+        }
+      ]
+    },
+    {
+      "report": "fitness::ProgramLongWeeks",
+      "from": "fitness::Week",
+      "view": "v_program_long_weeks",
+      "fields": [
+        {
+          "name": "programKey",
+          "role": "dimension",
+          "subType": "long",
+          "required": true,
+          "typeSource": "fitness::Program.id"
+        },
+        {
+          "name": "weeks",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "totalMinutesOrZero",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        }
+      ]
+    },
+    {
+      "report": "fitness::FitnessTotalsFilled",
+      "from": "fitness::Week",
+      "view": "v_fitness_totals_filled",
+      "fields": [
+        {
+          "name": "weeks",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "totalMinutesOrZero",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "longShareOrZero",
+          "role": "measure",
+          "subType": "decimal",
+          "required": true,
+          "typeSource": null
+        }
+      ]
     }
   ]
 }

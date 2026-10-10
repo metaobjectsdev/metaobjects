@@ -199,13 +199,15 @@ public class CodegenCompileConformanceTest extends SharedRegistryTestBase {
         selection.put("repository", PLAIN);
         selection.put("filter-allowlist", PLAIN);
         selection.put("names", PLAIN);
-        // FR-044 Plan 3: the corpus's six view-backed reports are served, so their row
+        // FR-044 Plan 3: the corpus's nine view-backed reports are served, so their row
         // DTOs, repository seams and filter allowlists are in this compile. Named, so a
-        // gate that stops admitting a report fails here instead of compiling less.
+        // gate that stops admitting a report fails here instead of compiling less. The
+        // last three carry @spine / a measure @default.
         // ProgramMinutes derives eleven filterable fields, one past Map.of's ten pairs.
         generateAndCompile("web", selection, 17,
             "ProgramMinutesDto", "FitnessTotalsDto", "ProgramsByMonthDto", "ProgramsByWeekDto",
-            "RecentProgramsDto", "AssetActivityDto",
+            "RecentProgramsDto", "AssetActivityDto", "ProgramRosterDto", "ProgramLongWeeksDto",
+            "FitnessTotalsFilledDto",
             "ProgramMinutesRepository", "ProgramMinutesFilterAllowlist");
     }
 

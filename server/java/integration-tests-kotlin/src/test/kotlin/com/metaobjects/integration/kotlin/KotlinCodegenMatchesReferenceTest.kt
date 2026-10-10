@@ -1,10 +1,21 @@
 package com.metaobjects.integration.kotlin
 
 import com.metaobjects.generator.kotlin.KotlinExposedTableGenerator
+import com.metaobjects.integration.kotlin.tables.AssetActivityView
+import com.metaobjects.integration.kotlin.tables.FitnessTotalsFilledView
+import com.metaobjects.integration.kotlin.tables.FitnessTotalsView
+import com.metaobjects.integration.kotlin.tables.ProgramLongWeeksView
+import com.metaobjects.integration.kotlin.tables.ProgramMinutesView
+import com.metaobjects.integration.kotlin.tables.ProgramRosterView
+import com.metaobjects.integration.kotlin.tables.ProgramsByMonthView
+import com.metaobjects.integration.kotlin.tables.ProgramsByWeekView
+import com.metaobjects.integration.kotlin.tables.RecentProgramsView
 import com.metaobjects.loader.MetaDataLoader
+import org.jetbrains.exposed.sql.Table
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.nio.file.Files
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
@@ -104,7 +115,7 @@ internal class KotlinCodegenMatchesReferenceTest {
                 ExpectedColumn("recordedAt", families = setOf("instantWithTimeZone")),
             ),
         ),
-        // FR-044: the six view-backed reports. Each mirrors its hand-written reference
+        // FR-044: the nine view-backed reports. Each mirrors its hand-written reference
         // (`tables/<Report>View.kt`) column for column: the family is the view's real column
         // type, and a column is nullable exactly when the reference's is. A report has no
         // identity, so none carries a primary key.
@@ -160,6 +171,37 @@ internal class KotlinCodegenMatchesReferenceTest {
             ),
             report = "v_asset_activity",
         ),
+        // `@spine` and a measure's `@default` (contract Table C): under @spine a column of the
+        // spine entity that is its key or `@required` is non-null, and a measure with
+        // `@default` is non-null; the same measure without it stays nullable.
+        "ProgramRoster" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("programKey", families = setOf("long"), nullable = false),
+                ExpectedColumn("programTitle", families = setOf("varchar"), nullable = false),
+                ExpectedColumn("weeks", families = setOf("long"), nullable = false),
+                ExpectedColumn("totalMinutes", families = setOf("long"), nullable = true),
+                ExpectedColumn("totalMinutesOrZero", families = setOf("long"), nullable = false),
+                ExpectedColumn("longShare", families = setOf("decimal"), nullable = true),
+                ExpectedColumn("longShareOrZero", families = setOf("decimal"), nullable = false),
+            ),
+            report = "v_program_roster",
+        ),
+        "ProgramLongWeeks" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("programKey", families = setOf("long"), nullable = false),
+                ExpectedColumn("weeks", families = setOf("long"), nullable = false),
+                ExpectedColumn("totalMinutesOrZero", families = setOf("long"), nullable = false),
+            ),
+            report = "v_program_long_weeks",
+        ),
+        "FitnessTotalsFilled" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("weeks", families = setOf("long"), nullable = false),
+                ExpectedColumn("totalMinutesOrZero", families = setOf("long"), nullable = false),
+                ExpectedColumn("longShareOrZero", families = setOf("decimal"), nullable = false),
+            ),
+            report = "v_fitness_totals_filled",
+        ),
     )
 
     @Test
@@ -184,6 +226,37 @@ internal class KotlinCodegenMatchesReferenceTest {
             }
         } finally {
             outDir.deleteRecursively()
+        }
+    }
+
+    /**
+     * The hand-written reference tables the persistence lane reads the views through hold the
+     * same expectations: the view, the columns in order, and which are nullable. Without this
+     * a reference table could drift from the generator and the lane would only notice when a
+     * value happened to be null.
+     */
+    @Test
+    fun `the hand-written report reference tables match the same expectations`() {
+        val references: Map<String, Table> = mapOf(
+            "ProgramMinutes" to ProgramMinutesView,
+            "FitnessTotals" to FitnessTotalsView,
+            "ProgramsByMonth" to ProgramsByMonthView,
+            "ProgramsByWeek" to ProgramsByWeekView,
+            "RecentPrograms" to RecentProgramsView,
+            "AssetActivity" to AssetActivityView,
+            "ProgramRoster" to ProgramRosterView,
+            "ProgramLongWeeks" to ProgramLongWeeksView,
+            "FitnessTotalsFilled" to FitnessTotalsFilledView,
+        )
+        assertEquals(expectations.filterValues { it.report != null }.keys, references.keys)
+        for ((report, table) in references) {
+            val expected = expectations.getValue(report)
+            assertEquals(expected.report, table.tableName, report)
+            assertEquals(
+                expected.columns.map { it.name to it.nullable },
+                table.columns.map { it.name to it.columnType.nullable },
+                "$report: the reference table's columns (name to nullable)",
+            )
         }
     }
 

@@ -7,6 +7,7 @@ import {
   OBJECT_REPORT_ATTR_DIMENSIONS,
   OBJECT_REPORT_ATTR_FROM,
   OBJECT_REPORT_ATTR_MEASURES,
+  OBJECT_REPORT_ATTR_SPINE,
 } from "../object/object-constants.js";
 import { CHILD_REF_SEPARATOR } from "../../shared/structural.js";
 import { REPORT_DIMENSION_GRAIN_SEPARATOR } from "./reporting-constants.js";
@@ -25,6 +26,12 @@ function stringList(v: unknown): string[] {
 export function reportFrom(obj: MetaData): string | undefined {
   const v = obj.attr(OBJECT_REPORT_ATTR_FROM);
   return typeof v === "string" ? v : undefined;
+}
+
+/** `@spine`: the to-one path to the entity whose rows supply the report's rows. */
+export function reportSpine(obj: MetaData): string | undefined {
+  const v = obj.attr(OBJECT_REPORT_ATTR_SPINE);
+  return typeof v === "string" && v !== "" ? v : undefined;
 }
 
 /** The `@dimensions` items, each `name` or `name:grain`. */

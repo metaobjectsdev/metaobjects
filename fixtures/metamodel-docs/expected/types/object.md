@@ -102,6 +102,7 @@ A declared report (FR-044): a fixed combination of dimensions and measures of ON
 | `@from` | string | yes |  |  | metaobjects-core-types | The object.entity whose rows the report aggregates. |
 | `@measures` | string[] | yes |  |  | metaobjects-core-types | Measure names of @from. |
 | `@segment` | string | no |  |  | metaobjects-core-types | Optional segment of @from scoping the rows. |
+| `@spine` | string | no |  |  | metaobjects-core-types | Optional to-one path from @from to the entity whose rows supply the report's rows (e.g. 'Purchase.program'), written like a dimension's @via. With it the report has one row per distinct dimension tuple among THAT entity's rows, including the ones no row of @from refers to: a count there is 0 and any other measure is null unless it declares @default. Every listed dimension must be reached through this path. @segment and @filter still scope the rows of @from and never remove a row. A row of @from whose reference is null or matches nothing is in no row of the report. |
 
 **Allowed children**
 

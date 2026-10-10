@@ -1,13 +1,17 @@
 // FR-044 — cross-node rules for the reporting vocabulary. The rule ids (D1…F2)
 // match the rule table in docs/superpowers/plans/2026-10-03-fr-044-plan-1-reporting-vocabulary.md
+// (R8, R9, M7 and M8: Table B of docs/superpowers/plans/2026-10-09-fr-044-zero-rows-and-measure-defaults.md)
 // and the error fixtures in fixtures/conformance/error-*. Every port implements
 // the same table WITH THE SAME MESSAGE TEXT; the fixtures are the contract.
 //
 // Two design rules hold throughout, so one broken rule yields exactly one error:
 //   - No cascades. A member that fails a structural rule is not checked further
-//     (a dimension whose @via fails D2 skips D1/D3/D4; a report whose @from fails
-//     R1 skips R2/R3/R6/R7 and its @filter; an invalid @dimensions/@measures item
-//     derives no report field for R6).
+//     (a dimension whose @via fails D2 skips D1/D3/D4; a measure that fails one
+//     of M1–M4, or whose @default is a fraction, skips M7/M8; a report whose
+//     @from fails R1 skips R2/R3/R6/R7, R8/R9 and its @filter; a report whose
+//     @spine fails R8 skips R9, and R9
+//     skips a dimension whose @via fails D2; an invalid @dimensions/@measures
+//     item derives no report field for R6).
 //   - Each error's `source` is the offending node (the dimension / measure /
 //     segment / report, or for R4/R5 the declared child), so a conformance
 //     fixture's jsonPath points at it.
@@ -38,6 +42,7 @@ import {
   OBJECT_SUBTYPE_REPORT,
   OBJECT_REPORT_ATTR_FILTER,
   OBJECT_REPORT_ATTR_SEGMENT,
+  OBJECT_REPORT_ATTR_SPINE,
 } from "../core/object/object-constants.js";
 import {
   FIELD_SUBTYPE_INT,
@@ -83,6 +88,8 @@ import {
   GRAIN_HOUR,
   REPORTING_ATTR_NUMERATOR,
   REPORTING_ATTR_DENOMINATOR,
+  REPORTING_ATTR_DEFAULT,
+  REPORTING_ATTR_VIA,
   MEASURE_SUBTYPE_AGGREGATE,
 } from "../core/reporting/reporting-constants.js";
 import { MetaDimension } from "../core/reporting/meta-dimension.js";
@@ -93,6 +100,7 @@ import {
   reportDimensionItems,
   reportFrom,
   reportMeasureNames,
+  reportSpine,
 } from "../core/reporting/report-accessors.js";
 
 // ---------------------------------------------------------------------------
@@ -127,6 +135,7 @@ const ERR_INVALID_MEASURE: ErrorCode = "ERR_INVALID_MEASURE";
 const ERR_INVALID_REPORT: ErrorCode = "ERR_INVALID_REPORT";
 const ERR_REPORT_FOREIGN_MEASURE: ErrorCode = "ERR_REPORT_FOREIGN_MEASURE";
 const ERR_BAD_ATTR_FILTER: ErrorCode = "ERR_BAD_ATTR_FILTER";
+const ERR_BAD_ATTR_VALUE: ErrorCode = "ERR_BAD_ATTR_VALUE";
 
 // ---------------------------------------------------------------------------
 // Entry point
@@ -351,7 +360,7 @@ function checkDimension(ctx: MemberCtx, dim: MetaDimension): void {
   let ofEntity = ctx.host;
   const via = dim.via();
   if (via !== undefined) {
-    const terminal = walkToOneVia(ctx, via, err);
+    const terminal = walkToOneVia(ctx.root, ctx.host, via, err, d2Walk(ctx.declaring));
     if (terminal === undefined) return;
     ofEntity = terminal;
   }
@@ -398,22 +407,81 @@ function checkDimension(ctx: MemberCtx, dim: MetaDimension): void {
 }
 
 /**
- * D2 — walk `Owner.hop[.hop...]`: Owner is the owning entity, and every hop is a
- * to-one `relationship.*` or an `identity.reference`. Returns the terminal
- * entity, or undefined after reporting the first failure.
+ * What a to-one walk resolves against and how its messages name it. D2 walks a
+ * dimension's @via (`d2Walk`); R8 walks a report's @spine from @from
+ * (`spineWalk`). Every difference between the two is a field here, so each port
+ * copies one explicit rule.
  */
-function walkToOneVia(ctx: MemberCtx, via: string, err: (message: string) => void): MetaData | undefined {
+interface ToOneWalk {
+  /** The attribute holding the path: `via` (D2) or `spine` (R8). */
+  readonly attr: string;
+  /** The package Owner resolves in (ADR-0042): the declaring entity's (D2) or the report's (R8). */
+  readonly ownerPkg: string;
+  /** The FQN named for the walk's first entity: the declaring entity (D2) or @from (R8). */
+  readonly hostName: string;
+  /** What Owner must be: `the owning entity '<FQN>'` (D2) or `@from '<FQN>'` (R8). */
+  readonly start: string;
+  /** The same, in the malformed-path message: `the owning entity` (D2) or `@from '<FQN>'` (R8). */
+  readonly startShort: string;
+  /** The sentence that ends the to-many message: why only to-one hops are followed. */
+  readonly toOneReason: string;
+}
+
+/** D2 — a dimension's @via, declared on `declaring`. Reproduces D2's messages exactly. */
+function d2Walk(declaring: MetaData): ToOneWalk {
+  const declaringKey = declaring.resolutionKey();
+  return {
+    attr: REPORTING_ATTR_VIA,
+    ownerPkg: pkgOf(declaring),
+    hostName: declaringKey,
+    start: `the owning entity '${declaringKey}'`,
+    startShort: "the owning entity",
+    toOneReason:
+      "A dimension follows only @cardinality: one relationships and identity.reference hops, so grouping " +
+      "can never multiply the measured rows.",
+  };
+}
+
+/** R8 — a report's @spine, started at @from (`fromKey`); Owner resolves in the report's package. */
+function spineWalk(report: MetaData, fromKey: string): ToOneWalk {
+  return {
+    attr: OBJECT_REPORT_ATTR_SPINE,
+    ownerPkg: pkgOf(report),
+    hostName: fromKey,
+    start: `@from '${fromKey}'`,
+    startShort: `@from '${fromKey}'`,
+    toOneReason:
+      "A @spine follows only @cardinality: one relationships and identity.reference hops, so each fact row " +
+      "joins at most one row of the spine entity and is never counted twice.",
+  };
+}
+
+/**
+ * Walk `Owner.hop[.hop...]` from `host`: Owner is `host` or an entity it
+ * extends, and every hop is a to-one `relationship.*` or an
+ * `identity.reference`. Returns the terminal entity, or undefined after
+ * reporting the first failure. D2 and R8 both run it; `walk` says which.
+ */
+function walkToOneVia(
+  root: MetaData,
+  host: MetaData,
+  via: string,
+  err: (message: string) => void,
+  walk: ToOneWalk,
+): MetaData | undefined {
+  const named = `@${walk.attr} '${via}'`;
+  const nameOf = (entity: MetaData): string => (entity === host ? walk.hostName : entity.resolutionKey());
   const parts = splitDotted(via);
   if (parts === undefined) {
-    err(`@via '${via}' must be Owner.hop[.hop...], starting at the owning entity.`);
+    err(`${named} must be Owner.hop[.hop...], starting at ${walk.startShort}.`);
     return undefined;
   }
-  const owner = resolveObjectRef(ctx.root, parts.owner, pkgOf(ctx.declaring)).node;
-  if (!isSelfOrAncestor(owner, ctx.host)) {
-    err(`@via '${via}' must start at the owning entity '${ctx.declaring.resolutionKey()}'.`);
+  const owner = resolveObjectRef(root, parts.owner, walk.ownerPkg).node;
+  if (!isSelfOrAncestor(owner, host)) {
+    err(`${named} must start at ${walk.start}.`);
     return undefined;
   }
-  let current = ctx.host;
+  let current = host;
   for (const hopName of parts.path) {
     const hop =
       childOfType(current, TYPE_RELATIONSHIP, hopName) ??
@@ -422,26 +490,25 @@ function walkToOneVia(ctx: MemberCtx, via: string, err: (message: string) => voi
         .find((c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_REFERENCE && c.name === hopName);
     if (hop === undefined) {
       err(
-        `@via '${via}' names '${hopName}', which is not a relationship or identity.reference of ` +
-          `'${shown(ctx, current)}'.`,
+        `${named} names '${hopName}', which is not a relationship or identity.reference of ` +
+          `'${nameOf(current)}'.`,
       );
       return undefined;
     }
     const isReference = hop.type === TYPE_IDENTITY;
     if (!isReference && hop.attr(RELATIONSHIP_ATTR_CARDINALITY) !== CARDINALITY_ONE) {
       err(
-        `@via '${via}' crosses relationship '${hopName}' on '${shown(ctx, current)}', which is not to-one. ` +
-          `A dimension follows only @cardinality: one relationships and identity.reference hops, so grouping ` +
-          `can never multiply the measured rows.`,
+        `${named} crosses relationship '${hopName}' on '${nameOf(current)}', which is not to-one. ` +
+          walk.toOneReason,
       );
       return undefined;
     }
     const targetRef = hop.attr(isReference ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF);
     // ADR-0042 — a hop target resolves in the package of the entity declaring the hop.
     const target =
-      typeof targetRef === "string" ? resolveObjectRef(ctx.root, targetRef, pkgOf(current)).node : undefined;
+      typeof targetRef === "string" ? resolveObjectRef(root, targetRef, pkgOf(current)).node : undefined;
     if (target === undefined) {
-      err(`@via '${via}' hop '${hopName}' on '${shown(ctx, current)}' targets no object.`);
+      err(`${named} hop '${hopName}' on '${nameOf(current)}' targets no object.`);
       return undefined;
     }
     current = target;
@@ -453,13 +520,53 @@ function checkMeasure(ctx: MemberCtx, measure: MetaMeasure): void {
   const err = (message: string): void =>
     ctx.sink.push(measure, ERR_INVALID_MEASURE, ctx.label, `: ${message}`, ctx.suffix);
 
+  // The type rule — a measure's @default is a whole number. Checked here, not by
+  // tightening attr.int, whose other users (validator @min/@max) take a fraction.
+  // A non-number is the attribute type check's error and is not repeated. It runs
+  // first; when it fires, M7/M8 are skipped (one mistake, one error).
+  const declaredDefault = measure.attr(REPORTING_ATTR_DEFAULT);
+  const fractionalDefault = typeof declaredDefault === "number" && !Number.isInteger(declaredDefault);
+  if (fractionalDefault) {
+    ctx.sink.push(
+      measure,
+      ERR_BAD_ATTR_VALUE,
+      ctx.label,
+      `: @default '${declaredDefault}' is not an integer. A measure's @default is a whole number (for example 0).`,
+      ctx.suffix,
+    );
+  }
+
   if (measure.isRatio()) {
     checkRatioOperands(ctx, measure, err);
     return;
   }
   if (measure.subType !== MEASURE_SUBTYPE_AGGREGATE) return;
 
-  checkAggregateColumns(ctx, measure, err);
+  const checked = checkAggregateColumns(ctx, measure, err);
+  const clean = checked !== undefined;
+  const ofField = checked?.field;
+
+  // M7 / M8 — where a @default can apply. Only when M1–M4 passed and the @default is
+  // not a fraction: one mistake, one error. The presence test reads the raw attribute,
+  // so a non-number value on a count still reports M7 beside the attribute type error.
+  if (clean && !fractionalDefault && declaredDefault !== undefined) {
+    const agg = measure.agg();
+    if (agg === AGG_COUNT) {
+      err(
+        `@default cannot apply to @agg: count. A count is never null (it is 0 when nothing matches); ` +
+          `remove @default.`,
+      );
+    } else if (
+      (agg === AGG_MIN || agg === AGG_MAX) &&
+      ofField !== undefined &&
+      !NUMERIC_FIELD_SUBTYPES.includes(ofField.subType)
+    ) {
+      err(
+        `@default is a number, but '${measure.ofColumns()[0]}', the @of of @agg '${agg}', is a ` +
+          `field.${ofField.subType}. A default is supported on numeric measures only.`,
+      );
+    }
+  }
 
   // M5 — @segment names a segment of the owning entity.
   const segment = measure.segmentName();
@@ -474,8 +581,16 @@ function checkMeasure(ctx: MemberCtx, measure: MetaMeasure): void {
   }
 }
 
-/** M1–M4, in order; the first failure stops the chain (no M2+M3 double report). */
-function checkAggregateColumns(ctx: MemberCtx, measure: MetaMeasure, err: (message: string) => void): void {
+/**
+ * M1–M4, in order; the first failure stops the chain (no M2+M3 double report).
+ * Returns undefined when one of them fired; otherwise `field` is the single
+ * resolved @of field (undefined for a tuple), for M7/M8.
+ */
+function checkAggregateColumns(
+  ctx: MemberCtx,
+  measure: MetaMeasure,
+  err: (message: string) => void,
+): { readonly field: MetaData | undefined } | undefined {
   const agg = measure.agg();
   const columns = measure.ofColumns();
 
@@ -485,7 +600,7 @@ function checkAggregateColumns(ctx: MemberCtx, measure: MetaMeasure, err: (messa
     const parts = splitDotted(item);
     if (parts === undefined || parts.path.length !== 1) {
       err(`@of '${item}' must be Entity.field.`);
-      return;
+      return undefined;
     }
     const named = resolveObjectRef(ctx.root, parts.owner, pkgOf(ctx.declaring)).node;
     if (!isSelfOrAncestor(named, ctx.host)) {
@@ -493,12 +608,12 @@ function checkAggregateColumns(ctx: MemberCtx, measure: MetaMeasure, err: (messa
         `@of '${item}' must name a field of the owning entity '${ctx.declaring.resolutionKey()}'. ` +
           `A measure aggregates its own entity's rows; declare it on the entity that owns the column.`,
       );
-      return;
+      return undefined;
     }
     const field = fieldOf(ctx.host, parts.path[0]!);
     if (field === undefined) {
       err(`@of '${item}' names no field '${parts.path[0]!}' on '${ctx.declaring.resolutionKey()}'.`);
-      return;
+      return undefined;
     }
     fields.push(field);
   }
@@ -509,29 +624,31 @@ function checkAggregateColumns(ctx: MemberCtx, measure: MetaMeasure, err: (messa
       `@of lists ${columns.length} columns; a tuple is legal only with @agg: count and @distinct: true ` +
         `(a distinct count of the tuple).`,
     );
-    return;
+    return undefined;
   }
 
   // M3 — @distinct is a count modifier.
   if (measure.distinct() && agg !== undefined && agg !== AGG_COUNT) {
     err(`@distinct: true requires @agg: count, not '${agg}'.`);
-    return;
+    return undefined;
   }
 
   // M4 — the aggregate must be meaningful for the column's type.
   const field = fields.length === 1 ? fields[0] : undefined;
-  if (field === undefined || agg === undefined) return;
+  if (field === undefined || agg === undefined) return { field };
   const item = columns[0]!;
   if ((agg === AGG_SUM || agg === AGG_AVG) && !NUMERIC_FIELD_SUBTYPES.includes(field.subType)) {
     err(
       `@agg '${agg}' needs a numeric field (field.int, long, double, float, decimal or currency), ` +
         `but '${item}' is field.${field.subType}.`,
     );
-    return;
+    return undefined;
   }
   if ((agg === AGG_MIN || agg === AGG_MAX) && UNORDERED_FIELD_SUBTYPES.includes(field.subType)) {
     err(`@agg '${agg}' cannot order '${item}', a field.${field.subType}.`);
+    return undefined;
   }
+  return { field };
 }
 
 /** M6 — each operand names a measure.aggregate of the same entity. */
@@ -671,8 +788,8 @@ function checkReport(root: MetaData, report: MetaData, sink: ErrorSink): void {
     }
   }
 
-  // R1 — @from resolves to an object.entity. Without it, R2/R3/R6/R7 and the
-  // @filter have nothing to resolve against, so they are skipped.
+  // R1 — @from resolves to an object.entity. Without it, R2/R3/R6/R7, R8/R9 and
+  // the @filter have nothing to resolve against, so they are skipped.
   const fromRef = reportFrom(report);
   if (fromRef === undefined) return; // missing @from is ERR_MISSING_REQUIRED_ATTR
   const from = resolveObjectRef(root, fromRef, pkgOf(report)).node;
@@ -755,6 +872,52 @@ function checkReport(root: MetaData, report: MetaData, sink: ErrorSink): void {
   const segment = report.attr(OBJECT_REPORT_ATTR_SEGMENT);
   if (typeof segment === "string" && childOfType(from, TYPE_SEGMENT, segment) === undefined) {
     err(`: @segment '${segment}' names no segment of @from '${fromKey}'.`);
+  }
+
+  // R8 — @spine is a to-one path from @from: rule D2's walk, started at @from.
+  const spine = reportSpine(report);
+  if (spine !== undefined) {
+    const terminal = walkToOneVia(root, from, spine, (message) => err(`: ${message}`), spineWalk(report, fromKey));
+    // R9 — every listed dimension is reached through the spine. Skipped when R8 failed.
+    if (terminal !== undefined) {
+      const spineHops = splitDotted(spine)?.path ?? [];
+      const items = reportDimensionItems(report);
+      if (items.length === 0) {
+        err(
+          `: @spine '${spine}' needs at least one dimension. The report's rows are the dimension tuples of ` +
+            `'${terminal.resolutionKey()}'; with no dimension it would be one totals row.`,
+        );
+      }
+      // One verdict per dimension, however many grains list it.
+      const checkedDimensions = new Set<string>();
+      for (const item of items) {
+        if (checkedDimensions.has(item.name)) continue;
+        checkedDimensions.add(item.name);
+        const dim = childOfType(from, TYPE_DIMENSION, item.name);
+        if (!(dim instanceof MetaDimension)) continue; // R2 already reported it
+        const via = dim.via();
+        if (via === undefined) {
+          err(
+            `: dimension '${item.name}' is read from @from '${fromKey}', so it has no value in a row that has ` +
+              `no facts. With @spine '${spine}' every dimension must be reached through it: declare the ` +
+              `dimension over a field of '${terminal.resolutionKey()}' (or an entity to-one from it) with an ` +
+              `@via that begins '${spine}'.`,
+          );
+          continue;
+        }
+        // A @via that does not walk is D2's error, on the dimension; R9 does not report it again.
+        const discard = (): void => undefined;
+        if (walkToOneVia(root, from, via, discard, d2Walk(dim.parent ?? from)) === undefined) continue;
+        // Hop names are compared as written; the owner segment is not compared.
+        const hops = splitDotted(via)?.path ?? [];
+        if (spineHops.every((h, i) => hops[i] === h)) continue;
+        err(
+          `: dimension '${item.name}' is reached by @via '${via}', which does not begin with the hops of ` +
+            `@spine '${spine}'. Hop names are compared as written: if both name the same join, write the same ` +
+            `hops; otherwise the dimension is not reached through the spine.`,
+        );
+      }
+    }
   }
 
   // S1 / F2 — the report's row scope over @from.

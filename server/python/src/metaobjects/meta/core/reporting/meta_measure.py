@@ -11,6 +11,7 @@ from .reporting_constants import (
     MEASURE_AGGS,
     MEASURE_SUBTYPE_RATIO,
     REPORTING_ATTR_AGG,
+    REPORTING_ATTR_DEFAULT,
     REPORTING_ATTR_DENOMINATOR,
     REPORTING_ATTR_DISTINCT,
     REPORTING_ATTR_FILTER,
@@ -55,6 +56,14 @@ class MetaMeasure(MetaData):
         """ADR-0039: resolving. The canonical row-scope filter, when one is declared."""
         v = self.get_meta_attr(REPORTING_ATTR_FILTER)
         return v if isinstance(v, dict) else None
+
+    def default_value(self) -> int | None:
+        """ADR-0039: resolving, so an inherited measure keeps it. ``@default``: the integer
+        this measure reads when it would otherwise be null (rules M7/M8 decide where it is
+        legal). ``None`` for anything that is not an integer: ``bool`` is a subclass of
+        ``int`` in Python, and ``True`` is not a default."""
+        v = self.get_meta_attr(REPORTING_ATTR_DEFAULT)
+        return v if isinstance(v, int) and not isinstance(v, bool) else None
 
     def numerator(self) -> str | None:
         """ADR-0039: resolving. Name of the ``measure.aggregate`` sibling used as the

@@ -75,7 +75,7 @@ const PROJECTION_FILTER: Record<string, ExpectedAttr> = {
   filter: { valueType: "filter", required: false },
 };
 
-// FR-044 — object.report carries its five declaration attrs. The array-valued ones
+// FR-044 — object.report carries its six declaration attrs (five, plus the optional @spine). The array-valued ones
 // (@dimensions, @measures) are `string` attrs with isArray, so valueType stays "string".
 const REPORT_ATTRS: Record<string, ExpectedAttr> = {
   from: { valueType: "string", required: true },
@@ -83,6 +83,7 @@ const REPORT_ATTRS: Record<string, ExpectedAttr> = {
   measures: { valueType: "string", required: true },
   segment: { valueType: "string", required: false },
   filter: { valueType: "filter", required: false },
+  spine: { valueType: "string", required: false },
 };
 
 function expectedAttrsFor(subType: string): Record<string, ExpectedAttr> {

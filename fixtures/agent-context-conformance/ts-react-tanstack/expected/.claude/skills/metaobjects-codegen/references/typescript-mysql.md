@@ -94,11 +94,14 @@ migration); the loop will not.
 Pass `columnNamingStrategy` to match your tables' column names (the default is `snake_case`).
 The bodies are valid under MySQL's default `sql_mode`, `ONLY_FULL_GROUP_BY` included, and a
 change to a report means a new `CREATE OR REPLACE VIEW` (or `DROP` and `CREATE`) in your
-migrations; nothing diffs the live view for you. Two things differ from Postgres and SQLite:
+migrations; nothing diffs the live view for you. A `@spine` report's body is valid as
+emitted too, and a measure with `@default` is a `COALESCE` whose column MySQL reports
+`NOT NULL`. Two things differ from Postgres and SQLite:
 
 - **Ratios and averages have four fractional digits by default.** MySQL divides to
   `div_precision_increment` digits, so a ratio of 2 to 3 is `0.6667` (Postgres returns
   `0.66666666666666666667`, SQLite `0.6666666666666666`), and a ratio of 3 to 4 is `0.7500`.
+  A ratio that reads its `@default: 0` is `0.0000`.
 - **`DATETIME` values are read as the UTC wall clock.** A `DATETIME(3)` column carries no zone,
   so every time grain and every relative-date window (`{ "now": "-P30D" }`, evaluated with
   `UTC_TIMESTAMP(3)` when the view is queried) treats the stored value as UTC. That matches

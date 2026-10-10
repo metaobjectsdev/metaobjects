@@ -2,17 +2,26 @@
 //
 // Ported rule-for-rule, WITH THE SAME MESSAGE TEXT, from the TS reference
 // server/typescript/packages/metadata/src/loader/reporting-validation.ts. The rule ids
-// (D1…F2) match the rule table in the FR-044 plan and the error fixtures in
-// fixtures/conformance/error-*; the fixtures are the contract.
+// (D1…F2) match the rule table in the FR-044 plan (R8, R9, M7 and M8: Table B of
+// docs/superpowers/plans/2026-10-09-fr-044-zero-rows-and-measure-defaults.md) and the error
+// fixtures in fixtures/conformance/error-*; the fixtures are the contract.
 //
 // Two design rules hold throughout, so one broken rule yields exactly one error:
 //   - No cascades. A member that fails a structural rule is not checked further
-//     (a dimension whose @via fails D2 skips D1/D3/D4; a report whose @from fails
-//     R1 skips R2/R3/R6/R7 and its @filter; an invalid @dimensions/@measures item
-//     derives no report field for R6).
+//     (a dimension whose @via fails D2 skips D1/D3/D4; a measure that fails one
+//     of M1–M4, or whose @default is a fraction, skips M7/M8; a report whose
+//     @from fails R1 skips R2/R3/R6/R7, R8/R9 and its @filter; a report whose
+//     @spine fails R8 skips R9, and R9 skips a dimension whose @via fails D2; an
+//     invalid @dimensions/@measures item derives no report field for R6).
 //   - Each error's source is the offending node (the dimension / measure / segment /
 //     report, or for R4/R5 the declared child), so a conformance fixture's jsonPath
 //     points at it.
+//
+// A fractional measure @default: the TypeScript reference refuses it here, in
+// CheckMeasure, because its generic attr.int check lets a fraction through. This port's
+// generic attr-type check (ValidateAttrSchema, ValueMatchesType) already refuses it with
+// ERR_BAD_ATTR_VALUE on the measure node, so no second error is added here; CheckMeasure
+// only skips M7/M8 for it, as the reference does.
 //
 // Inheritance (ADR-0039): an entity's members are read through Children(), so a member
 // declared on an abstract base is validated against every entity that inherits it.
@@ -308,7 +317,7 @@ public static partial class ValidationPasses
         string? via = dim.Via();
         if (via is not null)
         {
-            var terminal = WalkToOneVia(ctx, via, Err);
+            var terminal = WalkToOneVia(ctx.Root, ctx.Host, via, Err, D2Walk(ctx.Declaring));
             if (terminal is null) return;
             ofEntity = terminal;
         }
@@ -359,25 +368,70 @@ public static partial class ValidationPasses
     }
 
     /// <summary>
-    /// D2 — walk <c>Owner.hop[.hop...]</c>: Owner is the owning entity, and every hop is a
-    /// to-one <c>relationship.*</c> or an <c>identity.reference</c>. Returns the terminal
-    /// entity, or null after reporting the first failure.
+    /// What a to-one walk resolves against and how its messages name it. D2 walks a
+    /// dimension's @via (<see cref="D2Walk"/>); R8 walks a report's @spine from @from
+    /// (<see cref="SpineWalk"/>). Every difference between the two is a field here, so each
+    /// port copies one explicit rule.
     /// </summary>
-    private static MetaData? WalkToOneVia(MemberCtx ctx, string via, Action<string> err)
+    /// <param name="Attr">The attribute holding the path: <c>via</c> (D2) or <c>spine</c> (R8).</param>
+    /// <param name="OwnerPkg">The package Owner resolves in (ADR-0042): the declaring entity's (D2) or the report's (R8).</param>
+    /// <param name="HostName">The FQN named for the walk's first entity: the declaring entity (D2) or @from (R8).</param>
+    /// <param name="Start">What Owner must be: <c>the owning entity '&lt;FQN&gt;'</c> (D2) or <c>@from '&lt;FQN&gt;'</c> (R8).</param>
+    /// <param name="StartShort">The same, in the malformed-path message: <c>the owning entity</c> (D2) or <c>@from '&lt;FQN&gt;'</c> (R8).</param>
+    /// <param name="ToOneReason">The sentence that ends the to-many message: why only to-one hops are followed.</param>
+    private sealed record ToOneWalk(
+        string Attr, string OwnerPkg, string HostName, string Start, string StartShort, string ToOneReason);
+
+    /// <summary>D2 — a dimension's @via, declared on <paramref name="declaring"/>. Reproduces D2's messages exactly.</summary>
+    private static ToOneWalk D2Walk(MetaData declaring)
     {
+        string declaringKey = declaring.ResolutionKey();
+        return new ToOneWalk(
+            Attr: REPORTING_ATTR_VIA,
+            OwnerPkg: NamingRefs.EffectivePackage(declaring),
+            HostName: declaringKey,
+            Start: $"the owning entity '{declaringKey}'",
+            StartShort: "the owning entity",
+            ToOneReason:
+                "A dimension follows only @cardinality: one relationships and identity.reference hops, so grouping " +
+                "can never multiply the measured rows.");
+    }
+
+    /// <summary>R8 — a report's @spine, started at @from (<paramref name="fromKey"/>); Owner resolves in the report's package.</summary>
+    private static ToOneWalk SpineWalk(MetaData report, string fromKey) =>
+        new(
+            Attr: OBJECT_REPORT_ATTR_SPINE,
+            OwnerPkg: NamingRefs.EffectivePackage(report),
+            HostName: fromKey,
+            Start: $"@from '{fromKey}'",
+            StartShort: $"@from '{fromKey}'",
+            ToOneReason:
+                "A @spine follows only @cardinality: one relationships and identity.reference hops, so each fact row " +
+                "joins at most one row of the spine entity and is never counted twice.");
+
+    /// <summary>
+    /// Walk <c>Owner.hop[.hop...]</c> from <paramref name="host"/>: Owner is the host or an
+    /// entity it extends, and every hop is a to-one <c>relationship.*</c> or an
+    /// <c>identity.reference</c>. Returns the terminal entity, or null after reporting the
+    /// first failure. D2 and R8 both run it; <paramref name="walk"/> says which.
+    /// </summary>
+    private static MetaData? WalkToOneVia(MetaData root, MetaData host, string via, Action<string> err, ToOneWalk walk)
+    {
+        string named = $"@{walk.Attr} '{via}'";
+        string NameOf(MetaData entity) => ReferenceEquals(entity, host) ? walk.HostName : entity.ResolutionKey();
         var parts = ReportingSplitDotted(via);
         if (parts is null)
         {
-            err($"@via '{via}' must be Owner.hop[.hop...], starting at the owning entity.");
+            err($"{named} must be Owner.hop[.hop...], starting at {walk.StartShort}.");
             return null;
         }
-        var owner = NamingRefs.ResolveObjectRef(ctx.Root, parts.Value.Owner, NamingRefs.EffectivePackage(ctx.Declaring));
-        if (!IsSelfOrAncestor(owner, ctx.Host))
+        var owner = NamingRefs.ResolveObjectRef(root, parts.Value.Owner, walk.OwnerPkg);
+        if (!IsSelfOrAncestor(owner, host))
         {
-            err($"@via '{via}' must start at the owning entity '{ctx.Declaring.ResolutionKey()}'.");
+            err($"{named} must start at {walk.Start}.");
             return null;
         }
-        MetaData current = ctx.Host;
+        MetaData current = host;
         foreach (string hopName in parts.Value.Path)
         {
             var hop =
@@ -387,28 +441,27 @@ public static partial class ValidationPasses
                     c.Type == TYPE_IDENTITY && c.SubType == IDENTITY_SUBTYPE_REFERENCE && c.Name == hopName);
             if (hop is null)
             {
-                err($"@via '{via}' names '{hopName}', which is not a relationship or identity.reference of " +
-                    $"'{Shown(ctx, current)}'.");
+                err($"{named} names '{hopName}', which is not a relationship or identity.reference of " +
+                    $"'{NameOf(current)}'.");
                 return null;
             }
             bool isReference = hop.Type == TYPE_IDENTITY;
             // ADR-0039: resolving — @cardinality may be inherited via extends.
             if (!isReference && !Equals(hop.Attr(RELATIONSHIP_ATTR_CARDINALITY), CARDINALITY_ONE))
             {
-                err($"@via '{via}' crosses relationship '{hopName}' on '{Shown(ctx, current)}', which is not to-one. " +
-                    "A dimension follows only @cardinality: one relationships and identity.reference hops, so grouping " +
-                    "can never multiply the measured rows.");
+                err($"{named} crosses relationship '{hopName}' on '{NameOf(current)}', which is not to-one. " +
+                    walk.ToOneReason);
                 return null;
             }
             // ADR-0039: resolving — the hop target attr may be inherited via extends.
             var targetRef = hop.Attr(isReference ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF);
             // ADR-0042 — a hop target resolves in the package of the entity declaring the hop.
             var target = targetRef is string tr
-                ? NamingRefs.ResolveObjectRef(ctx.Root, tr, NamingRefs.EffectivePackage(current))
+                ? NamingRefs.ResolveObjectRef(root, tr, NamingRefs.EffectivePackage(current))
                 : null;
             if (target is null)
             {
-                err($"@via '{via}' hop '{hopName}' on '{Shown(ctx, current)}' targets no object.");
+                err($"{named} hop '{hopName}' on '{NameOf(current)}' targets no object.");
                 return null;
             }
             current = target;
@@ -421,6 +474,13 @@ public static partial class ValidationPasses
         void Err(string message) =>
             ctx.Sink.Push(measure, ErrorCode.ERR_INVALID_MEASURE, ctx.Label, $": {message}", ctx.Suffix);
 
+        // The type rule — a measure's @default is a whole number. ValidateAttrSchema already
+        // refuses a fraction (and a non-number) with ERR_BAD_ATTR_VALUE on this node (see the
+        // file header), so nothing is reported here. A fraction only skips M7/M8: one mistake,
+        // one error. ADR-0039: resolving — the raw attribute, inherited or not.
+        var declaredDefault = measure.Attr(REPORTING_ATTR_DEFAULT);
+        bool fractionalDefault = declaredDefault is double d && double.IsFinite(d) && d != Math.Floor(d);
+
         if (measure.IsRatio())
         {
             CheckRatioOperands(ctx, measure, Err);
@@ -428,7 +488,27 @@ public static partial class ValidationPasses
         }
         if (measure.SubType != MEASURE_SUBTYPE_AGGREGATE) return;
 
-        CheckAggregateColumns(ctx, measure, Err);
+        bool clean = CheckAggregateColumns(ctx, measure, Err, out var ofField);
+
+        // M7 / M8 — where a @default can apply. Only when M1–M4 passed and the @default is
+        // not a fraction: one mistake, one error. The presence test reads the raw attribute,
+        // so a non-number value on a count still reports M7 beside the attribute type error.
+        if (clean && !fractionalDefault && declaredDefault is not null)
+        {
+            string? agg = measure.Agg();
+            if (agg == AGG_COUNT)
+            {
+                Err("@default cannot apply to @agg: count. A count is never null (it is 0 when nothing matches); " +
+                    "remove @default.");
+            }
+            else if ((agg == AGG_MIN || agg == AGG_MAX) &&
+                     ofField is not null &&
+                     !ReportingNumericFieldSubtypes.Contains(ofField.SubType))
+            {
+                Err($"@default is a number, but '{measure.OfColumns()[0]}', the @of of @agg '{agg}', is a " +
+                    $"field.{ofField.SubType}. A default is supported on numeric measures only.");
+            }
+        }
 
         // M5 — @segment names a segment of the owning entity.
         string? segment = measure.SegmentName();
@@ -445,9 +525,14 @@ public static partial class ValidationPasses
         }
     }
 
-    /// <summary>M1–M4, in order; the first failure stops the chain (no M2+M3 double report).</summary>
-    private static void CheckAggregateColumns(MemberCtx ctx, MetaMeasure measure, Action<string> err)
+    /// <summary>
+    /// M1–M4, in order; the first failure stops the chain (no M2+M3 double report).
+    /// Returns false when one of them fired; otherwise <paramref name="field"/> is the single
+    /// resolved @of field (null for a tuple), for M7/M8.
+    /// </summary>
+    private static bool CheckAggregateColumns(MemberCtx ctx, MetaMeasure measure, Action<string> err, out MetaData? field)
     {
+        field = null;
         string? agg = measure.Agg();
         var columns = measure.OfColumns();
 
@@ -459,22 +544,22 @@ public static partial class ValidationPasses
             if (parts is null || parts.Value.Path.Length != 1)
             {
                 err($"@of '{item}' must be Entity.field.");
-                return;
+                return false;
             }
             var named = NamingRefs.ResolveObjectRef(ctx.Root, parts.Value.Owner, NamingRefs.EffectivePackage(ctx.Declaring));
             if (!IsSelfOrAncestor(named, ctx.Host))
             {
                 err($"@of '{item}' must name a field of the owning entity '{ctx.Declaring.ResolutionKey()}'. " +
                     "A measure aggregates its own entity's rows; declare it on the entity that owns the column.");
-                return;
+                return false;
             }
-            var field = ReportingFieldOf(ctx.Host, parts.Value.Path[0]);
-            if (field is null)
+            var ofField = ReportingFieldOf(ctx.Host, parts.Value.Path[0]);
+            if (ofField is null)
             {
                 err($"@of '{item}' names no field '{parts.Value.Path[0]}' on '{ctx.Declaring.ResolutionKey()}'.");
-                return;
+                return false;
             }
-            fields.Add(field);
+            fields.Add(ofField);
         }
 
         // M2 — a tuple is a distinct count only.
@@ -482,30 +567,33 @@ public static partial class ValidationPasses
         {
             err($"@of lists {columns.Count} columns; a tuple is legal only with @agg: count and @distinct: true " +
                 "(a distinct count of the tuple).");
-            return;
+            return false;
         }
 
         // M3 — @distinct is a count modifier.
         if (measure.Distinct() && agg is not null && agg != AGG_COUNT)
         {
             err($"@distinct: true requires @agg: count, not '{agg}'.");
-            return;
+            return false;
         }
 
         // M4 — the aggregate must be meaningful for the column's type.
         var single = fields.Count == 1 ? fields[0] : null;
-        if (single is null || agg is null) return;
+        field = single;
+        if (single is null || agg is null) return true;
         string first = columns[0];
         if ((agg == AGG_SUM || agg == AGG_AVG) && !ReportingNumericFieldSubtypes.Contains(single.SubType))
         {
             err($"@agg '{agg}' needs a numeric field (field.int, long, double, float, decimal or currency), " +
                 $"but '{first}' is field.{single.SubType}.");
-            return;
+            return false;
         }
         if ((agg == AGG_MIN || agg == AGG_MAX) && ReportingUnorderedFieldSubtypes.Contains(single.SubType))
         {
             err($"@agg '{agg}' cannot order '{first}', a field.{single.SubType}.");
+            return false;
         }
+        return true;
     }
 
     /// <summary>M6 — each operand names a measure.aggregate of the same entity.</summary>
@@ -659,8 +747,8 @@ public static partial class ValidationPasses
             }
         }
 
-        // R1 — @from resolves to an object.entity. Without it, R2/R3/R6/R7 and the
-        // @filter have nothing to resolve against, so they are skipped.
+        // R1 — @from resolves to an object.entity. Without it, R2/R3/R6/R7, R8/R9 and
+        // the @filter have nothing to resolve against, so they are skipped.
         string? fromRef = ReportAccessors.ReportFrom(report);
         if (fromRef is null) return; // missing @from is ERR_MISSING_REQUIRED_ATTR
         var from = NamingRefs.ResolveObjectRef(root, fromRef, NamingRefs.EffectivePackage(report));
@@ -748,6 +836,49 @@ public static partial class ValidationPasses
             ReportingChildOfType(from, TYPE_SEGMENT, segment) is null)
         {
             Err($": @segment '{segment}' names no segment of @from '{fromKey}'.");
+        }
+
+        // R8 — @spine is a to-one path from @from: rule D2's walk, started at @from.
+        string? spine = ReportAccessors.ReportSpine(report);
+        if (spine is not null)
+        {
+            var terminal = WalkToOneVia(root, from, spine, m => Err($": {m}"), SpineWalk(report, fromKey));
+            // R9 — every listed dimension is reached through the spine. Skipped when R8 failed.
+            if (terminal is not null)
+            {
+                string[] spineHops = ReportingSplitDotted(spine)?.Path ?? [];
+                var items = ReportAccessors.ReportDimensionItems(report);
+                if (items.Count == 0)
+                {
+                    Err($": @spine '{spine}' needs at least one dimension. The report's rows are the dimension tuples of " +
+                        $"'{terminal.ResolutionKey()}'; with no dimension it would be one totals row.");
+                }
+                // One verdict per dimension, however many grains list it.
+                var checkedDimensions = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var item in items)
+                {
+                    if (!checkedDimensions.Add(item.Name)) continue;
+                    if (ReportingChildOfType(from, TYPE_DIMENSION, item.Name) is not MetaDimension dim) continue; // R2 already reported it
+                    string? via = dim.Via();
+                    if (via is null)
+                    {
+                        Err($": dimension '{item.Name}' is read from @from '{fromKey}', so it has no value in a row that has " +
+                            $"no facts. With @spine '{spine}' every dimension must be reached through it: declare the " +
+                            $"dimension over a field of '{terminal.ResolutionKey()}' (or an entity to-one from it) with an " +
+                            $"@via that begins '{spine}'.");
+                        continue;
+                    }
+                    // A @via that does not walk is D2's error, on the dimension; R9 does not report it again.
+                    if (WalkToOneVia(root, from, via, _ => { }, D2Walk(dim.Parent ?? from)) is null) continue;
+                    // Hop names are compared as written; the owner segment is not compared.
+                    string[] hops = ReportingSplitDotted(via)?.Path ?? [];
+                    if (hops.Length >= spineHops.Length &&
+                        hops.Take(spineHops.Length).SequenceEqual(spineHops, StringComparer.Ordinal)) continue;
+                    Err($": dimension '{item.Name}' is reached by @via '{via}', which does not begin with the hops of " +
+                        $"@spine '{spine}'. Hop names are compared as written: if both name the same join, write the same " +
+                        "hops; otherwise the dimension is not reached through the spine.");
+                }
+            }
         }
 
         // S1 / F2 — the report's row scope over @from.

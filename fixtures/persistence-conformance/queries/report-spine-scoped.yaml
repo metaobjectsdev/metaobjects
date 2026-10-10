@@ -1,0 +1,42 @@
+name: report-spine-scoped
+description: |
+  ProgramLongWeeks is ProgramRoster's twin with a report-level @segment: long
+  (durationMinutes >= 60). Under @spine the report's row scope decides which weeks are
+  aggregated and never removes a program: the scope sits in the join condition, not in
+  a WHERE that would turn the outer join back into an inner one.
+
+  Program 1's long weeks are 60, 90 and 60 (its 30-minute week is out of scope).
+  Program 2's only week is 45 minutes, so it keeps its row with weeks 0 and the
+  defaulted totalMinutesOrZero 0, exactly like program 3, which has no weeks at all.
+seed-data: |
+  INSERT INTO "programs" ("id","title","priceCents","status","created_ts") VALUES
+    (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00'),
+    (2, 'Strength', 2500, 'PUBLISHED', '2026-05-17T23:30:00'),
+    (3, 'Mobility', 1500, 'DRAFT', '2026-05-20T08:00:00');
+  INSERT INTO "weeks" ("id","programId","label","durationMinutes") VALUES
+    (10, 1, 'Week 1', 30),
+    (11, 1, 'Week 2', 60),
+    (12, 1, 'Week 2', 90),
+    (13, 1, NULL, 60),
+    (20, 2, 'Solo', 45);
+queries:
+  - name: a-program-whose-weeks-are-all-out-of-scope-keeps-its-row
+    op: list
+    entity: ProgramLongWeeks
+    sort: [{ field: programKey, dir: asc }]
+    expect:
+      - { programKey: "1", weeks: "3", totalMinutesOrZero: "210" }
+      - { programKey: "2", weeks: "0", totalMinutesOrZero: "0" }
+      - { programKey: "3", weeks: "0", totalMinutesOrZero: "0" }
+  - name: count-is-the-number-of-programs
+    op: count
+    entity: ProgramLongWeeks
+    expect: 3
+  - name: the-empty-rows
+    op: list
+    entity: ProgramLongWeeks
+    filter: { weeks: { eq: 0 } }
+    sort: [{ field: programKey, dir: asc }]
+    expect:
+      - { programKey: "2", weeks: "0", totalMinutesOrZero: "0" }
+      - { programKey: "3", weeks: "0", totalMinutesOrZero: "0" }

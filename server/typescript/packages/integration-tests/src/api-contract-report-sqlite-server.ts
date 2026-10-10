@@ -6,9 +6,9 @@
 // ratio there is gated by test/api-contract-report-sqlite.test.ts.
 //
 // Same shape as the Postgres server: run the real codegen over report/meta.json
-// (dialect sqlite), provision `invoices` by hand in the EMITTED snake_case spelling,
-// create each view from buildReportViews (the real lowering), import the EMITTED
-// <Report>.routes.ts files unmodified and mount them.
+// (dialect sqlite), provision the base tables by hand in the EMITTED snake_case
+// spelling, create each view from buildReportViews (the real lowering), import the
+// EMITTED <Report>.routes.ts files unmodified and mount them.
 
 import Fastify, { type FastifyInstance } from "fastify";
 import type { Database } from "bun:sqlite";
@@ -19,7 +19,7 @@ import { runGen, defineConfig, buildReportViews } from "@metaobjectsdev/codegen-
 import { DEFAULT_COLUMN_NAMING_STRATEGY } from "@metaobjectsdev/metadata";
 import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
 import { loadMetadataFile } from "./load-metadata.ts";
-import type { ReportSeed } from "./api-contract-report-generated-server.ts";
+import { seedInserts, type ReportSeed } from "./api-contract-report-generated-server.ts";
 
 export interface SqliteReportServerHandle {
   baseUrl: string;
@@ -31,7 +31,40 @@ const SERVED_REPORTS = [
   { name: "InvoiceStatusTotals", registrar: "invoiceStatusTotalsRoutes" },
   { name: "InvoicesByMonth", registrar: "invoicesByMonthRoutes" },
   { name: "InvoiceTotals", registrar: "invoiceTotalsRoutes" },
+  { name: "ProductRevenue", registrar: "productRevenueRoutes" },
 ] as const;
+
+/** The base tables, parents first, in the EMITTED snake_case spelling. */
+const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
+  {
+    name: "invoices",
+    ddl: `
+    CREATE TABLE "invoices" (
+      "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+      "reference" TEXT NOT NULL,
+      "status" TEXT NOT NULL,
+      "amount_cents" INTEGER NOT NULL,
+      "issued_on" TEXT NOT NULL
+    )`,
+  },
+  {
+    name: "products",
+    ddl: `
+    CREATE TABLE "products" (
+      "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+      "name" TEXT NOT NULL
+    )`,
+  },
+  {
+    name: "sales",
+    ddl: `
+    CREATE TABLE "sales" (
+      "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+      "product_id" INTEGER NOT NULL REFERENCES "products" ("id"),
+      "amount_cents" INTEGER NOT NULL
+    )`,
+  },
+];
 
 export async function startSqliteReportServer(metaPath: string): Promise<SqliteReportServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -75,14 +108,7 @@ export const db = drizzle(client);
     dialect: "sqlite",
     columnNamingStrategy: DEFAULT_COLUMN_NAMING_STRATEGY,
   });
-  dbMod.client.run(`
-    CREATE TABLE "invoices" (
-      "id" INTEGER PRIMARY KEY AUTOINCREMENT,
-      "reference" TEXT NOT NULL,
-      "status" TEXT NOT NULL,
-      "amount_cents" INTEGER NOT NULL,
-      "issued_on" TEXT NOT NULL
-    )`);
+  for (const t of BASE_TABLES) dbMod.client.run(t.ddl);
   for (const v of views) {
     if (v.sql === undefined) throw new Error(`view ${v.name} has no SQL`);
     dbMod.client.run(`CREATE VIEW "${v.name}" AS ${v.sql}`);
@@ -104,11 +130,13 @@ export const db = drizzle(client);
   return {
     baseUrl,
     applySeed: async (seed: ReportSeed) => {
-      dbMod.client.run(`DELETE FROM "invoices"`);
-      for (const i of seed.invoices) {
+      // Children before parents on the way out; the seed's file order (parents first) on the way in.
+      for (const t of [...BASE_TABLES].reverse()) dbMod.client.run(`DELETE FROM "${t.name}"`);
+      for (const r of seedInserts(root, seed)) {
         dbMod.client.run(
-          `INSERT INTO "invoices" ("id","reference","status","amount_cents","issued_on") VALUES (?,?,?,?,?)`,
-          [i.id, i.reference, i.status, i.amountCents, i.issuedOn],
+          `INSERT INTO "${r.table}" (${r.columns.map((c) => `"${c}"`).join(",")}) ` +
+            `VALUES (${r.columns.map(() => "?").join(",")})`,
+          r.values,
         );
       }
     },

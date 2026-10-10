@@ -61,17 +61,21 @@ import java.util.regex.Pattern;
 
 /**
  * FR-044 — cross-node rules for the reporting vocabulary. The rule ids (D1…F2) match the
- * rule table in the FR-044 Plan 1 document and the error fixtures in
- * {@code fixtures/conformance/error-*}. Every port implements the same table WITH THE SAME
- * MESSAGE TEXT; the TypeScript {@code reporting-validation.ts} is the reference and the
- * fixtures are the contract.
+ * rule table in the FR-044 Plan 1 document (R8, R9, M7 and M8: Table B of
+ * {@code docs/superpowers/plans/2026-10-09-fr-044-zero-rows-and-measure-defaults.md}) and
+ * the error fixtures in {@code fixtures/conformance/error-*}. Every port implements the same
+ * table WITH THE SAME MESSAGE TEXT; the TypeScript {@code reporting-validation.ts} is the
+ * reference and the fixtures are the contract.
  *
  * <p>Two design rules hold throughout, so one broken rule yields exactly one error:</p>
  * <ul>
  *   <li>No cascades. A member that fails a structural rule is not checked further (a
- *       dimension whose {@code @via} fails D2 skips D1/D3/D4; a report whose {@code @from}
- *       fails R1 skips R2/R3/R6/R7 and its {@code @filter}; an invalid
- *       {@code @dimensions}/{@code @measures} item derives no report field for R6).</li>
+ *       dimension whose {@code @via} fails D2 skips D1/D3/D4; a measure that fails one of
+ *       M1–M4, or whose {@code @default} is a fraction, skips M7/M8; a report whose
+ *       {@code @from} fails R1 skips R2/R3/R6/R7, R8/R9 and its {@code @filter}; a report
+ *       whose {@code @spine} fails R8 skips R9, and R9 skips a dimension whose {@code @via}
+ *       fails D2; an invalid {@code @dimensions}/{@code @measures} item derives no report
+ *       field for R6).</li>
  *   <li>Each error's source is the offending node (the dimension / measure / segment /
  *       report, or for R4/R5 the declared child), so a conformance fixture's jsonPath
  *       points at it.</li>
@@ -87,6 +91,13 @@ import java.util.regex.Pattern;
  * <p>Java addition: {@code .withEnum} is decorative on attr children in this port (see
  * {@code validateRequirementStatus}), so the closed {@code @agg} / {@code @grains} sets the
  * TS registry enforces generically are checked here as {@code ERR_BAD_ATTR_VALUE}.</p>
+ *
+ * <p>A fractional measure {@code @default}: the TypeScript reference refuses it here, in
+ * {@code checkMeasure}, because its generic attr.int check lets a fraction through. This
+ * port's generic attr.int parse ({@code IntAttribute.setValueAsString}, reached from
+ * {@code BaseMetaDataParser.parseInlineAttribute}) already refuses it with
+ * {@code ERR_BAD_ATTR_VALUE} on the measure node, so no second error is added here;
+ * {@code checkMeasure} only skips M7/M8 for a non-integer value, as the reference does.</p>
  */
 final class ReportingValidation {
 
@@ -403,7 +414,7 @@ final class ReportingValidation {
         MetaData ofEntity = ctx.host();
         String via = dim.getVia();
         if (via != null) {
-            MetaData terminal = walkToOneVia(ctx, via, err);
+            MetaData terminal = walkToOneVia(ctx.root(), ctx.host(), via, err, d2Walk(ctx.declaring()));
             if (terminal == null) return;
             ofEntity = terminal;
         }
@@ -449,22 +460,75 @@ final class ReportingValidation {
     }
 
     /**
-     * D2 — walk {@code Owner.hop[.hop...]}: Owner is the owning entity, and every hop is a
-     * to-one {@code relationship.*} or an {@code identity.reference}. Returns the terminal
-     * entity, or {@code null} after reporting the first failure.
+     * What a to-one walk resolves against and how its messages name it. D2 walks a
+     * dimension's {@code @via} ({@link #d2Walk}); R8 walks a report's {@code @spine} from
+     * {@code @from} ({@link #spineWalk}). Every difference between the two is a field here,
+     * so each port copies one explicit rule.
+     *
+     * @param attr        the attribute holding the path: {@code via} (D2) or {@code spine} (R8)
+     * @param ownerPkg    the package Owner resolves in (ADR-0042): the declaring entity's (D2)
+     *                    or the report's (R8)
+     * @param hostName    the FQN named for the walk's first entity: the declaring entity (D2)
+     *                    or {@code @from} (R8)
+     * @param start       what Owner must be: {@code the owning entity '<FQN>'} (D2) or
+     *                    {@code @from '<FQN>'} (R8)
+     * @param startShort  the same, in the malformed-path message: {@code the owning entity}
+     *                    (D2) or {@code @from '<FQN>'} (R8)
+     * @param toOneReason the sentence that ends the to-many message: why only to-one hops
+     *                    are followed
      */
-    private static MetaData walkToOneVia(MemberCtx ctx, String via, Consumer<String> err) {
+    private record ToOneWalk(String attr, String ownerPkg, String hostName, String start, String startShort,
+                             String toOneReason) {
+    }
+
+    /** D2 — a dimension's {@code @via}, declared on {@code declaring}. Reproduces D2's messages exactly. */
+    private static ToOneWalk d2Walk(MetaData declaring) {
+        String declaringKey = declaring.getName();
+        return new ToOneWalk(
+                ReportingConstants.ATTR_VIA,
+                pkgOf(declaring),
+                declaringKey,
+                "the owning entity '" + declaringKey + "'",
+                "the owning entity",
+                "A dimension follows only @cardinality: one relationships and identity.reference hops, so grouping "
+                        + "can never multiply the measured rows.");
+    }
+
+    /** R8 — a report's {@code @spine}, started at {@code @from} ({@code fromKey}); Owner resolves
+     *  in the report's package. */
+    private static ToOneWalk spineWalk(MetaData report, String fromKey) {
+        return new ToOneWalk(
+                MetaObject.ATTR_REPORT_SPINE,
+                pkgOf(report),
+                fromKey,
+                "@from '" + fromKey + "'",
+                "@from '" + fromKey + "'",
+                "A @spine follows only @cardinality: one relationships and identity.reference hops, so each fact row "
+                        + "joins at most one row of the spine entity and is never counted twice.");
+    }
+
+    /**
+     * Walk {@code Owner.hop[.hop...]} from {@code host}: Owner is {@code host} or an entity it
+     * extends, and every hop is a to-one {@code relationship.*} or an {@code identity.reference}.
+     * Returns the terminal entity, or {@code null} after reporting the first failure. D2 and R8
+     * both run it; {@code walk} says which.
+     */
+    private static MetaData walkToOneVia(MetaRoot root, MetaData host, String via, Consumer<String> err,
+                                         ToOneWalk walk) {
+        String named = "@" + walk.attr() + " '" + via + "'";
+        java.util.function.Function<MetaData, String> nameOf =
+                entity -> entity == host ? walk.hostName() : entity.getName();
         Dotted parts = splitDotted(via);
         if (parts == null) {
-            err.accept("@via '" + via + "' must be Owner.hop[.hop...], starting at the owning entity.");
+            err.accept(named + " must be Owner.hop[.hop...], starting at " + walk.startShort() + ".");
             return null;
         }
-        MetaData owner = ValidationPhase.resolveRootObject(ctx.root(), parts.owner(), pkgOf(ctx.declaring()));
-        if (!isSelfOrAncestor(owner, ctx.host())) {
-            err.accept("@via '" + via + "' must start at the owning entity '" + ctx.declaring().getName() + "'.");
+        MetaData owner = ValidationPhase.resolveRootObject(root, parts.owner(), walk.ownerPkg());
+        if (!isSelfOrAncestor(owner, host)) {
+            err.accept(named + " must start at " + walk.start() + ".");
             return null;
         }
-        MetaData current = ctx.host();
+        MetaData current = host;
         for (String hopName : parts.path()) {
             MetaData hop = childOfType(current, MetaRelationship.TYPE_RELATIONSHIP, hopName);
             if (hop == null) {
@@ -479,23 +543,22 @@ final class ReportingValidation {
                 }
             }
             if (hop == null) {
-                err.accept("@via '" + via + "' names '" + hopName
-                        + "', which is not a relationship or identity.reference of '" + shown(ctx, current) + "'.");
+                err.accept(named + " names '" + hopName
+                        + "', which is not a relationship or identity.reference of '" + nameOf.apply(current) + "'.");
                 return null;
             }
             boolean isReference = MetaIdentity.TYPE_IDENTITY.equals(hop.getType());
             if (!isReference && !MetaRelationship.CARDINALITY_ONE.equals(stringAttr(hop, MetaRelationship.ATTR_CARDINALITY))) {
-                err.accept("@via '" + via + "' crosses relationship '" + hopName + "' on '" + shown(ctx, current)
-                        + "', which is not to-one. A dimension follows only @cardinality: one relationships and "
-                        + "identity.reference hops, so grouping can never multiply the measured rows.");
+                err.accept(named + " crosses relationship '" + hopName + "' on '" + nameOf.apply(current)
+                        + "', which is not to-one. " + walk.toOneReason());
                 return null;
             }
             String targetRef = stringAttr(hop, isReference ? MetaIdentity.ATTR_REFERENCES : MetaRelationship.ATTR_OBJECT_REF);
             // ADR-0042 — a hop target resolves in the package of the entity declaring the hop.
             MetaData target = targetRef == null ? null
-                    : ValidationPhase.resolveRootObject(ctx.root(), targetRef, pkgOf(current));
+                    : ValidationPhase.resolveRootObject(root, targetRef, pkgOf(current));
             if (target == null) {
-                err.accept("@via '" + via + "' hop '" + hopName + "' on '" + shown(ctx, current) + "' targets no object.");
+                err.accept(named + " hop '" + hopName + "' on '" + nameOf.apply(current) + "' targets no object.");
                 return null;
             }
             current = target;
@@ -514,13 +577,43 @@ final class ReportingValidation {
         Consumer<String> err = message ->
                 ctx.sink().push(measure, ErrorCode.ERR_INVALID_MEASURE, ctx.label(), ": " + message, ctx.suffix());
 
+        // The type rule — a measure's @default is a whole number. This port's generic attr.int
+        // parse already refuses a fraction (and a non-number) with ERR_BAD_ATTR_VALUE on this
+        // node (see the class comment), so nothing is reported here; a strict load stops at
+        // that parse error before this pass runs. A numeric value that is not an integer (a
+        // tree built in code) only skips M7/M8: one mistake, one error. ADR-0039: resolving —
+        // the raw attribute, inherited or not.
+        boolean declaresDefault = measure.hasMetaAttr(ReportingConstants.ATTR_DEFAULT);
+        Object declaredDefault = declaresDefault
+                ? measure.getMetaAttr(ReportingConstants.ATTR_DEFAULT).getValue() : null;
+        boolean fractionalDefault = declaredDefault instanceof Number
+                && measure.getDefaultValue() == null;
+
         if (measure.isRatio()) {
             checkRatioOperands(ctx, measure, err);
             return;
         }
         if (!ReportingConstants.MEASURE_SUBTYPE_AGGREGATE.equals(measure.getSubType())) return;
 
-        checkAggregateColumns(ctx, measure, err);
+        AggregateColumns checked = checkAggregateColumns(ctx, measure, err);
+
+        // M7 / M8 — where a @default can apply. Only when M1–M4 passed and the @default is
+        // not a fraction: one mistake, one error. The presence test reads the raw attribute,
+        // as the reference does (in a lenient load an unparsed value is still a declared one).
+        if (checked != null && !fractionalDefault && declaresDefault) {
+            String agg = measure.getAgg();
+            MetaData ofField = checked.field();
+            if (ReportingConstants.AGG_COUNT.equals(agg)) {
+                err.accept("@default cannot apply to @agg: count. A count is never null (it is 0 when nothing "
+                        + "matches); remove @default.");
+            } else if ((ReportingConstants.AGG_MIN.equals(agg) || ReportingConstants.AGG_MAX.equals(agg))
+                    && ofField != null
+                    && !NUMERIC_FIELD_SUBTYPES.contains(ofField.getSubType())) {
+                err.accept("@default is a number, but '" + measure.getOfColumns().get(0) + "', the @of of @agg '"
+                        + agg + "', is a field." + ofField.getSubType()
+                        + ". A default is supported on numeric measures only.");
+            }
+        }
 
         // M5 — @segment names a segment of the owning entity.
         String segment = measure.getSegmentName();
@@ -535,8 +628,16 @@ final class ReportingValidation {
         }
     }
 
-    /** M1–M4, in order; the first failure stops the chain (no M2+M3 double report). */
-    private static void checkAggregateColumns(MemberCtx ctx, MetaMeasure measure, Consumer<String> err) {
+    /** What M1–M4 resolved: the single {@code @of} field, or {@code null} for a tuple. */
+    private record AggregateColumns(MetaData field) {
+    }
+
+    /**
+     * M1–M4, in order; the first failure stops the chain (no M2+M3 double report). Returns
+     * {@code null} when one of them fired; otherwise its {@code field} is the single resolved
+     * {@code @of} field ({@code null} for a tuple), for M7/M8.
+     */
+    private static AggregateColumns checkAggregateColumns(MemberCtx ctx, MetaMeasure measure, Consumer<String> err) {
         String agg = measure.getAgg();
         List<String> columns = measure.getOfColumns();
 
@@ -546,19 +647,19 @@ final class ReportingValidation {
             Dotted parts = splitDotted(item);
             if (parts == null || parts.path().size() != 1) {
                 err.accept("@of '" + item + "' must be Entity.field.");
-                return;
+                return null;
             }
             MetaData named = ValidationPhase.resolveRootObject(ctx.root(), parts.owner(), pkgOf(ctx.declaring()));
             if (!isSelfOrAncestor(named, ctx.host())) {
                 err.accept("@of '" + item + "' must name a field of the owning entity '" + ctx.declaring().getName()
                         + "'. A measure aggregates its own entity's rows; declare it on the entity that owns the column.");
-                return;
+                return null;
             }
             MetaData field = fieldOf(ctx.host(), parts.path().get(0));
             if (field == null) {
                 err.accept("@of '" + item + "' names no field '" + parts.path().get(0) + "' on '"
                         + ctx.declaring().getName() + "'.");
-                return;
+                return null;
             }
             fields.add(field);
         }
@@ -567,29 +668,31 @@ final class ReportingValidation {
         if (columns.size() > 1 && (!ReportingConstants.AGG_COUNT.equals(agg) || !measure.isDistinct())) {
             err.accept("@of lists " + columns.size() + " columns; a tuple is legal only with @agg: count and "
                     + "@distinct: true (a distinct count of the tuple).");
-            return;
+            return null;
         }
 
         // M3 — @distinct is a count modifier.
         if (measure.isDistinct() && agg != null && !ReportingConstants.AGG_COUNT.equals(agg)) {
             err.accept("@distinct: true requires @agg: count, not '" + agg + "'.");
-            return;
+            return null;
         }
 
         // M4 — the aggregate must be meaningful for the column's type.
         MetaData field = fields.size() == 1 ? fields.get(0) : null;
-        if (field == null || agg == null) return;
+        if (field == null || agg == null) return new AggregateColumns(field);
         String item = columns.get(0);
         if ((ReportingConstants.AGG_SUM.equals(agg) || ReportingConstants.AGG_AVG.equals(agg))
                 && !NUMERIC_FIELD_SUBTYPES.contains(field.getSubType())) {
             err.accept("@agg '" + agg + "' needs a numeric field (field.int, long, double, float, decimal or currency), "
                     + "but '" + item + "' is field." + field.getSubType() + ".");
-            return;
+            return null;
         }
         if ((ReportingConstants.AGG_MIN.equals(agg) || ReportingConstants.AGG_MAX.equals(agg))
                 && UNORDERED_FIELD_SUBTYPES.contains(field.getSubType())) {
             err.accept("@agg '" + agg + "' cannot order '" + item + "', a field." + field.getSubType() + ".");
+            return null;
         }
+        return new AggregateColumns(field);
     }
 
     /** M6 — each operand names a measure.aggregate of the same entity. */
@@ -717,8 +820,8 @@ final class ReportingValidation {
             }
         }
 
-        // R1 — @from resolves to an object.entity. Without it, R2/R3/R6/R7 and the
-        // @filter have nothing to resolve against, so they are skipped.
+        // R1 — @from resolves to an object.entity. Without it, R2/R3/R6/R7, R8/R9 and
+        // the @filter have nothing to resolve against, so they are skipped.
         String fromRef = ReportAccessors.reportFrom(report);
         if (fromRef == null) return; // missing @from is ERR_MISSING_REQUIRED_ATTR
         MetaObject from = ValidationPhase.resolveRootObject(root, fromRef, pkgOf(report));
@@ -804,11 +907,61 @@ final class ReportingValidation {
                     + "' names no segment of @from '" + fromKey + "'.");
         }
 
+        // R8 — @spine is a to-one path from @from: rule D2's walk, started at @from.
+        String spine = ReportAccessors.reportSpine(report);
+        if (spine != null) {
+            checkSpine(root, report, from, spine, label, sink);
+        }
+
         // S1 / F2 — the report's row scope over @from.
         // ADR-0039: resolving — a report that extends another inherits its @filter.
         if (report.hasMetaAttr(MetaObject.ATTR_FILTER)) {
             Object filter = report.getMetaAttr(MetaObject.ATTR_FILTER).getValue();
             if (filter instanceof Map) checkFilter((Map<?, ?>) filter, from, fromKey, label, report, "", sink);
+        }
+    }
+
+    /** R8, then R9 (skipped when R8 failed): the report's {@code @spine} and its dimensions. */
+    private static void checkSpine(MetaRoot root, MetaObject report, MetaObject from, String spine, String label,
+                                   ErrorSink sink) {
+        String fromKey = from.getName();
+        Consumer<String> err = message -> sink.push(report, ErrorCode.ERR_INVALID_REPORT, label, message);
+        MetaData terminal = walkToOneVia(root, from, spine, message -> err.accept(": " + message),
+                spineWalk(report, fromKey));
+        // R9 — every listed dimension is reached through the spine. Skipped when R8 failed.
+        if (terminal == null) return;
+        Dotted spineParts = splitDotted(spine);
+        List<String> spineHops = spineParts == null ? List.of() : spineParts.path();
+        List<ReportDimensionItem> items = ReportAccessors.reportDimensionItems(report);
+        if (items.isEmpty()) {
+            err.accept(": @spine '" + spine + "' needs at least one dimension. The report's rows are the dimension "
+                    + "tuples of '" + terminal.getName() + "'; with no dimension it would be one totals row.");
+        }
+        // One verdict per dimension, however many grains list it.
+        Set<String> checkedDimensions = new HashSet<>();
+        for (ReportDimensionItem item : items) {
+            if (!checkedDimensions.add(item.name())) continue;
+            MetaData dimNode = childOfType(from, ReportingConstants.TYPE_DIMENSION, item.name());
+            if (!(dimNode instanceof MetaDimension)) continue; // R2 already reported it
+            MetaDimension dim = (MetaDimension) dimNode;
+            String via = dim.getVia();
+            if (via == null) {
+                err.accept(": dimension '" + item.name() + "' is read from @from '" + fromKey + "', so it has no "
+                        + "value in a row that has no facts. With @spine '" + spine + "' every dimension must be "
+                        + "reached through it: declare the dimension over a field of '" + terminal.getName()
+                        + "' (or an entity to-one from it) with an @via that begins '" + spine + "'.");
+                continue;
+            }
+            // A @via that does not walk is D2's error, on the dimension; R9 does not report it again.
+            MetaData declaring = dim.getParent() != null ? dim.getParent() : from;
+            if (walkToOneVia(root, from, via, message -> { }, d2Walk(declaring)) == null) continue;
+            // Hop names are compared as written; the owner segment is not compared.
+            Dotted viaParts = splitDotted(via);
+            List<String> hops = viaParts == null ? List.of() : viaParts.path();
+            if (hops.size() >= spineHops.size() && hops.subList(0, spineHops.size()).equals(spineHops)) continue;
+            err.accept(": dimension '" + item.name() + "' is reached by @via '" + via + "', which does not begin "
+                    + "with the hops of @spine '" + spine + "'. Hop names are compared as written: if both name the "
+                    + "same join, write the same hops; otherwise the dimension is not reached through the spine.");
         }
     }
 

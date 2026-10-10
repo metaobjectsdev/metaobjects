@@ -1,0 +1,23 @@
+name: report-sort-on-defaulted-measure
+description: >
+  A sort on a defaulted measure is deterministic on every engine: the product with no sale
+  sorts as its default, 0, never as a null whose place the engine chooses. The corpus never
+  sorts revenueCents (no @default) across that row, because Postgres puts a null last
+  ascending and SQLite and MySQL put it first.
+requests:
+  - id: asc
+    method: GET
+    path: /api/product_revenues?sort=revenueOrZero:asc&limit=1
+    expect:
+      status: 200
+      body:
+        equals:
+          - { productId: 3, productName: "Cinder", sales: 0, revenueCents: null, revenueOrZero: 0 }
+  - id: desc
+    method: GET
+    path: /api/product_revenues?sort=revenueOrZero:desc&limit=1
+    expect:
+      status: 200
+      body:
+        equals:
+          - { productId: 1, productName: "Atlas", sales: 2, revenueCents: 30000, revenueOrZero: 30000 }

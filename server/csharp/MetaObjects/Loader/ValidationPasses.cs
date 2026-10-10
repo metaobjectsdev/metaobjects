@@ -1504,7 +1504,9 @@ public static partial class ValidationPasses
     private static List<string>? IdentityOwnFields(MetaData identity)
         => NormalizeIdentityFields(identity.OwnAttr(IDENTITY_ATTR_FIELDS));
 
-    private static List<string>? IdentityEffectiveFields(MetaData identity)
+    // Internal: the report shape (ReportShapes, FR-044 Table C) reads a primary key's
+    // effective @fields with the same rule, so it uses this one.
+    internal static List<string>? IdentityEffectiveFields(MetaData identity)
         => NormalizeIdentityFields(identity.Attr(IDENTITY_ATTR_FIELDS));
 
     internal static (MetaData Entity, List<string> ComputedFields, List<string> Missing)?

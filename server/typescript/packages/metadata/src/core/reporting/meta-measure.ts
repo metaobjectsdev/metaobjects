@@ -7,6 +7,7 @@ import {
   MEASURE_AGGS,
   MEASURE_SUBTYPE_RATIO,
   REPORTING_ATTR_AGG,
+  REPORTING_ATTR_DEFAULT,
   REPORTING_ATTR_DENOMINATOR,
   REPORTING_ATTR_DISTINCT,
   REPORTING_ATTR_FILTER,
@@ -53,6 +54,13 @@ export class MetaMeasure extends MetaData {
   filter(): Record<string, unknown> | undefined {
     const v = this.attr(REPORTING_ATTR_FILTER);
     return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
+  }
+
+  /** `@default`: the integer this measure reads when it would otherwise be null (rule M7/M8
+   *  decide where it is legal). ADR-0039: resolving, so an inherited measure keeps it. */
+  defaultValue(): number | undefined {
+    const v = this.attr(REPORTING_ATTR_DEFAULT);
+    return typeof v === "number" && Number.isInteger(v) ? v : undefined;
   }
 
   /** Name of the `measure.aggregate` sibling used as the numerator (`measure.ratio` only). */

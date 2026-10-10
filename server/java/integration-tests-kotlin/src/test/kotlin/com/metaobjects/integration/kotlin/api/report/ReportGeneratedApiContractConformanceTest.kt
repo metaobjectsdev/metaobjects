@@ -21,7 +21,7 @@ import java.util.stream.Stream
 
 /**
  * FR-044 Plan 3: the Kotlin GENERATED-controller lane for the view-backed-report
- * api-contract sub-corpus. Drives the three generated read-only report controllers over an
+ * api-contract sub-corpus. Drives the four generated read-only report controllers over an
  * embedded Tomcat: GET list with the FR-009 filter and sort allowlists over the report's
  * DERIVED fields, `POST` answering `405 {"error": "method_not_allowed"}`, and no `/{id}`.
  *
@@ -46,9 +46,9 @@ internal class ReportGeneratedApiContractConformanceTest {
     }
 
     @Test
-    fun `the corpus has its thirteen scenarios`() {
+    fun `the corpus has its sixteen scenarios`() {
         // A lane that silently ran fewer would still be green.
-        assertEquals(13, scenarios().count())
+        assertEquals(16, scenarios().count())
     }
 
     @Test
@@ -68,9 +68,10 @@ internal class ReportGeneratedApiContractConformanceTest {
         private val MAPPER = ObjectMapper()
 
         /**
-         * The `reports` half of the seed: what the three views return for the seeded
-         * invoices. This lane's H2 tables stand in for the views (no view SQL is written in
-         * Kotlin), so they are seeded with the views' rows, not with the base table's.
+         * The `reports` half of the seed: what the four views return for the seeded base
+         * tables. This lane's H2 tables stand in for the views (no view SQL is written in
+         * Kotlin), so they are seeded with the views' rows; every other top-level key
+         * (`invoices`, `products`, `sales`) is a base table this lane never creates.
          */
         @Suppress("UNCHECKED_CAST")
         private val SEED: Map<String, List<Map<String, Any?>>> by lazy {

@@ -2,16 +2,19 @@
 
 A rule-for-rule port of the TypeScript reference
 ``server/typescript/packages/metadata/src/loader/reporting-validation.ts``. The rule
-ids (D1…F2) match the shared rule table and the error fixtures in
-``fixtures/conformance/error-*``. Every port implements the same table WITH THE SAME
-MESSAGE TEXT; the fixtures are the contract.
+ids (D1…F2) match the shared rule table (R8, R9, M7 and M8: Table B of
+docs/superpowers/plans/2026-10-09-fr-044-zero-rows-and-measure-defaults.md) and the
+error fixtures in ``fixtures/conformance/error-*``. Every port implements the same
+table WITH THE SAME MESSAGE TEXT; the fixtures are the contract.
 
 Two design rules hold throughout, so one broken rule yields exactly one error:
 
 - No cascades. A member that fails a structural rule is not checked further (a
-  dimension whose @via fails D2 skips D1/D3/D4; a report whose @from fails R1 skips
-  R2/R3/R6/R7 and its @filter; an invalid @dimensions/@measures item derives no
-  report field for R6).
+  dimension whose @via fails D2 skips D1/D3/D4; a measure that fails one of M1–M4, or
+  whose @default is a fraction, skips M7/M8; a report whose @from fails R1 skips
+  R2/R3/R6/R7, R8/R9 and its @filter; a report whose @spine fails R8 skips R9, and R9
+  skips a dimension whose @via fails D2; an invalid @dimensions/@measures item derives
+  no report field for R6).
 - Each error's ``envelope`` is the offending node's source (the dimension / measure /
   segment / report, or for R4/R5 the declared child), so a conformance fixture's
   jsonPath points at it.
@@ -22,6 +25,12 @@ it. Members declared on an entity are validated first (pass 1), then inherited o
 (pass 2); an error already reported for the same node with the same message is not
 repeated, so a broken base member is reported ONCE, and a failure that only an
 inheritor exposes carries `` (inherited by '<entity>')``.
+
+A fractional measure @default: the TypeScript reference refuses it in its measure check,
+because its generic attr.int check lets a fraction through. This port's generic attr-type
+check (``validation_passes._type_ok``) already refuses it with ERR_BAD_ATTR_VALUE on the
+measure node, so no second error is added here; ``_check_measure`` only skips M7/M8 for
+it, as the reference does.
 
 ADR-0039 NAMING INVERSION: Python ``attr()`` is OWN-ONLY. Every place the TS reference
 calls the resolving ``attr()`` / ``children()``, this module calls ``get_meta_attr()`` /
@@ -56,6 +65,7 @@ from ..meta.core.identity.identity_constants import (
 from ..meta.core.object.object_constants import (
     OBJECT_REPORT_ATTR_FILTER,
     OBJECT_REPORT_ATTR_SEGMENT,
+    OBJECT_REPORT_ATTR_SPINE,
     OBJECT_SUBTYPE_ENTITY,
     OBJECT_SUBTYPE_REPORT,
 )
@@ -72,6 +82,7 @@ from ..meta.core.reporting.report_accessors import (
     report_dimension_items,
     report_from,
     report_measure_names,
+    report_spine,
 )
 from ..meta.core.reporting.reporting_constants import (
     AGG_AVG,
@@ -84,8 +95,10 @@ from ..meta.core.reporting.reporting_constants import (
     ISO_DURATION_RE,
     MEASURE_SUBTYPE_AGGREGATE,
     REPORT_DIMENSION_GRAIN_SEPARATOR,
+    REPORTING_ATTR_DEFAULT,
     REPORTING_ATTR_DENOMINATOR,
     REPORTING_ATTR_NUMERATOR,
+    REPORTING_ATTR_VIA,
 )
 from ..meta.meta_data import MetaData
 from ..meta.persistence.source.meta_source import MetaSource
@@ -419,7 +432,7 @@ def _check_dimension(ctx: _MemberCtx, dim: MetaDimension) -> None:
     of_entity = ctx.host
     via = dim.via()
     if via is not None:
-        terminal = _walk_to_one_via(ctx, via, err)
+        terminal = _walk_to_one_via(ctx.root, ctx.host, via, err, _d2_walk(ctx.declaring))
         if terminal is None:
             return
         of_entity = terminal
@@ -462,19 +475,83 @@ def _check_dimension(ctx: _MemberCtx, dim: MetaDimension) -> None:
         err(f"grain 'hour' is impossible on '{of}', a field.date (a date has no hour). Remove 'hour' from @grains.")
 
 
-def _walk_to_one_via(ctx: _MemberCtx, via: str, err: Callable[[str], None]) -> MetaData | None:
-    """D2 — walk ``Owner.hop[.hop...]``: Owner is the owning entity, and every hop is a
-    to-one ``relationship.*`` or an ``identity.reference``. Returns the terminal
-    entity, or ``None`` after reporting the first failure."""
+@dataclass(frozen=True)
+class _ToOneWalk:
+    """What a to-one walk resolves against and how its messages name it. D2 walks a
+    dimension's @via (:func:`_d2_walk`); R8 walks a report's @spine from @from
+    (:func:`_spine_walk`). Every difference between the two is a field here, so each port
+    copies one explicit rule (TS ``ToOneWalk``)."""
+
+    #: The attribute holding the path: ``via`` (D2) or ``spine`` (R8).
+    attr: str
+    #: The package Owner resolves in (ADR-0042): the declaring entity's (D2) or the report's (R8).
+    owner_pkg: str
+    #: The FQN named for the walk's first entity: the declaring entity (D2) or @from (R8).
+    host_name: str
+    #: What Owner must be: ``the owning entity '<FQN>'`` (D2) or ``@from '<FQN>'`` (R8).
+    start: str
+    #: The same, in the malformed-path message: ``the owning entity`` (D2) or ``@from '<FQN>'`` (R8).
+    start_short: str
+    #: The sentence that ends the to-many message: why only to-one hops are followed.
+    to_one_reason: str
+
+
+def _d2_walk(declaring: MetaData) -> _ToOneWalk:
+    """D2 — a dimension's @via, declared on ``declaring``. Reproduces D2's messages exactly."""
+    declaring_key = declaring.resolution_key()
+    return _ToOneWalk(
+        attr=REPORTING_ATTR_VIA,
+        owner_pkg=_pkg_of(declaring),
+        host_name=declaring_key,
+        start=f"the owning entity '{declaring_key}'",
+        start_short="the owning entity",
+        to_one_reason=(
+            "A dimension follows only @cardinality: one relationships and identity.reference hops, so grouping "
+            "can never multiply the measured rows."
+        ),
+    )
+
+
+def _spine_walk(report: MetaData, from_key: str) -> _ToOneWalk:
+    """R8 — a report's @spine, started at @from (``from_key``); Owner resolves in the report's package."""
+    return _ToOneWalk(
+        attr=OBJECT_REPORT_ATTR_SPINE,
+        owner_pkg=_pkg_of(report),
+        host_name=from_key,
+        start=f"@from '{from_key}'",
+        start_short=f"@from '{from_key}'",
+        to_one_reason=(
+            "A @spine follows only @cardinality: one relationships and identity.reference hops, so each fact row "
+            "joins at most one row of the spine entity and is never counted twice."
+        ),
+    )
+
+
+def _walk_to_one_via(
+    root: MetaData,
+    host: MetaData,
+    via: str,
+    err: Callable[[str], None],
+    walk: _ToOneWalk,
+) -> MetaData | None:
+    """Walk ``Owner.hop[.hop...]`` from ``host``: Owner is ``host`` or an entity it
+    extends, and every hop is a to-one ``relationship.*`` or an ``identity.reference``.
+    Returns the terminal entity, or ``None`` after reporting the first failure. D2 and R8
+    both run it; ``walk`` says which."""
+    named = f"@{walk.attr} '{via}'"
+
+    def name_of(entity: MetaData) -> str:
+        return walk.host_name if entity is host else entity.resolution_key()
+
     parts = _split_dotted(via)
     if parts is None:
-        err(f"@via '{via}' must be Owner.hop[.hop...], starting at the owning entity.")
+        err(f"{named} must be Owner.hop[.hop...], starting at {walk.start_short}.")
         return None
-    owner = resolve_object_ref(ctx.root, parts.owner, _pkg_of(ctx.declaring))
-    if not _is_self_or_ancestor(owner, ctx.host):
-        err(f"@via '{via}' must start at the owning entity '{ctx.declaring.resolution_key()}'.")
+    owner = resolve_object_ref(root, parts.owner, walk.owner_pkg)
+    if not _is_self_or_ancestor(owner, host):
+        err(f"{named} must start at {walk.start}.")
         return None
-    current = ctx.host
+    current = host
     for hop_name in parts.path:
         hop = _child_of_type(current, TYPE_RELATIONSHIP, hop_name)
         if hop is None:
@@ -489,17 +566,16 @@ def _walk_to_one_via(ctx: _MemberCtx, via: str, err: Callable[[str], None]) -> M
             )
         if hop is None:
             err(
-                f"@via '{via}' names '{hop_name}', which is not a relationship or identity.reference of "
-                f"'{_shown(ctx, current)}'."
+                f"{named} names '{hop_name}', which is not a relationship or identity.reference of "
+                f"'{name_of(current)}'."
             )
             return None
         is_reference = hop.type == TYPE_IDENTITY
         # ADR-0039: resolving (get_meta_attr) — @cardinality may be inherited via extends.
         if not is_reference and hop.get_meta_attr(RELATIONSHIP_ATTR_CARDINALITY) != CARDINALITY_ONE:
             err(
-                f"@via '{via}' crosses relationship '{hop_name}' on '{_shown(ctx, current)}', which is not to-one. "
-                f"A dimension follows only @cardinality: one relationships and identity.reference hops, so grouping "
-                f"can never multiply the measured rows."
+                f"{named} crosses relationship '{hop_name}' on '{name_of(current)}', which is not to-one. "
+                f"{walk.to_one_reason}"
             )
             return None
         # ADR-0039: resolving.
@@ -507,11 +583,9 @@ def _walk_to_one_via(ctx: _MemberCtx, via: str, err: Callable[[str], None]) -> M
             IDENTITY_REFERENCE_ATTR_REFERENCES if is_reference else RELATIONSHIP_ATTR_OBJECT_REF
         )
         # ADR-0042 — a hop target resolves in the package of the entity declaring the hop.
-        target = (
-            resolve_object_ref(ctx.root, target_ref, _pkg_of(current)) if isinstance(target_ref, str) else None
-        )
+        target = resolve_object_ref(root, target_ref, _pkg_of(current)) if isinstance(target_ref, str) else None
         if target is None:
-            err(f"@via '{via}' hop '{hop_name}' on '{_shown(ctx, current)}' targets no object.")
+            err(f"{named} hop '{hop_name}' on '{name_of(current)}' targets no object.")
             return None
         current = target
     return current
@@ -521,13 +595,39 @@ def _check_measure(ctx: _MemberCtx, measure: MetaMeasure) -> None:
     def err(message: str) -> None:
         ctx.sink.push(measure, _ERR_INVALID_MEASURE, ctx.label, f": {message}", ctx.suffix)
 
+    # The type rule — a measure's @default is a whole number. The attr-schema pass already
+    # refuses a fraction (and a non-number) with ERR_BAD_ATTR_VALUE on this node (see the
+    # module docstring), so nothing is reported here. A fraction only skips M7/M8: one
+    # mistake, one error. ``bool`` is not a number here, as in the reference (it is the
+    # type error, and M7/M8 still read the attribute as present).
+    # ADR-0039: resolving (get_meta_attr) — the raw attribute, inherited or not.
+    declared_default = measure.get_meta_attr(REPORTING_ATTR_DEFAULT)
+    fractional_default = isinstance(declared_default, float) and not declared_default.is_integer()
+
     if measure.is_ratio():
         _check_ratio_operands(ctx, measure, err)
         return
     if measure.sub_type != MEASURE_SUBTYPE_AGGREGATE:
         return
 
-    _check_aggregate_columns(ctx, measure, err)
+    checked = _check_aggregate_columns(ctx, measure, err)
+
+    # M7 / M8 — where a @default can apply. Only when M1–M4 passed and the @default is
+    # not a fraction: one mistake, one error. The presence test reads the raw attribute,
+    # so a non-number value on a count still reports M7 beside the attribute type error.
+    if checked is not None and not fractional_default and declared_default is not None:
+        agg = measure.agg()
+        of_field = checked.field
+        if agg == AGG_COUNT:
+            err(
+                "@default cannot apply to @agg: count. A count is never null (it is 0 when nothing matches); "
+                "remove @default."
+            )
+        elif agg in (AGG_MIN, AGG_MAX) and of_field is not None and of_field.sub_type not in _NUMERIC_FIELD_SUBTYPES:
+            err(
+                f"@default is a number, but '{measure.of_columns()[0]}', the @of of @agg '{agg}', is a "
+                f"field.{of_field.sub_type}. A default is supported on numeric measures only."
+            )
 
     # M5 — @segment names a segment of the owning entity.
     segment = measure.segment_name()
@@ -542,8 +642,18 @@ def _check_measure(ctx: _MemberCtx, measure: MetaMeasure) -> None:
         )
 
 
-def _check_aggregate_columns(ctx: _MemberCtx, measure: MetaMeasure, err: Callable[[str], None]) -> None:
-    """M1–M4, in order; the first failure stops the chain (no M2+M3 double report)."""
+@dataclass(frozen=True)
+class _CheckedColumns:
+    """M1–M4 passed. ``field`` is the single resolved @of field (``None`` for a tuple), for M7/M8."""
+
+    field: MetaData | None
+
+
+def _check_aggregate_columns(
+    ctx: _MemberCtx, measure: MetaMeasure, err: Callable[[str], None]
+) -> _CheckedColumns | None:
+    """M1–M4, in order; the first failure stops the chain (no M2+M3 double report).
+    Returns ``None`` when one of them fired."""
     agg = measure.agg()
     columns = measure.of_columns()
 
@@ -553,18 +663,18 @@ def _check_aggregate_columns(ctx: _MemberCtx, measure: MetaMeasure, err: Callabl
         parts = _split_dotted(item)
         if parts is None or len(parts.path) != 1:
             err(f"@of '{item}' must be Entity.field.")
-            return
+            return None
         named = resolve_object_ref(ctx.root, parts.owner, _pkg_of(ctx.declaring))
         if not _is_self_or_ancestor(named, ctx.host):
             err(
                 f"@of '{item}' must name a field of the owning entity '{ctx.declaring.resolution_key()}'. "
                 f"A measure aggregates its own entity's rows; declare it on the entity that owns the column."
             )
-            return
+            return None
         field = _field_of(ctx.host, parts.path[0])
         if field is None:
             err(f"@of '{item}' names no field '{parts.path[0]}' on '{ctx.declaring.resolution_key()}'.")
-            return
+            return None
         fields.append(field)
 
     # M2 — a tuple is a distinct count only.
@@ -573,26 +683,28 @@ def _check_aggregate_columns(ctx: _MemberCtx, measure: MetaMeasure, err: Callabl
             f"@of lists {len(columns)} columns; a tuple is legal only with @agg: count and @distinct: true "
             f"(a distinct count of the tuple)."
         )
-        return
+        return None
 
     # M3 — @distinct is a count modifier.
     if measure.distinct() and agg is not None and agg != AGG_COUNT:
         err(f"@distinct: true requires @agg: count, not '{agg}'.")
-        return
+        return None
 
     # M4 — the aggregate must be meaningful for the column's type.
     field = fields[0] if len(fields) == 1 else None
     if field is None or agg is None:
-        return
+        return _CheckedColumns(field)
     item = columns[0]
     if agg in (AGG_SUM, AGG_AVG) and field.sub_type not in _NUMERIC_FIELD_SUBTYPES:
         err(
             f"@agg '{agg}' needs a numeric field (field.int, long, double, float, decimal or currency), "
             f"but '{item}' is field.{field.sub_type}."
         )
-        return
+        return None
     if agg in (AGG_MIN, AGG_MAX) and field.sub_type in _UNORDERED_FIELD_SUBTYPES:
         err(f"@agg '{agg}' cannot order '{item}', a field.{field.sub_type}.")
+        return None
+    return _CheckedColumns(field)
 
 
 def _check_ratio_operands(ctx: _MemberCtx, ratio: MetaMeasure, err: Callable[[str], None]) -> None:
@@ -692,7 +804,7 @@ def _check_filter(
 
 
 # ---------------------------------------------------------------------------
-# R1–R7 — object.report
+# R1–R9 — object.report
 # ---------------------------------------------------------------------------
 
 
@@ -722,8 +834,8 @@ def _check_report(root: MetaData, report: MetaData, sink: _ErrorSink) -> None:
                 source,
             )
 
-    # R1 — @from resolves to an object.entity. Without it, R2/R3/R6/R7 and the
-    # @filter have nothing to resolve against, so they are skipped.
+    # R1 — @from resolves to an object.entity. Without it, R2/R3/R6/R7, R8/R9 and
+    # the @filter have nothing to resolve against, so they are skipped.
     from_ref = report_from(report)
     if from_ref is None:
         return  # missing @from is ERR_MISSING_REQUIRED_ATTR
@@ -799,11 +911,74 @@ def _check_report(root: MetaData, report: MetaData, sink: _ErrorSink) -> None:
     if isinstance(segment, str) and _child_of_type(from_, TYPE_SEGMENT, segment) is None:
         err(f": @segment '{segment}' names no segment of @from '{from_key}'.")
 
+    # R8 — @spine is a to-one path from @from: rule D2's walk, started at @from.
+    spine = report_spine(report)
+    if spine is not None:
+        terminal = _walk_to_one_via(
+            root, from_, spine, lambda message: err(f": {message}"), _spine_walk(report, from_key)
+        )
+        # R9 — every listed dimension is reached through the spine. Skipped when R8 failed.
+        if terminal is not None:
+            _check_spine_dimensions(root, report, from_, spine, terminal, err)
+
     # S1 / F2 — the report's row scope over @from.
     # ADR-0039: resolving.
     filter_value = report.get_meta_attr(OBJECT_REPORT_ATTR_FILTER)
     if isinstance(filter_value, dict):
         _check_filter(filter_value, from_, from_key, label, report, "", sink)
+
+
+def _check_spine_dimensions(
+    root: MetaData,
+    report: MetaData,
+    from_: MetaData,
+    spine: str,
+    terminal: MetaData,
+    err: Callable[[str], None],
+) -> None:
+    """R9 — every listed dimension is reached through the spine (``terminal`` is the
+    entity R8's walk reached). ``err`` takes the message tail after the report label."""
+    from_key = from_.resolution_key()
+    spine_parts = _split_dotted(spine)
+    spine_hops = spine_parts.path if spine_parts is not None else []
+    items = report_dimension_items(report)
+    if len(items) == 0:
+        err(
+            f": @spine '{spine}' needs at least one dimension. The report's rows are the dimension tuples of "
+            f"'{terminal.resolution_key()}'; with no dimension it would be one totals row."
+        )
+    # One verdict per dimension, however many grains list it.
+    checked_dimensions: set[str] = set()
+    for item in items:
+        if item.name in checked_dimensions:
+            continue
+        checked_dimensions.add(item.name)
+        dim = _child_of_type(from_, TYPE_DIMENSION, item.name)
+        if not isinstance(dim, MetaDimension):
+            continue  # R2 already reported it
+        via = dim.via()
+        if via is None:
+            err(
+                f": dimension '{item.name}' is read from @from '{from_key}', so it has no value in a row that has "
+                f"no facts. With @spine '{spine}' every dimension must be reached through it: declare the "
+                f"dimension over a field of '{terminal.resolution_key()}' (or an entity to-one from it) with an "
+                f"@via that begins '{spine}'."
+            )
+            continue
+        # A @via that does not walk is D2's error, on the dimension; R9 does not report it again.
+        declaring = dim.parent if dim.parent is not None else from_
+        if _walk_to_one_via(root, from_, via, lambda _message: None, _d2_walk(declaring)) is None:
+            continue
+        # Hop names are compared as written; the owner segment is not compared.
+        via_parts = _split_dotted(via)
+        hops = via_parts.path if via_parts is not None else []
+        if hops[: len(spine_hops)] == spine_hops:
+            continue
+        err(
+            f": dimension '{item.name}' is reached by @via '{via}', which does not begin with the hops of "
+            f"@spine '{spine}'. Hop names are compared as written: if both name the same join, write the same "
+            f"hops; otherwise the dimension is not reached through the spine."
+        )
 
 
 def _check_report_measure(

@@ -203,7 +203,8 @@ public class ReportRowCodegenTests
     // ---------------------------------------------------------------------
 
     /// <summary>fixtures/codegen-noop/reporting/with: `StoreTotals` is view-backed,
-    /// `ProgramEngagement` and `DailyRevenue` are sourceless.</summary>
+    /// `ProgramEngagement`, `DailyRevenue` and `ProgramCatalogue` (a `@spine` report) are
+    /// sourceless.</summary>
     private static MetaRoot LoadWithModel()
     {
         string path = Path.Combine(
@@ -271,7 +272,7 @@ public class ReportRowCodegenTests
     public void A_sourceless_report_gets_no_routes_file_and_no_allowlist()
     {
         var files = Emit(RunnerContext(LoadWithModel()), new RoutesGenerator(), new FilterAllowlistGenerator());
-        foreach (var sourceless in new[] { "ProgramEngagement", "DailyRevenue" })
+        foreach (var sourceless in new[] { "ProgramEngagement", "DailyRevenue", "ProgramCatalogue" })
         {
             Assert.DoesNotContain(files.Keys, k => k.Contains(sourceless, StringComparison.Ordinal));
             Assert.DoesNotContain(files.Values, c => c.Contains(sourceless, StringComparison.Ordinal));
@@ -307,7 +308,7 @@ public class ReportRowCodegenTests
 
         Assert.True(RoutesGenerator.AppliesTo(Named("StoreTotals"), root));
         Assert.True(FilterAllowlistGenerator.AppliesTo(Named("StoreTotals")));
-        foreach (var sourceless in new[] { "ProgramEngagement", "DailyRevenue" })
+        foreach (var sourceless in new[] { "ProgramEngagement", "DailyRevenue", "ProgramCatalogue" })
         {
             Assert.False(RoutesGenerator.AppliesTo(Named(sourceless), root));
             Assert.False(FilterAllowlistGenerator.AppliesTo(Named(sourceless)));
@@ -437,6 +438,116 @@ public class ReportRowCodegenTests
     public void A_derived_field_has_the_type_and_nullability_of_its_Table_B_row(string property)
     {
         Assert.Contains("    " + property + "\n", RowOf(Cube()).ReplaceLineEndings("\n"));
+    }
+
+    // ---------------------------------------------------------------------
+    // Table C / Table F (FR-044 @spine and measure @default): no generator change. The
+    // shape marks a spine key and a defaulted measure required, and the row types a
+    // required field exactly as it types a count today: `long`, not `long?`.
+    // ---------------------------------------------------------------------
+
+    // Store.id is the key and is NOT @required: under @spine it is not nullable because it
+    // is the spine entity's key (Table C's identity clause).
+    private const string SpineModel =
+        """
+        { "metadata.root": { "package": "acme::shop", "children": [
+          { "object.entity": { "name": "Store", "children": [
+            { "source.rdb": { "@table": "stores" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "region" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ] } },
+          { "object.entity": { "name": "Sale", "children": [
+            { "source.rdb": { "@table": "sales" } },
+            { "field.long": { "name": "id", "@required": true } },
+            { "field.long": { "name": "storeId" } },
+            { "field.int": { "name": "units", "@required": true } },
+            { "field.currency": { "name": "amountCents", "@required": true, "@currency": "USD" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } },
+            { "identity.reference": { "name": "storeRef", "@references": "Store", "@fields": ["storeId"] } },
+            { "relationship.association": { "name": "store", "@objectRef": "Store", "@cardinality": "one" } },
+            { "dimension.attribute": { "name": "storeKey", "@of": "Store.id", "@via": "Sale.store" } },
+            { "dimension.attribute": { "name": "storeRegion", "@of": "Store.region", "@via": "Sale.store" } },
+            { "measure.aggregate": { "name": "sales", "@agg": "count", "@of": "Sale.id" } },
+            { "measure.aggregate": { "name": "unitsSold", "@agg": "sum", "@of": "Sale.units" } },
+            { "measure.aggregate": { "name": "unitsSoldOrZero", "@agg": "sum", "@of": "Sale.units", "@default": 0 } },
+            { "measure.aggregate": { "name": "revenue", "@agg": "sum", "@of": "Sale.amountCents" } },
+            { "measure.aggregate": { "name": "revenueOrZero", "@agg": "sum", "@of": "Sale.amountCents", "@default": 0 } },
+            { "measure.aggregate": { "name": "avgUnitsOrZero", "@agg": "avg", "@of": "Sale.units", "@default": 0 } },
+            { "measure.ratio": { "name": "unitsPerSale", "@numerator": "unitsSold", "@denominator": "sales" } },
+            { "measure.ratio": { "name": "unitsPerSaleOrZero", "@numerator": "unitsSold", "@denominator": "sales", "@default": 0 } }
+          ] } },
+          { "object.report": { "name": "StoreSales", "@from": "Sale", "@spine": "Sale.store",
+              "@dimensions": ["storeKey", "storeRegion"],
+              "@measures": ["sales", "unitsSold", "unitsSoldOrZero", "revenue", "revenueOrZero", "avgUnitsOrZero", "unitsPerSale", "unitsPerSaleOrZero"],
+              "children": [ { "source.rdb": { "@kind": "view", "@view": "v_store_sales" } } ] } },
+          { "object.report": { "name": "SalesByStore", "@from": "Sale",
+              "@dimensions": ["storeKey", "storeRegion"],
+              "@measures": ["sales", "unitsSold", "unitsSoldOrZero", "unitsPerSale", "unitsPerSaleOrZero"],
+              "children": [ { "source.rdb": { "@kind": "view", "@view": "v_sales_by_store" } } ] } }
+        ] } }
+        """;
+
+    private static MetaRoot LoadSpineModel()
+    {
+        var result = new MetaDataLoader().Load([new InMemoryStringSource(SpineModel, id: "meta.shop.json")]);
+        Assert.True(result.Errors.Count == 0,
+            "model did not load:\n" + string.Join("\n", result.Errors.Select(e => $"  {e.Code}: {e.Message}")));
+        return result.Root;
+    }
+
+    private static string SpineRow(string report) =>
+        Emit(RunnerContext(LoadSpineModel()), new EntityGenerator())[report + ".g.cs"].ReplaceLineEndings("\n");
+
+    [Theory]
+    [InlineData("public long StoreKey { get; set; }")]            // the spine key: Store.id, the spine entity's key
+    [InlineData("public string? StoreRegion { get; set; }")]      // on the spine, but optional
+    [InlineData("public long Sales { get; set; }")]               // a count, as before
+    [InlineData("public long? UnitsSold { get; set; }")]          // a sum without @default stays nullable
+    [InlineData("public long UnitsSoldOrZero { get; set; }")]     // a defaulted sum is long, not long?
+    [InlineData("public long? Revenue { get; set; }")]
+    [InlineData("public long RevenueOrZero { get; set; }")]       // a defaulted sum of a currency
+    [InlineData("public decimal AvgUnitsOrZero { get; set; }")]   // a defaulted avg
+    [InlineData("public decimal? UnitsPerSale { get; set; }")]    // a ratio without @default stays nullable
+    [InlineData("public decimal UnitsPerSaleOrZero { get; set; }")] // a defaulted ratio is decimal
+    public void A_spine_report_row_types_the_spine_key_and_a_defaulted_measure_as_not_nullable(string property)
+    {
+        Assert.Contains("    " + property + "\n", SpineRow("StoreSales"));
+    }
+
+    [Theory]
+    [InlineData("public long? StoreKey { get; set; }")]           // reached by @via, no @spine: nullable as today
+    [InlineData("public long UnitsSoldOrZero { get; set; }")]     // @default alone, no @spine
+    [InlineData("public long? UnitsSold { get; set; }")]
+    [InlineData("public decimal UnitsPerSaleOrZero { get; set; }")]
+    [InlineData("public decimal? UnitsPerSale { get; set; }")]
+    public void Without_spine_a_key_reached_by_via_stays_nullable_and_a_defaulted_measure_is_not(string property)
+    {
+        Assert.Contains("    " + property + "\n", SpineRow("SalesByStore"));
+    }
+
+    [Fact]
+    public void The_spine_report_rows_and_their_mapping_compile()
+    {
+        var ctx = RunnerContext(LoadSpineModel(), Config(includeNames: true));
+        var files = new IGenerator[]
+            {
+                new EntityGenerator(), new DbContextGenerator(), new FilterAllowlistGenerator(), new NamesGenerator(),
+            }
+            .SelectMany(g => g.Generate(ctx)).ToList();
+        Assert.Contains(files, f => f.Path == "StoreSales.g.cs");
+        var trees = files
+            .Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path))
+            .ToList();
+        var comp = CSharpCompilation.Create(
+            "report_spine_rows_" + Guid.NewGuid().ToString("N"), trees,
+            DbContextCompileTests.BuildReferences(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var errors = comp.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error)
+            .Select(d => $"{d.Location.GetLineSpan().Path}: {d.Id}: {d.GetMessage()}")
+            .ToList();
+        Assert.True(errors.Count == 0, string.Join("\n", errors));
     }
 
     [Fact]

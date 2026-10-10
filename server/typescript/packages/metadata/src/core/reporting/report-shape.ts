@@ -1,6 +1,8 @@
 // Table B of docs/superpowers/plans/2026-10-03-fr-044-plan-2-report-view-lowering.md:
 // a report's derived fields. The single definition; every port has a rule-for-rule copy,
-// gated by fixtures/persistence-conformance/report-shapes.json.
+// gated by fixtures/persistence-conformance/report-shapes.json. `required` follows Table C
+// of docs/superpowers/plans/2026-10-09-fr-044-zero-rows-and-measure-defaults.md, which
+// amends Table B for a report with `@spine` and a measure with `@default`.
 
 import type { MetaData } from "../../shared/meta-data.js";
 import type { MetaRoot } from "../../shared/meta-root.js";
@@ -20,8 +22,12 @@ import {
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_TIMESTAMP,
 } from "../field/field-constants.js";
+import { TYPE_IDENTITY, TYPE_RELATIONSHIP } from "../../shared/base-types.js";
+import { IDENTITY_REFERENCE_ATTR_REFERENCES, IDENTITY_SUBTYPE_REFERENCE } from "../identity/identity-constants.js";
+import { RELATIONSHIP_ATTR_OBJECT_REF } from "../relationship/relationship-constants.js";
 import { MetaDimension } from "./meta-dimension.js";
 import { MetaMeasure } from "./meta-measure.js";
+import { identityEffectiveFields } from "../identity/validate-identity-passthrough.js";
 import {
   reportDerivedFieldName,
   reportDimensionItems,
@@ -29,6 +35,7 @@ import {
   reportMeasureItemName,
   reportMeasureItemOwner,
   reportMeasureNames,
+  reportSpine,
 } from "./report-accessors.js";
 import {
   AGG_AVG,
@@ -111,6 +118,20 @@ export function resolveReportingFieldRef(
   root: MetaRoot,
   host?: MetaObject,
 ): MetaField | undefined {
+  return resolveReportingFieldRefNamed(ref, declaring, root, host)?.field;
+}
+
+/**
+ * {@link resolveReportingFieldRef}, also returning `named`: the entity the reference's
+ * entity half names (which, with `host`, may be an ancestor of the entity `field` is read
+ * from). Table C reads `named`'s primary identity.
+ */
+function resolveReportingFieldRefNamed(
+  ref: string,
+  declaring: MetaData,
+  root: MetaRoot,
+  host?: MetaObject,
+): { readonly named: MetaObject; readonly field: MetaField } | undefined {
   // `Entity.field`; a package qualifier uses `::`, so the member separator is the LAST dot.
   const dot = ref.lastIndexOf(CHILD_REF_SEPARATOR);
   if (dot <= 0) return undefined;
@@ -118,7 +139,8 @@ export function resolveReportingFieldRef(
   if (!isMetaObject(named)) return undefined;
   if (host !== undefined && !isSelfOrAncestor(named, host)) return undefined;
   // ADR-0039: resolving, so a field inherited through extends is found.
-  return (host ?? named).fields().find((f) => f.name === ref.slice(dot + 1));
+  const field = (host ?? named).fields().find((f) => f.name === ref.slice(dot + 1));
+  return field === undefined ? undefined : { named, field };
 }
 
 /**
@@ -150,6 +172,56 @@ function unresolved(reportName: string, what: string): Error {
   return new Error(`report '${reportName}': ${what} does not resolve.`);
 }
 
+/**
+ * The hop names of a report's `@spine` (`Owner.hop[.hop...]`), read as
+ * {@link reportingViaHops} reads a `@via`, the owner resolving in the REPORT's package
+ * (loader rule R8). Undefined when the report declares no `@spine`. Throws a plain Error
+ * naming the report when a declared `@spine` does not resolve (a report that passed
+ * `validateReporting` always resolves): reading it as "no spine" would claim a column
+ * non-null that a spine row with no facts leaves null.
+ */
+export function reportSpineHops(report: MetaObject, from: MetaObject, root: MetaRoot): string[] | undefined {
+  const spine = reportSpine(report);
+  if (spine === undefined) return undefined;
+  const hops = reportingViaHops(spine, report, from, root);
+  if (hops === undefined) throw unresolved(report.name, `@spine '${spine}'`);
+  return hops;
+}
+
+/**
+ * The spine entity: the object at the end of a report's `@spine`, whose rows are the
+ * report's rows. Walked hop by hop from `from` as the loader's rule R8 walks it: each hop is
+ * a `relationship.*` (its `@objectRef`) or an `identity.reference` (its `@references`) of the
+ * entity reached so far, and its target resolves in that entity's package. Undefined when the
+ * report declares no `@spine`; throws, as {@link reportSpineHops} does, when one does not
+ * resolve (a report that passed `validateReporting` always resolves).
+ */
+export function reportSpineEntity(report: MetaObject, from: MetaObject, root: MetaRoot): MetaObject | undefined {
+  const hops = reportSpineHops(report, from, root);
+  if (hops === undefined) return undefined;
+  let current: MetaObject = from;
+  for (const hop of hops) {
+    // ADR-0039: resolving children(), so a relationship or reference inherited through
+    // extends is a hop, as the loader's walk finds it.
+    const node =
+      current.children().find((c) => c.type === TYPE_RELATIONSHIP && c.name === hop) ??
+      current.children().find((c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_REFERENCE && c.name === hop);
+    const ref = node?.attr(node.type === TYPE_IDENTITY ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF);
+    const target = typeof ref === "string" ? resolveObjectRef(root, ref, packageOfKey(current.resolutionKey())).node : undefined;
+    if (!isMetaObject(target)) throw unresolved(report.name, `@spine '${reportSpine(report) ?? ""}' hop '${hop}'`);
+    current = target;
+  }
+  return current;
+}
+
+/** True when `field` is one of the `@fields` of `entity`'s `identity.primary`. */
+function isPrimaryKeyField(entity: MetaObject, field: MetaField): boolean {
+  // ADR-0039: resolving — an identity.primary (and its @fields) inherited from an
+  // abstract base counts.
+  const pk = entity.primaryIdentity();
+  return pk !== undefined && (identityEffectiveFields(pk) ?? []).includes(field.name);
+}
+
 function declaredMember<T extends MetaData>(
   from: MetaObject,
   type: string,
@@ -164,19 +236,46 @@ function isTimeGrain(grain: string | undefined): grain is TimeGrain {
   return grain !== undefined && (TIME_GRAINS as readonly string[]).includes(grain);
 }
 
+/**
+ * Table C (`required` of a dimension). Without `@spine`: only a dimension with no `@via`
+ * over an `@of` field whose effective `@required` is true. With `@spine`: only a dimension
+ * whose `@via` hops equal the spine's (a column of the spine entity itself, whose rows are
+ * the report's rows) over an `@of` field that is `@required` or a primary-key column of the
+ * entity `@of` names. A dimension beyond the spine is reached by a LEFT OUTER join.
+ */
+function dimensionRequired(
+  dim: MetaDimension,
+  named: MetaObject,
+  of: MetaField,
+  from: MetaObject,
+  root: MetaRoot,
+  spine: readonly string[] | undefined,
+  reportName: string,
+): boolean {
+  const via = dim.via();
+  if (spine === undefined) return via === undefined && of.attr(FIELD_ATTR_REQUIRED) === true;
+  if (via === undefined) return false; // a column of @from: null in a spine row with no facts
+  const hops = reportingViaHops(via, reportingMemberOwner(dim, from), from, root);
+  if (hops === undefined) throw unresolved(reportName, `dimension '${dim.name}' @via '${via}'`);
+  const onSpine = hops.length === spine.length && hops.every((h, i) => h === spine[i]);
+  return onSpine && (of.attr(FIELD_ATTR_REQUIRED) === true || isPrimaryKeyField(named, of));
+}
+
 function dimensionField(
   item: { name: string; grain?: string },
   from: MetaObject,
   root: MetaRoot,
   reportName: string,
+  spine: readonly string[] | undefined,
 ): ReportField {
   const dim = declaredMember(from, TYPE_DIMENSION, item.name, MetaDimension);
   if (dim === undefined) throw unresolved(reportName, `dimension '${item.name}' on '${from.name}'`);
   const vialess = dim.via() === undefined;
-  const of = resolveReportingFieldRef(dim.of() ?? "", reportingMemberOwner(dim, from), root, vialess ? from : undefined);
-  if (of === undefined) throw unresolved(reportName, `dimension '${item.name}' @of`);
+  const ref = resolveReportingFieldRefNamed(dim.of() ?? "", reportingMemberOwner(dim, from), root, vialess ? from : undefined);
+  if (ref === undefined) throw unresolved(reportName, `dimension '${item.name}' @of`);
+  const of = ref.field;
   const name = reportDerivedFieldName(item);
-  const required = vialess && of.attr(FIELD_ATTR_REQUIRED) === true;
+  const required = dimensionRequired(dim, ref.named, of, from, root, spine, reportName);
   if (dim.isTime()) {
     // Loader rule R2 guarantees a grain from the closed set; a tree built in code does not.
     const grain = item.grain;
@@ -206,40 +305,64 @@ function measureField(item: string, report: MetaObject, from: MetaObject, root: 
   }
   const m = declaredMember(from, TYPE_MEASURE, name, MetaMeasure);
   if (m === undefined) throw unresolved(reportName, `measure '${item}' on '${from.name}'`);
-  if (m.isRatio()) {
-    return { name, role: "measure", subType: FIELD_SUBTYPE_DECIMAL, required: false, measure: m };
-  }
-  const agg = m.agg();
-  if (agg === AGG_COUNT) {
-    return { name, role: "measure", subType: FIELD_SUBTYPE_LONG, required: true, measure: m };
-  }
-  const of = resolveReportingFieldRef(m.ofColumns()[0] ?? "", reportingMemberOwner(m, from), root, from);
-  if (of === undefined) throw unresolved(reportName, `measure '${name}' @of`);
-  const src = of.subType;
-  if (agg === AGG_SUM) {
-    if (src === FIELD_SUBTYPE_CURRENCY) {
-      return { name, role: "measure", subType: FIELD_SUBTYPE_CURRENCY, required: false, typeSource: of, measure: m };
-    }
-    const subType = SUM_LONG.has(src) ? FIELD_SUBTYPE_LONG : FLOATING.has(src) ? FIELD_SUBTYPE_DOUBLE : FIELD_SUBTYPE_DECIMAL;
-    return { name, role: "measure", subType, required: false, measure: m };
-  }
-  if (agg === AGG_AVG) {
-    const subType = FLOATING.has(src) ? FIELD_SUBTYPE_DOUBLE : FIELD_SUBTYPE_DECIMAL;
-    return { name, role: "measure", subType, required: false, measure: m };
-  }
-  // min / max keep the source field's type.
-  return { name, role: "measure", subType: src, required: false, typeSource: of, measure: m };
+  const derived = deriveMeasure(m, from, root);
+  if (derived === undefined) throw unresolved(reportName, `measure '${name}' @of`);
+  // Table C: a count is never null; any other measure is not null when it has a @default.
+  const required = (!m.isRatio() && m.agg() === AGG_COUNT) || m.defaultValue() !== undefined;
+  const { subType, typeSource } = derived;
+  // The key set (no `typeSource` key when there is none) and its order are as before.
+  return typeSource === undefined
+    ? { name, role: "measure", subType, required, measure: m }
+    : { name, role: "measure", subType, required, typeSource, measure: m };
 }
 
-/** Table B. Throws a plain Error naming the report when a reference does not resolve
- *  (a report that passed `validateReporting` always resolves). */
+/** One measure's Table B subtype, and the `@of` field it carries type attrs from (if any). */
+interface MeasureDerivation {
+  readonly subType: string;
+  readonly typeSource?: MetaField;
+}
+
+/** Table B for one measure. Undefined when its `@of` does not resolve. */
+function deriveMeasure(m: MetaMeasure, from: MetaObject, root: MetaRoot): MeasureDerivation | undefined {
+  if (m.isRatio()) return { subType: FIELD_SUBTYPE_DECIMAL };
+  const agg = m.agg();
+  if (agg === AGG_COUNT) return { subType: FIELD_SUBTYPE_LONG };
+  const of = resolveReportingFieldRef(m.ofColumns()[0] ?? "", reportingMemberOwner(m, from), root, from);
+  if (of === undefined) return undefined;
+  const src = of.subType;
+  if (agg === AGG_SUM) {
+    if (src === FIELD_SUBTYPE_CURRENCY) return { subType: FIELD_SUBTYPE_CURRENCY, typeSource: of };
+    return {
+      subType: SUM_LONG.has(src) ? FIELD_SUBTYPE_LONG : FLOATING.has(src) ? FIELD_SUBTYPE_DOUBLE : FIELD_SUBTYPE_DECIMAL,
+    };
+  }
+  if (agg === AGG_AVG) return { subType: FLOATING.has(src) ? FIELD_SUBTYPE_DOUBLE : FIELD_SUBTYPE_DECIMAL };
+  // min / max keep the source field's type.
+  return { subType: src, typeSource: of };
+}
+
+/**
+ * Table B's subtype for one measure of `from`, whether or not a report lists it (a
+ * ratio's operands are measures a report need not list). The same rule `reportShape`
+ * applies to a listed measure. Throws a plain Error naming the measure when its `@of`
+ * does not resolve (a measure that passed `validateReporting` always resolves).
+ */
+export function measureDerivedSubType(measure: MetaMeasure, from: MetaObject, root: MetaRoot): string {
+  const derived = deriveMeasure(measure, from, root);
+  if (derived === undefined) throw new Error(`measure '${measure.name}' on '${from.name}': @of does not resolve.`);
+  return derived.subType;
+}
+
+/** Table B, with Table C's `required`. Throws a plain Error naming the report when a
+ *  reference does not resolve (a report that passed `validateReporting` always resolves). */
 export function reportShape(report: MetaObject, root: MetaRoot): ReportShape {
   const fromName = reportFrom(report);
   if (fromName === undefined) throw unresolved(report.name, "@from");
   const from = resolveObjectRef(root, fromName, packageOfKey(report.resolutionKey())).node;
   if (!isMetaObject(from)) throw unresolved(report.name, `@from '${fromName}'`);
+  const spine = reportSpineHops(report, from, root);
   const fields = [
-    ...reportDimensionItems(report).map((item) => dimensionField(item, from, root, report.name)),
+    ...reportDimensionItems(report).map((item) => dimensionField(item, from, root, report.name, spine)),
     ...reportMeasureNames(report).map((item) => measureField(item, report, from, root)),
   ];
   return { report, from, fields };

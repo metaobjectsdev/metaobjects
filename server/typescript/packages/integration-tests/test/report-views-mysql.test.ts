@@ -46,6 +46,7 @@ let canonical: MetaRoot;
 const CANONICAL_VIEWS = [
   "v_program_minutes", "v_fitness_totals", "v_programs_by_month",
   "v_programs_by_week", "v_recent_programs", "v_asset_activity",
+  "v_program_roster", "v_program_long_weeks", "v_fitness_totals_filled",
 ];
 
 /** The adopter's hand-written DDL (MySQL schema is not MetaObjects'). */
@@ -110,6 +111,11 @@ const SEED_PROGRAMS_AND_WEEKS = `
     (12, 1, 'Week 2', 90),
     (13, 1, NULL, 60),
     (20, 2, 'Solo', 45);`;
+
+/** The same, plus program 3 with no weeks: the row a `@spine` report keeps and a plain one drops. */
+const SEED_ROSTER = `${SEED_PROGRAMS_AND_WEEKS}
+  INSERT INTO programs (id, title, priceCents, status, created_ts) VALUES
+    (3, 'Mobility', 1000, 'DRAFT', '2026-06-01T00:00:00');`;
 
 const SEED_PROGRAMS_BY_TIME = `
   INSERT INTO programs (id, title, priceCents, status, created_ts) VALUES
@@ -178,7 +184,7 @@ const RELATIVE_MODEL = JSON.stringify({ "metadata.root": { package: "acme", chil
       { "source.rdb": { "@kind": "view", "@view": "v_up_to_tomorrow" } } ] } },
 ]}});
 
-/** Every view and table this file creates: the canonical six, the inline models' and the recipe's. */
+/** Every view and table this file creates: the canonical nine, the inline models' and the recipe's. */
 const OWN_VIEWS = [
   ...CANONICAL_VIEWS,
   "v_events_by_grain", "v_last_twelve_hours", "v_last_two_weeks", "v_up_to_tomorrow",
@@ -336,6 +342,49 @@ describe("report views — canonical model on real MySQL 8.4", () => {
           (1, 'Recent', 100, 'PUBLISHED', UTC_TIMESTAMP(3) - INTERVAL 3 DAY),
           (2, 'Stale', 100, 'PUBLISHED', UTC_TIMESTAMP(3) - INTERVAL 60 DAY);`);
       expect(await select("SELECT * FROM `v_recent_programs`")).toEqual([{ programs: "1" }]);
+    });
+
+    test("@spine and @default: v_program_roster through buildReportViews has a row for program 3, which has no weeks", async () => {
+      await exec(SEED_ROSTER);
+      // Four fractional digits on every decimal, the defaulted 0 included (Review Focus 5).
+      expect(await select("SELECT * FROM `v_program_roster` ORDER BY `programKey`")).toEqual([
+        { programKey: "1", programTitle: "Foundations", weeks: "4", totalMinutes: "240", totalMinutesOrZero: "240",
+          longShare: "0.7500", longShareOrZero: "0.7500" },
+        { programKey: "2", programTitle: "Strength", weeks: "1", totalMinutes: "45", totalMinutesOrZero: "45",
+          longShare: "0.0000", longShareOrZero: "0.0000" },
+        { programKey: "3", programTitle: "Mobility", weeks: "0", totalMinutes: null, totalMinutesOrZero: "0",
+          longShare: null, longShareOrZero: "0.0000" },
+      ]);
+      expect(await select("SELECT * FROM `v_program_long_weeks` ORDER BY `programKey`")).toEqual([
+        { programKey: "1", weeks: "3", totalMinutesOrZero: "210" },
+        { programKey: "2", weeks: "0", totalMinutesOrZero: "0" },
+        { programKey: "3", weeks: "0", totalMinutesOrZero: "0" },
+      ]);
+      expect((await select("SELECT count(*) AS n FROM `v_program_roster`"))[0]?.n).toBe("3");
+    });
+
+    test("@default over an empty weeks table: v_fitness_totals_filled is (0, 0, 0)", async () => {
+      expect(await select("SELECT * FROM `v_fitness_totals_filled`"))
+        .toEqual([{ weeks: "0", totalMinutesOrZero: "0", longShareOrZero: "0.0000" }]);
+    });
+
+    test("COLUMN TYPES: every defaulted column is NOT NULL in information_schema, its undefaulted twin nullable", async () => {
+      const cols = await select(
+        `SELECT table_name AS v, column_name AS c, data_type AS t, is_nullable AS n FROM information_schema.columns
+          WHERE table_schema = DATABASE()
+            AND table_name IN ('v_program_roster', 'v_program_long_weeks', 'v_fitness_totals_filled')
+            AND column_name IN ('totalMinutes', 'totalMinutesOrZero', 'longShare', 'longShareOrZero')
+          ORDER BY table_name, ordinal_position`,
+      );
+      expect(cols).toEqual([
+        { v: "v_fitness_totals_filled", c: "totalMinutesOrZero", t: "bigint", n: "NO" },
+        { v: "v_fitness_totals_filled", c: "longShareOrZero", t: "decimal", n: "NO" },
+        { v: "v_program_long_weeks", c: "totalMinutesOrZero", t: "bigint", n: "NO" },
+        { v: "v_program_roster", c: "totalMinutes", t: "bigint", n: "YES" },
+        { v: "v_program_roster", c: "totalMinutesOrZero", t: "bigint", n: "NO" },
+        { v: "v_program_roster", c: "longShare", t: "decimal", n: "YES" },
+        { v: "v_program_roster", c: "longShareOrZero", t: "decimal", n: "NO" },
+      ]);
     });
   });
 });
