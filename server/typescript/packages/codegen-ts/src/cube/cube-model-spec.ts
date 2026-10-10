@@ -10,6 +10,9 @@
 
 import type { TimeGrain } from "@metaobjectsdev/metadata";
 
+/** The generator's name, as diagnostics and the catalog print it — and the note in every emitted file's header. */
+export const CUBE_MODEL_GENERATOR_NAME = "cube-model";
+
 /** Cube's data sources this exporter writes SQL for (open question 3). */
 export type CubeDialect = "postgres" | "mysql";
 

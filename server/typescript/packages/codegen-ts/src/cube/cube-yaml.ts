@@ -30,16 +30,18 @@
 
 import { GENERATED_HEADER } from "../constants.js";
 import { CubeModelError, ERR_CUBE_UNESCAPABLE_LITERAL } from "./cube-errors.js";
-import type {
-  CubeDimensionSpec,
-  CubeJoinSpec,
-  CubeMeasureSpec,
-  CubeRollupSpec,
-  CubeSegmentSpec,
-  CubeSpec,
-  CubeViewCubeSpec,
-  CubeViewIncludeSpec,
-  CubeViewSpec,
+import {
+  CUBE_MODEL_GENERATOR_NAME,
+  type CubeDimensionMeta,
+  type CubeDimensionSpec,
+  type CubeJoinSpec,
+  type CubeMeasureSpec,
+  type CubeRollupSpec,
+  type CubeSegmentSpec,
+  type CubeSpec,
+  type CubeViewCubeSpec,
+  type CubeViewIncludeSpec,
+  type CubeViewSpec,
 } from "./cube-model-spec.js";
 import { escapeCubeTemplate, jinjaSafe, JINJA_RAW_END } from "./cube-template.js";
 
@@ -47,9 +49,6 @@ const INDENT = "  ";
 
 /** A mapping or a list item as lines, relative to its own indent. */
 type Lines = string[];
-
-/** The text after the header, naming the generator that wrote the file. */
-const HEADER_NOTE = "cube-model";
 
 /** A member reference inside a rollup: the member on the cube the rollup belongs to. */
 function cubeRef(member: string): string {
@@ -145,10 +144,14 @@ function renderDimension(dimension: CubeDimensionSpec, cube: string): Lines {
   ];
   if (dimension.primaryKey !== undefined) out.push(`primary_key: ${dimension.primaryKey}`);
   out.push(...documentation(dimension, at));
-  if (dimension.meta !== undefined && dimension.meta.grains.length > 0) {
-    out.push("meta:", ...indented(flowList("grains", dimension.meta.grains)));
-  }
+  out.push(...grainsLines(dimension.meta));
   return out;
+}
+
+/** The `meta:` block, present only when the member carries grains (empty grains emit nothing). */
+function grainsLines(meta: CubeDimensionMeta | undefined): Lines {
+  if (meta === undefined || meta.grains.length === 0) return [];
+  return ["meta:", ...indented(flowList("grains", meta.grains))];
 }
 
 function renderMeasure(measure: CubeMeasureSpec, cube: string): Lines {
@@ -212,9 +215,7 @@ function renderViewInclude(include: CubeViewIncludeSpec, view: string): Lines {
   const out: Lines = [`name: ${nameScalar(include.name)}`];
   if (include.alias !== undefined) out.push(`alias: ${nameScalar(include.alias)}`);
   out.push(...documentation(include, at));
-  if (include.meta !== undefined && include.meta.grains.length > 0) {
-    out.push("meta:", ...indented(flowList("grains", include.meta.grains)));
-  }
+  out.push(...grainsLines(include.meta));
   return out;
 }
 
@@ -237,8 +238,7 @@ export function renderCubeViewYaml(view: CubeViewSpec): string {
     ...documentation(view, at),
     ...blockList("cubes", view.cubes.map((entry) => renderViewCube(entry, view.name))),
   ];
-  const lines = [`# ${GENERATED_HEADER} — ${HEADER_NOTE}`, "views:", ...indented(listItem(body))];
-  return `${lines.join("\n")}\n`;
+  return wrapFile("views:", body);
 }
 
 /**
@@ -247,6 +247,11 @@ export function renderCubeViewYaml(view: CubeViewSpec): string {
  * (it holds a Jinja opener) and holds `endraw`.
  */
 export function renderCubeYaml(cube: CubeSpec): string {
-  const lines = [`# ${GENERATED_HEADER} — ${HEADER_NOTE}`, "cubes:", ...indented(listItem(renderCube(cube)))];
+  return wrapFile("cubes:", renderCube(cube));
+}
+
+/** The framing both file kinds share: header line, one top-level key, its items indented, trailing newline. */
+function wrapFile(rootKey: string, item: Lines): string {
+  const lines = [`# ${GENERATED_HEADER} — ${CUBE_MODEL_GENERATOR_NAME}`, rootKey, ...indented(listItem(item))];
   return `${lines.join("\n")}\n`;
 }

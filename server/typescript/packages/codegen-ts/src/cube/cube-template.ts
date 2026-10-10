@@ -14,7 +14,7 @@
 //      inside one, so `endraw` there is plain text.
 
 /** `{{`, `{%` or `{#`: text holding one is raw-wrapped for Jinja. */
-export const JINJA_OPENER = /\{[{%#]/;
+const JINJA_OPENER = /\{[{%#]/;
 
 /** The word that would end a `{% raw %}` block early. */
 export const JINJA_RAW_END = "endraw";

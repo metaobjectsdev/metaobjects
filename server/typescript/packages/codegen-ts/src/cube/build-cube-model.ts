@@ -39,6 +39,7 @@ import {
   resolveObjectRef,
   resolveTableName,
   resolveTableSchema,
+  stripPackage,
   type MetaData,
   type MetaDimension,
   type MetaField,
@@ -74,14 +75,15 @@ import {
   ERR_CUBE_UNMAPPABLE_DIMENSION,
   ERR_CUBE_UNMAPPABLE_JOIN,
   ERR_CUBE_UNMAPPABLE_REPORT,
+  ERR_CUBE_UNSUPPORTED_DIALECT,
 } from "./cube-errors.js";
 import {
+  defaultedRawMemberName,
   dimensionColumn,
   docOf,
   grainsOf,
   measureMembers,
   memberKey,
-  rawMeasureName,
   segmentSpec,
   type MemberContext,
 } from "./cube-members.js";
@@ -162,8 +164,7 @@ interface SpinePlan {
 
 /** Entity short names along a `@via` path, for messages. */
 function pathText(from: MetaObject, path: Path): string {
-  const short = (key: string): string => (key.includes("::") ? key.slice(key.lastIndexOf("::") + 2) : key);
-  return [from.name, ...path.map((s) => short(s.targetEntity))].join(" -> ");
+  return [from.name, ...path.map((s) => stripPackage(s.targetEntity))].join(" -> ");
 }
 
 interface CubeDraft {
@@ -200,7 +201,10 @@ interface CubeDraft {
 export function buildCubeModel(root: MetaRoot, options: CubeModelOptions): CubeModel {
   // CubeDialect admits only these; a caller outside the type system gets a refusal, not SQLite SQL.
   if (options.dialect !== "postgres" && options.dialect !== "mysql") {
-    throw new Error(`buildCubeModel: dialect '${String(options.dialect)}' is not a Cube data source this exporter writes (postgres, mysql).`);
+    throw new CubeModelError(
+      ERR_CUBE_UNSUPPORTED_DIALECT,
+      `dialect '${String(options.dialect)}' is not a Cube data source this exporter writes (postgres, mysql).`,
+    );
   }
   return new CubeModelBuilder(root, options).build();
 }
@@ -215,7 +219,7 @@ export function hasReportingVocabulary(obj: MetaObject): boolean {
 }
 
 function hopLabel(node: MetaData): string {
-  const kind = node.type === TYPE_IDENTITY ? "identity.reference" : `relationship.${node.subType}`;
+  const kind = node.type === TYPE_IDENTITY ? `${TYPE_IDENTITY}.${IDENTITY_SUBTYPE_REFERENCE}` : `${TYPE_RELATIONSHIP}.${node.subType}`;
   return `${kind} '${memberKey(node)}'`;
 }
 
@@ -275,7 +279,7 @@ class CubeModelBuilder {
     private readonly options: CubeModelOptions,
   ) {
     this.d = options.dialect;
-    this.mc = { root, dialect: options.dialect, extract: { columnNamingStrategy: options.columnNamingStrategy } };
+    this.mc = { root, dialect: this.d, extract: { columnNamingStrategy: options.columnNamingStrategy } };
   }
 
   build(): CubeModel {
@@ -871,8 +875,9 @@ class CubeModelBuilder {
     const needed = new Set<string>();
     const need = (m: MetaMeasure): void => {
       needed.add(m.name);
-      // ADR-0039: defaultValue() resolves, as measureMembers reads it.
-      if (!m.isRatio() && m.defaultValue() !== undefined) needed.add(rawMeasureName(m.name));
+      // The `<m>Raw` twin is earned by one rule, in `defaultedRawMemberName`, shared with measureMembers.
+      const raw = defaultedRawMemberName(m);
+      if (raw !== undefined) needed.add(raw);
     };
     for (const f of shape.fields) {
       const m = f.measure;
@@ -953,9 +958,9 @@ class CubeModelBuilder {
     const pairs = fkFields.map((fk, i) => {
       const fkCol = joinColumnFor(fkEntity, fk, this.mc.extract);
       const keyCol = joinColumnFor(keyEntity, keyFields[i]!, this.mc.extract);
-      return h.fkOnSelf
-        ? `${cubeColumn(fkCol, this.d, renderer)} = ${joinedColumn(h.joined.name, keyCol, this.d, renderer)}`
-        : `${cubeColumn(keyCol, this.d, renderer)} = ${joinedColumn(h.joined.name, fkCol, this.d, renderer)}`;
+      // One predicate shape, both directions: self's column left, the joined cube's column right.
+      const [selfCol, joinedCol]: [string, string] = h.fkOnSelf ? [fkCol, keyCol] : [keyCol, fkCol];
+      return `${cubeColumn(selfCol, this.d, renderer)} = ${joinedColumn(h.joined.name, joinedCol, this.d, renderer)}`;
     });
     return { name: h.joined.name, relationship: h.relationship, sql: pairs.join(" AND ") };
   }

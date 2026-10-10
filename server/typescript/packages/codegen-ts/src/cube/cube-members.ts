@@ -67,6 +67,12 @@ const STRING_SUBTYPES: ReadonlySet<string> = new Set([
   FIELD_SUBTYPE_INET,
 ]);
 
+// The subtypes `dimensionOfField` maps, in the order the refusal below lists them — derived from
+// the dispatch sets and checks, so the message cannot go stale when a mapping is added or removed.
+const MAPPED_DIMENSION_SUBTYPES: readonly string[] = [
+  ...STRING_SUBTYPES, ...NUMBER_SUBTYPES, FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIMESTAMP,
+];
+
 /** `<owner resolution key>.<name>`: a member's address, as `@of` and `@via` spell it. */
 export function memberKey(node: MetaData): string {
   const owner = node.parent;
@@ -133,14 +139,23 @@ export function dimensionColumn(
   throw new CubeModelError(
     ERR_CUBE_UNMAPPABLE_DIMENSION,
     `${where} reads ${read} (field.${field.subType}), and the exporter maps no Cube dimension type for ` +
-      `field.${field.subType}: it maps string, enum, uuid, time, uri, inet, int, long, double, float, decimal, ` +
-      `currency, boolean, date and timestamp. Group by a field of one of those subtypes, or remove the dimension.`,
+      `field.${field.subType}: it maps ${MAPPED_DIMENSION_SUBTYPES.slice(0, -1).join(", ")} and ` +
+      `${MAPPED_DIMENSION_SUBTYPES.at(-1)}. Group by a field of one of those subtypes, or remove the dimension.`,
   );
 }
 
 /** `<m>Raw`: the member that holds a defaulted measure.aggregate's aggregate (Table G, added members). */
 export function rawMeasureName(measure: string): string {
   return `${measure}Raw`;
+}
+
+/**
+ * The `<m>Raw` twin a measure earns: only a non-ratio `measure.aggregate` with `@default` gets one.
+ * `measureMembers` emits under this name and the facts cube keeps it — one rule, two consumers.
+ */
+export function defaultedRawMemberName(m: MetaMeasure): string | undefined {
+  // ADR-0039: defaultValue() resolves, so a measure inherited through extends keeps its default.
+  return !m.isRatio() && m.defaultValue() !== undefined ? rawMeasureName(m.name) : undefined;
 }
 
 /**
@@ -173,7 +188,8 @@ export function measureMembers(entity: MetaObject, m: MetaMeasure, where: string
   }
   const aggregate = aggregateSpec(entity, m, where, mc);
   if (n === undefined) return { measure: { name: m.name, ...aggregate, ...docOf(m) } };
-  const raw = rawMeasureName(m.name);
+  // Past the ratio branch, this measure satisfies the helper's rule: its twin name exists.
+  const raw = defaultedRawMemberName(m)!;
   return {
     raw: { name: raw, ...aggregate, public: false },
     measure: { name: m.name, sql: withDefault(memberRef(raw), n), type: "number", ...docOf(m) },

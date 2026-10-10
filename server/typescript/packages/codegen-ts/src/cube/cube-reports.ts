@@ -34,7 +34,7 @@ export interface ReportContribution {
 }
 
 /** How many grouping columns a rollup has: its attribute dimensions plus its time dimensions. */
-export function rollupDimensionCount(rollup: CubeRollupSpec): number {
+function rollupDimensionCount(rollup: CubeRollupSpec): number {
   const times = rollup.timeDimensions !== undefined ? rollup.timeDimensions.length : rollup.timeDimension !== undefined ? 1 : 0;
   return rollup.dimensions.length + times;
 }
@@ -87,12 +87,12 @@ export function coarsestFirst(rollups: readonly CubeRollupSpec[]): CubeRollupSpe
 }
 
 /** `RecentPrograms` → `recentProgramsScope`: the segment a report's `@filter` becomes (Table G). */
-export function scopeSegmentName(reportName: string): string {
+function scopeSegmentName(reportName: string): string {
   return `${reportName.charAt(0).toLowerCase()}${reportName.slice(1)}Scope`;
 }
 
 /** True when a lowered clause compares against a relative date anywhere inside it. */
-export function hasRelativeDate(clause: ViewFilterClause | undefined): boolean {
+function hasRelativeDate(clause: ViewFilterClause | undefined): boolean {
   if (clause === undefined) return false;
   switch (clause.kind) {
     case "and":

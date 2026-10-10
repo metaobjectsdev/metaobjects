@@ -32,7 +32,13 @@ import { DEFAULT_COLUMN_NAMING_STRATEGY, type MetaObject } from "@metaobjectsdev
 import type { EmittedFile, GenContext, Generator } from "../generator.js";
 import { buildCubeModel, hasReportingVocabulary } from "../cube/build-cube-model.js";
 import { CubeModelError, ERR_CUBE_UNSUPPORTED_DIALECT } from "../cube/cube-errors.js";
-import { JOIN_PATH_SEPARATOR, type CubeDialect, type CubeModel, type CubeSpec } from "../cube/cube-model-spec.js";
+import {
+  CUBE_MODEL_GENERATOR_NAME,
+  JOIN_PATH_SEPARATOR,
+  type CubeDialect,
+  type CubeModel,
+  type CubeSpec,
+} from "../cube/cube-model-spec.js";
 import { renderCubeViewYaml, renderCubeYaml } from "../cube/cube-yaml.js";
 
 export interface CubeModelGeneratorOptions {
@@ -49,9 +55,6 @@ export interface CubeModelGeneratorOptions {
   /** Named output target: the files land at `model/cubes/<Cube>.yml` and `model/views/<View>.yml` under its outDir. */
   readonly target?: string;
 }
-
-/** The generator's name, as diagnostics and the catalog print it. */
-export const CUBE_MODEL_GENERATOR_NAME = "cube-model";
 
 /** Where a cube's file lands, relative to the target's outDir (Table A). */
 const CUBE_FILE_DIR = "model/cubes";
