@@ -5,8 +5,10 @@ Plan 1 registers ``dimension.*``, ``measure.*``, ``segment.*`` and ``object.repo
 validates them at load. A model that USES the vocabulary must generate exactly what the
 same model without it generates, byte for byte, through every registered generator, with
 ONE exception: a report that declares a read-only ``source.rdb @kind: view`` is SERVED
-(Plan 3, Table A) and gains exactly the files below, all for ``StoreTotals``. The other two
-reports (``DailyRevenue``, ``ProgramEngagement``) declare no view and generate nothing.
+(Plan 3, Table A) and gains exactly the files below, all for ``StoreTotals``. The other three
+reports (``DailyRevenue``, ``ProgramEngagement`` and ``ProgramCatalogue``, which declares
+``@spine`` and lists a dimension reached by ``@via``) declare no view and generate nothing,
+and a measure ``@default`` (``avgDaysPerStarter``) changes nothing either.
 
 The model pair is ``fixtures/codegen-noop/reporting/{with,without}``, shared with the other
 four ports' copies of this test. ``with/`` carries a report that declares a read-only
@@ -36,7 +38,9 @@ from metaobjects.codegen.generator_registry import (
 )
 from metaobjects.codegen.runner import run_gen
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_REPORT
-from metaobjects.shared.base_types import TYPE_OBJECT
+from metaobjects.meta.core.reporting.meta_measure import MetaMeasure
+from metaobjects.meta.core.reporting.report_accessors import report_spine
+from metaobjects.shared.base_types import TYPE_MEASURE, TYPE_OBJECT
 
 MODELS = Path(__file__).parents[3] / "fixtures" / "codegen-noop" / "reporting"
 THREW = "<threw>"
@@ -95,7 +99,15 @@ def _emit(variant: str, entries: list[GeneratorEntry], tmp: Path) -> dict[str, s
 def test_the_with_model_really_carries_the_vocabulary() -> None:
     # Else every comparison below is vacuously green.
     reports = sorted(o.name for o in _objects("with") if o.sub_type == OBJECT_SUBTYPE_REPORT)
-    assert reports == ["DailyRevenue", "ProgramEngagement", "StoreTotals"]
+    assert reports == ["DailyRevenue", "ProgramCatalogue", "ProgramEngagement", "StoreTotals"]
+    with_objects = {o.name: o for o in _objects("with")}
+    assert report_spine(with_objects["ProgramCatalogue"]) is not None
+    # ADR-0039: resolving children() — the measure is the event entity's own member.
+    defaulted = [
+        m for o in with_objects.values() for m in o.children()
+        if m.type == TYPE_MEASURE and isinstance(m, MetaMeasure) and m.default_value() is not None
+    ]
+    assert [m.name for m in defaulted] == ["avgDaysPerStarter"]
     assert not any(o.sub_type == OBJECT_SUBTYPE_REPORT for o in _objects("without"))
 
 
@@ -154,7 +166,7 @@ def test_api_docs_gain_only_the_served_report() -> None:
     expected = _api_docs("without")
     assert len(expected) > 3, f"only {len(expected)} pages — the docs barely ran"
     actual = _api_docs("with")
-    # One new unit page, for the served report; the two sourceless reports get none.
+    # One new unit page, for the served report; the three sourceless reports get none.
     assert sorted(set(actual) - set(expected)) == ["acme/shop/StoreTotals.md"]
     assert set(expected) <= set(actual)
     page = actual["acme/shop/StoreTotals.md"]
@@ -186,7 +198,7 @@ def test_a_selection_of_only_unserved_reports_warns_that_there_is_nothing_to_gen
         GenConfig(out_dir=str(tmp_path / "out")),
         _load("with"),
         generators=[_build(e, tmp_path) for e in list_generators()],
-        entity_filter=["DailyRevenue", "ProgramEngagement"],
+        entity_filter=["DailyRevenue", "ProgramEngagement", "ProgramCatalogue"],
     )
     assert result.files == []
     assert any(
@@ -199,7 +211,7 @@ def test_a_selection_of_only_reports_generates_only_the_served_one(tmp_path: Pat
         GenConfig(out_dir=str(tmp_path / "out")),
         _load("with"),
         generators=[_build(e, tmp_path) for e in list_generators()],
-        entity_filter=["DailyRevenue", "ProgramEngagement", "StoreTotals"],
+        entity_filter=["DailyRevenue", "ProgramEngagement", "ProgramCatalogue", "StoreTotals"],
     )
     names = sorted(Path(path).name for path, _ in result.files)
     assert names == sorted(

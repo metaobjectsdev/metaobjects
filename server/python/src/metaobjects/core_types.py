@@ -65,6 +65,7 @@ from .meta.core.object.object_constants import (
     OBJECT_REPORT_ATTR_FROM,
     OBJECT_REPORT_ATTR_MEASURES,
     OBJECT_REPORT_ATTR_SEGMENT,
+    OBJECT_REPORT_ATTR_SPINE,
     OBJECT_SUBTYPE_ENTITY,
     OBJECT_SUBTYPE_PROJECTION,
     OBJECT_SUBTYPE_REPORT,
@@ -81,6 +82,7 @@ from .meta.core.reporting.reporting_constants import (
     MEASURE_SUBTYPE_AGGREGATE,
     MEASURE_SUBTYPE_RATIO,
     REPORTING_ATTR_AGG,
+    REPORTING_ATTR_DEFAULT,
     REPORTING_ATTR_DENOMINATOR,
     REPORTING_ATTR_DISTINCT,
     REPORTING_ATTR_FILTER,
@@ -360,6 +362,8 @@ for _def in core_provider._defs:  # noqa: SLF001 (provider build-time enrichment
                 ),
                 AttrSchema(name=OBJECT_REPORT_ATTR_SEGMENT, value_type=ATTR_SUBTYPE_STRING, required=False),
                 AttrSchema(name=OBJECT_REPORT_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=False),
+                # R8: the to-one path from @from whose entity supplies the report's rows.
+                AttrSchema(name=OBJECT_REPORT_ATTR_SPINE, value_type=ATTR_SUBTYPE_STRING, required=False),
             ]
         )
         break
@@ -427,6 +431,8 @@ core_provider.add(
             AttrSchema(name=REPORTING_ATTR_DISTINCT, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
             AttrSchema(name=REPORTING_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=False),
             AttrSchema(name=REPORTING_ATTR_SEGMENT, value_type=ATTR_SUBTYPE_STRING, required=False),
+            # What the measure reads when it would otherwise be null; M7/M8 decide where it is legal.
+            AttrSchema(name=REPORTING_ATTR_DEFAULT, value_type=ATTR_SUBTYPE_INT, required=False),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )
@@ -439,6 +445,7 @@ core_provider.add(
         attrs=[
             AttrSchema(name=REPORTING_ATTR_NUMERATOR, value_type=ATTR_SUBTYPE_STRING, required=True),
             AttrSchema(name=REPORTING_ATTR_DENOMINATOR, value_type=ATTR_SUBTYPE_STRING, required=True),
+            AttrSchema(name=REPORTING_ATTR_DEFAULT, value_type=ATTR_SUBTYPE_INT, required=False),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )

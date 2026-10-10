@@ -178,3 +178,40 @@ def test_every_derived_field_with_a_filter_band_is_filterable() -> None:
         "code", "ref", "tags", "status", "bookedAtHour", "bookedAtDay",
         "sales", "revenue", "minAmount", "totalWeight", "maxWeight",
     }
+
+
+def test_a_measure_with_default_yields_a_detached_field_with_required_true() -> None:
+    """Table C: a defaulted measure is never null, so its derived field is ``@required``; the
+    same measure without ``@default`` is not. The measure's ``@default`` itself is never
+    carried onto the field (a field ``@default`` is an insert default, not this)."""
+    model = {
+        "metadata.root": {
+            "package": "acme",
+            "children": [
+                {
+                    "object.entity": {
+                        "name": "Sale",
+                        "children": [
+                            {"source.rdb": {"@table": "sales"}},
+                            {"field.long": {"name": "id"}},
+                            {"field.currency": {"name": "amountCents", "@currency": "EUR"}},
+                            {"identity.primary": {"name": "pk", "@fields": "id", "@generation": "increment"}},
+                            {"measure.aggregate": {"name": "revenue", "@agg": "sum", "@of": "Sale.amountCents",
+                                                   "@default": 0}},
+                            {"measure.aggregate": {"name": "revenueRaw", "@agg": "sum", "@of": "Sale.amountCents"}},
+                        ],
+                    }
+                },
+                {"object.report": {"name": "Revenue", "@from": "Sale", "@measures": ["revenue", "revenueRaw"]}},
+            ],
+        }
+    }
+    result = MetaDataLoader().load([InMemoryStringSource(json.dumps(model), "meta.acme.json")])
+    assert result.errors == [], [e.message for e in result.errors]
+    report = next(c for c in result.root.children() if c.type == TYPE_OBJECT and c.name == "Revenue")
+    fields = report_read_model(report, result.root).fields()
+    assert [(f.name, f.get_meta_attr(FIELD_ATTR_REQUIRED)) for f in fields] == [
+        ("revenue", True),
+        ("revenueRaw", False),
+    ]
+    assert all(f.get_meta_attr(FIELD_ATTR_DEFAULT) is None for f in fields)

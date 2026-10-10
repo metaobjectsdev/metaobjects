@@ -1,6 +1,8 @@
 """Table B of the FR-044 Plan 2 contract: a report's derived fields. The single
 Python definition; every port has a rule-for-rule copy, gated by
-``fixtures/persistence-conformance/report-shapes.json``.
+``fixtures/persistence-conformance/report-shapes.json``. ``required`` follows Table C of
+docs/superpowers/plans/2026-10-09-fr-044-zero-rows-and-measure-defaults.md, which amends
+Table B for a report with ``@spine`` and a measure with ``@default``.
 
 ADR-0039: every read is RESOLVING. Python naming inversion: ``attr()`` is
 OWN-ONLY here, so the TypeScript reference's ``attr()`` is ``get_meta_attr()``
@@ -27,6 +29,7 @@ from ..field.field_constants import (
     FIELD_SUBTYPE_TIMESTAMP,
 )
 from ..field.meta_field import MetaField
+from ..identity.identity_constants import IDENTITY_ATTR_FIELDS
 from ..object.meta_object import MetaObject
 from .meta_dimension import MetaDimension
 from .meta_measure import MetaMeasure
@@ -38,6 +41,7 @@ from .report_accessors import (
     report_measure_item_name,
     report_measure_item_owner,
     report_measure_names,
+    report_spine,
 )
 from .reporting_constants import (
     AGG_AVG,
@@ -122,6 +126,16 @@ def resolve_reporting_field_ref(
 
     ``None`` when any step fails.
     """
+    named = _resolve_reporting_field_ref_named(ref, declaring, root, host)
+    return None if named is None else named[1]
+
+
+def _resolve_reporting_field_ref_named(
+    ref: str, declaring: MetaData, root: MetaRoot, host: MetaObject | None = None
+) -> tuple[MetaObject, MetaField] | None:
+    """:func:`resolve_reporting_field_ref`, also returning the entity the reference's
+    entity half NAMES (which, with ``host``, may be an ancestor of the entity the field is
+    read from). Table C reads that entity's primary identity."""
     # ``Entity.field``; a package qualifier uses ``::``, so the member separator is the LAST dot.
     dot = ref.rfind(CHILD_REF_SEP)
     if dot <= 0:
@@ -133,11 +147,65 @@ def resolve_reporting_field_ref(
         return None
     # ADR-0039: resolving fields(), so a field inherited through extends is found.
     member = ref[dot + len(CHILD_REF_SEP):]
-    return next((f for f in (host if host is not None else named).fields() if f.name == member), None)
+    field = next((f for f in (host if host is not None else named).fields() if f.name == member), None)
+    return None if field is None else (named, field)
+
+
+def reporting_via_hops(via: str, declaring: MetaData, from_: MetaObject, root: MetaRoot) -> list[str] | None:
+    """The hop names of a dimension's ``@via`` (``Owner.hop[.hop...]``), the owner resolving
+    in the package of ``declaring`` and required to be ``from_`` or an entity it extends,
+    as the loader's walk requires (TS ``reportingViaHops``). ``None`` when the path is
+    malformed or its owner does not resolve so."""
+    # The owner ends at the first ``.`` after the last ``::`` (a package qualifier has no ``.``).
+    last_sep = via.rfind(PACKAGE_SEP)
+    seg_start = 0 if last_sep == -1 else last_sep + len(PACKAGE_SEP)
+    dot = via.find(CHILD_REF_SEP, seg_start)
+    if dot <= seg_start:
+        return None
+    hops = via[dot + len(CHILD_REF_SEP):].split(CHILD_REF_SEP)
+    if any(h == "" for h in hops):
+        return None
+    owner = resolve_object_ref(root, via[:dot], _package_of_key(declaring.resolution_key()))
+    if owner is None or not _is_self_or_ancestor(owner, from_):
+        return None
+    return hops
 
 
 def _unresolved(report_name: str, what: str) -> ValueError:
     return ValueError(f"report '{report_name}': {what} does not resolve.")
+
+
+def report_spine_hops(report: MetaObject, from_: MetaObject, root: MetaRoot) -> list[str] | None:
+    """The hop names of a report's ``@spine`` (``Owner.hop[.hop...]``), read as
+    :func:`reporting_via_hops` reads a ``@via``, the owner resolving in the REPORT's package
+    (loader rule R8). ``None`` when the report declares no ``@spine``. Raises a
+    ``ValueError`` naming the report when a declared ``@spine`` does not resolve (a report
+    that passed ``validate_reporting`` always resolves): reading it as "no spine" would
+    claim a column non-null that a spine row with no facts leaves null."""
+    spine = report_spine(report)
+    if spine is None:
+        return None
+    hops = reporting_via_hops(spine, report, from_, root)
+    if hops is None:
+        raise _unresolved(report.name, f"@spine '{spine}'")
+    return hops
+
+
+def _is_primary_key_field(entity: MetaObject, field: MetaField) -> bool:
+    """True when ``field`` is one of the ``@fields`` of ``entity``'s ``identity.primary``."""
+    # ADR-0039: resolving — an identity.primary (and its @fields) inherited from an
+    # abstract base counts (primary_identity() reads children(); get_meta_attr resolves).
+    pk = entity.primary_identity()
+    if pk is None:
+        return False
+    raw = pk.get_meta_attr(IDENTITY_ATTR_FIELDS)
+    if isinstance(raw, list):
+        names = [str(v).strip() for v in raw]
+    elif isinstance(raw, str):
+        names = [s.strip() for s in raw.split(",") if s.strip()]
+    else:
+        names = []
+    return field.name in names
 
 
 def _declared_member(from_: MetaObject, type_: str, name: str, cls: type[MetaData]) -> MetaData | None:
@@ -148,22 +216,54 @@ def _declared_member(from_: MetaObject, type_: str, name: str, cls: type[MetaDat
     )
 
 
+def _dimension_required(
+    dim: MetaDimension,
+    named: MetaObject,
+    of: MetaField,
+    from_: MetaObject,
+    root: MetaRoot,
+    spine: list[str] | None,
+    report_name: str,
+) -> bool:
+    """Table C (``required`` of a dimension). Without ``@spine``: only a dimension with no
+    ``@via`` over an ``@of`` field whose effective ``@required`` is true. With ``@spine``:
+    only a dimension whose ``@via`` hops equal the spine's (a column of the spine entity
+    itself, whose rows are the report's rows) over an ``@of`` field that is ``@required`` or
+    a primary-key column of the entity ``@of`` names. A dimension beyond the spine is
+    reached by a LEFT OUTER join."""
+    via = dim.via()
+    # ADR-0039 resolving: the @of field's effective @required (the attr only; a
+    # validator.required child does not count).
+    of_required = of.get_meta_attr(FIELD_ATTR_REQUIRED) is True
+    if spine is None:
+        return via is None and of_required
+    if via is None:
+        return False  # a column of @from: null in a spine row with no facts
+    hops = reporting_via_hops(via, reporting_member_owner(dim, from_), from_, root)
+    if hops is None:
+        raise _unresolved(report_name, f"dimension '{dim.name}' @via '{via}'")
+    return hops == spine and (of_required or _is_primary_key_field(named, of))
+
+
 def _dimension_field(
-    item: ReportDimensionItem, from_: MetaObject, root: MetaRoot, report_name: str
+    item: ReportDimensionItem,
+    from_: MetaObject,
+    root: MetaRoot,
+    report_name: str,
+    spine: list[str] | None,
 ) -> ReportField:
     dim = _declared_member(from_, TYPE_DIMENSION, item.name, MetaDimension)
     if not isinstance(dim, MetaDimension):
         raise _unresolved(report_name, f"dimension '{item.name}' on '{from_.name}'")
     vialess = dim.via() is None
-    of = resolve_reporting_field_ref(
+    ref = _resolve_reporting_field_ref_named(
         dim.of() or "", reporting_member_owner(dim, from_), root, from_ if vialess else None
     )
-    if of is None:
+    if ref is None:
         raise _unresolved(report_name, f"dimension '{item.name}' @of")
+    named, of = ref
     name = report_derived_field_name(item)
-    # ADR-0039 resolving: the @of field's effective @required (the attr only; a
-    # validator.required child does not count).
-    required = vialess and of.get_meta_attr(FIELD_ATTR_REQUIRED) is True
+    required = _dimension_required(dim, named, of, from_, root, spine, report_name)
     if dim.is_time():
         # Loader rule R2 guarantees a grain from the closed set; a tree built in code does not.
         grain = item.grain
@@ -191,11 +291,13 @@ def _measure_field(item: str, report: MetaObject, from_: MetaObject, root: MetaR
     m = _declared_member(from_, TYPE_MEASURE, name, MetaMeasure)
     if not isinstance(m, MetaMeasure):
         raise _unresolved(report_name, f"measure '{item}' on '{from_.name}'")
+    # Table C: a count is never null; any other measure is not null when it has a @default.
+    required = (not m.is_ratio() and m.agg() == AGG_COUNT) or m.default_value() is not None
     if m.is_ratio():
-        return ReportField(name, ROLE_MEASURE, FIELD_SUBTYPE_DECIMAL, False, measure=m)
+        return ReportField(name, ROLE_MEASURE, FIELD_SUBTYPE_DECIMAL, required, measure=m)
     agg = m.agg()
     if agg == AGG_COUNT:
-        return ReportField(name, ROLE_MEASURE, FIELD_SUBTYPE_LONG, True, measure=m)
+        return ReportField(name, ROLE_MEASURE, FIELD_SUBTYPE_LONG, required, measure=m)
     cols = m.of_columns()
     of = resolve_reporting_field_ref(cols[0] if cols else "", reporting_member_owner(m, from_), root, from_)
     if of is None:
@@ -203,7 +305,7 @@ def _measure_field(item: str, report: MetaObject, from_: MetaObject, root: MetaR
     src = of.sub_type
     if agg == AGG_SUM:
         if src == FIELD_SUBTYPE_CURRENCY:
-            return ReportField(name, ROLE_MEASURE, FIELD_SUBTYPE_CURRENCY, False, of, measure=m)
+            return ReportField(name, ROLE_MEASURE, FIELD_SUBTYPE_CURRENCY, required, of, measure=m)
         sub_type = (
             FIELD_SUBTYPE_LONG
             if src in _SUM_LONG
@@ -211,25 +313,27 @@ def _measure_field(item: str, report: MetaObject, from_: MetaObject, root: MetaR
             if src in _FLOATING
             else FIELD_SUBTYPE_DECIMAL
         )
-        return ReportField(name, ROLE_MEASURE, sub_type, False, measure=m)
+        return ReportField(name, ROLE_MEASURE, sub_type, required, measure=m)
     if agg == AGG_AVG:
         sub_type = FIELD_SUBTYPE_DOUBLE if src in _FLOATING else FIELD_SUBTYPE_DECIMAL
-        return ReportField(name, ROLE_MEASURE, sub_type, False, measure=m)
+        return ReportField(name, ROLE_MEASURE, sub_type, required, measure=m)
     # min / max keep the source field's type.
-    return ReportField(name, ROLE_MEASURE, src, False, of, measure=m)
+    return ReportField(name, ROLE_MEASURE, src, required, of, measure=m)
 
 
 def report_shape(report: MetaObject, root: MetaRoot) -> ReportShape:
-    """Table B. Raises a ``ValueError`` naming the report when a reference does not
-    resolve (a report that passed ``validate_reporting`` always resolves)."""
+    """Table B, with Table C's ``required``. Raises a ``ValueError`` naming the report when
+    a reference does not resolve (a report that passed ``validate_reporting`` always
+    resolves)."""
     from_name = report_from(report)
     if from_name is None:
         raise _unresolved(report.name, "@from")
     from_ = resolve_object_ref(root, from_name, _package_of_key(report.resolution_key()))
     if not isinstance(from_, MetaObject):
         raise _unresolved(report.name, f"@from '{from_name}'")
+    spine = report_spine_hops(report, from_, root)
     fields = (
-        *(_dimension_field(item, from_, root, report.name) for item in report_dimension_items(report)),
+        *(_dimension_field(item, from_, root, report.name, spine) for item in report_dimension_items(report)),
         *(_measure_field(item, report, from_, root) for item in report_measure_names(report)),
     )
     return ReportShape(report, from_, tuple(fields))

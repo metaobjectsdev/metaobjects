@@ -5,11 +5,12 @@ it through a detached READ MODEL (``report_read_model``) swapped in at
 ``_require_entity``, so the column list, filter/sort resolution, read coercion and
 table resolution all see an ordinary view-backed object. These tests use a recording
 driver (no database): they pin the SQL, the refusals, and that the loaded tree is
-never touched. The rows themselves are proven by the six shared ``report-*`` persistence
+never touched. The rows themselves are proven by the nine shared ``report-*`` persistence
 scenarios against Postgres (``tests/integration/test_query_scenarios.py``).
 """
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -101,6 +102,42 @@ def test_find_many_selects_the_derived_columns_from_the_view() -> None:
         '"totalMinutes", "avgMinutes", "minMinutes", "maxMinutes", "longShare" '
         'FROM "v_program_minutes"'
     )
+
+
+class CannedDriver(RecordingDriver):
+    """A ``RecordingDriver`` whose ``select`` answers with the given rows."""
+
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        super().__init__()
+        self._rows = rows
+
+    def select(self, sql: str, params: tuple[Any, ...] = ()) -> SelectResult:
+        super().select(sql, params)
+        return SelectResult([dict(r) for r in self._rows], {})
+
+
+def test_a_spine_view_with_an_empty_row_is_read() -> None:
+    """``ProgramRoster`` (``@spine: Week.fkProgram``): a program with no weeks is a row of
+    the view. The runtime reads it as it reads any row: the count is 0, a measure with no
+    ``@default`` is ``None`` and a defaulted one is its default. Nothing in the read path
+    special-cases a spine report; the shape and the registration are the whole change."""
+    empty = {
+        "programKey": 3,
+        "programTitle": "Mobility",
+        "weeks": 0,
+        "totalMinutes": None,
+        "totalMinutesOrZero": 0,
+        "longShare": None,
+        "longShareOrZero": Decimal("0"),
+    }
+    drv = CannedDriver([empty])
+    rows = _om(_canonical_root(), drv).find_many("ProgramRoster", {"totalMinutesOrZero": {"eq": 0}})
+    assert drv.sql[0] == (
+        'SELECT "programKey", "programTitle", "weeks", "totalMinutes", "totalMinutesOrZero", "longShare", '
+        '"longShareOrZero" FROM "v_program_roster" WHERE "totalMinutesOrZero" = %s'
+    )
+    assert drv.params[0] == (0,)
+    assert rows == [empty]
 
 
 def test_filter_sort_limit_on_derived_fields() -> None:

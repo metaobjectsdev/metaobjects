@@ -15,6 +15,7 @@ from ..object.object_constants import (
     OBJECT_REPORT_ATTR_DIMENSIONS,
     OBJECT_REPORT_ATTR_FROM,
     OBJECT_REPORT_ATTR_MEASURES,
+    OBJECT_REPORT_ATTR_SPINE,
 )
 from .reporting_constants import REPORT_DIMENSION_GRAIN_SEPARATOR
 
@@ -37,6 +38,13 @@ def report_from(obj: MetaData) -> str | None:
     """ADR-0039: resolving. The ``@from`` entity name of a report."""
     v = obj.get_meta_attr(OBJECT_REPORT_ATTR_FROM)
     return v if isinstance(v, str) else None
+
+
+def report_spine(obj: MetaData) -> str | None:
+    """ADR-0039: resolving. ``@spine``: the to-one path to the entity whose rows supply
+    the report's rows (``None`` when absent or empty)."""
+    v = obj.get_meta_attr(OBJECT_REPORT_ATTR_SPINE)
+    return v if isinstance(v, str) and v != "" else None
 
 
 def report_dimension_items(obj: MetaData) -> list[ReportDimensionItem]:

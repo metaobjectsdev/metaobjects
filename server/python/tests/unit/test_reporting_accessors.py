@@ -24,11 +24,14 @@ from metaobjects.meta.core.reporting.report_accessors import (
     report_dimension_items,
     report_from,
     report_measure_names,
+    report_spine,
 )
 from metaobjects.meta.core.reporting.reporting_constants import (
     FILTER_RELATIVE_NOW,
     ISO_DURATION_RE,
     MEASURE_AGGS,
+    MEASURE_SUBTYPE_AGGREGATE,
+    REPORTING_ATTR_DEFAULT,
     TIME_GRAINS,
 )
 from metaobjects.meta.meta_data import MetaData
@@ -193,6 +196,58 @@ def test_report_accessors(vocab: MetaData) -> None:
     totals = _object(vocab, "StoreTotals")
     assert report_dimension_items(totals) == []
     assert report_measure_names(totals) == ["purchases", "buyers", "revenue"]
+
+
+def test_measure_default_value_is_the_declared_integer_else_none() -> None:
+    """``default_value()``: 0 and negatives included; ``None`` when undeclared. Resolving
+    (ADR-0039), so an inherited measure keeps it."""
+    doc = copy.deepcopy(_fixture_doc("reporting-vocabulary"))
+    _member_body(doc, "Purchase", "measure.aggregate", "revenue")["@default"] = 0
+    _body(doc, "Purchase")["children"].append(
+        {"measure.aggregate": {"name": "net", "@agg": "avg", "@of": "Purchase.amountCents", "@default": -1}}
+    )
+    _member_body(doc, "WorkoutEvent", "measure.ratio", "avgDaysPerStarter")["@default"] = 0
+    result = _load(doc)
+    assert result.errors == [], [e.message for e in result.errors]
+
+    def measure(entity: str, name: str) -> MetaMeasure:
+        m = _child(_object(result.root, entity), TYPE_MEASURE, name)
+        assert isinstance(m, MetaMeasure)
+        return m
+
+    assert measure("Purchase", "revenue").default_value() == 0
+    assert measure("Purchase", "net").default_value() == -1
+    assert measure("WorkoutEvent", "avgDaysPerStarter").default_value() == 0
+    assert measure("WorkoutEvent", "avgDaysPerStarter").is_ratio()
+    assert measure("Purchase", "purchases").default_value() is None
+
+
+@pytest.mark.parametrize("value", [True, False, 0.5, -1.5, "0", None])
+def test_measure_default_value_refuses_a_non_integer(value: object) -> None:
+    """``bool`` is a subclass of ``int`` in Python: ``True`` is not the integer 1 here."""
+    measure = MetaMeasure(TYPE_MEASURE, MEASURE_SUBTYPE_AGGREGATE, "m")
+    if value is not None:
+        measure.set_attr(REPORTING_ATTR_DEFAULT, value)
+    assert measure.default_value() is None
+
+
+def test_report_spine_is_the_declared_path_else_none(vocab: MetaData) -> None:
+    doc = copy.deepcopy(_fixture_doc("reporting-vocabulary"))
+    doc["metadata.root"]["children"].append(
+        {
+            "object.report": {
+                "name": "ProgramPurchases",
+                "@from": "Purchase",
+                "@spine": "Purchase.program",
+                "@dimensions": ["programTitle"],
+                "@measures": ["purchases", "revenue"],
+            }
+        }
+    )
+    result = _load(doc)
+    assert result.errors == [], [e.message for e in result.errors]
+    assert report_spine(_object(result.root, "ProgramPurchases")) == "Purchase.program"
+    assert report_spine(_object(vocab, "DailyRevenue")) is None
 
 
 def test_report_derived_field_name() -> None:
