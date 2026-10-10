@@ -16,7 +16,6 @@
 // canonical/ as metadata, and a non-metadata .json there fails the load.
 
 import { readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
 
 import {
   OBJECT_SUBTYPE_REPORT,
@@ -27,10 +26,7 @@ import {
 } from "@metaobjectsdev/metadata";
 
 import { loadMetadataDir } from "./load-metadata.ts";
-import { CANONICAL_DIR, CORPUS_DIR } from "./paths.ts";
-
-/** Absolute path to the committed report-shapes artifact. */
-export const REPORT_SHAPES_PATH = resolve(CORPUS_DIR, "report-shapes.json");
+import { CANONICAL_DIR, REPORT_SHAPES_PATH } from "./paths.ts";
 
 interface ShapeFieldJson {
   name: string;

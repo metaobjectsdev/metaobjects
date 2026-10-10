@@ -85,6 +85,13 @@ export function seedInserts(root: MetaRoot, seed: ReportSeed): SeedInsert[] {
   return out;
 }
 
+/** paidShare compares numerically (a decimal's spelling is the engine's own); every other key strictly. */
+export function rowsEqual(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  const keys = Object.keys(a).sort();
+  if (keys.join(",") !== Object.keys(b).sort().join(",")) return false;
+  return keys.every((k) => (k === "paidShare" ? Number(a[k]) === Number(b[k]) : a[k] === b[k]));
+}
+
 /**
  * The base tables, parents first, in the EMITTED snake_case spelling. The routes read the
  * views and the views read these, so they are provisioned by hand rather than generated.
@@ -126,8 +133,9 @@ export interface GeneratedReportServerHandle {
   close(): Promise<void>;
 }
 
-/** The served reports: emitted registrar, and the route the corpus calls. */
-const SERVED_REPORTS = [
+/** The served reports: emitted registrar, and the route the corpus calls. One list for every
+ * engine's generated-report server — adding a report must reach all lanes at once. */
+export const SERVED_REPORTS = [
   { name: "InvoiceStatusTotals", registrar: "invoiceStatusTotalsRoutes" },
   { name: "InvoicesByMonth", registrar: "invoicesByMonthRoutes" },
   { name: "InvoiceTotals", registrar: "invoiceTotalsRoutes" },

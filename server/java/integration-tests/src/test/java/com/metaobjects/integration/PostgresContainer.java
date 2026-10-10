@@ -38,7 +38,7 @@ import java.util.UUID;
  * Mirrors the TS port's {@code postgres-container.ts}. The shared sidecar mode
  * sidesteps this entirely; the fallback keeps the docker path.
  */
-public final class PostgresContainer implements AutoCloseable {
+public final class PostgresContainer implements AutoCloseable, JdbcTarget {
     /** Env var naming the shared CI Postgres sidecar (admin URL). Unset = per-container fallback. */
     private static final String SHARED_PG_URL_ENV = "METAOBJECTS_TEST_PG_URL";
 
@@ -122,9 +122,9 @@ public final class PostgresContainer implements AutoCloseable {
         this.jdbcUrl = startedUrl;
     }
 
-    public String jdbcUrl()  { return jdbcUrl; }
-    public String username() { return username; }
-    public String password() { return password; }
+    @Override public String jdbcUrl()  { return jdbcUrl; }
+    @Override public String username() { return username; }
+    @Override public String password() { return password; }
 
     @Override public void close() {
         if (shared) {

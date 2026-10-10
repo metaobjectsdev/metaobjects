@@ -580,7 +580,7 @@ development mode, with its embedded Cube Store, against a private `postgres:16-a
 holds the persistence-conformance schema and a seed
 (`fixtures/cube-model/canonical/seed.sql`). Each run owns a private Docker network and binds
 one ephemeral port on `127.0.0.1`; it never uses the shared Postgres sidecar, and every
-container and the network are removed on every exit path. It checks six things:
+container and the network are removed on every exit path. It checks six things on Postgres:
 
 1. The generated canonical model is the reviewed golden.
 2. Cube compiles it and lists every cube and member the files declare.
@@ -605,6 +605,12 @@ container and the network are removed on every exit path. It checks six things:
    `@default` divides that numerator's `COALESCE(sum(…), 0)`, with and without the ratio's own
    default, as the view does.
 
+The MySQL path is a second file in the same lane (`cube-model-mysql.live.ts`). It runs the same
+Cube over a private MySQL 8.4 holding the report views `buildReportViews` lowers
+(`fixtures/cube-model/canonical/seed.mysql.sql`), and for each served report it checks item 3:
+the Cube query returns the rows of `SELECT * FROM <view>`, from the rollup when the model has one.
+Checks 4, 5 and 6 are Postgres only.
+
 Run it with `scripts/ci-local.sh --only cube`. The full `scripts/ci-local.sh` runs it after the
 integration suite, and `--quick` and `--no-integration` drop it. The first run pulls the Cube
 image, which is about 1 GB. With Docker down, the lane records a SKIP behind a banner, never a
@@ -627,9 +633,10 @@ the table names above are the development-mode form.
   refuses the model with `ERR_CUBE_AMBIGUOUS_PATH`, naming both. The lossless form needs a
   nested alias for each path. That is more machinery than a rare model is worth yet, so the
   exporter errors rather than guess.
-- **The lane never executes MySQL SQL.** The corpus pins it byte for byte and the lane compiles
-  it in Cube, but no MySQL database runs it there. The one MySQL form chosen for its meaning, the
-  tuple distinct count, was compared with the view's on mysql:8.4 by hand when it was built.
+- **The two MySQL mapping cases are compiled, never executed.** The corpus pins their SQL byte
+  for byte and Cube compiles them, but no MySQL database runs them. The MySQL path runs only the
+  served reports. The tuple distinct count's MySQL form was compared with the view's on mysql:8.4
+  by hand when it was built.
 - **Some shapes are compile-checked, not query-checked.** Cube accepts the alias cubes, the TPH
   subtype's `sql`, one-to-one joins, the int-backed enum's `CASE` and a two-hop `@spine` chain
   (the corpus pass), but no live query of the lane crosses them. The two-hop chain's rows were

@@ -35,5 +35,11 @@
     <PackageReference Include="YamlDotNet" Version="18.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.10" />
+    <!-- The report scenarios also run on SQLite (in-memory file, no container): the same
+         generated AppDbContext over the TypeScript-produced SQLite schema. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.10" />
+    <!-- ...and on MySQL (Docker): Pomelo is the EF Core provider, MySqlConnector the ADO.NET driver. -->
+    <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.2" />
+    <PackageReference Include="Testcontainers.MySql" Version="3.10.0" />
   </ItemGroup>
 </Project>

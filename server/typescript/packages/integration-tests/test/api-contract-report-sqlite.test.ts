@@ -1,4 +1,5 @@
-// FR-044 view-backed-report api-contract conformance, GENERATED lane, on SQLite.
+// FR-044 view-backed-report api-contract conformance, GENERATED lane, on SQLite and on
+// Cloudflare D1's local runtime (Miniflare, via `drizzle-orm/d1` and the `d1` codegen dialect).
 //
 // The cross-port corpus (api-contract-report.test.ts) runs TypeScript against Postgres
 // only, and its README does not assert a decimal's spelling. That left a hole on SQLite:
@@ -17,15 +18,21 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_CONTRACT_REPORT_DIR, API_CONTRACT_REPORT_SCENARIOS_DIR } from "../src/paths.ts";
-import { loadScenarios, assertResponse, type ApiScenario } from "../src/api-contract-scenario.ts";
+import { loadScenarios, runScenario } from "../src/api-contract-scenario.ts";
 import type { ReportSeed } from "../src/api-contract-report-generated-server.ts";
-import { startSqliteReportServer, type SqliteReportServerHandle } from "../src/api-contract-report-sqlite-server.ts";
+import { startSqliteReportServer, type SqliteReportEngine, type SqliteReportServerHandle } from "../src/api-contract-report-sqlite-server.ts";
 
 const SEED = JSON.parse(readFileSync(join(API_CONTRACT_REPORT_DIR, "seed.json"), "utf8")) as ReportSeed;
 const META_PATH = join(API_CONTRACT_REPORT_DIR, "meta.json");
 
-async function withServer(fn: (server: SqliteReportServerHandle) => Promise<void>, seed: ReportSeed = SEED): Promise<void> {
-  const server = await startSqliteReportServer(META_PATH);
+const ENGINES: readonly SqliteReportEngine[] = ["sqlite", "d1"];
+
+async function withServer(
+  engine: SqliteReportEngine,
+  fn: (server: SqliteReportServerHandle) => Promise<void>,
+  seed: ReportSeed = SEED,
+): Promise<void> {
+  const server = await startSqliteReportServer(META_PATH, engine);
   try {
     await server.applySeed(seed);
     await fn(server);
@@ -40,9 +47,9 @@ async function getJson(server: SqliteReportServerHandle, path: string): Promise<
   return res.json();
 }
 
-describe("api contract report (FR-044) — GENERATED routes on SQLite", () => {
+for (const engine of ENGINES) describe(`api contract report (FR-044) — GENERATED routes on ${engine === "d1" ? "Cloudflare D1 (local)" : "SQLite"}`, () => {
   test("a ratio is a JSON string, as it is on Postgres, and the integers around it stay numbers", async () => {
-    await withServer(async (server) => {
+    await withServer(engine, async (server) => {
       const rows = (await getJson(server, "/api/invoice_totals")) as Array<Record<string, unknown>>;
       expect(rows.length).toBe(1);
       const row = rows[0]!;
@@ -54,7 +61,7 @@ describe("api contract report (FR-044) — GENERATED routes on SQLite", () => {
   });
 
   test("a ratio is a string in the withCount envelope too", async () => {
-    await withServer(async (server) => {
+    await withServer(engine, async (server) => {
       const body = (await getJson(server, "/api/invoice_totals?withCount=1")) as {
         rows: Array<Record<string, unknown>>; total: number;
       };
@@ -64,14 +71,14 @@ describe("api contract report (FR-044) — GENERATED routes on SQLite", () => {
   });
 
   test("a ratio over zero rows is null, not the string 'null' or 0", async () => {
-    await withServer(async (server) => {
+    await withServer(engine, async (server) => {
       const rows = (await getJson(server, "/api/invoice_totals")) as Array<Record<string, unknown>>;
       expect(rows).toEqual([{ invoices: 0, totalCents: null, paidShare: null }]);
     }, { invoices: [] });
   });
 
   test("a report with no decimal field is untouched: every value keeps its type", async () => {
-    await withServer(async (server) => {
+    await withServer(engine, async (server) => {
       expect(await getJson(server, "/api/invoice_status_totals?sort=status:asc")).toEqual(
         SEED.reports!["InvoiceStatusTotals"],
       );
@@ -85,7 +92,7 @@ describe("api contract report (FR-044) — GENERATED routes on SQLite", () => {
   });
 
   test("the filter and the sort on a ratio still compare numerically after the wire change", async () => {
-    await withServer(async (server) => {
+    await withServer(engine, async (server) => {
       const hit = async (path: string): Promise<number> => ((await getJson(server, path)) as unknown[]).length;
       expect(await hit("/api/invoice_totals?filter[paidShare][gt]=0.3")).toBe(1);
       expect(await hit("/api/invoice_totals?filter[paidShare][gt]=0.5")).toBe(0);
@@ -98,24 +105,7 @@ describe("api contract report (FR-044) — GENERATED routes on SQLite", () => {
 
   for (const scenario of loadScenarios(API_CONTRACT_REPORT_SCENARIOS_DIR)) {
     test(`shared scenario: ${scenario.name}`, async () => {
-      await withServer((server) => runScenario(scenario, server));
+      await withServer(engine, (server) => runScenario(scenario, server.baseUrl));
     });
   }
 });
-
-async function runScenario(scenario: ApiScenario, server: SqliteReportServerHandle): Promise<void> {
-  for (const req of scenario.requests) {
-    const init: RequestInit = { method: req.method };
-    if (req.body !== undefined) {
-      init.body = JSON.stringify(req.body);
-      init.headers = { "content-type": "application/json" };
-    }
-    const res = await fetch(server.baseUrl + req.path, init);
-    const bodyText = await res.text();
-    let body: unknown = null;
-    if (bodyText.length > 0) {
-      try { body = JSON.parse(bodyText); } catch { body = bodyText; }
-    }
-    assertResponse(scenario.name, req, res.status, body);
-  }
-}

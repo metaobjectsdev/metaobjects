@@ -83,19 +83,32 @@ object QueryScenarioRunner {
      * Run a single query scenario end-to-end against a fresh container (one
      * container per scenario at the JUnit level).
      */
-    fun run(scenario: QueryScenario, pg: PostgresContainer) {
-        val db = Database.connect(pg.jdbcUrl, user = pg.username, password = pg.password)
+    fun run(scenario: QueryScenario, pg: PostgresContainer) =
+        run(scenario, pg.jdbcUrl, pg.username, pg.password, ScenarioEngine.POSTGRES)
+
+    /**
+     * Run a scenario against an already-provisioned database of [engine]. The schema is that
+     * engine's TS-produced artifact, executed verbatim; the seed is the scenario's seed SQL
+     * spelled for the engine. The Postgres `expect` blocks are asserted unchanged.
+     */
+    fun run(scenario: QueryScenario, baseUrl: String, username: String, password: String, engine: ScenarioEngine) {
+        // The engine appends its own session parameters (timezone / date-format policy) — see
+        // ScenarioEngine.jdbcUrl.
+        val jdbcUrl = engine.jdbcUrl(baseUrl)
+        val db = Database.connect(jdbcUrl, user = username, password = password)
 
         val corpus = ScenarioLoader.findCorpusRoot()
 
         // 1. Provision the schema from the committed canonical DDL (base tables +
-        //    projection views). Executed verbatim on a direct JDBC connection —
-        //    schema authority is the TS-produced artifact, not Exposed.
-        val schemaDdl = ScenarioLoader.readCanonicalSchema(corpus)
-        execSql(pg, schemaDdl)
+        //    projection views). Executed verbatim on a direct JDBC connection --
+        //    schema authority is the TS-produced artifact, not Exposed. A shared server
+        //    (MySQL) starts each scenario from an empty schema.
+        val schemaDdl = ScenarioLoader.readCanonicalSchema(corpus, engine.schemaArtifact)
+        if (engine == ScenarioEngine.MYSQL) dropMysqlSchema(jdbcUrl, username, password, schemaDdl)
+        execSql(jdbcUrl, username, password, schemaDdl, engine)
 
         // 2. Seed via the YAML's raw SQL.
-        scenario.seedData?.takeIf { it.isNotBlank() }?.let { sql -> execSql(pg, sql) }
+        engine.seed(scenario)?.takeIf { it.isNotBlank() }?.let { sql -> execSql(jdbcUrl, username, password, sql, engine) }
 
         // 3. Load the canonical metadata root once per scenario — op:relate derives
         //    the M:N junction FK fields + physical table/column names from it (the
@@ -126,9 +139,32 @@ object QueryScenarioRunner {
      * through Exposed (they may use double-quoted identifiers Exposed wouldn't
      * synthesize).
      */
-    private fun execSql(pg: PostgresContainer, sql: String) {
-        DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
-            c.createStatement().use { it.execute(sql) }
+    private fun execSql(jdbcUrl: String, username: String, password: String, sql: String, engine: ScenarioEngine) {
+        DriverManager.getConnection(jdbcUrl, username, password).use { c ->
+            if (engine != ScenarioEngine.POSTGRES) {
+                // The MySQL and SQLite drivers run one statement per call.
+                c.createStatement().use { st -> ScenarioEngine.splitStatements(sql).forEach { st.execute(it) } }
+            } else {
+                c.createStatement().use { it.execute(sql) }
+            }
+        }
+    }
+
+    private val MYSQL_CREATE = Regex("^CREATE (VIEW|TABLE) `([^`]+)`")
+
+    /**
+     * Drop every view and table [schemaDdl] creates (views first, tables in reverse order), by
+     * name: `METAOBJECTS_TEST_MYSQL_URL` may point at a shared database.
+     */
+    private fun dropMysqlSchema(jdbcUrl: String, username: String, password: String, schemaDdl: String) {
+        val created = ScenarioEngine.splitStatements(schemaDdl).mapNotNull { MYSQL_CREATE.find(it)?.groupValues }
+        val views = created.filter { it[1] == "VIEW" }.map { it[2] }
+        val tables = created.filter { it[1] == "TABLE" }.map { it[2] }.reversed()
+        DriverManager.getConnection(jdbcUrl, username, password).use { c ->
+            c.createStatement().use { st ->
+                views.forEach { st.execute("DROP VIEW IF EXISTS `$it`") }
+                tables.forEach { st.execute("DROP TABLE IF EXISTS `$it`") }
+            }
         }
     }
 

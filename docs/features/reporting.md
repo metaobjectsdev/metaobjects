@@ -633,6 +633,31 @@ tests read the `@spine` and `@default` views and their column types on Postgres,
 MySQL, and on Postgres and SQLite also a fact whose reference is null, an `isNull` condition
 and a two-hop spine.
 
+The nine scenarios run on more than Postgres, wherever a port's runtime has the engine:
+
+| | Postgres | SQLite | MySQL 8.4 | D1 (local runtime) |
+|---|---|---|---|---|
+| TypeScript | ✓ | ✓ | ✓ | ✓ |
+| C# (EF Core) | ✓ | ✓ | ✓ (Pomelo) | n/a |
+| Kotlin (Exposed) | ✓ | ✓ | ✓ | n/a |
+| Java (OMDB) | ✓ | not run: OMDB has no SQLite driver | ✓ | n/a |
+| Python | ✓ | not run: the runtime ships a Postgres driver only (pg8000) | not run: same | n/a |
+
+Each engine reads the artifact TypeScript produced for it: `canonical/schema.sqlite.sql` is
+the output of `meta migrate --dialect sqlite`, and `canonical/schema.mysql.sql` is the
+adopter-written tables plus a `CREATE VIEW` per report from `buildReportViews`. No port
+writes view SQL, and a test holds each artifact equal to its generator. The expectations
+stay the Postgres wire ones, never loosened: the engine's own spelling (a REAL ratio on SQLite,
+a scale-keeping `DECIMAL` and a zoneless `DATETIME` on MySQL) is mapped on the actual side by
+each runner, and `report-relative-date` spells its seed per engine (`seed-data-engine`). D1
+has no separate corpus: it is SQLite behind Cloudflare's binding, so TypeScript runs the same
+scenarios and the same sixteen REST scenarios through Miniflare's local D1 (`meta migrate
+--dialect d1`), with no cloud account.
+
+A port without the engine is a stated limitation, not a gap to fill by building a driver:
+Java's OMDB and Python's `ObjectManager` ship the drivers they ship, and a view-reading test
+does not justify a new one.
+
 The REST surface is gated by sixteen scenarios under
 [`fixtures/api-contract-conformance/report/`](../../fixtures/api-contract-conformance/report/),
 run in the **generated lane on all five ports**: list (a dimension with a segment-scoped sum
@@ -643,10 +668,12 @@ on a measure and an enum dimension, paging over groups, the three field-naming `
 sale keeps its row, with a filter and a sort on its defaulted measure. The corpus model
 carries one sourceless report, so a port that serves every report it finds fails. No scenario asserts a decimal's
 spelling or a timestamp literal. TypeScript and C# run the scenarios against the real views on
-Postgres, and TypeScript runs the same sixteen against SQLite as well
-(`api-contract-report-sqlite.test.ts`), where it also holds that a ratio reaches the wire as a
-string, as it does on Postgres; Java, Kotlin and Python serve seeded rows behind their repository seam, and a
-TypeScript test holds those rows equal to what the views return.
+Postgres, SQLite and MySQL (`report/schema.sqlite.sql`, `report/schema.mysql.sql`), and
+TypeScript also through local D1; TypeScript also holds that a ratio reaches the wire as a
+string on SQLite, as it does on Postgres. Java, Kotlin and Python serve seeded rows behind
+their repository seam, so they read no view and no engine reaches them: running that lane on
+SQLite or MySQL would test nothing the seam does not already, and a TypeScript test holds
+those rows equal to what the views return.
 
 ## Exporting to Cube
 

@@ -5,7 +5,8 @@
 // + Routes + Names) on the report model (the Invoice, Product and Sale tables, four
 // view-backed reports — one of them, ProductRevenue, a @spine report with a defaulted
 // measure — and one sourceless report), Roslyn-compiles the emitted sources in-memory, and
-// hosts them on Kestrel against Testcontainers Postgres with the four views present. A
+// hosts them on Kestrel against Testcontainers Postgres (or, for StartSqliteAsync /
+// StartMySqlAsync, a SQLite file / a MySQL database) with the four views present. A
 // failing scenario is a real generator bug (RoutesGenerator / DbContextGenerator /
 // FilterAllowlistGenerator / ReportRows), never something fixed by hand-editing emitted code.
 //
@@ -43,21 +44,34 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
         ["Invoice", "InvoiceStatusTotals", "InvoiceTotals", "InvoicesByMonth", "Product", "ProductRevenue", "Sale"];
     private const string SourcelessReport = "InvoiceDays";
 
-    private readonly PostgresContainer _pg;
+    private readonly ScenarioEngine _engine;
+    private readonly string _connectionString;
     private readonly WebApplication _app;
 
     public string BaseUrl { get; }
 
-    private ReportGeneratedServerFactory(PostgresContainer pg, WebApplication app, string baseUrl)
+    private ReportGeneratedServerFactory(ScenarioEngine engine, string connectionString, WebApplication app, string baseUrl)
     {
-        _pg = pg;
+        _engine = engine;
+        _connectionString = connectionString;
         _app = app;
         BaseUrl = baseUrl;
     }
 
-    public static async Task<ReportGeneratedServerFactory> StartAsync(PostgresContainer pg)
+    public static Task<ReportGeneratedServerFactory> StartAsync(PostgresContainer pg) =>
+        StartAsync(ScenarioEngine.Postgres, pg.ConnectionString);
+
+    /// <summary>The same generated server over a SQLite database file the caller owns.</summary>
+    public static Task<ReportGeneratedServerFactory> StartSqliteAsync(string databasePath) =>
+        StartAsync(ScenarioEngine.Sqlite, $"Data Source={databasePath}");
+
+    /// <summary>The same generated server over a MySQL database (a fresh, empty one).</summary>
+    public static Task<ReportGeneratedServerFactory> StartMySqlAsync(MySqlDatabase mysql) =>
+        StartAsync(ScenarioEngine.MySql, mysql.ConnectionString);
+
+    private static async Task<ReportGeneratedServerFactory> StartAsync(ScenarioEngine engine, string connectionString)
     {
-        await ReportFixture.ProvisionSchemaAsync(pg.ConnectionString);
+        await ReportFixture.ProvisionSchemaAsync(connectionString, engine);
 
         var (assembly, routedNames) = CompileGeneratedServer();
         var dbContextType = assembly.GetType($"{GeneratedNamespace}.AppDbContext")
@@ -75,7 +89,7 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
         // as the TPH lane does for its discriminator.
         builder.Services.ConfigureHttpJsonOptions(o =>
             o.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
-        RegisterGeneratedDbContext(builder.Services, dbContextType, pg.ConnectionString);
+        RegisterGeneratedDbContext(builder.Services, dbContextType, engine, connectionString);
 
         var app = builder.Build();
 
@@ -92,11 +106,11 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
         }
 
         await app.StartAsync();
-        return new ReportGeneratedServerFactory(pg, app, baseUrl);
+        return new ReportGeneratedServerFactory(engine, connectionString, app, baseUrl);
     }
 
     public async Task ApplySeedAsync() =>
-        await ReportFixture.ApplySeedAsync(_pg.ConnectionString, ApiContractCorpusPaths.ReportSeedFile);
+        await ReportFixture.ApplySeedAsync(_connectionString, ApiContractCorpusPaths.ReportSeedFile, _engine);
 
     public async ValueTask DisposeAsync()
     {
@@ -204,7 +218,7 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
     }
 
     private static void RegisterGeneratedDbContext(
-        IServiceCollection services, Type dbContextType, string connString)
+        IServiceCollection services, Type dbContextType, ScenarioEngine engine, string connString)
     {
         var addDbContext = typeof(EntityFrameworkServiceCollectionExtensions)
             .GetMethods(BindingFlags.Public | BindingFlags.Static)
@@ -214,7 +228,9 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
                         && m.GetParameters().Length == 4)
             .MakeGenericMethod(dbContextType);
 
-        Action<DbContextOptionsBuilder> configure = opts => opts.UseNpgsql(connString);
+        // Provider choice lives on the engine (ScenarioEngineExtensions.UseEngine) — the one
+        // MySqlServerVersion pin too, so the provider and the mysql:8.4 image cannot drift apart.
+        Action<DbContextOptionsBuilder> configure = opts => opts.UseEngine(engine, connString);
         addDbContext.Invoke(null, new object?[]
         {
             services, configure, ServiceLifetime.Scoped, ServiceLifetime.Scoped,

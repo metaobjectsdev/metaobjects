@@ -30,6 +30,7 @@ object Scenarios {
         val description: String,
         val sourcePath: String,
         val seedData: String? = null,
+        val seedDataEngine: Map<String, String>? = null,  // `seed-data-engine`: seed SQL for an engine whose spelling differs
         val queries: List<QuerySpec>,
     )
 }

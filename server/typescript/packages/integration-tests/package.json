@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "bun test",
-    "test:cube": "bun test ./cube-live/cube-model.live.ts",
+    "test:cube": "bun test ./cube-live/cube-model.live.ts ./cube-live/cube-model-mysql.live.ts",
     "gen:schema": "bun run src/gen-canonical-schema.ts",
     "gen:report-api-schema": "bun run src/gen-api-contract-report-schema.ts",
     "gen:report-shapes": "bun run src/gen-report-shapes.ts",
@@ -35,6 +35,7 @@
     "@types/node": "^22.5.4",
     "@types/pg": "^8.11.6",
     "bun-types": "^1.1.27",
+    "miniflare": "4.20251210.0",
     "mysql2": "^3.11.0",
     "typescript": "^5.6.2"
   }

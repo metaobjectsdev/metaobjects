@@ -14,7 +14,9 @@ export function normalizeRow(row: Record<string, unknown>): Record<string, unkno
 // drop the decimal point itself if the value is integer-valued. Matches the
 // C# CanonicalDecimal helper. Returns the input unchanged if it is not a
 // decimal-looking string.
-const DECIMAL_RE = /^-?\d+(\.\d+)?$/;
+// Exported because the engine lanes' wire mapper (engine-wire.ts) must apply the SAME rule to a
+// MySQL DECIMAL's scale as normalizeValue applies to a node-postgres NUMERIC string — one home.
+export const DECIMAL_RE = /^-?\d+(\.\d+)?$/;
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 export function normalizeValue(v: unknown): unknown {
@@ -58,7 +60,7 @@ export function normalizeValue(v: unknown): unknown {
   return String(v);
 }
 
-function canonicalDecimal(s: string): string {
+export function canonicalDecimal(s: string): string {
   let out = s.replace(/0+$/, "");
   if (out.endsWith(".")) out = out.slice(0, -1);
   return out;

@@ -5,7 +5,9 @@
 # fixture corpus through every shipped runner: TypeScript (Bun), C# (dotnet),
 # Java (Maven), Python (uv + pytest), and Kotlin (Maven). Each runner
 # exercises that port's metaobjects persistence layer (codegen + runtime)
-# against a real Postgres instance.
+# against a real Postgres instance. The FR-044 report scenarios also run on MySQL 8.4 and
+# SQLite where a port's runtime has the engine (see docs/CONFORMANCE.md); the lanes need no
+# extra flags, the MySQL ones start their own mysql:8.4 container.
 #
 # The Java- and Kotlin-runner Maven modules are intentionally NOT in the
 # parent reactor — they require docker and we keep `mvn test` docker-free.
@@ -24,7 +26,8 @@
 # into a real Cube (cubejs/cube, pinned) over its own throwaway Postgres and compares each
 # report's Cube query with the report's view (FR-044). It owns its containers and a private
 # network and binds only an ephemeral 127.0.0.1 port. `all` leaves it out because the image
-# is about 1 GB; scripts/ci-local.sh runs it as its own `cube` lane.
+# is about 1 GB; scripts/ci-local.sh runs it as its own `cube` lane. It runs two files: the
+# Postgres path and the MySQL path (Cube against a real MySQL 8.4 holding the report views).
 #
 # Pre-flight: docker daemon must be running.
 

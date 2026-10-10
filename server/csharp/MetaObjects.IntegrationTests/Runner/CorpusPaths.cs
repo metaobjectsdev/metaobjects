@@ -16,6 +16,16 @@ internal static class CorpusPaths
     public static readonly string QueriesDir = Path.Combine(Corpus, "queries");
 
     /// <summary>
+    /// The <c>report-*</c> query scenarios as xUnit member data — the only corpus subset whose
+    /// tables exist in the SQLite and MySQL schema artifacts. One home for the name predicate,
+    /// so a dialect-gated scenario cannot be silently skipped by one lane's enumeration.
+    /// </summary>
+    public static IEnumerable<object[]> ReportQueryScenarios() =>
+        Directory.EnumerateFiles(QueriesDir, "report-*.yaml", SearchOption.TopDirectoryOnly)
+            .OrderBy(p => p, StringComparer.Ordinal)
+            .Select(p => new object[] { p });
+
+    /// <summary>
     /// The committed canonical Postgres schema artifact. TypeScript is the single
     /// producer of this DDL (base tables + projection views, literal column naming);
     /// every port's query-scenario runner executes it verbatim to provision its test
@@ -23,6 +33,21 @@ internal static class CorpusPaths
     /// </summary>
     public static readonly string CanonicalSchemaSql =
         Path.Combine(CanonicalDir, "schema.postgres.sql");
+
+    /// <summary>
+    /// The committed canonical SQLite schema artifact — the same tables and report views,
+    /// produced by TypeScript (<c>meta migrate --dialect sqlite</c>'s diff + emit).
+    /// </summary>
+    public static readonly string CanonicalSchemaSqliteSql =
+        Path.Combine(CanonicalDir, "schema.sqlite.sql");
+
+    /// <summary>
+    /// The committed canonical MySQL schema artifact: the adopter's tables (MySQL is not owned
+    /// by <c>meta migrate</c>, ADR-0015) plus the report views TypeScript lowers with
+    /// <c>buildReportViews</c>.
+    /// </summary>
+    public static readonly string CanonicalSchemaMysqlSql =
+        Path.Combine(CanonicalDir, "schema.mysql.sql");
 
     /// <summary>
     /// The canonical entity metadata for the corpus. The M:N runtime resolver

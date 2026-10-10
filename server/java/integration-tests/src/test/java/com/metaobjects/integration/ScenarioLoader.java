@@ -76,6 +76,7 @@ public final class ScenarioLoader {
             stringOrDefault(root, "description", ""),
             file.toString(),
             (String) root.get("seed-data"),
+            (Map<String, String>) root.get("seed-data-engine"),
             Collections.unmodifiableList(queries));
     }
 
@@ -143,7 +144,12 @@ public final class ScenarioLoader {
      * longer derives the conformance schema from metadata at test time.
      */
     public static String readCanonicalSchema(Path corpusRoot) {
-        Path schema = corpusRoot.resolve(CANONICAL_SCHEMA_RELATIVE);
+        return readCanonicalSchema(corpusRoot, CANONICAL_SCHEMA_RELATIVE);
+    }
+
+    /** A canonical schema artifact by its corpus-relative path ({@code canonical/schema.mysql.sql}). */
+    public static String readCanonicalSchema(Path corpusRoot, String relative) {
+        Path schema = corpusRoot.resolve(relative);
         if (!Files.isRegularFile(schema)) {
             throw new IllegalStateException("Canonical schema not found: " + schema);
         }

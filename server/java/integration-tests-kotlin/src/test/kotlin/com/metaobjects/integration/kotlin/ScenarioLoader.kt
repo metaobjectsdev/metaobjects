@@ -46,8 +46,8 @@ object ScenarioLoader {
     }
 
     /** Read the committed canonical Postgres schema DDL (executed verbatim by the query runner). */
-    fun readCanonicalSchema(corpusRoot: Path): String {
-        val schema = corpusRoot.resolve(CANONICAL_SCHEMA_RELATIVE)
+    fun readCanonicalSchema(corpusRoot: Path, relative: String = CANONICAL_SCHEMA_RELATIVE): String {
+        val schema = corpusRoot.resolve(relative)
         require(Files.isRegularFile(schema)) { "Canonical schema not found: $schema" }
         return Files.readString(schema, StandardCharsets.UTF_8)
     }
@@ -77,6 +77,8 @@ object ScenarioLoader {
             description = (root["description"] as? String) ?: "",
             sourcePath = file.toString(),
             seedData = root["seed-data"] as? String,
+            seedDataEngine = (root["seed-data-engine"] as? Map<*, *>)
+                ?.entries?.associate { it.key.toString() to it.value.toString() },
             queries = queries,
         )
     }

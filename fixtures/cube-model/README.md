@@ -19,6 +19,9 @@ Run by `server/typescript/packages/codegen-ts/test/cube/cube-model-corpus.test.t
 canonical/expected/     Table H: the canonical persistence model, written by
                         `bun run gen:cube-canonical` (codegen-ts) and drift-checked by
                         test/cube/cube-model-canonical.test.ts
+canonical/seed.sql      the rows the live Cube check (Postgres) reads
+canonical/seed.mysql.sql  the same rows spelled for MySQL 8.4: the live MySQL check runs the
+                        report views `buildReportViews` lowers over them (cube-model-mysql.live.ts)
 ```
 
 A case holds exactly one of `expected/` and `expected-error.txt`. A file the generator writes

@@ -18,7 +18,8 @@ using Xunit;
 
 namespace MetaObjects.IntegrationTests.Api;
 
-public sealed class ApiContractReportConformanceTest
+[Collection(MySqlCollection.Name)]
+public sealed class ApiContractReportConformanceTest(MySqlServer mysqlServer)
 {
     [Theory]
     [MemberData(nameof(Scenarios))]
@@ -27,6 +28,34 @@ public sealed class ApiContractReportConformanceTest
         var scenario = ApiContractScenarioLoader.LoadScenario(scenarioPath);
         await using var pg = await PostgresContainer.StartAsync();
         await using var server = await ReportGeneratedServerFactory.StartAsync(pg);
+        await server.ApplySeedAsync();
+        await RunAsync(scenario, server.BaseUrl);
+    }
+
+    // The same generated routes, over SQLite: the schema is the TypeScript-produced
+    // report/schema.sqlite.sql, so the four views are the ones `meta migrate --dialect
+    // sqlite` creates. A ratio reads as a REAL (no decimal type), which the corpus's
+    // numeric comparison already treats as the number it is.
+    [Theory]
+    [MemberData(nameof(Scenarios))]
+    public async Task Api_contract_report_generated_on_sqlite(string scenarioPath)
+    {
+        var scenario = ApiContractScenarioLoader.LoadScenario(scenarioPath);
+        using var db = new SqliteTempDatabase("mo-report-api-");
+        await using var server = await ReportGeneratedServerFactory.StartSqliteAsync(db.FilePath);
+        await server.ApplySeedAsync();
+        await RunAsync(scenario, server.BaseUrl);
+    }
+
+    // ...and over MySQL 8.4: the schema is report/schema.mysql.sql (the adopter's tables plus
+    // the views TypeScript lowers with buildReportViews). A ratio reads as a DECIMAL.
+    [Theory]
+    [MemberData(nameof(Scenarios))]
+    public async Task Api_contract_report_generated_on_mysql(string scenarioPath)
+    {
+        var scenario = ApiContractScenarioLoader.LoadScenario(scenarioPath);
+        await using var mysql = await mysqlServer.CreateDatabaseAsync();
+        await using var server = await ReportGeneratedServerFactory.StartMySqlAsync(mysql);
         await server.ApplySeedAsync();
         await RunAsync(scenario, server.BaseUrl);
     }

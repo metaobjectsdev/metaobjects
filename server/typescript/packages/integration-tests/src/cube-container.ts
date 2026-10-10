@@ -1,6 +1,9 @@
 // CubeStack — a throwaway Cube instance over a throwaway Postgres, for the cube-model live check
 // (FR-044 Plan 4, Task 7; cube-live/cube-model.live.ts).
 //
+// (A MySQL data source swaps `postgres:16-alpine` for `mysql:8.4` and Cube's driver for MySQL's;
+// the rest is the same, and `CubeStackOptions.dataSource` picks.)
+//
 // Everything runs through the docker CLI, as postgres-container.ts and mysql-container.ts do (and
 // for their reason: testcontainers-node hangs under Bun). One run owns:
 //
@@ -26,6 +29,10 @@ import { randomUUID } from "node:crypto";
 
 export const CUBE_IMAGE = "cubejs/cube:v1.7.43";
 export const CUBE_POSTGRES_IMAGE = "postgres:16-alpine";
+export const CUBE_MYSQL_IMAGE = "mysql:8.4";
+
+/** The database Cube reads. */
+export type CubeDataSource = "postgres" | "mysql";
 
 /** Prefix of every container and network a run creates; the leftover check filters on it. */
 export const CUBE_RESOURCE_PREFIX = "mo-cube-";
@@ -51,6 +58,7 @@ const PULL_TIMEOUT_MS = 15 * 60_000;
 const PROBE_TIMEOUT_MS = 10_000;
 
 const PG_PASSWORD = "test";
+const MYSQL_DATABASE = "mo_test";
 
 /** The longest startCubeStack can take: two pulls, then both readiness windows. A hook's timeout. */
 export function cubeStackStartBudgetMs(): number {
@@ -63,8 +71,10 @@ export interface CubeStack {
   readonly network: string;
   readonly pgContainer: string;
   readonly cubeContainer: string;
-  /** Run SQL through `psql` inside the Postgres container (ON_ERROR_STOP, quiet, unaligned, tuples only). */
+  /** Run SQL through `psql` inside the Postgres container (ON_ERROR_STOP, quiet, unaligned, tuples only). Postgres data source only. */
   psql(sqlText: string): string;
+  /** Run SQL through `mysql` inside the MySQL container (batch mode, tab-separated, no header). MySQL data source only. */
+  mysql(sqlText: string): string;
   /** The last `lines` lines of the Cube container's log, for a failure message. */
   cubeLogs(lines?: number): string;
   /** Force-remove both containers and the network. Idempotent; never throws, but warns on stderr when a removal fails. */
@@ -72,8 +82,10 @@ export interface CubeStack {
 }
 
 export interface CubeStackOptions {
+  /** The database Cube reads; Postgres when absent. `pgContainer` names this database's container either way. */
+  readonly dataSource?: CubeDataSource;
   /**
-   * SQL scripts applied, in order, once Postgres is ready and BEFORE Cube starts: the schema and
+   * SQL scripts applied, in order, once the database is ready and BEFORE Cube starts: the schema and
    * the seed. Cube builds a rollup on the first query that needs it and keeps it for its refresh
    * window, so data loaded after Cube is up could meet a rollup already built over empty tables.
    */
@@ -101,8 +113,9 @@ export async function startCubeStack(modelDir: string, options: CubeStackOptions
   const unavailable = dockerUnavailableReason();
   if (unavailable !== undefined) return { kind: "skipped", reason: unavailable };
 
+  const dataSource = options.dataSource ?? "postgres";
   // Outside the clock: a pinned tag already present is used as is.
-  await ensureImage(CUBE_POSTGRES_IMAGE);
+  await ensureImage(dataSource === "mysql" ? CUBE_MYSQL_IMAGE : CUBE_POSTGRES_IMAGE);
   await ensureImage(CUBE_IMAGE);
 
   const id = randomUUID().slice(0, 8);
@@ -133,20 +146,27 @@ export async function startCubeStack(modelDir: string, options: CubeStackOptions
 
   try {
     docker(["network", "create", network]);
-    docker(["run", "-d", "--name", pgContainer, "--network", network,
-      "-e", `POSTGRES_PASSWORD=${PG_PASSWORD}`, CUBE_POSTGRES_IMAGE]);
-    await waitForPostgres(pgContainer);
-    for (const script of options.initSql ?? []) psql(pgContainer, script);
+    if (dataSource === "mysql") {
+      docker(["run", "-d", "--name", pgContainer, "--network", network,
+        "-e", `MYSQL_ROOT_PASSWORD=${PG_PASSWORD}`, "-e", `MYSQL_DATABASE=${MYSQL_DATABASE}`, CUBE_MYSQL_IMAGE]);
+      await waitForMysql(pgContainer);
+      for (const script of options.initSql ?? []) mysqlExec(pgContainer, script);
+    } else {
+      docker(["run", "-d", "--name", pgContainer, "--network", network,
+        "-e", `POSTGRES_PASSWORD=${PG_PASSWORD}`, CUBE_POSTGRES_IMAGE]);
+      await waitForPostgres(pgContainer);
+      for (const script of options.initSql ?? []) psql(pgContainer, script);
+    }
+    const dbEnv = dataSource === "mysql"
+      ? ["CUBEJS_DB_TYPE=mysql", `CUBEJS_DB_HOST=${pgContainer}`, "CUBEJS_DB_PORT=3306",
+         `CUBEJS_DB_NAME=${MYSQL_DATABASE}`, "CUBEJS_DB_USER=root", `CUBEJS_DB_PASS=${PG_PASSWORD}`]
+      : ["CUBEJS_DB_TYPE=postgres", `CUBEJS_DB_HOST=${pgContainer}`, "CUBEJS_DB_PORT=5432",
+         "CUBEJS_DB_NAME=postgres", "CUBEJS_DB_USER=postgres", `CUBEJS_DB_PASS=${PG_PASSWORD}`];
 
     docker([
       "run", "-d", "--name", cubeContainer, "--network", network,
       "-p", "127.0.0.1::4000",
-      "-e", "CUBEJS_DB_TYPE=postgres",
-      "-e", `CUBEJS_DB_HOST=${pgContainer}`,
-      "-e", "CUBEJS_DB_PORT=5432",
-      "-e", "CUBEJS_DB_NAME=postgres",
-      "-e", "CUBEJS_DB_USER=postgres",
-      "-e", `CUBEJS_DB_PASS=${PG_PASSWORD}`,
+      ...dbEnv.flatMap((e) => ["-e", e]),
       "-e", "CUBEJS_DEV_MODE=true",
       "-e", "CUBEJS_TELEMETRY=false",
       // Throwaway: development mode does not check tokens, and the API is bound to 127.0.0.1.
@@ -166,6 +186,7 @@ export async function startCubeStack(modelDir: string, options: CubeStackOptions
         pgContainer,
         cubeContainer,
         psql: (sqlText) => psql(pgContainer, sqlText),
+        mysql: (sqlText) => mysqlExec(pgContainer, sqlText),
         cubeLogs: (lines = 60) => tailLogs(cubeContainer, lines),
         stop,
       },
@@ -219,6 +240,21 @@ async function waitForPostgres(name: string): Promise<void> {
   throw new Error(`postgres container '${name}' did not accept a TCP connection within ${PG_READY_TIMEOUT_S}s`);
 }
 
+/** Like waitForPostgres: the entrypoint's temporary server has no TCP listener, so connect over TCP. */
+async function waitForMysql(name: string): Promise<void> {
+  const deadline = Date.now() + PG_READY_TIMEOUT_S * 1000;
+  while (Date.now() < deadline) {
+    assertRunning(name, "mysql");
+    const r = spawnSync("docker", ["exec", name, "mysql", "-h127.0.0.1", "-uroot", `-p${PG_PASSWORD}`, "-N", "-B", "-e", "select 1"], {
+      encoding: "utf8",
+      timeout: 30_000,
+    });
+    if (r.status === 0 && r.stdout.trim() === "1") return;
+    await sleep(500);
+  }
+  throw new Error(`mysql container '${name}' did not accept a TCP connection within ${PG_READY_TIMEOUT_S}s`);
+}
+
 /** Until `/meta` answers with JSON: a model, or the model's compile error (the test reads which). */
 async function waitForCube(name: string, apiBase: string): Promise<void> {
   const deadline = Date.now() + READY_TIMEOUT_S * 1000;
@@ -265,6 +301,17 @@ function psql(name: string, sqlText: string): string {
     maxBuffer: 64 * 1024 * 1024,
   });
   if (r.status !== 0) throw new Error(`psql in '${name}' failed (exit ${String(r.status)}): ${r.stderr || r.stdout}`);
+  return r.stdout;
+}
+
+function mysqlExec(name: string, sqlText: string): string {
+  const r = spawnSync("docker", ["exec", "-i", name, "mysql", "-h127.0.0.1", "-uroot", `-p${PG_PASSWORD}`, MYSQL_DATABASE, "-N", "-B"], {
+    input: sqlText,
+    encoding: "utf8",
+    timeout: 120_000,
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (r.status !== 0) throw new Error(`mysql in '${name}' failed (exit ${String(r.status)}): ${r.stderr || r.stdout}`);
   return r.stdout;
 }
 
