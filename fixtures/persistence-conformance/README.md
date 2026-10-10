@@ -29,7 +29,9 @@ fixtures/persistence-conformance/
 ├── report-shapes.json            # TS-produced derived fields of each report; every port byte-matches it
 ├── canonical/                    # SHARED "kitchen-sink" metadata + committed schema DDL
 │   ├── meta.*.json               # the kitchen-sink metadata every query scenario reads
-│   └── schema.postgres.sql       # TS-produced canonical DDL every port executes to set up its DB
+│   ├── schema.postgres.sql       # TS-produced canonical DDL every port executes to set up its DB
+│   ├── schema.sqlite.sql         # the same for SQLite/D1 (`meta migrate --dialect sqlite`); report scenarios only
+│   └── schema.mysql.sql          # the same for MySQL 8.4 (adopter tables + `buildReportViews`); report scenarios only
 ├── migrations/                   # per-scenario schema-evolution tests (TS-only)
 │   └── <name>.yaml
 └── queries/                      # query scenarios against the canonical schema (every port)
@@ -321,6 +323,17 @@ port's runtime. They use only `op: list` and `op: count`, single-key `sort`, `fi
 `limit`: a report has no primary key, so there is no `op: get` and no write. The schema is
 still the committed `canonical/schema.postgres.sql`, which creates each report's view, so a
 port reads the view the TypeScript migrate engine produced and never lowers a report itself.
+
+The nine also run on SQLite and MySQL 8.4 (and TypeScript on D1's local runtime) in every
+port whose runtime has the engine: they execute `canonical/schema.sqlite.sql` or
+`canonical/schema.mysql.sql` instead, each TypeScript-produced and held equal to its generator
+by a test. The `expect` blocks stay the Postgres wire ones; a runner maps the engine's own
+spelling on the actual side (a SQLite ratio is a REAL, a MySQL `DECIMAL` keeps its scale, a
+MySQL `DATETIME` is the UTC wall clock). A scenario whose seed cannot be shared (an instant
+relative to the database clock) adds a `seed-data-engine:` map keyed by `sqlite` / `mysql`,
+which wins over `seed-data` for that engine; the rest keep one Postgres-spelled `seed-data`,
+which the MySQL runners translate mechanically (`"id"` to `` `id` ``, a UTC `Z` dropped). Java has
+no SQLite driver and Python has only a Postgres one, so they do not run those engines.
 Rows are keyed by the report's **derived field names** (dimensions in `@dimensions` order,
 then measures in `@measures` order; a time dimension is named `<name><Grain>`, for example
 `createdAtMonth`).

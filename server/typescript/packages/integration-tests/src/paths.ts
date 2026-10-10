@@ -44,6 +44,8 @@ export const API_CONTRACT_PROJECTION_SCENARIOS_DIR = resolve(API_CONTRACT_PROJEC
 export const API_CONTRACT_REPORT_DIR = resolve(API_CONTRACT_DIR, "report");
 export const API_CONTRACT_REPORT_SCENARIOS_DIR = resolve(API_CONTRACT_REPORT_DIR, "scenarios");
 export const API_CONTRACT_REPORT_SCHEMA_SQL_PATH = resolve(API_CONTRACT_REPORT_DIR, "schema.postgres.sql");
+export const API_CONTRACT_REPORT_SQLITE_SCHEMA_SQL_PATH = resolve(API_CONTRACT_REPORT_DIR, "schema.sqlite.sql");
+export const API_CONTRACT_REPORT_MYSQL_SCHEMA_SQL_PATH = resolve(API_CONTRACT_REPORT_DIR, "schema.mysql.sql");
 
 // fixtures/validation-conformance/ — cross-port generated input-validation corpus.
 export const VALIDATION_DIR = resolve(repoRoot, "fixtures", "validation-conformance");

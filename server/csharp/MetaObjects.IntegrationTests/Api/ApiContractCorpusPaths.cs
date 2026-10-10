@@ -61,6 +61,8 @@ internal static class ApiContractCorpusPaths
     public static readonly string ReportSeedFile = Path.Combine(ReportDir, "seed.json");
     public static readonly string ReportMetaJson = Path.Combine(ReportDir, "meta.json");
     public static readonly string ReportSchemaSql = Path.Combine(ReportDir, "schema.postgres.sql");
+    public static readonly string ReportSchemaSqliteSql = Path.Combine(ReportDir, "schema.sqlite.sql");
+    public static readonly string ReportSchemaMysqlSql = Path.Combine(ReportDir, "schema.mysql.sql");
 
     // #214 write-through read-your-writes subcorpus.
     public static readonly string WriteThroughDir = Path.Combine(Corpus, "write-through");

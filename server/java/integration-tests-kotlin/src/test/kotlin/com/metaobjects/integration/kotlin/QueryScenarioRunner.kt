@@ -83,19 +83,38 @@ object QueryScenarioRunner {
      * Run a single query scenario end-to-end against a fresh container (one
      * container per scenario at the JUnit level).
      */
-    fun run(scenario: QueryScenario, pg: PostgresContainer) {
-        val db = Database.connect(pg.jdbcUrl, user = pg.username, password = pg.password)
+    fun run(scenario: QueryScenario, pg: PostgresContainer) =
+        run(scenario, pg.jdbcUrl, pg.username, pg.password, ScenarioEngine.POSTGRES)
+
+    /**
+     * Run a scenario against an already-provisioned database of [engine]. The schema is that
+     * engine's TS-produced artifact, executed verbatim; the seed is the scenario's seed SQL
+     * spelled for the engine. The Postgres `expect` blocks are asserted unchanged.
+     */
+    fun run(scenario: QueryScenario, baseUrl: String, username: String, password: String, engine: ScenarioEngine) {
+        // A MySQL DATETIME has no zone and the corpus stores UTC wall clocks: read and write them
+        // as UTC whatever the JVM zone is, so a report's instant column reads back as the same instant.
+        val jdbcUrl = if (engine == ScenarioEngine.MYSQL) {
+            baseUrl + (if ('?' in baseUrl) "&" else "?") + "connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true"
+        } else if (engine == ScenarioEngine.SQLITE) {
+            // SQLite keeps an instant as the TEXT the view built (`...T03:00:00.000Z`); the driver
+            // parses a timestamp with this format, which reads that spelling back as the UTC instant.
+            baseUrl + (if ('?' in baseUrl) "&" else "?") + "date_string_format=yyyy-MM-dd'T'HH:mm:ss.SSSX"
+        } else baseUrl
+        val db = Database.connect(jdbcUrl, user = username, password = password)
 
         val corpus = ScenarioLoader.findCorpusRoot()
 
         // 1. Provision the schema from the committed canonical DDL (base tables +
-        //    projection views). Executed verbatim on a direct JDBC connection —
-        //    schema authority is the TS-produced artifact, not Exposed.
-        val schemaDdl = ScenarioLoader.readCanonicalSchema(corpus)
-        execSql(pg, schemaDdl)
+        //    projection views). Executed verbatim on a direct JDBC connection --
+        //    schema authority is the TS-produced artifact, not Exposed. A shared server
+        //    (MySQL) starts each scenario from an empty schema.
+        if (engine == ScenarioEngine.MYSQL) dropMysqlSchema(jdbcUrl, username, password)
+        val schemaDdl = ScenarioLoader.readCanonicalSchema(corpus, engine.schemaArtifact)
+        execSql(jdbcUrl, username, password, schemaDdl, engine)
 
         // 2. Seed via the YAML's raw SQL.
-        scenario.seedData?.takeIf { it.isNotBlank() }?.let { sql -> execSql(pg, sql) }
+        engine.seed(scenario)?.takeIf { it.isNotBlank() }?.let { sql -> execSql(jdbcUrl, username, password, sql, engine) }
 
         // 3. Load the canonical metadata root once per scenario — op:relate derives
         //    the M:N junction FK fields + physical table/column names from it (the
@@ -126,9 +145,33 @@ object QueryScenarioRunner {
      * through Exposed (they may use double-quoted identifiers Exposed wouldn't
      * synthesize).
      */
-    private fun execSql(pg: PostgresContainer, sql: String) {
-        DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { c ->
-            c.createStatement().use { it.execute(sql) }
+    private fun execSql(jdbcUrl: String, username: String, password: String, sql: String, engine: ScenarioEngine) {
+        DriverManager.getConnection(jdbcUrl, username, password).use { c ->
+            if (engine != ScenarioEngine.POSTGRES) {
+                // The MySQL and SQLite drivers run one statement per call.
+                c.createStatement().use { st -> ScenarioEngine.splitStatements(sql).forEach { st.execute(it) } }
+            } else {
+                c.createStatement().use { it.execute(sql) }
+            }
+        }
+    }
+
+    /** Drop every view and table in the connected MySQL database. */
+    private fun dropMysqlSchema(jdbcUrl: String, username: String, password: String) {
+        DriverManager.getConnection(jdbcUrl, username, password).use { c ->
+            val views = mutableListOf<String>()
+            val tables = mutableListOf<String>()
+            c.createStatement().use { st ->
+                st.executeQuery("SHOW FULL TABLES").use { rs ->
+                    while (rs.next()) (if (rs.getString(2) == "VIEW") views else tables).add(rs.getString(1))
+                }
+            }
+            c.createStatement().use { st ->
+                st.execute("SET FOREIGN_KEY_CHECKS = 0")
+                views.forEach { st.execute("DROP VIEW IF EXISTS `$it`") }
+                tables.forEach { st.execute("DROP TABLE IF EXISTS `$it`") }
+                st.execute("SET FOREIGN_KEY_CHECKS = 1")
+            }
         }
     }
 

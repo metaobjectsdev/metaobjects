@@ -21,7 +21,7 @@ import java.util.UUID;
  * {@code METAOBJECTS_TEST_MYSQL_USER} / {@code _PASSWORD}) to run against an existing server
  * instead. The test then owns that database: it creates and drops its own table.
  */
-public final class MySqlContainer implements AutoCloseable {
+public final class MySqlContainer implements AutoCloseable, JdbcTarget {
     private static final String URL_ENV = "METAOBJECTS_TEST_MYSQL_URL";
     private static final String IMAGE = "mysql:8.4";
     private static final String DB = "mo_test";
@@ -78,9 +78,9 @@ public final class MySqlContainer implements AutoCloseable {
         this.jdbcUrl = started;
     }
 
-    public String jdbcUrl()  { return jdbcUrl; }
-    public String username() { return username; }
-    public String password() { return password; }
+    @Override public String jdbcUrl()  { return jdbcUrl; }
+    @Override public String username() { return username; }
+    @Override public String password() { return password; }
 
     public Connection open() throws SQLException {
         return DriverManager.getConnection(jdbcUrl, username, password);

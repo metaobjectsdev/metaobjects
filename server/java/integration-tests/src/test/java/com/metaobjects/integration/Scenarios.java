@@ -33,6 +33,7 @@ public final class Scenarios {
         String description,
         String sourcePath,
         String seedData,
+        Map<String, String> seedDataEngine,       // engine -> seed SQL, when an engine needs its own spelling
         List<QuerySpec> queries
     ) {}
 }

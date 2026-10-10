@@ -10,6 +10,15 @@ seed-data: |
   INSERT INTO "programs" ("id","title","priceCents","status","created_ts") VALUES
     (1, 'Fresh', 1000, 'PUBLISHED', (now() AT TIME ZONE 'UTC') - INTERVAL '3 days'),
     (2, 'Stale', 2000, 'PUBLISHED', (now() AT TIME ZONE 'UTC') - INTERVAL '60 days');
+seed-data-engine:
+  sqlite: |
+    INSERT INTO "programs" ("id","title","priceCents","status","created_ts") VALUES
+      (1, 'Fresh', 1000, 'PUBLISHED', strftime('%Y-%m-%dT%H:%M:%fZ','now','-3 days')),
+      (2, 'Stale', 2000, 'PUBLISHED', strftime('%Y-%m-%dT%H:%M:%fZ','now','-60 days'));
+  mysql: |
+    INSERT INTO `programs` (`id`,`title`,`priceCents`,`status`,`created_ts`) VALUES
+      (1, 'Fresh', 1000, 'PUBLISHED', UTC_TIMESTAMP(3) - INTERVAL 3 DAY),
+      (2, 'Stale', 2000, 'PUBLISHED', UTC_TIMESTAMP(3) - INTERVAL 60 DAY);
 queries:
   - name: only-the-recent-program-counts
     op: list

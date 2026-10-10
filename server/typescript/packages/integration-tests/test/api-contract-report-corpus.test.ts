@@ -7,10 +7,11 @@ import {
 } from "@metaobjectsdev/metadata";
 import { loadMetadataFile } from "../src/load-metadata.ts";
 import { loadScenarios } from "../src/api-contract-scenario.ts";
+import { generateReportApiMysqlSchemaSql } from "../src/api-contract-report-mysql-schema.ts";
 import { generateReportApiSchemaSql } from "../src/api-contract-report-schema.ts";
 import { SEED_REPORTS_KEY, seedInserts, type ReportSeed } from "../src/api-contract-report-generated-server.ts";
 import {
-  API_CONTRACT_REPORT_DIR, API_CONTRACT_REPORT_SCENARIOS_DIR, API_CONTRACT_REPORT_SCHEMA_SQL_PATH,
+  API_CONTRACT_REPORT_DIR, API_CONTRACT_REPORT_SCENARIOS_DIR, API_CONTRACT_REPORT_SCHEMA_SQL_PATH, API_CONTRACT_REPORT_SQLITE_SCHEMA_SQL_PATH, API_CONTRACT_REPORT_MYSQL_SCHEMA_SQL_PATH,
 } from "../src/paths.ts";
 
 const seed = JSON.parse(readFileSync(join(API_CONTRACT_REPORT_DIR, "seed.json"), "utf8")) as ReportSeed;
@@ -82,6 +83,24 @@ describe("api-contract report corpus", () => {
     const committed = readFileSync(API_CONTRACT_REPORT_SCHEMA_SQL_PATH, "utf8");
     if (committed !== expected) {
       throw new Error("report/schema.postgres.sql is stale. Run `bun run gen:report-api-schema` in integration-tests.");
+    }
+  });
+
+  test("schema.sqlite.sql is what TypeScript produces from meta.json", async () => {
+    const root = await loadMetadataFile(join(API_CONTRACT_REPORT_DIR, "meta.json"));
+    const expected = await generateReportApiSchemaSql(root, "sqlite");
+    const committed = readFileSync(API_CONTRACT_REPORT_SQLITE_SCHEMA_SQL_PATH, "utf8");
+    if (committed !== expected) {
+      throw new Error("report/schema.sqlite.sql is stale. Run `bun run gen:report-api-schema` in integration-tests.");
+    }
+  });
+
+  test("schema.mysql.sql is what TypeScript produces from meta.json", async () => {
+    const root = await loadMetadataFile(join(API_CONTRACT_REPORT_DIR, "meta.json"));
+    const expected = generateReportApiMysqlSchemaSql(root);
+    const committed = readFileSync(API_CONTRACT_REPORT_MYSQL_SCHEMA_SQL_PATH, "utf8");
+    if (committed !== expected) {
+      throw new Error("report/schema.mysql.sql is stale. Run `bun run gen:report-api-schema` in integration-tests.");
     }
   });
 });

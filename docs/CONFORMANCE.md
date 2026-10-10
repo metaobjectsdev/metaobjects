@@ -33,8 +33,8 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 15 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 48 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 17 | ✓ | ✓ | ✓ | ✓ | ✓ |
-| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 42 (36 query + 6 migration) | all 42 | 36 query (migrations TS-only, ADR-0015) | 36 query (via Exposed) | 36 query | 36 query |
-| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 82 (31 core + 10 tph + 9 m2m + 2 jsonb + 2 write-through + 12 projection + 16 report) | ✓ (Fastify reference + generated lane) | ✓ (embedded HTTP + JDBC) | ✓ (embedded HTTP + Exposed) | ✓ (HttpListener + Npgsql) | ✓ (FastAPI + pg8000) |
+| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 42 (36 query + 6 migration) | all 42 (the 9 `report-*` also on SQLite, MySQL and D1) | 36 query (migrations TS-only, ADR-0015); the 9 `report-*` also on MySQL | 36 query (via Exposed); the 9 `report-*` also on SQLite and MySQL | 36 query; the 9 `report-*` also on SQLite and MySQL | 36 query (Postgres only: pg8000) |
+| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 82 (31 core + 10 tph + 9 m2m + 2 jsonb + 2 write-through + 12 projection + 16 report) | ✓ (Fastify reference + generated lane); `report/` also on SQLite, MySQL and D1 | ✓ (embedded HTTP + JDBC) | ✓ (embedded HTTP + Exposed) | ✓ (HttpListener + Npgsql); `report/` also on SQLite and MySQL | ✓ (FastAPI + pg8000) |
 | [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 42 cases | ✓ (generated Zod + run-time `runValidators`) | ✓ | ✓ | ✓ | ✓ (generated Pydantic + run-time `run_validators`) |
 | [`fixtures/registry-conformance/`](../fixtures/registry-conformance/) | 1 canonical manifest | ✓ (reference emitter) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/object-model-conformance/`](../fixtures/object-model-conformance/) | 1 shared metadata fixture (per-port scenarios) | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -138,9 +138,15 @@ manifest contains without moving these boundaries.
   compile, the two MySQL cases included: compiling a model runs no SQL, so the lane's Postgres
   data source serves them too. For the nine canonical reports it compares the Cube query with the
   report view (a `@spine` report through its Cube view, its empty spine rows included), and for
-  the `escaping` and `measure-default` cases it reads the SQL back from Cube's `/v1/sql`. No
-  SQL of a MySQL case is executed; the goldens hold it. The lane runs Cube in development mode,
-  so Cube's production mode with a separate Cube Store is not gated.
+  the `escaping` and `measure-default` cases it reads the SQL back from Cube's `/v1/sql`.
+  A second live file (`cube-model-mysql.live.ts`) runs the MySQL path: the canonical golden
+  generated with `dialect: "mysql"` is loaded into the same pinned Cube over a real MySQL 8.4
+  holding the report views `buildReportViews` lowers (`fixtures/cube-model/canonical/seed.mysql.sql`),
+  and each of the nine reports' Cube query is compared with `SELECT *` from its view, with the
+  pre-aggregation used asserted. That is the smaller of the two honest options: the two MySQL
+  *cases* (escaping, a quoted identifier) are still compiled, not executed, and the goldens hold
+  their SQL. The lane runs Cube in development mode, so Cube's production mode with a separate
+  Cube Store is not gated.
 - *The lane is a gate, not a second corpus.* Like the codegen-compile gate, it reuses
   `fixtures/persistence-conformance/canonical/meta.fitness.json` and the committed
   `schema.postgres.sql` rather than adding a model beside them; only the seed rows are its own
@@ -297,6 +303,20 @@ All 31 fixtures → [features/migrations-and-drift.md](features/migrations-and-d
 - `migrations/*` (6) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
 - `queries/*` (36) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
 
+**Engines beyond Postgres (FR-044 reports).** The nine `queries/report-*.yaml` scenarios also
+run on SQLite and MySQL 8.4 wherever a port's runtime has the engine, and on D1's local runtime
+in TypeScript (no cloud account): TypeScript on all four, C# and Kotlin on SQLite and MySQL, Java
+on MySQL. **Stated limitations, not gaps:** Java's OMDB has no SQLite driver, and Python's runtime
+ships a Postgres driver only (pg8000), so Python runs the corpus on Postgres alone. Adding a
+driver to run a view-reading test is not worth the surface. Each engine executes an artifact
+TypeScript produced (`canonical/schema.sqlite.sql` from `meta migrate --dialect sqlite`;
+`canonical/schema.mysql.sql` from the adopter-written tables plus `buildReportViews`), held
+equal to its generator by a test, so no port writes view SQL. The `expect` blocks stay the
+Postgres wire ones; engine spelling is normalised on the actual side only (a SQLite ratio is a
+REAL, a MySQL `DECIMAL` keeps its scale, a MySQL `DATETIME` is the UTC wall clock), and
+`report-relative-date` carries a per-engine seed (`seed-data-engine`). `op: relate` and the
+write ops stay Postgres-only. See [features/reporting.md](features/reporting.md#what-the-corpus-gates).
+
 ### `fixtures/api-contract-conformance/` (82)
 
 All 82 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
@@ -324,7 +344,11 @@ a row with no facts, and a measure with `@default` filters and sorts as its defa
 Kotlin, C#, Python — run it in BOTH lanes: a hand-rolled reference server and
 the port's own GENERATED API artifact booted over HTTP. `write-through/`,
 `projection/` and `report/` run the generated lane only, on all five ports: what
-they test is whether a port's generator emits the routes.
+they test is whether a port's generator emits the routes. The `report/` sub-corpus is the one
+that reads real views, so it also runs on SQLite and MySQL (`report/schema.sqlite.sql`,
+`report/schema.mysql.sql`, both TypeScript-produced) in TypeScript and C#, and on D1's local
+runtime in TypeScript. Java, Kotlin and Python serve that corpus from seeded rows behind their
+repository seam, so no engine reaches them and the extra engines are not applicable there.
 
 ### `fixtures/source-resolution-conformance/` (25 cases)
 

@@ -90,6 +90,8 @@ report/
 ├── meta.json               # Invoice, Product, Sale + five object.report nodes (four served, one sourceless)
 ├── seed.json               # the base tables (`invoices`, `products`, `sales`) and `reports` (what the views return)
 ├── schema.postgres.sql     # TypeScript-produced: the three tables and the four views
+├── schema.sqlite.sql       # the same, for SQLite and D1 (`meta migrate --dialect sqlite`)
+├── schema.mysql.sql        # the same, for MySQL 8.4: the tables plus `buildReportViews` bodies
 └── scenarios/
     ├── list.yaml                    # GET list, dimension + segment-scoped sum
     ├── list-time-grain.yaml         # a time dimension at a grain
@@ -142,8 +144,8 @@ hand-rolled reference server would answer every scenario by construction.
 
 | Port | Generated lane | Note |
 |---|---|---|
-| TypeScript | wired | `server/typescript/packages/integration-tests/test/api-contract-report.test.ts` (16 scenarios + a seed-vs-view check). Full stack: generated Fastify routes over the real views on Testcontainers Postgres. `api-contract-report-sqlite.test.ts` runs the same 16 on SQLite |
-| C# | wired | `server/csharp/MetaObjects.IntegrationTests/Api/ApiContractReportConformanceTest.cs`. Full stack: generated routes and EF Core over `schema.postgres.sql` on Testcontainers Postgres |
+| TypeScript | wired | `server/typescript/packages/integration-tests/test/api-contract-report.test.ts` (16 scenarios + a seed-vs-view check). Full stack: generated Fastify routes over the real views on Testcontainers Postgres. `api-contract-report-sqlite.test.ts` runs the same 16 on SQLite, `api-contract-report-mysql.test.ts` on MySQL 8.4, and the SQLite test file also runs them through local D1 (Miniflare) |
+| C# | wired | `server/csharp/MetaObjects.IntegrationTests/Api/ApiContractReportConformanceTest.cs`. Full stack: generated routes and EF Core over `schema.postgres.sql` on Testcontainers Postgres, over `schema.sqlite.sql` on SQLite, and over `schema.mysql.sql` on MySQL 8.4 |
 | Java | wired | `server/java/integration-tests/src/test/java/com/metaobjects/integration/api/ReportGeneratedApiContractConformanceTest.java` (16 scenarios + a scenario-count check). Generated controllers behind an in-memory repository seeded from `reports` |
 | Kotlin | wired | `server/java/integration-tests-kotlin/src/test/kotlin/com/metaobjects/integration/kotlin/api/report/ReportGeneratedApiContractConformanceTest.kt` (16 scenarios, the count check, and a check that the sourceless report generated nothing). Generated controllers over the generated Exposed table objects, seeded from `reports` |
 | Python | wired | `server/python/tests/integration/test_api_contract_report.py` (16 scenarios, a check that exactly the served reports are generated, and `/api/invoice_days` is `404`). Generated routers behind in-memory repositories seeded from `reports` |

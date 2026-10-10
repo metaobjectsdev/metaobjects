@@ -21,6 +21,8 @@ using MetaObjects.IntegrationTests.Generated;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.Sqlite;
+using MySqlConnector;
 using Npgsql;
 using Xunit.Sdk;
 using YamlDotNet.Core;
@@ -30,21 +32,54 @@ namespace MetaObjects.IntegrationTests.Runner;
 
 public static class QueryScenarioRunner
 {
-    public static async Task RunAsync(QueryScenario scenario, PostgresContainer pg)
+    public static Task RunAsync(QueryScenario scenario, PostgresContainer pg) =>
+        RunAsync(scenario, ScenarioEngine.Postgres, pg.ConnectionString);
+
+    /// <summary>
+    /// Run a scenario against a SQLite database file the caller owns (an empty file path is
+    /// created on first use). The expectations are the Postgres wire ones: the engine
+    /// spelling is mapped only by <see cref="Normalization"/> on the actual side.
+    /// </summary>
+    public static Task RunSqliteAsync(QueryScenario scenario, string databasePath) =>
+        RunAsync(scenario, ScenarioEngine.Sqlite, $"Data Source={databasePath}");
+
+    /// <summary>
+    /// Run a scenario against a MySQL database (a fresh, empty one). The expectations are the
+    /// Postgres wire ones, unchanged; <see cref="Normalization"/> maps the engine spelling.
+    /// </summary>
+    public static Task RunMySqlAsync(QueryScenario scenario, string connectionString) =>
+        RunAsync(scenario, ScenarioEngine.MySql, connectionString);
+
+    private static async Task RunAsync(QueryScenario scenario, ScenarioEngine engine, string connectionString)
     {
         // Provision the schema from the committed canonical DDL — the single
         // TS-produced artifact every port executes. (No per-scenario synthesis.)
-        await ExecuteAsync(pg.ConnectionString, ReadCanonicalSchemaSql());
+        await ExecuteAsync(engine, connectionString, ReadCanonicalSchemaSql(engine));
 
-        // Optional seed data.
-        if (!string.IsNullOrWhiteSpace(scenario.SeedData))
-            await ExecuteAsync(pg.ConnectionString, scenario.SeedData);
+        // Optional seed data (a per-engine `seed-data-engine` entry wins over `seed-data`).
+        var seed = scenario.SeedFor(engine.Name());
+        if (!string.IsNullOrWhiteSpace(seed))
+        {
+            // The corpus seed is Postgres SQL unless a per-engine entry spells it; MySQL's
+            // identifier quote differs, so a Postgres-spelled seed is translated.
+            if (engine == ScenarioEngine.MySql && !scenario.HasSeedFor(engine.Name()))
+                seed = MySqlSeed.FromPostgres(seed);
+            await ExecuteAsync(engine, connectionString, seed);
+        }
 
         // Open a DbContext + run each query.
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(pg.ConnectionString)
-            .Options;
-        await using var db = new AppDbContext(options);
+        var builder = new DbContextOptionsBuilder<AppDbContext>();
+        var options = (engine switch
+        {
+            ScenarioEngine.Sqlite => builder.UseSqlite(connectionString),
+            ScenarioEngine.MySql => builder.UseMySql(connectionString, new MySqlServerVersion(new System.Version(8, 4, 0))),
+            _ => builder.UseNpgsql(connectionString),
+        }).Options;
+        // Postgres runs the whole generated context; the other engines read the report views
+        // through the view-only subset (see ReportViewsDbContext).
+        await using AppDbContext db = engine == ScenarioEngine.Postgres
+            ? new AppDbContext(options)
+            : new ReportViewsDbContext(options);
 
         // Metadata is loaded lazily — only `op: relate` (M:N traversal) needs it,
         // and it drives the junction-FK derivation via the shared M2MDerivation
@@ -56,7 +91,9 @@ public static class QueryScenarioRunner
             if (spec.Op == "relate")
             {
                 metaRoot ??= LoadCorpusMetadata();
-                var actual = await ResolveRelateAsync(pg.ConnectionString, metaRoot, spec);
+                if (engine != ScenarioEngine.Postgres)
+                    throw new InvalidOperationException($"{scenario.SourcePath}: op:relate runs on Postgres only");
+                var actual = await ResolveRelateAsync(connectionString, metaRoot, spec);
                 AssertResult(scenario.SourcePath, spec, actual);
                 continue;
             }
@@ -126,10 +163,15 @@ public static class QueryScenarioRunner
             conn, root, spec.Entity, sourceId, spec.Relation!);
     }
 
-    /// <summary>Read the committed canonical Postgres schema artifact (TS-produced).</summary>
-    private static string ReadCanonicalSchemaSql()
+    /// <summary>Read the committed canonical schema artifact of <paramref name="engine"/> (TS-produced).</summary>
+    private static string ReadCanonicalSchemaSql(ScenarioEngine engine)
     {
-        var path = CorpusPaths.CanonicalSchemaSql;
+        var path = engine switch
+        {
+            ScenarioEngine.Sqlite => CorpusPaths.CanonicalSchemaSqliteSql,
+            ScenarioEngine.MySql => CorpusPaths.CanonicalSchemaMysqlSql,
+            _ => CorpusPaths.CanonicalSchemaSql,
+        };
         if (!File.Exists(path))
             throw new InvalidOperationException(
                 $"canonical schema artifact not found at {path}; it is produced by the " +
@@ -137,8 +179,25 @@ public static class QueryScenarioRunner
         return File.ReadAllText(path);
     }
 
-    private static async Task ExecuteAsync(string connString, string sql)
+    private static async Task ExecuteAsync(ScenarioEngine engine, string connString, string sql)
     {
+        if (engine == ScenarioEngine.Sqlite)
+        {
+            await using var lite = new SqliteConnection(connString);
+            await lite.OpenAsync();
+            await using var liteCmd = lite.CreateCommand();
+            liteCmd.CommandText = sql;
+            await liteCmd.ExecuteNonQueryAsync();
+            return;
+        }
+        if (engine == ScenarioEngine.MySql)
+        {
+            await using var my = new MySqlConnection(connString);
+            await my.OpenAsync();
+            await using var myCmd = new MySqlCommand(sql, my);
+            await myCmd.ExecuteNonQueryAsync();
+            return;
+        }
         await using var conn = new NpgsqlConnection(connString);
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand(sql, conn);

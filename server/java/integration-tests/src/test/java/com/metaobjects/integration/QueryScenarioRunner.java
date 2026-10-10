@@ -5,7 +5,6 @@ import com.metaobjects.integration.Scenarios.QuerySpec;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.manager.ObjectConnection;
 import com.metaobjects.manager.db.ObjectManagerDB;
-import com.metaobjects.manager.db.driver.PostgresDriver;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.reporting.ReportReadModel;
 
@@ -45,22 +44,31 @@ public final class QueryScenarioRunner {
     private QueryScenarioRunner() {}
 
     public static void run(QueryScenario scenario, PostgresContainer pg, Path canonicalDir) throws Exception {
+        run(scenario, pg, canonicalDir, ScenarioEngine.POSTGRES);
+    }
+
+    public static void run(QueryScenario scenario, JdbcTarget pg, Path canonicalDir, ScenarioEngine engine) throws Exception {
         // Pick a canonical-loader name unique per scenario so registry state
         // from a previous scenario doesn't leak across containers.
         String tag = "canonical-" + UUID.randomUUID().toString().substring(0, 8);
         MetaDataLoader loader = MetaDataLoader.fromDirectory(tag, canonicalDir);
 
-        ObjectManagerDB omdb = newOmdb(pg);
+        ObjectManagerDB omdb = newOmdb(pg, engine);
 
         // 1. Provision the schema by executing the committed canonical DDL
         //    verbatim — the TS-produced artifact is the sole schema source
         //    (ADR-0015). OMDB's runtime auto-create is intentionally NOT engaged.
-        String schemaDdl = ScenarioLoader.readCanonicalSchema(canonicalDir.getParent());
-        try (Connection c = openConnection(pg)) { executeSql(c, schemaDdl); }
+        String schemaDdl = ScenarioLoader.readCanonicalSchema(canonicalDir.getParent(), engine.schemaArtifact());
+        try (Connection c = openConnection(pg)) {
+            // A shared MySQL server serves several scenarios: start each from an empty schema.
+            if (engine == ScenarioEngine.MYSQL) dropSchema(c, schemaDdl);
+            executeSql(c, schemaDdl, engine);
+        }
 
         // 2. Seed data.
-        if (scenario.seedData() != null && !scenario.seedData().isBlank()) {
-            try (Connection c = openConnection(pg)) { executeSql(c, scenario.seedData()); }
+        String seed = engine.seed(scenario);
+        if (seed != null && !seed.isBlank()) {
+            try (Connection c = openConnection(pg)) { executeSql(c, seed, engine); }
         }
 
         // 3. Run queries.
@@ -77,12 +85,12 @@ public final class QueryScenarioRunner {
                     scenario.sourcePath() + " / " + spec.name() +
                     ": no MetaObject named '" + spec.entity() + "' in canonical loader");
                 Map<String, Integer> columnSqlTypes = columnTypeCache.computeIfAbsent(
-                    mc, m -> probeColumnSqlTypes(pg, m));
+                    mc, m -> probeColumnSqlTypes(pg, m, engine));
                 // op:relate normalizes the TARGET entity's rows, so the adapter needs
                 // to probe column types for an entity other than `mc`; hand it a probe
                 // that hits the same per-scenario cache.
                 ObjectManagerDbAdapter.ColumnTypeProbe probe =
-                    m -> columnTypeCache.computeIfAbsent(m, x -> probeColumnSqlTypes(pg, x));
+                    m -> columnTypeCache.computeIfAbsent(m, x -> probeColumnSqlTypes(pg, x, engine));
 
                 // FR-017 TPH: an `expect-error: true` op (a cross-subtype write rejection) MUST
                 // throw — any exception/assertion from the dispatch counts as the expected error.
@@ -96,7 +104,7 @@ public final class QueryScenarioRunner {
                 }
 
                 Object actual = dispatch(omdb, oc, mc, spec, columnSqlTypes, loader, probe);
-                assertResult(scenario.sourcePath(), spec, actual);
+                assertResult(scenario.sourcePath(), spec, toWire(engine, mc, actual));
             }
         } finally {
             omdb.releaseConnection(oc);
@@ -129,7 +137,7 @@ public final class QueryScenarioRunner {
      * name. A {@code SELECT * ... WHERE 1=0} returns no rows but a fully-typed
      * {@link ResultSetMetaData}. Returns an empty map for a non-persistent object.
      */
-    private static Map<String, Integer> probeColumnSqlTypes(PostgresContainer pg, MetaObject mc) {
+    private static Map<String, Integer> probeColumnSqlTypes(JdbcTarget pg, MetaObject mc, ScenarioEngine engine) {
         // FR-044: a report's relation is its read model's view (named by the source's
         // kind-matching @view alias); the declared node carries no fields to key the probe by.
         String relation = ReportReadModel.isReport(mc)
@@ -138,7 +146,8 @@ public final class QueryScenarioRunner {
         if (relation == null) relation = mc.getPrimaryRdbTableName();
         if (relation == null) return Map.of();
         Map<String, Integer> types = new LinkedHashMap<>();
-        String sql = "SELECT * FROM \"" + relation + "\" WHERE 1=0";
+        String q = engine.quote();
+        String sql = "SELECT * FROM " + q + relation + q + " WHERE 1=0";
         try (Connection c = openConnection(pg);
              Statement s = c.createStatement();
              ResultSet rs = s.executeQuery(sql)) {
@@ -237,15 +246,15 @@ public final class QueryScenarioRunner {
     // Postgres + ObjectManagerDB plumbing
     // -----------------------------------------------------------------------
 
-    private static ObjectManagerDB newOmdb(PostgresContainer pg) throws Exception {
+    private static ObjectManagerDB newOmdb(JdbcTarget pg, ScenarioEngine engine) throws Exception {
         ObjectManagerDB omdb = new ObjectManagerDB();
-        omdb.setDatabaseDriver(new PostgresDriver());
+        omdb.setDatabaseDriver(engine.newDriver());
         omdb.setDataSource(simpleDataSource(pg));
         omdb.init();
         return omdb;
     }
 
-    private static DataSource simpleDataSource(PostgresContainer pg) {
+    private static DataSource simpleDataSource(JdbcTarget pg) {
         return new DataSource() {
             @Override public Connection getConnection() throws SQLException { return openConnection(pg); }
             @Override public Connection getConnection(String u, String p) throws SQLException { return openConnection(pg); }
@@ -259,11 +268,59 @@ public final class QueryScenarioRunner {
         };
     }
 
-    private static Connection openConnection(PostgresContainer pg) throws SQLException {
+    private static Connection openConnection(JdbcTarget pg) throws SQLException {
         return DriverManager.getConnection(pg.jdbcUrl(), pg.username(), pg.password());
     }
 
-    private static void executeSql(Connection c, String sql) throws SQLException {
-        try (Statement s = c.createStatement()) { s.execute(sql); }
+    /** Postgres runs a whole script in one statement; MySQL's driver takes one statement at a time. */
+    private static void executeSql(Connection c, String sql, ScenarioEngine engine) throws SQLException {
+        try (Statement s = c.createStatement()) {
+            if (engine == ScenarioEngine.POSTGRES) { s.execute(sql); return; }
+            for (String stmt : ScenarioEngine.splitStatements(sql)) s.execute(stmt);
+        }
+    }
+
+    /** Drop every view and table the schema artifact creates (views first, tables in reverse order). */
+    private static void dropSchema(Connection c, String schemaDdl) throws SQLException {
+        List<String> views = new java.util.ArrayList<>();
+        List<String> tables = new java.util.ArrayList<>();
+        java.util.regex.Pattern create = java.util.regex.Pattern.compile("^CREATE (VIEW|TABLE) `([^`]+)`");
+        for (String stmt : ScenarioEngine.splitStatements(schemaDdl)) {
+            java.util.regex.Matcher m = create.matcher(stmt);
+            if (m.find()) ("VIEW".equals(m.group(1)) ? views : tables).add(m.group(2));
+        }
+        try (Statement s = c.createStatement()) {
+            for (String v : views) s.execute("DROP VIEW IF EXISTS `" + v + "`");
+            java.util.Collections.reverse(tables);
+            for (String t : tables) s.execute("DROP TABLE IF EXISTS `" + t + "`");
+        }
+    }
+
+    private static final java.util.regex.Pattern WALL_CLOCK =
+        java.util.regex.Pattern.compile("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?");
+
+    /**
+     * Map a non-Postgres engine's value spelling onto the corpus' wire form. A MySQL DATETIME
+     * holds the UTC wall clock with no zone, where the report's TIMESTAMPTZ column is a {@code ...Z}
+     * instant; every other normalized spelling (BIGINT as text, DECIMAL canonical) already agrees.
+     * Applies to report rows only, and changes spelling, never a value.
+     */
+    @SuppressWarnings("unchecked")
+    private static Object toWire(ScenarioEngine engine, MetaObject mc, Object actual) {
+        if (engine != ScenarioEngine.MYSQL || actual == null || !ReportReadModel.isReport(mc)) return actual;
+        if (actual instanceof List<?> rows) {
+            List<Object> out = new java.util.ArrayList<>(rows.size());
+            for (Object r : rows) out.add(toWire(engine, mc, r));
+            return out;
+        }
+        if (actual instanceof Map<?, ?> row) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> e : ((Map<String, Object>) row).entrySet()) {
+                Object v = e.getValue();
+                out.put(e.getKey(), v instanceof String str && WALL_CLOCK.matcher(str).matches() ? str + "Z" : v);
+            }
+            return out;
+        }
+        return actual;
     }
 }

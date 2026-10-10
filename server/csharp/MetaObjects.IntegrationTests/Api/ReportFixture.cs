@@ -16,6 +16,9 @@
 
 using System.Text.Json;        // JsonValueKind
 using System.Text.Json.Nodes;  // JsonNode / JsonObject / JsonArray
+using Microsoft.Data.Sqlite;
+using MetaObjects.IntegrationTests.Runner;
+using MySqlConnector;
 using Npgsql;
 
 namespace MetaObjects.IntegrationTests.Api;
@@ -26,8 +29,26 @@ internal static class ReportFixture
     private const string SeedReportsKey = "reports";
 
     /// <summary>Execute the committed TypeScript-produced schema on a fresh container.</summary>
-    public static async Task ProvisionSchemaAsync(string connString)
+    public static async Task ProvisionSchemaAsync(string connString, ScenarioEngine engine = ScenarioEngine.Postgres)
     {
+        if (engine == ScenarioEngine.Sqlite)
+        {
+            await using var lite = new SqliteConnection(connString);
+            await lite.OpenAsync();
+            await using var liteCmd = lite.CreateCommand();
+            liteCmd.CommandText = await File.ReadAllTextAsync(ApiContractCorpusPaths.ReportSchemaSqliteSql);
+            await liteCmd.ExecuteNonQueryAsync();
+            return;
+        }
+        if (engine == ScenarioEngine.MySql)
+        {
+            await using var my = new MySqlConnection(connString);
+            await my.OpenAsync();
+            await using var myCmd = my.CreateCommand();
+            myCmd.CommandText = await File.ReadAllTextAsync(ApiContractCorpusPaths.ReportSchemaMysqlSql);
+            await myCmd.ExecuteNonQueryAsync();
+            return;
+        }
         await using var c = new NpgsqlConnection(connString);
         await c.OpenAsync();
         await using var cmd = c.CreateCommand();
@@ -41,7 +62,7 @@ internal static class ReportFixture
     /// full-stack lane. Values are SQL literals, as the TypeScript lane writes them, so
     /// Postgres types each one by its column (`'2026-04-30'` into a DATE).
     /// </summary>
-    public static async Task ApplySeedAsync(string connString, string seedPath)
+    public static async Task ApplySeedAsync(string connString, string seedPath, ScenarioEngine engine = ScenarioEngine.Postgres)
     {
         var root = JsonNode.Parse(File.ReadAllText(seedPath)) as JsonObject
             ?? throw new InvalidOperationException($"{seedPath}: top-level must be an object");
@@ -49,7 +70,12 @@ internal static class ReportFixture
         if (tables.Count == 0)
             throw new InvalidOperationException($"{seedPath}: no base-table rows to seed");
 
-        await using var c = new NpgsqlConnection(connString);
+        await using System.Data.Common.DbConnection c = engine switch
+        {
+            ScenarioEngine.Sqlite => new SqliteConnection(connString),
+            ScenarioEngine.MySql => new MySqlConnection(connString),
+            _ => new NpgsqlConnection(connString),
+        };
         await c.OpenAsync();
 
         foreach (var (table, rowsNode) in tables)
@@ -60,15 +86,17 @@ internal static class ReportFixture
             {
                 if (rowNode is not JsonObject row)
                     throw new InvalidOperationException($"{seedPath}: '{table}' has a row that is not an object");
-                var colList = string.Join(", ", row.Select(kv => "\"" + kv.Key + "\""));
+                var quote = engine == ScenarioEngine.MySql ? "`" : "\"";
+                var colList = string.Join(", ", row.Select(kv => quote + kv.Key + quote));
                 var valueList = string.Join(", ", row.Select(kv => SqlLiteral(seedPath, table, kv.Key, kv.Value)));
                 await using var ins = c.CreateCommand();
-                ins.CommandText = $"INSERT INTO \"{table}\" ({colList}) VALUES ({valueList})";
+                ins.CommandText = $"INSERT INTO {quote}{table}{quote} ({colList}) VALUES ({valueList})";
                 await ins.ExecuteNonQueryAsync();
             }
 
-            // The seed writes explicit ids; move each identity past them.
-            if (rows.Any(r => r is JsonObject o && o.ContainsKey("id")))
+            // The seed writes explicit ids; move each identity past them. (SQLite's rowid
+            // alias already continues from the largest id.)
+            if (engine == ScenarioEngine.Postgres && rows.Any(r => r is JsonObject o && o.ContainsKey("id")))
             {
                 await using var bump = c.CreateCommand();
                 bump.CommandText =

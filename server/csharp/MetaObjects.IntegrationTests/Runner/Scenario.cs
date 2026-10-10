@@ -17,8 +17,17 @@ public sealed record QueryScenario(
     string Description,
     string SourcePath,
     string? SeedData,
-    IReadOnlyList<QuerySpec> Queries)
-    : Scenario(Name, Description, SourcePath);
+    IReadOnlyList<QuerySpec> Queries,
+    IReadOnlyDictionary<string, string>? SeedDataEngine = null)   // per-engine seed SQL (`seed-data-engine:`), keyed by engine name
+    : Scenario(Name, Description, SourcePath)
+{
+    /// <summary>The seed SQL for <paramref name="engine"/>: its <c>seed-data-engine</c> entry, else the Postgres <c>seed-data</c>.</summary>
+    public string? SeedFor(string engine) =>
+        SeedDataEngine is not null && SeedDataEngine.TryGetValue(engine, out var own) ? own : SeedData;
+
+    /// <summary>True when <c>seed-data-engine</c> spells the seed for <paramref name="engine"/> itself.</summary>
+    public bool HasSeedFor(string engine) => SeedDataEngine?.ContainsKey(engine) == true;
+}
 
 /// <summary>A single query intent: op + entity + filter/sort/by + expected result.</summary>
 public sealed record QuerySpec(

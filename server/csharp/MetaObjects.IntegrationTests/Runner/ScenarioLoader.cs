@@ -84,6 +84,7 @@ public static class ScenarioLoader
             Description: raw.Description ?? "",
             SourcePath: yamlPath,
             SeedData: raw.SeedData,
+            SeedDataEngine: raw.SeedDataEngine,
             Queries: (raw.Queries ?? []).Select(q => new QuerySpec(
                 Name: q.Name ?? throw new InvalidOperationException($"{yamlPath}: query missing 'name'"),
                 Op: q.Op ?? throw new InvalidOperationException($"{yamlPath}: query missing 'op'"),
@@ -107,6 +108,9 @@ public static class ScenarioLoader
         public string? Name { get; set; }
         public string? Description { get; set; }
         public string? SeedData { get; set; }
+        // Per-engine seed SQL, keyed by engine name. Only a seed that cannot be one SQL
+        // text across engines (a clock-relative expression) carries one.
+        public Dictionary<string, string>? SeedDataEngine { get; set; }
         public List<QuerySpecYaml>? Queries { get; set; }
     }
 

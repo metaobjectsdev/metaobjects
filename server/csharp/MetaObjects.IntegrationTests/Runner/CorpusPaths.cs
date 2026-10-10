@@ -25,6 +25,21 @@ internal static class CorpusPaths
         Path.Combine(CanonicalDir, "schema.postgres.sql");
 
     /// <summary>
+    /// The committed canonical SQLite schema artifact — the same tables and report views,
+    /// produced by TypeScript (<c>meta migrate --dialect sqlite</c>'s diff + emit).
+    /// </summary>
+    public static readonly string CanonicalSchemaSqliteSql =
+        Path.Combine(CanonicalDir, "schema.sqlite.sql");
+
+    /// <summary>
+    /// The committed canonical MySQL schema artifact: the adopter's tables (MySQL is not owned
+    /// by <c>meta migrate</c>, ADR-0015) plus the report views TypeScript lowers with
+    /// <c>buildReportViews</c>.
+    /// </summary>
+    public static readonly string CanonicalSchemaMysqlSql =
+        Path.Combine(CanonicalDir, "schema.mysql.sql");
+
+    /// <summary>
     /// The canonical entity metadata for the corpus. The M:N runtime resolver
     /// (<see cref="M2MResolver"/>) loads it to derive junction FK fields from the
     /// junction entity's <c>identity.reference</c> children (FR-017).

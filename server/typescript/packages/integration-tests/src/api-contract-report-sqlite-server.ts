@@ -1,5 +1,6 @@
 // api-contract-report-sqlite-server.ts — boots the GENERATED report routes on SQLite
-// (bun:sqlite) and drives them over HTTP. The Postgres twin is
+// (bun:sqlite), or on Cloudflare D1's local runtime (Miniflare, `engine: "d1"`), and drives
+// them over HTTP. The Postgres twin is
 // api-contract-report-generated-server.ts; this one exists because the TypeScript view
 // read schema types a ratio (a decimal) as a string, SQLite has no decimal and returns a
 // REAL, and the corpus runs TypeScript on Postgres only. What the route answers for a
@@ -11,7 +12,6 @@
 // EMITTED <Report>.routes.ts files unmodified and mount them.
 
 import Fastify, { type FastifyInstance } from "fastify";
-import type { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -20,6 +20,16 @@ import { DEFAULT_COLUMN_NAMING_STRATEGY } from "@metaobjectsdev/metadata";
 import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
 import { loadMetadataFile } from "./load-metadata.ts";
 import { seedInserts, type ReportSeed } from "./api-contract-report-generated-server.ts";
+import { startLocalD1 } from "./query-scenario-d1.ts";
+
+/** The SQLite-family engines this server runs the emitted routes on. */
+export type SqliteReportEngine = "sqlite" | "d1";
+
+/** What the server needs of an engine: run one statement, and close. */
+interface EngineClient {
+  run(sql: string, params?: unknown[]): Promise<void>;
+  close(): Promise<void>;
+}
 
 export interface SqliteReportServerHandle {
   baseUrl: string;
@@ -66,7 +76,10 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
   },
 ];
 
-export async function startSqliteReportServer(metaPath: string): Promise<SqliteReportServerHandle> {
+export async function startSqliteReportServer(
+  metaPath: string,
+  engine: SqliteReportEngine = "sqlite",
+): Promise<SqliteReportServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
   const genTmpRoot = join(here, "..", ".gen-tmp");
   mkdirSync(genTmpRoot, { recursive: true });
@@ -78,7 +91,7 @@ export async function startSqliteReportServer(metaPath: string): Promise<SqliteR
       outDir: tmp,
       extStyle: "none",
       dbImport: "./db",
-      dialect: "sqlite",
+      dialect: "sqlite", // codegen has no d1 dialect: D1 is SQLite to Drizzle (only the db module differs)
       apiPrefix: "/api",
       generators: [entityFile(), routesFile()],
     }),
@@ -93,25 +106,16 @@ export async function startSqliteReportServer(metaPath: string): Promise<SqliteR
     throw new Error(`codegen produced warnings: ${lr.warnings.join("; ")}`);
   }
 
-  // The emitted routes import `db` from "./db"; one in-memory database serves them and the
-  // seed. A REAL read back from SQLite is the same JS number on every SQLite driver.
-  const dbModule = `
-import { Database } from "bun:sqlite";
-import { drizzle } from "drizzle-orm/bun-sqlite";
-export const client = new Database(":memory:");
-export const db = drizzle(client);
-`;
-  writeFileSync(join(tmp, "db.ts"), dbModule, "utf8");
-  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { client: Database };
+  const client = await openEngine(engine, tmp);
 
   const views = buildReportViews(root, {
     dialect: "sqlite",
     columnNamingStrategy: DEFAULT_COLUMN_NAMING_STRATEGY,
   });
-  for (const t of BASE_TABLES) dbMod.client.run(t.ddl);
+  for (const t of BASE_TABLES) await client.run(t.ddl);
   for (const v of views) {
     if (v.sql === undefined) throw new Error(`view ${v.name} has no SQL`);
-    dbMod.client.run(`CREATE VIEW "${v.name}" AS ${v.sql}`);
+    await client.run(`CREATE VIEW "${v.name}" AS ${v.sql}`);
   }
 
   const fastify = Fastify();
@@ -131,9 +135,9 @@ export const db = drizzle(client);
     baseUrl,
     applySeed: async (seed: ReportSeed) => {
       // Children before parents on the way out; the seed's file order (parents first) on the way in.
-      for (const t of [...BASE_TABLES].reverse()) dbMod.client.run(`DELETE FROM "${t.name}"`);
+      for (const t of [...BASE_TABLES].reverse()) await client.run(`DELETE FROM "${t.name}"`);
       for (const r of seedInserts(root, seed)) {
-        dbMod.client.run(
+        await client.run(
           `INSERT INTO "${r.table}" (${r.columns.map((c) => `"${c}"`).join(",")}) ` +
             `VALUES (${r.columns.map(() => "?").join(",")})`,
           r.values,
@@ -142,8 +146,45 @@ export const db = drizzle(client);
     },
     close: async () => {
       await fastify.close();
-      dbMod.client.close();
+      await client.close();
       rmSync(tmp, { recursive: true, force: true });
     },
+  };
+}
+
+/**
+ * Write the `db` module the emitted routes import (`import { db } from "./db"`) and open the
+ * engine behind it. One database serves the routes and the seed. A REAL read back from SQLite
+ * is the same JS number on every SQLite driver. D1 runs in Miniflare; its binding is handed to
+ * the module through `globalThis`, which is how a Worker's env binding reaches drizzle here.
+ */
+async function openEngine(engine: SqliteReportEngine, tmp: string): Promise<EngineClient> {
+  if (engine === "d1") {
+    const local = await startLocalD1();
+    (globalThis as { __reportD1?: unknown }).__reportD1 = local.d1;
+    writeFileSync(join(tmp, "db.ts"), `
+import { drizzle } from "drizzle-orm/d1";
+export const db = drizzle((globalThis as { __reportD1?: never }).__reportD1 as never);
+`, "utf8");
+    return {
+      run: async (sql, params = []) => {
+        await local.d1.prepare(sql).bind(...params).all();
+      },
+      close: async () => {
+        delete (globalThis as { __reportD1?: unknown }).__reportD1;
+        await local.dispose();
+      },
+    };
+  }
+  writeFileSync(join(tmp, "db.ts"), `
+import { Database } from "bun:sqlite";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+export const client = new Database(":memory:");
+export const db = drizzle(client);
+`, "utf8");
+  const mod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { client: import("bun:sqlite").Database };
+  return {
+    run: async (sql, params = []) => { mod.client.run(sql, params as never); },
+    close: async () => { mod.client.close(); },
   };
 }

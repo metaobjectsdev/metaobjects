@@ -26,6 +26,7 @@ import {
   CANONICAL_COLUMN_NAMING,
   readCanonicalSchemaSql,
 } from "./canonical-schema.ts";
+import { toWireRow } from "./engine-wire.ts";
 import { loadMetadataDir } from "./load-metadata.ts";
 import { canonicalJson, normalizeRow } from "./normalization.ts";
 import { executeSql } from "./postgres-sql.ts";
@@ -71,28 +72,50 @@ export async function runQueryScenario(
     // columns the schema doesn't have. See migration-scenario.ts for why both
     // runners pin "literal".
     const om = new ObjectManager({ metadata: root, driver, columnNamingStrategy: CANONICAL_COLUMN_NAMING });
-
-    for (const spec of scenario.queries) {
-      if (spec.expectError) {
-        let threw = false;
-        try {
-          await execute(om, root, spec);
-        } catch {
-          threw = true;
-        }
-        if (!threw) {
-          throw new Error(
-            `${scenario.sourcePath} / ${spec.name}: expected the ${spec.op} to FAIL, but it succeeded`,
-          );
-        }
-        continue;
-      }
-      const actual = await execute(om, root, spec);
-      assertResult(scenario.sourcePath, spec, actual);
-    }
+    await runScenarioQueries(scenario, om, root, "postgres");
   } finally {
     await kysely.destroy();
   }
+}
+
+/**
+ * Run a scenario's queries through `om` and hold each result to `expect`, the Postgres wire
+ * value, unchanged for every engine: a non-Postgres engine's driver spelling is mapped onto it
+ * first (engine-wire.ts), the expectation is never loosened. Shared by every engine's runner so
+ * the DSL translation and the comparison cannot drift between them.
+ */
+export async function runScenarioQueries(
+  scenario: QueryScenario,
+  om: ObjectManager,
+  root: MetaRoot,
+  engine: string,
+): Promise<void> {
+  for (const spec of scenario.queries) {
+    if (spec.expectError) {
+      let threw = false;
+      try {
+        await execute(om, root, spec);
+      } catch {
+        threw = true;
+      }
+      if (!threw) {
+        throw new Error(
+          `${scenario.sourcePath} / ${spec.name}: expected the ${spec.op} to FAIL, but it succeeded`,
+        );
+      }
+      continue;
+    }
+    const actual = toEngineWire(engine, spec, await execute(om, root, spec));
+    assertResult(scenario.sourcePath, spec, actual, engine);
+  }
+}
+
+/** A list result from a non-Postgres engine, mapped from its driver's spelling onto the corpus' wire form. */
+function toEngineWire(engine: string, spec: QuerySpec, actual: unknown): unknown {
+  if (spec.op !== "list" || !Array.isArray(actual)) return actual;
+  const wire = engine === "sqlite" || engine === "d1" ? "sqlite" : engine === "mysql" ? "mysql" : undefined;
+  if (wire === undefined) return actual;
+  return (actual as Record<string, unknown>[]).map((row) => toWireRow(wire, spec.entity, row));
 }
 
 // ---------------------------------------------------------------------------
@@ -208,12 +231,12 @@ function toRuntimeFilter(filter: Record<string, unknown>): Filter {
 // Assertions
 // ---------------------------------------------------------------------------
 
-function assertResult(scenarioPath: string, spec: QuerySpec, actual: unknown): void {
+function assertResult(scenarioPath: string, spec: QuerySpec, actual: unknown, engine: string): void {
   const expectedJson = canonicalizeExpected(spec.expect, spec.op);
   const actualJson = canonicalizeActual(actual, spec.op);
   if (expectedJson !== actualJson)
     throw new Error(
-      `${scenarioPath} / ${spec.name}: result mismatch\n  expected: ${expectedJson}\n  actual:   ${actualJson}`,
+      `${scenarioPath} / ${spec.name}: result mismatch on ${engine}\n  expected: ${expectedJson}\n  actual:   ${actualJson}`,
     );
 }
 

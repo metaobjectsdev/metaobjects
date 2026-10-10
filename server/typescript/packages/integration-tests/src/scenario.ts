@@ -30,6 +30,13 @@ export interface QueryScenario {
   readonly description: string;
   readonly sourcePath: string;
   readonly seedData: string | null;
+  /**
+   * Per-engine replacement for `seed-data`, keyed by engine name (`sqlite`, `mysql`, `d1`).
+   * `seed-data` is Postgres SQL; an engine listed here runs ITS seed instead of a translation
+   * of it. Used only where an engine has no spelling to translate to (the relative-date seed
+   * calls the database clock, and every engine spells that differently).
+   */
+  readonly seedDataEngine: Readonly<Record<string, string>> | null;
   readonly queries: ReadonlyArray<QuerySpec>;
 }
 
@@ -126,6 +133,7 @@ export function loadQuery(yamlPath: string): QueryScenario {
     description: raw.description ?? "",
     sourcePath: yamlPath,
     seedData: raw["seed-data"] ?? null,
+    seedDataEngine: (raw["seed-data-engine"] as Record<string, string> | undefined) ?? null,
     queries: (raw.queries ?? []).map((q) => ({
       name: required(q.name, yamlPath, "query.name"),
       op: required(q.op, yamlPath, "query.op") as QuerySpec["op"],
@@ -185,6 +193,7 @@ interface QueryYaml {
   name?: string;
   description?: string;
   "seed-data"?: string;
+  "seed-data-engine"?: unknown;
   queries?: {
     name?: string;
     op?: string;
