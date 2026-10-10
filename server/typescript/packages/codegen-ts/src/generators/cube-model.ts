@@ -32,7 +32,7 @@ import { DEFAULT_COLUMN_NAMING_STRATEGY, type MetaObject } from "@metaobjectsdev
 import type { EmittedFile, GenContext, Generator } from "../generator.js";
 import { buildCubeModel, hasReportingVocabulary } from "../cube/build-cube-model.js";
 import { CubeModelError, ERR_CUBE_UNSUPPORTED_DIALECT } from "../cube/cube-errors.js";
-import type { CubeDialect, CubeModel, CubeSpec } from "../cube/cube-model-spec.js";
+import { JOIN_PATH_SEPARATOR, type CubeDialect, type CubeModel, type CubeSpec } from "../cube/cube-model-spec.js";
 import { renderCubeViewYaml, renderCubeYaml } from "../cube/cube-yaml.js";
 
 export interface CubeModelGeneratorOptions {
@@ -141,7 +141,7 @@ function generateCubeFiles(ctx: GenContext, options: CubeModelGeneratorOptions):
   const written = new Set(cubes.map((c) => c.name));
   // A view reads the cubes its join paths name (Cube's dotted join-path syntax), so it is written
   // when all of them are.
-  const views = model.views.filter((v) => v.cubes.every((c) => c.joinPath.split(".").every((name) => written.has(name))));
+  const views = model.views.filter((v) => v.cubes.every((c) => c.joinPath.split(JOIN_PATH_SEPARATOR).every((name) => written.has(name))));
   return [
     ...cubes.map((cube) => ({ path: cubeFilePath(cube.name), content: renderCubeYaml(cube) })),
     ...views.map((view) => ({ path: viewFilePath(view.name), content: renderCubeViewYaml(view) })),

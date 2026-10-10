@@ -37,7 +37,7 @@ import {
 import { intValueMapOf } from "../enum-meta.js";
 import { sourceColumnNameFor, type ExtractContext } from "../projection/extract-view-spec.js";
 import { ratioOperand, resolveAggregate } from "../projection/report-resolve.js";
-import { cond, resolveReportFilter, type SqlRenderer } from "../projection/report-sql.js";
+import { cond, mysqlTupleCount, resolveReportFilter, type SqlRenderer } from "../projection/report-sql.js";
 import { CubeModelError, ERR_CUBE_UNMAPPABLE_DIMENSION } from "./cube-errors.js";
 import type {
   CubeDialect,
@@ -203,9 +203,7 @@ function aggregateSpec(
       // under MySQL's default utf8mb4_0900_ai_ci it counts 'abc' and 'ABC' twice where the view
       // counts them once (executed on mysql:8.4: 6 against the view's 4). Cube takes the
       // aggregate as written in a `number` measure.
-      const [first, ...rest] = cols;
-      const head = c === undefined ? first! : `CASE WHEN ${c} THEN ${first!} END`;
-      return { sql: `COUNT(DISTINCT ${[head, ...rest].join(", ")})`, type: "number" };
+      return { sql: mysqlTupleCount(cols, c), type: "number" };
     }
     // A tuple with any NULL component is not counted, as in the view.
     const filter = [...cols.map((x) => `${x} IS NOT NULL`), ...(c === undefined ? [] : [c])].join(" AND ");

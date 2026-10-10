@@ -4,7 +4,7 @@
 // quotes every identifier unconditionally, so a measure named `order` is valid DDL.
 import type { JoinNode } from "./view-spec.js";
 import type { ReportAggregate, ReportColumn, ReportViewSpec } from "./report-spec.js";
-import { cond, q, ref } from "./report-sql.js";
+import { cond, mysqlTupleCount, q, ref } from "./report-sql.js";
 import { truncateToGrain, type ReportDialect } from "./time-sql.js";
 
 export interface ReportEmitOptions {
@@ -52,13 +52,10 @@ function aggregate(a: ReportAggregate, d: ReportDialect): string {
       case "sqlite":
         sql = `COUNT(DISTINCT CASE WHEN ${both} THEN json_array(${refs.join(", ")}) END)`;
         break;
-      case "mysql": {
+      case "mysql":
         // MySQL's multi-argument COUNT(DISTINCT …) already skips a tuple with a NULL component.
-        const [first, ...rest] = refs;
-        const head = c === undefined ? first! : `CASE WHEN ${c} THEN ${first} END`;
-        sql = `COUNT(DISTINCT ${[head, ...rest].join(", ")})`;
+        sql = mysqlTupleCount(refs, c);
         break;
-      }
     }
   } else {
     const x = refs[0]!;

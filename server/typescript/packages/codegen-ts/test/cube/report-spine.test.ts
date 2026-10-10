@@ -430,6 +430,78 @@ describe("other spine shapes", () => {
     expect(cube(model, "Week").joins.map((j) => j.name)).toEqual(["Program"]);
   });
 
+  test("a facts or chain cube is private plumbing: it carries none of its entity's title or description", async () => {
+    const docs = { "@title": "Docs", "@description": "Documented." };
+    const model = await build([
+      program(),
+      entity("Week", [
+        table("weeks"),
+        longId,
+        { "field.long": { name: "programId" } },
+        pk,
+        { "identity.reference": { name: "fkProgram", "@fields": "programId", "@references": "Program" } },
+      ], docs),
+      entity("Session", [
+        table("sessions"),
+        longId,
+        { "field.long": { name: "weekId" } },
+        pk,
+        { "identity.reference": { name: "fkWeek", "@fields": "weekId", "@references": "Week" } },
+        { "dimension.attribute": { name: "programKey", "@of": "Program.id", "@via": "Session.fkWeek.fkProgram" } },
+        { "measure.aggregate": { name: "sessions", "@agg": "count", "@of": "Session.id" } },
+      ], docs),
+      report("ProgramSessions", {
+        "@from": "Session", "@spine": "Session.fkWeek.fkProgram", "@dimensions": ["programKey"], "@measures": ["sessions"],
+      }),
+    ]);
+    for (const name of ["ProgramSessionsFacts", "ProgramSessions_fkWeek"]) {
+      expect({ name, title: cube(model, name).title, description: cube(model, name).description }).toEqual({
+        name, title: undefined, description: undefined,
+      });
+    }
+    // The ordinary cubes keep them.
+    expect([cube(model, "Session").title, cube(model, "Week").description]).toEqual(["Docs", "Documented."]);
+  });
+
+  test("a TPH subtype as the spine entity: its cube, scoped by the discriminator, is the spine cube", async () => {
+    // The subtype's cube is a SELECT over the base table with its discriminator, so the view's rows
+    // are that subtype's rows only (the report view lowering refuses this report: no table of its own).
+    const model = await build([
+      entity("Auth", [
+        table("auths"),
+        longId,
+        { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+        { "field.string": { name: "reference" } },
+        pk,
+      ], { "@discriminator": "type" }),
+      entity("BridgeAuth", [], { extends: "Auth", "@discriminatorValue": "Bridge" }),
+      entity("Claim", [
+        table("claims"),
+        longId,
+        { "field.long": { name: "bridgeId" } },
+        pk,
+        { "identity.reference": { name: "fkBridge", "@fields": "bridgeId", "@references": "BridgeAuth" } },
+        { "dimension.attribute": { name: "bridgeReference", "@of": "BridgeAuth.reference", "@via": "Claim.fkBridge" } },
+        { "measure.aggregate": { name: "claims", "@agg": "count", "@of": "Claim.id" } },
+      ]),
+      report("BridgeClaims", { "@from": "Claim", "@spine": "Claim.fkBridge", "@dimensions": ["bridgeReference"], "@measures": ["claims"] }),
+    ]);
+    expect(cube(model, "BridgeAuth")).toEqual({
+      name: "BridgeAuth",
+      sql: `SELECT * FROM "auths" WHERE "type" = 'Bridge'`,
+      public: false,
+      joins: [{ name: "BridgeClaimsFacts", relationship: "one_to_many", sql: '{CUBE}."id" = {BridgeClaimsFacts}."bridgeId"' }],
+      dimensions: [key, { name: "reference", sql: '{CUBE}."reference"', type: "string", public: false }],
+      measures: [],
+      segments: [],
+      preAggregations: [],
+    });
+    expect(view(model, "BridgeClaims").cubes).toEqual([
+      { joinPath: "BridgeAuth", includes: [{ name: "reference", alias: "bridgeReference" }] },
+      { joinPath: "BridgeAuth.BridgeClaimsFacts", includes: [{ name: "claims" }] },
+    ]);
+  });
+
   test("a TPH subtype @from scopes its facts by the discriminator, then the report's scope", async () => {
     const model = await build([
       program(),
@@ -511,7 +583,10 @@ describe("names", () => {
       entity("ProgramRosterFacts", [table("prf"), longId, pk, { "measure.aggregate": { name: "n", "@agg": "count", "@of": "ProgramRosterFacts.id" } }]),
     ]);
     expect(err.code).toBe("ERR_CUBE_NAME_COLLISION");
-    expect(err.message).toContain("entity 'acme::shop::ProgramRosterFacts' and the facts cube 'ProgramRosterFacts' of report 'acme::shop::ProgramRoster'");
+    expect(err.message).toContain(
+      "entity 'acme::shop::ProgramRosterFacts' and the facts cube 'ProgramRosterFacts' of report 'acme::shop::ProgramRoster' " +
+        "would both be cube 'ProgramRosterFacts'. A cube is named after its entity and the name",
+    );
   });
 
   test("ERR_CUBE_NAME_COLLISION: a view and a cube share Cube's one namespace", async () => {
@@ -520,6 +595,10 @@ describe("names", () => {
       [[entity("ProgramRoster", [table("rosters"), longId, pk, { "measure.aggregate": { name: "n", "@agg": "count", "@of": "ProgramRoster.id" } }])]],
     );
     expect(err.code).toBe("ERR_CUBE_NAME_COLLISION");
-    expect(err.message).toContain("entity 'acme::other1::ProgramRoster' and the view 'ProgramRoster' of report 'acme::shop::ProgramRoster'");
+    expect(err.message).toContain(
+      "entity 'acme::other1::ProgramRoster' and the view 'ProgramRoster' of report 'acme::shop::ProgramRoster' would both " +
+        "be cube or view 'ProgramRoster', and Cube's cubes and views share one namespace. A cube is named after its " +
+        "entity and a view after its report and the name is kept as written",
+    );
   });
 });

@@ -155,6 +155,12 @@ export interface CubeViewIncludeSpec {
   readonly meta?: CubeDimensionMeta;
 }
 
+/**
+ * Cube's own syntax for a view's join path: cube names, each a join of the one before, joined by
+ * this (`Program.ProgramRosterFacts`).
+ */
+export const JOIN_PATH_SEPARATOR = ".";
+
 /** One `cubes` entry of a Cube view: a dotted join path from the view's root cube, and the members it includes there. */
 export interface CubeViewCubeSpec {
   /** e.g. `Program`, then `Program.ProgramRosterFacts`. Every step is a join of the cube before it. */

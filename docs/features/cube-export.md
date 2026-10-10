@@ -429,8 +429,18 @@ answer of the ordinary cubes is unchanged: on 1.7.43, `{ "measures": ["Week.week
 facts cubes in place. The measure definitions are copied into the facts cube, which is the cost of
 keeping the ordinary cubes as they are.
 
+A TPH subtype is exported in either place. As the spine entity, its own cube, whose `sql` is the
+base table scoped by the subtype's discriminator, is the spine cube, so the view's rows are that
+subtype's rows only. As `@from`, the facts cube's `sql` puts the discriminator before the report's
+scope. Both are correct by construction, and the report view lowering refuses both reports (a TPH
+subtype has no table of its own), so there is no view to compare them with.
+
+A facts or chain cube is private plumbing: it carries no `title` or `description`, while the view
+carries the report's.
+
 Executed on Cube 1.7.43 before this was built, and checked by the `cube` lane since: a view
-includes a private primary key and a `public: false` member under an alias; the include-level
+includes a private primary key and a `public: false` member under an alias, and one member twice
+under two aliases (two dimensions over one field and path); the include-level
 `title`, `description` and `meta` reach `/v1/meta`; the roster view returns every program, with
 `weeks` `0`, its plain sum null and its defaulted measures `0` for the programs with no weeks; the
 scoped facts cube keeps the programs whose weeks are all short; and a two-hop chain returns the
@@ -440,7 +450,7 @@ view lowering's rows. A view is answered from the tables.
 
 | Rule | Behaviour |
 |---|---|
-| cube name | the entity's name. Two entities of one name in two packages, or an alias, facts or chain cube or a `@spine` report's view named like a cube, is `ERR_CUBE_NAME_COLLISION`, naming both: Cube's cubes and views share one namespace. Rename one, or narrow the generator's `filter` to leave one out; the filter helps only when no `@via` reaches the entity it leaves out, since an entity a `@via` reaches is still written as a join-target cube, unless every hop onto it goes through an alias cube. |
+| cube name | the entity's name. Two entities of one name in two packages, or an alias, facts or chain cube or a `@spine` report's view named like a cube, is `ERR_CUBE_NAME_COLLISION`, naming both (the message says "cube or view" when one is a view): Cube's cubes and views share one namespace. Rename one, or narrow the generator's `filter` to leave one out; the filter helps only when no `@via` reaches the entity it leaves out, since an entity a `@via` reaches is still written as a join-target cube, unless every hop onto it goes through an alias cube. |
 | member name | the dimension, measure or segment name as written, so a report field and its Cube member share a name |
 | a name Cube refuses | Cube names start with a letter, hold only letters, digits and `_`, and are not a Python keyword (`from`, `class`, `in`, `is`, `not`, `and`, `or`, `if`, `else`, `for`, `while`, `with`, `as`, `def`, `return`, `yield`, `import`, `pass`, `global`, `nonlocal`, `lambda`, `del`, `assert`, `break`, `continue`, `try`, `except`, `finally`, `raise`, `async`, `await`, `True`, `False`, `None`, `elif`). That is `ERR_CUBE_INVALID_NAME`, naming the node. The exporter never renames: the name is the report field's. |
 | members the exporter adds | primary-key dimensions, reached-column dimensions, the `<m>Raw` measure of a defaulted measure, `<report>Scope` segments, rollups. A name that collides with another member of the cube is `ERR_CUBE_MEMBER_COLLISION`, naming both. The one exception is a declared dimension over a key field under its own name, which is that key dimension (see [Cubes and primary keys](#cubes-and-primary-keys)). |

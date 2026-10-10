@@ -10,6 +10,8 @@ views:
           - name: title
             alias: programTitle
             description: "The program's title."
+          - name: title
+            alias: programName
       - join_path: Program.ProgramRosterFacts
         includes:
           - name: weeks

@@ -67,21 +67,33 @@ export class MemberNamespace {
   }
 }
 
-/** Every cube name valid and distinct. `cubes` pairs each name with what it was made from. */
-export function assertCubeNames(cubes: readonly { readonly name: string; readonly what: string }[]): void {
-  const seen = new Map<string, string>();
-  for (const { name, what } of cubes) {
+/** One name in Cube's namespace of cubes and views, with what it was made from. */
+export interface CubeNameClaim {
+  readonly name: string;
+  readonly what: string;
+  /** True for a Cube view (a served `@spine` report); cubes and views share one namespace. */
+  readonly view?: boolean;
+}
+
+/** Every cube and view name valid and distinct. */
+export function assertCubeNames(claims: readonly CubeNameClaim[]): void {
+  const seen = new Map<string, CubeNameClaim>();
+  for (const claim of claims) {
+    const { name, what } = claim;
     assertCubeName(name, what);
     const prior = seen.get(name);
     if (prior !== undefined) {
+      const view = prior.view === true || claim.view === true;
       throw new CubeModelError(
         ERR_CUBE_NAME_COLLISION,
-        `${prior} and ${what} would both be cube '${name}'. A cube is named after its entity and the name ` +
+        `${prior.what} and ${what} would both be ${view ? "cube or view" : "cube"} '${name}'` +
+          (view ? `, and Cube's cubes and views share one namespace. ` : `. `) +
+          `A cube is named after its entity${view ? " and a view after its report" : ""} and the name ` +
           `is kept as written, so rename one of them, or narrow the generator's filter to leave one out. The ` +
           `filter helps only when no @via dimension reaches the entity it leaves out: an entity a @via reaches ` +
           `is still written, as a join-target cube, unless every hop onto it goes through an alias cube.`,
       );
     }
-    seen.set(name, what);
+    seen.set(name, claim);
   }
 }

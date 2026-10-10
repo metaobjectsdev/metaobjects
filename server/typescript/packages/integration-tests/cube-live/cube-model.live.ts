@@ -35,7 +35,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { cubeModel, defineConfig, runGen, servedReport } from "@metaobjectsdev/codegen-ts";
+import { JOIN_PATH_SEPARATOR, cubeModel, defineConfig, runGen, servedReport } from "@metaobjectsdev/codegen-ts";
 import {
   DOC_ATTR_DESCRIPTION,
   DOC_ATTR_TITLE,
@@ -799,7 +799,7 @@ function declaredSummary(tree: ReadonlyMap<string, string>): Record<string, Cube
     const members: string[] = [];
     for (const entry of v.cubes ?? []) {
       // The members a join path includes are the members of the cube it ends on.
-      const target = String(entry.join_path).split(".").pop();
+      const target = String(entry.join_path).split(JOIN_PATH_SEPARATOR).pop();
       const cube = cubes.find((c) => String(c.name) === target);
       if (cube === undefined) throw new Error(`view ${name}: join_path ${String(entry.join_path)} ends on no declared cube`);
       for (const include of entry.includes ?? []) {

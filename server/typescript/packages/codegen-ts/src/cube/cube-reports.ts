@@ -3,14 +3,12 @@
 // lists, and, for its `@filter`, a scope segment `<report>Scope`. Which reports are served, and
 // which cube receives them, is build-cube-model.ts's concern.
 //
-// The report's parts resolve as the view lowering resolves them (`reportShape`, `segmentClause`,
-// `resolveReportFilter`, `resolveAggregate`), so the rows a rollup groups are the rows the view
+// The report's parts resolve as the view lowering resolves them (`reportShape`, `reportScope`,
+// `resolveAggregate`), so the rows a rollup groups are the rows the view
 // groups. A relative date is found on those LOWERED clauses (a `RelativeNow` operand), never by
 // reading the authored JSON.
 
 import {
-  OBJECT_REPORT_ATTR_FILTER,
-  OBJECT_REPORT_ATTR_SEGMENT,
   TIME_GRAINS,
   type MetaMeasure,
   type ReportShape,
@@ -18,7 +16,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { ratioOperand, resolveAggregate } from "../projection/report-resolve.js";
 import { isRelativeNow } from "../projection/report-spec.js";
-import { cond, resolveReportFilter, segmentClause } from "../projection/report-sql.js";
+import { cond, reportScope } from "../projection/report-sql.js";
 import type { ViewFilterClause } from "../projection/view-spec.js";
 import type { MemberContext } from "./cube-members.js";
 import type { CubeRollupSpec, CubeRollupTimeDimension, CubeSegmentSpec } from "./cube-model-spec.js";
@@ -117,11 +115,9 @@ export function reportContribution(shape: ReportShape, cube: string, mc: MemberC
   const where = `cube '${cube}': report '${report.resolutionKey()}'`;
   const ctx = mc.extract;
 
-  const segmentAttr = report.attr(OBJECT_REPORT_ATTR_SEGMENT);
-  const segmentName = typeof segmentAttr === "string" ? segmentAttr : undefined;
-  const segment = segmentClause(segmentName, from, CUBE_SELF, ctx, where);
+  // The report view's own scope: its @segment's filter and its @filter, resolved as the view does.
+  const { segmentName, segment, filter } = reportScope(report, from, CUBE_SELF, ctx, where);
   const filterWhere = `${where} @filter`;
-  const filter = resolveReportFilter(report.attr(OBJECT_REPORT_ATTR_FILTER), from, CUBE_SELF, ctx, filterWhere);
   const scope: CubeSegmentSpec | undefined =
     filter === undefined
       ? undefined

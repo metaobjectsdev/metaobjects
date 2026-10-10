@@ -95,6 +95,13 @@
               }
             },
             {
+              "dimension.attribute": {
+                "name": "programName",
+                "@of": "Program.title",
+                "@via": "Week.fkProgram"
+              }
+            },
+            {
               "measure.aggregate": {
                 "name": "weeks",
                 "@agg": "count",
@@ -126,7 +133,8 @@
           "@spine": "Week.fkProgram",
           "@dimensions": [
             "programKey",
-            "programTitle"
+            "programTitle",
+            "programName"
           ],
           "@measures": [
             "weeks",

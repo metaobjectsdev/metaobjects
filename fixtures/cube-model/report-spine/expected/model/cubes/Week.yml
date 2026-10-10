@@ -18,6 +18,9 @@ cubes:
         sql: '{Program.title}'
         type: string
         description: "The program's title."
+      - name: programName
+        sql: '{Program.title}'
+        type: string
     measures:
       - name: weeks
         sql: '{CUBE}."id"'

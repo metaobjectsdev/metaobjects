@@ -17,6 +17,8 @@ import {
   FILTER_COMPOSE_OR,
   FILTER_OP_IN,
   FILTER_RELATIVE_NOW,
+  OBJECT_REPORT_ATTR_FILTER,
+  OBJECT_REPORT_ATTR_SEGMENT,
   TYPE_SEGMENT,
   type MetaField,
   type MetaMeasure,
@@ -203,4 +205,57 @@ export function segmentClause(
   const segment = declared(from, TYPE_SEGMENT, segmentName) as MetaSegment | undefined;
   if (segment === undefined) throw new Error(`${where}: segment '${segmentName}' is not declared on '${from.name}'.`);
   return resolveReportFilter(segment.filter(), from, alias, ctx, `${where} segment '${segmentName}'`);
+}
+
+/**
+ * MySQL's distinct count of a column tuple, as the report view writes it: the multi-argument
+ * `COUNT(DISTINCT a, b, ...)`, which skips a tuple with a NULL component and compares each
+ * component by its column's collation. A condition goes on the first component
+ * (`CASE WHEN <condition> THEN a END`), which a tuple with a NULL component never counts. `refs`
+ * and `condition` are rendered SQL; the Cube exporter writes the same expression as a `number`
+ * measure.
+ */
+export function mysqlTupleCount(refs: readonly string[], condition: string | undefined): string {
+  const [first, ...rest] = refs;
+  if (first === undefined) throw new Error("report-sql: a tuple count needs at least one column.");
+  const head = condition === undefined ? first : `CASE WHEN ${condition} THEN ${first} END`;
+  return `COUNT(DISTINCT ${[head, ...rest].join(", ")})`;
+}
+
+/** A report's row scope over `from`'s fields on `alias`. */
+export interface ReportScope {
+  /** The `@segment` the report names, when it names one. */
+  readonly segmentName?: string;
+  /** That segment's filter. */
+  readonly segment?: ViewFilterClause;
+  /** The report's own `@filter`. */
+  readonly filter?: ViewFilterClause;
+  /** The segment's filter, then the `@filter`, ANDed. Absent when the report declares neither. */
+  readonly where?: ViewFilterClause;
+}
+
+/**
+ * A report's `@segment` and `@filter`, resolved over `from`'s fields on `alias`: the scope the
+ * report view writes as its WHERE (or, under `@spine`, on the join that introduces `@from`), and
+ * the Cube exporter writes as segments or inside a facts cube. `where` names the report for an
+ * error; the `@filter`'s errors are named `<where> @filter`.
+ */
+export function reportScope(
+  report: MetaObject,
+  from: MetaObject,
+  alias: string,
+  ctx: ExtractContext,
+  where: string,
+): ReportScope {
+  const named = report.attr(OBJECT_REPORT_ATTR_SEGMENT);
+  const segmentName = typeof named === "string" ? named : undefined;
+  const segment = segmentClause(segmentName, from, alias, ctx, where);
+  const filter = resolveReportFilter(report.attr(OBJECT_REPORT_ATTR_FILTER), from, alias, ctx, `${where} @filter`);
+  const scope = andOf([segment, filter]);
+  return {
+    ...(segmentName !== undefined ? { segmentName } : {}),
+    ...(segment !== undefined ? { segment } : {}),
+    ...(filter !== undefined ? { filter } : {}),
+    ...(scope !== undefined ? { where: scope } : {}),
+  };
 }

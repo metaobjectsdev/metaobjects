@@ -11,8 +11,6 @@ import {
   FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
-  OBJECT_REPORT_ATTR_FILTER,
-  OBJECT_REPORT_ATTR_SEGMENT,
   measureDerivedSubType,
   reportShape,
   reportSpine,
@@ -44,7 +42,7 @@ import {
   viaHopError,
 } from "./report-resolve.js";
 import type { ReportAggregate, ReportColumn, ReportViewSpec } from "./report-spec.js";
-import { andOf, resolveReportFilter, segmentClause, temporalOf } from "./report-sql.js";
+import { reportScope, temporalOf } from "./report-sql.js";
 import type { JoinNode } from "./view-spec.js";
 
 // `temporalOf` lives with the other report SQL helpers; this module keeps exporting it.
@@ -259,12 +257,7 @@ export function extractReportSpec(report: MetaObject, root: MetaRoot, ctx: Extra
     return { kind: "aggregate", fieldName: f.name, dbColAlias, aggregate: aggregateOf(measure, report, from, baseAlias, root, ctx) };
   });
 
-  const reportWhere = `report '${report.name}'`;
-  const segment = report.attr(OBJECT_REPORT_ATTR_SEGMENT);
-  const where = andOf([
-    segmentClause(typeof segment === "string" ? segment : undefined, from, baseAlias, ctx, reportWhere),
-    resolveReportFilter(report.attr(OBJECT_REPORT_ATTR_FILTER), from, baseAlias, ctx, `${reportWhere} @filter`),
-  ]);
+  const { where } = reportScope(report, from, baseAlias, ctx, `report '${report.name}'`);
   return {
     viewName: projectionViewName(report, ctx.columnNamingStrategy),
     joinTree: { baseEntity: from.resolutionKey(), baseAlias, joins },

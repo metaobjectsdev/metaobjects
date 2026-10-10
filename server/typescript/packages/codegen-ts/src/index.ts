@@ -407,6 +407,7 @@ export type { CubeModelGeneratorOptions } from "./generators/cube-model.js";
 export { buildCubeModel, hasReportingVocabulary } from "./cube/build-cube-model.js";
 export type { CubeModelOptions } from "./cube/build-cube-model.js";
 export { renderCubeViewYaml, renderCubeYaml } from "./cube/cube-yaml.js";
+export { JOIN_PATH_SEPARATOR } from "./cube/cube-model-spec.js";
 export {
   CubeModelError,
   CUBE_ERROR_CODES,

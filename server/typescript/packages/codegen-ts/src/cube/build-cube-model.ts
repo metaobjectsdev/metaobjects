@@ -25,8 +25,6 @@ import {
   FIELD_SUBTYPE_ENUM,
   FILTER_OP_EQ,
   IDENTITY_SUBTYPE_REFERENCE,
-  OBJECT_REPORT_ATTR_FILTER,
-  OBJECT_REPORT_ATTR_SEGMENT,
   RELATIONSHIP_ATTR_CARDINALITY,
   RELATIONSHIP_ATTR_OBJECT_REF,
   TYPE_DIMENSION,
@@ -67,7 +65,7 @@ import {
   type PathStep,
 } from "../projection/extract-view-spec.js";
 import { dimensionOfField, ratioOperand, resolveDimensionViaPath } from "../projection/report-resolve.js";
-import { andOf, cond, resolveReportFilter, segmentClause } from "../projection/report-sql.js";
+import { andOf, cond, reportScope } from "../projection/report-sql.js";
 import type { ViewFilterClause } from "../projection/view-spec.js";
 import {
   CubeModelError,
@@ -87,19 +85,20 @@ import {
   segmentSpec,
   type MemberContext,
 } from "./cube-members.js";
-import type {
-  CubeDialect,
-  CubeDimensionSpec,
-  CubeJoinSpec,
-  CubeMeasureSpec,
-  CubeModel,
-  CubeRollupSpec,
-  CubeSegmentSpec,
-  CubeSource,
-  CubeSpec,
-  CubeViewCubeSpec,
-  CubeViewIncludeSpec,
-  CubeViewSpec,
+import {
+  JOIN_PATH_SEPARATOR,
+  type CubeDialect,
+  type CubeDimensionSpec,
+  type CubeJoinSpec,
+  type CubeMeasureSpec,
+  type CubeModel,
+  type CubeRollupSpec,
+  type CubeSegmentSpec,
+  type CubeSource,
+  type CubeSpec,
+  type CubeViewCubeSpec,
+  type CubeViewIncludeSpec,
+  type CubeViewSpec,
 } from "./cube-model-spec.js";
 import { assertCubeNames, MemberNamespace } from "./cube-names.js";
 import { coarsestFirst, reportContribution } from "./cube-reports.js";
@@ -119,9 +118,6 @@ export interface CubeModelOptions {
 }
 
 const REPORTING_TYPES: ReadonlySet<string> = new Set([TYPE_DIMENSION, TYPE_MEASURE, TYPE_SEGMENT]);
-
-/** Cube's own syntax for a view's join path: cube names, each a join of the one before (`Program.Week`). */
-const JOIN_PATH_SEPARATOR = ".";
 
 /**
  * `entity` declares (or inherits) reporting vocabulary; `joinTarget` is only reached (Table A);
@@ -326,7 +322,11 @@ class CubeModelBuilder {
     const emitted = this.emittedCubes();
     assertCubeNames([
       ...emitted.map((c) => ({ name: c.name, what: this.cubeLabel(c) })),
-      ...spines.map((p) => ({ name: p.report.name, what: `the view '${p.report.name}' of report '${p.report.resolutionKey()}'` })),
+      ...spines.map((p) => ({
+        name: p.report.name,
+        what: `the view '${p.report.name}' of report '${p.report.resolutionKey()}'`,
+        view: true,
+      })),
     ]);
     this.assertJoinKeys(emitted);
 
@@ -854,12 +854,9 @@ class CubeModelBuilder {
     const alias = shortAliasFor(from.name, new Set());
     const tph = isTphSubtype(from);
     const table = tph ? tphDiscriminatorBase(from)! : from;
-    const segment = report.attr(OBJECT_REPORT_ATTR_SEGMENT);
-    const scope = andOf([
-      tph ? this.discriminatorClause(from, `${alias}.`, where) : undefined,
-      segmentClause(typeof segment === "string" ? segment : undefined, from, alias, ctx, where),
-      resolveReportFilter(report.attr(OBJECT_REPORT_ATTR_FILTER), from, alias, ctx, `${where} @filter`),
-    ]);
+    // The report view's own scope (the condition on its join to @from), after the discriminator.
+    const { segment, filter } = reportScope(report, from, alias, ctx, where);
+    const scope = andOf([tph ? this.discriminatorClause(from, `${alias}.`, where) : undefined, segment, filter]);
     const select = `SELECT * FROM ${tableRef(resolveTableName(table), resolveTableSchema(table), this.d, renderer)} ${alias}`;
     return scope === undefined ? select : `${select} WHERE ${cond(scope, this.d, renderer)}`;
   }
@@ -1001,7 +998,9 @@ class CubeModelBuilder {
       name: draft.name,
       ...this.source(draft),
       ...(draft.kind === "entity" ? {} : { public: false }),
-      ...docOf(draft.entity),
+      // A facts or chain cube is a @spine report's private plumbing, not the entity: it carries no
+      // title or description of its own (the view carries the report's).
+      ...(draft.kind === "facts" || draft.kind === "chain" ? {} : docOf(draft.entity)),
       joins: draft.hops.map((h) => this.join(draft, h)),
       dimensions: [...draft.keyDims, ...draft.declaredOrder.map((dim) => draft.declaredDims.get(dim)!), ...draft.addedDims],
       measures: draft.measures,
