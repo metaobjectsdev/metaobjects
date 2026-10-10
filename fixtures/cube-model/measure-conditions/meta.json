@@ -1,0 +1,88 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Week",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "weeks"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId"
+              }
+            },
+            {
+              "field.int": {
+                "name": "durationMinutes"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "long",
+                "@filter": {
+                  "durationMinutes": {
+                    "gte": 60
+                  }
+                }
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "longLabelled",
+                "@agg": "count",
+                "@of": "Week.id",
+                "@segment": "long",
+                "@filter": {
+                  "label": {
+                    "isNull": false
+                  }
+                }
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "labelled",
+                "@agg": "count",
+                "@of": "Week.id",
+                "@filter": {
+                  "label": {
+                    "isNull": false
+                  }
+                }
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "longMinutes",
+                "@agg": "sum",
+                "@of": "Week.durationMinutes",
+                "@segment": "long"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "programs",
+                "@agg": "count",
+                "@of": "Program.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "Sourceless",
+          "@from": "Program",
+          "@measures": [
+            "programs"
+          ],
+          "@filter": {
+            "title": "x"
+          },
+          "children": []
+        }
+      },
+      {
+        "object.report": {
+          "name": "AbstractTotals",
+          "abstract": true,
+          "@from": "Program",
+          "@measures": [
+            "programs"
+          ],
+          "@filter": {
+            "title": "x"
+          },
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_abstracttotals"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "Materialized",
+          "@from": "Program",
+          "@measures": [
+            "programs"
+          ],
+          "@filter": {
+            "title": "x"
+          },
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "materializedView",
+                "@materializedView": "v_materialized"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

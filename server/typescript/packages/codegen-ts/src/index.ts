@@ -398,3 +398,53 @@ export type {
 // FR-040 §6.4 — the client-component directive for generated CLIENT artifacts.
 // Public so an OWNED generator applies it the same way the built-ins do.
 export { withClientDirective, CLIENT_DIRECTIVE } from "./client-directive.js";
+
+// FR-044 Plan 4 — the Cube exporter. `cubeModel()` is the reference generator; the two pure
+// stages it wires are public so an owned (ejected) copy imports only this package and keeps
+// only the parts it owns: which entities get a cube, the file layout and the YAML text.
+export { cubeModel } from "./generators/cube-model.js";
+export type { CubeModelGeneratorOptions } from "./generators/cube-model.js";
+export { buildCubeModel, hasReportingVocabulary } from "./cube/build-cube-model.js";
+export type { CubeModelOptions } from "./cube/build-cube-model.js";
+export { renderCubeYaml } from "./cube/cube-yaml.js";
+export {
+  CubeModelError,
+  CUBE_ERROR_CODES,
+  ERR_CUBE_AMBIGUOUS_PATH,
+  ERR_CUBE_INVALID_NAME,
+  ERR_CUBE_MEMBER_COLLISION,
+  ERR_CUBE_NAME_COLLISION,
+  ERR_CUBE_NO_PRIMARY_KEY,
+  ERR_CUBE_UNESCAPABLE_LITERAL,
+  ERR_CUBE_UNMAPPABLE_DIMENSION,
+  ERR_CUBE_UNMAPPABLE_JOIN,
+  ERR_CUBE_UNMAPPABLE_REPORT,
+  ERR_CUBE_UNSUPPORTED_DIALECT,
+} from "./cube/cube-errors.js";
+export type { CubeErrorCode } from "./cube/cube-errors.js";
+export type {
+  CubeDialect,
+  CubeDimensionMeta,
+  CubeDimensionSpec,
+  CubeDimensionType,
+  CubeFilterSpec,
+  CubeJoinRelationship,
+  CubeJoinSpec,
+  CubeMeasureSpec,
+  CubeMeasureType,
+  CubeModel,
+  CubeRollupNoTime,
+  CubeRollupOneTime,
+  CubeRollupSpec,
+  CubeRollupTimeDimension,
+  CubeRollupTimeList,
+  CubeSegmentSpec,
+  CubeSource,
+  CubeSpec,
+  CubeSpecBase,
+  CubeSqlSource,
+  CubeTableSource,
+  CubeViewCubeSpec,
+  CubeViewIncludeAlias,
+  CubeViewSpec,
+} from "./cube/cube-model-spec.js";

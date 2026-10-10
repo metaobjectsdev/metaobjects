@@ -98,9 +98,11 @@ export interface CubeModelOptions {
   readonly dialect: CubeDialect;
   readonly columnNamingStrategy: ColumnNamingStrategy;
   /**
-   * The generator's selection: an entity's cube is emitted only when it matches. A served
-   * report is not matched itself: its rollup and scope segment are members of its @from cube,
-   * written whenever that cube is emitted as the entity's own (Table F).
+   * The entities the model covers: an entity's cube is built only when it matches. The
+   * cube-model generator passes its own `filter` (fixed config, so a cube's content never
+   * depends on the run), never the run's entity selection. A served report is not matched
+   * itself: its rollup and scope segment are members of its @from cube, written whenever that
+   * cube is built as the entity's own (Table F).
    */
   readonly matches?: (obj: MetaObject) => boolean;
 }
@@ -165,8 +167,11 @@ export function buildCubeModel(root: MetaRoot, options: CubeModelOptions): CubeM
   return new CubeModelBuilder(root, options).build();
 }
 
-/** Table A: a concrete entity with a table that declares or inherits reporting vocabulary. */
-function hasReportingVocabulary(obj: MetaObject): boolean {
+/**
+ * Table A: a concrete entity with a table that declares or inherits reporting vocabulary, which
+ * is the entity's own cube, named after it. The cube-model generator selects by the same rule.
+ */
+export function hasReportingVocabulary(obj: MetaObject): boolean {
   // ADR-0039: resolving children(), so a member declared on an abstract base counts.
   return !obj.isAbstract && hasWritableRdbSource(obj) && obj.children().some((c) => REPORTING_TYPES.has(c.type));
 }

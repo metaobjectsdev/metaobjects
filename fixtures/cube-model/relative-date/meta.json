@@ -1,0 +1,108 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Event",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "events"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "occurredAt"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "localAt",
+                "@localTime": true
+              }
+            },
+            {
+              "field.date": {
+                "name": "onDate"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "recentEvents",
+                "@agg": "count",
+                "@of": "Event.id",
+                "@filter": {
+                  "occurredAt": {
+                    "gte": {
+                      "now": "-PT12H"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "recentInstant",
+                "@filter": {
+                  "occurredAt": {
+                    "gte": {
+                      "now": "-P7D"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "recentNaive",
+                "@filter": {
+                  "localAt": {
+                    "gte": {
+                      "now": "-P7D"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "recentDate",
+                "@filter": {
+                  "onDate": {
+                    "gte": {
+                      "now": "-P7D"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "beforeTomorrow",
+                "@filter": {
+                  "localAt": {
+                    "lt": {
+                      "now": "P1D"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

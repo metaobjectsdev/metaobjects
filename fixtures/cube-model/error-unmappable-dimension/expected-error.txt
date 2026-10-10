@@ -1,0 +1,1 @@
+ERR_CUBE_UNMAPPABLE_DIMENSION: cube 'Tagged': dimension 'shop::Tagged.tag' reads field 'shop::Tagged.tags' (field.string, isArray), which no Cube dimension can hold: Cube has no array or JSON dimension type. Group by a scalar field instead, or remove the dimension.

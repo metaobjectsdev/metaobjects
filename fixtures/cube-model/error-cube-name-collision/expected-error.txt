@@ -1,0 +1,1 @@
+ERR_CUBE_NAME_COLLISION: entity 'shop::Match_homeRef' and the alias cube 'Match_homeRef' of 'shop::Team' would both be cube 'Match_homeRef'. A cube is named after its entity and the name is kept as written, so narrow the generator's filter to select only one of them, or rename one.

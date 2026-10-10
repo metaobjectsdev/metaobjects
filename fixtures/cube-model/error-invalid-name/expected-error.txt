@@ -1,0 +1,1 @@
+ERR_CUBE_INVALID_NAME: dimension 'shop::Program.from' is named 'from', which Cube cannot take: it is a Python keyword. Cube names start with a letter, hold only letters, digits and _, and are not a Python keyword. Rename it in the model; the exporter never renames, because a Cube member and its report field share one name.

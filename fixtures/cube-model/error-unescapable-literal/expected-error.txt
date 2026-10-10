@@ -1,0 +1,1 @@
+ERR_CUBE_UNESCAPABLE_LITERAL: cube 'Program': segment 'shop::Program.notRaw': the literal 'x endraw y' contains "endraw", which would end the {% raw %} block that keeps Jinja away from it, so Cube cannot be given it intact. Change the value, or express the condition another way (for example a 'like' pattern).

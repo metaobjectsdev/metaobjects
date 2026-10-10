@@ -1,0 +1,99 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "@values": [
+                  "DRAFT",
+                  "PUBLISHED"
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "status",
+                "@of": "Program.status"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Week",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "weeks"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkProgram",
+                "@fields": "programId",
+                "@references": "Program"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "programTitle",
+                "@of": "Program.title",
+                "@via": "Week.fkProgram"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "programStatus",
+                "@of": "Program.status",
+                "@via": "Week.fkProgram"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

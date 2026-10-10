@@ -1,0 +1,73 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Week",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "weeks"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId"
+              }
+            },
+            {
+              "field.int": {
+                "name": "durationMinutes"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "totalMinutes",
+                "@agg": "sum",
+                "@of": "Week.durationMinutes"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "avgMinutes",
+                "@agg": "avg",
+                "@of": "Week.durationMinutes"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "minMinutes",
+                "@agg": "min",
+                "@of": "Week.durationMinutes"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "maxMinutes",
+                "@agg": "max",
+                "@of": "Week.durationMinutes"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

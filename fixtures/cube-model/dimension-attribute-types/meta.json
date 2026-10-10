@@ -1,0 +1,192 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Sample",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "samples"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "@values": [
+                  "OPEN",
+                  "SHUT"
+                ]
+              }
+            },
+            {
+              "field.uuid": {
+                "name": "token"
+              }
+            },
+            {
+              "field.time": {
+                "name": "opensAt"
+              }
+            },
+            {
+              "field.int": {
+                "name": "seats"
+              }
+            },
+            {
+              "field.long": {
+                "name": "visits"
+              }
+            },
+            {
+              "field.double": {
+                "name": "score"
+              }
+            },
+            {
+              "field.float": {
+                "name": "weight"
+              }
+            },
+            {
+              "field.decimal": {
+                "name": "price",
+                "@precision": 10,
+                "@scale": 2
+              }
+            },
+            {
+              "field.currency": {
+                "name": "feeCents",
+                "@currency": "USD"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "active"
+              }
+            },
+            {
+              "field.date": {
+                "name": "openedOn"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "seenAt"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "localAt",
+                "@localTime": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "label",
+                "@of": "Sample.label"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "status",
+                "@of": "Sample.status"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "token",
+                "@of": "Sample.token"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "opensAt",
+                "@of": "Sample.opensAt"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "seats",
+                "@of": "Sample.seats"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "visits",
+                "@of": "Sample.visits"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "score",
+                "@of": "Sample.score"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "weight",
+                "@of": "Sample.weight"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "price",
+                "@of": "Sample.price"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "feeCents",
+                "@of": "Sample.feeCents"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "active",
+                "@of": "Sample.active"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "openedOn",
+                "@of": "Sample.openedOn"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "seenAt",
+                "@of": "Sample.seenAt"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "localAt",
+                "@of": "Sample.localAt"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

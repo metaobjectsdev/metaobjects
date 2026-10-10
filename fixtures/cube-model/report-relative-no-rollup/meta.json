@@ -1,0 +1,98 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdAt",
+                "@localTime": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "programs",
+                "@agg": "count",
+                "@of": "Program.id"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "newThisWeek",
+                "@agg": "count",
+                "@of": "Program.id",
+                "@filter": {
+                  "createdAt": {
+                    "gte": {
+                      "now": "-P7D"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "RecentPrograms",
+          "@from": "Program",
+          "@measures": [
+            "programs"
+          ],
+          "@filter": {
+            "createdAt": {
+              "gte": {
+                "now": "-P30D"
+              }
+            }
+          },
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_recentprograms"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "WeeklyNew",
+          "@from": "Program",
+          "@measures": [
+            "newThisWeek"
+          ],
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_weeklynew"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

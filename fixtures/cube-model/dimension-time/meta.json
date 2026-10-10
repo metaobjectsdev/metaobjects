@@ -1,0 +1,77 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Event",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "events"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "occurredAt"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "localAt",
+                "@localTime": true
+              }
+            },
+            {
+              "field.date": {
+                "name": "onDate"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "dimension.time": {
+                "name": "occurredAt",
+                "@of": "Event.occurredAt",
+                "@grains": [
+                  "hour",
+                  "day"
+                ]
+              }
+            },
+            {
+              "dimension.time": {
+                "name": "localAt",
+                "@of": "Event.localAt",
+                "@grains": [
+                  "day",
+                  "week"
+                ]
+              }
+            },
+            {
+              "dimension.time": {
+                "name": "onDate",
+                "@of": "Event.onDate",
+                "@grains": [
+                  "month",
+                  "quarter",
+                  "year"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

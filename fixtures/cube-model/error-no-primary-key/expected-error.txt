@@ -1,0 +1,1 @@
+ERR_CUBE_NO_PRIMARY_KEY: cube 'Week': the join 'Program' (identity.reference 'shop::Week.fkProgram') joins 'shop::Program', which declares no identity.primary, and Cube needs a primary key on both sides of a join. Declare an identity.primary on 'shop::Program'.

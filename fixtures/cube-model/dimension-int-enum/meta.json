@@ -1,0 +1,49 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Ticket",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "tickets"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "priority",
+                "@values": [
+                  "LOW",
+                  "HIGH"
+                ],
+                "@intValueMap": {
+                  "LOW": 1,
+                  "HIGH": 2
+                }
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "priority",
+                "@of": "Ticket.priority"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
