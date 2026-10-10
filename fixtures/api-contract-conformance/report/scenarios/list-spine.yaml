@@ -1,0 +1,26 @@
+name: report-list-spine
+description: >
+  GET /api/product_revenues — ProductRevenue declares @spine Sale.fkProduct, so its rows
+  are the products, not the sales: Cinder has no sale and still has a row. On that row a
+  count is 0, a sum without a @default (revenueCents) is null with the key present, and
+  the sum with @default 0 (revenueOrZero) is 0. withCount=1 counts the empty row too.
+requests:
+  - id: r1
+    method: GET
+    path: /api/product_revenues?sort=productId:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { productId: 1, productName: "Atlas", sales: 2, revenueCents: 30000, revenueOrZero: 30000 }
+          - { productId: 2, productName: "Beacon", sales: 1, revenueCents: 4500, revenueOrZero: 4500 }
+          - { productId: 3, productName: "Cinder", sales: 0, revenueCents: null, revenueOrZero: 0 }
+  - id: r2
+    method: GET
+    path: /api/product_revenues?sort=productId:asc&withCount=1
+    expect:
+      status: 200
+      body:
+        envelope: true
+        rowsLength: 3
+        total: 3

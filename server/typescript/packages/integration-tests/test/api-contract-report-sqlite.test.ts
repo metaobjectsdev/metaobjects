@@ -78,6 +78,9 @@ describe("api contract report (FR-044) — GENERATED routes on SQLite", () => {
       expect(await getJson(server, "/api/invoices_by_months?sort=issuedOnMonth:asc")).toEqual(
         SEED.reports!["InvoicesByMonth"],
       );
+      expect(await getJson(server, "/api/product_revenues?sort=productId:asc")).toEqual(
+        SEED.reports!["ProductRevenue"],
+      );
     });
   });
 

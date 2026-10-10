@@ -47,6 +47,39 @@
         "@from": "Invoice",
         "@dimensions": ["issuedOn:day"],
         "@measures": ["invoices"]
+      }},
+      { "object.entity": {
+        "name": "Product",
+        "children": [
+          { "source.rdb":       { "@table": "products" } },
+          { "field.long":       { "name": "id" } },
+          { "field.string":     { "name": "name", "@required": true } },
+          { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "Sale",
+        "children": [
+          { "source.rdb":         { "@table": "sales" } },
+          { "field.long":         { "name": "id" } },
+          { "field.long":         { "name": "productId", "@required": true } },
+          { "field.long":         { "name": "amountCents", "@required": true } },
+          { "identity.primary":   { "name": "pk", "@fields": "id", "@generation": "increment" } },
+          { "identity.reference": { "name": "fkProduct", "@fields": "productId", "@references": "Product" } },
+          { "dimension.attribute": { "name": "productId", "@of": "Product.id", "@via": "Sale.fkProduct" } },
+          { "dimension.attribute": { "name": "productName", "@of": "Product.name", "@via": "Sale.fkProduct" } },
+          { "measure.aggregate":   { "name": "sales", "@agg": "count", "@of": "Sale.id" } },
+          { "measure.aggregate":   { "name": "revenueCents", "@agg": "sum", "@of": "Sale.amountCents" } },
+          { "measure.aggregate":   { "name": "revenueOrZero", "@agg": "sum", "@of": "Sale.amountCents", "@default": 0 } }
+        ]
+      }},
+      { "object.report": {
+        "name": "ProductRevenue",
+        "@from": "Sale",
+        "@spine": "Sale.fkProduct",
+        "@dimensions": ["productId", "productName"],
+        "@measures": ["sales", "revenueCents", "revenueOrZero"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_product_revenue" } } ]
       }}
     ]
   }

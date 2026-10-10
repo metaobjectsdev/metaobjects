@@ -6,6 +6,16 @@
     { "id": 4, "reference": "INV-1004", "status": "VOID", "amountCents":      0, "issuedOn": "2026-05-31" },
     { "id": 5, "reference": "INV-1005", "status": "PAID", "amountCents":  60000, "issuedOn": "2026-06-01" }
   ],
+  "products": [
+    { "id": 1, "name": "Atlas" },
+    { "id": 2, "name": "Beacon" },
+    { "id": 3, "name": "Cinder" }
+  ],
+  "sales": [
+    { "id": 1, "productId": 1, "amountCents": 12000 },
+    { "id": 2, "productId": 1, "amountCents": 18000 },
+    { "id": 3, "productId": 2, "amountCents":  4500 }
+  ],
   "reports": {
     "InvoiceStatusTotals": [
       { "status": "OPEN", "invoices": 2, "totalCents": 130500, "paidCents": null },
@@ -19,6 +29,11 @@
     ],
     "InvoiceTotals": [
       { "invoices": 5, "totalCents": 315500, "paidShare": "0.4" }
+    ],
+    "ProductRevenue": [
+      { "productId": 1, "productName": "Atlas",  "sales": 2, "revenueCents": 30000, "revenueOrZero": 30000 },
+      { "productId": 2, "productName": "Beacon", "sales": 1, "revenueCents": 4500,  "revenueOrZero": 4500 },
+      { "productId": 3, "productName": "Cinder", "sales": 0, "revenueCents": null,  "revenueOrZero": 0 }
     ]
   }
 }
