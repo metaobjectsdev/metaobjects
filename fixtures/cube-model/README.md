@@ -45,9 +45,11 @@ never copied from it. A golden blessed from the implementation proves nothing.
 | `dimension-via-join-target` | A row 2; E rows 4 and 5 | a multi-hop `@via` onto entities that are no cube makes join-target cubes (`public: false`), each joined on its own hop's holder; the dimension reads the far cube |
 | `dimension-time` | B: `dimension.time` + `@grains`; C | instant and naive timestamps as the column, a date cast to `TIMESTAMP`; `meta.grains` in declared order |
 | `dimension-time-two-grains` | F (list form) | one time dimension at two grains in one served report: `time_dimensions` with one entry per grain |
+| `dimension-time-mysql` | C (MySQL arm) | under `"dialect": "mysql"`: a timestamp is the backtick-quoted column, and a date, as a time dimension or as an attribute, is `CAST(… AS DATETIME)` (MySQL's `CAST` has no `TIMESTAMP` target; Table C's `TIMESTAMP` is the Postgres spelling) |
 | `measure-count` | B; D | `type: count`, `sql` the `@of` column (the key, and a nullable column) |
 | `measure-count-distinct` | B; D | `type: count_distinct` over one column |
 | `measure-count-distinct-tuple` | B; D | `ROW(…)` with the `IS NOT NULL` filter on each component (Review Focus 2) |
+| `measure-count-distinct-tuple-condition` | B; D rows 3 and 4 | a tuple distinct count with a condition keeps ONE `filters` entry: the not-null terms, then the condition ANDed after them. A lone `@segment` or `@filter` is appended as it is; a segment with a `@filter` is the parenthesised `(A AND B)`; an `or` group is parenthesised by itself, so it cannot swallow the not-null terms |
 | `measure-sum-avg-min-max` | B; D | `sum`, `avg`, `min`, `max` over the column |
 | `measure-conditions` | B: `@segment` and `@filter`; D | one `filters` entry: segment then filter ANDed and parenthesised; each alone is the entry as it is |
 | `measure-ratio` | B: `measure.ratio`; D | `CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0)`, `type: number` |
