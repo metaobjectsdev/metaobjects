@@ -17,8 +17,11 @@ import com.metaobjects.integration.kotlin.tables.ProgramTable
 import com.metaobjects.integration.kotlin.tables.ProgramView
 import com.metaobjects.integration.kotlin.tables.WeekTable
 import com.metaobjects.integration.kotlin.tables.AssetActivityView
+import com.metaobjects.integration.kotlin.tables.FitnessTotalsFilledView
 import com.metaobjects.integration.kotlin.tables.FitnessTotalsView
+import com.metaobjects.integration.kotlin.tables.ProgramLongWeeksView
 import com.metaobjects.integration.kotlin.tables.ProgramMinutesView
+import com.metaobjects.integration.kotlin.tables.ProgramRosterView
 import com.metaobjects.integration.kotlin.tables.ProgramsByMonthView
 import com.metaobjects.integration.kotlin.tables.ProgramsByWeekView
 import com.metaobjects.integration.kotlin.tables.RecentProgramsView
@@ -498,6 +501,10 @@ object QueryScenarioRunner {
         "ProgramsByWeek" -> ProgramsByWeekView
         "RecentPrograms" -> RecentProgramsView
         "AssetActivity" -> AssetActivityView
+        // A @spine report (rows from the spine entity) and a report of defaulted measures.
+        "ProgramRoster" -> ProgramRosterView
+        "ProgramLongWeeks" -> ProgramLongWeeksView
+        "FitnessTotalsFilled" -> FitnessTotalsFilledView
         "Asset" -> AssetTable
         "AllTypes" -> AllTypesTable
         // FR-017 TPH: the discriminator base + all its subtypes share the single `auths` table.

@@ -32,8 +32,10 @@ import kotlin.test.assertTrue
  * byte for byte, and those four emit nothing else new.
  *
  * The model pair is `fixtures/codegen-noop/reporting/{with,without}`, shared with the other
- * four ports' copies of this test. `with/` carries two sourceless reports
- * (`ProgramEngagement`, `DailyRevenue`) and one view-backed one (`StoreTotals`).
+ * four ports' copies of this test. `with/` carries three sourceless reports
+ * (`ProgramEngagement`, `DailyRevenue`, and `ProgramCatalogue`, which declares `@spine` and
+ * lists a dimension reached by `@via`) and one view-backed one (`StoreTotals`). A measure's
+ * `@default` (`avgDaysPerStarter`) generates nothing either.
  */
 class ReportingInertTest {
 
@@ -118,7 +120,7 @@ class ReportingInertTest {
             .filter { it.subType == MetaObject.SUBTYPE_REPORT }
             .map { it.shortName }
             .sorted()
-        assertEquals(listOf("DailyRevenue", "ProgramEngagement", "StoreTotals"), reports)
+        assertEquals(listOf("DailyRevenue", "ProgramCatalogue", "ProgramEngagement", "StoreTotals"), reports)
         assertFalse(load("without").metaObjects.any { it.subType == MetaObject.SUBTYPE_REPORT })
     }
 
@@ -154,7 +156,7 @@ class ReportingInertTest {
     fun `a sourceless report appears in no generated file`() {
         val files = emit("with", GENERATOR_REGISTRY.values.toList())
         assertFalse(THREW in files, "the combined suite threw: ${files[THREW]}")
-        for (report in listOf("ProgramEngagement", "DailyRevenue")) {
+        for (report in SOURCELESS_REPORTS) {
             val hits = files.filter { (path, text) -> report in path || report in text }.keys
             assertTrue(hits.isEmpty(), "$report leaked into $hits")
         }
@@ -220,7 +222,7 @@ class ReportingInertTest {
                 .filterNot { it.isBlank() || "StoreTotals" in it || "store_totals" in it }
             assertEquals(expected.getValue(page).lines().filterNot { it.isBlank() }, lines, page)
         }
-        for (report in listOf("ProgramEngagement", "DailyRevenue")) {
+        for (report in SOURCELESS_REPORTS) {
             assertFalse(actual.any { (path, text) -> report in path || report in text }, "$report is documented")
         }
     }
@@ -232,6 +234,9 @@ class ReportingInertTest {
         const val EXPOSED_TABLE = "exposed-table"
 
         const val STORE_TOTALS_TABLE_PATH = "acme/shop/StoreTotalsTable.kt"
+
+        /** The with-model's reports that declare no source: inert everywhere. */
+        val SOURCELESS_REPORTS = listOf("DailyRevenue", "ProgramCatalogue", "ProgramEngagement")
 
         /** Registry id of each generator that emits for a served report, to the one file it adds. */
         val STORE_TOTALS_FILES = mapOf(

@@ -26,7 +26,7 @@ import kotlin.io.path.isRegularFile
 import kotlin.io.path.readText
 
 /**
- * FR-044 Plan 3: host the GENERATED Kotlin Spring controllers of the three served reports
+ * FR-044 Plan 3: host the GENERATED Kotlin Spring controllers of the four served reports
  * of the `report/` corpus over real HTTP (an embedded Tomcat). Mirrors
  * [com.metaobjects.integration.kotlin.api.projection.generated.GeneratedProjectionControllerHarness].
  *
@@ -38,12 +38,13 @@ import kotlin.io.path.readText
  *     report controller COMPILES against its row, table and allowlist: the codegen-compile
  *     gate excludes the framework-bound route tier in every port by design.
  *  4. Per scenario: a fresh in-memory H2 (PostgreSQL mode), `SchemaUtils.create(...)` on the
- *     three generated report table objects, then the `reports` half of `seed.json`.
+ *     four generated report table objects, then the `reports` half of `seed.json`.
  *  5. Serve the three controllers from one embedded Tomcat ([TomcatHost]).
  *
  * No view SQL is written here (ADR-0015: TypeScript owns it). H2 creates each generated
  * `<R>Table` as a plain table that STANDS IN for the view, and the seed's `reports` half is
- * what the three views return for the seeded invoices. What this lane proves is the
+ * what the four views return for the seeded base tables. The base-table keys (`invoices`,
+ * `products`, `sales`) are the full-stack lanes' input; this seam lane does not read them. What this lane proves is the
  * generated route over the generated binding, not the lowering.
  */
 @OptIn(org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi::class)
@@ -114,7 +115,7 @@ class GeneratedReportControllerHarness(
         }
     }
 
-    /** Rebuild a fresh in-memory H2, the three stand-in tables, the seed, and Tomcat. */
+    /** Rebuild a fresh in-memory H2, the four stand-in tables, the seed, and Tomcat. */
     fun reset() {
         val dbName = "report_invoice_${dbSeq.incrementAndGet()}"
         val db = Database.connect("jdbc:h2:mem:$dbName;DB_CLOSE_DELAY=-1;MODE=PostgreSQL", driver = "org.h2.Driver")
@@ -161,8 +162,11 @@ class GeneratedReportControllerHarness(
     companion object {
         const val ENTITY_PKG = "acme.sales"
 
-        /** The three reports of the corpus that declare a view. `InvoiceDays` declares none. */
-        val SERVED = listOf("InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals")
+        /**
+         * The four reports of the corpus that declare a view. `InvoiceDays` declares none.
+         * `ProductRevenue` declares `@spine` and a measure with `@default`.
+         */
+        val SERVED = listOf("InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "ProductRevenue")
 
         private fun snakeCase(s: String): String = buildString {
             for (c in s) {
