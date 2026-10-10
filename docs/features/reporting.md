@@ -17,8 +17,9 @@ stays inert: it is a checked statement of intent. No generator, migration or run
 it, and the one thing written about it is a `meta docs` model page marked "not served".
 
 **Exporting to Cube.** A TypeScript reference generator, `cube-model`, writes the same
-vocabulary as Cube data-model files: a cube for each entity that declares dimensions, measures
-or segments, and a rollup pre-aggregation for each served report. See
+vocabulary as Cube data-model files: a cube for each concrete, table-backed entity that declares
+dimensions, measures or segments (plus the join-target and alias cubes its `@via` dimensions
+need), and a rollup pre-aggregation for each served report. See
 [Exporting to Cube](#exporting-to-cube) and [cube-export.md](cube-export.md).
 
 **What does not exist yet.** No grid, form or other UI-tier output is generated for a report
@@ -661,13 +662,15 @@ no file.
 | a to-one `identity.reference` between two cubes | a `many_to_one` join |
 | `dimension.attribute`, and `@via` through a join | a dimension (`@via` reads a member of the joined cube) |
 | `dimension.time` | a `time` dimension, with `@grains` carried as `meta.grains` |
-| `measure.aggregate`, `measure.ratio` | a measure, its `@segment` and `@filter` as a `filters` entry |
+| `measure.aggregate` | a measure, its `@segment` and `@filter` as one `filters` entry |
+| `measure.ratio` | a `number` measure over its two operand measures |
 | `segment.filter` | a segment |
 | a served `object.report` | a `rollup` pre-aggregation on its `@from` cube, and a segment for its `@filter` |
 
 The SQL in the files comes from the same functions that write a report's view, so a filter
-means the same thing in both. A report with a relative date in its scope gets the segment and
-no rollup, because a rollup would freeze "now" at build time. On the conformance data, the
+means the same thing in both. A report with a relative date in its `@filter`, its `@segment` or
+a listed measure's condition gets no rollup, because a rollup would freeze "now" at build time;
+it still gets its scope segment when it has a `@filter`. On the conformance data, the
 Cube query for each canonical report returns the rows of its view; a live check against a real
 Cube holds that. What the generator writes, wires, refuses and does not cover is in
 [cube-export.md](cube-export.md).

@@ -481,9 +481,9 @@ adapter code; in memory trivial.
 | `dimension.time` + `@grains` | `time` dimension; `@grains` carried as `meta.grains` (Cube offers every granularity and cannot restrict them) | time dimension, `time_granularity` |
 | `measure.aggregate` count | `count` | `count` (or `sum` of 1) |
 | `measure.aggregate` count + `@distinct` (one column) | `count_distinct` | `count_distinct` |
-| `measure.aggregate` count + `@distinct` (tuple) | `count_distinct` over `ROW(…)` with a not-null filter on each column | `count_distinct` over an expression |
+| `measure.aggregate` count + `@distinct` (tuple) | `count_distinct` over `ROW(…)` (MySQL `JSON_ARRAY(…)`) with a not-null filter on each column | `count_distinct` over an expression |
 | `measure.aggregate` sum/avg/min/max | `sum`/`avg`/`min`/`max` | `sum`/`average`/`min`/`max` |
-| `measure.ratio` | `number` measure `{a} / NULLIF({b}, 0)` | `ratio` metric |
+| `measure.ratio` | `number` measure `{a} / NULLIF({b}, 0)`; on Postgres `CAST({a} AS NUMERIC) / NULLIF({b}, 0)`, with no cast on MySQL | `ratio` metric |
 | `measure.derived` | `number` measure | `derived` metric |
 | `segment` | segment | metric `filter` / saved query filter |
 | relative filter `{ now: "-P7D" }` | the view's SQL in a segment or measure filter (no rollup for such a report) | `{{ TimeDimension(...) }} >= dateadd(...)` |
@@ -493,7 +493,7 @@ adapter code; in memory trivial.
 
 FR-044 Plan 4 ([plan](../plans/2026-10-09-fr-044-plan-4-cube-exporter.md)) built the Cube
 column as written above, except the `@spine` and `@default` rows, which wait for those
-attributes to be registered. The MetricFlow column waits for the first adopter who asks (D5).
+attributes to be registered, and `measure.derived`, which is not registered. The MetricFlow column waits for the first adopter who asks (D5).
 
 ## 6. Dependencies and order
 

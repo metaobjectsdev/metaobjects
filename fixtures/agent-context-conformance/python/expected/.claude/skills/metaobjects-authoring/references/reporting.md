@@ -164,8 +164,8 @@ your names as written, so an entity, dimension, measure or segment name must be 
 letter first, then letters, digits and `_`, and not a Python keyword such as `from`, `class` or `in`);
 otherwise the export fails with `ERR_CUBE_INVALID_NAME` and renames nothing. It also refuses a
 dimension over an array, object or map field. A report with a relative date in its `@filter`,
-`@segment` or a listed measure's condition gets a scope segment and no rollup, and a report that is
-not served contributes nothing. Reference: `docs/features/cube-export.md`.
+its `@segment`'s filter or a listed measure's condition gets no rollup. Its `<report>Scope`
+segment is written only when it has a `@filter`. A report that is not served contributes nothing. Reference: `docs/features/cube-export.md`.
 
 ## What a report does not have
 

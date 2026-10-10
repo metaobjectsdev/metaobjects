@@ -23,7 +23,8 @@ it until 1.1 ships._
   table-backed entity that declares dimensions, measures or segments, a join for each to-one
   reference between cubes, dimensions (a time dimension carries its `@grains` as
   `meta.grains`), measures, segments, and a `rollup` pre-aggregation for each served report. A
-  report with a relative date in its scope gets a scope segment and no rollup. It is opt-in
+  report with a relative date (in its `@filter`, its `@segment` or a listed measure's condition)
+  gets no rollup, and a `<report>Scope` segment when it has a `@filter`. It is opt-in
   (`meta init` wires nothing), listed by `meta gen --list` in the `capability` layer, ejectable
   (`meta eject cube-model`) and drift-checked by `meta verify --codegen`. It writes Postgres
   and MySQL SQL and refuses `sqlite` and `d1`. What Cube cannot hold is an `ERR_CUBE_*`

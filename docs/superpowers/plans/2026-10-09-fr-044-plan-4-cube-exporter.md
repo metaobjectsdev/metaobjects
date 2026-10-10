@@ -627,10 +627,10 @@ Each is the first step of the task that touches it.
 Ruled 2026-10-09: all six accepted as recommended (the plan merged as #414). The questions are kept below as asked.
 
 1. A Cube view rooted at the spine, no rollup. Spec §5 is amended to say so (done in Task 11). The view itself is Task 10, which is not built: the #411 build is not on `main` (Task 8 checkpoint).
-2. A relative filter maps to the view's own SQL, and a report that uses one gets its scope segment and no rollup. Built as planned (Table F).
+2. A relative filter maps to the view's own SQL, and a report with a relative date anywhere (its `@filter`, its `@segment`'s filter, a listed measure's condition) gets no rollup. Its `<report>Scope` segment is written only when it has a `@filter`. Built as planned (Table F).
 3. Postgres and MySQL output. The live check runs on Postgres; MySQL is held by goldens. `sqlite` and `d1` are refused with `ERR_CUBE_UNSUPPORTED_DIALECT`, raised only when a run would write a cube file (see As built, E).
 4. Catalog layer `capability`.
-5. Names as written, members added only by the fixed rules, every collision an error. Built as planned (the rules grew, see As built, A, B and E).
+5. Names as written, members added only by the fixed rules, every collision an error. Built as planned, except that the added `<m>Raw` member belongs to the `@default` mapping, which is not built (the other rules grew, see As built, A, B and E).
 6. The live lane is `scripts/ci-local.sh --only cube` and a `cube` entry in `integration-tests.yml` (release tags and manual dispatch). It is not in the per-push `local-ci.yml`.
 
 ### As built

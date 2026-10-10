@@ -332,7 +332,8 @@ source, or an abstract one, generates nothing. The contract is in
 ### Cube export
 
 `cubeModel()` writes the reporting vocabulary as Cube data-model files, one
-`model/cubes/<Cube>.yml` for each entity that declares dimensions, measures or segments, with a
+`model/cubes/<Cube>.yml` for each concrete, table-backed entity that declares dimensions,
+measures or segments (plus the join-target and alias cubes its `@via` dimensions need), with a
 rollup for each served report. It is a reference helper and opt-in: `meta eject cube-model`
 copies it into `codegen/generators/cube-model.ts`, and `meta verify --codegen` drift-checks the
 files. The mapping (`buildCubeModel`) and the YAML writer (`renderCubeYaml`) stay in the
@@ -346,6 +347,7 @@ import { defineConfig } from "@metaobjectsdev/cli";
 import { cubeModel } from "./codegen/generators/cube-model.js";
 
 export default defineConfig({
+  outDir: "src/generated",
   targets: { cube: { outDir: "cube" } },          // files land in cube/model/cubes/
   generators: [/* ... */ cubeModel({ target: "cube", dialect: "postgres" })],
 });

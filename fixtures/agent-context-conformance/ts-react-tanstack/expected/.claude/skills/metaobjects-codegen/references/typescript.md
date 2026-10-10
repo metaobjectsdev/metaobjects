@@ -194,7 +194,8 @@ contract: `references/reporting.md` in the `metaobjects-authoring` skill.
 (`dimension.*`, `measure.*`, `segment.filter`, a served `object.report`) as Cube data-model files,
 `model/cubes/<Cube>.yml`: a cube for each table-backed entity that declares any of it, a join for
 each to-one reference between cubes, and a `rollup` pre-aggregation on the `@from` cube for each
-served report (a report with a relative date in its scope gets only a `<report>Scope` segment). It
+served report (a report with a relative date in its `@filter`, `@segment` or a listed measure's
+condition gets no rollup, and a `<report>Scope` segment only when it has a `@filter`). It
 is opt-in: `meta eject cube-model` copies it, or import `cubeModel` from
 `@metaobjectsdev/codegen-ts` (also from `/generators`), and point it at the Cube project with a
 target (`targets: { cube: { outDir: "cube" } }`, `cubeModel({ target: "cube" })`). Options:

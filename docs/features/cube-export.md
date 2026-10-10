@@ -351,10 +351,12 @@ rollup is named after the report.
 | `@filter` | a public segment `<report>Scope` on the cube, where `<report>` is the report's name with a lower-case first letter (`RecentRevenue` gives `recentRevenueScope`), whose `sql` is the filter. It is listed after `@segment` in the rollup's `segments`. |
 | no dimensions | a rollup of measures only (the totals row) |
 
-**A report gets no rollup, only its scope segment,** when its `@filter`, its `@segment`'s
-filter, or the condition of any measure it lists (a ratio's operands included) holds a relative
-date. Cube builds a rollup when it refreshes it, so the rollup's "now" would be the build's.
-The view's is the query's.
+**A report with a relative date gets no rollup.** That is so when its `@filter`, its `@segment`'s
+filter, or the condition of any measure it lists (a ratio's operands included) holds one. Cube
+builds a rollup when it refreshes it, so the rollup's "now" would be the build's. The view's is
+the query's. The scope segment is written whenever the report has a `@filter`, relative date or
+not. A relative date only in a `@segment` or a measure's condition leaves nothing to write for
+the report: that segment and measure are already members of the cube.
 
 The rollup and the scope segment are all the exporter writes for a report. It writes neither a
 `refresh_key` nor a partition: Cube's defaults apply, and partitioning is a deployment choice.
@@ -386,7 +388,7 @@ both parts in snake case, joined by two underscores (`week__program_minutes`).
 | cube name | the entity's name. Two entities of one name in two packages, or an alias cube named like a cube, is `ERR_CUBE_NAME_COLLISION`, naming both; narrow the generator's `filter` or rename one. |
 | member name | the dimension, measure or segment name as written, so a report field and its Cube member share a name |
 | a name Cube refuses | Cube names start with a letter, hold only letters, digits and `_`, and are not a Python keyword (`from`, `class`, `in`, `is`, `not`, `and`, `or`, `if`, `else`, `for`, `while`, `with`, `as`, `def`, `return`, `yield`, `import`, `pass`, `global`, `nonlocal`, `lambda`, `del`, `assert`, `break`, `continue`, `try`, `except`, `finally`, `raise`, `async`, `await`, `True`, `False`, `None`, `elif`). That is `ERR_CUBE_INVALID_NAME`, naming the node. The exporter never renames: the name is the report field's. |
-| members the exporter adds | primary-key dimensions, reached-column dimensions, `<report>Scope` segments, rollups, alias cubes. A name that collides with another member of the cube is `ERR_CUBE_MEMBER_COLLISION`, naming both. |
+| members the exporter adds | primary-key dimensions, reached-column dimensions, `<report>Scope` segments, rollups. A name that collides with another member of the cube is `ERR_CUBE_MEMBER_COLLISION`, naming both. |
 | identifiers | every table, schema and column is quoted: `"…"` on Postgres, backticks on MySQL |
 | string literals | SQL quoting first (`'` doubled; MySQL also doubles `\`). Then `{` becomes `\{` and `}` becomes `\}`, for Cube's reference syntax. Then, when the literal holds `{%` or `{#`, it is wrapped in `{% raw %}…{% endraw %}` for Jinja, because a backslash does not stop Jinja. A literal holding `endraw` is `ERR_CUBE_UNESCAPABLE_LITERAL`. A column name written with `@column` gets the same treatment. |
 | free text | `title` and `description`. Cube reads them as templates too: `{x}` is a member reference, `${x}` an interpolation and a backslash an escape. Each `\` is doubled, each brace escaped, the text raw-wrapped when the original holds `{{`, `{%` or `{#`, and the result is written as a JSON string. Text holding `endraw` is `ERR_CUBE_UNESCAPABLE_LITERAL`. |
@@ -486,7 +488,8 @@ there.
 **`meta verify --codegen`** regenerates the configured output into a temporary directory and
 compares it with the committed files. The Cube project is a target, so its files are checked
 like any other generated output: a changed model that was not regenerated, a missing cube file
-and a stale one are drift. A hand edit to a generated file is not drift.
+and a stale one are drift. A hand edit to a generated file is not drift, but the gate lists it, and
+`meta verify --codegen --forbid-hand-edits` makes it fail.
 
 **The mapping corpus** is [`fixtures/cube-model/`](../../fixtures/cube-model/): 40 cases, each
 the smallest model for one rule, 30 with the exact tree the generator writes and 10 with the
