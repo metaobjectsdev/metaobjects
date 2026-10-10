@@ -405,8 +405,10 @@ tuple among **that entity's** rows, whether or not any row of `@from` refers to 
   (unless the measure declares R9's `@default`), and a ratio is computed from its operands as
   they read.
 - **A fact row whose reference is null, or matches no spine row, is in no row of the
-  report.** Without `@spine` such rows form a null group; with it there is no spine row to
-  hold them.
+  report.** Without `@spine` such a row still counts: it falls in a null group through a
+  nullable reference (`LEFT OUTER` join) and is dropped through a required one (`INNER` join;
+  see "Dimensions, time grains and joins" in `docs/features/reporting.md`). With `@spine` there
+  is no spine row to hold it.
 - The grain is unchanged: one row per distinct dimension tuple. To get exactly one row per
   row of the spine entity, list a dimension over its identity (`programId` above).
 - One spine per report.

@@ -39,13 +39,13 @@ import kotlin.io.path.readText
  *     gate excludes the framework-bound route tier in every port by design.
  *  4. Per scenario: a fresh in-memory H2 (PostgreSQL mode), `SchemaUtils.create(...)` on the
  *     four generated report table objects, then the `reports` half of `seed.json`.
- *  5. Serve the three controllers from one embedded Tomcat ([TomcatHost]).
+ *  5. Serve the four controllers from one embedded Tomcat ([TomcatHost]).
  *
  * No view SQL is written here (ADR-0015: TypeScript owns it). H2 creates each generated
  * `<R>Table` as a plain table that STANDS IN for the view, and the seed's `reports` half is
  * what the four views return for the seeded base tables. The base-table keys (`invoices`,
- * `products`, `sales`) are the full-stack lanes' input; this seam lane does not read them. What this lane proves is the
- * generated route over the generated binding, not the lowering.
+ * `products`, `sales`) are the full-stack lanes' input; this seam lane does not read them.
+ * What this lane proves is the generated route over the generated binding, not the lowering.
  */
 @OptIn(org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi::class)
 class GeneratedReportControllerHarness(

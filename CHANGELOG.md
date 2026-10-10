@@ -241,7 +241,8 @@ it until 1.1 ships._
   row per spine row; (2) `@segment` and `@filter` on a `@spine` report scope the facts and never
   remove a spine row (they sit in the join condition; there is no `WHERE`); (3) a fact row whose
   reference is null or matches nothing is in no row of a `@spine` report (without `@spine` such
-  rows still form a null group); (4) a ratio's operand carries its own `@default` into the ratio,
+  a row still counts: it falls in a null group through a nullable reference, a `LEFT OUTER`
+  join, and is dropped through a required one, an `INNER` join); (4) a ratio's operand carries its own `@default` into the ratio,
   so `revenue` defaulted to `0` over `buyers` reads `0`, not null, and the ratio's own `@default`
   then covers a zero denominator. New load rules, gated by 10 new shared conformance fixtures
   (37 for reporting, 374 in all): a `@spine` that is not a to-one path from `@from`, a `@spine`

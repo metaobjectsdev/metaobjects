@@ -13,15 +13,15 @@
 //     @from fails R1 skips R2/R3/R6/R7, R8/R9 and its @filter; a report whose
 //     @spine fails R8 skips R9, and R9 skips a dimension whose @via fails D2; an
 //     invalid @dimensions/@measures item derives no report field for R6).
+//   - Each error's source is the offending node (the dimension / measure / segment /
+//     report, or for R4/R5 the declared child), so a conformance fixture's jsonPath
+//     points at it.
 //
 // A fractional measure @default: the TypeScript reference refuses it here, in
 // CheckMeasure, because its generic attr.int check lets a fraction through. This port's
 // generic attr-type check (ValidateAttrSchema, ValueMatchesType) already refuses it with
 // ERR_BAD_ATTR_VALUE on the measure node, so no second error is added here; CheckMeasure
 // only skips M7/M8 for it, as the reference does.
-//   - Each error's source is the offending node (the dimension / measure / segment /
-//     report, or for R4/R5 the declared child), so a conformance fixture's jsonPath
-//     points at it.
 //
 // Inheritance (ADR-0039): an entity's members are read through Children(), so a member
 // declared on an abstract base is validated against every entity that inherits it.

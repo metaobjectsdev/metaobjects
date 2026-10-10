@@ -211,6 +211,10 @@ and the one every runtime reads.
 | the same, plus `@unmanaged: true` | `meta migrate` never creates or drops it (you or a migration tool own the DDL), but the runtime still reads it through the shape below. |
 | `@kind: materializedView`, `storedProc` or `tableFunction` | `meta migrate` skips it, as for a projection. |
 
+A report whose view body is your own SQL (`@sql`) or that you manage yourself (`@unmanaged`)
+still gets the derived read shape below, so a defaulted measure and a `@spine` key column are
+typed non-null in every port. Your SQL must keep them non-null (for example with `COALESCE`).
+
 A **derived** report view (no `@sql`) whose `@from` entity has no table (it is abstract, or
 declares no writable `source.rdb`) fails `meta migrate` with an error naming the report and the
 entity, rather than emitting a view over a table that does not exist. A report with an `@sql`
@@ -335,8 +339,9 @@ program.
   `@from` are aggregated. A program whose purchases are all out of scope keeps its row, with a
   count of `0`. Both still name fields of `@from`.
 - **A fact row with no spine row is in no row.** A purchase whose `programId` is null, or
-  matches no program, has no spine row to sit in. Without `@spine`, those rows form a null
-  group.
+  matches no program, has no spine row to sit in. Without `@spine`, such a row still counts: it
+  falls in a null group through a nullable reference (`LEFT OUTER` join) and is dropped through
+  a required one (`INNER` join; see [Dimensions, time grains and joins](#dimensions-time-grains-and-joins)).
 - **A row with no facts** reads `0` for a `count`, and null for a `sum`, `avg`, `min`, `max`
   and a ratio, unless the measure declares `@default` (next section). This holds even for a
   measure whose `@filter` is `isNull: true` on a fact column: the empty row's `@of` column is
@@ -672,7 +677,7 @@ row, and a `SUM` over the result would double-count. A to-one hop cannot fan out
 | **M5** | An `@segment` that names no `segment` child of the owning entity. |
 | **M6** | A `measure.ratio` whose `@numerator` or `@denominator` names no measure of the entity, or names one that is not a `measure.aggregate`. |
 | **M7** | A `@default` on an `@agg: count`. A count is never null, so the default could never apply. |
-| **M8** | A `@default` on an `@agg: min` or `max` over a field that is not numeric (M4's set). |
+| **M8** | A `@default` on an `@agg: min` or `max` over a field that is not numeric (not one of `int, long, double, float, decimal, currency`). |
 
 A measure that breaks several of M1 to M4 reports only the first, in that order, so one
 mistake gives one error. M7 and M8 run only when none of M1 to M4 fired.

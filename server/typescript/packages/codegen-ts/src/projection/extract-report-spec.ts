@@ -300,7 +300,14 @@ function spinePathOf(
   }
   for (const step of path) {
     const entity = stepTarget(step, root);
-    if (entity === undefined) continue; // the walk resolved it, so it is in the root
+    if (entity === undefined) {
+      // The walk resolved this hop, so it should be in the root. Skipping it would skip the no-table
+      // and TPH refusals below for that entity, so fail closed instead.
+      throw new Error(
+        `${where} @spine '${spine}' reaches '${step.targetEntity}', which is not an entity in the model, so ` +
+          `its table cannot be checked. Fix the @spine path or declare the entity.`,
+      );
+    }
     const head = `${where} @spine '${spine}' reaches '${entity.name}'`;
     if (entity.isAbstract || !hasWritableRdbSource(entity)) {
       throw new Error(

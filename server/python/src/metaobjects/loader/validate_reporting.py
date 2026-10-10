@@ -922,7 +922,6 @@ def _check_report(root: MetaData, report: MetaData, sink: _ErrorSink) -> None:
             _check_spine_dimensions(root, report, from_, spine, terminal, err)
 
     # S1 / F2 — the report's row scope over @from.
-
     # ADR-0039: resolving.
     filter_value = report.get_meta_attr(OBJECT_REPORT_ATTR_FILTER)
     if isinstance(filter_value, dict):
