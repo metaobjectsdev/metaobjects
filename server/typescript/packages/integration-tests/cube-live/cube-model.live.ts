@@ -29,11 +29,17 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cubeModel, defineConfig, runGen, servedReport } from "@metaobjectsdev/codegen-ts";
 import {
+  DOC_ATTR_DESCRIPTION,
+  DOC_ATTR_TITLE,
   GRAIN_HOUR,
   OBJECT_REPORT_ATTR_FILTER,
   OBJECT_REPORT_ATTR_SEGMENT,
+  TYPE_DIMENSION,
+  TYPE_MEASURE,
+  TYPE_SEGMENT,
   reportReadSource,
   reportShape,
+  type MetaData,
   type MetaObject,
   type MetaRoot,
 } from "@metaobjectsdev/metadata";
@@ -232,8 +238,13 @@ describe(`cube-model live check (${CUBE_IMAGE}, development mode)`, () => {
       const outcome = await swapInCase(s, name);
       if (outcome !== undefined) rejected.push(`${name}: ${outcome}`);
     }
-    timings.push(`corpus compile pass: ${cases.length - rejected.length}/${cases.length} case(s) loaded in ${Date.now() - t0} ms (${cases.join(", ")})`);
+    timings.push(
+      `corpus compile pass: ${cases.length - rejected.length}/${cases.length} case(s) loaded in ${Date.now() - t0} ms, ` +
+        `${freeTextChecked} declared title/description value(s) handed back verbatim (${cases.join(", ")})`,
+    );
     expect(rejected).toEqual([]);
+    // The free-text check is not vacuous: free-text-jinja alone declares six values.
+    expect(freeTextChecked).toBeGreaterThanOrEqual(6);
   }, TEST_TIMEOUT_MS);
 });
 
@@ -400,11 +411,16 @@ interface MetaMember {
   readonly type?: string;
   readonly aggType?: string;
   readonly public?: boolean;
+  /** A member's own declared title (`title` is the cube's title and this one, joined). */
+  readonly shortTitle?: string;
+  readonly description?: string;
 }
 
 interface MetaCube {
   readonly name: string;
   readonly public?: boolean;
+  readonly title?: string;
+  readonly description?: string;
   readonly measures?: readonly MetaMember[];
   readonly dimensions?: readonly MetaMember[];
   readonly segments?: readonly MetaMember[];
@@ -630,7 +646,56 @@ async function swapInCase(s: CubeStack, name: string): Promise<string | undefine
   const got = metaSummary(loaded.cubes);
   const want = declaredSummary(tree);
   if (!Bun.deepEquals(got, want)) return `Cube's members differ from the files: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`;
+  const pairs = freeTextPairs(await loadMetadataFile(join(CUBE_CORPUS_DIR, name, "meta.json")), loaded.cubes);
+  const wrong = pairs.filter((p) => p.got !== p.declared).map((p) => `${p.where}: declared ${JSON.stringify(p.declared)}, Cube says ${JSON.stringify(p.got)}`);
+  if (wrong.length > 0) return `Cube does not hand back the model's free text as declared: ${wrong.join("; ")}`;
+  freeTextChecked += pairs.length;
   return undefined;
+}
+
+let freeTextChecked = 0;
+
+interface FreeTextPair {
+  readonly where: string;
+  readonly declared: string;
+  readonly got: string | undefined;
+}
+
+const REPORTING_MEMBER_TYPES: ReadonlySet<string> = new Set([TYPE_DIMENSION, TYPE_MEASURE, TYPE_SEGMENT]);
+
+/**
+ * Ruling 28: Cube reads `title` and `description` as templates, so the exporter escapes them. The
+ * check that the escape is exact: every title and description the case's MODEL declares (on an
+ * entity Cube lists, and on its dimensions, measures and segments) is paired with what
+ * `/v1/meta` hands back, which must be the same text. `/v1/meta` exposes a cube's `title` and
+ * `description`, and a member's `description` and `shortTitle` (its own title; `title` there is
+ * the cube's and the member's joined).
+ */
+function freeTextPairs(root: MetaRoot, cubes: readonly MetaCube[]): FreeTextPair[] {
+  const out: FreeTextPair[] = [];
+  const text = (node: MetaData, attr: string): string | undefined => {
+    // ADR-0039: resolving attr(), as the exporter reads it.
+    const v = node.attr(attr);
+    return typeof v === "string" && v !== "" ? v : undefined;
+  };
+  const push = (where: string, declared: string | undefined, got: string | undefined): void => {
+    if (declared !== undefined) out.push({ where, declared, got });
+  };
+  for (const obj of root.objects()) {
+    const cube = cubes.find((c) => c.name === obj.name);
+    if (cube === undefined) continue;
+    push(`cube ${cube.name} title`, text(obj, DOC_ATTR_TITLE), cube.title);
+    push(`cube ${cube.name} description`, text(obj, DOC_ATTR_DESCRIPTION), cube.description);
+    // ADR-0039: resolving children(), so an inherited member is checked where Cube lists it.
+    for (const child of obj.children()) {
+      if (!REPORTING_MEMBER_TYPES.has(child.type)) continue;
+      const key = `${cube.name}.${child.name}`;
+      const member = [...(cube.dimensions ?? []), ...(cube.measures ?? []), ...(cube.segments ?? [])].find((m) => m.name === key);
+      push(`${child.type} ${key} title`, text(child, DOC_ATTR_TITLE), member?.shortTitle);
+      push(`${child.type} ${key} description`, text(child, DOC_ATTR_DESCRIPTION), member?.description);
+    }
+  }
+  return out;
 }
 
 function sameNames(m: MetaResponse, want: readonly string[]): boolean {

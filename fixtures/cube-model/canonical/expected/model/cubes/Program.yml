@@ -34,15 +34,15 @@ cubes:
       - name: recentProgramsScope
         sql: '{CUBE}."created_ts" >= ((now() AT TIME ZONE ''UTC'') - INTERVAL ''P30D'')'
     pre_aggregations:
-      - name: ProgramsByMonth
-        type: rollup
-        measures: [CUBE.programs, CUBE.listValue]
-        dimensions: [CUBE.status]
-        time_dimension: CUBE.createdAt
-        granularity: month
       - name: ProgramsByWeek
         type: rollup
         measures: [CUBE.programs]
         segments: [CUBE.published]
         time_dimension: CUBE.createdAt
         granularity: week
+      - name: ProgramsByMonth
+        type: rollup
+        measures: [CUBE.programs, CUBE.listValue]
+        dimensions: [CUBE.status]
+        time_dimension: CUBE.createdAt
+        granularity: month

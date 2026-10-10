@@ -1276,14 +1276,15 @@ describe("Table H — the canonical model", () => {
           // RecentPrograms' relative @filter: a scope segment, and no rollup.
           { name: "recentProgramsScope", sql: `{CUBE}."created_ts" >= ((now() AT TIME ZONE 'UTC') - INTERVAL 'P30D')` },
         ],
+        // Coarsest first (Ruling 29): ProgramsByWeek groups by one column, ProgramsByMonth by two.
         preAggregations: [
-          {
-            name: "ProgramsByMonth", type: "rollup", measures: ["programs", "listValue"], dimensions: ["status"],
-            segments: [], timeDimension: "createdAt", granularity: "month",
-          },
           {
             name: "ProgramsByWeek", type: "rollup", measures: ["programs"], dimensions: [], segments: ["published"],
             timeDimension: "createdAt", granularity: "week",
+          },
+          {
+            name: "ProgramsByMonth", type: "rollup", measures: ["programs", "listValue"], dimensions: ["status"],
+            segments: [], timeDimension: "createdAt", granularity: "month",
           },
         ],
       },
@@ -1314,13 +1315,15 @@ describe("Table H — the canonical model", () => {
           { name: "longShare", sql: "CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0)", type: "number" },
         ],
         segments: [{ name: "long", sql: '{CUBE}."durationMinutes" >= 60' }],
+        // Coarsest first (Ruling 29): FitnessTotals groups by nothing, so Cube's first match for
+        // its query is its own rollup and not ProgramMinutes'.
         preAggregations: [
+          { name: "FitnessTotals", type: "rollup", measures: ["weeks", "totalMinutes", "longShare"], dimensions: [], segments: [] },
           {
             name: "ProgramMinutes", type: "rollup",
             measures: ["weeks", "longWeeks", "labels", "slots", "totalMinutes", "avgMinutes", "minMinutes", "maxMinutes", "longShare"],
             dimensions: ["program", "programTitle"], segments: [],
           },
-          { name: "FitnessTotals", type: "rollup", measures: ["weeks", "totalMinutes", "longShare"], dimensions: [], segments: [] },
         ],
       },
       {

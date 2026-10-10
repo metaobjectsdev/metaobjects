@@ -41,7 +41,8 @@
                 "name": "programs",
                 "@agg": "count",
                 "@of": "Program.id",
-                "@title": "Program count"
+                "@title": "Program count",
+                "@description": "Share of {weeks}, cost ${x} at C:\\path"
               }
             },
             {

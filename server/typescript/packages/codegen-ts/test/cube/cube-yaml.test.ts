@@ -115,18 +115,18 @@ cubes:
       - name: recentProgramsScope
         sql: '{CUBE}."created_ts" >= ((now() AT TIME ZONE ''UTC'') - INTERVAL ''P30D'')'
     pre_aggregations:
-      - name: ProgramsByMonth
-        type: rollup
-        measures: [CUBE.programs, CUBE.listValue]
-        dimensions: [CUBE.status]
-        time_dimension: CUBE.createdAt
-        granularity: month
       - name: ProgramsByWeek
         type: rollup
         measures: [CUBE.programs]
         segments: [CUBE.published]
         time_dimension: CUBE.createdAt
         granularity: week
+      - name: ProgramsByMonth
+        type: rollup
+        measures: [CUBE.programs, CUBE.listValue]
+        dimensions: [CUBE.status]
+        time_dimension: CUBE.createdAt
+        granularity: month
 `;
 
 const WEEK_YML = `${HEADER}
@@ -184,13 +184,13 @@ cubes:
       - name: long
         sql: '{CUBE}."durationMinutes" >= 60'
     pre_aggregations:
+      - name: FitnessTotals
+        type: rollup
+        measures: [CUBE.weeks, CUBE.totalMinutes, CUBE.longShare]
       - name: ProgramMinutes
         type: rollup
         measures: [CUBE.weeks, CUBE.longWeeks, CUBE.labels, CUBE.slots, CUBE.totalMinutes, CUBE.avgMinutes, CUBE.minMinutes, CUBE.maxMinutes, CUBE.longShare]
         dimensions: [CUBE.program, CUBE.programTitle]
-      - name: FitnessTotals
-        type: rollup
-        measures: [CUBE.weeks, CUBE.totalMinutes, CUBE.longShare]
 `;
 
 const ASSET_YML = `${HEADER}
@@ -577,27 +577,51 @@ describe("free text", () => {
   }
 
   test("title and description are double-quoted, JSON-style: quotes, backslashes and newlines are escaped", () => {
-    expect(title(`He said "hi"\\ and\nleft`)).toBe('"He said \\"hi\\"\\\\ and\\nleft"');
+    // The backslash is first doubled for Cube's template reader (`\` → `\\`), then JSON doubles
+    // both: four in the file.
+    expect(title(`He said "hi"\\ and\nleft`)).toBe('"He said \\"hi\\"\\\\\\\\ and\\nleft"');
+  });
+
+  test("a backslash is doubled for Cube, which reads free text as a template and drops a lone one", () => {
+    // Executed on Cube 1.7.43: `C:\path` came back `C:path`, `C:\\path` came back `C:\path`.
+    expect(title("C:\\path")).toBe('"C:\\\\\\\\path"');
+    expect(title("ends \\")).toBe('"ends \\\\\\\\"');
   });
 
   test("a single quote needs no doubling in a double-quoted scalar", () => {
     expect(title("it's")).toBe('"it\'s"');
   });
 
-  test("braces that Cube resolves only in sql are written as they are", () => {
-    expect(title("Share of {weeks}, a{b}c")).toBe('"Share of {weeks}, a{b}c"');
+  test("braces are escaped for Cube, which reads {x} in free text as a member reference (Ruling 28)", () => {
+    // Executed on Cube 1.7.43: an unescaped `a {b} c` fails the whole model (`b is not defined`).
+    // `\{` in the text is `\\{` in the JSON string.
+    expect(title("Share of {weeks}, a{b}c")).toBe('"Share of \\\\{weeks\\\\}, a\\\\{b\\\\}c"');
   });
 
-  test("{{ is wrapped in a raw block, inside the string", () => {
-    expect(title("Value is {{x}}")).toBe('"{% raw %}Value is {{x}}{% endraw %}"');
+  test("${ is covered by the brace escape: Cube would read it as an interpolation", () => {
+    expect(title("cost ${x}")).toBe('"cost $\\\\{x\\\\}"');
   });
 
-  test("{% is wrapped in a raw block, inside the string", () => {
-    expect(title("Use {% x %} here")).toBe('"{% raw %}Use {% x %} here{% endraw %}"');
+  test("a backslash before a brace is doubled first, so the brace escape stays its own", () => {
+    // `\{` in the model → `\\` + `\{` → `\\\{` for Cube → six backslashes and a brace in JSON.
+    expect(title("a\\{b")).toBe('"a\\\\\\\\\\\\{b"');
   });
 
-  test("{# is wrapped in a raw block, inside the string", () => {
-    expect(title("A {# comment #}")).toBe('"{% raw %}A {# comment #}{% endraw %}"');
+  test("{{ is escaped and wrapped in a raw block, inside the string", () => {
+    expect(title("Value is {{x}}")).toBe('"{% raw %}Value is \\\\{\\\\{x\\\\}\\\\}{% endraw %}"');
+  });
+
+  test("{% is escaped and wrapped in a raw block, inside the string", () => {
+    expect(title("Use {% x %} here")).toBe('"{% raw %}Use \\\\{% x %\\\\} here{% endraw %}"');
+  });
+
+  test("{# is escaped and wrapped in a raw block, inside the string", () => {
+    expect(title("A {# comment #}")).toBe('"{% raw %}A \\\\{# comment #\\\\}{% endraw %}"');
+  });
+
+  test("the raw wrap is decided from the original text: a lone brace is escaped but not wrapped", () => {
+    expect(title("{x} and {y}")).toBe('"\\\\{x\\\\} and \\\\{y\\\\}"');
+    expect(title("a{{b")).toBe('"{% raw %}a\\\\{\\\\{b{% endraw %}"');
   });
 
   test("a description is escaped the same way as a title, on a dimension, measure and segment too", () => {
@@ -609,11 +633,11 @@ describe("free text", () => {
         segments: [segment({ description: "segment {{d}}" })],
       }),
     );
-    expect(yaml).toContain('    description: "{% raw %}cube {{a}}{% endraw %}"\n');
-    expect(yaml).toContain('        description: "{% raw %}dim {{b}}{% endraw %}"\n');
+    expect(yaml).toContain('    description: "{% raw %}cube \\\\{\\\\{a\\\\}\\\\}{% endraw %}"\n');
+    expect(yaml).toContain('        description: "{% raw %}dim \\\\{\\\\{b\\\\}\\\\}{% endraw %}"\n');
     expect(yaml).toContain('        title: "t\\tab"\n');
-    expect(yaml).toContain('        description: "{% raw %}measure {{c}}{% endraw %}"\n');
-    expect(yaml).toContain('        description: "{% raw %}segment {{d}}{% endraw %}"\n');
+    expect(yaml).toContain('        description: "{% raw %}measure \\\\{\\\\{c\\\\}\\\\}{% endraw %}"\n');
+    expect(yaml).toContain('        description: "{% raw %}segment \\\\{\\\\{d\\\\}\\\\}{% endraw %}"\n');
   });
 
   test("characters a YAML reader may take for a line break are written as \\u escapes", () => {
@@ -715,9 +739,14 @@ describe("a SQL value a single-quoted scalar cannot carry", () => {
 
 type Json = Record<string, unknown>;
 
-/** Free text as the parser should hand it back: Jinja-safe, as the renderer wraps it. */
+/**
+ * Free text as the parser should hand it back: Cube-template escaped (backslashes doubled, then
+ * braces escaped), then Jinja-wrapped when the original holds an opener, as the renderer writes it.
+ */
 function freeText(text: string | undefined): string | undefined {
-  return text !== undefined && /\{[{%#]/.test(text) ? `{% raw %}${text}{% endraw %}` : text;
+  if (text === undefined) return undefined;
+  const escaped = text.replace(/\\/g, "\\\\").replace(/[{}]/g, (b) => `\\${b}`);
+  return /\{[{%#]/.test(text) ? `{% raw %}${escaped}{% endraw %}` : escaped;
 }
 
 function refs(members: readonly string[]): string[] | undefined {
@@ -836,8 +865,11 @@ describe("parse oracle", () => {
     });
     expect(parsed(c)).toEqual({ cubes: [expectedCube(c)] });
     const cube = (parsed(c) as { cubes: Json[] }).cubes[0];
-    expect(cube?.["title"]).toBe(`{% raw %}${text}{% endraw %}`);
-    expect(cube?.["description"]).toBe("plain {braces} only");
+    // The parsed value is the Cube-escaped text, spelled out once by hand (Ruling 28).
+    expect(cube?.["title"]).toBe(
+      `{% raw %}He said "hi" \\\\ it's\n\\{\\{x\\}\\} \\{% y %\\} \\{# z #\\} a\\{b\\}c   \u0085 café — ü{% endraw %}`,
+    );
+    expect(cube?.["description"]).toBe("plain \\{braces\\} only");
   });
 
   test("names a YAML reader takes for a boolean or null parse back as strings", () => {

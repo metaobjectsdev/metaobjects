@@ -13,9 +13,14 @@
 //     hold a control character, and a string `@filter` value is legal model data, so a value holding
 //     a control character, a line separator or a byte-order mark is written double-quoted (JSON
 //     escapes) instead. Nothing is refused and nothing is altered.
-//   - Free text (`title`, `description`) arrives raw. Cube runs Jinja over the whole file, so text
-//     holding `{{`, `{%` or `{#` is wrapped in `{% raw %}...{% endraw %}`, then written as a JSON
-//     string (a valid YAML double-quoted scalar). Braces mean nothing to Cube outside `sql`.
+//   - Free text (`title`, `description`) arrives raw, and Cube reads it as a template too (Ruling 28,
+//     executed on Cube 1.7.43): `{x}` is a member reference, `${x}` an interpolation and a backslash
+//     an escape, so `a {b} c` fails the whole model and `C:\path` comes back `C:path`. The text is
+//     encoded for that first: every `\` doubled, then `{` → `\{` and `}` → `\}`. Cube runs Jinja over
+//     the whole file, so text whose ORIGINAL form holds `{{`, `{%` or `{#` is then wrapped in
+//     `{% raw %}...{% endraw %}` (an escaped `\{%` still holds `{%`). The result is written as a JSON
+//     string (a valid YAML double-quoted scalar, so each of those backslashes is doubled again in
+//     the file). Cube's `/v1/meta` hands back the text exactly as the model declares it.
 //   - Names, types, booleans, relationships, granularities and `CUBE.<member>` references are plain,
 //     except a name a YAML reader would take for a boolean or null (true, false, null, yes, no, on,
 //     off, y, n, in any case), which is single-quoted so it stays a string.
@@ -78,7 +83,15 @@ function sqlScalar(sql: string): string {
 const JINJA_OPENER = /\{[{%#]/;
 const JINJA_RAW_END = "endraw";
 
-/** Free text as a double-quoted scalar that survives Jinja; `where` names its place for the refusal. */
+/** Free text as Cube's template reader must see it: backslashes doubled, then braces escaped. */
+function cubeTemplateText(text: string): string {
+  return text.replace(/\\/g, "\\\\").replace(/[{}]/g, (brace) => `\\${brace}`);
+}
+
+/**
+ * Free text as a double-quoted scalar that Cube hands back unchanged: Cube-template escaped, then
+ * Jinja-wrapped when the original holds an opener. `where` names its place for the refusal.
+ */
 function textScalar(text: string, where: string): string {
   if (text.includes(JINJA_RAW_END)) {
     throw new CubeModelError(
@@ -87,7 +100,10 @@ function textScalar(text: string, where: string): string {
         `that keeps Jinja away from it, so Cube cannot be given it intact. Reword it in the model.`,
     );
   }
-  const jinjaSafe = JINJA_OPENER.test(text) ? `{% raw %}${text}{% endraw %}` : text;
+  const escaped = cubeTemplateText(text);
+  // Decided from the ORIGINAL text: escaping turns `{{` into `\{\{`, which Jinja no longer reads,
+  // but leaves `{%` and `{#` inside `\{%` and `\{#`, which it still does.
+  const jinjaSafe = JINJA_OPENER.test(text) ? `{% raw %}${escaped}{% endraw %}` : escaped;
   return doubleQuoted(jinjaSafe);
 }
 

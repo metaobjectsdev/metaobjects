@@ -91,7 +91,7 @@ import type {
   CubeSpec,
 } from "./cube-model-spec.js";
 import { assertCubeNames, MemberNamespace } from "./cube-names.js";
-import { reportContribution } from "./cube-reports.js";
+import { coarsestFirst, reportContribution } from "./cube-reports.js";
 import { cubeColumn, cubeSqlRenderer, joinedColumn, memberRef, tableRef } from "./cube-sql.js";
 
 export interface CubeModelOptions {
@@ -151,7 +151,7 @@ interface CubeDraft {
   readonly measures: CubeMeasureSpec[];
   /** Declared segments, then the served reports' scope segments in report order. */
   readonly segments: CubeSegmentSpec[];
-  /** One rollup per served report written into this cube, in report order (Table F). */
+  /** One rollup per served report written into this cube, in report order (Table F); written coarsest first. */
   readonly preAggregations: CubeRollupSpec[];
   /** Field name → the first declared dimension without `@via` over it (Table E reuse). */
   readonly declaredByField: Map<string, string>;
@@ -279,7 +279,8 @@ class CubeModelBuilder {
     for (const draft of this.drafts.values()) {
       for (const [dim, cubes] of draft.viaCubes) draft.declaredDims.set(dim, this.viaDimension(draft, dim, cubes, graph));
     }
-    // Table F: in model order, so rollups and scope segments are in report order.
+    // Table F: in model order, so scope segments are in report order and rollups collect in report
+    // order (cubeSpec writes them coarsest first, Ruling 29).
     for (const o of objects) if (servedReport(o)) this.addReport(o);
 
     return { cubes: emitted.map((c) => this.cubeSpec(c)), views: [] };
@@ -691,7 +692,7 @@ class CubeModelBuilder {
       dimensions: [...draft.keyDims, ...draft.declaredOrder.map((dim) => draft.declaredDims.get(dim)!), ...draft.addedDims],
       measures: draft.measures,
       segments: draft.segments,
-      preAggregations: draft.preAggregations,
+      preAggregations: coarsestFirst(draft.preAggregations),
     };
   }
 }

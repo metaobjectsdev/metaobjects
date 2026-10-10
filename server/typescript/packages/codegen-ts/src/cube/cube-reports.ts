@@ -33,6 +33,26 @@ export interface ReportContribution {
   readonly rollup?: CubeRollupSpec;
 }
 
+/** How many grouping columns a rollup has: its attribute dimensions plus its time dimensions. */
+export function rollupDimensionCount(rollup: CubeRollupSpec): number {
+  const times = rollup.timeDimensions !== undefined ? rollup.timeDimensions.length : rollup.timeDimension !== undefined ? 1 : 0;
+  return rollup.dimensions.length + times;
+}
+
+/**
+ * A cube's rollups as they are written (Ruling 29): coarsest first, by
+ * {@link rollupDimensionCount} ascending, ties in report order. Cube answers a query from the
+ * FIRST rollup in definition order that can serve it, and a finer rollup can serve a coarser
+ * query whose measures are additive (executed on 1.7.43: in report order, FitnessTotals' query,
+ * with no dimensions, was answered from ProgramMinutes' rollup, grouped by two). A rollup with
+ * fewer grouping columns cannot serve a query that groups by more, so with this order each
+ * report's query reaches its own rollup before a finer one.
+ */
+export function coarsestFirst(rollups: readonly CubeRollupSpec[]): CubeRollupSpec[] {
+  // Array.prototype.sort is stable, so equal counts keep report order.
+  return [...rollups].sort((a, b) => rollupDimensionCount(a) - rollupDimensionCount(b));
+}
+
 /** `RecentPrograms` → `recentProgramsScope`: the segment a report's `@filter` becomes (Table G). */
 export function scopeSegmentName(reportName: string): string {
   return `${reportName.charAt(0).toLowerCase()}${reportName.slice(1)}Scope`;

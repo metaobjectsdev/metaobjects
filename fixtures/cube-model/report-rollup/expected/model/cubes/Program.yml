@@ -28,6 +28,9 @@ cubes:
       - name: programsByMonthScope
         sql: '{CUBE}."price_cents" > 0'
     pre_aggregations:
+      - name: ProgramTotals
+        type: rollup
+        measures: [CUBE.programs]
       - name: ProgramsByMonth
         type: rollup
         measures: [CUBE.programs, CUBE.listValue]
@@ -35,6 +38,3 @@ cubes:
         segments: [CUBE.published, CUBE.programsByMonthScope]
         time_dimension: CUBE.createdAt
         granularity: month
-      - name: ProgramTotals
-        type: rollup
-        measures: [CUBE.programs]

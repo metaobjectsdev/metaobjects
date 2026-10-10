@@ -53,10 +53,10 @@ cubes:
       - name: long
         sql: '{CUBE}."durationMinutes" >= 60'
     pre_aggregations:
+      - name: FitnessTotals
+        type: rollup
+        measures: [CUBE.weeks, CUBE.totalMinutes, CUBE.longShare]
       - name: ProgramMinutes
         type: rollup
         measures: [CUBE.weeks, CUBE.longWeeks, CUBE.labels, CUBE.slots, CUBE.totalMinutes, CUBE.avgMinutes, CUBE.minMinutes, CUBE.maxMinutes, CUBE.longShare]
         dimensions: [CUBE.program, CUBE.programTitle]
-      - name: FitnessTotals
-        type: rollup
-        measures: [CUBE.weeks, CUBE.totalMinutes, CUBE.longShare]

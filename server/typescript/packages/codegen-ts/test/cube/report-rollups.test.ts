@@ -264,6 +264,34 @@ describe("Table F — a rollup per served report, on its @from cube", () => {
 // Relative dates — a rollup would freeze "now" at its build
 // ---------------------------------------------------------------------------
 
+describe("Ruling 29 — a cube's rollups are written coarsest first", () => {
+  // Cube answers a query from the FIRST rollup in definition order that can serve it, and a finer
+  // rollup serves a coarser query whose measures are additive (executed on Cube 1.7.43). Written
+  // by grouping-column count ascending, each report's query reaches its own rollup first.
+  test("by attribute + time dimension count ascending, ties in report order", async () => {
+    const c = await programCube(
+      report("ByStatusAndMonth", { "@from": "Program", "@dimensions": ["status", "createdAt:month"], "@measures": ["programs"] }),
+      report("TotalsA", { "@from": "Program", "@measures": ["programs"] }),
+      report("ByMonth", { "@from": "Program", "@dimensions": ["createdAt:month"], "@measures": ["programs"] }),
+      report("TwoTimes", { "@from": "Program", "@dimensions": ["publishedOn:week", "createdAt:day"], "@measures": ["programs"] }),
+      report("TotalsB", { "@from": "Program", "@measures": ["listValue"] }),
+      report("ByStatus", { "@from": "Program", "@dimensions": ["status"], "@measures": ["programs"] }),
+    );
+    // 0: TotalsA, TotalsB; 1: ByMonth (a time dimension), ByStatus (an attribute);
+    // 2: ByStatusAndMonth, TwoTimes (the time_dimensions list counts each entry).
+    expect(c.preAggregations.map((r) => r.name)).toEqual(["TotalsA", "TotalsB", "ByMonth", "ByStatus", "ByStatusAndMonth", "TwoTimes"]);
+  });
+
+  test("the scope segments keep report order: only the rollups are reordered", async () => {
+    const c = await programCube(
+      report("Fine", { "@from": "Program", "@dimensions": ["status"], "@measures": ["programs"], "@filter": { title: { like: "A%" } } }),
+      report("Coarse", { "@from": "Program", "@measures": ["programs"], "@filter": { title: { like: "B%" } } }),
+    );
+    expect(c.preAggregations.map((r) => r.name)).toEqual(["Coarse", "Fine"]);
+    expect(c.segments.map((x) => x.name)).toEqual(["published", "fineScope", "coarseScope"]);
+  });
+});
+
 describe("Table F — no rollup where a relative date would be frozen", () => {
   const recentFilter = { createdAt: { gte: { now: "-P30D" } } };
 

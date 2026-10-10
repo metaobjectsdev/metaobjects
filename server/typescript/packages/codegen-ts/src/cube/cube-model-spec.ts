@@ -5,7 +5,7 @@
 // `pre_aggregations`). Every SQL fragment (`sql`, `sqlTable`, a filter's or a join's `sql`)
 // arrives escaped for Cube's `{...}` reference syntax and Jinja (Table G), so a renderer only
 // YAML-quotes it. Free text (`title`, `description`) arrives raw, as the model declares it: the
-// YAML renderer escapes it for Jinja.
+// YAML renderer escapes it for Cube, which reads free text as a template too, and for Jinja.
 
 import type { TimeGrain } from "@metaobjectsdev/metadata";
 
