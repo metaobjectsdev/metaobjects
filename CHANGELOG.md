@@ -10,11 +10,41 @@ here.**
 
 ## [Unreleased]
 
-_**`metamodelVersion` moves `1.0` to `1.1`.** The vocabulary is additive: a model that uses none
-of the new names generates byte-for-byte what it did under 1.0. What loads changes only where the
-Java and Python parser fixes under **Fixed** bring those ports into line with TypeScript, and each
-entry says which models that affects. `main` carries 1.1 from here, so no 1.0.x PATCH is cut from
-it until 1.1 ships._
+## [1.1.0] — 2026-10-10
+
+_npm `1.1.0` (all 14 `@metaobjectsdev/*` packages in lockstep), PyPI `1.1.0`, NuGet `1.1.0` and
+Maven Central `8.1.0`. **`metamodelVersion` moves `1.0` to `1.1`.** The vocabulary is additive: a
+model that uses none of the new names generates byte-for-byte what it did under 1.0. What loads
+changes only where the Java and Python parser fixes under **Fixed** bring those ports into line
+with TypeScript, and each entry says which models that affects. This is a MINOR because the
+metamodel moved and reporting is a new feature, not because the package surface broke._
+
+**What 1.1.0 is.** The reporting release (FR-044): declare dimensions, measures, segments and an
+`object.report`, and get a SQL view, a served read-only list route in every port, a generated
+TanStack list hook, and a Cube data model, with `@spine` for rows that have no facts and
+`@default` for an empty measure. It also carries the first slice of requirements (the gate in
+every port's `verify`), the derived-key parity fix across the ports, and the list-hook and
+nested-average fixes found by the first adopter to map real report pages onto the feature.
+
+**How much smaller the code gets.** The size reduction comes in two steps, and each is its own
+number. The first landed on 1.0.x: 439 lines of handler code retired. The second is reporting:
+with it, the same pages come to about 60 lines of SQL and about 180 lines of metadata.
+
+**Two diffs to expect when you upgrade.**
+
+- **An ejected generator needs a resync (G11).** An owned copy keeps the gate and the options it
+  was copied with, so it does not receive the new report behaviour until you resync it. The
+  entries under **Added** and **Fixed** name the command for each affected generator (`meta eject
+  hooks --force`, `meta eject routes --force`, `meta eject routes-hono --force`). A generator you
+  never ejected needs nothing.
+- **A keyless projection regenerates differently (G12).** `meta gen` rewrites the read-only
+  surface of a keyless projection (no `/:id` route, no by-id function, and no write verbs in the
+  API docs), and `meta verify --docs` reports the affected pages as stale until they are
+  regenerated. Run `meta gen` and review the diff; three-way merge preserves hand edits.
+
+**Not in 1.1.0.** Derived measures, the preview `reporting` library, the dbt exporter, the second
+requirements slice and the advisory lint port, the JSON Schema and OpenAPI generators, the
+generator catalog and the Atlas evaluation are 1.2 work.
 
 ### Added
 
