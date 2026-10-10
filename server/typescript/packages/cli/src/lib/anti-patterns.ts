@@ -202,8 +202,10 @@ function matchLine(line: string, isSql: boolean):
 
 const ADVICE: Record<AntiPatternFinding["rule"], string> = {
   "hand-rolled-aggregate":
-    "you're computing an aggregate by hand — MetaObjects derives it: declare an " +
-    "object.projection with an origin.aggregate child and call its generated query",
+    "you're computing an aggregate by hand — MetaObjects derives it: for grouped, " +
+    "served or reported figures declare an object.report (dimensions + measures, a " +
+    "read-only list route); an object.projection with an origin.aggregate child still " +
+    "fits a per-row figure on one entity read through its generated query",
   "money-float":
     "money handled as a float / hand-rolled minor units — MetaObjects has " +
     "field.currency (integer minor units stored, formatted client-side)",

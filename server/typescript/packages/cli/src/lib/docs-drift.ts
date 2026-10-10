@@ -44,8 +44,10 @@
 //      `agent/schema.md` describing the previous schema passed the gate on exactly the
 //      change it most needs to flag.
 //
-//      The residual cost is stated rather than hidden: outside `agent/`, a page for an
-//      entity that was DELETED stays committed and this gate stays green.
+//      The docs ROOT is owned the same way, by marker alone: the per-object model pages
+//      (`<Object>.md`) live there, and a page for an object that was REMOVED is exactly a
+//      committed file carrying our marker that no fresh run emits. Hand-written files in
+//      the root carry no marker and are left alone. `api/` stays out of jurisdiction.
 
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, lstatSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -116,6 +118,11 @@ function listFiles(dir: string): string[] {
  */
 const OWNED_PREFIXES = ["agent/"] as const;
 
+/** True for a page directly in the docs root — where the per-object model pages are
+ *  written. Ownership there rests on the marker alone, since the root is shared with
+ *  hand-written documentation (which carries no marker). */
+const isDocsRoot = (normalized: string): boolean => !normalized.includes("/");
+
 /** The marker every generated docs page opens with — the on-disk ownership proof. */
 const GENERATED_MARKER = "@generated";
 
@@ -127,7 +134,7 @@ const GENERATED_MARKER = "@generated";
  */
 function isOurs(docsDir: string, rel: string): boolean {
   const normalized = toPosix(rel);
-  if (!OWNED_PREFIXES.some((p) => normalized.startsWith(p))) return false;
+  if (!isDocsRoot(normalized) && !OWNED_PREFIXES.some((p) => normalized.startsWith(p))) return false;
   try {
     return readFileSync(join(docsDir, rel), "utf8")
       .split("\n", 3)

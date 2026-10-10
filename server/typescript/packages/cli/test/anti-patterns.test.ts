@@ -27,6 +27,10 @@ describe("scanSourceForAntiPatterns", () => {
       expect(f.construct).toBe("origin.aggregate");
       expect(f.file).toBe("src/routes/recipes.ts");
       expect(f.message).toContain("meta types origin.aggregate");
+      // 1.1: a served, read-only aggregate is usually an object.report; the advice names
+      // it and says when a projection still fits.
+      expect(f.message).toContain("object.report");
+      expect(f.message).toContain("object.projection");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

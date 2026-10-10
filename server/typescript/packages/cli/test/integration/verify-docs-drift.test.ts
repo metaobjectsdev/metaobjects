@@ -143,6 +143,21 @@ describe("meta verify --docs", () => {
     }
   });
 
+  test("FAILS when the page of a REMOVED object is still committed in the docs root", async () => {
+    const dir = project();
+    try {
+      await generateDocs(dir);
+      // An object was removed from the model and `meta docs` was re-run: nothing deletes
+      // the old `<Object>.md`, and the gate used to pass over it. Simulated by copying a
+      // generated model page to a name no run emits.
+      const stale = readFileSync(join(dir, DOCS_ROOT, "Subscriber.md"), "utf8");
+      writeFileSync(join(dir, DOCS_ROOT, "RemovedStats.md"), stale);
+      expect(await run(["verify", "--cwd", dir, "--docs"])).toBe(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("a dangling symlink in the docs tree does not take the gate down", async () => {
     const dir = project();
     try {

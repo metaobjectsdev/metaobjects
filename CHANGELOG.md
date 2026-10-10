@@ -10,6 +10,17 @@ here.**
 
 ## [Unreleased]
 
+### Fixed
+
+- `meta verify --docs` now reports a generated page in the docs root that no current object
+  produces (for example the `<Object>.md` page of an object that was removed) as drift. It was
+  silent about every such page outside `agent/`, so an adopter kept ten orphan pages with the
+  gate green. Ownership rests on the `@generated` marker, so hand-written files in the docs root
+  and the `api/` subtree are still left alone. No other port ships a docs-verify surface, so
+  none shares the gap.
+- The `hand-rolled-aggregate` advisory now names `object.report` for grouped, served or reported
+  figures, and says an `object.projection` with `origin.aggregate` still fits a per-row figure.
+
 ## [1.1.0] — 2026-10-10
 
 _npm `1.1.0` (all 14 `@metaobjectsdev/*` packages in lockstep), PyPI `1.1.0`, NuGet `1.1.0` and
