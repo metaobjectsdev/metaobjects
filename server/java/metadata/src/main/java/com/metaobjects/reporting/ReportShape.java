@@ -32,6 +32,7 @@ import com.metaobjects.loader.ValidationPhase;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.reporting.ReportAccessors.ReportDimensionItem;
 import com.metaobjects.source.MetaSource;
+import com.metaobjects.validator.RequiredValidator;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -346,8 +347,9 @@ public final class ReportShape {
     private static boolean dimensionRequired(MetaDimension dim, MetaObject named, MetaField<?> of, MetaObject from,
                                              MetaRoot root, List<String> spine, MetaObject report) {
         String via = dim.getVia();
-        // Attr only: a validator.required child does not make the column non-null.
-        boolean ofRequired = ReportingAttrs.isTrue(of, MetaField.ATTR_REQUIRED);
+        // Effective required-ness, resolving (ADR-0039): the @required attr OR a validator.required child.
+        boolean ofRequired = ReportingAttrs.isTrue(of, MetaField.ATTR_REQUIRED)
+                || of.getValidators().stream().anyMatch(v -> RequiredValidator.SUBTYPE_REQUIRED.equals(v.getSubType()));
         if (spine == null) return via == null && ofRequired;
         if (via == null) return false; // a column of @from: null in a spine row with no facts
         List<String> hops = reportingViaHops(via, memberOwner(dim, from), from, root);

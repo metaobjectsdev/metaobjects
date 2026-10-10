@@ -118,4 +118,28 @@ describe("renderFilterType", () => {
     // ...and the string-only `like` operator absent.
     expect(out).not.toMatch(/total\?:\s*string\s*\|\s*\{[^}]*like\?:/);
   });
+
+  // field.currency is integer minor units (the allowlist marks it integer, the row schema is
+  // z.number().int()), so its filter operand is a number, not a string.
+  test("currency filterable field has number value type", async () => {
+    const meta = {
+      "metadata.root": {
+        package: "shop::money",
+        children: [
+          {
+            "object.entity": {
+              name: "Invoice",
+              children: [{ "field.currency": { name: "revenue", "@filterable": true, "@currency": "USD" } }],
+            },
+          },
+        ],
+      },
+    };
+    const { root } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(meta))]);
+    const entity = root.objects().find((c) => c.name === "Invoice")!;
+    const out = renderFilterType(entity).toString();
+    expect(out).toMatch(/revenue\?:\s*number\s*\|\s*\{/);
+    expect(out).toMatch(/revenue\?:[\s\S]*?gt\?:\s*number/);
+    expect(out).not.toMatch(/revenue\?:[\s\S]*?gt\?:\s*string/);
+  });
 });

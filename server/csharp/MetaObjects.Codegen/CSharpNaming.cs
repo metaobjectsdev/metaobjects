@@ -1068,13 +1068,13 @@ public static class CSharpNaming
     }
 
     /// <summary>
-    /// Whether a field is non-nullable in the generated entity: explicitly @required,
-    /// or part of the primary identity.
+    /// Whether a field is non-nullable in the generated entity: required (the @required attr
+    /// or a validator.required child), or part of the primary identity.
     /// </summary>
     public static bool IsRequired(MetaObject entity, MetaField field)
     {
-        // ADR-0039: resolving — @required may be inherited from an abstract base via extends.
-        if (field.Attr(FIELD_ATTR_REQUIRED) is true) return true;
+        // ADR-0039: resolving — the attr and the validator set both inherit via extends.
+        if (field.IsRequired) return true;
         var pk = entity.PrimaryIdentity();
         return pk is not null && pk.Fields.Contains(field.Name);
     }

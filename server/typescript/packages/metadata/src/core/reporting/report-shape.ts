@@ -12,7 +12,6 @@ import { CHILD_REF_SEPARATOR, PACKAGE_SEPARATOR } from "../../shared/structural.
 import type { MetaObject } from "../object/meta-object.js";
 import type { MetaField } from "../field/meta-field.js";
 import {
-  FIELD_ATTR_REQUIRED,
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_DATE,
   FIELD_SUBTYPE_DECIMAL,
@@ -238,7 +237,7 @@ function isTimeGrain(grain: string | undefined): grain is TimeGrain {
 
 /**
  * Table C (`required` of a dimension). Without `@spine`: only a dimension with no `@via`
- * over an `@of` field whose effective `@required` is true. With `@spine`: only a dimension
+ * over an `@of` field that is effectively required (`@required`, or a `validator.required` child). With `@spine`: only a dimension
  * whose `@via` hops equal the spine's (a column of the spine entity itself, whose rows are
  * the report's rows) over an `@of` field that is `@required` or a primary-key column of the
  * entity `@of` names. A dimension beyond the spine is reached by a LEFT OUTER join.
@@ -253,12 +252,12 @@ function dimensionRequired(
   reportName: string,
 ): boolean {
   const via = dim.via();
-  if (spine === undefined) return via === undefined && of.attr(FIELD_ATTR_REQUIRED) === true;
+  if (spine === undefined) return via === undefined && of.isRequired;
   if (via === undefined) return false; // a column of @from: null in a spine row with no facts
   const hops = reportingViaHops(via, reportingMemberOwner(dim, from), from, root);
   if (hops === undefined) throw unresolved(reportName, `dimension '${dim.name}' @via '${via}'`);
   const onSpine = hops.length === spine.length && hops.every((h, i) => h === spine[i]);
-  return onSpine && (of.attr(FIELD_ATTR_REQUIRED) === true || isPrimaryKeyField(named, of));
+  return onSpine && (of.isRequired || isPrimaryKeyField(named, of));
 }
 
 function dimensionField(

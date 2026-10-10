@@ -232,9 +232,11 @@ def _dimension_required(
     a primary-key column of the entity ``@of`` names. A dimension beyond the spine is
     reached by a LEFT OUTER join."""
     via = dim.via()
-    # ADR-0039 resolving: the @of field's effective @required (the attr only; a
-    # validator.required child does not count).
-    of_required = of.get_meta_attr(FIELD_ATTR_REQUIRED) is True
+    # ADR-0039 resolving: the @of field's effective required-ness, the @required attr OR a
+    # validator.required child (children() is the effective set, own + inherited).
+    of_required = of.get_meta_attr(FIELD_ATTR_REQUIRED) is True or any(
+        c.type == "validator" and c.sub_type == "required" for c in of.children()
+    )
     if spine is None:
         return via is None and of_required
     if via is None:
