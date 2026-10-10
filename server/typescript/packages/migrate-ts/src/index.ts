@@ -73,7 +73,7 @@ export type { SqlType } from "./sql-type.js";
 export type {
   SchemaSnapshot, SnapshotMeta,
   TableDescriptor, ColumnDescriptor, IndexDescriptor, FkDescriptor, ColumnDefault,
-  ViewDescriptor, FkAction, NameChange,
+  ViewDescriptor, ViewChangeReason, FkAction, NameChange,
   Change, ChangeKind, ChangeStatus,
   AllowOptions, AmbiguousChange, AmbiguousResolution, AmbiguousCallback,
   DiffResult, DataHazard, DeclaredRename, EmitResult, Dialect,
@@ -89,6 +89,7 @@ export type { WriteMigrationFlywayOptions, WriteMigrationFlywayResult } from "./
 // there is no standalone view-migration emitter (the source-aware-diff / view-diff
 // / view-ddl-{postgres,sqlite} stack was folded into the schema-diff path).
 export { normalizeViewSql, viewSqlEquals } from "./view-sql-compare.js";
+export { isViewRecreateOnly, withoutViewRecreates } from "./view-change-reason.js";
 
 // D1 dialect emitter + safety pass.
 // renderD1 is exported directly (unlike renderSqlite/renderPostgres) so

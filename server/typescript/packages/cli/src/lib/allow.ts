@@ -2,8 +2,8 @@
 // both `meta migrate` and `meta verify --db`. Keeping a single copy avoids the
 // two commands drifting on which `--allow` tokens exist or how a change reads.
 
-import { allowOptionFor, suggestColumnRenames } from "@metaobjectsdev/migrate-ts";
-import type { AllowOptions, Change, ColumnRenameSuggestion } from "@metaobjectsdev/migrate-ts";
+import { allowOptionFor, isViewRecreateOnly, suggestColumnRenames } from "@metaobjectsdev/migrate-ts";
+import type { AllowOptions, Change, ColumnRenameSuggestion, ViewChangeReason } from "@metaobjectsdev/migrate-ts";
 import type { BlockedEntry } from "./output.js";
 
 // Map CLI allow tokens → migrate-ts AllowOptions field names.
@@ -84,14 +84,65 @@ export function describeChange(c: Change): string {
       return c.restore !== undefined
         ? `${c.table} check ${c.check} (${c.restore.expression})`
         : `${c.table} check ${c.check}`;
-    case "create-view": return c.view.name;
-    case "replace-view": return c.view.name;
-    case "drop-view": return c.view;
+    case "create-view": return withViewReason(c.view.name, c.reason);
+    case "replace-view": return withViewReason(c.view.name, c.reason);
+    case "drop-view": return withViewReason(c.view, c.reason);
   }
   // Exhaustive: a new Change kind fails to compile here rather than printing a JSON dump
   // of the change object to a person (which is what a blocked drop-check used to do).
   const unhandled: never = c;
   return unhandled;
+}
+
+/**
+ * A view's name plus WHY the diff planned its change. A bare name was all a view change
+ * ever printed, so a view whose definition matched the metadata — dropped and recreated only
+ * because the migration alters a table it reads — read exactly like one that differed (D3).
+ */
+function withViewReason(name: string, reason: ViewChangeReason | undefined): string {
+  return reason === undefined ? name : `${name} (${viewReasonText(reason)})`;
+}
+
+function viewReasonText(r: ViewChangeReason): string {
+  switch (r.kind) {
+    case "missing": return "declared by the metadata, not in the database";
+    case "undeclared": return "in the database, declared by no metadata object";
+    case "definition": {
+      const what = r.compared === "fingerprint"
+        ? "definition differs: the database view's fingerprint does not match the metadata's"
+        : r.firstDifference !== undefined
+          ? `definition text differs: metadata «${r.firstDifference.expected}» vs database «${r.firstDifference.actual}»`
+          : "definition text differs";
+      return recreatedAround(what, r.tables);
+    }
+    case "unfingerprinted":
+      return recreatedAround(
+        "the database view carries no MetaObjects fingerprint, so its definition cannot be compared",
+        r.tables,
+      );
+    case "unchanged":
+      return `definition matches the metadata; recreated because the migration alters ${tableList(r.tables)}`;
+  }
+}
+
+function recreatedAround(what: string, tables: readonly string[] | undefined): string {
+  return tables === undefined ? what : `${what}; recreated around the change to ${tableList(tables)}`;
+}
+
+function tableList(tables: readonly string[]): string {
+  return `${tables.length === 1 ? "table" : "tables"} ${tables.join(", ")}`;
+}
+
+/**
+ * One line naming the views a migration drops and recreates only because it alters a table
+ * they read. Their definitions match the metadata, and the migration needs the pair, but
+ * without this line the DROP VIEW / CREATE VIEW in the SQL reads like a view change (D3).
+ */
+export function viewRecreateNote(changes: readonly Change[]): string | undefined {
+  const views = changes.flatMap((c) => c.kind === "create-view" && isViewRecreateOnly(c) ? [c.view.name] : []);
+  if (views.length === 0) return undefined;
+  return `${views.length} view(s) match the metadata and are recreated only because the migration ` +
+    `alters a table they read: ${views.join(", ")}`;
 }
 
 /** The `--allow` token that unblocks `c`. migrate-ts picks the permission by what blocked the

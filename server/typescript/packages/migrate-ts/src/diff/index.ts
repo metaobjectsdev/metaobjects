@@ -1,6 +1,6 @@
 import type {
   SchemaSnapshot, TableDescriptor, ColumnDescriptor, IndexDescriptor, FkDescriptor,
-  ViewDescriptor,
+  ViewDescriptor, ViewChangeReason,
   DependentRelation,
   Change, ChangeStatus, DiffResult, AllowOptions, AmbiguousCallback, Dialect,
   CheckDescriptor, NameChange, DeclaredRename,
@@ -10,7 +10,7 @@ import { sqlTypeEquals } from "../sql-type.js";
 import { applyStatus } from "./status.js";
 import { PrimaryKeyChangeError } from "../errors.js";
 import { detectColumnRenames, detectTableRenames } from "./rename-heuristic.js";
-import { viewSqlEquals } from "../view-sql-compare.js";
+import { firstViewSqlDifference, viewSqlEquals } from "../view-sql-compare.js";
 import { viewReplaceIsLegal } from "../view-column-types.js";
 import { checkExprEquals, checkExprRespelledNullSafe, normalizeCheckExpr, renameExprIdentifiers } from "../check-expr-compare.js";
 import { isPgAutoSequenceDefault } from "../pg-identity-default.js";
@@ -886,7 +886,9 @@ function diffViews(
   for (const [id, v] of exp) {
     const a = act.get(id);
     if (a === undefined) {
-      changes.push({ kind: "create-view", view: v, ...schemaSpread(v.schema), status: ALLOWED });
+      changes.push({
+        kind: "create-view", view: v, ...schemaSpread(v.schema), reason: { kind: "missing" }, status: ALLOWED,
+      });
       continue;
     }
 
@@ -922,8 +924,11 @@ function diffViews(
 
     // SQLite/D1 (and unknown dialects): verbatim body comparison.
     if (v.sql !== undefined && a.sql !== undefined && !viewSqlEquals(v.sql, a.sql)) {
+      const firstDifference = firstViewSqlDifference(v.sql, a.sql);
       changes.push({
-        kind: "replace-view", view: v, ...schemaSpread(v.schema), restore: a, status: ALLOWED,
+        kind: "replace-view", view: v, ...schemaSpread(v.schema), restore: a,
+        reason: { kind: "definition", compared: "text", ...(firstDifference !== undefined ? { firstDifference } : {}) },
+        status: ALLOWED,
       });
     }
   }
@@ -931,7 +936,8 @@ function diffViews(
   for (const [id, v] of act) {
     if (!exp.has(id)) {
       changes.push({
-        kind: "drop-view", view: v.name, ...schemaSpread(v.schema), restore: v, status: ALLOWED,
+        kind: "drop-view", view: v.name, ...schemaSpread(v.schema), restore: v,
+        reason: { kind: "undeclared" }, status: ALLOWED,
       });
     }
   }
@@ -954,6 +960,10 @@ function pushViewUpdate(
 ): void {
   const sx = schemaSpread(expected.schema);
   const adopt = unmanaged ? { unmanagedActual: true as const } : {};
+  // Postgres compares fingerprints, never text: an unstamped view cannot be compared at all.
+  const reason: ViewChangeReason = unmanaged
+    ? { kind: "unfingerprinted" }
+    : { kind: "definition", compared: "fingerprint" };
   // #239/#240: emit a replace only when it is a legal CREATE OR REPLACE. The decision
   // keys on the EXPECTED (desired) view's column knowledge, NOT on both sides:
   //   - EXPECTED columns KNOWN (a projection): run viewReplaceIsLegal. It fails safe to
@@ -971,14 +981,14 @@ function pushViewUpdate(
       ? viewReplaceIsLegal(expected.columns, actual.columns)
       : unmanaged;
   if (legal) {
-    changes.push({ kind: "replace-view", view: expected, ...sx, restore: actual, ...adopt, status: ALLOWED });
+    changes.push({ kind: "replace-view", view: expected, ...sx, restore: actual, ...adopt, reason, status: ALLOWED });
     return;
   }
   // The column list changed shape (removed / renamed / reordered / retyped), so
   // Postgres refuses OR REPLACE. The view must be dropped and rebuilt — which is
   // destructive to anything depending on it (annotateViewDropDependents makes that loud).
-  changes.push({ kind: "drop-view", view: expected.name, ...sx, restore: actual, ...adopt, status: ALLOWED });
-  changes.push({ kind: "create-view", view: expected, ...sx, status: ALLOWED });
+  changes.push({ kind: "drop-view", view: expected.name, ...sx, restore: actual, ...adopt, reason, status: ALLOWED });
+  changes.push({ kind: "create-view", view: expected, ...sx, reason, status: ALLOWED });
 }
 
 /**
@@ -1067,7 +1077,8 @@ function recreateViewsDependingOnChangedTables(
   if (alteredTables.size === 0) return;
 
   for (const v of expectedViews) {
-    if (!(v.dependsOn ?? []).some((t) => alteredTables.has(t))) continue;
+    const tables = (v.dependsOn ?? []).filter((t) => alteredTables.has(t));
+    if (tables.length === 0) continue;
     const id = viewIdentity(v);
 
     // Brand-new view (create-view already queued): the DB has no prior view to
@@ -1077,18 +1088,56 @@ function recreateViewsDependingOnChangedTables(
     // Supersede any replace-view (CREATE OR REPLACE can't run mid-ALTER) with an
     // explicit drop(before)/create(after) pair — the emit STAGE_ORDER sequences
     // drop-view ahead of the column change and create-view after it.
+    let superseded: Extract<Change, { kind: "replace-view" }> | undefined;
     for (let i = changes.length - 1; i >= 0; i--) {
       const c = changes[i]!;
-      if (c.kind === "replace-view" && viewIdentity(c.view) === id) changes.splice(i, 1);
+      if (c.kind === "replace-view" && viewIdentity(c.view) === id) {
+        superseded = c;
+        changes.splice(i, 1);
+      }
     }
     const prior = actualById.get(id);
+    const reason = recreateReason(v, prior, superseded, tables, dialect);
     changes.push({
       kind: "drop-view", view: v.name, ...schemaSpread(v.schema),
       ...(prior !== undefined ? { restore: prior } : {}),
+      // A superseded ADOPTION (#239) keeps its gate: the pair would otherwise auto-allow
+      // overwriting a view that may be hand-written.
+      ...(superseded?.unmanagedActual === true ? { unmanagedActual: true } : {}),
+      ...(reason !== undefined ? { reason } : {}),
       status: ALLOWED,
     });
-    changes.push({ kind: "create-view", view: v, ...schemaSpread(v.schema), status: ALLOWED });
+    changes.push({
+      kind: "create-view", view: v, ...schemaSpread(v.schema),
+      ...(reason !== undefined ? { reason } : {}),
+      status: ALLOWED,
+    });
   }
+}
+
+/**
+ * Why Pass 2c recreates `v` (D3). A superseded replace-view keeps its own reason, now
+ * naming the altered tables. Otherwise the definition is `unchanged` — but only when the
+ * comparison Pass 2b makes on this dialect actually PROVED it equal. When it could not (no
+ * expected fingerprint, or a body missing on either side) the change gets no reason, which
+ * reports it as drift: the honest answer to a comparison that never ran.
+ */
+function recreateReason(
+  v: ViewDescriptor,
+  prior: ViewDescriptor | undefined,
+  superseded: Extract<Change, { kind: "replace-view" }> | undefined,
+  tables: readonly string[],
+  dialect: Dialect | undefined,
+): ViewChangeReason | undefined {
+  if (superseded !== undefined) {
+    const r = superseded.reason;
+    return r?.kind === "definition" || r?.kind === "unfingerprinted" ? { ...r, tables } : undefined;
+  }
+  if (prior === undefined) return undefined;
+  const proven = dialect === "postgres"
+    ? v.fingerprint !== undefined && prior.fingerprint === v.fingerprint
+    : viewSqlEquals(v.sql, prior.sql);
+  return proven ? { kind: "unchanged", tables } : undefined;
 }
 
 function indexEquals(a: IndexDescriptor, b: IndexDescriptor): boolean {

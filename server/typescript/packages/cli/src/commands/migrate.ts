@@ -61,7 +61,7 @@ import {
   type WranglerRunner,
 } from "../lib/wrangler.js";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
-import { tokensToAllowOptions, blockedEntriesFor, blockedHintLines } from "../lib/allow.js";
+import { tokensToAllowOptions, blockedEntriesFor, blockedHintLines, viewRecreateNote } from "../lib/allow.js";
 import { reportLoadError } from "../lib/load-error.js";
 import { scanForReferentialActionConflicts } from "../lib/referential-action-advisory.js";
 import type { MetaData } from "@metaobjectsdev/metadata";
@@ -251,6 +251,17 @@ function finishMigrate(fmt: OutputFormat, lines: readonly string[], doc: Record<
 /** The result fields both the offline and the d1 pipeline report when they have none of their own. */
 function migrateResultDefaults(dryRun: boolean): Pick<MigrateResultShape, "blocked" | "ambiguous" | "writtenPaths" | "dryRun"> {
   return { blocked: [], ambiguous: [], writtenPaths: [], dryRun };
+}
+
+/** `viewRecreateNote` as the `notes` list a result carries: empty when there is nothing to say. */
+function viewRecreateNotes(changes: Change[]): string[] {
+  const note = viewRecreateNote(changes);
+  return note === undefined ? [] : [note];
+}
+
+/** A result's notes as prose lines, for the paths that report through `finishMigrate`. */
+function narratedNotes(notes: readonly string[]): string[] {
+  return notes.map((n) => `migrate: ${n}`);
 }
 
 /** The `-- UP -- / -- DOWN --` preview a dry run prints in text format. */
@@ -739,6 +750,7 @@ export async function migrateCommand(
   let writtenPaths: string[] = [];
   /** A dry run's SQL: printed in text format, carried in the document otherwise. */
   let dryRunSql: { up: string; down: string } | undefined;
+  const notes: string[] = [];
   let appliedNames: string[] = [];
   let applyFailed = false;
   let blocked: BlockedEntry[] = [];
@@ -896,6 +908,7 @@ export async function migrateCommand(
     if (diffResult.changes.length === 0) {
       // no-op — output will say "No schema changes"
     } else {
+      notes.push(...viewRecreateNotes(diffResult.changes));
       let emitted: EmitResult | undefined;
       try {
         emitted = emit(diffResult.changes, {
@@ -1051,6 +1064,7 @@ export async function migrateCommand(
     applied: appliedNames,
     applyFailed,
     warnings: hazardWarnings,
+    notes,
     ...(dryRunSql !== undefined ? { sql: dryRunSql } : {}),
   };
   const output =
@@ -1425,12 +1439,14 @@ export async function runOfflineGenerate(
   const { diff: diffResult, nextSnapshot, expected: governedExpected } = plan;
   logOutOfScope(plan.outOfScope, plan.importedOutOfScope ?? [], fmt);
 
+  const offlineNotes = viewRecreateNotes(diffResult.changes);
   const offlineResult = (extra: Partial<MigrateResultShape>): MigrateResultShape => ({
     dialect: offlineDialect,
     displayUrl: "",
     changeCounts: summarizeChanges(diffResult.changes),
     ...migrateResultDefaults(config.dryRun),
     format: config.format,
+    notes: offlineNotes,
     ...extra,
   });
   if (diffResult.blocked.length > 0) {
@@ -1459,7 +1475,11 @@ export async function runOfflineGenerate(
 
   if (config.dryRun) {
     const sql = { up: emitResult.up, down: emitResult.down };
-    finishMigrate(fmt, [sqlPreview(sql)], migrateResultToData(offlineResult({ sql, warnings: offlineWarnings })));
+    finishMigrate(
+      fmt,
+      [...narratedNotes(offlineNotes), sqlPreview(sql)],
+      migrateResultToData(offlineResult({ sql, warnings: offlineWarnings })),
+    );
     return 0;
   }
 
@@ -1482,7 +1502,7 @@ export async function runOfflineGenerate(
   await writeSnapshot(path, nextSnapshot);
   finishMigrate(
     fmt,
-    [`migrate: wrote ${res.upPath}`, `migrate: wrote ${res.downPath}`],
+    [`migrate: wrote ${res.upPath}`, `migrate: wrote ${res.downPath}`, ...narratedNotes(offlineNotes)],
     migrateResultToData(offlineResult({ writtenPaths: [res.upPath, res.downPath], warnings: offlineWarnings })),
   );
   return 0;
@@ -1700,6 +1720,7 @@ async function runD1Migrate(
   }
 
   const changeCounts = summarizeChanges(diffResult.changes);
+  const d1Notes = viewRecreateNotes(diffResult.changes);
   warnDataHazards(diffResult.hazards);
 
   // Views are emitted by the one schema-diff path: renderD1 = renderSqlite (which
@@ -1748,7 +1769,7 @@ async function runD1Migrate(
 
   if (config.dryRun) {
     const sql = { up: combinedUp, down: combinedDown };
-    finishMigrate(fmt, [sqlPreview(sql)], migrateResultToData(d1Result({ sql })));
+    finishMigrate(fmt, [...narratedNotes(d1Notes), sqlPreview(sql)], migrateResultToData(d1Result({ sql, notes: d1Notes })));
     return 0;
   }
 
@@ -1762,8 +1783,9 @@ async function runD1Migrate(
       `migrate: wrote ${writeResult.upPath}`,
       `migrate: wrote ${writeResult.downPath}`,
       ...Object.entries(changeCounts).map(([kind, count]) => `  ${kind}: ${count}`),
+      ...narratedNotes(d1Notes),
     ],
-    migrateResultToData(d1Result({ writtenPaths: [writeResult.upPath, writeResult.downPath] })),
+    migrateResultToData(d1Result({ writtenPaths: [writeResult.upPath, writeResult.downPath], notes: d1Notes })),
   );
 
   // 7. Optional --apply: run `wrangler d1 migrations apply`.
