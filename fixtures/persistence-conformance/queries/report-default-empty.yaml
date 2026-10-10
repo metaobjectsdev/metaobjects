@@ -1,0 +1,14 @@
+name: report-default-empty
+description: |
+  FitnessTotalsFilled over an EMPTY weeks table: the twin of report-totals-empty, with
+  @default: 0 on the sum and the ratio and no @spine. A report with no dimensions still
+  returns exactly one row; the count is 0 as before, and where report-totals-empty
+  reads null (a sum of nothing, a ratio over a zero denominator) the defaulted measures
+  read their default, 0. The sum stays BIGINT (string) and the ratio NUMERIC
+  (canonical decimal string).
+queries:
+  - name: one-row-over-an-empty-table
+    op: list
+    entity: FitnessTotalsFilled
+    expect:
+      - { weeks: "0", totalMinutesOrZero: "0", longShareOrZero: "0" }

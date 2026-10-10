@@ -59,6 +59,7 @@ export {
 export {
   measureDerivedSubType,
   reportShape,
+  reportSpineEntity,
   reportSpineHops,
   reportingMemberOwner,
   reportingViaHops,
@@ -74,6 +75,8 @@ export {
   describeFilter,
   describeMeasure,
   describeReportField,
+  describeReportRowScope,
+  describeReportRows,
   describeRowScope,
   describeSegment,
   reportFieldTypeName,

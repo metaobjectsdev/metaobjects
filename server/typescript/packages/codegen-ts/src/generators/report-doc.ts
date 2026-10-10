@@ -14,15 +14,14 @@ import {
   type MetaObject,
   type MetaRoot,
   DIMENSION_SUBTYPE_TIME,
-  OBJECT_REPORT_ATTR_FILTER,
-  OBJECT_REPORT_ATTR_SEGMENT,
   TYPE_DIMENSION,
   TYPE_MEASURE,
   TYPE_SEGMENT,
   describeDimension,
   describeMeasure,
   describeReportField,
-  describeRowScope,
+  describeReportRowScope,
+  describeReportRows,
   describeSegment,
   isMetaObject,
   reportFieldTypeName,
@@ -48,7 +47,8 @@ function cell(text: string): string {
 
 /**
  * The body of a report page's "Report" section: `@from` (linked), the view or the
- * not-served line, the row scope, and the column table.
+ * not-served line, where a `@spine` report's rows come from, the row scope, and the column
+ * table.
  *
  * Built from `reportShape`, which resolves for a report with no source, and not from the
  * read model, which exists only to give a SERVED report ordinary fields.
@@ -60,8 +60,10 @@ export function buildReportBlock(report: MetaObject, root: MetaRoot, layout: Out
   lines.push(`**From:** [${shape.from.name}](${fromHref})`);
   const notServed = reportNotServedReason(report);
   lines.push(`**View:** ${notServed ?? tick(reportReadSource(report)?.physicalName ?? "")}`);
-  // ADR-0039: resolving.
-  const scope = describeRowScope(report.attr(OBJECT_REPORT_ATTR_SEGMENT), report.attr(OBJECT_REPORT_ATTR_FILTER));
+  // Only a report with `@spine` has a Rows line; without one the page is as it was.
+  const rows = describeReportRows(shape, root);
+  if (rows !== undefined) lines.push(`**Rows:** ${rows}`);
+  const scope = describeReportRowScope(report);
   if (scope !== undefined) lines.push(`**Row scope:** ${scope}`);
   if (shape.fields.length > 0) {
     lines.push("", "| Column | Type | Nullable | Role | Definition |", "|---|---|---|---|---|");

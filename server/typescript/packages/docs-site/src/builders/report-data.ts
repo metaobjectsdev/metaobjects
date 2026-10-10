@@ -1,8 +1,8 @@
 // FR-044 on the HTML site (Table G of the Plan 3 spec):
 //
 //   • an `object.report`'s page gets a "Report" section: its `@from` (linked), the view it
-//     is read from or why it is not served, its row scope, and one row per derived column
-//     from `reportShape`;
+//     is read from or why it is not served, where a `@spine` report's rows come from, its
+//     row scope, and one row per derived column from `reportShape`;
 //   • the page of an entity that declares dimensions, measures or segments, or that a
 //     report names as its `@from`, gets a "Reporting" section.
 //
@@ -18,6 +18,7 @@ import {
   OBJECT_REPORT_ATTR_FROM,
   OBJECT_REPORT_ATTR_MEASURES,
   OBJECT_REPORT_ATTR_SEGMENT,
+  OBJECT_REPORT_ATTR_SPINE,
   OBJECT_SUBTYPE_REPORT,
   TYPE_DIMENSION,
   TYPE_MEASURE,
@@ -26,7 +27,8 @@ import {
   describeDimension,
   describeMeasure,
   describeReportField,
-  describeRowScope,
+  describeReportRowScope,
+  describeReportRows,
   describeSegment,
   isMetaObject,
   reportFieldTypeName,
@@ -47,6 +49,7 @@ export const REPORT_RENDERED_ATTRS: ReadonlySet<string> = new Set([
   OBJECT_REPORT_ATTR_MEASURES,
   OBJECT_REPORT_ATTR_SEGMENT,
   OBJECT_REPORT_ATTR_FILTER,
+  OBJECT_REPORT_ATTR_SPINE,
 ]);
 
 export function isReportNode(node: MetaData): boolean {
@@ -80,6 +83,8 @@ export interface ReportSection {
   viewName?: string | undefined;
   /** "Not served: …" (Table A). Absent for a served report. */
   notServed?: string | undefined;
+  /** Where a `@spine` report's rows come from. Absent without `@spine`. */
+  rowsHtml?: string | undefined;
   scopeHtml?: string | undefined;
   columns: ReportColumnRow[];
 }
@@ -92,12 +97,14 @@ export function buildReportSection(dn: DocNode, root: MetaRoot, g: LinkGraph, co
   const shape = reportShape(report, root);
   const from = g.byFqn(fqnOf(shape.from));
   const notServed = reportNotServedReason(report);
-  const scope = describeRowScope(report.attr(OBJECT_REPORT_ATTR_SEGMENT), report.attr(OBJECT_REPORT_ATTR_FILTER));
+  const rows = describeReportRows(shape, root);
+  const scope = describeReportRowScope(report);
   return {
     fromName: shape.from.name,
     fromHref: from ? g.relHref(dn.href, from.href) : "",
     viewName: notServed === undefined ? reportReadSource(report)?.physicalName : undefined,
     notServed,
+    rowsHtml: rows !== undefined ? html(rows) : undefined,
     scopeHtml: scope !== undefined ? html(scope) : undefined,
     columns: shape.fields.map((f) => ({
       name: f.name,

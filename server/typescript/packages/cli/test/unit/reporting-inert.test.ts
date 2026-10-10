@@ -124,7 +124,9 @@ const BARREL = `${OUT}/index.ts`;
 /** The client UI generators that emit NOTHING for a report: a report has a list hook and no
  *  grid, grid hook or form. */
 const UI_TIER = ["grid", "grid-hook", "form"] as const;
-const SOURCELESS_REPORTS = ["ProgramEngagement", "DailyRevenue"] as const;
+/** `ProgramCatalogue` declares `@spine` and lists `programKey`, a dimension reached by
+ *  `@via`; `avgDaysPerStarter` declares `@default`. Sourceless, so still inert. */
+const SOURCELESS_REPORTS = ["ProgramEngagement", "DailyRevenue", "ProgramCatalogue"] as const;
 
 /** Assert `actual` is `expected` plus exactly `added`, with every shared file
  *  byte-identical except the barrel. */
@@ -148,7 +150,7 @@ function expectOnlyAdds(
 describe("FR-044 a sourceless report is inert; a served report emits exactly its read-only files", () => {
   test("the with-model really carries the vocabulary (else every check below is vacuous)", () => {
     const reports = withReporting.objects().filter((o) => o.subType === OBJECT_SUBTYPE_REPORT);
-    expect(reports.map((o) => o.name).sort()).toEqual(["DailyRevenue", "ProgramEngagement", "StoreTotals"]);
+    expect(reports.map((o) => o.name).sort()).toEqual(["DailyRevenue", "ProgramCatalogue", "ProgramEngagement", "StoreTotals"]);
     expect(withoutReporting.objects().some((o) => o.subType === OBJECT_SUBTYPE_REPORT)).toBe(false);
   });
 
@@ -261,7 +263,7 @@ describe("FR-044 a selection of only reports", () => {
   });
 
   test("a served report among them generates, and only for itself", async () => {
-    const result = await run(["DailyRevenue", "ProgramEngagement", "StoreTotals"]);
+    const result = await run(["DailyRevenue", "ProgramCatalogue", "ProgramEngagement", "StoreTotals"]);
     expect(result.warnings.some((w) => w.startsWith("No entities to generate"))).toBe(false);
     const names = result.files.map((f) => f.path.split(sep).pop()!);
     for (const file of Object.values(SERVED_REPORT_FILES).flat()) {
@@ -328,7 +330,7 @@ describe("FR-044 meta docs differs by exactly the report pages, the Reporting se
     }
   }
 
-  const REPORTS = ["DailyRevenue", "ProgramEngagement", "StoreTotals"] as const;
+  const REPORTS = ["DailyRevenue", "ProgramCatalogue", "ProgramEngagement", "StoreTotals"] as const;
   /** The entities that declare dimensions, measures or segments in the with-model. */
   const REPORTING_ENTITIES = ["Purchase", "WorkoutEvent"] as const;
   const SITE = "out--site/site";
@@ -406,7 +408,7 @@ describe("FR-044 meta docs differs by exactly the report pages, the Reporting se
       expect(actual[`${SITE_PKG}/${name}.html`]).toContain('id="s-reporting"');
       expect(expected[`${SITE_PKG}/${name}.html`]).not.toContain('id="s-reporting"');
     }
-    // An entity with no reporting nodes changes by its sidebar alone: the three report
+    // An entity with no reporting nodes changes by its sidebar alone: the four report
     // links, in the package it shares with them.
     const added = insertedLines(expected[`${SITE_PKG}/Program.html`]!, actual[`${SITE_PKG}/Program.html`]!);
     expect(added.length).toBe(REPORTS.length);

@@ -10,6 +10,8 @@ import {
   describeFilter,
   describeMeasure,
   describeReportField,
+  describeReportRowScope,
+  describeReportRows,
   describeRowScope,
   describeSegment,
   reportFieldTypeName,
@@ -58,6 +60,8 @@ const MODEL = {
         { "measure.aggregate": { name: "paidLiveCents", "@agg": "sum", "@of": "Invoice.amountCents", "@segment": "paid", "@filter": { voided: false } } },
         { "measure.ratio": { name: "paidShare", "@numerator": "paidInvoices", "@denominator": "invoices" } },
         { "segment.filter": { name: "paid", "@filter": { status: "paid" } } },
+        { "measure.aggregate": { name: "liveCentsOrZero", "@agg": "sum", "@of": "Invoice.amountCents", "@filter": { voided: false }, "@default": 0 } },
+        { "measure.ratio": { name: "paidShareOrNone", "@numerator": "paidInvoices", "@denominator": "invoices", "@default": -1 } },
       ] } },
       { "object.report": { name: "ByMonth", "@from": "Invoice",
         "@dimensions": ["issuedOn:month", "customerJoinedAt:month", "region", "tags"],
@@ -67,6 +71,11 @@ const MODEL = {
         children: [view("mv_invoices", "materializedView")] } },
       { "object.report": { name: "AbstractReport", abstract: true, "@from": "Invoice", "@measures": ["invoices"],
         children: [view("v_abstract")] } },
+      { "object.report": { name: "PaidTotals", "@from": "Invoice", "@measures": ["invoices"], "@segment": "paid" } },
+      { "object.report": { name: "PaidByRegion", "@from": "Invoice", "@spine": "Invoice.customer",
+        "@dimensions": ["region"], "@measures": ["invoices", "liveCentsOrZero"], "@segment": "paid" } },
+      { "object.report": { name: "CustomerRoster", "@from": "Invoice", "@spine": "Invoice.customer",
+        "@dimensions": ["region"], "@measures": ["invoices"] } },
     ],
   },
 };
@@ -166,6 +175,48 @@ describe("describing a report's columns", () => {
   });
 });
 
+describe("describing a measure @default and a report @spine", () => {
+  test("a defaulted aggregate keeps its sentence and ends with the declared integer", async () => {
+    const root = await load();
+    expect(describeMeasure(member(root, "measure", "liveCentsOrZero")))
+      .toBe('sum of `Invoice.amountCents` where filter `{"voided":{"eq":false}}`; `0` when there is nothing to aggregate');
+  });
+
+  test("a defaulted ratio is never null, so its null rule gives way to the default", async () => {
+    const root = await load();
+    expect(describeMeasure(member(root, "measure", "paidShareOrNone")))
+      .toBe("`paidInvoices` / `invoices`; `-1` when there is nothing to aggregate");
+  });
+
+  test("a report with @spine: its rows come from the spine entity, and its row scope aggregates only", async () => {
+    const root = await load();
+    const report = object(root, "PaidByRegion");
+    expect(describeReportRows(reportShape(report, root), root)).toBe(
+      "one row per distinct dimension tuple among the rows of `Customer`, reached by `Invoice.customer`, " +
+        "including those no `Invoice` refers to",
+    );
+    expect(describeReportRowScope(report)).toBe("aggregating only segment `paid`");
+    // The column table describes a defaulted measure as the entity's page does.
+    const column = reportShape(report, root).fields.find((f) => f.name === "liveCentsOrZero")!;
+    expect(describeReportField(column)).toBe(describeMeasure(member(root, "measure", "liveCentsOrZero")));
+  });
+
+  test("a @spine report with no row scope has none to describe", async () => {
+    const root = await load();
+    const report = object(root, "CustomerRoster");
+    expect(describeReportRows(reportShape(report, root), root)).toContain("among the rows of `Customer`");
+    expect(describeReportRowScope(report)).toBeUndefined();
+  });
+
+  test("a report without @spine: no rows sentence, and the row scope reads as it always did", async () => {
+    const root = await load();
+    expect(describeReportRows(reportShape(object(root, "ByMonth"), root), root)).toBeUndefined();
+    expect(describeReportRows(reportShape(object(root, "PaidTotals"), root), root)).toBeUndefined();
+    expect(describeReportRowScope(object(root, "PaidTotals"))).toBe("segment `paid`");
+    expect(describeReportRowScope(object(root, "ByMonth"))).toBeUndefined();
+  });
+});
+
 describe("why a report is not served (Plan 3 Table A)", () => {
   test("a view-backed report is served", async () => {
     const root = await load();
@@ -187,8 +238,8 @@ describe("the attrs a describer reads", () => {
     const root = await load();
     expect(reportingDescribedAttrs(member(root, "dimension", "status"))).toEqual(["of", "via"]);
     expect(reportingDescribedAttrs(member(root, "dimension", "issuedOn"))).toEqual(["of", "via", "grains"]);
-    expect(reportingDescribedAttrs(member(root, "measure", "invoices"))).toEqual(["agg", "of", "distinct", "segment", "filter"]);
-    expect(reportingDescribedAttrs(member(root, "measure", "paidShare"))).toEqual(["numerator", "denominator"]);
+    expect(reportingDescribedAttrs(member(root, "measure", "invoices"))).toEqual(["agg", "of", "distinct", "segment", "filter", "default"]);
+    expect(reportingDescribedAttrs(member(root, "measure", "paidShare"))).toEqual(["numerator", "denominator", "default"]);
     expect(reportingDescribedAttrs(member(root, "segment", "paid"))).toEqual(["filter"]);
     expect(reportingDescribedAttrs(object(root, "Invoice"))).toEqual([]);
   });

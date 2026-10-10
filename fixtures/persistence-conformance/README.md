@@ -316,7 +316,7 @@ Because M:N membership is a **set**, the runner compares `relate` results
 
 ### Report scenarios (FR-044)
 
-Six `queries/report-*.yaml` scenarios read a view-backed `object.report` through the
+Nine `queries/report-*.yaml` scenarios read a view-backed `object.report` through the
 port's runtime. They use only `op: list` and `op: count`, single-key `sort`, `filter` and
 `limit`: a report has no primary key, so there is no `op: get` and no write. The schema is
 still the committed `canonical/schema.postgres.sql`, which creates each report's view, so a
@@ -333,12 +333,19 @@ then measures in `@measures` order; a time dimension is named `<name><Grain>`, f
 | `report-time-grains` | `month` grain beside an enum dimension; a segment-filtered `sum` that is `null`; the ISO Monday week boundary; a report-level `@segment` |
 | `report-time-hour-and-date` | `hour` on an instant, `week` on a `field.date` |
 | `report-relative-date` | a `{ now: "-P30D" }` filter, with a seed relative to the database clock |
+| `report-spine-zero-rows` | `@spine`: a program with no weeks has a row (`weeks` `0`, `totalMinutes` and `longShare` null, the `@default: 0` measures `0`); `count` is the number of programs; a measure filter drops the empty rows; filter and sort on a defaulted measure |
+| `report-spine-scoped` | `@spine` with a report `@segment`: a program whose weeks are all out of scope keeps its row, with `weeks` `0` |
+| `report-default-empty` | `@default: 0` with no `@spine`, over an empty table: the twin of `report-totals-empty`, the sum and the ratio reading `0` |
 
 Wire shapes follow the view's column types and [`normalization.md`](./normalization.md):
 `count` and the integral `sum` are `BIGINT` (string), `min`/`max` of an int are `INTEGER`
 (number), `avg` and a ratio are `NUMERIC` (canonical decimal string, so `"60"`, `"0.75"`
 and `"0"`), a `date`-grain bucket is a `DATE` string, and an instant `hour` bucket is a
-`TIMESTAMPTZ` string in UTC (`"2026-05-04T03:00:00Z"`).
+`TIMESTAMPTZ` string in UTC (`"2026-05-04T03:00:00Z"`). A measure with `@default` keeps its
+column type, so a defaulted integral `sum` is still a `BIGINT` string and a defaulted ratio a
+canonical decimal string. No scenario sorts a measure that can be null across a row where it
+is null: engines disagree on where nulls sort (Postgres last ascending, SQLite and MySQL
+first), while a defaulted measure sorts as its default everywhere.
 
 ### Filter operators
 

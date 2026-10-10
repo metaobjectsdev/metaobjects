@@ -1,0 +1,58 @@
+name: report-spine-zero-rows
+description: |
+  ProgramRoster is an object.report over Week with @spine: "Week.fkProgram": its rows
+  come from the programs, not from the weeks, so a program with no weeks still has a
+  row. Program 3 (Mobility) has none: weeks is 0 (a count), totalMinutes and longShare
+  are null (no @default), and totalMinutesOrZero and longShareOrZero read their
+  declared @default, 0.
+
+  Wire shapes follow the view's column types: programKey (Program.id), the count and
+  the integral sums are BIGINT (string), the ratios are NUMERIC (canonical decimal
+  string). A defaulted measure keeps its column type.
+
+  A defaulted measure is filterable and sortable by its default: eq 0 matches the empty
+  row, and an ascending sort puts it first on every engine. No query here sorts
+  totalMinutes or longShare, which are null in that row and sort where the engine puts
+  nulls.
+seed-data: |
+  INSERT INTO "programs" ("id","title","priceCents","status","created_ts") VALUES
+    (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00'),
+    (2, 'Strength', 2500, 'PUBLISHED', '2026-05-17T23:30:00'),
+    (3, 'Mobility', 1500, 'DRAFT', '2026-05-20T08:00:00');
+  INSERT INTO "weeks" ("id","programId","label","durationMinutes") VALUES
+    (10, 1, 'Week 1', 30),
+    (11, 1, 'Week 2', 60),
+    (12, 1, 'Week 2', 90),
+    (13, 1, NULL, 60),
+    (20, 2, 'Solo', 45);
+queries:
+  - name: every-program-has-a-row
+    op: list
+    entity: ProgramRoster
+    sort: [{ field: programKey, dir: asc }]
+    expect:
+      - { programKey: "1", programTitle: "Foundations", weeks: "4", totalMinutes: "240", totalMinutesOrZero: "240", longShare: "0.75", longShareOrZero: "0.75" }
+      - { programKey: "2", programTitle: "Strength", weeks: "1", totalMinutes: "45", totalMinutesOrZero: "45", longShare: "0", longShareOrZero: "0" }
+      - { programKey: "3", programTitle: "Mobility", weeks: "0", totalMinutes: null, totalMinutesOrZero: "0", longShare: null, longShareOrZero: "0" }
+  - name: count-is-the-number-of-programs
+    op: count
+    entity: ProgramRoster
+    expect: 3
+  - name: the-default-is-filterable
+    op: list
+    entity: ProgramRoster
+    filter: { totalMinutesOrZero: { eq: 0 } }
+    expect:
+      - { programKey: "3", programTitle: "Mobility", weeks: "0", totalMinutes: null, totalMinutesOrZero: "0", longShare: null, longShareOrZero: "0" }
+  - name: a-count-filter-drops-the-empty-rows
+    op: count
+    entity: ProgramRoster
+    filter: { weeks: { gt: 0 } }
+    expect: 2
+  - name: sort-on-the-defaulted-measure
+    op: list
+    entity: ProgramRoster
+    sort: [{ field: totalMinutesOrZero, dir: asc }]
+    limit: 1
+    expect:
+      - { programKey: "3", programTitle: "Mobility", weeks: "0", totalMinutes: null, totalMinutesOrZero: "0", longShare: null, longShareOrZero: "0" }

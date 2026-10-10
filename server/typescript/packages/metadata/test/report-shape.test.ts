@@ -13,6 +13,7 @@ import {
   measureDerivedSubType,
   reportMeasureItemName,
   reportShape,
+  reportSpineEntity,
   reportSpineHops,
   type MetaObject,
   type MetaRoot,
@@ -473,6 +474,36 @@ describe("reportSpineHops", () => {
       expect(() => reportSpineHops(r, from, root)).toThrow(`report 'SpineSales': @spine '${spine}' does not resolve.`);
       expect(() => reportShape(r, root)).toThrow(`report 'SpineSales': @spine '${spine}' does not resolve.`);
     }
+  });
+});
+
+describe("reportSpineEntity", () => {
+  test("undefined without @spine; the entity at the end of the path with one", async () => {
+    const root = await salesModel();
+    const from = report(root, "Purchase");
+    expect(reportSpineEntity(report(root, "PlainSales"), from, root)).toBeUndefined();
+    expect(reportSpineEntity(report(root, "SpineSales"), from, root)).toBe(report(root, "Program"));
+    expect(reportSpineEntity(report(root, "CatalogSales"), from, root)).toBe(report(root, "Catalog"));
+  });
+
+  test("an identity.reference is a hop as well as a relationship (a tree built in code)", async () => {
+    const root = await salesModel();
+    const byReference = withAttr(report(root, "SpineSales"), OBJECT_REPORT_ATTR_SPINE, "Purchase.fkProgram");
+    expect(reportSpineEntity(byReference, report(root, "Purchase"), root)).toBe(report(root, "Program"));
+  });
+
+  test("a hop inherited from an abstract base is followed (ADR-0039, the inherited fixture)", async () => {
+    const fixture = join(REPO_ROOT, "fixtures", "conformance", "reporting-spine-inherited", "input", "meta.shop.json");
+    const { root } = await loadUris([pathToFileURL(fixture).href]);
+    expect(reportSpineEntity(report(root, "ProgramMinutes"), report(root, "WorkoutEvent"), root)?.name).toBe("Program");
+  });
+
+  test("a hop that names nothing throws, naming the report, the spine and the hop (a tree built in code)", async () => {
+    const root = await salesModel();
+    const r = withAttr(report(root, "SpineSales"), OBJECT_REPORT_ATTR_SPINE, "Purchase.nope");
+    expect(() => reportSpineEntity(r, report(root, "Purchase"), root)).toThrow(
+      "report 'SpineSales': @spine 'Purchase.nope' hop 'nope' does not resolve.",
+    );
   });
 });
 

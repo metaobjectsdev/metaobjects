@@ -22,6 +22,9 @@ import {
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_TIMESTAMP,
 } from "../field/field-constants.js";
+import { TYPE_IDENTITY, TYPE_RELATIONSHIP } from "../../shared/base-types.js";
+import { IDENTITY_REFERENCE_ATTR_REFERENCES, IDENTITY_SUBTYPE_REFERENCE } from "../identity/identity-constants.js";
+import { RELATIONSHIP_ATTR_OBJECT_REF } from "../relationship/relationship-constants.js";
 import { MetaDimension } from "./meta-dimension.js";
 import { MetaMeasure } from "./meta-measure.js";
 import { identityEffectiveFields } from "../identity/validate-identity-passthrough.js";
@@ -183,6 +186,32 @@ export function reportSpineHops(report: MetaObject, from: MetaObject, root: Meta
   const hops = reportingViaHops(spine, report, from, root);
   if (hops === undefined) throw unresolved(report.name, `@spine '${spine}'`);
   return hops;
+}
+
+/**
+ * The spine entity: the object at the end of a report's `@spine`, whose rows are the
+ * report's rows. Walked hop by hop from `from` as the loader's rule R8 walks it: each hop is
+ * a `relationship.*` (its `@objectRef`) or an `identity.reference` (its `@references`) of the
+ * entity reached so far, and its target resolves in that entity's package. Undefined when the
+ * report declares no `@spine`; throws, as {@link reportSpineHops} does, when one does not
+ * resolve (a report that passed `validateReporting` always resolves).
+ */
+export function reportSpineEntity(report: MetaObject, from: MetaObject, root: MetaRoot): MetaObject | undefined {
+  const hops = reportSpineHops(report, from, root);
+  if (hops === undefined) return undefined;
+  let current: MetaObject = from;
+  for (const hop of hops) {
+    // ADR-0039: resolving children(), so a relationship or reference inherited through
+    // extends is a hop, as the loader's walk finds it.
+    const node =
+      current.children().find((c) => c.type === TYPE_RELATIONSHIP && c.name === hop) ??
+      current.children().find((c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_REFERENCE && c.name === hop);
+    const ref = node?.attr(node.type === TYPE_IDENTITY ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF);
+    const target = typeof ref === "string" ? resolveObjectRef(root, ref, packageOfKey(current.resolutionKey())).node : undefined;
+    if (!isMetaObject(target)) throw unresolved(report.name, `@spine '${reportSpine(report) ?? ""}' hop '${hop}'`);
+    current = target;
+  }
+  return current;
 }
 
 /** True when `field` is one of the `@fields` of `entity`'s `identity.primary`. */

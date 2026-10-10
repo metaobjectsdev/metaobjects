@@ -74,7 +74,7 @@ describe("FR-044 the site renders reports", () => {
 
   test("each report has a page and a row in its package's object index", () => {
     const index = withSite.files[`${SHOP}/index.html`]!;
-    for (const name of ["StoreTotals", "ProgramEngagement", "DailyRevenue"]) {
+    for (const name of ["StoreTotals", "ProgramEngagement", "DailyRevenue", "ProgramCatalogue"]) {
       expect(Object.keys(withSite.files)).toContain(`${SHOP}/${name}.html`);
       expect(index).toContain(`href="${name}.html"`);
     }
@@ -104,13 +104,31 @@ describe("FR-044 the site renders reports", () => {
     expect(engagement).toContain(
       "daysEngaged long no measure count of distinct (WorkoutEvent.programId, WorkoutEvent.customerEmail, WorkoutEvent.weekNumber, WorkoutEvent.dayNumber)",
     );
-    expect(engagement).toContain("avgDaysPerStarter decimal yes measure daysEngaged / starters, null when the denominator is 0");
+    // `@default: 0`: never null, so the ratio's null rule gives way to the default.
+    expect(engagement).toContain("avgDaysPerStarter decimal no measure daysEngaged / starters; 0 when there is nothing to aggregate");
     expect(engagement).toContain("lastActivityAt timestamp yes measure max of WorkoutEvent.occurredAt");
 
     const daily = text(withSite.files[`${SHOP}/DailyRevenue.html`]!);
     expect(daily).toContain("Not served: declares no view source");
     expect(daily).toContain('row scope filter {"purchasedAt":{"gte":{"now":"-P90D"}}}');
     expect(daily).toContain("purchasedAtDay date yes dimension Purchase.purchasedAt truncated to day, UTC");
+    // Neither declares @spine: no rows sentence.
+    for (const page of [engagement, daily]) expect(page).not.toContain("one row per distinct dimension tuple");
+  });
+
+  test("a @spine report says where its rows come from, and its row scope aggregates only", () => {
+    const html = withSite.files[`${SHOP}/ProgramCatalogue.html`]!;
+    const page = text(html);
+    expect(page).toContain("Not served: declares no view source");
+    expect(page).toContain(
+      "rows: one row per distinct dimension tuple among the rows of Program, reached by Purchase.program, " +
+        "including those no Purchase refers to",
+    );
+    expect(page).toContain('row scope aggregating only filter {"refunded":{"eq":false}}');
+    expect(page).toContain("programKey long no dimension Program.id via Purchase.program");
+    expect(page).toContain("programTitle string yes dimension Program.title via Purchase.program");
+    // The Report section prints @spine in words, so it is not repeated as a raw attribute badge.
+    expect(html).not.toContain("@spine=");
   });
 
   test("the @from entity's page has a Reporting section: dimensions, measures, segments, reports", () => {
@@ -123,7 +141,11 @@ describe("FR-044 the site renders reports", () => {
     expect(section).toContain("purchasedAt time Purchase.purchasedAt; grains: day, week, month, quarter, year");
     expect(section).toContain('refundedPurchases count of Purchase.id where filter {"refunded":{"eq":true}}');
     expect(section).toContain("revenue sum of Purchase.amountCents where segment active");
+    expect(section).toContain("programKey Program.id via Purchase.program");
     expect(section).toContain('active {"status":{"eq":"active"}}');
+    expect(text(withSite.files[`${SHOP}/WorkoutEvent.html`]!)).toContain(
+      "avgDaysPerStarter daysEngaged / starters; 0 when there is nothing to aggregate",
+    );
     expect(html).toContain('<a class="link font-mono text-xs" href="DailyRevenue.html">DailyRevenue</a>');
     expect(html).toContain('<a class="link font-mono text-xs" href="StoreTotals.html">StoreTotals</a>');
     // An entity with no reporting nodes has no such section.
@@ -165,7 +187,7 @@ describe("FR-044 the site renders reports", () => {
 
   test("a report is not an orphan: it is linked to the entity it reads from", () => {
     const orphans = withSite.result.anomalies.filter((a) => a.kind === "orphan").map((a) => a.subject);
-    for (const name of ["StoreTotals", "ProgramEngagement", "DailyRevenue"]) expect(orphans).not.toContain(name);
+    for (const name of ["StoreTotals", "ProgramEngagement", "DailyRevenue", "ProgramCatalogue"]) expect(orphans).not.toContain(name);
     // The entity shows its reports among what references it.
     expect(text(withSite.files[`${SHOP}/WorkoutEvent.html`]!)).toContain("referenced by ProgramEngagement");
   });

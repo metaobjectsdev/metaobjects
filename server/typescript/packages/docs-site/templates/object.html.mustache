@@ -10,7 +10,7 @@
 {{#objectAttrs.length}}<section id="s-attributes" class="mt-4 text-xs"><span class="opacity-50 mr-1">attributes</span>{{#objectAttrs}}<span class="badge badge-soft badge-ghost badge-xs mr-1 font-mono">@{{name}}={{value}}</span>{{/objectAttrs}}</section>{{/objectAttrs.length}}
 {{#report}}
 <section id="s-report" class="mt-6"><h2 class="text-lg font-semibold">Report</h2>
-<div class="font-mono text-xs opacity-70 mt-1">from <a class="link font-mono" href="{{fromHref}}">{{fromName}}</a>{{#viewName}} · view <code>{{viewName}}</code>{{/viewName}}{{#notServed}} · <span class="badge badge-soft badge-warning badge-xs">{{notServed}}</span>{{/notServed}}{{#scopeHtml}} · row scope {{{scopeHtml}}}{{/scopeHtml}}</div>
+<div class="font-mono text-xs opacity-70 mt-1">from <a class="link font-mono" href="{{fromHref}}">{{fromName}}</a>{{#viewName}} · view <code>{{viewName}}</code>{{/viewName}}{{#notServed}} · <span class="badge badge-soft badge-warning badge-xs">{{notServed}}</span>{{/notServed}}{{#rowsHtml}} · rows: {{{rowsHtml}}}{{/rowsHtml}}{{#scopeHtml}} · row scope {{{scopeHtml}}}{{/scopeHtml}}</div>
 <div class="overflow-x-auto"><table class="table table-xs"><thead><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Role</th><th>Definition</th></tr></thead><tbody>
 {{#columns}}<tr><td class="font-mono">{{name}}</td><td class="opacity-60">{{type}}</td><td class="opacity-60">{{nullable}}</td><td class="opacity-60">{{role}}</td><td class="text-xs">{{{definitionHtml}}}</td></tr>
 {{/columns}}
