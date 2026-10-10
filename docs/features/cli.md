@@ -54,7 +54,7 @@ vocabulary everywhere, each port implementing the modes it supports.
 | `verify --db` | **Schema drift** — does the live database (or snapshot) match the metadata? (migrate engine, ADR-0015) | yes |
 | `verify --codegen` | **Codegen drift** — regenerate from metadata into a temp dir and fail if it differs from the committed generated output. Catches "metadata changed but `meta gen` wasn't re-run". A hand-edited generated file is NOT drift — `meta gen` three-way-merges hand edits by design, so the gate compares the *generated contribution* against the committed `.gen-state/.hashes.json` rather than the file byte-for-byte. It still LISTS every generated file carrying a hand edit (count + paths, and how to see the edit) as a notice that does not change the exit code; `--forbid-hand-edits` makes any hand edit fail the build, for teams that want generated code untouchable (Node `meta` only). | no |
 | `verify --templates` | **Template/prompt drift** — `Renderer.verify` checks each `template.*` node's `{{field}}` references against its payload VO (FR-004). | no |
-| `verify --docs` | **Docs drift** — run `meta docs` into a temp dir and fail if a committed page differs, if a page a fresh run emits was never committed AND is not git-ignored, or if a generated page under `agent/` is committed that a fresh run no longer emits. Catches "the model moved and nobody re-ran `meta docs`". It CALLS the docs command rather than reimplementing it, so the gate and the door cannot become two answers to what the docs are. **Node `meta` only** (`meta docs` is the TS door). | no |
+| `verify --docs` | **Docs drift** — run `meta docs` into a temp dir and fail if a committed page differs, if a page a fresh run emits was never committed AND is not git-ignored, or if a generated page (marked with `@generated`) in the docs root or under `agent/` is committed that a fresh run no longer emits. Catches "the model moved and nobody re-ran `meta docs`". It CALLS the docs command rather than reimplementing it, so the gate and the door cannot become two answers to what the docs are. **Node `meta` only** (`meta docs` is the TS door). | no |
 | `verify --deps` | **Dependency drift** (FR-023) — re-resolves each declared dependency's `path` and compares its installed artifact's hash against `.metaobjects/deps.lock.json`, same comparison as `meta deps check`. Needs the publisher's `path` reachable, so it is never part of the bare-`verify` default. A `drifted` or `unresolved` dependency fails with `ERR_DEPENDENCY_UPSTREAM_DRIFT`. **Node `meta` only.** See [`metadata-dependencies.md`](metadata-dependencies.md). | no |
 
 Rules of the contract:
@@ -75,11 +75,14 @@ Rules of the contract:
   A byte difference IS drift: a docs page is read, never imported, so there is no
   three-way merge to honour.
 
-  It reports a committed file as EXTRA only under `agent/`, and only when the file
-  opens with the `@generated` marker — the one tree it can prove it wrote.
+  It reports a committed file as EXTRA when the file opens with the `@generated`
+  marker. Ownership is proved by marker in two locations: the per-object model pages
+  in the docs root (e.g. `<Object>.md`), and everything under `agent/`. Hand-written
+  files in the root carry no marker and are left alone. `api/` stays out of
+  jurisdiction, since it is written by the adopter on a multi-port project.
   `docs.outDir` defaults to `./docs`, which in a real repository is full of
-  hand-written documentation MetaObjects did not write, and with no manifest to prove
-  ownership the gate has no standing to convict one elsewhere.
+  hand-written documentation MetaObjects did not write, and with no marker those are
+  not checked.
 
   **A page the project GIT-IGNORES is exempt.** `docs.outDir` is a directory, not a
   namespace MetaObjects owns — the jurisdiction rule `--codegen` got in 0.24.3 — but
@@ -496,7 +499,7 @@ the construct that replaces it:
 
 | Hand-rolled pattern | Suggested construct |
 |---|---|
-| an aggregate computed by hand (SQL `AVG`/`SUM`, a summing `.reduce(...)`) | `origin.aggregate` (on an `object.projection`) |
+| an aggregate computed by hand (SQL `AVG`/`SUM`, a summing `.reduce(...)`) | For grouped, served or reported figures: `object.report` (dimensions + measures, read-only list route). For a per-row figure on one entity: `object.projection` with `origin.aggregate` and a generated query. |
 | money as a float / hand-rolled minor units (a money-named field with `* 100`, `/ 100`, `.toFixed(2)`, `parseFloat`) | `field.currency` |
 | a fixed value set enforced by a SQL `CHECK (... IN (...))` | `field.enum` |
 
