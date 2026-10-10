@@ -133,9 +133,18 @@ describe("catalog declarations are resolved against what the generators emit", (
     //   template        a PRIMITIVE — registered with a no-op walk, by construction
     //   requirement-tests  emits stubs, which this harness writes but reads no imports
     //                      from beyond `bun:test` (a builtin, deliberately skipped)
+    //   cube-model      writes Cube YAML, and only for a model that declares reporting
+    //                   vocabulary (dimension.*, measure.*, segment.filter); this fixture
+    //                   declares none, by design, so it is silent here. Its declarations are
+    //                   `requires: []`, `runtimePackages: []` and `runtimePeers: []`, and the
+    //                   files it writes import nothing, so there is no evidence to be missing:
+    //                   the inert test (reporting-inert.test.ts) runs it over a model that
+    //                   does declare the vocabulary. (The one entry the list grew by since it
+    //                   was pinned: the vocabulary is not added to this fixture on purpose.)
     const silent = [...emissions.entries()].filter(([, e]) => e.size === 0).map(([n]) => n).sort();
     expect(silent).toEqual([
       "api-docs",
+      "cube-model",
       "docs",
       "render-helper",
       "shared-model",

@@ -3,7 +3,7 @@
 // The reference generators import only "@metaobjectsdev/codegen-ts" (the public engine);
 // if this passes, a consumer can copy them out and own them with no behavior change.
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readdirSync, readFileSync, cpSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, readdirSync, readFileSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { runGen, defineConfig, REFERENCE_GENERATOR_NAMES, HTTP_RUNTIME_PACKAGE, OWNED_RUNTIME_DIR } from "../src/index.js";
@@ -35,6 +35,16 @@ import {
   renderRequirementTest as refRenderRequirementTest,
 } from "../src/reference/requirement-tests.js";
 import { renderRequirementTest as builtinRenderRequirementTest } from "../src/templates/requirement-test.js";
+import { cubeModel as builtinCubeModel } from "../src/generators/cube-model.js";
+import { cubeModel as refCubeModel } from "../src/reference/cube-model.js";
+import {
+  CANONICAL_CONFIG,
+  CANONICAL_MODEL,
+  CUBE_CORPUS_DIR,
+  cubeModelTree,
+  loadModelFile,
+  readTree as readCubeTree,
+} from "../scripts/gen-cube-model-canonical.js";
 import type { RequirementTestArgs, RequirementTestsOpts } from "../src/index.js";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
@@ -122,6 +132,10 @@ const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () 
   "output-prompt": { builtin: builtinOutputPrompt, ref: refOutputPrompt },
   "render-helper": { builtin: builtinRenderHelper, ref: refRenderHelper },
   "requirement-tests": { builtin: builtinRequirementTests, ref: refRequirementTests },
+  // Over the entity-shaped fixtures above this emits nothing (none declares reporting
+  // vocabulary), so the pair is compared over two empty sets there; the describe at the end
+  // of this file runs both over models that DO, under both Cube dialects.
+  "cube-model": { builtin: builtinCubeModel, ref: refCubeModel },
 };
 
 // The prompt tier emits nothing for the entity-shaped fixtures above — none declares a
@@ -665,4 +679,148 @@ describe("ADR-0034 — the requirement-tests reference renders hand-built argume
       });
     }
   }
+});
+
+// The cube-model reference is the same GENERATOR as the built-in, not only the same output: a
+// copy whose `owns` claimed more than the built-in's would remove somebody else's file on a
+// full run, and no emitted file would show it. So both halves are compared — what the two WRITE
+// (the canonical model, then every case in the mapping corpus, errors included, then a narrowed
+// run), and what the runner READS from them (name, target, filter, orphan namespace).
+describe("ADR-0034 — the cube-model reference is byte-identical to the built-in", () => {
+  /** What one run did: the tree it wrote, or the message it threw (the runner's wrapper unwrapped). */
+  async function outcome(
+    make: () => Generator,
+    root: Parameters<typeof cubeModelTree>[0],
+    config: Parameters<typeof cubeModelTree>[1],
+  ): Promise<{ tree: [string, string][] } | { threw: string }> {
+    try {
+      return { tree: [...(await cubeModelTree(root, config, make())).entries()] };
+    } catch (err) {
+      let at: unknown = err;
+      while (at instanceof Error && at.cause instanceof Error) at = at.cause;
+      return { threw: at instanceof Error ? at.message : String(at) };
+    }
+  }
+
+  test("the canonical fitness model, postgres: the same three cubes, byte for byte", async () => {
+    const root = await loadModelFile(CANONICAL_MODEL);
+    const a = await outcome(builtinCubeModel, root, CANONICAL_CONFIG);
+    const b = await outcome(refCubeModel, root, CANONICAL_CONFIG);
+    // A gate over an empty emit passes trivially.
+    expect("tree" in a ? a.tree.map(([p]) => p) : a).toEqual([
+      "model/cubes/Asset.yml", "model/cubes/Program.yml", "model/cubes/Week.yml",
+    ]);
+    expect(b).toEqual(a);
+  });
+
+  test("every case in the mapping corpus: the same tree or the same refusal", async () => {
+    const cases = readdirSync(CUBE_CORPUS_DIR, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && e.name !== "canonical")
+      .map((e) => e.name)
+      .sort();
+    let trees = 0;
+    let refusals = 0;
+    for (const name of cases) {
+      const dir = join(CUBE_CORPUS_DIR, name);
+      const root = await loadModelFile(join(dir, "meta.json"));
+      const caseFile = join(dir, "case.json");
+      const json = existsSync(caseFile)
+        ? (JSON.parse(readFileSync(caseFile, "utf8")) as { dialect?: "postgres" | "mysql" | "sqlite"; columnNamingStrategy?: "snake_case" | "literal" | "kebab-case" })
+        : {};
+      const config = {
+        dialect: json.dialect ?? "postgres",
+        ...(json.columnNamingStrategy !== undefined ? { columnNamingStrategy: json.columnNamingStrategy } : {}),
+      };
+      const a = await outcome(builtinCubeModel, root, config);
+      const b = await outcome(refCubeModel, root, config);
+      expect({ name, ...b }).toEqual({ name, ...a });
+      if ("tree" in a) trees++;
+      else refusals++;
+    }
+    // Vacuity guard: the corpus must reach both the writing and the refusing branches.
+    expect(cases.length).toBeGreaterThan(30);
+    expect(trees).toBeGreaterThan(20);
+    expect(refusals).toBeGreaterThanOrEqual(10);
+  });
+
+  /** The tree a run writes into a scratch project, so the runner's own selection applies. */
+  async function runTree(make: () => Generator, extra: Partial<Parameters<typeof runGen>[0]>, config: { dialect: "postgres" | "mysql" | "sqlite" }) {
+    const root = await loadModelFile(CANONICAL_MODEL);
+    const dir = mkdtempSync(join(tmpdir(), "cube-ref-run-"));
+    try {
+      await runGen({
+        config: defineConfig({ outDir: join(dir, "out"), columnNamingStrategy: "literal", dialect: config.dialect, generators: [make()] }),
+        metadata: root,
+        projectRoot: dir,
+        ...extra,
+      });
+      return [...readCubeTree(join(dir, "out")).entries()];
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  test("a run that names an entity writes the same subset: its cube and the cubes it reaches", async () => {
+    const run = (make: () => Generator) => runTree(make, { entityFilter: ["Week"] }, { dialect: "postgres" });
+    const a = await run(builtinCubeModel);
+    // Narrower than the full run, and not empty.
+    expect(a.length).toBeGreaterThan(0);
+    expect(a.length).toBeLessThan(3);
+    expect(await run(refCubeModel)).toEqual(a);
+  });
+
+  test("the dialect option beats a sqlite config, and a filter narrows the BUILD, in both", async () => {
+    // Week is filtered out. Program.yml's `title` dimension exists only because Week's @via reads
+    // it, so a copy that built the whole model and merely hid Week's file would still write it.
+    const opts = { dialect: "mysql", filter: (o: { name: string }) => o.name !== "Week" } as const;
+    const a = await runTree(() => builtinCubeModel(opts), {}, { dialect: "sqlite" });
+    expect(a.map(([p]) => p)).toEqual(["model/cubes/Asset.yml", "model/cubes/Program.yml"]);
+    expect(a.every(([, text]) => text.includes("`"))).toBe(true);
+    expect(a.find(([p]) => p === "model/cubes/Program.yml")![1]).not.toContain("name: title");
+    expect(await runTree(() => refCubeModel(opts), {}, { dialect: "sqlite" })).toEqual(a);
+  });
+
+  // `shape` is everything the runner reads off a generator besides what it generates.
+  const SAMPLE_PATHS = [
+    "model/cubes/Week.yml",
+    "model/cubes/Match_fkHome.yml",
+    "model/cubes/deep/Week.yml",
+    "model/cubes/Week.yaml",
+    "model/cubes/Week.ts",
+    "model/cubes",
+    "model/views/Overview.yml",
+    "Week.yml",
+    "",
+  ];
+  const shape = (g: Generator) => ({
+    name: g.name,
+    target: g.target,
+    filtered: g.filter !== undefined,
+    reconciles: g.orphanPolicy !== undefined,
+    force: g.orphanPolicy?.force,
+    owns: g.orphanPolicy === undefined ? null : SAMPLE_PATHS.filter((p) => g.orphanPolicy?.owns(p)),
+  });
+
+  test("the defaults: the name, no target, no filter, and a cleanup that claims only model/cubes/*.yml", () => {
+    const builtin = shape(builtinCubeModel());
+    // The built-in's shape written out, so the comparison cannot pass by both being wrong.
+    expect(builtin).toEqual({
+      name: "cube-model",
+      target: undefined,
+      filtered: false,
+      reconciles: true,
+      force: undefined,
+      owns: ["model/cubes/Week.yml", "model/cubes/Match_fkHome.yml"],
+    });
+    expect(shape(refCubeModel())).toEqual(builtin);
+  });
+
+  test("the target and the filter are the application's, and the namespace does not move with them", () => {
+    const opts = { target: "analytics", filter: () => true } as const;
+    const builtin = shape(builtinCubeModel(opts));
+    expect(builtin.target).toBe("analytics");
+    expect(builtin.filtered).toBe(true);
+    expect(builtin.owns).toEqual(["model/cubes/Week.yml", "model/cubes/Match_fkHome.yml"]);
+    expect(shape(refCubeModel(opts))).toEqual(builtin);
+  });
 });

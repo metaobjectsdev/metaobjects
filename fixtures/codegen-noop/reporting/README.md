@@ -28,6 +28,12 @@ these places and no others:
   `StoreTotals.routes.hono.ts` (GET list, `POST` answers 405, no `/:id` route) and
   `StoreTotals.names.ts`. From the client UI tier it writes the list hook `StoreTotals.hooks.ts`
   and its descriptor `StoreTotals.meta.ts` and nothing else (no grid, grid hook or form).
+- TypeScript `cube-model` (FR-044 Plan 4, opt-in; not a served-report file) writes the Cube
+  data-model files `model/cubes/Purchase.yml` (with `StoreTotals`'s rollup),
+  `model/cubes/WorkoutEvent.yml` and `model/cubes/Program.yml` (a join-target cube: Purchase's
+  `@via` dimensions read its fields). It writes them from the entity vocabulary, so it writes
+  them whichever reports are served, and writes nothing for `without/`. The two sourceless
+  reports add nothing to any cube.
 - C# codegen (`dotnet meta gen`) writes three extra files: the keyless row class
   `StoreTotals.g.cs`, `StoreTotalsRoutes.g.cs` (GET list, `POST` answers 405, no `{id}` route)
   and `StoreTotalsFilterAllowlist.g.cs`; and two extra lines in `AppDbContext.g.cs` (a `DbSet`

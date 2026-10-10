@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { loadUris, type ColumnNamingStrategy, type MetaRoot } from "@metaobjectsdev/metadata";
-import { defineConfig, runGen, type Dialect } from "../src/index.js";
+import { defineConfig, runGen, type Dialect, type Generator } from "../src/index.js";
 import { cubeModel } from "../src/generators/cube-model.js";
 
 // scripts → codegen-ts → packages → typescript → server → repo root
@@ -57,11 +57,12 @@ export function readTree(dir: string): Map<string, string> {
 }
 
 /**
- * Run `cubeModel()` (its default options) over `root` through runGen into a fresh temp
- * directory, read what it wrote, and remove the directory. A generator error is rethrown as the
- * runner reports it (the CubeModelError is its `cause`).
+ * Run `generator` (default: `cubeModel()` with its default options; the reference copy passes its
+ * own) over `root` through runGen into a fresh temp directory, read what it wrote, and remove the
+ * directory. A generator error is rethrown as the runner reports it (the CubeModelError is its
+ * `cause`).
  */
-export async function cubeModelTree(root: MetaRoot, config: CubeRunConfig): Promise<Map<string, string>> {
+export async function cubeModelTree(root: MetaRoot, config: CubeRunConfig, generator: Generator = cubeModel()): Promise<Map<string, string>> {
   const dir = mkdtempSync(join(tmpdir(), "cube-model-"));
   try {
     const outDir = join(dir, "out");
@@ -70,7 +71,7 @@ export async function cubeModelTree(root: MetaRoot, config: CubeRunConfig): Prom
         outDir,
         dialect: config.dialect,
         ...(config.columnNamingStrategy !== undefined ? { columnNamingStrategy: config.columnNamingStrategy } : {}),
-        generators: [cubeModel()],
+        generators: [generator],
       }),
       metadata: root,
       genStateDir: join(dir, ".gen-state"),

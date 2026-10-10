@@ -137,6 +137,32 @@ describe("meta gen --list — the catalog", () => {
     }
   });
 
+  test("cube-model is listed as an ejectable capability whose files need nothing installed", async () => {
+    // FR-044 Plan 4. The row a reader sees, not the registry entry behind it: the layer and
+    // the install set are what tell an adopter this is Cube YAML and not another npm package.
+    const tmp = mkdtempSync(join(tmpdir(), "meta-catalog-"));
+    try {
+      await genCommand(["--list"], tmp, "json");
+      const rows = JSON.parse(logged.join("\n")) as GeneratorCatalogRow[];
+      const row = rows.find((r) => r.name === "cube-model")!;
+      expect(row.layer).toBe("capability");
+      expect(row.tier).toBe("native");
+      expect(row.package).toBe("@metaobjectsdev/codegen-ts");
+      expect(row.description).toContain("model/cubes/*.yml");
+      expect(row.source.kind).toBe("reference-template");
+      expect(row.source.ejectable).toBe(true);
+      // Facets read from the template's own header.
+      expect(String(row.useWhen)).toContain("reporting vocabulary");
+      expect(String(row.emits)).toContain("model/cubes/<Cube>.yml");
+      expect(row.configKeys).toEqual(["dialect", "columnNamingStrategy"]);
+      expect(row.requires).toEqual([]);
+      // The emitted YAML imports nothing, so ejecting asks for no runtime package or peer.
+      expect(row.install.runtime).toEqual([]);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   test("--probe without a project is a usage error, not a listing of zeros", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "meta-catalog-"));
     try {
@@ -190,6 +216,13 @@ describe("--probe — what would this emit for MY model", () => {
     const trace = rows.find((r) => r.name === "trace-helper")!.project!;
     expect(trace.wouldEmit).toBe(0);
     expect(trace.probeError).toBeUndefined();
+
+    // cube-model keys off reporting vocabulary (dimension.*, measure.*, segment.filter) on an
+    // entity, and this model declares none: zero, not an error. The probe's dialect is the
+    // fixture's sqlite, which cube-model refuses only when a cube would be written.
+    const cube = rows.find((r) => r.name === "cube-model")!.project!;
+    expect(cube.wouldEmit).toBe(0);
+    expect(cube.probeError).toBeUndefined();
   });
 
   test("every generator is probed — none is silently skipped", async () => {

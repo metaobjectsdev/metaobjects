@@ -14,6 +14,16 @@
 // disk may not have. A run that selects no entity with reporting vocabulary writes nothing and
 // raises nothing, under any dialect.
 //
+// A cube file whose cube is gone is cleaned up. Cube compiles the whole model directory, so a
+// stale `<Cube>.yml` left behind by a removed or renamed entity (or a join no longer reached) can
+// break the compile for every cube. The generator opts in to the runner's orphan reconciliation
+// (`orphanPolicy`) for exactly its own files: the direct `.yml` children of `model/cubes/` under
+// its target. The runner removes such a file only when a previous run wrote it, this run did not
+// re-emit it, and it is byte-identical to what was written; a file edited by hand is refused and
+// named, never deleted. The runner does not reconcile at all when the run named entities
+// (`meta gen <Entity>`), which is the only per-run narrowing `meta gen` has: a project's `scope`
+// is collection config, the same on every run, so a changed scope reconciles like any full run.
+//
 // Opt-in, and a reference helper (ADR-0034 Amendment 3): the files import nothing.
 
 import { DEFAULT_COLUMN_NAMING_STRATEGY, type MetaObject } from "@metaobjectsdev/metadata";
@@ -50,6 +60,18 @@ const NAMED_IN_MESSAGE = 3;
 /** `model/cubes/<Cube>.yml`. */
 export function cubeFilePath(cube: string): string {
   return `${CUBE_FILE_DIR}/${cube}.yml`;
+}
+
+/**
+ * The orphan namespace: a direct `.yml` child of `model/cubes/`, relative to the target's outDir
+ * and `/`-separated. Narrow on purpose, because the predicate is the blast radius of the cleanup.
+ * Only paths a previous run recorded are ever tested against it, so a hand-written cube beside
+ * the generated ones is not at risk.
+ */
+export function ownsCubeFile(relPathInTarget: string): boolean {
+  const prefix = `${CUBE_FILE_DIR}/`;
+  if (!relPathInTarget.startsWith(prefix) || !relPathInTarget.endsWith(".yml")) return false;
+  return !relPathInTarget.slice(prefix.length).includes("/");
 }
 
 function isCubeDialect(dialect: string): dialect is CubeDialect {
@@ -118,6 +140,7 @@ export function cubeModel(options: CubeModelGeneratorOptions = {}): Generator {
   const generator: Generator = {
     name: CUBE_MODEL_GENERATOR_NAME,
     generate: (ctx) => generateCubeFiles(ctx, options),
+    orphanPolicy: { owns: ownsCubeFile },
   };
   if (options.filter !== undefined) generator.filter = options.filter;
   if (options.target !== undefined) generator.target = options.target;
