@@ -138,17 +138,57 @@ export function dimensionColumn(
   );
 }
 
-/** Table D: one measure over `entity`'s own rows. */
-export function measureSpec(entity: MetaObject, m: MetaMeasure, where: string, mc: MemberContext): CubeMeasureSpec {
-  const d = mc.dialect;
-  const renderer = cubeSqlRenderer(where);
+/** `<m>Raw`: the member that holds a defaulted measure.aggregate's aggregate (Table G, added members). */
+export function rawMeasureName(measure: string): string {
+  return `${measure}Raw`;
+}
+
+/**
+ * One measure as Cube members. `raw` is present for a measure.aggregate with `@default`: it is
+ * the Table D aggregate, `public: false`, under `<m>Raw`, and `measure` reads it through
+ * `COALESCE` (the zero-rows / measure-defaults plan, Table D: `COALESCE(E, n)`).
+ */
+export interface MeasureMembers {
+  readonly raw?: CubeMeasureSpec;
+  readonly measure: CubeMeasureSpec;
+}
+
+/** `COALESCE(<sql>, n)`: `n` is the measure's integer `@default`. */
+function withDefault(sql: string, n: number): string {
+  return `COALESCE(${sql}, ${String(n)})`;
+}
+
+/** Table D, and the zero-rows / measure-defaults plan's Table D: one measure over `entity`'s own rows. */
+export function measureMembers(entity: MetaObject, m: MetaMeasure, where: string, mc: MemberContext): MeasureMembers {
+  // ADR-0039: defaultValue() resolves, so a measure inherited through extends keeps its default.
+  const n = m.defaultValue();
   if (m.isRatio()) {
-    // Member references: each operand is its full Cube expression, condition included.
+    // Member references: each operand is its full Cube expression, condition included, and an
+    // operand with its own @default is its COALESCE member, so that default reaches the ratio
+    // (the plan's decision 4). The ratio's own @default wraps the whole quotient.
     const num = memberRef(ratioOperand(entity, m, m.numerator(), where).name);
     const den = memberRef(ratioOperand(entity, m, m.denominator(), where).name);
-    const sql = d === "postgres" ? `CAST(${num} AS NUMERIC) / NULLIF(${den}, 0)` : `${num} / NULLIF(${den}, 0)`;
-    return { name: m.name, sql, type: "number", ...docOf(m) };
+    const quotient = mc.dialect === "postgres" ? `CAST(${num} AS NUMERIC) / NULLIF(${den}, 0)` : `${num} / NULLIF(${den}, 0)`;
+    return { measure: { name: m.name, sql: n === undefined ? quotient : withDefault(quotient, n), type: "number", ...docOf(m) } };
   }
+  const aggregate = aggregateSpec(entity, m, where, mc);
+  if (n === undefined) return { measure: { name: m.name, ...aggregate, ...docOf(m) } };
+  const raw = rawMeasureName(m.name);
+  return {
+    raw: { name: raw, ...aggregate, public: false },
+    measure: { name: m.name, sql: withDefault(memberRef(raw), n), type: "number", ...docOf(m) },
+  };
+}
+
+/** Table D: a measure.aggregate's Cube aggregate (type, sql and filters), without its name or docs. */
+function aggregateSpec(
+  entity: MetaObject,
+  m: MetaMeasure,
+  where: string,
+  mc: MemberContext,
+): Pick<CubeMeasureSpec, "sql" | "type" | "filters"> {
+  const d = mc.dialect;
+  const renderer = cubeSqlRenderer(where);
   // The view's own resolution: @of read from the cube's entity, then its condition.
   const { agg, distinct, fields, condition } = resolveAggregate(m, entity, mc.root, CUBE_SELF, mc.extract, where);
   const cols = fields.map((f) => cubeColumn(sourceColumnNameFor(f, mc.extract), d, renderer));
@@ -165,14 +205,14 @@ export function measureSpec(entity: MetaObject, m: MetaMeasure, where: string, m
       // aggregate as written in a `number` measure.
       const [first, ...rest] = cols;
       const head = c === undefined ? first! : `CASE WHEN ${c} THEN ${first!} END`;
-      return { name: m.name, sql: `COUNT(DISTINCT ${[head, ...rest].join(", ")})`, type: "number", ...docOf(m) };
+      return { sql: `COUNT(DISTINCT ${[head, ...rest].join(", ")})`, type: "number" };
     }
     // A tuple with any NULL component is not counted, as in the view.
     const filter = [...cols.map((x) => `${x} IS NOT NULL`), ...(c === undefined ? [] : [c])].join(" AND ");
-    return { name: m.name, sql: `ROW(${cols.join(", ")})`, type: "count_distinct", filters: [{ sql: filter }], ...docOf(m) };
+    return { sql: `ROW(${cols.join(", ")})`, type: "count_distinct", filters: [{ sql: filter }] };
   }
   const type: CubeMeasureType = agg === AGG_COUNT ? (distinct ? "count_distinct" : "count") : agg;
-  return { name: m.name, sql: cols[0]!, type, ...(c === undefined ? {} : { filters: [{ sql: c }] }), ...docOf(m) };
+  return { sql: cols[0]!, type, ...(c === undefined ? {} : { filters: [{ sql: c }] }) };
 }
 
 /** A `segment.filter`: its filter over `entity`'s fields. */

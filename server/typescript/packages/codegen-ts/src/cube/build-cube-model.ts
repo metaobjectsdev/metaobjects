@@ -74,7 +74,7 @@ import {
   dimensionColumn,
   docOf,
   grainsOf,
-  measureSpec,
+  measureMembers,
   memberKey,
   segmentSpec,
   type MemberContext,
@@ -91,7 +91,7 @@ import type {
   CubeSpec,
 } from "./cube-model-spec.js";
 import { assertCubeNames, MemberNamespace } from "./cube-names.js";
-import { assertMeasureMapped, assertReportMapped } from "./cube-pending.js";
+import { assertReportMapped } from "./cube-pending.js";
 import { coarsestFirst, reportContribution } from "./cube-reports.js";
 import { cubeColumn, cubeSqlRenderer, joinedColumn, memberRef, tableRef } from "./cube-sql.js";
 
@@ -398,8 +398,13 @@ class CubeModelBuilder {
         draft.declaredOrder.push(dim);
         if (dim.via() === undefined) draft.declaredDims.set(dim, this.ownDimension(draft, dim, where));
       } else if (child.type === TYPE_MEASURE) {
-        assertMeasureMapped(child as MetaMeasure, draft.name, draft.entity);
-        draft.measures.push(measureSpec(draft.entity, child as MetaMeasure, where, this.mc));
+        const { raw, measure } = measureMembers(draft.entity, child as MetaMeasure, where, this.mc);
+        if (raw !== undefined) {
+          // A defaulted measure.aggregate: its aggregate is the member the exporter adds, `<m>Raw`.
+          draft.namespace.add(raw.name, `the measure '${raw.name}' the exporter adds for the @default of ${label}`);
+          draft.measures.push(raw);
+        }
+        draft.measures.push(measure);
       } else {
         draft.segments.push(segmentSpec(draft.entity, child as MetaSegment, where, this.mc));
       }

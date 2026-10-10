@@ -31,17 +31,19 @@ it until 1.1 ships._
   generation error that names the node; the exporter never renames or drops. **No vocabulary
   change:** `metamodelVersion` stays 1.1 and `expected-registry.json` is untouched. The report
   view lowering and the exporter now share one SQL module, moved without changing a byte of
-  any view. A report's `@spine` and a measure's `@default` are not mapped yet, since that
-  vocabulary is not registered: a model that declares either is refused with
-  `ERR_CUBE_UNMAPPED_VOCABULARY` rather than written without it. Gated by the new
-  `fixtures/cube-model/` corpus (42 cases and a canonical golden; the 29th shared corpus in
-  `docs/CONFORMANCE.md`, run by TypeScript only).
+  any view. A measure's `@default` is a `public: false` `<m>Raw` aggregate and the measure as
+  `COALESCE({<m>Raw}, n)` (a ratio's default wraps its quotient, and an operand's own default
+  reaches the ratio), so Cube reads the default where the view does. A served report's `@spine`
+  is not mapped yet: it is refused with `ERR_CUBE_UNMAPPED_VOCABULARY` rather than written
+  without the spine's rows. A MySQL tuple distinct count is the view's own
+  `COUNT(DISTINCT a, b)`. Gated by the new `fixtures/cube-model/` corpus (43 cases and a
+  canonical golden; the 29th shared corpus in `docs/CONFORMANCE.md`, run by TypeScript only).
   See [docs/features/cube-export.md](docs/features/cube-export.md).
 - **A `cube` lane checks the exporter against a real Cube.** `scripts/ci-local.sh --only cube`
   (also `scripts/integration-test.sh cube`, `bun run test:cube` in `integration-tests`, and a
   `cube` entry in `integration-tests.yml`) loads the canonical model's output into
   `cubejs/cube:v1.7.43` over a private `postgres:16-alpine`, requires the Cube query for each
-  served report to return the rows of its view, requires each of the 31 corpus cases that hold
+  served report to return the rows of its view, requires each of the 32 corpus cases that hold
   a tree to compile (the two MySQL ones included), and reads the escaping case's literals back
   from Cube's `/v1/sql`. It owns a private Docker network and an ephemeral `127.0.0.1` port and
   never uses the shared Postgres sidecar. Without Docker it is a SKIP behind a banner (a failure

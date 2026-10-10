@@ -55,6 +55,7 @@ never copied from it. A golden blessed from the implementation proves nothing.
 | `measure-conditions` | B: `@segment` and `@filter`; D | one `filters` entry: segment then filter ANDed and parenthesised; each alone is the entry as it is |
 | `measure-ratio` | B: `measure.ratio`; D | `CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0)`, `type: number` |
 | `measure-mysql` | D (MySQL arms) | backtick quoting; a tuple distinct count is the view's own `COUNT(DISTINCT a, b)` as a `number` measure, a condition as `CASE WHEN … THEN a END` on the first component (a `JSON_ARRAY` key compares bytes, not the column collation, so on mysql:8.4 it counted 6 tuples where the view counts 4); a ratio without the cast |
+| `measure-default` | B: measure `@default`; the zero-rows / measure-defaults plan, Tables D and E | a `measure.aggregate` with `@default: n` is `<m>Raw` (the Table D aggregate, its condition kept, `public: false`) and `<m>` (`type: number`, `COALESCE({<m>Raw}, n)`), with the measure's description on `<m>`; a negative sentinel (`-1`) on an `avg`; a ratio with `@default` wraps its quotient in `COALESCE`; a ratio whose operand has its own `@default` reads it through the operand's `COALESCE` member, with or without a default of its own (decision 4); the rollup lists `<m>`, never `<m>Raw` |
 | `segment` | B: `segment.filter` | `=`, `IN (…)`, `LIKE` with `>` ANDed, an `or` group with `IS NULL`; YAML doubles every `'` |
 | `relative-date` | B: relative filter (Plan 2 Table E) | `(now() - INTERVAL 'P7D')` for an instant, `((now() AT TIME ZONE 'UTC') - INTERVAL 'P7D')` for a naive timestamp, `CAST(… AS DATE)` for a date, `+` for a future offset, and the same SQL in a measure's condition |
 | `report-rollup` | B: served report; F | a `rollup` named after the report: dimensions and measures in listed order, `segments` with `@segment` then the scope segment `programsByMonthScope`, the one-time-dimension form; a report with no dimensions is a measures-only rollup; rollups are written coarsest first, so `ProgramTotals` precedes `ProgramsByMonth` |
@@ -73,7 +74,6 @@ never copied from it. A golden blessed from the implementation proves nothing.
 | `error-cube-name-collision` | G (alias names); K | `ERR_CUBE_NAME_COLLISION` between an entity and an alias cube of one name |
 | `error-unescapable-literal` | G | `ERR_CUBE_UNESCAPABLE_LITERAL` for a literal that is raw-wrapped (it holds `{%`) and holds `endraw`; a literal with `endraw` and no Jinja opener is never wrapped and is carried as it is |
 | `error-unsupported-dialect` | generator dialect rule | `ERR_CUBE_UNSUPPORTED_DIALECT` for a `sqlite` config that would write a cube, saying how to pass `dialect` |
-| `error-unmapped-vocabulary` | spec §5 (`@spine`, `@default`) | `ERR_CUBE_UNMAPPED_VOCABULARY` for a `@default` on a measure of a cube: the attribute is not registered yet and the mapping does not cover it, so the model is refused rather than written without it. A served report's `@spine` is the same refusal. Both stand until the zero-rows/measure-defaults build maps them |
+| `error-unmapped-vocabulary` | spec §5 (`@spine`) | `ERR_CUBE_UNMAPPED_VOCABULARY` for a served report's `@spine`: the mapping does not cover it yet, so the model is refused rather than written without the spine's rows |
 
-`measure-default` and `report-spine` (Table B's `@default` and `@spine` rows) arrive with the
-#411 vocabulary, and replace `error-unmapped-vocabulary` when they do.
+`report-spine` (Table B's `@spine` row) replaces `error-unmapped-vocabulary` when `@spine` is mapped.

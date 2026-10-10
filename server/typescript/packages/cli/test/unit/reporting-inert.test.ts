@@ -262,6 +262,17 @@ describe("FR-044 a sourceless report is inert; a served report emits exactly its
       expect(program).not.toContain("measures:");
     });
 
+    test("the defaulted ratio is written with its @default, whichever report lists it", async () => {
+      // `avgDaysPerStarter` declares `@default: 0`; it is a measure of the WorkoutEvent cube, so it
+      // is written though only a sourceless report lists it. A ratio's default wraps its quotient.
+      const workoutEvent = (await emit(withReporting, [cubeModel()]))[`${OUT}/model/cubes/WorkoutEvent.yml`]!;
+      expect(workoutEvent).toContain(
+        "      - name: avgDaysPerStarter\n" +
+          "        sql: 'COALESCE(CAST({daysEngaged} AS NUMERIC) / NULLIF({starters}, 0), 0)'\n" +
+          "        type: number\n",
+      );
+    });
+
     test("a report leaves one trace: the name of the served report, once, in its @from cube", async () => {
       const actual = await emit(withReporting, [cubeModel()]);
       const traces = Object.entries(actual).map(([path, text]) => [path, text.split("StoreTotals").length - 1] as const);

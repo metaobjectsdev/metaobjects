@@ -20,9 +20,8 @@ cube. Cube reads these files from its own project.
 **What it does not do.** It never talks to Cube or to a database. There is no dbt MetricFlow
 exporter (it waits for the first adopter who asks, spec decision D5). No other port has an
 exporter (spec R6): the files are language-neutral YAML, and the Node `meta` CLI writes them.
-Two pieces of the design are not mapped because their vocabulary is not registered yet, a
-report's `@spine` and a measure's `@default`. A model that declares either is refused, not
-written without it (see [Known limits](#known-limits)).
+One piece of the design is not mapped yet, a report's `@spine`. A served report that declares
+it is refused, not written without it (see [Known limits](#known-limits)).
 
 **Entirely opt-in.** `meta init` wires no generator. A project that does not configure
 `cube-model` gets no file. A model that declares no dimension, measure or segment gets no file
@@ -324,11 +323,24 @@ somewhere to go: an `identity.reference` onto an entity that is not a cube makes
 | `count` with `@distinct` | `type: count_distinct`, `sql: x` |
 | `count` with `@distinct` over a tuple `x1, x2` | Postgres: `type: count_distinct`, `sql: 'ROW(x1, x2)'`, with one `filters` entry `x1 IS NOT NULL AND x2 IS NOT NULL`, so a tuple with a null component is not counted, as in the view. MySQL: the view's own `COUNT(DISTINCT x1, x2)` as a `type: number` measure (a condition `c` makes it `COUNT(DISTINCT CASE WHEN c THEN x1 END, x2)`); MySQL's multi-argument form skips a tuple with a null component and compares by the columns' collation, which a `JSON_ARRAY(x1, x2)` key does not: on mysql:8.4 under the default `utf8mb4_0900_ai_ci` it counted `'abc'` and `'ABC'` as two tuples where the view counts one |
 | `sum`, `avg`, `min`, `max` | `type: sum`, `avg`, `min`, `max`, `sql: x` |
-| any of the above with a condition `c` | the same, with one `filters` entry `c`. For a tuple, `c` is ANDed after the not-null terms in that one entry. |
+| any of the above with a condition `c` | the same, with one `filters` entry `c`. For a Postgres tuple, `c` is ANDed after the not-null terms in that one entry. |
 | `measure.ratio` | `type: number`. Postgres: `CAST({num} AS NUMERIC) / NULLIF({den}, 0)`. MySQL: `{num} / NULLIF({den}, 0)`. |
+| a `measure.aggregate` with `@default: n` | two members. `<m>Raw` is the aggregate as the rows above write it (its `type`, `sql` and `filters`), with `public: false`. `<m>` is `type: number`, `sql: 'COALESCE({<m>Raw}, n)'`, and carries the measure's `title` and `description`. |
+| a `measure.ratio` with `@default: n` | `type: number`, the quotient above inside `COALESCE(…, n)` |
 
 In a ratio, `{num}` and `{den}` are references to the two operand measures, so each operand is
 its full Cube expression, condition included, and an operand need not be listed in any report.
+An operand that declares its own `@default` is its `COALESCE` member, so its default reaches the
+ratio whether or not the ratio declares one, as in the view (`revenue` with `@default: 0` over
+`buyers` reads `0`, not null, for a group with buyers and no revenue).
+
+`@default` is the value the view reads in place of null (`COALESCE(E, n)`), and Cube reads the
+same: a defaulted measure is never null, on an empty group, a group whose rows the measure's
+condition filters out, or a ratio whose denominator is zero. Cube has no nullability to declare
+for a measure, so nothing else is written for it. A rollup lists `<m>`, never `<m>Raw`. As a
+`number` measure, `<m>` is served from a rollup only when the query's dimensions are the
+rollup's own, which is the query a report makes.
+
 No measure sets `format`: Cube's named formats are display hints and the model carries none.
 
 ### Segments and relative dates
@@ -397,7 +409,7 @@ both parts in snake case, joined by two underscores (`week__program_minutes`).
 | cube name | the entity's name. Two entities of one name in two packages, or an alias cube named like a cube, is `ERR_CUBE_NAME_COLLISION`, naming both. Rename one, or narrow the generator's `filter` to leave one out; the filter helps only when no `@via` reaches the entity it leaves out, since an entity a `@via` reaches is still written as a join-target cube, unless every hop onto it goes through an alias cube. |
 | member name | the dimension, measure or segment name as written, so a report field and its Cube member share a name |
 | a name Cube refuses | Cube names start with a letter, hold only letters, digits and `_`, and are not a Python keyword (`from`, `class`, `in`, `is`, `not`, `and`, `or`, `if`, `else`, `for`, `while`, `with`, `as`, `def`, `return`, `yield`, `import`, `pass`, `global`, `nonlocal`, `lambda`, `del`, `assert`, `break`, `continue`, `try`, `except`, `finally`, `raise`, `async`, `await`, `True`, `False`, `None`, `elif`). That is `ERR_CUBE_INVALID_NAME`, naming the node. The exporter never renames: the name is the report field's. |
-| members the exporter adds | primary-key dimensions, reached-column dimensions, `<report>Scope` segments, rollups. A name that collides with another member of the cube is `ERR_CUBE_MEMBER_COLLISION`, naming both. The one exception is a declared dimension over a key field under its own name, which is that key dimension (see [Cubes and primary keys](#cubes-and-primary-keys)). |
+| members the exporter adds | primary-key dimensions, reached-column dimensions, the `<m>Raw` measure of a defaulted measure, `<report>Scope` segments, rollups. A name that collides with another member of the cube is `ERR_CUBE_MEMBER_COLLISION`, naming both. The one exception is a declared dimension over a key field under its own name, which is that key dimension (see [Cubes and primary keys](#cubes-and-primary-keys)). |
 | identifiers | every table, schema and column is quoted: `"…"` on Postgres, backticks on MySQL |
 | string literals | SQL quoting first (`'` doubled; MySQL also doubles `\`). Cube compiles every `sql` as a template literal, where a backslash is an escape (`\b` a backspace, `\_` a plain `_`, a trailing `\` swallows the closing quote) and `{x}` a member reference. So every `\` is then doubled, and after that `{` becomes `\{` and `}` becomes `\}` (in that order, so a backslash before a brace stays a backslash). Then, when the literal holds a Jinja opener (`{{`, `{%` or `{#`), it is wrapped in `{% raw %}…{% endraw %}` for Jinja, because a backslash does not stop Jinja. A wrapped literal holding `endraw` is `ERR_CUBE_UNESCAPABLE_LITERAL`; one that is not wrapped is never inside a raw block, so `endraw` there is plain text. A column name written with `@column` gets the same treatment. The `cube` lane reads each literal of the `escaping` case back from Cube's `/v1/sql`, where it is the view's own SQL. |
 | free text | `title` and `description`. Cube reads them as templates too: `{x}` is a member reference, `${x}` an interpolation and a backslash an escape. Each `\` is doubled, each brace escaped, the text raw-wrapped when the original holds `{{`, `{%` or `{#` (the same rule as a SQL literal), and the result is written as a JSON string. Raw-wrapped text holding `endraw` is `ERR_CUBE_UNESCAPABLE_LITERAL`. |
@@ -421,7 +433,7 @@ are printed in its messages and are not loader codes.
 | `ERR_CUBE_NAME_COLLISION` | two cubes would have one name |
 | `ERR_CUBE_UNESCAPABLE_LITERAL` | a literal, an identifier or free text that is raw-wrapped (it holds a Jinja opener) holds `endraw` |
 | `ERR_CUBE_UNSUPPORTED_DIALECT` | the dialect is neither `postgres` nor `mysql` and the run would write a cube |
-| `ERR_CUBE_UNMAPPED_VOCABULARY` | a served report declares `@spine`, or a measure written on a cube declares `@default`: the mapping does not cover them yet (see [Known limits](#known-limits)) |
+| `ERR_CUBE_UNMAPPED_VOCABULARY` | a served report declares `@spine`: the mapping does not cover it yet (see [Known limits](#known-limits)) |
 
 ## Which files a run writes
 
@@ -501,8 +513,8 @@ like any other generated output: a changed model that was not regenerated, a mis
 and a stale one are drift. A hand edit to a generated file is not drift, but the gate lists it, and
 `meta verify --codegen --forbid-hand-edits` makes it fail.
 
-**The mapping corpus** is [`fixtures/cube-model/`](../../fixtures/cube-model/): 42 cases, each
-the smallest model for one rule, 31 with the exact tree the generator writes and 11 with the
+**The mapping corpus** is [`fixtures/cube-model/`](../../fixtures/cube-model/): 43 cases, each
+the smallest model for one rule, 32 with the exact tree the generator writes and 11 with the
 exact error message. Every expected file was written by hand from its rule and then compared
 with the generator, never copied from it.
 `codegen-ts/test/cube/cube-model-corpus.test.ts` runs it. The canonical golden,
@@ -523,7 +535,7 @@ container and the network are removed on every exit path. It checks five things:
    rollup when the model has one (the lane asserts the rollup name in `usedPreAggregations`),
    returns the rows of `SELECT * FROM <view>`, after the normalization the Encodings row above
    describes.
-4. Every case of the mapping corpus that has an expected tree (31 of the 42: 29 Postgres and
+4. Every case of the mapping corpus that has an expected tree (32 of the 43: 30 Postgres and
    2 MySQL) compiles in the same Cube, and each `title` and `description` it declares comes back
    from `/v1/meta` as declared. Compiling runs no SQL, so the MySQL cases compile against the
    Postgres data source. Cube returns a member's own title as `shortTitle`; its `title` joins the
@@ -556,23 +568,20 @@ the table names above are the development-mode form.
   refuses the model with `ERR_CUBE_AMBIGUOUS_PATH`, naming both. The lossless form needs a
   nested alias for each path. That is more machinery than a rare model is worth yet, so the
   exporter errors rather than guess.
-- **MySQL SQL is never executed.** The corpus pins it byte for byte and the lane compiles it in
-  Cube, but no MySQL database runs it.
+- **The lane never executes MySQL SQL.** The corpus pins it byte for byte and the lane compiles
+  it in Cube, but no MySQL database runs it there. The one MySQL form chosen for its meaning, the
+  tuple distinct count, was compared with the view's on mysql:8.4 by hand when it was built.
 - **Some shapes are compile-checked, not query-checked.** Cube accepts the alias cubes, the TPH
   subtype's `sql`, one-to-one joins and the int-backed enum's `CASE` (the corpus pass), but no
   live query crosses them.
 - **No `sqlite` or `d1`.** See [Dialects](#wiring-it).
-- **`@spine` and `@default` are not mapped yet, and a model that declares either is refused.** A
-  report's `@spine` (rows from a dimension's entity) and a measure's `@default` belong to the
-  FR-044 zero-rows plan
-  (`docs/superpowers/plans/2026-10-09-fr-044-zero-rows-and-measure-defaults.md`), whose
-  vocabulary is not registered. Written without them, a rollup would lack the spine's zero rows
-  and a measure would read null where its view reads the default, so a served report with
-  `@spine`, or a measure written on a cube with `@default`, is `ERR_CUBE_UNMAPPED_VOCABULARY`,
-  naming the node. Narrow the generator's `filter` to leave the entity out, or remove the
-  attribute. A sourceless report, and a measure on an entity that gets no cube, produce nothing
-  and stay inert. The exporter maps both once that vocabulary ships, and the refusal goes with
-  it. Spec §5 records the intended mapping.
+- **`@spine` is not mapped yet, and a served report that declares it is refused.** A report's
+  `@spine` (rows from a dimension's entity, the FR-044 zero-rows plan,
+  `docs/superpowers/plans/2026-10-09-fr-044-zero-rows-and-measure-defaults.md`) would be
+  written without the spine's zero rows, so a served report with `@spine` is
+  `ERR_CUBE_UNMAPPED_VOCABULARY`, naming the report. Narrow the generator's `filter` to leave
+  its `@from` entity out, or remove the attribute. A sourceless `@spine` report produces nothing
+  and stays inert. Spec §5 records the intended mapping.
 - **No Cube views, no `extends`, no `refresh_key`, no partitions, no `format`.** The exporter
   writes cubes only.
 - **No derived measure.** `measure.derived` is not registered, so there is nothing to map.

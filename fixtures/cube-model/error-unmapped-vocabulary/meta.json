@@ -17,9 +17,32 @@
               }
             },
             {
-              "field.currency": {
-                "name": "priceCents",
-                "@currency": "USD"
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Week",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "weeks"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId",
+                "@required": true
               }
             },
             {
@@ -29,11 +52,45 @@
               }
             },
             {
+              "identity.reference": {
+                "name": "fkProgram",
+                "@fields": "programId",
+                "@references": "Program"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "programKey",
+                "@of": "Program.id",
+                "@via": "Week.fkProgram"
+              }
+            },
+            {
               "measure.aggregate": {
-                "name": "listValue",
-                "@agg": "sum",
-                "@of": "Program.priceCents",
-                "@default": 0
+                "name": "weeks",
+                "@agg": "count",
+                "@of": "Week.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "ProgramRoster",
+          "@from": "Week",
+          "@spine": "Week.fkProgram",
+          "@dimensions": [
+            "programKey"
+          ],
+          "@measures": [
+            "weeks"
+          ],
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_program_roster"
               }
             }
           ]
