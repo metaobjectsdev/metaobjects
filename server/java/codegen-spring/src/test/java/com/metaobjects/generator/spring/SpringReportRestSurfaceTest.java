@@ -207,6 +207,36 @@ public class SpringReportRestSurfaceTest extends SharedRegistryTestBase {
         assertTrue("a time dimension at a date grain is a LocalDate", src.contains("java.time.LocalDate createdAtMonth"));
     }
 
+    /**
+     * Table F of {@code docs/superpowers/plans/2026-10-09-fr-044-zero-rows-and-measure-defaults.md}
+     * (the Java row): no generator is edited; the shape's {@code required} (Table C) reaches
+     * the DTO as the same {@code @NotNull} a count carries. {@code ProgramRoster} declares
+     * {@code @spine: "Week.fkProgram"}; {@code totalMinutesOrZero} / {@code longShareOrZero}
+     * are {@code totalMinutes} / {@code longShare} with {@code @default: 0}.
+     */
+    @Test
+    public void aSpineKeyAndADefaultedMeasureAreNotNullAndTheSameMeasureWithoutADefaultIsNullable() throws Exception {
+        String fitness = Files.readString(
+            SpringTestFixtures.findCorpusRoot().resolve("canonical/meta.fitness.json"), StandardCharsets.UTF_8);
+        Path gen = generateAll("spine", fitness);
+        Path dto;
+        try (Stream<Path> s = Files.walk(gen)) {
+            dto = s.filter(p -> p.getFileName().toString().equals("ProgramRosterDto.java")).findFirst().orElseThrow();
+        }
+        String src = Files.readString(dto);
+        assertTrue("the spine entity's key", src.contains("@NotNull Long programKey"));
+        assertTrue("a @required column of the spine entity",
+            src.contains("@NotNull @Size(min = 1, max = 200) String programTitle"));
+        assertTrue("a count, as before", src.contains("@NotNull Long weeks"));
+        assertTrue("a sum with @default", src.contains("@NotNull Long totalMinutesOrZero"));
+        assertTrue("a ratio with @default", src.contains("@NotNull java.math.BigDecimal longShareOrZero"));
+        assertTrue(src, src.contains("    Long totalMinutes,"));
+        assertFalse("the same sum without @default stays nullable", src.contains("@NotNull Long totalMinutes,"));
+        assertTrue(src, src.contains("    java.math.BigDecimal longShare,"));
+        assertFalse("the same ratio without @default stays nullable",
+            src.contains("@NotNull java.math.BigDecimal longShare,"));
+    }
+
     @Test
     public void theRepositoryListsAndCountsAndHasNoIdentity() throws Exception {
         String src = Files.readString(generateAll("seam", withModel()).resolve("acme/shop/StoreTotalsRepository.java"));

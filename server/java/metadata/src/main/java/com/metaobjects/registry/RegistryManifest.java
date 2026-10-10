@@ -261,8 +261,10 @@ public final class RegistryManifest {
     /**
      * The polymorphic / untyped attr whose value-type follows its owning field's
      * subtype. The manifest renders its {@code valueType} as an explicit
-     * {@code null} literal (mirrors the TS reference, where {@code @default} has
-     * no fixed value-type).
+     * {@code null} literal (mirrors the TS reference, where a field's {@code @default}
+     * has no fixed value-type). FIELD registrations only ({@link #isPolymorphicDefault}):
+     * a measure's {@code @default} (FR-044) shares the name but is an attr.int and
+     * prints {@code int}.
      */
     private static final String POLYMORPHIC_DEFAULT_ATTR = MetaField.ATTR_DEFAULT;
 
@@ -464,7 +466,7 @@ public final class RegistryManifest {
             if (classifyPerTypeAttr(name) != ExclusionReason.INCLUDED) {
                 continue; // carved out (structural keyword / native binding / description dup) — see classifyPerTypeAttr
             }
-            String valueType = valueTypeOf(name, req.getExpectedSubType());
+            String valueType = valueTypeOf(type, name, req.getExpectedSubType());
             // Array-ness is the orthogonal axis: a StringAttribute requirement
             // marked .asArray() emits valueType "string" + isArray true (the
             // retired stringarray subtype). Detected via the array-constraint set.
@@ -624,7 +626,7 @@ public final class RegistryManifest {
 
     /**
      * Map a Java attr requirement to the cross-port manifest value-type vocabulary.
-     * The polymorphic {@code @default} attr is rendered as {@code null}; every
+     * A field's polymorphic {@code @default} attr is rendered as {@code null}; every
      * other attr carries its {@code expectedSubType} verbatim (the attr subtype
      * names — {@code string}, {@code int}, {@code boolean}, {@code long},
      * {@code double}, {@code properties}, {@code filter} — are already the
@@ -632,14 +634,24 @@ public final class RegistryManifest {
      * {@code string}, with array-ness carried by the separate {@code isArray}
      * flag). A wildcard subtype is rendered as {@code null} (untyped).
      */
-    private static String valueTypeOf(String attrName, String expectedSubType) {
-        if (POLYMORPHIC_DEFAULT_ATTR.equals(attrName)) {
+    private static String valueTypeOf(String ownerType, String attrName, String expectedSubType) {
+        if (isPolymorphicDefault(ownerType, attrName)) {
             return null;
         }
         if (expectedSubType == null || WILDCARD.equals(expectedSubType)) {
             return null;
         }
         return expectedSubType;
+    }
+
+    /**
+     * True for a FIELD's {@code @default}: registered on {@code field.base} as a string and
+     * re-read by the field's own subtype, so it has no fixed value-type. Keyed by owner type
+     * AND name, never by name alone: {@code measure.aggregate} / {@code measure.ratio}
+     * register an attr.int of the same name (FR-044), which keeps its {@code int}.
+     */
+    private static boolean isPolymorphicDefault(String ownerType, String attrName) {
+        return MetaField.TYPE_FIELD.equals(ownerType) && POLYMORPHIC_DEFAULT_ATTR.equals(attrName);
     }
 
     // ------------------------------------------------------------------

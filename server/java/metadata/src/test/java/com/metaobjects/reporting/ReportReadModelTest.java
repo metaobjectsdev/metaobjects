@@ -302,6 +302,28 @@ public class ReportReadModelTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void aMeasureWithDefaultYieldsADetachedFieldWithRequiredTrue() {
+        // Table C of docs/superpowers/plans/2026-10-09-fr-044-zero-rows-and-measure-defaults.md.
+        MetaRoot root = loadJson("""
+            { "metadata.root": { "package": "acme", "children": [
+              { "object.entity": { "name": "Sale", "children": [
+                { "source.rdb": { "@table": "sales" } },
+                { "field.long": { "name": "id" } },
+                { "field.currency": { "name": "amountCents", "@currency": "EUR" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+                { "measure.aggregate": { "name": "revenue", "@agg": "sum", "@of": "Sale.amountCents", "@default": 0 } },
+                { "measure.aggregate": { "name": "revenueRaw", "@agg": "sum", "@of": "Sale.amountCents" } }
+              ] } },
+              { "object.report": { "name": "Revenue", "@from": "Sale", "@measures": ["revenue", "revenueRaw"] } }
+            ] } }
+            """);
+        ReportReadModel model = ReportReadModel.of(object(root, "Revenue"), root);
+        assertEquals(List.of("revenue", "revenueRaw"), fieldNames(model));
+        assertTrue(required(model.getMetaField("revenue")));
+        assertFalse(required(model.getMetaField("revenueRaw")));
+    }
+
+    @Test
     public void aSourcelessReportHasAShapeAndNoView() {
         MetaRoot root = loadJson(SALES_MODEL);
         ReportReadModel model = ReportReadModel.of(object(root, "InertSales"), root);
@@ -326,7 +348,7 @@ public class ReportReadModelTest extends SharedRegistryTestBase {
         for (MetaObject o : canonical.getChildren(MetaObject.class, false)) {
             if (ReportReadModel.isReport(o)) models.add(ReportReadModel.of(o, canonical));
         }
-        assertEquals(6, models.size());
+        assertEquals(9, models.size());
 
         for (ReportReadModel model : models) {
             assertNull("never attached", model.getParent());

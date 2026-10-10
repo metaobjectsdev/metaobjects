@@ -18,6 +18,7 @@ package com.metaobjects.reporting;
 import com.metaobjects.MetaData;
 import com.metaobjects.attr.BooleanAttribute;
 import com.metaobjects.attr.FilterAttribute;
+import com.metaobjects.attr.IntAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
@@ -52,6 +53,8 @@ public class AggregateMeasure extends MetaMeasure {
                .ofType(FilterAttribute.SUBTYPE_FILTER).asSingle();
             def.optionalAttributeWithConstraints(ReportingConstants.ATTR_SEGMENT)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ReportingConstants.ATTR_DEFAULT)
+               .ofType(IntAttribute.SUBTYPE_INT).asSingle();
         });
     }
 }

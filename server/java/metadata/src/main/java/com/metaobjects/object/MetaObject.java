@@ -108,6 +108,13 @@ public abstract class MetaObject extends MetaData {
     public static final String ATTR_REPORT_SEGMENT = "segment";
 
     /**
+     * FR-044 — {@code object.report}: optional to-one path from {@code @from} to the entity
+     * whose rows supply the report's rows ({@code Purchase.program}), written like a
+     * dimension's {@code @via}.
+     */
+    public static final String ATTR_REPORT_SPINE = "spine";
+
+    /**
      * Register MetaObject type and constraints with registry.
      * Called by ObjectTypesMetaDataProvider during service discovery.
      */
@@ -261,6 +268,8 @@ public abstract class MetaObject extends MetaData {
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             def.optionalAttributeWithConstraints(ATTR_FILTER)
                .ofType(FilterAttribute.SUBTYPE_FILTER).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_REPORT_SPINE)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
         });
 
         // ADR-0006 Rule 1 — bare `object:` YAML key fuses to `object.entity`.

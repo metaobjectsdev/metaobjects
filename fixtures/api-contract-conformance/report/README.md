@@ -144,7 +144,7 @@ hand-rolled reference server would answer every scenario by construction.
 |---|---|---|
 | TypeScript | wired | `server/typescript/packages/integration-tests/test/api-contract-report.test.ts` (16 scenarios + a seed-vs-view check). Full stack: generated Fastify routes over the real views on Testcontainers Postgres. `api-contract-report-sqlite.test.ts` runs the same 16 on SQLite |
 | C# | wired | `server/csharp/MetaObjects.IntegrationTests/Api/ApiContractReportConformanceTest.cs`. Full stack: generated routes and EF Core over `schema.postgres.sql` on Testcontainers Postgres |
-| Java | wired | `server/java/integration-tests/src/test/java/com/metaobjects/integration/api/ReportGeneratedApiContractConformanceTest.java` (13 scenarios + a scenario-count check). Generated controllers behind an in-memory repository seeded from `reports` |
+| Java | wired | `server/java/integration-tests/src/test/java/com/metaobjects/integration/api/ReportGeneratedApiContractConformanceTest.java` (16 scenarios + a scenario-count check). Generated controllers behind an in-memory repository seeded from `reports` |
 | Kotlin | wired | `server/java/integration-tests-kotlin/src/test/kotlin/com/metaobjects/integration/kotlin/api/report/ReportGeneratedApiContractConformanceTest.kt` (13 scenarios, the count check, and a check that the sourceless report generated nothing). Generated controllers over the generated Exposed table objects, seeded from `reports` |
 | Python | wired | `server/python/tests/integration/test_api_contract_report.py` (13 scenarios, a check that exactly the served reports are generated, and `/api/invoice_days` is `404`). Generated routers behind in-memory repositories seeded from `reports` |
 

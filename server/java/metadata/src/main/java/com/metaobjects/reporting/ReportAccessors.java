@@ -44,6 +44,15 @@ public final class ReportAccessors {
         return ReportingAttrs.optionalString(report, MetaObject.ATTR_REPORT_FROM);
     }
 
+    /**
+     * {@code @spine}: the to-one path from {@code @from} to the entity whose rows supply the
+     * report's rows, or {@code null} when absent or empty.
+     */
+    public static String reportSpine(MetaData report) {
+        String v = ReportingAttrs.optionalString(report, MetaObject.ATTR_REPORT_SPINE);
+        return v == null || v.isEmpty() ? null : v;
+    }
+
     /** The {@code @dimensions} items, each {@code name} or {@code name:grain} (split at the first separator). */
     public static List<ReportDimensionItem> reportDimensionItems(MetaData report) {
         List<ReportDimensionItem> out = new ArrayList<>();

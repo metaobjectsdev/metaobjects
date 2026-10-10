@@ -44,7 +44,9 @@ import static org.junit.Assert.assertTrue;
  * SERVED: the REST-surface generators emit its read-only files and nothing else changes.
  * {@code StoreTotals} is that report, so {@code with/} differs from {@code without/} in
  * exactly {@link #SERVED_REPORT_FILES} (one file per generator) and one api-docs unit.
- * {@code DailyRevenue} and {@code ProgramEngagement} declare no source and stay inert.
+ * {@code DailyRevenue}, {@code ProgramEngagement} and {@code ProgramCatalogue} (which declares
+ * {@code @spine} and lists a dimension reached by {@code @via}) declare no source and stay
+ * inert, as does a measure {@code @default} ({@code avgDaysPerStarter}).
  *
  * <p>The model pair is {@code fixtures/codegen-noop/reporting/{with,without}}, shared with the
  * other four ports' copies of this test.
@@ -55,6 +57,10 @@ public class ReportingInertTest extends SharedRegistryTestBase {
     public TemporaryFolder tempFolder = new TemporaryFolder();
 
     private static final String THREW = "<threw>";
+
+    /** The with-model's reports that declare no source: inert everywhere. */
+    private static final List<String> SOURCELESS_REPORTS =
+        List.of("DailyRevenue", "ProgramEngagement", "ProgramCatalogue");
 
     /**
      * The one file each REST-surface generator adds for the served report {@code StoreTotals}
@@ -155,7 +161,7 @@ public class ReportingInertTest extends SharedRegistryTestBase {
             if (MetaObject.SUBTYPE_REPORT.equals(mo.getSubType())) reports.add(mo.getShortName());
         }
         reports.sort(null);
-        assertEquals(List.of("DailyRevenue", "ProgramEngagement", "StoreTotals"), reports);
+        assertEquals(List.of("DailyRevenue", "ProgramCatalogue", "ProgramEngagement", "StoreTotals"), reports);
         for (MetaObject mo : load("without").getMetaObjects()) {
             assertFalse("without-model declares a report", MetaObject.SUBTYPE_REPORT.equals(mo.getSubType()));
         }
@@ -188,7 +194,7 @@ public class ReportingInertTest extends SharedRegistryTestBase {
         for (GeneratorInfo info : GeneratorRegistry.list().values()) {
             for (String path : emit("with", List.of(info)).keySet()) {
                 assertFalse(info.stableName() + " emitted " + path,
-                    path.contains("DailyRevenue") || path.contains("ProgramEngagement"));
+                    SOURCELESS_REPORTS.stream().anyMatch(path::contains));
             }
         }
     }
@@ -277,8 +283,9 @@ public class ReportingInertTest extends SharedRegistryTestBase {
             assertTrue(listing + " lists the served report", actual.get(listing).contains("StoreTotals"));
         }
         for (String page : actual.values()) {
-            assertFalse("a sourceless report is documented", page.contains("DailyRevenue"));
-            assertFalse("a sourceless report is documented", page.contains("ProgramEngagement"));
+            for (String sourceless : SOURCELESS_REPORTS) {
+                assertFalse("a sourceless report is documented: " + sourceless, page.contains(sourceless));
+            }
         }
     }
 }

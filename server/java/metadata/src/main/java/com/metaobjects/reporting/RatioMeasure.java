@@ -16,6 +16,7 @@
 package com.metaobjects.reporting;
 
 import com.metaobjects.MetaData;
+import com.metaobjects.attr.IntAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
@@ -40,6 +41,8 @@ public class RatioMeasure extends MetaMeasure {
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             def.requiredAttributeWithConstraints(ReportingConstants.ATTR_DENOMINATOR)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ReportingConstants.ATTR_DEFAULT)
+               .ofType(IntAttribute.SUBTYPE_INT).asSingle();
         });
     }
 }

@@ -137,6 +137,18 @@ public class ReportReadTest {
             s.execute("CREATE VIEW RPT_V_SALE_REGIONS (id, region) AS SELECT id, region FROM RPT_SALES");
             s.execute("CREATE TABLE INERT_SALES (sales BIGINT)");
             s.execute("INSERT INTO INERT_SALES VALUES (999)");
+            // A @spine report (FR-044): one row per territory, the one no visit names
+            // included. The view is written by hand, as the TypeScript toolchain lowers it
+            // (ADR-0015: no other port emits SQL): the spine entity LEFT JOINed to the facts,
+            // and a defaulted measure wrapped in COALESCE.
+            s.execute("CREATE TABLE RPT_TERRITORIES (id BIGINT PRIMARY KEY, name VARCHAR(16) NOT NULL)");
+            s.execute("INSERT INTO RPT_TERRITORIES VALUES (10, 'north'), (20, 'south'), (30, 'quiet')");
+            s.execute("CREATE TABLE RPT_VISITS (id BIGINT PRIMARY KEY, territoryId BIGINT, minutes BIGINT NOT NULL)");
+            s.execute("INSERT INTO RPT_VISITS VALUES (1, 10, 30), (2, 10, 15), (3, 20, 5)");
+            s.execute("CREATE VIEW RPT_V_VISITS_BY_TERRITORY"
+                    + " (territoryKey, territoryName, visits, totalMinutes, totalMinutesOrZero) AS"
+                    + " SELECT t.id, t.name, COUNT(v.id), SUM(v.minutes), COALESCE(SUM(v.minutes), 0)"
+                    + " FROM RPT_TERRITORIES t LEFT JOIN RPT_VISITS v ON v.territoryId = t.id GROUP BY t.id, t.name");
         }
     }
 
@@ -240,6 +252,29 @@ public class ReportReadTest {
         assertEquals(List.of(
                 row("region", "east", "sales", 2L, "revenue", 400L, "minAmount", 100L),
                 row("region", "west", "sales", 1L, "revenue", 50L, "minAmount", 50L)), rows);
+    }
+
+    @Test
+    public void aSpineReportReadsTheEmptyRowWithItsDefaultedMeasure() {
+        List<Map<String, Object>> rows = read("VisitsByTerritory", sortedBy("territoryKey", SortOrder.ASC));
+        assertEquals(List.of(
+                row("territoryKey", 10L, "territoryName", "north", "visits", 2L, "totalMinutes", 45L,
+                        "totalMinutesOrZero", 45L),
+                row("territoryKey", 20L, "territoryName", "south", "visits", 1L, "totalMinutes", 5L,
+                        "totalMinutesOrZero", 5L),
+                // The territory no visit names: a count is 0, a measure without @default is null,
+                // the defaulted one reads its default.
+                row("territoryKey", 30L, "territoryName", "quiet", "visits", 0L, "totalMinutes", null,
+                        "totalMinutesOrZero", 0L)), rows);
+        // A filter on the defaulted measure matches the empty row by its default (Table G).
+        assertEquals(1L, count("VisitsByTerritory", new Expression("totalMinutesOrZero", 0L)));
+        // The read model says which columns can never be null (Table C).
+        Map<String, Boolean> required = new LinkedHashMap<>();
+        for (MetaField<?> f : omdb.readObjectFor(object("VisitsByTerritory")).getMetaFields()) {
+            required.put(f.getName(), Boolean.TRUE.equals(f.getMetaAttr(MetaField.ATTR_REQUIRED).getValue()));
+        }
+        assertEquals("{territoryKey=true, territoryName=true, visits=true, totalMinutes=false, totalMinutesOrZero=true}",
+                required.toString());
     }
 
     @Test

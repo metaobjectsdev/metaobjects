@@ -231,6 +231,36 @@ public class ReportingTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void reportSpineIsTheDeclaredPathAndNullWhenNoneIsDeclared() throws IOException {
+        MetaRoot root = loadFixture("reporting-spine-and-default");
+        assertEquals("Purchase.program", ReportAccessors.reportSpine(object(root, "ProgramSales")));
+        assertEquals("Purchase.program.catalog", ReportAccessors.reportSpine(object(root, "CatalogSales")));
+        assertNull(ReportAccessors.reportSpine(object(root, "SalesByDay")));
+    }
+
+    @Test
+    public void measureDefaultValueIsTheDeclaredIntegerZeroAndNegativesIncluded() throws IOException {
+        MetaRoot root = loadFixture("reporting-spine-and-default");
+        MetaObject purchase = object(root, "Purchase");
+        assertEquals(Long.valueOf(0), member(purchase, MetaMeasure.class, "revenue").getDefaultValue());
+        assertEquals(Long.valueOf(0), member(purchase, MetaMeasure.class, "avgAmount").getDefaultValue());
+        assertEquals(Long.valueOf(-1), member(purchase, MetaMeasure.class, "smallest").getDefaultValue());
+        MetaMeasure ratio = member(purchase, MetaMeasure.class, "revenuePerPurchase");
+        assertTrue(ratio.isRatio());
+        assertEquals(Long.valueOf(0), ratio.getDefaultValue());
+        assertNull(member(purchase, MetaMeasure.class, "purchases").getDefaultValue());
+        assertNull(member(purchase, MetaMeasure.class, "lastPurchaseAt").getDefaultValue());
+    }
+
+    @Test
+    public void aMeasureInheritedFromAnAbstractBaseKeepsItsDefault() throws IOException {
+        MetaRoot root = loadFixture("reporting-spine-inherited");
+        // ADR-0039: the measure is declared on BaseEvent and read through WorkoutEvent.
+        MetaMeasure total = member(object(root, "WorkoutEvent"), MetaMeasure.class, "totalMinutes");
+        assertEquals(Long.valueOf(0), total.getDefaultValue());
+    }
+
+    @Test
     public void derivedFieldName() {
         assertEquals("purchasedAtDay", ReportAccessors.reportDerivedFieldName(new ReportDimensionItem("purchasedAt", "day")));
         assertEquals("createdAtQuarter", ReportAccessors.reportDerivedFieldName(new ReportDimensionItem("createdAt", "quarter")));
