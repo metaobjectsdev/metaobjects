@@ -8,12 +8,17 @@
 //
 // Three kinds of scalar (Table G, YAML row):
 //   - SQL (`sql_table`, `sql`, a join's or a filter's `sql`) arrives already escaped for Cube's
-//     `{...}` references and for Jinja, so it is only single-quoted (`'` doubled). A single-quoted
-//     scalar folds a line break into a space, so a SQL value holding one is refused.
+//     `{...}` references and for Jinja, so it is only quoted for YAML: single-quoted (`'` doubled)
+//     when it is plain text, as Table H shows. A single-quoted scalar folds a line break and cannot
+//     hold a control character, and a string `@filter` value is legal model data, so a value holding
+//     a control character, a line separator or a byte-order mark is written double-quoted (JSON
+//     escapes) instead. Nothing is refused and nothing is altered.
 //   - Free text (`title`, `description`) arrives raw. Cube runs Jinja over the whole file, so text
 //     holding `{{`, `{%` or `{#` is wrapped in `{% raw %}...{% endraw %}`, then written as a JSON
 //     string (a valid YAML double-quoted scalar). Braces mean nothing to Cube outside `sql`.
-//   - Names, types, booleans, relationships, granularities and `CUBE.<member>` references are plain.
+//   - Names, types, booleans, relationships, granularities and `CUBE.<member>` references are plain,
+//     except a name a YAML reader would take for a boolean or null (true, false, null, yes, no, on,
+//     off, y, n, in any case), which is single-quoted so it stays a string.
 
 import { GENERATED_HEADER } from "../constants.js";
 import { CubeModelError, ERR_CUBE_UNESCAPABLE_LITERAL } from "./cube-errors.js";
@@ -50,25 +55,28 @@ function singleQuoted(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-const LINE_BREAK = /[\r\n]/;
+/**
+ * Characters a single-quoted YAML scalar cannot carry intact or a YAML reader may take for a line
+ * break: the C0 controls (line breaks and tab included), DEL and the C1 controls, the line and
+ * paragraph separators and the byte-order mark.
+ */
+const NOT_SINGLE_QUOTABLE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\ufeff]/;
 
-/** A SQL value as a single-quoted scalar; `where` names its place for the one value it cannot carry. */
-function sqlScalar(sql: string, where: string): string {
-  if (LINE_BREAK.test(sql)) {
-    throw new CubeModelError(
-      ERR_CUBE_UNESCAPABLE_LITERAL,
-      `${where}: the SQL ${JSON.stringify(sql)} contains a line break, which a single-quoted YAML scalar would ` +
-        `fold into a space, so Cube cannot be given it intact. Remove the line break from the value in the model.`,
-    );
-  }
-  return singleQuoted(sql);
+/** The same set, where it has to be written as a \u escape because JSON.stringify leaves it raw. */
+const ESCAPED_IN_JSON = /[\u007f-\u009f\u2028\u2029\ufeff]/g;
+
+/** `text` as a YAML double-quoted scalar: a JSON string, with the characters JSON leaves raw escaped. */
+function doubleQuoted(text: string): string {
+  return JSON.stringify(text).replace(ESCAPED_IN_JSON, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+}
+
+/** A SQL value as a YAML scalar: single-quoted, or double-quoted when it holds a character that cannot be. */
+function sqlScalar(sql: string): string {
+  return NOT_SINGLE_QUOTABLE.test(sql) ? doubleQuoted(sql) : singleQuoted(sql);
 }
 
 const JINJA_OPENER = /\{[{%#]/;
 const JINJA_RAW_END = "endraw";
-
-/** Characters a YAML reader may take for a line break or drop, written as \u escapes. */
-const ESCAPED_IN_TEXT = /[\u007f-\u009f\u2028\u2029\ufeff]/g;
 
 /** Free text as a double-quoted scalar that survives Jinja; `where` names its place for the refusal. */
 function textScalar(text: string, where: string): string {
@@ -80,10 +88,7 @@ function textScalar(text: string, where: string): string {
     );
   }
   const jinjaSafe = JINJA_OPENER.test(text) ? `{% raw %}${text}{% endraw %}` : text;
-  return JSON.stringify(jinjaSafe).replace(
-    ESCAPED_IN_TEXT,
-    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
-  );
+  return doubleQuoted(jinjaSafe);
 }
 
 function indented(lines: Lines): Lines {
@@ -115,19 +120,15 @@ function documentation(node: { public?: boolean; title?: string; description?: s
   return out;
 }
 
-function renderJoin(join: CubeJoinSpec, cube: string): Lines {
-  return [
-    `name: ${nameScalar(join.name)}`,
-    `relationship: ${join.relationship}`,
-    `sql: ${sqlScalar(join.sql, `cube '${cube}' join '${join.name}' sql`)}`,
-  ];
+function renderJoin(join: CubeJoinSpec): Lines {
+  return [`name: ${nameScalar(join.name)}`, `relationship: ${join.relationship}`, `sql: ${sqlScalar(join.sql)}`];
 }
 
 function renderDimension(dimension: CubeDimensionSpec, cube: string): Lines {
   const at = `cube '${cube}' dimension '${dimension.name}'`;
   const out: Lines = [
     `name: ${nameScalar(dimension.name)}`,
-    `sql: ${sqlScalar(dimension.sql, `${at} sql`)}`,
+    `sql: ${sqlScalar(dimension.sql)}`,
     `type: ${dimension.type}`,
   ];
   if (dimension.primaryKey !== undefined) out.push(`primary_key: ${dimension.primaryKey}`);
@@ -140,10 +141,10 @@ function renderDimension(dimension: CubeDimensionSpec, cube: string): Lines {
 
 function renderMeasure(measure: CubeMeasureSpec, cube: string): Lines {
   const at = `cube '${cube}' measure '${measure.name}'`;
-  const filters = (measure.filters ?? []).map((f): Lines => [`sql: ${sqlScalar(f.sql, `${at} filter sql`)}`]);
+  const filters = (measure.filters ?? []).map((f): Lines => [`sql: ${sqlScalar(f.sql)}`]);
   return [
     `name: ${nameScalar(measure.name)}`,
-    `sql: ${sqlScalar(measure.sql, `${at} sql`)}`,
+    `sql: ${sqlScalar(measure.sql)}`,
     `type: ${measure.type}`,
     ...blockList("filters", filters),
     ...documentation(measure, at),
@@ -154,7 +155,7 @@ function renderSegment(segment: CubeSegmentSpec, cube: string): Lines {
   const at = `cube '${cube}' segment '${segment.name}'`;
   return [
     `name: ${nameScalar(segment.name)}`,
-    `sql: ${sqlScalar(segment.sql, `${at} sql`)}`,
+    `sql: ${sqlScalar(segment.sql)}`,
     ...documentation(segment, at),
   ];
 }
@@ -181,11 +182,11 @@ function renderRollup(rollup: CubeRollupSpec): Lines {
 function renderCube(cube: CubeSpec): Lines {
   const at = `cube '${cube.name}'`;
   const out: Lines = [`name: ${nameScalar(cube.name)}`];
-  if (cube.sqlTable !== undefined) out.push(`sql_table: ${sqlScalar(cube.sqlTable, `${at} sql_table`)}`);
-  if (cube.sql !== undefined) out.push(`sql: ${sqlScalar(cube.sql, `${at} sql`)}`);
+  if (cube.sqlTable !== undefined) out.push(`sql_table: ${sqlScalar(cube.sqlTable)}`);
+  if (cube.sql !== undefined) out.push(`sql: ${sqlScalar(cube.sql)}`);
   out.push(
     ...documentation(cube, at),
-    ...blockList("joins", cube.joins.map((j) => renderJoin(j, cube.name))),
+    ...blockList("joins", cube.joins.map(renderJoin)),
     ...blockList("dimensions", cube.dimensions.map((d) => renderDimension(d, cube.name))),
     ...blockList("measures", cube.measures.map((m) => renderMeasure(m, cube.name))),
     ...blockList("segments", cube.segments.map((s) => renderSegment(s, cube.name))),
@@ -196,8 +197,7 @@ function renderCube(cube: CubeSpec): Lines {
 
 /**
  * The YAML file for one cube, as `model/cubes/<name>.yml` holds it. Throws `CubeModelError`
- * (`ERR_CUBE_UNESCAPABLE_LITERAL`, naming the cube and member) for free text holding `endraw` and
- * for a SQL value holding a line break.
+ * (`ERR_CUBE_UNESCAPABLE_LITERAL`, naming the cube and member) for free text holding `endraw`.
  */
 export function renderCubeYaml(cube: CubeSpec): string {
   const lines = [`# ${GENERATED_HEADER} — ${HEADER_NOTE}`, "cubes:", ...indented(listItem(renderCube(cube)))];

@@ -108,12 +108,24 @@ export interface CubeRollupNoTime extends CubeRollupBase {
 /** A `rollup` pre-aggregation (Table F): one of the three time forms, never two at once. */
 export type CubeRollupSpec = CubeRollupOneTime | CubeRollupTimeList | CubeRollupNoTime;
 
-export interface CubeSpec {
+/** What a cube is over: a table, or a SELECT. Exactly one, so a cube cannot carry both or neither. */
+export interface CubeTableSource {
+  /** `"table"`, or `"schema"."table"` when `@schema` is declared. */
+  readonly sqlTable: string;
+  readonly sql?: never;
+}
+
+export interface CubeSqlSource {
+  /** The cube's SELECT, for a TPH subtype (its discriminator predicate). */
+  readonly sql: string;
+  readonly sqlTable?: never;
+}
+
+export type CubeSource = CubeTableSource | CubeSqlSource;
+
+/** Everything on a cube but its source. */
+export interface CubeSpecBase {
   readonly name: string;
-  /** `"table"`, or `"schema"."table"` when `@schema` is declared. Absent with `sql`. */
-  readonly sqlTable?: string;
-  /** The cube's SELECT, for a TPH subtype (its discriminator predicate). Absent with `sqlTable`. */
-  readonly sql?: string;
   /** `false` for a join-target or alias cube; absent means Cube's default (public). */
   readonly public?: boolean;
   readonly title?: string;
@@ -125,6 +137,8 @@ export interface CubeSpec {
   readonly segments: readonly CubeSegmentSpec[];
   readonly preAggregations: readonly CubeRollupSpec[];
 }
+
+export type CubeSpec = CubeSpecBase & CubeSource;
 
 /** One cube a Cube view includes (Task 10). */
 export interface CubeViewIncludeAlias {

@@ -87,6 +87,7 @@ import type {
   CubeModel,
   CubeRollupSpec,
   CubeSegmentSpec,
+  CubeSource,
   CubeSpec,
 } from "./cube-model-spec.js";
 import { assertCubeNames, MemberNamespace } from "./cube-names.js";
@@ -655,7 +656,7 @@ class CubeModelBuilder {
   }
 
   /** `sql_table`, or for a TPH subtype a `sql` over the base table with its discriminator predicate. */
-  private source(draft: CubeDraft): Pick<CubeSpec, "sqlTable" | "sql"> {
+  private source(draft: CubeDraft): CubeSource {
     const entity = draft.entity;
     const where = `cube '${draft.name}'`;
     const renderer = cubeSqlRenderer(where);
