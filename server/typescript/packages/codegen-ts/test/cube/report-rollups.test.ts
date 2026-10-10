@@ -125,6 +125,21 @@ describe("Table F — a rollup per served report, on its @from cube", () => {
     ]);
   });
 
+  test("dimensions follow the report's order, not their declaration order on the entity", async () => {
+    const c = cube(
+      await build([
+        // Declared: status, title (after program()'s own dimensions).
+        program([{ "dimension.attribute": { name: "title", "@of": "Program.title" } }]),
+        report("ByTitleAndStatus", { "@from": "Program", "@dimensions": ["title", "status"], "@measures": ["listValue", "programs"] }),
+      ]),
+      "Program",
+    );
+    expect(c.dimensions.map((d) => d.name)).toEqual(["id", "status", "createdAt", "publishedOn", "title"]);
+    expect(c.preAggregations).toEqual([
+      { name: "ByTitleAndStatus", type: "rollup", measures: ["listValue", "programs"], dimensions: ["title", "status"], segments: [] },
+    ]);
+  });
+
   test("a @via dimension is a member of the @from cube, listed the same way; a qualified measure item is the measure", async () => {
     const model = await build([
       program(),
@@ -387,7 +402,7 @@ describe("selection — a report writes into its @from cube whenever that cube i
     expect(target.segments).toEqual([]);
   });
 
-  test("a served report whose @from has no table is refused, as the view lowering refuses it", async () => {
+  test("ERR_CUBE_UNMAPPABLE_REPORT: a served report whose @from has no table", async () => {
     const root = await loadRoots(
       rootOf([
         entity("Ghost", [
@@ -399,11 +414,67 @@ describe("selection — a report writes into its @from cube whenever that cube i
         report("GhostTotals", { "@from": "Ghost", "@measures": ["ghosts"] }),
       ]),
     );
-    expect(() => buildRoot(root)).toThrow(
-      "report 'acme::shop::GhostTotals': @from 'acme::shop::Ghost' has no table (it is abstract or declares no writable source.rdb)",
+    const err = errorOf(() => buildRoot(root));
+    expect(err.code).toBe("ERR_CUBE_UNMAPPABLE_REPORT");
+    expect(err.message).toStartWith(
+      "ERR_CUBE_UNMAPPABLE_REPORT: report 'acme::shop::GhostTotals' is served, and its @from 'acme::shop::Ghost' " +
+        "has no cube to hold its rollup: 'acme::shop::Ghost' declares no writable source.rdb",
     );
     // Narrowed away by the selection, it is not this run's to refuse.
     expect(buildRoot(root, { matches: (name) => name !== "Ghost" })).toEqual({ cubes: [], views: [] });
+  });
+
+  test("ERR_CUBE_UNMAPPABLE_REPORT: a served report whose @from is abstract", async () => {
+    const root = await loadRoots(
+      rootOf([
+        entity(
+          "Base",
+          [
+            { "source.rdb": { "@table": "bases" } },
+            longId,
+            pk,
+            { "measure.aggregate": { name: "rows", "@agg": "count", "@of": "Base.id" } },
+          ],
+          { abstract: true },
+        ),
+        report("BaseTotals", { "@from": "Base", "@measures": ["rows"] }),
+      ]),
+    );
+    const err = errorOf(() => buildRoot(root));
+    expect(err.code).toBe("ERR_CUBE_UNMAPPABLE_REPORT");
+    expect(err.message).toContain("report 'acme::shop::BaseTotals'");
+    expect(err.message).toContain("'acme::shop::Base' is abstract");
+  });
+
+  test("a TPH subtype @from: the rollup is on the subtype's cube, which its discriminator scopes", async () => {
+    const model = await build([
+      entity(
+        "Auth",
+        [
+          { "source.rdb": { "@table": "auths" } },
+          longId,
+          { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+          { "field.string": { name: "status" } },
+          pk,
+        ],
+        { "@discriminator": "type" },
+      ),
+      entity(
+        "BridgeAuth",
+        [
+          { "dimension.attribute": { name: "status", "@of": "BridgeAuth.status" } },
+          { "measure.aggregate": { name: "bridges", "@agg": "count", "@of": "BridgeAuth.id" } },
+        ],
+        { extends: "Auth", "@discriminatorValue": "Bridge" },
+      ),
+      report("BridgesByStatus", { "@from": "BridgeAuth", "@dimensions": ["status"], "@measures": ["bridges"] }),
+    ]);
+    expect(model.cubes.map((c) => c.name)).toEqual(["BridgeAuth"]);
+    const c = cube(model, "BridgeAuth");
+    expect(c.sql).toBe(`SELECT * FROM "auths" WHERE "type" = 'Bridge'`);
+    expect(c.preAggregations).toEqual([
+      { name: "BridgesByStatus", type: "rollup", measures: ["bridges"], dimensions: ["status"], segments: [] },
+    ]);
   });
 });
 

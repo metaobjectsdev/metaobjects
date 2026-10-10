@@ -751,7 +751,8 @@ describe("Table E — joins and reached members", () => {
         { "dimension.attribute": { name: "awayName", "@of": "Team.name", "@via": "Match.awayRef" } },
       ]),
     ]);
-    expect(model.cubes.map((c) => c.name)).toEqual(["Team", "Match", "Match_homeRef", "Match_awayRef"]);
+    // Team is reached only through the aliases, so it has no cube of its own: nothing joins it.
+    expect(model.cubes.map((c) => c.name)).toEqual(["Match", "Match_homeRef", "Match_awayRef"]);
     expect(cube(model, "Match").joins).toEqual([
       { name: "Match_homeRef", relationship: "many_to_one", sql: '{CUBE}."homeTeamId" = {Match_homeRef}."id"' },
       { name: "Match_awayRef", relationship: "many_to_one", sql: '{CUBE}."awayTeamId" = {Match_awayRef}."id"' },
@@ -760,14 +761,107 @@ describe("Table E — joins and reached members", () => {
       { name: "homeName", sql: "{Match_homeRef.name}", type: "string" },
       { name: "awayName", sql: "{Match_awayRef.name}", type: "string" },
     ]);
+    // Each alias is a standalone cube over Team's table: its key and the member read from it.
     for (const alias of ["Match_homeRef", "Match_awayRef"]) {
       expect(cube(model, alias)).toEqual({
-        name: alias, extends: "Team", public: false,
-        joins: [], dimensions: [], measures: [], segments: [], preAggregations: [],
+        name: alias, sqlTable: '"teams"', public: false,
+        joins: [],
+        dimensions: [
+          { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true },
+          { name: "name", sql: '{CUBE}."name"', type: "string", public: false },
+        ],
+        measures: [], segments: [], preAggregations: [],
       });
     }
-    // The reached member is added once, on the cube the aliases extend.
-    expect(cube(model, "Team").dimensions.map((d) => d.name)).toEqual(["id", "name"]);
+  });
+
+  // Team: a cube with a measure, a segment and a served report; Match: two references onto it.
+  const team = (extra: Json[] = []): Json =>
+    entity("Team", [
+      table("teams"),
+      longId,
+      { "field.string": { name: "name" } },
+      { "field.long": { name: "cityId" } },
+      pk,
+      { "identity.reference": { name: "fkCity", "@fields": "cityId", "@references": "City" } },
+      { "dimension.attribute": { name: "teamName", "@of": "Team.name" } },
+      { "measure.aggregate": { name: "teams", "@agg": "count", "@of": "Team.id" } },
+      { "segment.filter": { name: "named", "@filter": { name: { isNull: false } } } },
+      ...extra,
+    ]);
+  const city: Json = entity("City", [table("cities"), longId, { "field.string": { name: "name" } }, pk]);
+  const match = (extra: Json[]): Json =>
+    entity("Match", [
+      table("matches"),
+      longId,
+      { "field.long": { name: "homeTeamId" } },
+      { "field.long": { name: "awayTeamId" } },
+      pk,
+      { "identity.reference": { name: "homeRef", "@fields": "homeTeamId", "@references": "Team" } },
+      { "identity.reference": { name: "awayRef", "@fields": "awayTeamId", "@references": "Team" } },
+      ...extra,
+    ]);
+  const teamsReport: Json = {
+    "object.report": {
+      name: "TeamTotals", "@from": "Team", "@dimensions": ["teamName"], "@measures": ["teams"], "@segment": "named",
+      children: [{ "source.rdb": { "@kind": "view", "@view": "v_team_totals" } }],
+    },
+  };
+
+  test("an alias cube carries none of its target's measures, segments or rollups", async () => {
+    const model = await build([
+      city,
+      team(),
+      teamsReport,
+      match([{ "dimension.attribute": { name: "homeName", "@of": "Team.name", "@via": "Match.homeRef" } }]),
+    ]);
+    // The target cube keeps all three, and its own join; the aliases have neither.
+    const t = cube(model, "Team");
+    expect(t.measures.map((m) => m.name)).toEqual(["teams"]);
+    expect(t.segments.map((x) => x.name)).toEqual(["named"]);
+    expect(t.preAggregations.map((r) => r.name)).toEqual(["TeamTotals"]);
+    for (const alias of ["Match_homeRef", "Match_awayRef"]) {
+      const a = cube(model, alias);
+      expect(Object.keys(a)).not.toContain("extends");
+      expect(a.measures).toEqual([]);
+      expect(a.segments).toEqual([]);
+      expect(a.preAggregations).toEqual([]);
+      expect(a.joins).toEqual([]);
+    }
+    // A declared dimension of the target is not reused on an alias: the alias adds the field's own.
+    expect(cube(model, "Match").dimensions[1]).toEqual({ name: "homeName", sql: "{Match_homeRef.name}", type: "string" });
+    expect(cube(model, "Match_homeRef").dimensions.map((d) => d.name)).toEqual(["id", "name"]);
+    expect(cube(model, "Match_awayRef").dimensions.map((d) => d.name)).toEqual(["id"]);
+  });
+
+  test("a multi-hop @via through an alias: the alias holds the next join, rendered from itself", async () => {
+    const model = await build([
+      city,
+      team([]),
+      match([{ "dimension.attribute": { name: "homeCity", "@of": "City.name", "@via": "Match.homeRef.fkCity" } }]),
+    ]);
+    expect(cube(model, "Match").dimensions[1]).toEqual({ name: "homeCity", sql: "{City.name}", type: "string" });
+    expect(cube(model, "Match_homeRef").joins).toEqual([
+      { name: "City", relationship: "many_to_one", sql: '{CUBE}."cityId" = {City}."id"' },
+    ]);
+    // The other alias carries no join, so the graph reaches City by one path only: an alias that
+    // copied its target's joins would make Match -> Match_awayRef -> City a second one.
+    expect(cube(model, "Match_awayRef").joins).toEqual([]);
+    expect(cube(model, "City").dimensions.map((d) => d.name)).toEqual(["id", "name"]);
+  });
+
+  test("ERR_CUBE_AMBIGUOUS_PATH: an alias's own joins still count", async () => {
+    const err = await buildError([
+      city,
+      team([]),
+      match([
+        { "field.long": { name: "cityId" } },
+        { "identity.reference": { name: "fkCity", "@fields": "cityId", "@references": "City" } },
+        { "dimension.attribute": { name: "homeCity", "@of": "City.name", "@via": "Match.homeRef.fkCity" } },
+      ]),
+    ]);
+    expect(err.code).toBe("ERR_CUBE_AMBIGUOUS_PATH");
+    expect(err.message).toContain("(Match -> Match_homeRef -> City; Match -> City)");
   });
 
   test("two composite references sharing a leading column: each @via reads its own alias cube", async () => {
@@ -869,15 +963,42 @@ describe("Table E — joins and reached members", () => {
     expect(c.joins).toEqual([
       { name: "Node_fkParent", relationship: "many_to_one", sql: '{CUBE}."parentId" = {Node_fkParent}."id"' },
     ]);
+    // The member the @via reads is the alias's, so Node itself adds none.
     expect(c.dimensions).toEqual([
       { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true },
       { name: "parentLabel", sql: "{Node_fkParent.label}", type: "string" },
-      { name: "label", sql: '{CUBE}."label"', type: "string", public: false },
     ]);
+    // A standalone cube over the same table: no join onto itself, none of Node's members.
     expect(cube(model, "Node_fkParent")).toEqual({
-      name: "Node_fkParent", extends: "Node", public: false,
-      joins: [], dimensions: [], measures: [], segments: [], preAggregations: [],
+      name: "Node_fkParent", sqlTable: '"nodes"', public: false,
+      joins: [],
+      dimensions: [
+        { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true },
+        { name: "label", sql: '{CUBE}."label"', type: "string", public: false },
+      ],
+      measures: [], segments: [], preAggregations: [],
     });
+  });
+
+  test("ERR_CUBE_AMBIGUOUS_PATH: a @via through two self-references reaches Node's own alias a second way", async () => {
+    const err = await buildError([
+      entity("Node", [
+        table("nodes"),
+        longId,
+        { "field.string": { name: "label" } },
+        { "field.long": { name: "parentId" } },
+        { "field.long": { name: "mentorId" } },
+        pk,
+        { "identity.reference": { name: "fkParent", "@fields": "parentId", "@references": "Node" } },
+        { "identity.reference": { name: "fkMentor", "@fields": "mentorId", "@references": "Node" } },
+        { "dimension.attribute": { name: "parentMentor", "@of": "Node.label", "@via": "Node.fkParent.fkMentor" } },
+      ]),
+    ]);
+    // Node_fkParent continues by Node's own fkMentor join, onto Node_fkMentor, which Node also joins
+    // directly (its own mentor): reading {Node_fkMentor.label} could mean either, so it is refused.
+    expect(err.code).toBe("ERR_CUBE_AMBIGUOUS_PATH");
+    expect(err.message).toContain("dimension 'acme::shop::Node.parentMentor'");
+    expect(err.message).toContain("(Node -> Node_fkParent -> Node_fkMentor; Node -> Node_fkMentor)");
   });
 
   test("a self-reference gets its alias cube with no dimension reading it", async () => {

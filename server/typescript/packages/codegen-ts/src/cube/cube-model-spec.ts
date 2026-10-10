@@ -110,12 +110,10 @@ export type CubeRollupSpec = CubeRollupOneTime | CubeRollupTimeList | CubeRollup
 
 export interface CubeSpec {
   readonly name: string;
-  /** `"table"`, or `"schema"."table"` when `@schema` is declared. Absent with `sql` or `extends`. */
+  /** `"table"`, or `"schema"."table"` when `@schema` is declared. Absent with `sql`. */
   readonly sqlTable?: string;
   /** The cube's SELECT, for a TPH subtype (its discriminator predicate). Absent with `sqlTable`. */
   readonly sql?: string;
-  /** The cube an alias cube extends (Table E). */
-  readonly extends?: string;
   /** `false` for a join-target or alias cube; absent means Cube's default (public). */
   readonly public?: boolean;
   readonly title?: string;

@@ -1,9 +1,10 @@
-// FR-044 Plan 4 — the cube-model generator's own errors (Tables C, E and G). These are
+// FR-044 Plan 4 — the cube-model generator's own errors (Tables C, E, F and G). These are
 // generator errors, printed in the message; they are not loader codes and are not listed in
 // fixtures/conformance/ERROR-CODES.json.
 
 export const ERR_CUBE_UNMAPPABLE_DIMENSION = "ERR_CUBE_UNMAPPABLE_DIMENSION";
 export const ERR_CUBE_UNMAPPABLE_JOIN = "ERR_CUBE_UNMAPPABLE_JOIN";
+export const ERR_CUBE_UNMAPPABLE_REPORT = "ERR_CUBE_UNMAPPABLE_REPORT";
 export const ERR_CUBE_AMBIGUOUS_PATH = "ERR_CUBE_AMBIGUOUS_PATH";
 export const ERR_CUBE_NO_PRIMARY_KEY = "ERR_CUBE_NO_PRIMARY_KEY";
 export const ERR_CUBE_INVALID_NAME = "ERR_CUBE_INVALID_NAME";
@@ -14,6 +15,7 @@ export const ERR_CUBE_UNESCAPABLE_LITERAL = "ERR_CUBE_UNESCAPABLE_LITERAL";
 export const CUBE_ERROR_CODES = [
   ERR_CUBE_UNMAPPABLE_DIMENSION,
   ERR_CUBE_UNMAPPABLE_JOIN,
+  ERR_CUBE_UNMAPPABLE_REPORT,
   ERR_CUBE_AMBIGUOUS_PATH,
   ERR_CUBE_NO_PRIMARY_KEY,
   ERR_CUBE_INVALID_NAME,

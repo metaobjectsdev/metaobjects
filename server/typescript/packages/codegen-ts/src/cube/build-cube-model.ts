@@ -11,6 +11,12 @@
 // composite reference (the view joins on the first). Conditions render through the report SQL
 // module's own `cond`, with a renderer that escapes for Cube (cube-sql.ts).
 //
+// An alias cube (Table E, Ruling 12) is a standalone cube over its entity's table, never an
+// `extends`: Cube's `extends` copies every member and pre-aggregation of the parent, so an alias
+// would expose the target's measures again and rebuild its rollups. It holds the primary key,
+// the members the dimensions reaching it read, and the joins of the paths that continue through
+// it. A cube is emitted when a selected entity's cube reaches it through joins.
+//
 // Lossless or an error: what Cube cannot hold is a CubeModelError naming the node.
 
 import {
@@ -62,6 +68,7 @@ import {
   ERR_CUBE_NO_PRIMARY_KEY,
   ERR_CUBE_UNMAPPABLE_DIMENSION,
   ERR_CUBE_UNMAPPABLE_JOIN,
+  ERR_CUBE_UNMAPPABLE_REPORT,
 } from "./cube-errors.js";
 import {
   dimensionColumn,
@@ -99,8 +106,11 @@ export interface CubeModelOptions {
 
 const REPORTING_TYPES: ReadonlySet<string> = new Set([TYPE_DIMENSION, TYPE_MEASURE, TYPE_SEGMENT]);
 
-/** `entity` declares (or inherits) reporting vocabulary; `joinTarget` is only reached (Table A). */
-type CubeKind = "entity" | "joinTarget";
+/**
+ * `entity` declares (or inherits) reporting vocabulary; `joinTarget` is only reached (Table A);
+ * `alias` is one hop's own copy of the entity it reaches (Table E).
+ */
+type CubeKind = "entity" | "joinTarget" | "alias";
 
 /** One to-one hop a cube holds onto another cube: a Cube join (Table E). */
 interface Hop {
@@ -112,7 +122,7 @@ interface Hop {
   readonly reference: MetaReferenceIdentity;
   readonly relationship: "many_to_one" | "one_to_one";
   /** The joined cube: the target's own, or the alias cube `<Cube>_<hop>`. */
-  readonly joinName: string;
+  readonly joined: CubeDraft;
 }
 
 /** Entity short names along a `@via` path, for messages. */
@@ -132,6 +142,8 @@ interface CubeDraft {
   readonly declaredOrder: MetaDimension[];
   readonly declaredDims: Map<MetaDimension, CubeDimensionSpec>;
   readonly viaPaths: Map<MetaDimension, Path>;
+  /** The cubes each `@via` dimension's joins pass through, this cube first. */
+  readonly viaCubes: Map<MetaDimension, CubeDraft[]>;
   readonly addedDims: CubeDimensionSpec[];
   readonly measures: CubeMeasureSpec[];
   /** Declared segments, then the served reports' scope segments in report order. */
@@ -142,11 +154,6 @@ interface CubeDraft {
   readonly declaredByField: Map<string, string>;
   /** Field name → the member the exporter added over it (a key or reached-column dimension). */
   readonly addedByField: Map<string, string>;
-}
-
-interface AliasDraft {
-  readonly name: string;
-  readonly target: CubeDraft;
 }
 
 export function buildCubeModel(root: MetaRoot, options: CubeModelOptions): CubeModel {
@@ -200,13 +207,19 @@ function simplePaths(graph: ReadonlyMap<string, readonly string[]>, from: string
   return out;
 }
 
+/** Cube name → the cubes its joins reach. An alias cube's edges are its own joins. */
+function cubeGraph(cubes: readonly CubeDraft[]): Map<string, string[]> {
+  return new Map(cubes.map((c) => [c.name, c.hops.map((h) => h.joined.name)]));
+}
+
 class CubeModelBuilder {
   private readonly d: CubeDialect;
   private readonly mc: MemberContext;
   private readonly byKey = new Map<string, MetaObject>();
   /** Keyed by entity resolution key, in model order. */
   private readonly drafts = new Map<string, CubeDraft>();
-  private readonly aliases: AliasDraft[] = [];
+  /** Alias cubes, in the order their hops were declared. */
+  private readonly aliases: CubeDraft[] = [];
 
   constructor(
     private readonly root: MetaRoot,
@@ -246,48 +259,38 @@ class CubeModelBuilder {
       if (draft.kind === "entity") this.addDeclaredMembers(draft);
     }
     for (const draft of this.drafts.values()) this.addJoins(draft);
-    assertCubeNames([
-      ...[...this.drafts.values()].map((c) => ({ name: c.name, what: `entity '${c.entity.resolutionKey()}'` })),
-      ...this.aliases.map((a) => ({ name: a.name, what: `the alias cube '${a.name}' of '${a.target.entity.resolutionKey()}'` })),
-    ]);
-    this.assertJoinKeys();
-
-    const graph = this.cubeGraph();
+    // Each @via's cubes, which also gives an alias cube the joins of the paths through it.
     for (const draft of this.drafts.values()) {
-      for (const [dim, path] of draft.viaPaths) draft.declaredDims.set(dim, this.viaDimension(draft, dim, path, graph));
+      for (const [dim, path] of draft.viaPaths) draft.viaCubes.set(dim, this.viaCubes(draft, dim, path));
+    }
+    const emitted = this.emittedCubes();
+    const cubeLabel = (c: CubeDraft): string =>
+      c.kind === "alias" ? `the alias cube '${c.name}' of '${c.entity.resolutionKey()}'` : `entity '${c.entity.resolutionKey()}'`;
+    assertCubeNames(emitted.map((c) => ({ name: c.name, what: cubeLabel(c) })));
+    this.assertJoinKeys(emitted);
+
+    const graph = cubeGraph(emitted);
+    for (const draft of this.drafts.values()) {
+      for (const [dim, cubes] of draft.viaCubes) draft.declaredDims.set(dim, this.viaDimension(draft, dim, cubes, graph));
     }
     // Table F: in model order, so rollups and scope segments are in report order.
     for (const o of objects) if (servedReport(o)) this.addReport(o);
 
-    return {
-      cubes: [
-        ...[...this.drafts.values()].map((c) => this.cubeSpec(c)),
-        ...this.aliases.map((a): CubeSpec => ({
-          name: a.name,
-          extends: a.target.name,
-          public: false,
-          joins: [],
-          dimensions: [],
-          measures: [],
-          segments: [],
-          preAggregations: [],
-        })),
-      ],
-      views: [],
-    };
+    return { cubes: emitted.map((c) => this.cubeSpec(c)), views: [] };
   }
 
-  private draft(entity: MetaObject, kind: CubeKind, viaPaths: Map<MetaDimension, Path>): CubeDraft {
+  private draft(entity: MetaObject, kind: CubeKind, viaPaths: Map<MetaDimension, Path>, name = entity.name): CubeDraft {
     return {
-      name: entity.name,
+      name,
       entity,
       kind,
-      namespace: new MemberNamespace(entity.name),
+      namespace: new MemberNamespace(name),
       hops: [],
       keyDims: [],
       declaredOrder: [],
       declaredDims: new Map(),
       viaPaths,
+      viaCubes: new Map(),
       addedDims: [],
       measures: [],
       segments: [],
@@ -409,7 +412,7 @@ class CubeModelBuilder {
   private addJoins(draft: CubeDraft): void {
     const entity = draft.entity;
     const self = entity.resolutionKey();
-    const candidates: Omit<Hop, "joinName">[] = [];
+    const candidates: Omit<Hop, "joined">[] = [];
     // ADR-0039: resolving children(), so an inherited reference or relationship is a join too.
     for (const child of entity.children()) {
       let relationship: Hop["relationship"];
@@ -436,10 +439,28 @@ class CubeModelBuilder {
       const target = this.drafts.get(h.step.targetEntity)!;
       // Cube allows one join per target cube, and none onto the cube itself.
       const aliased = h.step.targetEntity === self || (perTarget.get(h.step.targetEntity) ?? 0) > 1;
-      const joinName = aliased ? `${draft.name}_${h.hop}` : target.name;
-      if (aliased) this.aliases.push({ name: joinName, target });
-      draft.hops.push({ ...h, joinName });
+      draft.hops.push({ ...h, joined: aliased ? this.alias(`${draft.name}_${h.hop}`, target.entity) : target });
     }
+  }
+
+  /** Table E: an alias cube, standalone over `entity`'s table, holding its primary key. */
+  private alias(name: string, entity: MetaObject): CubeDraft {
+    const alias = this.draft(entity, "alias", new Map(), name);
+    this.addKeyDimensions(alias);
+    this.aliases.push(alias);
+    return alias;
+  }
+
+  /** The cubes a selected entity's cube reaches through joins, itself included: what is written. */
+  private emittedCubes(): CubeDraft[] {
+    const reached = new Set<CubeDraft>();
+    const visit = (c: CubeDraft): void => {
+      if (reached.has(c)) return;
+      reached.add(c);
+      for (const h of c.hops) visit(h.joined);
+    };
+    for (const d of this.drafts.values()) if (d.kind === "entity") visit(d);
+    return [...this.drafts.values(), ...this.aliases].filter((c) => reached.has(c));
   }
 
   /**
@@ -465,14 +486,14 @@ class CubeModelBuilder {
   }
 
   /** Cube needs a primary key on both sides of a join. */
-  private assertJoinKeys(): void {
-    for (const draft of this.drafts.values()) {
+  private assertJoinKeys(cubes: readonly CubeDraft[]): void {
+    for (const draft of cubes) {
       for (const h of draft.hops) {
-        for (const side of [draft.entity, this.drafts.get(h.step.targetEntity)!.entity]) {
+        for (const side of [draft.entity, h.joined.entity]) {
           if (side.primaryIdentity() !== undefined) continue;
           throw new CubeModelError(
             ERR_CUBE_NO_PRIMARY_KEY,
-            `cube '${draft.name}': the join '${h.joinName}' (${hopLabel(h.node)}) joins '${side.resolutionKey()}', ` +
+            `cube '${draft.name}': the join '${h.joined.name}' (${hopLabel(h.node)}) joins '${side.resolutionKey()}', ` +
               `which declares no identity.primary, and Cube needs a primary key on both sides of a join. ` +
               `Declare an identity.primary on '${side.resolutionKey()}'.`,
           );
@@ -481,50 +502,56 @@ class CubeModelBuilder {
     }
   }
 
-  /** Cube name → the cubes its joins reach. An alias cube inherits the joins of the cube it extends. */
-  private cubeGraph(): Map<string, string[]> {
-    const graph = new Map<string, string[]>();
-    for (const draft of this.drafts.values()) graph.set(draft.name, draft.hops.map((h) => h.joinName));
-    for (const a of this.aliases) graph.set(a.name, a.target.hops.map((h) => h.joinName));
-    return graph;
+  /**
+   * Table E: the cubes a `@via` dimension's joins pass through, the owning cube first. Each hop
+   * is the join its holder entity's cube declares. When the path reaches that entity through an
+   * alias cube, the alias holds the join itself: it is a standalone cube with no joins but these.
+   */
+  private viaCubes(draft: CubeDraft, dim: MetaDimension, path: Path): CubeDraft[] {
+    const where = `cube '${draft.name}': dimension '${memberKey(dim)}'`;
+    const cubes: CubeDraft[] = [draft];
+    for (const step of path) {
+      const holder = this.drafts.get(step.entity.resolutionKey());
+      const hop = holder?.hops.find((h) => crosses(h, step, this.root));
+      if (hop === undefined) throw new Error(`${where}: no join crosses its @via hop '${step.relationship}'.`);
+      // A second self-referencing hop crosses the same alias cube again (Node.fkParent.fkParent
+      // lands on Node_fkParent twice), so the member it names would be the first hop's row.
+      if (cubes.includes(hop.joined)) {
+        throw new CubeModelError(
+          ERR_CUBE_UNMAPPABLE_DIMENSION,
+          `${where} @via '${dim.via() ?? ""}' passes through one cube twice ` +
+            `(${[...cubes, hop.joined].map((c) => c.name).join(" -> ")}), so the member it reads would belong ` +
+            `to the earlier hop's row. Remove the dimension, or reach the value through distinct cubes.`,
+        );
+      }
+      const at = cubes[cubes.length - 1]!;
+      if (at !== holder && !at.hops.includes(hop)) at.hops.push(hop);
+      cubes.push(hop.joined);
+    }
+    return cubes;
   }
 
   /** Table E: a `@via` dimension reads a member of the cube its last hop joins. */
   private viaDimension(
     draft: CubeDraft,
     dim: MetaDimension,
-    path: Path,
+    cubes: readonly CubeDraft[],
     graph: ReadonlyMap<string, readonly string[]>,
   ): CubeDimensionSpec {
     const label = `dimension '${memberKey(dim)}'`;
     const where = `cube '${draft.name}': ${label}`;
-    // The cubes the dimension's joins pass through, the owning cube first.
-    const cubes = [draft.name];
-    for (const step of path) {
-      const hop = this.drafts.get(step.entity.resolutionKey())?.hops.find((h) => crosses(h, step, this.root));
-      if (hop === undefined) throw new Error(`${where}: no join crosses its @via hop '${step.relationship}'.`);
-      cubes.push(hop.joinName);
-    }
     const joined = cubes[cubes.length - 1]!;
-    // A second self-referencing hop crosses the same alias cube again (Node.fkParent.fkParent
-    // lands on Node_fkParent twice), so the member it names would be the first hop's row.
-    if (new Set(cubes).size !== cubes.length) {
-      throw new CubeModelError(
-        ERR_CUBE_UNMAPPABLE_DIMENSION,
-        `${where} @via '${dim.via() ?? ""}' passes through one cube twice (${cubes.join(" -> ")}), so the ` +
-          `member it reads would belong to the earlier hop's row. Remove the dimension, or reach the value ` +
-          `through distinct cubes.`,
-      );
-    }
-    if (path.length > 1) {
-      const paths = simplePaths(graph, draft.name, joined);
+    // A multi-hop path: Cube follows the joins itself, so exactly one route may reach the cube.
+    // An alias cube's routes are its own joins only (it extends nothing).
+    if (cubes.length > 2) {
+      const paths = simplePaths(graph, draft.name, joined.name);
       if (paths.length > 1) {
         throw new CubeModelError(
           ERR_CUBE_AMBIGUOUS_PATH,
-          `${where} reads '${joined}' through @via '${dim.via() ?? ""}', and the cube graph reaches '${joined}' ` +
-            `from '${draft.name}' by more than one path (${paths.map((p) => p.join(" -> ")).join("; ")}), so Cube ` +
-            `could join it by either. Remove the identity.reference that makes the other path, or read the value ` +
-            `through a single hop.`,
+          `${where} reads '${joined.name}' through @via '${dim.via() ?? ""}', and the cube graph reaches ` +
+            `'${joined.name}' from '${draft.name}' by more than one path ` +
+            `(${paths.map((p) => p.join(" -> ")).join("; ")}), so Cube could join it by either. Remove the ` +
+            `identity.reference that makes the other path, or read the value through a single hop.`,
         );
       }
     }
@@ -532,15 +559,15 @@ class CubeModelBuilder {
     const of = dimensionOfField(dim, draft.entity, this.root);
     if (of === undefined) throw new Error(`${where} @of '${dim.of() ?? ""}' does not resolve.`);
     const { type } = this.columnOf(of, where);
-    const target = this.drafts.get(path[path.length - 1]!.targetEntity)!;
-    const member = this.reachedMember(target, of, label);
-    return { name: dim.name, sql: memberRef(member, joined), type, ...grainsOf(dim), ...docOf(dim) };
+    const member = this.reachedMember(joined, of, label);
+    return { name: dim.name, sql: memberRef(member, joined.name), type, ...grainsOf(dim), ...docOf(dim) };
   }
 
   /**
    * The member of `target` a `@via` onto `field` reads: a declared dimension (attribute or time)
-   * without `@via` over the field, else the one the exporter already added, else a new `public: false` dimension named
-   * after the field. Added on the target entity's own cube; an alias cube inherits it.
+   * without `@via` over the field, else the one the exporter already added, else a new
+   * `public: false` dimension named after the field. Added on the cube the path ends on: the
+   * entity's own, or the alias cube of the last hop, which declares nothing and so always adds.
    */
   private reachedMember(target: CubeDraft, field: MetaField, reader: string): string {
     const existing = target.declaredByField.get(field.name) ?? target.addedByField.get(field.name);
@@ -556,9 +583,10 @@ class CubeModelBuilder {
 
   /**
    * Table F: a served report's scope segment and rollup, on the cube of its @from entity when
-   * that cube is emitted as the entity's own. An unselected @from contributes nothing; a
-   * selected one that cannot be a cube (abstract, or no table) is refused, as the view
-   * lowering refuses it: neither the report's view nor a rollup that agrees with it can exist.
+   * that cube is emitted as the entity's own (a TPH subtype's cube included: its `sql` applies
+   * the discriminator). An unselected @from contributes nothing; a selected one that cannot be
+   * a cube (abstract, or no table) is ERR_CUBE_UNMAPPABLE_REPORT: there is no cube to hold the
+   * rollup, and the view lowering refuses the same report.
    */
   private addReport(report: MetaObject): void {
     const shape = reportShape(report, this.root);
@@ -569,10 +597,13 @@ class CubeModelBuilder {
       if (!(this.options.matches?.(from) ?? true)) return;
       // Selected, and @from declares the measures the report lists, so the only reason it has no
       // cube of its own is Table A's: it is abstract or has no table.
-      throw new Error(
-        `report '${report.resolutionKey()}': @from '${from.resolutionKey()}' has no table (it is abstract or ` +
-          `declares no writable source.rdb), so it has no cube to hold the report's rollup, and no view can be ` +
-          `derived from it either. Give '${from.name}' a source, or remove the report's source.`,
+      const fromKey = from.resolutionKey();
+      const why = from.isAbstract ? `'${fromKey}' is abstract` : `'${fromKey}' declares no writable source.rdb`;
+      throw new CubeModelError(
+        ERR_CUBE_UNMAPPABLE_REPORT,
+        `report '${report.resolutionKey()}' is served, and its @from '${fromKey}' has no cube to hold its ` +
+          `rollup: ${why}, so it has no table of its own, and no view can be derived from it either. Report ` +
+          `@from a concrete entity with a table, or remove the report's view source.`,
       );
     }
     const key = report.resolutionKey();
@@ -595,9 +626,9 @@ class CubeModelBuilder {
    * identity.primary.
    */
   private join(draft: CubeDraft, h: Hop): CubeJoinSpec {
-    const where = `cube '${draft.name}': join '${h.joinName}' (${hopLabel(h.node)})`;
+    const where = `cube '${draft.name}': join '${h.joined.name}' (${hopLabel(h.node)})`;
     const renderer = cubeSqlRenderer(where);
-    const target = this.drafts.get(h.step.targetEntity)!.entity;
+    const target = h.joined.entity;
     // many_to_one: this cube holds the foreign key. one_to_one: the far entity holds it.
     const [fkEntity, keyEntity] = h.relationship === "many_to_one" ? [draft.entity, target] : [target, draft.entity];
     const fkFields = h.reference.fields;
@@ -617,10 +648,10 @@ class CubeModelBuilder {
       const fkCol = joinColumnFor(fkEntity, fk, this.mc.extract);
       const keyCol = joinColumnFor(keyEntity, keyFields[i]!, this.mc.extract);
       return h.relationship === "many_to_one"
-        ? `${cubeColumn(fkCol, this.d, renderer)} = ${joinedColumn(h.joinName, keyCol, this.d, renderer)}`
-        : `${cubeColumn(keyCol, this.d, renderer)} = ${joinedColumn(h.joinName, fkCol, this.d, renderer)}`;
+        ? `${cubeColumn(fkCol, this.d, renderer)} = ${joinedColumn(h.joined.name, keyCol, this.d, renderer)}`
+        : `${cubeColumn(keyCol, this.d, renderer)} = ${joinedColumn(h.joined.name, fkCol, this.d, renderer)}`;
     });
-    return { name: h.joinName, relationship: h.relationship, sql: pairs.join(" AND ") };
+    return { name: h.joined.name, relationship: h.relationship, sql: pairs.join(" AND ") };
   }
 
   /** `sql_table`, or for a TPH subtype a `sql` over the base table with its discriminator predicate. */
@@ -648,7 +679,7 @@ class CubeModelBuilder {
     return {
       name: draft.name,
       ...this.source(draft),
-      ...(draft.kind === "joinTarget" ? { public: false } : {}),
+      ...(draft.kind === "entity" ? {} : { public: false }),
       ...docOf(draft.entity),
       joins: draft.hops.map((h) => this.join(draft, h)),
       dimensions: [...draft.keyDims, ...draft.declaredOrder.map((dim) => draft.declaredDims.get(dim)!), ...draft.addedDims],
