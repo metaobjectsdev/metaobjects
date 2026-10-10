@@ -32,8 +32,10 @@ it until 1.1 ships._
   change:** `metamodelVersion` stays 1.1 and `expected-registry.json` is untouched. The report
   view lowering and the exporter now share one SQL module, moved without changing a byte of
   any view. A report's `@spine` and a measure's `@default` are not mapped yet, since that
-  vocabulary is not registered. Gated by the new `fixtures/cube-model/` corpus (40 cases and a
-  canonical golden; the 29th shared corpus in `docs/CONFORMANCE.md`, run by TypeScript only).
+  vocabulary is not registered: a model that declares either is refused with
+  `ERR_CUBE_UNMAPPED_VOCABULARY` rather than written without it. Gated by the new
+  `fixtures/cube-model/` corpus (41 cases and a canonical golden; the 29th shared corpus in
+  `docs/CONFORMANCE.md`, run by TypeScript only).
   See [docs/features/cube-export.md](docs/features/cube-export.md).
 - **A `cube` lane checks the exporter against a real Cube.** `scripts/ci-local.sh --only cube`
   (also `scripts/integration-test.sh cube`, `bun run test:cube` in `integration-tests`, and a

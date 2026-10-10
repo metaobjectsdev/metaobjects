@@ -91,6 +91,7 @@ import type {
   CubeSpec,
 } from "./cube-model-spec.js";
 import { assertCubeNames, MemberNamespace } from "./cube-names.js";
+import { assertMeasureMapped, assertReportMapped } from "./cube-pending.js";
 import { coarsestFirst, reportContribution } from "./cube-reports.js";
 import { cubeColumn, cubeSqlRenderer, joinedColumn, memberRef, tableRef } from "./cube-sql.js";
 
@@ -392,6 +393,7 @@ class CubeModelBuilder {
         draft.declaredOrder.push(dim);
         if (dim.via() === undefined) draft.declaredDims.set(dim, this.ownDimension(draft, dim, where));
       } else if (child.type === TYPE_MEASURE) {
+        assertMeasureMapped(child as MetaMeasure, draft.name, draft.entity);
         draft.measures.push(measureSpec(draft.entity, child as MetaMeasure, where, this.mc));
       } else {
         draft.segments.push(segmentSpec(draft.entity, child as MetaSegment, where, this.mc));
@@ -613,6 +615,7 @@ class CubeModelBuilder {
           `@from a concrete entity with a table, or remove the report's view source.`,
       );
     }
+    assertReportMapped(report, from);
     const key = report.resolutionKey();
     const { scope, rollup } = reportContribution(shape, draft.name, this.mc);
     if (scope !== undefined) {

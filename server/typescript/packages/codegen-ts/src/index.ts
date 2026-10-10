@@ -419,6 +419,7 @@ export {
   ERR_CUBE_UNMAPPABLE_DIMENSION,
   ERR_CUBE_UNMAPPABLE_JOIN,
   ERR_CUBE_UNMAPPABLE_REPORT,
+  ERR_CUBE_UNMAPPED_VOCABULARY,
   ERR_CUBE_UNSUPPORTED_DIALECT,
 } from "./cube/cube-errors.js";
 export type { CubeErrorCode } from "./cube/cube-errors.js";

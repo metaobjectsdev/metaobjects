@@ -21,7 +21,8 @@ cube. Cube reads these files from its own project.
 exporter (it waits for the first adopter who asks, spec decision D5). No other port has an
 exporter (spec R6): the files are language-neutral YAML, and the Node `meta` CLI writes them.
 Two pieces of the design are not mapped because their vocabulary is not registered yet, a
-report's `@spine` and a measure's `@default` (see [Known limits](#known-limits)).
+report's `@spine` and a measure's `@default`. A model that declares either is refused, not
+written without it (see [Known limits](#known-limits)).
 
 **Entirely opt-in.** `meta init` wires no generator. A project that does not configure
 `cube-model` gets no file. A model that declares no dimension, measure or segment gets no file
@@ -412,6 +413,7 @@ are printed in its messages and are not loader codes.
 | `ERR_CUBE_NAME_COLLISION` | two cubes would have one name |
 | `ERR_CUBE_UNESCAPABLE_LITERAL` | a literal, an identifier or free text holds `endraw` |
 | `ERR_CUBE_UNSUPPORTED_DIALECT` | the dialect is neither `postgres` nor `mysql` and the run would write a cube |
+| `ERR_CUBE_UNMAPPED_VOCABULARY` | a served report declares `@spine`, or a measure written on a cube declares `@default`: the mapping does not cover them yet (see [Known limits](#known-limits)) |
 
 ## Which files a run writes
 
@@ -491,8 +493,8 @@ like any other generated output: a changed model that was not regenerated, a mis
 and a stale one are drift. A hand edit to a generated file is not drift, but the gate lists it, and
 `meta verify --codegen --forbid-hand-edits` makes it fail.
 
-**The mapping corpus** is [`fixtures/cube-model/`](../../fixtures/cube-model/): 40 cases, each
-the smallest model for one rule, 30 with the exact tree the generator writes and 10 with the
+**The mapping corpus** is [`fixtures/cube-model/`](../../fixtures/cube-model/): 41 cases, each
+the smallest model for one rule, 30 with the exact tree the generator writes and 11 with the
 exact error message. Every expected file was written by hand from its rule and then compared
 with the generator, never copied from it.
 `codegen-ts/test/cube/cube-model-corpus.test.ts` runs it. The canonical golden,
@@ -548,11 +550,17 @@ the table names above are the development-mode form.
   subtype's `sql`, one-to-one joins and the int-backed enum's `CASE` (the corpus pass), but no
   live query crosses them.
 - **No `sqlite` or `d1`.** See [Dialects](#wiring-it).
-- **`@spine` and `@default` are not mapped yet.** A report's `@spine` (rows from a dimension's
-  entity) and a measure's `@default` belong to the FR-044 zero-rows plan
+- **`@spine` and `@default` are not mapped yet, and a model that declares either is refused.** A
+  report's `@spine` (rows from a dimension's entity) and a measure's `@default` belong to the
+  FR-044 zero-rows plan
   (`docs/superpowers/plans/2026-10-09-fr-044-zero-rows-and-measure-defaults.md`), whose
-  vocabulary is not registered. The exporter maps them once that vocabulary ships, and until
-  then promises no Cube shape for either. Spec §5 records the intended mapping.
+  vocabulary is not registered. Written without them, a rollup would lack the spine's zero rows
+  and a measure would read null where its view reads the default, so a served report with
+  `@spine`, or a measure written on a cube with `@default`, is `ERR_CUBE_UNMAPPED_VOCABULARY`,
+  naming the node. Narrow the generator's `filter` to leave the entity out, or remove the
+  attribute. A sourceless report, and a measure on an entity that gets no cube, produce nothing
+  and stay inert. The exporter maps both once that vocabulary ships, and the refusal goes with
+  it. Spec §5 records the intended mapping.
 - **No Cube views, no `extends`, no `refresh_key`, no partitions, no `format`.** The exporter
   writes cubes only.
 - **No derived measure.** `measure.derived` is not registered, so there is nothing to map.

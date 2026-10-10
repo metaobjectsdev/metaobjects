@@ -72,6 +72,7 @@ never copied from it. A golden blessed from the implementation proves nothing.
 | `error-cube-name-collision` | G (alias names); K | `ERR_CUBE_NAME_COLLISION` between an entity and an alias cube of one name |
 | `error-unescapable-literal` | G | `ERR_CUBE_UNESCAPABLE_LITERAL` for a literal holding `endraw` |
 | `error-unsupported-dialect` | generator dialect rule | `ERR_CUBE_UNSUPPORTED_DIALECT` for a `sqlite` config that would write a cube, saying how to pass `dialect` |
+| `error-unmapped-vocabulary` | spec §5 (`@spine`, `@default`) | `ERR_CUBE_UNMAPPED_VOCABULARY` for a `@default` on a measure of a cube: the attribute is not registered yet and the mapping does not cover it, so the model is refused rather than written without it. A served report's `@spine` is the same refusal. Both stand until the zero-rows/measure-defaults build maps them |
 
 `measure-default` and `report-spine` (Table B's `@default` and `@spine` rows) arrive with the
-#411 vocabulary.
+#411 vocabulary, and replace `error-unmapped-vocabulary` when they do.
