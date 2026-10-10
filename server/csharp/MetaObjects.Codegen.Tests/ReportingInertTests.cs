@@ -6,8 +6,10 @@
 // `HasNoKey().ToView(...)` mapping plus a DbSet (Plan 2), and serves it through a filter
 // allowlist and a read-only routes file (Plan 3). So:
 //
-//   - a SOURCELESS report (`ProgramEngagement`, `DailyRevenue`) stays inert in every
-//     registered generator and in the api docs;
+//   - a SOURCELESS report (`ProgramEngagement`, `DailyRevenue`, and `ProgramCatalogue`,
+//     which declares `@spine` and lists a dimension reached by `@via`) stays inert in every
+//     registered generator and in the api docs, as does a measure `@default`
+//     (`avgDaysPerStarter`);
 //   - the VIEW-BACKED report (`StoreTotals`) adds exactly three files (its row class, its
 //     filter allowlist, its routes file), exactly its lines in AppDbContext.g.cs, one unit
 //     in the api docs, and nothing in the names tier or in any other generator.
@@ -28,6 +30,9 @@ namespace MetaObjects.Codegen.Tests;
 
 public class ReportingInertTests
 {
+    /// <summary>The with-model's reports that declare no source: inert everywhere.</summary>
+    private static readonly string[] SourcelessReports = ["ProgramEngagement", "DailyRevenue", "ProgramCatalogue"];
+
     private static string Model(string variant) =>
         Path.Combine(CorpusPaths.RepoRoot(), "fixtures", "codegen-noop", "reporting", variant, "meta.shop.json");
 
@@ -89,7 +94,7 @@ public class ReportingInertTests
     {
         // Else every comparison below is vacuously green.
         var reports = Load("with").Objects().Where(o => o.IsReport()).Select(o => o.Name).OrderBy(n => n).ToList();
-        Assert.Equal(["DailyRevenue", "ProgramEngagement", "StoreTotals"], reports);
+        Assert.Equal(["DailyRevenue", "ProgramCatalogue", "ProgramEngagement", "StoreTotals"], reports);
         Assert.DoesNotContain(Load("without").Objects(), o => o.IsReport());
     }
 
@@ -293,7 +298,7 @@ public class ReportingInertTests
             [RowFile, AllowlistFile, RoutesFile],
             files.Keys.Where(k => k.Contains("StoreTotals", StringComparison.Ordinal)).ToList());
         // A sourceless report: no file at all, and no mention in any file.
-        foreach (var sourceless in new[] { "ProgramEngagement", "DailyRevenue" })
+        foreach (var sourceless in SourcelessReports)
         {
             Assert.DoesNotContain(files.Keys, k => k.Contains(sourceless, StringComparison.Ordinal));
             Assert.DoesNotContain(files.Values, c => c.Contains(sourceless, StringComparison.Ordinal));
@@ -343,14 +348,13 @@ public class ReportingInertTests
                 // The index and the agent page gain lines for the report and lose none.
                 var added = AddedLines(content, actual[path]);
                 Assert.NotEmpty(added);
-                Assert.DoesNotContain(added, l => l.Contains("ProgramEngagement", StringComparison.Ordinal)
-                    || l.Contains("DailyRevenue", StringComparison.Ordinal));
+                Assert.DoesNotContain(added, l => SourcelessReports.Any(r => l.Contains(r, StringComparison.Ordinal)));
                 continue;
             }
             Assert.True(content == actual[path], $"{path} differs once reporting nodes are declared");
         }
         // A sourceless report is mentioned nowhere.
-        foreach (var sourceless in new[] { "ProgramEngagement", "DailyRevenue" })
+        foreach (var sourceless in SourcelessReports)
             Assert.DoesNotContain(actual.Values, c => c.Contains(sourceless, StringComparison.Ordinal));
     }
 
@@ -360,7 +364,7 @@ public class ReportingInertTests
         var config = new GenConfig { OutDir = "/unused", Namespace = "Shop" };
         var units = new CSharpApiModelBuilder(config).Build(Load("with"), "shop").Units;
 
-        Assert.DoesNotContain(units, u => u.Node is "ProgramEngagement" or "DailyRevenue");
+        Assert.DoesNotContain(units, u => SourcelessReports.Contains(u.Node));
         var unit = Assert.Single(units, u => u.Node == "StoreTotals");
         Assert.Equal("report", unit.Kind);
         Assert.Equal("acme::shop", unit.Package);

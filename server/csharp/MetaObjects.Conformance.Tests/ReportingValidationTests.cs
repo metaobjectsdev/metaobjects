@@ -5,14 +5,19 @@
 //
 // C# parity port of selected cases from the TS reference suite
 //   server/typescript/packages/metadata/test/reporting-validation.test.ts
-// (the "relative dates" and "inherited members" blocks). Every expected message is the
-// TS text verbatim — the ports share one message contract.
+// (the "relative dates", "inherited members", "@spine (R8, R9)" and "measure @default
+// (M7, M8)" blocks). Every expected message is the TS text verbatim — the ports share one
+// message contract. The one exception is a fractional measure @default: this port's
+// generic attr.int type check already refuses it with ERR_BAD_ATTR_VALUE (its own text),
+// so no second, reporting-specific error is added; those cases pin the code, the node and
+// that it is the only error.
 
 using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
+using MetaObjects.Source;
 using Xunit;
 
 namespace MetaObjects.Conformance.Tests;
@@ -56,6 +61,465 @@ public class ReportingValidationTests
     }
 
     private static JsonNode Positive() => Fixture("reporting-vocabulary");
+
+    private static JsonNode J(string json) => JsonNode.Parse(json)!;
+
+    private static JsonNode Field(string subType, string name) =>
+        Wrap($"field.{subType}", $$"""{ "name": "{{name}}" }""");
+
+    private static JsonNode Primary() => Wrap("identity.primary", """{ "name": "id", "@fields": ["id"] }""");
+
+    /// <summary>Set (or, with a null value, delete) attrs on a JSON body.</summary>
+    private static void Patch(JsonObject body, (string Key, JsonNode? Value)[] attrs)
+    {
+        foreach (var (key, value) in attrs)
+        {
+            if (value is null) body.Remove(key);
+            else body[key] = value;
+        }
+    }
+
+    /// <summary>Patch the attrs of the root object (a report, say) named <paramref name="objName"/>.</summary>
+    private static void PatchObject(JsonNode doc, string objName, params (string Key, JsonNode? Value)[] attrs) =>
+        Patch(ObjectBody(doc, objName), attrs);
+
+    /// <summary>Patch the attrs of the dimension / measure / segment <paramref name="childName"/> of <paramref name="objName"/>.</summary>
+    private static void PatchMember(JsonNode doc, string objName, string childName, params (string Key, JsonNode? Value)[] attrs)
+    {
+        string[] memberTypes = [TYPE_DIMENSION, TYPE_MEASURE, TYPE_SEGMENT];
+        var body = ChildrenOf(doc, objName)
+            .Select(w => w!.AsObject().First())
+            .Single(kv => memberTypes.Contains(kv.Key.Split('.')[0]) && (string?)kv.Value!["name"] == childName)
+            .Value!.AsObject();
+        Patch(body, attrs);
+    }
+
+    private static string? JsonPathOf(MetaError e) => (e.Envelope as JsonSource)?.JsonPath;
+
+    // -------------------------------------------------------------------------
+    // R8 / R9 — a report's @spine (Table B of
+    // docs/superpowers/plans/2026-10-09-fr-044-zero-rows-and-measure-defaults.md)
+    // -------------------------------------------------------------------------
+
+    /// <summary>Append report <c>ProgramPurchases</c> over Purchase with <c>@spine: Purchase.program</c>;
+    /// <paramref name="attrs"/> override (a null value deletes).</summary>
+    private static void AddSpineReport(JsonNode doc, params (string Key, JsonNode? Value)[] attrs)
+    {
+        RootChildren(doc).Add(Wrap("object.report", """
+            { "name": "ProgramPurchases", "@from": "Purchase", "@spine": "Purchase.program",
+              "@dimensions": ["programTitle"], "@measures": ["purchases", "revenue"] }
+            """));
+        PatchObject(doc, "ProgramPurchases", attrs);
+    }
+
+    /// <summary>Program -> Coach -> Agency, both to-one, plus Purchase dimensions at the end of each hop.</summary>
+    private static void AddCoachChain(JsonNode doc)
+    {
+        var program = ChildrenOf(doc, "Program");
+        program.Add(Field("long", "coachId"));
+        program.Add(Wrap("identity.reference", """{ "name": "coachRef", "@references": "Coach", "@fields": ["coachId"] }"""));
+        program.Add(Wrap("relationship.association", """{ "name": "coach", "@objectRef": "Coach", "@cardinality": "one" }"""));
+        RootChildren(doc).Add(Wrap("object.entity", """
+            { "name": "Coach", "children": [
+                { "source.rdb": { "@table": "coaches" } },
+                { "field.long": { "name": "id" } },
+                { "field.string": { "name": "name" } },
+                { "field.long": { "name": "agencyId" } },
+                { "identity.primary": { "name": "id", "@fields": ["id"] } },
+                { "identity.reference": { "name": "agencyRef", "@references": "Agency", "@fields": ["agencyId"] } },
+                { "relationship.association": { "name": "agency", "@objectRef": "Agency", "@cardinality": "one" } } ] }
+            """));
+        RootChildren(doc).Add(Wrap("object.entity", """
+            { "name": "Agency", "children": [
+                { "source.rdb": { "@table": "agencies" } },
+                { "field.long": { "name": "id" } },
+                { "field.string": { "name": "name" } },
+                { "identity.primary": { "name": "id", "@fields": ["id"] } } ] }
+            """));
+        var purchase = ChildrenOf(doc, "Purchase");
+        purchase.Add(Wrap("dimension.attribute",
+            """{ "name": "coachName", "@of": "Coach.name", "@via": "Purchase.program.coach" }"""));
+        purchase.Add(Wrap("dimension.attribute",
+            """{ "name": "agencyName", "@of": "Agency.name", "@via": "Purchase.program.coach.agency" }"""));
+    }
+
+    /// <summary>A dimension of Purchase reaching Program.title through the identity.reference, not the relationship.</summary>
+    private static JsonNode ProgramTitleByRef() =>
+        Wrap("dimension.attribute", """{ "name": "programTitleByRef", "@of": "Program.title", "@via": "Purchase.programRef" }""");
+
+    [Fact]
+    public void R8_a_spine_report_whose_dimensions_are_all_reached_through_the_spine_loads_clean()
+    {
+        var m = Positive();
+        AddSpineReport(m);
+        Assert.Empty(Load(m).Errors);
+    }
+
+    [Fact]
+    public void R8_a_to_many_spine_hop_is_refused_naming_the_report_and_the_hops_entity()
+    {
+        var m = Positive();
+        ChildrenOf(m, "Program").Add(Wrap("measure.aggregate",
+            """{ "name": "programs", "@agg": "count", "@of": "Program.id" }"""));
+        RootChildren(m).Add(Wrap("object.report", """
+            { "name": "ProgramReach", "@from": "Program", "@spine": "Program.purchases", "@measures": ["programs"] }
+            """));
+        Assert.Equal(
+            "report 'acme::shop::ProgramReach': @spine 'Program.purchases' crosses relationship 'purchases' on " +
+            "'acme::shop::Program', which is not to-one. A @spine follows only @cardinality: one relationships " +
+            "and identity.reference hops, so each fact row joins at most one row of the spine entity and is never " +
+            "counted twice.",
+            Single(Load(m), ErrorCode.ERR_INVALID_REPORT));
+    }
+
+    [Fact]
+    public void R8_a_spine_whose_owner_is_another_entity_is_refused()
+    {
+        var m = Positive();
+        AddSpineReport(m, ("@spine", "Program.purchases"));
+        Assert.Equal(
+            "report 'acme::shop::ProgramPurchases': @spine 'Program.purchases' must start at @from 'acme::shop::Purchase'.",
+            Single(Load(m), ErrorCode.ERR_INVALID_REPORT));
+    }
+
+    [Fact]
+    public void R8_a_spine_hop_that_names_nothing_is_refused_naming_from_as_the_hops_entity()
+    {
+        var m = Positive();
+        AddSpineReport(m, ("@spine", "Purchase.nope"));
+        Assert.Equal(
+            "report 'acme::shop::ProgramPurchases': @spine 'Purchase.nope' names 'nope', which is not a relationship " +
+            "or identity.reference of 'acme::shop::Purchase'.",
+            Single(Load(m), ErrorCode.ERR_INVALID_REPORT));
+    }
+
+    [Fact]
+    public void R8_a_spine_with_no_hop_is_refused()
+    {
+        var m = Positive();
+        AddSpineReport(m, ("@spine", "Purchase"));
+        Assert.Equal(
+            "report 'acme::shop::ProgramPurchases': @spine 'Purchase' must be Owner.hop[.hop...], starting at " +
+            "@from 'acme::shop::Purchase'.",
+            Single(Load(m), ErrorCode.ERR_INVALID_REPORT));
+    }
+
+    [Fact]
+    public void D2s_to_many_wording_is_unchanged_by_the_walks_wording_argument()
+    {
+        var m = Positive();
+        ChildrenOf(m, "Program").Add(Wrap("dimension.attribute",
+            """{ "name": "buyerEmail", "@of": "Purchase.customerEmail", "@via": "Program.purchases" }"""));
+        Assert.Equal(
+            "dimension 'buyerEmail' on entity 'acme::shop::Program': @via 'Program.purchases' crosses relationship " +
+            "'purchases' on 'acme::shop::Program', which is not to-one. A dimension follows only @cardinality: one " +
+            "relationships and identity.reference hops, so grouping can never multiply the measured rows.",
+            Single(Load(m), ErrorCode.ERR_INVALID_DIMENSION));
+    }
+
+    [Theory]
+    [InlineData("Purchase", "@via 'Purchase' must be Owner.hop[.hop...], starting at the owning entity.")]
+    [InlineData("WorkoutEvent.program", "@via 'WorkoutEvent.program' must start at the owning entity 'acme::shop::Purchase'.")]
+    [InlineData("Purchase.nope",
+        "@via 'Purchase.nope' names 'nope', which is not a relationship or identity.reference of 'acme::shop::Purchase'.")]
+    public void D2s_own_wording_is_unchanged_by_the_walks_wording_argument(string via, string body)
+    {
+        var m = Positive();
+        PatchMember(m, "Purchase", "programTitle", ("@via", via));
+        Assert.Equal(
+            "dimension 'programTitle' on entity 'acme::shop::Purchase': " + body,
+            Single(Load(m), ErrorCode.ERR_INVALID_DIMENSION));
+    }
+
+    [Fact]
+    public void R8_the_error_source_is_the_report_node()
+    {
+        var m = Positive();
+        AddSpineReport(m, ("@spine", "Purchase.nope"));
+        var errors = Load(m).Errors;
+        Assert.EndsWith("['object.report']", JsonPathOf(Assert.Single(errors)));
+    }
+
+    [Fact]
+    public void R8_failing_skips_R9_a_broken_spine_with_an_off_spine_dimension_is_one_error()
+    {
+        var m = Positive();
+        AddSpineReport(m, ("@spine", "Purchase.nope"), ("@dimensions", J("""["purchasedAt:day"]""")));
+        Assert.Contains("@spine 'Purchase.nope' names 'nope'", Single(Load(m), ErrorCode.ERR_INVALID_REPORT));
+    }
+
+    [Fact]
+    public void R8_an_inherited_spine_owner_written_as_the_abstract_base_loads_clean()
+    {
+        var m = Inherited();
+        RootChildren(m).Add(Wrap("object.entity", """
+            { "name": "Program", "children": [
+                { "source.rdb": { "@table": "programs" } },
+                { "field.long": { "name": "id" } },
+                { "field.string": { "name": "title" } },
+                { "identity.primary": { "name": "id", "@fields": ["id"] } } ] }
+            """));
+        var baseEvent = ChildrenOf(m, "BaseEvent");
+        baseEvent.Add(Field("long", "programId"));
+        baseEvent.Add(Wrap("identity.reference", """{ "name": "programRef", "@references": "Program", "@fields": ["programId"] }"""));
+        baseEvent.Add(Wrap("relationship.association", """{ "name": "program", "@objectRef": "Program", "@cardinality": "one" }"""));
+        baseEvent.Add(Wrap("dimension.attribute", """{ "name": "programTitle", "@of": "Program.title", "@via": "BaseEvent.program" }"""));
+        RootChildren(m).Add(Wrap("object.report", """
+            { "name": "ProgramEvents", "@from": "WorkoutEvent", "@spine": "BaseEvent.program",
+              "@dimensions": ["programTitle"], "@measures": ["events"] }
+            """));
+        Assert.Empty(Load(m).Errors);
+    }
+
+    [Fact]
+    public void R9_a_spine_report_with_no_dimensions_is_refused()
+    {
+        var m = Positive();
+        AddSpineReport(m, ("@dimensions", null));
+        Assert.Equal(
+            "report 'acme::shop::ProgramPurchases': @spine 'Purchase.program' needs at least one dimension. The " +
+            "report's rows are the dimension tuples of 'acme::shop::Program'; with no dimension it would be one " +
+            "totals row.",
+            Single(Load(m), ErrorCode.ERR_INVALID_REPORT));
+    }
+
+    [Fact]
+    public void R9_a_dimension_with_no_via_read_from_the_fact_row_is_refused()
+    {
+        var m = Positive();
+        AddSpineReport(m, ("@dimensions", J("""["programTitle", "program"]""")));
+        Assert.Equal(
+            "report 'acme::shop::ProgramPurchases': dimension 'program' is read from @from 'acme::shop::Purchase', so " +
+            "it has no value in a row that has no facts. With @spine 'Purchase.program' every dimension must be " +
+            "reached through it: declare the dimension over a field of 'acme::shop::Program' (or an entity to-one " +
+            "from it) with an @via that begins 'Purchase.program'.",
+            Single(Load(m), ErrorCode.ERR_INVALID_REPORT));
+    }
+
+    [Fact]
+    public void R9_a_time_dimension_over_a_fact_column_is_refused()
+    {
+        var m = Positive();
+        AddSpineReport(m, ("@dimensions", J("""["programTitle", "purchasedAt:day"]""")));
+        Assert.Contains(
+            "report 'acme::shop::ProgramPurchases': dimension 'purchasedAt' is read from @from",
+            Single(Load(m), ErrorCode.ERR_INVALID_REPORT));
+    }
+
+    [Fact]
+    public void R9_each_offending_dimension_is_reported_once_even_when_listed_at_two_grains()
+    {
+        var m = Positive();
+        AddSpineReport(m, ("@dimensions", J("""["program", "purchasedAt:day", "purchasedAt:week", "programTitle"]""")));
+        var errors = Load(m).Errors;
+        Assert.Equal([ErrorCode.ERR_INVALID_REPORT, ErrorCode.ERR_INVALID_REPORT], errors.Select(e => e.Code));
+        Assert.Contains("dimension 'program' is read from @from", errors[0].Message);
+        Assert.Contains("dimension 'purchasedAt' is read from @from", errors[1].Message);
+    }
+
+    [Fact]
+    public void R9_a_dimension_through_a_second_reference_to_the_same_entity_is_refused()
+    {
+        var m = Positive();
+        var purchase = ChildrenOf(m, "Purchase");
+        purchase.Add(Field("long", "giftProgramId"));
+        purchase.Add(Wrap("identity.reference",
+            """{ "name": "giftProgramRef", "@references": "Program", "@fields": ["giftProgramId"] }"""));
+        purchase.Add(ProgramTitleByRef());
+        purchase.Add(Wrap("dimension.attribute",
+            """{ "name": "giftProgramTitle", "@of": "Program.title", "@via": "Purchase.giftProgramRef" }"""));
+        AddSpineReport(m, ("@spine", "Purchase.programRef"),
+            ("@dimensions", J("""["programTitleByRef", "giftProgramTitle"]""")));
+        Assert.Equal(
+            "report 'acme::shop::ProgramPurchases': dimension 'giftProgramTitle' is reached by @via " +
+            "'Purchase.giftProgramRef', which does not begin with the hops of @spine 'Purchase.programRef'. Hop names " +
+            "are compared as written: if both name the same join, write the same hops; otherwise the dimension is " +
+            "not reached through the spine.",
+            Single(Load(m), ErrorCode.ERR_INVALID_REPORT));
+    }
+
+    [Fact]
+    public void R9_a_dimension_whose_own_via_fails_D2_is_reported_once_by_D2_not_also_by_R9()
+    {
+        var m = Positive();
+        PatchMember(m, "Purchase", "programTitle", ("@via", "Purchase.programm"));
+        AddSpineReport(m);
+        Assert.Contains("@via 'Purchase.programm' names 'programm'", Single(Load(m), ErrorCode.ERR_INVALID_DIMENSION));
+    }
+
+    [Fact]
+    public void R9_the_same_join_named_by_the_relationship_in_spine_and_by_the_reference_in_via_is_refused()
+    {
+        var m = Positive();
+        ChildrenOf(m, "Purchase").Add(ProgramTitleByRef());
+        AddSpineReport(m, ("@spine", "Purchase.program"), ("@dimensions", J("""["programTitleByRef"]""")));
+        string msg = Single(Load(m), ErrorCode.ERR_INVALID_REPORT);
+        Assert.Contains("dimension 'programTitleByRef' is reached by @via 'Purchase.programRef'", msg);
+        Assert.Contains("@spine 'Purchase.program'", msg);
+    }
+
+    [Fact]
+    public void R9_the_owner_segment_is_not_compared_an_fqn_spine_owner_and_a_bare_dimension_via()
+    {
+        var m = Positive();
+        AddSpineReport(m, ("@spine", "acme::shop::Purchase.program"));
+        Assert.Empty(Load(m).Errors);
+    }
+
+    [Fact]
+    public void R9_a_time_dimension_over_a_column_of_the_spine_entity_is_legal()
+    {
+        var m = Positive();
+        ChildrenOf(m, "Program").Add(Field("timestamp", "publishedAt"));
+        ChildrenOf(m, "Purchase").Add(Wrap("dimension.time", """
+            { "name": "programPublishedAt", "@of": "Program.publishedAt", "@via": "Purchase.program", "@grains": ["month"] }
+            """));
+        AddSpineReport(m, ("@dimensions", J("""["programTitle", "programPublishedAt:month"]""")));
+        Assert.Empty(Load(m).Errors);
+    }
+
+    [Fact]
+    public void R9_a_two_hop_spine_with_a_dimension_at_it_and_one_beyond_it_is_legal()
+    {
+        var m = Positive();
+        AddCoachChain(m);
+        AddSpineReport(m, ("@spine", "Purchase.program.coach"), ("@dimensions", J("""["coachName", "agencyName"]""")));
+        Assert.Empty(Load(m).Errors);
+    }
+
+    [Fact]
+    public void R9_a_dimension_that_stops_short_of_a_two_hop_spine_is_refused()
+    {
+        var m = Positive();
+        AddCoachChain(m);
+        AddSpineReport(m, ("@spine", "Purchase.program.coach"), ("@dimensions", J("""["coachName", "programTitle"]""")));
+        Assert.Contains(
+            "dimension 'programTitle' is reached by @via 'Purchase.program'",
+            Single(Load(m), ErrorCode.ERR_INVALID_REPORT));
+    }
+
+    // -------------------------------------------------------------------------
+    // M7 / M8 — where a measure's @default can apply (Table B)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void M7_default_on_a_count_is_refused_on_the_measure_node()
+    {
+        var m = Positive();
+        PatchMember(m, "Purchase", "purchases", ("@default", 0));
+        var errors = Load(m).Errors;
+        var e = Assert.Single(errors);
+        Assert.Equal(ErrorCode.ERR_INVALID_MEASURE, e.Code);
+        Assert.Equal(
+            "measure 'purchases' on entity 'acme::shop::Purchase': @default cannot apply to @agg: count. A count is " +
+            "never null (it is 0 when nothing matches); remove @default.",
+            e.Message);
+        Assert.Contains("['measure.aggregate']", JsonPathOf(e));
+    }
+
+    [Fact]
+    public void M7_default_on_a_distinct_count_of_a_tuple_is_refused()
+    {
+        var m = Positive();
+        PatchMember(m, "WorkoutEvent", "daysEngaged", ("@default", 0));
+        string msg = Single(Load(m), ErrorCode.ERR_INVALID_MEASURE);
+        Assert.Contains("measure 'daysEngaged'", msg);
+        Assert.Contains("@default cannot apply to @agg: count", msg);
+    }
+
+    [Fact]
+    public void M8_default_on_a_max_of_a_timestamp_is_refused()
+    {
+        var m = Positive();
+        PatchMember(m, "WorkoutEvent", "lastActivityAt", ("@default", 0));
+        Assert.Equal(
+            "measure 'lastActivityAt' on entity 'acme::shop::WorkoutEvent': @default is a number, but " +
+            "'WorkoutEvent.occurredAt', the @of of @agg 'max', is a field.timestamp. A default is supported on " +
+            "numeric measures only.",
+            Single(Load(m), ErrorCode.ERR_INVALID_MEASURE));
+    }
+
+    [Fact]
+    public void A_non_integer_default_on_a_count_reports_M7_and_the_attribute_type_error()
+    {
+        var m = Positive();
+        PatchMember(m, "Purchase", "purchases", ("@default", "zero"));
+        var errors = Load(m).Errors;
+        Assert.Equal(
+            [ErrorCode.ERR_BAD_ATTR_VALUE, ErrorCode.ERR_INVALID_MEASURE],
+            errors.Select(e => e.Code).OrderBy(c => c.ToString(), System.StringComparer.Ordinal));
+        Assert.Contains(
+            "measure 'purchases' on entity 'acme::shop::Purchase': @default cannot apply to @agg: count.",
+            errors.Single(e => e.Code == ErrorCode.ERR_INVALID_MEASURE).Message);
+    }
+
+    [Theory]
+    // entity, measure, the fraction, the measure's wrapper key
+    [InlineData("Purchase", "revenue", 0.5, "measure.aggregate")]          // a sum
+    [InlineData("WorkoutEvent", "avgDaysPerStarter", 0.5, "measure.ratio")] // a ratio
+    [InlineData("Purchase", "purchases", 0.5, "measure.aggregate")]         // a count: M7 is skipped
+    [InlineData("WorkoutEvent", "lastActivityAt", -1.5, "measure.aggregate")] // a max of a timestamp: M8 is skipped
+    public void A_fractional_default_is_ERR_BAD_ATTR_VALUE_on_the_measure_node_and_the_only_error(
+        string entity, string measure, double value, string wrapper)
+    {
+        var m = Positive();
+        PatchMember(m, entity, measure, ("@default", value));
+        var e = Assert.Single(Load(m).Errors);
+        Assert.Equal(ErrorCode.ERR_BAD_ATTR_VALUE, e.Code);
+        Assert.Contains("'@default'", e.Message);
+        Assert.Contains($"['{wrapper}']", JsonPathOf(e));
+    }
+
+    [Fact]
+    public void A_fractional_default_on_a_sum_declared_on_an_abstract_base_is_reported_once()
+    {
+        var m = Inherited();
+        ReplaceChild(m, "BaseEvent", "measure.aggregate", "events",
+            """{ "name": "events", "@agg": "sum", "@of": "BaseEvent.id", "@default": 0.5 }""");
+        Assert.Contains("'@default'", Single(Load(m), ErrorCode.ERR_BAD_ATTR_VALUE));
+    }
+
+    [Fact]
+    public void Default_on_a_sum_an_avg_a_min_of_an_int_and_a_ratio_is_fine()
+    {
+        var m = Positive();
+        PatchMember(m, "Purchase", "revenue", ("@default", 0));
+        ChildrenOf(m, "Purchase").Add(Wrap("measure.aggregate",
+            """{ "name": "avgRevenue", "@agg": "avg", "@of": "Purchase.amountCents", "@default": 0 }"""));
+        ChildrenOf(m, "WorkoutEvent").Add(Wrap("measure.aggregate",
+            """{ "name": "firstDay", "@agg": "min", "@of": "WorkoutEvent.dayNumber", "@default": 1 }"""));
+        PatchMember(m, "WorkoutEvent", "avgDaysPerStarter", ("@default", 0));
+        Assert.Empty(Load(m).Errors);
+    }
+
+    [Fact]
+    public void A_measure_that_breaks_M4_and_declares_default_reports_M4_only()
+    {
+        var m = Positive();
+        PatchMember(m, "Purchase", "revenue", ("@of", "Purchase.status"), ("@default", 0));
+        string msg = Single(Load(m), ErrorCode.ERR_INVALID_MEASURE);
+        Assert.Contains("field.string", msg);
+        Assert.DoesNotContain("@default", msg);
+    }
+
+    [Fact]
+    public void A_measure_that_breaks_M1_and_declares_default_on_a_count_reports_M1_only()
+    {
+        var m = Positive();
+        PatchMember(m, "Purchase", "purchases", ("@of", "Purchase.nope"), ("@default", 0));
+        string msg = Single(Load(m), ErrorCode.ERR_INVALID_MEASURE);
+        Assert.Contains("names no field 'nope'", msg);
+        Assert.DoesNotContain("@default", msg);
+    }
+
+    [Fact]
+    public void M7_on_a_count_declared_on_an_abstract_base_is_reported_once()
+    {
+        var m = Inherited();
+        ReplaceChild(m, "BaseEvent", "measure.aggregate", "events",
+            """{ "name": "events", "@agg": "count", "@of": "BaseEvent.id", "@default": 0 }""");
+        Assert.Contains("measure 'events' on entity 'acme::shop::BaseEvent'", Single(Load(m), ErrorCode.ERR_INVALID_MEASURE));
+    }
 
     private static JsonNode Inherited() => Fixture("reporting-inherited-members");
 

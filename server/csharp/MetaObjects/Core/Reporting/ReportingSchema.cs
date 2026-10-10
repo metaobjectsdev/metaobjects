@@ -24,6 +24,10 @@ public static class ReportingSchema
     private static AttrSchema Filter(string name, bool required) =>
         new(Name: name, ValueType: AttrConstants.ATTR_SUBTYPE_FILTER, Required: required);
 
+    /// <summary>@default on measure.aggregate and measure.ratio — an optional integer (FR-044 Table A).</summary>
+    private static AttrSchema MeasureDefault() =>
+        new(Name: ReportingConstants.REPORTING_ATTR_DEFAULT, ValueType: AttrConstants.ATTR_SUBTYPE_INT, Required: false);
+
     /// <summary>dimension.attribute — @of (required), @via (optional).</summary>
     private static readonly IReadOnlyList<AttrSchema> DimensionAttributeAttrs =
     [
@@ -41,7 +45,7 @@ public static class ReportingSchema
     ];
 
     /// <summary>measure.aggregate — @agg (closed set), @of (isArray; a bare string is one column),
-    /// @distinct, @filter, @segment.</summary>
+    /// @distinct, @filter, @segment, @default.</summary>
     private static readonly IReadOnlyList<AttrSchema> MeasureAggregateAttrs =
     [
         Str(ReportingConstants.REPORTING_ATTR_AGG, required: true,
@@ -51,13 +55,15 @@ public static class ReportingSchema
             Required: false),
         Filter(ReportingConstants.REPORTING_ATTR_FILTER, required: false),
         Str(ReportingConstants.REPORTING_ATTR_SEGMENT, required: false),
+        MeasureDefault(),
     ];
 
-    /// <summary>measure.ratio — @numerator, @denominator (both required).</summary>
+    /// <summary>measure.ratio — @numerator, @denominator (both required), @default.</summary>
     private static readonly IReadOnlyList<AttrSchema> MeasureRatioAttrs =
     [
         Str(ReportingConstants.REPORTING_ATTR_NUMERATOR, required: true),
         Str(ReportingConstants.REPORTING_ATTR_DENOMINATOR, required: true),
+        MeasureDefault(),
     ];
 
     /// <summary>segment.filter — the required @filter.</summary>
@@ -89,7 +95,7 @@ public static class ReportingSchema
             [ReportingConstants.SEGMENT_SUBTYPE_FILTER] = SegmentFilterAttrs,
         };
 
-    /// <summary>object.report — @from, @dimensions, @measures, @segment, @filter.</summary>
+    /// <summary>object.report — @from, @dimensions, @measures, @segment, @filter, @spine.</summary>
     public static readonly IReadOnlyList<AttrSchema> ReportAttrs =
     [
         Str(ObjectConstants.OBJECT_REPORT_ATTR_FROM, required: true),
@@ -97,5 +103,6 @@ public static class ReportingSchema
         Str(ObjectConstants.OBJECT_REPORT_ATTR_MEASURES, required: true, isArray: true),
         Str(ObjectConstants.OBJECT_REPORT_ATTR_SEGMENT, required: false),
         Filter(ObjectConstants.OBJECT_REPORT_ATTR_FILTER, required: false),
+        Str(ObjectConstants.OBJECT_REPORT_ATTR_SPINE, required: false),
     ];
 }
