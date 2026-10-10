@@ -58,14 +58,24 @@ const TABLES = [
 )`,
 ];
 
-/** The bytes of schema.mysql.sql for a loaded canonical model. */
-export function generateCanonicalMysqlSchemaSql(root: MetaRoot): string {
+/**
+ * The one MySQL artifact layout: header, the adopter's tables, then every report view TypeScript
+ * lowers wrapped in the recipe's CREATE VIEW, statement-per-block. Shared with the api-contract
+ * report sub-corpus (api-contract-report-mysql-schema.ts) so the two MySQL artifacts cannot
+ * drift apart in layout while each keeps its own HEADER/TABLES.
+ */
+export function renderMysqlSchemaArtifact(header: string, tables: readonly string[], root: MetaRoot): string {
   const views = buildReportViews(root, { dialect: "mysql", columnNamingStrategy: CANONICAL_COLUMN_NAMING });
   const statements = [
-    ...TABLES,
+    ...tables,
     ...views.map((v) => `CREATE VIEW \`${v.name}\` AS\n${v.sql}`),
   ];
-  return `${HEADER}\n\n${statements.map((s) => `${s};`).join("\n\n")}\n`;
+  return `${header}\n\n${statements.map((s) => `${s};`).join("\n\n")}\n`;
+}
+
+/** The bytes of schema.mysql.sql for a loaded canonical model. */
+export function generateCanonicalMysqlSchemaSql(root: MetaRoot): string {
+  return renderMysqlSchemaArtifact(HEADER, TABLES, root);
 }
 
 /** Read the committed MySQL schema artifact. */

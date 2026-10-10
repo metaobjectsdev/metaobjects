@@ -20,7 +20,7 @@ import { runGen, defineConfig, buildReportViews } from "@metaobjectsdev/codegen-
 import { DEFAULT_COLUMN_NAMING_STRATEGY } from "@metaobjectsdev/metadata";
 import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
 import { loadMetadataFile } from "./load-metadata.ts";
-import { seedInserts, type ReportSeed } from "./api-contract-report-generated-server.ts";
+import { seedInserts, SERVED_REPORTS, type ReportSeed } from "./api-contract-report-generated-server.ts";
 import { startLocalD1 } from "./query-scenario-d1.ts";
 
 /** The SQLite-family engines this server runs the emitted routes on. */
@@ -37,13 +37,6 @@ export interface SqliteReportServerHandle {
   applySeed(seed: ReportSeed): Promise<void>;
   close(): Promise<void>;
 }
-
-const SERVED_REPORTS = [
-  { name: "InvoiceStatusTotals", registrar: "invoiceStatusTotalsRoutes" },
-  { name: "InvoicesByMonth", registrar: "invoicesByMonthRoutes" },
-  { name: "InvoiceTotals", registrar: "invoiceTotalsRoutes" },
-  { name: "ProductRevenue", registrar: "productRevenueRoutes" },
-] as const;
 
 /** The base tables, parents first, in the EMITTED snake_case spelling. */
 const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [

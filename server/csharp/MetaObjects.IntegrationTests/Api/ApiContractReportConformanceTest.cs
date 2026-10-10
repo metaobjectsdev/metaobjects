@@ -40,18 +40,10 @@ public sealed class ApiContractReportConformanceTest
     public async Task Api_contract_report_generated_on_sqlite(string scenarioPath)
     {
         var scenario = ApiContractScenarioLoader.LoadScenario(scenarioPath);
-        var file = Path.Combine(Path.GetTempPath(), $"mo-report-api-{Guid.NewGuid():N}.db");
-        try
-        {
-            await using var server = await ReportGeneratedServerFactory.StartSqliteAsync(file);
-            await server.ApplySeedAsync();
-            await RunAsync(scenario, server.BaseUrl);
-        }
-        finally
-        {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            if (File.Exists(file)) File.Delete(file);
-        }
+        using var db = new SqliteTempDatabase("mo-report-api-");
+        await using var server = await ReportGeneratedServerFactory.StartSqliteAsync(db.FilePath);
+        await server.ApplySeedAsync();
+        await RunAsync(scenario, server.BaseUrl);
     }
 
     // ...and over MySQL 8.4: the schema is report/schema.mysql.sql (the adopter's tables plus

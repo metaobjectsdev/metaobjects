@@ -20,8 +20,6 @@ import mysql from "mysql2/promise";
 
 import { splitStatements } from "./sql-script.ts";
 
-export { splitStatements };
-
 import { CANONICAL_COLUMN_NAMING } from "./canonical-schema.ts";
 import { readCanonicalMysqlSchemaSql } from "./canonical-schema-mysql.ts";
 import { loadMetadataDir } from "./load-metadata.ts";

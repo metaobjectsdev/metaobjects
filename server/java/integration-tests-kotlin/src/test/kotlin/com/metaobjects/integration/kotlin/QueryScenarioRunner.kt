@@ -92,15 +92,9 @@ object QueryScenarioRunner {
      * spelled for the engine. The Postgres `expect` blocks are asserted unchanged.
      */
     fun run(scenario: QueryScenario, baseUrl: String, username: String, password: String, engine: ScenarioEngine) {
-        // A MySQL DATETIME has no zone and the corpus stores UTC wall clocks: read and write them
-        // as UTC whatever the JVM zone is, so a report's instant column reads back as the same instant.
-        val jdbcUrl = if (engine == ScenarioEngine.MYSQL) {
-            baseUrl + (if ('?' in baseUrl) "&" else "?") + "connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true"
-        } else if (engine == ScenarioEngine.SQLITE) {
-            // SQLite keeps an instant as the TEXT the view built (`...T03:00:00.000Z`); the driver
-            // parses a timestamp with this format, which reads that spelling back as the UTC instant.
-            baseUrl + (if ('?' in baseUrl) "&" else "?") + "date_string_format=yyyy-MM-dd'T'HH:mm:ss.SSSX"
-        } else baseUrl
+        // The engine appends its own session parameters (timezone / date-format policy) — see
+        // ScenarioEngine.jdbcUrl.
+        val jdbcUrl = engine.jdbcUrl(baseUrl)
         val db = Database.connect(jdbcUrl, user = username, password = password)
 
         val corpus = ScenarioLoader.findCorpusRoot()

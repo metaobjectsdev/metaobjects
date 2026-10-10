@@ -24,8 +24,5 @@ public sealed class QueryScenarioMySqlTests
         await QueryScenarioRunner.RunMySqlAsync(scenario, mysql.ConnectionString);
     }
 
-    public static IEnumerable<object[]> Scenarios() =>
-        Directory.EnumerateFiles(CorpusPaths.QueriesDir, "report-*.yaml", SearchOption.TopDirectoryOnly)
-            .OrderBy(p => p, StringComparer.Ordinal)
-            .Select(p => new object[] { p });
+    public static IEnumerable<object[]> Scenarios() => CorpusPaths.ReportQueryScenarios();
 }

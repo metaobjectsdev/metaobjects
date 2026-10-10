@@ -18,10 +18,9 @@
 // of a report row; an unknown entity, a non-report row and a null pass through untouched.
 
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 
-import { canonicalFloat } from "./normalization.ts";
-import { CORPUS_DIR } from "./paths.ts";
+import { canonicalDecimal, canonicalFloat, DECIMAL_RE } from "./normalization.ts";
+import { REPORT_SHAPES_PATH } from "./paths.ts";
 
 export type WireEngine = "sqlite" | "mysql";
 
@@ -32,7 +31,7 @@ let shapes: Map<string, Map<string, string>> | undefined;
 /** report entity simple name -> (field name -> subType), from the committed report-shapes.json. */
 function reportShapes(): Map<string, Map<string, string>> {
   if (shapes) return shapes;
-  const parsed = JSON.parse(readFileSync(join(CORPUS_DIR, "report-shapes.json"), "utf8")) as {
+  const parsed = JSON.parse(readFileSync(REPORT_SHAPES_PATH, "utf8")) as {
     reports: ReadonlyArray<{ report: string; fields: ReadonlyArray<ShapeField> }>;
   };
   shapes = new Map(
@@ -44,12 +43,12 @@ function reportShapes(): Map<string, Map<string, string>> {
   return shapes;
 }
 
-/** Canonical decimal text: no trailing fractional zeros, no bare `.`. */
+/** Canonical decimal text: no trailing fractional zeros, no bare `.` — the normalization.ts rule. */
 function decimalText(v: unknown): unknown {
   if (typeof v === "number") return Number.isInteger(v) ? String(v) : canonicalFloat(v);
   if (typeof v === "bigint") return v.toString();
-  if (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v)) {
-    return v.includes(".") ? v.replace(/0+$/, "").replace(/\.$/, "") : v;
+  if (typeof v === "string" && DECIMAL_RE.test(v)) {
+    return v.includes(".") ? canonicalDecimal(v) : v;
   }
   return v;
 }

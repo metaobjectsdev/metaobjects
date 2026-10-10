@@ -26,7 +26,7 @@ import {
   CANONICAL_COLUMN_NAMING,
   readCanonicalSchemaSql,
 } from "./canonical-schema.ts";
-import { toWireRow } from "./engine-wire.ts";
+import { toWireRow, type WireEngine } from "./engine-wire.ts";
 import { loadMetadataDir } from "./load-metadata.ts";
 import { canonicalJson, normalizeRow } from "./normalization.ts";
 import { executeSql } from "./postgres-sql.ts";
@@ -88,7 +88,10 @@ export async function runScenarioQueries(
   scenario: QueryScenario,
   om: ObjectManager,
   root: MetaRoot,
-  engine: string,
+  /** The driver's wire spelling. The D1 lane passes "sqlite" — D1 IS SQLite at the SQL level. */
+  engine: "postgres" | WireEngine,
+  /** Failure-message label, when the wire spelling is not the engine's name (the D1 lane). */
+  label?: string,
 ): Promise<void> {
   for (const spec of scenario.queries) {
     if (spec.expectError) {
@@ -106,16 +109,14 @@ export async function runScenarioQueries(
       continue;
     }
     const actual = toEngineWire(engine, spec, await execute(om, root, spec));
-    assertResult(scenario.sourcePath, spec, actual, engine);
+    assertResult(scenario.sourcePath, spec, actual, label ?? engine);
   }
 }
 
 /** A list result from a non-Postgres engine, mapped from its driver's spelling onto the corpus' wire form. */
-function toEngineWire(engine: string, spec: QuerySpec, actual: unknown): unknown {
-  if (spec.op !== "list" || !Array.isArray(actual)) return actual;
-  const wire = engine === "sqlite" || engine === "d1" ? "sqlite" : engine === "mysql" ? "mysql" : undefined;
-  if (wire === undefined) return actual;
-  return (actual as Record<string, unknown>[]).map((row) => toWireRow(wire, spec.entity, row));
+function toEngineWire(engine: "postgres" | WireEngine, spec: QuerySpec, actual: unknown): unknown {
+  if (engine === "postgres" || spec.op !== "list" || !Array.isArray(actual)) return actual;
+  return (actual as Record<string, unknown>[]).map((row) => toWireRow(engine, spec.entity, row));
 }
 
 // ---------------------------------------------------------------------------

@@ -32,12 +32,11 @@ export async function applySqlScript(db: Kysely<never>, script: string): Promise
 export async function runQueryScenarioSqlite(
   scenario: QueryScenario,
   canonicalDir: string,
-  schemaSql: string = readCanonicalSchemaSql("sqlite"),
 ): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), "query-scenario-sqlite-"));
   const kysely = new Kysely<never>({ dialect: new LibsqlDialect({ url: `file:${join(dir, "test.db")}` }) });
   try {
-    await applySqlScript(kysely, schemaSql);
+    await applySqlScript(kysely, readCanonicalSchemaSql("sqlite"));
     const seed = scenario.seedDataEngine?.sqlite ?? scenario.seedData;
     if (seed && seed.trim().length > 0) await applySqlScript(kysely, seed);
 

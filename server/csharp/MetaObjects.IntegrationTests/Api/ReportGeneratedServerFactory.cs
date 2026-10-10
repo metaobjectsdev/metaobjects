@@ -228,12 +228,9 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
                         && m.GetParameters().Length == 4)
             .MakeGenericMethod(dbContextType);
 
-        Action<DbContextOptionsBuilder> configure = engine switch
-        {
-            ScenarioEngine.Sqlite => opts => opts.UseSqlite(connString),
-            ScenarioEngine.MySql => opts => opts.UseMySql(connString, new MySqlServerVersion(new Version(8, 4, 0))),
-            _ => opts => opts.UseNpgsql(connString),
-        };
+        // Provider choice lives on the engine (ScenarioEngineExtensions.UseEngine) — the one
+        // MySqlServerVersion pin too, so the provider and the mysql:8.4 image cannot drift apart.
+        Action<DbContextOptionsBuilder> configure = opts => opts.UseEngine(engine, connString);
         addDbContext.Invoke(null, new object?[]
         {
             services, configure, ServiceLifetime.Scoped, ServiceLifetime.Scoped,

@@ -19,20 +19,9 @@ public sealed class QueryScenarioSqliteTests
     public async Task Report_scenario_on_sqlite(string scenarioPath)
     {
         var scenario = ScenarioLoader.LoadQuery(scenarioPath);
-        var file = Path.Combine(Path.GetTempPath(), $"mo-report-{Guid.NewGuid():N}.db");
-        try
-        {
-            await QueryScenarioRunner.RunSqliteAsync(scenario, file);
-        }
-        finally
-        {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            if (File.Exists(file)) File.Delete(file);
-        }
+        using var db = new SqliteTempDatabase("mo-report-");
+        await QueryScenarioRunner.RunSqliteAsync(scenario, db.FilePath);
     }
 
-    public static IEnumerable<object[]> Scenarios() =>
-        Directory.EnumerateFiles(CorpusPaths.QueriesDir, "report-*.yaml", SearchOption.TopDirectoryOnly)
-            .OrderBy(p => p, StringComparer.Ordinal)
-            .Select(p => new object[] { p });
+    public static IEnumerable<object[]> Scenarios() => CorpusPaths.ReportQueryScenarios();
 }

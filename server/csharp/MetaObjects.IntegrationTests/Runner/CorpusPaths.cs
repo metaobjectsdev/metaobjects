@@ -16,6 +16,16 @@ internal static class CorpusPaths
     public static readonly string QueriesDir = Path.Combine(Corpus, "queries");
 
     /// <summary>
+    /// The <c>report-*</c> query scenarios as xUnit member data — the only corpus subset whose
+    /// tables exist in the SQLite and MySQL schema artifacts. One home for the name predicate,
+    /// so a dialect-gated scenario cannot be silently skipped by one lane's enumeration.
+    /// </summary>
+    public static IEnumerable<object[]> ReportQueryScenarios() =>
+        Directory.EnumerateFiles(QueriesDir, "report-*.yaml", SearchOption.TopDirectoryOnly)
+            .OrderBy(p => p, StringComparer.Ordinal)
+            .Select(p => new object[] { p });
+
+    /// <summary>
     /// The committed canonical Postgres schema artifact. TypeScript is the single
     /// producer of this DDL (base tables + projection views, literal column naming);
     /// every port's query-scenario runner executes it verbatim to provision its test

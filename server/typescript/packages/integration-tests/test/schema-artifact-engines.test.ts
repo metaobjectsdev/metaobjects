@@ -6,8 +6,10 @@
 // tables are the adopter's hand-written DDL (ADR-0015) and its views `buildReportViews`.
 
 import { describe, expect, test } from "bun:test";
+import { buildReportViews } from "@metaobjectsdev/codegen-ts";
 
 import {
+  CANONICAL_COLUMN_NAMING,
   canonicalSchemaSqlPath,
   generateCanonicalSchemaSql,
   readCanonicalSchemaSql,
@@ -19,12 +21,6 @@ import {
 } from "../src/canonical-schema-mysql.ts";
 import { loadMetadataDir } from "../src/load-metadata.ts";
 import { CANONICAL_DIR } from "../src/paths.ts";
-
-const REPORT_VIEWS = [
-  "v_program_minutes", "v_fitness_totals", "v_programs_by_month", "v_programs_by_week",
-  "v_recent_programs", "v_asset_activity", "v_program_roster", "v_program_long_weeks",
-  "v_fitness_totals_filled",
-];
 
 describe("canonical schema artifacts for the other engines", () => {
   test("schema.sqlite.sql matches what TS generates from metadata (no drift)", async () => {
@@ -48,10 +44,16 @@ describe("canonical schema artifacts for the other engines", () => {
     }
   });
 
-  test("every report view is created in each engine's artifact", () => {
+  test("every report view is created in each engine's artifact", async () => {
+    // Derived from the model, not a hand list: a report added to canonical/meta.fitness.json
+    // must appear in every engine's artifact, and a lowering that emitted zero views is a
+    // failure, not an empty loop.
+    const root = await loadMetadataDir(CANONICAL_DIR);
+    const views = buildReportViews(root, { dialect: "mysql", columnNamingStrategy: CANONICAL_COLUMN_NAMING }).map((v) => v.name);
+    expect(views.length).toBeGreaterThan(0);
     const sqlite = readCanonicalSchemaSql("sqlite");
     const mysql = readCanonicalMysqlSchemaSql();
-    for (const v of REPORT_VIEWS) {
+    for (const v of views) {
       expect(sqlite).toContain(`CREATE VIEW "${v}" AS`);
       expect(mysql).toContain(`CREATE VIEW \`${v}\` AS`);
     }

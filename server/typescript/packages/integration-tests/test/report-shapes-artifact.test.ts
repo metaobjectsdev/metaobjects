@@ -11,13 +11,9 @@ import { describe, expect, test } from "bun:test";
 
 import { InMemoryStringSource, MetaDataLoader } from "@metaobjectsdev/metadata";
 
-import {
-  generateReportShapesJson,
-  readReportShapesJson,
-  REPORT_SHAPES_PATH,
-} from "../src/gen-report-shapes.ts";
+import { generateReportShapesJson, readReportShapesJson } from "../src/gen-report-shapes.ts";
 import { loadMetadataDir } from "../src/load-metadata.ts";
-import { CANONICAL_DIR } from "../src/paths.ts";
+import { CANONICAL_DIR, REPORT_SHAPES_PATH } from "../src/paths.ts";
 
 describe("canonical report-shapes artifact (report-shapes.json)", () => {
   test("committed shapes match what TS derives from metadata (no drift)", async () => {

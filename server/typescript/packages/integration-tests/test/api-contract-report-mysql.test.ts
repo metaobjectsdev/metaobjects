@@ -12,8 +12,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_CONTRACT_REPORT_DIR, API_CONTRACT_REPORT_SCENARIOS_DIR } from "../src/paths.ts";
-import { loadScenarios, assertResponse, type ApiScenario } from "../src/api-contract-scenario.ts";
-import type { ReportSeed } from "../src/api-contract-report-generated-server.ts";
+import { loadScenarios, runScenario } from "../src/api-contract-scenario.ts";
+import { rowsEqual, type ReportSeed } from "../src/api-contract-report-generated-server.ts";
 import { startMysqlReportServer, type MysqlReportServerHandle } from "../src/api-contract-report-mysql-server.ts";
 import { startMysql, type MysqlContainerHandle } from "../src/mysql-container.ts";
 
@@ -82,31 +82,7 @@ describe("api contract report (FR-044) — GENERATED routes on MySQL", () => {
 
   for (const scenario of loadScenarios(API_CONTRACT_REPORT_SCENARIOS_DIR)) {
     test(`shared scenario: ${scenario.name}`, async () => {
-      await withServer((server) => runScenario(scenario, server));
+      await withServer((server) => runScenario(scenario, server.baseUrl));
     }, { timeout: 120_000 });
   }
 });
-
-/** paidShare compares numerically (a decimal's spelling is the engine's own); every other key strictly. */
-function rowsEqual(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
-  const keys = Object.keys(a).sort();
-  if (keys.join(",") !== Object.keys(b).sort().join(",")) return false;
-  return keys.every((k) => (k === "paidShare" ? Number(a[k]) === Number(b[k]) : a[k] === b[k]));
-}
-
-async function runScenario(scenario: ApiScenario, server: MysqlReportServerHandle): Promise<void> {
-  for (const req of scenario.requests) {
-    const init: RequestInit = { method: req.method };
-    if (req.body !== undefined) {
-      init.body = JSON.stringify(req.body);
-      init.headers = { "content-type": "application/json" };
-    }
-    const res = await fetch(server.baseUrl + req.path, init);
-    const bodyText = await res.text();
-    let body: unknown = null;
-    if (bodyText.length > 0) {
-      try { body = JSON.parse(bodyText); } catch { body = bodyText; }
-    }
-    assertResponse(scenario.name, req, res.status, body);
-  }
-}

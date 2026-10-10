@@ -7,11 +7,11 @@
 
 import { describe, test } from "bun:test";
 import { CANONICAL_DIR, QUERIES_DIR } from "../src/paths.ts";
-import { loadQueries } from "../src/scenario.ts";
+import { loadReportQueries } from "../src/scenario.ts";
 import { runQueryScenarioSqlite } from "../src/query-scenario-sqlite.ts";
 
 describe("persistence conformance — report query scenarios on SQLite", () => {
-  for (const scenario of loadQueries(QUERIES_DIR).filter((s) => s.name.startsWith("report-"))) {
+  for (const scenario of loadReportQueries(QUERIES_DIR)) {
     test(scenario.name, async () => {
       await runQueryScenarioSqlite(scenario, CANONICAL_DIR);
     }, { timeout: 60_000 });

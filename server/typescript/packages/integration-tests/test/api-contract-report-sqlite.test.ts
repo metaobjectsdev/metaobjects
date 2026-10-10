@@ -18,7 +18,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_CONTRACT_REPORT_DIR, API_CONTRACT_REPORT_SCENARIOS_DIR } from "../src/paths.ts";
-import { loadScenarios, assertResponse, type ApiScenario } from "../src/api-contract-scenario.ts";
+import { loadScenarios, runScenario } from "../src/api-contract-scenario.ts";
 import type { ReportSeed } from "../src/api-contract-report-generated-server.ts";
 import { startSqliteReportServer, type SqliteReportEngine, type SqliteReportServerHandle } from "../src/api-contract-report-sqlite-server.ts";
 
@@ -105,24 +105,7 @@ for (const engine of ENGINES) describe(`api contract report (FR-044) — GENERAT
 
   for (const scenario of loadScenarios(API_CONTRACT_REPORT_SCENARIOS_DIR)) {
     test(`shared scenario: ${scenario.name}`, async () => {
-      await withServer(engine, (server) => runScenario(scenario, server));
+      await withServer(engine, (server) => runScenario(scenario, server.baseUrl));
     });
   }
 });
-
-async function runScenario(scenario: ApiScenario, server: SqliteReportServerHandle): Promise<void> {
-  for (const req of scenario.requests) {
-    const init: RequestInit = { method: req.method };
-    if (req.body !== undefined) {
-      init.body = JSON.stringify(req.body);
-      init.headers = { "content-type": "application/json" };
-    }
-    const res = await fetch(server.baseUrl + req.path, init);
-    const bodyText = await res.text();
-    let body: unknown = null;
-    if (bodyText.length > 0) {
-      try { body = JSON.parse(bodyText); } catch { body = bodyText; }
-    }
-    assertResponse(scenario.name, req, res.status, body);
-  }
-}

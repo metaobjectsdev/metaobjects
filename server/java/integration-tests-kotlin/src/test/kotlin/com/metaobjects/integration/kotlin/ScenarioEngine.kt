@@ -17,11 +17,19 @@ enum class ScenarioEngine(private val id: String) {
     MYSQL("mysql") {
         override fun seed(scenario: QueryScenario): String? =
             scenario.seedDataEngine?.get("mysql") ?: scenario.seedData?.let { toMysqlSeed(it) }
+
+        // A MySQL DATETIME has no zone and the corpus stores UTC wall clocks: read and write them
+        // as UTC whatever the JVM zone is, so a report's instant column reads back as the same instant.
+        override fun sessionParams() = "connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true"
     },
     SQLITE("sqlite") {
         // SQLite takes the Postgres seed as written (double-quoted identifiers, ISO instants as text).
         override fun seed(scenario: QueryScenario): String? =
             scenario.seedDataEngine?.get("sqlite") ?: scenario.seedData
+
+        // SQLite keeps an instant as the TEXT the view built (`...T03:00:00.000Z`); the driver
+        // parses a timestamp with this format, which reads that spelling back as the UTC instant.
+        override fun sessionParams() = "date_string_format=yyyy-MM-dd'T'HH:mm:ss.SSSX"
     };
 
     /** The schema artifact, relative to the corpus root. */
@@ -29,6 +37,17 @@ enum class ScenarioEngine(private val id: String) {
 
     /** The scenario's seed SQL spelled for this engine, or null. */
     abstract fun seed(scenario: QueryScenario): String?
+
+    /** Session parameters this engine MUST get on its JDBC URL (empty = none). */
+    protected open fun sessionParams(): String = ""
+
+    /**
+     * [base] plus this engine's session params, joined with `?`/`&` as base requires. On the
+     * enum, not an if-chain in the runner: a new engine that needs a session policy states it
+     * beside its seed, and one that needs none says so — it cannot silently get neither.
+     */
+    fun jdbcUrl(base: String): String =
+        sessionParams().let { if (it.isEmpty()) base else base + (if ('?' in base) "&" else "?") + it }
 
     companion object {
         private val UTC_INSTANT = Regex("'(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?)Z'")

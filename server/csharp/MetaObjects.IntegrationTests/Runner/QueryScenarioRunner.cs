@@ -21,8 +21,6 @@ using MetaObjects.IntegrationTests.Generated;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Data.Sqlite;
-using MySqlConnector;
 using Npgsql;
 using Xunit.Sdk;
 using YamlDotNet.Core;
@@ -54,7 +52,7 @@ public static class QueryScenarioRunner
     {
         // Provision the schema from the committed canonical DDL — the single
         // TS-produced artifact every port executes. (No per-scenario synthesis.)
-        await ExecuteAsync(engine, connectionString, ReadCanonicalSchemaSql(engine));
+        await engine.ExecuteScriptAsync(connectionString, ReadCanonicalSchemaSql(engine));
 
         // Optional seed data (a per-engine `seed-data-engine` entry wins over `seed-data`).
         var seed = scenario.SeedFor(engine.Name());
@@ -64,17 +62,13 @@ public static class QueryScenarioRunner
             // identifier quote differs, so a Postgres-spelled seed is translated.
             if (engine == ScenarioEngine.MySql && !scenario.HasSeedFor(engine.Name()))
                 seed = MySqlSeed.FromPostgres(seed);
-            await ExecuteAsync(engine, connectionString, seed);
+            await engine.ExecuteScriptAsync(connectionString, seed);
         }
 
-        // Open a DbContext + run each query.
+        // Open a DbContext + run each query. (Provider choice: ScenarioEngineExtensions.UseEngine.)
         var builder = new DbContextOptionsBuilder<AppDbContext>();
-        var options = (engine switch
-        {
-            ScenarioEngine.Sqlite => builder.UseSqlite(connectionString),
-            ScenarioEngine.MySql => builder.UseMySql(connectionString, new MySqlServerVersion(new System.Version(8, 4, 0))),
-            _ => builder.UseNpgsql(connectionString),
-        }).Options;
+        builder.UseEngine(engine, connectionString);
+        var options = builder.Options;
         // Postgres runs the whole generated context; the other engines read the report views
         // through the view-only subset (see ReportViewsDbContext).
         await using AppDbContext db = engine == ScenarioEngine.Postgres
@@ -177,31 +171,6 @@ public static class QueryScenarioRunner
                 $"canonical schema artifact not found at {path}; it is produced by the " +
                 "TypeScript conformance tooling and committed to the corpus.");
         return File.ReadAllText(path);
-    }
-
-    private static async Task ExecuteAsync(ScenarioEngine engine, string connString, string sql)
-    {
-        if (engine == ScenarioEngine.Sqlite)
-        {
-            await using var lite = new SqliteConnection(connString);
-            await lite.OpenAsync();
-            await using var liteCmd = lite.CreateCommand();
-            liteCmd.CommandText = sql;
-            await liteCmd.ExecuteNonQueryAsync();
-            return;
-        }
-        if (engine == ScenarioEngine.MySql)
-        {
-            await using var my = new MySqlConnection(connString);
-            await my.OpenAsync();
-            await using var myCmd = new MySqlCommand(sql, my);
-            await myCmd.ExecuteNonQueryAsync();
-            return;
-        }
-        await using var conn = new NpgsqlConnection(connString);
-        await conn.OpenAsync();
-        await using var cmd = new NpgsqlCommand(sql, conn);
-        await cmd.ExecuteNonQueryAsync();
     }
 
     // -----------------------------------------------------------------------

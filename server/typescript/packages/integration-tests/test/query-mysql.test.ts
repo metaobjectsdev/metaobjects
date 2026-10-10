@@ -5,7 +5,7 @@
 
 import { afterAll, beforeAll, describe, test } from "bun:test";
 import { CANONICAL_DIR, QUERIES_DIR } from "../src/paths.ts";
-import { loadQueries } from "../src/scenario.ts";
+import { loadReportQueries } from "../src/scenario.ts";
 import { runQueryScenarioMysql } from "../src/query-scenario-mysql.ts";
 import { startMysql, type MysqlContainerHandle } from "../src/mysql-container.ts";
 
@@ -14,7 +14,7 @@ beforeAll(async () => { container = await startMysql(); }, 240_000);
 afterAll(() => { container?.stop(); }, 60_000);
 
 describe("persistence conformance — report query scenarios on MySQL", () => {
-  for (const scenario of loadQueries(QUERIES_DIR).filter((s) => s.name.startsWith("report-"))) {
+  for (const scenario of loadReportQueries(QUERIES_DIR)) {
     test(scenario.name, async () => {
       await runQueryScenarioMysql(scenario, container.url, CANONICAL_DIR);
     }, { timeout: 120_000 });

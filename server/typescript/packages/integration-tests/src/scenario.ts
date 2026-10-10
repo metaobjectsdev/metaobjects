@@ -96,6 +96,15 @@ export function loadQueries(dir: string): QueryScenario[] {
   return listYaml(dir).map(loadQuery);
 }
 
+/**
+ * The `report-*` query scenarios — the only corpus subset the non-Postgres schema artifacts
+ * provision (their tables exist for what the reports read). One home for the predicate so a
+ * renamed or added dialect-gated scenario cannot be silently skipped by some lanes.
+ */
+export function loadReportQueries(dir: string): QueryScenario[] {
+  return loadQueries(dir).filter((s) => s.name.startsWith("report-"));
+}
+
 export function loadMigration(yamlPath: string): MigrationScenario {
   const raw = yamlLoad(readFileSync(yamlPath, "utf8")) as MigrationYaml;
   const base = dirname(yamlPath);

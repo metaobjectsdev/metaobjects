@@ -12,6 +12,9 @@ export const CORPUS_DIR = resolve(repoRoot, "fixtures", "persistence-conformance
 export const CANONICAL_DIR = resolve(CORPUS_DIR, "canonical");
 export const MIGRATIONS_DIR = resolve(CORPUS_DIR, "migrations");
 export const QUERIES_DIR = resolve(CORPUS_DIR, "queries");
+// The committed wire-shape artifact (Table B) the SQLite/MySQL/D1 lanes read to map a report
+// column's driver spelling onto the corpus form. Declared here like every other artifact path.
+export const REPORT_SHAPES_PATH = resolve(CORPUS_DIR, "report-shapes.json");
 
 // fixtures/api-contract-conformance/ — cross-port REST API contract corpus.
 export const API_CONTRACT_DIR = resolve(repoRoot, "fixtures", "api-contract-conformance");

@@ -15,7 +15,7 @@ import { runGen, defineConfig, buildReportViews } from "@metaobjectsdev/codegen-
 import { DEFAULT_COLUMN_NAMING_STRATEGY } from "@metaobjectsdev/metadata";
 import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
 import mysql from "mysql2/promise";
-import { seedInserts, type ReportSeed } from "./api-contract-report-generated-server.ts";
+import { seedInserts, SERVED_REPORTS, type ReportSeed } from "./api-contract-report-generated-server.ts";
 import { loadMetadataFile } from "./load-metadata.ts";
 
 export interface MysqlReportServerHandle {
@@ -23,13 +23,6 @@ export interface MysqlReportServerHandle {
   applySeed(seed: ReportSeed): Promise<void>;
   close(): Promise<void>;
 }
-
-const SERVED_REPORTS = [
-  { name: "InvoiceStatusTotals", registrar: "invoiceStatusTotalsRoutes" },
-  { name: "InvoicesByMonth", registrar: "invoicesByMonthRoutes" },
-  { name: "InvoiceTotals", registrar: "invoiceTotalsRoutes" },
-  { name: "ProductRevenue", registrar: "productRevenueRoutes" },
-] as const;
 
 /** The base tables, parents first, in the EMITTED snake_case spelling. */
 const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [

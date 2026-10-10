@@ -61,8 +61,17 @@ public final class QueryScenarioRunner {
         String schemaDdl = ScenarioLoader.readCanonicalSchema(canonicalDir.getParent(), engine.schemaArtifact());
         try (Connection c = openConnection(pg)) {
             // A shared MySQL server serves several scenarios: start each from an empty schema.
-            if (engine == ScenarioEngine.MYSQL) dropSchema(c, schemaDdl);
-            executeSql(c, schemaDdl, engine);
+            // Split once — the same statement list drives the drop and the create (Postgres
+            // takes the whole script in one call and is never split at all).
+            if (engine == ScenarioEngine.MYSQL) {
+                List<String> statements = ScenarioEngine.splitStatements(schemaDdl);
+                dropSchema(c, statements);
+                try (Statement s = c.createStatement()) {
+                    for (String stmt : statements) s.execute(stmt);
+                }
+            } else {
+                executeSql(c, schemaDdl, engine);
+            }
         }
 
         // 2. Seed data.
@@ -280,12 +289,12 @@ public final class QueryScenarioRunner {
         }
     }
 
-    /** Drop every view and table the schema artifact creates (views first, tables in reverse order). */
-    private static void dropSchema(Connection c, String schemaDdl) throws SQLException {
+    /** Drop every view and table the split schema artifact creates (views first, tables in reverse order). */
+    private static void dropSchema(Connection c, List<String> statements) throws SQLException {
         List<String> views = new java.util.ArrayList<>();
         List<String> tables = new java.util.ArrayList<>();
         java.util.regex.Pattern create = java.util.regex.Pattern.compile("^CREATE (VIEW|TABLE) `([^`]+)`");
-        for (String stmt : ScenarioEngine.splitStatements(schemaDdl)) {
+        for (String stmt : statements) {
             java.util.regex.Matcher m = create.matcher(stmt);
             if (m.find()) ("VIEW".equals(m.group(1)) ? views : tables).add(m.group(2));
         }

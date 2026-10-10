@@ -86,6 +86,28 @@ function parseScenario(file: string): ApiScenario {
   };
 }
 
+/**
+ * Send every request of a scenario against `baseUrl` and assert each response. Engine-neutral:
+ * shared by the report lane's variants (SQLite, D1, MySQL) so the request envelope lives once —
+ * the Postgres lane's own copy predates this and is the cross-port runner's reference.
+ */
+export async function runScenario(scenario: ApiScenario, baseUrl: string): Promise<void> {
+  for (const req of scenario.requests) {
+    const init: RequestInit = { method: req.method };
+    if (req.body !== undefined) {
+      init.body = JSON.stringify(req.body);
+      init.headers = { "content-type": "application/json" };
+    }
+    const res = await fetch(baseUrl + req.path, init);
+    const bodyText = await res.text();
+    let body: unknown = null;
+    if (bodyText.length > 0) {
+      try { body = JSON.parse(bodyText); } catch { body = bodyText; }
+    }
+    assertResponse(scenario.name, req, res.status, body);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Assertion engine
 // ---------------------------------------------------------------------------

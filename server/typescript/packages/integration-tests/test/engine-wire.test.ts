@@ -5,7 +5,8 @@
 import { describe, expect, test } from "bun:test";
 
 import { toWireRow } from "../src/engine-wire.ts";
-import { splitStatements, toMysqlSeed } from "../src/query-scenario-mysql.ts";
+import { toMysqlSeed } from "../src/query-scenario-mysql.ts";
+import { splitStatements } from "../src/sql-script.ts";
 
 describe("toWireRow", () => {
   test("SQLite: a count and a currency are strings, a ratio is a canonical decimal string, min/max stay numbers", () => {
