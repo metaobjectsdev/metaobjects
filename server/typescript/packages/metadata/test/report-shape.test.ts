@@ -329,6 +329,35 @@ describe("reportShape Table C (FR-044 @spine and measure @default)", () => {
     expect(required["catalogName"]).toBe(false); // Catalog.name: @required, beyond the spine
   });
 
+  test("a validator.required child counts as @required for a dimension (spine and plain)", async () => {
+    // Same model, but Program.title and Purchase.minutes are required by a validator child.
+    const viaValidator = (e: typeof program | typeof purchase, field: string) => {
+      const copy = structuredClone(e);
+      const kids = copy["object.entity"].children as Record<string, Record<string, unknown>>[];
+      for (const k of kids) {
+        for (const body of Object.values(k)) {
+          if (body["name"] === field) {
+            delete body["@required"];
+            body["children"] = [{ "validator.required": {} }];
+          }
+        }
+      }
+      return copy;
+    };
+    const root = await loadInline([
+      file("acme", [
+        catalog,
+        viaValidator(program, "title"),
+        viaValidator(purchase, "minutes"),
+        spineSales,
+        plainSales,
+        catalogSales,
+      ]),
+    ]);
+    expect(requiredOf(root, "SpineSales")["programTitle"]).toBe(true);
+    expect(requiredOf(root, "PlainSales")["minutes"]).toBe(true);
+  });
+
   test("a two-hop spine: a dimension whose @via equals the whole spine is on it", async () => {
     const required = requiredOf(await salesModel(), "CatalogSales");
     expect(required["catalogId"]).toBe(true);

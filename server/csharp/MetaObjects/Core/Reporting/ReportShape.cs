@@ -157,10 +157,10 @@ public static class ReportShapes
 
     /// <summary>
     /// Table C (<c>required</c> of a dimension). Without <c>@spine</c>: only a dimension with
-    /// no <c>@via</c> over an <c>@of</c> field whose effective <c>@required</c> is true. With
+    /// no <c>@via</c> over an <c>@of</c> field that is effectively required (<c>@required</c> or a <c>validator.required</c> child). With
     /// <c>@spine</c>: only a dimension whose <c>@via</c> hops equal the spine's (a column of
     /// the spine entity itself, whose rows are the report's rows) over an <c>@of</c> field that
-    /// is <c>@required</c> or a primary-key column of the entity <c>@of</c> names. A dimension
+    /// is required (same rule) or a primary-key column of the entity <c>@of</c> names. A dimension
     /// beyond the spine is reached by a LEFT OUTER join.
     /// </summary>
     private static bool DimensionRequired(
@@ -168,8 +168,8 @@ public static class ReportShapes
         string[]? spine, string reportName)
     {
         string? via = dim.Via();
-        // The @required ATTR only, read resolving (ADR-0039); a validator.required child does not count.
-        bool ofRequired = of.Attr(FIELD_ATTR_REQUIRED) is true;
+        // Effective required-ness, resolving (ADR-0039): the @required attr OR a validator.required child.
+        bool ofRequired = of.IsRequired;
         if (spine is null) return via is null && ofRequired;
         if (via is null) return false; // a column of @from: null in a spine row with no facts
         var hops = ReportingViaHops(via, ReportingMemberOwner(dim, from), from, root)

@@ -7,7 +7,7 @@
         "children": [
           { "source.rdb": { "@table": "programs" } },
           { "field.long":     { "name": "id" } },
-          { "field.string":   { "name": "title", "@required": true, "@maxLength": 200 } },
+          { "field.string":   { "name": "title", "@maxLength": 200, "children": [ { "validator.required": {} } ] } },
           { "field.currency": { "name": "priceCents", "@required": true, "@currency": "USD" } },
           { "field.enum":     { "name": "status",     "@required": true, "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"] } },
           { "field.timestamp": { "name": "createdAt", "@column": "created_ts", "@required": true, "@localTime": true } },

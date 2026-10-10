@@ -11,12 +11,14 @@ import {
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_DOUBLE,
   FIELD_SUBTYPE_FLOAT,
+  FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_ENUM,
   opsForField,
 } from "@metaobjectsdev/metadata";
 import { isSortableField } from "./filter-shared.js";
 import { enumValues } from "../enum-meta.js";
 
+// currency is integer minor units (allowlist `integer: true`, row schema `z.number().int()`).
 // VALUE-type classification only (distinct from the OPERATOR band, which comes from
 // opsForSubType). decimal is deliberately NOT here: its operator band stays NUMERIC
 // (eq/ne/gt/gte/lt/lte/in/isNull, see OPS_BY_SUBTYPE) but its VALUE type is `string`,
@@ -26,6 +28,7 @@ const NUMBER_VALUE_SUBTYPES = new Set<string>([
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_DOUBLE,
   FIELD_SUBTYPE_FLOAT,
+  FIELD_SUBTYPE_CURRENCY,
 ]);
 
 /**

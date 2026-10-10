@@ -27,8 +27,9 @@ every port's `verify`), the derived-key parity fix across the ports, and the lis
 nested-average fixes found by the first adopter to map real report pages onto the feature.
 
 **How much smaller the code gets.** The size reduction comes in two steps, and each is its own
-number. The first landed on 1.0.x: 439 lines of handler code retired. The second is reporting:
-with it, the same pages come to about 60 lines of SQL and about 180 lines of metadata.
+number. The first landed on 1.0.x: 439 lines of handler code retired. The second is reporting,
+and it is a SQL reduction only: in an adopter, hand-written SQL went from 75 lines to 15 (-80%).
+Total hand-written lines did not fall, so do not read it as a total line reduction.
 
 **Two diffs to expect when you upgrade.**
 
@@ -494,6 +495,23 @@ until you regenerate.
   flag, as it does when no table changes. Gated in `migrate-ts` unit and drift tests, the CLI's
   `verify-db-view-recreate` test, and new `integration-tests` lanes on a real SQLite (with the D1
   diff) and a real Postgres.
+- **A report dimension over a field required by a `validator.required` child is typed non-null
+  in every port (FR-044).** `reportShape` read only the inline `@required` attribute, so a
+  dimension over `Program.title` required through a `validator.required` child came out
+  nullable (`text(...)`, `z.string().nullable()`, `| null`) although the view column is never
+  null. It now resolves required-ness as the field's loader and codegen already do (the attr or
+  the child, own or inherited), in the TypeScript, C#, Java (and so Kotlin) and Python
+  metadata. C# entity generation had the same gap (a `validator.required` field came out
+  nullable) and is fixed in the same change; the TypeScript, Java, Kotlin and Python entity and
+  projection fields were already correct. A model that declares
+  `@required: true` generates what it did before; regenerate and review the diff if you use
+  the child form on a dimension's field.
+- **TypeScript: the generated filter type gives a `field.currency` field a number operand
+  (FR-044).** `{ revenue: { gt: 0 } }` on a report list hook did not type-check, because the
+  filter type fell through to `string` while the allowlist and row schema treat currency as
+  integer minor units. The other ports have no typed filter operand and already treat currency
+  as a `long`.
+
 - **TypeScript: a report's decimal fields reach the wire as strings on SQLite, as on Postgres
   (FR-044).** A ratio is typed `decimal`, the TypeScript read schema types a decimal as
   `string`, and SQLite has no decimal: the view computes a `REAL`, which the driver hands the
