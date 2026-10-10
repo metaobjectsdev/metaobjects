@@ -39,7 +39,7 @@ public static class ScenarioEngineExtensions
     public static string Quote(this ScenarioEngine engine) =>
         engine == ScenarioEngine.MySql ? "`" : "\"";
 
-    /// <summary>The server version Pomelo generates against. Keep in step with the mysql:8.4 image MySqlDatabase starts.</summary>
+    /// <summary>The server version Pomelo generates against. Keep in step with the mysql:8.4 image MySqlServer starts.</summary>
     public static readonly Version MySqlProviderVersion = new(8, 4, 0);
 
     /// <summary>Point this engine's EF Core provider at <paramref name="connString"/> (mutates and returns the builder).</summary>

@@ -103,8 +103,8 @@ object QueryScenarioRunner {
         //    projection views). Executed verbatim on a direct JDBC connection --
         //    schema authority is the TS-produced artifact, not Exposed. A shared server
         //    (MySQL) starts each scenario from an empty schema.
-        if (engine == ScenarioEngine.MYSQL) dropMysqlSchema(jdbcUrl, username, password)
         val schemaDdl = ScenarioLoader.readCanonicalSchema(corpus, engine.schemaArtifact)
+        if (engine == ScenarioEngine.MYSQL) dropMysqlSchema(jdbcUrl, username, password, schemaDdl)
         execSql(jdbcUrl, username, password, schemaDdl, engine)
 
         // 2. Seed via the YAML's raw SQL.
@@ -150,21 +150,20 @@ object QueryScenarioRunner {
         }
     }
 
-    /** Drop every view and table in the connected MySQL database. */
-    private fun dropMysqlSchema(jdbcUrl: String, username: String, password: String) {
+    private val MYSQL_CREATE = Regex("^CREATE (VIEW|TABLE) `([^`]+)`")
+
+    /**
+     * Drop every view and table [schemaDdl] creates (views first, tables in reverse order), by
+     * name: `METAOBJECTS_TEST_MYSQL_URL` may point at a shared database.
+     */
+    private fun dropMysqlSchema(jdbcUrl: String, username: String, password: String, schemaDdl: String) {
+        val created = ScenarioEngine.splitStatements(schemaDdl).mapNotNull { MYSQL_CREATE.find(it)?.groupValues }
+        val views = created.filter { it[1] == "VIEW" }.map { it[2] }
+        val tables = created.filter { it[1] == "TABLE" }.map { it[2] }.reversed()
         DriverManager.getConnection(jdbcUrl, username, password).use { c ->
-            val views = mutableListOf<String>()
-            val tables = mutableListOf<String>()
             c.createStatement().use { st ->
-                st.executeQuery("SHOW FULL TABLES").use { rs ->
-                    while (rs.next()) (if (rs.getString(2) == "VIEW") views else tables).add(rs.getString(1))
-                }
-            }
-            c.createStatement().use { st ->
-                st.execute("SET FOREIGN_KEY_CHECKS = 0")
                 views.forEach { st.execute("DROP VIEW IF EXISTS `$it`") }
                 tables.forEach { st.execute("DROP TABLE IF EXISTS `$it`") }
-                st.execute("SET FOREIGN_KEY_CHECKS = 1")
             }
         }
     }

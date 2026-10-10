@@ -13,14 +13,15 @@ using Xunit;
 
 namespace MetaObjects.IntegrationTests;
 
-public sealed class QueryScenarioMySqlTests
+[Collection(MySqlCollection.Name)]
+public sealed class QueryScenarioMySqlTests(MySqlServer server)
 {
     [Theory]
     [MemberData(nameof(Scenarios))]
     public async Task Report_scenario_on_mysql(string scenarioPath)
     {
         var scenario = ScenarioLoader.LoadQuery(scenarioPath);
-        await using var mysql = await MySqlDatabase.StartAsync();
+        await using var mysql = await server.CreateDatabaseAsync();
         await QueryScenarioRunner.RunMySqlAsync(scenario, mysql.ConnectionString);
     }
 

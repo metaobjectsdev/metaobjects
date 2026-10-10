@@ -18,7 +18,8 @@ using Xunit;
 
 namespace MetaObjects.IntegrationTests.Api;
 
-public sealed class ApiContractReportConformanceTest
+[Collection(MySqlCollection.Name)]
+public sealed class ApiContractReportConformanceTest(MySqlServer mysqlServer)
 {
     [Theory]
     [MemberData(nameof(Scenarios))]
@@ -53,7 +54,7 @@ public sealed class ApiContractReportConformanceTest
     public async Task Api_contract_report_generated_on_mysql(string scenarioPath)
     {
         var scenario = ApiContractScenarioLoader.LoadScenario(scenarioPath);
-        await using var mysql = await MySqlDatabase.StartAsync();
+        await using var mysql = await mysqlServer.CreateDatabaseAsync();
         await using var server = await ReportGeneratedServerFactory.StartMySqlAsync(mysql);
         await server.ApplySeedAsync();
         await RunAsync(scenario, server.BaseUrl);
