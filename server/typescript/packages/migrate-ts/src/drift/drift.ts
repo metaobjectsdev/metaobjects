@@ -20,6 +20,7 @@ import { buildExpectedSchemaWithProvenance } from "../expected-schema.js";
 import { introspect } from "../introspect/index.js";
 import { diff } from "../diff/index.js";
 import { collectUnmanagedNames } from "../unmanaged.js";
+import { withoutViewRecreates } from "../view-change-reason.js";
 import { scopeExpectedSchema, scopedDiffInputs, type ObjectScopePredicate } from "../scope.js";
 import type { AllowOptions, Dialect, DiffResult, SchemaSnapshot } from "../types.js";
 
@@ -107,7 +108,8 @@ export interface DriftResult extends DiffResult {
  * some other way (e.g. `introspectD1` over a wrangler-shelled-out runner).
  *
  * Returns a `DiffResult` whose `changes` is empty iff `actual` matches the
- * metadata. The caller decides exit behavior (the schema-drift gate fails when
+ * metadata. A view the migration would recreate only because it alters a table the
+ * view reads is left out (`isViewRecreateOnly`): its definition matches. The caller decides exit behavior (the schema-drift gate fails when
  * `changes` is non-empty).
  */
 export async function computeDriftFromActual(
@@ -140,6 +142,10 @@ export async function computeDriftFromActual(
   });
   return {
     ...result,
+    // A view recreated only because the migration alters a table it reads matches the
+    // metadata (D3): `diff` plans the pair for the migration SQL, but it is not drift.
+    changes: withoutViewRecreates(result.changes),
+    blocked: withoutViewRecreates(result.blocked),
     outOfScope: scoped.outOfScope,
     declaredSchemas: scoped.declaredSchemas,
     importedOutOfScope: scoped.importedOutOfScope,

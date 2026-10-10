@@ -1,6 +1,7 @@
 // src/drift/classify.ts
 import { diff } from "../diff/index.js";
 import type { Change, Dialect, DiffResult, SchemaSnapshot } from "../types.js";
+import { isViewRecreateOnly } from "../view-change-reason.js";
 
 /**
  * Change kinds that represent an object present in the live DB but absent from
@@ -30,6 +31,9 @@ export function classifyDrift(changes: Change[]): DriftClassification {
   const drift: Change[] = [];
   const unmanaged: Change[] = [];
   for (const c of changes) {
+    // A view recreated only around a table change matches the snapshot (D3). Its drop half
+    // is not a DB-only object and its create half is not drift; the table change is.
+    if (isViewRecreateOnly(c)) continue;
     if (UNMANAGED_KINDS.has(c.kind)) unmanaged.push(c);
     else drift.push(c);
   }

@@ -47,3 +47,31 @@ export function viewSqlEquals(a: string | undefined, b: string | undefined): boo
   if (a === undefined || b === undefined) return false;
   return normalizeViewSql(a) === normalizeViewSql(b);
 }
+
+/** Characters of shared text kept before the first difference, so the excerpt has context. */
+const DIFFERENCE_LEAD = 20;
+/** Characters kept from each side, starting at the excerpt's first character. */
+const DIFFERENCE_SPAN = 60;
+
+/**
+ * Where two view definitions first differ, as each side's NORMALIZED text (see
+ * `normalizeViewSql`) from a little before the first differing character. `undefined` when
+ * they are equal. A reader sees the difference itself rather than two whole bodies to
+ * compare by eye: a quoting or alias change in a long report view is otherwise invisible.
+ */
+export function firstViewSqlDifference(
+  expected: string,
+  actual: string,
+): { expected: string; actual: string } | undefined {
+  const e = normalizeViewSql(expected);
+  const a = normalizeViewSql(actual);
+  if (e === a) return undefined;
+  let i = 0;
+  while (i < e.length && i < a.length && e[i] === a[i]) i++;
+  const start = Math.max(0, i - DIFFERENCE_LEAD);
+  const excerpt = (s: string): string => {
+    const end = start + DIFFERENCE_SPAN;
+    return `${start > 0 ? "…" : ""}${s.slice(start, end)}${end < s.length ? "…" : ""}`;
+  };
+  return { expected: excerpt(e), actual: excerpt(a) };
+}

@@ -470,6 +470,30 @@ until you regenerate.
 
 ### Fixed
 
+- **`meta verify --db` no longer reports a matching view as drift, and says what differs when a
+  view does not.** An adopter on 1.1.0-rc.2 rebuilt a SQLite database from the committed chain:
+  every report and projection view's stored SQL was byte-identical to the metadata's, yet
+  `meta verify --db` and `meta migrate --from-db` listed each one as `- view` / `+ view` and
+  `verify` exited 1, with nothing in the text or `--format json` saying what differed. The cause
+  was not the view comparison. When a migration alters a table (a column on every dialect, and an
+  FK or CHECK on SQLite and D1, which rebuild the table, #243), the diff drops and recreates every
+  view that reads it, and that pair looked the same as a view whose definition changed. Every
+  view change now carries a `reason` (`ViewChangeReason`, exported from
+  `@metaobjectsdev/migrate-ts` with `isViewRecreateOnly` and `withoutViewRecreates`), and a
+  recreate whose definition matches is `unchanged`. `verify --db`, the D1 and committed-snapshot
+  drift gates, `computeDriftFromActual` and `classifyDrift` leave those out, so the table change
+  is reported alone. `meta migrate` still emits the pair, because the SQL needs it, and adds a
+  note naming the views that match ("recreated only because the migration alters a table they
+  read") to its text output and to a new `notes` array in `--format json`. A view that does
+  differ is reported with why: SQLite and D1 show the first differing excerpt of the definition
+  text (`definition text differs: metadata «…» vs database «…»`), Postgres says the fingerprint
+  does not match, and an unstamped Postgres view says it cannot be compared. `verify --format
+  json` gains a `schemaDrift` section listing each schema difference and its explanation. The
+  emitted migration SQL does not change. One gate is tightened on the way: an unstamped Postgres
+  view over an altered table used to be recreated without `--allow adopt-view`; it now needs the
+  flag, as it does when no table changes. Gated in `migrate-ts` unit and drift tests, the CLI's
+  `verify-db-view-recreate` test, and new `integration-tests` lanes on a real SQLite (with the D1
+  diff) and a real Postgres.
 - **TypeScript: a report's decimal fields reach the wire as strings on SQLite, as on Postgres
   (FR-044).** A ratio is typed `decimal`, the TypeScript read schema types a decimal as
   `string`, and SQLite has no decimal: the view computes a `REAL`, which the driver hands the

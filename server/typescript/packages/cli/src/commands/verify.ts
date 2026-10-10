@@ -70,6 +70,7 @@ import {
   verifyReplay,
   introspect,
   diff,
+  withoutViewRecreates,
   readSnapshot,
   snapshotPath,
   type SchemaSnapshot,
@@ -382,6 +383,9 @@ export async function verifyCommand(
   // Set when the schema gate could not reach or read the database: a failure, but not
   // drift, and the payload must not report it as drift.
   let schemaRunError: string | undefined;
+  // The schema gate's findings, for the structured payload: what differs, not only that
+  // something does. Left undefined when the gate did not compare anything.
+  let schemaDrift: SchemaDriftSection | undefined;
   const schemaExit = await runSchemaVerify();
   const codegenExit = runCodegen ? await runCodegenVerify() : 0;
   const docsExit = runDocs ? await runDocsVerify() : 0;
@@ -467,6 +471,7 @@ export async function verifyCommand(
         names: nameSection,
         deprecations: deprecationSection,
         fields: fieldSection,
+        ...(schemaDrift !== undefined ? { schemaDrift } : {}),
         errors: schemaRunError !== undefined ? [{ gate: "schema", error: schemaRunError }] : [],
       }),
       fmt,
@@ -1478,7 +1483,9 @@ export async function verifyCommand(
       // MERGED with the out-of-scope set, and a second key would silently drop that half.
       dialect,
     });
-    if (result.changes.length === 0) return [];
+    // A view recreated only around a table change matches the snapshot (D3) — not a difference.
+    const changes = withoutViewRecreates(result.changes);
+    if (changes.length === 0) return [];
 
     return [
       // `meta migrate --from-db` is NOT the repair: it writes a snapshot only when it has
@@ -1488,10 +1495,10 @@ export async function verifyCommand(
       // been told everything is in sync. `baseline --from-db` rewrites it unconditionally,
       // which is the whole point of the subcommand.
       `the committed schema snapshot disagrees with ${displayUrl} ` +
-        `(${result.changes.length} difference(s)) — the next 'meta migrate' would emit DDL from it ` +
+        `(${changes.length} difference(s)) — the next 'meta migrate' would emit DDL from it ` +
         `and fail at apply. Re-derive it with ` +
         `'meta migrate baseline --from-db --db <url> --dialect ${dialect}'.`,
-      ...summarizeDrift(result.changes),
+      ...summarizeDrift(changes),
     ];
   }
 
@@ -1515,6 +1522,7 @@ export async function verifyCommand(
     }
 
     const changes = driftResult.changes;
+    schemaDrift = { changes: changes.map(toSchemaDriftRow), findings: ledgerDrift };
     if (changes.length === 0 && ledgerDrift.length === 0) {
       say(`meta verify — schema in sync with ${displayUrl}.`);
       return 0;
@@ -1822,6 +1830,28 @@ function summarizeDrift(changes: Change[]): string[] {
   });
 }
 
+/** One schema difference in the structured payload — the same text the stderr summary prints. */
+interface SchemaDriftRow {
+  kind: Change["kind"];
+  object: string;
+  detail: string;
+}
+
+/**
+ * The schema gate's findings in the structured payload. An adopter whose `verify --db` failed
+ * on views could not tell from `--format json` what differed (D3): the payload carried the
+ * verdict only. `changes` is the metadata↔database comparison; `findings` are the
+ * migration-ledger and committed-snapshot lines, which are text by construction.
+ */
+interface SchemaDriftSection {
+  changes: SchemaDriftRow[];
+  findings: string[];
+}
+
+function toSchemaDriftRow(c: Change): SchemaDriftRow {
+  return { kind: c.kind, object: DRIFT_PRESENTATION[c.kind].noun, detail: describeChange(c) };
+}
+
 // ---------------------------------------------------------------------------
 // structured output (--format toon|json)
 // ---------------------------------------------------------------------------
@@ -1948,6 +1978,8 @@ function buildVerifyPayload(input: {
   names: AdvisorySection<AdvisoryDiagnosticRow>;
   deprecations: AdvisorySection<AdvisoryDiagnosticRow>;
   fields: AdvisorySection<AdvisoryDiagnosticRow>;
+  /** What the schema gate found, when it compared anything. */
+  schemaDrift?: SchemaDriftSection;
   /** Gates that could not run at all (an unreachable database) — failures, not drift. */
   errors?: readonly { gate: string; error: string }[];
 }): Record<string, unknown> {
@@ -1988,7 +2020,12 @@ function buildVerifyPayload(input: {
 
   const help: string[] = errors.map((e) =>
     `the ${e.gate} gate could not run, which is not drift: ${e.error} — fix the connection and re-run`);
-  if (drifted.length > 0) {
+  if (drifted.some((g) => g.gate === "schema") && input.schemaDrift !== undefined) {
+    help.push(
+      `the schema gate's differences are in schemaDrift — changes[] (metadata vs database, one row per change) and findings[] (migration ledger and committed snapshot)`,
+    );
+  }
+  if (drifted.some((g) => g.gate !== "schema")) {
     help.push(
       `the failing gate's drift DETAIL is printed as text on stderr — this payload carries the verdict only`,
     );
@@ -2041,11 +2078,12 @@ function buildVerifyPayload(input: {
     deprecations: input.deprecations,
     fields: input.fields,
     ...(input.requirementCounts !== undefined ? { requirementCounts: input.requirementCounts } : {}),
+    ...(input.schemaDrift !== undefined ? { schemaDrift: input.schemaDrift } : {}),
     // The honest boundary. Everything named here is REACHABLE — it is printed as
     // text on stderr — but it is not in this document, and a reader must not have
     // to discover that by its absence.
     notRepresented: [
-      "per-gate drift detail (which template variable drifted, which schema change, which generated file differs, which migration failed to replay) — printed as text on stderr; this payload carries each gate's pass/fail verdict",
+      "per-gate drift detail for every gate but schema (which template variable drifted, which generated file differs, which migration failed to replay) — printed as text on stderr; this payload carries each gate's pass/fail verdict, and the schema gate's differences in schemaDrift",
       "the loader's own warnings and the agent-context/manifest advisories — printed as text on stderr",
     ],
   };

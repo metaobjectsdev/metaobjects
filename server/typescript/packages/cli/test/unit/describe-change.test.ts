@@ -52,3 +52,45 @@ test("every change kind reads as text, never JSON", () => {
   ];
   for (const c of kinds) expect(describeChange(c)).not.toMatch(/^\{/);
 });
+
+// D3: a view change printed only the view's name, so a view recreated around a table change
+// (definition identical) read exactly like one whose definition differed.
+test("a view change says why it was planned", () => {
+  const allowed = { state: "allowed" } as const;
+  const view = { name: "v_report", sql: "SELECT 1" };
+  const cases: Array<[Change, string]> = [
+    [
+      { kind: "create-view", view, reason: { kind: "missing" }, status: allowed },
+      "v_report (declared by the metadata, not in the database)",
+    ],
+    [
+      { kind: "drop-view", view: "v_old", reason: { kind: "undeclared" }, status: allowed },
+      "v_old (in the database, declared by no metadata object)",
+    ],
+    [
+      {
+        kind: "replace-view", view,
+        reason: { kind: "definition", compared: "text", firstDifference: { expected: "select a as b", actual: "select a" } },
+        status: allowed,
+      },
+      "v_report (definition text differs: metadata «select a as b» vs database «select a»)",
+    ],
+    [
+      { kind: "replace-view", view, reason: { kind: "definition", compared: "fingerprint" }, status: allowed },
+      "v_report (definition differs: the database view's fingerprint does not match the metadata's)",
+    ],
+    [
+      { kind: "drop-view", view: "v_report", reason: { kind: "definition", compared: "text", tables: ["weeks"] }, status: allowed },
+      "v_report (definition text differs; recreated around the change to table weeks)",
+    ],
+    [
+      { kind: "drop-view", view: "v_report", reason: { kind: "unfingerprinted" }, status: allowed },
+      "v_report (the database view carries no MetaObjects fingerprint, so its definition cannot be compared)",
+    ],
+    [
+      { kind: "create-view", view, reason: { kind: "unchanged", tables: ["weeks", "programs"] }, status: allowed },
+      "v_report (definition matches the metadata; recreated because the migration alters tables weeks, programs)",
+    ],
+  ];
+  for (const [c, text] of cases) expect(describeChange(c)).toBe(text);
+});

@@ -203,6 +203,11 @@ export interface MigrateResultShape {
    * caller sees the risk before applying.
    */
   warnings?: string[];
+  /**
+   * Explanations of planned changes that are not what they look like — today, views the
+   * migration drops and recreates only because it alters a table they read (D3).
+   */
+  notes?: string[];
   /** A dry run's SQL. Text format prints it as a preview; JSON/toon carry it here. */
   sql?: { up: string; down: string };
 }
@@ -219,6 +224,12 @@ export function formatMigrateResult(result: MigrateResultShape, _opts: FormatOpt
   if (changeEntries.length > 0) {
     const summary = changeEntries.map(([k, v]) => `${v} ${k}`).join(", ");
     lines.push(`  Changes: ${summary}`, "");
+  }
+
+  const notes = result.notes ?? [];
+  if (notes.length > 0) {
+    for (const n of notes) lines.push(`  Note: ${n}`);
+    lines.push("");
   }
 
   if (result.blocked.length > 0) {
@@ -331,6 +342,7 @@ export function migrateResultToData(result: MigrateResultShape): {
   summary: string;
   help: string[];
   warnings?: string[];
+  notes?: string[];
   sql?: { up: string; down: string };
 } {
   const changeEntries = Object.entries(result.changeCounts).filter(([, v]) => v > 0);
@@ -398,6 +410,7 @@ export function migrateResultToData(result: MigrateResultShape): {
     changes, written: result.writtenPaths, summary, help,
     // Only when present, so a run with no hazard keeps its existing shape.
     ...(warnings.length > 0 ? { warnings } : {}),
+    ...((result.notes ?? []).length > 0 ? { notes: result.notes } : {}),
     ...(result.sql !== undefined ? { sql: result.sql } : {}),
   };
 }

@@ -313,13 +313,21 @@ export type Change =
       respelled?: true;
       status: ChangeStatus;
     }
-  // Declared for v0.3, never produced in v0.1:
-  | { kind: "create-view"; view: ViewDescriptor; schema?: string; status: ChangeStatus }
+  | {
+      kind: "create-view";
+      view: ViewDescriptor;
+      schema?: string;
+      status: ChangeStatus;
+      /** Why the view is (re)created — see {@link ViewChangeReason}. */
+      reason?: ViewChangeReason;
+    }
   | {
       kind: "drop-view";
       view: string;
       schema?: string;
       status: ChangeStatus;
+      /** Why the view is dropped — see {@link ViewChangeReason}. */
+      reason?: ViewChangeReason;
       /** The view as it exists in the DB — lets the down migration recreate it. */
       restore?: ViewDescriptor;
       /**
@@ -344,6 +352,8 @@ export type Change =
       view: ViewDescriptor;
       schema?: string;
       status: ChangeStatus;
+      /** Why the view is replaced — see {@link ViewChangeReason}. */
+      reason?: ViewChangeReason;
       /** The view as it exists in the DB — lets the down migration restore the old body. */
       restore?: ViewDescriptor;
       /**
@@ -356,6 +366,50 @@ export type Change =
     };
 
 export type ChangeKind = Change["kind"];
+
+/**
+ * Why `diff` planned a view change, so a report can say what differs instead of printing a
+ * bare drop/create pair.
+ *
+ * The distinction that matters most is `unchanged`. A migration that alters a table drops
+ * and recreates every view reading it — Postgres refuses to ALTER a column a view reads,
+ * and SQLite/D1 rebuild the table, which strands the view (#243) — so the migration SQL
+ * needs the pair even when the view's definition already matches the metadata. Such a pair
+ * is not drift, and `meta verify --db` must not report it as drift (`isViewRecreateOnly`).
+ *
+ * `diff` sets a reason on every view change it plans. It is optional so a hand-built
+ * `Change` stays valid; a change without one is reported as drift, with no detail.
+ */
+export type ViewChangeReason =
+  /** Declared by the metadata, absent from the database. */
+  | { kind: "missing" }
+  /** In the database, declared by no metadata object. */
+  | { kind: "undeclared" }
+  /**
+   * The definition differs from the metadata's. `compared` names what was compared: the
+   * normalized body TEXT on SQLite/D1, which store view SQL verbatim, or the FINGERPRINT
+   * stamped into the view's comment on Postgres, which deparses view SQL so the text can
+   * never match. `firstDifference` (text comparisons only) holds each side's normalized
+   * text from a little before the first character that differs. `tables` is set when the
+   * change became a drop/create pair because the migration also alters those tables.
+   */
+  | {
+      kind: "definition";
+      compared: "text" | "fingerprint";
+      firstDifference?: { expected: string; actual: string };
+      tables?: readonly string[];
+    }
+  /**
+   * Postgres: the database view carries no MetaObjects fingerprint (hand-written, or created
+   * before fingerprinting), so its definition cannot be compared. `tables` as for
+   * `definition`.
+   */
+  | { kind: "unfingerprinted"; tables?: readonly string[] }
+  /**
+   * The definition matches the metadata. The view is dropped and recreated only because
+   * the migration alters `tables`, which it reads.
+   */
+  | { kind: "unchanged"; tables: readonly string[] };
 
 export interface ChangeStatus {
   state: "allowed" | "blocked";

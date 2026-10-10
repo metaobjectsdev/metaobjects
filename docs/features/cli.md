@@ -550,14 +550,19 @@ meta gen --format json      → { gen[], summary, help[], antiPatterns: { status
 meta verify --format json   → { verify[], exitCode, summary, help[],
                                 antiPatterns: { status, total, rows[] },
                                 requirements: { status, total, rows[] },
-                                requirementCounts?, notRepresented[] }
+                                requirementCounts?, schemaDrift?, notRepresented[] }
 ```
 
 A pass that did **not** run says so (`status: "skipped"` with a `note` giving the
 reason) rather than reporting an empty list — "found nothing" and "never looked"
 are different answers. `meta verify`'s payload carries each gate's pass/fail
-verdict; the per-gate drift **detail** stays on stderr as text, and the payload's
-own `notRepresented[]` says so.
+verdict. The schema gate's differences are in `schemaDrift` (`changes[]`, one
+`{ kind, object, detail }` per difference with the same explanation the text prints,
+plus the ledger `findings[]`); every other gate's drift **detail** stays on stderr as
+text, and the payload's own `notRepresented[]` says so. A view that matches the
+metadata and is recreated only because the migration alters a table it reads is not
+drift, so it appears in neither. `meta migrate` still emits that drop/create pair and
+names the views in a note (`notes[]` in its structured output).
 
 In a structured run every narration line moves to **stderr**, so stdout is one
 parseable document. `--format` is honored by `gen`, `verify` and `migrate`; any
