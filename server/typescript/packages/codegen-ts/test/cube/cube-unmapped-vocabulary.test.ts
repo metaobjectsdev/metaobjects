@@ -1,9 +1,10 @@
 // FR-044 Plan 4, Task 8a — the guard that refuses what cube-model does not map yet. `@spine` on
-// a served object.report and `@default` on a measure.aggregate / measure.ratio are planned
-// vocabulary (the zero-rows / measure-defaults plan). Until the build maps them, a model that
-// carries either would be written WRONG without a word (a rollup without the spine's zero rows,
-// a measure without its COALESCE), so the build refuses it, naming the node. What produces no
-// output stays inert. The default loader is non-strict, so the attributes load with a warning.
+// a served object.report and `@default` on a measure.aggregate / measure.ratio are registered
+// vocabulary (the zero-rows / measure-defaults build, #415) that cube-model does not map yet.
+// Until it does, a model that carries either would be written WRONG without a word (a rollup
+// without the spine's zero rows, a measure without its COALESCE), so the build refuses it,
+// naming the node. What produces no output stays inert. Every model below loads clean under the
+// loader's rules for both attributes (R8, R9, M7, M8).
 
 import { describe, test, expect } from "bun:test";
 import { InMemoryStringSource, MetaDataLoader, type MetaRoot } from "@metaobjectsdev/metadata";
@@ -42,12 +43,25 @@ function report(name: string, attrs: Json, kind: string | null = "view"): Json {
   return { "object.report": { name, ...attrs, children } };
 }
 
+/** What a `@spine` report needs to load: a to-one hop from Program (R8) and a listed dimension
+ *  read through it (R9). Passed to `program()`, with `owner` beside it. */
+const ownerHop: Json[] = [
+  { "field.long": { name: "ownerId" } },
+  { "identity.reference": { name: "fkOwner", "@fields": "ownerId", "@references": "Owner" } },
+  { "dimension.attribute": { name: "owner", "@of": "Owner.id", "@via": "Program.fkOwner" } },
+];
+const owner: Json = entity("Owner", [table("owners"), longId, pk]);
+
 const spineReport = (name: string, kind: string | null = "view"): Json =>
-  report(name, { "@from": "Program", "@measures": ["programs"], "@spine": "Program.fkOwner" }, kind);
+  report(
+    name,
+    { "@from": "Program", "@dimensions": ["owner"], "@measures": ["programs"], "@spine": "Program.fkOwner" },
+    kind,
+  );
 
 async function load(children: Json[]): Promise<MetaRoot> {
   const model = { "metadata.root": { package: PKG, children } };
-  // Non-strict by default: an attribute no provider registers yet loads, with a warning.
+  // The models load clean; what is under test is the build, not the loader.
   const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(model))]);
   expect(errors.map((e) => e.message)).toEqual([]);
   return root;
@@ -74,7 +88,7 @@ async function refusal(children: Json[], matches?: (name: string) => boolean): P
 
 describe("@spine on a served report is refused", () => {
   test("the error names the report and the attribute, and says how to proceed", async () => {
-    const err = await refusal([program(), spineReport("ProgramsByOwner")]);
+    const err = await refusal([program(ownerHop), owner, spineReport("ProgramsByOwner")]);
     expect(err.code).toBe(ERR_CUBE_UNMAPPED_VOCABULARY);
     expect(err.message).toBe(
       "ERR_CUBE_UNMAPPED_VOCABULARY: report 'acme::shop::ProgramsByOwner' declares @spine, which cube-model does not map yet " +
@@ -85,7 +99,7 @@ describe("@spine on a served report is refused", () => {
   });
 
   test("a sourceless @spine report is inert: no error, and nothing written for it", async () => {
-    const model = await build([program(), spineReport("ProgramsByOwner", null)]);
+    const model = await build([program(ownerHop), owner, spineReport("ProgramsByOwner", null)]);
     const cube = model.cubes.find((c) => c.name === "Program")!;
     expect(cube.preAggregations).toEqual([]);
     expect(cube.segments).toEqual([]);
@@ -98,7 +112,7 @@ describe("@spine on a served report is refused", () => {
 
   test("a @spine report whose @from the generator's filter leaves out is inert", async () => {
     const other = entity("Other", [table("others"), longId, pk, { "measure.aggregate": { name: "others", "@agg": "count", "@of": "Other.id" } }]);
-    const model = await build([program(), other, spineReport("ProgramsByOwner")], (n) => n === "Other");
+    const model = await build([program(ownerHop), owner, other, spineReport("ProgramsByOwner")], (n) => n === "Other");
     expect(model.cubes.map((c) => c.name)).toEqual(["Other"]);
   });
 });
@@ -144,7 +158,7 @@ describe("@default on a measure of a cube is refused", () => {
   test("on a measure the entity inherits from an abstract base", async () => {
     const base = entity(
       "Base",
-      [longId, pk, { "measure.aggregate": { name: "rows", "@agg": "count", "@of": "Base.id", "@default": 0 } }],
+      [longId, pk, { "measure.aggregate": { name: "rows", "@agg": "sum", "@of": "Base.id", "@default": 0 } }],
       { abstract: true },
     );
     const child = entity("Child", [table("children")], { extends: "Base" });
