@@ -129,6 +129,11 @@ const SEED_PROGRAMS_AND_WEEKS = `
     (13, 1, NULL, 60),
     (20, 2, 'Solo', 45)`;
 
+/** The same, plus program 3 with no weeks: the row a `@spine` report keeps and a plain one drops. */
+const SEED_ROSTER = `${SEED_PROGRAMS_AND_WEEKS};
+  INSERT INTO "programs" ("id","title","priceCents","status","created_ts") VALUES
+    (3, 'Mobility', 1000, 'DRAFT', '2026-06-01T00:00:00')`;
+
 const SEED_PROGRAMS_BY_TIME = `
   INSERT INTO "programs" ("id","title","priceCents","status","created_ts") VALUES
     (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00'),
@@ -148,11 +153,12 @@ describe("report views — canonical model on real SQLite", () => {
     ({ expected } = await migrate(canonical));
   });
 
-  test("CONVERGENCE: the six canonical views apply, then a second and third migrate propose nothing (the emitter is deterministic)", async () => {
+  test("CONVERGENCE: the nine canonical views apply, then a second and third migrate propose nothing (the emitter is deterministic)", async () => {
     const views = (await select(`SELECT name FROM sqlite_master WHERE type = 'view' ORDER BY name`)).map((r) => r.name);
     for (const v of [
       "v_program_minutes", "v_fitness_totals", "v_programs_by_month",
       "v_programs_by_week", "v_recent_programs", "v_asset_activity",
+      "v_program_roster", "v_program_long_weeks", "v_fitness_totals_filled",
     ]) {
       expect(views).toContain(v);
     }
@@ -265,6 +271,73 @@ describe("report views — canonical model on real SQLite", () => {
         (2, 'Stale', 100, 'PUBLISHED', strftime('%Y-%m-%dT%H:%M:%f','now','-60 days'))`);
     expect(await select(`SELECT * FROM "v_recent_programs"`)).toEqual([{ programs: 1 }]);
   });
+
+  // -------------------------------------------------------------------------
+  // @spine and @default (FR-044 R8 / R9, plan Tables D and E).
+  // -------------------------------------------------------------------------
+
+  test("v_program_roster: a row for program 3, which has no weeks; a default reads 0 where its twin reads null", async () => {
+    await applyRaw(SEED_ROSTER);
+    expect(await select(`SELECT * FROM "v_program_roster" ORDER BY "programKey"`)).toEqual([
+      { programKey: 1, programTitle: "Foundations", weeks: 4, totalMinutes: 240, totalMinutesOrZero: 240,
+        longShare: 0.75, longShareOrZero: 0.75 },
+      { programKey: 2, programTitle: "Strength", weeks: 1, totalMinutes: 45, totalMinutesOrZero: 45,
+        longShare: 0, longShareOrZero: 0 },
+      { programKey: 3, programTitle: "Mobility", weeks: 0, totalMinutes: null, totalMinutesOrZero: 0,
+        longShare: null, longShareOrZero: 0 },
+    ]);
+  });
+
+  test("v_program_long_weeks: the report @segment is in the join, so a program whose weeks it scopes out still has a row", async () => {
+    await applyRaw(SEED_ROSTER);
+    expect(await select(`SELECT * FROM "v_program_long_weeks" ORDER BY "programKey"`)).toEqual([
+      { programKey: 1, weeks: 3, totalMinutesOrZero: 210 },
+      { programKey: 2, weeks: 0, totalMinutesOrZero: 0 },
+      { programKey: 3, weeks: 0, totalMinutesOrZero: 0 },
+    ]);
+  });
+
+  test("v_fitness_totals_filled: no @spine, a default alone; over an empty weeks table it is (0, 0, 0)", async () => {
+    expect(await select(`SELECT count(*) AS n FROM "weeks"`)).toEqual([{ n: 0 }]);
+    expect(await select(`SELECT * FROM "v_fitness_totals_filled"`))
+      .toEqual([{ weeks: 0, totalMinutesOrZero: 0, longShareOrZero: 0 }]);
+    // With rows, the default does not touch the value: it is v_fitness_totals' row.
+    await applyRaw(SEED_ROSTER);
+    expect(await select(`SELECT * FROM "v_fitness_totals_filled"`))
+      .toEqual([{ weeks: 5, totalMinutesOrZero: 285, longShareOrZero: 0.6 }]);
+  });
+
+  test("the view has one row per program", async () => {
+    await applyRaw(SEED_ROSTER);
+    const [programs] = await select(`SELECT count(*) AS n FROM "programs"`);
+    expect(programs?.n).toBe(3);
+    for (const view of ["v_program_roster", "v_program_long_weeks"]) {
+      expect((await select(`SELECT count(*) AS n FROM "${view}"`))[0]?.n).toBe(programs?.n);
+    }
+    // The plain report over the same rows drops program 3: that is what @spine adds.
+    expect((await select(`SELECT count(*) AS n FROM "v_program_minutes"`))[0]?.n).toBe(2);
+  });
+
+  test("STORAGE CLASSES: a defaulted ratio is REAL in every row, the defaulted ones included (the 0.0 literal)", async () => {
+    await applyRaw(SEED_ROSTER);
+    expect(await select(
+      `SELECT typeof("totalMinutes") AS "totalMinutes", typeof("totalMinutesOrZero") AS "totalMinutesOrZero",
+              typeof("longShare") AS "longShare", typeof("longShareOrZero") AS "longShareOrZero"
+         FROM "v_program_roster" ORDER BY "programKey"`,
+    )).toEqual([
+      { totalMinutes: "integer", totalMinutesOrZero: "integer", longShare: "real", longShareOrZero: "real" },
+      { totalMinutes: "integer", totalMinutesOrZero: "integer", longShare: "real", longShareOrZero: "real" },
+      { totalMinutes: "null", totalMinutesOrZero: "integer", longShare: "null", longShareOrZero: "real" },
+    ]);
+    expect(await select(
+      `SELECT typeof("totalMinutesOrZero") AS "totalMinutesOrZero" FROM "v_program_long_weeks" ORDER BY "programKey"`,
+    )).toEqual([{ totalMinutesOrZero: "integer" }, { totalMinutesOrZero: "integer" }, { totalMinutesOrZero: "integer" }]);
+    await applyRaw(`DELETE FROM "weeks"`);
+    expect(await select(
+      `SELECT typeof("totalMinutesOrZero") AS "totalMinutesOrZero", typeof("longShareOrZero") AS "longShareOrZero"
+         FROM "v_fitness_totals_filled"`,
+    )).toEqual([{ totalMinutesOrZero: "integer", longShareOrZero: "real" }]);
+  });
 });
 
 /**
@@ -300,6 +373,87 @@ const ENGAGEMENT_ROWS = `
     (1, 'a@x.test', 1, 1), (1, 'a@x.test', 1, 2), (1, 'a@x.test', 1, 3),
     (1, 'b@x.test', 1, 1), (1, 'c@x.test', 1, 1),
     (1, 'a@x.test', 1, 1)`;
+
+/** A Fact whose prog reference is NULLABLE, in a `@spine` report grouped by the prog's title. */
+const FACT_SPINE_MODEL = JSON.stringify({ "metadata.root": { package: "acme", children: [
+  { "object.entity": { name: "Prog", children: [
+    { "source.rdb": { "@table": "progs" } },
+    { "field.long": { name: "id" } },
+    { "field.string": { name: "title", "@required": true } },
+    { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+  ] } },
+  { "object.entity": { name: "Fact", children: [
+    { "source.rdb": { "@table": "facts" } },
+    { "field.long": { name: "id" } },
+    { "field.long": { name: "progId" } },
+    { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+    { "identity.reference": { name: "fkProg", "@fields": "progId", "@references": "Prog" } },
+    { "dimension.attribute": { name: "progTitle", "@of": "Prog.title", "@via": "Fact.fkProg" } },
+    { "measure.aggregate": { name: "facts", "@agg": "count", "@of": "Fact.id" } },
+  ] } },
+  { "object.report": { name: "FactsByProg", "@from": "Fact", "@spine": "Fact.fkProg", "@dimensions": ["progTitle"], "@measures": ["facts"], children: [
+    { "source.rdb": { "@kind": "view", "@view": "v_facts_by_prog" } } ] } },
+]}});
+
+/**
+ * Program <- Week, where the week's label is nullable: a `count` and a `sum` scoped to the
+ * weeks with NO label, in a `@spine` report. A program with no weeks gets one
+ * null-extended row whose `label` is null too, and that row must not be counted.
+ */
+const UNLABELLED_MODEL = JSON.stringify({ "metadata.root": { package: "acme", children: [
+  { "object.entity": { name: "Program", children: [
+    { "source.rdb": { "@table": "programs" } },
+    { "field.long": { name: "id" } },
+    { "field.string": { name: "title", "@required": true } },
+    { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+  ] } },
+  { "object.entity": { name: "Week", children: [
+    { "source.rdb": { "@table": "weeks" } },
+    { "field.long": { name: "id" } },
+    { "field.long": { name: "programId", "@required": true } },
+    { "field.string": { name: "label" } },
+    { "field.int": { name: "durationMinutes", "@required": true } },
+    { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+    { "identity.reference": { name: "fkProgram", "@fields": "programId", "@references": "Program" } },
+    { "dimension.attribute": { name: "programKey", "@of": "Program.id", "@via": "Week.fkProgram" } },
+    { "measure.aggregate": { name: "unlabelled", "@agg": "count", "@of": "Week.id", "@filter": { label: { isNull: true } } } },
+    { "measure.aggregate": { name: "unlabelledMinutes", "@agg": "sum", "@of": "Week.durationMinutes", "@filter": { label: { isNull: true } } } },
+  ] } },
+  { "object.report": { name: "UnlabelledWeeks", "@from": "Week", "@spine": "Week.fkProgram",
+    "@dimensions": ["programKey"], "@measures": ["unlabelled", "unlabelledMinutes"], children: [
+    { "source.rdb": { "@kind": "view", "@view": "v_unlabelled_weeks" } } ] } },
+]}});
+
+/** Program <- Week <- Session, spine `Session.week.program` (plan Table D's two-hop case). */
+const SESSION_MODEL = JSON.stringify({ "metadata.root": { package: "acme", children: [
+  { "object.entity": { name: "Program", children: [
+    { "source.rdb": { "@table": "programs" } },
+    { "field.long": { name: "id" } },
+    { "field.string": { name: "title", "@required": true } },
+    { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+  ] } },
+  { "object.entity": { name: "Week", children: [
+    { "source.rdb": { "@table": "weeks" } },
+    { "field.long": { name: "id" } },
+    { "field.long": { name: "programId", "@required": true } },
+    { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+    { "identity.reference": { name: "program", "@fields": "programId", "@references": "Program" } },
+  ] } },
+  { "object.entity": { name: "Session", children: [
+    { "source.rdb": { "@table": "sessions" } },
+    { "field.long": { name: "id" } },
+    { "field.long": { name: "weekId", "@required": true } },
+    { "field.int": { name: "minutes", "@required": true } },
+    { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+    { "identity.reference": { name: "week", "@fields": "weekId", "@references": "Week" } },
+    { "dimension.attribute": { name: "programTitle", "@of": "Program.title", "@via": "Session.week.program" } },
+    { "measure.aggregate": { name: "sessions", "@agg": "count", "@of": "Session.id" } },
+    { "measure.aggregate": { name: "totalMinutes", "@agg": "sum", "@of": "Session.minutes", "@default": 0 } },
+  ] } },
+  { "object.report": { name: "SessionsByProgram", "@from": "Session", "@spine": "Session.week.program",
+    "@dimensions": ["programTitle"], "@measures": ["sessions", "totalMinutes"], "@filter": { minutes: { gte: 10 } }, children: [
+    { "source.rdb": { "@kind": "view", "@view": "v_sessions_by_program" } } ] } },
+]}});
 
 describe("report views — inline model on real SQLite", () => {
   /** A Stamp table with date and naive-timestamp columns for the quarter / year grains. */
@@ -363,6 +517,63 @@ describe("report views — inline model on real SQLite", () => {
       INSERT INTO "pairs" ("a","b") VALUES
         (1, 2), (1, 2), (2, 1), (1, NULL), (NULL, 3), (NULL, NULL)`);
     expect(await select(`SELECT * FROM "v_pair_totals"`)).toEqual([{ combos: 2 }]);
+  });
+
+  test("with @spine a fact whose reference is null is in no row", async () => {
+    const root = await loadInline(FACT_SPINE_MODEL);
+    expect(viewSql(root, "v_facts_by_prog")).toContain(`FROM "progs"`);
+    const { expected } = await migrate(root);
+    await assertConverged(expected);
+
+    await applyRaw(`
+      INSERT INTO "progs" ("id","title") VALUES (1, 'Alpha');
+      INSERT INTO "facts" ("id","progId") VALUES (1, 1), (2, 1), (3, NULL), (4, NULL), (5, NULL)`);
+    // One row per prog; the three facts with no prog belong to none of them.
+    expect(await select(`SELECT * FROM "v_facts_by_prog" ORDER BY "progTitle"`)).toEqual([
+      { progTitle: "Alpha", facts: 2 },
+    ]);
+  });
+
+  test("an isNull condition does not count the empty row", async () => {
+    const root = await loadInline(UNLABELLED_MODEL);
+    const { expected } = await migrate(root);
+    await assertConverged(expected);
+
+    await applyRaw(`
+      INSERT INTO "programs" ("id","title") VALUES (1, 'Foundations'), (2, 'Strength'), (3, 'Mobility');
+      INSERT INTO "weeks" ("id","programId","label","durationMinutes") VALUES
+        (10, 1, 'Week 1', 30), (11, 1, 'Week 2', 60), (12, 1, 'Week 2', 90), (13, 1, NULL, 60),
+        (20, 2, 'Solo', 45)`);
+    // Program 3's null-extended row has a null label, and the count still reads 0: it counts
+    // the fact's id, which is null there too. The sum of nothing is null (no @default).
+    expect(await select(`SELECT * FROM "v_unlabelled_weeks" ORDER BY "programKey"`)).toEqual([
+      { programKey: 1, unlabelled: 1, unlabelledMinutes: 60 },
+      { programKey: 2, unlabelled: 0, unlabelledMinutes: null },
+      { programKey: 3, unlabelled: 0, unlabelledMinutes: null },
+    ]);
+  });
+
+  test("a two-hop spine: every program has a row, whether it has no weeks or only scoped-out sessions", async () => {
+    const root = await loadInline(SESSION_MODEL);
+    expect(viewSql(root, "v_sessions_by_program")).toContain([
+      `  FROM "programs" p`,
+      `  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId"`,
+      `  LEFT OUTER JOIN "sessions" s ON w."id" = s."weekId" AND s."minutes" >= 10`,
+    ].join("\n"));
+    const { expected } = await migrate(root);
+    await assertConverged(expected);
+
+    // Alpha: two weeks, sessions of 30 and 5 minutes in the first (the 5 is scoped out) and
+    // none in the second. Beta: a week whose only session is scoped out. Gamma: no weeks.
+    await applyRaw(`
+      INSERT INTO "programs" ("id","title") VALUES (1, 'Alpha'), (2, 'Beta'), (3, 'Gamma');
+      INSERT INTO "weeks" ("id","programId") VALUES (10, 1), (11, 1), (20, 2);
+      INSERT INTO "sessions" ("id","weekId","minutes") VALUES (100, 10, 30), (101, 10, 5), (200, 20, 9)`);
+    expect(await select(`SELECT * FROM "v_sessions_by_program" ORDER BY "programTitle"`)).toEqual([
+      { programTitle: "Alpha", sessions: 1, totalMinutes: 30 },
+      { programTitle: "Beta", sessions: 0, totalMinutes: 0 },
+      { programTitle: "Gamma", sessions: 0, totalMinutes: 0 },
+    ]);
   });
 
   test("QUARTER and YEAR grains: every month of a quarter lands on its first day, and the view converges", async () => {

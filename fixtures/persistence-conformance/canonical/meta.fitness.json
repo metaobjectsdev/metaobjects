@@ -44,7 +44,10 @@
           { "measure.aggregate":   { "name": "avgMinutes", "@agg": "avg", "@of": "Week.durationMinutes" } },
           { "measure.aggregate":   { "name": "minMinutes", "@agg": "min", "@of": "Week.durationMinutes" } },
           { "measure.aggregate":   { "name": "maxMinutes", "@agg": "max", "@of": "Week.durationMinutes" } },
-          { "measure.ratio":       { "name": "longShare", "@numerator": "longWeeks", "@denominator": "weeks" } }
+          { "measure.ratio":       { "name": "longShare", "@numerator": "longWeeks", "@denominator": "weeks" } },
+          { "dimension.attribute": { "name": "programKey", "@of": "Program.id", "@via": "Week.fkProgram" } },
+          { "measure.aggregate":   { "name": "totalMinutesOrZero", "@agg": "sum", "@of": "Week.durationMinutes", "@default": 0 } },
+          { "measure.ratio":       { "name": "longShareOrZero", "@numerator": "longWeeks", "@denominator": "weeks", "@default": 0 } }
         ]
       }},
       { "object.entity": {
@@ -340,6 +343,16 @@
       { "object.report": { "name": "AssetActivity", "@from": "Asset",
         "@dimensions": ["recordedAt:hour", "asOfDate:week"], "@measures": ["assets"],
         "children": [ { "source.rdb": { "@kind": "view", "@view": "v_asset_activity" } } ] } },
+      { "object.report": { "name": "ProgramRoster", "@from": "Week", "@spine": "Week.fkProgram",
+        "@dimensions": ["programKey", "programTitle"],
+        "@measures": ["weeks", "totalMinutes", "totalMinutesOrZero", "longShare", "longShareOrZero"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_program_roster" } } ] } },
+      { "object.report": { "name": "ProgramLongWeeks", "@from": "Week", "@spine": "Week.fkProgram",
+        "@dimensions": ["programKey"], "@measures": ["weeks", "totalMinutesOrZero"], "@segment": "long",
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_program_long_weeks" } } ] } },
+      { "object.report": { "name": "FitnessTotalsFilled", "@from": "Week",
+        "@measures": ["weeks", "totalMinutesOrZero", "longShareOrZero"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_fitness_totals_filled" } } ] } },
 
       { "template.prompt": {
         "name": "coachNote",

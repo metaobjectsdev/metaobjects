@@ -36,7 +36,7 @@ describe("canonical report-shapes artifact (report-shapes.json)", () => {
     expect(generated).toBe(committed);
   });
 
-  test("the six canonical reports appear in declaration order, with the contract's byte format", () => {
+  test("the nine canonical reports appear in declaration order, with the contract's byte format", () => {
     const committed = readReportShapesJson();
     expect(committed.endsWith("}\n")).toBe(true);
     expect(committed.startsWith('{\n  "reports": [\n    {\n      "report": "fitness::ProgramMinutes"')).toBe(true);
@@ -48,6 +48,36 @@ describe("canonical report-shapes artifact (report-shapes.json)", () => {
       ["fitness::ProgramsByWeek", "v_programs_by_week"],
       ["fitness::RecentPrograms", "v_recent_programs"],
       ["fitness::AssetActivity", "v_asset_activity"],
+      ["fitness::ProgramRoster", "v_program_roster"],
+      ["fitness::ProgramLongWeeks", "v_program_long_weeks"],
+      ["fitness::FitnessTotalsFilled", "v_fitness_totals_filled"],
+    ]);
+  });
+
+  test("@spine and @default (Table C): a spine key and a defaulted measure are required, their undefaulted twins are not", () => {
+    type Field = { name: string; role: string; subType: string; required: boolean };
+    const parsed = JSON.parse(readReportShapesJson()) as { reports: { report: string; fields: Field[] }[] };
+    const fields = (report: string): [string, string, string, boolean][] =>
+      (parsed.reports.find((r) => r.report === report)?.fields ?? []).map((f) => [f.name, f.role, f.subType, f.required]);
+
+    expect(fields("fitness::ProgramRoster")).toEqual([
+      ["programKey", "dimension", "long", true],
+      ["programTitle", "dimension", "string", true],
+      ["weeks", "measure", "long", true],
+      ["totalMinutes", "measure", "long", false],
+      ["totalMinutesOrZero", "measure", "long", true],
+      ["longShare", "measure", "decimal", false],
+      ["longShareOrZero", "measure", "decimal", true],
+    ]);
+    expect(fields("fitness::ProgramLongWeeks")).toEqual([
+      ["programKey", "dimension", "long", true],
+      ["weeks", "measure", "long", true],
+      ["totalMinutesOrZero", "measure", "long", true],
+    ]);
+    expect(fields("fitness::FitnessTotalsFilled")).toEqual([
+      ["weeks", "measure", "long", true],
+      ["totalMinutesOrZero", "measure", "long", true],
+      ["longShareOrZero", "measure", "decimal", true],
     ]);
   });
 
