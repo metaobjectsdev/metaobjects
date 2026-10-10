@@ -11,7 +11,7 @@
 // composite reference (the view joins on the first). Conditions render through the report SQL
 // module's own `cond`, with a renderer that escapes for Cube (cube-sql.ts).
 //
-// An alias cube (Table E, Ruling 12) is a standalone cube over its entity's table, never an
+// An alias cube (Table E) is a standalone cube over its entity's table, never an
 // `extends`: Cube's `extends` copies every member and pre-aggregation of the parent, so an alias
 // would expose the target's measures again and rebuild its rollups. It holds the primary key,
 // the members the dimensions reaching it read, and the joins of the paths that continue through
@@ -281,7 +281,8 @@ class CubeModelBuilder {
       for (const [dim, cubes] of draft.viaCubes) draft.declaredDims.set(dim, this.viaDimension(draft, dim, cubes, graph));
     }
     // Table F: in model order, so scope segments are in report order and rollups collect in report
-    // order (cubeSpec writes them coarsest first, Ruling 29).
+    // order. cubeSpec then writes the rollups coarsest first, so the first rollup Cube can answer a
+    // report's query from is the one built for it, not a finer one (cube-reports.ts).
     for (const o of objects) if (servedReport(o)) this.addReport(o);
 
     return { cubes: emitted.map((c) => this.cubeSpec(c)), views: [] };
@@ -384,10 +385,11 @@ class CubeModelBuilder {
     // ADR-0039: resolving children(), so members declared on an abstract base land here.
     for (const child of draft.entity.children()) {
       if (!REPORTING_TYPES.has(child.type)) continue;
+      // The type string identifies the node (no `instanceof` across packages); casts are type-only.
+      if (child.type === TYPE_DIMENSION && this.mergeIntoKeyDimension(draft, child as MetaDimension)) continue;
       const label = `${child.type} '${memberKey(child)}'`;
       draft.namespace.add(child.name, label);
       const where = `cube '${draft.name}': ${label}`;
-      // The type string identifies the node (no `instanceof` across packages); casts are type-only.
       if (child.type === TYPE_DIMENSION) {
         const dim = child as MetaDimension;
         draft.declaredOrder.push(dim);
@@ -399,6 +401,24 @@ class CubeModelBuilder {
         draft.segments.push(segmentSpec(draft.entity, child as MetaSegment, where, this.mc));
       }
     }
+  }
+
+  /**
+   * A declared dimension without `@via` that is named after one of the entity's key fields and
+   * reads that field: Cube gets ONE dimension, the key dimension, made `public: true` and carrying
+   * the declared dimension's title, description and grains. Both would have the same name and the
+   * same SQL, and the declaration says the key is meant to be queried. True when it merged. A
+   * same-named dimension over another field is left to the namespace, which reports the collision.
+   */
+  private mergeIntoKeyDimension(draft: CubeDraft, dim: MetaDimension): boolean {
+    if (dim.via() !== undefined) return false;
+    const index = draft.keyDims.findIndex((k) => k.name === dim.name);
+    if (index < 0) return false;
+    // Without @via the field is read from the cube's own entity, so a name match is that key field.
+    if (dimensionOfField(dim, draft.entity, this.root)?.name !== dim.name) return false;
+    draft.keyDims[index] = { ...draft.keyDims[index]!, public: true, ...grainsOf(dim), ...docOf(dim) };
+    if (!draft.declaredByField.has(dim.name)) draft.declaredByField.set(dim.name, dim.name);
+    return true;
   }
 
   /** A dimension over the owning cube's own column (no `@via`). */

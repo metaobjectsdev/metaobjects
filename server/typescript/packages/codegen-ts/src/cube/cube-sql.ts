@@ -1,9 +1,11 @@
 // FR-044 Plan 4, Table G — the SQL the Cube model carries. Cube reads every `sql` value twice
-// before the database sees it: Jinja processes the YAML model, then Cube's own `{...}` member
-// reference syntax. So an identifier or a literal the exporter writes is SQL-quoted exactly as
-// the report view lowering quotes it (report-sql.ts: `q`, `literal`), then escaped for both.
-// The `{CUBE}`, `{Target}`, `{Target.member}` and `{member}` tokens the exporter inserts itself
-// are never escaped. Relative dates are the view's own SQL (`relativeNowSql`), unchanged.
+// before the database sees it: Jinja processes the YAML model, then Cube compiles the value as a
+// JS template literal, where `{...}` is a member reference and a backslash is an escape (`\b` a
+// backspace, `\_` a plain `_`; a trailing `\` swallows the closing quote, and `\u` with no hex
+// digits fails the compile). So an identifier or a literal the exporter writes is SQL-quoted
+// exactly as the report view lowering quotes it (report-sql.ts: `q`, `literal`), then escaped for
+// both. The `{CUBE}`, `{Target}`, `{Target.member}` and `{member}` tokens the exporter inserts
+// itself are never escaped. Relative dates are the view's own SQL (`relativeNowSql`), unchanged.
 
 import { isRelativeNow } from "../projection/report-spec.js";
 import { literal, q, ref, type SqlRenderer } from "../projection/report-sql.js";
@@ -13,19 +15,24 @@ import type { CubeDialect } from "./cube-model-spec.js";
 /** The owning cube, in a member's or a join's SQL. */
 export const CUBE_SELF = "{CUBE}";
 
-/** `{` and `}` as Cube's reference syntax reads them literally. */
-export function escapeCubeBraces(sql: string): string {
-  return sql.replace(/[{}]/g, (brace) => `\\${brace}`);
+/**
+ * SQL text as Cube's template reader hands it back unchanged: every `\` doubled, THEN `{` and `}`
+ * escaped. The order matters: doubling after the braces would turn the `\{` just written into
+ * `\\{`, an escaped backslash followed by a live brace. The same order free text uses
+ * (cube-yaml.ts, `cubeTemplateText`).
+ */
+function escapeCubeTemplate(sql: string): string {
+  return sql.replace(/\\/g, "\\\\").replace(/[{}]/g, (brace) => `\\${brace}`);
 }
 
 const JINJA_OPENER = /\{[%#]/;
 const JINJA_RAW_END = "endraw";
 
 /**
- * Table G's rule for one SQL-quoted identifier or literal: braces escaped for Cube's reference
- * syntax, then, when the text holds `{%` or `{#`, the whole token wrapped in `{% raw %}` for
- * Jinja (a backslash does not stop Jinja). Text holding `endraw` cannot be carried: it would end
- * that raw block.
+ * Table G's rule for one SQL-quoted identifier or literal: backslashes doubled and braces escaped
+ * for Cube's template reader, then, when the text holds `{%` or `{#`, the whole token wrapped in
+ * `{% raw %}` for Jinja (a backslash does not stop Jinja). Text holding `endraw` cannot be
+ * carried: it would end that raw block.
  */
 function escapeToken(sql: string, kind: "identifier" | "literal", where: string): string {
   if (sql.includes(JINJA_RAW_END)) {
@@ -38,7 +45,7 @@ function escapeToken(sql: string, kind: "identifier" | "literal", where: string)
           : `Rename it in the model (@column, or the source's table or schema).`),
     );
   }
-  const escaped = escapeCubeBraces(sql);
+  const escaped = escapeCubeTemplate(sql);
   return JINJA_OPENER.test(sql) ? `{% raw %}${escaped}{% endraw %}` : escaped;
 }
 

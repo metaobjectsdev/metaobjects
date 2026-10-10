@@ -133,11 +133,12 @@ describe("meta eject takes many names", () => {
       expect(row?.wire.import).toBe(
         'import { cubeModel } from "./codegen/generators/cube-model.js";',
       );
-      // The emitted YAML imports no package, and the only thing to install is the engine
-      // the copy itself imports.
+      // The emitted YAML imports no package, so there is nothing to install at runtime. The dev
+      // installs are the packages the copy itself imports: the engine and the metadata types.
       const { install } = payload();
       expect(install.runtime).toEqual([]);
       expect(install.dev.some((d) => d.startsWith("@metaobjectsdev/codegen-ts@"))).toBe(true);
+      expect(install.dev.some((d) => d.startsWith("@metaobjectsdev/metadata@"))).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

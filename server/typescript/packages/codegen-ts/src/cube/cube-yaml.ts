@@ -8,13 +8,14 @@
 //
 // Three kinds of scalar (Table G, YAML row):
 //   - SQL (`sql_table`, `sql`, a join's or a filter's `sql`) arrives already escaped for Cube's
-//     `{...}` references and for Jinja, so it is only quoted for YAML: single-quoted (`'` doubled)
-//     when it is plain text, as Table H shows. A single-quoted scalar folds a line break and cannot
-//     hold a control character, and a string `@filter` value is legal model data, so a value holding
-//     a control character, a line separator or a byte-order mark is written double-quoted (JSON
-//     escapes) instead. Nothing is refused and nothing is altered.
-//   - Free text (`title`, `description`) arrives raw, and Cube reads it as a template too (Ruling 28,
-//     executed on Cube 1.7.43): `{x}` is a member reference, `${x}` an interpolation and a backslash
+//     template reader (backslashes doubled, `{...}` escaped) and for Jinja (cube-sql.ts), so it is
+//     only quoted for YAML: single-quoted (`'` doubled) when it is plain text, as Table H shows. A
+//     single-quoted scalar folds a line break and cannot hold a control character, and a string
+//     `@filter` value is legal model data, so a value holding a control character, a line
+//     separator or a byte-order mark is written double-quoted (JSON escapes) instead. Nothing is
+//     refused and nothing is altered.
+//   - Free text (`title`, `description`) arrives raw, and Cube reads it as a template too (executed
+//     on Cube 1.7.43): `{x}` is a member reference, `${x}` an interpolation and a backslash
 //     an escape, so `a {b} c` fails the whole model and `C:\path` comes back `C:path`. The text is
 //     encoded for that first: every `\` doubled, then `{` → `\{` and `}` → `\}`. Cube runs Jinja over
 //     the whole file, so text whose ORIGINAL form holds `{{`, `{%` or `{#` is then wrapped in

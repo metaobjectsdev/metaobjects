@@ -3,9 +3,10 @@
 // renderer writes one file per cube from it. Field names follow Cube's own keys in camelCase
 // (`sqlTable` is `sql_table`, `primaryKey` is `primary_key`, `preAggregations` is
 // `pre_aggregations`). Every SQL fragment (`sql`, `sqlTable`, a filter's or a join's `sql`)
-// arrives escaped for Cube's `{...}` reference syntax and Jinja (Table G), so a renderer only
-// YAML-quotes it. Free text (`title`, `description`) arrives raw, as the model declares it: the
-// YAML renderer escapes it for Cube, which reads free text as a template too, and for Jinja.
+// arrives escaped for Cube's template reader (backslashes doubled, `{...}` escaped) and for
+// Jinja (Table G), so a renderer only YAML-quotes it. Free text (`title`, `description`) arrives
+// raw, as the model declares it: the YAML renderer escapes it for Cube, which reads free text as
+// a template too, and for Jinja.
 
 import type { TimeGrain } from "@metaobjectsdev/metadata";
 
@@ -140,12 +141,17 @@ export interface CubeSpecBase {
 
 export type CubeSpec = CubeSpecBase & CubeSource;
 
-/** One cube a Cube view includes (Task 10). */
+// The Cube view shapes below are NOT public API yet: the package root does not export them, and
+// nothing builds a view (a `@spine` report's mapping is not built, plan Task 10). They stay here,
+// internal, so `CubeModel` has the slot that mapping will fill; their shape may change with it.
+
+/** One member a Cube view includes under another name. Internal (see above). */
 export interface CubeViewIncludeAlias {
   readonly name: string;
   readonly alias: string;
 }
 
+/** One cube a Cube view includes. Internal (see above). */
 export interface CubeViewCubeSpec {
   /** Dotted cube path from the view's root cube, e.g. `Program.Week`. */
   readonly joinPath: string;
@@ -153,6 +159,7 @@ export interface CubeViewCubeSpec {
   readonly prefix?: boolean;
 }
 
+/** A Cube view. Internal (see above). */
 export interface CubeViewSpec {
   readonly name: string;
   readonly public?: boolean;
@@ -163,5 +170,9 @@ export interface CubeViewSpec {
 
 export interface CubeModel {
   readonly cubes: readonly CubeSpec[];
+  /**
+   * Always empty today. Not public API yet: its element type is internal, and the slot exists for
+   * the `@spine` mapping (a Cube view per spine report), which is not built.
+   */
   readonly views: readonly CubeViewSpec[];
 }

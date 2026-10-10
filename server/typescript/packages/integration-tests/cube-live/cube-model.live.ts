@@ -12,9 +12,14 @@
  *   3. for each served report, builds the Cube query Table F says reproduces it, requires Cube to
  *      answer from the report's rollup when the model has one, and compares the rows with
  *      `SELECT * FROM <view>` under Table I's normalization;
- *   4. loads every Postgres case of the mapping corpus into the same Cube and requires each to
- *      compile (controller Ruling 11), which turns the shapes no live query reaches (alias cubes,
- *      a TPH subtype's `sql`, one-to-one joins, Jinja-escaped text) into executed checks.
+ *   4. loads every case of the mapping corpus that has an expected tree into the same Cube and
+ *      requires each to compile, which turns the shapes no live query reaches (alias cubes, a TPH
+ *      subtype's `sql`, one-to-one joins, Jinja-escaped text) into executed checks. The MySQL
+ *      cases are loaded too: Cube's `/v1/meta` compile runs no SQL, so the Postgres data source
+ *      does not stop a MySQL model from compiling;
+ *   5. reads the `escaping` case's SQL back through `/v1/sql` and requires each of its literals,
+ *      and its braced column, to reach the SQL exactly as the report view writes them (Cube
+ *      compiles every `sql` as a template literal, so a missed escape changes the value).
  *
  * It is `*.live.ts`, so no directory-walking `bun test` picks it up: it runs only by its path,
  * from `bun run test:cube` (the `cube` lane of scripts/ci-local.sh). Without docker every test is
@@ -82,7 +87,7 @@ const LOAD_BACKOFF_CAP_MS = 10_000;
 const CASE_BUDGET_MS = 60_000;
 
 /** The corpus cases the compile pass loads, known when the tests are defined (its timeout scales with them). */
-const CORPUS_CASES = postgresCorpusCases();
+const CORPUS_CASES = corpusCasesWithTree();
 /** The corpus pass's one budget, which every case's deadline is drawn from. */
 const CORPUS_BUDGET_MS = CORPUS_CASES.length * CASE_BUDGET_MS;
 
@@ -273,7 +278,7 @@ describe(`cube-model live check (${CUBE_IMAGE}, development mode)`, () => {
     }, TEST_TIMEOUT_MS);
   }
 
-  test.skipIf(skip)("every Postgres case of the mapping corpus compiles in Cube (Ruling 11)", async () => {
+  test.skipIf(skip)("every case of the mapping corpus with an expected tree compiles in Cube, MySQL included", async () => {
     const s = requireStack();
     const cases = CORPUS_CASES;
     expect(cases.length).toBeGreaterThan(0);
@@ -301,7 +306,61 @@ describe(`cube-model live check (${CUBE_IMAGE}, development mode)`, () => {
     // The free-text check is not vacuous: free-text-jinja alone declares six values.
     expect(freeTextChecked).toBeGreaterThanOrEqual(6);
   }, CORPUS_BUDGET_MS + 60_000);
+
+  test.skipIf(skip)("escaping: each literal and the braced column reach Cube's SQL as the view writes them", async () => {
+    const s = requireStack();
+    const outcome = await swapInCase(s, ESCAPING_CASE, Date.now() + CASE_BUDGET_MS);
+    if (outcome !== undefined) throw new Error(`${ESCAPING_CASE}: ${outcome}`);
+
+    // Every segment the case declares has its expected literal below, so a new one cannot go unchecked.
+    const declared = declaredCubes(readTree(join(CUBE_CORPUS_DIR, ESCAPING_CASE, "expected", "model")));
+    const segments = declared.flatMap((c) => (c.segments ?? []).map((m) => String(m.name))).sort();
+    expect(segments).toEqual(ESCAPING_LITERALS.map((e) => e.segment).sort());
+
+    const wrong: string[] = [];
+    for (const { segment, literal } of ESCAPING_LITERALS) {
+      const query: CubeQuery = {
+        measures: [],
+        dimensions: [`${ESCAPING_CUBE}.code`],
+        timeDimensions: [],
+        segments: [`${ESCAPING_CUBE}.${segment}`],
+        timezone: "UTC",
+      };
+      const sql = await generatedSql(s, query);
+      // The view writes `"title" = <literal>`; Cube puts its cube alias in front of the column.
+      const predicate = `."title" = ${literal}`;
+      const column = `."co{de}"`;
+      const found = sql.includes(predicate) && sql.includes(column);
+      timings.push(`escaping /v1/sql ${segment}: ${found ? "ok" : "MISMATCH"}, ${JSON.stringify(predicate)}`);
+      if (!found) wrong.push(`${segment}: want ${JSON.stringify(predicate)} and ${JSON.stringify(column)} in Cube's SQL, got ${JSON.stringify(sql)}`);
+    }
+    expect(wrong).toEqual([]);
+  }, CASE_BUDGET_MS + 120_000);
 });
+
+// ---------------------------------------------------------------------------------------------
+// The escaping case through /v1/sql.
+// ---------------------------------------------------------------------------------------------
+
+const ESCAPING_CASE = "escaping";
+/** The case's one cube (fixtures/cube-model/escaping/meta.json). */
+const ESCAPING_CUBE = "Program";
+
+/**
+ * Each segment of the `escaping` case and the literal its `@filter` value is in the report view's
+ * own SQL (report-sql.ts `literal`, Postgres: `'` doubled, nothing else changed), written out by
+ * hand. After Jinja and its template reader, Cube's SQL must hold each one exactly as written here.
+ */
+const ESCAPING_LITERALS: readonly { readonly segment: string; readonly literal: string }[] = [
+  { segment: "braces", literal: "'a{b}c'" },
+  { segment: "doubleBraces", literal: "'{{x}}'" },
+  { segment: "jinja", literal: "'{{y}} {% z %} {# c #}'" },
+  { segment: "quote", literal: "'it''s'" },
+  { segment: "backslash", literal: "'a\\b'" },
+  { segment: "trailingBackslash", literal: "'ends\\'" },
+  { segment: "backslashBrace", literal: "'a\\{b}'" },
+  { segment: "lineBreak", literal: "'two\nlines'" },
+];
 
 // ---------------------------------------------------------------------------------------------
 // Table F: the Cube query that reproduces a report.
@@ -529,7 +588,6 @@ function queryUrl(s: CubeStack, path: "load" | "sql", query: CubeQuery): string 
   return `${s.apiBase}/${path}?query=${encodeURIComponent(JSON.stringify(query))}`;
 }
 
-/** `/v1/load`, retried every second while Cube answers `Continue wait` (a rollup is building). */
 /**
  * `/v1/load`, retried every second while Cube answers `Continue wait` (a rollup is building), and
  * with backoff after a transport error (at most LOAD_TRANSPORT_RETRIES in a row), all within
@@ -568,12 +626,20 @@ async function load(s: CubeStack, query: CubeQuery): Promise<LoadResponse> {
   }
 }
 
+/** The SQL Cube generates for a query (`/v1/sql`); throws when Cube answers without it. */
+async function generatedSql(s: CubeStack, query: CubeQuery): Promise<string> {
+  const { status, body } = await getJson(queryUrl(s, "sql", query));
+  const sql = (body as { sql?: { sql?: unknown } }).sql?.sql;
+  if (!Array.isArray(sql) || typeof sql[0] !== "string") {
+    throw new Error(`/v1/sql answered HTTP ${status} without SQL: ${JSON.stringify(body).slice(0, 2000)}`);
+  }
+  return sql[0];
+}
+
 /** The SQL Cube generates for a query, for a failure message. */
 async function cubeSql(s: CubeStack, query: CubeQuery): Promise<string> {
   try {
-    const { body } = await getJson(queryUrl(s, "sql", query));
-    const sql = (body as { sql?: { sql?: unknown } }).sql?.sql;
-    return Array.isArray(sql) ? String(sql[0]) : JSON.stringify(body).slice(0, 2000);
+    return await generatedSql(s, query);
   } catch (e) {
     return `(no SQL: ${e instanceof Error ? e.message : String(e)})`;
   }
@@ -676,21 +742,16 @@ function declaredRollups(tree: ReadonlyMap<string, string>, cube: string): strin
 // The corpus compile pass.
 // ---------------------------------------------------------------------------------------------
 
-/** Mapping-corpus cases with an `expected/` tree whose dialect is postgres (the default). */
-function postgresCorpusCases(): string[] {
+/**
+ * Mapping-corpus cases with an `expected/` tree, of either dialect. Compiling a model runs no SQL
+ * (`/v1/meta` neither queries the data source nor builds a rollup), so a MySQL case compiles
+ * against the Postgres data source as well. Its SQL is held by the golden, not executed.
+ */
+function corpusCasesWithTree(): string[] {
   return readdirSync(CUBE_CORPUS_DIR)
     .filter((name) => name !== "canonical" && statSync(join(CUBE_CORPUS_DIR, name)).isDirectory())
     .filter((name) => existsSync(join(CUBE_CORPUS_DIR, name, "expected")))
-    .filter((name) => caseDialect(name) === "postgres")
     .sort();
-}
-
-function caseDialect(name: string): string {
-  const path = join(CUBE_CORPUS_DIR, name, "case.json");
-  if (!existsSync(path)) return "postgres";
-  const raw: unknown = JSON.parse(readFileSync(path, "utf8"));
-  const dialect = typeof raw === "object" && raw !== null ? (raw as { dialect?: unknown }).dialect : undefined;
-  return typeof dialect === "string" ? dialect : "postgres";
 }
 
 let swapCount = 0;
@@ -751,8 +812,8 @@ interface FreeTextPair {
 const REPORTING_MEMBER_TYPES: ReadonlySet<string> = new Set([TYPE_DIMENSION, TYPE_MEASURE, TYPE_SEGMENT]);
 
 /**
- * Ruling 28: Cube reads `title` and `description` as templates, so the exporter escapes them. The
- * check that the escape is exact: every title and description the case's MODEL declares (on an
+ * Cube reads `title` and `description` as templates, so the exporter escapes them. The check that
+ * the escape is exact: every title and description the case's MODEL declares (on an
  * entity Cube lists, and on its dimensions, measures and segments) is paired with what
  * `/v1/meta` hands back, which must be the same text. `/v1/meta` exposes a cube's `title` and
  * `description`, and a member's `description` and `shortTitle` (its own title; `title` there is

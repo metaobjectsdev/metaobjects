@@ -119,7 +119,7 @@ describe("catalog declarations are resolved against what the generators emit", (
     expect(produced.length).toBeGreaterThan(12);
   });
 
-  test("exactly these generators contribute NO evidence — the list may only shrink", () => {
+  test("exactly these generators contribute NO evidence — the list grows only by a decision with a reason below", () => {
     // A generator that emits nothing here makes every subset check below vacuously
     // green for it, so its declarations are UNVERIFIED. That is a real coverage hole
     // and it is pinned rather than left implicit: a corpus that quietly loses coverage

@@ -20,6 +20,10 @@ cubes:
       - name: quote
         sql: '{CUBE}."title" = ''it''''s'''
       - name: backslash
-        sql: '{CUBE}."title" = ''a\b'''
+        sql: '{CUBE}."title" = ''a\\b'''
+      - name: trailingBackslash
+        sql: '{CUBE}."title" = ''ends\\'''
+      - name: backslashBrace
+        sql: '{CUBE}."title" = ''a\\\{b\}'''
       - name: lineBreak
         sql: "{CUBE}.\"title\" = 'two\nlines'"

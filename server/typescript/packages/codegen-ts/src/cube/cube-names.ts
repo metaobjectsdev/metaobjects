@@ -77,7 +77,9 @@ export function assertCubeNames(cubes: readonly { readonly name: string; readonl
       throw new CubeModelError(
         ERR_CUBE_NAME_COLLISION,
         `${prior} and ${what} would both be cube '${name}'. A cube is named after its entity and the name ` +
-          `is kept as written, so narrow the generator's filter to select only one of them, or rename one.`,
+          `is kept as written, so rename one of them, or narrow the generator's filter to leave one out. The ` +
+          `filter helps only when no @via dimension reaches the entity it leaves out: an entity a @via reaches ` +
+          `is still written, as a join-target cube.`,
       );
     }
     seen.set(name, what);

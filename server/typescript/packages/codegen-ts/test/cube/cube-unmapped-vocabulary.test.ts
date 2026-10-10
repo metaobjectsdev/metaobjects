@@ -8,7 +8,7 @@
 import { describe, test, expect } from "bun:test";
 import { InMemoryStringSource, MetaDataLoader, type MetaRoot } from "@metaobjectsdev/metadata";
 import { buildCubeModel } from "../../src/cube/build-cube-model.js";
-import { CUBE_ERROR_CODES, CubeModelError, ERR_CUBE_UNMAPPED_VOCABULARY } from "../../src/cube/cube-errors.js";
+import { CubeModelError, ERR_CUBE_UNMAPPED_VOCABULARY } from "../../src/cube/cube-errors.js";
 import type { CubeModel } from "../../src/cube/cube-model-spec.js";
 
 type Json = Record<string, unknown>;
@@ -72,13 +72,6 @@ async function refusal(children: Json[], matches?: (name: string) => boolean): P
   throw new Error("expected a CubeModelError, and the build succeeded");
 }
 
-describe("ERR_CUBE_UNMAPPED_VOCABULARY is one of the generator's own codes", () => {
-  test("it is listed", () => {
-    expect(ERR_CUBE_UNMAPPED_VOCABULARY).toBe("ERR_CUBE_UNMAPPED_VOCABULARY");
-    expect(CUBE_ERROR_CODES).toContain(ERR_CUBE_UNMAPPED_VOCABULARY);
-  });
-});
-
 describe("@spine on a served report is refused", () => {
   test("the error names the report and the attribute, and says how to proceed", async () => {
     const err = await refusal([program(), spineReport("ProgramsByOwner")]);
@@ -132,6 +125,20 @@ describe("@default on a measure of a cube is refused", () => {
     ]);
     expect(err.code).toBe(ERR_CUBE_UNMAPPED_VOCABULARY);
     expect(err.message).toContain("measure.ratio 'acme::shop::Program.pricePerProgram' declares @default");
+  });
+
+  test("on a ratio's operand, when the ratio itself declares none: the operand is refused", async () => {
+    // The ratio is declared first, so it is written before its operand is reached: the refusal
+    // comes from the operand, which is a measure of the same cube.
+    const err = await refusal([
+      program([
+        { "measure.ratio": { name: "pricePerProgram", "@numerator": "listed", "@denominator": "programs" } },
+        { "measure.aggregate": { name: "listed", "@agg": "sum", "@of": "Program.priceCents", "@default": 0 } },
+      ]),
+    ]);
+    expect(err.code).toBe(ERR_CUBE_UNMAPPED_VOCABULARY);
+    expect(err.message).toContain("cube 'Program': measure.aggregate 'acme::shop::Program.listed' declares @default");
+    expect(err.message).not.toContain("pricePerProgram");
   });
 
   test("on a measure the entity inherits from an abstract base", async () => {

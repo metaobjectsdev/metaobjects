@@ -65,7 +65,7 @@ function compareGrains(a: readonly TimeGrain[], b: readonly TimeGrain[]): number
 }
 
 /**
- * A cube's rollups as they are written (Ruling 29). Cube answers a query from the FIRST
+ * A cube's rollups as they are written: coarsest first. Cube answers a query from the FIRST
  * rollup in definition order that can serve it, and a finer rollup can serve a coarser query
  * whose measures are additive. Executed on 1.7.43: in report order, FitnessTotals' query (no
  * dimensions) was answered from ProgramMinutes' rollup (grouped by two). Rows are correct either

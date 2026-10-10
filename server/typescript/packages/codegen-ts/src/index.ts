@@ -445,7 +445,6 @@ export type {
   CubeSpecBase,
   CubeSqlSource,
   CubeTableSource,
-  CubeViewCubeSpec,
-  CubeViewIncludeAlias,
-  CubeViewSpec,
 } from "./cube/cube-model-spec.js";
+// The Cube view shapes (CubeViewSpec and its parts) are not exported: no generator writes a view
+// yet (a `@spine` report's mapping is not built), so they are not public API.

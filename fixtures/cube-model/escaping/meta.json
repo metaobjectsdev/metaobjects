@@ -81,6 +81,22 @@
             },
             {
               "segment.filter": {
+                "name": "trailingBackslash",
+                "@filter": {
+                  "title": "ends\\"
+                }
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "backslashBrace",
+                "@filter": {
+                  "title": "a\\{b}"
+                }
+              }
+            },
+            {
+              "segment.filter": {
                 "name": "lineBreak",
                 "@filter": {
                   "title": "two\nlines"

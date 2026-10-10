@@ -1,0 +1,124 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "id",
+                "@of": "Program.id",
+                "@title": "Program",
+                "@description": "The program's key."
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "title",
+                "@of": "Program.title"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "programs",
+                "@agg": "count",
+                "@of": "Program.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Slot",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "slots"
+              }
+            },
+            {
+              "field.long": {
+                "name": "roomId"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "startsAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "roomId",
+                  "startsAt"
+                ]
+              }
+            },
+            {
+              "dimension.time": {
+                "name": "startsAt",
+                "@of": "Slot.startsAt",
+                "@grains": [
+                  "day",
+                  "week"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "slots",
+                "@agg": "count",
+                "@of": "Slot.roomId"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "ProgramCounts",
+          "@from": "Program",
+          "@dimensions": [
+            "id"
+          ],
+          "@measures": [
+            "programs"
+          ],
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_program_counts"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

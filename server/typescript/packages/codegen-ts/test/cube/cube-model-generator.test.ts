@@ -2,8 +2,9 @@
 // `meta gen`. One file per cube at model/cubes/<Cube>.yml under the target's outDir. The build's
 // universe is the generator's own `filter` (fixed config), so a cube's bytes never depend on the
 // run; the run's selection (`meta gen <Entity>`, `scope`) decides only which files are written:
-// each selected entity's cube and every cube it reaches through joins (Ruling 17, amended). Every
-// model is loaded with the real loader and run through runGen.
+// each selected entity's cube and every cube it reaches through joins, transitively, because a
+// selected cube's `@via` adds members to the cubes it reaches. Every model is loaded with the real
+// loader and run through runGen.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
@@ -270,7 +271,9 @@ describe("selection — the run decides which files, never their bytes", () => {
 });
 
 describe("the filter option is the build's universe", () => {
-  test("an entity it excludes has no cube, and adds nothing to the cubes it would reach", async () => {
+  test("an entity it excludes, and no @via reaches, has no cube, and adds nothing to the cubes it would reach", async () => {
+    // An excluded entity that another cube's @via reaches is still written, as a join-target
+    // cube (build-cube-model.test.ts, Table A).
     const root = await loadOne(PROGRAM_AND_WEEK);
     const files = await gen(root, { generators: [cubeModel({ filter: (o) => o.name === "Program" })] });
     expect([...files.keys()]).toEqual(["model/cubes/Program.yml"]);

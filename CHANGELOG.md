@@ -34,17 +34,18 @@ it until 1.1 ships._
   any view. A report's `@spine` and a measure's `@default` are not mapped yet, since that
   vocabulary is not registered: a model that declares either is refused with
   `ERR_CUBE_UNMAPPED_VOCABULARY` rather than written without it. Gated by the new
-  `fixtures/cube-model/` corpus (41 cases and a canonical golden; the 29th shared corpus in
+  `fixtures/cube-model/` corpus (42 cases and a canonical golden; the 29th shared corpus in
   `docs/CONFORMANCE.md`, run by TypeScript only).
   See [docs/features/cube-export.md](docs/features/cube-export.md).
 - **A `cube` lane checks the exporter against a real Cube.** `scripts/ci-local.sh --only cube`
   (also `scripts/integration-test.sh cube`, `bun run test:cube` in `integration-tests`, and a
   `cube` entry in `integration-tests.yml`) loads the canonical model's output into
   `cubejs/cube:v1.7.43` over a private `postgres:16-alpine`, requires the Cube query for each
-  served report to return the rows of its view, and requires each of the 28 Postgres corpus
-  cases to compile. It owns a private Docker network and an ephemeral `127.0.0.1` port and never
-  uses the shared Postgres sidecar. Without Docker it is a SKIP behind a banner (a failure under
-  `--strict-toolchains`). The full `scripts/ci-local.sh` runs it; `--quick` and
+  served report to return the rows of its view, requires each of the 31 corpus cases that hold
+  a tree to compile (the two MySQL ones included), and reads the escaping case's literals back
+  from Cube's `/v1/sql`. It owns a private Docker network and an ephemeral `127.0.0.1` port and
+  never uses the shared Postgres sidecar. Without Docker it is a SKIP behind a banner (a failure
+  under `--strict-toolchains`). The full `scripts/ci-local.sh` runs it; `--quick` and
   `--no-integration` do not.
 - **Python: a run-time validator runner, `run_validators`.** `metaobjects.runtime.run_validators(entity, data)`
   validates a data mapping against an entity's metadata with no generated code and no database,

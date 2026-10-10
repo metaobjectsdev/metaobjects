@@ -41,7 +41,7 @@ Paths are relative to the generator's target `outDir`. Every file starts with
 | a TPH subtype that declares reporting vocabulary | a cube whose `sql` is a `SELECT` over the base table with the subtype's discriminator predicate, in place of `sql_table` |
 | an abstract entity | nothing. Its members land on each concrete entity that inherits them. |
 | an entity with reporting vocabulary and no table | nothing (it is inert, like any object with no source) |
-| a served report | no file. A rollup, and a scope segment when it has a `@filter`, in the cube of its `@from` entity. |
+| a served report | no file. In the cube of its `@from` entity: a rollup, unless the report holds a relative date anywhere (then it has none, see [Reports](#reports-rollups-and-scope-segments)), and a scope segment when it has a `@filter`. |
 | a report with no `source.*`, an abstract report, or one whose read source is not `@kind: view` | nothing |
 | none of the reporting vocabulary | no file |
 
@@ -245,6 +245,13 @@ Each field of the entity's `identity.primary` becomes a dimension named after th
 `primary_key: true` (composite key: one dimension per field). Cube makes a primary-key dimension
 non-public by default, so no `public` key is written.
 
+A declared dimension without `@via` that is named after a key field and reads that field is that
+key dimension, not a second one: the cube gets one dimension, with `primary_key: true`,
+`public: true` (the declaration says the key is meant to be queried), and the declared
+dimension's `title`, `description` and `meta.grains`. A report lists it like any dimension. A
+dimension named after a key field that reads another field, or that has a `@via`, is
+`ERR_CUBE_MEMBER_COLLISION`.
+
 A TPH subtype's cube has no `sql_table`. Its `sql` selects from the base table and applies the
 subtype's discriminator, such as `SELECT * FROM "auths" WHERE "type" = 'Bridge'`.
 
@@ -356,8 +363,9 @@ rollup is named after the report.
 filter, or the condition of any measure it lists (a ratio's operands included) holds one. Cube
 builds a rollup when it refreshes it, so the rollup's "now" would be the build's. The view's is
 the query's. The scope segment is written whenever the report has a `@filter`, relative date or
-not. A relative date only in a `@segment` or a measure's condition leaves nothing to write for
-the report: that segment and measure are already members of the cube.
+not. So a report whose relative date is only in its `@segment` or a measure's condition, and
+that has no `@filter`, adds nothing to the cube: that segment and measure are already members of
+it.
 
 The rollup and the scope segment are all the exporter writes for a report. It writes neither a
 `refresh_key` nor a partition: Cube's defaults apply, and partitioning is a deployment choice.
@@ -386,12 +394,12 @@ both parts in snake case, joined by two underscores (`week__program_minutes`).
 
 | Rule | Behaviour |
 |---|---|
-| cube name | the entity's name. Two entities of one name in two packages, or an alias cube named like a cube, is `ERR_CUBE_NAME_COLLISION`, naming both; narrow the generator's `filter` or rename one. |
+| cube name | the entity's name. Two entities of one name in two packages, or an alias cube named like a cube, is `ERR_CUBE_NAME_COLLISION`, naming both. Rename one, or narrow the generator's `filter` to leave one out; the filter helps only when no `@via` reaches the entity it leaves out, since an entity a `@via` reaches is still written as a join-target cube. |
 | member name | the dimension, measure or segment name as written, so a report field and its Cube member share a name |
 | a name Cube refuses | Cube names start with a letter, hold only letters, digits and `_`, and are not a Python keyword (`from`, `class`, `in`, `is`, `not`, `and`, `or`, `if`, `else`, `for`, `while`, `with`, `as`, `def`, `return`, `yield`, `import`, `pass`, `global`, `nonlocal`, `lambda`, `del`, `assert`, `break`, `continue`, `try`, `except`, `finally`, `raise`, `async`, `await`, `True`, `False`, `None`, `elif`). That is `ERR_CUBE_INVALID_NAME`, naming the node. The exporter never renames: the name is the report field's. |
-| members the exporter adds | primary-key dimensions, reached-column dimensions, `<report>Scope` segments, rollups. A name that collides with another member of the cube is `ERR_CUBE_MEMBER_COLLISION`, naming both. |
+| members the exporter adds | primary-key dimensions, reached-column dimensions, `<report>Scope` segments, rollups. A name that collides with another member of the cube is `ERR_CUBE_MEMBER_COLLISION`, naming both. The one exception is a declared dimension over a key field under its own name, which is that key dimension (see [Cubes and primary keys](#cubes-and-primary-keys)). |
 | identifiers | every table, schema and column is quoted: `"…"` on Postgres, backticks on MySQL |
-| string literals | SQL quoting first (`'` doubled; MySQL also doubles `\`). Then `{` becomes `\{` and `}` becomes `\}`, for Cube's reference syntax. Then, when the literal holds `{%` or `{#`, it is wrapped in `{% raw %}…{% endraw %}` for Jinja, because a backslash does not stop Jinja. A literal holding `endraw` is `ERR_CUBE_UNESCAPABLE_LITERAL`. A column name written with `@column` gets the same treatment. |
+| string literals | SQL quoting first (`'` doubled; MySQL also doubles `\`). Cube compiles every `sql` as a template literal, where a backslash is an escape (`\b` a backspace, `\_` a plain `_`, a trailing `\` swallows the closing quote) and `{x}` a member reference. So every `\` is then doubled, and after that `{` becomes `\{` and `}` becomes `\}` (in that order, so a backslash before a brace stays a backslash). Then, when the literal holds `{%` or `{#`, it is wrapped in `{% raw %}…{% endraw %}` for Jinja, because a backslash does not stop Jinja. A literal holding `endraw` is `ERR_CUBE_UNESCAPABLE_LITERAL`. A column name written with `@column` gets the same treatment. The `cube` lane reads each literal of the `escaping` case back from Cube's `/v1/sql`, where it is the view's own SQL. |
 | free text | `title` and `description`. Cube reads them as templates too: `{x}` is a member reference, `${x}` an interpolation and a backslash an escape. Each `\` is doubled, each brace escaped, the text raw-wrapped when the original holds `{{`, `{%` or `{#`, and the result is written as a JSON string. Text holding `endraw` is `ERR_CUBE_UNESCAPABLE_LITERAL`. |
 | YAML scalars | A `sql`, `sql_table` or filter value is single-quoted (`'` doubled), or written as a JSON double-quoted string when it holds a line break, a control character, U+007F to U+009F, U+2028, U+2029 or U+FEFF. Names, types and `CUBE.<member>` references are plain, except a name a YAML reader would take for a boolean or null (`true`, `false`, `null`, `yes`, `no`, `on`, `off`, `y`, `n`, in any case), which is single-quoted. The emitter is hand-written, with no YAML dependency, so the bytes are the same on every run: two-space indent, LF line endings, one trailing newline, no trailing spaces. |
 
@@ -493,8 +501,8 @@ like any other generated output: a changed model that was not regenerated, a mis
 and a stale one are drift. A hand edit to a generated file is not drift, but the gate lists it, and
 `meta verify --codegen --forbid-hand-edits` makes it fail.
 
-**The mapping corpus** is [`fixtures/cube-model/`](../../fixtures/cube-model/): 41 cases, each
-the smallest model for one rule, 30 with the exact tree the generator writes and 11 with the
+**The mapping corpus** is [`fixtures/cube-model/`](../../fixtures/cube-model/): 42 cases, each
+the smallest model for one rule, 31 with the exact tree the generator writes and 11 with the
 exact error message. Every expected file was written by hand from its rule and then compared
 with the generator, never copied from it.
 `codegen-ts/test/cube/cube-model-corpus.test.ts` runs it. The canonical golden,
@@ -507,7 +515,7 @@ development mode, with its embedded Cube Store, against a private `postgres:16-a
 holds the persistence-conformance schema and a seed
 (`fixtures/cube-model/canonical/seed.sql`). Each run owns a private Docker network and binds
 one ephemeral port on `127.0.0.1`; it never uses the shared Postgres sidecar, and every
-container and the network are removed on every exit path. It checks four things:
+container and the network are removed on every exit path. It checks five things:
 
 1. The generated canonical model is the reviewed golden.
 2. Cube compiles it and lists every cube and member the files declare.
@@ -515,12 +523,16 @@ container and the network are removed on every exit path. It checks four things:
    rollup when the model has one (the lane asserts the rollup name in `usedPreAggregations`),
    returns the rows of `SELECT * FROM <view>`, after the normalization the Encodings row above
    describes.
-4. Every Postgres case of the mapping corpus that has an expected tree (28 of the 40) compiles in
-   the same Cube, and each `title` and `description` it declares comes back from `/v1/meta` as
-   declared. Cube returns a member's own title as `shortTitle`; its `title` joins the cube's title
-   and the member's. This turns the shapes no live query reaches (alias cubes, a TPH subtype's
-   `sql`, one-to-one joins, an int-backed enum's `CASE`, Jinja-escaped text) into a check that
-   Cube accepts them. It does not run a query through them.
+4. Every case of the mapping corpus that has an expected tree (31 of the 42: 29 Postgres and
+   2 MySQL) compiles in the same Cube, and each `title` and `description` it declares comes back
+   from `/v1/meta` as declared. Compiling runs no SQL, so the MySQL cases compile against the
+   Postgres data source. Cube returns a member's own title as `shortTitle`; its `title` joins the
+   cube's title and the member's. This turns the shapes no live query reaches (alias cubes, a TPH
+   subtype's `sql`, one-to-one joins, an int-backed enum's `CASE`, Jinja-escaped text) into a
+   check that Cube accepts them. It does not run a query through them.
+5. For the `escaping` case, Cube's `/v1/sql` for a query on each of its segments holds the
+   segment's literal exactly as the report view writes it (`'a\b'`, `'ends\'`, `'a\{b}'`,
+   `'a{b}c'`, `'{{x}}'`, `'it''s'` and a line break), and the braced column `"co{de}"`.
 
 Run it with `scripts/ci-local.sh --only cube`. The full `scripts/ci-local.sh` runs it after the
 integration suite, and `--quick` and `--no-integration` drop it. The first run pulls the Cube
@@ -544,8 +556,8 @@ the table names above are the development-mode form.
   refuses the model with `ERR_CUBE_AMBIGUOUS_PATH`, naming both. The lossless form needs a
   nested alias for each path. That is more machinery than a rare model is worth yet, so the
   exporter errors rather than guess.
-- **MySQL output is checked by goldens only.** The corpus pins it byte for byte, and Cube has
-  not loaded it.
+- **MySQL SQL is never executed.** The corpus pins it byte for byte and the lane compiles it in
+  Cube, but no MySQL database runs it.
 - **Some shapes are compile-checked, not query-checked.** Cube accepts the alias cubes, the TPH
   subtype's `sql`, one-to-one joins and the int-backed enum's `CASE` (the corpus pass), but no
   live query crosses them.

@@ -1115,6 +1115,56 @@ describe("Table G — names and escaping", () => {
     expect(err.message).toContain("acme::shop::Week.programTitle");
   });
 
+  test("a dimension named after a key field and over it is the key dimension, made public, with its docs", async () => {
+    const model = await build([
+      program([
+        { "dimension.attribute": { name: "id", "@of": "Program.id", "@title": "Program", "@description": "The key." } },
+        { "dimension.attribute": { name: "title", "@of": "Program.title" } },
+      ]),
+      week([{ "dimension.attribute": { name: "programKey", "@of": "Program.id", "@via": "Week.fkProgram" } }]),
+    ]);
+    // One dimension, not two: Cube would report a second `id` as defined twice.
+    expect(cube(model, "Program").dimensions).toEqual([
+      { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true, public: true, title: "Program", description: "The key." },
+      { name: "title", sql: '{CUBE}."title"', type: "string" },
+    ]);
+    // A @via onto the key field reads that one member; nothing is added for it.
+    expect(cube(model, "Week").dimensions.find((d) => d.name === "programKey")?.sql).toBe("{Program.id}");
+  });
+
+  test("a time dimension over a key field carries its grains onto the key dimension; a composite key's other field is unchanged", async () => {
+    const model = await build([
+      entity("Slot", [
+        table("slots"),
+        { "field.long": { name: "roomId" } },
+        { "field.timestamp": { name: "startsAt" } },
+        { "identity.primary": { name: "pk", "@fields": ["roomId", "startsAt"] } },
+        { "dimension.time": { name: "startsAt", "@of": "Slot.startsAt", "@grains": ["day", "week"] } },
+        { "measure.aggregate": { name: "slots", "@agg": "count", "@of": "Slot.roomId" } },
+      ]),
+    ]);
+    expect(cube(model, "Slot").dimensions).toEqual([
+      { name: "roomId", sql: '{CUBE}."roomId"', type: "number", primaryKey: true },
+      { name: "startsAt", sql: '{CUBE}."startsAt"', type: "time", primaryKey: true, public: true, meta: { grains: ["day", "week"] } },
+    ]);
+  });
+
+  test("ERR_CUBE_MEMBER_COLLISION: a dimension named after a key field over another field", async () => {
+    const err = await buildError([program([{ "dimension.attribute": { name: "id", "@of": "Program.title" } }])]);
+    expect(err.code).toBe("ERR_CUBE_MEMBER_COLLISION");
+    expect(err.message).toContain("primary-key dimension 'id' (identity.primary 'acme::shop::Program.id') and dimension 'acme::shop::Program.id'");
+  });
+
+  test("ERR_CUBE_MEMBER_COLLISION: a @via dimension named after the cube's own key field", async () => {
+    const err = await buildError([
+      program(),
+      week([{ "dimension.attribute": { name: "id", "@of": "Program.id", "@via": "Week.fkProgram" } }]),
+    ]);
+    expect(err.code).toBe("ERR_CUBE_MEMBER_COLLISION");
+    expect(err.message).toContain("cube 'Week'");
+    expect(err.message).toContain("primary-key dimension 'id'");
+  });
+
   test("ERR_CUBE_NAME_COLLISION: two entities of one name in two packages", async () => {
     const counted = (pkg: string): Json =>
       rootOf(
@@ -1174,7 +1224,33 @@ describe("Table G — names and escaping", () => {
 
   test("SQL quoting comes first: quotes doubled, and MySQL also doubles backslashes", async () => {
     expect(await segmentSql("it's")).toBe(`{CUBE}."title" = 'it''s'`);
-    expect(await segmentSql(String.raw`a\b`, "mysql")).toBe(String.raw`{CUBE}.` + "`title`" + String.raw` = 'a\\b'`);
+    // MySQL's own `a\\b`, then each of those backslashes doubled for Cube.
+    expect(await segmentSql(String.raw`a\b`, "mysql")).toBe(String.raw`{CUBE}.` + "`title`" + String.raw` = 'a\\\\b'`);
+  });
+
+  // Cube compiles every `sql` as a JS template literal, so a backslash is an escape there: `\b` a
+  // backspace, `\_` a plain `_`, a trailing `\` swallows the closing quote, `\u` breaks the compile.
+  test("a literal's backslashes are doubled for Cube, before its braces are escaped", async () => {
+    expect(await segmentSql(String.raw`a\b`)).toBe(String.raw`{CUBE}."title" = 'a\\b'`);
+    expect(await segmentSql(String.raw`A\_%`)).toBe(String.raw`{CUBE}."title" = 'A\\_%'`);
+    expect(await segmentSql("ends\\")).toBe(`{CUBE}."title" = 'ends\\\\'`);
+    // Plain strings, not String.raw: Bun cooks a `\u` escape inside String.raw.
+    expect(await segmentSql("\\u0041")).toBe(`{CUBE}."title" = '\\\\u0041'`);
+    // Doubled first, so the backslash before a brace stays a backslash: `\\` then `\{`.
+    expect(await segmentSql(String.raw`a\{b}`)).toBe(String.raw`{CUBE}."title" = 'a\\\{b\}'`);
+  });
+
+  test("an identifier's backslashes are doubled for Cube too", async () => {
+    const model = await build([
+      entity("Thing", [
+        table("things"),
+        longId,
+        { "field.string": { name: "code", "@column": String.raw`co\de` } },
+        pk,
+        { "dimension.attribute": { name: "code", "@of": "Thing.code" } },
+      ]),
+    ]);
+    expect(cube(model, "Thing").dimensions[1]!.sql).toBe(String.raw`{CUBE}."co\\de"`);
   });
 
   test("ERR_CUBE_UNESCAPABLE_LITERAL: a literal containing endraw", async () => {
@@ -1277,7 +1353,7 @@ describe("Table H — the canonical model", () => {
           // RecentPrograms' relative @filter: a scope segment, and no rollup.
           { name: "recentProgramsScope", sql: `{CUBE}."created_ts" >= ((now() AT TIME ZONE 'UTC') - INTERVAL 'P30D')` },
         ],
-        // Coarsest first (Ruling 29): ProgramsByWeek groups by one column, ProgramsByMonth by two.
+        // Coarsest first: ProgramsByWeek groups by one column, ProgramsByMonth by two.
         preAggregations: [
           {
             name: "ProgramsByWeek", type: "rollup", measures: ["programs"], dimensions: [], segments: ["published"],
@@ -1316,7 +1392,7 @@ describe("Table H — the canonical model", () => {
           { name: "longShare", sql: "CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0)", type: "number" },
         ],
         segments: [{ name: "long", sql: '{CUBE}."durationMinutes" >= 60' }],
-        // Coarsest first (Ruling 29): FitnessTotals groups by nothing, so Cube's first match for
+        // Coarsest first: FitnessTotals groups by nothing, so Cube's first match for
         // its query is its own rollup and not ProgramMinutes'.
         preAggregations: [
           { name: "FitnessTotals", type: "rollup", measures: ["weeks", "totalMinutes", "longShare"], dimensions: [], segments: [] },

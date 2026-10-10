@@ -542,8 +542,10 @@ describe("scalars", () => {
   });
 
   test("a backslash and a double quote in sql pass through unchanged in single quotes", () => {
-    const yaml = renderCubeYaml(spec({ segments: [segment({ sql: `{CUBE}."d" LIKE 'a\\%'` })] }));
-    expect(yaml).toContain(`        sql: '{CUBE}."d" LIKE ''a\\%'''\n`);
+    // The build stage doubles a backslash for Cube (the LIKE pattern a\% arrives as a\\%); the
+    // renderer only YAML-quotes it, and single quotes keep every backslash.
+    const yaml = renderCubeYaml(spec({ segments: [segment({ sql: `{CUBE}."d" LIKE 'a\\\\%'` })] }));
+    expect(yaml).toContain(`        sql: '{CUBE}."d" LIKE ''a\\\\%'''\n`);
   });
 
   test("names that a YAML reader would take for a boolean or null are quoted, other names are plain", () => {
@@ -592,7 +594,7 @@ describe("free text", () => {
     expect(title("it's")).toBe('"it\'s"');
   });
 
-  test("braces are escaped for Cube, which reads {x} in free text as a member reference (Ruling 28)", () => {
+  test("braces are escaped for Cube, which reads {x} in free text as a member reference", () => {
     // Executed on Cube 1.7.43: an unescaped `a {b} c` fails the whole model (`b is not defined`).
     // `\{` in the text is `\\{` in the JSON string.
     expect(title("Share of {weeks}, a{b}c")).toBe('"Share of \\\\{weeks\\\\}, a\\\\{b\\\\}c"');
@@ -824,7 +826,7 @@ describe("parse oracle", () => {
       measures: [measure({ sql: `'y'`, filters: [{ sql: `{CUBE}."k" = 'a\\{b\\}c'` }] })],
       segments: [
         segment({ sql: `{CUBE}."d" = '{% raw %}{{y}} {% z %} {# c #}{% endraw %}'` }),
-        segment({ name: "like", sql: `{CUBE}."d" LIKE 'a\\%' AND {CUBE}."e" = "x"` }),
+        segment({ name: "like", sql: `{CUBE}."d" LIKE 'a\\\\%' AND {CUBE}."e" = "x"` }),
       ],
     });
     expect(parsed(c)).toEqual({ cubes: [expectedCube(c)] });
@@ -872,7 +874,7 @@ describe("parse oracle", () => {
     });
     expect(parsed(c)).toEqual({ cubes: [expectedCube(c)] });
     const cube = (parsed(c) as { cubes: Json[] }).cubes[0];
-    // The parsed value is the Cube-escaped text, spelled out once by hand (Ruling 28).
+    // The parsed value is the Cube-escaped text, spelled out once by hand.
     expect(cube?.["title"]).toBe(
       `{% raw %}He said "hi" \\\\ it's\n\\{\\{x\\}\\} \\{% y %\\} \\{# z #\\} a\\{b\\}c \u2028 \u0085 café — ü{% endraw %}`,
     );

@@ -261,14 +261,14 @@ describe("Table F — a rollup per served report, on its @from cube", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Rollup order — Cube answers from the first rollup that can serve a query (Ruling 29)
+// Rollup order — Cube answers from the first rollup that can serve a query
 // ---------------------------------------------------------------------------
 
-describe("Ruling 29 — a cube's rollups are written coarsest first", () => {
+describe("a cube's rollups are written coarsest first", () => {
   // Cube answers a query from the FIRST rollup in definition order that can serve it, and a finer
   // rollup serves a coarser query whose measures are additive (executed on Cube 1.7.43). So a
   // rollup that matches a report's query exactly is written before any strictly finer one.
-  test("by attribute + time dimension count ascending, ties in report order", async () => {
+  test("by grouping-column count (attribute plus time dimensions) ascending, then the coarser grain", async () => {
     const c = await programCube(
       report("ByStatusAndMonth", { "@from": "Program", "@dimensions": ["status", "createdAt:month"], "@measures": ["programs"] }),
       report("TotalsA", { "@from": "Program", "@measures": ["programs"] }),
@@ -277,8 +277,9 @@ describe("Ruling 29 — a cube's rollups are written coarsest first", () => {
       report("TotalsB", { "@from": "Program", "@measures": ["listValue"] }),
       report("ByStatus", { "@from": "Program", "@dimensions": ["status"], "@measures": ["programs"] }),
     );
-    // 0: TotalsA, TotalsB; 1: ByStatus (no time dimension) then ByMonth; 2: ByStatusAndMonth
-    // (an attribute at position 0, so before TwoTimes, which has a time dimension there).
+    // No columns: TotalsA, TotalsB, a full tie, so report order. One: ByStatus before ByMonth, since
+    // a rollup with no time dimension sorts before one with. Two: ByStatusAndMonth before TwoTimes,
+    // since their first time dimensions are month and week, and month is coarser.
     expect(c.preAggregations.map((r) => r.name)).toEqual(["TotalsA", "TotalsB", "ByStatus", "ByMonth", "ByStatusAndMonth", "TwoTimes"]);
   });
 
