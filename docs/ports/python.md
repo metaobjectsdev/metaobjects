@@ -141,6 +141,9 @@ like a keyless read-only projection. Four generators write one file each for a r
 (`GET` list, `POST` answering 405, no `/{id}` route, and a repository Protocol with `list`
 and `count` only, which you implement against the view), and `names` writes
 `<snake>_names.py`. Every derived field with filter operators is filterable and sortable. A
+row-model field that can be null is `T | None = None`; a measure with `@default`, and in a
+`@spine` report a key or `@required` column of the spine entity, is the bare type
+(`revenueOrZero: int` beside `revenueCents: int | None = None`). A
 report with no view source, or an abstract one, generates nothing. The contract is in
 [reporting](../features/reporting.md#how-a-report-is-served).
 

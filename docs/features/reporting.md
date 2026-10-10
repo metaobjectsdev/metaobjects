@@ -16,8 +16,9 @@ the standard filter, sort and paging on the derived fields.
 stays inert: it is a checked statement of intent. No generator, migration or runtime acts on
 it, and the one thing written about it is a `meta docs` model page marked "not served".
 
-**What does not exist yet.** No typed client hook, grid, form or other UI-tier output is
-generated for a report in any port (a later plan of FR-044). There is no `measure.derived`,
+**What does not exist yet.** No grid, form or other UI-tier output is generated for a report
+in any port; TypeScript's list hook is the one client piece (a later plan of FR-044 adds the
+rest). There is no `measure.derived`,
 no query-time choice of dimensions or measures (a report is a fixed combination, compiled
 once), and no time-zone vocabulary: time grains and relative dates are UTC.
 
@@ -47,16 +48,18 @@ FR-037 R5's arithmetic wave and will need its own agreement):
 |---|---|---|
 | `dimension.attribute` | `object.entity` | `@of` (required), `@via` |
 | `dimension.time` | `object.entity` | `@of` (required), `@via`, `@grains` (required, array) |
-| `measure.aggregate` | `object.entity` | `@agg` (required), `@of` (required, array), `@distinct`, `@filter`, `@segment` |
-| `measure.ratio` | `object.entity` | `@numerator` (required), `@denominator` (required) |
+| `measure.aggregate` | `object.entity` | `@agg` (required), `@of` (required, array), `@distinct`, `@filter`, `@segment`, `@default` |
+| `measure.ratio` | `object.entity` | `@numerator` (required), `@denominator` (required), `@default` |
 | `segment.filter` | `object.entity` | `@filter` (required) |
-| `object.report` | root | `@from` (required), `@dimensions` (array), `@measures` (required, array), `@segment`, `@filter` |
+| `object.report` | root | `@from` (required), `@dimensions` (array), `@measures` (required, array), `@segment`, `@filter`, `@spine` |
 
 Closed sets:
 
 - `@grains`: `hour, day, week, month, quarter, year`. **Weeks start on Monday (ISO-8601)**
   in every lowering.
 - `@agg`: `count, sum, avg, min, max`.
+
+`@spine` is a path written like a dimension's `@via`. A measure's `@default` is an integer.
 
 Plus one new value form inside the existing portable filter grammar: the **relative date**
 `{ "now": "<ISO-8601 duration>" }` (see [Relative dates](#relative-dates-in-filters)).
@@ -96,6 +99,8 @@ A report is a top-level object that names an entity as its `@from`:
                                             "@cardinality": "one" } },
             { "segment.filter":      { "name": "active", "@filter": { "status": "active" } } },
             { "dimension.attribute": { "name": "program", "@of": "Purchase.programId" } },
+            { "dimension.attribute": { "name": "programId",
+                                       "@of": "Program.id", "@via": "Purchase.program" } },
             { "dimension.attribute": { "name": "programTitle",
                                        "@of": "Program.title", "@via": "Purchase.program" } },
             { "dimension.time":      { "name": "purchasedAt", "@of": "Purchase.purchasedAt",
@@ -105,7 +110,7 @@ A report is a top-level object that names an entity as its `@from`:
             { "measure.aggregate":   { "name": "buyers", "@agg": "count", "@distinct": true,
                                        "@of": "Purchase.customerEmail" } },
             { "measure.aggregate":   { "name": "revenue", "@agg": "sum", "@of": "Purchase.amountCents",
-                                       "@segment": "active" } },
+                                       "@segment": "active", "@default": 0 } },
             { "measure.ratio":       { "name": "revenuePerBuyer",
                                        "@numerator": "revenue", "@denominator": "buyers" } }
           ]
@@ -123,6 +128,16 @@ A report is a top-level object that names an entity as its `@from`:
           "@measures": ["purchases", "buyers", "revenue"],
           "children": [
             { "source.rdb": { "@kind": "view", "@view": "v_store_totals" } }
+          ]
+      }},
+      { "object.report": {
+          "name": "ProgramSales",
+          "@from": "Purchase",
+          "@spine": "Purchase.program",
+          "@dimensions": ["programId", "programTitle"],
+          "@measures": ["purchases", "revenue", "revenuePerBuyer"],
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_program_sales" } }
           ]
       }}
     ]
@@ -144,14 +159,20 @@ What each piece means:
   aggregates its own entity's rows and a dimension reaches only to-one paths, so no join
   inflates it. `@filter` and `@segment` scope the rows and combine by AND.
 - **`measure.ratio`** is `numerator / NULLIF(denominator, 0)`, typed decimal. A zero
-  denominator yields null. Both operands are `measure.aggregate` siblings (a ratio of ratios
-  is not supported).
+  denominator yields null, unless the ratio declares `@default`. Both operands are
+  `measure.aggregate` siblings (a ratio of ratios is not supported).
 - **`segment.filter`** is a named, reusable `attr.filter`. Use it when the same row rule
   ("active purchase") would otherwise be repeated across measures and reports. An inline
   `@filter` on a measure stays legal.
 - **`object.report`** is a fixed combination of dimensions and measures of ONE entity. One
   row per distinct dimension tuple; **no dimensions means exactly one row** (the totals
   case). Its `@filter` and `@segment` scope rows before grouping and combine by AND.
+- **`@spine`** on a report takes its rows from the entity at the end of a to-one path, so
+  `ProgramSales` has a row for a program nobody bought. See
+  [Rows from a dimension's entity](#rows-from-a-dimensions-entity).
+- **`@default`** on a measure is the integer it reads when it would be null: `revenue` reads
+  `0`, not null, for a group with no active purchase. See
+  [A default for an empty measure](#a-default-for-an-empty-measure).
 
 ### A report's fields are derived, not declared
 
@@ -169,9 +190,9 @@ colon, so it cannot collide with the `::` package separator). A `@measures` item
 name, or `Entity.name` where `Entity` is the `@from` entity or one it extends; both forms name
 the same measure and derive the same field.
 
-`StoreTotals` above declares the source that makes it **served**; `DailyRevenue` declares
-none, so it is checked at load and nothing more. A report is served only when it declares a
-`source.rdb` with `@kind: view` (the next section says what that does).
+`StoreTotals` and `ProgramSales` above declare the source that makes them **served**;
+`DailyRevenue` declares none, so it is checked at load and nothing more. A report is served
+only when it declares a `source.rdb` with `@kind: view` (the next section says what that does).
 
 ## What a report lowers to
 
@@ -206,6 +227,9 @@ A derived report view is refused in three more cases, each with an error naming 
   `identity.reference` it needs.
 - **a filter's `in` list is empty**, which no database accepts as SQL.
 
+A `@spine` report has three refusals of its own, listed under
+[Rows from a dimension's entity](#rows-from-a-dimensions-entity).
+
 ### The columns you get
 
 A report has no primary key and declares no fields; its read shape is derived. One column
@@ -227,11 +251,18 @@ physical column name is your naming strategy applied to the **derived field name
 | `avg` of `double` or `float` | the measure's name | `double` | no |
 | `min` / `max` | the measure's name | the `@of` field's type | no |
 | `measure.ratio` | the measure's name | `decimal` | no |
+| any measure above except `count`, declaring `@default` | the measure's name | as above | yes: it reads its `@default` instead of null |
+| in a `@spine` report, a dimension over a column of the spine entity | the dimension's name | the `@of` field's type | yes when the `@of` field is `@required` or one of the spine entity's `identity.primary` `@fields`; no for a dimension reached beyond the spine entity |
+
+The last two rows are the only ways a measure other than `count`, or a dimension reached
+through `@via`, is never null. The key clause applies only under `@spine`, where the key is
+the row's own; without `@spine` a dimension reached through `@via` stays nullable.
 
 A derived column carries the type-shaping attributes of its `@of` field where they apply
 (`@currency`, `@values`, `@intValueMap`, `@maxLength`, `@precision`, `@scale`, `@localTime`,
 `@objectRef`, `@storage`, `@dbColumnType`, `isArray`) and nothing else: no `@column`, no
-`@required` beyond the rule above, no `@default`, no validators.
+`@required` beyond the rules above, no `@default` (a measure's `@default` is applied in the
+view, not carried), no validators.
 
 ### Measures
 
@@ -243,16 +274,17 @@ applied. The aggregates:
   items) counts distinct tuples, and a tuple with any null component is not counted, on every
   engine.
 - **`sum`** of nothing is **null**, not zero: a report with no matching rows, or a filtered
-  measure that matched none of a group's rows, shows null. A `sum` of an integer type is a
+  measure that matched none of a group's rows, shows null, unless the measure declares
+  [`@default`](#a-default-for-an-empty-measure). A `sum` of an integer type is a
   64-bit integer on every engine (Postgres casts it to `BIGINT`, MySQL to `SIGNED`, and SQLite's
   integer `SUM` already is one).
 - **`avg`, `min`, `max`** are the engine's own.
-- **`measure.ratio`** is `numerator / NULLIF(denominator, 0)`: a zero denominator is **null**,
-  never an error. Each operand is repeated inline with its own conditions, so an operand need
-  not be listed in `@measures`.
+- **`measure.ratio`** is `numerator / NULLIF(denominator, 0)`: a zero denominator is **null**
+  (or the ratio's `@default`), never an error. Each operand is repeated inline with its own
+  conditions and its own `@default`, so an operand need not be listed in `@measures`.
 
 A report with no dimensions is one row over the whole table. Over an **empty** table that row
-still exists: counts are `0`, sums and ratios are null.
+still exists: counts are `0`, sums and ratios are null, or their `@default`.
 
 ### Dimensions, time grains and joins
 
@@ -263,7 +295,7 @@ still exists: counts are `0`, sums and ratios are null.
   `LEFT OUTER`, and an `INNER` survives only when every join above it is `INNER`. The
   consequence to know: **a dimension reached through a required reference drops a fact row
   whose reference matches no row, from that report.** A dimension that is not listed in
-  `@dimensions` adds no join.
+  `@dimensions` adds no join. In a `@spine` report every join is `LEFT OUTER`.
 - **Grains** are `hour, day, week, month, quarter, year`. A bucket is the first instant (for
   `hour`) or first day (for the rest) of the period. **Weeks start on Monday (ISO-8601)** on
   every engine: the week of Sunday 2026-05-17 starts 2026-05-11, and Monday 2026-06-01 starts
@@ -272,9 +304,111 @@ still exists: counts are `0`, sums and ratios are null.
   time zone is, so two readers get the same buckets. A `field.timestamp` with `@localTime` and
   a `field.date` are bucketed as stored. There is no vocabulary for another zone.
 - `GROUP BY` is every listed dimension, in `@dimensions` order. The report's `@segment` and
-  `@filter` are the `WHERE`: rows are scoped before grouping, and there is no `HAVING`.
+  `@filter` are the `WHERE`: rows are scoped before grouping, and there is no `HAVING`. In a
+  `@spine` report they sit in a join condition instead, and there is no `WHERE` (next
+  section).
 - **Relative dates** in a view are evaluated when the view is **queried**, against the UTC
   clock. A naive (`@localTime`) timestamp is compared with the UTC wall clock.
+
+### Rows from a dimension's entity
+
+A report's rows are the dimension tuples its `@from` rows have, so a per-program report has
+no row for a program nobody bought. `@spine` fixes that. It is a to-one path from `@from`,
+written like `@via` (`"Purchase.program"`), and the entity at its end, the **spine entity**,
+supplies the rows: one row per distinct dimension tuple among the spine entity's rows,
+including the ones no row of `@from` refers to. `ProgramSales` above has a row for every
+program.
+
+- **Every listed dimension is reached through the spine.** Its `@via` begins with the spine's
+  hops, so it is a column of the spine entity or of an entity to-one from it. A dimension read
+  from the fact row (no `@via`, or a `@via` through another reference) is refused at load: it
+  has no value in a row with no facts. A time dimension follows the same rule: the month a
+  program was published is legal, the month of a purchase is not.
+- **Hop names are compared as written.** A spine written with the relationship's name
+  (`Purchase.program`) and a dimension written with the reference's name (`Purchase.fkProgram`)
+  name the same join, and are still refused. Write the same hops in both.
+- **At least one dimension.** With none, the report would be one totals row.
+- **The grain does not change.** A row is still one distinct dimension tuple. To get exactly one
+  row per spine row, list a dimension over the spine entity's key (`programId` above). List only
+  the title, and two programs with the same title are one row.
+- **`@segment` and `@filter` scope the facts, never the spine rows.** They choose which rows of
+  `@from` are aggregated. A program whose purchases are all out of scope keeps its row, with a
+  count of `0`. Both still name fields of `@from`.
+- **A fact row with no spine row is in no row.** A purchase whose `programId` is null, or
+  matches no program, has no spine row to sit in. Without `@spine`, those rows form a null
+  group.
+- **A row with no facts** reads `0` for a `count`, and null for a `sum`, `avg`, `min`, `max`
+  and a ratio, unless the measure declares `@default` (next section). This holds even for a
+  measure whose `@filter` is `isNull: true` on a fact column: the empty row's `@of` column is
+  null, and an aggregate ignores a null.
+
+**The view.** The spine entity's table is the `FROM`. The spine is walked back to `@from` with
+one `LEFT OUTER JOIN` per hop, and the report's `@segment` and `@filter` are ANDed onto the `ON`
+of the join that brings in `@from`'s table. There is no `WHERE`: a `WHERE` on a fact column
+would turn the outer join back into an inner one, and the empty rows would vanish with no error.
+Every other join of a `@spine` report is `LEFT OUTER` too, so no join can drop a spine row.
+`ProgramSales` lowers on Postgres (`literal` column naming) to:
+
+```sql
+  SELECT
+    p0."id" AS "programId",
+    p0."title" AS "programTitle",
+    COUNT(p."id") FILTER (WHERE p."status" = 'active') AS "purchases",
+    COALESCE(CAST(SUM(p."amountCents") FILTER (WHERE p."status" = 'active') AS BIGINT), 0) AS "revenue",
+    CAST(COALESCE(CAST(SUM(p."amountCents") FILTER (WHERE p."status" = 'active') AS BIGINT), 0) AS NUMERIC) / NULLIF(COUNT(DISTINCT p."customerEmail"), 0) AS "revenuePerBuyer"
+  FROM "programs" p0
+  LEFT OUTER JOIN "purchases" p ON p0."id" = p."programId"
+  GROUP BY p0."id", p0."title"
+```
+
+With `"@segment": "active"` on the report, the join would read
+`LEFT OUTER JOIN "purchases" p ON p0."id" = p."programId" AND p."status" = 'active'`. The
+aliases are the ones the same report would get without `@spine`.
+
+`meta migrate` refuses a derived `@spine` report, naming the report and the spine, when:
+
+- the spine entity, or an entity on the way to it, has no table (it is abstract, or declares
+  no writable `source.rdb`);
+- one of them is a TPH subtype: it shares its base's table with every other subtype, so the
+  report would have a row for each row of all of them;
+- a hop has no `identity.reference` behind it (the same error as for a `@via` hop).
+
+**Serving it.** The empty rows are listed, and `withCount=1` counts them.
+`?filter[purchases][gt]=0` removes them at request time, so one report serves the page that
+shows them and the page that does not. To keep only some spine rows (published programs),
+list the column as a dimension and filter it on the request: a report `@filter` names
+`@from`'s fields only.
+
+### A default for an empty measure
+
+`"@default": 0` on a `measure.aggregate` or a `measure.ratio` is the value the measure reads
+when it would otherwise be null: nothing matched (an empty table, a `@spine` row with no facts,
+a measure `@filter` or `@segment` that matched none of a group's rows), every matched value was
+null, or, for a ratio, the denominator is zero or null. The column is then never null, in the
+database and in every port's row type.
+
+Declare it only where zero is true. A program with no purchases has revenue `0`. An average
+rating with no ratings is not `0`; null is the honest answer there.
+
+- **It is an integer.** Every case found is zero; a sentinel such as `-1` is legal too. Write
+  a whole number with no decimal point (see [Known limits](#known-limits)).
+- **Where it is legal.** A `sum`, an `avg`, a `min` or `max` over a numeric field, and a ratio.
+  It is refused on a `count`, which is never null, and on a `min` or `max` over a field that is
+  not numeric: a made-up date would be a wrong answer.
+- **A ratio's operand carries its own `@default` into the ratio.** `revenue` declares
+  `@default: 0`, so `revenuePerBuyer` reads `0`, not null, for a program with buyers and no
+  active revenue. The ratio's own `@default` then covers a zero or null denominator: without
+  one, `revenuePerBuyer` is still null for a program with no buyers.
+- **In SQL it is `COALESCE(<the measure's expression>, n)`**, as `revenue` shows above. The
+  column keeps its type: a defaulted integral `sum` is still a 64-bit integer, a defaulted
+  `avg` or ratio still a decimal. SQLite writes the value as `n.0` for a `decimal`, `double`
+  or `float` measure and for a ratio, so a `REAL` column has one storage class in every row.
+
+**Filter and sort.** The default is the value. `?filter[revenue][eq]=0` matches the empty
+rows, `isNull=true` matches nothing and `isNull=false` every row. A sort on a defaulted
+measure is the same on every engine, since the empty rows sort as their default. A measure
+without one sorts its null rows where the engine puts them: Postgres last ascending, SQLite
+and MySQL first.
 
 ### What the runtime does with it
 
@@ -367,7 +501,12 @@ not core: copy and own them with your port's `eject`.
 
 **`meta docs`.** Every report gets a model page (kind `report`, its `@from`, its view or
 "Not served" with the reason, its row scope, and a column table with a definition per
-column), listed under `## Reports` on the model index. An entity that declares dimensions,
+column), listed under `## Reports` on the model index. A measure with `@default` ends its
+definition with "; `0` when there is nothing to aggregate", and a defaulted ratio's
+definition drops "null when the denominator is 0". A `@spine` report's page gains a **Rows**
+line ("one row per distinct dimension tuple among the rows of `Program`, reached by
+`Purchase.program`, including those no `Purchase` refers to"), and its row scope reads
+"aggregating only …", since the scope never removes a row. An entity that declares dimensions,
 measures or segments, or that a report names as its `@from`, gains a "Reporting" section. A
 served report gets one API page: its row model, `GET <served path>` and the list query (in a
 port with no query function, the repository seam). A report that is not served gets no API
@@ -382,6 +521,8 @@ builder documents a served report the same way.
 | Created by | `meta migrate` | `meta migrate` | you (see below) |
 | `avg` and ratio of `2` over `3` | `0.66666666666666666667` | `0.6666666666666666` | `0.6667` |
 | `decimal` | `NUMERIC` | none: SQLite has no decimal, so `avg`, a ratio and a `sum` of a decimal column are `REAL` | `DECIMAL` |
+| A ratio with `@default: 0` and nothing to aggregate | `0` | `0.0`: the default is written `0.0` (also for a defaulted `decimal`, `double` or `float` measure), so the `REAL` column has one storage class in every row | `0.0000` |
+| A defaulted column's type | unchanged (`BIGINT`, `NUMERIC`) | unchanged | unchanged (`BIGINT`, `DECIMAL`), and reported `NOT NULL` |
 | Instants and dates | `TIMESTAMPTZ`, `DATE` | ISO-8601 text (an hour bucket is `...:00:00.000Z`) | `DATETIME(3)` read as the UTC wall clock |
 
 A changed report is dropped and re-created by `meta migrate` (it does not `CREATE OR
@@ -393,7 +534,8 @@ REPLACE`, since the diff does not know the old column list).
 `buildReportViews(root, { dialect: "mysql" })` from `@metaobjectsdev/codegen-ts` returns the
 body of each view-backed report; the recipe in [`docs/recipes/mysql.md`](../recipes/mysql.md)
 ("Reports") shows the loop and its caveats. It skips a report whose source is `@unmanaged`, and
-the bodies are valid under MySQL's default `ONLY_FULL_GROUP_BY`.
+the bodies are valid under MySQL's default `ONLY_FULL_GROUP_BY`, a `@spine` report's as
+emitted.
 
 ### Known limits
 
@@ -439,25 +581,58 @@ the bodies are valid under MySQL's default `ONLY_FULL_GROUP_BY`.
   subtype that declares the field you mean. Without `@via` the field is read from the `@from`
   entity itself.
 
+Each of the next five is refused at load today, so admitting it later is additive:
+
+- **One spine per report.** Two independent spines (every program against every customer)
+  would be a cross join the size of both tables multiplied. Entities to-one beyond the spine
+  are ordinary dimensions, which covers most charts (a workout's week, the week's program).
+- **No row scope on the spine entity** (only published programs). A report `@filter` names
+  `@from`'s fields. List the column as a dimension and filter it on the request.
+- **No fact-row dimension beside a spine** (every program, split by purchase month). The row
+  for a program with no purchases would carry a null month. Zero-filled time buckets wait for
+  the `reporting` library's calendar spine.
+- **No dimension over the reference column itself** (`Purchase.programId`) in a `@spine`
+  report. Declare the dimension over the spine entity's key (`Program.id` via
+  `Purchase.program`) instead.
+- **`@default` is an integer, and a whole number is the only portable spelling.** A
+  fractional `@default` (`0.5`) is refused with `ERR_BAD_ATTR_VALUE` on the measure in every
+  port. TypeScript says "@default '0.5' is not an integer. A measure's @default is a whole
+  number (for example 0)."; C#, Java and Python refuse it through their existing integer
+  attribute check, with that check's own message. Two edge cases have no fixture and differ
+  by port: `@default: 0.0` (or `1.0`) loads as an integer in TypeScript and is refused by C#,
+  Java and Python; and `@default: "zero"` on a `count` gives two errors in TypeScript, C# and
+  Python (the attribute type error and the count rule) and one in Java. Write `0`, not `0.0`.
+
+A `@spine` row's facts are reached through a declared reference only. A join on a natural key
+(events matched to a schedule on several columns), an anti-join ("bought, never started") and
+a report over two fact tables stay out: give the fact a reference to the spine entity, write
+the anti-join by hand, and make two reports.
+
 ### What the corpus gates
 
-Six shared scenarios under `fixtures/persistence-conformance/queries/report-*.yaml` read the
+Nine shared scenarios under `fixtures/persistence-conformance/queries/report-*.yaml` read the
 canonical reports through every port's runtime (list and count, filter, sort, an empty table,
-the Monday boundary, an hour bucket, a relative window). The derived columns are pinned by
+the Monday boundary, an hour bucket, a relative window, a `@spine` report with a program that
+has no weeks, a `@spine` report whose segment leaves a program no facts, and defaulted measures
+over an empty table). The derived columns are pinned by
 `fixtures/persistence-conformance/report-shapes.json`, produced by TypeScript and byte-matched
 by every port. The SQL is produced by TypeScript only, so the other ports read the view the
-TypeScript migrate engine produced and never lower a report themselves.
+TypeScript migrate engine produced and never lower a report themselves. TypeScript's own value
+tests read the `@spine` and `@default` views and their column types on Postgres, SQLite and
+MySQL, and on Postgres and SQLite also a fact whose reference is null, an `isNull` condition
+and a two-hop spine.
 
-The REST surface is gated by thirteen scenarios under
+The REST surface is gated by sixteen scenarios under
 [`fixtures/api-contract-conformance/report/`](../../fixtures/api-contract-conformance/report/),
 run in the **generated lane on all five ports**: list (a dimension with a segment-scoped sum
 that is null for one group), a time dimension at a grain (`YYYY-MM-DD`), a no-dimension
 totals report with the `withCount` envelope, a filter on a dimension and on a measure, a sort
 on a measure and an enum dimension, paging over groups, the three field-naming `400` envelopes,
-`405` on `POST`, and `404` on every verb at `/{id}`. The corpus model carries one sourceless
-report, so a port that serves every report it finds fails. No scenario asserts a decimal's
+`405` on `POST`, `404` on every verb at `/{id}`, and a `@spine` report whose product with no
+sale keeps its row, with a filter and a sort on its defaulted measure. The corpus model
+carries one sourceless report, so a port that serves every report it finds fails. No scenario asserts a decimal's
 spelling or a timestamp literal. TypeScript and C# run the scenarios against the real views on
-Postgres, and TypeScript runs the same thirteen against SQLite as well
+Postgres, and TypeScript runs the same sixteen against SQLite as well
 (`api-contract-report-sqlite.test.ts`), where it also holds that a ratio reaches the wire as a
 string, as it does on Postgres; Java, Kotlin and Python serve seeded rows behind their repository seam, and a
 TypeScript test holds those rows equal to what the views return.
@@ -496,9 +671,15 @@ row, and a `SUM` over the result would double-count. A to-one hop cannot fan out
 | **M4** | `sum` or `avg` over a non-numeric field (numeric is `int, long, double, float, decimal, currency`); `min` or `max` over a `boolean`, `object` or `map` field. |
 | **M5** | An `@segment` that names no `segment` child of the owning entity. |
 | **M6** | A `measure.ratio` whose `@numerator` or `@denominator` names no measure of the entity, or names one that is not a `measure.aggregate`. |
+| **M7** | A `@default` on an `@agg: count`. A count is never null, so the default could never apply. |
+| **M8** | A `@default` on an `@agg: min` or `max` over a field that is not numeric (M4's set). |
 
 A measure that breaks several of M1 to M4 reports only the first, in that order, so one
-mistake gives one error.
+mistake gives one error. M7 and M8 run only when none of M1 to M4 fired.
+
+**A `@default` must be a whole number** (`ERR_BAD_ATTR_VALUE`, on the measure). A fraction is
+refused in every port, and then M7 and M8 are not checked. A ratio's `@default` is checked for
+this only. The message and two edge cases differ by port: see [Known limits](#known-limits).
 
 ### Segments and filters (`ERR_BAD_ATTR_FILTER`)
 
@@ -517,9 +698,14 @@ mistake gives one error.
 | **R5** | `ERR_INVALID_REPORT` | A report `source.*` that is writable. A report's source, if present, must have a read-only `@kind` (`view`, `materializedView`, `storedProc`, `tableFunction`); a writable `@kind: table` is refused. |
 | **R6** | `ERR_INVALID_REPORT` | Two derived field names that collide: a dimension `revenue` with a measure `revenue`, or dimension `purchasedAt` at grain `day` with a measure named `purchasedAtDay`. A measure listed twice gets the same code with its own message ("lists 'x' more than once"). A repeated dimension item is reported under R2, not R6. |
 | **R7** | `ERR_INVALID_REPORT` | A report `@segment` that names no segment of `@from`. |
+| **R8** | `ERR_INVALID_REPORT` | A `@spine` that is not `Owner.hop[.hop...]` with `Owner` resolving to `@from` or an entity it extends (in the report's package), or that crosses a hop which is not a `relationship.*` with `@cardinality: one` or an `identity.reference`, or a hop whose target resolves to no object. This is D2's walk, started at `@from`. |
+| **R9** | `ERR_INVALID_REPORT` | A `@spine` report with no dimension, or a listed dimension whose `@via` does not begin with the spine's hops (no `@via` at all included). Hop names are compared as written; the owner segment is not. |
 
 `purchasedAt:day` and `purchasedAt:week` together are legal, since they derive different
 fields (`purchasedAtDay`, `purchasedAtWeek`).
+
+R8 and R9 run only when `@from` resolved. R9 is skipped when R8 failed, reports each offending
+dimension once, and leaves a dimension whose own `@via` fails D2 to D2.
 
 **Why every measure comes from `@from`.** Combining measures of two fact tables in one
 report is the "chasm trap" that every surveyed BI tool has bugs around: join the two tables
@@ -564,6 +750,13 @@ A model that does not use the new names generates exactly as before. What loads 
 where the same change fixed Java and Python parsing bugs, each toward what TypeScript already
 did; the [CHANGELOG](../../CHANGELOG.md) lists them and the models they affect. Until 1.1
 ships, `main` carries `metamodelVersion` 1.1, so no 1.0.x PATCH is cut from it.
+
+`@spine` and a measure's `@default` joined the same 1.1 change before it shipped, so
+`metamodelVersion` stays 1.1. A model that uses neither generates exactly as before. No
+generator you can own changed for them (the view SQL and the `meta docs` wording come from the
+packages), so an owned generator needs no resync. A report that declares
+`@spine`, or lists a measure with `@default`, lowers to different SQL and a tighter row type
+than the same report without it.
 
 Serving reports added no vocabulary (`metamodelVersion` stays 1.1). The same change corrected
 generated output for models that declare no report. Each is in the

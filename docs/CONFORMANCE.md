@@ -33,8 +33,8 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 15 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 48 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 17 | ✓ | ✓ | ✓ | ✓ | ✓ |
-| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 39 (33 query + 6 migration) | all 39 | 33 query (migrations TS-only, ADR-0015) | 33 query (via Exposed) | 33 query | 33 query |
-| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 78 (31 core + 10 tph + 9 m2m + 2 jsonb + 2 write-through + 11 projection + 13 report) | ✓ (Fastify reference + generated lane) | ✓ (embedded HTTP + JDBC) | ✓ (embedded HTTP + Exposed) | ✓ (HttpListener + Npgsql) | ✓ (FastAPI + pg8000) |
+| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 42 (36 query + 6 migration) | all 42 | 36 query (migrations TS-only, ADR-0015) | 36 query (via Exposed) | 36 query | 36 query |
+| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 82 (31 core + 10 tph + 9 m2m + 2 jsonb + 2 write-through + 12 projection + 16 report) | ✓ (Fastify reference + generated lane) | ✓ (embedded HTTP + JDBC) | ✓ (embedded HTTP + Exposed) | ✓ (HttpListener + Npgsql) | ✓ (FastAPI + pg8000) |
 | [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 42 cases | ✓ (generated Zod + run-time `runValidators`) | ✓ | ✓ | ✓ | ✓ (generated Pydantic + run-time `run_validators`) |
 | [`fixtures/registry-conformance/`](../fixtures/registry-conformance/) | 1 canonical manifest | ✓ (reference emitter) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/object-model-conformance/`](../fixtures/object-model-conformance/) | 1 shared metadata fixture (per-port scenarios) | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -269,14 +269,14 @@ trailing-newline preservation, and unicode multibyte handling.
 All 31 fixtures → [features/migrations-and-drift.md](features/migrations-and-drift.md)
 (template drift section — `Renderer.verify`).
 
-### `fixtures/persistence-conformance/` (39 — 33 query + 6 migration)
+### `fixtures/persistence-conformance/` (42 — 36 query + 6 migration)
 
 - `migrations/*` (6) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
-- `queries/*` (33) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
+- `queries/*` (36) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
 
-### `fixtures/api-contract-conformance/` (78)
+### `fixtures/api-contract-conformance/` (82)
 
-All 78 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
+All 82 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
 REST API URL grammar + JSON wire format). Verifies every backend's emitted CRUD
 routes answer identically over HTTP — list / get / create / patch+put / delete,
 plus pagination (`limit`/`offset`), sort (`sort=field:dir`), the `withCount=1`
@@ -294,9 +294,10 @@ each corpus alone could not reach, and 1 pinning the collection-URL spelling),
 `write-through/` (2, table-write + view-read entities), `projection/` (12, a
 read-only view answers reads and refuses writes with 405; a projection with no declared
 identity has no item route; a projection keyed on a field not named `id` is addressed by
-it, whether its identity names `@fields` or derives them; decimal and float fields filter) and `report/` (13,
+it, whether its identity names `@fields` or derives them; decimal and float fields filter) and `report/` (16,
 FR-044: a view-backed `object.report` is listed, filtered, sorted and paged on
-its derived fields, answers `POST` with 405 and mounts no `/{id}`). All 5 ports — TS, Java,
+its derived fields, answers `POST` with 405 and mounts no `/{id}`; a `@spine` report keeps
+a row with no facts, and a measure with `@default` filters and sorts as its default). All 5 ports — TS, Java,
 Kotlin, C#, Python — run it in BOTH lanes: a hand-rolled reference server and
 the port's own GENERATED API artifact booted over HTTP. `write-through/`,
 `projection/` and `report/` run the generated lane only, on all five ports: what
@@ -460,7 +461,7 @@ Kotlin's identity function is the Java one; the names its generator emits are as
 ## Orphaned fixtures (tested but not yet documented)
 
 The fixtures in the nine corpora mapped above (metamodel 374 + yaml 16 + verify 31
-+ render 15 + persistence 39 + api-contract 78 + source-resolution 25 + scope 10 +
++ render 15 + persistence 42 + api-contract 82 + source-resolution 25 + scope 10 +
 dependency 23) each map to a feature doc, and so do the two requirement corpora, whose
 case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider

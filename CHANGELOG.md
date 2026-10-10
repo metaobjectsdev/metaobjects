@@ -227,6 +227,49 @@ it until 1.1 ships._
   else breaks: an owned `grid`, `grid-hook` or `form` copy needs no change, and a hand-written
   generator that gates on `servesReadApi` receives a served report's read model and emits
   its list hook, which is what a hook generator wants; gate a grid or form on `servesClientTier`.
+- **Rows with no facts (`@spine`) and a default for an empty measure (`@default`), in all
+  five ports (FR-044).** Two optional attributes join the unreleased 1.1 vocabulary, so
+  `metamodelVersion` stays `1.1`. `@spine` on `object.report` is a to-one path from `@from`,
+  written like `@via` (`"Purchase.program"`): the report's rows then come from the entity at
+  its end, so a program nobody bought still has a row, with a `count` of `0`. `@default` on
+  `measure.aggregate` and `measure.ratio` is an integer the measure reads when it would be null
+  (nothing matched, every value null, or a ratio's denominator zero or null), and its column is
+  then never null in the view or in any port's row type. **A model that uses neither generates
+  exactly as before**, in every port. Merging this rules on four things that would be costly to
+  change after 1.1.0: (1) the grain does not change: a report is still one row per distinct
+  dimension tuple, now among the spine entity's rows, so list the spine entity's key to get one
+  row per spine row; (2) `@segment` and `@filter` on a `@spine` report scope the facts and never
+  remove a spine row (they sit in the join condition; there is no `WHERE`); (3) a fact row whose
+  reference is null or matches nothing is in no row of a `@spine` report (without `@spine` such
+  rows still form a null group); (4) a ratio's operand carries its own `@default` into the ratio,
+  so `revenue` defaulted to `0` over `buyers` reads `0`, not null, and the ratio's own `@default`
+  then covers a zero denominator. New load rules, gated by 10 new shared conformance fixtures
+  (37 for reporting, 374 in all): a `@spine` that is not a to-one path from `@from`, a `@spine`
+  report with no dimension, and a dimension not reached through the spine (hop names compared as
+  written) are `ERR_INVALID_REPORT`; a `@default` on a `count`, or on a `min`/`max` over a field
+  that is not numeric, is `ERR_INVALID_MEASURE`. A fractional `@default` (`0.5`) is
+  `ERR_BAD_ATTR_VALUE` on the measure in every port: TypeScript says "@default '0.5' is not an
+  integer. A measure's @default is a whole number (for example 0).", while C#, Java and Python
+  refuse it through their existing integer-attribute check with that check's message. No port
+  changed its general `attr.int` check, so a fraction in a validator's `@min` or `@max` loads
+  where it did. Two edge cases have no fixture: `@default: 0.0` (or `1.0`) is read as an integer
+  by TypeScript and refused by C#, Java and Python, and `@default: "zero"` on a `count` gives two
+  errors in TypeScript, C# and Python and one in Java. Write a whole number with no decimal
+  point. TypeScript lowers it: the view selects `FROM` the spine entity's table with `LEFT OUTER
+  JOIN`s back to `@from`, and a defaulted measure is `COALESCE(…, n)` (SQLite writes `n.0` for a
+  `decimal`, `double` or `float` measure and for a ratio, so the column keeps one storage class;
+  MySQL reads a defaulted ratio of zero as `0.0000`). `meta migrate` refuses a derived `@spine`
+  report, by name, when the spine entity or an entity on the way has no table, is a TPH subtype,
+  or a hop has no `identity.reference`. In `meta docs` a defaulted measure's definition ends
+  "; `n` when there is nothing to aggregate" (a defaulted ratio no longer says "null when the
+  denominator is 0"), and a `@spine` report's page gains a **Rows** line and a row scope that
+  reads "aggregating only …". Gated by three new persistence scenarios (42 in all, nine for
+  reports, through every port's runtime) and three new REST scenarios in the `report/`
+  sub-corpus (16; the api-contract corpus is 82), run in every port's generated lane and on
+  SQLite in TypeScript. **No generator an adopter can own changed** (the SQL and the `meta
+  docs` wording come from the packages, and each port's existing generators already type a
+  required field as not nullable), so an owned generator needs no resync for this. See
+  [docs/features/reporting.md](docs/features/reporting.md#rows-from-a-dimensions-entity).
 
 ### Changed
 

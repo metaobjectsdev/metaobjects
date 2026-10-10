@@ -314,7 +314,10 @@ like a keyless read-only projection. For a report `<R>` the generators you have 
 | `tanstackQuery()` | `<R>.hooks.ts`, `<R>.meta.ts` | the list hook (`use<R>List`, with the report's filter type) and its descriptor. No detail hook, no mutation |
 | `barrel()` | `index.ts` | one export |
 
-Every derived field with filter operators is filterable and sortable. A decimal column (an
+Every derived field with filter operators is filterable and sortable. A derived field that can
+be null is `.nullable()` in the Zod read schema and `T | null` in the row type. A measure with
+`@default`, and in a `@spine` report a key or `@required` column of the spine entity, can never
+be null: no `.nullable()`, and the row type is `T`. A decimal column (an
 `avg`, a ratio) is a `string` in the read schema and on the wire, on SQLite too: SQLite
 computes it as a REAL, so on that dialect the generated route passes the decimal field names to
 the mount as `decimalColumns` and the mount sends each as its string. The UI tier writes the

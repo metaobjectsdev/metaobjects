@@ -470,11 +470,17 @@ report with no source, an abstract one, and one over a `materializedView`, `stor
 
 Every derived field whose type has filter operators is filterable and sortable, dimension
 and measure alike; the allowlists are the report's own derived fields, never the `@from`
-entity's. No request parameter picks dimensions, measures or a grain. No port generates a
-client hook, grid or form for a report yet.
+entity's. No request parameter picks dimensions, measures or a grain. TypeScript generates a
+list hook for a report; no port generates a grid or form for one.
+
+A report with `@spine` lists the rows that have no facts too (a count of `0` there), and
+`withCount=1` counts them; `?filter[<count>][gt]=0` removes them on request. A measure with
+`@default` reads its default on such a row and is never `null`: `?filter[<m>][eq]=0` matches
+the empty rows, `isNull=true` matches nothing, and a sort on it orders the same on every
+engine.
 
 Gated by [`fixtures/api-contract-conformance/report/`](../../fixtures/api-contract-conformance/report/)
-(13 scenarios), **generated lane only, on all five ports**, for the reason `projection/`
+(16 scenarios), **generated lane only, on all five ports**, for the reason `projection/`
 gives. The columns, their types and the per-port generated files are in
 [reporting.md](reporting.md#how-a-report-is-served).
 
