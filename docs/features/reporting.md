@@ -249,7 +249,7 @@ physical column name is your naming strategy applied to the **derived field name
 
 | Item | Column | Type | Never null? |
 |---|---|---|---|
-| `dimension.attribute` | the dimension's name | the `@of` field's type | only when the dimension has no `@via` and the `@of` field declares `@required: true` |
+| `dimension.attribute` | the dimension's name | the `@of` field's type | only when the dimension has no `@via` and the `@of` field is required (`@required: true` or a `validator.required` child) |
 | `dimension.time` at `hour` | `<name>Hour` | `timestamp` | same rule |
 | `dimension.time` at `day`, `week`, `month`, `quarter`, `year` | `<name><Grain>` | `date`, the first day of the bucket | same rule |
 | `count` (with or without `@distinct`) | the measure's name | `long` | yes: a count is never null |
@@ -262,7 +262,7 @@ physical column name is your naming strategy applied to the **derived field name
 | `min` / `max` | the measure's name | the `@of` field's type | no |
 | `measure.ratio` | the measure's name | `decimal` | no |
 | any measure above except `count`, declaring `@default` | the measure's name | as above | yes: it reads its `@default` instead of null |
-| in a `@spine` report, a dimension over a column of the spine entity | the dimension's name | the `@of` field's type | yes when the `@of` field is `@required` or one of the spine entity's `identity.primary` `@fields`; no for a dimension reached beyond the spine entity |
+| in a `@spine` report, a dimension over a column of the spine entity | the dimension's name | the `@of` field's type | yes when the `@of` field is required (`@required` or a `validator.required` child) or one of the spine entity's `identity.primary` `@fields`; no for a dimension reached beyond the spine entity |
 
 The last two rows are the only ways a measure other than `count`, or a dimension reached
 through `@via`, is never null. The key clause applies only under `@spine`, where the key is
