@@ -19,8 +19,8 @@ it, and the one thing written about it is a `meta docs` model page marked "not s
 **Exporting to Cube.** A TypeScript reference generator, `cube-model`, writes the same
 vocabulary as Cube data-model files: a cube for each concrete, table-backed entity that declares
 dimensions, measures or segments (plus the join-target and alias cubes its `@via` dimensions
-need), and a rollup pre-aggregation for each served report. See
-[Exporting to Cube](#exporting-to-cube) and [cube-export.md](cube-export.md).
+need), a rollup pre-aggregation for each served report, and a Cube view for a served report
+with `@spine`. See [Exporting to Cube](#exporting-to-cube) and [cube-export.md](cube-export.md).
 
 **What does not exist yet.** No grid, form or other UI-tier output is generated for a report
 in any port; TypeScript's list hook is the one client piece (a later plan of FR-044 adds the
@@ -664,13 +664,16 @@ no file.
 | `dimension.time` | a `time` dimension, with `@grains` carried as `meta.grains` |
 | `measure.aggregate` | a measure, its `@segment` and `@filter` as one `filters` entry |
 | `measure.ratio` | a `number` measure over its two operand measures |
+| a measure's `@default` | `COALESCE` over the measure (a `measure.aggregate` keeps its aggregate as a `public: false` `<m>Raw` member) |
 | `segment.filter` | a segment |
 | a served `object.report` | a `rollup` pre-aggregation on its `@from` cube, and a segment for its `@filter` |
+| a served `object.report` with `@spine` | a Cube view rooted at the spine cube, over a `public: false` facts cube that holds the report's scope; no rollup |
 
 The SQL in the files comes from the same functions that write a report's view, so a filter
 means the same thing in both. A report with a relative date in its `@filter`, its `@segment` or
 a listed measure's condition gets no rollup, because a rollup would freeze "now" at build time;
-it still gets its scope segment when it has a `@filter`. On the conformance data, the
+it still gets its scope segment when it has a `@filter`. A `@spine` report gets no rollup either:
+Cube would build it from the fact cube, without the spine's empty rows. On the conformance data, the
 Cube query for each canonical report returns the rows of its view; a live check against a real
 Cube holds that. What the generator writes, wires, refuses and does not cover is in
 [cube-export.md](cube-export.md).

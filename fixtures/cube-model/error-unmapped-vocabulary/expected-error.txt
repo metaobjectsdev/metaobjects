@@ -1,1 +1,0 @@
-ERR_CUBE_UNMAPPED_VOCABULARY: report 'shop::ProgramRoster' declares @spine, which cube-model does not map yet. Written without it, the rollup would lack the rows the spine adds, so the export is refused rather than written wrong. Narrow the generator's filter to leave 'shop::Week' out, or remove @spine from the report.

@@ -13,11 +13,6 @@ export const ERR_CUBE_NAME_COLLISION = "ERR_CUBE_NAME_COLLISION";
 export const ERR_CUBE_UNESCAPABLE_LITERAL = "ERR_CUBE_UNESCAPABLE_LITERAL";
 /** The generator's dialect is not one it writes Cube SQL for (postgres, mysql). */
 export const ERR_CUBE_UNSUPPORTED_DIALECT = "ERR_CUBE_UNSUPPORTED_DIALECT";
-/**
- * The model uses vocabulary the mapping does not cover yet (a served report's `@spine`): refused,
- * because writing it without the attribute would be wrong.
- */
-export const ERR_CUBE_UNMAPPED_VOCABULARY = "ERR_CUBE_UNMAPPED_VOCABULARY";
 
 export const CUBE_ERROR_CODES = [
   ERR_CUBE_UNMAPPABLE_DIMENSION,
@@ -30,7 +25,6 @@ export const CUBE_ERROR_CODES = [
   ERR_CUBE_NAME_COLLISION,
   ERR_CUBE_UNESCAPABLE_LITERAL,
   ERR_CUBE_UNSUPPORTED_DIALECT,
-  ERR_CUBE_UNMAPPED_VOCABULARY,
 ] as const;
 export type CubeErrorCode = (typeof CUBE_ERROR_CODES)[number];
 

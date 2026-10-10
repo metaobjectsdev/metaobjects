@@ -15,13 +15,12 @@ files it writes import nothing.
 `measure` or `segment`, it writes `model/cubes/<Entity>.yml`. The file holds one cube: the
 table, the joins to the cubes its references reach, and its dimensions, measures and
 segments. For each served report it adds a `rollup` pre-aggregation to the report's `@from`
-cube. Cube reads these files from its own project.
+cube, and for a served report that declares `@spine` it writes a Cube view,
+`model/views/<Report>.yml`, instead. Cube reads these files from its own project.
 
 **What it does not do.** It never talks to Cube or to a database. There is no dbt MetricFlow
 exporter (it waits for the first adopter who asks, spec decision D5). No other port has an
 exporter (spec R6): the files are language-neutral YAML, and the Node `meta` CLI writes them.
-One piece of the design is not mapped yet, a report's `@spine`. A served report that declares
-it is refused, not written without it (see [Known limits](#known-limits)).
 
 **Entirely opt-in.** `meta init` wires no generator. A project that does not configure
 `cube-model` gets no file. A model that declares no dimension, measure or segment gets no file
@@ -41,6 +40,7 @@ Paths are relative to the generator's target `outDir`. Every file starts with
 | an abstract entity | nothing. Its members land on each concrete entity that inherits them. |
 | an entity with reporting vocabulary and no table | nothing (it is inert, like any object with no source) |
 | a served report | no file. In the cube of its `@from` entity: a rollup, unless the report holds a relative date anywhere (then it has none, see [Reports](#reports-rollups-and-scope-segments)), and a scope segment when it has a `@filter`. |
+| a served report that declares `@spine` | a **Cube view**, `model/views/<Report>.yml`; its **facts cube**, `model/cubes/<Report>Facts.yml`, `public: false`; for a spine of more than one hop, a **chain cube** `model/cubes/<Report>_<hop>.yml`, `public: false`, for each entity between; and one `one_to_many` join on the spine cube. No rollup and no scope segment (see [Reports with `@spine`](#reports-with-spine-a-cube-view)). |
 | a report with no `source.*`, an abstract report, or one whose read source is not `@kind: view` | nothing |
 | none of the reporting vocabulary | no file |
 
@@ -402,11 +402,45 @@ least one cube.
 In development mode Cube names the table of a rollup `dev_pre_aggregations.<cube>__<rollup>`,
 both parts in snake case, joined by two underscores (`week__program_minutes`).
 
+### Reports with `@spine`: a Cube view
+
+A served report that declares `@spine` reads its rows from the spine entity: one row for each
+distinct dimension tuple among that entity's rows, the ones no fact refers to included, where a
+count reads `0` and any other measure null or its `@default` ([reporting](reporting.md)). A rollup
+cannot hold those rows. Cube builds a rollup declared on the spine cube from the fact cube, so the
+empty rows are missing, and once it exists it changes the answer of a matching query (executed on
+Cube 1.7.43: 3 rows where the view has 7). So the report is a Cube **view**, with no rollup and no
+scope segment:
+
+| Part | Written |
+|---|---|
+| the view | `model/views/<Report>.yml`, named after the report, with the report's `title` and `description`. Views and cubes share Cube's one namespace. |
+| the spine cube | the cube each listed dimension reaches after the spine's hops: the spine entity's own cube, its join-target cube, or the alias cube of the last hop. It gets one `one_to_many` join onto the report's facts cube (or onto its first chain cube), on the columns of the spine hop's reference. |
+| `<Report>Facts` | a standalone cube, `public: false`, whose `sql` is `SELECT * FROM <the @from table> <alias>` with the report's `@segment` filter and then its `@filter`, ANDed, as its `WHERE` (none when the report has neither; for a TPH subtype, the base table, its discriminator first). The alias is the one the report view gives `@from`, so the condition reads as the view's join condition does. It holds `@from`'s primary key and `@from`'s own definitions of the measures the report lists, the operands of a listed ratio and the `<m>Raw` of a defaulted measure, in `@from`'s order; what the report does not list is `public: false`. |
+| `<Report>_<hop>` | for a spine of more than one hop, a standalone chain cube, `public: false`, for each entity between `@from` and the spine entity: its table, its primary key and one `one_to_many` join onward, towards the facts. `<hop>` is the hop that reaches the entity from `@from`'s side, so `Session.fkWeek.fkProgram` gives `ProgramSessions_fkWeek`. |
+| the view's `cubes` | first `join_path: <spine cube>` (and, for a dimension past the spine, the join path its own joins take from there), including the member each listed dimension reads, under the dimension's name (`id` as `programKey`) and with the dimension's `title`, `description` and `meta.grains`; last, `join_path: <spine cube>[.<chain cubes>].<Report>Facts`, including the listed measures. |
+
+The report's scope sits in the facts cube's own `sql`, so it scopes the facts inside the join and
+a spine row whose facts are all filtered out keeps its row, as the view's join condition does. A
+Cube segment would be a `WHERE` on the whole query, which turns the outer join back into an inner
+one. No join is added to `@from`'s own cube or to any cube of an entity between, so every ad-hoc
+answer of the ordinary cubes is unchanged: on 1.7.43, `{ "measures": ["Week.weeks"],
+"dimensions": ["Program.id"] }` is still rooted at `Week` (3 rows), with `Program`'s joins onto the
+facts cubes in place. The measure definitions are copied into the facts cube, which is the cost of
+keeping the ordinary cubes as they are.
+
+Executed on Cube 1.7.43 before this was built, and checked by the `cube` lane since: a view
+includes a private primary key and a `public: false` member under an alias; the include-level
+`title`, `description` and `meta` reach `/v1/meta`; the roster view returns every program, with
+`weeks` `0`, its plain sum null and its defaulted measures `0` for the programs with no weeks; the
+scoped facts cube keeps the programs whose weeks are all short; and a two-hop chain returns the
+view lowering's rows. A view is answered from the tables.
+
 ### Names, quoting and escaping
 
 | Rule | Behaviour |
 |---|---|
-| cube name | the entity's name. Two entities of one name in two packages, or an alias cube named like a cube, is `ERR_CUBE_NAME_COLLISION`, naming both. Rename one, or narrow the generator's `filter` to leave one out; the filter helps only when no `@via` reaches the entity it leaves out, since an entity a `@via` reaches is still written as a join-target cube, unless every hop onto it goes through an alias cube. |
+| cube name | the entity's name. Two entities of one name in two packages, or an alias, facts or chain cube or a `@spine` report's view named like a cube, is `ERR_CUBE_NAME_COLLISION`, naming both: Cube's cubes and views share one namespace. Rename one, or narrow the generator's `filter` to leave one out; the filter helps only when no `@via` reaches the entity it leaves out, since an entity a `@via` reaches is still written as a join-target cube, unless every hop onto it goes through an alias cube. |
 | member name | the dimension, measure or segment name as written, so a report field and its Cube member share a name |
 | a name Cube refuses | Cube names start with a letter, hold only letters, digits and `_`, and are not a Python keyword (`from`, `class`, `in`, `is`, `not`, `and`, `or`, `if`, `else`, `for`, `while`, `with`, `as`, `def`, `return`, `yield`, `import`, `pass`, `global`, `nonlocal`, `lambda`, `del`, `assert`, `break`, `continue`, `try`, `except`, `finally`, `raise`, `async`, `await`, `True`, `False`, `None`, `elif`). That is `ERR_CUBE_INVALID_NAME`, naming the node. The exporter never renames: the name is the report field's. |
 | members the exporter adds | primary-key dimensions, reached-column dimensions, the `<m>Raw` measure of a defaulted measure, `<report>Scope` segments, rollups. A name that collides with another member of the cube is `ERR_CUBE_MEMBER_COLLISION`, naming both. The one exception is a declared dimension over a key field under its own name, which is that key dimension (see [Cubes and primary keys](#cubes-and-primary-keys)). |
@@ -430,10 +464,9 @@ are printed in its messages and are not loader codes.
 | `ERR_CUBE_NO_PRIMARY_KEY` | a cube in a join has no `identity.primary` |
 | `ERR_CUBE_INVALID_NAME` | a cube or member name Cube cannot take |
 | `ERR_CUBE_MEMBER_COLLISION` | two members of one cube would have one name |
-| `ERR_CUBE_NAME_COLLISION` | two cubes would have one name |
+| `ERR_CUBE_NAME_COLLISION` | two cubes, or a cube and a view, would have one name |
 | `ERR_CUBE_UNESCAPABLE_LITERAL` | a literal, an identifier or free text that is raw-wrapped (it holds a Jinja opener) holds `endraw` |
 | `ERR_CUBE_UNSUPPORTED_DIALECT` | the dialect is neither `postgres` nor `mysql` and the run would write a cube |
-| `ERR_CUBE_UNMAPPED_VOCABULARY` | a served report declares `@spine`: the mapping does not cover it yet (see [Known limits](#known-limits)) |
 
 ## Which files a run writes
 
@@ -446,8 +479,9 @@ the `scope` of the project's [collection](metadata-sources.md). The run writes t
 entities' own cubes and every cube they reach through joins, transitively. It writes a reached
 cube because a selected cube changes it: `Week.programTitle` adds `title` to `Program`, and a
 `Program.yml` left out might lack that member. A report is never selected itself; its rollup
-rides with its `@from` cube. A run that selects no entity with reporting vocabulary writes
-nothing and raises nothing, under any dialect.
+rides with its `@from` cube. A `@spine` report's view is written when every cube its join paths
+name is written: it reads them and nothing else. A run that selects no entity with reporting
+vocabulary writes nothing and raises nothing, under any dialect.
 
 `scope` narrows what is written, not what is built. An error on an entity outside the scope
 still fails the run. To step around an entity, exclude it with the generator's `filter`.
@@ -455,7 +489,7 @@ still fails the run. To step around an entity, exclude it with the generator's `
 **Cleanup.** Cube compiles the whole model directory, so a stale `<Cube>.yml` left by a removed
 or renamed entity, or by a join no longer reached, can break the compile for every cube. The
 generator opts in to the runner's orphan cleanup for its own files, the direct `.yml` children
-of `model/cubes/` under its target. The runner removes such a file only when a previous run
+of `model/cubes/` and `model/views/` under its target. The runner removes such a file only when a previous run
 wrote it, this run did not write it again, and it is byte-identical to what was written. A file
 you edited is refused and named, never deleted, and a file the generator never wrote is never a
 candidate. A run that names entities (`meta gen <Entity>`) skips the cleanup. A project `scope`
@@ -491,6 +525,15 @@ rows is the report's field `<m>`, and `<From>.<d>.<grain>` is the field `<d><Gra
 rollup, so its query names `Purchase.recentRevenueScope` under `segments` and Cube reads the
 table.
 
+A report with `@spine` is queried through its view, by the report's name, and with no
+`segments`, because its scope is inside the view's facts cube:
+
+```json
+{ "measures": ["ProgramRoster.weeks", "ProgramRoster.totalMinutesOrZero"],
+  "dimensions": ["ProgramRoster.programKey", "ProgramRoster.programTitle"],
+  "timezone": "UTC" }
+```
+
 ## Where a Cube query and the view differ
 
 The numbers are equal on the conformance data. These differences are known, and none shows
@@ -513,8 +556,8 @@ like any other generated output: a changed model that was not regenerated, a mis
 and a stale one are drift. A hand edit to a generated file is not drift, but the gate lists it, and
 `meta verify --codegen --forbid-hand-edits` makes it fail.
 
-**The mapping corpus** is [`fixtures/cube-model/`](../../fixtures/cube-model/): 43 cases, each
-the smallest model for one rule, 32 with the exact tree the generator writes and 11 with the
+**The mapping corpus** is [`fixtures/cube-model/`](../../fixtures/cube-model/): 44 cases, each
+the smallest model for one rule, 34 with the exact tree the generator writes and 10 with the
 exact error message. Every expected file was written by hand from its rule and then compared
 with the generator, never copied from it.
 `codegen-ts/test/cube/cube-model-corpus.test.ts` runs it. The canonical golden,
@@ -527,15 +570,18 @@ development mode, with its embedded Cube Store, against a private `postgres:16-a
 holds the persistence-conformance schema and a seed
 (`fixtures/cube-model/canonical/seed.sql`). Each run owns a private Docker network and binds
 one ephemeral port on `127.0.0.1`; it never uses the shared Postgres sidecar, and every
-container and the network are removed on every exit path. It checks five things:
+container and the network are removed on every exit path. It checks six things:
 
 1. The generated canonical model is the reviewed golden.
 2. Cube compiles it and lists every cube and member the files declare.
-3. For each of the six canonical reports, the Cube query above, answered from the report's
+3. For each of the nine canonical reports, the Cube query above, answered from the report's
    rollup when the model has one (the lane asserts the rollup name in `usedPreAggregations`),
    returns the rows of `SELECT * FROM <view>`, after the normalization the Encodings row above
-   describes.
-4. Every case of the mapping corpus that has an expected tree (32 of the 43: 30 Postgres and
+   describes. The two `@spine` reports, `ProgramRoster` and `ProgramLongWeeks`, are queried
+   through their Cube views, and their 7 rows each include the programs with no weeks (and, for
+   `ProgramLongWeeks`, the two whose weeks are all short); `FitnessTotalsFilled`, a report of
+   defaulted measures, is answered from its rollup.
+4. Every case of the mapping corpus that has an expected tree (34 of the 44: 32 Postgres and
    2 MySQL) compiles in the same Cube, and each `title` and `description` it declares comes back
    from `/v1/meta` as declared. Compiling runs no SQL, so the MySQL cases compile against the
    Postgres data source. Cube returns a member's own title as `shortTitle`; its `title` joins the
@@ -545,6 +591,9 @@ container and the network are removed on every exit path. It checks five things:
 5. For the `escaping` case, Cube's `/v1/sql` for a query on each of its segments holds the
    segment's literal exactly as the report view writes it (`'a\b'`, `'ends\'`, `'a\{b}'`,
    `'a{b}c'`, `'{{x}}'`, `'it''s'` and a line break), and the braced column `"co{de}"`.
+6. For the `measure-default` case, Cube's `/v1/sql` for a ratio whose numerator declares
+   `@default` divides that numerator's `COALESCE(sum(…), 0)`, with and without the ratio's own
+   default, as the view does.
 
 Run it with `scripts/ci-local.sh --only cube`. The full `scripts/ci-local.sh` runs it after the
 integration suite, and `--quick` and `--no-integration` drop it. The first run pulls the Cube
@@ -572,18 +621,14 @@ the table names above are the development-mode form.
   it in Cube, but no MySQL database runs it there. The one MySQL form chosen for its meaning, the
   tuple distinct count, was compared with the view's on mysql:8.4 by hand when it was built.
 - **Some shapes are compile-checked, not query-checked.** Cube accepts the alias cubes, the TPH
-  subtype's `sql`, one-to-one joins and the int-backed enum's `CASE` (the corpus pass), but no
-  live query crosses them.
+  subtype's `sql`, one-to-one joins, the int-backed enum's `CASE` and a two-hop `@spine` chain
+  (the corpus pass), but no live query of the lane crosses them. The two-hop chain's rows were
+  compared with the view lowering's by hand on 1.7.43 when it was built.
+- **A `@spine` report has no rollup.** Its view is answered from the tables. A rollup on the spine
+  cube would lose the zero rows (see [Reports with `@spine`](#reports-with-spine-a-cube-view)).
 - **No `sqlite` or `d1`.** See [Dialects](#wiring-it).
-- **`@spine` is not mapped yet, and a served report that declares it is refused.** A report's
-  `@spine` (rows from a dimension's entity, the FR-044 zero-rows plan,
-  `docs/superpowers/plans/2026-10-09-fr-044-zero-rows-and-measure-defaults.md`) would be
-  written without the spine's zero rows, so a served report with `@spine` is
-  `ERR_CUBE_UNMAPPED_VOCABULARY`, naming the report. Narrow the generator's `filter` to leave
-  its `@from` entity out, or remove the attribute. A sourceless `@spine` report produces nothing
-  and stays inert. Spec §5 records the intended mapping.
-- **No Cube views, no `extends`, no `refresh_key`, no partitions, no `format`.** The exporter
-  writes cubes only.
+- **No `extends`, no `refresh_key`, no partitions, no `format`.** The exporter writes cubes, and
+  a Cube view only for a served `@spine` report.
 - **No derived measure.** `measure.derived` is not registered, so there is nothing to map.
 - **Rollups in production mode are unverified** (see above).
 

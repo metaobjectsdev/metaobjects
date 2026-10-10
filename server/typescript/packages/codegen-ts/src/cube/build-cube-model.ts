@@ -25,6 +25,8 @@ import {
   FIELD_SUBTYPE_ENUM,
   FILTER_OP_EQ,
   IDENTITY_SUBTYPE_REFERENCE,
+  OBJECT_REPORT_ATTR_FILTER,
+  OBJECT_REPORT_ATTR_SEGMENT,
   RELATIONSHIP_ATTR_CARDINALITY,
   RELATIONSHIP_ATTR_OBJECT_REF,
   TYPE_DIMENSION,
@@ -34,6 +36,8 @@ import {
   TYPE_SEGMENT,
   isMetaObject,
   reportShape,
+  reportSpine,
+  reportSpineHops,
   resolveObjectRef,
   resolveTableName,
   resolveTableSchema,
@@ -45,6 +49,7 @@ import {
   type MetaReferenceIdentity,
   type MetaRoot,
   type MetaSegment,
+  type ReportShape,
 } from "@metaobjectsdev/metadata";
 import { intValueMapOf } from "../enum-meta.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
@@ -55,13 +60,15 @@ import {
   hopReferenceIdentity,
   joinColumnFor,
   packageOf,
+  shortAliasFor,
   sourceColumnNameFor,
   walkViaPath,
   type Path,
   type PathStep,
 } from "../projection/extract-view-spec.js";
-import { dimensionOfField, resolveDimensionViaPath } from "../projection/report-resolve.js";
-import { cond } from "../projection/report-sql.js";
+import { dimensionOfField, ratioOperand, resolveDimensionViaPath } from "../projection/report-resolve.js";
+import { andOf, cond, resolveReportFilter, segmentClause } from "../projection/report-sql.js";
+import type { ViewFilterClause } from "../projection/view-spec.js";
 import {
   CubeModelError,
   ERR_CUBE_AMBIGUOUS_PATH,
@@ -76,6 +83,7 @@ import {
   grainsOf,
   measureMembers,
   memberKey,
+  rawMeasureName,
   segmentSpec,
   type MemberContext,
 } from "./cube-members.js";
@@ -89,9 +97,11 @@ import type {
   CubeSegmentSpec,
   CubeSource,
   CubeSpec,
+  CubeViewCubeSpec,
+  CubeViewIncludeSpec,
+  CubeViewSpec,
 } from "./cube-model-spec.js";
 import { assertCubeNames, MemberNamespace } from "./cube-names.js";
-import { assertReportMapped } from "./cube-pending.js";
 import { coarsestFirst, reportContribution } from "./cube-reports.js";
 import { cubeColumn, cubeSqlRenderer, joinedColumn, memberRef, tableRef } from "./cube-sql.js";
 
@@ -110,23 +120,48 @@ export interface CubeModelOptions {
 
 const REPORTING_TYPES: ReadonlySet<string> = new Set([TYPE_DIMENSION, TYPE_MEASURE, TYPE_SEGMENT]);
 
+/** Cube's own syntax for a view's join path: cube names, each a join of the one before (`Program.Week`). */
+const JOIN_PATH_SEPARATOR = ".";
+
 /**
  * `entity` declares (or inherits) reporting vocabulary; `joinTarget` is only reached (Table A);
- * `alias` is one hop's own copy of the entity it reaches (Table E).
+ * `alias` is one hop's own copy of the entity it reaches (Table E). A served `@spine` report adds
+ * `facts`, its scoped copy of @from (`<Report>Facts`), and for a spine of more than one hop a
+ * `chain` cube for each entity between @from and the spine entity (`<Report>_<hop>`).
  */
-type CubeKind = "entity" | "joinTarget" | "alias";
+type CubeKind = "entity" | "joinTarget" | "alias" | "facts" | "chain";
 
-/** One to-one hop a cube holds onto another cube: a Cube join (Table E). */
+/**
+ * One join a cube holds onto another cube (Table E): a to-one hop, or, from a `@spine` report's
+ * spine cube and chain cubes, a hop walked back towards the facts (`one_to_many`).
+ */
 interface Hop {
   /** The reference or relationship name. */
   readonly hop: string;
   readonly node: MetaData;
   readonly step: PathStep;
-  /** The identity.reference the hop crosses: this cube's own, or the far entity's (one_to_one). */
+  /** The identity.reference the hop crosses: this cube's own, or the far entity's. */
   readonly reference: MetaReferenceIdentity;
-  readonly relationship: "many_to_one" | "one_to_one";
+  readonly relationship: "many_to_one" | "one_to_one" | "one_to_many";
+  /** True when this cube's entity holds the reference's foreign key; false when the joined cube's does. */
+  readonly fkOnSelf: boolean;
   /** The joined cube: the target's own, or the alias cube `<Cube>_<hop>`. */
   readonly joined: CubeDraft;
+}
+
+/**
+ * A served report with `@spine`, as Cube holds it (the zero-rows / measure-defaults build): a view
+ * rooted at the spine cube, which joins its facts cube, directly or through chain cubes.
+ */
+interface SpinePlan {
+  readonly report: MetaObject;
+  readonly shape: ReportShape;
+  /** The @from entity's own cube, whose `@via` dimensions the view reads. */
+  readonly from: CubeDraft;
+  /** How many hops the spine has: the spine cube is each listed dimension's cube at this depth. */
+  readonly depth: number;
+  /** The view's last join path: the spine cube, the chain cubes, the facts cube. */
+  readonly factsPath: readonly string[];
 }
 
 /** Entity short names along a `@via` path, for messages. */
@@ -139,6 +174,8 @@ interface CubeDraft {
   readonly name: string;
   readonly entity: MetaObject;
   readonly kind: CubeKind;
+  /** The `@spine` report a facts or chain cube belongs to. */
+  readonly report?: MetaObject;
   readonly namespace: MemberNamespace;
   readonly hops: Hop[];
   readonly keyDims: CubeDimensionSpec[];
@@ -148,6 +185,10 @@ interface CubeDraft {
   readonly viaPaths: Map<MetaDimension, Path>;
   /** The cubes each `@via` dimension's joins pass through, this cube first. */
   readonly viaCubes: Map<MetaDimension, CubeDraft[]>;
+  /** The member each `@via` dimension reads, on the last of its cubes. */
+  readonly viaMembers: Map<MetaDimension, string>;
+  /** A facts cube's own SELECT (the report's scope in it), in place of the entity's table. */
+  sql?: string;
   readonly addedDims: CubeDimensionSpec[];
   readonly measures: CubeMeasureSpec[];
   /** Declared segments, then the served reports' scope segments in report order. */
@@ -230,6 +271,8 @@ class CubeModelBuilder {
   private readonly drafts = new Map<string, CubeDraft>();
   /** Alias cubes, in the order their hops were declared. */
   private readonly aliases: CubeDraft[] = [];
+  /** The facts and chain cubes of the served `@spine` reports, in report order. */
+  private readonly reportCubes: CubeDraft[] = [];
 
   constructor(
     private readonly root: MetaRoot,
@@ -273,10 +316,18 @@ class CubeModelBuilder {
     for (const draft of this.drafts.values()) {
       for (const [dim, path] of draft.viaPaths) draft.viaCubes.set(dim, this.viaCubes(draft, dim, path));
     }
+    // The served @spine reports' facts and chain cubes, and the joins onto them, before any name is
+    // checked: they are cubes like any other, and each report's view shares Cube's one namespace.
+    const spines: SpinePlan[] = [];
+    for (const o of objects) {
+      const plan = servedReport(o) ? this.spinePlan(o) : undefined;
+      if (plan !== undefined) spines.push(plan);
+    }
     const emitted = this.emittedCubes();
-    const cubeLabel = (c: CubeDraft): string =>
-      c.kind === "alias" ? `the alias cube '${c.name}' of '${c.entity.resolutionKey()}'` : `entity '${c.entity.resolutionKey()}'`;
-    assertCubeNames(emitted.map((c) => ({ name: c.name, what: cubeLabel(c) })));
+    assertCubeNames([
+      ...emitted.map((c) => ({ name: c.name, what: this.cubeLabel(c) })),
+      ...spines.map((p) => ({ name: p.report.name, what: `the view '${p.report.name}' of report '${p.report.resolutionKey()}'` })),
+    ]);
     this.assertJoinKeys(emitted);
 
     const graph = cubeGraph(emitted);
@@ -285,17 +336,39 @@ class CubeModelBuilder {
     }
     // Table F: in model order, so scope segments are in report order and rollups collect in report
     // order. cubeSpec then writes the rollups coarsest first, so the first rollup Cube can answer a
-    // report's query from is the one built for it, not a finer one (cube-reports.ts).
-    for (const o of objects) if (servedReport(o)) this.addReport(o);
+    // report's query from is the one built for it, not a finer one (cube-reports.ts). A @spine report
+    // is a view instead, with no rollup and no scope segment.
+    for (const o of objects) if (servedReport(o) && reportSpine(o) === undefined) this.addReport(o);
 
-    return { cubes: emitted.map((c) => this.cubeSpec(c)), views: [] };
+    return { cubes: emitted.map((c) => this.cubeSpec(c)), views: spines.map((p) => this.viewSpec(p)) };
   }
 
-  private draft(entity: MetaObject, kind: CubeKind, viaPaths: Map<MetaDimension, Path>, name = entity.name): CubeDraft {
+  /** What a cube was made from, for a name-collision message. */
+  private cubeLabel(c: CubeDraft): string {
+    switch (c.kind) {
+      case "entity":
+      case "joinTarget":
+        return `entity '${c.entity.resolutionKey()}'`;
+      case "alias":
+        return `the alias cube '${c.name}' of '${c.entity.resolutionKey()}'`;
+      case "facts":
+      case "chain":
+        return `the ${c.kind} cube '${c.name}' of report '${c.report?.resolutionKey() ?? ""}'`;
+    }
+  }
+
+  private draft(
+    entity: MetaObject,
+    kind: CubeKind,
+    viaPaths: Map<MetaDimension, Path>,
+    name = entity.name,
+    report?: MetaObject,
+  ): CubeDraft {
     return {
       name,
       entity,
       kind,
+      ...(report !== undefined ? { report } : {}),
       namespace: new MemberNamespace(name),
       hops: [],
       keyDims: [],
@@ -303,6 +376,7 @@ class CubeModelBuilder {
       declaredDims: new Map(),
       viaPaths,
       viaCubes: new Map(),
+      viaMembers: new Map(),
       addedDims: [],
       measures: [],
       segments: [],
@@ -449,7 +523,7 @@ class CubeModelBuilder {
   private addJoins(draft: CubeDraft): void {
     const entity = draft.entity;
     const self = entity.resolutionKey();
-    const candidates: Omit<Hop, "joined">[] = [];
+    const candidates: Omit<Hop, "joined" | "fkOnSelf">[] = [];
     // ADR-0039: resolving children(), so an inherited reference or relationship is a join too.
     for (const child of entity.children()) {
       let relationship: Hop["relationship"];
@@ -476,7 +550,9 @@ class CubeModelBuilder {
       const target = this.drafts.get(h.step.targetEntity)!;
       // Cube allows one join per target cube, and none onto the cube itself.
       const aliased = h.step.targetEntity === self || (perTarget.get(h.step.targetEntity) ?? 0) > 1;
-      draft.hops.push({ ...h, joined: aliased ? this.alias(`${draft.name}_${h.hop}`, target.entity) : target });
+      // many_to_one: this cube holds the foreign key. one_to_one: the far entity holds it.
+      const fkOnSelf = h.relationship === "many_to_one";
+      draft.hops.push({ ...h, fkOnSelf, joined: aliased ? this.alias(`${draft.name}_${h.hop}`, target.entity) : target });
     }
   }
 
@@ -497,7 +573,7 @@ class CubeModelBuilder {
       for (const h of c.hops) visit(h.joined);
     };
     for (const d of this.drafts.values()) if (d.kind === "entity") visit(d);
-    return [...this.drafts.values(), ...this.aliases].filter((c) => reached.has(c));
+    return [...this.drafts.values(), ...this.aliases, ...this.reportCubes].filter((c) => reached.has(c));
   }
 
   /**
@@ -602,6 +678,7 @@ class CubeModelBuilder {
     if (of === undefined) throw new Error(`${where} @of '${dim.of() ?? ""}' does not resolve.`);
     const { type } = this.columnOf(of, where);
     const member = this.reachedMember(joined, of, label);
+    draft.viaMembers.set(dim, member);
     return { name: dim.name, sql: memberRef(member, joined.name), type, ...grainsOf(dim), ...docOf(dim) };
   }
 
@@ -624,31 +701,35 @@ class CubeModelBuilder {
   }
 
   /**
-   * Table F: a served report's scope segment and rollup, on the cube of its @from entity when
-   * that cube is emitted as the entity's own (a TPH subtype's cube included: its `sql` applies
-   * the discriminator). An unselected @from contributes nothing; a selected one that cannot be
-   * a cube (abstract, or no table) is ERR_CUBE_UNMAPPABLE_REPORT: there is no cube to hold the
-   * rollup, and the view lowering refuses the same report.
+   * The cube of a served report's @from entity, when it is emitted as the entity's own (a TPH
+   * subtype's cube included: its `sql` applies the discriminator). Undefined when the generator's
+   * filter leaves @from out: the report's members belong to a cube this run does not build. A
+   * selected @from that cannot be a cube (abstract, or no table) is ERR_CUBE_UNMAPPABLE_REPORT:
+   * there is no cube to hold `holds` (the rollup, or a @spine report's facts), and the view
+   * lowering refuses the same report.
    */
-  private addReport(report: MetaObject): void {
-    const shape = reportShape(report, this.root);
+  private reportCube(report: MetaObject, shape: ReportShape, holds: string): CubeDraft | undefined {
     const from = shape.from;
     const draft = this.drafts.get(from.resolutionKey());
-    if (draft?.kind !== "entity") {
-      // Not selected: the report's members belong to a cube this run does not write.
-      if (!(this.options.matches?.(from) ?? true)) return;
-      // Selected, and @from declares the measures the report lists, so the only reason it has no
-      // cube of its own is Table A's: it is abstract or has no table.
-      const fromKey = from.resolutionKey();
-      const why = from.isAbstract ? `'${fromKey}' is abstract` : `'${fromKey}' declares no writable source.rdb`;
-      throw new CubeModelError(
-        ERR_CUBE_UNMAPPABLE_REPORT,
-        `report '${report.resolutionKey()}' is served, and its @from '${fromKey}' has no cube to hold its ` +
-          `rollup: ${why}, so it has no table of its own, and no view can be derived from it either. Report ` +
-          `@from a concrete entity with a table, or remove the report's view source.`,
-      );
-    }
-    assertReportMapped(report, from);
+    if (draft?.kind === "entity") return draft;
+    if (!(this.options.matches?.(from) ?? true)) return undefined;
+    // Selected, and @from declares the measures the report lists, so the only reason it has no
+    // cube of its own is Table A's: it is abstract or has no table.
+    const fromKey = from.resolutionKey();
+    const why = from.isAbstract ? `'${fromKey}' is abstract` : `'${fromKey}' declares no writable source.rdb`;
+    throw new CubeModelError(
+      ERR_CUBE_UNMAPPABLE_REPORT,
+      `report '${report.resolutionKey()}' is served, and its @from '${fromKey}' has no cube to hold its ` +
+        `${holds}: ${why}, so it has no table of its own, and no view can be derived from it either. Report ` +
+        `@from a concrete entity with a table, or remove the report's view source.`,
+    );
+  }
+
+  /** Table F: a served report's scope segment and rollup, on the cube of its @from entity. */
+  private addReport(report: MetaObject): void {
+    const shape = reportShape(report, this.root);
+    const draft = this.reportCube(report, shape, "rollup");
+    if (draft === undefined) return;
     const key = report.resolutionKey();
     const { scope, rollup } = reportContribution(shape, draft.name, this.mc);
     if (scope !== undefined) {
@@ -663,6 +744,189 @@ class CubeModelBuilder {
   }
 
   /**
+   * A served report with `@spine` (the zero-rows / measure-defaults plan, Table D): the view
+   * selects FROM the spine entity S and walks the spine's hops back to @from, one LEFT OUTER JOIN
+   * each, with the report's scope on the join that introduces @from. Cube gets the same rows:
+   *
+   *   - the spine cube is the cube each listed dimension's joins reach after the spine's hops (rule
+   *     R9 puts every listed dimension through the spine): S's own cube, or the alias cube of the
+   *     last hop;
+   *   - `<Report>Facts`, a standalone `public: false` cube over @from's table whose own `sql` holds
+   *     the report's @segment and @filter, so they scope the facts inside the join and a spine row
+   *     whose facts are all filtered out keeps its row (a Cube segment would be a WHERE);
+   *   - for a spine of more than one hop, a standalone `public: false` chain cube `<Report>_<hop>`
+   *     for each entity between @from and S, named after the hop that reaches it from @from;
+   *   - one `one_to_many` join from the spine cube, then from each chain cube, towards the facts,
+   *     on the ON predicate the hop's forward join has.
+   *
+   * No join is added to @from's own cube or to any cube of an entity between, so the ordinary
+   * cubes' ad-hoc answers are unchanged (executed on Cube 1.7.43: `{ Week.weeks, Program.id }`
+   * stays rooted at Week). Undefined for a report with no `@spine`, or whose @from the filter
+   * leaves out.
+   */
+  private spinePlan(report: MetaObject): SpinePlan | undefined {
+    const shape = reportShape(report, this.root);
+    const hops = reportSpineHops(report, shape.from, this.root);
+    if (hops === undefined) return undefined;
+    const from = this.reportCube(report, shape, "facts");
+    if (from === undefined) return undefined;
+    const where = `report '${report.resolutionKey()}'`;
+    const spine = reportSpine(report) ?? "";
+
+    // The spine cube, and the spine's own steps, from the listed dimensions' resolved paths.
+    let spineCube: CubeDraft | undefined;
+    let steps: PathStep[] = [];
+    for (const f of shape.fields) {
+      if (f.role !== "dimension") continue;
+      const dim = f.dimension;
+      const path = dim === undefined ? undefined : from.viaPaths.get(dim);
+      const cubes = dim === undefined ? undefined : from.viaCubes.get(dim);
+      // Rule R9, which the loader enforces: a tree built past the loader is refused here, by name.
+      if (path === undefined || cubes === undefined || !hops.every((h, i) => path[i]?.relationship === h)) {
+        throw new Error(`${where}: dimension '${f.name}' is not reached through @spine '${spine}' (rule R9).`);
+      }
+      const at = cubes[hops.length]!;
+      if (spineCube !== undefined && at !== spineCube) {
+        throw new Error(`${where}: the listed dimensions reach @spine '${spine}' through different cubes.`);
+      }
+      spineCube = at;
+      steps = path.slice(0, hops.length);
+    }
+    // Rule R9: a @spine report lists at least one dimension.
+    if (spineCube === undefined) throw new Error(`${where}: declares @spine '${spine}' and lists no dimension (rule R9).`);
+
+    const facts = this.draft(from.entity, "facts", new Map(), `${report.name}Facts`, report);
+    facts.sql = this.factsSql(report, from.entity, where);
+    this.addKeyDimensions(facts);
+    facts.measures.push(...this.factsMeasures(shape, from, where));
+    this.reportCubes.push(facts);
+
+    // Walked from the facts back up to the spine: steps[i] leads from entity i to entity i + 1.
+    let below = facts;
+    const chain: string[] = [];
+    for (let i = 0; i < steps.length - 1; i++) {
+      const step = steps[i]!;
+      const entity = this.byKey.get(step.targetEntity);
+      if (entity === undefined) throw new Error(`${where}: @spine '${spine}' reaches '${step.targetEntity}', which is not in the model.`);
+      const link = this.draft(entity, "chain", new Map(), `${report.name}_${step.relationship}`, report);
+      this.addKeyDimensions(link);
+      link.hops.push(this.reverseHop(step, below, where));
+      this.reportCubes.push(link);
+      chain.unshift(link.name);
+      below = link;
+    }
+    spineCube.hops.push(this.reverseHop(steps[steps.length - 1]!, below, where));
+    return { report, shape, from, depth: hops.length, factsPath: [spineCube.name, ...chain, facts.name] };
+  }
+
+  /**
+   * One spine hop walked back, from the entity it reaches towards the entity that holds it:
+   * `one_to_many`, on the ON predicate of the hop's forward join (the join() pairing, with the
+   * foreign key on whichever side the hop's reference puts it).
+   */
+  private reverseHop(step: PathStep, joined: CubeDraft, where: string): Hop {
+    const holder = step.entity;
+    if (!isMetaObject(holder)) throw new Error(`${where}: spine hop '${step.relationship}' is not held by an entity.`);
+    const reference = hopReferenceIdentity(holder, step.relationship, this.root);
+    // ADR-0039: resolving children(), so an inherited relationship or reference is found.
+    const node = holder.children().find(
+      (c) =>
+        c.name === step.relationship &&
+        (c.type === TYPE_RELATIONSHIP || (c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_REFERENCE)),
+    );
+    if (reference === undefined || node === undefined) {
+      throw new Error(`${where}: spine hop '${step.relationship}' of '${holder.resolutionKey()}' has no identity.reference.`);
+    }
+    // referenceHolder "source": the holder (the facts side) holds the foreign key; "target": the
+    // entity the hop reaches (this side) does.
+    return { hop: step.relationship, node, step, reference, relationship: "one_to_many", fkOnSelf: step.referenceHolder === "target", joined };
+  }
+
+  /**
+   * The facts cube's `sql`: @from's table under the alias the view gives it, scoped by the report's
+   * @segment's filter, then its @filter, ANDed as the view's join condition is (for a TPH subtype,
+   * the base table, its discriminator first). No WHERE when the report has no scope.
+   */
+  private factsSql(report: MetaObject, from: MetaObject, where: string): string {
+    const renderer = cubeSqlRenderer(where);
+    const ctx = this.mc.extract;
+    // The view's base alias: the first one its join tree assigns.
+    const alias = shortAliasFor(from.name, new Set());
+    const tph = isTphSubtype(from);
+    const table = tph ? tphDiscriminatorBase(from)! : from;
+    const segment = report.attr(OBJECT_REPORT_ATTR_SEGMENT);
+    const scope = andOf([
+      tph ? this.discriminatorClause(from, `${alias}.`, where) : undefined,
+      segmentClause(typeof segment === "string" ? segment : undefined, from, alias, ctx, where),
+      resolveReportFilter(report.attr(OBJECT_REPORT_ATTR_FILTER), from, alias, ctx, `${where} @filter`),
+    ]);
+    const select = `SELECT * FROM ${tableRef(resolveTableName(table), resolveTableSchema(table), this.d, renderer)} ${alias}`;
+    return scope === undefined ? select : `${select} WHERE ${cond(scope, this.d, renderer)}`;
+  }
+
+  /**
+   * The facts cube's measures: @from's own cube's, in its order, narrowed to those the report lists,
+   * the operands of a listed ratio and the `<m>Raw` of each defaulted one, so every definition is
+   * the ordinary cube's. A measure the report does not list is `public: false`.
+   */
+  private factsMeasures(shape: ReportShape, from: CubeDraft, where: string): CubeMeasureSpec[] {
+    const listed = new Set<string>();
+    const needed = new Set<string>();
+    const need = (m: MetaMeasure): void => {
+      needed.add(m.name);
+      // ADR-0039: defaultValue() resolves, as measureMembers reads it.
+      if (!m.isRatio() && m.defaultValue() !== undefined) needed.add(rawMeasureName(m.name));
+    };
+    for (const f of shape.fields) {
+      const m = f.measure;
+      if (f.role !== "measure" || m === undefined) continue;
+      listed.add(m.name);
+      need(m);
+      if (m.isRatio()) {
+        need(ratioOperand(from.entity, m, m.numerator(), where));
+        need(ratioOperand(from.entity, m, m.denominator(), where));
+      }
+    }
+    return from.measures
+      .filter((m) => needed.has(m.name))
+      .map((m) => (listed.has(m.name) || m.public === false ? m : { ...m, public: false }));
+  }
+
+  /**
+   * A served `@spine` report's Cube view: the spine cube's members each listed dimension reads,
+   * under the dimension's name and with its docs and grains (a dimension past the spine from the
+   * cube its own joins end on), then the facts cube's listed measures.
+   */
+  private viewSpec(plan: SpinePlan): CubeViewSpec {
+    const groups = new Map<string, CubeViewIncludeSpec[]>();
+    const seen = new Set<MetaDimension>();
+    const measures: CubeViewIncludeSpec[] = [];
+    for (const f of plan.shape.fields) {
+      if (f.role === "measure") {
+        if (f.measure !== undefined) measures.push({ name: f.measure.name });
+        continue;
+      }
+      const dim = f.dimension;
+      // A time dimension at two grains is one member: the query picks each grain.
+      if (dim === undefined || seen.has(dim)) continue;
+      seen.add(dim);
+      const cubes = plan.from.viaCubes.get(dim)!;
+      const member = plan.from.viaMembers.get(dim)!;
+      const joinPath = cubes.slice(plan.depth).map((c) => c.name).join(JOIN_PATH_SEPARATOR);
+      const include: CubeViewIncludeSpec = {
+        name: member,
+        ...(member === dim.name ? {} : { alias: dim.name }),
+        ...docOf(dim),
+        ...grainsOf(dim),
+      };
+      groups.set(joinPath, [...(groups.get(joinPath) ?? []), include]);
+    }
+    const cubes: CubeViewCubeSpec[] = [...groups].map(([joinPath, includes]) => ({ joinPath, includes }));
+    cubes.push({ joinPath: plan.factsPath.join(JOIN_PATH_SEPARATOR), includes: measures });
+    return { name: plan.report.name, ...docOf(plan.report), cubes };
+  }
+
+  /**
    * A join's ON predicate: the view's (renderJoin), with `{CUBE}` for this cube and `{<join>}`
    * for the other, over EVERY column pair of the reference, ANDed in position order. The key
    * side is the reference's explicit `@references` fields, else the referenced entity's
@@ -672,8 +936,10 @@ class CubeModelBuilder {
     const where = `cube '${draft.name}': join '${h.joined.name}' (${hopLabel(h.node)})`;
     const renderer = cubeSqlRenderer(where);
     const target = h.joined.entity;
-    // many_to_one: this cube holds the foreign key. one_to_one: the far entity holds it.
-    const [fkEntity, keyEntity] = h.relationship === "many_to_one" ? [draft.entity, target] : [target, draft.entity];
+    // The side that holds the reference's foreign key: this cube (many_to_one, or a spine hop walked
+    // back from the entity that holds it), or the joined cube (one_to_one, or a hop walked back
+    // from the entity it references).
+    const [fkEntity, keyEntity] = h.fkOnSelf ? [draft.entity, target] : [target, draft.entity];
     const fkFields = h.reference.fields;
     const explicit = h.reference.targetFields;
     // ADR-0039: resolving primaryIdentity(), so a key inherited through extends is found.
@@ -690,15 +956,34 @@ class CubeModelBuilder {
     const pairs = fkFields.map((fk, i) => {
       const fkCol = joinColumnFor(fkEntity, fk, this.mc.extract);
       const keyCol = joinColumnFor(keyEntity, keyFields[i]!, this.mc.extract);
-      return h.relationship === "many_to_one"
+      return h.fkOnSelf
         ? `${cubeColumn(fkCol, this.d, renderer)} = ${joinedColumn(h.joined.name, keyCol, this.d, renderer)}`
         : `${cubeColumn(keyCol, this.d, renderer)} = ${joinedColumn(h.joined.name, fkCol, this.d, renderer)}`;
     });
     return { name: h.joined.name, relationship: h.relationship, sql: pairs.join(" AND ") };
   }
 
-  /** `sql_table`, or for a TPH subtype a `sql` over the base table with its discriminator predicate. */
+  /**
+   * A TPH subtype's discriminator predicate: its pinned value on the discriminator column, written
+   * after `prefix` (empty, or a table alias and its dot).
+   */
+  private discriminatorClause(entity: MetaObject, prefix: string, where: string): ViewFilterClause {
+    const pin = tphDiscriminatorPin(entity)!;
+    const field = entity.fields().find((f) => f.name === pin.fieldName);
+    if (field === undefined) throw new Error(`${where}: discriminator field '${pin.fieldName}' is not a field of '${entity.name}'.`);
+    const value =
+      field.subType === FIELD_SUBTYPE_ENUM
+        ? encodeIntEnumFilterValue(pin.value, FILTER_OP_EQ, intValueMapOf(field), pin.fieldName, where)
+        : pin.value;
+    return { kind: "cmp", ref: `${prefix}${sourceColumnNameFor(field, this.mc.extract)}`, op: FILTER_OP_EQ, value };
+  }
+
+  /**
+   * `sql_table`, or for a TPH subtype a `sql` over the base table with its discriminator predicate,
+   * or a facts cube's own `sql`.
+   */
   private source(draft: CubeDraft): CubeSource {
+    if (draft.sql !== undefined) return { sql: draft.sql };
     const entity = draft.entity;
     const where = `cube '${draft.name}'`;
     const renderer = cubeSqlRenderer(where);
@@ -707,14 +992,7 @@ class CubeModelBuilder {
     }
     // A TPH subtype shares its base's table with every other subtype: scope it by the pin.
     const base = tphDiscriminatorBase(entity)!;
-    const pin = tphDiscriminatorPin(entity)!;
-    const field = entity.fields().find((f) => f.name === pin.fieldName);
-    if (field === undefined) throw new Error(`${where}: discriminator field '${pin.fieldName}' is not a field of '${entity.name}'.`);
-    const value =
-      field.subType === FIELD_SUBTYPE_ENUM
-        ? encodeIntEnumFilterValue(pin.value, FILTER_OP_EQ, intValueMapOf(field), pin.fieldName, where)
-        : pin.value;
-    const predicate = cond({ kind: "cmp", ref: sourceColumnNameFor(field, this.mc.extract), op: FILTER_OP_EQ, value }, this.d, renderer);
+    const predicate = cond(this.discriminatorClause(entity, "", where), this.d, renderer);
     return { sql: `SELECT * FROM ${tableRef(resolveTableName(base), resolveTableSchema(base), this.d, renderer)} WHERE ${predicate}` };
   }
 

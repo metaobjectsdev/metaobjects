@@ -1,9 +1,11 @@
-// FR-044 Plan 4, Task 4 — the YAML text of one cube (Table H is the contract, byte for byte).
+// FR-044 Plan 4, Task 4 — the YAML text of one cube, and of one Cube view (Table H is the contract,
+// byte for byte).
 //
-// A hand-written emitter for exactly the shapes a CubeSpec holds, because the bytes are a golden
-// and a YAML library's quoting choices would move them: block lists for `joins`, `dimensions`,
-// `measures`, `segments`, `pre_aggregations`, `filters` and `time_dimensions`; flow lists for a
-// rollup's `measures`, `dimensions` and `segments` and for `meta.grains`. Two-space indent, LF
+// A hand-written emitter for exactly the shapes a CubeSpec and a CubeViewSpec hold, because the
+// bytes are a golden and a YAML library's quoting choices would move them: block lists for
+// `joins`, `dimensions`, `measures`, `segments`, `pre_aggregations`, `filters`, `time_dimensions`,
+// a view's `cubes` and their `includes`; flow lists for a rollup's `measures`, `dimensions` and
+// `segments` and for `meta.grains`. Two-space indent, LF
 // line endings, one trailing newline, no trailing spaces, no blank lines.
 //
 // Three kinds of scalar (Table G, YAML row):
@@ -22,7 +24,7 @@
 //     `{% raw %}...{% endraw %}` (an escaped `\{%` still holds `{%`). The result is written as a JSON
 //     string (a valid YAML double-quoted scalar, so each of those backslashes is doubled again in
 //     the file). Cube's `/v1/meta` hands back the text exactly as the model declares it.
-//   - Names, types, booleans, relationships, granularities and `CUBE.<member>` references are plain,
+//   - Names, types, booleans, relationships, granularities, join paths and `CUBE.<member>` references are plain,
 //     except a name a YAML reader would take for a boolean or null (true, false, null, yes, no, on,
 //     off, y, n, in any case), which is single-quoted so it stays a string.
 
@@ -35,6 +37,9 @@ import type {
   CubeRollupSpec,
   CubeSegmentSpec,
   CubeSpec,
+  CubeViewCubeSpec,
+  CubeViewIncludeSpec,
+  CubeViewSpec,
 } from "./cube-model-spec.js";
 import { escapeCubeTemplate, jinjaSafe, JINJA_RAW_END } from "./cube-template.js";
 
@@ -200,6 +205,40 @@ function renderCube(cube: CubeSpec): Lines {
     ...blockList("pre_aggregations", cube.preAggregations.map(renderRollup)),
   );
   return out;
+}
+
+function renderViewInclude(include: CubeViewIncludeSpec, view: string): Lines {
+  const at = `view '${view}' member '${include.alias ?? include.name}'`;
+  const out: Lines = [`name: ${nameScalar(include.name)}`];
+  if (include.alias !== undefined) out.push(`alias: ${nameScalar(include.alias)}`);
+  out.push(...documentation(include, at));
+  if (include.meta !== undefined && include.meta.grains.length > 0) {
+    out.push("meta:", ...indented(flowList("grains", include.meta.grains)));
+  }
+  return out;
+}
+
+function renderViewCube(entry: CubeViewCubeSpec, view: string): Lines {
+  return [
+    `join_path: ${nameScalar(entry.joinPath)}`,
+    ...blockList("includes", entry.includes.map((include) => renderViewInclude(include, view))),
+  ];
+}
+
+/**
+ * The YAML file for one Cube view, as `model/views/<name>.yml` holds it: the scalar rules of
+ * {@link renderCubeYaml}. Throws `CubeModelError` (`ERR_CUBE_UNESCAPABLE_LITERAL`, naming the view
+ * and member) for free text that is raw-wrapped and holds `endraw`.
+ */
+export function renderCubeViewYaml(view: CubeViewSpec): string {
+  const at = `view '${view.name}'`;
+  const body: Lines = [
+    `name: ${nameScalar(view.name)}`,
+    ...documentation(view, at),
+    ...blockList("cubes", view.cubes.map((entry) => renderViewCube(entry, view.name))),
+  ];
+  const lines = [`# ${GENERATED_HEADER} — ${HEADER_NOTE}`, "views:", ...indented(listItem(body))];
+  return `${lines.join("\n")}\n`;
 }
 
 /**

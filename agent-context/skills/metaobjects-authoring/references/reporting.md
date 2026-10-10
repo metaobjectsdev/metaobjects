@@ -165,7 +165,9 @@ letter first, then letters, digits and `_`, and not a Python keyword such as `fr
 otherwise the export fails with `ERR_CUBE_INVALID_NAME` and renames nothing. It also refuses a
 dimension over an array, object or map field. A report with a relative date in its `@filter`,
 its `@segment`'s filter or a listed measure's condition gets no rollup. Its `<report>Scope`
-segment is written only when it has a `@filter`. A report that is not served contributes nothing. Reference: `docs/features/cube-export.md`.
+segment is written only when it has a `@filter`. A served report with `@spine` becomes a Cube view
+with its scope inside a facts cube and no rollup, so the spine's empty rows survive, and a measure's
+`@default` is a `COALESCE`, as in the view. A report that is not served contributes nothing. Reference: `docs/features/cube-export.md`.
 
 ## What a report does not have
 

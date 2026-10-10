@@ -2,14 +2,15 @@
 //
 // Cube compiles the whole model directory, so a stale `<Cube>.yml` left by a removed or renamed
 // entity can break the compile for every cube. The generator opts in to the runner's orphan
-// reconciliation for exactly its own files (the direct `.yml` children of model/cubes/ under its
-// target). What this file gates, against the REAL runner and a real project directory, for both
+// reconciliation for exactly its own files (the direct `.yml` children of model/cubes/ and
+// model/views/ under its target). What this file gates, against the REAL runner and a real project directory, for both
 // the built-in and the ejectable reference copy:
 //
 //   - a full run after an entity loses its vocabulary deletes that entity's file, and only it;
 //   - a run that names entities (`meta gen <Entity>`) deletes nothing, and says why;
 //   - a cube file somebody edited is refused and named, never deleted;
 //   - a file the generator never wrote is never a candidate, even inside model/cubes/;
+//   - a served @spine report's view and facts cube go once the report does;
 //   - --dry-run reports the removal and performs none;
 //   - a project `scope` is collection config: a full run under a changed scope reconciles to it.
 //
@@ -226,17 +227,90 @@ for (const impl of IMPLEMENTATIONS) {
   });
 }
 
+/** A served @spine report over Week, onto Program; `withReport: false` is "the author deleted it". */
+function spineModel(withReport: boolean): string {
+  return JSON.stringify({
+    "metadata.root": {
+      package: "acme::shop",
+      children: [
+        entity("Program", "programs", []),
+        entity("Week", "weeks", [
+          { "field.long": { name: "programId" } },
+          { "identity.reference": { name: "fkProgram", "@fields": "programId", "@references": "Program" } },
+          { "dimension.attribute": { name: "programKey", "@of": "Program.id", "@via": "Week.fkProgram" } },
+          count("weeks", "Week.id"),
+        ]),
+        ...(withReport
+          ? [
+              {
+                "object.report": {
+                  name: "ProgramRoster",
+                  "@from": "Week",
+                  "@spine": "Week.fkProgram",
+                  "@dimensions": ["programKey"],
+                  "@measures": ["weeks"],
+                  children: [{ "source.rdb": { "@kind": "view", "@view": "v_program_roster" } }],
+                },
+              },
+            ]
+          : []),
+      ],
+    },
+  });
+}
+
+for (const impl of IMPLEMENTATIONS) {
+  describe(`cube-model view cleanup, through runGen: ${impl.label}`, () => {
+    let projectRoot: string;
+    beforeEach(() => {
+      projectRoot = mkdtempSync(join(tmpdir(), "cube-orphan-view-"));
+    });
+    afterEach(() => {
+      rmSync(projectRoot, { recursive: true, force: true });
+    });
+    const abs = (rel: string): string => join(projectRoot, rel);
+    const VIEW = join(OUT_DIR, "model", "views", "ProgramRoster.yml");
+    const FACTS = join(OUT_DIR, "model", "cubes", "ProgramRosterFacts.yml");
+
+    async function gen(withReport: boolean) {
+      const loaded = await new MetaDataLoader().load([new InMemoryStringSource(spineModel(withReport))]);
+      if (loaded.errors.length > 0) throw new Error(loaded.errors.map((e) => e.message).join("\n"));
+      return runGen({
+        config: defineConfig({ outDir: OUT_DIR, dialect: "postgres", generators: [impl.cubeModel()] }),
+        metadata: loaded.root,
+        projectRoot,
+      });
+    }
+
+    test("a @spine report writes its view and its facts cube; once removed, both are cleaned up", async () => {
+      await gen(true);
+      expect(existsSync(abs(VIEW))).toBe(true);
+      expect(existsSync(abs(FACTS))).toBe(true);
+      expect(readFileSync(abs(PROGRAM_CUBE), "utf8")).toContain("name: ProgramRosterFacts");
+
+      const result = await gen(false);
+
+      expect(result.files.filter((f) => f.status === "removed").map((f) => f.path).sort()).toEqual([abs(FACTS), abs(VIEW)].sort());
+      // Program.yml is rewritten without the join, not removed: Week's @via still reaches it.
+      expect(readFileSync(abs(PROGRAM_CUBE), "utf8")).not.toContain("ProgramRosterFacts");
+    });
+  });
+}
+
 describe("ownsCubeFile: the cleanup's blast radius", () => {
-  test("claims a direct .yml child of model/cubes/, and nothing else", () => {
+  test("claims a direct .yml child of model/cubes/ or model/views/, and nothing else", () => {
     expect(ownsCubeFile("model/cubes/Program.yml")).toBe(true);
     expect(ownsCubeFile("model/cubes/Match_fkHome.yml")).toBe(true);
+    expect(ownsCubeFile("model/views/ProgramRoster.yml")).toBe(true);
     for (const path of [
       "model/cubes/nested/Program.yml",
       "model/cubes/Program.yaml",
       "model/cubes/Program.ts",
       "model/cubes/",
       "model/cubes",
-      "model/views/Overview.yml",
+      "model/views/nested/Overview.yml",
+      "model/views/Overview.yaml",
+      "model/views/",
       "model/Program.yml",
       "Program.yml",
       "cubes/model/cubes/Program.yml",

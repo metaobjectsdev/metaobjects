@@ -488,12 +488,12 @@ adapter code; in memory trivial.
 | `segment` | segment | metric `filter` / saved query filter |
 | relative filter `{ now: "-P7D" }` | the view's SQL in a segment or measure filter (no rollup for such a report) | `{{ TimeDimension(...) }} >= dateadd(...)` |
 | `object.report` | a rollup on the `@from` cube (coarsest first) | a saved query |
-| measure `@default: n` (R9) | a `number` measure `COALESCE({measure}, n)` | `fill_nulls_with: n` on the metric |
-| report `@spine` (R8) | a Cube view rooted at the spine cube; no rollup (a rollup on the spine cube is built from the fact cube and loses the zero rows) | none: `join_to_timespine` covers time only. The exporter must refuse a `@spine` report, never drop the attribute silently (§3 obligation 3) |
+| measure `@default: n` (R9) | a `number` measure `COALESCE({measure}, n)`; a `measure.aggregate` keeps its aggregate as a `public: false` `<m>Raw` member, and a ratio wraps its quotient | `fill_nulls_with: n` on the metric |
+| report `@spine` (R8) | a Cube view rooted at the spine cube, joined `one_to_many` to a `public: false` facts cube whose own `sql` holds the report's scope (so the scope stays in the join); no rollup (a rollup on the spine cube is built from the fact cube and loses the zero rows) | none: `join_to_timespine` covers time only. The exporter must refuse a `@spine` report, never drop the attribute silently (§3 obligation 3) |
 
 FR-044 Plan 4 ([plan](../plans/2026-10-09-fr-044-plan-4-cube-exporter.md)) built the Cube
-column as written above, except the `@spine` and `@default` rows, which wait for those
-attributes to be registered, and `measure.derived`, which is not registered. The MetricFlow column waits for the first adopter who asks (D5).
+column as written above, the `@spine` and `@default` rows included once the zero-rows /
+measure-defaults build registered them, except `measure.derived`, which is not registered. The MetricFlow column waits for the first adopter who asks (D5).
 
 ## 6. Dependencies and order
 

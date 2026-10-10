@@ -1,6 +1,6 @@
 // FR-044 Plan 4 — the Cube data model the cube-model generator writes, as plain data
 // (Table H's shape). `buildCubeModel` produces it from the reporting vocabulary; the YAML
-// renderer writes one file per cube from it. Field names follow Cube's own keys in camelCase
+// renderers write one file per cube and one per view (a served `@spine` report) from it. Field names follow Cube's own keys in camelCase
 // (`sqlTable` is `sql_table`, `primaryKey` is `primary_key`, `preAggregations` is
 // `pre_aggregations`). Every SQL fragment (`sql`, `sqlTable`, a filter's or a join's `sql`)
 // arrives escaped for Cube's template reader (backslashes doubled, `{...}` escaped) and for
@@ -141,28 +141,35 @@ export interface CubeSpecBase {
 
 export type CubeSpec = CubeSpecBase & CubeSource;
 
-// The Cube view shapes below are NOT public API yet: the package root does not export them, and
-// nothing builds a view (a `@spine` report's mapping is not built, plan Task 10). They stay here,
-// internal, so `CubeModel` has the slot that mapping will fill; their shape may change with it.
-
-/** One member a Cube view includes under another name. Internal (see above). */
-export interface CubeViewIncludeAlias {
+/**
+ * One member a Cube view includes: a member of the cube its `joinPath` ends on, under `alias`
+ * when the view names it differently (a report field reads a member named after another field:
+ * `programKey` is `Program.id`). `title`, `description` and `meta` override the member's own, so
+ * the view's member carries the report field's documentation (executed on Cube 1.7.43).
+ */
+export interface CubeViewIncludeSpec {
   readonly name: string;
-  readonly alias: string;
+  readonly alias?: string;
+  readonly title?: string;
+  readonly description?: string;
+  readonly meta?: CubeDimensionMeta;
 }
 
-/** One cube a Cube view includes. Internal (see above). */
+/** One `cubes` entry of a Cube view: a dotted join path from the view's root cube, and the members it includes there. */
 export interface CubeViewCubeSpec {
-  /** Dotted cube path from the view's root cube, e.g. `Program.Week`. */
+  /** e.g. `Program`, then `Program.ProgramRosterFacts`. Every step is a join of the cube before it. */
   readonly joinPath: string;
-  readonly includes: readonly (string | CubeViewIncludeAlias)[];
-  readonly prefix?: boolean;
+  readonly includes: readonly CubeViewIncludeSpec[];
 }
 
-/** A Cube view. Internal (see above). */
+/**
+ * A Cube view: a served report with `@spine` (the zero-rows / measure-defaults build). Its first
+ * `cubes` entry is the spine cube, so every spine row is a row of the view, and its last is the
+ * report's facts cube, reached through one_to_many joins.
+ */
 export interface CubeViewSpec {
+  /** The report's name. Views and cubes share Cube's one namespace. */
   readonly name: string;
-  readonly public?: boolean;
   readonly title?: string;
   readonly description?: string;
   readonly cubes: readonly CubeViewCubeSpec[];
@@ -170,9 +177,6 @@ export interface CubeViewSpec {
 
 export interface CubeModel {
   readonly cubes: readonly CubeSpec[];
-  /**
-   * Always empty today. Not public API yet: its element type is internal, and the slot exists for
-   * the `@spine` mapping (a Cube view per spine report), which is not built.
-   */
+  /** One view per served report that declares `@spine`, in model order. */
   readonly views: readonly CubeViewSpec[];
 }

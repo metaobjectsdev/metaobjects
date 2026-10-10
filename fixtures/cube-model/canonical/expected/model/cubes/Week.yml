@@ -17,6 +17,9 @@ cubes:
       - name: programTitle
         sql: '{Program.title}'
         type: string
+      - name: programKey
+        sql: '{Program.id}'
+        type: number
     measures:
       - name: weeks
         sql: '{CUBE}."id"'
@@ -49,6 +52,16 @@ cubes:
       - name: longShare
         sql: 'CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0)'
         type: number
+      - name: totalMinutesOrZeroRaw
+        sql: '{CUBE}."durationMinutes"'
+        type: sum
+        public: false
+      - name: totalMinutesOrZero
+        sql: 'COALESCE({totalMinutesOrZeroRaw}, 0)'
+        type: number
+      - name: longShareOrZero
+        sql: 'COALESCE(CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0), 0)'
+        type: number
     segments:
       - name: long
         sql: '{CUBE}."durationMinutes" >= 60'
@@ -56,6 +69,9 @@ cubes:
       - name: FitnessTotals
         type: rollup
         measures: [CUBE.weeks, CUBE.totalMinutes, CUBE.longShare]
+      - name: FitnessTotalsFilled
+        type: rollup
+        measures: [CUBE.weeks, CUBE.totalMinutesOrZero, CUBE.longShareOrZero]
       - name: ProgramMinutes
         type: rollup
         measures: [CUBE.weeks, CUBE.longWeeks, CUBE.labels, CUBE.slots, CUBE.totalMinutes, CUBE.avgMinutes, CUBE.minMinutes, CUBE.maxMinutes, CUBE.longShare]

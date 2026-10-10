@@ -10,7 +10,7 @@ import { pathToFileURL } from "node:url";
 import { InMemoryStringSource, MetaDataLoader, loadUris, type MetaRoot } from "@metaobjectsdev/metadata";
 import { buildCubeModel } from "../../src/cube/build-cube-model.js";
 import { CubeModelError } from "../../src/cube/cube-errors.js";
-import type { CubeDialect, CubeModel, CubeSpec } from "../../src/cube/cube-model-spec.js";
+import type { CubeDialect, CubeDimensionSpec, CubeMeasureSpec, CubeModel, CubeSpec } from "../../src/cube/cube-model-spec.js";
 
 type Json = Record<string, unknown>;
 
@@ -1429,16 +1429,48 @@ describe("Table H — the canonical model", () => {
     "fixtures", "persistence-conformance", "canonical", "meta.fitness.json",
   );
 
-  test("Program, Week and Asset are Table H's cubes", async () => {
+  test("Program, Week and Asset are Table H's cubes; the @spine reports add facts cubes and views", async () => {
     const result = await loadUris([pathToFileURL(CANONICAL).href]);
     expect(result.errors.map((e) => e.message)).toEqual([]);
     const model = buildCubeModel(result.root, { dialect: "postgres", columnNamingStrategy: "literal" });
-    expect(model.views).toEqual([]);
+    expect(model.views).toEqual([
+      {
+        name: "ProgramRoster",
+        cubes: [
+          { joinPath: "Program", includes: [{ name: "id", alias: "programKey" }, { name: "title", alias: "programTitle" }] },
+          {
+            joinPath: "Program.ProgramRosterFacts",
+            includes: [
+              { name: "weeks" }, { name: "totalMinutes" }, { name: "totalMinutesOrZero" }, { name: "longShare" },
+              { name: "longShareOrZero" },
+            ],
+          },
+        ],
+      },
+      {
+        name: "ProgramLongWeeks",
+        cubes: [
+          { joinPath: "Program", includes: [{ name: "id", alias: "programKey" }] },
+          { joinPath: "Program.ProgramLongWeeksFacts", includes: [{ name: "weeks" }, { name: "totalMinutesOrZero" }] },
+        ],
+      },
+    ]);
+    const weeks: CubeMeasureSpec = { name: "weeks", sql: '{CUBE}."id"', type: "count" };
+    const longWeeks: CubeMeasureSpec = { name: "longWeeks", sql: '{CUBE}."id"', type: "count", filters: [{ sql: '{CUBE}."durationMinutes" >= 60' }] };
+    const totalMinutesOrZeroRaw: CubeMeasureSpec = { name: "totalMinutesOrZeroRaw", sql: '{CUBE}."durationMinutes"', type: "sum", public: false };
+    const totalMinutesOrZero: CubeMeasureSpec = { name: "totalMinutesOrZero", sql: "COALESCE({totalMinutesOrZeroRaw}, 0)", type: "number" };
+    const longShare: CubeMeasureSpec = { name: "longShare", sql: "CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0)", type: "number" };
+    const longShareOrZero: CubeMeasureSpec = { name: "longShareOrZero", sql: "COALESCE(CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0), 0)", type: "number" };
+    const key: CubeDimensionSpec = { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true };
     expect(model.cubes).toEqual([
       {
         name: "Program",
         sqlTable: '"programs"',
-        joins: [],
+        // The spine cube of both @spine reports: one one_to_many join onto each one's facts.
+        joins: [
+          { name: "ProgramRosterFacts", relationship: "one_to_many", sql: '{CUBE}."id" = {ProgramRosterFacts}."programId"' },
+          { name: "ProgramLongWeeksFacts", relationship: "one_to_many", sql: '{CUBE}."id" = {ProgramLongWeeksFacts}."programId"' },
+        ],
         dimensions: [
           { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true },
           {
@@ -1480,13 +1512,12 @@ describe("Table H — the canonical model", () => {
           { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true },
           { name: "program", sql: '{CUBE}."programId"', type: "number" },
           { name: "programTitle", sql: "{Program.title}", type: "string" },
+          // Read through the @via onto Program's key dimension.
+          { name: "programKey", sql: "{Program.id}", type: "number" },
         ],
         measures: [
-          { name: "weeks", sql: '{CUBE}."id"', type: "count" },
-          {
-            name: "longWeeks", sql: '{CUBE}."id"', type: "count",
-            filters: [{ sql: '{CUBE}."durationMinutes" >= 60' }],
-          },
+          weeks,
+          longWeeks,
           { name: "labels", sql: '{CUBE}."label"', type: "count_distinct" },
           {
             name: "slots", sql: 'ROW({CUBE}."programId", {CUBE}."durationMinutes")', type: "count_distinct",
@@ -1496,13 +1527,22 @@ describe("Table H — the canonical model", () => {
           { name: "avgMinutes", sql: '{CUBE}."durationMinutes"', type: "avg" },
           { name: "minMinutes", sql: '{CUBE}."durationMinutes"', type: "min" },
           { name: "maxMinutes", sql: '{CUBE}."durationMinutes"', type: "max" },
-          { name: "longShare", sql: "CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0)", type: "number" },
+          longShare,
+          // @default: 0 (Task 9): the aggregate as <m>Raw, the measure its COALESCE.
+          totalMinutesOrZeroRaw,
+          totalMinutesOrZero,
+          longShareOrZero,
         ],
         segments: [{ name: "long", sql: '{CUBE}."durationMinutes" >= 60' }],
-        // Coarsest first: FitnessTotals groups by nothing, so Cube's first match for
-        // its query is its own rollup and not ProgramMinutes'.
+        // Coarsest first: FitnessTotals and FitnessTotalsFilled group by nothing, so Cube's first
+        // match for each one's query is a rollup of no dimensions and not ProgramMinutes'. The two
+        // @spine reports are views, with no rollup and no scope segment on Week.
         preAggregations: [
           { name: "FitnessTotals", type: "rollup", measures: ["weeks", "totalMinutes", "longShare"], dimensions: [], segments: [] },
+          {
+            name: "FitnessTotalsFilled", type: "rollup", measures: ["weeks", "totalMinutesOrZero", "longShareOrZero"],
+            dimensions: [], segments: [],
+          },
           {
             name: "ProgramMinutes", type: "rollup",
             measures: ["weeks", "longWeeks", "labels", "slots", "totalMinutes", "avgMinutes", "minMinutes", "maxMinutes", "longShare"],
@@ -1533,6 +1573,34 @@ describe("Table H — the canonical model", () => {
             ],
           },
         ],
+      },
+      {
+        name: "ProgramRosterFacts",
+        sql: 'SELECT * FROM "weeks" w',
+        public: false,
+        joins: [],
+        dimensions: [key],
+        measures: [
+          weeks,
+          { ...longWeeks, public: false },
+          { name: "totalMinutes", sql: '{CUBE}."durationMinutes"', type: "sum" },
+          longShare,
+          totalMinutesOrZeroRaw,
+          totalMinutesOrZero,
+          longShareOrZero,
+        ],
+        segments: [],
+        preAggregations: [],
+      },
+      {
+        name: "ProgramLongWeeksFacts",
+        sql: 'SELECT * FROM "weeks" w WHERE w."durationMinutes" >= 60',
+        public: false,
+        joins: [],
+        dimensions: [key],
+        measures: [weeks, totalMinutesOrZeroRaw, totalMinutesOrZero],
+        segments: [],
+        preAggregations: [],
       },
     ]);
   });

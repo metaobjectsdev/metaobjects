@@ -11,7 +11,8 @@
  *   2. requires Cube to compile it and to list every cube and member the files declare;
  *   3. for each served report, builds the Cube query Table F says reproduces it, requires Cube to
  *      answer from the report's rollup when the model has one, and compares the rows with
- *      `SELECT * FROM <view>` under Table I's normalization;
+ *      `SELECT * FROM <view>` under Table I's normalization. A report with `@spine` is a Cube
+ *      view, queried by its own name, and its rows include the spine rows with no facts;
  *   4. loads every case of the mapping corpus that has an expected tree into the same Cube and
  *      requires each to compile, which turns the shapes no live query reaches (alias cubes, a TPH
  *      subtype's `sql`, one-to-one joins, Jinja-escaped text) into executed checks. The MySQL
@@ -19,7 +20,9 @@
  *      does not stop a MySQL model from compiling;
  *   5. reads the `escaping` case's SQL back through `/v1/sql` and requires each of its literals,
  *      and its braced column, to reach the SQL exactly as the report view writes them (Cube
- *      compiles every `sql` as a template literal, so a missed escape changes the value).
+ *      compiles every `sql` as a template literal, so a missed escape changes the value);
+ *   6. reads the `measure-default` case's SQL back through `/v1/sql` and requires a ratio over an
+ *      operand that declares `@default` to divide that operand's COALESCE, as the view does.
  *
  * It is `*.live.ts`, so no directory-walking `bun test` picks it up: it runs only by its path,
  * from `bun run test:cube` (the `cube` lane of scripts/ci-local.sh). Without docker every test is
@@ -44,6 +47,7 @@ import {
   TYPE_SEGMENT,
   reportReadSource,
   reportShape,
+  reportSpine,
   type MetaData,
   type MetaObject,
   type MetaRoot,
@@ -95,7 +99,10 @@ const CORPUS_BUDGET_MS = CORPUS_CASES.length * CASE_BUDGET_MS;
  * Table I: what each served canonical report must produce. `preAggregation` is the table Cube
  * names in `usedPreAggregations`: development mode's schema `dev_pre_aggregations`, then
  * `<cube>__<rollup>` in snake case, TWO underscores (executed on 1.7.43); undefined means Table F
- * emits no rollup and Cube reads the source table. `rows` is the row count on canonical/seed.sql.
+ * emits no rollup and Cube reads the source tables (a relative date, or a `@spine` report, which
+ * is a Cube view). `rows` is the row count on canonical/seed.sql: a `@spine` report has one row
+ * per program, the four with no weeks (and, for ProgramLongWeeks, the two whose weeks are all
+ * short) included.
  */
 interface ExpectedReport {
   readonly report: string;
@@ -111,6 +118,9 @@ const TABLE_I: readonly ExpectedReport[] = [
   { report: "ProgramsByWeek", view: "v_programs_by_week", preAggregation: "dev_pre_aggregations.program__programs_by_week", rows: 5 },
   { report: "RecentPrograms", view: "v_recent_programs", preAggregation: undefined, rows: 1 },
   { report: "AssetActivity", view: "v_asset_activity", preAggregation: "dev_pre_aggregations.asset__asset_activity", rows: 2 },
+  { report: "ProgramRoster", view: "v_program_roster", preAggregation: undefined, rows: 7 },
+  { report: "ProgramLongWeeks", view: "v_program_long_weeks", preAggregation: undefined, rows: 7 },
+  { report: "FitnessTotalsFilled", view: "v_fitness_totals_filled", preAggregation: "dev_pre_aggregations.week__fitness_totals_filled", rows: 1 },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -243,6 +253,9 @@ describe(`cube-model live check (${CUBE_IMAGE}, development mode)`, () => {
       // `@from` cube exactly when Table I expects Cube to answer from one.
       const cube = reportShape(report, requireCanonical()).from.name;
       expect(declaredRollups(readTree(CANONICAL_EXPECTED_DIR), cube).includes(want.report)).toBe(want.preAggregation !== undefined);
+      // And a Cube view named after the report exactly when it declares @spine.
+      const views = declaredViews(readTree(CANONICAL_EXPECTED_DIR)).map((v) => String(v.name));
+      expect(views.includes(want.report)).toBe(reportSpine(report) !== undefined);
     }
   });
 
@@ -336,7 +349,29 @@ describe(`cube-model live check (${CUBE_IMAGE}, development mode)`, () => {
     }
     expect(wrong).toEqual([]);
   }, CASE_BUDGET_MS + 120_000);
+
+  test("measure-default: a ratio over a defaulted operand divides the operand's COALESCE, as the view does", async () => {
+    const s = requireStack();
+    const outcome = await swapInCase(s, DEFAULT_CASE, Date.now() + CASE_BUDGET_MS);
+    if (outcome !== undefined) throw new Error(`${DEFAULT_CASE}: ${outcome}`);
+    const sqlOf = async (measure: string): Promise<string> => {
+      const query: CubeQuery = { measures: [`${DEFAULT_CUBE}.${measure}`], dimensions: [], timeDimensions: [], segments: [], timezone: "UTC" };
+      return (await generatedSql(s, query)).replace(/\s+/g, " ");
+    };
+    // Cube inlines each member reference, so the operand's own COALESCE(sum(...), 0) is inside the
+    // ratio's cast (the zero-rows / measure-defaults plan's decision 4), with or without the ratio's.
+    const operand = `CAST(COALESCE(sum("sale"."amount"), 0) AS NUMERIC) / NULLIF(count("sale"."id"), 0)`;
+    const perSale = await sqlOf("revenuePerSale");
+    const orZero = await sqlOf("revenuePerSaleOrZero");
+    timings.push(`measure-default /v1/sql: revenuePerSale ${perSale.includes(operand) ? "ok" : "MISMATCH"}, revenuePerSaleOrZero ${orZero.includes(`COALESCE(${operand}, 0)`) ? "ok" : "MISMATCH"}`);
+    expect({ perSale: perSale.includes(operand), sql: perSale }).toEqual({ perSale: true, sql: perSale });
+    expect({ orZero: orZero.includes(`COALESCE(${operand}, 0)`), sql: orZero }).toEqual({ orZero: true, sql: orZero });
+  }, CASE_BUDGET_MS + 120_000);
 });
+
+const DEFAULT_CASE = "measure-default";
+/** The case's one cube (fixtures/cube-model/measure-default/meta.json). */
+const DEFAULT_CUBE = "Sale";
 
 // ---------------------------------------------------------------------------------------------
 // The escaping case through /v1/sql.
@@ -407,7 +442,9 @@ function lowerFirst(s: string): string {
 
 function cubeQueryFor(report: MetaObject, root: MetaRoot): QueryPlan {
   const shape = reportShape(report, root);
-  const cube = shape.from.name;
+  // A @spine report is a Cube view of its own name, whose scope is inside its facts cube.
+  const spine = reportSpine(report) !== undefined;
+  const cube = spine ? report.name : shape.from.name;
   const measures: string[] = [];
   const dimensions: string[] = [];
   const timeDimensions: CubeTimeDimension[] = [];
@@ -432,8 +469,8 @@ function cubeQueryFor(report: MetaObject, root: MetaRoot): QueryPlan {
   }
   const segments: string[] = [];
   const segment = report.attr(OBJECT_REPORT_ATTR_SEGMENT);
-  if (typeof segment === "string") segments.push(`${cube}.${segment}`);
-  if (report.attr(OBJECT_REPORT_ATTR_FILTER) !== undefined) segments.push(`${cube}.${lowerFirst(report.name)}Scope`);
+  if (!spine && typeof segment === "string") segments.push(`${cube}.${segment}`);
+  if (!spine && report.attr(OBJECT_REPORT_ATTR_FILTER) !== undefined) segments.push(`${cube}.${lowerFirst(report.name)}Scope`);
   return { query: { measures, dimensions, timeDimensions, segments, timezone: "UTC" }, columns };
 }
 
@@ -697,29 +734,56 @@ interface YamlCube {
   readonly pre_aggregations?: readonly YamlMember[];
 }
 
-/** Every cube the YAML files of a model tree declare. */
-function declaredCubes(tree: ReadonlyMap<string, string>): YamlCube[] {
-  const out: YamlCube[] = [];
+interface YamlViewInclude {
+  readonly name?: unknown;
+  readonly alias?: unknown;
+}
+
+interface YamlView {
+  readonly name?: unknown;
+  readonly cubes?: readonly { readonly join_path?: unknown; readonly includes?: readonly YamlViewInclude[] }[];
+}
+
+/** The `cubes` and `views` lists of every YAML file of a model tree. */
+function declaredDocs(tree: ReadonlyMap<string, string>): { cubes: YamlCube[]; views: YamlView[] } {
+  const cubes: YamlCube[] = [];
+  const views: YamlView[] = [];
   for (const [path, text] of tree) {
     if (!path.endsWith(".yml")) continue;
     const doc: unknown = YAML.parse(text);
-    const cubes = typeof doc === "object" && doc !== null ? (doc as { cubes?: unknown }).cubes : undefined;
-    if (!Array.isArray(cubes)) throw new Error(`${path}: no cubes list`);
-    out.push(...(cubes as YamlCube[]));
+    const lists = typeof doc === "object" && doc !== null ? (doc as { cubes?: unknown; views?: unknown }) : {};
+    if (!Array.isArray(lists.cubes) && !Array.isArray(lists.views)) throw new Error(`${path}: no cubes or views list`);
+    if (Array.isArray(lists.cubes)) cubes.push(...(lists.cubes as YamlCube[]));
+    if (Array.isArray(lists.views)) views.push(...(lists.views as YamlView[]));
   }
-  return out;
+  return { cubes, views };
+}
+
+/** Every cube the YAML files of a model tree declare. */
+function declaredCubes(tree: ReadonlyMap<string, string>): YamlCube[] {
+  return declaredDocs(tree).cubes;
+}
+
+/** Every Cube view the YAML files of a model tree declare. */
+function declaredViews(tree: ReadonlyMap<string, string>): YamlView[] {
+  return declaredDocs(tree).views;
 }
 
 /**
  * The summary Cube's meta should give for these files: a cube is public unless `public: false`;
- * a primary key is private unless it says otherwise (Cube's default); every other member is
- * public unless `public: false`.
+ * every member of a `public: false` cube is private (executed on 1.7.43: a facts cube's measures,
+ * which carry no `public` of their own); otherwise a primary key is private unless it says
+ * otherwise (Cube's default), and every other member is public unless `public: false`. A view is public, and so is each member it includes, under its
+ * alias, with the kind and type of the cube member it includes (executed on 1.7.43: a private key
+ * and a `public: false` member are public in a view).
  */
 function declaredSummary(tree: ReadonlyMap<string, string>): Record<string, CubeSummary> {
   const out: Record<string, CubeSummary> = {};
-  for (const c of declaredCubes(tree)) {
+  const { cubes, views } = declaredDocs(tree);
+  for (const c of cubes) {
     const name = String(c.name);
-    const isPrivate = (m: YamlMember): boolean => m.public === false || (m.primary_key === true && m.public !== true);
+    const isPrivate = (m: YamlMember): boolean =>
+      c.public === false || m.public === false || (m.primary_key === true && m.public !== true);
     const flag = (m: YamlMember): string => (isPrivate(m) ? " private" : "");
     out[name] = {
       public: c.public !== false,
@@ -729,6 +793,26 @@ function declaredSummary(tree: ReadonlyMap<string, string>): Record<string, Cube
         ...(c.segments ?? []).map((m) => `segment ${name}.${String(m.name)}${flag(m)}`),
       ].sort(),
     };
+  }
+  for (const v of views) {
+    const name = String(v.name);
+    const members: string[] = [];
+    for (const entry of v.cubes ?? []) {
+      // The members a join path includes are the members of the cube it ends on.
+      const target = String(entry.join_path).split(".").pop();
+      const cube = cubes.find((c) => String(c.name) === target);
+      if (cube === undefined) throw new Error(`view ${name}: join_path ${String(entry.join_path)} ends on no declared cube`);
+      for (const include of entry.includes ?? []) {
+        const member = String(include.name);
+        const as = `${name}.${String(include.alias ?? member)}`;
+        const dim = (cube.dimensions ?? []).find((m) => String(m.name) === member);
+        const measure = (cube.measures ?? []).find((m) => String(m.name) === member);
+        if (dim !== undefined) members.push(`dimension ${as} ${String(dim.type)}`);
+        else if (measure !== undefined) members.push(`measure ${as} ${AGG_TYPE[String(measure.type)] ?? `?${String(measure.type)}`}`);
+        else throw new Error(`view ${name}: includes ${member}, which ${String(cube.name)} does not declare`);
+      }
+    }
+    out[name] = { public: true, members: members.sort() };
   }
   return out;
 }
@@ -841,6 +925,18 @@ function freeTextPairs(root: MetaRoot, cubes: readonly MetaCube[]): FreeTextPair
       const member = [...(cube.dimensions ?? []), ...(cube.measures ?? []), ...(cube.segments ?? [])].find((m) => m.name === key);
       push(`${child.type} ${key} title`, text(child, DOC_ATTR_TITLE), member?.shortTitle);
       push(`${child.type} ${key} description`, text(child, DOC_ATTR_DESCRIPTION), member?.description);
+    }
+    // A @spine report's view (its own title and description are paired above): each member is a
+    // report field, and carries the docs of the dimension or measure the report lists.
+    if (servedReport(obj) && reportSpine(obj) !== undefined) {
+      for (const f of reportShape(obj, root).fields) {
+        const node: MetaData | undefined = f.dimension ?? f.measure;
+        if (node === undefined) continue;
+        const key = `${cube.name}.${node.name}`;
+        const member = [...(cube.dimensions ?? []), ...(cube.measures ?? [])].find((m) => m.name === key);
+        push(`view member ${key} title`, text(node, DOC_ATTR_TITLE), member?.shortTitle);
+        push(`view member ${key} description`, text(node, DOC_ATTR_DESCRIPTION), member?.description);
+      }
     }
   }
   return out;

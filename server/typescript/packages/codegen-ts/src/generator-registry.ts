@@ -408,7 +408,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     name: "cube-model",
     kind: "generator",
     layer: "capability",
-    description: "Cube data model files (model/cubes/*.yml) for the reporting vocabulary: cubes, joins, dimensions, measures, segments and a rollup per served report.",
+    description: "Cube data model files (model/cubes/*.yml, model/views/*.yml) for the reporting vocabulary: cubes, joins, dimensions, measures, segments, a rollup per served report and a view per served @spine report.",
     tier: "native",
     factory: () => cubeModel(),
     options: "dialect?, filter?, target?",

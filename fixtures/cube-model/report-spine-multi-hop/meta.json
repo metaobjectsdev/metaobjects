@@ -1,0 +1,169 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Week",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "weeks"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkProgram",
+                "@fields": "programId",
+                "@references": "Program"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Session",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "sessions"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "weekId",
+                "@required": true
+              }
+            },
+            {
+              "field.int": {
+                "name": "minutes"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkWeek",
+                "@fields": "weekId",
+                "@references": "Week"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "programKey",
+                "@of": "Program.id",
+                "@via": "Session.fkWeek.fkProgram"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "programTitle",
+                "@of": "Program.title",
+                "@via": "Session.fkWeek.fkProgram"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "sessions",
+                "@agg": "count",
+                "@of": "Session.id"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "minutesTotal",
+                "@agg": "sum",
+                "@of": "Session.minutes",
+                "@default": 0
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "ProgramSessions",
+          "@from": "Session",
+          "@spine": "Session.fkWeek.fkProgram",
+          "@dimensions": [
+            "programKey",
+            "programTitle"
+          ],
+          "@measures": [
+            "sessions",
+            "minutesTotal"
+          ],
+          "@filter": {
+            "minutes": {
+              "gte": 10
+            }
+          },
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_program_sessions"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

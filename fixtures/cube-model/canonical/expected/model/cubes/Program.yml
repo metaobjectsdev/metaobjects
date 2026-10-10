@@ -2,6 +2,13 @@
 cubes:
   - name: Program
     sql_table: '"programs"'
+    joins:
+      - name: ProgramRosterFacts
+        relationship: one_to_many
+        sql: '{CUBE}."id" = {ProgramRosterFacts}."programId"'
+      - name: ProgramLongWeeksFacts
+        relationship: one_to_many
+        sql: '{CUBE}."id" = {ProgramLongWeeksFacts}."programId"'
     dimensions:
       - name: id
         sql: '{CUBE}."id"'

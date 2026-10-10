@@ -702,13 +702,16 @@ describe("ADR-0034 — the cube-model reference is byte-identical to the built-i
     }
   }
 
-  test("the canonical fitness model, postgres: the same three cubes, byte for byte", async () => {
+  test("the canonical fitness model, postgres: the same cubes and views, byte for byte", async () => {
     const root = await loadModelFile(CANONICAL_MODEL);
     const a = await outcome(builtinCubeModel, root, CANONICAL_CONFIG);
     const b = await outcome(refCubeModel, root, CANONICAL_CONFIG);
-    // A gate over an empty emit passes trivially.
+    // A gate over an empty emit passes trivially. The two @spine reports are views, each with its
+    // facts cube.
     expect("tree" in a ? a.tree.map(([p]) => p) : a).toEqual([
-      "model/cubes/Asset.yml", "model/cubes/Program.yml", "model/cubes/Week.yml",
+      "model/cubes/Asset.yml", "model/cubes/Program.yml", "model/cubes/ProgramLongWeeksFacts.yml",
+      "model/cubes/ProgramRosterFacts.yml", "model/cubes/Week.yml",
+      "model/views/ProgramLongWeeks.yml", "model/views/ProgramRoster.yml",
     ]);
     expect(b).toEqual(a);
   });
@@ -760,12 +763,15 @@ describe("ADR-0034 — the cube-model reference is byte-identical to the built-i
     }
   }
 
-  test("a run that names an entity writes the same subset: its cube and the cubes it reaches", async () => {
+  test("a run that names an entity writes the same subset: its cube, the cubes it reaches, and the views they hold", async () => {
     const run = (make: () => Generator) => runTree(make, { entityFilter: ["Week"] }, { dialect: "postgres" });
     const a = await run(builtinCubeModel);
-    // Narrower than the full run, and not empty.
-    expect(a.length).toBeGreaterThan(0);
-    expect(a.length).toBeLessThan(3);
+    // Narrower than the full run (no Asset.yml), and not empty: Week reaches Program, Program the
+    // two facts cubes, and with every cube they read written the two views are too.
+    expect(a.map(([p]) => p)).toEqual([
+      "model/cubes/Program.yml", "model/cubes/ProgramLongWeeksFacts.yml", "model/cubes/ProgramRosterFacts.yml",
+      "model/cubes/Week.yml", "model/views/ProgramLongWeeks.yml", "model/views/ProgramRoster.yml",
+    ]);
     expect(await run(refCubeModel)).toEqual(a);
   });
 
@@ -789,6 +795,8 @@ describe("ADR-0034 — the cube-model reference is byte-identical to the built-i
     "model/cubes/Week.ts",
     "model/cubes",
     "model/views/Overview.yml",
+    "model/views/deep/Overview.yml",
+    "model/views/Overview.yaml",
     "Week.yml",
     "",
   ];
@@ -801,7 +809,7 @@ describe("ADR-0034 — the cube-model reference is byte-identical to the built-i
     owns: g.orphanPolicy === undefined ? null : SAMPLE_PATHS.filter((p) => g.orphanPolicy?.owns(p)),
   });
 
-  test("the defaults: the name, no target, no filter, and a cleanup that claims only model/cubes/*.yml", () => {
+  test("the defaults: the name, no target, no filter, and a cleanup that claims only model/cubes/*.yml and model/views/*.yml", () => {
     const builtin = shape(builtinCubeModel());
     // The built-in's shape written out, so the comparison cannot pass by both being wrong.
     expect(builtin).toEqual({
@@ -810,7 +818,7 @@ describe("ADR-0034 — the cube-model reference is byte-identical to the built-i
       filtered: false,
       reconciles: true,
       force: undefined,
-      owns: ["model/cubes/Week.yml", "model/cubes/Match_fkHome.yml"],
+      owns: ["model/cubes/Week.yml", "model/cubes/Match_fkHome.yml", "model/views/Overview.yml"],
     });
     expect(shape(refCubeModel())).toEqual(builtin);
   });
@@ -820,7 +828,7 @@ describe("ADR-0034 — the cube-model reference is byte-identical to the built-i
     const builtin = shape(builtinCubeModel(opts));
     expect(builtin.target).toBe("analytics");
     expect(builtin.filtered).toBe(true);
-    expect(builtin.owns).toEqual(["model/cubes/Week.yml", "model/cubes/Match_fkHome.yml"]);
+    expect(builtin.owns).toEqual(["model/cubes/Week.yml", "model/cubes/Match_fkHome.yml", "model/views/Overview.yml"]);
     expect(shape(refCubeModel(opts))).toEqual(builtin);
   });
 });

@@ -54,7 +54,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/requirement-test-identity-conformance/`](../fixtures/requirement-test-identity-conformance/) (the identity, skip state and digest of each generated requirement test, and the filter seam, ADR-0057) | 26 cases | ✓ (reference) | ✓ | identity function inherits via Java; emitted names asserted by its own generator test | ✓ | ✓ |
 | [`fixtures/naming-conformance/`](../fixtures/naming-conformance/) | 8 cases | ✓ | ✓ | inherits via Java (`RouteNaming.pluralize`) | ✓ | ✓ |
 | [`fixtures/codegen-noop/`](../fixtures/codegen-noop/) (FR-044 — reporting vocabulary: what is lowered, what stays inert) | 1 model pair (`reporting/with` vs `reporting/without`) | ✓ (codegen + migrate) | ✓ | ✓ | ✓ | ✓ |
-| [`fixtures/cube-model/`](../fixtures/cube-model/) (FR-044 Plan 4 — the `cube-model` generator's golden Cube files, plus the canonical model's golden) | 43 cases (32 trees + 11 errors) + 1 canonical golden | ✓ (the exporter is TypeScript-only, spec R6; its `cube` lane also loads the files into a real Cube) | — | — | — | — |
+| [`fixtures/cube-model/`](../fixtures/cube-model/) (FR-044 Plan 4 — the `cube-model` generator's golden Cube files, plus the canonical model's golden) | 44 cases (34 trees + 10 errors) + 1 canonical golden | ✓ (the exporter is TypeScript-only, spec R6; its `cube` lane also loads the files into a real Cube) | — | — | — | — |
 
 A ✓ means the port runs the corpus green; an explicit `n / m` is used where a port
 carries a ledgered divergence. The two ledgered YAML fixtures are documented
@@ -127,17 +127,18 @@ manifest contains without moving these boundaries.
 
 **The Cube exporter** ([features/cube-export.md](features/cube-export.md)):
 
-- *Mapping — gated in TypeScript only, by decision.* `fixtures/cube-model/` holds 43 cases, 32
-  with the exact tree the generator writes and 11 with the exact error message, plus the
+- *Mapping — gated in TypeScript only, by decision.* `fixtures/cube-model/` holds 44 cases, 34
+  with the exact tree the generator writes and 10 with the exact error message, plus the
   canonical model's golden. `codegen-ts/test/cube/cube-model-corpus.test.ts` and
   `cube-model-canonical.test.ts` run them. No other port has an exporter (spec R6), so no other
   port makes a claim the corpus would have to check.
 - *Cube accepts the output — queried on Postgres, compiled in both dialects.* The `cube` lane
-  (`scripts/ci-local.sh --only cube`, which needs Docker) loads the canonical golden and the 31
+  (`scripts/ci-local.sh --only cube`, which needs Docker) loads the canonical golden and the 34
   cases that hold a tree into a pinned Cube (`cubejs/cube:v1.7.43`) and requires each to
   compile, the two MySQL cases included: compiling a model runs no SQL, so the lane's Postgres
-  data source serves them too. For the six canonical reports it compares the Cube query with the
-  report view, and for the `escaping` case it reads each literal back from Cube's `/v1/sql`. No
+  data source serves them too. For the nine canonical reports it compares the Cube query with the
+  report view (a `@spine` report through its Cube view, its empty spine rows included), and for
+  the `escaping` and `measure-default` cases it reads the SQL back from Cube's `/v1/sql`. No
   SQL of a MySQL case is executed; the goldens hold it. The lane runs Cube in development mode,
   so Cube's production mode with a separate Cube Store is not gated.
 - *The lane is a gate, not a second corpus.* Like the codegen-compile gate, it reuses
@@ -480,11 +481,12 @@ outside ASCII. The case list is in the
 Kotlin's identity function is the Java one; the names its generator emits are asserted by
 `server/java/codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/KotlinRequirementTestsGeneratorTest.kt`.
 
-### `fixtures/cube-model/` (43 cases)
+### `fixtures/cube-model/` (44 cases)
 
-All 43 cases and the canonical golden → [features/cube-export.md](features/cube-export.md).
+All 44 cases and the canonical golden → [features/cube-export.md](features/cube-export.md).
 Each case is the smallest model for one mapping rule (an entity's cube, a join, an alias cube, a
-dimension type, a measure, a segment, a relative date, a rollup, the escaping rules) or for one
+dimension type, a measure, a measure's `@default`, a segment, a relative date, a rollup, a
+`@spine` report's Cube view, the escaping rules) or for one
 `ERR_CUBE_*` refusal, and holds exactly one of an expected file tree and an expected error
 message. The case list, with the rule each pins, is the
 [corpus README](../fixtures/cube-model/README.md).

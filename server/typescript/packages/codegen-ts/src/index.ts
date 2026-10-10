@@ -406,7 +406,7 @@ export { cubeModel } from "./generators/cube-model.js";
 export type { CubeModelGeneratorOptions } from "./generators/cube-model.js";
 export { buildCubeModel, hasReportingVocabulary } from "./cube/build-cube-model.js";
 export type { CubeModelOptions } from "./cube/build-cube-model.js";
-export { renderCubeYaml } from "./cube/cube-yaml.js";
+export { renderCubeViewYaml, renderCubeYaml } from "./cube/cube-yaml.js";
 export {
   CubeModelError,
   CUBE_ERROR_CODES,
@@ -419,7 +419,6 @@ export {
   ERR_CUBE_UNMAPPABLE_DIMENSION,
   ERR_CUBE_UNMAPPABLE_JOIN,
   ERR_CUBE_UNMAPPABLE_REPORT,
-  ERR_CUBE_UNMAPPED_VOCABULARY,
   ERR_CUBE_UNSUPPORTED_DIALECT,
 } from "./cube/cube-errors.js";
 export type { CubeErrorCode } from "./cube/cube-errors.js";
@@ -445,6 +444,7 @@ export type {
   CubeSpecBase,
   CubeSqlSource,
   CubeTableSource,
+  CubeViewCubeSpec,
+  CubeViewIncludeSpec,
+  CubeViewSpec,
 } from "./cube/cube-model-spec.js";
-// The Cube view shapes (CubeViewSpec and its parts) are not exported: no generator writes a view
-// yet (a `@spine` report's mapping is not built), so they are not public API.

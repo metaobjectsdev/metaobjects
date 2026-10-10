@@ -7,22 +7,26 @@
 // reach for `Bun.*` globals here; they are undefined and take the whole run down with
 // `Bun is not defined`. Use `node:` builtins instead.
 // targets:       Cube (cube.dev) data-model files. The emitted YAML imports nothing and needs no
-//                MetaObjects package at runtime; Cube reads `model/cubes/*.yml` from its own
-//                project. Cube lists Postgres and MySQL among its data sources, and those are
+//                MetaObjects package at runtime; Cube reads `model/cubes/*.yml` and
+//                `model/views/*.yml` from its own project. Cube lists Postgres and MySQL among its data sources, and those are
 //                the two dialects this writes SQL for (`dialect` option, default the config's).
 // use-when:      the model declares reporting vocabulary (`dimension.*`, `measure.*`,
 //                `segment.filter`, a served `object.report`) and you want it as Cube cubes,
-//                joins, dimensions, measures, segments and a rollup per served report. A model
-//                that declares none gets no file, even when this is configured.
+//                joins, dimensions, measures, segments, a rollup per served report and a Cube
+//                view per served `@spine` report. A model that declares none gets no file, even
+//                when this is configured.
 // emits:         <target>/model/cubes/<Cube>.yml, one per cube: each table-backed entity that
 //                declares or inherits reporting vocabulary, each entity a `@via` path reaches,
-//                and an alias cube for a join that needs its own copy of an entity.
+//                an alias cube for a join that needs its own copy of an entity, and a served
+//                `@spine` report's facts and chain cubes; and <target>/model/views/<Report>.yml,
+//                one Cube view per served `@spine` report.
 // customize:     which entities get a cube file (`selected` in `generateCubeFiles`, narrowed
-//                further by the `filter` option), where the files land (`cubeFilePath`) and the
-//                YAML text (the `renderCubeYaml` call; swap it for your own writer to change the
-//                file format). Stays in the package: `buildCubeModel`, which maps the vocabulary
-//                to cube specs and raises every refusal (`CubeModelError`), and
-//                `renderCubeYaml`, the deterministic YAML writer, both exported from the
+//                further by the `filter` option), where the files land (`cubeFilePath`,
+//                `viewFilePath`) and the YAML text (the `renderCubeYaml` and `renderCubeViewYaml`
+//                calls; swap them for your own writer to change the file format). Stays in the
+//                package: `buildCubeModel`, which maps the vocabulary to cube and view specs and
+//                raises every refusal (`CubeModelError`), and `renderCubeYaml` /
+//                `renderCubeViewYaml`, the deterministic YAML writers, all exported from the
 //                package root. Replace them only if you mean to stop agreeing with every other
 //                consumer of the same model.
 // composes-with: nothing. It reads the reporting vocabulary, not another generator's output.
@@ -34,21 +38,23 @@
 // it reaches through joins, transitively. A reached cube is written because a selected cube
 // changes it: a `@via` adds the member it reads to the cube it reaches (`Week.programTitle` adds
 // Program's `title`), so leaving that file out would leave a reference to a member the file on
-// disk may not have. A run that selects no entity with reporting vocabulary writes nothing and
-// raises nothing, under any dialect.
+// disk may not have. A view is written when every cube its join paths name is written: it reads
+// them, and nothing else. A run that selects no entity with reporting vocabulary writes nothing
+// and raises nothing, under any dialect.
 //
-// A cube file whose cube is gone is cleaned up. Cube compiles the whole model directory, so a
+// A cube or view file whose cube or view is gone is cleaned up. Cube compiles the whole model directory, so a
 // stale `<Cube>.yml` left behind by a removed or renamed entity (or a join no longer reached)
 // can break the compile for every cube. This generator opts in to the runner's orphan
 // reconciliation (`orphanPolicy`) for exactly its own files: the direct `.yml` children of
-// `model/cubes/` under its target (`ownsCubeFile`). The runner removes such a file only when a
+// `model/cubes/` and `model/views/` under its target (`ownsCubeFile`). The runner removes such a file only when a
 // previous run wrote it, this run did not re-emit it, and it is byte-identical to what was
 // written; a file edited by hand is refused and named, never deleted. The runner does not
 // reconcile at all when the run named entities (`meta gen <Entity>`), which is the only per-run
 // narrowing `meta gen` has: a project's `scope` is collection config, the same on every run, so
 // a changed scope reconciles like any full run (an untouched file the scope no longer selects
 // is removed). If you move the files, change `ownsCubeFile` with them (it must describe where
-// `cubeFilePath` writes), or delete the `orphanPolicy` line to turn the cleanup off.
+// `cubeFilePath` and `viewFilePath` write), or delete the `orphanPolicy` line to turn the cleanup
+// off.
 //
 // Everything below imports ONLY from `@metaobjectsdev/codegen-ts` (the stable engine) and
 // `@metaobjectsdev/metadata` (the entity type and the default column naming strategy).
@@ -58,6 +64,7 @@ import {
   CubeModelError,
   buildCubeModel,
   hasReportingVocabulary,
+  renderCubeViewYaml,
   renderCubeYaml,
   type CubeDialect,
   type CubeModel,
@@ -79,7 +86,7 @@ export interface CubeModelGeneratorOptions {
    * onto it goes through an alias cube.
    */
   readonly filter?: (obj: MetaObject) => boolean;
-  /** Named output target: the files land at `model/cubes/<Cube>.yml` under its outDir. */
+  /** Named output target: the files land at `model/cubes/<Cube>.yml` and `model/views/<View>.yml` under its outDir. */
   readonly target?: string;
 }
 
@@ -88,6 +95,9 @@ const GENERATOR_NAME = "cube-model";
 
 /** Where a cube's file lands, relative to the target's outDir. */
 const CUBE_FILE_DIR = "model/cubes";
+
+/** Where a view's file lands (a served `@spine` report), relative to the target's outDir. */
+const VIEW_FILE_DIR = "model/views";
 
 /** The dialects the Cube SQL is written for. */
 const CUBE_DIALECTS: readonly CubeDialect[] = ["postgres", "mysql"];
@@ -100,16 +110,23 @@ function cubeFilePath(cube: string): string {
   return `${CUBE_FILE_DIR}/${cube}.yml`;
 }
 
+/** `model/views/<View>.yml`. */
+function viewFilePath(view: string): string {
+  return `${VIEW_FILE_DIR}/${view}.yml`;
+}
+
 /**
- * The orphan namespace: a direct `.yml` child of `model/cubes/`, relative to the target's outDir
- * and `/`-separated. Keep it narrow, because the predicate is the blast radius of the cleanup.
- * Only paths a previous run recorded are ever tested against it, so a hand-written cube beside
- * the generated ones is not at risk.
+ * The orphan namespace: a direct `.yml` child of `model/cubes/` or `model/views/`, relative to the
+ * target's outDir and `/`-separated. Keep it narrow, because the predicate is the blast radius of
+ * the cleanup. Only paths a previous run recorded are ever tested against it, so a hand-written
+ * cube or view beside the generated ones is not at risk.
  */
 function ownsCubeFile(relPathInTarget: string): boolean {
-  const prefix = `${CUBE_FILE_DIR}/`;
-  if (!relPathInTarget.startsWith(prefix) || !relPathInTarget.endsWith(".yml")) return false;
-  return !relPathInTarget.slice(prefix.length).includes("/");
+  if (!relPathInTarget.endsWith(".yml")) return false;
+  return [CUBE_FILE_DIR, VIEW_FILE_DIR].some((dir) => {
+    const prefix = `${dir}/`;
+    return relPathInTarget.startsWith(prefix) && !relPathInTarget.slice(prefix.length).includes("/");
+  });
 }
 
 function isCubeDialect(dialect: string): dialect is CubeDialect {
@@ -158,17 +175,21 @@ function generateCubeFiles(ctx: GenContext, options: CubeModelGeneratorOptions):
     // The generator's own filter, never the run's selection: see the header.
     matches: ctx.matches,
   });
-  // Cube views (a @spine report) have no renderer yet; none is built until they do.
-  if (model.views.length > 0) throw new Error("cube-model: the model holds Cube views, which this generator does not write yet.");
-  return reachedCubes(model, selected.map((o) => o.name)).map((cube) => ({
-    path: cubeFilePath(cube.name),
-    content: renderCubeYaml(cube),
-  }));
+  const cubes = reachedCubes(model, selected.map((o) => o.name));
+  const written = new Set(cubes.map((c) => c.name));
+  // A view reads the cubes its join paths name (Cube's dotted join-path syntax), so it is written
+  // when all of them are.
+  const views = model.views.filter((v) => v.cubes.every((c) => c.joinPath.split(".").every((name) => written.has(name))));
+  return [
+    ...cubes.map((cube) => ({ path: cubeFilePath(cube.name), content: renderCubeYaml(cube) })),
+    ...views.map((view) => ({ path: viewFilePath(view.name), content: renderCubeViewYaml(view) })),
+  ];
 }
 
 /**
- * The cube-model generator: one Cube data-model file per cube, `model/cubes/<Cube>.yml`, for the
- * reporting vocabulary of the loaded model. Throws `CubeModelError` for what Cube cannot be given,
+ * The cube-model generator: one Cube data-model file per cube, `model/cubes/<Cube>.yml`, and one
+ * per served `@spine` report's view, `model/views/<Report>.yml`, for the reporting vocabulary of
+ * the loaded model. Throws `CubeModelError` for what Cube cannot be given,
  * and `ERR_CUBE_UNSUPPORTED_DIALECT` when the dialect is neither postgres nor mysql and the run
  * would write a cube.
  */
