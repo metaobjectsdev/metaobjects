@@ -29,7 +29,8 @@ These tests exercise the whole list against a real MySQL 8.4 server:
 The FR-044 report views are read on MySQL by C# (EF Core with Pomelo), Kotlin (Exposed) and
 Java (OMDB) as well, through the persistence `report-*` scenarios; C# also serves its generated
 report routes over MySQL. Python ships a Postgres driver only (pg8000), so it is not run there.
-The Cube exporter's MySQL output is executed against a real MySQL 8.4 by the `cube` lane.
+The Cube queries for the served reports are executed against a real MySQL 8.4 by the `cube` lane
+(see [features/cube-export.md](../features/cube-export.md)).
 
 ## TypeScript setup
 
