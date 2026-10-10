@@ -18,6 +18,13 @@
 #   scripts/integration-test.sh java       # only java
 #   scripts/integration-test.sh python     # only python
 #   scripts/integration-test.sh kotlin     # only kotlin
+#   scripts/integration-test.sh cube       # the cube-model live check (NOT in `all`)
+#
+# `cube` is not a persistence runner: it loads the TypeScript cube-model generator's output
+# into a real Cube (cubejs/cube, pinned) over its own throwaway Postgres and compares each
+# report's Cube query with the report's view (FR-044). It owns its containers and a private
+# network and binds only an ephemeral 127.0.0.1 port. `all` leaves it out because the image
+# is about 1 GB; scripts/ci-local.sh runs it as its own `cube` lane.
 #
 # Pre-flight: docker daemon must be running.
 
@@ -93,6 +100,12 @@ run_python() {
   ( cd server/python && uv run --extra dev --extra integration pytest tests/integration -q ) || FAIL=1
 }
 
+run_cube() {
+  echo "==> cube-model live check (Cube + Postgres)"
+  # An explicit file path, so no directory-walking `bun test` ever picks the live file up.
+  ( cd server/typescript/packages/integration-tests && bun run test:cube ) || FAIL=1
+}
+
 run_kotlin() {
   echo "==> Kotlin persistence conformance"
   # See run_java: install the SNAPSHOT module deps to .m2 (serially) before the
@@ -117,7 +130,8 @@ case "$WHICH" in
   java)   run_java ;;
   python) run_python ;;
   kotlin) run_kotlin ;;
-  *)      echo "unknown runner: $WHICH (expected: all|ts|csharp|java|python|kotlin)" >&2; exit 2 ;;
+  cube)   run_cube ;;
+  *)      echo "unknown runner: $WHICH (expected: all|ts|csharp|java|python|kotlin|cube)" >&2; exit 2 ;;
 esac
 
 if [ "$FAIL" -ne 0 ]; then

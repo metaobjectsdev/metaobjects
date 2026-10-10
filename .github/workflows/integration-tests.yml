@@ -23,6 +23,9 @@ name: integration-tests
 #               persistence + api-contract corpora
 #   java-slow — the Java and Kotlin integration modules
 #   csharp / python — that port's integration corpora
+#   cube      — the cube-model live check: the TS generator's output in a real Cube over
+#               its own throwaway Postgres (FR-044). It brings its own containers on a
+#               private network and ignores the shared sidecar below.
 #
 # RELEASE BACKSTOP. The PRIMARY gate for the migrate-ts real-PG suites is local-ci.yml's
 # ts-slow lane, on every push to main; the ts-slow job here is the cold-environment
@@ -46,7 +49,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lane: [ts-slow, csharp, java-slow, python]
+        lane: [ts-slow, csharp, java-slow, python, cube]
     # A single job-level Postgres sidecar shared by every lane, instead of each
     # port booting (and pulling) its own container per scenario. Each port's PG
     # helper, when it sees METAOBJECTS_TEST_PG_URL, connects to this sidecar and
@@ -73,8 +76,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Bun (TS lane)
-        if: matrix.lane == 'ts-slow'
+      - name: Set up Bun (TS lanes)
+        if: matrix.lane == 'ts-slow' || matrix.lane == 'cube'
         uses: oven-sh/setup-bun@v2
         with:
           # Pin a known-good Bun (1.3.8 segfaults on exit; see the flake that cost a
@@ -82,8 +85,8 @@ jobs:
           # output — the actions/cache step below does that.
           bun-version: '1.3.14'
 
-      - name: Cache Bun install cache (TS lane)
-        if: matrix.lane == 'ts-slow'
+      - name: Cache Bun install cache (TS lanes)
+        if: matrix.lane == 'ts-slow' || matrix.lane == 'cube'
         uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
