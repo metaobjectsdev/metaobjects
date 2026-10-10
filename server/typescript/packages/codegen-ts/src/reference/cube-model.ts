@@ -38,14 +38,17 @@
 // raises nothing, under any dialect.
 //
 // A cube file whose cube is gone is cleaned up. Cube compiles the whole model directory, so a
-// stale `<Cube>.yml` left behind by a removed or renamed entity can break the compile for every
-// cube. This generator opts in to the runner's orphan reconciliation (`orphanPolicy`) for exactly
-// its own files: the direct `.yml` children of `model/cubes/` under its target (`ownsCubeFile`).
-// The runner removes such a file only when a previous run wrote it, this run did not re-emit it,
-// and it is byte-identical to what was written; a file edited by hand is refused and named. It
-// does not reconcile at all when the run named entities (`meta gen <Entity>`). If you move the
-// files, change `ownsCubeFile` with them (it must describe where `cubeFilePath` writes), or
-// delete the `orphanPolicy` line to turn the cleanup off.
+// stale `<Cube>.yml` left behind by a removed or renamed entity (or a join no longer reached)
+// can break the compile for every cube. This generator opts in to the runner's orphan
+// reconciliation (`orphanPolicy`) for exactly its own files: the direct `.yml` children of
+// `model/cubes/` under its target (`ownsCubeFile`). The runner removes such a file only when a
+// previous run wrote it, this run did not re-emit it, and it is byte-identical to what was
+// written; a file edited by hand is refused and named, never deleted. The runner does not
+// reconcile at all when the run named entities (`meta gen <Entity>`), which is the only per-run
+// narrowing `meta gen` has: a project's `scope` is collection config, the same on every run, so
+// a changed scope reconciles like any full run (an untouched file the scope no longer selects
+// is removed). If you move the files, change `ownsCubeFile` with them (it must describe where
+// `cubeFilePath` writes), or delete the `orphanPolicy` line to turn the cleanup off.
 //
 // Everything below imports ONLY from `@metaobjectsdev/codegen-ts` (the stable engine) and
 // `@metaobjectsdev/metadata` (the entity type and the default column naming strategy).
@@ -118,10 +121,7 @@ function unsupportedDialect(dialect: string, fromOption: boolean, entities: read
   const which = more > 0 ? `${named.join(", ")} and ${String(more)} more` : named.join(", ");
   return new CubeModelError(
     ERR_CUBE_UNSUPPORTED_DIALECT,
-    `cube-model would write cubes for ${which} in ${source}, '${dialect}', and it writes Cube SQL only for ` +
-      `postgres and mysql: Cube lists Postgres and MySQL among its data sources, and those are the dialects ` +
-      `this exporter quotes and casts for. Pass the dialect of the database Cube reads to the generator: ` +
-      `cubeModel({ dialect: "postgres" }) or cubeModel({ dialect: "mysql" }).`,
+    `cube-model would write cubes for ${which} in ${source}, '${dialect}', and it writes Cube SQL only for postgres and mysql: Cube lists Postgres and MySQL among its data sources, and those are the dialects this exporter quotes and casts for. Pass the dialect of the database Cube reads to the generator: cubeModel({ dialect: "postgres" }) or cubeModel({ dialect: "mysql" }).`,
   );
 }
 

@@ -18,6 +18,31 @@ it until 1.1 ships._
 
 ### Added
 
+- **TypeScript: the `cube-model` reference generator (FR-044 Plan 4).** `cubeModel()` writes the
+  reporting vocabulary as Cube data-model files, `model/cubes/<Cube>.yml`: a cube for each
+  table-backed entity that declares dimensions, measures or segments, a join for each to-one
+  reference between cubes, dimensions (a time dimension carries its `@grains` as
+  `meta.grains`), measures, segments, and a `rollup` pre-aggregation for each served report. A
+  report with a relative date in its scope gets a scope segment and no rollup. It is opt-in
+  (`meta init` wires nothing), listed by `meta gen --list` in the `capability` layer, ejectable
+  (`meta eject cube-model`) and drift-checked by `meta verify --codegen`. It writes Postgres
+  and MySQL SQL and refuses `sqlite` and `d1`. What Cube cannot hold is an `ERR_CUBE_*`
+  generation error that names the node; the exporter never renames or drops. **No vocabulary
+  change:** `metamodelVersion` stays 1.1 and `expected-registry.json` is untouched. The report
+  view lowering and the exporter now share one SQL module, moved without changing a byte of
+  any view. A report's `@spine` and a measure's `@default` are not mapped yet, since that
+  vocabulary is not registered. Gated by the new `fixtures/cube-model/` corpus (40 cases and a
+  canonical golden; the 29th shared corpus in `docs/CONFORMANCE.md`, run by TypeScript only).
+  See [docs/features/cube-export.md](docs/features/cube-export.md).
+- **A `cube` lane checks the exporter against a real Cube.** `scripts/ci-local.sh --only cube`
+  (also `scripts/integration-test.sh cube`, `bun run test:cube` in `integration-tests`, and a
+  `cube` entry in `integration-tests.yml`) loads the canonical model's output into
+  `cubejs/cube:v1.7.43` over a private `postgres:16-alpine`, requires the Cube query for each
+  served report to return the rows of its view, and requires each of the 28 Postgres corpus
+  cases to compile. It owns a private Docker network and an ephemeral `127.0.0.1` port and never
+  uses the shared Postgres sidecar. Without Docker it is a SKIP behind a banner (a failure under
+  `--strict-toolchains`). The full `scripts/ci-local.sh` runs it; `--quick` and
+  `--no-integration` do not.
 - **Python: a run-time validator runner, `run_validators`.** `metaobjects.runtime.run_validators(entity, data)`
   validates a data mapping against an entity's metadata with no generated code and no database,
   and `ObjectManager.validate(entity_name, data)` does the same for a loaded entity. It is the

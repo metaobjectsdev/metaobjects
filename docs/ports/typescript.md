@@ -329,6 +329,31 @@ A report with no view
 source, or an abstract one, generates nothing. The contract is in
 [reporting](../features/reporting.md#how-a-report-is-served).
 
+### Cube export
+
+`cubeModel()` writes the reporting vocabulary as Cube data-model files, one
+`model/cubes/<Cube>.yml` for each entity that declares dimensions, measures or segments, with a
+rollup for each served report. It is a reference helper and opt-in: `meta eject cube-model`
+copies it into `codegen/generators/cube-model.ts`, and `meta verify --codegen` drift-checks the
+files. The mapping (`buildCubeModel`) and the YAML writer (`renderCubeYaml`) stay in the
+package. Only TypeScript has an exporter; the files are language-neutral YAML. Point the
+generator at the Cube project with a target, and pass `dialect` when the config's is not
+`postgres` or `mysql`:
+
+```ts
+// metaobjects.config.ts
+import { defineConfig } from "@metaobjectsdev/cli";
+import { cubeModel } from "./codegen/generators/cube-model.js";
+
+export default defineConfig({
+  targets: { cube: { outDir: "cube" } },          // files land in cube/model/cubes/
+  generators: [/* ... */ cubeModel({ target: "cube", dialect: "postgres" })],
+});
+```
+
+The mapping, the refusals, the Cube query that reproduces a report and the `cube` lane that
+checks the output against a real Cube are in [cube-export](../features/cube-export.md).
+
 ### `<Entity>Names` — the physical names, as constants
 
 `meta init` scaffolds a `names` generator, so a new project gets `<Entity>.names.ts`
@@ -759,6 +784,7 @@ See [Generated requirement tests and witnesses](../features/requirements.md#gene
 | Templates + render (FR-004) | Yes |
 | Output parser codegen (FR-006) | Yes (`outputParser()` — Zod dual API) |
 | Requirement gate + requirement tests | Yes (`meta verify`; `requirementTests()`, ejectable) |
+| Cube export (FR-044) | Yes (`cubeModel()`, ejectable; TypeScript only) |
 | Payload-VO codegen | Yes (via projection codegen) |
 | Migrations | `meta migrate` (Postgres / SQLite / D1) |
 | Drift verify | `meta verify` (DB drift) |

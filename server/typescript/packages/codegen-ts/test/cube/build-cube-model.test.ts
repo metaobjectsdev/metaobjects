@@ -815,7 +815,8 @@ describe("Table E — joins and reached members", () => {
       teamsReport,
       match([{ "dimension.attribute": { name: "homeName", "@of": "Team.name", "@via": "Match.homeRef" } }]),
     ]);
-    // The target cube keeps all three, and its own join; the aliases have neither.
+    // The target cube keeps its measure, segment and rollup (its fkCity reference joins nothing,
+    // because City is no cube); each alias carries none of the three and no join.
     const t = cube(model, "Team");
     expect(t.measures.map((m) => m.name)).toEqual(["teams"]);
     expect(t.segments.map((x) => x.name)).toEqual(["named"]);

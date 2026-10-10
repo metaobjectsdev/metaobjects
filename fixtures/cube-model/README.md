@@ -64,7 +64,7 @@ never copied from it. A golden blessed from the implementation proves nothing.
 | `free-text-jinja` | G free text (Task 4, Ruling 28) | Cube reads free text as a template: a `title`/`description` has every `\` doubled and its braces escaped (`\{`, `\}`, which also covers `${`), is raw-wrapped when the original holds `{{`, `{%` or `{#`, and is written as a JSON string, on the cube, a dimension, a measure and a segment; a backtick needs no escape; the lane checks Cube hands each one back as declared |
 | `error-unmappable-dimension` | C last row; K | `ERR_CUBE_UNMAPPABLE_DIMENSION` for an `isArray` field, naming the dimension and the field |
 | `error-unmappable-join` | E (composite) | `ERR_CUBE_UNMAPPABLE_JOIN` when a reference's `@fields` do not pair with the referenced key |
-| `error-unmappable-report` | A/F (Ruling 14) | `ERR_CUBE_UNMAPPABLE_REPORT` for a served report whose `@from` has no table |
+| `error-unmappable-report` | A/F (Ruling 14) | `ERR_CUBE_UNMAPPABLE_REPORT` for a served report whose `@from` has no table. The model also holds an unrelated cube (`Program`): the run must have a cube file to write before it checks reports, so a model with nothing else to emit raises nothing (Ruling 22) |
 | `error-ambiguous-path` | E multi-hop row; K | `ERR_CUBE_AMBIGUOUS_PATH`, naming both paths |
 | `error-no-primary-key` | E last row; K | `ERR_CUBE_NO_PRIMARY_KEY` for a joined cube with no `identity.primary` |
 | `error-invalid-name` | G; K | `ERR_CUBE_INVALID_NAME` for a member named with a Python keyword (`from`) |
