@@ -271,7 +271,9 @@ rather than off this page; its own JSDoc carries the recipe with the right one.)
 
 Both are executed as tests (`runtime-ts/test/route-auth-seam.test.ts`) rather than
 asserted in prose. For mounting *fewer* endpoints, narrow the generator:
-`routesFile({ expose: ["list", "get"] })`. To register every entity's routes in one call,
+`routesFile({ expose: ["list", "get"] })` (`meta docs` reads the option per routes surface, Fastify
+and Hono apart, and documents only the verbs that surface mounts; a copy ejected before 1.1.0
+needs `meta eject routes --force` to be honoured). To register every entity's routes in one call,
 pass `registerAll: true`: the generator also emits `routes.index.ts` (or
 `routes.index.hono.ts`) with a `registerAllRoutes(...)`, so adding an entity needs no edit
 to your host file. What neither can express is a row-ownership

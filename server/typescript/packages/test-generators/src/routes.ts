@@ -742,6 +742,9 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
   });
   const generator: Generator = {
     name: "routes-file",
+    // Read by `meta docs`: the API docs list the verbs this file mounts, so an `expose` you
+    // pass here is honoured there. Keep this line if you change what the file mounts.
+    mountsRoutes: opts?.expose !== undefined ? { expose: opts.expose } : {},
     // TPH subtypes get no standalone routes file (their routes live in the discriminator
     // base's); AND-composed with your filter.
     // #248 R2: an object with no declared/inherited source.rdb (of ANY kind) isn't

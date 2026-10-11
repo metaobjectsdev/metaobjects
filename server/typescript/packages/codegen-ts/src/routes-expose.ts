@@ -47,6 +47,16 @@ export type ExposeOption =
   | readonly CrudVerb[]
   | ((entity: MetaObject) => readonly CrudVerb[] | undefined);
 
+/**
+ * The `expose` option of each routes SURFACE, as `meta docs` documents them: the Fastify
+ * routes file and the opt-in Hono one are separate generators and each mounts its own verbs.
+ * A surface left out mounts every verb.
+ */
+export interface RoutesExpose {
+  readonly rest?: ExposeOption;
+  readonly restHono?: ExposeOption;
+}
+
 /** Resolve the option for one entity. `undefined` means "mount all five". */
 export function resolveExpose(
   entity: MetaObject,

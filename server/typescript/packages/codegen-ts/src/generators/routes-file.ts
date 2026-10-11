@@ -59,6 +59,8 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
   });
   const generator: Generator = {
     name: "routes-file",
+    // Read by `meta docs`: the API docs list the verbs this file mounts.
+    mountsRoutes: opts?.expose !== undefined ? { expose: opts.expose } : {},
     // Always set: AND-composes the built-in gates with the optional user filter.
     filter: (e: MetaObject) =>
       servesReadApi(e) && !isTphSubtype(e) && userFilter(e),

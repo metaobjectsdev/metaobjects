@@ -44,7 +44,7 @@ import {
   DEFAULT_COLUMN_NAMING_STRATEGY,
   renderCoreMetamodelDocs,
 } from "@metaobjectsdev/metadata";
-import { dbEmittingObjects, DEFAULT_DIALECT, DEFAULT_DOCS_DIR, missingDialectMessage, resolveGenerators, runEmitsHonoRoutes, runEmitsUiTier } from "@metaobjectsdev/codegen-ts";
+import { dbEmittingObjects, DEFAULT_DIALECT, DEFAULT_DOCS_DIR, missingDialectMessage, resolveGenerators, runEmitsHonoRoutes, runEmitsUiTier, runRoutesExpose } from "@metaobjectsdev/codegen-ts";
 import type { MetaDataTypeProvider, MetaRoot } from "@metaobjectsdev/metadata";
 import { generateSite, SITE_TEMPLATE_NAMES, SITE_ASSET_NAMES, readSiteFile } from "@metaobjectsdev/docs-site";
 // The `agent` schema surface takes the physical schema as an ARGUMENT with its resolvers
@@ -579,6 +579,7 @@ export async function docsCommand(
     suite = (loadedConfig?.generators ?? []).filter((g): g is Generator => typeof g !== "string");
   }
 
+  const routesExpose = runRoutesExpose(suite);
   const ctx: GenContext = {
     entities: root.objects(),
     loadedRoot: root,
@@ -594,6 +595,9 @@ export async function docsCommand(
       // does (a generator opts in via emitsHonoRoutes), so `meta docs` auto-detects
       // routesFileHono() rather than relying on a field users don't normally set.
       includeHonoRoutes: loadedConfig?.includeHonoRoutes ?? runEmitsHonoRoutes(suite),
+      // The API pages list the verbs the routes generators mount. `routesFile({ expose })` is a
+      // generator option, so it is read off the resolved suite, as the Hono marker above is.
+      ...(routesExpose !== undefined && { routesExpose }),
       // `agent/ui.md` describes forms, grids and the endpoints their hooks call. Whether
       // any of that is emitted is a GENERATOR fact — the page's own predicate is
       // metadata-only and answered "could a UI be generated?", so a project with
