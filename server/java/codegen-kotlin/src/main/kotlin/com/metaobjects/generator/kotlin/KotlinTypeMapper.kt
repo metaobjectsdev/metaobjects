@@ -224,6 +224,18 @@ object KotlinTypeMapper {
         }
     }
 
+    /**
+     * [enumTypeName] with no provided-enum config: the same resolution, except that a `@provided`
+     * declaration is named by the class in its own package and nothing throws.
+     */
+    @Deprecated(
+        "Pass the generator's Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args) as a third argument, so a " +
+            "@provided enum is typed by its configured class. Without it a @provided enum is named by the " +
+            "class in its declaration's own package.",
+    )
+    fun enumTypeName(field: MetaField<*>, entity: MetaObject?): ClassName? =
+        enumTypeName(field, entity, Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
+
     /** Map a MetaField to its KotlinPoet data-class property TypeName. */
     fun kotlinTypeName(field: MetaField<*>): TypeName = when (field) {
         // This is the SCALAR/element mapper — `isArray` List<…> wrapping is applied by the

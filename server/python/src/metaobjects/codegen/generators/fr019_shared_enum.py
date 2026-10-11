@@ -21,6 +21,7 @@ UNCHANGED — it stays a per-entity ``Literal[...]`` (byte-identical default).
 """
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 from metaobjects.meta.core.field.meta_field import (
@@ -47,6 +48,20 @@ class SharedEnum:
 def _pascal(name: str) -> str:
     """``priority`` → ``Priority`` (leading char only; no snake-splitting — cross-port rule)."""
     return name[:1].upper() + name[1:] if name else name
+
+
+def resolve_shared_enum_decl(field: MetaField) -> MetaData | None:
+    """Deprecated name of
+    :func:`metaobjects.meta.core.field.meta_field.resolve_shared_enum_declaration`,
+    kept so a generator ejected before the resolver moved to the metadata layer
+    still imports. Same answer, including through a multi-hop ``extends``."""
+    warnings.warn(
+        "resolve_shared_enum_decl is deprecated; call "
+        "metaobjects.meta.core.field.meta_field.resolve_shared_enum_declaration",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return resolve_shared_enum_declaration(field)
 
 
 def is_provided(decl: MetaData) -> bool:

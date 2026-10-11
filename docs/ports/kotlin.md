@@ -280,6 +280,11 @@ the enum first, with an error naming the enum, its package and both args. It app
 field that reaches the provided enum through another field as well as one that extends it
 directly.
 
+A generator you ejected before 1.1.0 keeps compiling: the helper signatures it calls remain as
+deprecated forms. Those forms take no config, so they name a `@provided` enum by the class in
+its declaration's own package, as they did before, and never fail. Re-eject the generator to
+read the two args (the 1.1.0 CHANGELOG has the command).
+
 **Why 1.x.** Exposed 0.x shares one `IdentifierManagerApi` per `Database` across all
 threads, and its identifier caches are plain `LinkedHashMap`s mutated on every query —
 under concurrent load they corrupt (`ClassCastException`, or a thread spinning forever

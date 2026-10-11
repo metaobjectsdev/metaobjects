@@ -80,6 +80,22 @@ object KotlinExtractSchemaEmitter {
         }
     }
 
+    @Deprecated(
+        "Pass the generator's Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args) as a fourth argument, so a " +
+            "@provided enum is typed by its configured class. Without it a @provided enum is named by the " +
+            "class in its declaration's own package.",
+    )
+    fun emitMirrorFiles(rootVo: MetaObject, outRoot: Path, emitted: MutableSet<String>) =
+        emitMirrorFiles(rootVo, outRoot, emitted, Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
+
+    @Deprecated(
+        "Pass the generator's Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args) as a second argument, so a " +
+            "@provided enum is typed by its configured class. Without it a @provided enum is named by the " +
+            "class in its declaration's own package.",
+    )
+    fun mirrorSource(vo: MetaObject): String =
+        mirrorSource(vo, Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
+
     /** The full Kotlin source of [vo]'s mirror file. */
     fun mirrorSource(vo: MetaObject, provided: Fr019SharedEnum.ProvidedEnumConfig): String {
         val (pkg, short) = PackageMapping.splitFqn(vo.name)

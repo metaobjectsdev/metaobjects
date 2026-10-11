@@ -63,6 +63,12 @@ class KotlinApiModelBuilder(
     private val providedEnums: com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig,
 ) {
 
+    @Deprecated(
+        "Pass Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args), so a @provided enum is documented by its " +
+            "configured class. Without it a @provided enum is named by the class in its declaration's own package.",
+    )
+    constructor() : this(com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
+
     private companion object {
         /** Structured formats that additionally get an output-format prompt + a tolerant extractor. */
         val STRUCTURED_FORMATS = setOf(TemplateConstants.FORMAT_JSON, TemplateConstants.FORMAT_XML)

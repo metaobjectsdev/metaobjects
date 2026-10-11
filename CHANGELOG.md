@@ -68,7 +68,9 @@ Total hand-written lines did not fall, so do not read it as a total line reducti
   their objects reaches a shared enum, must set `emitSharedEnums=true` on one of them. Kotlin:
   every generator that types an enum now needs `providedEnumNamespace` /
   `providedEnumPackages` for a model with a `@provided` enum; set them in the plugin's
-  `<globals>`. The **Fixed** entry lists each port's before and after.
+  `<globals>`. An owned (ejected) Kotlin generator keeps compiling and keeps its previous
+  `@provided` answer until you re-eject it. The **Fixed** entry lists each port's before and
+  after, and the re-eject command.
 
 **Not in 1.1.0.** Derived measures, the preview `reporting` library, the dbt exporter, the second
 requirements slice and the advisory lint port, the JSON Schema and OpenAPI generators, the
@@ -605,6 +607,27 @@ until you regenerate.
     generator configured without the args fails at generate time for a model with a `@provided`
     enum, naming the enum, its package and both args. Set them once in the plugin's `<globals>`
     and every generator, and the docs goal, reads the same values.
+  - **Upgrading an owned Kotlin generator.** A copy ejected before this release keeps compiling
+    unchanged. The helper signatures it calls remain as deprecated forms:
+    `KotlinTypeMapper.enumTypeName(field, entity)`, `KotlinEnumEmitter.emitEnumFile` without a
+    config, `KotlinM2mSupport.resolve` and `tphQueryFnNames`, both
+    `KotlinGenUtil.reportEnumClasses` forms, `KotlinExtractSchemaEmitter.emitMirrorFiles` and
+    `mirrorSource`, `Fr019SharedEnum.ProvidedEnumConfig.of`,
+    `Fr019SharedEnum.providedClassName(field, config)` and the no-argument
+    `KotlinApiModelBuilder()`. They apply the same enum rule, so an owned copy also types a
+    multi-hop field by the shared enum. What the forms that take no config cannot do is read the
+    two args: for a `@provided` enum they give the answer they gave before, the class in the
+    declaration's own package, and they do not fail. So an owned entity generator still names
+    your configured class (it reads the args itself), and an owned Exposed table, Spring
+    controller, relations or output-parser generator still names the declaration-package class.
+    To get the configured class from every generator, re-eject the five that type an enum:
+    `mvn metaobjects:eject -Dnames=entity,exposed-table,routes,relations,output-parser
+    -Dport=kotlin -Dforce`. `-Dforce` overwrites the copy, so use it only on one you have not
+    edited (`mvn metaobjects:eject -Dlist` reports each copy's own changes). For an edited copy,
+    extract the new reference from the `metaobjects-codegen-kotlin` jar
+    (`META-INF/metaobjects/reference/kotlin/<Generator>.kt`), diff it against your copy
+    ignoring the package line, and apply the hunks by hand: the procedure is "Pulling an
+    upstream fix into your copy" in `docs/features/own-your-codegen.md`.
 
   Nothing else moves. Every other inline enum, in every port, keeps its previous name and bytes:
   in Java an inline enum that extends another field is still named for its top-most super

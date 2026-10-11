@@ -246,6 +246,22 @@ object KotlinM2mSupport {
         return names
     }
 
+    @Deprecated(
+        "Pass the generator's Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args) as a third argument, so a " +
+            "@provided discriminator enum is typed by its configured class. Without it a @provided enum is " +
+            "named by the class in its declaration's own package.",
+    )
+    fun resolve(entity: MetaObject, loader: MetaDataLoader): List<M2mNav> =
+        resolve(entity, loader, Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
+
+    @Deprecated(
+        "Pass the generator's Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args) as a fourth argument, so a " +
+            "@provided discriminator enum is typed by its configured class. Without it a @provided enum is " +
+            "named by the class in its declaration's own package.",
+    )
+    fun tphQueryFnNames(base: MetaObject, plan: KotlinTphPlan.Plan, loader: MetaDataLoader): Map<M2mNav, String> =
+        tphQueryFnNames(base, plan, loader, Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
+
     /** The single primary-key field name of an entity (defaults to `id`). */
     private fun primaryKeyField(entity: MetaObject): String {
         // ADR-0039: identities are inheritable — RESOLVE via getIdentities(true);

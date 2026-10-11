@@ -30,6 +30,7 @@ from metaobjects.codegen.generators.entity_model import EntityModelGenerator, en
 from metaobjects.codegen.generators.fr019_shared_enum import (
     is_provided,
     materialized_shared_enums,
+    resolve_shared_enum_decl,
 )
 from metaobjects.codegen.runner import run_gen
 
@@ -153,6 +154,30 @@ def test_decision_table_matches_fixture_exactly() -> None:
 
     materialized = sorted(e.name for e in materialized_shared_enums(objects))
     assert materialized == expected["materialized"]
+
+
+def test_deprecated_resolver_name_still_answers_the_decision_table() -> None:
+    """A generator ejected before the resolver moved to the metadata layer calls
+    ``fr019_shared_enum.resolve_shared_enum_decl``. That name must still import and
+    must answer what the decision-table fixture pins for every field, including the
+    multi-hop ones (the removed one-hop predicate answered ``None`` for
+    ``Task.importance``), while warning that it is deprecated."""
+    root = MetaDataLoader.from_directory(_FIXTURE_DIR).root
+    expected = json.loads(_EXPECTED_ENUM_TYPES.read_text())["fields"]
+
+    actual: dict[str, str | None] = {}
+    for obj in (o for o in root.own_children() if isinstance(o, MetaObject)):
+        for f in obj.fields():
+            if f.sub_type != fc.FIELD_SUBTYPE_ENUM:
+                continue
+            with pytest.warns(DeprecationWarning, match="resolve_shared_enum_declaration"):
+                decl = resolve_shared_enum_decl(f)
+            actual[f"{obj.resolution_key()}.{f.name}"] = (
+                decl.resolution_key() if decl is not None else None
+            )
+
+    assert actual == {key: entry["shared"] for key, entry in expected.items()}
+    assert actual["acme::shop::Task.importance"] == "acme::shop::Priority"
 
 
 def test_generated_output_for_multi_hop_provided_and_negative_cases(

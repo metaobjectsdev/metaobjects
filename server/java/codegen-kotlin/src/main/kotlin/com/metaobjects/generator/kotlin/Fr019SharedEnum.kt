@@ -28,9 +28,26 @@ object Fr019SharedEnum {
     /** Generator arg: the `;`-delimited `<metaPackage>=<namespace>` map (see [parsePackageMap]). */
     const val ARG_PROVIDED_ENUM_PACKAGES: String = "providedEnumPackages"
 
-    /** Per-port config for resolving a `@provided` enum's Kotlin namespace. Generator args only. */
-    data class ProvidedEnumConfig(val fallbackNamespace: String?, val packageNamespaces: Map<String, String>) {
+    /**
+     * Per-port config for resolving a `@provided` enum's Kotlin namespace. Generator args only.
+     *
+     * [providedInDeclarationPackage] is the pre-config answer, held only by [DECLARATION_PACKAGE]:
+     * `@provided` is not applied, so the enum is named, and emitted, as the class in its
+     * declaration's own package and the two namespaces are never read.
+     */
+    data class ProvidedEnumConfig(
+        val fallbackNamespace: String?,
+        val packageNamespaces: Map<String, String>,
+        internal val providedInDeclarationPackage: Boolean = false,
+    ) {
         companion object {
+            /**
+             * The config every deprecated helper form that takes none delegates with, so a
+             * generator ejected before [fromArgs] existed keeps the answer it had then.
+             */
+            internal val DECLARATION_PACKAGE: ProvidedEnumConfig =
+                ProvidedEnumConfig(null, emptyMap(), providedInDeclarationPackage = true)
+
             /**
              * The config a generator's args declare — the ONE place the two arg names are read, so
              * every generator that types an enum resolves a `@provided` one from the same input.
@@ -42,6 +59,13 @@ object Fr019SharedEnum {
                     args?.get(ARG_PROVIDED_ENUM_NAMESPACE)?.trim()?.takeIf { it.isNotEmpty() },
                     parsePackageMap(args?.get(ARG_PROVIDED_ENUM_PACKAGES)),
                 )
+
+            @Deprecated(
+                "Read both generator args in one place with ProvidedEnumConfig.fromArgs(args), and pass " +
+                    "the result to the helpers that type an enum.",
+            )
+            fun of(fallback: String?, packageMapArg: String?): ProvidedEnumConfig =
+                ProvidedEnumConfig(fallback?.trim()?.takeIf { it.isNotEmpty() }, parsePackageMap(packageMapArg))
         }
     }
 
@@ -100,11 +124,13 @@ object Fr019SharedEnum {
      * from the package map (keyed by the enum's declaring metadata package) then the single
      * fallback. Throws a codegen-time [GeneratorException] naming the enum, its package and the
      * two args when neither resolves, so no generator can emit a reference to a class nothing
-     * writes. Called only by [KotlinTypeMapper.enumTypeName].
+     * writes. Under [ProvidedEnumConfig.DECLARATION_PACKAGE] the answer is the class in the
+     * declaration's own package instead, and nothing throws.
      */
-    fun providedClassName(decl: EnumField, config: ProvidedEnumConfig): ClassName {
-        val (_, shortRaw) = PackageMapping.splitFqn(decl.name)
+    internal fun providedClassName(decl: EnumField, config: ProvidedEnumConfig): ClassName {
+        val (declPackage, shortRaw) = PackageMapping.splitFqn(decl.name)
         val simple = shortRaw.replaceFirstChar { it.uppercase() }
+        if (config.providedInDeclarationPackage) return ClassName(declPackage, simple)
         val metaPackage = metaPackageOf(decl.name)
         val ns = config.packageNamespaces[metaPackage]?.takeIf { it.isNotBlank() } ?: config.fallbackNamespace
         if (ns.isNullOrBlank()) {
@@ -116,6 +142,20 @@ object Fr019SharedEnum {
             )
         }
         return ClassName(ns, simple)
+    }
+
+    /**
+     * The configured class of the `@provided` shared enum [field] resolves to, or `null` when
+     * [field] does not resolve to one. Throws as [KotlinTypeMapper.enumTypeName] does when the
+     * declaration's namespace is not configured.
+     */
+    @Deprecated(
+        "KotlinTypeMapper.enumTypeName(field, entity, provided) answers the configured class of a " +
+            "@provided enum itself; call it instead of checking for one first.",
+    )
+    fun providedClassName(field: MetaField<*>, config: ProvidedEnumConfig): ClassName? {
+        val decl = resolveSharedEnumDecl(field) ?: return null
+        return if (isProvided(decl)) providedClassName(decl, config) else null
     }
 
     /** The declaration's metadata package in `::` form, stripped of the trailing `::Name`. */

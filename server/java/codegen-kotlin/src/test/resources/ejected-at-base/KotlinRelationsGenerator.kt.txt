@@ -1,0 +1,393 @@
+package com.metaobjects.generator.kotlin
+
+// Eject note (ADR-0034, JVM eject design): these siblings stay in
+// com.metaobjects.generator.kotlin when this generator is copied out via
+// `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
+// same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.kotlin.ExposedApi
+import com.metaobjects.generator.kotlin.ExposedImports
+import com.metaobjects.generator.kotlin.KotlinGenUtil
+import com.metaobjects.generator.kotlin.KotlinM2mSupport
+import com.metaobjects.generator.kotlin.KotlinNaming
+import com.metaobjects.generator.kotlin.KotlinTphPlan
+import com.metaobjects.generator.kotlin.KotlinTypeMapper
+import com.metaobjects.generator.kotlin.PackageMapping
+
+import com.metaobjects.generator.GeneratorIOWriter
+import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
+import com.metaobjects.identity.MetaIdentity
+import com.metaobjects.identity.ReferenceIdentity
+import com.metaobjects.loader.MetaDataLoader
+import com.metaobjects.`object`.MetaObject
+import com.metaobjects.relationship.CompositionRelationship
+import com.metaobjects.relationship.MetaRelationship
+import com.squareup.kotlinpoet.LONG
+import com.squareup.kotlinpoet.TypeName
+import java.io.OutputStream
+import java.io.PrintWriter
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
+import com.metaobjects.generator.util.GeneratedFileWriter
+
+/**
+ * Generator: one `<Entity>Relations.kt` per `object.entity` carrying at least
+ * one `relationship.composition @cardinality: many` child. Emits an ergonomic
+ * Kotlin extension function per to-many declaration so consumers can write
+ * `AuthorTable.postsQuery(author.id).toList()` instead of hand-rolling the
+ * `selectAll().where { ... }` JOIN every time.
+ *
+ * <p>Pairs with {@link KotlinExposedTableGenerator}, which emits the SCHEMA
+ * side (the inferred FK column on the many entity's table). This generator
+ * owns the QUERY side — the inverse fetch from parent → children — and stays
+ * separate from the table emitter so the two concerns don't get tangled.
+ *
+ * <p>The returned {@link org.jetbrains.exposed.sql.Query} keeps the helper
+ * compositional: consumers can chain `.where { ... }`, `.orderBy(...)`,
+ * `.limit(...)` etc. before materialising.
+ *
+ * <p>Convention (matches the inferred FK column emitted by
+ * {@link KotlinExposedTableGenerator#buildInverseFkSpec}):
+ * <ul>
+ *   <li>FK column on the target table = {@code <ownerShort.lowercased()>Id}
+ *       (e.g. {@code Author} → {@code authorId} on {@code PostTable}).</li>
+ *   <li>Helper fn name = {@code <relShortName>Query} (e.g. {@code postsQuery}).</li>
+ *   <li>Helper fn parameter = the parent's primary-key field type
+ *       (resolved via {@code identity.primary.@fields[0]} + KotlinTypeMapper).</li>
+ * </ul>
+ *
+ * <p>Skips silently when:
+ * <ul>
+ *   <li>The entity has no {@code source.rdb} child (no persistence layer).</li>
+ *   <li>The entity has no to-many composition relationships.</li>
+ *   <li>The target entity's short name cannot be resolved (defensive).</li>
+ * </ul>
+ *
+ * <p>Args:
+ * <ul>
+ *   <li>{@code outputDir} (required): output directory root.</li>
+ * </ul>
+ */
+open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+
+    /**
+     * Exposed output-API version (issue #390) — `0` (default) emits Exposed 0.x
+     * (`org.jetbrains.exposed.sql.*`, byte-identical to every release before this arg
+     * existed); `1` emits Exposed 1.x (`org.jetbrains.exposed.v1.*`). From the
+     * `exposedApi` generator arg (`<args><exposedApi>1</exposedApi></args>` in the pom).
+     */
+    protected fun exposedApi(): ExposedApi = ExposedApi.parse(getArg(ExposedApi.ARG_EXPOSED_API))
+
+    override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
+
+    override fun execute(loader: MetaDataLoader) {
+        parseArgs()
+        val outRoot = Paths.get(outDir.absolutePath)
+
+        for (entity in loader.metaObjects) {
+            if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
+            // Abstract entities are inheritance scaffolding — never emit relation helpers.
+            if (KotlinGenUtil.isAbstractEntity(entity)) continue
+            // FR-017 TPH: a subtype folds into its base — its inherited relationships are emitted on
+            // the base's helper; a per-subtype helper would reference the missing <Sub>Table. Mirror
+            // the table/controller skip.
+            if (KotlinTphPlan.isTphSubtype(entity)) continue
+            // No source.rdb → no persistence layer → no FK column to query against.
+            // ADR-0039: resolving (an inherited source.rdb still means the entity is persisted).
+            if (!KotlinGenUtil.hasRdbSource(entity)) continue
+
+            // ADR-0039: relationships are inheritable — RESOLVE via entity.relationships;
+            // entity.children (own-only) would miss an inherited relationship.
+            val manyRels = entity.relationships
+                .filter {
+                    it.subType == CompositionRelationship.SUBTYPE_COMPOSITION &&
+                        it.cardinality == MetaRelationship.CARDINALITY_MANY
+                }
+            // FR-018: M:N navs (any subtype, @cardinality:"many" + @through). Derived
+            // junction FK fields via the cross-port SSOT (KotlinM2mSupport → M2MFields).
+            //
+            // FW-8 x FR-017: when `entity` is a TPH discriminator base, ALSO fold in the M:N
+            // navs a concrete SUBTYPE declares on its own (e.g. `linkedAuths` on `BridgeAuth`) —
+            // subtypes are skipped by the guard above, so nothing else ever visits them. A base-
+            // inherited nav a subtype merely RESOLVES (never re-derived here — same relation,
+            // same junction FK fields either way) is deduped by relation name: the base's own
+            // pass above already emits its query helper, and the controller's per-subtype mount
+            // reuses that SAME helper (adding only a source-discriminator gate in front of it).
+            val m2mNavs = tphAugmentedM2mNavs(entity, loader)
+            // ADR-0038: reverse navigation — one finder pair per FK this entity holds
+            // (each single-field identity.reference).
+            val reverseFks = reverseFksFor(entity)
+            if (manyRels.isEmpty() && m2mNavs.isEmpty() && reverseFks.isEmpty()) continue
+
+            emit(entity, manyRels, m2mNavs, reverseFks, outRoot, loader)
+        }
+    }
+
+    protected open fun emit(
+        entity: MetaObject,
+        manyRels: List<MetaRelationship>,
+        m2mNavs: List<KotlinM2mSupport.NamedM2mNav>,
+        reverseFks: List<ReverseFk>,
+        outRoot: Path,
+        loader: MetaDataLoader,
+    ) {
+        val api = exposedApi()
+        val (pkg, ownerShort) = PackageMapping.splitFqn(entity.name)
+        val ownerTable = ownerShort + "Table"
+        // TypeName.toString() yields the FQN (`kotlin.Long`, `java.util.UUID`, ...);
+        // grab the trailing simple name for the generated source.
+        val pkParamSimpleName = primaryKeyKotlinType(entity).toString().substringAfterLast('.')
+        // FK column matches KotlinExposedTableGenerator.buildInverseFkSpec: <ownerShortLowercased>Id.
+        val fkColName = ownerShort.replaceFirstChar { it.lowercaseChar() } + "Id"
+
+        // Resolve each to-many composition target → (relShortName, targetShort). Skip
+        // relationships whose @objectRef cannot be resolved (defensive — the loader's
+        // validation phase already gates the attr being present).
+        data class Helper(val relShortName: String, val targetTable: String)
+        val helpers = manyRels.mapNotNull { rel ->
+            val ref = rel.objectRef ?: return@mapNotNull null
+            val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: return@mapNotNull null
+            val targetShort = PackageMapping.splitFqn(target.name).second
+            val relShort = rel.shortName ?: rel.name
+            Helper(relShort, targetShort + "Table")
+        }
+        if (helpers.isEmpty() && m2mNavs.isEmpty() && reverseFks.isEmpty()) return
+
+        val source = buildString {
+            if (pkg.isNotEmpty()) {
+                append("package $pkg\n\n")
+            }
+            append("import ${ExposedImports.jdbc(api, "Query")}\n")
+            if (api == ExposedApi.V1) {
+                // issue #390: `eq` is a SqlExpressionBuilder-scoped member under 0.x, brought
+                // into scope implicitly by `.where{}`'s `SqlExpressionBuilder.() -> Op<Boolean>`
+                // receiver — so 0.x only imports it explicitly when a call site (the m2mNavs
+                // join/where blocks below) needs it OUTSIDE a `.where{}`. `Query.where()` takes a
+                // receiver-LESS lambda under 1.x (`() -> Op<Boolean>`), so every call site below —
+                // the plain composition helpers' `.where{}`, the reverse-FK finders', AND the
+                // m2mNavs joins — needs the plain top-level import; unconditional here because
+                // this function only reaches this point when at least one of helpers/m2mNavs/
+                // reverseFks is non-empty (the early return above), and all three use `eq`.
+                append("import ${ExposedImports.core(api, "eq")}\n")
+                // `inList` (the batched reverse-FK finder) is the same 0.x-implicit/1.x-explicit
+                // story as `eq` — conditional because it is the ONLY site that uses it.
+                if (reverseFks.isNotEmpty()) append("import ${ExposedImports.core(api, "inList")}\n")
+            }
+            if (m2mNavs.isNotEmpty()) {
+                append("import ${ExposedImports.core(api, "JoinType")}\n")
+                if (api == ExposedApi.V0) {
+                    // 0.x — UNCHANGED (byte-identical). See the V1 branch above for why this
+                    // import is conditional on m2mNavs under 0.x but unconditional under 1.x.
+                    append("import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq\n")
+                }
+                // `and` backs both the symmetric branch's directional ON clause (no neq
+                // exclusion — keeps the self endpoint) AND a non-symmetric nav whose TARGET is a
+                // TPH subtype (FW-3): the shared storage table's rows are ANDed with the
+                // discriminator so a sibling subtype's row can't come back. `or` is symmetric-only.
+                if (m2mNavs.any { it.nav.symmetric }) {
+                    append("import ${ExposedImports.core(api, "or")}\n")
+                }
+                if (m2mNavs.any { it.nav.symmetric || it.nav.targetDiscriminator != null }) {
+                    append("import ${ExposedImports.core(api, "and")}\n")
+                }
+            }
+            append("import ${ExposedImports.jdbc(api, "selectAll")}\n")
+            // java.util.UUID appears in helper signatures when the owner's PK (or a
+            // reverse-FK value type) is uuid — the param types were already derived, but
+            // without this import the generated file had an unresolved reference. Emitted
+            // conditionally so uuid-free files stay byte-identical.
+            if (pkParamSimpleName == "UUID" || reverseFks.any { it.valueType == "UUID" }) {
+                append("import java.util.UUID\n")
+            }
+            append("\n")
+            append("/** GENERATED — extension fns for `$ownerShort` to-many relationships. Do not hand-edit. */\n")
+            var first = true
+            for (h in helpers) {
+                if (!first) append("\n")
+                first = false
+                append("/** Query `$ownerShort.${h.relShortName}` (cardinality=many) on the ${h.targetTable.removeSuffix("Table")} side. */\n")
+                append("fun $ownerTable.${h.relShortName}Query($fkColName: $pkParamSimpleName): Query =\n")
+                append("    ${h.targetTable}.selectAll().where { ${h.targetTable}.$fkColName eq $fkColName }\n")
+            }
+
+            // FR-018 M:N junction-join query helpers. Each emits an Exposed Query that
+            // INNER-JOINs the target table to the junction on the derived target-side FK,
+            // returning the target rows whose junction row matches the source id. The
+            // junction FK columns are derived (KotlinM2mSupport → M2MFields), never restated.
+            //   * hetero / directed self-join: WHERE junction.<sourceField> = :id
+            //   * symmetric self-join:         WHERE junction.<sourceField> = :id
+            //                                     OR junction.<targetField> = :id (union-on-read)
+            // The join keys the target by its PRIMARY KEY against the junction's target-side
+            // FK; the source filter uses the junction's source-side FK. Related-row order is
+            // not contractual.
+            for (named in m2mNavs) {
+                val nav = named.nav
+                if (!first) append("\n")
+                first = false
+                val symMarker = if (nav.symmetric) " (symmetric — union on read)" else ""
+                append("/** Query `$ownerShort.${nav.relationName}` (M:N via ${nav.junctionShortName})$symMarker — the related ${nav.targetShortName} rows. */\n")
+                append("fun $ownerTable.${named.queryFnName}(sourceId: $pkParamSimpleName): Query =\n")
+                if (nav.symmetric) {
+                    // Symmetric storage is single-row; a friend appears via EITHER FK column.
+                    // Union-on-read: for each junction row touching the source, the related id is
+                    // the FK column that is NOT the source. We encode that directly in the join ON
+                    // clause as two directional disjuncts:
+                    //   * the target PK = sourceField  WHEN  targetField = sourceId   (source on B side)
+                    //   * the target PK = targetField  WHEN  sourceField = sourceId   (source on A side)
+                    // so each junction row contributes exactly its NON-source endpoint — and a
+                    // self-pair row (a,a) KEEPS the self endpoint (both disjuncts bind target.pk = a
+                    // when the source = a), matching the runtime M2mJoinResolver + every other port
+                    // (Alice is her own friend). No `neq sourceId` exclusion (that would drop (a,a)),
+                    // and the directional ON clause already constrains to junction rows touching the
+                    // source, so no extra WHERE is needed.
+                    append("    ${nav.targetTableObj}.join(${nav.junctionTableObj}, JoinType.INNER) {\n")
+                    append("        ((${nav.junctionTableObj}.${nav.sourceField} eq ${nav.targetTableObj}.${nav.targetPkField}) and (${nav.junctionTableObj}.${nav.targetField} eq sourceId)) or\n")
+                    append("            ((${nav.junctionTableObj}.${nav.targetField} eq ${nav.targetTableObj}.${nav.targetPkField}) and (${nav.junctionTableObj}.${nav.sourceField} eq sourceId))\n")
+                    append("    }.selectAll()")
+                    val symDisc = nav.targetDiscriminator
+                    if (symDisc != null) {
+                        append(".where { ${nav.targetTableObj}.${symDisc.column} eq ${symDisc.valueExpr} }\n")
+                    } else {
+                        append("\n")
+                    }
+                } else {
+                    // Hetero / directed self-join: join the target by its PK to the junction's
+                    // target-side FK, filter the junction on the derived source-side FK. FW-3: a
+                    // TPH-subtype target ANDs the discriminator into the SAME where — the shared
+                    // storage table's join keeps every subtype's rows, so this is what narrows the
+                    // result back to just the declared target's own rows.
+                    append("    ${nav.targetTableObj}.join(${nav.junctionTableObj}, JoinType.INNER) { ${nav.targetTableObj}.${nav.targetPkField} eq ${nav.junctionTableObj}.${nav.targetField} }\n")
+                    append("        .selectAll()\n")
+                    val disc = nav.targetDiscriminator
+                    if (disc != null) {
+                        append("        .where { (${nav.junctionTableObj}.${nav.sourceField} eq sourceId) and (${nav.targetTableObj}.${disc.column} eq ${disc.valueExpr}) }\n")
+                    } else {
+                        append("        .where { ${nav.junctionTableObj}.${nav.sourceField} eq sourceId }\n")
+                    }
+                }
+            }
+
+            // ADR-0038 reverse navigation — one finder PAIR per FK this entity holds
+            // (each single-field identity.reference). The referenced entity T navigates to
+            // its referencing E rows by calling these with a T id. The fn name derives from
+            // the FK FIELD (PascalCased, trailing `Id` dropped), unique within E by
+            // construction — so same-pair FKs (GameSession → Scene ×3) yield DISTINCT finders
+            // (findByCurrentScene / findByLastOpeningNarrativeScene /
+            // findByTransitioningFromScene), never colliding, with no @reverseName vocabulary.
+            // NOT a lazy Exposed `referrersOn` reverse collection (N+1 + needs an open
+            // transaction): each is a plain single indexed query (WHERE fk = ?), with a
+            // batched variant (WHERE fk IN (…)) for anti-N+1 loading of many parents. The
+            // returned Query stays compositional (chain .orderBy/.limit before materialising).
+            for (fk in reverseFks) {
+                if (!first) append("\n")
+                first = false
+                val col = KotlinNaming.safeColumnProperty(fk.fkField, exposedApi())
+                val single = KotlinNaming.reverseFinderName(fk.fkField)
+                val batched = KotlinNaming.reverseFinderInName(fk.fkField)
+                append("/** Reverse nav: the $ownerShort rows whose `${fk.fkField}` FK points at the given ${fk.targetShortName} id (single indexed query). */\n")
+                append("fun $ownerTable.$single(${fk.fkField}: ${fk.valueType}): Query =\n")
+                append("    $ownerTable.selectAll().where { $ownerTable.$col eq ${fk.fkField} }\n")
+                append("\n")
+                append("/** Reverse nav (batched, anti-N+1): the $ownerShort rows whose `${fk.fkField}` FK is IN the given ${fk.targetShortName} ids. */\n")
+                append("fun $ownerTable.$batched(${fk.fkField}s: List<${fk.valueType}>): Query =\n")
+                append("    $ownerTable.selectAll().where { $ownerTable.$col inList ${fk.fkField}s }\n")
+            }
+        }
+
+        val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(ownerShort + "Relations.kt")
+        outFile.parent?.let { Files.createDirectories(it) }
+        GeneratedFileWriter.write(outFile, source)
+    }
+
+    /**
+     * FW-8 x FR-017 — [entity]'s own M:N navs, UNIONED with every concrete TPH subtype's own
+     * M:N navs when [entity] is a discriminator base, each paired with the query-helper function
+     * name it must be emitted under. A plain (non-TPH) entity is unaffected: [KotlinTphPlan.planFor]
+     * returns null and each of [entity]'s own navs keeps its [KotlinM2mSupport.defaultQueryFnName].
+     *
+     * Distinctness (and therefore the helper-name assignment) is delegated to
+     * [KotlinM2mSupport.tphQueryFnNames] — the shared decision [KotlinSpringControllerGenerator]
+     * also reads, so both generators land on the SAME name for the SAME nav. One a subtype merely
+     * INHERITS from the base resolves to the IDENTICAL nav (relationships resolve through
+     * `extends`), so it collapses into [entity]'s own entry and emits ONE query helper, not two —
+     * the controller mounts that inherited nav a second time too (once at the base path, once
+     * under each subtype's segment), but both mounts call this ONE helper, the subtype-scoped
+     * mount only adding a source-discriminator gate in front of it. A subtype that instead
+     * SHADOWS the name with a genuinely different nav (own children shadow super on `(type,
+     * name)`, ADR-0039) gets its OWN distinctly-named helper — see [KotlinM2mSupport.tphQueryFnNames].
+     */
+    private fun tphAugmentedM2mNavs(entity: MetaObject, loader: MetaDataLoader): List<KotlinM2mSupport.NamedM2mNav> {
+        val ownNavs = KotlinM2mSupport.resolve(entity, loader)
+        val plan = KotlinTphPlan.planFor(entity, loader)
+            ?: return ownNavs.map { KotlinM2mSupport.NamedM2mNav(it, KotlinM2mSupport.defaultQueryFnName(it.relationName)) }
+        return KotlinM2mSupport.tphQueryFnNames(entity, plan, loader)
+            .map { (nav, fnName) -> KotlinM2mSupport.NamedM2mNav(nav, fnName) }
+    }
+
+    /**
+     * One reverse FK an entity holds (ADR-0038), derived from an `identity.reference`:
+     * the FK field name, the target entity short name, and the Kotlin value type of the
+     * FK (the type a `findBy<FkField>` arg / element takes — the FK column's own Kotlin type).
+     */
+    protected data class ReverseFk(val fkField: String, val targetShortName: String, val valueType: String)
+
+    /**
+     * Collect every reverse FK [entity] declares, in declaration order — one per
+     * single-field [ReferenceIdentity] child. Compound references (multi-field FKs) are
+     * skipped (no single-column finder shape). The value type is the FK field's own Kotlin
+     * simple type via [KotlinTypeMapper.kotlinTypeName], falling back to `Long`.
+     */
+    protected open fun reverseFksFor(entity: MetaObject): List<ReverseFk> {
+        val out = mutableListOf<ReverseFk>()
+        // ADR-0039: identity.reference children are inheritable — RESOLVE via
+        // getIdentities(true); entity.children (own-only) would miss inherited FK refs.
+        for (child in entity.getIdentities(true)) {
+            if (child !is ReferenceIdentity) continue
+            val fields = child.fields
+            if (fields.size != 1) continue // single-column FKs only
+            val fkField = fields.first()
+            val targetShort = child.targetEntity?.let { PackageMapping.splitFqn(it).second } ?: ""
+            val valueType = entity.metaFields.firstOrNull { it.name == fkField }?.let { f ->
+                runCatching { KotlinTypeMapper.kotlinTypeName(f).toString().substringAfterLast('.') }
+                    .getOrDefault("Long")
+            } ?: "Long"
+            out.add(ReverseFk(fkField, targetShort, valueType))
+        }
+        return out
+    }
+
+    /**
+     * Resolve the Kotlin type of [entity]'s primary key. Falls back to [LONG] when
+     * the primary identity is missing, multi-field, or its field can't be resolved
+     * — Long matches the dominant convention (a single `field.long` PK) and the
+     * same fallback KotlinExposedTableGenerator's FK column builder and
+     * KotlinSpringControllerGenerator's route signatures use, so the derived types
+     * stay in lockstep across the three generators. Same lossy-tolerant policy as
+     * the table generator: defensive defaults rather than throwing on
+     * partially-formed metadata.
+     */
+    protected open fun primaryKeyKotlinType(entity: MetaObject): TypeName {
+        // ADR-0039: identities are inheritable — RESOLVE via getIdentities(true);
+        // entity.children (own-only) would miss an inherited primary identity.
+        val primary = entity.getIdentities(true)
+            .filterIsInstance<MetaIdentity>()
+            .firstOrNull { it.isPrimary } ?: return LONG
+        val pkFieldName = KotlinGenUtil.keyFields(entity, primary).firstOrNull() ?: return LONG
+        val pkField = entity.metaFields.firstOrNull { it.name == pkFieldName } ?: return LONG
+        return runCatching { KotlinTypeMapper.kotlinTypeName(pkField) }.getOrDefault(LONG)
+    }
+
+    // === MultiFileDirectGeneratorBase abstract-method stubs ====================
+    override fun writeSingleFile(md: MetaObject, writer: GeneratorIOWriter<*>?) { /* unused */ }
+    override fun <T : GeneratorIOWriter<*>?> getSingleWriter(
+        loader: MetaDataLoader?, md: MetaObject?, pw: PrintWriter?
+    ): T? = null
+    override fun <T : GeneratorIOWriter<*>?> getFinalWriter(
+        loader: MetaDataLoader?, out: OutputStream?
+    ): T? = null
+    override fun writeFinalFile(metadata: MutableCollection<MetaObject>?, writer: GeneratorIOWriter<*>?) { /* none */ }
+    override fun getSingleOutputFilePath(md: MetaObject): String =
+        PackageMapping.splitFqn(md.name).first.replace('.', '/')
+    override fun getSingleOutputFilename(md: MetaObject): String =
+        PackageMapping.splitFqn(md.name).second + "Relations.kt"
+}

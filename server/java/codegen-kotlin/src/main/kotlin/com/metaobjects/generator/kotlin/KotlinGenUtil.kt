@@ -721,6 +721,22 @@ public object KotlinGenUtil {
         return out
     }
 
+    @Deprecated(
+        "Pass the generator's Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args) as a second argument, so a " +
+            "@provided enum is typed by its configured class. Without it a @provided enum is named by the " +
+            "class in its declaration's own package.",
+    )
+    fun reportEnumClasses(shape: ReportShape): Map<String, com.squareup.kotlinpoet.ClassName> =
+        reportEnumClasses(shape, Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
+
+    @Deprecated(
+        "Pass the generator's Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args) as a third argument, so a " +
+            "@provided enum is typed by its configured class. Without it a @provided enum is named by the " +
+            "class in its declaration's own package.",
+    )
+    fun reportEnumClasses(obj: MetaObject, loader: MetaDataLoader): Map<String, com.squareup.kotlinpoet.ClassName> =
+        reportEnumClasses(obj, loader, Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
+
     /** [reportEnumClasses] for a report's read model; empty for any other object. */
     fun reportEnumClasses(
         obj: MetaObject,
