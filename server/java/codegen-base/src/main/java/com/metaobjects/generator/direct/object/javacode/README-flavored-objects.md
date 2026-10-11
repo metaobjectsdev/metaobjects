@@ -26,6 +26,11 @@ For each concrete flavor, the generator also emits, per object:
   `orThrow`) and `static ExtractionResult<<Name>> extractLenient(MetaDataLoader, String)`
   (never-throws), both wrapping the runtime `MetaObjectExtractor.extract`.
 
+The Extractors have a generator of their own as well, `ExtractorCodeGenerator`, wirable as
+a separate `<generator>` with the same `outputDir` and naming args. When one is in the run
+`JavaObjectCodeGenerator` leaves the files to it (`emitExtractors=false`, which the Maven
+plugin sets from the generator list; `EmitsObjectExtractors` is the marker it reads).
+
 Abstract objects are skipped for both the binding entry and the Extractor (they cannot be
 `newInstance()`-d — honors the abstract-codegen invariant: no instance artifacts for abstracts).
 
@@ -50,6 +55,27 @@ factory seam. A downstream project subclasses a writer (override a `protected` s
 generator (override `createWriter` to return its writer). Proven by
 `DownstreamCustomizationTest` (overrides `getGetterMethodName` → `fetch<Name>()` via a
 `createWriter` override, compiled + asserted).
+
+## Owning the generators (`mvn metaobjects:eject`)
+
+`JavaObjectCodeGenerator` (`entity`) and `ExtractorCodeGenerator` (`extractor`) each eject
+as one file, package-renamed, into the adopter's `codegen/` module (ADR-0034 Amendment 6).
+This module's pom ships the two sources under `META-INF/metaobjects/reference/java/`.
+
+What an owned copy may rely on, and so what this package has to keep working for it:
+
+- the flavor writers `JavaCodeWriter`, `PojoAwareCodeWriter` and `ValueObjectCodeWriter`,
+  their public constructors and fluent options, and their `protected` emission steps;
+- `JavaCodeWriter.javaPackageOf(mo)` / `javaClassNameOf(mo)`, the public views of the
+  naming steps (a generator outside this package cannot call the `protected` ones);
+- `JavaCodeGenerator` and `BaseObjectCodeGenerator`, which the owned `entity` extends;
+- `ExtractorCodeGenerator.emit(...)`, which the owned `entity` calls.
+
+The writers are deliberately NOT part of the copy. Each generated class's header names the
+writer class that wrote it, so a writer copied into another package would change every
+generated file. Two rules keep a reference ejectable, and `EjectedBaseGeneratorsCompileTest`
+fails when either is broken: import a sibling class explicitly rather than by its bare
+name, and call nothing on another class that is not `public`.
 
 ## Deviation list (what is NOT reused as-is, and why)
 
@@ -76,6 +102,12 @@ The default is reuse; these are the accounted-for exceptions.
    `MetaObject` already in the loader, so the inherited flat multi-file loop emits every
    referenced sub-object exactly once — no visited-set/cycle guard needed (the spec's
    recursive-emission note is superseded by this simpler sound behavior).
+6. **`JavaCodeWriter.javaPackageOf` / `javaClassNameOf` (new, additive).** Public views of
+   the `protected` `getLanguagePackage` / `getClassName` steps, added so a generator in
+   another package (an ejected `JavaObjectCodeGenerator`) can name a generated type. The
+   steps themselves stay `protected`: widening them would break every subclass that
+   overrides one as `protected`. This is the one edit to the otherwise unchanged
+   `JavaCodeWriter`.
 
 ## Status / known gaps
 

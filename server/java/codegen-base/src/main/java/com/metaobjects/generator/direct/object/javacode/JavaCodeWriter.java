@@ -218,4 +218,27 @@ public class JavaCodeWriter extends BaseObjectCodeWriter {
     protected String getLanguageNameAttribute() {
         return ATTR_JAVANAME;
     }
+
+    //////////////////////////////////////////////////////////////////////
+    // Naming, as a generator outside this package reads it
+
+    /**
+     * The Java package the type generated for {@code mo} lands in.
+     *
+     * <p>The public view of the {@code protected} {@link #getLanguagePackage} hook, so it
+     * answers with whatever a subclass overrode. A generator that has to name the generated
+     * type without writing it (the binding provider and the {@code <Name>Extractor} both do)
+     * asks here. Supported surface for an owned generator (ADR-0034 Amendment 6).</p>
+     */
+    public String javaPackageOf(MetaObject mo) {
+        return getLanguagePackage(mo);
+    }
+
+    /**
+     * The simple name of the Java type generated for {@code mo}: the public view of the
+     * {@code protected} {@link #getClassName} hook. See {@link #javaPackageOf}.
+     */
+    public String javaClassNameOf(MetaObject mo) {
+        return getClassName(mo);
+    }
 }

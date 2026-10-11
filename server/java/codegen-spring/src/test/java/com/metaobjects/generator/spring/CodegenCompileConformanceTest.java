@@ -1,5 +1,6 @@
 package com.metaobjects.generator.spring;
 
+import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;
 import com.metaobjects.generator.direct.object.javacode.JavaObjectCodeGenerator;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.util.GeneratedFileWriter;
@@ -143,6 +144,7 @@ public class CodegenCompileConformanceTest extends SharedRegistryTestBase {
     private static Generator newGenerator(String stableName) {
         switch (stableName) {
             case "entity":           return new JavaObjectCodeGenerator();
+            case "extractor":        return new ExtractorCodeGenerator();
             case "value-object":     return new SpringValueObjectGenerator();
             case "dto":              return new SpringDtoGenerator();
             case "repository":       return new SpringRepositoryGenerator();
@@ -178,6 +180,23 @@ public class CodegenCompileConformanceTest extends SharedRegistryTestBase {
         selection.put("entity", AS_CLASS);
         selection.put("names", PLAIN);
         generateAndCompile("model", selection, 17);
+    }
+
+    /**
+     * The same model tier with the extractors written by the {@code extractor} generator
+     * instead of by {@code entity}. One emitter per file is what a pom holding both gets
+     * (the Maven plugin derives the arg), so it is what is compiled here: a standalone
+     * extractor that named a class {@code entity} did not emit would fail this compile.
+     */
+    @Test
+    public void theJavaModelTierCompilesWithTheExtractorsFromTheirOwnGenerator() throws Exception {
+        Map<String, String> entityOnly = new LinkedHashMap<>(AS_CLASS);
+        entityOnly.put(JavaObjectCodeGenerator.ARG_EMIT_EXTRACTORS, "false");
+        Map<String, Map<String, String>> selection = new LinkedHashMap<>();
+        selection.put("entity", entityOnly);
+        selection.put("extractor", PLAIN);
+        selection.put("names", PLAIN);
+        generateAndCompile("model-split", selection, 17, "ProgramExtractor");
     }
 
     /**

@@ -150,6 +150,7 @@ public class MetaDataEjectMojo extends AbstractMojo {
         Path codegenRoot = project.getBasedir().toPath().resolve(CODEGEN_DIR);
         Set<EjectSupport.Port> portsTouched = new LinkedHashSet<>();
         List<String> classnameChanges = new ArrayList<>();
+        List<String> wiringNotes = new ArrayList<>();
 
         List<EjectSupport.Entry> entries = new ArrayList<>();
         for (EjectSupport.Resolution r : resolved) entries.add(r.entry);
@@ -184,6 +185,8 @@ public class MetaDataEjectMojo extends AbstractMojo {
             reportEject(e, target, rewritten, write(pkgDir, target, rewritten, force));
             classnameChanges.add("  " + e.stableName + ": " + e.classname + "  ->  "
                     + pkg + "." + e.simpleName());
+            String note = e.wiringNote(pkg);
+            if (note != null) wiringNotes.add(note);
         }
 
         boolean pomWritten = writeCodegenPomIfNeeded(codegenRoot, pkg, portsTouched);
@@ -193,6 +196,7 @@ public class MetaDataEjectMojo extends AbstractMojo {
         }
 
         printWiring(pomWritten, classnameChanges);
+        for (String note : wiringNotes) getLog().info(note);
         if (!runtime.isEmpty()) {
             printRuntimeWiring(runtimeRoot, runtimePkg, requested, codegenRoot);
         }

@@ -93,6 +93,7 @@ public final class GeneratorRegistry {
         private final Layer layer;
         private final String ejectResourcePath;
         private final List<String> ejectRuntime;
+        private final String ejectNote;
 
         public GeneratorInfo(String stableName, String classname, String description,
                              Tier tier, Layer layer) {
@@ -109,11 +110,9 @@ public final class GeneratorRegistry {
          *      as shipped inside the {@code codegen-*} jar that owns it (e.g. {@code
          *      META-INF/metaobjects/reference/java/SpringNamesGenerator.java}), or {@code
          *      null} when this generator is not ejectable — {@code mvn metaobjects:eject}
-         *      reads this field to resolve {@code -Dnames}. See {@link
-         *      docs/superpowers/specs/2026-09-22-eject-in-every-port-design.md the JVM
-         *      eject design} for why some registered generators (the "extractor" that is
-         *      fused into "entity"; "template", a generic declarative primitive with no
-         *      emit logic to own) deliberately carry no eject source.
+         *      reads this field to resolve {@code -Dnames}. One registered generator carries
+         *      none: "template", the Mustache primitive, which has no emit logic to own
+         *      (ADR-0034 Amendment 6).
          * @param ejectRuntime simple names of the helper-runtime classes this generator's
          *      OUTPUT imports (from {@link #RUNTIME_PACKAGE}), closed over their own references
          *      to each other. {@code mvn metaobjects:eject} copies their source (shipped under
@@ -123,6 +122,18 @@ public final class GeneratorRegistry {
         public GeneratorInfo(String stableName, String classname, String description,
                              Tier tier, Layer layer, String ejectResourcePath,
                              List<String> ejectRuntime) {
+            this(stableName, classname, description, tier, layer, ejectResourcePath,
+                    ejectRuntime, null);
+        }
+
+        /**
+         * @param ejectNote wiring the generic eject report cannot know, printed after it;
+         *      {@code null} for a generator whose only wiring is the {@code <classname>}
+         *      change. {@code {owned}} in it is replaced by the owned copy's class name.
+         */
+        public GeneratorInfo(String stableName, String classname, String description,
+                             Tier tier, Layer layer, String ejectResourcePath,
+                             List<String> ejectRuntime, String ejectNote) {
             this.stableName = stableName;
             this.classname = classname;
             this.description = description;
@@ -130,6 +141,7 @@ public final class GeneratorRegistry {
             this.layer = layer;
             this.ejectResourcePath = ejectResourcePath;
             this.ejectRuntime = List.copyOf(ejectRuntime);
+            this.ejectNote = ejectNote;
         }
 
         /** Canonical cross-port stable name (the manifest key). */
@@ -167,6 +179,12 @@ public final class GeneratorRegistry {
          *  source {@code mvn metaobjects:eject} hands over with it (see the constructor). */
         public List<String> ejectRuntime() {
             return ejectRuntime;
+        }
+
+        /** Wiring to print after the generic eject report, or {@code null} (see the
+         *  constructor). */
+        public String ejectNote() {
+            return ejectNote;
         }
 
         @Override
@@ -209,17 +227,14 @@ public final class GeneratorRegistry {
 
     private static Map<String, GeneratorInfo> buildRegistry() {
         Map<String, GeneratorInfo> m = new LinkedHashMap<>();
-        // "entity" stays registered but is NOT ejectable on Java: JavaObjectCodeGenerator
-        // lives in codegen-base (not this module), extends a same-package superclass
-        // (JavaCodeGenerator), and directly instantiates the FUSED, non-ejectable
-        // ExtractorCodeGenerator plus other same-package writer helpers
-        // (PojoAwareCodeWriter / ValueObjectCodeWriter). Ejecting it would mean widening a
-        // whole internal writer hierarchy to public — a materially bigger surface than the
-        // other ten generators, for a generator this port already documents as fused to a
-        // non-ejectable neighbor. Kotlin's "entity" (KotlinEntityGenerator) has no such
-        // entanglement and IS ejectable — see GeneratorRegistry.kt.
+        // "entity" and "extractor" live in codegen-base, which ships their reference source
+        // (its pom, the same execution as this module's). The owned copy of "entity" is the
+        // generator: flavor selection, the writer factory, the binding provider and its
+        // services file. The class body stays in codegen-base's flavor writers, which are
+        // supported surface an owned copy calls and subclasses (ADR-0034 Amendment 6).
         register(m, "entity", JavaObjectCodeGenerator.class.getName(),
-                "Per-entity Java model/class (table-backed or value object).", Tier.NATIVE, Layer.MODEL);
+                "Per-entity Java model/class (table-backed or value object).", Tier.NATIVE, Layer.MODEL,
+                ejectPath(JavaObjectCodeGenerator.class));
         register(m, "routes", SpringControllerGenerator.class.getName(),
                 "Per-entity Spring @RestController endpoint surface.", Tier.NATIVE, Layer.API,
                 ejectPath(SpringControllerGenerator.class), ROUTES_RUNTIME);
@@ -236,13 +251,21 @@ public final class GeneratorRegistry {
         register(m, "render-helper", SpringRenderHelperGenerator.class.getName(),
                 "Per-renderable-template render helper (typed wrappers; document/email for a template.output, the document shape for a template.prompt).", Tier.NATIVE, Layer.CAPABILITY,
                 ejectPath(SpringRenderHelperGenerator.class));
-        // "extractor" stays registered (discoverable, cross-port symmetric) but is NOT
-        // ejectable: it is fused into "entity"'s own emission (JavaObjectCodeGenerator),
-        // not a separately wirable generator with its own emit logic to own.
+        // "extractor" is a generator of its own AND a step "entity" runs when no separate
+        // one is in the run (EmitsObjectExtractors), so an existing pom that wires only
+        // "entity" emits what it always did. The note is what eject prints: unlike every
+        // other generator there may be no <generator> entry to change, only one to add.
         register(m, "extractor", ExtractorCodeGenerator.class.getName(),
-                "Per-template typed extract<Name> helper: tolerant recovery of the typed response from "
-                    + "dirty model text; throws only when a @required field is lost. FUSED into `entity` on this "
-                    + "port — emitted by JavaObjectCodeGenerator, not separately wirable.", Tier.NATIVE, Layer.CAPABILITY);
+                "Per-object typed <Name>Extractor: tolerant recovery of the typed, flavored object "
+                    + "graph from dirty model text; throws only when a @required field is lost. `entity` "
+                    + "writes these itself with a concrete flavor, unless this generator is in "
+                    + "<generators> too.", Tier.NATIVE, Layer.CAPABILITY,
+                ejectPath(ExtractorCodeGenerator.class), List.of(),
+                "extractor: `entity` writes the <Name>Extractor classes itself unless a separate "
+                    + "extractor generator is in <generators>. If yours has no entry for one, add "
+                    + "<generator><classname>{owned}</classname></generator> with the same outputDir, "
+                    + "pkgPrefix, pkgSuffix, namePrefix and nameSuffix args as your entity generator. "
+                    + "`entity` then leaves those files to it.");
         // "template" stays registered but is NOT ejectable: it is already a generic,
         // declaratively-configured primitive (Mustache template + output pattern) with no
         // emit LOGIC in it to own — you customize it via args/template-spec, not by editing
@@ -294,8 +317,16 @@ public final class GeneratorRegistry {
     private static void register(Map<String, GeneratorInfo> m, String stableName,
                                  String classname, String description, Tier tier, Layer layer,
                                  String ejectResourcePath, List<String> ejectRuntime) {
+        register(m, stableName, classname, description, tier, layer, ejectResourcePath,
+                ejectRuntime, null);
+    }
+
+    private static void register(Map<String, GeneratorInfo> m, String stableName,
+                                 String classname, String description, Tier tier, Layer layer,
+                                 String ejectResourcePath, List<String> ejectRuntime,
+                                 String ejectNote) {
         if (m.put(stableName, new GeneratorInfo(stableName, classname, description, tier, layer,
-                ejectResourcePath, ejectRuntime)) != null) {
+                ejectResourcePath, ejectRuntime, ejectNote)) != null) {
             throw new IllegalStateException("duplicate generator stable name: " + stableName);
         }
     }

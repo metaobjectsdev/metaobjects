@@ -62,6 +62,9 @@ public final class EjectSupport {
          *  eject copies alongside it (empty for every Kotlin generator — see
          *  {@link #allEntries()}). */
         public final List<String> runtime;
+        /** Wiring the generic eject report cannot know, with {@code {owned}} standing for the
+         *  owned copy's class name, or {@code null} (see {@link #wiringNote}). */
+        public final String note;
 
         public Entry(Port port, String stableName, String classname, String description, String resourcePath) {
             this(port, stableName, classname, description, resourcePath, List.of());
@@ -69,12 +72,24 @@ public final class EjectSupport {
 
         public Entry(Port port, String stableName, String classname, String description,
                      String resourcePath, List<String> runtime) {
+            this(port, stableName, classname, description, resourcePath, runtime, null);
+        }
+
+        public Entry(Port port, String stableName, String classname, String description,
+                     String resourcePath, List<String> runtime, String note) {
             this.port = port;
             this.stableName = stableName;
             this.classname = classname;
             this.description = description;
             this.resourcePath = resourcePath;
             this.runtime = List.copyOf(runtime);
+            this.note = note;
+        }
+
+        /** {@link #note} with the owned copy's class name filled in, or {@code null} when
+         *  this generator's only wiring is the {@code <classname>} change. */
+        public String wiringNote(String ownedPackage) {
+            return note == null ? null : note.replace("{owned}", ownedPackage + "." + simpleName());
         }
 
         /** The simple class name — also the filename stem the ejected copy is written as. */
@@ -87,7 +102,7 @@ public final class EjectSupport {
     /**
      * Every generator BOTH registries declare, ejectable or not (an entry with a {@code
      * null} {@link Entry#resourcePath} is registered but not ejectable — see {@code
-     * GeneratorRegistry}'s "extractor"/"template" javadoc). Insertion order: Java first,
+     * GeneratorRegistry}'s "template" entry). Insertion order: Java first,
      * then Kotlin, each in its own registry's declared order.
      *
      * <p>Only Java entries carry helper runtime. The Kotlin generators emit their filter
@@ -100,7 +115,7 @@ public final class EjectSupport {
         List<Entry> out = new ArrayList<>();
         for (GeneratorRegistry.GeneratorInfo info : GeneratorRegistry.list().values()) {
             out.add(new Entry(Port.JAVA, info.stableName(), info.classname(), info.description(),
-                    info.ejectResourcePath(), info.ejectRuntime()));
+                    info.ejectResourcePath(), info.ejectRuntime(), info.ejectNote()));
         }
         for (Map.Entry<String, GeneratorInfo> e : GeneratorRegistryKt.getGENERATOR_REGISTRY().entrySet()) {
             GeneratorInfo info = e.getValue();

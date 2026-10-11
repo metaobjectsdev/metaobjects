@@ -204,7 +204,6 @@ public class ReportingInertTest extends SharedRegistryTestBase {
         // Each is compared above on its error message alone, which proves nothing about its
         // output. Pinned by name so a generator that starts throwing cannot drop out
         // silently; the list may only shrink.
-        //   extractor  not a Generator at all: fused into `entity`, which emits it
         //   template   needs a `template` arg (no default template exists)
         List<String> threw = new ArrayList<>();
         StringBuilder why = new StringBuilder();
@@ -216,7 +215,7 @@ public class ReportingInertTest extends SharedRegistryTestBase {
             }
         }
         threw.sort(null);
-        assertEquals(why.toString(), List.of("extractor", "template"), threw);
+        assertEquals(why.toString(), List.of("template"), threw);
     }
 
     @Test

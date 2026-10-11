@@ -346,3 +346,84 @@ fails at call time (the resolver sits in the eject module, which this change did
 the guide says to name an instance or a factory function.
 
 Guide: `docs/recipes/write-your-own-generator.md`.
+
+### Amendment 6 (2026-10-11) — the Java `entity` and `extractor` generators are ejectable
+
+**Ruling (maintainer).** Asked whether adopters may import the stock generators again:
+*"Yes, everything should be ejectable."* An audit of every stock generator in all five ports
+then found eight that could not be ejected, and the ruling on it was to make all of them
+ejectable except `template`. This amendment is the Java part: `entity`
+(`JavaObjectCodeGenerator`) and `extractor` (`ExtractorCodeGenerator`), both in
+`metaobjects-codegen-base`.
+
+**Why they could not be ejected.** The short form was "they share internal writer classes".
+There were two separate defects behind it.
+
+- **`entity` compiled only inside its writers' package.** To name each generated class in
+  the binding provider it called two `protected` naming steps on a writer it does not
+  extend, and it named its sibling classes by bare name. Both work only for a class in the
+  same package, and the package line is the one thing eject rewrites, so a copy did not
+  compile.
+- **`extractor` was not a generator.** It was a step `entity` ran. No `<generator>` entry
+  could name it, so an owned copy had nowhere to be wired, `-Dlist` had nothing to compare
+  and `mvn metaobjects:verify` had nothing to run.
+
+**Decision 1: the owned `entity` is the generator, and the class body stays in the package.**
+The copy is `JavaObjectCodeGenerator.java` alone. It holds the flavor selection, the writer
+factory (`createWriter`), the `ObjectClassBindingProvider` source, its `META-INF/services`
+registration, and whether the extractors are written there. The flavor writers
+(`JavaCodeWriter`, `PojoAwareCodeWriter`, `ValueObjectCodeWriter`) are not copied. They are
+named here as **supported surface** for an owned generator: it builds one per file, and it
+changes a field, a constructor or an accessor by subclassing a writer, overriding a
+`protected` step and returning the subclass from `createWriter`. That contract already
+existed and was already tested (`DownstreamCustomizationTest`); this amendment is what
+makes it a promise.
+
+Copying the writers out as well was rejected for two reasons.
+
+- **It would change the output.** Every generated class's header names the writer class
+  that wrote it. A writer copied into the adopter's package would put that package into
+  every generated file, so an unmodified copy would no longer emit what the packaged
+  generator emits, which is the test an eject has to pass.
+- **It hands over code the adopter did not ask to own.** An owned copy receives no fixes
+  (Consequences, above), so what it carries should be what an adopter changes. A change to
+  the class body is one overridden step; owning the whole writer hierarchy to make it is
+  the duplication this ADR's eject was meant to remove. The TypeScript prompt tier draws
+  the line in the same place: the copy owns which objects get output and where it lands,
+  and the body composer stays in the package.
+
+**Decision 2: naming is read through two new public methods, and the `protected` steps stay
+`protected`.** `JavaCodeWriter.javaPackageOf(mo)` and `javaClassNameOf(mo)` are public views
+of the naming steps, so they answer with whatever a subclass overrode. Making the steps
+themselves public would have broken every existing subclass that overrides one as
+`protected`: Java refuses an override with weaker access.
+
+**Decision 3: `extractor` is a generator of its own, and `entity` still writes its files
+when nothing else will.** `ExtractorCodeGenerator` implements `Generator`: a `<generator>`
+entry can name it, with the same naming args as `entity`. A pom that wires only `entity`
+must keep emitting what it did, so `entity` still writes the extractors by default. What
+decides between them is the run, not the adopter: the Maven plugin builds the whole
+generator list before running any of it, and when a generator in it implements
+`EmitsObjectExtractors` it sets `emitExtractors=false` on the others. That is the
+aggregation `useNames` already uses. An explicit `emitExtractors` in the pom wins. Without
+it, an owned extractor wired beside `entity` would be a second emitter of the same files:
+identical output would hide the duplicate, and the first edit to the copy would fail the
+build as an output path collision.
+
+**What does not change.**
+
+- **Packaged output.** A pom that wires `entity`, with or without `flavor`, emits byte for
+  byte what it did. `ExtractorCodeGenerator.emit(...)` and its `protected` steps keep their
+  signatures.
+- **The core and helper line of Amendment 3.** Both generators are reference helpers, owned
+  with `mvn metaobjects:eject -Dnames=entity,extractor -Dport=java`.
+- **`template`.** It stays not ejectable in every port that ships it. It is the Mustache
+  primitive: the template the adopter supplies is its emit logic.
+
+**Proof.** `EjectedBaseGeneratorsCompileTest` compiles both package-renamed copies against
+the module's public API. `EntityExtractorEjectRoundTripTest` ejects both through the mojo,
+compiles them, and requires the unchanged copies to emit the packaged generators' bytes
+over the persistence corpus in every flavor; it also holds `-Dlist` and
+`mvn metaobjects:verify` to treating the owned copies as they treat any other.
+`StandaloneExtractorGeneratorTest` and `EmitExtractorsDerivationTest` hold the split
+between the two generators.

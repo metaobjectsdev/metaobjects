@@ -536,6 +536,57 @@ from which the goal infers it. `requirement-tests` is one such name:
 `KotlinRequirementTestsGenerator.kt`, each with its default rendering. The identity
 function, the digest and the renderer and filter hook types stay in the package.
 
+### Java `entity` and `extractor`
+
+```bash
+mvn metaobjects:eject -Dnames=entity,extractor -Dport=java
+```
+
+Both names exist in both ports, so pass `-Dport`. Their reference source ships in
+`metaobjects-codegen-base`, not `metaobjects-codegen-spring`; your `codegen/` module
+reaches it through the same dependency.
+
+**`entity` copies `JavaObjectCodeGenerator.java`, and that one file is the generator.**
+What it holds is yours to change:
+
+- which flavors exist, and which writer each one gets (`createWriter`);
+- the `ObjectClassBindingProvider` source and its `META-INF/services` registration;
+- whether the `<Name>Extractor` classes are written here.
+
+The class body is not in that file. It comes from the flavor writers, which stay in
+`metaobjects-codegen-base` as supported surface for an owned copy to call and subclass:
+
+| Stays in the package | What an owned generator does with it |
+|---|---|
+| `JavaCodeWriter` (interface flavor), `PojoAwareCodeWriter`, `ValueObjectCodeWriter` | Builds one per file in `createWriter`. To change a field, a constructor or an accessor, subclass the writer, override the `protected` step (`writeFields`, `writeConstructor`, `writeGetter`, `writeSetter`, `getGetterMethodName`, ...) and return your subclass. |
+| `JavaCodeWriter.javaPackageOf(mo)` / `javaClassNameOf(mo)` | Names the generated type without writing it. They answer through the same naming steps a subclass overrides, so the binding provider and the extractors follow a rename. |
+| `JavaCodeGenerator`, `BaseObjectCodeGenerator` | The base your copy extends: argument parsing, and the one-file-per-object loop. |
+| `GeneratedFileWriter` | The write guard: a file with no `GENERATED` marker is left alone. |
+
+This is the same split the TypeScript prompt tier uses: the copy owns which objects get
+output, where it lands and how it is composed, and the body composer stays in the
+package. Copying the writers out as well would hand you the whole writer hierarchy to
+keep in step with the reference, when a change to the class body is one overridden step.
+
+**`extractor` copies `ExtractorCodeGenerator.java`, which holds all of its emit.** It is a
+generator of its own: add it to `<generators>` with the same `outputDir`, `pkgPrefix`,
+`pkgSuffix`, `namePrefix` and `nameSuffix` as your `entity` generator. An extractor casts
+to the generated flavored class, so `entity` with a concrete `flavor` has to be in the
+same run.
+
+```xml
+<generator>
+  <classname>com.acme.codegen.ExtractorCodeGenerator</classname>
+  <args><outputDir>${project.build.directory}/generated-sources/metaobjects</outputDir></args>
+</generator>
+```
+
+`entity` still writes the extractors itself when no separate `extractor` generator is in
+the run, so a pom that wires only `entity` emits what it always did. When one is in
+`<generators>`, the plugin tells `entity` to leave those files to it (it sets
+`emitExtractors` to `false`), so each file has one emitter. Outside Maven, set
+`emitExtractors=false` on `entity` yourself.
+
 ### What eject hands over, and what stays core
 
 An owned generator is only yours if the code its output depends on is yours too. The Java
@@ -608,13 +659,15 @@ diff -u -I '^package ' -I '^// metaobjects:owned-runtime' \
 
 Apply the hunks you want by hand. For a generator, diff `reference/java/<Generator>.java`
 against `codegen/src/main/java/<package>/<Generator>.java` the same way, and also ignore
-`RUNTIME_PACKAGE`. Or, if you have no edits of your own (`-Dlist` says `identical`),
-re-eject with `-Dforce`.
+`RUNTIME_PACKAGE`. `entity` and `extractor` are in `metaobjects-codegen-base-$V.jar`
+instead. Or, if you have no edits of your own (`-Dlist` says `identical`), re-eject with
+`-Dforce`.
 
 `-Dport` is needed only when a name exists in both ports and your project's dependencies
-do not say which. Every Kotlin generator is ejectable. In Java, `entity`, `extractor` and
-`template` are not: `entity` shares internal writer classes with `extractor`, and
-`template` is the Mustache primitive, which has no emit logic of its own to own.
+do not say which. Every Kotlin generator is ejectable, and every Java generator except
+`template`. `template` is the Mustache primitive: the template you supply is its emit
+logic, so the generator has none of its own to hand over. That holds in every port that
+ships it.
 
 ## C#: `dotnet meta eject`
 

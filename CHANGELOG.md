@@ -10,6 +10,46 @@ here.**
 
 ## [Unreleased]
 
+### Added
+
+- **The Java `entity` and `extractor` generators can be ejected.**
+  `mvn metaobjects:eject -Dnames=entity,extractor -Dport=java` copies
+  `JavaObjectCodeGenerator.java` and `ExtractorCodeGenerator.java` into your `codegen/`
+  module. They were the two Java generators that could not be owned: `entity` compiled only
+  inside its writers' package, and `extractor` was a step inside `entity` that no
+  `<generator>` entry could name. An unchanged copy of either emits what the packaged
+  generator emits, `-Dlist` marks the copies `identical` or `DIFFERS`, and
+  `mvn metaobjects:verify` runs them when your pom names them. Every Java generator is now
+  ejectable except `template`. Ruling and reasoning: ADR-0034 Amendment 6.
+  - **The owned `entity` is the generator, not the class body.** The copy holds the flavor
+    selection, the writer factory (`createWriter`), the `ObjectClassBindingProvider` source
+    and its `META-INF/services` registration. The class body stays in
+    `metaobjects-codegen-base`'s flavor writers (`JavaCodeWriter`, `PojoAwareCodeWriter`,
+    `ValueObjectCodeWriter`), which are now supported surface: subclass one, override a
+    `protected` step and return it from `createWriter`. Details:
+    [own-your-codegen](docs/features/own-your-codegen.md#java-entity-and-extractor).
+  - **`extractor` is a generator of its own (Java).** `ExtractorCodeGenerator` can be named
+    in `<generators>`, with the same `outputDir`, `pkgPrefix`, `pkgSuffix`, `namePrefix` and
+    `nameSuffix` as your `entity` generator. When it is, the plugin sets
+    `emitExtractors=false` on `entity`, so each `<Name>Extractor` has one emitter. Outside
+    Maven, set that arg yourself.
+  - **Nothing changes for a pom that wires only `entity`.** It still writes the extractors,
+    and its output is byte for byte what it was.
+  - New public API in `metaobjects-codegen-base`: `JavaCodeWriter.javaPackageOf(mo)` and
+    `javaClassNameOf(mo)` (the generated type's package and name, as a subclass's naming
+    overrides leave them), the `EmitsObjectExtractors` marker, and
+    `JavaObjectCodeGenerator.ARG_EMIT_EXTRACTORS`.
+
+### Changed
+
+- **`mvn metaobjects:eject -Dnames=entity` and `-Dnames=extractor` need a port when the
+  project does not imply one.** Both names are now ejectable on Java and on Kotlin. A
+  project that declares exactly one of `metaobjects-codegen-spring` and
+  `metaobjects-codegen-kotlin` is unaffected, because the goal infers the port from it.
+  With neither or both declared, the goal used to resolve these two names to Kotlin, the
+  only port that had them; it now refuses with `ejectable on more than one port` and asks
+  for `-Dport=java|kotlin`, as it already did for `names` and `requirement-tests`.
+
 ### Fixed
 
 - `meta verify --docs` now reports a generated page in the docs root that no current object

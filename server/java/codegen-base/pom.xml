@@ -91,7 +91,45 @@
                     </execution>
                 </executions>
             </plugin>
-            
+
+            <!-- `mvn metaobjects:eject` ships the verbatim source of every ejectable generator
+                 inside the jar that owns it, as a classpath resource under
+                 META-INF/metaobjects/reference/java/ (see codegen-spring's pom for the same
+                 execution, and com.metaobjects.generator.GeneratorRegistry.EJECT_RESOURCE_ROOT).
+                 Copied at BUILD TIME from the src/main/java files the compiler just compiled,
+                 so the resource IS the source: one file, one owner, nothing to drift.
+
+                 These two are "entity" and "extractor". The flavor writers beside them
+                 (JavaCodeWriter, PojoAwareCodeWriter, ValueObjectCodeWriter) are NOT shipped:
+                 they are the supported surface an owned copy calls, not part of the copy
+                 (ADR-0034 Amendment 6). "template" (TemplateScopeGenerator) is not shipped
+                 either: it is the Mustache primitive and has no emit logic of its own. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>ship-eject-reference-source</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/META-INF/metaobjects/reference/java</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>src/main/java/com/metaobjects/generator/direct/object/javacode</directory>
+                                    <includes>
+                                        <include>JavaObjectCodeGenerator.java</include>
+                                        <include>ExtractorCodeGenerator.java</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
         </plugins>
     </build>
 </project>
