@@ -134,13 +134,13 @@ describe("resolveGenerators — a doc generator is not offered as a `meta gen` n
     catch (err) { message = err instanceof Error ? err.message : String(err); }
 
     expect(message).toContain(`unknown generator "no-such-generator"`);
-    const listed = (/Available generators: ([^.]*)\./.exec(message)?.[1] ?? "")
+    const listed = (/Available native generators: ([^.]*)\./.exec(message)?.[1] ?? "")
       .split(",").map((s) => s.trim());
     expect(listed).toContain("entity");
     expect(listed).not.toContain("api-docs");
     expect(listed).not.toContain("docs");
-    // `mermaid-er` is neutral and IS in the list: `meta gen` runs it.
-    expect(listed).toContain("mermaid-er");
+    // `mermaid-er` is neutral, so its name is refused and not offered either.
+    expect(listed).not.toContain("mermaid-er");
     // ...and says where documentation comes from, so the reader is not left guessing
     // why a catalog name is missing from the list.
     expect(message).toContain("meta docs");

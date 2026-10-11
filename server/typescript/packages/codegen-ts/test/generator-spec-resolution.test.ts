@@ -6,7 +6,6 @@ import { runGen } from "../src/runner.js";
 import { defineConfig, resolveGenerators } from "../src/metaobjects-config.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import { routesFile } from "../src/generators/routes-file.js";
-import { mermaidErDiagram } from "../src/generators/mermaid-er.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 
@@ -49,20 +48,20 @@ describe("resolveGenerators (registry string resolution)", () => {
     expect(gens[1]).toBe(factory);
   });
 
-  test("unknown name → error listing the names meta gen runs", () => {
+  test("unknown name → error listing available native names", () => {
     expect(() => resolveGenerators(["not-a-generator"]))
       .toThrow(/unknown generator "not-a-generator"/);
-    // Lists the selectable names so the user can correct it.
+    // Lists native names so the user can correct it.
     try {
       resolveGenerators(["not-a-generator"]);
     } catch (err) {
       const msg = (err as Error).message;
       expect(msg).toContain("entity");
       expect(msg).toContain("routes");
-      // What `meta docs` runs is NOT advertised as selectable. (Substring-safe: neither
-      // `api-docs` nor a bare `docs` entry appears in any name `meta gen` runs.)
+      // neutral names are NOT advertised as selectable
+      expect(msg).not.toContain("mermaid-er");
+      // ...and neither is the native generator `meta gen` skips.
       expect(msg).not.toContain("api-docs");
-      expect(msg).not.toMatch(/[ ,]docs[,.]/);
     }
   });
 
@@ -71,13 +70,9 @@ describe("resolveGenerators (registry string resolution)", () => {
       .toThrow(/generator "docs" is neutral \(owned by 'meta docs'\); not selectable in the gen suite/);
   });
 
-  // It threw "is neutral (owned by 'meta docs')". `meta docs` has never run this
-  // generator: `meta gen` writes its file, and its factory wired in the same array ran.
-  // The name now resolves to that factory.
-  test('neutral name "mermaid-er" resolves: meta gen is the command that runs it', () => {
-    const gens = resolveGenerators(["mermaid-er"]);
-    expect(gens).toHaveLength(1);
-    expect(gens[0]!.name).toBe(mermaidErDiagram().name);
+  test('neutral name "mermaid-er" → neutral error', () => {
+    expect(() => resolveGenerators(["mermaid-er"]))
+      .toThrow(/is neutral \(owned by 'meta docs'\); not selectable in the gen suite/);
   });
 });
 

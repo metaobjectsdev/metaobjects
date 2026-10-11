@@ -104,7 +104,7 @@ interface ListRow {
   kind: string;
   note?: string;
   door?: string;
-  project?: { wired: boolean; wouldEmit: number | null; probeError?: string };
+  project?: { wired: boolean; refused?: true; wouldEmit: number | null; probeError?: string };
 }
 
 const WIRED = `["entity", apiDocsFile(), docsFile()]`;
@@ -180,9 +180,12 @@ describe("meta gen — a skipped doc generator is reported in every output form"
   });
 });
 
-describe("meta gen — mermaid-er is a generator `meta gen` runs", () => {
-  // The other half of the same ruling: what `meta docs` runs is skipped here, and what
-  // it does not run is not. Every surface has to give the same answer.
+const NEUTRAL_REFUSAL = (name: string): string =>
+  `generator "${name}" is neutral (owned by 'meta docs'); not selectable in the gen suite.`;
+
+describe("meta gen — mermaid-er is deprecated: a wired factory runs, the name is refused", () => {
+  // ADR-0022 Part 2 D1 keeps it deprecated from the gen suite. A config that already
+  // lists `mermaidErDiagram()` keeps working; the stable name is not selectable.
   test("mermaidErDiagram() writes its file and draws no skip warning", async () => {
     const r = await meta(`["entity", mermaidErDiagram()]`, ["gen", "--format", "json"]);
     expect(r.code).toBe(0);
@@ -192,18 +195,31 @@ describe("meta gen — mermaid-er is a generator `meta gen` runs", () => {
     expect(r.stderr).not.toContain("Skipped.");
   });
 
-  test("the stable name selects it, as it does every other generator `meta gen` runs", async () => {
-    // It was refused as "neutral (owned by 'meta docs')" while the factory beside it ran.
-    const r = await meta(`["entity", "mermaid-er"]`, ["gen", "--format", "json"]);
-    expect(r.code).toBe(0);
-    const payload = JSON.parse(r.stdout) as GenPayload;
-    expect(payload.gen.map((g) => g.file)).toContain("generated/docs/model.md");
+  test("the stable name `mermaid-er` is refused as neutral, and nothing is written", async () => {
+    const root = setupRepo(`["entity", "mermaid-er"]`);
+    try {
+      expect(await run(["gen", "--format", "json", "--cwd", root])).not.toBe(0);
+      expect(err.join("\n")).toContain(NEUTRAL_REFUSAL("mermaid-er"));
+      expect(existsSync(join(root, "generated"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
-  test("the stable name `docs` is still refused: `meta docs` owns it", async () => {
+  test("the stable name `docs` is refused the same way: `meta docs` owns it", async () => {
     const r = await meta(`["entity", "docs"]`, ["gen", "--format", "json"]);
     expect(r.code).not.toBe(0);
-    expect(r.stderr).toContain(`generator "docs" is neutral (owned by 'meta docs')`);
+    expect(r.stderr).toContain(NEUTRAL_REFUSAL("docs"));
+  });
+
+  test("an unknown name is not offered a neutral name or a skipped one", async () => {
+    const r = await meta(`["entity", "no-such-generator"]`, ["gen", "--format", "json"]);
+    expect(r.code).not.toBe(0);
+    const offered = (/Available native generators: ([^.]*)\./.exec(r.stderr)?.[1] ?? "")
+      .split(",").map((s) => s.trim());
+    expect(offered).toContain("entity");
+    for (const name of ["mermaid-er", "docs", "api-docs"]) expect(offered, name).not.toContain(name);
+    expect(r.stderr).toContain("run 'meta docs'");
   });
 });
 
@@ -303,17 +319,18 @@ describe("meta gen --list — a row `meta gen` does not run says so", () => {
     expect(block(r.stdout, "entity")).not.toContain("meta docs");
   });
 
-  // `meta docs` has never run mermaid-er: `meta gen` writes its file. The row said
-  // "surfaced via `meta docs`" (in the registry; nothing printed it), so the one
-  // docs-layer generator that belongs in `generators` read as one that does not.
-  test("text: mermaid-er is run by `meta gen`, and its row says so", async () => {
+  // The registry note said "surfaced via `meta docs`", which `meta docs` never did. The
+  // row states the back-compat fact, and does not present the generator as a choice.
+  test("text: the mermaid-er row says it is deprecated, and has no door", async () => {
     const r = await meta(`["entity"]`, ["gen", "--list", "--format", "text"]);
     const mermaid = block(r.stdout, "mermaid-er");
-    expect(mermaid).toContain("run by `meta gen`");
+    expect(mermaid).toContain("deprecated");
+    expect(mermaid).toContain("do not add it to a new config");
+    expect(mermaid).toContain("A `mermaidErDiagram()` already wired in `generators` still runs");
+    expect(mermaid).toContain("`meta docs` draws the same diagram on its overview page");
+    expect(mermaid).not.toContain("surfaced via");
     expect(mermaid).not.toContain("run by `meta docs`");
     expect(mermaid).not.toContain("not run by `meta gen`");
-    // ...while still telling the reader the diagram is already on the overview page.
-    expect(mermaid).toContain("`meta docs` already draws the same diagram");
   });
 
   test("json: the row carries the door and the note", async () => {
@@ -326,7 +343,8 @@ describe("meta gen --list — a row `meta gen` does not run says so", () => {
       expect(row(rows, name).note ?? "", name).toContain("meta docs");
     }
     expect(row(rows, "mermaid-er").door).toBeUndefined();
-    expect(row(rows, "mermaid-er").note ?? "").toContain("run by `meta gen`");
+    expect(row(rows, "mermaid-er").note ?? "").toContain("deprecated");
+    expect(row(rows, "mermaid-er").note ?? "").toContain("still runs");
     expect(row(rows, "entity").door).toBeUndefined();
     expect(row(rows, "entity").note).toBeUndefined();
   });
@@ -337,6 +355,46 @@ describe("meta gen --list — a row `meta gen` does not run says so", () => {
     expect(block(r.stdout, "docs")).toContain("WIRED but skipped by `meta gen`");
     expect(block(r.stdout, "entity")).toContain("WIRED");
     expect(block(r.stdout, "entity")).not.toContain("skipped");
+  });
+
+  // A neutral name written as a string is not skipped: `meta gen` refuses it and exits
+  // non-zero (asserted above). The mark has to say that, for `docs` and `mermaid-er` both.
+  const BY_NAME = `["entity", "docs", "mermaid-er", "api-docs"]`;
+
+  test("text: a neutral name wired as a string reads as refused, not skipped or run", async () => {
+    const r = await meta(BY_NAME, ["gen", "--list", "--format", "text"]);
+    expect(r.code).toBe(0);
+    for (const name of ["docs", "mermaid-er"]) {
+      const b = block(r.stdout, name);
+      expect(b, name).toContain("WIRED by name, which `meta gen` refuses");
+      expect(b, name).not.toContain("WIRED but skipped");
+      expect(b, name).not.toMatch(/WIRED[,\]]/);
+      expect(b, name).toContain("its name as a string under `generators` is refused");
+    }
+    // `"api-docs"` resolves, and the runner skips it: the skip wording stands.
+    expect(block(r.stdout, "api-docs")).toContain("WIRED but skipped by `meta gen`");
+    expect(block(r.stdout, "api-docs")).not.toContain("refuse");
+    expect(block(r.stdout, "entity")).not.toContain("refuse");
+  });
+
+  test("json: the refusal is on the row's project facts", async () => {
+    const r = await meta(BY_NAME, ["gen", "--list", "--format", "json"]);
+    const rows = rowsOf(r.stdout);
+    for (const name of ["docs", "mermaid-er"]) {
+      expect(row(rows, name).project?.wired, name).toBe(true);
+      expect(row(rows, name).project?.refused, name).toBe(true);
+    }
+    expect(row(rows, "api-docs").project?.wired).toBe(true);
+    expect(row(rows, "api-docs").project?.refused).toBeUndefined();
+    expect(row(rows, "entity").project?.refused).toBeUndefined();
+  });
+
+  test("a constructed mermaidErDiagram() reads as WIRED: it still runs", async () => {
+    const r = await meta(`["entity", mermaidErDiagram(), docsFile()]`, ["gen", "--list", "--format", "json"]);
+    const rows = rowsOf(r.stdout);
+    expect(row(rows, "mermaid-er").project?.wired).toBe(true);
+    expect(row(rows, "mermaid-er").project?.refused).toBeUndefined();
+    expect(row(rows, "docs").project?.refused).toBeUndefined();
   });
 
   test("--probe: no file count for a generator `meta gen` does not run", async () => {
@@ -398,15 +456,46 @@ describe("meta verify — a doc generator under `generators` is an advisory", ()
     expect(r.stderr).toContain("meta verify --docs");
   });
 
-  test("a stable-name string is caught too", async () => {
+  test("a stable-name string the runner skips is caught too, with the skip wording", async () => {
     const r = await meta(`["entity", "api-docs"]`, ["verify", "--format", "json"]);
     const payload = JSON.parse(r.stdout) as VerifyPayload;
-    expect(payload.antiPatterns.rows.filter((x) => x.rule === "doc-generator-in-gen")).toHaveLength(1);
+    const rows = payload.antiPatterns.rows.filter((x) => x.rule === "doc-generator-in-gen");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.message).toContain("`meta gen` skips it");
+    expect(payload.antiPatterns.rows.filter((x) => x.rule === "doc-generator-refused-by-gen")).toEqual([]);
+    expect(payload.help.join("\n")).not.toContain("refuses");
   });
 
-  test("a config with no doc generator gets no such row", async () => {
+  // `meta gen` exits non-zero on these two strings (asserted in the mermaid-er block
+  // above), so calling them skipped told the reader the run goes on without them.
+  test("json: a neutral name wired as a string is reported as refused, not skipped", async () => {
+    const r = await meta(`["entity", "docs", "mermaid-er"]`, ["verify", "--format", "json"]);
+    const payload = JSON.parse(r.stdout) as VerifyPayload;
+    const rows = payload.antiPatterns.rows.filter((x) => x.rule === "doc-generator-refused-by-gen");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.message).toContain(`"docs" is listed under \`generators\`, and \`meta gen\` refuses it`);
+    expect(rows[1]?.message).toContain(`"mermaid-er" is listed under \`generators\`, and \`meta gen\` refuses it`);
+    for (const x of rows) {
+      expect(x.message).not.toContain("skips");
+      expect(x.message).toContain("Remove");
+      expect(x.file).toBe("metaobjects.config.ts");
+    }
+    expect(payload.antiPatterns.rows.filter((x) => x.rule === "doc-generator-in-gen")).toEqual([]);
+    const help = payload.help.filter((h) => h.includes("doc-generator-refused-by-gen"));
+    expect(help).toHaveLength(1);
+    expect(help[0]).toContain("which `meta gen` refuses");
+    expect(help[0]).not.toContain("skips");
+  });
+
+  test("text: the refused name is printed as refused", async () => {
+    const r = await meta(`["entity", "docs"]`, ["verify", "--format", "text"]);
+    expect(r.stderr).toContain(`"docs" is listed under \`generators\`, and \`meta gen\` refuses it`);
+    expect(r.stderr).not.toContain("`meta gen` skips");
+  });
+
+  test("a constructed mermaidErDiagram() gets no row: it still runs", async () => {
     const r = await meta(`["entity", mermaidErDiagram()]`, ["verify", "--format", "json"]);
     const payload = JSON.parse(r.stdout) as VerifyPayload;
-    expect(payload.antiPatterns.rows.filter((x) => x.rule === "doc-generator-in-gen")).toEqual([]);
+    expect(payload.antiPatterns.rows.filter((x) => x.rule.startsWith("doc-generator-"))).toEqual([]);
   });
 });

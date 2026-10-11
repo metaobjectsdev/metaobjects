@@ -44,10 +44,11 @@ no docs are written by that run. The warning is on stderr, and in a structured r
 `meta verify` reports the wiring as an advisory row, rule `doc-generator-in-gen`. Remove
 the entry and run `meta docs`.
 
-**`mermaid-er` is the one docs-layer generator `meta gen` does run.** `meta docs` already
-draws the ER diagram on its overview page with nothing wired, which is what most projects
-want. `mermaidErDiagram()` (or the stable name `"mermaid-er"`) in `generators` writes the
-same diagram as a file of its own, `docs/model.md`; `meta docs` never writes that file.
+**Do not add `mermaidErDiagram()` to a new config.** It is deprecated: `meta docs` already
+draws the ER diagram on its overview page with nothing wired. A `mermaidErDiagram()`
+already wired in `generators` still runs under `meta gen`. The stable names `"docs"` and
+`"mermaid-er"` written as strings in `generators` are refused, so `meta gen` fails on
+them; `meta verify` reports that as rule `doc-generator-refused-by-gen`.
 
 **Before calling any generated code, read `./docs/api/AGENT-API.md`** — it has the
 exact imports, signatures, payload field shapes, and runnable examples for this

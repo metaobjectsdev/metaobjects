@@ -89,13 +89,18 @@ describe("generator-registry (ADR-0021 D3)", () => {
     }
   });
 
-  // The other direction. `mermaid-er` sits in the docs layer and `meta docs` has never
-  // run it: `meta gen` writes its file. Its note pointed at `meta docs` all the same.
-  test("a docs-layer entry `meta gen` runs says so, and does not name `meta docs` as its door", () => {
+  // The other direction. `mermaid-er` is deprecated and the runner still runs a wired
+  // `mermaidErDiagram()`. Its note said "surfaced via `meta docs`", which `meta docs`
+  // never did: it states the back-compat fact, and does not offer it as a normal choice.
+  test("the docs-layer entry `meta gen` still runs states that it is deprecated", () => {
     const run = Object.values(generatorRegistry)
       .filter((e) => e.layer === "docs" && !isPackagedDocsGenerator(e.factory().name));
     expect(run.map((e) => e.name)).toEqual(["mermaid-er"]);
-    expect(run[0]?.note ?? "").toContain("run by `meta gen`");
+    const note = run[0]?.note ?? "";
+    expect(note).toContain("deprecated");
+    expect(note).toContain("do not add it to a new config");
+    expect(note).toContain("still runs");
+    expect(note).not.toContain("surfaced via");
   });
 
   test("every factory constructs a Generator with a name without throwing", () => {

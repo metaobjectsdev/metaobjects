@@ -10,11 +10,9 @@
 // Keyed by the generator's IMPLEMENTATION name, because that is what a constructed
 // generator carries. The value is the factory call an adopter wrote, for the message.
 //
-// `mermaid-er-diagram` is NOT one of them, and that is a ruling rather than an
-// omission: `meta docs` has never run it. `meta docs` draws the ER diagram on its
-// overview page through `docsFile()`; `mermaidErDiagram()` writes the same diagram as a
-// file of its own, and `meta gen` is the only command that writes that file. It sits
-// in the `docs` layer by what it produces, not by which command runs it.
+// `mermaid-er-diagram` is not one of them. `mermaidErDiagram()` is deprecated and kept
+// running for a config that already lists it, so the runner does not skip it.
+// `meta docs` draws the same diagram on its overview page through `docsFile()`.
 const PACKAGED_DOCS_FACTORY_CALLS: ReadonlyMap<string, string> = new Map([
   ["docs-file", "docsFile()"],
   ["api-docs", "apiDocsFile()"],

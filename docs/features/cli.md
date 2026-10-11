@@ -578,9 +578,10 @@ name: a doc generator (`docsFile()`, `apiDocsFile()`) listed under `generators` 
 (ADR-0025). The result then says so in `warnings[]` and adds a `meta docs` next step to
 `help[]`; `meta gen --list` marks those rows ``run by `meta docs` `` (`door` in
 `--format json`), and `meta verify` reports the same wiring as an advisory row with rule
-`doc-generator-in-gen`. `mermaid-er` is the one generator in the `docs` layer this does not
-apply to: `meta gen` runs it and writes the ER diagram as a file of its own
-(`docs/model.md`), while `meta docs` draws the same diagram on its overview page.
+`doc-generator-in-gen`. A neutral stable name written as a string (`"docs"`,
+`"mermaid-er"`) is refused rather than skipped, so `meta gen` fails on it: `meta gen --list`
+marks that row ``WIRED by name, which `meta gen` refuses`` (`project.refused` in
+`--format json`), and the advisory row's rule is `doc-generator-refused-by-gen`.
 
 In a structured run every narration line moves to **stderr**, so stdout is one
 parseable document. `--format` is honored by `gen`, `verify` and `migrate`; any

@@ -32,24 +32,23 @@ here.**
     docs` `` with the reason under the row, a wired one reads ``WIRED but skipped by `meta
     gen` ``, and `--probe` no longer prints `would emit 0` for them. In `--format json` the row
     carries `note` and `door: "meta docs"`, and `project.wouldEmit` is `null` instead of `0`.
+    The `mermaid-er` row's note now states the back-compat fact: it is deprecated, a
+    `mermaidErDiagram()` already wired in `generators` still runs, and `meta docs` draws the
+    same diagram on its overview page. A neutral name wired as a string (`"docs"`,
+    `"mermaid-er"`), which `meta gen` refuses, reads ``WIRED by name, which `meta gen`
+    refuses`` (`project.refused` in `--format json`).
   - **`meta verify`** said nothing about a config wired this way. It now reports each one as an
     advisory row (rule `doc-generator-in-gen`, in `antiPatterns.rows[]`) that names
-    `meta verify --docs` as the gate that checks documentation. Advisory: the exit code is
-    unchanged.
+    `meta verify --docs` as the gate that checks documentation. A neutral name wired as a
+    string is reported under rule `doc-generator-refused-by-gen`, because `meta gen` fails on
+    it rather than skipping it. Advisory: the exit code is unchanged.
   - **The unknown-generator error** listed `api-docs` among the names `meta gen` accepts. It no
     longer does, and it says documentation comes from `meta docs`.
-  - **`mermaid-er` is stated everywhere as what it is: a generator `meta gen` runs.**
-    `meta docs` has never run it. `meta docs` draws the ER diagram on its overview page, and
-    `mermaidErDiagram()` writes the same diagram as a file of its own (`docs/model.md`), which
-    only `meta gen` writes. Its catalog note said "surfaced via `meta docs`", and the stable
-    name was refused in `generators` as `neutral (owned by 'meta docs')` while the factory
-    wired in the same array ran. The note now says which command runs it and that the
-    overview page already has the diagram, and `generators: ["mermaid-er"]` resolves to the
-    factory. `"docs"` is still refused: `meta docs` does own that one.
 
   `runGen()` returns a new `skippedDocGenerators: string[]` beside `warnings`, and
-  `@metaobjectsdev/codegen-ts` exports `isPackagedDocsGenerator`, so a caller embedding the
-  runner can ask rather than match a sentence. TypeScript only: in the C#, Java, Kotlin and Python
+  `@metaobjectsdev/codegen-ts` exports `isPackagedDocsGenerator` (skipped) and
+  `isNeutralGeneratorName` (refused), so a caller embedding the runner can ask rather than
+  match a sentence. TypeScript only: in the C#, Java, Kotlin and Python
   ports documentation is a separate command (`dotnet meta docs`, `mvn metaobjects:docs`,
   `metaobjects docs`) and no doc generator is registered for code generation, so there is
   nothing to wire and nothing to skip.

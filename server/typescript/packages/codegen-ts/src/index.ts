@@ -60,7 +60,7 @@ export {
 export { isPackagedDocsGenerator, packagedDocsFactoryCall, DOCS_DOOR_COMMAND } from "./packaged-docs-generators.js";
 
 export type { MetaobjectsGenConfig, NormalizedMetaobjectsGenConfig, ResolvedGenConfig, Dialect, ExtStyle, ColumnNamingStrategy, MetaDataTypeProvider, GeneratorSpec, DocsConfig, ResolvedDocsConfig, DocsSurface, ApiSurface, VerifyConfig } from "./metaobjects-config.js";
-export { defineConfig, normalizeConfig, resolveGenerators, resolveDocsConfig } from "./metaobjects-config.js";
+export { defineConfig, normalizeConfig, resolveGenerators, isNeutralGeneratorName, resolveDocsConfig } from "./metaobjects-config.js";
 // The dialect every generator falls back to when a config declares none. Exported because
 // `meta docs` must apply the SAME default `normalizeConfig` does — a command that resolved
 // the dialect differently would document a schema the toolchain does not produce.

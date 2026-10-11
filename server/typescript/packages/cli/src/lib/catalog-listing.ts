@@ -39,7 +39,7 @@ import {
   RUNTIME_ENTRIES, resolveRuntimePackage, runtimeClosure, runtimeCopyStatus, runtimeInstall,
   type RuntimeCopyRow,
 } from "./runtime-eject.js";
-import { DOCS_DOOR_COMMAND, isPackagedDocsGenerator, OWNED_RUNTIME_DIR } from "@metaobjectsdev/codegen-ts";
+import { DOCS_DOOR_COMMAND, isNeutralGeneratorName, isPackagedDocsGenerator, OWNED_RUNTIME_DIR } from "@metaobjectsdev/codegen-ts";
 import { readPackageManifest, declaredDependencyNames } from "./package-manifest.js";
 import { describeError } from "./error-text.js";
 
@@ -99,6 +99,9 @@ export interface GeneratorCatalogRow {
   project?: {
     /** Wired in this project's `generators: [...]`. */
     wired: boolean;
+    /** Present iff it is wired as a stable-name STRING that `meta gen` refuses (a neutral
+     *  name): the run fails on it, rather than running or skipping the generator. */
+    refused?: true;
     /** This generator's framework is a declared dependency. `null` when neutral or unknown. */
     frameworkDetected: boolean | null;
     /** Files this generator WOULD emit for this model. `null` unless --probe, and
@@ -295,6 +298,10 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
   const runtimeCopies = opts.project === undefined
     ? new Map<string, { files: RuntimeCopyRow[]; packages: string[] }>()
     : await ownedRuntimeByGenerator(opts.project.projectRoot, opts.project.ownedNames);
+  const refusedNames = new Set(
+    (opts.project?.config.generators ?? [])
+      .filter((spec): spec is string => typeof spec === "string" && isNeutralGeneratorName(spec)),
+  );
 
   for (const entry of listCatalog()) {
     // Asked of the runner's own definition, never restated: which generators `meta gen`
@@ -373,6 +380,7 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
 
       row.project = {
         wired: project.wiredNames.has(entry.name),
+        ...(refusedNames.has(entry.name) ? { refused: true as const } : {}),
         frameworkDetected,
         wouldEmit,
         ...(probeError !== undefined ? { probeError } : {}),
@@ -485,6 +493,14 @@ export const PACKAGE_ONLY_NOTE =
 export const SKIPPED_BY_GEN_NOTE =
   "not run by `meta gen`: listed under `generators`, it is warned about and skipped.";
 
+/**
+ * Printed under every neutral row. The other outcome for a `generators` entry: the
+ * resolver refuses a neutral stable name, so the string fails the run where a
+ * constructed generator is skipped or (the deprecated `mermaidErDiagram()`) still runs.
+ */
+export const NAME_REFUSED_BY_GEN_NOTE =
+  "its name as a string under `generators` is refused instead: `meta gen` fails on it.";
+
 /** The human rendering: grouped by layer, because layer is the axis you select by. */
 export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
   const lines: string[] = [];
@@ -505,7 +521,13 @@ export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
     if (r.tier === "neutral") marks.push("neutral");
     if (!r.source.ejectable) marks.push("package-only");
     if (r.door !== undefined) marks.push(`run by \`${r.door}\``);
-    if (r.project?.wired) marks.push(r.door !== undefined ? "WIRED but skipped by `meta gen`" : "WIRED");
+    if (r.project?.wired) {
+      marks.push(
+        r.project.refused
+          ? "WIRED by name, which `meta gen` refuses"
+          : r.door !== undefined ? "WIRED but skipped by `meta gen`" : "WIRED",
+      );
+    }
     if (r.source.owned) marks.push("owned");
     if (r.source.runtimeCopy !== undefined) {
       // The adapter source this generator's output imports, compared to the package.
@@ -532,6 +554,7 @@ export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
     lines.push(`  ${r.name.padEnd(width)}  —  ${r.description}${suffix}`);
     if (r.note !== undefined) lines.push(`  ${" ".repeat(width)}     ${r.note}`);
     if (r.door !== undefined) lines.push(`  ${" ".repeat(width)}     ${SKIPPED_BY_GEN_NOTE}`);
+    if (isNeutralGeneratorName(r.name)) lines.push(`  ${" ".repeat(width)}     ${NAME_REFUSED_BY_GEN_NOTE}`);
     if (r.requires !== undefined && r.requires.length > 0) {
       lines.push(`  ${" ".repeat(width)}     requires: ${r.requires.join(", ")}`);
     }

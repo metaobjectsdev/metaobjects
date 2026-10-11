@@ -116,6 +116,7 @@ export const RULE_LIBRARY_PREFIX = "library-prefix-unprovenanced";
 export const RULE_UNINDEXED_FK = "unindexed-foreign-key";
 export const RULE_REFERENTIAL_ACTION_CONFLICT = "overridden-referential-action";
 export const RULE_DOC_GENERATOR_IN_GEN = "doc-generator-in-gen";
+export const RULE_DOC_GENERATOR_REFUSED = "doc-generator-refused-by-gen";
 
 /** The next-step line for `n` rows of one advisory kind, each naming what the rows are. */
 const ADVISORY_HELP: ReadonlyArray<{ matches: (rule: string) => boolean; line: (n: number) => string }> = [
@@ -148,6 +149,11 @@ const ADVISORY_HELP: ReadonlyArray<{ matches: (rule: string) => boolean; line: (
     matches: (r) => r === RULE_DOC_GENERATOR_IN_GEN,
     line: (n) =>
       `${n} doc generator(s) listed under \`generators\`, which \`meta gen\` skips — see antiPatterns.rows[] (rule "${RULE_DOC_GENERATOR_IN_GEN}"); \`meta docs\` writes documentation`,
+  },
+  {
+    matches: (r) => r === RULE_DOC_GENERATOR_REFUSED,
+    line: (n) =>
+      `${n} doc generator name(s) listed under \`generators\`, which \`meta gen\` refuses, so the run fails — see antiPatterns.rows[] (rule "${RULE_DOC_GENERATOR_REFUSED}"); \`meta docs\` writes documentation`,
   },
 ];
 
@@ -270,15 +276,16 @@ export function referentialActionConflictRows(
 
 /**
  * Doc generators wired under `generators` in the same row shape. There is no line: the
- * finding is about the loaded config, whose entries carry no source position.
+ * finding is about the loaded config, whose entries carry no source position. The rule
+ * says which outcome `meta gen` gives the entry: skipped, or refused (the run fails).
  */
 export function docGeneratorRows(
-  findings: readonly { file: string; construct: string; message: string }[],
+  findings: readonly { file: string; construct: string; refused: boolean; message: string }[],
 ): AdvisoryFindingRow[] {
   return findings.map((f) => ({
     file: f.file,
     line: 0,
-    rule: RULE_DOC_GENERATOR_IN_GEN,
+    rule: f.refused ? RULE_DOC_GENERATOR_REFUSED : RULE_DOC_GENERATOR_IN_GEN,
     construct: f.construct,
     message: f.message,
   }));

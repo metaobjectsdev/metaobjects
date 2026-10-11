@@ -1023,9 +1023,10 @@ export async function verifyCommand(
       // advisory only — a model the schema builder refuses is migrate's to report.
     }
 
-    // A doc generator wired under `generators`: `meta gen` skips it, and `--codegen`
-    // regenerates through the same runner without relaying its warnings — so this is
-    // the only place `verify` can say that the listed generator produces nothing here.
+    // A doc generator wired under `generators`: `meta gen` skips it (or refuses its
+    // neutral name), and `--codegen` regenerates through the same runner without relaying
+    // its warnings — so this is the only place `verify` can say that the listed generator
+    // produces nothing here.
     let docGenerators: DocGeneratorFinding[] = [];
     try {
       docGenerators = scanForDocGeneratorsInGen(forgeConfig);
@@ -1087,7 +1088,7 @@ export async function verifyCommand(
     if (docGenerators.length > 0) {
       log.warn(
         `meta verify — ${docGenerators.length} doc generator(s) listed under \`generators\`, ` +
-          `which \`meta gen\` skips (advisory — does not fail the build):`,
+          `which \`meta gen\` does not run (advisory — does not fail the build):`,
       );
       warnCapped(docGenerators.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
