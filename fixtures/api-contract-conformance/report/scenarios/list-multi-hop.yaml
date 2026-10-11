@@ -1,0 +1,18 @@
+name: report-list-multi-hop
+description: >
+  GET /api/sales_by_categories — SalesByCategory groups Sale by categoryName, a dimension
+  reached through TWO references (Sale.fkProduct.fkCategory). The segment is the report
+  name snake_cased and then pluralized: a name ending in a consonant plus `y` takes `ies`.
+  Beacon is in Toys, Atlas in Tools; Cinder has no category and no sale. `maxCents` is a
+  max, and `largeSales` is a count carrying an inline measure filter (amountCents >= 10000),
+  which is 0, not null, for a group none of whose sales pass it.
+requests:
+  - id: r1
+    method: GET
+    path: /api/sales_by_categories?sort=categoryName:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { categoryName: "Tools", sales: 2, revenueCents: 30000, maxCents: 18000, largeSales: 2 }
+          - { categoryName: "Toys", sales: 1, revenueCents: 4500, maxCents: 4500, largeSales: 0 }

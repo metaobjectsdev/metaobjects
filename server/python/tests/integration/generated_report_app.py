@@ -2,7 +2,7 @@
 
 Peer of ``generated_projection_app.py``, for the ``report/`` api-contract corpus
 (``fixtures/api-contract-conformance/report/``). Runs the REAL generation path
-(``run_gen``, the one ``metaobjects gen`` takes) for the four served reports, writes the
+(``run_gen``, the one ``metaobjects gen`` takes) for the served reports, writes the
 emitted package to a temp dir, imports each generated router UNMODIFIED, and mounts it
 behind an in-memory repository.
 
@@ -11,7 +11,7 @@ port's GENERATOR emits a keyless read-only surface for a view-backed ``object.re
 
 Python emits no SQL for a report (ADR-0015: view SQL is TypeScript-only), so the in-memory
 repository stands in for the view. It is seeded with the ``reports`` half of the corpus
-``seed.json``, which is what the four views return for the base-table rows (the other
+``seed.json``, which is what those views return for the base-table rows (the other
 top-level keys, which this lane does not load: it has no tables). Only
 ``list`` / ``count`` exist, matching the generated ``Protocol``: a report has no
 ``find_by_id``.
@@ -36,13 +36,19 @@ from metaobjects.codegen.generator_registry import GeneratorBuildContext, list_g
 from metaobjects.codegen.runner import run_gen
 from metaobjects.codegen.runtime.filter_parser import FilterPredicate
 
-#: The four served reports, as (report name, generated module stem). ``ProductRevenue``
+from .generated_router_app import _like_to_regex
+
+#: The served reports, as (report name, generated module stem). ``ProductRevenue``
 #: declares ``@spine``: its seeded rows include the product with no sale.
 SERVED_REPORTS: dict[str, str] = {
     "InvoiceStatusTotals": "invoice_status_totals",
     "InvoicesByMonth": "invoices_by_month",
     "InvoiceTotals": "invoice_totals",
+    "InvoiceCalendar": "invoice_calendar",
+    "InvoiceDisputes": "invoice_disputes",
     "ProductRevenue": "product_revenue",
+    "SalesByCategory": "sales_by_category",
+    "SalesBySku": "sales_by_sku",
 }
 #: The sourceless report: generated nowhere, mounted nowhere.
 UNSERVED_REPORT = "InvoiceDays"
@@ -168,6 +174,10 @@ class InMemoryReportRepository:
             return actual == want
         if p.op == "ne":
             return actual != want
+        if p.op == "like":
+            # One SQL-LIKE translation for the port: the helper the generated-router seam
+            # uses. A second in-memory seam re-deriving it here would let the two drift.
+            return _like_to_regex(str(want)).match(str(actual)) is not None
         if p.op == "gt":
             return actual > want
         if p.op == "gte":

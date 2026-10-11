@@ -1,0 +1,28 @@
+name: report-list-two-grains
+description: >
+  GET /api/invoice_calendars — InvoiceCalendar lists ONE time dimension at TWO grains, so
+  the row carries issuedOnDay and issuedOnMonth, both typed date and spelled YYYY-MM-DD.
+  Three of the five days fall in May. A filter on the coarser grain keeps those three, and
+  withCount counts groups.
+requests:
+  - id: r1
+    method: GET
+    path: /api/invoice_calendars?sort=issuedOnDay:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { issuedOnDay: "2026-04-30", issuedOnMonth: "2026-04-01", invoices: 1, totalCents: 125000 }
+          - { issuedOnDay: "2026-05-01", issuedOnMonth: "2026-05-01", invoices: 1, totalCents: 40000 }
+          - { issuedOnDay: "2026-05-17", issuedOnMonth: "2026-05-01", invoices: 1, totalCents: 90500 }
+          - { issuedOnDay: "2026-05-31", issuedOnMonth: "2026-05-01", invoices: 1, totalCents: 0 }
+          - { issuedOnDay: "2026-06-01", issuedOnMonth: "2026-06-01", invoices: 1, totalCents: 60000 }
+  - id: r2
+    method: GET
+    path: /api/invoice_calendars?filter[issuedOnMonth][eq]=2026-05-01&sort=issuedOnDay:desc&withCount=1
+    expect:
+      status: 200
+      body:
+        envelope: true
+        rowsLength: 3
+        total: 3

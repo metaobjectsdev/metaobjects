@@ -21,7 +21,27 @@ cubes:
       - name: assets
         sql: '{CUBE}."id"'
         type: count
+      - name: owners
+        sql: '{CUBE}."ownerId"'
+        type: count_distinct
+      - name: firstRecorded
+        sql: '{CUBE}."recordedAt"'
+        type: min
+      - name: lastObserved
+        sql: '{CUBE}."observedAt"'
+        type: max
+      - name: lastAsOf
+        sql: '{CUBE}."asOfDate"'
+        type: max
     pre_aggregations:
+      - name: AssetDays
+        type: rollup
+        measures: [CUBE.assets, CUBE.owners, CUBE.firstRecorded, CUBE.lastObserved, CUBE.lastAsOf]
+        time_dimensions:
+          - dimension: CUBE.recordedAt
+            granularity: day
+          - dimension: CUBE.asOfDate
+            granularity: month
       - name: AssetActivity
         type: rollup
         measures: [CUBE.assets]

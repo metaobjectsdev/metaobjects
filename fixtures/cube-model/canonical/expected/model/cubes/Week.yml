@@ -62,6 +62,31 @@ cubes:
       - name: longShareOrZero
         sql: 'COALESCE(CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0), 0)'
         type: number
+      - name: unlabelled
+        sql: '{CUBE}."id"'
+        type: count
+        filters:
+          - sql: '{CUBE}."label" IS NULL'
+      - name: labelledMinutes
+        sql: '{CUBE}."durationMinutes"'
+        type: sum
+        filters:
+          - sql: '{CUBE}."label" IS NOT NULL'
+      - name: shortWeeks
+        sql: '{CUBE}."id"'
+        type: count
+        filters:
+          - sql: '{CUBE}."durationMinutes" < 30'
+      - name: midWeeks
+        sql: '{CUBE}."id"'
+        type: count
+        filters:
+          - sql: '({CUBE}."durationMinutes" > 30 AND {CUBE}."durationMinutes" <= 60)'
+      - name: longWMinutes
+        sql: '{CUBE}."durationMinutes"'
+        type: sum
+        filters:
+          - sql: '({CUBE}."durationMinutes" >= 60 AND {CUBE}."label" LIKE ''W%'')'
     segments:
       - name: long
         sql: '{CUBE}."durationMinutes" >= 60'
@@ -72,6 +97,10 @@ cubes:
       - name: FitnessTotalsFilled
         type: rollup
         measures: [CUBE.weeks, CUBE.totalMinutesOrZero, CUBE.longShareOrZero]
+      - name: WeekShapes
+        type: rollup
+        measures: [CUBE.weeks, CUBE.unlabelled, CUBE.labelledMinutes, CUBE.shortWeeks, CUBE.midWeeks, CUBE.longWMinutes]
+        dimensions: [CUBE.programTitle]
       - name: ProgramMinutes
         type: rollup
         measures: [CUBE.weeks, CUBE.longWeeks, CUBE.labels, CUBE.slots, CUBE.totalMinutes, CUBE.avgMinutes, CUBE.minMinutes, CUBE.maxMinutes, CUBE.longShare]

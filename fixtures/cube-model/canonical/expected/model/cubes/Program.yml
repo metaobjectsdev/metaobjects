@@ -9,6 +9,9 @@ cubes:
       - name: ProgramLongWeeksFacts
         relationship: one_to_many
         sql: '{CUBE}."id" = {ProgramLongWeeksFacts}."programId"'
+      - name: ProgramSessions_fkWeek
+        relationship: one_to_many
+        sql: '{CUBE}."id" = {ProgramSessions_fkWeek}."programId"'
     dimensions:
       - name: id
         sql: '{CUBE}."id"'
@@ -35,12 +38,50 @@ cubes:
       - name: programs
         sql: '{CUBE}."id"'
         type: count
+      - name: notDrafts
+        sql: '{CUBE}."id"'
+        type: count
+        filters:
+          - sql: '{CUBE}."status" <> ''DRAFT'''
+      - name: avgPrice
+        sql: '{CUBE}."priceCents"'
+        type: avg
+      - name: cheapest
+        sql: '{CUBE}."priceCents"'
+        type: min
+      - name: priciest
+        sql: '{CUBE}."priceCents"'
+        type: max
+      - name: avgPriceOrMinusOneRaw
+        sql: '{CUBE}."priceCents"'
+        type: avg
+        public: false
+      - name: avgPriceOrMinusOne
+        sql: 'COALESCE({avgPriceOrMinusOneRaw}, -1)'
+        type: number
     segments:
       - name: published
         sql: '{CUBE}."status" = ''PUBLISHED'''
+      - name: live
+        sql: '{CUBE}."status" IN (''DRAFT'', ''PUBLISHED'')'
+      - name: introOrFree
+        sql: '({CUBE}."title" LIKE ''Intro%'' OR {CUBE}."priceCents" = 0)'
       - name: recentProgramsScope
         sql: '{CUBE}."created_ts" >= ((now() AT TIME ZONE ''UTC'') - INTERVAL ''P30D'')'
+      - name: liveIntroProgramsScope
+        sql: '({CUBE}."status" IN (''DRAFT'', ''PUBLISHED'') AND {CUBE}."priceCents" < 5000)'
+      - name: programsEmptyScopeScope
+        sql: '{CUBE}."priceCents" > 1000000'
     pre_aggregations:
+      - name: ProgramsEmptyScope
+        type: rollup
+        measures: [CUBE.programs, CUBE.avgPriceOrMinusOne]
+        segments: [CUBE.live, CUBE.programsEmptyScopeScope]
+      - name: LiveIntroPrograms
+        type: rollup
+        measures: [CUBE.programs, CUBE.notDrafts, CUBE.listValue]
+        dimensions: [CUBE.status]
+        segments: [CUBE.introOrFree, CUBE.liveIntroProgramsScope]
       - name: ProgramsByWeek
         type: rollup
         measures: [CUBE.programs]
@@ -53,3 +94,13 @@ cubes:
         dimensions: [CUBE.status]
         time_dimension: CUBE.createdAt
         granularity: month
+      - name: ProgramsOverTime
+        type: rollup
+        measures: [CUBE.programs, CUBE.avgPrice, CUBE.cheapest, CUBE.priciest]
+        time_dimensions:
+          - dimension: CUBE.createdAt
+            granularity: day
+          - dimension: CUBE.createdAt
+            granularity: quarter
+          - dimension: CUBE.createdAt
+            granularity: year

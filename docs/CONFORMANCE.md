@@ -33,8 +33,8 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 15 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 48 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 17 | ✓ | ✓ | ✓ | ✓ | ✓ |
-| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 42 (36 query + 6 migration) | all 42 (the 9 `report-*` also on SQLite, MySQL and D1) | 36 query (migrations TS-only, ADR-0015); the 9 `report-*` also on MySQL | 36 query (via Exposed); the 9 `report-*` also on SQLite and MySQL | 36 query; the 9 `report-*` also on SQLite and MySQL | 36 query (Postgres only: pg8000) |
-| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 82 (31 core + 10 tph + 9 m2m + 2 jsonb + 2 write-through + 12 projection + 16 report) | ✓ (Fastify reference + generated lane); `report/` also on SQLite, MySQL and D1 | ✓ (embedded HTTP + JDBC) | ✓ (embedded HTTP + Exposed) | ✓ (HttpListener + Npgsql); `report/` also on SQLite and MySQL | ✓ (FastAPI + pg8000) |
+| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 52 (46 query + 6 migration) | all 52 (the 19 `report-*` also on SQLite, MySQL and D1) | 46 query (migrations TS-only, ADR-0015); the 19 `report-*` also on MySQL | 46 query (via Exposed); the 19 `report-*` also on SQLite and MySQL | 46 query; the 19 `report-*` also on SQLite and MySQL | 46 query (Postgres only: pg8000) |
+| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 88 (31 core + 10 tph + 9 m2m + 2 jsonb + 2 write-through + 12 projection + 22 report) | ✓ (Fastify reference + generated lane); `report/` also on SQLite, MySQL and D1 | ✓ (embedded HTTP + JDBC) | ✓ (embedded HTTP + Exposed) | ✓ (HttpListener + Npgsql); `report/` also on SQLite and MySQL | ✓ (FastAPI + pg8000) |
 | [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 42 cases | ✓ (generated Zod + run-time `runValidators`) | ✓ | ✓ | ✓ | ✓ (generated Pydantic + run-time `run_validators`) |
 | [`fixtures/registry-conformance/`](../fixtures/registry-conformance/) | 1 canonical manifest | ✓ (reference emitter) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/object-model-conformance/`](../fixtures/object-model-conformance/) | 1 shared metadata fixture (per-port scenarios) | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -136,13 +136,13 @@ manifest contains without moving these boundaries.
   (`scripts/ci-local.sh --only cube`, which needs Docker) loads the canonical golden and the 34
   cases that hold a tree into a pinned Cube (`cubejs/cube:v1.7.43`) and requires each to
   compile, the two MySQL cases included: compiling a model runs no SQL, so the lane's Postgres
-  data source serves them too. For the nine canonical reports it compares the Cube query with the
+  data source serves them too. For the canonical reports it compares the Cube query with the
   report view (a `@spine` report through its Cube view, its empty spine rows included), and for
   the `escaping` and `measure-default` cases it reads the SQL back from Cube's `/v1/sql`.
   A second live file (`cube-model-mysql.live.ts`) runs the MySQL path: the canonical golden
   generated with `dialect: "mysql"` is loaded into the same pinned Cube over a real MySQL 8.4
   holding the report views `buildReportViews` lowers (`fixtures/cube-model/canonical/seed.mysql.sql`),
-  and each of the nine reports' Cube query is compared with `SELECT *` from its view, with the
+  and each of the twenty-one served reports' Cube query is compared with `SELECT *` from its view, with the
   pre-aggregation used asserted. That is the smaller of the two honest options: the two MySQL
   *cases* (escaping, a quoted identifier) are still compiled, not executed, and the goldens hold
   their SQL. The lane runs Cube in development mode, so Cube's production mode with a separate
@@ -298,12 +298,12 @@ trailing-newline preservation, and unicode multibyte handling.
 All 31 fixtures → [features/migrations-and-drift.md](features/migrations-and-drift.md)
 (template drift section — `Renderer.verify`).
 
-### `fixtures/persistence-conformance/` (42 — 36 query + 6 migration)
+### `fixtures/persistence-conformance/` (52 — 46 query + 6 migration)
 
 - `migrations/*` (6) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
-- `queries/*` (36) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
+- `queries/*` (46) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
 
-**Engines beyond Postgres (FR-044 reports).** The nine `queries/report-*.yaml` scenarios also
+**Engines beyond Postgres (FR-044 reports).** The nineteen `queries/report-*.yaml` scenarios also
 run on SQLite and MySQL 8.4 wherever a port's runtime has the engine, and on D1's local runtime
 in TypeScript (no cloud account): TypeScript on all four, C# and Kotlin on SQLite and MySQL, Java
 on MySQL. **Stated limitations, not gaps:** Java's OMDB has no SQLite driver, and Python's runtime
@@ -317,9 +317,9 @@ REAL, a MySQL `DECIMAL` keeps its scale, a MySQL `DATETIME` is the UTC wall cloc
 `report-relative-date` carries a per-engine seed (`seed-data-engine`). `op: relate` and the
 write ops stay Postgres-only. See [features/reporting.md](features/reporting.md#what-the-corpus-gates).
 
-### `fixtures/api-contract-conformance/` (82)
+### `fixtures/api-contract-conformance/` (88)
 
-All 82 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
+All 88 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
 REST API URL grammar + JSON wire format). Verifies every backend's emitted CRUD
 routes answer identically over HTTP — list / get / create / patch+put / delete,
 plus pagination (`limit`/`offset`), sort (`sort=field:dir`), the `withCount=1`
@@ -337,7 +337,7 @@ each corpus alone could not reach, and 1 pinning the collection-URL spelling),
 `write-through/` (2, table-write + view-read entities), `projection/` (12, a
 read-only view answers reads and refuses writes with 405; a projection with no declared
 identity has no item route; a projection keyed on a field not named `id` is addressed by
-it, whether its identity names `@fields` or derives them; decimal and float fields filter) and `report/` (16,
+it, whether its identity names `@fields` or derives them; decimal and float fields filter) and `report/` (22,
 FR-044: a view-backed `object.report` is listed, filtered, sorted and paged on
 its derived fields, answers `POST` with 405 and mounts no `/{id}`; a `@spine` report keeps
 a row with no facts, and a measure with `@default` filters and sorts as its default). All 5 ports — TS, Java,
@@ -523,7 +523,7 @@ files into a real Cube.
 ## Orphaned fixtures (tested but not yet documented)
 
 The fixtures in the nine corpora mapped above (metamodel 374 + yaml 16 + verify 31
-+ render 15 + persistence 42 + api-contract 82 + source-resolution 25 + scope 10 +
++ render 15 + persistence 52 + api-contract 88 + source-resolution 25 + scope 10 +
 dependency 23) each map to a feature doc, and so do the two requirement corpora and the
 `cube-model` corpus, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider

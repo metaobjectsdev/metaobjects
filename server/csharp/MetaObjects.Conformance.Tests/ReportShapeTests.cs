@@ -48,13 +48,15 @@ public class ReportShapeTests
     }
 
     [Fact]
-    public void The_artifact_covers_the_nine_canonical_reports()
+    public void The_artifact_covers_the_canonical_reports()
     {
         // Else the byte comparison could pass over an empty list on both sides.
         var reports = LoadCanonical().Objects().Where(o => o.IsReport()).Select(o => o.Name).ToList();
         Assert.Equal(
             ["ProgramMinutes", "FitnessTotals", "ProgramsByMonth", "ProgramsByWeek", "RecentPrograms", "AssetActivity",
-             "ProgramRoster", "ProgramLongWeeks", "FitnessTotalsFilled"],
+             "ProgramRoster", "ProgramLongWeeks", "FitnessTotalsFilled",
+             "MeasurementStats", "MeasurementStatsFilled", "AssetDays", "AllTypesBreakdown", "ProgramsOverTime", "LiveIntroPrograms",
+             "ProgramsEmptyScope", "WeekShapes", "SessionsByProgram", "ProgramSessions", "NodesByParent", "AuthsByKind"],
             reports);
     }
 

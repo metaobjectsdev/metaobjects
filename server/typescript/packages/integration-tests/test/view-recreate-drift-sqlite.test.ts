@@ -19,10 +19,11 @@ import { Kysely, sql } from "kysely";
 import { LibsqlDialect } from "@libsql/kysely-libsql";
 import {
   buildExpectedSchema, computeDriftFromActual, diff, emit, introspectSqlite, isViewRecreateOnly,
-  type Change, type SchemaSnapshot,
+  type SchemaSnapshot,
 } from "@metaobjectsdev/migrate-ts";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
+import { isInetResidue, isViewChange } from "../src/drift-residue.ts";
 import { loadMetadataDir } from "../src/load-metadata.ts";
 import { CANONICAL_DIR } from "../src/paths.ts";
 
@@ -54,18 +55,8 @@ async function applyRaw(text: string): Promise<void> {
   for (const stmt of text.trim().split(";").map((s) => s.trim()).filter(Boolean)) await sql.raw(stmt).execute(k);
 }
 
-function isViewChange(c: Change): boolean {
-  return c.kind === "create-view" || c.kind === "drop-view" || c.kind === "replace-view";
-}
-
-/**
- * `field.inet` has no SQLite storage class, so the canonical `all_types` table reports a
- * blocked `text -> inet` change on every run (see report-views-sqlite.test.ts). No view
- * reads `all_types`. It is named here, not swallowed: any other residue still fails.
- */
-const INET_COLUMNS: ReadonlySet<string> = new Set(["inetVal", "inet6Val"]);
-const isInetResidue = (c: Change): boolean =>
-  c.kind === "change-column-type" && c.table === "all_types" && INET_COLUMNS.has(c.column) && c.to.kind === "inet";
+// The known `field.inet`-on-SQLite residue is named once in `../src/drift-residue.ts` —
+// with the view-recreation it silences — so the lanes that tolerate it cannot drift apart.
 
 /**
  * The canonical model migrated from empty, except that `weeks` is created without its
@@ -97,7 +88,7 @@ describe("D3 — a view recreated only around a table rebuild is not drift", () 
     test(`${dialect}: the diff still plans each pair, marked unchanged`, async () => {
       await migrateWithWeeksFkMissing();
       const r = await diff({ expected: expectedFor(dialect), actual: await introspectSqlite(k), dialect });
-      const views = r.changes.filter(isViewChange);
+      const views = r.changes.filter((c) => isViewChange(c) && !isInetResidue(c));
       expect(views.length).toBeGreaterThan(0);
       for (const c of views) {
         expect(isViewRecreateOnly(c)).toBe(true);

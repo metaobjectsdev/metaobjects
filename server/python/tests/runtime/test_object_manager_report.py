@@ -5,7 +5,7 @@ it through a detached READ MODEL (``report_read_model``) swapped in at
 ``_require_entity``, so the column list, filter/sort resolution, read coercion and
 table resolution all see an ordinary view-backed object. These tests use a recording
 driver (no database): they pin the SQL, the refusals, and that the loaded tree is
-never touched. The rows themselves are proven by the nine shared ``report-*`` persistence
+never touched. The rows themselves are proven by the shared ``report-*`` persistence
 scenarios against Postgres (``tests/integration/test_query_scenarios.py``).
 """
 from __future__ import annotations

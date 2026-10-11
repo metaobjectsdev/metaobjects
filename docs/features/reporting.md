@@ -621,11 +621,11 @@ the anti-join by hand, and make two reports.
 
 ### What the corpus gates
 
-Nine shared scenarios under `fixtures/persistence-conformance/queries/report-*.yaml` read the
+Nineteen shared scenarios under `fixtures/persistence-conformance/queries/report-*.yaml` read the
 canonical reports through every port's runtime (list and count, filter, sort, an empty table,
 the Monday boundary, an hour bucket, a relative window, a `@spine` report with a program that
 has no weeks, a `@spine` report whose segment leaves a program no facts, and defaulted measures
-over an empty table). The derived columns are pinned by
+over an empty table; and, beyond those, every `@agg` kind over int, long, float, double, decimal, currency, date and instant columns, a nullable int-backed enum, a boolean and a uuid as dimensions, `day`, `quarter` and `year` grains together, every filter operator on a measure, a report `@segment` and `@filter` together, a two-hop `@via`, a self-referencing dimension, a report declared from a TPH base, and a negative `@default`). The derived columns are pinned by
 `fixtures/persistence-conformance/report-shapes.json`, produced by TypeScript and byte-matched
 by every port. The SQL is produced by TypeScript only, so the other ports read the view the
 TypeScript migrate engine produced and never lower a report themselves. TypeScript's own value
@@ -633,7 +633,7 @@ tests read the `@spine` and `@default` views and their column types on Postgres,
 MySQL, and on Postgres and SQLite also a fact whose reference is null, an `isNull` condition
 and a two-hop spine.
 
-The nine scenarios run on more than Postgres, wherever a port's runtime has the engine:
+The nineteen report scenarios run on more than Postgres, wherever a port's runtime has the engine:
 
 | | Postgres | SQLite | MySQL 8.4 | D1 (local runtime) |
 |---|---|---|---|---|
@@ -651,21 +651,23 @@ stay the Postgres wire ones, never loosened: the engine's own spelling (a REAL r
 a scale-keeping `DECIMAL` and a zoneless `DATETIME` on MySQL) is mapped on the actual side by
 each runner, and `report-relative-date` spells its seed per engine (`seed-data-engine`). D1
 has no separate corpus: it is SQLite behind Cloudflare's binding, so TypeScript runs the same
-scenarios and the same sixteen REST scenarios through Miniflare's local D1 (`meta migrate
+scenarios and the same twenty-two REST scenarios through Miniflare's local D1 (`meta migrate
 --dialect d1`), with no cloud account.
 
 A port without the engine is a stated limitation, not a gap to fill by building a driver:
 Java's OMDB and Python's `ObjectManager` ship the drivers they ship, and a view-reading test
 does not justify a new one.
 
-The REST surface is gated by sixteen scenarios under
+The REST surface is gated by twenty-two scenarios under
 [`fixtures/api-contract-conformance/report/`](../../fixtures/api-contract-conformance/report/),
 run in the **generated lane on all five ports**: list (a dimension with a segment-scoped sum
 that is null for one group), a time dimension at a grain (`YYYY-MM-DD`), a no-dimension
 totals report with the `withCount` envelope, a filter on a dimension and on a measure, a sort
 on a measure and an enum dimension, paging over groups, the three field-naming `400` envelopes,
 `405` on `POST`, `404` on every verb at `/{id}`, and a `@spine` report whose product with no
-sale keeps its row, with a filter and a sort on its defaulted measure. The corpus model
+sale keeps its row, with a filter and a sort on its defaulted measure, a dimension reached through
+two references, one time dimension listed at two grains, a filter on a string (`like`), a boolean and a
+uuid dimension, and a filter on a measure that carries its own `@filter`. The corpus model
 carries one sourceless report, so a port that serves every report it finds fails. No scenario asserts a decimal's
 spelling or a timestamp literal. TypeScript and C# run the scenarios against the real views on
 Postgres, SQLite and MySQL (`report/schema.sqlite.sql`, `report/schema.mysql.sql`), and

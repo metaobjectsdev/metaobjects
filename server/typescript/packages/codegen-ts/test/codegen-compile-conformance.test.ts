@@ -115,6 +115,8 @@ const DEFAULT_OPTIONS: ts.CompilerOptions = {
 const SERVED_REPORTS = [
   "ProgramMinutes", "FitnessTotals", "ProgramsByMonth", "ProgramsByWeek", "RecentPrograms", "AssetActivity",
   "ProgramRoster", "ProgramLongWeeks", "FitnessTotalsFilled",
+  "MeasurementStats", "MeasurementStatsFilled", "AssetDays", "AllTypesBreakdown", "ProgramsOverTime", "LiveIntroPrograms",
+  "ProgramsEmptyScope", "WeekShapes", "SessionsByProgram", "ProgramSessions", "NodesByParent", "AuthsByKind",
 ] as const;
 
 const PROFILES: ReadonlyArray<readonly [string, ts.CompilerOptions]> = [
@@ -198,7 +200,8 @@ describe("codegen-compile conformance — the shared fitness corpus", () => {
           "ProgramBrief.ts",
           "ProgramVerdict.ts",
           "WeekLabel.ts",
-          // FR-044 Plan 3: the nine view-backed reports' entity, names and queries files.
+          // FR-044 Plan 3: every view-backed report's entity, names and queries files
+          // (the count is SERVED_REPORTS's, not this prose's).
           ...SERVED_REPORTS.flatMap((r) => [`${r}.ts`, `${r}.names.ts`, `${r}.queries.ts`]),
         ]) {
           expect([...emitted]).toContain(expected);

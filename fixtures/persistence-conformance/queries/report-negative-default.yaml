@@ -1,0 +1,17 @@
+name: report-negative-default
+description: |
+  MeasurementStatsFilled over an EMPTY measurements table. The avg carries @default: -1 and
+  the decimal max @default: 0, so the single totals row reads -1 (a double) and 0 (a
+  decimal) where an undefaulted avg and max read null. The count stays 0.
+queries:
+  - name: negative-and-zero-defaults-over-an-empty-table
+    op: list
+    entity: MeasurementStatsFilled
+    expect:
+      - { readings: "0", avgPreciseKgOrMinusOne: "-1", maxPreciseKgOrZero: "0" }
+  - name: undefaulted-twin-reads-null
+    op: list
+    entity: MeasurementStats
+    expect:
+      - { readings: "0", totalMassKg: null, avgMassKg: null, maxTempC: null, minTempC: null,
+          totalPreciseKg: null, avgPreciseKg: null, maxPreciseKg: null, heavyReadings: "0" }

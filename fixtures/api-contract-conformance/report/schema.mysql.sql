@@ -9,12 +9,21 @@ CREATE TABLE `invoices` (
   `reference` VARCHAR(40) NOT NULL,
   `status` VARCHAR(20) NOT NULL,
   `amountCents` BIGINT NOT NULL,
-  `issuedOn` DATE NOT NULL
+  `issuedOn` DATE NOT NULL,
+  `disputed` BOOLEAN NOT NULL
+);
+
+CREATE TABLE `categories` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(200) NOT NULL
 );
 
 CREATE TABLE `products` (
   `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `name` VARCHAR(200) NOT NULL
+  `name` VARCHAR(200) NOT NULL,
+  `sku` VARCHAR(36),
+  `categoryId` BIGINT,
+  FOREIGN KEY (`categoryId`) REFERENCES `categories` (`id`)
 );
 
 CREATE TABLE `sales` (
@@ -48,6 +57,23 @@ CREATE VIEW `v_invoice_totals` AS
     COUNT(CASE WHEN i.`status` = 'PAID' THEN i.`id` END) / NULLIF(COUNT(i.`id`), 0) AS `paidShare`
   FROM `invoices` i;
 
+CREATE VIEW `v_invoice_calendar` AS
+  SELECT
+    DATE(i.`issuedOn`) AS `issuedOnDay`,
+    DATE(DATE_FORMAT(i.`issuedOn`, '%Y-%m-01')) AS `issuedOnMonth`,
+    COUNT(i.`id`) AS `invoices`,
+    CAST(SUM(i.`amountCents`) AS SIGNED) AS `totalCents`
+  FROM `invoices` i
+  GROUP BY DATE(i.`issuedOn`), DATE(DATE_FORMAT(i.`issuedOn`, '%Y-%m-01'));
+
+CREATE VIEW `v_invoice_disputes` AS
+  SELECT
+    i.`disputed` AS `disputed`,
+    COUNT(i.`id`) AS `invoices`,
+    COUNT(CASE WHEN i.`amountCents` >= 60000 THEN i.`id` END) AS `bigInvoices`
+  FROM `invoices` i
+  GROUP BY i.`disputed`;
+
 CREATE VIEW `v_product_revenue` AS
   SELECT
     p.`id` AS `productId`,
@@ -58,3 +84,24 @@ CREATE VIEW `v_product_revenue` AS
   FROM `products` p
   LEFT OUTER JOIN `sales` s ON p.`id` = s.`productId`
   GROUP BY p.`id`, p.`name`;
+
+CREATE VIEW `v_sales_by_category` AS
+  SELECT
+    c.`name` AS `categoryName`,
+    COUNT(s.`id`) AS `sales`,
+    CAST(SUM(s.`amountCents`) AS SIGNED) AS `revenueCents`,
+    MAX(s.`amountCents`) AS `maxCents`,
+    COUNT(CASE WHEN s.`amountCents` >= 10000 THEN s.`id` END) AS `largeSales`
+  FROM `sales` s
+  INNER JOIN `products` p ON p.`id` = s.`productId`
+  LEFT OUTER JOIN `categories` c ON c.`id` = p.`categoryId`
+  GROUP BY c.`name`;
+
+CREATE VIEW `v_sales_by_sku` AS
+  SELECT
+    p.`sku` AS `productSku`,
+    COUNT(s.`id`) AS `sales`,
+    CAST(SUM(s.`amountCents`) AS SIGNED) AS `revenueCents`
+  FROM `sales` s
+  INNER JOIN `products` p ON p.`id` = s.`productId`
+  GROUP BY p.`sku`;

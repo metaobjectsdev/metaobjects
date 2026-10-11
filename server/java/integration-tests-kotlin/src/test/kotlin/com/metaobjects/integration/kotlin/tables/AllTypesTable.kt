@@ -70,8 +70,7 @@ object AllTypesTable : Table("all_types") {
     // wire format does not. Nullable to match the canonical DDL (`"intEnumVal" INTEGER`, no
     // NOT NULL). See [IntBackedEnumColumnType] for why this is a Column<String> here while the
     // GENERATED form binds a real enum through customEnumeration.
-    val intEnumVal =
-        intBackedEnum("intEnumVal", mapOf("DRAFT" to 0, "PUBLISHED" to 5, "ARCHIVED" to 9)).nullable()
+    val intEnumVal = intBackedEnum("intEnumVal", INT_ENUM_MEMBERS).nullable()
     val uuidVal = uuid("uuidVal")
     // `field.uri` → plain `text` column carrying the verbatim URI string (Postgres has no uri
     // type). See [MetaUriColumnType] — round-trips the URI unchanged.

@@ -146,15 +146,19 @@ public class CodegenCompileConformanceTests
         var files = generators.SelectMany(g => g.Generate(ctx)).ToList();
         Assert.True(files.Count > 0, $"selection '{selection}' generated no files at all");
 
-        // FR-044 — the corpus's nine view-backed reports each generate a keyless row class and
-        // a filter allowlist (their routes file is in the excluded framework tier), and no
-        // names artifact. Named, because a compile gate passes trivially over a file that
-        // was never emitted. The last three carry @spine / a measure @default.
+        // FR-044 — every view-backed report of the corpus (twenty-one today) generates a keyless
+        // row class and a filter allowlist (their routes file is in the excluded framework tier),
+        // and no names artifact. Named, because a compile gate passes trivially over a file that
+        // was never emitted. ProgramRoster, ProgramLongWeeks and FitnessTotalsFilled carry
+        // @spine / a measure @default; the rest reach the numeric, temporal, boolean/uuid/
+        // int-enum, multi-hop, self-reference and empty-scope vocabulary the first nine do not.
         foreach (var report in new[]
                  {
                      "ProgramMinutes", "FitnessTotals", "ProgramsByMonth", "ProgramsByWeek",
                      "RecentPrograms", "AssetActivity", "ProgramRoster", "ProgramLongWeeks",
                      "FitnessTotalsFilled",
+                     "MeasurementStats", "MeasurementStatsFilled", "AssetDays", "AllTypesBreakdown", "ProgramsOverTime", "LiveIntroPrograms",
+                     "ProgramsEmptyScope", "WeekShapes", "SessionsByProgram", "ProgramSessions", "NodesByParent", "AuthsByKind",
                  })
         {
             Assert.True(files.Any(f => f.Path == report + ".g.cs"), $"no row class was generated for report {report}");

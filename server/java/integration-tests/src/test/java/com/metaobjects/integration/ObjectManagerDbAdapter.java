@@ -69,7 +69,7 @@ final class ObjectManagerDbAdapter {
             return executeDelete(omdb, conn, mc, spec);
         }
 
-        Expression filter = buildFilter(spec.by(), spec.filter());
+        Expression filter = buildFilter(spec.by(), spec.filter(), omdb.readObjectFor(mc));
 
         if ("count".equals(spec.op())) {
             return omdb.getObjectsCount(conn, mc, filter);
@@ -108,7 +108,7 @@ final class ObjectManagerDbAdapter {
     private static Object executeRelate(ObjectManagerDB omdb, ObjectConnection conn, MetaObject sourceMeta,
                                         QuerySpec spec, MetaRoot root, ColumnTypeProbe columnTypeProbe) throws Exception {
         // 1. Load the single source object identified by `by`.
-        Expression byFilter = buildFilter(spec.by(), null);
+        Expression byFilter = buildFilter(spec.by(), null, null);
         QueryOptions opts = new QueryOptions();
         if (byFilter != null) opts.setExpression(byFilter);
         Collection<?> sources = omdb.getObjects(conn, sourceMeta, opts);
@@ -226,7 +226,7 @@ final class ObjectManagerDbAdapter {
         // set-based delete-by-key — so we do NOT load-then-delete: the seed row's raw-SQL jsonb
         // (no @type discriminator) would fail the metadata-driven deserialize on load. The count
         // is the boolean outcome (>0 = a row was deleted).
-        Expression byFilter = buildFilter(spec.by(), null);
+        Expression byFilter = buildFilter(spec.by(), null, null);
         int deleted = omdb.deleteObjects(conn, mc, byFilter);
         return deleted > 0;
     }
@@ -234,7 +234,7 @@ final class ObjectManagerDbAdapter {
     /** Load a single object by an exact-match key map, or {@code null} when no row matches. */
     private static Object loadByKey(ObjectManagerDB omdb, ObjectConnection conn, MetaObject mc,
                                     Map<String, Object> key) throws Exception {
-        Expression filter = buildFilter(key, null);
+        Expression filter = buildFilter(key, null, null);
         QueryOptions opts = new QueryOptions();
         if (filter != null) opts.setExpression(filter);
         Collection<?> rows = omdb.getObjects(conn, mc, opts);
@@ -267,22 +267,47 @@ final class ObjectManagerDbAdapter {
      * Combine {@code by} (op:get shortcut) and {@code filter} into one
      * Expression tree. {@code by} maps field→value (each becomes an EQUAL
      * clause); {@code filter} understands the cross-port DSL plus the
-     * top-level {@code and:} combinator.
+     * top-level {@code and:} combinator. {@code filterMeta}, when given, is
+     * the object {@code filter} addresses and lets each operand be coerced
+     * to its column's native type.
      */
-    private static Expression buildFilter(Map<String, Object> by, Map<String, Object> filter) {
+    private static Expression buildFilter(Map<String, Object> by, Map<String, Object> filter, MetaObject filterMeta) {
         Expression acc = null;
         if (by != null) {
             for (Map.Entry<String, Object> e : by.entrySet()) acc = and(acc, new Expression(e.getKey(), e.getValue()));
         }
         if (filter != null) {
-            Expression filterExp = compileFilter(filter);
+            Expression filterExp = compileFilter(filterMeta, filter);
             if (filterExp != null) acc = and(acc, filterExp);
         }
         return acc;
     }
 
+    /**
+     * Coerce a corpus operand to a {@code field.date} column's native type. The corpus spells a
+     * date operand as the ISO calendar date and the column binds a {@link java.time.LocalDate}
+     * (or a {@link java.util.Date}), so this parses it at the operator — where field and operand
+     * are already in hand — the way every other port's runner coerces an operand to its column's
+     * type (Kotlin's {@code coerce(raw, col)}, the C# converter). A filter walk needs no separate
+     * pre-pass: a new operator or combinator reaches the coercion through the same dispatch that
+     * compiles it. Non-date fields and non-date-shaped operands pass through.
+     */
+    private static Object dateOperand(MetaObject meta, String field, Object value) {
+        if (!isDateField(meta, field)) return value;
+        if (value instanceof String s) return java.time.LocalDate.parse(s);
+        if (value instanceof List<?> list) {
+            return list.stream().map(x -> x instanceof String s ? (Object) java.time.LocalDate.parse(s) : x).toList();
+        }
+        return value;
+    }
+
+    private static boolean isDateField(MetaObject meta, String field) {
+        return meta.getMetaFieldsStream().anyMatch(f ->
+            f.getName().equals(field) && com.metaobjects.field.DateField.SUBTYPE_DATE.equals(f.getSubType()));
+    }
+
     @SuppressWarnings("unchecked")
-    private static Expression compileFilter(Map<String, Object> filter) {
+    private static Expression compileFilter(MetaObject meta, Map<String, Object> filter) {
         // Top-level `and: [filter, filter, ...]` combinator.
         Object andValue = filter.get("and");
         if (andValue instanceof List<?> list) {
@@ -293,7 +318,7 @@ final class ObjectManagerDbAdapter {
                     throw new IllegalArgumentException("`and` list elements must be filter maps (got: " +
                         (child == null ? "null" : child.getClass().getSimpleName()) + ")");
                 }
-                combined = and(combined, compileFilter(childMap));
+                combined = and(combined, compileFilter(meta, childMap));
             }
             return combined;
         }
@@ -307,27 +332,31 @@ final class ObjectManagerDbAdapter {
                     (e.getValue() == null ? "null" : e.getValue().getClass().getSimpleName()) + ")");
             }
             for (Map.Entry<String, Object> op : ops.entrySet()) {
-                acc = and(acc, buildOp(e.getKey(), op.getKey(), op.getValue()));
+                acc = and(acc, buildOp(meta, e.getKey(), op.getKey(), op.getValue()));
             }
         }
         return acc;
     }
 
-    private static Expression buildOp(String field, String op, Object value) {
+    private static Expression buildOp(MetaObject meta, String field, String op, Object value) {
+        // `isNull` carries a boolean and `like` a pattern: neither names a date VALUE, so only
+        // the comparison ops and `in` get the operand coerced (see dateOperand).
+        Object v = meta == null || "isNull".equals(op) || "like".equals(op)
+            ? value : dateOperand(meta, field, value);
         return switch (op) {
-            case "eq"     -> new Expression(field, value, Expression.EQUAL);
-            case "ne"     -> new Expression(field, value, Expression.NOT_EQUAL);
-            case "gt"     -> new Expression(field, value, Expression.GREATER);
-            case "gte"    -> new Expression(field, value, Expression.EQUAL_GREATER);
-            case "lt"     -> new Expression(field, value, Expression.LESSER);
-            case "lte"    -> new Expression(field, value, Expression.EQUAL_LESSER);
+            case "eq"     -> new Expression(field, v, Expression.EQUAL);
+            case "ne"     -> new Expression(field, v, Expression.NOT_EQUAL);
+            case "gt"     -> new Expression(field, v, Expression.GREATER);
+            case "gte"    -> new Expression(field, v, Expression.EQUAL_GREATER);
+            case "lt"     -> new Expression(field, v, Expression.LESSER);
+            case "lte"    -> new Expression(field, v, Expression.EQUAL_LESSER);
             case "isNull" -> {
                 boolean wantNull = value instanceof Boolean b ? b
                     : value instanceof String s ? Boolean.parseBoolean(s) : false;
                 // Expression(field, null, EQUAL|NOT_EQUAL) is the Java convention for IS NULL / IS NOT NULL.
                 yield new Expression(field, null, wantNull ? Expression.EQUAL : Expression.NOT_EQUAL);
             }
-            case "in"     -> compileIn(field, value);
+            case "in"     -> compileIn(field, v);
             case "like"   -> compileLike(field, value);
             default       -> throw new IllegalArgumentException("Unsupported filter op '" + op + "' on field '" + field + "'");
         };

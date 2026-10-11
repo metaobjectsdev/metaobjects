@@ -58,3 +58,10 @@ internal class IntBackedEnumColumnType(
  */
 internal fun Table.intBackedEnum(name: String, intByMember: Map<String, Int>): Column<String> =
     registerColumn(name, IntBackedEnumColumnType(intByMember))
+
+/**
+ * The `@intValueMap` of the canonical fixture's one int-backed enum — `AllTypes.intEnumVal`,
+ * whose `legacyStatus` dimension reads through the same map. Stated once because both columns
+ * must carry the fixture's map exactly (`fixtures/persistence-conformance/canonical/meta.fitness.json`).
+ */
+internal val INT_ENUM_MEMBERS: Map<String, Int> = mapOf("DRAFT" to 0, "PUBLISHED" to 5, "ARCHIVED" to 9)

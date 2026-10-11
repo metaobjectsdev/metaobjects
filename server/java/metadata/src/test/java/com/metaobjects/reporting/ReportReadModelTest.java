@@ -348,7 +348,7 @@ public class ReportReadModelTest extends SharedRegistryTestBase {
         for (MetaObject o : canonical.getChildren(MetaObject.class, false)) {
             if (ReportReadModel.isReport(o)) models.add(ReportReadModel.of(o, canonical));
         }
-        assertEquals(9, models.size());
+        assertEquals(21, models.size());
 
         for (ReportReadModel model : models) {
             assertNull("never attached", model.getParent());

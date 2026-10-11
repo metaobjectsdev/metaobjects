@@ -2,17 +2,18 @@
 // corpus.
 //
 // Runs the real MetaObjects.Codegen generators (Entity + DbContext + FilterAllowlist
-// + Routes + Names) on the report model (the Invoice, Product and Sale tables, four
-// view-backed reports — one of them, ProductRevenue, a @spine report with a defaulted
-// measure — and one sourceless report), Roslyn-compiles the emitted sources in-memory, and
-// hosts them on Kestrel against Testcontainers Postgres (or, for StartSqliteAsync /
-// StartMySqlAsync, a SQLite file / a MySQL database) with the four views present. A
-// failing scenario is a real generator bug (RoutesGenerator / DbContextGenerator /
-// FilterAllowlistGenerator / ReportRows), never something fixed by hand-editing emitted code.
+// + Routes + Names) on the report model (its base tables and view-backed reports — one of
+// them, ProductRevenue, a @spine report with a defaulted measure — and one sourceless
+// report), Roslyn-compiles the emitted sources in-memory, and hosts them on Kestrel against
+// Testcontainers Postgres (or, for StartSqliteAsync / StartMySqlAsync, a SQLite file / a
+// MySQL database) with the views present. The exact sets are `ExpectedRoutedNames`
+// and `SourcelessReport` below, not this prose. A failing scenario is a real generator bug
+// (RoutesGenerator / DbContextGenerator / FilterAllowlistGenerator / ReportRows), never
+// something fixed by hand-editing emitted code.
 //
 // Mirrors ProjectionGeneratedServerFactory. The routes to mount are chosen by
-// RoutesGenerator.AppliesTo over the DECLARED nodes, and must be exactly the three entities
-// and the four served reports: the sourceless InvoiceDays sits in the model so that a
+// RoutesGenerator.AppliesTo over the DECLARED nodes, and must be exactly the entities
+// and served reports listed below: the sourceless InvoiceDays sits in the model so that a
 // generator which serves every report it finds fails here.
 //
 // No JSON options are configured on the host. The date wire format under test
@@ -41,7 +42,8 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
 
     // Ordinal order. InvoiceDays is in the model and declares no source.
     private static readonly string[] ExpectedRoutedNames =
-        ["Invoice", "InvoiceStatusTotals", "InvoiceTotals", "InvoicesByMonth", "Product", "ProductRevenue", "Sale"];
+        ["Category", "Invoice", "InvoiceCalendar", "InvoiceDisputes", "InvoiceStatusTotals", "InvoiceTotals",
+         "InvoicesByMonth", "Product", "ProductRevenue", "Sale", "SalesByCategory", "SalesBySku"];
     private const string SourcelessReport = "InvoiceDays";
 
     private readonly ScenarioEngine _engine;
@@ -93,8 +95,8 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
 
         var app = builder.Build();
 
-        // Mount every generated Map<Name>Routes(app, "/api") — the three entities' writable
-        // sets and the four served reports' read-only ones. The entities are mounted so the
+        // Mount every generated Map<Name>Routes(app, "/api") — the base entities' writable
+        // sets and the served reports' read-only ones. The entities are mounted so the
         // lane also proves the two coexist; only the reports' routes carry scenarios.
         foreach (var name in routedNames)
         {
@@ -127,9 +129,9 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
                 string.Join("; ", loadResult.Errors.Select(e => e.ToString())));
 
         var root = loadResult.Root;
-        // Asked of the DECLARED nodes: the three entities and the four served reports, and not
-        // the sourceless InvoiceDays. Exactly these, so a generator that serves every report it
-        // finds (or none) fails here by name instead of as a run of unexplained 404s.
+        // Asked of the DECLARED nodes: exactly `ExpectedRoutedNames` — the base entities and
+        // the served reports, and not the sourceless InvoiceDays. So a generator that serves
+        // every report it finds (or none) fails here by name instead of as a run of 404s.
         var routedNames = root.Objects()
             .Where(o => RoutesGenerator.AppliesTo(o, root))
             .Select(o => CSharpNaming.Pascal(o.Name))

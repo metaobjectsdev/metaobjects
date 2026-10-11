@@ -90,6 +90,9 @@ cubes:
       - name: ProgramLongWeeksFacts
         relationship: one_to_many
         sql: '{CUBE}."id" = {ProgramLongWeeksFacts}."programId"'
+      - name: ProgramSessions_fkWeek
+        relationship: one_to_many
+        sql: '{CUBE}."id" = {ProgramSessions_fkWeek}."programId"'
     dimensions:
       - name: id
         sql: '{CUBE}."id"'
@@ -116,12 +119,50 @@ cubes:
       - name: programs
         sql: '{CUBE}."id"'
         type: count
+      - name: notDrafts
+        sql: '{CUBE}."id"'
+        type: count
+        filters:
+          - sql: '{CUBE}."status" <> ''DRAFT'''
+      - name: avgPrice
+        sql: '{CUBE}."priceCents"'
+        type: avg
+      - name: cheapest
+        sql: '{CUBE}."priceCents"'
+        type: min
+      - name: priciest
+        sql: '{CUBE}."priceCents"'
+        type: max
+      - name: avgPriceOrMinusOneRaw
+        sql: '{CUBE}."priceCents"'
+        type: avg
+        public: false
+      - name: avgPriceOrMinusOne
+        sql: 'COALESCE({avgPriceOrMinusOneRaw}, -1)'
+        type: number
     segments:
       - name: published
         sql: '{CUBE}."status" = ''PUBLISHED'''
+      - name: live
+        sql: '{CUBE}."status" IN (''DRAFT'', ''PUBLISHED'')'
+      - name: introOrFree
+        sql: '({CUBE}."title" LIKE ''Intro%'' OR {CUBE}."priceCents" = 0)'
       - name: recentProgramsScope
         sql: '{CUBE}."created_ts" >= ((now() AT TIME ZONE ''UTC'') - INTERVAL ''P30D'')'
+      - name: liveIntroProgramsScope
+        sql: '({CUBE}."status" IN (''DRAFT'', ''PUBLISHED'') AND {CUBE}."priceCents" < 5000)'
+      - name: programsEmptyScopeScope
+        sql: '{CUBE}."priceCents" > 1000000'
     pre_aggregations:
+      - name: ProgramsEmptyScope
+        type: rollup
+        measures: [CUBE.programs, CUBE.avgPriceOrMinusOne]
+        segments: [CUBE.live, CUBE.programsEmptyScopeScope]
+      - name: LiveIntroPrograms
+        type: rollup
+        measures: [CUBE.programs, CUBE.notDrafts, CUBE.listValue]
+        dimensions: [CUBE.status]
+        segments: [CUBE.introOrFree, CUBE.liveIntroProgramsScope]
       - name: ProgramsByWeek
         type: rollup
         measures: [CUBE.programs]
@@ -134,6 +175,16 @@ cubes:
         dimensions: [CUBE.status]
         time_dimension: CUBE.createdAt
         granularity: month
+      - name: ProgramsOverTime
+        type: rollup
+        measures: [CUBE.programs, CUBE.avgPrice, CUBE.cheapest, CUBE.priciest]
+        time_dimensions:
+          - dimension: CUBE.createdAt
+            granularity: day
+          - dimension: CUBE.createdAt
+            granularity: quarter
+          - dimension: CUBE.createdAt
+            granularity: year
 `;
 
 const WEEK_YML = `${HEADER}
@@ -200,6 +251,31 @@ cubes:
       - name: longShareOrZero
         sql: 'COALESCE(CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0), 0)'
         type: number
+      - name: unlabelled
+        sql: '{CUBE}."id"'
+        type: count
+        filters:
+          - sql: '{CUBE}."label" IS NULL'
+      - name: labelledMinutes
+        sql: '{CUBE}."durationMinutes"'
+        type: sum
+        filters:
+          - sql: '{CUBE}."label" IS NOT NULL'
+      - name: shortWeeks
+        sql: '{CUBE}."id"'
+        type: count
+        filters:
+          - sql: '{CUBE}."durationMinutes" < 30'
+      - name: midWeeks
+        sql: '{CUBE}."id"'
+        type: count
+        filters:
+          - sql: '({CUBE}."durationMinutes" > 30 AND {CUBE}."durationMinutes" <= 60)'
+      - name: longWMinutes
+        sql: '{CUBE}."durationMinutes"'
+        type: sum
+        filters:
+          - sql: '({CUBE}."durationMinutes" >= 60 AND {CUBE}."label" LIKE ''W%'')'
     segments:
       - name: long
         sql: '{CUBE}."durationMinutes" >= 60'
@@ -210,6 +286,10 @@ cubes:
       - name: FitnessTotalsFilled
         type: rollup
         measures: [CUBE.weeks, CUBE.totalMinutesOrZero, CUBE.longShareOrZero]
+      - name: WeekShapes
+        type: rollup
+        measures: [CUBE.weeks, CUBE.unlabelled, CUBE.labelledMinutes, CUBE.shortWeeks, CUBE.midWeeks, CUBE.longWMinutes]
+        dimensions: [CUBE.programTitle]
       - name: ProgramMinutes
         type: rollup
         measures: [CUBE.weeks, CUBE.longWeeks, CUBE.labels, CUBE.slots, CUBE.totalMinutes, CUBE.avgMinutes, CUBE.minMinutes, CUBE.maxMinutes, CUBE.longShare]
@@ -239,7 +319,27 @@ cubes:
       - name: assets
         sql: '{CUBE}."id"'
         type: count
+      - name: owners
+        sql: '{CUBE}."ownerId"'
+        type: count_distinct
+      - name: firstRecorded
+        sql: '{CUBE}."recordedAt"'
+        type: min
+      - name: lastObserved
+        sql: '{CUBE}."observedAt"'
+        type: max
+      - name: lastAsOf
+        sql: '{CUBE}."asOfDate"'
+        type: max
     pre_aggregations:
+      - name: AssetDays
+        type: rollup
+        measures: [CUBE.assets, CUBE.owners, CUBE.firstRecorded, CUBE.lastObserved, CUBE.lastAsOf]
+        time_dimensions:
+          - dimension: CUBE.recordedAt
+            granularity: day
+          - dimension: CUBE.asOfDate
+            granularity: month
       - name: AssetActivity
         type: rollup
         measures: [CUBE.assets]
@@ -346,6 +446,23 @@ views:
           - name: totalMinutesOrZero
 `;
 
+const PROGRAM_SESSIONS_VIEW_YML = `${HEADER}
+views:
+  - name: ProgramSessions
+    cubes:
+      - join_path: Program
+        includes:
+          - name: id
+            alias: programKey
+          - name: title
+            alias: programTitle
+      - join_path: Program.ProgramSessions_fkWeek.ProgramSessionsFacts
+        includes:
+          - name: sessions
+          - name: sessionMinutes
+          - name: sessionMinutesOrZero
+`;
+
 // test → codegen-ts → packages → typescript → server → repo root
 const CANONICAL = resolve(
   import.meta.dir, "..", "..", "..", "..", "..", "..",
@@ -377,15 +494,15 @@ describe("Table H — the canonical model's files", () => {
     expect(render(await canonicalModel(), "Asset")).toBe(ASSET_YML);
   });
 
-  test("the two @spine reports' facts cubes", async () => {
+  test("the @spine reports' facts cubes", async () => {
     const model = await canonicalModel();
     expect(render(model, "ProgramRosterFacts")).toBe(PROGRAM_ROSTER_FACTS_YML);
     expect(render(model, "ProgramLongWeeksFacts")).toBe(PROGRAM_LONG_WEEKS_FACTS_YML);
   });
 
-  test("the two @spine reports' views", async () => {
+  test("the three @spine reports' views", async () => {
     const model = await canonicalModel();
-    expect(model.views.map(renderCubeViewYaml)).toEqual([PROGRAM_ROSTER_VIEW_YML, PROGRAM_LONG_WEEKS_VIEW_YML]);
+    expect(model.views.map(renderCubeViewYaml)).toEqual([PROGRAM_ROSTER_VIEW_YML, PROGRAM_LONG_WEEKS_VIEW_YML, PROGRAM_SESSIONS_VIEW_YML]);
   });
 
   test("rendering twice gives the same bytes", async () => {
@@ -949,7 +1066,11 @@ function parsed(c: CubeSpec): unknown {
 describe("parse oracle", () => {
   test("the canonical cubes parse to the model's values", async () => {
     const model = await canonicalModel();
-    expect(model.cubes.map((c) => c.name)).toEqual(["Program", "Week", "Asset", "ProgramRosterFacts", "ProgramLongWeeksFacts"]);
+    expect(model.cubes.map((c) => c.name)).toEqual([
+      "Program", "Week", "Node", "Session", "Measurement", "Asset", "Auth", "BridgeAuth", "CopayAuth", "PriorAuthAuth",
+      "ReferralAuth", "AllTypes", "Node_fkParent", "ProgramRosterFacts", "ProgramLongWeeksFacts",
+      "ProgramSessionsFacts", "ProgramSessions_fkWeek",
+    ]);
     for (const c of model.cubes) expect(parsed(c)).toEqual({ cubes: [expectedCube(c)] });
   });
 

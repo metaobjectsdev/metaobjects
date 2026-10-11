@@ -1,0 +1,56 @@
+name: report-filter-operators
+description: |
+  LiveIntroPrograms combines a report @segment (introOrFree: an `or` of a `like` and an
+  equality) with a report @filter (an `in` list and a `lt`), and ANDs them. Its `notDrafts`
+  measure carries an inline `ne` @filter. ProgramsEmptyScope scopes by segment `live` (an
+  `in` list) and a filter no row meets, so it reads zero rows and its avg @default: -1
+  applies.
+
+  Seven programs:
+    1 'Intro to Lifting'  DRAFT      0      in scope (intro, in list, < 5000)
+    2 'Intro to Running'  PUBLISHED  3000   in scope
+    3 'Intro Pro'         PUBLISHED  9000   out: priced 5000 or more
+    4 'Advanced'          PUBLISHED  0      in scope (free)
+    5 'Advanced Plus'     ARCHIVED   2000   out: neither intro nor free
+    6 'Intro Archive'     ARCHIVED   100    out: status is not in the list
+    7 'Free Draft'        DRAFT      0      in scope (free)
+  DRAFT: 2 programs, 0 not drafts, listValue null (no published row). PUBLISHED: 2 programs,
+  2 not drafts, listValue 3000 + 0.
+seed-data: |
+  INSERT INTO "programs" ("id","title","priceCents","status","created_ts") VALUES
+    (1, 'Intro to Lifting', 0,    'DRAFT',     '2026-01-01T00:00:00'),
+    (2, 'Intro to Running', 3000, 'PUBLISHED', '2026-01-01T00:00:00'),
+    (3, 'Intro Pro',        9000, 'PUBLISHED', '2026-01-01T00:00:00'),
+    (4, 'Advanced',         0,    'PUBLISHED', '2026-01-01T00:00:00'),
+    (5, 'Advanced Plus',    2000, 'ARCHIVED',  '2026-01-01T00:00:00'),
+    (6, 'Intro Archive',    100,  'ARCHIVED',  '2026-01-01T00:00:00'),
+    (7, 'Free Draft',       0,    'DRAFT',     '2026-01-01T00:00:00');
+queries:
+  - name: segment-and-filter-are-anded
+    op: list
+    entity: LiveIntroPrograms
+    sort: [{ field: status, dir: asc }]
+    expect:
+      - { status: "DRAFT", programs: "2", notDrafts: "0", listValue: null }
+      - { status: "PUBLISHED", programs: "2", notDrafts: "2", listValue: "3000" }
+  - name: filter-on-the-dimension
+    op: list
+    entity: LiveIntroPrograms
+    filter: { status: { eq: "DRAFT" } }
+    expect:
+      - { status: "DRAFT", programs: "2", notDrafts: "0", listValue: null }
+  - name: filter-isnull-on-a-measure
+    op: list
+    entity: LiveIntroPrograms
+    filter: { listValue: { isNull: true } }
+    expect:
+      - { status: "DRAFT", programs: "2", notDrafts: "0", listValue: null }
+  - name: count-groups
+    op: count
+    entity: LiveIntroPrograms
+    expect: 2
+  - name: negative-default-over-an-empty-scope
+    op: list
+    entity: ProgramsEmptyScope
+    expect:
+      - { programs: "0", avgPriceOrMinusOne: "-1" }

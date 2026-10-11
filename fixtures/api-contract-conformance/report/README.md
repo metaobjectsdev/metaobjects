@@ -62,8 +62,8 @@ object uses (`InvoicesByMonth` is `/api/invoices_by_months`).
 
 ## The model
 
-Three entities (`Invoice`; `Product` and its child `Sale`) and five reports, four served
-and one sourceless on purpose.
+Four entities (`Invoice`; `Category`, `Product` and their child `Sale`) and nine reports,
+eight served and one sourceless on purpose.
 
 | Report | Route | View | Derived fields |
 |---|---|---|---|
@@ -72,6 +72,10 @@ and one sourceless on purpose.
 | `InvoiceTotals` | `/api/invoice_totals` | `v_invoice_totals` | `invoices`, `totalCents`, `paidShare` |
 | `InvoiceDays` | none | none | `issuedOnDay`, `invoices` |
 | `ProductRevenue` | `/api/product_revenues` | `v_product_revenue` | `productId`, `productName`, `sales`, `revenueCents`, `revenueOrZero` |
+| `InvoiceCalendar` | `/api/invoice_calendars` | `v_invoice_calendar` | one time dimension at two grains, `invoices` |
+| `InvoiceDisputes` | `/api/invoice_disputes` | `v_invoice_disputes` | a boolean dimension, `invoices`, `bigInvoices` |
+| `SalesByCategory` | `/api/sales_by_categories` | `v_sales_by_category` | `categoryName` (through `Sale.fkProduct.fkCategory`), `sales`, `revenueCents`, `maxCents`, `largeSales` |
+| `SalesBySku` | `/api/sales_by_skus` | `v_sales_by_sku` | `productSku` (a uuid, through `Sale.fkProduct`), `sales`, `revenueCents` |
 
 `ProductRevenue` is `@from: Sale` with `@spine: "Sale.fkProduct"`: its view reads FROM
 `products` and LEFT JOINs `sales`, so its spine key `productId` and `productName` are never
@@ -87,9 +91,9 @@ sits in the model so that a port which serves every report it finds fails this c
 ```
 report/
 ├── README.md               # this file
-├── meta.json               # Invoice, Product, Sale + five object.report nodes (four served, one sourceless)
-├── seed.json               # the base tables (`invoices`, `products`, `sales`) and `reports` (what the views return)
-├── schema.postgres.sql     # TypeScript-produced: the three tables and the four views
+├── meta.json               # Invoice, Category, Product, Sale + nine object.report nodes (eight served, one sourceless)
+├── seed.json               # the base tables (`invoices`, `categories`, `products`, `sales`) and `reports` (what the views return)
+├── schema.postgres.sql     # TypeScript-produced: the four tables and the eight views
 ├── schema.sqlite.sql       # the same, for SQLite and D1 (`meta migrate --dialect sqlite`)
 ├── schema.mysql.sql        # the same, for MySQL 8.4: the tables plus `buildReportViews` bodies
 └── scenarios/
@@ -108,7 +112,13 @@ report/
     ├── no-item-route.yaml           # GET/PATCH/PUT/DELETE on /{id} -> 404, no body assertion
     ├── list-spine.yaml              # @spine: the product with no sale has a row; withCount counts it
     ├── filter-on-defaulted-measure.yaml  # eq=0 on a defaulted sum, isNull on the plain sum, gt=0 on the count
-    └── sort-on-defaulted-measure.yaml    # a defaulted sum sorts its empty row as 0, both directions
+    ├── sort-on-defaulted-measure.yaml    # a defaulted sum sorts its empty row as 0, both directions
+    ├── list-multi-hop.yaml               # a dimension reached through two references
+    ├── list-two-grains.yaml              # one time dimension listed at two grains
+    ├── filter-on-string-dimension.yaml   # `like` and `eq` on a string dimension
+    ├── filter-on-filtered-measure.yaml   # a filter on a measure that carries its own @filter
+    ├── filter-boolean-dimension.yaml     # a boolean dimension
+    └── filter-uuid-dimension.yaml        # a uuid dimension: eq, ne, in, and its wire spelling
 ```
 
 ### Why `seed.json` has two halves
@@ -116,7 +126,7 @@ report/
 Every top-level key but `reports` is a **base table**, named by its table name and listed
 **parents first** (`products` before `sales`, which references it): a lane inserts the
 keys in file order and every foreign key holds. The full-stack lanes (TypeScript, C#)
-insert them and let the real views derive the report rows. `reports` is what the four
+insert them and let the real views derive the report rows. `reports` is what the
 views return for those rows, and it is what the **seam lanes** (Java, Kotlin, Python)
 serve: their in-memory repository or H2 table stands in for the view behind the consumer
 seam. A TypeScript test holds the two halves together, so the seam lanes cannot drift
@@ -144,11 +154,11 @@ hand-rolled reference server would answer every scenario by construction.
 
 | Port | Generated lane | Note |
 |---|---|---|
-| TypeScript | wired | `server/typescript/packages/integration-tests/test/api-contract-report.test.ts` (16 scenarios + a seed-vs-view check). Full stack: generated Fastify routes over the real views on Testcontainers Postgres. `api-contract-report-sqlite.test.ts` runs the same 16 on SQLite, `api-contract-report-mysql.test.ts` on MySQL 8.4, and the SQLite test file also runs them through local D1 (Miniflare) |
+| TypeScript | wired | `server/typescript/packages/integration-tests/test/api-contract-report.test.ts` (22 scenarios + a seed-vs-view check). Full stack: generated Fastify routes over the real views on Testcontainers Postgres. `api-contract-report-sqlite.test.ts` runs the same 22 on SQLite, `api-contract-report-mysql.test.ts` on MySQL 8.4, and the SQLite test file also runs them through local D1 (Miniflare) |
 | C# | wired | `server/csharp/MetaObjects.IntegrationTests/Api/ApiContractReportConformanceTest.cs`. Full stack: generated routes and EF Core over `schema.postgres.sql` on Testcontainers Postgres, over `schema.sqlite.sql` on SQLite, and over `schema.mysql.sql` on MySQL 8.4 |
-| Java | wired | `server/java/integration-tests/src/test/java/com/metaobjects/integration/api/ReportGeneratedApiContractConformanceTest.java` (16 scenarios + a scenario-count check). Generated controllers behind an in-memory repository seeded from `reports` |
-| Kotlin | wired | `server/java/integration-tests-kotlin/src/test/kotlin/com/metaobjects/integration/kotlin/api/report/ReportGeneratedApiContractConformanceTest.kt` (16 scenarios, the count check, and a check that the sourceless report generated nothing). Generated controllers over the generated Exposed table objects, seeded from `reports` |
-| Python | wired | `server/python/tests/integration/test_api_contract_report.py` (16 scenarios, a check that exactly the served reports are generated, and `/api/invoice_days` is `404`). Generated routers behind in-memory repositories seeded from `reports` |
+| Java | wired | `server/java/integration-tests/src/test/java/com/metaobjects/integration/api/ReportGeneratedApiContractConformanceTest.java` (22 scenarios + a scenario-count check). Generated controllers behind an in-memory repository seeded from `reports` |
+| Kotlin | wired | `server/java/integration-tests-kotlin/src/test/kotlin/com/metaobjects/integration/kotlin/api/report/ReportGeneratedApiContractConformanceTest.kt` (22 scenarios, the count check, and a check that the sourceless report generated nothing). Generated controllers over the generated Exposed table objects, seeded from `reports` |
+| Python | wired | `server/python/tests/integration/test_api_contract_report.py` (22 scenarios, a check that exactly the served reports are generated, and `/api/invoice_days` is `404`). Generated routers behind in-memory repositories seeded from `reports` |
 
 The scenarios use only assertion keys every runner already has (`equals`,
 `length`, `envelope`, `error` with `field`, and a status with no `body`).

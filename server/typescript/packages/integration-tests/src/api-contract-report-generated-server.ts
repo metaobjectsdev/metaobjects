@@ -1,15 +1,16 @@
 // api-contract-report-generated-server.ts — boots the GENERATED report routes (the
 // deployed artifact) over HTTP and drives them against the FR-044 report corpus.
 //
-// The model is three writable entities (`Invoice`; `Product` and `Sale`, a parent and its
-// child) and five `object.report` nodes; four declare `source.rdb @kind:view` and are
-// served, `InvoiceDays` declares no source and must emit nothing. It:
+// The model is the corpus's writable entities (`Invoice`; `Product` and `Sale`, a parent
+// and its child; the sales categories) and its `object.report` nodes: every served report
+// declares `source.rdb @kind:view`, and `InvoiceDays` declares no source and must emit
+// nothing (the counts live in `SERVED_REPORTS` and the seed, not in this prose). It:
 //   1. runs the real codegen (runGen) over report/meta.json into a temp dir and fails
 //      if a routes file was emitted for the sourceless report;
 //   2. provisions the base tables by hand in the EMITTED snake_case spelling, then
 //      creates each view from buildReportViews (the real lowering, the real view SQL)
 //      under the emitted names, so the route reads through the real view;
-//   3. imports the four EMITTED <Report>.routes.ts files unmodified and mounts them.
+//   3. imports each EMITTED <Report>.routes.ts file unmodified and mounts them.
 //
 // Generated lane only, and on every port — see the corpus README.
 
@@ -105,7 +106,16 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
       "reference" varchar(40) NOT NULL,
       "status" varchar(20) NOT NULL,
       "amount_cents" bigint NOT NULL,
-      "issued_on" date NOT NULL
+      "issued_on" date NOT NULL,
+      "disputed" boolean NOT NULL
+    );`,
+  },
+  {
+    name: "categories",
+    ddl: `
+    CREATE TABLE IF NOT EXISTS "categories" (
+      "id" bigserial PRIMARY KEY,
+      "name" text NOT NULL
     );`,
   },
   {
@@ -113,7 +123,9 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
     ddl: `
     CREATE TABLE IF NOT EXISTS "products" (
       "id" bigserial PRIMARY KEY,
-      "name" text NOT NULL
+      "name" text NOT NULL,
+      "sku" uuid,
+      "category_id" bigint REFERENCES "categories" ("id")
     );`,
   },
   {
@@ -139,7 +151,11 @@ export const SERVED_REPORTS = [
   { name: "InvoiceStatusTotals", registrar: "invoiceStatusTotalsRoutes" },
   { name: "InvoicesByMonth", registrar: "invoicesByMonthRoutes" },
   { name: "InvoiceTotals", registrar: "invoiceTotalsRoutes" },
+  { name: "InvoiceCalendar", registrar: "invoiceCalendarRoutes" },
+  { name: "InvoiceDisputes", registrar: "invoiceDisputesRoutes" },
   { name: "ProductRevenue", registrar: "productRevenueRoutes" },
+  { name: "SalesByCategory", registrar: "salesByCategoryRoutes" },
+  { name: "SalesBySku", registrar: "salesBySkuRoutes" },
 ] as const;
 
 export async function startGeneratedReportServer(

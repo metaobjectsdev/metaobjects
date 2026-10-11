@@ -10,15 +10,22 @@ public class AppDbContext : DbContext
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
     public DbSet<AllTypes> AllTypes { get; set; } = default!;
+    public DbSet<AllTypesBreakdown> AllTypesBreakdowns { get; set; } = default!;
     public DbSet<Asset> Assets { get; set; } = default!;
     public DbSet<AssetActivity> AssetActivities { get; set; } = default!;
+    public DbSet<AssetDays> AssetDays { get; set; } = default!;
     public DbSet<Auth> Auths { get; set; } = default!;
+    public DbSet<AuthsByKind> AuthsByKinds { get; set; } = default!;
     public DbSet<FitnessTotals> FitnessTotals { get; set; } = default!;
     public DbSet<FitnessTotalsFilled> FitnessTotalsFilleds { get; set; } = default!;
     public DbSet<Follow> Follows { get; set; } = default!;
     public DbSet<Friendship> Friendships { get; set; } = default!;
+    public DbSet<LiveIntroPrograms> LiveIntroPrograms { get; set; } = default!;
     public DbSet<Measurement> Measurements { get; set; } = default!;
+    public DbSet<MeasurementStats> MeasurementStats { get; set; } = default!;
+    public DbSet<MeasurementStatsFilled> MeasurementStatsFilleds { get; set; } = default!;
     public DbSet<Node> Nodes { get; set; } = default!;
+    public DbSet<NodesByParent> NodesByParents { get; set; } = default!;
     public DbSet<Person> Persons { get; set; } = default!;
     public DbSet<Post> Posts { get; set; } = default!;
     public DbSet<PostReferral> PostReferrals { get; set; } = default!;
@@ -27,29 +34,51 @@ public class AppDbContext : DbContext
     public DbSet<ProgramLongWeeks> ProgramLongWeeks { get; set; } = default!;
     public DbSet<ProgramMinutes> ProgramMinutes { get; set; } = default!;
     public DbSet<ProgramRoster> ProgramRosters { get; set; } = default!;
+    public DbSet<ProgramSessions> ProgramSessions { get; set; } = default!;
     public DbSet<ProgramStat> ProgramStats { get; set; } = default!;
     public DbSet<ProgramView> ProgramViews { get; set; } = default!;
     public DbSet<ProgramsByMonth> ProgramsByMonths { get; set; } = default!;
     public DbSet<ProgramsByWeek> ProgramsByWeeks { get; set; } = default!;
+    public DbSet<ProgramsEmptyScope> ProgramsEmptyScopes { get; set; } = default!;
+    public DbSet<ProgramsOverTime> ProgramsOverTimes { get; set; } = default!;
     public DbSet<RecentPrograms> RecentPrograms { get; set; } = default!;
+    public DbSet<Session> Sessions { get; set; } = default!;
+    public DbSet<SessionsByProgram> SessionsByPrograms { get; set; } = default!;
     public DbSet<Tag> Tags { get; set; } = default!;
     public DbSet<Week> Weeks { get; set; } = default!;
+    public DbSet<WeekShapes> WeekShapes { get; set; } = default!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<AllTypesBreakdown>().HasNoKey().ToView("v_all_types_breakdown");
+        modelBuilder.Entity<AllTypesBreakdown>().Property(x => x.Level).HasConversion<string>();
+        modelBuilder.Entity<AllTypesBreakdown>().Property(x => x.LegacyStatus).HasConversion(v => v == AllTypesBreakdown.AllTypesBreakdownLegacyStatus.DRAFT ? 0 : v == AllTypesBreakdown.AllTypesBreakdownLegacyStatus.PUBLISHED ? 5 : 9, v => v == 0 ? AllTypesBreakdown.AllTypesBreakdownLegacyStatus.DRAFT : v == 5 ? AllTypesBreakdown.AllTypesBreakdownLegacyStatus.PUBLISHED : v == 9 ? AllTypesBreakdown.AllTypesBreakdownLegacyStatus.ARCHIVED : UnmappedEnumValue<AllTypesBreakdown.AllTypesBreakdownLegacyStatus>(v, "legacyStatus"));
         modelBuilder.Entity<AssetActivity>().HasNoKey().ToView("v_asset_activity");
+        modelBuilder.Entity<AssetDays>().HasNoKey().ToView("v_asset_days");
+        modelBuilder.Entity<AuthsByKind>().HasNoKey().ToView("v_auths_by_kind");
+        modelBuilder.Entity<AuthsByKind>().Property(x => x.Kind).HasConversion<string>();
         modelBuilder.Entity<FitnessTotals>().HasNoKey().ToView("v_fitness_totals");
         modelBuilder.Entity<FitnessTotalsFilled>().HasNoKey().ToView("v_fitness_totals_filled");
+        modelBuilder.Entity<LiveIntroPrograms>().HasNoKey().ToView("v_live_intro_programs");
+        modelBuilder.Entity<LiveIntroPrograms>().Property(x => x.Status).HasConversion<string>();
+        modelBuilder.Entity<MeasurementStats>().HasNoKey().ToView("v_measurement_stats");
+        modelBuilder.Entity<MeasurementStatsFilled>().HasNoKey().ToView("v_measurement_stats_filled");
+        modelBuilder.Entity<NodesByParent>().HasNoKey().ToView("v_nodes_by_parent");
         modelBuilder.Entity<ProgramLongWeeks>().HasNoKey().ToView("v_program_long_weeks");
         modelBuilder.Entity<ProgramMinutes>().HasNoKey().ToView("v_program_minutes");
         modelBuilder.Entity<ProgramRoster>().HasNoKey().ToView("v_program_roster");
+        modelBuilder.Entity<ProgramSessions>().HasNoKey().ToView("v_program_sessions");
         modelBuilder.Entity<ProgramStat>().ToView(ProgramStatNames.SourcePrimaryView);
         modelBuilder.Entity<ProgramView>().ToView(ProgramViewNames.SourcePrimaryView);
         modelBuilder.Entity<ProgramView>().Property(x => x.Status).HasConversion<string>();
         modelBuilder.Entity<ProgramsByMonth>().HasNoKey().ToView("v_programs_by_month");
         modelBuilder.Entity<ProgramsByMonth>().Property(x => x.Status).HasConversion<string>();
         modelBuilder.Entity<ProgramsByWeek>().HasNoKey().ToView("v_programs_by_week");
+        modelBuilder.Entity<ProgramsEmptyScope>().HasNoKey().ToView("v_programs_empty_scope");
+        modelBuilder.Entity<ProgramsOverTime>().HasNoKey().ToView("v_programs_over_time");
         modelBuilder.Entity<RecentPrograms>().HasNoKey().ToView("v_recent_programs");
+        modelBuilder.Entity<SessionsByProgram>().HasNoKey().ToView("v_sessions_by_program");
+        modelBuilder.Entity<WeekShapes>().HasNoKey().ToView("v_week_shapes");
         modelBuilder.Entity<AllTypes>().OwnsOne(x => x.Settings, b => b.ToJson(AllTypesNames.SettingsColumn));
         modelBuilder.Entity<AllTypes>().OwnsMany(x => x.Labels, b => b.ToJson(AllTypesNames.LabelsColumn));
         modelBuilder.Entity<AllTypes>().Property(x => x.EnumVal).HasConversion<string>();
@@ -76,6 +105,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Post>().HasMany(x => x.Referrals).WithMany().UsingEntity<PostReferral>(l => l.HasOne<ReferralAuth>().WithMany().HasForeignKey(j => j.ReferralId), r => r.HasOne<Post>().WithMany().HasForeignKey(j => j.PostId));
         modelBuilder.Entity<Program>().Property(x => x.Status).HasConversion<string>();
         modelBuilder.Entity<Program>().Property(x => x.CreatedAt).HasColumnType("timestamp without time zone");
+        modelBuilder.Entity<Session>().HasOne<Week>().WithMany().HasForeignKey(e => e.WeekId).OnDelete(DeleteBehavior.NoAction);
         modelBuilder.Entity<Week>().HasOne<Program>().WithMany().HasForeignKey(e => e.ProgramId).OnDelete(DeleteBehavior.Cascade);
     }
 

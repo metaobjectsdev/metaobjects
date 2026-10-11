@@ -79,5 +79,7 @@ expect:
       - { table_name: "post_tags" }
       - { table_name: "posts" }
       - { table_name: "programs" }
+      # sessions: the fact table the multi-hop report scenarios read through two references.
+      - { table_name: "sessions" }
       - { table_name: "tags" }
       - { table_name: "weeks" }

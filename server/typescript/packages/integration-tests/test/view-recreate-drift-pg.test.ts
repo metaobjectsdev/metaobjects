@@ -9,10 +9,11 @@
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import {
   buildExpectedSchema, collectUnmanagedNames, computeDriftFromActual, diff, emit, introspectPostgres,
-  isViewRecreateOnly, type Change, type SchemaSnapshot,
+  isViewRecreateOnly, type SchemaSnapshot,
 } from "@metaobjectsdev/migrate-ts";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
+import { isViewChange } from "../src/drift-residue.ts";
 import { Kysely, PostgresDialect, sql } from "kysely";
 import { Pool } from "pg";
 import { startPostgres, type RunningPg } from "../src/postgres-container.ts";
@@ -50,10 +51,6 @@ async function applyRaw(text: string): Promise<void> {
   for (const stmt of text.split(/;\s*\n/).map((s) => s.trim()).filter(Boolean)) {
     await sql.raw(stmt.endsWith(";") ? stmt : `${stmt};`).execute(k);
   }
-}
-
-function isViewChange(c: Change): boolean {
-  return c.kind === "create-view" || c.kind === "drop-view" || c.kind === "replace-view";
 }
 
 async function migrate(allow = {}) {

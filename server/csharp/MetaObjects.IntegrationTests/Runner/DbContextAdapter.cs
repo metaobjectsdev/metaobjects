@@ -362,6 +362,10 @@ public static class DbContextAdapter
         // not IConvertible, so Convert.ChangeType cannot handle it.
         if (underlying == typeof(Guid))
             return Guid.Parse(raw.ToString()!);
+        // A field.date filter value (a report's date-grain dimension) arrives as an ISO calendar
+        // date string; DateOnly is not IConvertible either. Same parse the write codec uses.
+        if (underlying == typeof(DateOnly))
+            return WriteCoercion.ParseDate(raw.ToString()!);
         return Convert.ChangeType(raw, underlying, System.Globalization.CultureInfo.InvariantCulture);
     }
 

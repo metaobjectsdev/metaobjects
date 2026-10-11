@@ -1,0 +1,31 @@
+name: report-filter-on-filtered-measure
+description: >
+  A count with an inline measure @filter is an ordinary long: it is 0 (not null) for a
+  group none of whose rows pass, so ?filter[largeSales][eq]=0 matches that group and
+  ?filter[largeSales][gt]=0 matches the other. `maxCents` filters with the numeric
+  operators like any long.
+requests:
+  - id: r1
+    method: GET
+    path: /api/sales_by_categories?filter[largeSales][eq]=0
+    expect:
+      status: 200
+      body:
+        equals:
+          - { categoryName: "Toys", sales: 1, revenueCents: 4500, maxCents: 4500, largeSales: 0 }
+  - id: r2
+    method: GET
+    path: /api/sales_by_categories?filter[largeSales][gt]=0
+    expect:
+      status: 200
+      body:
+        equals:
+          - { categoryName: "Tools", sales: 2, revenueCents: 30000, maxCents: 18000, largeSales: 2 }
+  - id: r3
+    method: GET
+    path: /api/sales_by_categories?filter[maxCents][gte]=18000
+    expect:
+      status: 200
+      body:
+        equals:
+          - { categoryName: "Tools", sales: 2, revenueCents: 30000, maxCents: 18000, largeSales: 2 }

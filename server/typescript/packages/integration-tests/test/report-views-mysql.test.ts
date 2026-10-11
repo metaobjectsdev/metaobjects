@@ -86,9 +86,14 @@ function reportViews(root: MetaRoot) {
   return buildReportViews(root, { dialect: "mysql", columnNamingStrategy: "literal" });
 }
 
-/** `CREATE VIEW` for every report view of `root`, exactly as the recipe shows. */
-async function createViews(root: MetaRoot): Promise<string[]> {
-  const views = reportViews(root);
+/**
+ * `CREATE VIEW` for every report view of `root` (or only those in `only`), exactly as the recipe
+ * shows. The canonical model has grown reports over tables this file's hand-written DDL does not
+ * create (measurements, sessions, nodes, auths, all_types): the MySQL lane covers the nine
+ * canonical reports it has DDL for, and the rest are gated on Postgres in every port.
+ */
+async function createViews(root: MetaRoot, only?: readonly string[]): Promise<string[]> {
+  const views = reportViews(root).filter((v) => only === undefined || only.includes(v.name));
   for (const v of views) {
     await conn.query(`DROP VIEW IF EXISTS \`${v.name}\``);
     await conn.query(`CREATE VIEW \`${v.name}\` AS\n${v.sql}`);
@@ -209,7 +214,7 @@ beforeAll(async () => {
   for (const t of OWN_TABLES) await conn.query(`DROP TABLE IF EXISTS \`${t}\``);
   for (const ddl of DDL) await conn.query(ddl);
   canonical = await loadMetadataDir(CANONICAL_DIR);
-  await createViews(canonical);
+  await createViews(canonical, CANONICAL_VIEWS);
 }, 240_000);
 
 afterAll(async () => {
@@ -231,7 +236,7 @@ describe("report views — canonical model on real MySQL 8.4", () => {
     expect(String(mode?.s)).toContain("ONLY_FULL_GROUP_BY");
 
     // Re-create them here, under the mode just asserted, so this test does not lean on beforeAll.
-    const names = await createViews(canonical);
+    const names = await createViews(canonical, CANONICAL_VIEWS);
     expect([...names].sort()).toEqual([...CANONICAL_VIEWS].sort());
     for (const name of names) {
       // Selecting proves the stored body still resolves, not merely that it parsed.

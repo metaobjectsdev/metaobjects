@@ -48,7 +48,16 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
       "reference" TEXT NOT NULL,
       "status" TEXT NOT NULL,
       "amount_cents" INTEGER NOT NULL,
-      "issued_on" TEXT NOT NULL
+      "issued_on" TEXT NOT NULL,
+      "disputed" INTEGER NOT NULL
+    )`,
+  },
+  {
+    name: "categories",
+    ddl: `
+    CREATE TABLE "categories" (
+      "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+      "name" TEXT NOT NULL
     )`,
   },
   {
@@ -56,7 +65,9 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
     ddl: `
     CREATE TABLE "products" (
       "id" INTEGER PRIMARY KEY AUTOINCREMENT,
-      "name" TEXT NOT NULL
+      "name" TEXT NOT NULL,
+      "sku" TEXT,
+      "category_id" INTEGER REFERENCES "categories" ("id")
     )`,
   },
   {

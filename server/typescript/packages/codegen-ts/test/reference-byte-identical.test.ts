@@ -706,12 +706,16 @@ describe("ADR-0034 — the cube-model reference is byte-identical to the built-i
     const root = await loadModelFile(CANONICAL_MODEL);
     const a = await outcome(builtinCubeModel, root, CANONICAL_CONFIG);
     const b = await outcome(refCubeModel, root, CANONICAL_CONFIG);
-    // A gate over an empty emit passes trivially. The two @spine reports are views, each with its
-    // facts cube.
+    // A gate over an empty emit passes trivially. The three @spine reports are views, each with its
+    // facts cube; ProgramSessions reaches its facts through the Session -> Week reference.
     expect("tree" in a ? a.tree.map(([p]) => p) : a).toEqual([
-      "model/cubes/Asset.yml", "model/cubes/Program.yml", "model/cubes/ProgramLongWeeksFacts.yml",
-      "model/cubes/ProgramRosterFacts.yml", "model/cubes/Week.yml",
-      "model/views/ProgramLongWeeks.yml", "model/views/ProgramRoster.yml",
+      "model/cubes/AllTypes.yml", "model/cubes/Asset.yml", "model/cubes/Auth.yml", "model/cubes/BridgeAuth.yml",
+      "model/cubes/CopayAuth.yml", "model/cubes/Measurement.yml", "model/cubes/Node.yml", "model/cubes/Node_fkParent.yml",
+      "model/cubes/PriorAuthAuth.yml", "model/cubes/Program.yml", "model/cubes/ProgramLongWeeksFacts.yml",
+      "model/cubes/ProgramRosterFacts.yml", "model/cubes/ProgramSessionsFacts.yml",
+      "model/cubes/ProgramSessions_fkWeek.yml", "model/cubes/ReferralAuth.yml", "model/cubes/Session.yml",
+      "model/cubes/Week.yml", "model/views/ProgramLongWeeks.yml", "model/views/ProgramRoster.yml",
+      "model/views/ProgramSessions.yml",
     ]);
     expect(b).toEqual(a);
   });
@@ -767,18 +771,21 @@ describe("ADR-0034 — the cube-model reference is byte-identical to the built-i
     const run = (make: () => Generator) => runTree(make, { entityFilter: ["Week"] }, { dialect: "postgres" });
     const a = await run(builtinCubeModel);
     // Narrower than the full run (no Asset.yml), and not empty: Week reaches Program, Program the
-    // two facts cubes, and with every cube they read written the two views are too.
+    // three facts cubes (ProgramSessionsFacts through the Session -> Week join-path cube), and with
+    // every cube they read written the three views are too.
     expect(a.map(([p]) => p)).toEqual([
       "model/cubes/Program.yml", "model/cubes/ProgramLongWeeksFacts.yml", "model/cubes/ProgramRosterFacts.yml",
-      "model/cubes/Week.yml", "model/views/ProgramLongWeeks.yml", "model/views/ProgramRoster.yml",
+      "model/cubes/ProgramSessionsFacts.yml", "model/cubes/ProgramSessions_fkWeek.yml", "model/cubes/Week.yml",
+      "model/views/ProgramLongWeeks.yml", "model/views/ProgramRoster.yml", "model/views/ProgramSessions.yml",
     ]);
     expect(await run(refCubeModel)).toEqual(a);
   });
 
   test("the dialect option beats a sqlite config, and a filter narrows the BUILD, in both", async () => {
-    // Week is filtered out. Program.yml's `title` dimension exists only because Week's @via reads
-    // it, so a copy that built the whole model and merely hid Week's file would still write it.
-    const opts = { dialect: "mysql", filter: (o: { name: string }) => o.name !== "Week" } as const;
+    // Only Asset and Program are kept (Week, and Session which also reaches Week, are filtered out).
+    // Program.yml's `title` dimension exists only because Week's @via reads it, so a copy that built
+    // the whole model and merely hid the other files would still write it.
+    const opts = { dialect: "mysql", filter: (o: { name: string }) => o.name === "Asset" || o.name === "Program" } as const;
     const a = await runTree(() => builtinCubeModel(opts), {}, { dialect: "sqlite" });
     expect(a.map(([p]) => p)).toEqual(["model/cubes/Asset.yml", "model/cubes/Program.yml"]);
     expect(a.every(([, text]) => text.includes("`"))).toBe(true);

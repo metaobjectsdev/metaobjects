@@ -1,0 +1,41 @@
+name: report-measure-filters
+description: |
+  WeekShapes puts one inline measure @filter on each of the operators the other report
+  scenarios skip: `isNull: true`, `isNull: false`, `lt`, a two-operator range (`gt` and
+  `lte` on one field), and a `like` ANDed with the `long` segment.
+
+    Alpha: W1/20, W2/45, null/60, Wrap/90
+      unlabelled 1; labelledMinutes 20 + 45 + 90 = 155; shortWeeks (< 30) 1;
+      midWeeks (> 30 and <= 60) 2 (45, 60); longWMinutes (>= 60 and label like 'W%')
+      90 (the 60-minute week has no label, so it is not counted).
+    Beta: X1/30, null/25
+      unlabelled 1; labelledMinutes 30; shortWeeks 1 (25; 30 is not < 30); midWeeks 0;
+      longWMinutes null (no row passes).
+seed-data: |
+  INSERT INTO "programs" ("id","title","priceCents","status","created_ts") VALUES
+    (1, 'Alpha', 1000, 'PUBLISHED', '2026-01-01T00:00:00'),
+    (2, 'Beta',  2000, 'PUBLISHED', '2026-01-01T00:00:00');
+  INSERT INTO "weeks" ("id","programId","label","durationMinutes") VALUES
+    (10, 1, 'W1',   20),
+    (11, 1, 'W2',   45),
+    (12, 1, NULL,   60),
+    (13, 1, 'Wrap', 90),
+    (20, 2, 'X1',   30),
+    (21, 2, NULL,   25);
+queries:
+  - name: every-filter-operator
+    op: list
+    entity: WeekShapes
+    sort: [{ field: programTitle, dir: asc }]
+    expect:
+      - { programTitle: "Alpha", weeks: "4", unlabelled: "1", labelledMinutes: "155", shortWeeks: "1",
+          midWeeks: "2", longWMinutes: "90" }
+      - { programTitle: "Beta", weeks: "2", unlabelled: "1", labelledMinutes: "30", shortWeeks: "1",
+          midWeeks: "0", longWMinutes: null }
+  - name: filter-isnull-on-a-measure
+    op: list
+    entity: WeekShapes
+    filter: { longWMinutes: { isNull: true } }
+    expect:
+      - { programTitle: "Beta", weeks: "2", unlabelled: "1", labelledMinutes: "30", shortWeeks: "1",
+          midWeeks: "0", longWMinutes: null }

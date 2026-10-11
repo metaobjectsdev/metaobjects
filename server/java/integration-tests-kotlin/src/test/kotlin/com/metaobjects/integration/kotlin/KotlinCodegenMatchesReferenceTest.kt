@@ -1,17 +1,8 @@
 package com.metaobjects.integration.kotlin
 
 import com.metaobjects.generator.kotlin.KotlinExposedTableGenerator
-import com.metaobjects.integration.kotlin.tables.AssetActivityView
-import com.metaobjects.integration.kotlin.tables.FitnessTotalsFilledView
-import com.metaobjects.integration.kotlin.tables.FitnessTotalsView
-import com.metaobjects.integration.kotlin.tables.ProgramLongWeeksView
-import com.metaobjects.integration.kotlin.tables.ProgramMinutesView
-import com.metaobjects.integration.kotlin.tables.ProgramRosterView
-import com.metaobjects.integration.kotlin.tables.ProgramsByMonthView
-import com.metaobjects.integration.kotlin.tables.ProgramsByWeekView
-import com.metaobjects.integration.kotlin.tables.RecentProgramsView
+import com.metaobjects.integration.kotlin.tables.ReportViews
 import com.metaobjects.loader.MetaDataLoader
-import org.jetbrains.exposed.sql.Table
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.nio.file.Files
@@ -202,6 +193,132 @@ internal class KotlinCodegenMatchesReferenceTest {
             ),
             report = "v_fitness_totals_filled",
         ),
+        // Reports for the vocabulary the first nine do not reach (numeric, temporal, boolean/uuid/
+        // int-enum dimensions, multi-hop and self-reference paths, an empty scope).
+        "MeasurementStats" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("readings", families = setOf("long"), nullable = false),
+                ExpectedColumn("totalMassKg", families = setOf("double"), nullable = true),
+                ExpectedColumn("avgMassKg", families = setOf("double"), nullable = true),
+                ExpectedColumn("maxTempC", families = setOf("float"), nullable = true),
+                ExpectedColumn("minTempC", families = setOf("float"), nullable = true),
+                ExpectedColumn("totalPreciseKg", families = setOf("decimal"), nullable = true),
+                ExpectedColumn("avgPreciseKg", families = setOf("decimal"), nullable = true),
+                ExpectedColumn("maxPreciseKg", families = setOf("decimal"), nullable = true),
+                ExpectedColumn("heavyReadings", families = setOf("long"), nullable = false),
+            ),
+            report = "v_measurement_stats",
+        ),
+        "MeasurementStatsFilled" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("readings", families = setOf("long"), nullable = false),
+                ExpectedColumn("avgPreciseKgOrMinusOne", families = setOf("decimal"), nullable = false),
+                ExpectedColumn("maxPreciseKgOrZero", families = setOf("decimal"), nullable = false),
+            ),
+            report = "v_measurement_stats_filled",
+        ),
+        "AssetDays" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("recordedAtDay", families = setOf("date"), nullable = false),
+                ExpectedColumn("asOfDateMonth", families = setOf("date"), nullable = false),
+                ExpectedColumn("assets", families = setOf("long"), nullable = false),
+                ExpectedColumn("owners", families = setOf("long"), nullable = false),
+                ExpectedColumn("firstRecorded", families = setOf("instantWithTimeZone"), nullable = true),
+                ExpectedColumn("lastObserved", families = setOf("datetime"), nullable = true),
+                ExpectedColumn("lastAsOf", families = setOf("date"), nullable = true),
+            ),
+            report = "v_asset_days",
+        ),
+        "AllTypesBreakdown" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("flag", families = setOf("bool"), nullable = false),
+                ExpectedColumn("level", families = setOf("varchar", "enumerationByName"), nullable = false),
+                ExpectedColumn("legacyStatus", families = setOf("customEnumeration"), nullable = true),
+                ExpectedColumn("dateKey", families = setOf("date"), nullable = false),
+                ExpectedColumn("uuidKey", families = setOf("uuid"), nullable = false),
+                ExpectedColumn("allRows", families = setOf("long"), nullable = false),
+                ExpectedColumn("totalInts", families = setOf("long"), nullable = true),
+                ExpectedColumn("avgDec", families = setOf("decimal"), nullable = true),
+                ExpectedColumn("maxMoney", families = setOf("long"), nullable = true),
+                ExpectedColumn("minLong", families = setOf("long"), nullable = true),
+                ExpectedColumn("highRows", families = setOf("long"), nullable = false),
+            ),
+            report = "v_all_types_breakdown",
+        ),
+        "ProgramsOverTime" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("createdAtDay", families = setOf("date"), nullable = false),
+                ExpectedColumn("createdAtQuarter", families = setOf("date"), nullable = false),
+                ExpectedColumn("createdAtYear", families = setOf("date"), nullable = false),
+                ExpectedColumn("programs", families = setOf("long"), nullable = false),
+                ExpectedColumn("avgPrice", families = setOf("decimal"), nullable = true),
+                ExpectedColumn("cheapest", families = setOf("long"), nullable = true),
+                ExpectedColumn("priciest", families = setOf("long"), nullable = true),
+            ),
+            report = "v_programs_over_time",
+        ),
+        "LiveIntroPrograms" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("status", families = setOf("varchar", "enumerationByName"), nullable = false),
+                ExpectedColumn("programs", families = setOf("long"), nullable = false),
+                ExpectedColumn("notDrafts", families = setOf("long"), nullable = false),
+                ExpectedColumn("listValue", families = setOf("long"), nullable = true),
+            ),
+            report = "v_live_intro_programs",
+        ),
+        "ProgramsEmptyScope" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("programs", families = setOf("long"), nullable = false),
+                ExpectedColumn("avgPriceOrMinusOne", families = setOf("decimal"), nullable = false),
+            ),
+            report = "v_programs_empty_scope",
+        ),
+        "WeekShapes" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("programTitle", families = setOf("varchar"), nullable = true),
+                ExpectedColumn("weeks", families = setOf("long"), nullable = false),
+                ExpectedColumn("unlabelled", families = setOf("long"), nullable = false),
+                ExpectedColumn("labelledMinutes", families = setOf("long"), nullable = true),
+                ExpectedColumn("shortWeeks", families = setOf("long"), nullable = false),
+                ExpectedColumn("midWeeks", families = setOf("long"), nullable = false),
+                ExpectedColumn("longWMinutes", families = setOf("long"), nullable = true),
+            ),
+            report = "v_week_shapes",
+        ),
+        "SessionsByProgram" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("programTitle", families = setOf("varchar"), nullable = true),
+                ExpectedColumn("weekKey", families = setOf("long"), nullable = true),
+                ExpectedColumn("sessions", families = setOf("long"), nullable = false),
+                ExpectedColumn("sessionMinutes", families = setOf("long"), nullable = true),
+            ),
+            report = "v_sessions_by_program",
+        ),
+        "ProgramSessions" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("programKey", families = setOf("long"), nullable = false),
+                ExpectedColumn("programTitle", families = setOf("varchar"), nullable = false),
+                ExpectedColumn("sessions", families = setOf("long"), nullable = false),
+                ExpectedColumn("sessionMinutes", families = setOf("long"), nullable = true),
+                ExpectedColumn("sessionMinutesOrZero", families = setOf("long"), nullable = false),
+            ),
+            report = "v_program_sessions",
+        ),
+        "NodesByParent" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("parentLabel", families = setOf("varchar"), nullable = true),
+                ExpectedColumn("nodes", families = setOf("long"), nullable = false),
+            ),
+            report = "v_nodes_by_parent",
+        ),
+        "AuthsByKind" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("kind", families = setOf("varchar", "enumerationByName"), nullable = true),
+                ExpectedColumn("auths", families = setOf("long"), nullable = false),
+                ExpectedColumn("distinctRefs", families = setOf("long"), nullable = false),
+            ),
+            report = "v_auths_by_kind",
+        ),
     )
 
     @Test
@@ -237,17 +354,9 @@ internal class KotlinCodegenMatchesReferenceTest {
      */
     @Test
     fun `the hand-written report reference tables match the same expectations`() {
-        val references: Map<String, Table> = mapOf(
-            "ProgramMinutes" to ProgramMinutesView,
-            "FitnessTotals" to FitnessTotalsView,
-            "ProgramsByMonth" to ProgramsByMonthView,
-            "ProgramsByWeek" to ProgramsByWeekView,
-            "RecentPrograms" to RecentProgramsView,
-            "AssetActivity" to AssetActivityView,
-            "ProgramRoster" to ProgramRosterView,
-            "ProgramLongWeeks" to ProgramLongWeeksView,
-            "FitnessTotalsFilled" to FitnessTotalsFilledView,
-        )
+        // The SAME registry the persistence lane's `tableFor` consults — one name list, two
+        // consumers, so the lanes cannot silently cover different report sets.
+        val references = ReportViews.BY_NAME
         assertEquals(expectations.filterValues { it.report != null }.keys, references.keys)
         for ((report, table) in references) {
             val expected = expectations.getValue(report)

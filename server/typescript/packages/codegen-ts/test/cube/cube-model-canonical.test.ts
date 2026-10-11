@@ -12,15 +12,28 @@ import {
 } from "../../scripts/gen-cube-model-canonical.js";
 
 describe("the cube-model canonical golden", () => {
-  test("is Table H's three cubes, the two @spine reports' facts cubes and views, and nothing else", () => {
+  test("is Table H's three cubes, the cubes the other canonical entities and the three @spine reports add, and nothing else", () => {
     expect([...readTree(CANONICAL_EXPECTED_DIR).keys()]).toEqual([
+      "model/cubes/AllTypes.yml",
       "model/cubes/Asset.yml",
+      "model/cubes/Auth.yml",
+      "model/cubes/BridgeAuth.yml",
+      "model/cubes/CopayAuth.yml",
+      "model/cubes/Measurement.yml",
+      "model/cubes/Node.yml",
+      "model/cubes/Node_fkParent.yml",
+      "model/cubes/PriorAuthAuth.yml",
       "model/cubes/Program.yml",
       "model/cubes/ProgramLongWeeksFacts.yml",
       "model/cubes/ProgramRosterFacts.yml",
+      "model/cubes/ProgramSessionsFacts.yml",
+      "model/cubes/ProgramSessions_fkWeek.yml",
+      "model/cubes/ReferralAuth.yml",
+      "model/cubes/Session.yml",
       "model/cubes/Week.yml",
       "model/views/ProgramLongWeeks.yml",
       "model/views/ProgramRoster.yml",
+      "model/views/ProgramSessions.yml",
     ]);
   });
 
