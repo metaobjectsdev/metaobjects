@@ -60,6 +60,13 @@ generator catalog and the Atlas evaluation are 1.2 work.
 
 ### Added
 
+- **Agent skills: a cost test for owned generators.** The `metaobjects-codegen` skill now says when not to write a generator: only when generator plus
+  output is smaller than the hand-written code it replaces (generator code counted as
+  hand-written cost), more instances of the shape are expected, or drift protection is the
+  point; a general-shape generator belongs in the library. The `metaobjects-audit` skill applies
+  the same test: a one-off hand-written layer that fails it is reported as acceptable, and any
+  generated-share figure must carry the net hand-written line change and is never a target.
+  Documentation only; no code or generator changed.
 - **TypeScript: the `cube-model` reference generator (FR-044 Plan 4).** `cubeModel()` writes the
   reporting vocabulary as Cube data-model files, `model/cubes/<Cube>.yml`: a cube for each
   table-backed entity that declares dimensions, measures or segments, a join for each to-one
@@ -356,14 +363,6 @@ Each one changes generated code on the next `gen`, or generated docs on the next
 or Python api-docs build, as its entry says. A drift gate that covers that output reports it
 until you regenerate.
 
-- **Agent skills: a cost test for owned generators.** The
-  `metaobjects-codegen` skill now says when not to write a generator: only when generator plus
-  output is smaller than the hand-written code it replaces (generator code counted as
-  hand-written cost), more instances of the shape are expected, or drift protection is the
-  point; a general-shape generator belongs in the library. The `metaobjects-audit` skill applies
-  the same test: a one-off hand-written layer that fails it is reported as acceptable, and any
-  generated-share figure must carry the net hand-written line change and is never a target.
-  Documentation only; no code or generator changed.
 - **TypeScript and Python: a read-only projection with no declared identity loses its item
   surface, even when it has a field named `id`.** It no longer gets `GET /{id}` or the three
   item-verb refusals, its by-id query (`find<Name>ById` in TypeScript, `find_by_id` on the Python
