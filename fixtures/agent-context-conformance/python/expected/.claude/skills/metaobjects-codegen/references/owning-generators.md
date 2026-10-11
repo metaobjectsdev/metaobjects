@@ -52,7 +52,7 @@ project misses fixes it would have received by upgrading.
 |---|---|
 | A stock generator's output, unchanged | Wire it from its package and copy nothing. TypeScript: the import line on its `meta gen --list` row, for example `import { entityFile } from "@metaobjectsdev/codegen-ts/generators";`. Other ports: select it by its stable name. |
 | To change what a stock generator emits | Eject it, edit the copy, and point the config at the copy. On TypeScript the factory keeps its name, so that is one import line. |
-| To stop carrying a copy you never changed | `meta eject --list` (TypeScript) or `gen --list` (other ports) marks each owned copy identical to the reference or differing from it. One with no lines of your own is unmodified. On TypeScript, replace its local import with the package import, delete the file, run `meta gen` and review the diff. |
+| To stop carrying a copy you never changed | `meta eject --list` (TypeScript) or `gen --list` (other ports) marks each owned copy identical to the reference or differing from it. One with no lines of your own is unmodified. On TypeScript, replace its local import with the package import, delete the file, run `meta gen` and review the diff. `entity`, `routes` and `routes-hono` also own the HTTP adapter under `codegen/runtime/`: treat one as unmodified only when `meta eject --list` marks the generator file and every runtime file it reaches identical. If a runtime file differs, your change lives there, so keep the owned generator, which is what points the output at that adapter. |
 
 A generator you import is still a reference helper: its output can change when you upgrade,
 and `verify --codegen` reports that as drift until you regenerate. If output has to hold

@@ -53,20 +53,18 @@ Two config files, by design:
 `codegen/generators/` with `generators: []` (nothing is generated until you choose —
 ADR-0034 Amendment 2), and the `.gitignore` entries for `.metaobjects/.gen-state/`.
 Choose from the catalog with `meta gen --list --probe`, which reports how many files
-each generator would emit for your model, then take the ones you want:
-`meta eject entity queries routes barrel` copies each reference template into
-`codegen/generators/` (ADR-0034 scaffold-and-own — yours to edit) and prints the import,
-the entry to wire, what to install and the config keys it reads. `meta gen` runs those
-local copies, not the package's.
+each generator would emit for your model and prints the import line that runs it as
+shipped, beside what to install and the config keys it reads. Import the ones you want
+from their package: nothing is copied, and an upgrade is how their fixes arrive. To change
+what one emits, `meta eject <name>` copies its reference template into
+`codegen/generators/` (ADR-0034 scaffold-and-own — yours to edit) and prints the local
+import to swap in; `meta gen` then runs that copy, not the package's.
 
 ```ts
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators, copied in by `meta eject` — yours to edit (ADR-0034).
-import { entityFile } from "./codegen/generators/entity.js";
-import { queriesFile } from "./codegen/generators/queries.js";
-import { routesFile } from "./codegen/generators/routes.js";
-import { barrel } from "./codegen/generators/barrel.js";
+// Run as shipped. Eject one (`meta eject routes`) only to change what it emits.
+import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   outDir: "src/generated",
@@ -83,7 +81,7 @@ export default defineConfig({
 ### Declarative template-codegen (Mustache)
 
 Owning a generator is one of **two** authoring paths, and TypeScript has both. A
-generator can be **programmatic** — the scaffolded `codegen/generators/*.ts` above,
+generator can be **programmatic** — a `codegen/generators/*.ts` file you ejected or wrote,
 composing this package's `render*` functions — or **declarative**: a Mustache template
 plus a scope, with no generator code at all.
 
@@ -102,7 +100,7 @@ declared anywhere else would have its output reported as drift):
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
 import { templateGenerator } from "@metaobjectsdev/codegen-ts";
-import { entityFile } from "./codegen/generators/entity.js";
+import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   outDir: "src/generated",
@@ -579,15 +577,10 @@ difference is the framework adapter the emitted code talks to.
 ```ts
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
-import { entityFile } from "./codegen/generators/entity.js";
-import { queriesFile } from "./codegen/generators/queries.js";
-import { barrel } from "./codegen/generators/barrel.js";
-// Hono routes are NOT scaffolded eagerly by `meta init` (the default emit targets
-// Fastify) but have the same reference template + ownership route as entity/queries/
-// routes/barrel — take it with `meta eject routes-hono`, which copies it to
-// codegen/generators/routes-hono.ts.
-import { routesFileHono } from "./codegen/generators/routes-hono.js";
+// Run as shipped, imported from the package. `routesFileHono` has the same reference
+// template and ownership route as the others: `meta eject routes-hono` copies it to
+// codegen/generators/routes-hono.ts when you need to change what it emits.
+import { entityFile, queriesFile, routesFileHono, barrel } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   outDir: "src/generated",

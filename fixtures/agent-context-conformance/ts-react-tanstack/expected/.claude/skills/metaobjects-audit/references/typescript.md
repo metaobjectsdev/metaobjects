@@ -95,6 +95,18 @@ its local import with the package import and deleting the file, then `meta gen` 
 review of the diff. A copy with lines of its own is an intentional customization. Check
 only how far behind it is.
 
+**`entity`, `routes` and `routes-hono` own more than the generator file.** Ejecting one
+also copies the HTTP adapter its output imports into `codegen/runtime/`, and a route fix
+is often made there with the generator file left untouched. The same listing marks each
+copied runtime file `identical to the package`, `DIFFERS` or `not in the package`. For
+these three, the copy is unmodified only when the generator file AND every
+`codegen/runtime/` file it reaches are marked identical. If any of those files differs or
+is not in the package, the copy carries a customization: it is **not a finding**, and do
+not recommend the package import. The packaged generator imports
+`@metaobjectsdev/runtime-ts`, so swapping it in would leave the edited adapter unused with
+nothing reporting it. The owned generator is what points the output at that adapter (its
+`runtimeImport` option), so it stays.
+
 **Do NOT flag the subpath itself.** `@metaobjectsdev/codegen-ts/generators` is the supported
 home of every generator factory: the entity tier (`entityFile`, `queriesFile`, `routesFile`,
 `routesFileHono`, `namesFile`, `barrel`), the prompt/output tier (`promptRender`,

@@ -127,11 +127,10 @@ answer like this" fragment you splice into the prompt text so the model returns 
 shape the parser above expects:
 
 ```ts
-// metaobjects.config.ts — the same owned entity trio as above, plus outputPrompt
-import { entityFile } from "./codegen/generators/entity.js";
-import { queriesFile } from "./codegen/generators/queries.js";
-import { barrel } from "./codegen/generators/barrel.js";
-import { promptRender, outputParser, outputPrompt } from "@metaobjectsdev/codegen-ts/generators";
+// metaobjects.config.ts — the same entity trio as above, plus outputPrompt
+import {
+  entityFile, queriesFile, barrel, promptRender, outputParser, outputPrompt,
+} from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   outDir: "src/generated",

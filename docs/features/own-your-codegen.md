@@ -96,6 +96,17 @@ falls behind the reference. To drop one:
    `DIFFERS` with `0 line(s) of your own`: it is only behind. A copy with lines of your
    own is a customization; keep it, or check what the lines are with
    `diff -u node_modules/@metaobjectsdev/codegen-ts/src/reference/<name>.ts codegen/generators/<name>.ts`.
+
+   For `entity`, `routes` and `routes-hono`, check the adapter too. Ejecting one also
+   copied the HTTP adapter into `codegen/runtime/`, and a route fix is often made there
+   with the generator file left untouched. The same listing marks each of those files
+   `identical`, `DIFFERS` or `not in the package`. The copy is unmodified only when the
+   generator file and every `codegen/runtime/` file it reaches
+   ([the table below](#what-meta-eject-hands-over-and-what-stays-core-typescript)) are
+   marked identical. If one differs, the copy carries your change: keep the owned
+   generator, because it is what points the generated code at your adapter (its
+   `runtimeImport` option), and the packaged generator always imports
+   `@metaobjectsdev/runtime-ts`. Stop here for that generator.
 2. In `metaobjects.config.ts`, replace the local import with the package one. The factory
    name does not change:
 
@@ -112,9 +123,10 @@ What the diff in step 4 holds:
 - **A copy that matched the reference** regenerates nothing for `queries` and `barrel`.
 - **A copy that was behind** regenerates the changes it was missing. That is the reference
   catching up, so read it the way you would read an upgrade.
-- **`entity` and `routes` also move one import.** An ejected `entity` or `routes` points
-  its output at the adapter copy in `codegen/runtime/`, and the packaged generator imports
-  `@metaobjectsdev/runtime-ts`. So those import lines change, and the project needs
+- **`entity`, `routes` and `routes-hono` also move one import.** An ejected `entity`,
+  `routes` or `routes-hono` points its output at the adapter copy in `codegen/runtime/`,
+  and the packaged generator imports `@metaobjectsdev/runtime-ts`. So those import lines
+  change, and the project needs
   `@metaobjectsdev/runtime-ts` installed again (`meta gen --list --format json` gives the
   range under `install.runtime`). A copy wired with
   `runtimeImport: "@metaobjectsdev/runtime-ts"` already imported the package and moves

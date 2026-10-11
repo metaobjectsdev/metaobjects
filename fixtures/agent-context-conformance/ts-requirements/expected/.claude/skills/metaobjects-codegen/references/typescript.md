@@ -64,16 +64,15 @@ Codegen is wired in a type-checked TS config at the project root. `defineConfig`
 comes from `@metaobjectsdev/cli`; the generators come from their packages.
 
 `meta init` scaffolds this file with **`generators: []`** — nothing is generated until
-you choose it. Each import below appears once you `meta eject` that generator, which
-prints the exact line to add.
+you choose it. Each import below runs a generator as shipped; `meta gen --list` prints
+the exact line for every generator. Only a generator you are going to change is ejected:
+`meta eject <name>` copies it into `codegen/generators/` and prints the local import to
+swap in for the package one.
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators — copied in by `meta eject` (ADR-0034 scaffold-and-own).
-import { entityFile } from "./codegen/generators/entity";
-import { queriesFile } from "./codegen/generators/queries";
-import { routesFile } from "./codegen/generators/routes";
-import { barrel } from "./codegen/generators/barrel";
+// Run as shipped: nothing copied, fixes arrive by upgrading the package.
+import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { tanstackQuery, tanstackGrid } from "@metaobjectsdev/codegen-ts-tanstack";
 

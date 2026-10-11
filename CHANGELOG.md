@@ -26,9 +26,11 @@ here.**
     `meta eject --list` and `meta verify --codegen` behave as before.
   - **To drop a copy you never changed**, replace its local import with the package import,
     delete the file and run `meta gen`. `queries` and `barrel` regenerate nothing if the
-    copy matched the reference. `entity` and `routes` also move their HTTP-adapter import
-    from `codegen/runtime/` back to `@metaobjectsdev/runtime-ts`, which then has to be
-    installed again. Steps and the diff to expect:
+    copy matched the reference. `entity`, `routes` and `routes-hono` also move their
+    HTTP-adapter import from `codegen/runtime/` back to `@metaobjectsdev/runtime-ts`, which
+    then has to be installed again. For those three, a copy is unchanged only when
+    `meta eject --list` also marks every `codegen/runtime/` file it reaches identical: if
+    you edited the adapter, keep the owned generator. Steps and the diff to expect:
     [own-your-codegen](docs/features/own-your-codegen.md#replacing-an-unmodified-owned-copy-with-the-import).
   - **An imported generator is still a reference helper.** Its output is not covered by the
     compatibility policy and can change in a MINOR; `meta verify --codegen` reports that
