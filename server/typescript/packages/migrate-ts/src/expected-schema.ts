@@ -121,6 +121,8 @@ export interface ExpectedViewInput {
   schema?: string;
   sql?: string;
   dependsOn?: readonly string[];
+  /** The body is author-written SQL (`@sql`). See `ViewDescriptor.opaque`. */
+  opaque?: true;
   /**
    * `resolutionKey()` of the object that declared this view — its PROVENANCE.
    * Recorded in the provenance map and deliberately NEVER copied onto the
@@ -379,6 +381,7 @@ export function buildExpectedSchemaWithProvenance(
       ...(v.schema !== undefined ? { schema: v.schema } : {}),
       ...(v.sql !== undefined ? { sql: v.sql, fingerprint: viewFingerprint(v.sql) } : {}),
       ...(v.dependsOn !== undefined ? { dependsOn: v.dependsOn } : {}),
+      ...(v.opaque === true ? { opaque: true as const } : {}),
     };
     // The declaring FQN goes to the provenance map ONLY — never onto the descriptor,
     // which is what the committed snapshot serializes (see ExpectedViewInput.fqn).

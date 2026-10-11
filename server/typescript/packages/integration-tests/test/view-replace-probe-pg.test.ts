@@ -509,10 +509,11 @@ describe("an @sql body that reads every column (postgres)", () => {
   }, 60_000);
 });
 
-// An `@sql` view's tracked tables are its anchors, not the tables its body joins. The replace
-// runs after the plan's table changes, with the live view standing while they run, and
-// Postgres refuses to retype or drop what a standing view reads.
-describe("an @sql body that joins a table the view does not track (postgres)", () => {
+// An `@sql` view's tracked tables are its anchors, not the tables its body joins, and the
+// body is not parsed. The replace runs after the plan's table changes, with the live view
+// standing while they run, and Postgres refuses to retype or drop what a standing view reads.
+// So an `@sql` body is not replaced in place beside a change to any table's columns.
+describe("an @sql body in a plan that changes a table's columns (postgres)", () => {
   const badge = (points?: "int" | "long"): unknown => ({
     "object.entity": { name: "Badge", children: [
       { "source.rdb": { "@table": "badges" } },
@@ -572,15 +573,74 @@ describe("an @sql body that joins a table the view does not track (postgres)", (
     expect((await plan(after.expected)).changes).toEqual([]);
   }, 60_000);
 
-  test("a body change beside a change to a table it does not read is replaced in place", async () => {
-    await migrate((await model(scoredView("0::bigint"), SUMMARY_VIEW, [], BEFORE.others)).expected);
+  // A derived body lists every table it reads, so a change to another table cannot reach it.
+  test("a derived view that changes beside the same table change is replaced in place", async () => {
+    const flag = (field: string) => summary(computed("flag", "boolean", { op: "isNull", arg: { field } }));
+    await migrate((await model(flag("nickname"), SUMMARY_VIEW, [], BEFORE.others)).expected);
     const oid = await viewOid(SUMMARY_VIEW);
-    const after = await model(scoredView("1::bigint"), SUMMARY_VIEW, [], [badge("long")]);
+    const after = await model(flag("notes"), SUMMARY_VIEW, [], [badge("long")]);
 
     const changed = await plan(after.expected);
     expect(kindsOf(changed.changes)).toEqual(["change-column-type", "replace-view"]);
     await apply(changed.changes);
     expect(await viewOid(SUMMARY_VIEW)).toBe(oid);
+    expect((await plan(after.expected)).changes).toEqual([]);
+  }, 60_000);
+});
+
+// `SELECT *` over another view is re-expanded when the view is replaced. The probe sees that
+// other view as it stands; once the same plan has appended a column to it, the new column
+// lands in the middle of this view's column list.
+describe("an @sql body that reads every column of another view (postgres)", () => {
+  const TOP_VIEW = "v_program_top";
+  const top = (extra: number): unknown => ({
+    "object.projection": { name: "ProgramTop", children: [
+      { "source.rdb": { "@kind": "view", "@view": TOP_VIEW, "@sql": `SELECT b.*, ${extra} AS "extra" FROM "${SUMMARY_VIEW}" b` } },
+      { "identity.primary": { name: "id", extends: "Program.id", "@fields": "id" } },
+      { "field.long": { name: "id", extends: "Program.id" } },
+    ] },
+  });
+  const IS_NAMED = computed("isNamed", "boolean", { op: "isNotNull", arg: { field: "nickname" } });
+  const replace = (view: ViewDescriptor, db: Db) =>
+    sql.raw(`CREATE OR REPLACE VIEW "${view.name}" AS ${view.sql}`).execute(db);
+
+  test("a body change beside a column appended to that view is dropped and created, and applies", async () => {
+    await migrate((await model(top(1), TOP_VIEW, [], [summary(COALESCE_NICKNAME)])).expected);
+    const baseOid = await viewOid(SUMMARY_VIEW);
+    const after = await model(top(2), TOP_VIEW, [], [summary(COALESCE_NICKNAME, IS_NAMED)]);
+    const base = after.expected.views.find((v) => v.name === SUMMARY_VIEW)!;
+
+    // Postgres accepts the replace today, and refuses it once the other view has its column.
+    const rollback = new Error("rollback");
+    await expect(k.transaction().execute(async (trx) => {
+      await replace(after.view, trx);
+      throw rollback;
+    })).rejects.toBe(rollback);
+    await expect(k.transaction().execute(async (trx) => {
+      await replace(base, trx);
+      await replace(after.view, trx);
+    })).rejects.toThrow(/cannot change name of view column "extra" to "isNamed"/);
+
+    const changed = await plan(after.expected);
+    expect(changed.blocked).toEqual([]);
+    expect(kindsOf(changed.changes)).toEqual(["create-view", "drop-view", "replace-view"]);
+    await apply(changed.changes);
+
+    expect(await viewOid(SUMMARY_VIEW)).toBe(baseOid);
+    expect(Object.keys(await columnTypes(TOP_VIEW))).toEqual(["id", "displayName", "isNamed", "extra"]);
+    expect((await plan(after.expected)).changes).toEqual([]);
+  }, 60_000);
+
+  test("a body change with no other view changing is replaced in place", async () => {
+    const before = await model(top(1), TOP_VIEW, [], [summary(COALESCE_NICKNAME)]);
+    await migrate(before.expected);
+    const oid = await viewOid(TOP_VIEW);
+    const after = await model(top(2), TOP_VIEW, [], [summary(COALESCE_NICKNAME)]);
+
+    const changed = await plan(after.expected);
+    expect(kindsOf(changed.changes)).toEqual(["replace-view"]);
+    await apply(changed.changes);
+    expect(await viewOid(TOP_VIEW)).toBe(oid);
     expect((await plan(after.expected)).changes).toEqual([]);
   }, 60_000);
 });

@@ -966,9 +966,9 @@ async function diffViews(
  * about what depends on the view. This holds for a managed change and for an adoption,
  * and for a derived body and an opaque `@sql` one alike.
  *
- * The probe answers for the schema as it stands, and the replace runs after this plan's
- * table changes. When one of those changes would undo the answer, or be refused while the
- * live view stands ({@link tableChangesPrecludeReplace}), the probe is not asked.
+ * The probe answers for the schema as it stands, and the replace runs after the rest of
+ * this plan. When the plan may change what the body reads
+ * ({@link planMayChangeWhatBodyReads}), the answer would not hold and the probe is not asked.
  */
 async function pushViewUpdate(
   expected: ViewDescriptor, actual: ViewDescriptor, changes: Change[],
@@ -984,7 +984,7 @@ async function pushViewUpdate(
   const reason: ViewChangeReason = unmanaged
     ? { kind: "unfingerprinted" }
     : { kind: "definition", compared: "fingerprint" };
-  const evidence = probe === undefined || tableChangesPrecludeReplace(expected, actual, changes)
+  const evidence = probe === undefined || planMayChangeWhatBodyReads(expected, changes)
     ? undefined
     : await probe(expected, actual);
   if (evidence !== undefined && viewReplaceIsLegal(evidence.expected, evidence.live)) {
@@ -1135,37 +1135,35 @@ function viewReadsAnyColumn(sql: string, cols: Iterable<string>, readsEverything
 }
 
 /**
- * Does a table change already in this plan rule out replacing the view in place? A replace
- * runs after the plan's table changes and leaves the live view standing while they run.
- * Pass 2 has run by the time a view is planned, so `changes` holds them.
- *
- *   - A body that reads columns it does not name has a different column list once the plan
- *     adds a column, so what the probe saw would not hold.
- *   - Postgres refuses a type change, a drop or a rename of a column a standing view reads,
- *     and a drop of a table it reads. For a table in `dependsOn`, Pass 2c turns the replace
- *     into the pair. An `@sql` body's `dependsOn` leaves out the tables the body joins
- *     (ADR-0043), and a dropped table is in no expected view's, so for a table outside
- *     `dependsOn` the two bodies are the evidence: each names the tables and columns it
- *     reads, the live one as Postgres deparsed it.
+ * Postgres: every table change that can alter a column some view body reads. Only Postgres
+ * has a probe, so the kinds that rebuild a table on SQLite and D1 are not listed.
  */
-function tableChangesPrecludeReplace(
-  expected: ViewDescriptor, actual: ViewDescriptor, changes: readonly Change[],
-): boolean {
-  const bodies = [expected.sql, actual.sql]
-    .filter((sql): sql is string => sql !== undefined)
-    .map((sql) => ({ sql, readsEverything: viewReadsEveryColumn(sql) }));
-  const columnsMayGrow = expected.sql !== undefined && viewReadsEveryColumn(expected.sql);
-  const tracked = expected.dependsOn ?? [];
-  return changes.some((c) => {
-    if (c.kind === "add-column") return columnsMayGrow;
-    if (c.kind !== "drop-table" && !VIEW_RECREATE_TRIGGERS_PG.has(c.kind)) return false;
-    const table = (c as { table?: string }).table;
-    if (typeof table !== "string" || tracked.includes(table)) return false;
-    const cols = changedColumns(c);
-    return bodies.some(({ sql, readsEverything }) =>
-      columnIdentifierRe(table).test(sql)
-      && (cols === undefined || viewReadsAnyColumn(sql, cols, readsEverything)));
-  });
+const TABLE_COLUMN_CHANGES = new Set<Change["kind"]>([
+  ...VIEW_RECREATE_TRIGGERS_UNKNOWN_DIALECT, "add-column", "drop-table",
+]);
+const VIEW_CHANGES = new Set<Change["kind"]>(["create-view", "replace-view", "drop-view"]);
+
+/**
+ * May the rest of this plan change what the view's body reads?
+ *
+ * The invariant: a probe's answer is trusted only when the plan cannot change what the
+ * probed body reads. The probe sees the schema as it stands. The replace runs after the
+ * plan's table changes and after the view changes planned ahead of it, and the live view
+ * stands while they run. `changes` holds both by the time a view is planned.
+ *
+ *   - A derived body names every column it reads and lists every table it reads in
+ *     `dependsOn`. Pass 2c turns its replace into the pair when one of those tables
+ *     changes, and nothing else in the plan reaches it: the probe decides.
+ *   - An opaque `@sql` body may read a table `dependsOn` does not list (ADR-0043), so a
+ *     change to any table's columns may be a change to what it reads.
+ *   - A body that reads columns it does not name (`SELECT *`, `NATURAL JOIN`) takes its
+ *     column list from what it reads, so a change to any table's columns or to any other
+ *     view may change that list.
+ */
+function planMayChangeWhatBodyReads(expected: ViewDescriptor, changes: readonly Change[]): boolean {
+  const unnamedColumns = expected.sql !== undefined && viewReadsEveryColumn(expected.sql);
+  if (!unnamedColumns && expected.opaque !== true) return false;
+  return changes.some((c) => TABLE_COLUMN_CHANGES.has(c.kind) || (unnamedColumns && VIEW_CHANGES.has(c.kind)));
 }
 
 function recreateViewsDependingOnChangedTables(

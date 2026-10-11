@@ -56,6 +56,11 @@ export interface ExpectedView {
    * so the view must be dropped before and recreated after.
    */
   dependsOn: string[];
+  /**
+   * The body is the author's `@sql`, verbatim. It may read tables `dependsOn` does not
+   * list (ADR-0043), so migrate-ts does not replace it in place beside a table change.
+   */
+  opaque?: true;
 }
 
 export interface BuildProjectionViewsOptions {
@@ -308,6 +313,7 @@ function emitSqlView(
     name: source.physicalName, // FR-016 four-step physical name
     sql: source.sqlBody!, // verbatim — never parsed, never re-wrapped
     dependsOn,
+    opaque: true,
     fqn: host.resolutionKey(),
     ...(schema !== undefined ? { schema } : {}),
   });

@@ -454,7 +454,7 @@ describe("buildReportViews — view-backed reports (FR-044 Plan 2, Table A)", ()
     });
     const body = "SELECT COUNT(id) AS users FROM users WHERE kind = 'ADMIN'";
     const sql = buildReportViews(await loadModel(tph({ "@kind": "view", "@view": "v_admins", "@sql": body })), PG);
-    expect(sql.map((v) => [v.name, v.sql, v.dependsOn])).toEqual([["v_admins", body, ["users"]]]);
+    expect(sql.map((v) => [v.name, v.sql, v.dependsOn, v.opaque])).toEqual([["v_admins", body, ["users"], true]]);
     // An @unmanaged view is likewise the author's: nothing is created and nothing is refused.
     expect(buildReportViews(await loadModel(tph({ "@kind": "view", "@view": "v_admins", "@unmanaged": true })), PG)).toEqual([]);
     // The derived path is the one that refuses.

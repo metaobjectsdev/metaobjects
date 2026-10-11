@@ -1002,11 +1002,12 @@ until you regenerate.
     drop and a create: an offline `meta migrate` (the default, which diffs the committed
     snapshot and has no database to ask), a role with no `TEMPORARY` privilege, a new
     definition that does not compile yet because it reads a column the same migration adds,
-    an `@sql` body with `SELECT *` or `NATURAL JOIN` in a migration that also adds a column (its
-    column list changes once the column exists, so an answer taken before would not hold), or
-    an `@sql` body that joins a table the view does not track in a migration that also retypes,
-    drops or renames a column of that table the body reads, or drops that table (Postgres
-    refuses those changes while the old view stands).
+    an `@sql` body in a migration that also changes any table's columns (the body is not
+    parsed, so the tables it joins are unknown, and Postgres refuses to retype or drop what a
+    standing view reads), or a body that reads columns it does not name (`SELECT *`,
+    `NATURAL JOIN`) in a migration that also alters any table or any other view (its column
+    list comes from what it reads, so an answer taken before would not hold). A derived
+    projection or report view lists every table it reads and is not affected.
     Before, an offline plan replaced a view in place when its recorded columns looked compatible.
   - **A drop and a create discards the privileges granted on the view.** `DROP VIEW` removes the
     view's grants with it, and `meta migrate` writes no `GRANT`, so a role that had `SELECT` on a

@@ -35,6 +35,15 @@ describe("serialize with checks + snapshot format version", () => {
     expect(parsed.tables[0]?.checks).toEqual([]);
   });
 
+  // The committed snapshot is a byte contract: `opaque` marks an `@sql` body for a live plan
+  // only, and a field written to the file would owe a format-version bump.
+  test("a view's opaque marker is not written", () => {
+    const view = { name: "v_orders", sql: "SELECT id FROM orders", dependsOn: ["orders"] };
+    const withMarker: SchemaSnapshot = { ...snap(), views: [{ ...view, opaque: true }] };
+    expect(serializeSnapshot(withMarker)).toBe(serializeSnapshot({ ...snap(), views: [view] }));
+    expect(withMarker.views[0]?.opaque).toBe(true);
+  });
+
   // Releases before 1.1.0 wrote each view's guessed column types into a v3 snapshot. That
   // file must keep loading, and the retired field must not be written back.
   test("a v3 snapshot that records a view's columns still loads, without them", () => {

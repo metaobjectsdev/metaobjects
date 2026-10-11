@@ -32,7 +32,10 @@ function sortByName<T extends { name: string }>(arr: readonly T[]): T[] {
   return [...arr].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
-/** Sort arrays by name so serialization is order-independent. */
+/**
+ * Sort arrays by name so serialization is order-independent, and leave out a view's
+ * `opaque` marker, which is not part of the on-disk format.
+ */
 function canonicalize(s: SchemaSnapshot): SchemaSnapshot {
   return {
     tables: sortByName(s.tables).map((t) => ({
@@ -42,7 +45,11 @@ function canonicalize(s: SchemaSnapshot): SchemaSnapshot {
       foreignKeys: sortByName(t.foreignKeys),
       checks: sortByName(t.checks ?? []),
     })),
-    views: sortByName(s.views),
+    views: sortByName(s.views).map((v) => {
+      const written = { ...v };
+      delete written.opaque;
+      return written;
+    }),
     ...(s.meta ? { meta: s.meta } : {}),
   };
 }

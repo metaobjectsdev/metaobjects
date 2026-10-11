@@ -436,14 +436,15 @@ and a `CREATE VIEW`:
 - a role that may not create a temporary view (no `TEMPORARY` privilege on the database);
 - a new definition that does not compile against the schema as it stands, because it reads a
   column the same migration adds;
-- an `@sql` body that reads columns it does not name (`SELECT *`, `NATURAL JOIN`) in a
-  migration that also adds a column. The probe sees the schema before the column exists, and
-  the body's column list changes once it does, so the answer would not hold;
-- an `@sql` body that joins a table the view does not track (any table other than its own
-  table, its `extends` anchors or a report's `@from` table), in a migration that also changes
-  the type of, drops or renames a column of that table that the body reads, or drops that
-  table. A replace would leave the old view standing while the table changes, and Postgres
-  refuses to change what a view reads.
+- an `@sql` body, in a migration that also changes any table's columns (adds, drops, renames
+  or retypes a column, changes its nullability or default, or drops a table). `meta migrate`
+  does not parse the body, so it cannot tell which tables the body joins. The probe sees the
+  schema before those changes, the replace runs after them, and Postgres refuses to retype or
+  drop what a standing view reads. A derived projection or report view is not affected: it
+  lists every table it reads;
+- a body that reads columns it does not name (`SELECT *`, `NATURAL JOIN`), in a migration
+  that also alters any table or any other view. Its column list comes from what it reads, so
+  an answer taken before the change would not hold.
 
 A drop and a create of the same view needs no `--allow`. It has two costs a replace does not:
 

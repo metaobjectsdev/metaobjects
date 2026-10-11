@@ -174,77 +174,114 @@ describe("the planner replaces a view only on the probe's evidence", () => {
     });
   });
 
-  // The replace runs after the plan's table changes and leaves the live view standing while
-  // they run. Postgres refuses to retype or drop a column, or drop a table, that a standing
-  // view reads (https://www.postgresql.org/docs/current/sql-altertable.html, DROP COLUMN and
-  // SET DATA TYPE; sql-droptable.html, RESTRICT). Pass 2c covers a table in `dependsOn`; an
-  // `@sql` body joins tables its `dependsOn` does not list.
-  describe("a body that reads a table outside dependsOn, in a plan that changes that table", () => {
+  // The probe sees the schema before the plan runs; the replace runs after the plan's table
+  // changes. Postgres refuses to retype or drop a column, or drop a table, that a standing
+  // view reads (https://www.postgresql.org/docs/current/sql-altertable.html, SET DATA TYPE
+  // and DROP COLUMN; sql-droptable.html, RESTRICT). An `@sql` body is not parsed and may join
+  // a table its `dependsOn` does not list, so any table's column change may be one it reads.
+  describe("an opaque @sql body, in a plan that changes a table's columns", () => {
     type Columns = SchemaSnapshot["tables"][number]["columns"];
     const POINTS: Columns[number] = { name: "points", sqlType: { kind: "integer", bits: 32 }, nullable: false };
+    const WIDE_POINTS: Columns[number] = { ...POINTS, sqlType: { kind: "integer", bits: 64 } };
     const NOTE: Columns[number] = { name: "note", sqlType: { kind: "text" }, nullable: true };
-    const withScores = (views: ViewDescriptor[], columns?: Columns): SchemaSnapshot => {
+    const withScores = (views: ViewDescriptor[], columns?: readonly Columns[number][]): SchemaSnapshot => {
       const s = snap(views);
       if (columns === undefined) return s;
-      return { ...s, tables: [...s.tables, { name: "scores", columns, indexes: [], foreignKeys: [], primaryKey: [], checks: [] }] };
+      return { ...s, tables: [...s.tables, { name: "scores", columns: [...columns], indexes: [], foreignKeys: [], primaryKey: [], checks: [] }] };
     };
+    const opaque = (sql: string): ViewDescriptor => ({ ...view(sql), opaque: true });
     const joined = (threshold: number): string =>
       `SELECT g.id AS id, (SELECT count(*) FROM scores s WHERE s.points > ${threshold}) AS scored FROM games g`;
     const UNJOINED = "SELECT g.id AS id, 0::bigint AS scored FROM games g";
     const same = { expected: [ID, col("scored", "bigint")], live: [ID, col("scored", "bigint")] };
-    const WIDE_POINTS: Columns[number] = { ...POINTS, sqlType: { kind: "integer", bits: 64 } };
     const opts = (probe: ViewReplaceProbe) =>
       ({ dialect: "postgres" as const, viewReplaceProbe: probe, allow: { dropColumn: true, dropTable: true } });
 
     test.each([
-      ["retypes a column the body reads", joined(1), [WIDE_POINTS, NOTE], "change-column-type"],
-      ["drops a column the live body reads", UNJOINED, [NOTE], "drop-column"],
-      ["drops the table the live body reads", UNJOINED, undefined, "drop-table"],
+      ["retypes a column of a table outside dependsOn", joined(1), [WIDE_POINTS, NOTE], "change-column-type"],
+      ["drops a column of a table outside dependsOn", UNJOINED, [NOTE], "drop-column"],
+      ["drops a table outside dependsOn", UNJOINED, undefined, "drop-table"],
+      ["adds a column to a table outside dependsOn", joined(1), [POINTS, NOTE, { ...NOTE, name: "memo" }], "add-column"],
     ] as const)("a plan that %s drops and creates the view, and the probe is not asked", async (_, body, columns, change) => {
       const { probe, asked } = stub(same);
-      const r = await diff(
-        withScores([view(body)], columns === undefined ? undefined : [...columns]),
-        withScores([view(joined(0))], [POINTS, NOTE]),
-        opts(probe),
-      );
+      const r = await diff(withScores([opaque(body)], columns), withScores([view(joined(0))], [POINTS, NOTE]), opts(probe));
       expect(kinds(r)).toEqual([change, "drop-view", "create-view"]);
       expect(r.blocked).toEqual([]);
       expect(asked).toEqual([]);
     });
 
-    test("a changed column the bodies do not read leaves the replace to the probe", async () => {
+    test("a plan that changes no table still replaces it on the probe's evidence", async () => {
       const { probe, asked } = stub(same);
-      const r = await diff(
-        withScores([view(joined(1))], [POINTS, { ...NOTE, sqlType: { kind: "integer", bits: 32 } }]),
-        withScores([view(joined(0))], [POINTS, NOTE]),
-        opts(probe),
-      );
-      expect(kinds(r)).toEqual(["change-column-type", "replace-view"]);
+      const r = await diff(withScores([opaque(joined(1))], [POINTS, NOTE]), withScores([view(joined(0))], [POINTS, NOTE]), opts(probe));
+      expect(kinds(r)).toEqual(["replace-view"]);
       expect(asked).toHaveLength(1);
     });
 
-    test("a changed table the bodies do not read leaves the replace to the probe", async () => {
+    // A derived body lists every table it reads in dependsOn, so a change elsewhere cannot reach it.
+    test("a derived body beside the same table change is still replaced on the probe's evidence", async () => {
       const { probe, asked } = stub(same);
-      const r = await diff(
-        withScores([view(NEW_BODY)], [WIDE_POINTS, NOTE]),
-        withScores([view(OLD_BODY)], [POINTS, NOTE]),
-        opts(probe),
-      );
+      const r = await diff(withScores([view(NEW_BODY)], [WIDE_POINTS, NOTE]), withScores([view(OLD_BODY)], [POINTS, NOTE]), opts(probe));
       expect(kinds(r)).toEqual(["change-column-type", "replace-view"]);
       expect(asked).toHaveLength(1);
     });
+  });
 
-    // Postgres changes nullability in place under a view.
-    test("a nullability change on a column the body reads leaves the replace to the probe", async () => {
-      const { probe, asked } = stub(same);
-      const r = await diff(
-        withScores([view(joined(1))], [{ ...POINTS, nullable: true }, NOTE]),
-        withScores([view(joined(0))], [POINTS, NOTE]),
-        opts(probe),
-      );
-      expect(kinds(r)).toEqual(["change-column-nullable", "replace-view"]);
-      expect(asked).toHaveLength(1);
+  // `SELECT *` over another view is re-expanded when the view is replaced. Once the plan has
+  // given that other view a new column, the column lands mid-list and Postgres refuses the
+  // replace ("cannot change name of view column", sql-createview.html).
+  describe("a body that reads every column of another view, in a plan that changes that view", () => {
+    const named = (name: string, sql: string, over: Partial<ViewDescriptor> = {}): ViewDescriptor =>
+      ({ name, sql, dependsOn: ["games"], fingerprint: viewFingerprint(sql), ...over });
+    const base = (sql: string) => named("v_base", sql);
+    const top = (extra: number) => named("v_top", `SELECT b.*, ${extra} AS extra FROM v_base b`, { opaque: true });
+    const BASE = "SELECT g.id AS id FROM games g";
+    const BASE_APPENDED = "SELECT g.id AS id, g.id AS twice FROM games g";
+    const TWICE = col("twice", "bigint");
+    const EXTRA = col("extra", "integer");
+
+    /** Answers for each view as Postgres would before the plan runs, and records who was asked. */
+    function probeBeforeThePlan() {
+      const asked: string[] = [];
+      const probe: ViewReplaceProbe = async (expected) => {
+        asked.push(expected.name);
+        return expected.name === "v_base"
+          ? { expected: [ID, TWICE], live: [ID] }
+          : { expected: [ID, EXTRA], live: [ID, EXTRA] };
+      };
+      return { probe, asked };
+    }
+
+    test("the view it reads is replaced in place, and it is dropped and created", async () => {
+      const { probe, asked } = probeBeforeThePlan();
+      const r = await diff(snap([base(BASE_APPENDED), top(2)]), snap([base(BASE), top(1)]), { dialect: "postgres", viewReplaceProbe: probe });
+      expect(r.changes.map((c) => [c.kind, c.kind === "drop-view" ? c.view : (c as { view: ViewDescriptor }).view.name])).toEqual([
+        ["replace-view", "v_base"], ["drop-view", "v_top"], ["create-view", "v_top"],
+      ]);
+      expect(r.blocked).toEqual([]);
+      expect(asked).toEqual(["v_base"]);
     });
+
+    test("with no other view changing, it is replaced on the probe's evidence", async () => {
+      const { probe, asked } = probeBeforeThePlan();
+      const r = await diff(snap([base(BASE), top(2)]), snap([base(BASE), top(1)]), { dialect: "postgres", viewReplaceProbe: probe });
+      expect(kinds(r)).toEqual(["replace-view"]);
+      expect(asked).toEqual(["v_top"]);
+    });
+  });
+
+  test.each([
+    ["a derived body", {}],
+    ["an opaque @sql body", { opaque: true as const }],
+  ])("adopting an unstamped view with %s the database proves compatible is a replace in place", async (_, marker) => {
+    const label = col("label", "text", "100");
+    const { probe, asked } = stub({ expected: [ID, label], live: [ID, label] });
+    const r = await diff(snap([{ ...view(NEW_BODY), ...marker }]), snap([view(OLD_BODY, false)]), {
+      dialect: "postgres", viewReplaceProbe: probe, allow: { adoptView: true },
+    });
+    expect(kinds(r)).toEqual(["replace-view"]);
+    expect(r.changes[0]).toMatchObject({ unmanagedActual: true });
+    expect(r.blocked).toEqual([]);
+    expect(asked).toHaveLength(1);
   });
 
   test("SQLite and D1 never ask: a replace there is written as DROP + CREATE", async () => {

@@ -198,6 +198,12 @@ export interface ViewDescriptor {
    * a column a view depends on, and sqlite's recreate-and-copy rebuilds the table.
    */
   dependsOn?: readonly string[];
+  /**
+   * The body is author-written SQL (`@sql`), not derived from the model, so it may read
+   * tables `dependsOn` does not list (ADR-0043). EXPECTED side only, and read only while a
+   * plan is made against a live database: `serializeSnapshot` never writes it.
+   */
+  opaque?: true;
 }
 
 // ---------------------------------------------------------------------------
