@@ -1,5 +1,5 @@
 import type { Generator } from "./generator.js";
-import { CRUD_VERBS, resolveExpose, type CrudVerb, type ExposeOption } from "./routes-expose.js";
+import { CRUD_VERBS, resolveExpose, type CrudVerb, type ExposeOption, type RoutesExpose } from "./routes-expose.js";
 
 /**
  * Generators that emit a CLIENT UI artifact — a form, a hook, a grid or its columns.
@@ -80,21 +80,26 @@ export function runEmitsHonoRoutes(generators: readonly Generator[]): boolean {
 }
 
 /**
- * The `expose` option the run's routes generators were built with, for `meta docs` to apply
- * (a docs page that lists DELETE for a route the adopter does not mount is a lie).
+ * The `expose` option of each routes surface the run mounts, for `meta docs` to apply (a docs
+ * page that lists DELETE for a route the adopter does not mount is a lie).
  *
- * Undefined when no generator mounts routes, or any of them mounts every verb: documenting
- * all five is then right. Otherwise a per-entity function returning the UNION of what the
- * generators mount, since the Fastify and Hono surfaces share one documented verb list.
+ * Per surface, because the Fastify and Hono routes files are separate generators with their
+ * own option: a surface is narrowed only when EVERY generator mounting it carries an `expose`
+ * (several on one surface union their verbs), and a surface with none, or one that mounts all
+ * five, documents all five. Undefined when no surface is narrowed.
  */
-export function runRoutesExpose(generators: readonly Generator[]): ExposeOption | undefined {
-  // Project the markers once, so the body works over "the routes-mounting generators'
-  // options" — a collection, not a filtered list re-projected through `!` in a closure.
+export function runRoutesExpose(generators: readonly Generator[]): RoutesExpose | undefined {
+  const rest = surfaceExpose(generators.filter((g) => g.emitsHonoRoutes !== true));
+  const restHono = surfaceExpose(generators.filter((g) => g.emitsHonoRoutes === true));
+  if (rest === undefined && restHono === undefined) return undefined;
+  return { ...(rest !== undefined && { rest }), ...(restHono !== undefined && { restHono }) };
+}
+
+function surfaceExpose(generators: readonly Generator[]): ExposeOption | undefined {
   const mounts = generators
     .map((g) => g.mountsRoutes)
     .filter((m): m is NonNullable<typeof m> => m !== undefined);
-  if (mounts.length === 0) return undefined;
-  if (mounts.some((m) => m.expose === undefined)) return undefined;
+  if (mounts.length === 0 || mounts.some((m) => m.expose === undefined)) return undefined;
   return (entity) => {
     const union = new Set<CrudVerb>();
     for (const m of mounts) {

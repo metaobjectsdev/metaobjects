@@ -24,7 +24,8 @@ here.**
   pages listed all five verbs for an entity whose routes file mounts fewer (`DELETE` for an entity
   exposed as `["list", "get"]`), so the adopter overrode the pages by hand. The generators now
   carry the option in a `mountsRoutes` marker, `meta docs` reads it off the resolved suite
-  (`runRoutesExpose`) and documents only the verbs mounted: `update` lists both `PATCH` and `PUT`,
+  (`runRoutesExpose`) per routes surface, so a narrowed Fastify routes file beside a default Hono
+  one (or the reverse) narrows only its own section, and documents only the verbs mounted: `update` lists both `PATCH` and `PUT`,
   a read-only projection or report still lists `GET`, and a TPH base is narrowed from its
   read-only pair. Output without `expose` is byte-identical. **An owned (ejected) copy needs the
   marker to be honoured:** run `meta eject routes --force` (and `routes-hono --force`), or add

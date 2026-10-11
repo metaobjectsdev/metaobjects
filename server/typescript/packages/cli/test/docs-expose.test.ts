@@ -28,18 +28,20 @@ const META = {
 
 // A routes generator as an owned `routesFile({ expose })` presents itself to the docs door: the
 // `mountsRoutes` marker carries the option.
-const config = (marker: string) => [
+// `hono` is the marker of a second, Hono routes generator in the same suite (or "").
+const config = (marker: string, hono = "") => [
   `import { defineConfig } from "@metaobjectsdev/codegen-ts";`,
   `const routes = { name: "routes-file", ${marker} generate: () => [] };`,
-  `export default defineConfig({ outDir: "out", dialect: "sqlite", generators: [routes] });`,
+  `const honoRoutes = { name: "routes-file-hono", emitsHonoRoutes: true, ${hono} generate: () => [] };`,
+  `export default defineConfig({ outDir: "out", dialect: "sqlite", generators: [routes${hono ? ", honoRoutes" : ""}] });`,
 ].join("\n");
 
-async function docsFor(marker: string): Promise<string> {
+async function docsFor(marker: string, hono = ""): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "meta-docs-expose-"));
   dirs.push(root);
   await mkdir(join(root, "metaobjects"), { recursive: true });
   await writeFile(join(root, "metaobjects", "meta.json"), JSON.stringify(META), "utf8");
-  await writeFile(join(root, "metaobjects.config.ts"), config(marker), "utf8");
+  await writeFile(join(root, "metaobjects.config.ts"), config(marker, hono), "utf8");
   const out = join(root, "docs-out");
   expect(await docsCommand([root, "--out", out], root)).toBe(0);
   return readFile(join(out, "api", "acme", "shop", "AuditEntry.md"), "utf8").catch(() =>
@@ -59,5 +61,20 @@ describe("meta docs and routesFile({ expose })", () => {
     const page = await docsFor(`mountsRoutes: {},`);
     expect(page).toContain("DELETE /audit_entries");
     expect(page).toContain("POST /audit_entries");
+  });
+
+  test("a narrowed Fastify routes file beside a default Hono one narrows only the Fastify section", async () => {
+    const page = await docsFor(`mountsRoutes: { expose: ["list", "get"] },`, `mountsRoutes: {},`);
+    const at = page.indexOf("[Hono]");
+    expect(at).toBeGreaterThan(-1);
+    const fastify = page.slice(0, page.indexOf("[Hono] List"));
+    expect(fastify).not.toMatch(/DELETE \/audit_entries/);
+    expect(page.slice(at)).toContain("DELETE /audit_entries");
+  });
+
+  test("a narrowed Hono routes file beside a default Fastify one narrows only the Hono section", async () => {
+    const page = await docsFor(`mountsRoutes: {},`, `mountsRoutes: { expose: ["list", "get"] },`);
+    expect(page).toContain("DELETE /audit_entries");
+    expect(page.slice(page.indexOf("[Hono] List"))).not.toMatch(/DELETE \/audit_entries/);
   });
 });

@@ -102,7 +102,7 @@
 // very models this builder was reading it from. The read is gone — see
 // constants.ts.)
 
-import { CRUD_VERBS, TPH_POLYMORPHIC_VERBS, intersectExpose, resolveExpose, type CrudVerb, type ExposeOption } from "../routes-expose.js";
+import { CRUD_VERBS, TPH_POLYMORPHIC_VERBS, intersectExpose, resolveExpose, type CrudVerb, type ExposeOption, type RoutesExpose } from "../routes-expose.js";
 import {
   type MetaRoot,
   type MetaObject,
@@ -294,10 +294,10 @@ export interface ApiModelContext {
    *  short. Threaded explicitly rather than read off the RenderContext below,
    *  which is a `{ pkMap }` shim and carries nothing else. Defaults to "". */
   apiPrefix?: string;
-  /** The `expose` option the run's routes generators were built with (`runRoutesExpose`).
-   *  The routes generator mounts only these verbs, so the documented endpoints are the same
-   *  subset. Absent means every verb, which documents byte-identically to before. */
-  expose?: ExposeOption;
+  /** The `expose` option of each routes surface (`runRoutesExpose`). A routes generator
+   *  mounts only its own verbs, so each surface documents the same subset. A surface left
+   *  out means every verb, which documents byte-identically to before. */
+  expose?: RoutesExpose;
 }
 
 // ---------------------------------------------------------------------------
@@ -313,7 +313,7 @@ export function buildApiModel(root: MetaRoot, ctx: ApiModelContext): ApiModel {
   const apiPrefix = ctx.apiPrefix ?? "";
   const relationMap = ctx.relationMap ?? buildRelationMap(root);
   const includeHono = ctx.includeHonoRoutes ?? false;
-  const expose = ctx.expose;
+  const expose = ctx.expose ?? {};
 
   const units: ApiUnitDoc[] = [];
 
@@ -436,7 +436,7 @@ function buildEntityUnit(
   relationMap: RelationMap,
   includeHono: boolean,
   apiPrefix: string,
-  expose: ExposeOption | undefined,
+  expose: RoutesExpose,
 ): ApiUnitDoc {
   const name = obj.name;
   const symbols: ApiSymbol[] = [];
@@ -467,10 +467,10 @@ function buildEntityUnit(
     // object gets routes. (Its `filter` option can narrow that further; this builder
     // reads the model, not the wired generator set, and cannot see it. See the module
     // header.)
-    symbols.push(...restSymbols(obj, layout, root, apiPrefix, expose));
+    symbols.push(...restSymbols(obj, layout, root, apiPrefix, expose.rest));
     // The OPT-IN Hono variant mounts the SAME CRUD verbs under the same rules —
     // documented only when the adopter wired it.
-    if (includeHono) symbols.push(...restHonoSymbols(obj, layout, apiPrefix, expose));
+    if (includeHono) symbols.push(...restHonoSymbols(obj, layout, apiPrefix, expose.restHono));
   }
 
   // --- relation: the drizzle relations() export, when the resolver files entries

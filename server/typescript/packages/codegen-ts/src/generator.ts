@@ -117,7 +117,7 @@ export interface Generator {
   emitsHonoRoutes?: boolean;
   /** Marks a generator that mounts the CRUD routes (`routesFile`, `routesFileHono`) and carries
    *  the `expose` option it was built with. `meta docs` aggregates it across the suite
-   *  (`runRoutesExpose`) so the API docs list the verbs the routes actually mount, not all five.
+   *  (`runRoutesExpose`), per surface (a `emitsHonoRoutes` generator is the Hono one), so the API docs list the verbs each routes file actually mounts, not all five.
    *  Absent `expose` means every verb. A copy ejected before this marker existed needs
    *  `meta eject routes --force` (or the same one-line addition) to be honoured. */
   mountsRoutes?: { readonly expose?: ExposeOption };
