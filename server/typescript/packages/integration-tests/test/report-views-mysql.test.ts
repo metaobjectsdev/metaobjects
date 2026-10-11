@@ -46,7 +46,8 @@ let canonical: MetaRoot;
 const CANONICAL_VIEWS = [
   "v_program_minutes", "v_fitness_totals", "v_programs_by_month",
   "v_programs_by_week", "v_recent_programs", "v_asset_activity",
-  "v_program_roster", "v_program_long_weeks", "v_fitness_totals_filled",
+  "v_program_roster", "v_program_long_weeks", "v_program_flags", "v_program_flag_roster",
+  "v_fitness_totals_filled",
 ];
 
 /** The adopter's hand-written DDL (MySQL schema is not MetaObjects'). */
@@ -63,6 +64,7 @@ const DDL = [
      programId BIGINT NOT NULL,
      label VARCHAR(80),
      durationMinutes INT NOT NULL,
+     deload BOOLEAN,
      FOREIGN KEY (programId) REFERENCES programs (id)
    )`,
   `CREATE TABLE assets (

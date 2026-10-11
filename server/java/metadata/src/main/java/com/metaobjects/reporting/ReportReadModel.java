@@ -22,6 +22,7 @@ import com.metaobjects.attr.BooleanAttribute;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.database.CoreDBMetaDataProvider;
+import com.metaobjects.field.BooleanField;
 import com.metaobjects.field.CurrencyField;
 import com.metaobjects.field.DateField;
 import com.metaobjects.field.DecimalField;
@@ -229,7 +230,7 @@ public final class ReportReadModel extends ReportMetaObject {
     /**
      * A new, parentless field node of the derived subtype. A derived field that has a type
      * source always has that source's subtype (Table B), so it is built as the same node
-     * class; the rows with no type source produce one of four fixed subtypes.
+     * class; the rows with no type source produce one of five fixed subtypes.
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static MetaField<?> newField(ReportShape.Field f) {
@@ -242,6 +243,7 @@ public final class ReportReadModel extends ReportMetaObject {
             case DecimalField.SUBTYPE_DECIMAL: return new DecimalField(f.name());
             case DoubleField.SUBTYPE_DOUBLE: return new DoubleField(f.name());
             case DateField.SUBTYPE_DATE: return new DateField(f.name());
+            case BooleanField.SUBTYPE_BOOLEAN: return new BooleanField(f.name());
             default:
                 throw new MetaDataException("report read model: derived field '" + f.name()
                         + "' has subtype field." + f.subType() + ", which Table B does not derive without a type source.");

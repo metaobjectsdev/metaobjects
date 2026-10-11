@@ -90,6 +90,9 @@ cubes:
       - name: ProgramLongWeeksFacts
         relationship: one_to_many
         sql: '{CUBE}."id" = {ProgramLongWeeksFacts}."programId"'
+      - name: ProgramFlagRosterFacts
+        relationship: one_to_many
+        sql: '{CUBE}."id" = {ProgramFlagRosterFacts}."programId"'
       - name: ProgramSessions_fkWeek
         relationship: one_to_many
         sql: '{CUBE}."id" = {ProgramSessions_fkWeek}."programId"'
@@ -276,6 +279,29 @@ cubes:
         type: sum
         filters:
           - sql: '({CUBE}."durationMinutes" >= 60 AND {CUBE}."label" LIKE ''W%'')'
+      - name: anyDeload
+        sql: 'bool_or({CUBE}."deload")'
+        type: boolean
+      - name: allDeload
+        sql: 'bool_and({CUBE}."deload")'
+        type: boolean
+      - name: anyDeloadOrFalseRaw
+        sql: 'bool_or({CUBE}."deload")'
+        type: boolean
+        public: false
+      - name: anyDeloadOrFalse
+        sql: 'COALESCE({anyDeloadOrFalseRaw}, FALSE)'
+        type: boolean
+      - name: allDeloadOrTrueRaw
+        sql: 'bool_and({CUBE}."deload")'
+        type: boolean
+        public: false
+      - name: allDeloadOrTrue
+        sql: 'COALESCE({allDeloadOrTrueRaw}, TRUE)'
+        type: boolean
+      - name: anyLongDeload
+        sql: 'bool_or({CUBE}."deload") FILTER (WHERE {CUBE}."durationMinutes" >= 60)'
+        type: boolean
     segments:
       - name: long
         sql: '{CUBE}."durationMinutes" >= 60'
@@ -286,6 +312,10 @@ cubes:
       - name: FitnessTotalsFilled
         type: rollup
         measures: [CUBE.weeks, CUBE.totalMinutesOrZero, CUBE.longShareOrZero]
+      - name: ProgramFlags
+        type: rollup
+        measures: [CUBE.weeks, CUBE.anyDeload, CUBE.allDeload, CUBE.anyLongDeload]
+        dimensions: [CUBE.program]
       - name: WeekShapes
         type: rollup
         measures: [CUBE.weeks, CUBE.unlabelled, CUBE.labelledMinutes, CUBE.shortWeeks, CUBE.midWeeks, CUBE.longWMinutes]
@@ -446,6 +476,55 @@ views:
           - name: totalMinutesOrZero
 `;
 
+const PROGRAM_FLAG_ROSTER_FACTS_YML = `${HEADER}
+cubes:
+  - name: ProgramFlagRosterFacts
+    sql: 'SELECT * FROM "weeks" w'
+    public: false
+    dimensions:
+      - name: id
+        sql: '{CUBE}."id"'
+        type: number
+        primary_key: true
+    measures:
+      - name: weeks
+        sql: '{CUBE}."id"'
+        type: count
+      - name: anyDeload
+        sql: 'bool_or({CUBE}."deload")'
+        type: boolean
+      - name: anyDeloadOrFalseRaw
+        sql: 'bool_or({CUBE}."deload")'
+        type: boolean
+        public: false
+      - name: anyDeloadOrFalse
+        sql: 'COALESCE({anyDeloadOrFalseRaw}, FALSE)'
+        type: boolean
+      - name: allDeloadOrTrueRaw
+        sql: 'bool_and({CUBE}."deload")'
+        type: boolean
+        public: false
+      - name: allDeloadOrTrue
+        sql: 'COALESCE({allDeloadOrTrueRaw}, TRUE)'
+        type: boolean
+`;
+
+const PROGRAM_FLAG_ROSTER_VIEW_YML = `${HEADER}
+views:
+  - name: ProgramFlagRoster
+    cubes:
+      - join_path: Program
+        includes:
+          - name: id
+            alias: programKey
+      - join_path: Program.ProgramFlagRosterFacts
+        includes:
+          - name: weeks
+          - name: anyDeload
+          - name: anyDeloadOrFalse
+          - name: allDeloadOrTrue
+`;
+
 const PROGRAM_SESSIONS_VIEW_YML = `${HEADER}
 views:
   - name: ProgramSessions
@@ -498,11 +577,14 @@ describe("Table H — the canonical model's files", () => {
     const model = await canonicalModel();
     expect(render(model, "ProgramRosterFacts")).toBe(PROGRAM_ROSTER_FACTS_YML);
     expect(render(model, "ProgramLongWeeksFacts")).toBe(PROGRAM_LONG_WEEKS_FACTS_YML);
+    expect(render(model, "ProgramFlagRosterFacts")).toBe(PROGRAM_FLAG_ROSTER_FACTS_YML);
   });
 
-  test("the three @spine reports' views", async () => {
+  test("the four @spine reports' views", async () => {
     const model = await canonicalModel();
-    expect(model.views.map(renderCubeViewYaml)).toEqual([PROGRAM_ROSTER_VIEW_YML, PROGRAM_LONG_WEEKS_VIEW_YML, PROGRAM_SESSIONS_VIEW_YML]);
+    expect(model.views.map(renderCubeViewYaml)).toEqual([
+      PROGRAM_ROSTER_VIEW_YML, PROGRAM_LONG_WEEKS_VIEW_YML, PROGRAM_FLAG_ROSTER_VIEW_YML, PROGRAM_SESSIONS_VIEW_YML,
+    ]);
   });
 
   test("rendering twice gives the same bytes", async () => {
@@ -1069,7 +1151,7 @@ describe("parse oracle", () => {
     expect(model.cubes.map((c) => c.name)).toEqual([
       "Program", "Week", "Node", "Session", "Measurement", "Asset", "Auth", "BridgeAuth", "CopayAuth", "PriorAuthAuth",
       "ReferralAuth", "AllTypes", "Node_fkParent", "ProgramRosterFacts", "ProgramLongWeeksFacts",
-      "ProgramSessionsFacts", "ProgramSessions_fkWeek",
+      "ProgramFlagRosterFacts", "ProgramSessionsFacts", "ProgramSessions_fkWeek",
     ]);
     for (const c of model.cubes) expect(parsed(c)).toEqual({ cubes: [expectedCube(c)] });
   });

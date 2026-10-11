@@ -1,0 +1,82 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Call",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "calls"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "failed"
+              }
+            },
+            {
+              "field.int": {
+                "name": "durationMs"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "anyFailed",
+                "@agg": "any",
+                "@of": "Call.failed"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "allFailed",
+                "@agg": "all",
+                "@of": "Call.failed"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "anySlowFailed",
+                "@agg": "any",
+                "@of": "Call.failed",
+                "@filter": {
+                  "durationMs": {
+                    "gte": 1000
+                  }
+                }
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "anyFailedOrFalse",
+                "@agg": "any",
+                "@of": "Call.failed",
+                "@default": 0
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "allFailedOrTrue",
+                "@agg": "all",
+                "@of": "Call.failed",
+                "@default": 1
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

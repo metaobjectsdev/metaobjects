@@ -44,6 +44,7 @@ const TABLES = [
   \`programId\` BIGINT NOT NULL,
   \`label\` VARCHAR(80),
   \`durationMinutes\` INT NOT NULL,
+  \`deload\` BOOLEAN,
   FOREIGN KEY (\`programId\`) REFERENCES \`programs\` (\`id\`)
 )`,
   `CREATE TABLE \`assets\` (

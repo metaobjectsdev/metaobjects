@@ -1455,6 +1455,16 @@ describe("Table H — the canonical model", () => {
         ],
       },
       {
+        name: "ProgramFlagRoster",
+        cubes: [
+          { joinPath: "Program", includes: [{ name: "id", alias: "programKey" }] },
+          {
+            joinPath: "Program.ProgramFlagRosterFacts",
+            includes: [{ name: "weeks" }, { name: "anyDeload" }, { name: "anyDeloadOrFalse" }, { name: "allDeloadOrTrue" }],
+          },
+        ],
+      },
+      {
         // The third @spine report: its facts cube is reached through the Session -> Week reference.
         name: "ProgramSessions",
         cubes: [
@@ -1472,15 +1482,22 @@ describe("Table H — the canonical model", () => {
     const totalMinutesOrZero: CubeMeasureSpec = { name: "totalMinutesOrZero", sql: "COALESCE({totalMinutesOrZeroRaw}, 0)", type: "number" };
     const longShare: CubeMeasureSpec = { name: "longShare", sql: "CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0)", type: "number" };
     const longShareOrZero: CubeMeasureSpec = { name: "longShareOrZero", sql: "COALESCE(CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0), 0)", type: "number" };
+    // @agg any / all: Cube's `boolean` measure, the aggregate as the view writes it; a @default is
+    // the <m>Raw aggregate and a boolean COALESCE over it.
+    const anyDeload: CubeMeasureSpec = { name: "anyDeload", sql: 'bool_or({CUBE}."deload")', type: "boolean" };
+    const anyDeloadOrFalseRaw: CubeMeasureSpec = { name: "anyDeloadOrFalseRaw", sql: 'bool_or({CUBE}."deload")', type: "boolean", public: false };
+    const anyDeloadOrFalse: CubeMeasureSpec = { name: "anyDeloadOrFalse", sql: "COALESCE({anyDeloadOrFalseRaw}, FALSE)", type: "boolean" };
+    const allDeloadOrTrueRaw: CubeMeasureSpec = { name: "allDeloadOrTrueRaw", sql: 'bool_and({CUBE}."deload")', type: "boolean", public: false };
+    const allDeloadOrTrue: CubeMeasureSpec = { name: "allDeloadOrTrue", sql: "COALESCE({allDeloadOrTrueRaw}, TRUE)", type: "boolean" };
     const key: CubeDimensionSpec = { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true };
     // The other canonical entities (Node, Session, Measurement, the Auth family, AllTypes) and the
     // join-path cubes carry no report of Table H's; only their presence is asserted here.
     expect(model.cubes.map((c) => c.name)).toEqual([
       "Program", "Week", "Node", "Session", "Measurement", "Asset", "Auth", "BridgeAuth", "CopayAuth", "PriorAuthAuth",
       "ReferralAuth", "AllTypes", "Node_fkParent", "ProgramRosterFacts", "ProgramLongWeeksFacts",
-      "ProgramSessionsFacts", "ProgramSessions_fkWeek",
+      "ProgramFlagRosterFacts", "ProgramSessionsFacts", "ProgramSessions_fkWeek",
     ]);
-    const tableH = new Set(["Program", "Week", "Asset", "ProgramRosterFacts", "ProgramLongWeeksFacts"]);
+    const tableH = new Set(["Program", "Week", "Asset", "ProgramRosterFacts", "ProgramLongWeeksFacts", "ProgramFlagRosterFacts"]);
     expect(model.cubes.filter((c) => tableH.has(c.name))).toEqual([
       {
         name: "Program",
@@ -1489,6 +1506,7 @@ describe("Table H — the canonical model", () => {
         joins: [
           { name: "ProgramRosterFacts", relationship: "one_to_many", sql: '{CUBE}."id" = {ProgramRosterFacts}."programId"' },
           { name: "ProgramLongWeeksFacts", relationship: "one_to_many", sql: '{CUBE}."id" = {ProgramLongWeeksFacts}."programId"' },
+          { name: "ProgramFlagRosterFacts", relationship: "one_to_many", sql: '{CUBE}."id" = {ProgramFlagRosterFacts}."programId"' },
           { name: "ProgramSessions_fkWeek", relationship: "one_to_many", sql: '{CUBE}."id" = {ProgramSessions_fkWeek}."programId"' },
         ],
         dimensions: [
@@ -1590,6 +1608,14 @@ describe("Table H — the canonical model", () => {
             name: "longWMinutes", sql: '{CUBE}."durationMinutes"', type: "sum",
             filters: [{ sql: `({CUBE}."durationMinutes" >= 60 AND {CUBE}."label" LIKE 'W%')` }],
           },
+          anyDeload,
+          { name: "allDeload", sql: 'bool_and({CUBE}."deload")', type: "boolean" },
+          anyDeloadOrFalseRaw,
+          anyDeloadOrFalse,
+          allDeloadOrTrueRaw,
+          allDeloadOrTrue,
+          // A condition on a boolean aggregate travels in the SQL, as the view writes it.
+          { name: "anyLongDeload", sql: 'bool_or({CUBE}."deload") FILTER (WHERE {CUBE}."durationMinutes" >= 60)', type: "boolean" },
         ],
         segments: [{ name: "long", sql: '{CUBE}."durationMinutes" >= 60' }],
         // Coarsest first: FitnessTotals and FitnessTotalsFilled group by nothing, so Cube's first
@@ -1600,6 +1626,10 @@ describe("Table H — the canonical model", () => {
           {
             name: "FitnessTotalsFilled", type: "rollup", measures: ["weeks", "totalMinutesOrZero", "longShareOrZero"],
             dimensions: [], segments: [],
+          },
+          {
+            name: "ProgramFlags", type: "rollup", measures: ["weeks", "anyDeload", "allDeload", "anyLongDeload"],
+            dimensions: ["program"], segments: [],
           },
           {
             name: "WeekShapes", type: "rollup",
@@ -1676,6 +1706,16 @@ describe("Table H — the canonical model", () => {
         joins: [],
         dimensions: [key],
         measures: [weeks, totalMinutesOrZeroRaw, totalMinutesOrZero],
+        segments: [],
+        preAggregations: [],
+      },
+      {
+        name: "ProgramFlagRosterFacts",
+        sql: 'SELECT * FROM "weeks" w',
+        public: false,
+        joins: [],
+        dimensions: [key],
+        measures: [weeks, anyDeload, anyDeloadOrFalseRaw, anyDeloadOrFalse, allDeloadOrTrueRaw, allDeloadOrTrue],
         segments: [],
         preAggregations: [],
       },

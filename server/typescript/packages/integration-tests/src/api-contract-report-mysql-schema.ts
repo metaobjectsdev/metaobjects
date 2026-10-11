@@ -45,6 +45,7 @@ const TABLES = [
   \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   \`productId\` BIGINT NOT NULL,
   \`amountCents\` BIGINT NOT NULL,
+  \`refunded\` BOOLEAN,
   FOREIGN KEY (\`productId\`) REFERENCES \`products\` (\`id\`)
 )`,
 ];

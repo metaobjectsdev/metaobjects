@@ -24,6 +24,9 @@ internal object ReportViews {
         // A @spine report (rows from the spine entity) and a report of defaulted measures.
         "ProgramRoster" to ProgramRosterView,
         "ProgramLongWeeks" to ProgramLongWeeksView,
+        // Boolean `any` / `all` measures, with and without @spine.
+        "ProgramFlags" to ProgramFlagsView,
+        "ProgramFlagRoster" to ProgramFlagRosterView,
         "FitnessTotalsFilled" to FitnessTotalsFilledView,
         // Reports for the vocabulary the first nine do not reach: numeric, temporal, boolean/
         // uuid/int-enum dimensions, multi-hop and self-reference paths, an empty scope.

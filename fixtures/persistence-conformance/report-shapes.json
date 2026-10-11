@@ -295,6 +295,90 @@
       ]
     },
     {
+      "report": "fitness::ProgramFlags",
+      "from": "fitness::Week",
+      "view": "v_program_flags",
+      "fields": [
+        {
+          "name": "program",
+          "role": "dimension",
+          "subType": "long",
+          "required": true,
+          "typeSource": "fitness::Week.programId"
+        },
+        {
+          "name": "weeks",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "anyDeload",
+          "role": "measure",
+          "subType": "boolean",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "allDeload",
+          "role": "measure",
+          "subType": "boolean",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "anyLongDeload",
+          "role": "measure",
+          "subType": "boolean",
+          "required": false,
+          "typeSource": null
+        }
+      ]
+    },
+    {
+      "report": "fitness::ProgramFlagRoster",
+      "from": "fitness::Week",
+      "view": "v_program_flag_roster",
+      "fields": [
+        {
+          "name": "programKey",
+          "role": "dimension",
+          "subType": "long",
+          "required": true,
+          "typeSource": "fitness::Program.id"
+        },
+        {
+          "name": "weeks",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "anyDeload",
+          "role": "measure",
+          "subType": "boolean",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "anyDeloadOrFalse",
+          "role": "measure",
+          "subType": "boolean",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "allDeloadOrTrue",
+          "role": "measure",
+          "subType": "boolean",
+          "required": true,
+          "typeSource": null
+        }
+      ]
+    },
+    {
       "report": "fitness::FitnessTotalsFilled",
       "from": "fitness::Week",
       "view": "v_fitness_totals_filled",

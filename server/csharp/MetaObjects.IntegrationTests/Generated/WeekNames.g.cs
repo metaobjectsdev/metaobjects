@@ -19,6 +19,8 @@ public abstract class WeekNames
     public const string SourcePrimaryKind = "table";
     public const string SourcePrimaryTable = "weeks";
 
+    public const string DeloadField = "deload";
+    public const string DeloadColumn = "deload";
     public const string DurationMinutesField = "durationMinutes";
     public const string DurationMinutesColumn = "durationMinutes";
     public const string IdField = "id";
@@ -37,6 +39,7 @@ public abstract class WeekNames
 
     public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
     {
+        ["deload"] = DeloadColumn,
         ["durationMinutes"] = DurationMinutesColumn,
         ["id"] = IdColumn,
         ["label"] = LabelColumn,

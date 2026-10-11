@@ -93,6 +93,7 @@
           { "field.long":         { "name": "id" } },
           { "field.long":         { "name": "productId", "@required": true } },
           { "field.long":         { "name": "amountCents", "@required": true } },
+          { "field.boolean":      { "name": "refunded" } },
           { "identity.primary":   { "name": "pk", "@fields": "id", "@generation": "increment" } },
           { "identity.reference": { "name": "fkProduct", "@fields": "productId", "@references": "Product" } },
           { "dimension.attribute": { "name": "productId", "@of": "Product.id", "@via": "Sale.fkProduct" } },
@@ -103,7 +104,9 @@
           { "measure.aggregate":   { "name": "maxCents", "@agg": "max", "@of": "Sale.amountCents" } },
           { "measure.aggregate":   { "name": "largeSales", "@agg": "count", "@of": "Sale.id", "@filter": { "amountCents": { "gte": 10000 } } } },
           { "measure.aggregate":   { "name": "revenueCents", "@agg": "sum", "@of": "Sale.amountCents" } },
-          { "measure.aggregate":   { "name": "revenueOrZero", "@agg": "sum", "@of": "Sale.amountCents", "@default": 0 } }
+          { "measure.aggregate":   { "name": "revenueOrZero", "@agg": "sum", "@of": "Sale.amountCents", "@default": 0 } },
+          { "measure.aggregate":   { "name": "hasRefund", "@agg": "any", "@of": "Sale.refunded" } },
+          { "measure.aggregate":   { "name": "hasRefundOrFalse", "@agg": "any", "@of": "Sale.refunded", "@default": 0 } }
         ]
       }},
       { "object.report": {
@@ -127,6 +130,14 @@
         "@dimensions": ["productSku"],
         "@measures": ["sales", "revenueCents"],
         "children": [ { "source.rdb": { "@kind": "view", "@view": "v_sales_by_sku" } } ]
+      }},
+      { "object.report": {
+        "name": "ProductRefunds",
+        "@from": "Sale",
+        "@spine": "Sale.fkProduct",
+        "@dimensions": ["productId", "productName"],
+        "@measures": ["sales", "hasRefund", "hasRefundOrFalse"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_product_refunds" } } ]
       }}
     ]
   }

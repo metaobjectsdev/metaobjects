@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * api-contract sub-corpus. Boots the corpus's served reports' GENERATED Spring controllers
  * on one embedded Tomcat, each behind an in-memory repository seam seeded with what its
  * view returns, and drives every scenario of the corpus. (Counts move with the fixture;
- * the pinned numbers live in {@link #theCorpusCarriesItsTwentyTwoScenarios()} and
+ * the pinned numbers live in {@link #theCorpusCarriesItsTwentyFiveScenarios()} and
  * {@link ReportCorpus#SERVED}, not in prose.)
  *
  * <p>Generated lane ONLY, on purpose and on every port (see the sub-corpus README). What
@@ -63,9 +63,9 @@ final class ReportGeneratedApiContractConformanceTest {
     }
 
     @Test
-    void theCorpusCarriesItsTwentyTwoScenarios() {
+    void theCorpusCarriesItsTwentyFiveScenarios() {
         // A scenarios directory that resolved to nothing would leave this lane green and empty.
-        assertEquals(22, SCENARIOS.size());
+        assertEquals(25, SCENARIOS.size());
     }
 
     @ParameterizedTest(name = "{0}")

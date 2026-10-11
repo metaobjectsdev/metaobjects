@@ -77,6 +77,7 @@ import {
 } from "../core/query/query-constants.js";
 import { ATTR_SUBTYPE_FILTER } from "../core/attr/attr-constants.js";
 import { isWritableSource } from "../shared/node-guards.js";
+import { AGG_ALL, AGG_ANY } from "../persistence/origin/origin-constants.js";
 import {
   FILTER_RELATIVE_NOW,
   ISO_DURATION_RE,
@@ -557,6 +558,16 @@ function checkMeasure(ctx: MemberCtx, measure: MetaMeasure): void {
           `remove @default.`,
       );
     } else if (
+      (agg === AGG_ANY || agg === AGG_ALL) &&
+      typeof declaredDefault === "number" &&
+      declaredDefault !== 0 &&
+      declaredDefault !== 1
+    ) {
+      // M9 — a boolean measure's @default is 0 (false) or 1 (true).
+      err(
+        `@default '${declaredDefault}' on @agg '${agg}' must be 0 (false) or 1 (true): the measure is a boolean.`,
+      );
+    } else if (
       (agg === AGG_MIN || agg === AGG_MAX) &&
       ofField !== undefined &&
       !NUMERIC_FIELD_SUBTYPES.includes(ofField.subType)
@@ -646,6 +657,10 @@ function checkAggregateColumns(
   }
   if ((agg === AGG_MIN || agg === AGG_MAX) && UNORDERED_FIELD_SUBTYPES.includes(field.subType)) {
     err(`@agg '${agg}' cannot order '${item}', a field.${field.subType}.`);
+    return undefined;
+  }
+  if ((agg === AGG_ANY || agg === AGG_ALL) && field.subType !== FIELD_SUBTYPE_BOOLEAN) {
+    err(`@agg '${agg}' needs a field.boolean, but '${item}' is field.${field.subType}.`);
     return undefined;
   }
   return { field };

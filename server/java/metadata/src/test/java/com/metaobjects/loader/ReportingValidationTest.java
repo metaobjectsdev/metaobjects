@@ -448,7 +448,7 @@ public class ReportingValidationTest extends SharedRegistryTestBase {
         assertEquals(List.of("ERR_BAD_ATTR_VALUE"), codes(got));
         // Byte-identical to the TS attr-schema check (attr-schema-validate.ts, Check 3).
         assertEquals("measure.aggregate 'revenue' attribute '@agg' has value 'median' which is not one of "
-                + "the allowed values: count, sum, avg, min, max", got.get(0).getMessage());
+                + "the allowed values: count, sum, avg, min, max, any, all", got.get(0).getMessage());
     }
 
     @Test

@@ -26,15 +26,15 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 374 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 377 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 16 | 16 / 16 | 15 / 16 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 15 / 16 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 16 / 16 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 37 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 16 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 48 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 17 | ✓ | ✓ | ✓ | ✓ | ✓ |
-| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 52 (46 query + 6 migration) | all 52 (the 19 `report-*` also on SQLite, MySQL and D1) | 46 query (migrations TS-only, ADR-0015); the 19 `report-*` also on MySQL | 46 query (via Exposed); the 19 `report-*` also on SQLite and MySQL | 46 query; the 19 `report-*` also on SQLite and MySQL | 46 query (Postgres only: pg8000) |
-| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 88 (31 core + 10 tph + 9 m2m + 2 jsonb + 2 write-through + 12 projection + 22 report) | ✓ (Fastify reference + generated lane); `report/` also on SQLite, MySQL and D1 | ✓ (embedded HTTP + JDBC) | ✓ (embedded HTTP + Exposed) | ✓ (HttpListener + Npgsql); `report/` also on SQLite and MySQL | ✓ (FastAPI + pg8000) |
+| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 54 (48 query + 6 migration) | all 54 (the 21 `report-*` also on SQLite, MySQL and D1) | 48 query (migrations TS-only, ADR-0015); the 21 `report-*` also on MySQL | 48 query (via Exposed); the 21 `report-*` also on SQLite and MySQL | 48 query; the 21 `report-*` also on SQLite and MySQL | 48 query (Postgres only: pg8000) |
+| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 91 (31 core + 10 tph + 9 m2m + 2 jsonb + 2 write-through + 12 projection + 25 report) | ✓ (Fastify reference + generated lane); `report/` also on SQLite, MySQL and D1 | ✓ (embedded HTTP + JDBC) | ✓ (embedded HTTP + Exposed) | ✓ (HttpListener + Npgsql); `report/` also on SQLite and MySQL | ✓ (FastAPI + pg8000) |
 | [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 42 cases | ✓ (generated Zod + run-time `runValidators`) | ✓ | ✓ | ✓ | ✓ (generated Pydantic + run-time `run_validators`) |
 | [`fixtures/registry-conformance/`](../fixtures/registry-conformance/) | 1 canonical manifest | ✓ (reference emitter) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/object-model-conformance/`](../fixtures/object-model-conformance/) | 1 shared metadata fixture (per-port scenarios) | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -54,7 +54,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/requirement-test-identity-conformance/`](../fixtures/requirement-test-identity-conformance/) (the identity, skip state and digest of each generated requirement test, and the filter seam, ADR-0057) | 26 cases | ✓ (reference) | ✓ | identity function inherits via Java; emitted names asserted by its own generator test | ✓ | ✓ |
 | [`fixtures/naming-conformance/`](../fixtures/naming-conformance/) | 8 cases | ✓ | ✓ | inherits via Java (`RouteNaming.pluralize`) | ✓ | ✓ |
 | [`fixtures/codegen-noop/`](../fixtures/codegen-noop/) (FR-044 — reporting vocabulary: what is lowered, what stays inert) | 1 model pair (`reporting/with` vs `reporting/without`) | ✓ (codegen + migrate) | ✓ | ✓ | ✓ | ✓ |
-| [`fixtures/cube-model/`](../fixtures/cube-model/) (FR-044 Plan 4 — the `cube-model` generator's golden Cube files, plus the canonical model's golden) | 44 cases (34 trees + 10 errors) + 1 canonical golden | ✓ (the exporter is TypeScript-only, spec R6; its `cube` lane also loads the files into a real Cube) | — | — | — | — |
+| [`fixtures/cube-model/`](../fixtures/cube-model/) (FR-044 Plan 4 — the `cube-model` generator's golden Cube files, plus the canonical model's golden) | 46 cases (36 trees + 10 errors) + 1 canonical golden | ✓ (the exporter is TypeScript-only, spec R6; its `cube` lane also loads the files into a real Cube) | — | — | — | — |
 
 A ✓ means the port runs the corpus green; an explicit `n / m` is used where a port
 carries a ledgered divergence. The two ledgered YAML fixtures are documented
@@ -127,13 +127,13 @@ manifest contains without moving these boundaries.
 
 **The Cube exporter** ([features/cube-export.md](features/cube-export.md)):
 
-- *Mapping — gated in TypeScript only, by decision.* `fixtures/cube-model/` holds 44 cases, 34
+- *Mapping — gated in TypeScript only, by decision.* `fixtures/cube-model/` holds 46 cases, 36
   with the exact tree the generator writes and 10 with the exact error message, plus the
   canonical model's golden. `codegen-ts/test/cube/cube-model-corpus.test.ts` and
   `cube-model-canonical.test.ts` run them. No other port has an exporter (spec R6), so no other
   port makes a claim the corpus would have to check.
 - *Cube accepts the output — queried on Postgres, compiled in both dialects.* The `cube` lane
-  (`scripts/ci-local.sh --only cube`, which needs Docker) loads the canonical golden and the 34
+  (`scripts/ci-local.sh --only cube`, which needs Docker) loads the canonical golden and the 36
   cases that hold a tree into a pinned Cube (`cubejs/cube:v1.7.43`) and requires each to
   compile, the two MySQL cases included: compiling a model runs no SQL, so the lane's Postgres
   data source serves them too. For the canonical reports it compares the Cube query with the
@@ -142,7 +142,7 @@ manifest contains without moving these boundaries.
   A second live file (`cube-model-mysql.live.ts`) runs the MySQL path: the canonical golden
   generated with `dialect: "mysql"` is loaded into the same pinned Cube over a real MySQL 8.4
   holding the report views `buildReportViews` lowers (`fixtures/cube-model/canonical/seed.mysql.sql`),
-  and each of the twenty-one served reports' Cube query is compared with `SELECT *` from its view, with the
+  and each of the twenty-three served reports' Cube query is compared with `SELECT *` from its view, with the
   pre-aggregation used asserted. That is the smaller of the two honest options: the two MySQL
   *cases* (escaping, a quoted identifier) are still compiled, not executed, and the goldens hold
   their SQL. The lane runs Cube in development mode, so Cube's production mode with a separate
@@ -250,7 +250,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (374)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (377)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -300,12 +300,12 @@ All 37 fixtures → [features/migrations-and-drift.md](features/migrations-and-d
 may carry `"isArray": true`; with `fields` it is a list of objects, without it a list of
 scalars. The six `verify-positional-accessor-*` cases pin where `-last` is available.
 
-### `fixtures/persistence-conformance/` (52 — 46 query + 6 migration)
+### `fixtures/persistence-conformance/` (54 — 48 query + 6 migration)
 
 - `migrations/*` (6) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
-- `queries/*` (46) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
+- `queries/*` (48) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
 
-**Engines beyond Postgres (FR-044 reports).** The nineteen `queries/report-*.yaml` scenarios also
+**Engines beyond Postgres (FR-044 reports).** The twenty-one `queries/report-*.yaml` scenarios also
 run on SQLite and MySQL 8.4 wherever a port's runtime has the engine, and on D1's local runtime
 in TypeScript (no cloud account): TypeScript on all four, C# and Kotlin on SQLite and MySQL, Java
 on MySQL. **Stated limitations, not gaps:** Java's OMDB has no SQLite driver, and Python's runtime
@@ -319,9 +319,9 @@ REAL, a MySQL `DECIMAL` keeps its scale, a MySQL `DATETIME` is the UTC wall cloc
 `report-relative-date` carries a per-engine seed (`seed-data-engine`). `op: relate` and the
 write ops stay Postgres-only. See [features/reporting.md](features/reporting.md#what-the-corpus-gates).
 
-### `fixtures/api-contract-conformance/` (88)
+### `fixtures/api-contract-conformance/` (91)
 
-All 88 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
+All 91 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
 REST API URL grammar + JSON wire format). Verifies every backend's emitted CRUD
 routes answer identically over HTTP — list / get / create / patch+put / delete,
 plus pagination (`limit`/`offset`), sort (`sort=field:dir`), the `withCount=1`
@@ -339,7 +339,7 @@ each corpus alone could not reach, and 1 pinning the collection-URL spelling),
 `write-through/` (2, table-write + view-read entities), `projection/` (12, a
 read-only view answers reads and refuses writes with 405; a projection with no declared
 identity has no item route; a projection keyed on a field not named `id` is addressed by
-it, whether its identity names `@fields` or derives them; decimal and float fields filter) and `report/` (22,
+it, whether its identity names `@fields` or derives them; decimal and float fields filter) and `report/` (25,
 FR-044: a view-backed `object.report` is listed, filtered, sorted and paged on
 its derived fields, answers `POST` with 405 and mounts no `/{id}`; a `@spine` report keeps
 a row with no facts, and a measure with `@default` filters and sorts as its default). All 5 ports — TS, Java,
@@ -507,9 +507,9 @@ outside ASCII. The case list is in the
 Kotlin's identity function is the Java one; the names its generator emits are asserted by
 `server/java/codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/KotlinRequirementTestsGeneratorTest.kt`.
 
-### `fixtures/cube-model/` (44 cases)
+### `fixtures/cube-model/` (46 cases)
 
-All 44 cases and the canonical golden → [features/cube-export.md](features/cube-export.md).
+All 46 cases and the canonical golden → [features/cube-export.md](features/cube-export.md).
 Each case is the smallest model for one mapping rule (an entity's cube, a join, an alias cube, a
 dimension type, a measure, a measure's `@default`, a segment, a relative date, a rollup, a
 `@spine` report's Cube view, the escaping rules) or for one
@@ -524,8 +524,8 @@ files into a real Cube.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 374 + yaml 16 + verify 37
-+ render 16 + persistence 52 + api-contract 88 + source-resolution 25 + scope 10 +
+The fixtures in the nine corpora mapped above (metamodel 377 + yaml 16 + verify 37
++ render 16 + persistence 54 + api-contract 91 + source-resolution 25 + scope 10 +
 dependency 23) each map to a feature doc, and so do the two requirement corpora and the
 `cube-model` corpus, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider

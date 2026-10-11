@@ -87,6 +87,8 @@ from ..meta.core.reporting.report_accessors import (
 from ..meta.core.reporting.reporting_constants import (
     AGG_AVG,
     AGG_COUNT,
+    AGG_ALL,
+    AGG_ANY,
     AGG_MAX,
     AGG_MIN,
     AGG_SUM,
@@ -623,6 +625,14 @@ def _check_measure(ctx: _MemberCtx, measure: MetaMeasure) -> None:
                 "@default cannot apply to @agg: count. A count is never null (it is 0 when nothing matches); "
                 "remove @default."
             )
+        elif (
+            agg in (AGG_ANY, AGG_ALL)
+            and isinstance(declared_default, (int, float))
+            and not isinstance(declared_default, bool)
+            and declared_default not in (0, 1)
+        ):
+            # M9 — a boolean measure's @default is 0 (false) or 1 (true).
+            err(f"@default '{declared_default}' on @agg '{agg}' must be 0 (false) or 1 (true): the measure is a boolean.")
         elif agg in (AGG_MIN, AGG_MAX) and of_field is not None and of_field.sub_type not in _NUMERIC_FIELD_SUBTYPES:
             err(
                 f"@default is a number, but '{measure.of_columns()[0]}', the @of of @agg '{agg}', is a "
@@ -703,6 +713,9 @@ def _check_aggregate_columns(
         return None
     if agg in (AGG_MIN, AGG_MAX) and field.sub_type in _UNORDERED_FIELD_SUBTYPES:
         err(f"@agg '{agg}' cannot order '{item}', a field.{field.sub_type}.")
+        return None
+    if agg in (AGG_ANY, AGG_ALL) and field.sub_type != FIELD_SUBTYPE_BOOLEAN:
+        err(f"@agg '{agg}' needs a field.boolean, but '{item}' is field.{field.sub_type}.")
         return None
     return _CheckedColumns(field)
 

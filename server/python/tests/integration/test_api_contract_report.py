@@ -79,7 +79,7 @@ def test_exactly_the_served_reports_are_generated() -> None:
     """The sourceless report generates nothing; each served one generates its row model,
     allowlist and router (and the names module is not a route concern, so it is not asked
     for here: only the three generators the lane runs)."""
-    assert len(SERVED_REPORTS) == 8
+    assert len(SERVED_REPORTS) == 9
     for report, stem in SERVED_REPORTS.items():
         assert f"{report}.py" in _EMITTED
         assert f"{stem}_filter_allowlist.py" in _EMITTED

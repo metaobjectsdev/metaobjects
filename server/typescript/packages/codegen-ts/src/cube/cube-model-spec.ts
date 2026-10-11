@@ -18,7 +18,7 @@ export type CubeDialect = "postgres" | "mysql";
 
 export type CubeDimensionType = "string" | "number" | "boolean" | "time";
 
-export type CubeMeasureType = "count" | "count_distinct" | "sum" | "avg" | "min" | "max" | "number";
+export type CubeMeasureType = "count" | "count_distinct" | "sum" | "avg" | "min" | "max" | "number" | "boolean";
 
 export type CubeJoinRelationship = "many_to_one" | "one_to_one" | "one_to_many";
 

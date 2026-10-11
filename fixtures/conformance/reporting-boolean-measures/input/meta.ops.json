@@ -1,0 +1,92 @@
+{
+  "metadata.root": {
+    "package": "acme::ops",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Call",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "calls"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "note"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "failed"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "hasFailure",
+                "@agg": "any",
+                "@of": "Call.failed"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "allFailed",
+                "@agg": "all",
+                "@of": "Call.failed"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "hasFailureOrFalse",
+                "@agg": "any",
+                "@of": "Call.failed",
+                "@default": 0
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "allFailedOrTrue",
+                "@agg": "all",
+                "@of": "Call.failed",
+                "@default": 1
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "CallFlags",
+          "@from": "Call",
+          "@measures": [
+            "hasFailure",
+            "allFailed",
+            "hasFailureOrFalse",
+            "allFailedOrTrue"
+          ],
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_call_flags"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

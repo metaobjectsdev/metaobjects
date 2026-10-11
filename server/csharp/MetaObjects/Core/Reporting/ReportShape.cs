@@ -274,6 +274,9 @@ public static class ReportShapes
             return new ReportField(name, ReportFieldRole.Measure, FIELD_SUBTYPE_DECIMAL, required, Measure: m);
         if (agg == AGG_COUNT)
             return new ReportField(name, ReportFieldRole.Measure, FIELD_SUBTYPE_LONG, required, Measure: m);
+        // any / all are boolean whatever the source (the loader's M4 refuses a non-boolean @of).
+        if (agg == AGG_ANY || agg == AGG_ALL)
+            return new ReportField(name, ReportFieldRole.Measure, FIELD_SUBTYPE_BOOLEAN, required, Measure: m);
         var of = ResolveReportingFieldRef(m.OfColumns().FirstOrDefault() ?? "", ReportingMemberOwner(m, from), root, from)
             ?? throw Unresolved(reportName, $"measure '{name}' @of");
         string src = of.SubType;

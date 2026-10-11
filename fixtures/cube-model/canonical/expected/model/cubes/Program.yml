@@ -9,6 +9,9 @@ cubes:
       - name: ProgramLongWeeksFacts
         relationship: one_to_many
         sql: '{CUBE}."id" = {ProgramLongWeeksFacts}."programId"'
+      - name: ProgramFlagRosterFacts
+        relationship: one_to_many
+        sql: '{CUBE}."id" = {ProgramFlagRosterFacts}."programId"'
       - name: ProgramSessions_fkWeek
         relationship: one_to_many
         sql: '{CUBE}."id" = {ProgramSessions_fkWeek}."programId"'

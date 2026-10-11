@@ -49,6 +49,7 @@ SERVED_REPORTS: dict[str, str] = {
     "ProductRevenue": "product_revenue",
     "SalesByCategory": "sales_by_category",
     "SalesBySku": "sales_by_sku",
+    "ProductRefunds": "product_refunds",
 }
 #: The sourceless report: generated nowhere, mounted nowhere.
 UNSERVED_REPORT = "InvoiceDays"

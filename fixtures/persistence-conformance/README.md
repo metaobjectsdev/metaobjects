@@ -324,7 +324,7 @@ port's runtime. They use only `op: list` and `op: count`, single-key `sort`, `fi
 still the committed `canonical/schema.postgres.sql`, which creates each report's view, so a
 port reads the view the TypeScript migrate engine produced and never lowers a report itself.
 
-The nine also run on SQLite and MySQL 8.4 (and TypeScript on D1's local runtime) in every
+The eleven also run on SQLite and MySQL 8.4 (and TypeScript on D1's local runtime) in every
 port whose runtime has the engine: they execute `canonical/schema.sqlite.sql` or
 `canonical/schema.mysql.sql` instead, each TypeScript-produced and held equal to its generator
 by a test. The `expect` blocks stay the Postgres wire ones; a runner maps the engine's own
@@ -348,6 +348,8 @@ then measures in `@measures` order; a time dimension is named `<name><Grain>`, f
 | `report-relative-date` | a `{ now: "-P30D" }` filter, with a seed relative to the database clock |
 | `report-spine-zero-rows` | `@spine`: a program with no weeks has a row (`weeks` `0`, `totalMinutes` and `longShare` null, the `@default: 0` measures `0`); `count` is the number of programs; a measure filter drops the empty rows; filter and sort on a defaulted measure |
 | `report-spine-scoped` | `@spine` with a report `@segment`: a program whose weeks are all out of scope keeps its row, with `weeks` `0` |
+| `report-boolean-measures` | `@agg: any` / `all` over a nullable `field.boolean`: a boolean on the wire (never `0` / `1`), nulls ignored, `null` for a group with nothing to judge, a `segment`-scoped `any`; `filter` by value and `isNull` |
+| `report-boolean-spine` | boolean measures under `@spine`: a program with no weeks reads `null`, or the `@default: 0` / `1` (false / true); filter and sort on a defaulted boolean |
 | `report-default-empty` | `@default: 0` with no `@spine`, over an empty table: the twin of `report-totals-empty`, the sum and the ratio reading `0` |
 | `report-all-types-breakdown` | dimensions over a boolean, a string enum, a nullable int-backed enum (read as its symbol), a date and a uuid; `sum` of an int, `avg` of a decimal, `max` of a currency, `min` of a long; an inline `in` measure filter; a report `@filter` mixing a relative timestamp with a `PT` duration and a `ne` |
 | `report-filter-operators` | a report `@segment` built from `or`, `like` and equality, ANDed with a report `@filter` (`in`, `lt`); an inline `ne` measure filter; a segment and filter that leave no row, so an `avg` `@default: -1` applies |

@@ -60,6 +60,7 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
       \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
       \`product_id\` BIGINT NOT NULL,
       \`amount_cents\` BIGINT NOT NULL,
+      \`refunded\` BOOLEAN,
       FOREIGN KEY (\`product_id\`) REFERENCES \`products\` (\`id\`)
     )`,
   },

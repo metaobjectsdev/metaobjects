@@ -106,7 +106,7 @@ internal class KotlinCodegenMatchesReferenceTest {
                 ExpectedColumn("recordedAt", families = setOf("instantWithTimeZone")),
             ),
         ),
-        // FR-044: the nine view-backed reports. Each mirrors its hand-written reference
+        // FR-044: the eleven view-backed reports. Each mirrors its hand-written reference
         // (`tables/<Report>View.kt`) column for column: the family is the view's real column
         // type, and a column is nullable exactly when the reference's is. A report has no
         // identity, so none carries a primary key.
@@ -184,6 +184,27 @@ internal class KotlinCodegenMatchesReferenceTest {
                 ExpectedColumn("totalMinutesOrZero", families = setOf("long"), nullable = false),
             ),
             report = "v_program_long_weeks",
+        ),
+        // `@agg: any` / `all`: a BOOLEAN measure, nullable unless it declares `@default`.
+        "ProgramFlags" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("program", families = setOf("long"), nullable = false),
+                ExpectedColumn("weeks", families = setOf("long"), nullable = false),
+                ExpectedColumn("anyDeload", families = setOf("bool"), nullable = true),
+                ExpectedColumn("allDeload", families = setOf("bool"), nullable = true),
+                ExpectedColumn("anyLongDeload", families = setOf("bool"), nullable = true),
+            ),
+            report = "v_program_flags",
+        ),
+        "ProgramFlagRoster" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("programKey", families = setOf("long"), nullable = false),
+                ExpectedColumn("weeks", families = setOf("long"), nullable = false),
+                ExpectedColumn("anyDeload", families = setOf("bool"), nullable = true),
+                ExpectedColumn("anyDeloadOrFalse", families = setOf("bool"), nullable = false),
+                ExpectedColumn("allDeloadOrTrue", families = setOf("bool"), nullable = false),
+            ),
+            report = "v_program_flag_roster",
         ),
         "FitnessTotalsFilled" to EntityExpectation(
             columns = listOf(

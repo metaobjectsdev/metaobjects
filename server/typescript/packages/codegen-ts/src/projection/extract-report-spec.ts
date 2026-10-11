@@ -5,6 +5,7 @@
 
 import {
   AGG_SUM,
+  FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_DOUBLE,
@@ -75,8 +76,13 @@ function aggregateOf(
   // Table D: `@default` is read through the measure itself, so a ratio operand that the report
   // does not list still carries its own.
   const value = measure.defaultValue();
+  const derived = value === undefined ? undefined : measureDerivedSubType(measure, from, root);
   const defaultValue =
-    value === undefined ? undefined : { value, real: REAL_SUBTYPES.has(measureDerivedSubType(measure, from, root)) };
+    value === undefined || derived === undefined
+      ? undefined
+      : derived === FIELD_SUBTYPE_BOOLEAN
+        ? { value, real: false, boolean: true as const }
+        : { value, real: REAL_SUBTYPES.has(derived) };
   return {
     agg,
     distinct,

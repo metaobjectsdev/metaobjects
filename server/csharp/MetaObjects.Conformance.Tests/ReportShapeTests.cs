@@ -54,7 +54,7 @@ public class ReportShapeTests
         var reports = LoadCanonical().Objects().Where(o => o.IsReport()).Select(o => o.Name).ToList();
         Assert.Equal(
             ["ProgramMinutes", "FitnessTotals", "ProgramsByMonth", "ProgramsByWeek", "RecentPrograms", "AssetActivity",
-             "ProgramRoster", "ProgramLongWeeks", "FitnessTotalsFilled",
+             "ProgramRoster", "ProgramLongWeeks", "ProgramFlags", "ProgramFlagRoster", "FitnessTotalsFilled",
              "MeasurementStats", "MeasurementStatsFilled", "AssetDays", "AllTypesBreakdown", "ProgramsOverTime", "LiveIntroPrograms",
              "ProgramsEmptyScope", "WeekShapes", "SessionsByProgram", "ProgramSessions", "NodesByParent", "AuthsByKind"],
             reports);
@@ -73,6 +73,19 @@ public class ReportShapeTests
         Assert.True(fields["longShareOrZero"].Required);
         Assert.Equal(FIELD_SUBTYPE_LONG, fields["totalMinutesOrZero"].SubType);
         Assert.Equal(FIELD_SUBTYPE_DECIMAL, fields["longShareOrZero"].SubType);
+    }
+
+    [Fact]
+    public void The_boolean_aggregates_are_boolean_and_required_only_with_a_default()
+    {
+        // Table B / C for @agg any / all: boolean whatever the source; required only with @default.
+        var fields = Shape(LoadCanonical(), "ProgramFlagRoster").Fields.ToDictionary(f => f.Name);
+        Assert.Equal(FIELD_SUBTYPE_BOOLEAN, fields["anyDeload"].SubType);
+        Assert.False(fields["anyDeload"].Required);
+        Assert.Equal(FIELD_SUBTYPE_BOOLEAN, fields["anyDeloadOrFalse"].SubType);
+        Assert.True(fields["anyDeloadOrFalse"].Required);
+        Assert.Equal(FIELD_SUBTYPE_BOOLEAN, fields["allDeloadOrTrue"].SubType);
+        Assert.True(fields["allDeloadOrTrue"].Required);
     }
 
     [Fact]

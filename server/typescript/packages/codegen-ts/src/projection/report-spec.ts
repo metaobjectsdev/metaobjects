@@ -28,8 +28,10 @@ export interface ReportAggregate {
   /** The Table C cast: integral sum → "bigint", floating sum → "double". */
   readonly cast?: "bigint" | "double";
   /** FR-044 Table D: the measure's `@default`, read when the aggregate is null. `real` when its
-   *  derived subtype is decimal, double or float (SQLite then gets a REAL literal). */
-  readonly defaultValue?: { readonly value: number; readonly real: boolean };
+   *  derived subtype is decimal, double or float (SQLite then gets a REAL literal). `boolean` when
+   *  the measure is `@agg: any` / `all`: `value` is then 0 or 1 and is written as FALSE / TRUE on
+   *  Postgres, 0 / 1 elsewhere. */
+  readonly defaultValue?: { readonly value: number; readonly real: boolean; readonly boolean?: true };
 }
 
 export type ReportColumn =

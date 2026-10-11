@@ -115,6 +115,8 @@ const TABLE_I: readonly ExpectedReport[] = [
   { report: "AssetActivity", view: "v_asset_activity", preAggregation: "dev_pre_aggregations.asset__asset_activity", rows: 2 },
   { report: "ProgramRoster", view: "v_program_roster", preAggregation: undefined, rows: 11 },
   { report: "ProgramLongWeeks", view: "v_program_long_weeks", preAggregation: undefined, rows: 11 },
+  { report: "ProgramFlags", view: "v_program_flags", preAggregation: "dev_pre_aggregations.week__program_flags", rows: 3 },
+  { report: "ProgramFlagRoster", view: "v_program_flag_roster", preAggregation: undefined, rows: 11 },
   { report: "FitnessTotalsFilled", view: "v_fitness_totals_filled", preAggregation: "dev_pre_aggregations.week__fitness_totals_filled", rows: 1 },
   { report: "MeasurementStats", view: "v_measurement_stats", preAggregation: "dev_pre_aggregations.measurement__measurement_stats", rows: 1 },
   { report: "MeasurementStatsFilled", view: "v_measurement_stats_filled", preAggregation: "dev_pre_aggregations.measurement__measurement_stats_filled", rows: 1 },
@@ -456,6 +458,7 @@ const AGG_TYPE: Readonly<Record<string, string>> = {
   min: "min",
   max: "max",
   number: "number",
+  boolean: "boolean",
 };
 
 function metaSummary(cubes: readonly MetaCube[]): Record<string, CubeSummary> {

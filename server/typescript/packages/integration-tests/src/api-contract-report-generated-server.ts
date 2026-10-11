@@ -134,7 +134,8 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
     CREATE TABLE IF NOT EXISTS "sales" (
       "id" bigserial PRIMARY KEY,
       "product_id" bigint NOT NULL REFERENCES "products" ("id"),
-      "amount_cents" bigint NOT NULL
+      "amount_cents" bigint NOT NULL,
+      "refunded" boolean
     );`,
   },
 ];
@@ -156,6 +157,7 @@ export const SERVED_REPORTS = [
   { name: "ProductRevenue", registrar: "productRevenueRoutes" },
   { name: "SalesByCategory", registrar: "salesByCategoryRoutes" },
   { name: "SalesBySku", registrar: "salesBySkuRoutes" },
+  { name: "ProductRefunds", registrar: "productRefundsRoutes" },
 ] as const;
 
 export async function startGeneratedReportServer(

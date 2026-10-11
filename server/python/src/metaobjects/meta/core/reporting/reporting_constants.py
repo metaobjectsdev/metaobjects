@@ -90,7 +90,10 @@ AGG_SUM = "sum"
 AGG_AVG = "avg"
 AGG_MIN = "min"
 AGG_MAX = "max"
-MEASURE_AGGS: tuple[str, ...] = (AGG_COUNT, AGG_SUM, AGG_AVG, AGG_MIN, AGG_MAX)
+#: Boolean OR / AND over a ``field.boolean`` (Postgres ``bool_or`` / ``bool_and``); the measure is boolean.
+AGG_ANY = "any"
+AGG_ALL = "all"
+MEASURE_AGGS: tuple[str, ...] = (AGG_COUNT, AGG_SUM, AGG_AVG, AGG_MIN, AGG_MAX, AGG_ANY, AGG_ALL)
 
 #: Separator in an ``object.report`` ``@dimensions`` item: ``name`` or ``name:grain``.
 REPORT_DIMENSION_GRAIN_SEPARATOR = ":"

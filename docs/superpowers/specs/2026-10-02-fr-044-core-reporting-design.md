@@ -135,7 +135,7 @@ and gets its own agreement then.
 Existing attribute names registered on the new nodes, with the same value grammar as today:
 `@of` (on `dimension.*` as a string; on `measure.aggregate` with `isArray: true`, so a bare
 string coerces to a one-element list and a list is the tuple form), `@via` (dimensions,
-to-one only), `@agg` (`count | sum | avg | min | max` on a measure, a subset of
+to-one only), `@agg` (`count | sum | avg | min | max` on a measure, plus `any | all` since R10, a subset of
 `origin.aggregate`'s set), `@distinct`, `@filter` (`measure.aggregate`, `segment`,
 `object.report`), and `@from` (`object.report`). Each registration still lands in every
 port's provider and in `fixtures/registry-conformance/expected-registry.json`.
@@ -471,6 +471,49 @@ name fields already use for the same concept.
 **Admission.** RDB `COALESCE`; MongoDB `$ifNull`; Search the aggregation's `missing` value or
 adapter code; in memory trivial.
 
+### R10 — `@agg: any` / `all`: a boolean aggregate (added 2026-10-10)
+
+**Why.** An adopter replacing a hand-written view found no report equivalent of Postgres
+`bool_or` / `bool_and`. Its view served `has_error` from `bool_or(failed)`; as a report it could
+only count the failures and map `errorCalls > 0` back to a boolean in every repository.
+
+**Shape.** Two more members of the `@agg` closed set: `any` (boolean OR) and `all` (boolean AND).
+The names are `origin.aggregate`'s own (`any | all` are already in its set, ADR-0037 step 0: a name
+the vocabulary already has for the same concept, not a new one), so the two aggregate families
+spell it alike. No new attribute, no new subtype.
+
+- **Only over a `field.boolean`.** A single `@of` that is a boolean; any other subtype is M4.
+  `min` and `max` keep refusing a boolean (no total order, and Postgres has no `MAX(boolean)`).
+- **The measure is a `boolean`** (Table B), in every port's row type and on the wire.
+- **Empty and null.** SQL's `bool_or` / `bool_and` ignore null values and return null over no
+  values, and the lowering keeps that: a group with no rows, no row in the measure's scope, or only
+  null values reads **null** (nothing to judge), not `false`. A `@spine` row with no facts is the
+  same case. A group with at least one value reads `true` or `false` from the values it has.
+- **`@default`.** Legal and an integer as before, but a boolean measure's default is `0` (false) or
+  `1` (true); any other number is refused (rule M9). It is the same attribute, so the measure is
+  then never null and R9's rules for filter, sort and the row type apply unchanged. The alternative
+  (refuse `@default` on a boolean) leaves a `@spine` report no way to read `false` for a row with no
+  facts, which is the case the adopter had.
+- **Lowering.** Postgres `bool_or` / `bool_and` (a condition as `FILTER (WHERE …)`). SQLite and D1
+  have no boolean aggregate and store a boolean as `0` / `1`: `MAX` for `any`, `MIN` for `all`
+  (a condition as `MAX(CASE WHEN … THEN x END)`). MySQL is the same as SQLite. The default is
+  `COALESCE(E, FALSE | TRUE)` on Postgres and `COALESCE(E, 0 | 1)` elsewhere.
+- **A conditional boolean on MySQL is a `BIGINT`.** `MAX(CASE …)` loses the `TINYINT(1)` of the
+  column, so a driver that returns a `BIGINT` as text hands back `"1"`: the reading side maps a
+  boolean-typed derived field from `0`, `1`, `"0"` and `"1"`.
+
+**ADR-0037 walk.** (0) Not derivable: an author's statement of what to judge. (2) It configures an
+existing attribute's closed set, which is a value of `@agg`, not a new attribute or subtype.
+
+**Admission.** RDB as above. A store with no boolean aggregate is capability-gated as for any
+aggregate it cannot express exactly; none is lowered today.
+
+**Mapping.** Cube: `type: boolean` holding the aggregate in `sql` (Cube's `min` / `max` cannot take
+a Postgres boolean, and a condition rides in the SQL, as for a MySQL tuple count). MetricFlow has
+no `any` / `all` aggregation (`sum_boolean` counts the trues); the dbt exporter, when it exists,
+must refuse it by name or map it to `max` / `min` over a 0/1 expression. It is not part of this
+change.
+
 ## 5. Mapping contract (core → Cube → MetricFlow)
 
 | MetaObjects | Cube | dbt MetricFlow |
@@ -483,6 +526,7 @@ adapter code; in memory trivial.
 | `measure.aggregate` count + `@distinct` (one column) | `count_distinct` | `count_distinct` |
 | `measure.aggregate` count + `@distinct` (tuple) | `count_distinct` over `ROW(…)` with a not-null filter on each column (MySQL: the view's own `COUNT(DISTINCT a, b)` as a `number` measure) | `count_distinct` over an expression |
 | `measure.aggregate` sum/avg/min/max | `sum`/`avg`/`min`/`max` | `sum`/`average`/`min`/`max` |
+| `measure.aggregate` any/all | `boolean` measure holding `bool_or(x)` / `bool_and(x)` (MySQL `MAX(x)` / `MIN(x)`) | none yet: `sum_boolean` counts the trues; the dbt exporter refuses it or maps `max` / `min` over a 0/1 expression |
 | `measure.ratio` | `number` measure `{a} / NULLIF({b}, 0)`; on Postgres `CAST({a} AS NUMERIC) / NULLIF({b}, 0)`, with no cast on MySQL | `ratio` metric |
 | `measure.derived` | `number` measure | `derived` metric |
 | `segment` | segment | metric `filter` / saved query filter |

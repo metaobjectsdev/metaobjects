@@ -490,6 +490,53 @@ describe("emitReportViewDdl — rules", () => {
 const sumOf = (ref: string, extra: Partial<ReportAggregate> = {}): ReportAggregate =>
   ({ agg: "sum", distinct: false, refs: [ref], ...extra });
 
+// ── @agg any / all: a boolean OR / AND ──────────────────────────────────────────────────
+
+const boolAgg = (agg: "any" | "all", ref: string, extra: Partial<ReportAggregate> = {}): ReportAggregate =>
+  ({ agg, distinct: false, refs: [ref], ...extra });
+
+describe("emitReportViewDdl — @agg any / all", () => {
+  const spec = baseSpec("w", "Week", [
+    col("anyD", boolAgg("any", "w.deload")),
+    col("allD", boolAgg("all", "w.deload")),
+    col("anyLong", boolAgg("any", "w.deload", { filter: longWeek })),
+  ]);
+
+  test("Postgres: bool_or / bool_and, a condition as FILTER (WHERE)", () => {
+    const sql = emitReportViewDdl(spec, pg("weeks"));
+    expect(sql).toContain(`    bool_or(w."deload") AS "anyD"`);
+    expect(sql).toContain(`    bool_and(w."deload") AS "allD"`);
+    expect(sql).toContain(`    bool_or(w."deload") FILTER (WHERE w."durationMinutes" >= 60) AS "anyLong"`);
+  });
+
+  test("SQLite and MySQL: MAX / MIN over the 0 / 1 column, a condition as CASE", () => {
+    const lite = emitReportViewDdl(spec, sqlite("weeks"));
+    expect(lite).toContain(`    MAX(w."deload") AS "anyD"`);
+    expect(lite).toContain(`    MIN(w."deload") AS "allD"`);
+    expect(lite).toContain(`    MAX(CASE WHEN w."durationMinutes" >= 60 THEN w."deload" END) AS "anyLong"`);
+    const my = emitReportViewDdl(spec, mysql("weeks"));
+    expect(my).toContain("    MAX(w.`deload`) AS `anyD`");
+    expect(my).toContain("    MIN(w.`deload`) AS `allD`");
+    expect(my).toContain("    MAX(CASE WHEN w.`durationMinutes` >= 60 THEN w.`deload` END) AS `anyLong`");
+  });
+
+  test("a @default is a boolean literal on Postgres and 0 / 1 elsewhere", () => {
+    const withDefault = baseSpec("w", "Week", [
+      col("f", boolAgg("any", "w.deload", { defaultValue: { value: 0, real: false, boolean: true } })),
+      col("t", boolAgg("all", "w.deload", { defaultValue: { value: 1, real: false, boolean: true } })),
+    ]);
+    const post = emitReportViewDdl(withDefault, pg("weeks"));
+    expect(post).toContain(`    COALESCE(bool_or(w."deload"), FALSE) AS "f"`);
+    expect(post).toContain(`    COALESCE(bool_and(w."deload"), TRUE) AS "t"`);
+    for (const options of [sqlite("weeks"), mysql("weeks")]) {
+      const out = emitReportViewDdl(withDefault, options);
+      expect(out).toContain("COALESCE(MAX(");
+      expect(out).toMatch(/COALESCE\(MAX\([^)]*\), 0\) AS .f./);
+      expect(out).toMatch(/COALESCE\(MIN\([^)]*\), 1\) AS .t./);
+    }
+  });
+});
+
 describe("emitReportViewDdl — Table D, a measure @default", () => {
   test("COALESCE wraps the cast, per dialect", () => {
     const spec = baseSpec("w", "Week", [

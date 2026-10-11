@@ -91,9 +91,11 @@ export const REPORTING_DEFINITION: ProviderDefinition = {
             "sum",
             "avg",
             "min",
-            "max"
+            "max",
+            "any",
+            "all"
           ],
-          "description": "The aggregate function. sum/avg need a numeric field; min/max refuse boolean, object and map fields."
+          "description": "The aggregate function. sum/avg need a numeric field; min/max refuse boolean, object and map fields; any/all (boolean OR / AND, Postgres bool_or / bool_and) need a field.boolean and type the measure boolean."
         },
         {
           "type": "attr",
@@ -134,7 +136,7 @@ export const REPORTING_DEFINITION: ProviderDefinition = {
           "name": "default",
           "min": 0,
           "max": 1,
-          "description": "Optional integer the measure reads when it would otherwise be null: nothing matched, every matched value is null, or (a ratio) the denominator is zero or null. The derived report field is then never null. Refused on @agg: count (a count is never null) and on min/max over a field that is not numeric. A ratio's operand carries its own @default into the ratio."
+          "description": "Optional integer the measure reads when it would otherwise be null: nothing matched, every matched value is null, or (a ratio) the denominator is zero or null. The derived report field is then never null. Refused on @agg: count (a count is never null), on min/max over a field that is not numeric, and on @agg any/all unless it is 0 (false) or 1 (true). A ratio's operand carries its own @default into the ratio."
         }
       ]
     },

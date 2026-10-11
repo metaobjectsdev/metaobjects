@@ -18,6 +18,7 @@ package com.metaobjects.reporting;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaRoot;
+import com.metaobjects.field.BooleanField;
 import com.metaobjects.field.CurrencyField;
 import com.metaobjects.field.DateField;
 import com.metaobjects.field.DecimalField;
@@ -483,6 +484,10 @@ public final class ReportShape {
         }
         if (ReportingConstants.AGG_COUNT.equals(agg)) {
             return new Field(name, Role.MEASURE, LongField.SUBTYPE_LONG, required, null, null, null, m);
+        }
+        // any / all are boolean whatever the source (the loader's M4 refuses a non-boolean @of).
+        if (ReportingConstants.AGG_ANY.equals(agg) || ReportingConstants.AGG_ALL.equals(agg)) {
+            return new Field(name, Role.MEASURE, BooleanField.SUBTYPE_BOOLEAN, required, null, null, null, m);
         }
         List<String> columns = m.getOfColumns();
         MetaField<?> of = columns.isEmpty() ? null

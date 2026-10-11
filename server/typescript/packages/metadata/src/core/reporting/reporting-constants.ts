@@ -7,6 +7,7 @@
 // every other base type and are re-exported here so a reporting consumer has
 // one import site.
 
+import { AGG_ALL, AGG_ANY } from "../../persistence/origin/origin-constants.js";
 import { TYPE_DIMENSION, TYPE_MEASURE, TYPE_SEGMENT } from "../../shared/base-types.js";
 
 export { TYPE_DIMENSION, TYPE_MEASURE, TYPE_SEGMENT };
@@ -80,7 +81,9 @@ export const AGG_SUM = "sum";
 export const AGG_AVG = "avg";
 export const AGG_MIN = "min";
 export const AGG_MAX = "max";
-export const MEASURE_AGGS = [AGG_COUNT, AGG_SUM, AGG_AVG, AGG_MIN, AGG_MAX] as const;
+// `any` / `all`: boolean OR / AND over a `field.boolean` (Postgres `bool_or` / `bool_and`); the
+// measure is boolean. The names, and their constants, are `origin.aggregate`'s own.
+export const MEASURE_AGGS = [AGG_COUNT, AGG_SUM, AGG_AVG, AGG_MIN, AGG_MAX, AGG_ANY, AGG_ALL] as const;
 export type MeasureAgg = (typeof MEASURE_AGGS)[number];
 
 /** Separator in an `object.report` `@dimensions` item: `name` or `name:grain`. */

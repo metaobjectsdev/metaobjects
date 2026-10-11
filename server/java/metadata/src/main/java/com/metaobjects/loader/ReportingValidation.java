@@ -606,6 +606,11 @@ final class ReportingValidation {
             if (ReportingConstants.AGG_COUNT.equals(agg)) {
                 err.accept("@default cannot apply to @agg: count. A count is never null (it is 0 when nothing "
                         + "matches); remove @default.");
+            } else if ((ReportingConstants.AGG_ANY.equals(agg) || ReportingConstants.AGG_ALL.equals(agg))
+                    && declaredDefault instanceof Number n && n.doubleValue() != 0 && n.doubleValue() != 1) {
+                // M9 — a boolean measure's @default is 0 (false) or 1 (true).
+                err.accept("@default '" + declaredDefault + "' on @agg '" + agg
+                        + "' must be 0 (false) or 1 (true): the measure is a boolean.");
             } else if ((ReportingConstants.AGG_MIN.equals(agg) || ReportingConstants.AGG_MAX.equals(agg))
                     && ofField != null
                     && !NUMERIC_FIELD_SUBTYPES.contains(ofField.getSubType())) {
@@ -690,6 +695,12 @@ final class ReportingValidation {
         if ((ReportingConstants.AGG_MIN.equals(agg) || ReportingConstants.AGG_MAX.equals(agg))
                 && UNORDERED_FIELD_SUBTYPES.contains(field.getSubType())) {
             err.accept("@agg '" + agg + "' cannot order '" + item + "', a field." + field.getSubType() + ".");
+            return null;
+        }
+        if ((ReportingConstants.AGG_ANY.equals(agg) || ReportingConstants.AGG_ALL.equals(agg))
+                && !BooleanField.SUBTYPE_BOOLEAN.equals(field.getSubType())) {
+            err.accept("@agg '" + agg + "' needs a field.boolean, but '" + item + "' is field."
+                    + field.getSubType() + ".");
             return null;
         }
         return new AggregateColumns(field);

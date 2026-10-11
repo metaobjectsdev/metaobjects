@@ -482,6 +482,31 @@ describe("validateReporting — measures", () => {
     await single(m, "ERR_INVALID_MEASURE");
   });
 
+  test("M4: any / all over a field that is not a boolean is refused, naming the field", async () => {
+    const m = edit((x) => patchMember(x, "Purchase", "revenue", { "@agg": "any" }));
+    const msg = await single(m, "ERR_INVALID_MEASURE");
+    expect(msg).toBe(
+      "measure 'revenue' on entity 'acme::shop::Purchase': @agg 'any' needs a field.boolean, but " +
+        "'Purchase.amountCents' is field.currency.",
+    );
+    const all = edit((x) => patchMember(x, "Purchase", "revenue", { "@agg": "all" }));
+    expect(await single(all, "ERR_INVALID_MEASURE")).toContain("@agg 'all' needs a field.boolean");
+  });
+
+  test("any and all over a boolean field are fine, with or without @filter", async () => {
+    const m = edit((x) => {
+      setChild(x, "Purchase", "anyRefund", {
+        "measure.aggregate": { name: "anyRefund", "@agg": "any", "@of": "Purchase.refunded" },
+      });
+      setChild(x, "Purchase", "allRefunded", {
+        "measure.aggregate": {
+          name: "allRefunded", "@agg": "all", "@of": "Purchase.refunded", "@filter": { status: "active" },
+        },
+      });
+    });
+    expect(await codes(m)).toEqual([]);
+  });
+
   test("M4: avg over a currency field and min over a timestamp are fine", async () => {
     const m = edit((x) => {
       setChild(x, "Purchase", "avgRevenue", {
@@ -1395,6 +1420,22 @@ describe("validateReporting — measure @default (M7, M8)", () => {
     const msg = await single(m, "ERR_INVALID_MEASURE");
     expect(msg).toContain("measure 'daysEngaged'");
     expect(msg).toContain("@default cannot apply to @agg: count");
+  });
+
+  test("M9: a boolean measure's @default is 0 or 1; 0 and 1 are fine", async () => {
+    const withDefault = (value: number): Model =>
+      edit((x) =>
+        setChild(x, "Purchase", "anyRefund", {
+          "measure.aggregate": { name: "anyRefund", "@agg": "any", "@of": "Purchase.refunded", "@default": value },
+        }),
+      );
+    expect(await codes(withDefault(0))).toEqual([]);
+    expect(await codes(withDefault(1))).toEqual([]);
+    expect(await single(withDefault(2), "ERR_INVALID_MEASURE")).toBe(
+      "measure 'anyRefund' on entity 'acme::shop::Purchase': @default '2' on @agg 'any' must be 0 (false) " +
+        "or 1 (true): the measure is a boolean.",
+    );
+    expect(await single(withDefault(-1), "ERR_INVALID_MEASURE")).toContain("must be 0 (false) or 1 (true)");
   });
 
   test("M8: @default on a max of a timestamp is refused", async () => {

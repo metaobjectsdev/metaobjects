@@ -233,6 +233,18 @@ generator catalog and the Atlas evaluation are 1.2 work.
   three-way merge preserves hand edits. An ejected `entity` generator picks it up without a
   resync, because the owned copy calls the package's value-object composer.
 
+- **A boolean `any` / `all` aggregate for reports (`@agg: any`, `@agg: all`), in all five ports.** An
+  adopter replacing a hand-written view that served `has_error` from Postgres `bool_or` found no
+  report equivalent: a report could only count the failures and map `errorCalls > 0` back to a
+  boolean in every repository. `@agg: any` and `@agg: all` (the names `origin.aggregate` already
+  uses) are a boolean OR and AND over a `field.boolean` `@of`, and the measure is a `boolean` in
+  every port. Null values are ignored, so a group with no rows, no row in the measure's scope or
+  only null values reads null; `@default: 0` reads `false` and `@default: 1` reads `true`. New
+  rules: `any` / `all` over a field that is not a boolean is M4, and a boolean measure's
+  `@default` other than `0` or `1` is M9 (both `ERR_INVALID_MEASURE`). Postgres writes `bool_or` /
+  `bool_and`; SQLite and MySQL write `MAX` / `MIN` over `0` / `1`. The `cube-model` generator
+  writes a `type: boolean` measure. See [reporting](docs/features/reporting.md#boolean-measures-any-and-all).
+  No `metamodelVersion` change: the vocabulary is part of 1.1.
 - **TypeScript: the `cube-model` reference generator (FR-044 Plan 4).** `cubeModel()` writes the
   reporting vocabulary as Cube data-model files, `model/cubes/<Cube>.yml`: a cube for each
   table-backed entity that declares dimensions, measures or segments, a join for each to-one

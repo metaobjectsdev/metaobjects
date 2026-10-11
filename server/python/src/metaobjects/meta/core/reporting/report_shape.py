@@ -19,6 +19,7 @@ from ...meta_data import MetaData
 from ...meta_root import MetaRoot
 from ..field.field_constants import (
     FIELD_ATTR_REQUIRED,
+    FIELD_SUBTYPE_BOOLEAN,
     FIELD_SUBTYPE_CURRENCY,
     FIELD_SUBTYPE_DATE,
     FIELD_SUBTYPE_DECIMAL,
@@ -56,6 +57,8 @@ from .report_accessors import (
     report_spine,
 )
 from .reporting_constants import (
+    AGG_ALL,
+    AGG_ANY,
     AGG_AVG,
     AGG_COUNT,
     AGG_SUM,
@@ -379,6 +382,9 @@ def _measure_field(item: str, report: MetaObject, from_: MetaObject, root: MetaR
     agg = m.agg()
     if agg == AGG_COUNT:
         return ReportField(name, ROLE_MEASURE, FIELD_SUBTYPE_LONG, required, measure=m)
+    # any / all are boolean whatever the source (the loader's M4 refuses a non-boolean @of).
+    if agg in (AGG_ANY, AGG_ALL):
+        return ReportField(name, ROLE_MEASURE, FIELD_SUBTYPE_BOOLEAN, required, measure=m)
     cols = m.of_columns()
     of = resolve_reporting_field_ref(cols[0] if cols else "", reporting_member_owner(m, from_), root, from_)
     if of is None:

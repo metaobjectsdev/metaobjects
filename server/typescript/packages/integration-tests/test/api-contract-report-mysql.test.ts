@@ -25,6 +25,7 @@ const SERVED_PATHS: Array<[string, string]> = [
   ["InvoicesByMonth", "/api/invoices_by_months"],
   ["InvoiceTotals", "/api/invoice_totals"],
   ["ProductRevenue", "/api/product_revenues"],
+  ["ProductRefunds", "/api/product_refunds"],
 ];
 
 let container: MysqlContainerHandle;

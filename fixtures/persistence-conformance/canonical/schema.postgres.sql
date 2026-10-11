@@ -20,6 +20,7 @@ CREATE TABLE "weeks" (
   "programId" BIGINT NOT NULL,
   "label" VARCHAR(80),
   "durationMinutes" INTEGER NOT NULL,
+  "deload" BOOLEAN,
   CONSTRAINT "weeks_pkey" PRIMARY KEY ("id")
 );
 
@@ -269,6 +270,29 @@ CREATE VIEW "v_program_long_weeks" AS
   LEFT OUTER JOIN "weeks" w ON p."id" = w."programId" AND w."durationMinutes" >= 60
   GROUP BY p."id";
 COMMENT ON VIEW "v_program_long_weeks" IS 'metaobjects:v1:sha256:f9eaf671509f579d4d4f0345947ff383c8192707d66b1fb24a2ece5580aaa86e';
+
+CREATE VIEW "v_program_flags" AS
+  SELECT
+    w."programId" AS "program",
+    COUNT(w."id") AS "weeks",
+    bool_or(w."deload") AS "anyDeload",
+    bool_and(w."deload") AS "allDeload",
+    bool_or(w."deload") FILTER (WHERE w."durationMinutes" >= 60) AS "anyLongDeload"
+  FROM "weeks" w
+  GROUP BY w."programId";
+COMMENT ON VIEW "v_program_flags" IS 'metaobjects:v1:sha256:ef0870b423472f2745be95f1ff25da1cc9cce58bd2ed3bc5927472378831643c';
+
+CREATE VIEW "v_program_flag_roster" AS
+  SELECT
+    p."id" AS "programKey",
+    COUNT(w."id") AS "weeks",
+    bool_or(w."deload") AS "anyDeload",
+    COALESCE(bool_or(w."deload"), FALSE) AS "anyDeloadOrFalse",
+    COALESCE(bool_and(w."deload"), TRUE) AS "allDeloadOrTrue"
+  FROM "programs" p
+  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId"
+  GROUP BY p."id";
+COMMENT ON VIEW "v_program_flag_roster" IS 'metaobjects:v1:sha256:14db4d7e9e8d27fde23b5a60797ef8bf301aa8e7a080c29f4b63ce23211e16ce';
 
 CREATE VIEW "v_fitness_totals_filled" AS
   SELECT

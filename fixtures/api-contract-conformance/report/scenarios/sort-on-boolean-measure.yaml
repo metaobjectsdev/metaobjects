@@ -1,0 +1,23 @@
+name: report-sort-on-boolean-measure
+description: >
+  A sort on a defaulted boolean measure is deterministic on every engine: false sorts
+  before true, and the product with no sale sorts as its default, false, never as a null
+  whose place the engine chooses. Atlas is the only true row, so it is first descending.
+  The corpus never sorts `hasRefund` (no @default) across Cinder's null row.
+requests:
+  - id: desc
+    method: GET
+    path: /api/product_refunds?sort=hasRefundOrFalse:desc&limit=1
+    expect:
+      status: 200
+      body:
+        equals:
+          - { productId: 1, productName: "Atlas", sales: 2, hasRefund: true, hasRefundOrFalse: true }
+  - id: asc-last
+    method: GET
+    path: /api/product_refunds?sort=hasRefundOrFalse:asc&limit=1&offset=2
+    expect:
+      status: 200
+      body:
+        equals:
+          - { productId: 1, productName: "Atlas", sales: 2, hasRefund: true, hasRefundOrFalse: true }

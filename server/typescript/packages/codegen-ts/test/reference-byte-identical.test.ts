@@ -747,16 +747,16 @@ describe("ADR-0034 — the cube-model reference is byte-identical to the built-i
     const root = await loadModelFile(CANONICAL_MODEL);
     const a = await outcome(builtinCubeModel, root, CANONICAL_CONFIG);
     const b = await outcome(refCubeModel, root, CANONICAL_CONFIG);
-    // A gate over an empty emit passes trivially. The three @spine reports are views, each with its
+    // A gate over an empty emit passes trivially. The four @spine reports are views, each with its
     // facts cube; ProgramSessions reaches its facts through the Session -> Week reference.
     expect("tree" in a ? a.tree.map(([p]) => p) : a).toEqual([
       "model/cubes/AllTypes.yml", "model/cubes/Asset.yml", "model/cubes/Auth.yml", "model/cubes/BridgeAuth.yml",
       "model/cubes/CopayAuth.yml", "model/cubes/Measurement.yml", "model/cubes/Node.yml", "model/cubes/Node_fkParent.yml",
-      "model/cubes/PriorAuthAuth.yml", "model/cubes/Program.yml", "model/cubes/ProgramLongWeeksFacts.yml",
-      "model/cubes/ProgramRosterFacts.yml", "model/cubes/ProgramSessionsFacts.yml",
+      "model/cubes/PriorAuthAuth.yml", "model/cubes/Program.yml", "model/cubes/ProgramFlagRosterFacts.yml",
+      "model/cubes/ProgramLongWeeksFacts.yml", "model/cubes/ProgramRosterFacts.yml", "model/cubes/ProgramSessionsFacts.yml",
       "model/cubes/ProgramSessions_fkWeek.yml", "model/cubes/ReferralAuth.yml", "model/cubes/Session.yml",
-      "model/cubes/Week.yml", "model/views/ProgramLongWeeks.yml", "model/views/ProgramRoster.yml",
-      "model/views/ProgramSessions.yml",
+      "model/cubes/Week.yml", "model/views/ProgramFlagRoster.yml", "model/views/ProgramLongWeeks.yml",
+      "model/views/ProgramRoster.yml", "model/views/ProgramSessions.yml",
     ]);
     expect(b).toEqual(a);
   });
@@ -812,12 +812,13 @@ describe("ADR-0034 — the cube-model reference is byte-identical to the built-i
     const run = (make: () => Generator) => runTree(make, { entityFilter: ["Week"] }, { dialect: "postgres" });
     const a = await run(builtinCubeModel);
     // Narrower than the full run (no Asset.yml), and not empty: Week reaches Program, Program the
-    // three facts cubes (ProgramSessionsFacts through the Session -> Week join-path cube), and with
-    // every cube they read written the three views are too.
+    // four facts cubes (ProgramSessionsFacts through the Session -> Week join-path cube), and with
+    // every cube they read written the four views are too.
     expect(a.map(([p]) => p)).toEqual([
-      "model/cubes/Program.yml", "model/cubes/ProgramLongWeeksFacts.yml", "model/cubes/ProgramRosterFacts.yml",
-      "model/cubes/ProgramSessionsFacts.yml", "model/cubes/ProgramSessions_fkWeek.yml", "model/cubes/Week.yml",
-      "model/views/ProgramLongWeeks.yml", "model/views/ProgramRoster.yml", "model/views/ProgramSessions.yml",
+      "model/cubes/Program.yml", "model/cubes/ProgramFlagRosterFacts.yml", "model/cubes/ProgramLongWeeksFacts.yml",
+      "model/cubes/ProgramRosterFacts.yml", "model/cubes/ProgramSessionsFacts.yml", "model/cubes/ProgramSessions_fkWeek.yml",
+      "model/cubes/Week.yml", "model/views/ProgramFlagRoster.yml", "model/views/ProgramLongWeeks.yml",
+      "model/views/ProgramRoster.yml", "model/views/ProgramSessions.yml",
     ]);
     expect(await run(refCubeModel)).toEqual(a);
   });

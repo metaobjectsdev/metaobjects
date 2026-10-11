@@ -12,6 +12,7 @@ import { CHILD_REF_SEPARATOR, PACKAGE_SEPARATOR } from "../../shared/structural.
 import type { MetaObject } from "../object/meta-object.js";
 import type { MetaField } from "../field/meta-field.js";
 import {
+  FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_DATE,
   FIELD_SUBTYPE_DECIMAL,
@@ -38,6 +39,7 @@ import {
   reportMeasureNames,
   reportSpine,
 } from "./report-accessors.js";
+import { AGG_ALL, AGG_ANY } from "../../persistence/origin/origin-constants.js";
 import {
   AGG_AVG,
   AGG_COUNT,
@@ -390,6 +392,8 @@ function deriveMeasure(m: MetaMeasure, from: MetaObject, root: MetaRoot): Measur
   if (m.isRatio()) return { subType: FIELD_SUBTYPE_DECIMAL };
   const agg = m.agg();
   if (agg === AGG_COUNT) return { subType: FIELD_SUBTYPE_LONG };
+  // any / all are boolean whatever the source (the loader's M4 refuses a non-boolean @of).
+  if (agg === AGG_ANY || agg === AGG_ALL) return { subType: FIELD_SUBTYPE_BOOLEAN };
   const of = resolveReportingFieldRef(m.ofColumns()[0] ?? "", reportingMemberOwner(m, from), root, from);
   if (of === undefined) return undefined;
   const src = of.subType;

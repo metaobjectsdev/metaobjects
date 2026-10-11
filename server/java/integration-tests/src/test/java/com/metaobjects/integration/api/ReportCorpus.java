@@ -29,10 +29,10 @@ final class ReportCorpus {
     /** The served reports, in declaration order. {@code ProductRevenue} declares
      *  {@code @spine} and a measure with {@code @default}; {@code InvoiceCalendar} lists one
      *  time dimension at two grains; {@code SalesByCategory} reaches a dimension through two
-     *  references. */
+     *  references; {@code ProductRefunds} adds boolean {@code @agg any} measures. */
     static final List<String> SERVED =
         List.of("InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
-            "ProductRevenue", "SalesByCategory", "SalesBySku");
+            "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds");
 
     /** The report that declares no view and must generate nothing. */
     static final String SOURCELESS = "InvoiceDays";

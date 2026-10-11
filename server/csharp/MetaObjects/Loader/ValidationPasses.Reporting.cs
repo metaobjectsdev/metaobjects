@@ -501,6 +501,13 @@ public static partial class ValidationPasses
                 Err("@default cannot apply to @agg: count. A count is never null (it is 0 when nothing matches); " +
                     "remove @default.");
             }
+            else if ((agg == AGG_ANY || agg == AGG_ALL) &&
+                     declaredDefault is int or long or short or double or float or decimal &&
+                     Convert.ToDouble(declaredDefault, System.Globalization.CultureInfo.InvariantCulture) is not (0 or 1))
+            {
+                // M9 — a boolean measure's @default is 0 (false) or 1 (true).
+                Err($"@default '{declaredDefault}' on @agg '{agg}' must be 0 (false) or 1 (true): the measure is a boolean.");
+            }
             else if ((agg == AGG_MIN || agg == AGG_MAX) &&
                      ofField is not null &&
                      !ReportingNumericFieldSubtypes.Contains(ofField.SubType))
@@ -591,6 +598,11 @@ public static partial class ValidationPasses
         if ((agg == AGG_MIN || agg == AGG_MAX) && ReportingUnorderedFieldSubtypes.Contains(single.SubType))
         {
             err($"@agg '{agg}' cannot order '{first}', a field.{single.SubType}.");
+            return false;
+        }
+        if ((agg == AGG_ANY || agg == AGG_ALL) && single.SubType != FIELD_SUBTYPE_BOOLEAN)
+        {
+            err($"@agg '{agg}' needs a field.boolean, but '{first}' is field.{single.SubType}.");
             return false;
         }
         return true;

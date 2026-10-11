@@ -167,7 +167,10 @@ function isoInstant(s: string, where: string): string {
 
 export function normalize(kind: ColumnKind, raw: unknown, where: string): string | null {
   if (raw === null || raw === undefined) return null;
-  if (typeof raw !== "string" && typeof raw !== "number" && typeof raw !== "boolean") throw new Error(`${where}: unexpected value ${JSON.stringify(raw)}`);
+  // A boolean measure (`@agg: any` / `all`): Cube sends a JSON boolean, the view's text is `true` / `false`.
+  if (typeof raw !== "string" && typeof raw !== "number" && typeof raw !== "boolean") {
+    throw new Error(`${where}: unexpected value ${JSON.stringify(raw)}`);
+  }
   const s = String(raw);
   switch (kind) {
     case "time":

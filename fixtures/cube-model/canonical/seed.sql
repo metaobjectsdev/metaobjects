@@ -21,13 +21,13 @@ INSERT INTO "programs" ("id","title","priceCents","status","created_ts") VALUES
   (9, 'Open Gym', 0, 'PUBLISHED', '2026-05-17T08:00:00'),
   (10, 'Intro Archive', 900, 'ARCHIVED', '2026-05-31T12:00:00'),
   (11, 'Intro Premium', 9000, 'PUBLISHED', '2026-05-01T12:00:00');
-INSERT INTO "weeks" ("id","programId","label","durationMinutes") VALUES
-  (10, 1, 'Week 1', 30),
-  (11, 1, 'Week 2', 60),
-  (12, 1, 'Week 2', 90),
-  (13, 1, NULL, 60),
-  (20, 2, 'Solo', 45),
-  (30, 5, NULL, 20);
+INSERT INTO "weeks" ("id","programId","label","durationMinutes","deload") VALUES
+  (10, 1, 'Week 1', 30, FALSE),
+  (11, 1, 'Week 2', 60, TRUE),
+  (12, 1, 'Week 2', 90, FALSE),
+  (13, 1, NULL, 60, NULL),
+  (20, 2, 'Solo', 45, TRUE),
+  (30, 5, NULL, 20, NULL);
 INSERT INTO "assets" ("id","ownerId","externalId","payload","recordedAt","observedAt","asOfDate","atTime") VALUES
   ('11111111-1111-4111-8111-111111111111','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','22222222-2222-4222-8222-222222222222','{"k": 1}','2026-05-04T03:30:00Z','2026-05-04T03:30:00','2026-05-03','03:30:00'),
   ('33333333-3333-4333-8333-333333333333','44444444-4444-4444-8444-444444444444','55555555-5555-4555-8555-555555555555','{"k": 2}','2026-05-04T03:45:00Z','2026-05-04T03:45:00','2026-05-03','03:45:00'),

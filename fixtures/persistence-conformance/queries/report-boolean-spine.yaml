@@ -1,0 +1,68 @@
+name: report-boolean-spine
+description: |
+  ProgramFlagRoster is an object.report over Week with @spine: "Week.fkProgram", so a
+  program with no weeks still has a row. Its measures are the boolean aggregates over
+  Week.deload:
+    anyDeload        @agg: any, no @default
+    anyDeloadOrFalse @agg: any, @default: 0   (false)
+    allDeloadOrTrue  @agg: all, @default: 1   (true)
+
+  A boolean measure's @default is 0 (false) or 1 (true). It is read wherever the aggregate
+  is null: no weeks at all (the spine row with no facts), or only null deload values.
+  Without a @default the measure stays null there. A defaulted measure is never null, so it
+  is a required field of the report and sorts and filters as its default.
+    Program 1 deloads: false, true, false, null -> any true,  anyOrFalse true,  allOrTrue false
+    Program 2 deloads: true, true               -> any true,  anyOrFalse true,  allOrTrue true
+    Program 3 deloads: false, null              -> any false, anyOrFalse false, allOrTrue false
+    Program 4 deloads: null                     -> any null,  anyOrFalse false, allOrTrue true
+    Program 5 has no weeks                      -> any null,  anyOrFalse false, allOrTrue true
+seed-data: |
+  INSERT INTO "programs" ("id","title","priceCents","status","created_ts") VALUES
+    (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00'),
+    (2, 'Strength', 2500, 'PUBLISHED', '2026-05-17T23:30:00'),
+    (3, 'Endurance', 3000, 'PUBLISHED', '2026-05-18T09:00:00'),
+    (4, 'Recovery', 1500, 'DRAFT', '2026-05-19T09:00:00'),
+    (5, 'Mobility', 1200, 'DRAFT', '2026-05-20T09:00:00');
+  INSERT INTO "weeks" ("id","programId","label","durationMinutes","deload") VALUES
+    (10, 1, 'Week 1', 30, FALSE),
+    (11, 1, 'Week 2', 60, TRUE),
+    (12, 1, 'Week 3', 90, FALSE),
+    (13, 1, NULL, 60, NULL),
+    (20, 2, 'Solo', 45, TRUE),
+    (21, 2, 'Duo', 50, TRUE),
+    (30, 3, 'Base', 30, FALSE),
+    (31, 3, 'Build', 90, NULL),
+    (40, 4, 'Rest', 30, NULL);
+queries:
+  - name: every-program-has-a-row
+    op: list
+    entity: ProgramFlagRoster
+    sort: [{ field: programKey, dir: asc }]
+    expect:
+      - { programKey: "1", weeks: "4", anyDeload: true, anyDeloadOrFalse: true, allDeloadOrTrue: false }
+      - { programKey: "2", weeks: "2", anyDeload: true, anyDeloadOrFalse: true, allDeloadOrTrue: true }
+      - { programKey: "3", weeks: "2", anyDeload: false, anyDeloadOrFalse: false, allDeloadOrTrue: false }
+      - { programKey: "4", weeks: "1", anyDeload: null, anyDeloadOrFalse: false, allDeloadOrTrue: true }
+      - { programKey: "5", weeks: "0", anyDeload: null, anyDeloadOrFalse: false, allDeloadOrTrue: true }
+  - name: the-default-is-filterable
+    op: list
+    entity: ProgramFlagRoster
+    filter: { anyDeloadOrFalse: { eq: false } }
+    sort: [{ field: programKey, dir: asc }]
+    expect:
+      - { programKey: "3", weeks: "2", anyDeload: false, anyDeloadOrFalse: false, allDeloadOrTrue: false }
+      - { programKey: "4", weeks: "1", anyDeload: null, anyDeloadOrFalse: false, allDeloadOrTrue: true }
+      - { programKey: "5", weeks: "0", anyDeload: null, anyDeloadOrFalse: false, allDeloadOrTrue: true }
+  - name: filter-all-or-true
+    op: count
+    entity: ProgramFlagRoster
+    filter: { allDeloadOrTrue: { eq: true } }
+    expect: 3
+  - name: sort-on-the-defaulted-boolean
+    op: list
+    entity: ProgramFlagRoster
+    sort: [{ field: allDeloadOrTrue, dir: desc }, { field: programKey, dir: asc }]
+    limit: 2
+    expect:
+      - { programKey: "2", weeks: "2", anyDeload: true, anyDeloadOrFalse: true, allDeloadOrTrue: true }
+      - { programKey: "4", weeks: "1", anyDeload: null, anyDeloadOrFalse: false, allDeloadOrTrue: true }

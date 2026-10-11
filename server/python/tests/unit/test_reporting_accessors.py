@@ -259,7 +259,7 @@ def test_report_derived_field_name() -> None:
 
 def test_closed_sets_keep_contract_order() -> None:
     assert TIME_GRAINS == ("hour", "day", "week", "month", "quarter", "year")
-    assert MEASURE_AGGS == ("count", "sum", "avg", "min", "max")
+    assert MEASURE_AGGS == ("count", "sum", "avg", "min", "max", "any", "all")
 
 
 # ---------------------------------------------------------------------------

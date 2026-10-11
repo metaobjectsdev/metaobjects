@@ -26,7 +26,7 @@ import kotlin.io.path.isRegularFile
 import kotlin.io.path.readText
 
 /**
- * FR-044 Plan 3: host the GENERATED Kotlin Spring controllers of the four served reports
+ * FR-044 Plan 3: host the GENERATED Kotlin Spring controllers of the five served reports
  * of the `report/` corpus over real HTTP (an embedded Tomcat). Mirrors
  * [com.metaobjects.integration.kotlin.api.projection.generated.GeneratedProjectionControllerHarness].
  *
@@ -169,7 +169,7 @@ class GeneratedReportControllerHarness(
          */
         val SERVED = listOf(
             "InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
-            "ProductRevenue", "SalesByCategory", "SalesBySku",
+            "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds",
         )
 
         private fun snakeCase(s: String): String = buildString {
