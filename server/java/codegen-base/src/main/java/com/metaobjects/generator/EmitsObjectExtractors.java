@@ -45,7 +45,7 @@ public interface EmitsObjectExtractors {
                                                     Collection<? extends Generator> generators) {
         if (args.containsKey(ARG_EMIT_EXTRACTORS) || !includesExtractors(generators)) return args;
         Map<String, String> derived = new HashMap<>(args);
-        derived.put(ARG_EMIT_EXTRACTORS, Boolean.toString(false));
+        derived.put(ARG_EMIT_EXTRACTORS, "false");
         return derived;
     }
 }

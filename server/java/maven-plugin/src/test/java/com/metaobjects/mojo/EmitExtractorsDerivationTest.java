@@ -1,12 +1,9 @@
 package com.metaobjects.mojo;
 
 import com.metaobjects.generator.EmitsObjectExtractors;
-import com.metaobjects.generator.Generator;
-import com.metaobjects.loader.MetaDataLoader;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,25 +23,19 @@ import static org.junit.Assert.assertFalse;
  */
 public class EmitExtractorsDerivationTest {
 
-    /** Records the args the mojo hands it, so the derivation is observable. */
-    public static class RecordingGenerator implements Generator {
-        static final List<Map<String, String>> SEEN = new ArrayList<>();
-
-        @Override public Generator setArgs(Map<String, String> args) { SEEN.add(args); return this; }
-        @Override public Generator setFilters(List<String> filters) { return this; }
-        @Override public Generator setScripts(List<String> scripts) { return this; }
-        @Override public void execute(MetaDataLoader loader) { }
-    }
-
-    /** The same, but declaring that it writes the extractors as a generator of its own. */
-    public static class RecordingExtractorGenerator extends RecordingGenerator
+    /**
+     * Declares that it writes the extractors as a generator of its own. The arg recorder is
+     * the sibling names test's shared {@code RecordingGenerator} — same package, same seam,
+     * one recorder rather than a copy that can drift from the other.
+     */
+    public static class RecordingExtractorGenerator extends UseNamesDerivationTest.RecordingGenerator
             implements EmitsObjectExtractors { }
 
     private MetaDataGeneratorMojo mojo;
 
     @Before
     public void setUp() {
-        RecordingGenerator.SEEN.clear();
+        UseNamesDerivationTest.RecordingGenerator.SEEN.clear();
         mojo = new MetaDataGeneratorMojo();
         mojo.setLoader(new LoaderParam());
     }
@@ -59,13 +50,13 @@ public class EmitExtractorsDerivationTest {
     private List<Map<String, String>> run(GeneratorParam... params) {
         mojo.setGenerators(List.of(params));
         mojo.buildGenerators(getClass().getClassLoader(), null);
-        return RecordingGenerator.SEEN;
+        return UseNamesDerivationTest.RecordingGenerator.SEEN;
     }
 
     @Test
     public void a_separate_extractor_in_the_run_tells_every_generator_not_to_write_them() {
         List<Map<String, String>> seen = run(
-                param(RecordingGenerator.class, null),
+                param(UseNamesDerivationTest.RecordingGenerator.class, null),
                 param(RecordingExtractorGenerator.class, null));
 
         assertEquals(2, seen.size());
@@ -76,7 +67,7 @@ public class EmitExtractorsDerivationTest {
 
     @Test
     public void a_run_without_one_leaves_the_arg_unset_so_entity_writes_them_as_before() {
-        List<Map<String, String>> seen = run(param(RecordingGenerator.class, null));
+        List<Map<String, String>> seen = run(param(UseNamesDerivationTest.RecordingGenerator.class, null));
 
         assertEquals(1, seen.size());
         assertFalse(seen.get(0).containsKey(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS));
@@ -88,7 +79,7 @@ public class EmitExtractorsDerivationTest {
         pinned.put(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS, "true");
 
         List<Map<String, String>> seen = run(
-                param(RecordingGenerator.class, pinned),
+                param(UseNamesDerivationTest.RecordingGenerator.class, pinned),
                 param(RecordingExtractorGenerator.class, null));
 
         assertEquals("true", seen.get(0).get(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS));

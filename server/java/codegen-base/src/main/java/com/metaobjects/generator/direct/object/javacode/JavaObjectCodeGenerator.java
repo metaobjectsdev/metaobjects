@@ -24,6 +24,7 @@ import com.metaobjects.registry.ObjectClassBindingProvider;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Collection;
@@ -149,7 +150,7 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
         // to its generated fully-qualified Java class name, reusing the SAME naming hooks
         // the writer used so the binding targets the class that was actually emitted.
         JavaCodeWriter namer = (JavaCodeWriter)
-                createWriter(loader, null, new PrintWriter(new java.io.StringWriter()), globalContext);
+                createWriter(loader, null, new PrintWriter(new StringWriter()), globalContext);
         Map<String, String> fqnToClass = new LinkedHashMap<>();
         ExtractorCodeGenerator extractorGen = emitsExtractors() ? new ExtractorCodeGenerator() : null;
         Collection<MetaObject> metadata =

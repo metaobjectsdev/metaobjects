@@ -1,22 +1,14 @@
 package com.metaobjects.generator.direct.object;
 
+import com.metaobjects.generator.util.JavaCompileTestSupport;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import javax.tools.Diagnostic;
-import javax.tools.DiagnosticCollector;
-import javax.tools.JavaCompiler;
-import javax.tools.JavaFileObject;
-import javax.tools.StandardJavaFileManager;
-import javax.tools.StandardLocation;
-import javax.tools.ToolProvider;
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -60,37 +52,23 @@ public class EjectedBaseGeneratorsCompileTest {
         Path srcDir = Path.of("src/main/java/com/metaobjects/generator/direct/object/javacode");
         assertTrue("expected " + srcDir.toAbsolutePath() + " to exist", Files.isDirectory(srcDir));
 
-        Path outDir = tempFolder.newFolder("owned").toPath().resolve("com/acme/owned");
+        Path ownedRoot = tempFolder.newFolder("owned").toPath();
+        Path outDir = ownedRoot.resolve("com/acme/owned");
         Files.createDirectories(outDir);
 
-        List<File> sources = new ArrayList<>();
         for (String simpleName : EJECTABLE_SIMPLE_NAMES) {
             Path original = srcDir.resolve(simpleName + ".java");
             assertTrue("expected " + original + " to exist", Files.exists(original));
             String rewritten = rewritePackage(
                     Files.readString(original, StandardCharsets.UTF_8), "com.acme.owned");
-            Path copy = outDir.resolve(simpleName + ".java");
-            Files.writeString(copy, rewritten, StandardCharsets.UTF_8);
-            sources.add(copy.toFile());
+            Files.writeString(outDir.resolve(simpleName + ".java"), rewritten,
+                    StandardCharsets.UTF_8);
         }
 
-        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
-        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
-        Path classesOut = tempFolder.newFolder("classes").toPath();
-        try (StandardJavaFileManager fm = javac.getStandardFileManager(diagnostics, null, StandardCharsets.UTF_8)) {
-            fm.setLocation(StandardLocation.CLASS_OUTPUT, List.of(classesOut.toFile()));
-            Iterable<? extends JavaFileObject> units = fm.getJavaFileObjectsFromFiles(sources);
-            List<String> options = List.of("-classpath", System.getProperty("java.class.path"));
-            boolean ok = javac.getTask(null, fm, diagnostics, options, null, units).call();
-
-            StringBuilder errs = new StringBuilder();
-            for (Diagnostic<? extends JavaFileObject> d : diagnostics.getDiagnostics()) {
-                if (d.getKind() == Diagnostic.Kind.ERROR) {
-                    errs.append(d.toString()).append('\n');
-                }
-            }
-            assertTrue("ejected+package-renamed generators failed to compile:\n" + errs,
-                    ok && errs.length() == 0);
-        }
+        // In-process compile against this module's published API and the test classpath —
+        // exactly what an adopter's codegen/ module holds after eject. The shared
+        // codegen-base compile helper, which dumps the sources on failure.
+        JavaCompileTestSupport.compileGenerated(ownedRoot,
+                tempFolder.newFolder("classes").toPath());
     }
 }
