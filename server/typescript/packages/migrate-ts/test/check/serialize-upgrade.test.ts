@@ -12,7 +12,7 @@ const snap = (): SchemaSnapshot => ({
 });
 
 describe("serialize with checks + snapshot format version", () => {
-  // v3 added ViewDescriptor.fingerprint/columns/dependents. An older reader that does
+  // v3 added ViewDescriptor.fingerprint/dependents. An older reader that does
   // not understand them would silently fall back to comparing view TEXT against
   // Postgres's deparsed output — which never matches — and re-propose every view on
   // every migrate. So the version must be bumped, to hard-fail instead of misread.
@@ -33,5 +33,26 @@ describe("serialize with checks + snapshot format version", () => {
     });
     const parsed = parseSnapshot(v1);
     expect(parsed.tables[0]?.checks).toEqual([]);
+  });
+
+  // Releases before 1.1.0 wrote each view's guessed column types into a v3 snapshot. That
+  // file must keep loading, and the retired field must not be written back.
+  test("a v3 snapshot that records a view's columns still loads, without them", () => {
+    const older = JSON.stringify({
+      formatVersion: 3,
+      snapshot: {
+        tables: [],
+        views: [{
+          name: "v_orders", sql: "SELECT 1 AS n", fingerprint: "a".repeat(64),
+          columns: [{ name: "n", sqlType: { kind: "integer", bits: 32 } }],
+        }],
+      },
+    });
+    const parsed = parseSnapshot(older);
+    expect(parsed.views).toEqual([{ name: "v_orders", sql: "SELECT 1 AS n", fingerprint: "a".repeat(64) }]);
+    expect(JSON.parse(serializeSnapshot(parsed))).toEqual({
+      formatVersion: 3,
+      snapshot: { tables: [], views: [{ name: "v_orders", sql: "SELECT 1 AS n", fingerprint: "a".repeat(64) }] },
+    });
   });
 });

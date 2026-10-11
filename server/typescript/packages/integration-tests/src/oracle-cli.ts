@@ -2,8 +2,8 @@
 //
 // Ask the independent oracle (independent-oracle.ts) of a real project and a real database:
 // does every FK and column the project's metadata declares exist in that database? The
-// metadata is loaded the way the `meta` CLI loads it (`loadMemory`: declared sources plus
-// opted-in libraries); the answer comes from pg_catalog, never from migrate-ts.
+// metadata is loaded the way the `meta` CLI loads it (declared sources, opted-in libraries and
+// the providers its `metaobjects.config.ts` registers); the answer comes from pg_catalog, never from migrate-ts.
 //
 // An adopter's estate runs this against its release-candidate database (the G3d run).
 // Exit 0 when nothing declared is missing, 1 when something is, 2 on bad usage. FKs the
@@ -12,7 +12,7 @@
 
 import { resolve } from "node:path";
 import type { ColumnNamingStrategy } from "@metaobjectsdev/metadata";
-import { loadMemory } from "@metaobjectsdev/sdk";
+import { loadProjectModel } from "./load-project-model.ts";
 import {
   actualColumns, actualForeignKeys, expectedColumns, expectedForeignKeys, fkKey, missingColumns,
 } from "./independent-oracle.ts";
@@ -33,7 +33,7 @@ if (naming === undefined || projectDir === undefined || dbUrl === undefined) {
   process.exit(2);
 }
 
-const root = await loadMemory(resolve(projectDir));
+const root = await loadProjectModel(resolve(projectDir));
 const expected = expectedForeignKeys(root, naming).map(fkKey);
 const actual = (await actualForeignKeys(dbUrl)).map(fkKey);
 const missingFks = expected.filter((k) => !actual.includes(k));

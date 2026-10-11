@@ -11,7 +11,7 @@ import { applyStatus } from "./status.js";
 import { PrimaryKeyChangeError } from "../errors.js";
 import { detectColumnRenames, detectTableRenames } from "./rename-heuristic.js";
 import { firstViewSqlDifference, viewSqlEquals } from "../view-sql-compare.js";
-import { viewReplaceIsLegal } from "../view-column-types.js";
+import { viewReplaceIsLegal, type ViewReplaceProbe } from "../view-replace.js";
 import { checkExprEquals, checkExprRespelledNullSafe, normalizeCheckExpr, renameExprIdentifiers } from "../check-expr-compare.js";
 import { isPgAutoSequenceDefault } from "../pg-identity-default.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
@@ -71,6 +71,13 @@ export interface DiffArgs {
   unmanagedNames?: string[];
   /** Dialect; CHECK-constraint evolution on existing tables is emitted for postgres only. */
   dialect?: Dialect;
+  /**
+   * Postgres: asks the live database whether a changed view can be replaced in place
+   * (`postgresViewReplaceProbe`). A view is planned as `replace-view` only when the probe
+   * proves `CREATE OR REPLACE VIEW` legal. Without a probe (an offline plan against the
+   * committed snapshot), or when it cannot answer, the plan is DROP + CREATE.
+   */
+  viewReplaceProbe?: ViewReplaceProbe;
   /**
    * #258 — refuse (throw {@link PrimaryKeyChangeError}) when an existing table's live
    * PRIMARY KEY differs from the metadata identity. There is no primary-key change kind
@@ -254,7 +261,7 @@ export async function diff(
   const actualViewsInScope = args.actual.views.filter(
     (v) => inScope(v.schema) && !unmanaged.has(viewIdentity(v)),
   );
-  diffViews(expectedViewsInScope, actualViewsInScope, changes, args.dialect);
+  await diffViews(expectedViewsInScope, actualViewsInScope, changes, args.dialect, args.viewReplaceProbe);
 
   // Pass 2c: a change that disturbs the table under a view forces the view to be
   // dropped before and recreated after — postgres blocks ALTER on a column a view
@@ -876,10 +883,11 @@ const viewIdentity = qualifiedDbName;
  * An unknown dialect keeps the old body comparison (legacy positional callers hold
  * hand-built snapshots; changing their semantics silently is worse than leaving them).
  */
-function diffViews(
+async function diffViews(
   expected: ViewDescriptor[], actual: ViewDescriptor[], changes: Change[],
   dialect: Dialect | undefined,
-): void {
+  probe: ViewReplaceProbe | undefined,
+): Promise<void> {
   const exp = new Map(expected.map((v) => [viewIdentity(v), v] as const));
   const act = new Map(actual.map((v) => [viewIdentity(v), v] as const));
 
@@ -904,11 +912,11 @@ function diffViews(
       // closed: propose the adoption but BLOCK it pending `allow.adoptView`.
       //
       // #239: route through the SAME legal/illegal OR-REPLACE decision the managed
-      // path makes — a structural change (rename/reorder/mid-insert) is not a legal
-      // CREATE OR REPLACE and must be drop+create. `unmanaged: true` carries the
+      // path makes — a structural change (rename/reorder/mid-insert/retype) is not a
+      // legal CREATE OR REPLACE and must be drop+create. `unmanaged: true` carries the
       // adopt-view gate onto whichever change kind we emit.
       if (a.fingerprint === undefined) {
-        pushViewUpdate(v, a, changes, /* unmanaged */ true);
+        await pushViewUpdate(v, a, changes, probe, /* unmanaged */ true);
         continue;
       }
 
@@ -916,9 +924,9 @@ function diffViews(
       // no-op on an unchanged schema.
       if (a.fingerprint === v.fingerprint) continue;
 
-      // Stamped and different → the view genuinely changed. Prefer a non-destructive
-      // CREATE OR REPLACE; fall back to drop+create only when Postgres would refuse it.
-      pushViewUpdate(v, a, changes);
+      // Stamped and different → the view genuinely changed. A non-destructive
+      // CREATE OR REPLACE when Postgres is shown to accept it; drop+create otherwise.
+      await pushViewUpdate(v, a, changes, probe);
       continue;
     }
 
@@ -944,48 +952,52 @@ function diffViews(
 }
 
 /**
- * Emit either a non-destructive replace, or the drop+create pair Postgres forces.
+ * Emit either a non-destructive replace, or the drop+create pair.
  *
  * Replace is strictly better when it is legal: dependent views, grants, and the
- * object's OID all survive. And it IS legal for the common case by construction — a
- * view's columns come out in projection DECLARATION order, so a field APPENDED to a
- * projection lands last, which is exactly what Postgres's prefix rule permits.
+ * object's OID all survive. Whether it is legal is Postgres's to say, so the probe asks
+ * it (view-replace.ts): the live view's columns must be a prefix of the expected view's,
+ * by name, type and collation. A view's columns come out in projection DECLARATION
+ * order, so a field APPENDED to a projection lands last, which is what the rule permits.
+ *
+ * A replace is planned ONLY on that evidence. No probe (an offline plan), or a probe
+ * that could not answer (no permission, a definition that does not compile against the
+ * schema as it stands), plans the drop+create pair: it always applies, and it is loud
+ * about what depends on the view. This holds for a managed change and for an adoption,
+ * and for a derived body and an opaque `@sql` one alike.
+ *
+ * The probe answers for the schema as it stands, and the replace runs after this plan's
+ * table changes. A body that reads columns it does not name (`SELECT *`) has a different
+ * column list once the plan adds a column, so the answer would not hold: it is not asked.
+ * Every other table change that alters a view's columns is a type change, a drop or a
+ * rename, which Pass 2c turns into the pair.
  */
-function pushViewUpdate(
+async function pushViewUpdate(
   expected: ViewDescriptor, actual: ViewDescriptor, changes: Change[],
+  probe: ViewReplaceProbe | undefined,
   // #239: when the ACTUAL view is unmanaged (no fingerprint), this is an ADOPTION —
   // stamp the adopt-view gate (`unmanagedActual`) onto whichever change we emit so
   // status.ts fails closed on `allow.adoptView`, legal-replace and drop+create alike.
   unmanaged = false,
-): void {
+): Promise<void> {
   const sx = schemaSpread(expected.schema);
   const adopt = unmanaged ? { unmanagedActual: true as const } : {};
   // Postgres compares fingerprints, never text: an unstamped view cannot be compared at all.
   const reason: ViewChangeReason = unmanaged
     ? { kind: "unfingerprinted" }
     : { kind: "definition", compared: "fingerprint" };
-  // #239/#240: emit a replace only when it is a legal CREATE OR REPLACE. The decision
-  // keys on the EXPECTED (desired) view's column knowledge, NOT on both sides:
-  //   - EXPECTED columns KNOWN (a projection): run viewReplaceIsLegal. It fails safe to
-  //     `false` (→ drop+create) when the ACTUAL columns are unknown too — which is
-  //     exactly the OFFLINE adopt case (#240): a pre-fingerprint snapshot records no
-  //     view columns, yet the projection's desired shape IS known, so a structural
-  //     change must still drop+create, never an illegal OR REPLACE. (Also fails safe
-  //     when actual is known but non-prefix — the #239 online case.)
-  //   - EXPECTED columns UNKNOWN (an opaque `@sql` body): legality is unprovable. A
-  //     MANAGED change drops+creates (a real body change is safest rebuilt); an ADOPTION
-  //     keeps the non-destructive replace (the common "re-stamp an identical,
-  //     pre-fingerprint hand-written view" case, #208 — its behavior before #239).
-  const legal =
-    expected.columns !== undefined
-      ? viewReplaceIsLegal(expected.columns, actual.columns)
-      : unmanaged;
-  if (legal) {
-    changes.push({ kind: "replace-view", view: expected, ...sx, restore: actual, ...adopt, reason, status: ALLOWED });
+  const columnsMayGrow = expected.sql !== undefined && viewReadsEveryColumn(expected.sql)
+    && changes.some((c) => c.kind === "add-column");
+  const evidence = probe === undefined || columnsMayGrow ? undefined : await probe(expected, actual);
+  if (evidence !== undefined && viewReplaceIsLegal(evidence.expected, evidence.live)) {
+    changes.push({
+      kind: "replace-view", view: expected, ...sx, restore: actual, ...adopt, reason,
+      proven: { restorable: viewReplaceIsLegal(evidence.live, evidence.expected) },
+      status: ALLOWED,
+    });
     return;
   }
-  // The column list changed shape (removed / renamed / reordered / retyped), so
-  // Postgres refuses OR REPLACE. The view must be dropped and rebuilt — which is
+  // Not shown to be a legal replace. The view is dropped and rebuilt — which is
   // destructive to anything depending on it (annotateViewDropDependents makes that loud).
   changes.push({ kind: "drop-view", view: expected.name, ...sx, restore: actual, ...adopt, reason, status: ALLOWED });
   changes.push({ kind: "create-view", view: expected, ...sx, reason, status: ALLOWED });
@@ -1036,13 +1048,22 @@ function annotateViewDropDependents(actual: readonly ViewDescriptor[], changes: 
 }
 
 /**
- * Postgres: a view reading a column blocks `ALTER … ALTER COLUMN`, so a column-altering
- * change forces the view to be dropped-before / recreated-after. FK/CHECK changes are
+ * Postgres: a view reading a column blocks `ALTER … ALTER COLUMN TYPE`, a drop and a rename
+ * of it, so those force the view to be dropped-before / recreated-after. A new default or a
+ * changed nullability alters in place under a view. FK/CHECK changes are
  * `ALTER TABLE ADD/DROP CONSTRAINT` — no table rebuild — so a dependent view is unaffected.
  */
 const VIEW_RECREATE_TRIGGERS_PG = new Set<Change["kind"]>([
-  "change-column-type", "change-column-nullable", "change-column-default",
-  "drop-column", "rename-column",
+  "change-column-type", "drop-column", "rename-column",
+]);
+/**
+ * No dialect: the caller has not said which emitter runs, and it may be SQLite's, which
+ * rebuilds the table for a nullable or default change too. Every column-altering kind
+ * recreates every view over the table.
+ */
+const VIEW_RECREATE_TRIGGERS_UNKNOWN_DIALECT = new Set<Change["kind"]>([
+  ...VIEW_RECREATE_TRIGGERS_PG,
+  "change-column-nullable", "change-column-default",
 ]);
 /**
  * SQLite / D1: recreate-and-copy DROPs + RENAMEs the whole table for ANY of these
@@ -1051,9 +1072,69 @@ const VIEW_RECREATE_TRIGGERS_PG = new Set<Change["kind"]>([
  * CHECK, or an FK change. So the FK/CHECK kinds join the column-altering set here. (#243)
  */
 const VIEW_RECREATE_TRIGGERS_SQLITE = new Set<Change["kind"]>([
-  ...VIEW_RECREATE_TRIGGERS_PG,
+  ...VIEW_RECREATE_TRIGGERS_UNKNOWN_DIALECT,
   "add-fk", "drop-fk", "add-check", "drop-check",
 ]);
+
+/** The column names a change touches, or undefined for a change that is table-wide. */
+function changedColumns(c: Change): string[] | undefined {
+  switch (c.kind) {
+    case "change-column-type":
+    case "change-column-nullable":
+    case "change-column-default":
+    case "drop-column":
+      return [c.column];
+    case "rename-column":
+      return [c.from, c.to];
+    default:
+      return undefined;
+  }
+}
+
+/** `count(*)` has a star but does not read every column; strip it before the `*` test. */
+const COUNT_STAR_RE = /count\s*\(\s*\*\s*\)/gi;
+/** `NATURAL JOIN` joins on every column the two tables share, naming none of them. */
+const NATURAL_JOIN_RE = /\bNATURAL\b/i;
+
+/**
+ * Does the body read columns it does not name? A `*` in the select list reads every column,
+ * and a `NATURAL JOIN` reads each shared column. Both are a property of the body. Generated
+ * projection and report bodies use neither; a hand-written `@sql` body may.
+ */
+function viewReadsEveryColumn(sql: string): boolean {
+  return /\*/.test(sql.replace(COUNT_STAR_RE, "")) || NATURAL_JOIN_RE.test(sql);
+}
+
+/**
+ * Per-column identifier matches, compiled once per column name: a wide schema diff revisits
+ * the same column names across tables and views, and recompiling a RegExp per test would
+ * rebuild identical state over and over.
+ */
+const columnIdentifierRes = new Map<string, RegExp>();
+function columnIdentifierRe(column: string): RegExp {
+  let re = columnIdentifierRes.get(column);
+  if (re === undefined) {
+    const escaped = column.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    re = new RegExp(`(?<![A-Za-z0-9_])"?${escaped}"?(?![A-Za-z0-9_])`, "i");
+    columnIdentifierRes.set(column, re);
+  }
+  return re;
+}
+
+/**
+ * Does `sql` read any of `cols`? A textual match on the identifier. It can over-report (a
+ * column name that is also an alias), which is the safe direction: a wrongly recreated view
+ * costs a drop and a create, a missed one fails the ALTER at apply. A body can also read a
+ * column WITHOUT naming it, and those forms are `readsEverything`
+ * ({@link viewReadsEveryColumn}), computed once per view rather than per altered column.
+ */
+function viewReadsAnyColumn(sql: string, cols: Iterable<string>, readsEverything: boolean): boolean {
+  if (readsEverything) return true;
+  for (const col of cols) {
+    if (columnIdentifierRe(col).test(sql)) return true;
+  }
+  return false;
+}
 
 function recreateViewsDependingOnChangedTables(
   expectedViews: ViewDescriptor[],
@@ -1061,29 +1142,61 @@ function recreateViewsDependingOnChangedTables(
   changes: Change[],
   dialect: Dialect | undefined,
 ): void {
-  // Only the recreate-and-copy dialects rebuild the table (and strand the view) for an
-  // FK/CHECK change; postgres and the dialect-less legacy path keep the narrow set.
-  const triggers = dialect === "sqlite" || dialect === "d1"
-    ? VIEW_RECREATE_TRIGGERS_SQLITE
-    : VIEW_RECREATE_TRIGGERS_PG;
+  // Only Postgres is known to alter a column in place, so only there is a view stranded by
+  // the columns it reads. Everywhere else a triggering change strands every view over the
+  // table: the recreate-and-copy dialects rebuild it, and without a dialect they may.
+  const columnScoped = dialect === "postgres";
+  const triggers = dialect === "postgres"
+    ? VIEW_RECREATE_TRIGGERS_PG
+    : dialect === undefined ? VIEW_RECREATE_TRIGGERS_UNKNOWN_DIALECT : VIEW_RECREATE_TRIGGERS_SQLITE;
   const actualById = new Map(actualViews.map((v) => [viewIdentity(v), v] as const));
-  const alteredTables = new Set<string>();
+  // table -> the columns altered on it, or `null` when a change rebuilds the whole table.
+  const alteredTables = new Map<string, Set<string> | null>();
   for (const c of changes) {
-    if (triggers.has(c.kind)) {
-      const t = (c as { table?: string }).table;
-      if (typeof t === "string") alteredTables.add(t);
+    if (!triggers.has(c.kind)) continue;
+    const t = (c as { table?: string }).table;
+    if (typeof t !== "string") continue;
+    const cols = changedColumns(c);
+    if (cols === undefined || !columnScoped) {
+      alteredTables.set(t, null);   // a rebuild strands every view over the table
+    } else if (alteredTables.get(t) !== null) {
+      const set = alteredTables.get(t) ?? new Set<string>();
+      for (const col of cols) set.add(col);
+      alteredTables.set(t, set);
     }
   }
   if (alteredTables.size === 0) return;
 
+  // View identities already queued for a definition change, collected once instead of
+  // rescanning `changes` per expected view over a diff that can carry hundreds of changes.
+  const definitionQueued = new Set<string>();
+  const createQueued = new Set<string>();
+  for (const c of changes) {
+    if (c.kind !== "replace-view" && c.kind !== "create-view") continue;
+    const queuedId = viewIdentity(c.view);
+    definitionQueued.add(queuedId);
+    if (c.kind === "create-view") createQueued.add(queuedId);
+  }
+
   for (const v of expectedViews) {
-    const tables = (v.dependsOn ?? []).filter((t) => alteredTables.has(t));
-    if (tables.length === 0) continue;
     const id = viewIdentity(v);
+    const viewChanges = definitionQueued.has(id);
+    const sql = v.sql;
+    const readsEverything = sql !== undefined && viewReadsEveryColumn(sql);
+    const tables = (v.dependsOn ?? []).filter((t) => {
+      if (!alteredTables.has(t)) return false;
+      // A view whose own definition is unchanged is stranded only if it READS an altered
+      // column. One already queued for a replace (its definition differs) is recreated
+      // regardless: the old definition may read a column the new one does not.
+      const cols = alteredTables.get(t) ?? null;
+      if (cols === null || viewChanges || sql === undefined) return true;
+      return viewReadsAnyColumn(sql, cols, readsEverything);
+    });
+    if (tables.length === 0) continue;
 
     // Brand-new view (create-view already queued): the DB has no prior view to
     // block the ALTER, and the queued create-view already builds it post-change.
-    if (changes.some((c) => c.kind === "create-view" && viewIdentity(c.view) === id)) continue;
+    if (createQueued.has(id)) continue;
 
     // Supersede any replace-view (CREATE OR REPLACE can't run mid-ALTER) with an
     // explicit drop(before)/create(after) pair — the emit STAGE_ORDER sequences

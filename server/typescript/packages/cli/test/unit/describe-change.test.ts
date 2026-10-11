@@ -21,7 +21,7 @@ test("an unchanged default is not mentioned", () => {
     from: { kind: "integer", bits: 32 }, to: { kind: "integer", bits: 64 },
     fromDefault: zero, toDefault: zero, status: { state: "allowed" },
   };
-  expect(describeChange(c)).toBe("orders.qty (integer → integer)");
+  expect(describeChange(c)).toBe("orders.qty (integer → bigint)");
 });
 
 // A blocked CHECK drop used to fall through to a JSON dump of the whole change object.
@@ -48,7 +48,7 @@ test("every change kind reads as text, never JSON", () => {
     { kind: "rename-column", table: "t", from: "a", to: "b", status: { state: "allowed" } },
     { kind: "change-column-default", table: "t", column: "a", status: { state: "allowed" } },
     { kind: "change-column-nullable", table: "t", column: "a", from: true, to: false, status: { state: "allowed" } },
-    { kind: "replace-view", view: { name: "v", columns: [] }, status: { state: "allowed" } },
+    { kind: "replace-view", view: { name: "v" }, status: { state: "allowed" } },
   ];
   for (const c of kinds) expect(describeChange(c)).not.toMatch(/^\{/);
 });
@@ -93,4 +93,19 @@ test("a view change says why it was planned", () => {
     ],
   ];
   for (const [c, text] of cases) expect(describeChange(c)).toBe(text);
+});
+
+// A length or time-zone change used to print as "text → text" / "timestamp → timestamp" (D4).
+test("a type change that only differs in length or time zone says so", () => {
+  const len: Change = {
+    kind: "change-column-type", table: "games", column: "channel",
+    from: { kind: "text", maxLength: 255 }, to: { kind: "text" }, status: { state: "allowed" },
+  };
+  expect(describeChange(len)).toBe("games.channel (text(255) → text)");
+  const tz: Change = {
+    kind: "change-column-type", table: "games", column: "at",
+    from: { kind: "timestamp", withTimezone: false }, to: { kind: "timestamp", withTimezone: true },
+    status: { state: "allowed" },
+  };
+  expect(describeChange(tz)).toBe("games.at (timestamp → timestamptz)");
 });

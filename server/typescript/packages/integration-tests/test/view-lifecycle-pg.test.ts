@@ -22,7 +22,7 @@
 
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import {
-  buildExpectedSchema, diff, emit, introspectPostgres, collectUnmanagedNames,
+  buildExpectedSchema, diff, emit, introspectPostgres, postgresViewReplaceProbe, collectUnmanagedNames,
   type AllowOptions, type SchemaSnapshot,
 } from "@metaobjectsdev/migrate-ts";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
@@ -209,7 +209,7 @@ async function migrate(metaJson: string, allow: AllowOptions = {}) {
     views: buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "literal" }),
   });
   const unmanagedNames = collectUnmanagedNames(root);
-  const result = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres", allow, unmanagedNames });
+  const result = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres", viewReplaceProbe: postgresViewReplaceProbe(k), allow, unmanagedNames });
   const emittable = result.changes.filter((c) => c.status.state !== "blocked");
   const { up, down } = emittable.length === 0
     ? { up: "", down: "" }
@@ -220,7 +220,7 @@ async function migrate(metaJson: string, allow: AllowOptions = {}) {
 
 /** THE gate: a second `meta migrate` against the just-migrated DB must be a no-op. */
 async function assertConverged(expected: SchemaSnapshot, allow: AllowOptions = {}, unmanagedNames: string[] = []): Promise<void> {
-  const followup = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres", allow, unmanagedNames });
+  const followup = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres", viewReplaceProbe: postgresViewReplaceProbe(k), allow, unmanagedNames });
   if (followup.changes.length > 0) {
     console.error("NOT CONVERGED — a second `meta migrate` would emit:");
     for (const c of followup.changes) console.error("  -", c.kind, JSON.stringify(c).slice(0, 200));
@@ -590,7 +590,7 @@ describe("view lifecycle — real Postgres", () => {
     const m2 = meta({ summaryFields: [PASSTHROUGH_TITLE, PASSTHROUGH_STATUS, AGG_WEEK_COUNT] });
     const expected = await expectedFor(m2);
     const result = await diff({
-      expected, actual: await introspectPostgres(k), dialect: "postgres",
+      expected, actual: await introspectPostgres(k), dialect: "postgres", viewReplaceProbe: postgresViewReplaceProbe(k),
       allow: { dropView: true },   // even WITH drop-view, the cascade is still gated
     });
 
@@ -636,7 +636,7 @@ describe("view lifecycle — real Postgres", () => {
     await sql.raw(`COMMENT ON VIEW "v_program_summary" IS NULL`).execute(k);
 
     const expected = await expectedFor(m);
-    const result = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres" });
+    const result = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres", viewReplaceProbe: postgresViewReplaceProbe(k) });
     const blocked = result.blocked.find((c) => c.kind === "replace-view");
     expect(blocked).toBeDefined();
     expect(blocked!.status.blockedReason).toContain("no MetaObjects fingerprint");
@@ -704,7 +704,7 @@ describe("view lifecycle — real Postgres", () => {
     await sql.raw(`COMMENT ON VIEW "v_active_programs" IS NULL`).execute(k);
 
     const expected = await expectedFor(m);
-    const result = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres" });
+    const result = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres", viewReplaceProbe: postgresViewReplaceProbe(k) });
     const blocked = result.blocked.find((c) => c.kind === "replace-view");
     expect(blocked).toBeDefined();
     expect(blocked!.status.blockedReason).toContain("allow.adoptView");

@@ -12,6 +12,7 @@ import {
   loadUris,
   measureDerivedSubType,
   reportMeasureItemName,
+  reportReadModel,
   reportShape,
   reportSpineEntity,
   reportSpineHops,
@@ -557,5 +558,128 @@ describe("measureDerivedSubType (Table B for one measure, listed in a report or 
     for (const f of reportShape(report(root, "SpineSales"), root).fields) {
       if (f.measure !== undefined) expect([f.name, measureDerivedSubType(f.measure, from, root)]).toEqual([f.name, f.subType]);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Table C, a dimension reached through `@via` (adopter report D5). The view joins a
+// belongs-to hop over a required foreign key INNER, so every row has a match and the column
+// is as required as the field it reads.
+// ---------------------------------------------------------------------------
+
+describe("reportShape required of a dimension reached through @via", () => {
+  const entity = (name: string, table: string, children: unknown[]) => ({
+    "object.entity": {
+      name,
+      children: [
+        { "source.rdb": { "@table": table } },
+        { "field.long": { name: "id" } },
+        { "identity.primary": { name: "pk", "@fields": ["id"] } },
+        ...children,
+      ],
+    },
+  });
+  const realm = entity("Realm", "realms", [
+    { "field.string": { name: "name", "@required": true } },
+    { "field.string": { name: "motto" } },
+  ]);
+  const session = entity("Session", "sessions", [
+    { "field.long": { name: "realmId", "@required": true } },
+    { "field.long": { name: "maybeRealmId" } },
+    { "identity.reference": { name: "fkRealm", "@fields": ["realmId"], "@references": "Realm" } },
+    { "identity.reference": { name: "fkMaybeRealm", "@fields": ["maybeRealmId"], "@references": "Realm" } },
+    { "relationship.association": { name: "realm", "@objectRef": "Realm", "@cardinality": "one", "@sourceRefField": "realmId" } },
+    {
+      "relationship.association": {
+        name: "maybeRealm", "@objectRef": "Realm", "@cardinality": "one", "@sourceRefField": "maybeRealmId",
+      },
+    },
+  ]);
+  const snap = entity("Snap", "snaps", [
+    { "field.long": { name: "sessionId", "@required": true } },
+    { "field.long": { name: "unenforcedSessionId", "@required": true } },
+    { "identity.reference": { name: "fkSession", "@fields": ["sessionId"], "@references": "Session" } },
+    {
+      "identity.reference": {
+        name: "fkLoose", "@fields": ["unenforcedSessionId"], "@references": "Session", "@enforce": false,
+      },
+    },
+    { "relationship.association": { name: "session", "@objectRef": "Session", "@cardinality": "one" } },
+    { "relationship.association": { name: "stamp", "@objectRef": "Stamp", "@cardinality": "one" } },
+    { "measure.aggregate": { name: "snaps", "@agg": "count", "@of": "Snap.id" } },
+    { "dimension.attribute": { name: "realmName", "@of": "Realm.name", "@via": "Snap.fkSession.fkRealm" } },
+    { "dimension.attribute": { name: "realmMotto", "@of": "Realm.motto", "@via": "Snap.fkSession.fkRealm" } },
+    { "dimension.attribute": { name: "maybeRealmName", "@of": "Realm.name", "@via": "Snap.fkSession.fkMaybeRealm" } },
+    { "dimension.attribute": { name: "looseRealmName", "@of": "Realm.name", "@via": "Snap.fkLoose.fkRealm" } },
+    { "dimension.attribute": { name: "sessionRealmId", "@of": "Session.realmId", "@via": "Snap.fkSession" } },
+    { "dimension.attribute": { name: "relRealmName", "@of": "Realm.name", "@via": "Snap.session.realm" } },
+    { "dimension.attribute": { name: "relMaybeRealmName", "@of": "Realm.name", "@via": "Snap.session.maybeRealm" } },
+    { "dimension.attribute": { name: "relSessionRealmId", "@of": "Session.realmId", "@via": "Snap.session" } },
+    { "dimension.attribute": { name: "mixedRealmName", "@of": "Realm.name", "@via": "Snap.session.fkRealm" } },
+    { "dimension.attribute": { name: "stampLabel", "@of": "Stamp.label", "@via": "Snap.stamp" } },
+  ]);
+  // The foreign key between Snap and Stamp is held by Stamp, the far side of Snap's `stamp`.
+  const stamp = entity("Stamp", "stamps", [
+    { "field.long": { name: "snapId", "@required": true } },
+    { "field.string": { name: "label", "@required": true } },
+    { "identity.reference": { name: "fkSnap", "@fields": ["snapId"], "@references": "Snap" } },
+  ]);
+  const realmReport = (name: string, extra: Record<string, unknown> = {}) => ({
+    "object.report": {
+      name,
+      "@from": "Snap",
+      "@dimensions": ["realmName", "realmMotto", "maybeRealmName", "looseRealmName", "sessionRealmId"],
+      "@measures": ["snaps"],
+      ...extra,
+      children: [{ "source.rdb": { "@kind": "view", "@view": `v_${name.toLowerCase()}` } }],
+    },
+  });
+  const requiredOf = (root: MetaRoot, name: string): Record<string, boolean> =>
+    Object.fromEntries(reportShape(report(root, name), root).fields.map((f) => [f.name, f.required]));
+
+  test("required when the target field and every hop's foreign key are required", async () => {
+    const root = await loadInline([file("a", [realm, session, snap, stamp, realmReport("Plain")])]);
+    const req = requiredOf(root, "Plain");
+    expect(req["realmName"]).toBe(true);        // two required hops over a required field
+    expect(req["sessionRealmId"]).toBe(true);   // one required hop
+    expect(req["looseRealmName"]).toBe(true);   // @enforce: false does not change the join type
+    expect(req["realmMotto"]).toBe(false);      // the target field is optional
+    expect(req["maybeRealmName"]).toBe(false);  // a hop over a nullable foreign key is a LEFT join
+  });
+
+  // The same rule when a hop is a `@cardinality: one` relationship instead of the reference it
+  // crosses: the relationship resolves to that reference (by name pairing for `session`, by
+  // `@sourceRefField` for the two onto Realm), and the foreign key it holds decides the join.
+  test("a to-one relationship hop follows the reference it crosses", async () => {
+    const related = realmReport("Related", {
+      "@dimensions": ["relRealmName", "relMaybeRealmName", "relSessionRealmId", "mixedRealmName", "stampLabel"],
+    });
+    const root = await loadInline([file("a", [realm, session, snap, stamp, related])]);
+    const req = requiredOf(root, "Related");
+    expect(req["relRealmName"]).toBe(true);        // two relationship hops, both over a required foreign key
+    expect(req["relSessionRealmId"]).toBe(true);   // one relationship hop
+    expect(req["mixedRealmName"]).toBe(true);      // a relationship hop, then a reference hop
+    expect(req["relMaybeRealmName"]).toBe(false);  // the second relationship crosses a nullable foreign key
+    // The other entity holds the foreign key: a Snap with no Stamp has no match, so the join is
+    // LEFT whatever that key and the target field require.
+    expect(req["stampLabel"]).toBe(false);
+  });
+
+  // D6: the two accessors an adopter's schema digest needs, pinned so the docs stay true.
+  test("fields() on a report is empty; the read model carries its columns; referenceIdentities() exposes enforce", async () => {
+    const root = await loadInline([file("a", [realm, session, snap, stamp, realmReport("Plain")])]);
+    expect(report(root, "Plain").fields()).toEqual([]);
+    expect(reportReadModel(report(root, "Plain"), root).fields().map((f) => f.name)).toEqual(
+      ["realmName", "realmMotto", "maybeRealmName", "looseRealmName", "sessionRealmId", "snaps"],
+    );
+    const refs = Object.fromEntries(report(root, "Snap").referenceIdentities().map((r) => [r.name, r.enforce]));
+    expect(refs).toEqual({ fkSession: true, fkLoose: false });
+  });
+
+  test("a @spine report keeps its own rule: every join is LEFT", async () => {
+    const root = await loadInline([file("a", [realm, session, snap, stamp, realmReport("Spined", { "@spine": "Snap.fkSession", "@dimensions": ["realmName", "sessionRealmId"] })])]);
+    const req = requiredOf(root, "Spined");
+    expect(req["realmName"]).toBe(false);
+    expect(req["sessionRealmId"]).toBe(true);   // on the spine, a required field
   });
 });

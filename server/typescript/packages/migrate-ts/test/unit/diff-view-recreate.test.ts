@@ -58,6 +58,43 @@ describe("diff — Pass 2c view dependency-recreate", () => {
     expect(k).not.toContain("drop-view");
   });
 
+  // No dialect: the caller may emit for SQLite, which rebuilds the table for any of these
+  // (the README quick start diffs without one, then emits `{ dialect: "sqlite" }`).
+  describe("with no dialect", () => {
+    const tableOf = (columns: ColumnDescriptor[]): SchemaSnapshot => ({
+      tables: [{ name: "t", columns, indexes: [], foreignKeys: [], primaryKey: [], checks: [] }],
+      views: [dependentView()],
+    });
+
+    test("a nullability change recreates the view over the table", async () => {
+      const r = await diff(tableOf([{ ...col("c", "text"), nullable: false }]), tableOf([col("c", "text")]));
+      const k = kinds(r.changes);
+      expect(k).toContain("change-column-nullable");
+      expect(k.filter((x) => x === "drop-view").length).toBe(1);
+      expect(k.filter((x) => x === "create-view").length).toBe(1);
+    });
+
+    test("a default change recreates the view over the table", async () => {
+      const withDefault: ColumnDescriptor = { ...col("c", "text"), default: { kind: "literal", value: "x" } };
+      const r = await diff(tableOf([withDefault]), tableOf([col("c", "text")]));
+      const k = kinds(r.changes);
+      expect(k).toContain("change-column-default");
+      expect(k.filter((x) => x === "drop-view").length).toBe(1);
+      expect(k.filter((x) => x === "create-view").length).toBe(1);
+    });
+
+    test("a type change on a column the view does not name recreates the view", async () => {
+      const r = await diff(
+        tableOf([col("c", "text"), col("d", "integer")]),
+        tableOf([col("c", "text"), col("d", "text")]),
+      );
+      const k = kinds(r.changes);
+      expect(k).toContain("change-column-type");
+      expect(k.filter((x) => x === "drop-view").length).toBe(1);
+      expect(k.filter((x) => x === "create-view").length).toBe(1);
+    });
+  });
+
   test("column change on a table the view does NOT depend on → no view change", async () => {
     const independent: ViewDescriptor = { name: "v", sql: BODY, dependsOn: ["other"] };
     const r = await diff(snap("integer", [independent]), snap("text", [independent]));

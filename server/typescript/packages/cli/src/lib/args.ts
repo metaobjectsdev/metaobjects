@@ -251,6 +251,20 @@ function assertSchemaDialect(dialect: string | undefined): void {
 export const MIGRATE_FORMATS = ["default", "flyway"] as const;
 export type MigrateFormat = (typeof MIGRATE_FORMATS)[number];
 
+/**
+ * A `--migration-format` value, validated. One parser for `meta migrate` and `meta verify`,
+ * so the two accept the same formats and refuse a bad one with the same message.
+ *
+ * The flag is --migration-format, not --format: `--format` is already a GLOBAL cli flag
+ * selecting output rendering (toon|json|text), consumed in index.ts.
+ */
+function parseMigrationFormat(raw: string | undefined): MigrateFormat | undefined {
+  if (raw !== undefined && !MIGRATE_FORMATS.includes(raw as MigrateFormat)) {
+    throw new Error(`invalid --migration-format '${raw}'; expected: ${MIGRATE_FORMATS.join(", ")}`);
+  }
+  return raw as MigrateFormat | undefined;
+}
+
 // Exported (not just module-local) so allow-tokens-pinned.test.ts can pin it
 // against sdk's AllowTokenEnum (config.json's static migrate.allow validator)
 // — the two lists drifted silently before that test existed: sdk's enum was
@@ -308,6 +322,12 @@ export interface VerifyFlags {
   allow: AllowToken[];
   /** Skip the schema-drift gate even when --db is present. */
   skipSchema: boolean;
+  /**
+   * The migration file layout the project uses, spelled as `meta migrate` spells it and
+   * resolved with the same precedence (flag > `.metaobjects/config.json` > default). Under
+   * `flyway` the schema-drift gate leaves Flyway's own history table out of the comparison.
+   */
+  migrationFormat: MigrateFormat | undefined;
   /**
    * #225 — D1 binding name from wrangler.toml, spelled/documented the same way
    * `meta migrate --d1 <binding>` does. Gated on `--dialect d1` (D1 has no URL
@@ -458,6 +478,7 @@ export const VERIFY_OPTIONS = {
   dialect: { type: "string" },
   allow: { type: "string", multiple: true },
   "skip-schema": { type: "boolean", default: false },
+  "migration-format": { type: "string" },
   templates: { type: "boolean", default: false },
   codegen: { type: "boolean", default: false },
   "forbid-hand-edits": { type: "boolean", default: false },
@@ -545,6 +566,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     dialect: dialect as Dialect | undefined,
     allow: allowTokens as AllowToken[],
     skipSchema: !!values["skip-schema"],
+    migrationFormat: parseMigrationFormat(values["migration-format"] as string | undefined),
     templates,
     codegen,
     forbidHandEdits,
@@ -678,12 +700,7 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
   const dialect = values.dialect as string | undefined;
   assertSchemaDialect(dialect);
 
-  // NOTE: the flag is --migration-format, not --format: `--format` is already a
-  // GLOBAL cli flag selecting output rendering (toon|json|text), consumed in index.ts.
-  const format = values["migration-format"] as string | undefined;
-  if (format !== undefined && !MIGRATE_FORMATS.includes(format as MigrateFormat)) {
-    throw new Error(`invalid --migration-format '${format}'; expected: ${MIGRATE_FORMATS.join(", ")}`);
-  }
+  const format = parseMigrationFormat(values["migration-format"] as string | undefined);
 
   const onAmb = values["on-ambiguous"] as string | undefined;
   if (onAmb !== undefined && !ON_AMBIGUOUS.includes(onAmb as OnAmbiguous)) {
@@ -695,7 +712,7 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
   return {
     db: values.db as string | undefined,
     dialect: dialect as Dialect | undefined,
-    format: format as MigrateFormat | undefined,
+    format,
     outDir: values["out-dir"] as string | undefined,
     slug: values.slug as string | undefined,
     allow: allowTokens as AllowToken[],

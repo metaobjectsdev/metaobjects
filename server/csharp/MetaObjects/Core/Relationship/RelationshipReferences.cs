@@ -46,7 +46,7 @@ public static class RelationshipReferences
     }
 
     /// <summary>The FK field a reference is anchored on (first field; composite FKs pair on their first column).</summary>
-    private static string? RefFkField(MetaReferenceIdentity reference)
+    internal static string? RefFkField(MetaReferenceIdentity reference)
     {
         var fields = reference.Fields;
         return fields.Count > 0 ? fields[0] : null;

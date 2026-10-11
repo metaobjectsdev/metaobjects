@@ -734,6 +734,13 @@ desyncs its `flyway_schema_history`. Generate with `meta migrate`, apply with
 `flyway migrate`. `--dialect d1` with `--migration-format flyway` is also refused —
 D1 has its own Wrangler layout and transport.
 
+**Flyway owns `flyway_schema_history`.** Under this format the table is left out of every
+schema comparison: `meta migrate` (live with `--from-db`, and a committed snapshot that
+records it), `meta verify --db`, and the "now migrate" next step `meta gen` prints.
+`meta verify` takes the same `--migration-format` flag with the same precedence (flag, then
+`migrate.format`, then `default`); `meta gen` reads the config key. Set `migrate.format` once
+and all three agree without a flag.
+
 ```bash
 meta migrate --db "$DB_URL" --dialect postgres \
   --migration-format flyway --slug add_program_view

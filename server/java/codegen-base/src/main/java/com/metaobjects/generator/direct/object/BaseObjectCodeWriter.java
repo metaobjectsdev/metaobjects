@@ -216,6 +216,9 @@ public abstract class BaseObjectCodeWriter extends FileDirectWriter<BaseObjectCo
             // from hand-written code, so a sibling generator emitting at the same path
             // declined to overwrite them and the adopter silently kept the wrong type.
             // Deleting this line is the documented gesture for taking ownership of the file.
+            //
+            // No timestamp: a "Generated On" line made every regeneration of an unchanged model
+            // rewrite every generated file. The header is a function of the metadata alone.
             List<String> docs = Arrays.asList(
                     "GENERATED — regenerated from metadata. Delete this line to own this file.",
                     "MetaObject:               " + mo.getName(),

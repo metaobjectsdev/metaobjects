@@ -656,3 +656,164 @@ def test_a_spine_that_does_not_resolve_raises_naming_the_report(spine: str) -> N
     with pytest.raises(ValueError) as e:
         report_shape(report, root)
     assert str(e.value) == f"report 'SpineSales': @spine '{spine}' does not resolve."
+
+
+# ---------------------------------------------------------------------------
+# Table C, a dimension reached through @via (adopter report D5): the view joins a belongs-to
+# hop over a required foreign key INNER, so the column is as required as the field it reads.
+# The same model and expectations as the TypeScript and Java report-shape tests.
+# ---------------------------------------------------------------------------
+
+
+def _via_entity(name: str, table: str, children: list) -> dict:
+    return {
+        "object.entity": {
+            "name": name,
+            "children": [
+                {"source.rdb": {"@table": table}},
+                {"field.long": {"name": "id"}},
+                {"identity.primary": {"name": "pk", "@fields": ["id"]}},
+                *children,
+            ],
+        }
+    }
+
+
+def _via_report(name: str, **extra: Any) -> dict:
+    return {
+        "object.report": {
+            "name": name,
+            "@from": "Snap",
+            "@dimensions": ["realmName", "realmMotto", "maybeRealmName", "looseRealmName", "sessionRealmId"],
+            "@measures": ["snaps"],
+            **extra,
+            "children": [{"source.rdb": {"@kind": "view", "@view": f"v_{name.lower()}"}}],
+        }
+    }
+
+
+def _via_model(*reports: dict):
+    realm = _via_entity(
+        "Realm",
+        "realms",
+        [
+            {"field.string": {"name": "name", "@required": True}},
+            {"field.string": {"name": "motto"}},
+        ],
+    )
+    session = _via_entity(
+        "Session",
+        "sessions",
+        [
+            {"field.long": {"name": "realmId", "@required": True}},
+            {"field.long": {"name": "maybeRealmId"}},
+            {"identity.reference": {"name": "fkRealm", "@fields": ["realmId"], "@references": "Realm"}},
+            {"identity.reference": {"name": "fkMaybeRealm", "@fields": ["maybeRealmId"], "@references": "Realm"}},
+            {
+                "relationship.association": {
+                    "name": "realm",
+                    "@objectRef": "Realm",
+                    "@cardinality": "one",
+                    "@sourceRefField": "realmId",
+                }
+            },
+            {
+                "relationship.association": {
+                    "name": "maybeRealm",
+                    "@objectRef": "Realm",
+                    "@cardinality": "one",
+                    "@sourceRefField": "maybeRealmId",
+                }
+            },
+        ],
+    )
+    snap = _via_entity(
+        "Snap",
+        "snaps",
+        [
+            {"field.long": {"name": "sessionId", "@required": True}},
+            {"field.long": {"name": "unenforcedSessionId", "@required": True}},
+            {"identity.reference": {"name": "fkSession", "@fields": ["sessionId"], "@references": "Session"}},
+            {
+                "identity.reference": {
+                    "name": "fkLoose",
+                    "@fields": ["unenforcedSessionId"],
+                    "@references": "Session",
+                    "@enforce": False,
+                }
+            },
+            {"relationship.association": {"name": "session", "@objectRef": "Session", "@cardinality": "one"}},
+            {"relationship.association": {"name": "stamp", "@objectRef": "Stamp", "@cardinality": "one"}},
+            {"measure.aggregate": {"name": "snaps", "@agg": "count", "@of": "Snap.id"}},
+            {"dimension.attribute": {"name": "realmName", "@of": "Realm.name", "@via": "Snap.fkSession.fkRealm"}},
+            {"dimension.attribute": {"name": "realmMotto", "@of": "Realm.motto", "@via": "Snap.fkSession.fkRealm"}},
+            {
+                "dimension.attribute": {
+                    "name": "maybeRealmName",
+                    "@of": "Realm.name",
+                    "@via": "Snap.fkSession.fkMaybeRealm",
+                }
+            },
+            {"dimension.attribute": {"name": "looseRealmName", "@of": "Realm.name", "@via": "Snap.fkLoose.fkRealm"}},
+            {"dimension.attribute": {"name": "sessionRealmId", "@of": "Session.realmId", "@via": "Snap.fkSession"}},
+            {"dimension.attribute": {"name": "relRealmName", "@of": "Realm.name", "@via": "Snap.session.realm"}},
+            {
+                "dimension.attribute": {
+                    "name": "relMaybeRealmName",
+                    "@of": "Realm.name",
+                    "@via": "Snap.session.maybeRealm",
+                }
+            },
+            {"dimension.attribute": {"name": "relSessionRealmId", "@of": "Session.realmId", "@via": "Snap.session"}},
+            {"dimension.attribute": {"name": "mixedRealmName", "@of": "Realm.name", "@via": "Snap.session.fkRealm"}},
+            {"dimension.attribute": {"name": "stampLabel", "@of": "Stamp.label", "@via": "Snap.stamp"}},
+        ],
+    )
+    # The foreign key between Snap and Stamp is held by Stamp, the far side of Snap's `stamp`.
+    stamp = _via_entity(
+        "Stamp",
+        "stamps",
+        [
+            {"field.long": {"name": "snapId", "@required": True}},
+            {"field.string": {"name": "label", "@required": True}},
+            {"identity.reference": {"name": "fkSnap", "@fields": ["snapId"], "@references": "Snap"}},
+        ],
+    )
+    return _load(_file("a", [realm, session, snap, stamp, *reports]))
+
+
+def _via_required_of(root, name: str) -> dict[str, bool]:
+    return {f.name: f.required for f in report_shape(_object(root, name), root).fields}
+
+
+def test_a_via_dimension_is_required_when_every_hop_is_a_required_belongs_to() -> None:
+    root = _via_model(_via_report("Plain"))
+    req = _via_required_of(root, "Plain")
+    assert req["realmName"] is True  # two required hops over a required field
+    assert req["sessionRealmId"] is True  # one required hop
+    assert req["looseRealmName"] is True  # @enforce: false does not change the join type
+    assert req["realmMotto"] is False  # the target field is optional
+    assert req["maybeRealmName"] is False  # a hop over a nullable foreign key is a LEFT join
+
+
+def test_a_via_dimension_under_spine_keeps_the_spine_rule() -> None:
+    root = _via_model(_via_report("Spined", **{"@spine": "Snap.fkSession", "@dimensions": ["realmName", "sessionRealmId"]}))
+    req = _via_required_of(root, "Spined")
+    assert req["realmName"] is False  # every join beyond the spine is LEFT
+    assert req["sessionRealmId"] is True  # on the spine, a required field
+
+
+def test_a_to_one_relationship_hop_follows_the_reference_it_crosses() -> None:
+    # The same rule when a hop is a @cardinality: one relationship instead of the reference it
+    # crosses: the relationship resolves to that reference (by name pairing for `session`, by
+    # @sourceRefField for the two onto Realm), and the foreign key it holds decides the join.
+    dims = ["relRealmName", "relMaybeRealmName", "relSessionRealmId", "mixedRealmName", "stampLabel"]
+    root = _via_model(_via_report("Related", **{"@dimensions": dims}))
+    req = _via_required_of(root, "Related")
+    assert req["relRealmName"] is True  # two relationship hops, both over a required foreign key
+    assert req["relSessionRealmId"] is True  # one relationship hop
+    assert req["mixedRealmName"] is True  # a relationship hop, then a reference hop
+    assert req["relMaybeRealmName"] is False  # the second relationship crosses a nullable foreign key
+    # The other entity holds the foreign key: a Snap with no Stamp has no match, so the join is
+    # LEFT whatever that key and the target field require.
+    assert req["stampLabel"] is False

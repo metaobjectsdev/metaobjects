@@ -38,7 +38,7 @@ export { emit } from "./emit/index.js";
 export { columnTypeSql } from "./column-type-sql.js";
 export { writeMigration } from "./write-migration.js";
 export { writeMigrationD1 } from "./write-migration-d1.js";
-export { writeMigrationFlyway } from "./write-migration-flyway.js";
+export { writeMigrationFlyway, withoutFlywayHistory, FLYWAY_HISTORY_TABLE } from "./write-migration-flyway.js";
 
 // Reference-snapshot generation (offline, deterministic).
 export {
@@ -66,7 +66,7 @@ export { suggestColumnRenames } from "./diff/rename-suggestions.js";
 export type { ColumnRenameSuggestion } from "./diff/rename-suggestions.js";
 
 // SqlType helpers (rarely needed but useful for advanced consumers)
-export { isWidening, sqlTypeEquals } from "./sql-type.js";
+export { describeSqlType, isWidening, sqlTypeEquals } from "./sql-type.js";
 
 // Types
 export type { SqlType } from "./sql-type.js";
@@ -90,6 +90,10 @@ export type { WriteMigrationFlywayOptions, WriteMigrationFlywayResult } from "./
 // / view-ddl-{postgres,sqlite} stack was folded into the schema-diff path).
 export { normalizeViewSql, viewSqlEquals } from "./view-sql-compare.js";
 export { isViewRecreateOnly, withoutViewRecreates } from "./view-change-reason.js";
+// Whether a live Postgres view can be replaced in place is asked of the database, in a
+// transaction that is always rolled back. Pass the probe to `diff` on a live plan.
+export { postgresViewReplaceProbe } from "./view-replace-probe.js";
+export type { ExactViewColumn, ViewReplaceEvidence, ViewReplaceProbe } from "./view-replace.js";
 
 // D1 dialect emitter + safety pass.
 // renderD1 is exported directly (unlike renderSqlite/renderPostgres) so

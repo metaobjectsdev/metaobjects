@@ -11,8 +11,10 @@ namespace MetaObjects.IntegrationTests.Generated;
 public class WeekShapes
 {
     [Column("programTitle")]
+    [Required(AllowEmptyStrings = true)]
     [MaxLength(200)]
-    public string? ProgramTitle { get; set; }
+    [MinLength(1)]
+    public string ProgramTitle { get; set; } = default!;
     [Column("weeks")]
     public long Weeks { get; set; }
     [Column("unlabelled")]

@@ -131,12 +131,6 @@ export interface FkDescriptor {
 
 export type FkAction = "cascade" | "set-null" | "restrict" | "no-action";
 
-/** One output column of a view, in SELECT order. */
-export interface ViewColumnDescriptor {
-  name: string;
-  sqlType: SqlType;
-}
-
 /** A relation that depends on a view — i.e. what a `DROP ... CASCADE` would destroy. */
 export interface DependentRelation {
   schema: string;
@@ -190,13 +184,6 @@ export interface ViewDescriptor {
    * `allow.adoptView`.
    */
   fingerprint?: string;
-  /**
-   * The view's output columns, in SELECT order. Drives the replace-vs-drop
-   * decision: Postgres permits `CREATE OR REPLACE VIEW` only when the existing
-   * columns are a PREFIX of the new ones (same names, same types, same order,
-   * additions at the end only). Undefined = unknown → fail safe to drop+create.
-   */
-  columns?: readonly ViewColumnDescriptor[];
   /**
    * Relations that depend on this view (transitively). Populated on the ACTUAL
    * side by introspection. A `DROP VIEW` with dependents needs CASCADE, which
@@ -363,6 +350,14 @@ export type Change =
        * migration can recover. Blocked pending `allow.adoptView`.
        */
       unmanagedActual?: boolean;
+      /**
+       * Postgres: the plan-time probe showed the live view's columns are a prefix of this
+       * view's, so `CREATE OR REPLACE VIEW` is legal (see view-replace.ts). `restorable` is
+       * true when the two column lists are the same, so the down migration can replace in
+       * place as well. The Postgres emitter writes `CREATE OR REPLACE VIEW` only for a
+       * change that carries this; any other replace is written as DROP + CREATE.
+       */
+      proven?: { restorable: boolean };
     };
 
 export type ChangeKind = Change["kind"];
@@ -414,6 +409,8 @@ export type ViewChangeReason =
 export interface ChangeStatus {
   state: "allowed" | "blocked";
   blockedReason?: string;
+  /** The `AllowOptions` field whose absence blocked the change; granting it lifts THIS block. */
+  blockedBy?: keyof AllowOptions;
 }
 
 // ---------------------------------------------------------------------------

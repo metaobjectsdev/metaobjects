@@ -327,13 +327,6 @@ async function readPgViews(k: RawKysely): Promise<ViewDescriptor[]> {
       // no MetaObjects stamp ⇒ hand-written or pre-fingerprint ⇒ the diff fails closed.
       const marker = parseFingerprintMarker(r.view_comment);
       if (marker !== null) view.fingerprint = marker.fingerprint;
-      // A view is a relation: information_schema.columns describes its output columns
-      // exactly like a table's, so the same reader gives us the list (and the types)
-      // that decide whether a CREATE OR REPLACE is legal.
-      view.columns = (await readColumns(k, r.table_schema, r.table_name)).map((c) => ({
-        name: c.name,
-        sqlType: c.sqlType,
-      }));
       views.push(view);
     }
 
@@ -350,6 +343,33 @@ async function readPgViews(k: RawKysely): Promise<ViewDescriptor[]> {
     // pg-mem: pg_class/pg_depend catalog introspection not supported — return empty view list.
     return [];
   }
+}
+
+/**
+ * A view's output columns exactly as Postgres holds them, in order: the name, the type with
+ * its modifier (`format_type`) and the collation. These three are what `CREATE OR REPLACE
+ * VIEW` compares, so they are read from the catalog and never mapped to the canonical
+ * `SqlType`, which merges types the comparison keeps apart (`json` and `jsonb`, `smallint`
+ * and `integer`, `text` and `character varying`).
+ *
+ * `relation` is a qualified, quoted name (`"public"."v_x"`, `pg_temp."probe"`). A relation
+ * that does not exist rejects.
+ */
+export async function readPgViewColumns(
+  db: Kysely<Record<string, unknown>>,
+  relation: string,
+): Promise<{ name: string; type: string; collation: string }[]> {
+  const rows = await sql<{ name: string; type: string; collation: string }>`
+    SELECT a.attname AS name,
+           format_type(a.atttypid, a.atttypmod) AS type,
+           a.attcollation::text AS collation
+    FROM pg_attribute a
+    WHERE a.attrelid = ${relation}::regclass
+      AND a.attnum > 0
+      AND NOT a.attisdropped
+    ORDER BY a.attnum
+  `.execute(db);
+  return rows.rows.map((r) => ({ name: r.name, type: r.type, collation: r.collation }));
 }
 
 function viewKey(schema: string | undefined, name: string): string {

@@ -370,8 +370,10 @@ like a keyless read-only projection. Four generators write one file each for a r
 `filter-allowlist` writes `<R>FilterAllowlist`, and `routes` writes `<R>Controller` (one
 `@GetMapping`, a `@PostMapping` answering 405, no `/{id}` mapping). Every derived field with
 filter operators is filterable and sortable. A DTO component that can never be null carries
-`@NotNull`, as any required field does: a `count`, a measure with `@default`, and in a
-`@spine` report a key or `@required` column of the spine entity (`@NotNull Long programKey`).
+`@NotNull`, as any required field does: a `count`, a measure with `@default`, a dimension
+reached through `@via` whose `@of` field is required and whose every hop is a belongs-to
+reference over a required foreign key (the view joins it `INNER`), and in a `@spine` report a
+key or `@required` column of the spine entity (`@NotNull Long programKey`).
 No other generator emits for a report: no names
 class, no entity class. `gen` fails, naming the report and the dimension or measure, when a
 derived field reads a `field.object`. A report with no view source, or an abstract one,

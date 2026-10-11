@@ -125,7 +125,7 @@ public class ReportReadModelTest extends SharedRegistryTestBase {
     public void requiredComesFromTheShapeNotFromTheTypeSource() {
         ReportReadModel model = ReportReadModel.of(object(canonical, "ProgramMinutes"), canonical);
         assertTrue(required(model.getMetaField("program")));
-        assertFalse("reached by @via", required(model.getMetaField("programTitle")));
+        assertTrue("reached by @via over a required reference (an INNER join)", required(model.getMetaField("programTitle")));
         assertTrue("a count is never null", required(model.getMetaField("weeks")));
         // Week.durationMinutes is @required, yet a min over it is nullable (an empty group).
         assertFalse(required(model.getMetaField("minMinutes")));

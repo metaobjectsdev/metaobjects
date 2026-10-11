@@ -9,7 +9,6 @@
 // drift / snapshot as the `views` input. This is the ONE place view SQL is produced.
 
 import {
-  type AggregateFunction,
   type MetaData,
   MetaObject,
   type MetaRoot,
@@ -37,25 +36,7 @@ import { emitViewDdl } from "./view-ddl-emit.js";
 import type { JoinNode, ViewSpec } from "./view-spec.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 
-/** Structurally matches migrate-ts's `ViewDescriptor` (name + body sql + optional schema). */
-/**
- * One output column of the view, in SELECT order, described PHYSICALLY (table +
- * column, not entity + field).
- *
- * migrate-ts resolves each of these to a `SqlType` against its own expected table
- * descriptors. Deliberately no SqlType here: codegen-ts stays ignorant of migrate
- * concerns, and migrate-ts stays ignorant of metadata traversal — the existing
- * layering (migrate-ts never imports codegen-ts; the CLI threads views in).
- *
- * Postgres allows a non-destructive `CREATE OR REPLACE VIEW` only when the existing
- * output columns are a PREFIX of the new ones (same names, same types, same order).
- * That decision cannot be made without knowing the column list, which is why it is
- * carried here.
- */
-export type ExpectedViewColumn =
-  | { kind: "passthrough"; name: string; sourceTable: string; sourceColumn: string }
-  | { kind: "aggregate"; name: string; sourceTable: string; sourceColumn: string; agg: AggregateFunction };
-
+/** Structurally matches migrate-ts's `ExpectedViewInput` (name + body sql + optional schema). */
 export interface ExpectedView {
   name: string;
   schema?: string;
@@ -75,19 +56,6 @@ export interface ExpectedView {
    * so the view must be dropped before and recreated after.
    */
   dependsOn: string[];
-  /**
-   * The view's output columns, in SELECT order — i.e. DECLARATION order, since
-   * extractViewSpec walks the projection's children in order. That is exactly the
-   * order Postgres's OR-REPLACE prefix rule wants: a field appended to the
-   * projection lands last, so the change stays non-destructive. (Re-canonicalizing
-   * to, say, alphabetical order would be strictly WORSE — it would scatter an
-   * appended field into the middle and force a destructive drop+create.)
-   *
-   * OMITTED for an `@sql` (#208) view: the body is opaque — the tool never parses it,
-   * so its output columns are unknown. migrate-ts reads absent columns as "unknown"
-   * and fails safe to a gated drop+create instead of an illegal CREATE OR REPLACE.
-   */
-  columns?: ExpectedViewColumn[];
 }
 
 export interface BuildProjectionViewsOptions {
@@ -222,7 +190,6 @@ export function buildReportViews(root: MetaData, opts: BuildReportViewsOptions):
       dependsOn: reportDependsOn(spec, baseTableName, joinTables),
       fqn: report.resolutionKey(),
       ...(schema !== undefined ? { schema } : {}),
-      // `columns` omitted on purpose: unknown, so migrate takes the fail-safe drop+create (Table F).
     });
   }
   return out;
@@ -297,12 +264,10 @@ function emitViewFor(
   const body = emitViewDdl(spec, { dialect, baseTableName, joinTables, bodyOnly: true });
   const schema = resolveTableSchema(host);
   const dependsOn = collectDependsOn(spec, baseTableName, joinTables);
-  const columns = collectViewColumns(spec, baseTableName, joinTables);
   out.push({
     name: spec.viewName,
     sql: body,
     dependsOn,
-    columns,
     fqn: host.resolutionKey(),
     ...(schema !== undefined ? { schema } : {}),
   });
@@ -314,8 +279,6 @@ function emitViewFor(
  * new machinery:
  *   - buildExpectedSchema Pass 4 fingerprints `v.sql` (hash of the body);
  *   - emit stamps the COMMENT marker; author re-indentation does not re-stamp;
- *   - `columns` is OMITTED (the body is opaque — the tool never parses it), so the diff
- *     fails safe to a gated drop+create instead of a wrong-but-confident OR REPLACE;
  *   - a pre-existing unstamped view at this name → `replace-view` blocked pending
  *     `migrate --allow adopt-view` (the one-time adoption ceremony).
  * `dependsOn` is derived from the host's own writable table (a write-through host) plus
@@ -346,7 +309,6 @@ function emitSqlView(
     sql: source.sqlBody!, // verbatim — never parsed, never re-wrapped
     dependsOn,
     fqn: host.resolutionKey(),
-    // columns OMITTED → "unknown" → gated drop+create fail-safe.
     ...(schema !== undefined ? { schema } : {}),
   });
 }
@@ -398,51 +360,6 @@ function collectSqlDependsOn(
     if (t !== undefined) tables.add(t);
   }
   return [...tables];
-}
-
-/**
- * The SELECT list as PHYSICAL (table, column) pairs, in emitted order.
- *
- * SelectColumn carries a join ALIAS, which means nothing outside this module — so
- * resolve every alias to its physical table first.
- */
-function collectViewColumns(
-  spec: ViewSpec,
-  baseTableName: string,
-  joinTables: Readonly<Record<string, string>>,
-): ExpectedViewColumn[] {
-  const aliasToTable = new Map<string, string>([[spec.joinTree.baseAlias, baseTableName]]);
-  const walk = (node: JoinNode): void => {
-    const t = joinTables[node.targetEntity];
-    if (t) aliasToTable.set(node.alias, t);
-    for (const child of node.children) walk(child);
-  };
-  for (const j of spec.joinTree.joins) walk(j);
-
-  const out: ExpectedViewColumn[] = [];
-  for (const c of spec.selectSpec.columns) {
-    // #195/#335: the five non-scalar origin column kinds (predicateAgg / collectAgg /
-    // collectObjectAgg / computed / first) do not resolve to a single (table, column)
-    // SqlType via the prefix rule — computed is an expression, first is a correlated
-    // subquery, and the array/jsonb/boolean aggregate result types are richer than the
-    // OR-REPLACE prefix check models. Per this module's
-    // fail-safe doctrine (unknown → drop+create, never a wrong-but-confident replace),
-    // an unknown column drops the whole list so migrate routes through a gated
-    // drop+create. Precise native typing is a later phase.
-    if (c.kind !== "passthrough" && c.kind !== "aggregate") return [];
-    const sourceTable = aliasToTable.get(c.sourceAlias);
-    // An unresolvable alias would make the column list a lie, and a wrong list would
-    // make the diff propose an ILLEGAL `CREATE OR REPLACE VIEW` that fails at apply.
-    // Drop the whole list instead: migrate-ts treats an absent list as "unknown" and
-    // fails safe to a gated drop+create.
-    if (sourceTable === undefined) return [];
-    out.push(
-      c.kind === "aggregate"
-        ? { kind: "aggregate", name: c.dbColAlias, sourceTable, sourceColumn: c.sourceColumn, agg: c.agg }
-        : { kind: "passthrough", name: c.dbColAlias, sourceTable, sourceColumn: c.sourceColumn },
-    );
-  }
-  return out;
 }
 
 /**

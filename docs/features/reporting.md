@@ -191,6 +191,15 @@ order: one per dimension, then one per measure.
 | time dimension `purchasedAt` at grain `day` | `purchasedAtDay` (`<dimension><Grain>`) |
 | measure `revenue` | `revenue` |
 
+An `object.report` node has no field children, so `fields()` on it is empty. A report's
+columns are its **read model**: in TypeScript `reportReadModel(report, root).fields()` (or
+`reportShape(report, root).fields` for the shape with its dimension and measure nodes), in Java
+and Kotlin `ReportReadModel.of(report)`, in Python `report_read_model`, in C# `ReportShapes.Of`.
+Code that walks `fields()` to list a report's columns (a schema digest, say) should read the read
+model. To tell a logical reference from an enforced foreign key, read `enforce` on the
+`MetaReferenceIdentity` that `referenceIdentities()` returns, not on the base `MetaIdentity` that
+`identities()` returns.
+
 A `@dimensions` item is a dimension name, or `name:grain` for a time dimension (a single
 colon, so it cannot collide with the `::` package separator). A `@measures` item is a measure
 name, or `Entity.name` where `Entity` is the `@from` entity or one it extends; both forms name
@@ -249,7 +258,7 @@ physical column name is your naming strategy applied to the **derived field name
 
 | Item | Column | Type | Never null? |
 |---|---|---|---|
-| `dimension.attribute` | the dimension's name | the `@of` field's type | only when the dimension has no `@via` and the `@of` field is required (`@required: true` or a `validator.required` child) |
+| `dimension.attribute` | the dimension's name | the `@of` field's type | only when the `@of` field is required (`@required: true` or a `validator.required` child) and the dimension has no `@via`, or every hop of its `@via` is a required reference the view joins `INNER` (below) |
 | `dimension.time` at `hour` | `<name>Hour` | `timestamp` | same rule |
 | `dimension.time` at `day`, `week`, `month`, `quarter`, `year` | `<name><Grain>` | `date`, the first day of the bucket | same rule |
 | `count` (with or without `@distinct`) | the measure's name | `long` | yes: a count is never null |
@@ -264,9 +273,18 @@ physical column name is your naming strategy applied to the **derived field name
 | any measure above except `count`, declaring `@default` | the measure's name | as above | yes: it reads its `@default` instead of null |
 | in a `@spine` report, a dimension over a column of the spine entity | the dimension's name | the `@of` field's type | yes when the `@of` field is required (`@required` or a `validator.required` child) or one of the spine entity's `identity.primary` `@fields`; no for a dimension reached beyond the spine entity |
 
-The last two rows are the only ways a measure other than `count`, or a dimension reached
-through `@via`, is never null. The key clause applies only under `@spine`, where the key is
-the row's own; without `@spine` a dimension reached through `@via` stays nullable.
+The last two rows, and the `INNER` rule above, are the only ways a measure other than `count`,
+or a dimension reached through `@via`, is never null. The key clause applies only under
+`@spine`, where the key is the row's own.
+
+Without `@spine`, a dimension reached through `@via` is never null when its `@of` field is
+required and **every hop is a belongs-to reference over a required foreign key**: the entity the
+hop leaves holds the `identity.reference`, and its first `@fields` entry is required. The view
+joins such a hop `INNER`, so every row has a match, whatever the reference's `@enforce` says (an
+unenforced required reference still joins `INNER`; make its field optional to keep unmatched
+rows). A hop over an optional foreign key, a to-one relationship whose foreign key the other
+entity holds, or any hop under `@spine` is joined `LEFT OUTER`, and the dimension stays nullable. Every port derives the same answer
+(`fixtures/persistence-conformance/report-shapes.json`).
 
 A derived column carries the type-shaping attributes of its `@of` field where they apply
 (`@currency`, `@values`, `@intValueMap`, `@maxLength`, `@precision`, `@scale`, `@localTime`,
@@ -334,6 +352,13 @@ program.
   from the fact row (no `@via`, or a `@via` through another reference) is refused at load: it
   has no value in a row with no facts. A time dimension follows the same rule: the month a
   program was published is legal, the month of a purchase is not.
+- **Package names in a cross-package model.** A bare entity name inside a member resolves in the
+  package of the entity that **declares** the member, never in `@from`'s package: that is
+  `@of` and `@via`. The owner of `@spine`, and the qualifier of a dotted `@measures` item,
+  resolve in the **report's** package. When the entity you name lives in another package, write it with its package
+  (`acme::session::SessionHealthSnapshot.fkSessionId`), or the load fails with `must start at
+  <@from>`: the bare name found nothing in that package, or found a different entity of the same
+  name.
 - **Hop names are compared as written.** A spine written with the relationship's name
   (`Purchase.program`) and a dimension written with the reference's name (`Purchase.fkProgram`)
   name the same join, and are still refused. Write the same hops in both.
@@ -493,7 +518,7 @@ encodings"), applied to the column types above:
 | TypeScript | `<R>.ts` (Drizzle view binding, Zod read schema, row type, descriptor, filter and sort allowlists), `<R>.queries.ts` (the list query only), `<R>.routes.ts` (and `<R>.routes.hono.ts` from the Hono routes generator), `<R>.names.ts`, `<R>.hooks.ts` (the TanStack list hook only) with the `<R>.meta.ts` descriptor it imports, the barrel export |
 | C# | `<R>.g.cs` (keyless row class) and its `DbContext` mapping, `<R>Routes.g.cs`, `<R>FilterAllowlist.g.cs` |
 | Java | `<R>Dto`, `<R>Repository` (`list` and `count` only), `<R>FilterAllowlist`, `<R>Controller` |
-| Kotlin | `<R>Table` (Exposed), the `<R>` data class, `<R>FilterAllowlist`, `<R>Controller` |
+| Kotlin | `<R>Table` (Exposed), the `<R>` data class, `<R>FilterAllowlist`, `<R>Controller`, and `<R>Names` when the opt-in `KotlinNamesGenerator` is wired |
 | Python | `<R>.py` (Pydantic row model), `<snake>_filter_allowlist.py`, `<snake>_router.py`, `<snake>_names.py` |
 
 No port generates a by-id query, a `findById` on a repository seam, a create or update
@@ -505,10 +530,11 @@ hook generator asks `servesClientHooks`, which is true for a served report; the 
 generators ask `servesClientTier`, which is false for one. A hook generator you own was
 copied with the predicate it had then and emits no report hook until you resync it
 (`meta eject hooks`, then merge your edits); the other UI generators you own need
-nothing. TypeScript and
-Python write a names artifact because their read model flows through the names generator;
-C#, Java and Kotlin bind the view and its columns by literal. These are reference helpers,
-not core: copy and own them with your port's `eject`.
+nothing. TypeScript, Python and Kotlin write a names artifact from the report's read model: the
+view name and one constant per derived column, for hand-written SQL over the view to use.
+Kotlin's is opt-in like every `<Entity>Names`, and its Exposed table still binds the view and
+its columns by literal, as C# and Java do, which write no names artifact for a report. These
+are reference helpers, not core: copy and own them with your port's `eject`.
 
 **`meta docs`.** Every report gets a model page (kind `report`, its `@from`, its view or
 "Not served" with the reason, its row scope, and a column table with a definition per

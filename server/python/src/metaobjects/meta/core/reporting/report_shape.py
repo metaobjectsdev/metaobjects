@@ -29,8 +29,20 @@ from ..field.field_constants import (
     FIELD_SUBTYPE_TIMESTAMP,
 )
 from ..field.meta_field import MetaField
-from ..identity.identity_constants import IDENTITY_ATTR_FIELDS
+from ..identity.identity_constants import (
+    IDENTITY_ATTR_FIELDS,
+    IDENTITY_REFERENCE_ATTR_REFERENCES,
+    IDENTITY_SUBTYPE_REFERENCE,
+)
 from ..object.meta_object import MetaObject
+from ..relationship.relationship_constants import (
+    RELATIONSHIP_ATTR_OBJECT_REF,
+    RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
+)
+from ..relationship.relationship_references import (
+    reference_fields,
+    resolve_relationship_reference,
+)
 from .meta_dimension import MetaDimension
 from .meta_measure import MetaMeasure
 from .report_accessors import (
@@ -216,6 +228,68 @@ def _declared_member(from_: MetaObject, type_: str, name: str, cls: type[MetaDat
     )
 
 
+def _is_required_field(field: MetaField) -> bool:
+    """ADR-0039 resolving: the field's effective required-ness, the ``@required`` attr OR a
+    ``validator.required`` child (``children()`` is the effective set, own + inherited)."""
+    return field.get_meta_attr(FIELD_ATTR_REQUIRED) is True or any(
+        c.type == "validator" and c.sub_type == "required" for c in field.children()
+    )
+
+
+def _via_joins_inner(hops: list[str], from_: MetaObject, root: MetaRoot) -> bool:
+    """True when every hop of ``hops``, walked from ``from_``, is a belongs-to hop over a
+    required foreign key: the hops the view joins INNER, so every row of the report has a
+    match. This is the join-type rule of the view lowering (TypeScript ``walkViaPath``, #209):
+    the reference is held by the entity the hop leaves, its first FK field is required, and
+    every earlier hop is INNER too. ``@enforce: false`` does not change it. A hop that does
+    not resolve, an ambiguous reference or a has-many hop is not INNER."""
+    current = from_
+    for hop_name in hops:
+        # ADR-0039: resolving children(), so a hop inherited through extends is found.
+        rel = next((c for c in current.children() if c.type == "relationship" and c.name == hop_name), None)
+        ref_node = None
+        if rel is None:
+            ref_node = next(
+                (
+                    c
+                    for c in current.children()
+                    if c.type == "identity" and c.sub_type == IDENTITY_SUBTYPE_REFERENCE and c.name == hop_name
+                ),
+                None,
+            )
+        hop = rel if rel is not None else ref_node
+        if hop is None:
+            return False
+        target_ref = hop.get_meta_attr(
+            RELATIONSHIP_ATTR_OBJECT_REF if rel is not None else IDENTITY_REFERENCE_ATTR_REFERENCES
+        )
+        if not isinstance(target_ref, str):
+            return False
+        target = resolve_object_ref(root, target_ref, _package_of_key(current.resolution_key()))
+        if not isinstance(target, MetaObject):
+            return False
+        # The reference the hop crosses, as the lowering resolves it. A has-many hop, whose
+        # FK sits on the child, matches none of the current entity's own references.
+        if ref_node is not None:
+            reference = ref_node
+        else:
+            source_ref_field = hop.get_meta_attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD)
+            reference = resolve_relationship_reference(
+                current,
+                hop_name,
+                target.name,
+                source_ref_field if isinstance(source_ref_field, str) else None,
+            )
+        if reference is None:
+            return False
+        fk_fields = reference_fields(reference)
+        fk = current.find_field(fk_fields[0]) if fk_fields else None
+        if fk is None or not _is_required_field(fk):
+            return False
+        current = target
+    return True
+
+
 def _dimension_required(
     dim: MetaDimension,
     named: MetaObject,
@@ -225,20 +299,25 @@ def _dimension_required(
     spine: list[str] | None,
     report_name: str,
 ) -> bool:
-    """Table C (``required`` of a dimension). Without ``@spine``: only a dimension with no
-    ``@via`` over an ``@of`` field whose effective ``@required`` is true. With ``@spine``:
+    """Table C (``required`` of a dimension). Without ``@spine``: only a dimension over an
+    ``@of`` field whose effective ``@required`` is true and, when it has a ``@via``, only
+    when every hop is a required belongs-to reference, the hops the view joins INNER
+    (:func:`_via_joins_inner`). With ``@spine``:
     only a dimension whose ``@via`` hops equal the spine's (a column of the spine entity
     itself, whose rows are the report's rows) over an ``@of`` field that is ``@required`` or
     a primary-key column of the entity ``@of`` names. A dimension beyond the spine is
     reached by a LEFT OUTER join."""
     via = dim.via()
-    # ADR-0039 resolving: the @of field's effective required-ness, the @required attr OR a
-    # validator.required child (children() is the effective set, own + inherited).
-    of_required = of.get_meta_attr(FIELD_ATTR_REQUIRED) is True or any(
-        c.type == "validator" and c.sub_type == "required" for c in of.children()
-    )
+    of_required = _is_required_field(of)
     if spine is None:
-        return via is None and of_required
+        if via is None:
+            return of_required
+        if not of_required:
+            return False
+        hops = reporting_via_hops(via, reporting_member_owner(dim, from_), from_, root)
+        if hops is None:
+            raise _unresolved(report_name, f"dimension '{dim.name}' @via '{via}'")
+        return _via_joins_inner(hops, from_, root)
     if via is None:
         return False  # a column of @from: null in a spine row with no facts
     hops = reporting_via_hops(via, reporting_member_owner(dim, from_), from_, root)
