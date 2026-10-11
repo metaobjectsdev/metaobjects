@@ -208,6 +208,37 @@ public class TypedPayloadRenderTest {
         assertEquals(expected, render(template, new Order()));
     }
 
+    // ---- A primitive array is the engine's own list, in every payload shape ------------------
+
+    public record RScores(int[] scores) {}
+
+    public static class BScores {
+        private final int[] scores;
+        public BScores(int... scores) { this.scores = scores; }
+        public int[] getScores() { return scores; }
+    }
+
+    /**
+     * The oracle is the Mustache spec: a section over a list renders its body once per element,
+     * with {@code {{.}}} the element; an inverted section renders for an empty list. A view that
+     * wrapped the array rendered the body once, with the array's identity string.
+     */
+    @Test
+    public void aSectionOverAPrimitiveArrayRendersPerElementInEveryPayloadShape() {
+        String template = "{{#scores}}{{.}},{{/scores}}";
+        assertEquals("1,2,3,", render(template, Map.of("scores", new int[] {1, 2, 3})));
+        assertEquals("1,2,3,", render(template, new RScores(new int[] {1, 2, 3})));
+        assertEquals("1,2,3,", render(template, new BScores(1, 2, 3)));
+    }
+
+    @Test
+    public void anInvertedSectionOverAnEmptyPrimitiveArrayRendersItsBody() {
+        String template = "{{^scores}}none{{/scores}}";
+        assertEquals("none", render(template, Map.of("scores", new int[0])));
+        assertEquals("none", render(template, new RScores(new int[0])));
+        assertEquals("none", render(template, new BScores()));
+    }
+
     @Test
     public void derivedNamesSitOnTopOfATypedObjectsOwnMembers() {
         assertEquals("name:a + name:b has-id no-missing",

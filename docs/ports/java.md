@@ -326,6 +326,35 @@ A `@provided` enum is never generated. All three generators reference it where
 naming the enum, when neither resolves it. Set them once for every generator in the plugin's
 `<globals>`.
 
+**If you own `value-object` or `output-parser`.** A copy ejected before 1.1.0 nests a shared or
+`@provided` enum inside the value-object record (`TicketPayload.Priority`) and parses into that
+nested type. The packaged generators now reference the top-level enum. The two generators must
+agree, so an old copy of one beside the packaged other generates code that does not compile
+whenever a response value object has a field that reaches such an enum:
+
+| You own (ejected before 1.1.0) | Packaged | What fails to compile |
+|---|---|---|
+| `output-parser` | `value-object` | The parser emits `<Payload>.<Enum>.valueOf(s)` for an enum the record no longer nests. |
+| `value-object` | `output-parser` | The record still nests the enum, and the parser passes the top-level shared type to the record's constructor. |
+
+Bring every copy you own of the two to the new shape in one change. `mvn metaobjects:eject -Dlist`
+prints `[owned — identical]` or `[owned — DIFFERS: N behind, M of your own]` beside each
+generator. `behind` counts reference lines your copy lacks; `of your own` counts lines of your
+copy the reference does not have, which includes lines a release changed, so an unedited old
+copy also reads `DIFFERS`. For a copy you did not edit, re-eject it, naming only the generators
+you own:
+
+```bash
+mvn metaobjects:eject -Dnames=value-object,output-parser -Dport=java -Dforce
+```
+
+`-Dport=java` is there because `output-parser` is also a Kotlin generator. `-Dforce` replaces
+the copy and rewrites `codegen/pom.xml`, so review both diffs. For an edited copy, diff the new
+reference against it and apply the hunks by hand, as in
+[Pulling an upstream fix into your copy](../features/own-your-codegen.md#what-eject-hands-over-and-what-stays-core).
+An owned `dto` copy needs nothing for this: it asks the packaged `Fr019SharedEnum` helper for
+each enum's type, so it follows the new rule without a change.
+
 ### Reports
 
 A concrete `object.report` whose read source is a `source.rdb` of `@kind: view` is served

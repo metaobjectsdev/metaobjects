@@ -133,8 +133,8 @@ describe("entityFile() — emitAbstractShapes knob", () => {
     },
   });
 
-  async function runWith(emitAbstractShapes: boolean) {
-    const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(MODEL)]);
+  async function runWith(emitAbstractShapes: boolean, model: string = MODEL) {
+    const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(model)]);
     if (errors.length > 0) throw new Error(errors.map((e: { message: string }) => e.message).join("\n"));
     const entities = root.objects();
     const renderContext = makeRenderContext({
@@ -166,6 +166,47 @@ describe("entityFile() — emitAbstractShapes knob", () => {
     expect(base!.content).toContain("export interface Base");
     expect(base!.content).not.toContain("export const Base =");
     expect(base!.content).not.toContain("$entity:");
+  });
+
+  // Generated-output contract, as the CHANGELOG states it: an ABSTRACT `object.value` is a
+  // shape to extend, never a value a caller holds, so its module exports no field-rules
+  // constant. The concrete value object that extends it exports one, and that constant lists
+  // the inherited fields with their limits, because those are the limits of the concrete type.
+  test("abstract value object exports no field-rules constant; its concrete subtype lists the inherited fields", async () => {
+    const model = JSON.stringify({
+      "metadata.root": {
+        package: "acme",
+        children: [
+          {
+            "object.value": {
+              name: "BaseAddress",
+              abstract: true,
+              children: [{ "field.string": { name: "line1", "@maxLength": 80 } }],
+            },
+          },
+          {
+            "object.value": {
+              name: "ShippingAddress",
+              extends: "BaseAddress",
+              children: [{ "field.string": { name: "zip", "@maxLength": 10 } }],
+            },
+          },
+        ],
+      },
+    });
+    const files = await runWith(true, model);
+    const base = files.find((f) => f.path === "BaseAddress.ts");
+    expect(base).toBeDefined();
+    expect(base!.content).toContain("export interface BaseAddress");
+    expect(base!.content).not.toContain("export const BaseAddress =");
+    expect(base!.content).not.toContain("$entity:");
+
+    const concrete = files.find((f) => f.path === "ShippingAddress.ts");
+    expect(concrete).toBeDefined();
+    const constant = concrete!.content.slice(concrete!.content.indexOf("export const ShippingAddress = {"));
+    expect(constant.startsWith("export const ShippingAddress = {")).toBe(true);
+    expect(constant).toMatch(/line1: \{[^}]*rules: \{[^}]*maxLength: \{ value: 80,/s);
+    expect(constant).toMatch(/zip: \{[^}]*rules: \{[^}]*maxLength: \{ value: 10,/s);
   });
 
   test("off: abstract entity emits no file; concrete still emits", async () => {

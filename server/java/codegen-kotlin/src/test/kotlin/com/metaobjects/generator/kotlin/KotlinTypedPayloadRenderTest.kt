@@ -99,6 +99,25 @@ class KotlinTypedPayloadRenderTest {
         )
     }
 
+    class Scoreboard(val scores: IntArray, val weights: DoubleArray)
+
+    /**
+     * The oracle is the Mustache spec: a section over a list renders its body once per element
+     * and an inverted section renders for an empty list. `IntArray` and `DoubleArray` are JVM
+     * primitive arrays, which the engine iterates itself.
+     */
+    @Test
+    fun `a primitive array property is iterated per element`() {
+        assertEquals(
+            "1,2,3,|0.5;",
+            render("{{#scores}}{{.}},{{/scores}}|{{#weights}}{{.}};{{/weights}}", Scoreboard(intArrayOf(1, 2, 3), doubleArrayOf(0.5))),
+        )
+        assertEquals(
+            "none",
+            render("{{^scores}}none{{/scores}}{{#weights}}{{.}}{{/weights}}", Scoreboard(intArrayOf(), doubleArrayOf())),
+        )
+    }
+
     @Test
     fun `a property the template never names is never read`() {
         assertEquals("a,b", render("{{#lines}}{{sku}}{{^-last}},{{/-last}}{{/lines}}", order))

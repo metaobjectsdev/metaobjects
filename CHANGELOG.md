@@ -69,8 +69,11 @@ Total hand-written lines did not fall, so do not read it as a total line reducti
   every generator that types an enum now needs `providedEnumNamespace` /
   `providedEnumPackages` for a model with a `@provided` enum; set them in the plugin's
   `<globals>`. An owned (ejected) Kotlin generator keeps compiling and keeps its previous
-  `@provided` answer until you re-eject it. The **Fixed** entry lists each port's before and
-  after, and the re-eject command.
+  `@provided` answer until you re-eject it. An owned Java `value-object` or `output-parser`
+  generator must be re-ejected, or merged with its new reference, when a response value object
+  reaches a shared or `@provided` enum: an old copy of one beside the packaged other generates
+  code that does not compile. The **Fixed** entry lists each port's before and after, and the
+  re-eject commands.
 
 **Not in 1.1.0.** Derived measures, the preview `reporting` library, the dbt exporter, the second
 requirements slice and the advisory lint port, the JSON Schema and OpenAPI generators, the
@@ -595,6 +598,35 @@ until you regenerate.
     was nested under the shared enum's own name and shadowed it inside the DTO. It is now named
     `<Owner><Field>`: `TaskDto.Priority` (with the redeclared members) becomes
     `TaskDto.TaskPhase`. It stays inline, with its own members.
+  - **Upgrading an owned Java `value-object` or `output-parser` generator.** This applies if you
+    own (ejected) either generator and a response value object has a field that reaches a
+    shared or `@provided` enum. The two generators must emit the same shape, and a copy ejected
+    before this release emits the old one. One old copy beside one packaged generator produces
+    code that does not compile:
+    - An owned old `output-parser` with the packaged `value-object`: the parser emits
+      `<Payload>.<Enum>.valueOf(s)` (`TicketPayload.Priority.valueOf(s)`) for an enum the record
+      no longer nests.
+    - An owned old `value-object` with the packaged `output-parser`: the record still nests
+      `TicketPayload.Priority`, and the parser passes the top-level `Priority` to the record's
+      constructor.
+
+    Bring every copy you own of the two to the new shape in one change, so the pair agrees.
+    `mvn metaobjects:eject -Dlist` shows where each copy stands: it prints
+    `[owned — identical]` or `[owned — DIFFERS: N behind, M of your own]` beside the generator.
+    `behind` counts reference lines your copy lacks. `of your own` counts lines of your copy the
+    reference does not have, which includes lines this release changed, so a copy you never
+    edited also reads `DIFFERS` after the upgrade. Whether you edited a copy is in your own
+    history (`git log -- codegen/`). For a copy you did not edit, re-eject it:
+    `mvn metaobjects:eject -Dnames=value-object,output-parser -Dport=java -Dforce`, naming only
+    the generators you own. `-Dport=java` is there because `output-parser` is also a Kotlin
+    generator. `-Dforce` replaces the copy and rewrites `codegen/pom.xml`, so review both diffs.
+    For an edited copy, extract the new reference from the `metaobjects-codegen-spring` jar
+    (`META-INF/metaobjects/reference/java/SpringValueObjectGenerator.java` and
+    `SpringOutputParserGenerator.java`), diff it against your copy ignoring the package line,
+    and apply the hunks by hand: the procedure is "Pulling an upstream fix into your copy" in
+    `docs/features/own-your-codegen.md`. An owned `dto` copy needs nothing for this: it asks
+    the packaged `Fr019SharedEnum` helper for each enum's type, so it follows the new rule
+    without a change.
 
   Kotlin has one more change, to configuration:
 
@@ -623,7 +655,7 @@ until you regenerate.
     To get the configured class from every generator, re-eject the five that type an enum:
     `mvn metaobjects:eject -Dnames=entity,exposed-table,routes,relations,output-parser
     -Dport=kotlin -Dforce`. `-Dforce` overwrites the copy, so use it only on one you have not
-    edited (`mvn metaobjects:eject -Dlist` reports each copy's own changes). For an edited copy,
+    edited (`mvn metaobjects:eject -Dlist` shows how far each copy is from its reference). For an edited copy,
     extract the new reference from the `metaobjects-codegen-kotlin` jar
     (`META-INF/metaobjects/reference/kotlin/<Generator>.kt`), diff it against your copy
     ignoring the package line, and apply the hunks by hand: the procedure is "Pulling an

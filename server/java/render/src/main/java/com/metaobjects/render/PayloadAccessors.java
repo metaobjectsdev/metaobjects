@@ -193,10 +193,12 @@ public final class PayloadAccessors {
     }
 
     /**
-     * A value the engine treats specially by its TYPE — a scalar, an iterable, a lambda — or a
-     * platform value is handed over untouched; only an application object is overlaid.
+     * A value the engine treats specially by its TYPE — a scalar, an iterable, an array, a
+     * lambda — or a platform value is handed over untouched; only an application object is
+     * overlaid.
      */
     private static boolean isViewable(Object payload) {
+        if (payload.getClass().isArray()) return false;
         if (payload instanceof Enum<?> || payload instanceof CharSequence || payload instanceof Number
                 || payload instanceof Boolean || payload instanceof Character
                 || payload instanceof Iterable<?> || payload instanceof java.util.Iterator<?>

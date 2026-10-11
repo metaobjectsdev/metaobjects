@@ -31,6 +31,7 @@ import { renderFilterType } from "./filter-type.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants.js";
 import { namesRef, namesConstArg } from "../names.js";
 import { isSourcelessEntity } from "../source-detect.js";
+import { isAbstract } from "../instance-artifacts.js";
 
 export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: RenderContext): string {
   const enumAliases = renderEnumTypeAliases(obj, ctx);
@@ -89,7 +90,7 @@ export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: Ren
     // no `$table`/`$path`. Only the value subtype: an abstract object, a TPH subtype, a
     // sourceless entity and an entity emitted to a contract-only target also land in this
     // composer, and none of them takes it.
-    ...(obj.subType === OBJECT_SUBTYPE_VALUE
+    ...(obj.subType === OBJECT_SUBTYPE_VALUE && !isAbstract(obj)
       ? [renderValueObjectConstants(obj, ctx ? ctx.valueObjectEmittedName(obj) : undefined)]
       : []),
     ...(tphFilterAllowlist !== null ? [tphFilterAllowlist] : []),
