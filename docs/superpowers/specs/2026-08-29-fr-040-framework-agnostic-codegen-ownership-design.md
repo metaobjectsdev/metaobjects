@@ -207,6 +207,10 @@ zero MetaObjects knowledge of Next.js, and it survives regeneration. It also
 generalizes: the same one-line prepend is what Qwik (`"use client"` analogues), Angular
 (no directive, different imports) or Svelte would each vary in their own way.
 
+> **Superseded by ADR-0034 Amendment 8 (2026-10-11).** The owned copy now holds the
+> emit: `meta eject` copies the template modules a reference calls into the project with
+> it. The paragraph below records the choice as it was made, and is no longer the rule.
+
 **Not chosen:** shipping fat reference templates that inline the renderer. It produces a
 600-line copied file that immediately stops receiving upstream fixes — the worst of both
 models. Ownership should be cheap to take and cheap to keep.

@@ -28,14 +28,6 @@ public class EjectableGeneratorsTests
     }
 
     [Fact]
-    public void Template_primitive_is_not_ejectable()
-    {
-        // ADR-0034 Amendment 3 (C# section): "template" has no emit logic of its own to
-        // own, so it carries no SourceFileName and must not appear in the ejectable set.
-        Assert.DoesNotContain(EjectableGenerators.Entries(), e => e.Name == "template");
-    }
-
-    [Fact]
     public void Embedded_copies_are_byte_identical_to_their_source_files()
     {
         // The generators AND the emitters handed over with them: every path any entry hands over.

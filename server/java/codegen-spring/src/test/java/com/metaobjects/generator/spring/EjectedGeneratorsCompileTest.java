@@ -1,5 +1,6 @@
 package com.metaobjects.generator.spring;
 
+import com.metaobjects.generator.GeneratorRegistry;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -28,8 +29,7 @@ import static org.junit.Assert.assertTrue;
  * classes plus its declared dependencies — exactly what an adopter's new {@code codegen/}
  * module depends on after eject). See {@code docs/superpowers/specs/
  * 2026-09-22-eject-in-every-port-design.md} (JVM section) and {@code
- * com.metaobjects.generator.GeneratorRegistry}'s {@code ejectPath(...)} calls, whose
- * classnames this list mirrors.
+ * com.metaobjects.generator.GeneratorRegistry}, which this test reads its list from.
  *
  * <p>This reads straight off {@code src/main/java} rather than through the Maven eject
  * mojo (which lives in a downstream module, {@code maven-plugin}, that depends on THIS one —
@@ -43,20 +43,15 @@ public class EjectedGeneratorsCompileTest {
     @Rule
     public TemporaryFolder tempFolder = new TemporaryFolder();
 
-    /** Every stable name codegen-spring ships as an ejectable reference (GeneratorRegistry). */
-    private static final List<String> EJECTABLE_SIMPLE_NAMES = List.of(
-            "SpringControllerGenerator",
-            "SpringOutputParserGenerator",
-            "SpringOutputPromptGenerator",
-            "SpringRenderHelperGenerator",
-            "SpringFilterAllowlistGenerator",
-            "SpringRepositoryGenerator",
-            "SpringDtoGenerator",
-            "SpringValueObjectGenerator",
-            "LlmTraceHelperGenerator",
-            "SpringNamesGenerator",
-            "JUnitRequirementTestsGenerator"
-    );
+    /** Every reference this module ships, read off the registry so the list cannot fall
+     *  behind it: the ejectable generators whose class lives in this package. */
+    private static final List<String> EJECTABLE_SIMPLE_NAMES = GeneratorRegistry.list().values().stream()
+            .filter(info -> info.ejectResourcePath() != null)
+            .map(GeneratorRegistry.GeneratorInfo::classname)
+            .filter(name -> name.startsWith(GeneratorRegistry.SUPPORT_PACKAGE + ".")
+                    && name.lastIndexOf('.') == GeneratorRegistry.SUPPORT_PACKAGE.length())
+            .map(name -> name.substring(name.lastIndexOf('.') + 1))
+            .collect(java.util.stream.Collectors.toList());
 
     private static final Pattern PACKAGE_LINE = Pattern.compile("(?m)^package\\s+[\\w.]+\\s*;\\s*$");
 

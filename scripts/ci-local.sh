@@ -633,13 +633,18 @@ gate_conf_csharp() {
 # NOTE: these -Dtest= lists are a CHERRY-PICK, so a new test class that is not named here
 # runs in NO per-push lane and reports green. Adding a test to this module means adding its
 # class name here too — that is not a convention, it is the only thing that makes it run.
+# The eject contract (ADR-0034 Amendment 8) runs in `maven-plugin`, the module that owns the
+# eject goal and the only one that sees every codegen module, so that module is built here
+# for the one test. Kotlin's runs in its own lane below.
 gate_conf_java() {
   ( cd server/java \
       && mvn -pl metadata,render,codegen-base,codegen-spring -am install -DskipTests -q \
       && mvn -pl metadata test -Dtest='ConformanceTest,YamlConformanceTest,ObjectModelConformanceTest,RegistryManifestConformanceTest' -q \
       && mvn -pl render test -Dtest='RenderCrossPortReportTest,VerifyConformanceTest,ExtractConformanceTest,OutputPromptConformanceTest' -q \
       && mvn -pl codegen-base test -Dtest='GeneratedFileWriterTest,JavaCodegenWriteGuardTest,JavaAccessorNameCollisionTest' -q \
-      && mvn -pl codegen-spring test -Dtest='ValidationConformanceTest,GeneratorRegistryConformanceTest,NoMagicPhysicalNamesTest,CodegenCompileConformanceTest,IllegalRecordComponentNameTest,SpringIllegalNameCompileRunTest' -q )
+      && mvn -pl codegen-spring test -Dtest='ValidationConformanceTest,GeneratorRegistryConformanceTest,NoMagicPhysicalNamesTest,CodegenCompileConformanceTest,IllegalRecordComponentNameTest,SpringIllegalNameCompileRunTest' -q \
+      && mvn -pl maven-plugin -am install -DskipTests -q \
+      && mvn -pl maven-plugin test -Dtest='EjectContractTest' -q )
 }
 gate_conf_python() {
   # FULL suite, not cherry-picked paths. Until 2026-07-19 this ran only
@@ -662,7 +667,7 @@ gate_conf_python() {
 gate_conf_kotlin() {
   ( cd server/java \
       && mvn -pl codegen-kotlin -am install -DskipTests -q \
-      && mvn -pl codegen-kotlin test -Dtest='ObjectModelConformanceTest,OutputPromptConformanceTest,ValidationConformanceTest,GeneratorRegistryConformanceTest,RegistryManifestConformanceTest,NoMagicPhysicalNamesTest,CodegenCompileConformanceTest' -q )
+      && mvn -pl codegen-kotlin test -Dtest='ObjectModelConformanceTest,OutputPromptConformanceTest,ValidationConformanceTest,GeneratorRegistryConformanceTest,RegistryManifestConformanceTest,NoMagicPhysicalNamesTest,CodegenCompileConformanceTest,EjectContractTest' -q )
 }
 
 # ── conformance.yml — full reactor + drift/mutation gates ─────────────────────

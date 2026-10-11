@@ -48,6 +48,11 @@ Decide explicitly for every branch the scan returns: merge it into this cut, or 
 Note that `no-mistakes/*` branches are usually gate replays of work already on `main` — confirm
 rather than assume. Do not skip past the list.
 
+**The eject pending list (1.1.0).** `fixtures/generator-registry-conformance/registry.json`
+carries `eject.PENDING_LIST_MAY_BE_NON_EMPTY`. Set it to `false` on the release branch and run
+each port's eject-contract test: any entry left in `eject.pending` then fails the port it
+names. 1.1.0 does not ship with a non-empty list (ADR-0034 Amendment 8).
+
 **Why this is step 0 and not a nicety:** `0.21.1` shipped *without* a `timestampMode` fix that was
 already written and sitting on an unmerged branch. Because versions are immutable on all four
 registries, the only correction was a full coordinated `0.21.2` within the hour — four publishes, an

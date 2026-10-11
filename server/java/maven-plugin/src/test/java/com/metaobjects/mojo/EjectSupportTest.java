@@ -34,18 +34,6 @@ public class EjectSupportTest {
     }
 
     @Test
-    public void onJavaOnlyTheGenericTemplateIsRegisteredButNotEjectable() {
-        java.util.Set<String> notEjectable = new java.util.TreeSet<>();
-        for (EjectSupport.Entry e : EjectSupport.allEntries()) {
-            if (e.port == EjectSupport.Port.JAVA && e.resourcePath == null) notEjectable.add(e.stableName);
-        }
-        // PINNED: template is the Mustache primitive, with no emit logic to own. entity and
-        // extractor were the other two until ADR-0034 Amendment 6; a generator that joins
-        // this set has to be ruled on, not slipped in.
-        assertEquals(java.util.Set.of("template"), notEjectable);
-    }
-
-    @Test
     public void entityAndExtractorAreEjectableOnBothPortsAndSoNeedAPort() {
         Map<String, List<EjectSupport.Entry>> catalog = EjectSupport.ejectableByStableName();
         for (String name : List.of("entity", "extractor")) {

@@ -126,8 +126,10 @@ name. Import by default and eject to customize: an owned copy you never change o
 behind the reference. (`entityFile` / `queriesFile` / `routesFile` / `barrel` were removed
 from that subpath at 1.0 and restored in 1.1, so on a 1.0.x install an owned copy is the
 only path for those four.) The engine primitives come from the package main entry,
-`@metaobjectsdev/codegen-ts`. One entry cannot be ejected and is `package-only` in
-`meta gen --list`: the `template` primitive, which has no emit logic of its own.
+`@metaobjectsdev/codegen-ts`. Three entries cannot be ejected and are `package-only` in
+`meta gen --list`: the `template` primitive, which has no emit logic of its own, and
+`requirements` and `agent-docs`, the pages `meta docs` writes, which do not ship a
+reference template yet.
 
 Three ejectable entries behave differently from the rest:
 

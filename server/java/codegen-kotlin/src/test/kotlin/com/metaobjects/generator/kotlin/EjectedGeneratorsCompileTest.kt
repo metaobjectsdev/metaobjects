@@ -13,8 +13,8 @@ import kotlin.test.assertTrue
  * module compiles, package-renamed, against the PUBLISHED API (this module's own compiled
  * classes plus its declared dependencies — exactly what an adopter's new `codegen/` module
  * depends on after eject). See `docs/superpowers/specs/
- * 2026-09-22-eject-in-every-port-design.md` (JVM section) and `GeneratorRegistry.kt`'s
- * `ejectPath(...)` calls, whose class names this list mirrors.
+ * 2026-09-22-eject-in-every-port-design.md` (JVM section). Each copy compiled ALONE, and
+ * what it may reference, is `EjectContractTest`'s to assert.
  *
  * Reads straight off `src/main/kotlin` (the maven-plugin module that runs the real eject
  * mojo depends on THIS module, not the reverse, so the mojo isn't reachable here) and
@@ -26,24 +26,9 @@ import kotlin.test.assertTrue
 @OptIn(org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi::class)
 class EjectedGeneratorsCompileTest {
 
-    /** Every stable name codegen-kotlin ships as an ejectable reference (GeneratorRegistry.kt). */
-    private val ejectableSimpleNames = listOf(
-        "KotlinEntityGenerator",
-        "KotlinSpringControllerGenerator",
-        "KotlinRepositoryGenerator",
-        "KotlinOutputParserGenerator",
-        "KotlinOutputPromptGenerator",
-        "KotlinRenderHelperGenerator",
-        "KotlinExtractorGenerator",
-        "KotlinFilterAllowlistGenerator",
-        "KotlinNamesGenerator",
-        "KotlinExposedTableGenerator",
-        "KotlinRelationsGenerator",
-        "KotlinSpringConfigGenerator",
-        "KotlinStoredProcGenerator",
-        "KotlinValidatorGenerator",
-        "KotlinRequirementTestsGenerator",
-    )
+    /** Every reference this module ships, read off the registry so the list cannot fall behind it. */
+    private val ejectableSimpleNames = GENERATOR_REGISTRY.values.mapNotNull { it.ejectResourcePath }
+        .map { it.substringAfterLast('/').substringBeforeLast('.') }
 
     private val packageLine = Regex("(?m)^package\\s+[\\w.]+\\s*$")
 

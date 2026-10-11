@@ -41,8 +41,9 @@ def _project(tmp_path: Path, generators: str) -> Path:
 
 def test_every_ejectable_entry_names_its_source(tmp_path: Path) -> None:
     ejectable = [e for e in GENERATOR_REGISTRY.values() if e.source_module is not None]
-    # `template` is a primitive with no emit logic of its own; everything else is ejectable.
-    assert {e.name for e in ejectable} == set(GENERATOR_REGISTRY) - {"template"}
+    # Which generators are ejectable, and why the rest are not, is asserted against the
+    # shared file in tests/conformance/test_eject_contract.py.
+    assert ejectable
     for e in ejectable:
         module = importlib.import_module(e.source_module)
         assert callable(getattr(module, e.symbol)), e.name

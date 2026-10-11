@@ -189,7 +189,10 @@ public class PlantUMLWriter extends FileDirectWriter<PlantUMLWriter> {
     protected void writeEmptyPackageNesting(List<String> pkgsIn) {
         List<String> pkgs = new ArrayList<>( pkgsIn );
         for( String pkg : pkgsIn ) {
-            String p = pkg.substring( 0, pkg.lastIndexOf( "::" ));
+            // A single-segment package ("acme") has no parent package to nest under.
+            int parentEnd = pkg.lastIndexOf( "::" );
+            if ( parentEnd < 0 ) continue;
+            String p = pkg.substring( 0, parentEnd );
             if ( !p.isEmpty()
                     && !pkgs.contains(p)) {
                 if ( hasDifferentSubPackages( p, pkgsIn )) {

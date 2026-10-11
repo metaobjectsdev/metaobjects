@@ -53,6 +53,20 @@
         </dependency>
 
 
+        <!-- Test scope: GeneratorRegistry names the PlantUML and deprecated Mustache generators
+             by class name, and GeneratorRegistryConformanceTest loads every registered class. -->
+        <dependency>
+            <groupId>com.metaobjects</groupId>
+            <artifactId>metaobjects-codegen-plantuml</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.metaobjects</groupId>
+            <artifactId>metaobjects-codegen-mustache</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
         <!-- compile-and-run test: the runtime-delegating extractLenient(MetaDataLoader, String)
              overload delegates to com.metaobjects.object.extract.MetaObjectExtractor (om).
              om transitively brings render + metadata onto the test classpath. -->

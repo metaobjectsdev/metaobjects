@@ -4,6 +4,7 @@ import com.metaobjects.generator.EmitsObjectExtractors;
 import com.metaobjects.generator.EmitsPhysicalNameConstants;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorRegistry;
+import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.generator.GeneratorRegistryConformanceTest;
 import com.metaobjects.loader.MetaDataLoader;
 import org.junit.Rule;
@@ -465,7 +466,13 @@ public class NoMagicPhysicalNamesTest {
         Map<String, String> runArgs = EmitsObjectExtractors.deriveEmitExtractors(
             EmitsPhysicalNameConstants.deriveUseNames(args, suite), suite);
         for (Generator g : suite) {
-            g.setArgs(new HashMap<>(runArgs));
+            Map<String, String> own = new HashMap<>(runArgs);
+            // A generator that writes ONE file is told its name; a per-object generator
+            // given one would write every object into it.
+            if (!(g instanceof MultiFileDirectGeneratorBase)) {
+                own.put("outputFilename", g.getClass().getSimpleName() + ".out");
+            }
+            g.setArgs(own);
             g.execute(loader);
         }
 

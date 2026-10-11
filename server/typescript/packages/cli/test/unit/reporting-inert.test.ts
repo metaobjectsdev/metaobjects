@@ -150,6 +150,9 @@ const ADDED_FOR_WITH: Readonly<Record<string, readonly string[]>> = {
 };
 /** The one existing file a served report changes: it gains the report's export line. */
 const BARREL = `${OUT}/index.ts`;
+/** The agent UI page, which `agent-docs` writes when the run also wires the client tier. It
+ *  is one page for the whole model, so a served report adds its section to it. */
+const AGENT_UI_PAGE = `${OUT}/agent/ui.md`;
 /** The client UI generators that emit NOTHING for a report: a report has a list hook and no
  *  grid, grid hook or form. */
 const UI_TIER = ["grid", "grid-hook", "form"] as const;
@@ -158,16 +161,17 @@ const UI_TIER = ["grid", "grid-hook", "form"] as const;
 const SOURCELESS_REPORTS = ["ProgramEngagement", "DailyRevenue", "ProgramCatalogue"] as const;
 
 /** Assert `actual` is `expected` plus exactly `added`, with every shared file
- *  byte-identical except the barrel. */
+ *  byte-identical except the barrel and any whole-model page named in `grows`. */
 function expectOnlyAdds(
   expected: Record<string, string>,
   actual: Record<string, string>,
   added: readonly string[],
+  grows: readonly string[] = [],
 ): void {
   expect(Object.keys(actual).filter((p) => !(p in expected)).sort()).toEqual([...added].sort());
   expect(Object.keys(expected).filter((p) => !(p in actual))).toEqual([]);
   for (const [path, content] of Object.entries(expected)) {
-    if (path === BARREL) continue;
+    if (path === BARREL || grows.includes(path)) continue;
     expect({ path, content: actual[path] }).toEqual({ path, content });
   }
   // Nothing at all for a sourceless report, in any file name.
@@ -306,7 +310,16 @@ describe("FR-044 a sourceless report is inert; a served report emits exactly its
     expect(expected["<threw>"]).toBeUndefined();
     expect(actual["<threw>"]).toBeUndefined();
     expect(Object.keys(expected).length).toBeGreaterThan(10);
-    expectOnlyAdds(expected, actual, Object.values(ADDED_FOR_WITH).flat());
+    expectOnlyAdds(expected, actual, Object.values(ADDED_FOR_WITH).flat(), [AGENT_UI_PAGE]);
+    // The agent UI page moves by the served report's section alone: every line it had is
+    // still there, in order, and the section names the report.
+    const before = expected[AGENT_UI_PAGE]!.split("\n");
+    const after = actual[AGENT_UI_PAGE]!.split("\n");
+    let kept = 0;
+    for (const line of after) if (line === before[kept]) kept++;
+    expect(kept).toBe(before.length);
+    expect(after.filter((l) => !before.includes(l)).join("\n")).toContain("StoreTotals");
+    for (const name of SOURCELESS_REPORTS) expect(actual[AGENT_UI_PAGE]).not.toContain(name);
     // In the full suite the barrel re-exports the report's modules.
     expect(actual[BARREL]).toContain("StoreTotals");
     expect(expected[BARREL]).not.toContain("StoreTotals");

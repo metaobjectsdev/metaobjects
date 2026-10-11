@@ -39,7 +39,7 @@ const EXPECTED_NATIVE = [
 // Neutral / `meta docs`-owned (Tier-2). Present in the registry for identity +
 // discoverability, but flagged so they are NOT part of the recommended native
 // `meta gen` surface.
-const EXPECTED_NEUTRAL = ["docs"] as const;
+const EXPECTED_NEUTRAL = ["docs", "requirements", "agent-docs"] as const;
 
 describe("generator-registry (ADR-0021 D3)", () => {
   test("contains every expected stable name", () => {
@@ -88,12 +88,15 @@ describe("generator-registry (ADR-0021 D3)", () => {
   });
 
   // The other direction. The standalone `mermaid-er` generator was the one docs-layer
-  // entry `meta gen` still ran; 1.1 removed it, so every docs-layer entry is one
-  // `meta docs` runs.
-  test("no docs-layer entry is left that `meta gen` runs", () => {
+  // entry `meta gen` still ran by design; 1.1 removed it.
+  test("the docs-layer entries `meta gen` does not skip are the two `meta docs` engines", () => {
     const run = Object.values(generatorRegistry)
       .filter((e) => e.layer === "docs" && !isPackagedDocsGenerator(e.factory().name));
-    expect(run.map((e) => e.name)).toEqual([]);
+    // `requirements` and `agent-docs` are the engines behind `meta docs` and
+    // `meta docs --agent`. They were in no registry until the eject census found them
+    // (ADR-0034 Amendment 8), and `meta gen` does not skip a wired factory of either, as
+    // it did not before they had rows. Pinned, so a third cannot join unnoticed.
+    expect(run.map((e) => e.name).sort()).toEqual(["agent-docs", "requirements"]);
   });
 
   // Two definitions have to agree: the runner skips by implementation name

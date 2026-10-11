@@ -14,8 +14,8 @@
 //
 // Which entries have a reference copy is declared once, in `REFERENCE_GENERATOR_NAMES`
 // (reference-templates.ts); `meta gen --list` marks every other entry `package-only` —
-// today that is `template` alone, the Mustache primitive, which has no emit logic of its
-// own. `docsFile` and `apiDocsFile` are exported here as the generators `meta docs` runs;
+// today that is `template`, the Mustache primitive, which has no emit logic of its own,
+// and `requirements` and `agent-docs`, which do not ship a reference template yet. `docsFile` and `apiDocsFile` are exported here as the generators `meta docs` runs;
 // they need no wiring. An ejected copy of either is listed in `docs: { generators: [...] }`,
 // and `meta docs` then runs the copy (Amendment 7).
 // See spec/decisions/ADR-0034-codegen-scaffold-and-own.md.

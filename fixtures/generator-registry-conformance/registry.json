@@ -1,193 +1,227 @@
 {
-  "$comment": "CANONICAL generator stable-name manifest (ADR-0021 D3). The single cross-port source of truth for generator stable names. Every port's generator registry is conformance-tested against this file: (1) every generator a port exposes MUST use a name listed here; (2) for each generator, the `ports` array lists exactly the ports expected to expose it (presence is checked both ways); (3) because all ports validate against this one file, a shared concept (e.g. `routes`) is spelled identically everywhere. Port ids: typescript, csharp, java, kotlin, python. `tier`: native (idiomatic per-port code) or neutral (Tier-2, owned by `meta docs`). `layer`: one of model, persistence, api, client, docs, capability — the grouping an adopter SELECTS BY, gated in every port exactly as `tier` is (see README.md). Adding/renaming a generator = edit THIS file + the port registry together; the conformance gate fails otherwise.",
+  "$comment": "CANONICAL generator stable-name manifest (ADR-0021 D3). The single cross-port source of truth for generator stable names. Every port's generator registry is conformance-tested against this file: (1) every generator a port exposes MUST use a name listed here; (2) for each generator, the `ports` array lists exactly the ports expected to expose it (presence is checked both ways); (3) because all ports validate against this one file, a shared concept (e.g. `routes`) is spelled identically everywhere. Port ids: typescript, csharp, java, kotlin, python. `tier`: native (idiomatic per-port code) or neutral (Tier-2, owned by `meta docs`). `layer`: one of model, persistence, api, client, docs, capability — the grouping an adopter SELECTS BY, gated in every port exactly as `tier` is (see README.md). `eject`: \"full\" (the owned copy holds the generator's emit) or an exemption with a written reason and the ruling that grants it; the top-level `eject` block carries the engine surface, the exempt non-generator emitters and the pending list (ADR-0034 Amendment 8, see README.md). Adding/renaming a generator = edit THIS file + the port registry together; the conformance gate fails otherwise.",
   "ports": ["typescript", "csharp", "java", "kotlin", "python"],
   "generators": {
     "entity": {
       "concept": "Per-entity model/class — the entity module (table-backed or value object).",
       "tier": "native",
       "layer": "model",
+      "eject": "full",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
     "routes": {
       "concept": "Per-entity REST endpoint surface (controllers / routes / router).",
       "tier": "native",
       "layer": "api",
+      "eject": "full",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
     "output-parser": {
       "concept": "Per-template response parser: a strict parse that rejects a reply not matching the @responseRef shape, plus a tolerant lenient extract for a raw model reply, which reports per field instead of throwing on a bad reply.",
       "tier": "native",
       "layer": "capability",
+      "eject": "full",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
     "output-prompt": {
       "concept": "Per-template output-format prompt fragment generator.",
       "tier": "native",
       "layer": "capability",
+      "eject": "full",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
     "render-helper": {
       "concept": "Per-renderable-template render helper (typed render wrappers). BOTH template subtypes render (ADR-0052), so on csharp/java/kotlin/python this covers template.output AND template.prompt; on typescript a prompt's render handle is the separate `prompt-render` generator instead, so typescript's render-helper is template.output only. Same stable name, one concept, one per-port split — stated here because the concept line is shared and the split is not.",
       "tier": "native",
       "layer": "capability",
+      "eject": "full",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
     "extractor": {
       "concept": "Per-template typed extract<Name> helper: tolerant recovery of the typed response from dirty model text; throws only when a @required field is lost.",
       "tier": "native",
       "layer": "capability",
+      "eject": "full",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
     "template": {
       "concept": "Generic Mustache template primitive (walk + template -> files).",
       "tier": "native",
       "layer": "capability",
+      "eject": {
+        "exempt": "The Mustache primitive. The template and the walk the adopter supplies are its emit logic, so the package holds none to hand over.",
+        "ruling": "ADR-0034 Amendment 8, ruling 5"
+      },
       "ports": ["typescript", "csharp", "java", "python"]
     },
     "filter-allowlist": {
       "concept": "Per-entity REST filter allowlist (queryable-field guard).",
       "tier": "native",
       "layer": "api",
+      "eject": "full",
       "ports": ["csharp", "java", "kotlin", "python"]
     },
     "queries": {
       "concept": "Per-entity typed query helpers (findById/create/...).",
       "tier": "native",
       "layer": "persistence",
+      "eject": "full",
       "ports": ["typescript"]
     },
     "callable": {
       "concept": "Per-entity callable wrapper for a callable source (storedProc / tableFunction); in TS it also covers the service surface wrapping the query helpers.",
       "tier": "native",
       "layer": "capability",
+      "eject": "full",
       "ports": ["typescript", "csharp"]
     },
     "routes-hono": {
       "concept": "Per-entity Hono CRUD routes.",
       "tier": "native",
       "layer": "api",
+      "eject": "full",
       "ports": ["typescript"]
     },
     "barrel": {
       "concept": "Single index module re-exporting every generated entity module.",
       "tier": "native",
       "layer": "model",
+      "eject": "full",
       "ports": ["typescript"]
     },
     "names": {
       "concept": "Per-entity physical database name constants (table/view name, schema, column names).",
       "tier": "native",
       "layer": "model",
+      "eject": "full",
       "ports": ["typescript", "csharp", "kotlin", "python", "java"]
     },
     "prompt-render": {
       "concept": "Per-template.prompt render handle over the render engine, aggregated into one module. TYPESCRIPT ONLY by design: the other four ports emit a prompt's render helper from `render-helper` (see its note) rather than a second generator.",
       "tier": "native",
       "layer": "capability",
+      "eject": "full",
       "ports": ["typescript"]
     },
     "api-docs": {
       "concept": "Per-entity/template SDK API reference (generated-code API; human + agent forms).",
       "tier": "native",
       "layer": "docs",
-      "note": "Run by `meta docs` as its api surface (ADR-0025), not by `meta gen`: a `meta gen` config that lists it is warned about and skipped. On csharp it is run by `dotnet meta docs`, and `dotnet meta gen` skips it, warning only when `--generators` names it.",
-      "ports": ["typescript", "csharp"]
+      "note": "Run by the port's docs command (`meta docs`, `dotnet meta docs`, `mvn metaobjects:docs`, `metaobjects docs`) as its api surface (ADR-0025), not by the gen command: a TypeScript `meta gen` config that lists it is warned about and skipped.",
+      "eject": "full",
+      "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
     "trace-helper": {
       "concept": "Per-entity typed record<Entity>/call<Entity> trace helpers (extract + buildLlmCallRow + persist; LlmCallBase-derived entities only).",
       "tier": "native",
       "layer": "capability",
       "note": "TS emits record<Entity> + call<Entity>; Java (codegen-spring) emits record<Entity> only — the Java LlmClient seam is BYO/vendor-neutral and not ported (ADR-0024). Python emits record_<entity> only (same BYO-caller rationale).",
+      "eject": "full",
       "ports": ["typescript", "java", "python"]
     },
     "db-context": {
       "concept": "Single EF Core DbContext binding every generated entity.",
       "tier": "native",
       "layer": "persistence",
+      "eject": "full",
       "ports": ["csharp"]
     },
     "repository": {
       "concept": "Per-entity repository seam (Java: Spring Data interface; Kotlin: an open Exposed persistence base with CRUD + patch bodies).",
       "tier": "native",
       "layer": "persistence",
+      "eject": "full",
       "ports": ["java", "kotlin"]
     },
     "dto": {
       "concept": "Per-entity Spring DTO.",
       "tier": "native",
       "layer": "model",
+      "eject": "full",
       "ports": ["java"]
     },
     "value-object": {
       "concept": "Per-value-object Spring record with jakarta constraints (the DTO/Patch bind target for a field.object jsonb column, and a template's payload/response type).",
       "tier": "native",
       "layer": "model",
+      "eject": "full",
       "ports": ["java"]
     },
     "exposed-table": {
       "concept": "Kotlin Exposed table object per table-backed or view-backed entity or projection, and per view-backed report.",
       "tier": "native",
       "layer": "persistence",
+      "eject": "full",
       "ports": ["kotlin"]
     },
     "relations": {
       "concept": "Cross-entity relationship helpers.",
       "tier": "native",
       "layer": "persistence",
+      "eject": "full",
       "ports": ["kotlin"]
     },
     "spring-config": {
       "concept": "Spring wiring/configuration for the generated surface.",
       "tier": "native",
       "layer": "api",
+      "eject": "full",
       "ports": ["kotlin"]
     },
     "stored-proc": {
       "concept": "Stored-procedure binding helpers.",
       "tier": "native",
       "layer": "persistence",
+      "eject": "full",
       "ports": ["kotlin"]
     },
     "validator": {
       "concept": "Per-entity input validator.",
       "tier": "native",
       "layer": "api",
+      "eject": "full",
       "ports": ["kotlin"]
     },
     "shared-model": {
       "concept": "FR-023: a publisher's flattened shared-model artifact + manifest for a consumer's `meta deps sync`.",
       "tier": "native",
       "layer": "capability",
+      "eject": "full",
       "ports": ["typescript"]
     },
     "form": {
       "concept": "Per-entity React form component over the generated Zod schema.",
       "tier": "native",
       "layer": "client",
+      "eject": "full",
       "ports": ["typescript"]
     },
     "hooks": {
       "concept": "Per-entity TanStack Query hooks (useEntity / useEntities / useCreate / useUpdate / useDelete).",
       "tier": "native",
       "layer": "client",
+      "eject": "full",
       "ports": ["typescript"]
     },
     "grid": {
       "concept": "Per-entity TanStack Table column definitions, from a layout.dataGrid declaration.",
       "tier": "native",
       "layer": "client",
+      "eject": "full",
       "ports": ["typescript"]
     },
     "grid-hook": {
       "concept": "Per-entity server-driven grid state hook (sort/filter/page) over the generated columns.",
       "tier": "native",
       "layer": "client",
+      "eject": "full",
       "ports": ["typescript"]
     },
     "requirement-tests": {
       "concept": "Per-requirement test stub, one per requirement.functional claim in the ledger.",
       "tier": "native",
       "layer": "capability",
+      "eject": "full",
       "ports": ["typescript", "java", "kotlin", "python", "csharp"]
     },
     "cube-model": {
@@ -195,6 +229,7 @@
       "tier": "native",
       "layer": "capability",
       "note": "TYPESCRIPT ONLY by design (FR-044 Plan 4, reporting design R6): a reference helper (ADR-0034 Amendment 3) writing YAML that imports nothing; no other port ships an exporter.",
+      "eject": "full",
       "ports": ["typescript"]
     },
     "docs": {
@@ -202,7 +237,499 @@
       "tier": "neutral",
       "layer": "docs",
       "note": "Owned by `meta docs` (the single docs door, ADR-0021 D1); not part of the recommended native suite.",
+      "eject": "full",
       "ports": ["typescript"]
+    },
+    "requirements": {
+      "concept": "The requirement ledger as documentation: requirements.md for people and requirements.toon for tools.",
+      "tier": "neutral",
+      "layer": "docs",
+      "note": "Run by `meta docs` as its requirements surface, not by `meta gen`. A project that declares no requirement.* node gets no file.",
+      "eject": "full",
+      "ports": ["typescript"]
+    },
+    "agent-docs": {
+      "concept": "Pages written for a coding agent working in the project: the schema, the UI surface and the requirements.",
+      "tier": "neutral",
+      "layer": "docs",
+      "note": "Run by `meta docs --agent`, not by `meta gen`.",
+      "eject": "full",
+      "ports": ["typescript"]
+    },
+    "plantuml": {
+      "concept": "PlantUML class diagram of the object model.",
+      "tier": "native",
+      "layer": "docs",
+      "eject": "full",
+      "ports": ["java"]
+    },
+    "html-docs": {
+      "concept": "Single-page HTML reference of the registered metamodel types, read from the type registry.",
+      "tier": "native",
+      "layer": "docs",
+      "eject": "full",
+      "ports": ["java"]
+    },
+    "ai-docs": {
+      "concept": "JSON reference of the registered metamodel types written for an AI reader, read from the type registry.",
+      "tier": "native",
+      "layer": "docs",
+      "eject": "full",
+      "ports": ["java"]
+    },
+    "json-schema": {
+      "concept": "JSON Schema that validates metadata files, read from the type registry.",
+      "tier": "native",
+      "layer": "capability",
+      "eject": "full",
+      "ports": ["java"]
+    },
+    "mustache": {
+      "concept": "The pre-`template` Mustache generator, kept so a pom that names its class keeps building.",
+      "tier": "native",
+      "layer": "capability",
+      "note": "Deprecated (ADR-0021 D4). Use `template`.",
+      "eject": {
+        "exempt": "Deprecated in favour of `template` (ADR-0021 D4) and kept only so existing poms build. A deprecated generator is not handed over.",
+        "ruling": "ADR-0034 Amendment 8, ruling 4"
+      },
+      "ports": ["java"]
     }
+  },
+  "eject": {
+    "$comment": "The eject contract (ADR-0034 Amendment 8), asserted in every port by its eject-contract test. `engineSurface.<port>`: `codegenPackages` are the namespaces that hold generators and their emit code; `engine` lists the members of those namespaces an owned copy may still import (the generator base and runner, model questions, naming and type-mapping tables). Anything else inside `codegenPackages` writes output and must be handed over with the generator. Everything outside `codegenPackages` (loader, metamodel, runtime, render) is core and may be imported freely. `exemptEmitters`: code that writes into an adopter's repository but is not a generator, ruled out of eject with a reason. `pending`: every place the contract does not hold yet, by generator, port, assertion (census, completeness or depth) and gap number; a depth entry lists in `outside` the modules its owned copy still imports from outside the engine surface. A port's test fails when a pending entry passes, and when a gap appears that is not listed. 1.1.0 does not ship with a non-empty pending list: the release branch sets PENDING_LIST_MAY_BE_NON_EMPTY to false, and every port then requires its entries to be gone.",
+    "PENDING_LIST_MAY_BE_NON_EMPTY": true,
+    "engineSurface": {
+      "typescript": {
+        "codegenPackages": ["codegen-ts/src/**", "codegen-ts-react/src/**", "codegen-ts-tanstack/src/**"],
+        "engine": [
+          "codegen-ts-tanstack/src/data-grid-gate.ts",
+          "codegen-ts/src/api-surface.ts",
+          "codegen-ts/src/client-directive.ts",
+          "codegen-ts/src/constants.ts",
+          "codegen-ts/src/dialect-module.ts",
+          "codegen-ts/src/docs-paths.ts",
+          "codegen-ts/src/format.ts",
+          "codegen-ts/src/generator.ts",
+          "codegen-ts/src/import-path.ts",
+          "codegen-ts/src/instance-artifacts.ts",
+          "codegen-ts/src/names.ts",
+          "codegen-ts/src/naming.ts",
+          "codegen-ts/src/owned-runtime.ts",
+          "codegen-ts/src/projection/projection-detector.ts",
+          "codegen-ts/src/render-engine/framework-provider.ts",
+          "codegen-ts/src/requirement-walk.ts",
+          "codegen-ts/src/routes-expose.ts",
+          "codegen-ts/src/source-detect.ts",
+          "codegen-ts/src/templates/find-inbound.ts",
+          "codegen-ts/src/templates/find-templates.ts"
+        ]
+      },
+      "csharp": {
+        "codegenPackages": ["MetaObjects.Codegen.**"],
+        "engine": [
+          "MetaObjects.Codegen.CSharpNaming",
+          "MetaObjects.Codegen.ColumnNamingStrategy",
+          "MetaObjects.Codegen.EmittedFile",
+          "MetaObjects.Codegen.FieldNames",
+          "MetaObjects.Codegen.GenConfig",
+          "MetaObjects.Codegen.GenContext",
+          "MetaObjects.Codegen.Generators.FindInbound",
+          "MetaObjects.Codegen.Generators.InboundShape",
+          "MetaObjects.Codegen.Generators.TphPlan",
+          "MetaObjects.Codegen.Generators.TphPlanBuilder",
+          "MetaObjects.Codegen.Generators.TphSubtypePlan",
+          "MetaObjects.Codegen.IGenerator",
+          "MetaObjects.Codegen.IRequirementTestRenderer",
+          "MetaObjects.Codegen.InstanceArtifacts",
+          "MetaObjects.Codegen.KeyNames",
+          "MetaObjects.Codegen.ObjectNames",
+          "MetaObjects.Codegen.PackageBindingResolver",
+          "MetaObjects.Codegen.PerEntityGenerator",
+          "MetaObjects.Codegen.RenderedTest",
+          "MetaObjects.Codegen.ReportRows",
+          "MetaObjects.Codegen.RequirementTestArgs",
+          "MetaObjects.Codegen.RequirementTestClaim",
+          "MetaObjects.Codegen.SourceNames",
+          "MetaObjects.Codegen.SuperNames",
+          "MetaObjects.Codegen.ValueObjectNames"
+        ]
+      },
+      "java": {
+        "codegenPackages": ["com.metaobjects.generator.**"],
+        "engine": [
+          "com.metaobjects.generator.EmitsObjectExtractors",
+          "com.metaobjects.generator.EmitsPhysicalNameConstants",
+          "com.metaobjects.generator.FileEmittingGenerator",
+          "com.metaobjects.generator.Generator",
+          "com.metaobjects.generator.GeneratorBase",
+          "com.metaobjects.generator.GeneratorException",
+          "com.metaobjects.generator.GeneratorIOException",
+          "com.metaobjects.generator.GeneratorIOWriter",
+          "com.metaobjects.generator.MetaDataFilters",
+          "com.metaobjects.generator.ProjectClassLoaderAware",
+          "com.metaobjects.generator.direct.FileDirectWriter",
+          "com.metaobjects.generator.direct.GenerationContext",
+          "com.metaobjects.generator.direct.MultiFileDirectGeneratorBase",
+          "com.metaobjects.generator.direct.object.BaseObjectCodeGenerator",
+          "com.metaobjects.generator.requirement.RenderedTest",
+          "com.metaobjects.generator.requirement.RequirementTestArgs",
+          "com.metaobjects.generator.requirement.RequirementTestRenderer",
+          "com.metaobjects.generator.spring.AutoSetSupport",
+          "com.metaobjects.generator.spring.FindInbound",
+          "com.metaobjects.generator.spring.SpringM2mSupport",
+          "com.metaobjects.generator.spring.SpringNaming",
+          "com.metaobjects.generator.spring.SpringTypeMapper",
+          "com.metaobjects.generator.spring.TphPlan",
+          "com.metaobjects.generator.util.GeneratedFileWriter",
+          "com.metaobjects.generator.util.GeneratorUtil",
+          "com.metaobjects.generator.util.JavaIdentifiers",
+          "com.metaobjects.generator.util.RestSurfaceGate"
+        ]
+      },
+      "kotlin": {
+        "codegenPackages": ["com.metaobjects.generator.**"],
+        "engine": [
+          "com.metaobjects.generator.EmitsPhysicalNameConstants",
+          "com.metaobjects.generator.FileEmittingGenerator",
+          "com.metaobjects.generator.Generator",
+          "com.metaobjects.generator.GeneratorBase",
+          "com.metaobjects.generator.GeneratorException",
+          "com.metaobjects.generator.GeneratorIOWriter",
+          "com.metaobjects.generator.ProjectClassLoaderAware",
+          "com.metaobjects.generator.direct.MultiFileDirectGeneratorBase",
+          "com.metaobjects.generator.kotlin.ExposedApi",
+          "com.metaobjects.generator.kotlin.ExposedImports",
+          "com.metaobjects.generator.kotlin.FindInbound",
+          "com.metaobjects.generator.kotlin.KotlinGenUtil",
+          "com.metaobjects.generator.kotlin.KotlinM2mSupport",
+          "com.metaobjects.generator.kotlin.KotlinNaming",
+          "com.metaobjects.generator.kotlin.KotlinPoetFileWriter",
+          "com.metaobjects.generator.kotlin.KotlinTphPlan",
+          "com.metaobjects.generator.kotlin.KotlinTypeMapper",
+          "com.metaobjects.generator.kotlin.PackageMapping",
+          "com.metaobjects.generator.requirement.RenderedTest",
+          "com.metaobjects.generator.requirement.RequirementTestArgs",
+          "com.metaobjects.generator.requirement.RequirementTestRenderer",
+          "com.metaobjects.generator.util.GeneratedFileWriter",
+          "com.metaobjects.generator.util.GeneratorUtil",
+          "com.metaobjects.generator.util.RestSurfaceGate"
+        ]
+      },
+      "python": {
+        "codegenPackages": ["metaobjects.codegen.**", "metaobjects.apidocs.**"],
+        "engine": [
+          "metaobjects.apidocs.naming",
+          "metaobjects.codegen.config",
+          "metaobjects.codegen.constants",
+          "metaobjects.codegen.format",
+          "metaobjects.codegen.generator",
+          "metaobjects.codegen.generator_registry",
+          "metaobjects.codegen.generators.find_inbound",
+          "metaobjects.codegen.generators.tph_plan",
+          "metaobjects.codegen.instance_artifacts",
+          "metaobjects.codegen.project_config",
+          "metaobjects.codegen.requirement_hooks",
+          "metaobjects.codegen.requirement_walk",
+          "metaobjects.codegen.type_map",
+          "metaobjects.codegen.value_objects"
+        ]
+      }
+    },
+    "exemptEmitters": [
+      {
+        "name": "docs-site builders",
+        "port": "typescript",
+        "path": "server/typescript/packages/docs-site/src",
+        "exempt": "`meta docs --scaffold-site` already copies the site's templates and assets into the project, and those are what an adopter changes. The builders assemble the page data the templates read.",
+        "ruling": "ADR-0034 Amendment 8, ruling 3"
+      }
+    ],
+    "pending": [
+      {"generator": "api-docs", "port": "csharp", "assertion": "census", "gap": 6},
+      {"generator": "api-docs", "port": "java", "assertion": "census", "gap": 6},
+      {"generator": "api-docs", "port": "kotlin", "assertion": "census", "gap": 6},
+      {"generator": "api-docs", "port": "python", "assertion": "census", "gap": 6},
+      {
+        "generator": "entity",
+        "port": "python",
+        "assertion": "depth",
+        "gap": 5,
+        "outside": ["metaobjects.codegen.generators.fr019_shared_enum", "metaobjects.codegen.generators.m2m_codegen"]
+      },
+      {
+        "generator": "extractor",
+        "port": "python",
+        "assertion": "depth",
+        "gap": 4,
+        "outside": ["metaobjects.codegen.extract_delegate_emitter", "metaobjects.codegen.fr010_field_mapping"]
+      },
+      {"generator": "filter-allowlist", "port": "python", "assertion": "depth", "gap": 5, "outside": ["metaobjects.codegen.generators.m2m_codegen"]},
+      {"generator": "output-parser", "port": "python", "assertion": "depth", "gap": 4, "outside": ["metaobjects.codegen.extract_delegate_emitter"]},
+      {"generator": "output-prompt", "port": "python", "assertion": "depth", "gap": 4, "outside": ["metaobjects.codegen.output_format_spec_emitter"]},
+      {"generator": "routes", "port": "python", "assertion": "depth", "gap": 4, "outside": ["metaobjects.codegen.fr010_field_mapping"]},
+      {"generator": "routes", "port": "python", "assertion": "depth", "gap": 5, "outside": ["metaobjects.codegen.generators.m2m_codegen"]},
+      {"generator": "trace-helper", "port": "python", "assertion": "depth", "gap": 4, "outside": ["metaobjects.codegen.extract_schema_emitter"]},
+      {"generator": "ai-docs", "port": "java", "assertion": "completeness", "gap": 7},
+      {"generator": "html-docs", "port": "java", "assertion": "completeness", "gap": 7},
+      {"generator": "json-schema", "port": "java", "assertion": "completeness", "gap": 7},
+      {"generator": "plantuml", "port": "java", "assertion": "completeness", "gap": 7},
+      {
+        "generator": "dto",
+        "port": "java",
+        "assertion": "depth",
+        "gap": 5,
+        "outside": ["com.metaobjects.generator.spring.Fr019SharedEnum", "com.metaobjects.generator.spring.SpringRecordBuilder"]
+      },
+      {
+        "generator": "entity",
+        "port": "java",
+        "assertion": "depth",
+        "gap": 13,
+        "outside": ["com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator"]
+      },
+      {"generator": "output-parser", "port": "java", "assertion": "depth", "gap": 5, "outside": ["com.metaobjects.generator.spring.Fr019SharedEnum"]},
+      {
+        "generator": "output-prompt",
+        "port": "java",
+        "assertion": "depth",
+        "gap": 4,
+        "outside": ["com.metaobjects.generator.spring.OutputFormatSpecEmitter"]
+      },
+      {
+        "generator": "value-object",
+        "port": "java",
+        "assertion": "depth",
+        "gap": 5,
+        "outside": ["com.metaobjects.generator.spring.Fr019SharedEnum", "com.metaobjects.generator.spring.SpringRecordBuilder"]
+      },
+      {
+        "generator": "entity",
+        "port": "kotlin",
+        "assertion": "depth",
+        "gap": 5,
+        "outside": ["com.metaobjects.generator.kotlin.Fr019SharedEnum", "com.metaobjects.generator.kotlin.KotlinEnumEmitter"]
+      },
+      {
+        "generator": "exposed-table",
+        "port": "kotlin",
+        "assertion": "depth",
+        "gap": 5,
+        "outside": ["com.metaobjects.generator.kotlin.Fr019SharedEnum"]
+      },
+      {
+        "generator": "output-parser",
+        "port": "kotlin",
+        "assertion": "depth",
+        "gap": 4,
+        "outside": ["com.metaobjects.generator.kotlin.KotlinExtractSchemaEmitter"]
+      },
+      {
+        "generator": "output-parser",
+        "port": "kotlin",
+        "assertion": "depth",
+        "gap": 5,
+        "outside": ["com.metaobjects.generator.kotlin.Fr019SharedEnum"]
+      },
+      {
+        "generator": "output-prompt",
+        "port": "kotlin",
+        "assertion": "depth",
+        "gap": 4,
+        "outside": ["com.metaobjects.generator.kotlin.KotlinOutputFormatSpecEmitter"]
+      },
+      {"generator": "relations", "port": "kotlin", "assertion": "depth", "gap": 5, "outside": ["com.metaobjects.generator.kotlin.Fr019SharedEnum"]},
+      {"generator": "routes", "port": "kotlin", "assertion": "depth", "gap": 5, "outside": ["com.metaobjects.generator.kotlin.Fr019SharedEnum"]},
+      {
+        "generator": "db-context",
+        "port": "csharp",
+        "assertion": "depth",
+        "gap": 5,
+        "outside": [
+          "MetaObjects.Codegen.Docs.XmlDocBuilder",
+          "MetaObjects.Codegen.Generators.Fr019SharedEnum",
+          "MetaObjects.Codegen.Generators.M2MNavigation",
+          "MetaObjects.Codegen.Generators.M2MNavigationBuilder"
+        ]
+      },
+      {
+        "generator": "entity",
+        "port": "csharp",
+        "assertion": "depth",
+        "gap": 5,
+        "outside": [
+          "MetaObjects.Codegen.Docs.XmlDocBuilder",
+          "MetaObjects.Codegen.Generators.Fr019SharedEnum",
+          "MetaObjects.Codegen.Generators.M2MNavigation",
+          "MetaObjects.Codegen.Generators.M2MNavigationBuilder",
+          "MetaObjects.Codegen.Generators.ReverseFinderBuilder",
+          "MetaObjects.Codegen.Generators.SharedEnum"
+        ]
+      },
+      {
+        "generator": "extractor",
+        "port": "csharp",
+        "assertion": "depth",
+        "gap": 4,
+        "outside": ["MetaObjects.Codegen.Generators.ExtractDelegateEmitter", "MetaObjects.Codegen.Generators.Fr010FieldMapping"]
+      },
+      {"generator": "extractor", "port": "csharp", "assertion": "depth", "gap": 5, "outside": ["MetaObjects.Codegen.Generators.Fr019SharedEnum"]},
+      {"generator": "names", "port": "csharp", "assertion": "depth", "gap": 4, "outside": ["MetaObjects.Codegen.Generators.Fr010FieldMapping"]},
+      {
+        "generator": "output-parser",
+        "port": "csharp",
+        "assertion": "depth",
+        "gap": 4,
+        "outside": ["MetaObjects.Codegen.Generators.ExtractDelegateEmitter", "MetaObjects.Codegen.Generators.Fr010FieldMapping"]
+      },
+      {
+        "generator": "output-prompt",
+        "port": "csharp",
+        "assertion": "depth",
+        "gap": 4,
+        "outside": ["MetaObjects.Codegen.Generators.OutputFormatSpecEmitter"]
+      },
+      {
+        "generator": "routes",
+        "port": "csharp",
+        "assertion": "depth",
+        "gap": 5,
+        "outside": ["MetaObjects.Codegen.Generators.M2MNavigation", "MetaObjects.Codegen.Generators.M2MNavigationBuilder"]
+      },
+      {
+        "generator": "entity",
+        "port": "typescript",
+        "assertion": "depth",
+        "gap": 3,
+        "outside": [
+          "codegen-ts/src/templates/drizzle-schema.ts",
+          "codegen-ts/src/templates/entity-constants.ts",
+          "codegen-ts/src/templates/entity-file.ts",
+          "codegen-ts/src/templates/enums-file.ts",
+          "codegen-ts/src/templates/filter-allowlist.ts",
+          "codegen-ts/src/templates/filter-type.ts",
+          "codegen-ts/src/templates/inferred-types.ts",
+          "codegen-ts/src/templates/projection-decl.ts",
+          "codegen-ts/src/templates/tph-discriminator.ts",
+          "codegen-ts/src/templates/value-object-file.ts",
+          "codegen-ts/src/templates/zod-validators.ts"
+        ]
+      },
+      {"generator": "names", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/names-decl.ts"]},
+      {
+        "generator": "queries",
+        "port": "typescript",
+        "assertion": "depth",
+        "gap": 3,
+        "outside": [
+          "codegen-ts/src/templates/queries-file.ts",
+          "codegen-ts/src/templates/queries.ts",
+          "codegen-ts/src/templates/tph-discriminator.ts",
+          "codegen-ts/src/templates/zod-validators.ts"
+        ]
+      },
+      {
+        "generator": "routes",
+        "port": "typescript",
+        "assertion": "depth",
+        "gap": 3,
+        "outside": [
+          "codegen-ts/src/templates/queries.ts",
+          "codegen-ts/src/templates/routes-index.ts",
+          "codegen-ts/src/templates/tph-discriminator.ts",
+          "codegen-ts/src/templates/zod-validators.ts"
+        ]
+      },
+      {
+        "generator": "routes-hono",
+        "port": "typescript",
+        "assertion": "depth",
+        "gap": 3,
+        "outside": ["codegen-ts/src/templates/queries.ts", "codegen-ts/src/templates/routes-index.ts", "codegen-ts/src/templates/zod-validators.ts"]
+      },
+      {"generator": "form", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts-react/src/templates/form-file.ts"]},
+      {
+        "generator": "grid",
+        "port": "typescript",
+        "assertion": "depth",
+        "gap": 3,
+        "outside": ["codegen-ts-tanstack/src/templates/columns-file.ts", "codegen-ts/src/templates/zod-validators.ts"]
+      },
+      {
+        "generator": "grid-hook",
+        "port": "typescript",
+        "assertion": "depth",
+        "gap": 3,
+        "outside": [
+          "codegen-ts-tanstack/src/templates/grid-hook-file.ts",
+          "codegen-ts/src/templates/entity-meta-file.ts",
+          "codegen-ts/src/templates/zod-validators.ts"
+        ]
+      },
+      {
+        "generator": "hooks",
+        "port": "typescript",
+        "assertion": "depth",
+        "gap": 3,
+        "outside": [
+          "codegen-ts-tanstack/src/templates/hooks-file.ts",
+          "codegen-ts/src/templates/entity-meta-file.ts",
+          "codegen-ts/src/templates/zod-validators.ts"
+        ]
+      },
+      {"generator": "callable", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/callable-file.ts"]},
+      {
+        "generator": "cube-model",
+        "port": "typescript",
+        "assertion": "depth",
+        "gap": 3,
+        "outside": [
+          "codegen-ts/src/cube/build-cube-model.ts",
+          "codegen-ts/src/cube/cube-errors.ts",
+          "codegen-ts/src/cube/cube-model-spec.ts",
+          "codegen-ts/src/cube/cube-yaml.ts"
+        ]
+      },
+      {"generator": "extractor", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/extractor.ts"]},
+      {"generator": "output-parser", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/output-parser.ts"]},
+      {"generator": "output-prompt", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/output-prompt.ts"]},
+      {
+        "generator": "prompt-render",
+        "port": "typescript",
+        "assertion": "depth",
+        "gap": 3,
+        "outside": ["codegen-ts/src/templates/value-object-import.ts"]
+      },
+      {"generator": "render-helper", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/render-helper.ts"]},
+      {"generator": "trace-helper", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/trace-helper.ts"]},
+      {
+        "generator": "api-docs",
+        "port": "typescript",
+        "assertion": "depth",
+        "gap": 3,
+        "outside": ["codegen-ts/src/generators/api-doc-render.ts", "codegen-ts/src/generators/api-model.ts"]
+      },
+      {
+        "generator": "docs",
+        "port": "typescript",
+        "assertion": "depth",
+        "gap": 3,
+        "outside": [
+          "codegen-ts/src/generators/docs-data-builder.ts",
+          "codegen-ts/src/generators/template-doc-builder.ts",
+          "codegen-ts/src/render-engine/doc-page.ts",
+          "codegen-ts/src/templates/mermaid-er.ts"
+        ]
+      },
+      {
+        "generator": "shared-model",
+        "port": "typescript",
+        "assertion": "depth",
+        "gap": 3,
+        "outside": ["codegen-ts/src/shared-model/build-shared-model.ts"]
+      },
+      {"generator": "agent-docs", "port": "typescript", "assertion": "completeness", "gap": 2},
+      {"generator": "requirements", "port": "typescript", "assertion": "completeness", "gap": 2}
+    ]
   }
 }
