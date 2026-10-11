@@ -9,8 +9,9 @@
 //   completeness  every catalog entry ships a reference template, unless the shared file
 //                 exempts it with a reason.
 //   depth         each generator, ejected ALONE into an empty project by the real
-//                 `meta eject`, loads; imports no VALUE from the codegen packages outside
-//                 the engine surface; and emits what the packaged generator emits.
+//                 `meta eject`, loads; reaches nothing in the codegen packages outside
+//                 the engine surface (values, types and dynamic imports alike); and emits
+//                 what the packaged generator emits.
 //
 // Where the contract does not hold yet, the shared file's `pending` list says so. A
 // pending entry that passes fails here, and so does a gap that is not listed.
@@ -19,7 +20,7 @@
 // package that sees all three registry slices, and the only one that owns `meta eject`.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
@@ -254,54 +255,66 @@ function filesUnder(dir: string): string[] {
 }
 
 /**
- * The codegen-package modules the owned files import a VALUE from, outside the engine
- * surface. Each imported binding is resolved through any re-exporting barrel to the file
- * that declares it; a type-only import writes no output and is not counted.
+ * The codegen-package modules the owned files reach, outside the engine surface. Each
+ * imported binding is resolved through any re-exporting barrel to the file that declares
+ * it. Three ways in are counted: a static import or re-export (a type-only one too, since
+ * a type declared in an emit module ties the copy to that module's shape), an inline
+ * `import("…").Type`, and a dynamic `import("…")`, which is counted as the module it names.
  */
-function outsideEngineSurface(owned: Owned): string[] {
-  const sources = owned.files.filter((f) => /\.tsx?$/.test(f));
+function outsideEngineSurface(files: readonly string[]): string[] {
+  const sources = files.filter((f) => /\.tsx?$/.test(f));
   const program = ts.createProgram({ rootNames: sources, options: COMPILER_OPTIONS });
   const checker = program.getTypeChecker();
   const outside = new Set<string>();
 
+  const recordFile = (fileName: string): void => {
+    const module = relative(PACKAGES, fileName);
+    if (isOutsideEngineSurface(module)) outside.add(module);
+  };
   const record = (symbol: ts.Symbol | undefined): void => {
     if (symbol === undefined) return;
     const target = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
-    if (!(target.flags & ts.SymbolFlags.Value)) return;
-    for (const declaration of target.declarations ?? []) {
-      const module = relative(PACKAGES, declaration.getSourceFile().fileName);
-      if (isOutsideEngineSurface(module)) outside.add(module);
-    }
+    for (const declaration of target.declarations ?? []) recordFile(declaration.getSourceFile().fileName);
+  };
+  const isPackage = (specifier: ts.Node | undefined): specifier is ts.StringLiteral =>
+    specifier !== undefined && ts.isStringLiteral(specifier) && !specifier.text.startsWith(".");
+  /** Everything a module exports, for an `import *` or an `export *`. */
+  const recordAll = (specifier: ts.StringLiteral): void => {
+    const module = checker.getSymbolAtLocation(specifier);
+    if (module !== undefined) for (const exported of checker.getExportsOfModule(module)) record(exported);
   };
 
-  for (const file of sources) {
-    const source = program.getSourceFile(file)!;
-    for (const statement of source.statements) {
-      if (!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) continue;
-      const specifier = statement.moduleSpecifier;
-      if (specifier === undefined || !ts.isStringLiteral(specifier) || specifier.text.startsWith(".")) continue;
-      if (ts.isExportDeclaration(statement)) {
-        if (statement.isTypeOnly) continue;
-        const clause = statement.exportClause;
-        if (clause !== undefined && ts.isNamedExports(clause)) {
-          for (const element of clause.elements) if (!element.isTypeOnly) record(checker.getSymbolAtLocation(element.name));
-        } else {
-          for (const exported of checker.getExportsOfModule(checker.getSymbolAtLocation(specifier)!)) record(exported);
-        }
-        continue;
-      }
-      const clause = statement.importClause;
-      if (clause === undefined || clause.isTypeOnly) continue;
-      if (clause.name !== undefined) record(checker.getSymbolAtLocation(clause.name));
-      const bindings = clause.namedBindings;
-      if (bindings === undefined) continue;
-      if (ts.isNamespaceImport(bindings)) {
-        for (const exported of checker.getExportsOfModule(checker.getSymbolAtLocation(specifier)!)) record(exported);
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) && isPackage(node.moduleSpecifier)) {
+      const clause = node.importClause;
+      if (clause?.name !== undefined) record(checker.getSymbolAtLocation(clause.name));
+      const bindings = clause?.namedBindings;
+      if (bindings !== undefined && ts.isNamespaceImport(bindings)) recordAll(node.moduleSpecifier);
+      else if (bindings !== undefined) for (const e of bindings.elements) record(checker.getSymbolAtLocation(e.name));
+    } else if (ts.isExportDeclaration(node) && isPackage(node.moduleSpecifier)) {
+      const clause = node.exportClause;
+      if (clause !== undefined && ts.isNamedExports(clause)) {
+        for (const e of clause.elements) record(checker.getSymbolAtLocation(e.name));
       } else {
-        for (const element of bindings.elements) if (!element.isTypeOnly) record(checker.getSymbolAtLocation(element.name));
+        recordAll(node.moduleSpecifier);
+      }
+    } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument) && isPackage(node.argument.literal)) {
+      // `import("pkg").Name`: the named member when there is one, else the whole module.
+      const named = node.qualifier === undefined ? undefined : checker.getSymbolAtLocation(node.qualifier);
+      if (named !== undefined) record(named);
+      else recordAll(node.argument.literal);
+    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      // `await import("pkg")` hands back the whole module, so the module is what counts:
+      // a barrel that re-exports emit code is itself outside the engine surface.
+      const specifier = node.arguments[0];
+      if (isPackage(specifier)) {
+        const module = checker.getSymbolAtLocation(specifier);
+        for (const declaration of module?.declarations ?? []) recordFile(declaration.getSourceFile().fileName);
       }
     }
-  }
+    ts.forEachChild(node, visit);
+  };
+  for (const file of sources) visit(program.getSourceFile(file)!);
   return [...outside].sort();
 }
 
@@ -435,11 +448,37 @@ describe("eject contract — depth", () => {
     for (const { root } of owned.values()) rmSync(root, { recursive: true, force: true });
   });
 
+  test("the scan counts a type-only import, an inline import type and a dynamic import", () => {
+    // The scan is what the assertion below rests on, so it is held to a file whose
+    // answer is known: three ways into emit code, and one import of the engine.
+    const root = mkdtempSync(join(WORKSPACE_TMP, "eject-contract-probe-"));
+    try {
+      const probe = join(root, "probe.ts");
+      writeFileSync(
+        probe,
+        [
+          'import type { Generator, RequirementTestsOpts } from "@metaobjectsdev/codegen-ts";',
+          'export type Row = import("@metaobjectsdev/codegen-ts").RequirementRow;',
+          "export type Kept = [Generator, RequirementTestsOpts];",
+          'export const load = () => import("@metaobjectsdev/codegen-ts/generators");',
+          "",
+        ].join("\n"),
+      );
+      expect(outsideEngineSurface([probe])).toEqual([
+        "codegen-ts/src/generators/index.ts",
+        "codegen-ts/src/generators/requirement-tests.ts",
+        "codegen-ts/src/generators/requirements-view.ts",
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   test("an owned copy imports only the engine surface", () => {
     const waiting = pending("depth");
     const problems: string[] = [];
     for (const [name, copy] of owned) {
-      const actual = outsideEngineSurface(copy);
+      const actual = outsideEngineSurface(copy.files);
       const expected = (waiting.get(name) ?? []).flatMap((p) => p.outside ?? []).sort();
       if (JSON.stringify(actual) === JSON.stringify(expected)) continue;
       if (expected.length === 0) {
@@ -516,9 +555,9 @@ describe("eject contract — the shared file", () => {
     expect(Object.keys(manifest.eject.engineSurface).sort()).toEqual([...manifest.ports].sort());
   });
 
-  test("the pending list is empty (the 1.1.0 release gate)", () => {
-    // Skipped only by the shared file's named switch, which the release branch sets false.
-    if (manifest.eject[RELEASE_SWITCH] === true) return;
+  // Skipped only by the shared file's named switch, which the release branch sets false.
+  // `skipIf`, so the run reports it as skipped and never as a pass.
+  test.skipIf(manifest.eject[RELEASE_SWITCH] === true)("the pending list is empty (the 1.1.0 release gate)", () => {
     expect(manifest.eject.pending.filter((p) => p.port === PORT)).toEqual([]);
   });
 });

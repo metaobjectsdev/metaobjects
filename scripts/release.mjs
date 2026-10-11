@@ -27,9 +27,11 @@ import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir, homedir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline/promises";
 import { publishSet } from "./publish-set.mjs";
 import { mavenVersion } from "./maven-coordinate.mjs";
+import { ejectReleaseRefusalAt } from "./eject-release-gate.mjs";
 
 const VERSION = process.argv[2];
 const DRY = process.argv.includes("--dry-run");
@@ -59,6 +61,13 @@ if (!VERSION || !/^\d+\.\d+\.\d+(-rc\.\d+)?$/.test(VERSION)) {
 
 // --- PHASE 0: preflight (all must pass) -----------------------------------
 console.log(`\n── Releasing ${VERSION}${DRY ? "  (DRY RUN)" : ""} ──\n`);
+
+// A final version does not go out while a stock generator's owned copy still calls emit
+// code left in the package (ADR-0034 Amendment 8). First, because it is offline and
+// instant, and everything after it costs time or cannot be undone. A release candidate
+// passes: it is how the remaining gaps are tried against an adopter.
+const ejectRefusal = ejectReleaseRefusalAt(VERSION, join(dirname(fileURLToPath(import.meta.url)), ".."));
+if (ejectRefusal !== null) die(ejectRefusal);
 
 const branch = out("git rev-parse --abbrev-ref HEAD");
 if (branch !== "main") die(`must be on main (you are on ${branch})`);

@@ -427,7 +427,7 @@ gate_site_reference() { bun_install && bun scripts/build-site-reference.ts --che
 # Also runs the Maven-coordinate derivation`s own tests: the same rule serves four release
 # scripts and two of them used to hardcode major 7, so the 1.0 cases (never released, never
 # exercised) are the ones worth a test at all. See scripts/maven-coordinate.mjs.
-gate_release_tag() { bun test scripts/finish-release.test.ts && node scripts/test-maven-coordinate.mjs && bash tools/prerelease/test-prerelease-link.sh; }
+gate_release_tag() { bun test scripts/finish-release.test.ts scripts/eject-release-gate.test.ts && node scripts/test-maven-coordinate.mjs && bash tools/prerelease/test-prerelease-link.sh; }
 
 # ── repo-root scripts/ typechecks ─────────────────────────────────────────────
 # `bun test` transpiles per file and never typechecks, and `bun run --filter '*'

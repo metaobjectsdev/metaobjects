@@ -718,6 +718,21 @@ written down per port, in the shared manifest
 Adding a module to `engine` is a reviewed decision in one file. It cannot happen by leaving
 a name off a list.
 
+**Engine-surface names that were a judgment call.** Most of each `engine` list is a base
+class, a runner, a writer or a naming table, and needs no argument. These names sit closer
+to the line. Each answers a question about the model and returns no emitted text, which is
+the rule of ruling 2, but each was classified by that rule and not ruled on by name. They
+are listed so a maintainer can review them in one place. A name on an `engine` list is not
+checked further by the guard.
+
+| Port | Names |
+|---|---|
+| TypeScript | `requirement-walk.ts`, `relation-resolver.ts`, `render-context.ts`, `templates/find-inbound.ts`, `templates/find-templates.ts`, `render-engine/framework-provider.ts` |
+| C# | `ReportRows`, `PackageBindingResolver` |
+| Java | `BaseObjectCodeGenerator`, `SpringM2mSupport`, `AutoSetSupport`, `TphPlan`, `FindInbound` |
+| Kotlin | `ExposedApi`, `ExposedImports`, `KotlinGenUtil`, `KotlinM2mSupport` |
+| Python | `value_objects`, `find_inbound`, `tph_plan`, `requirement_walk` |
+
 **Exemptions.** Each is an entry in the shared manifest with its reason.
 
 | What | Port | Why |
@@ -743,11 +758,22 @@ generator there carries `"eject": "full"` or an exemption.
    reference directories, the JVM reference sources each jar ships, the C# embedded
    resources, and the compile-test lists.
 3. **Depth.** Each generator is ejected alone and compiled or loaded. The test resolves what
-   the copy references in the codegen packages (the TypeScript checker, the C# semantic
-   model, the JVM constant pool, the Python import statements) and fails on anything outside
-   the engine surface. The unchanged copy must emit what the packaged generator emits, over
-   shared models that make every generator emit something. One difference is allowed: an
-   owned copy's output imports the helper runtime the adopter owns.
+   the copy references in the codegen packages and fails on anything outside the engine
+   surface. The unchanged copy must emit what the packaged generator emits, over shared
+   models that make every generator emit something. One difference is allowed: an owned
+   copy's output imports the helper runtime the adopter owns.
+
+   How each port resolves a reference:
+
+   | Port | What is read | What counts |
+   |---|---|---|
+   | TypeScript | The compiler's checker, each binding followed through any barrel to the file that declares it | A static import or re-export, type-only ones too; an inline `import("…").Type`; a dynamic `import("…")`, counted as the module it names |
+   | C# | The Roslyn semantic model of the owned file | Every type the file names |
+   | Java, Kotlin | The constant pool of the compiled copy | Every class the bytecode refers to |
+   | Python | The syntax tree of the owned module | Import statements, and `importlib.import_module` / `__import__` on a string literal |
+
+   A type declared in an emit module counts in TypeScript because a copy that imports it is
+   still tied to that module's shape.
 
 The tests that asserted a gap were removed with the lists they pinned: a `--list` test that
 required named generators to be `package-only`, and a Java test that pinned the set of
@@ -763,10 +789,25 @@ owned copy still references. The list works in both directions.
   the same change. A depth entry is compared module by module, so a copy that stops
   importing one of three packaged modules fails until the entry says so.
 
-**1.1.0 does not ship with a non-empty pending list.** The manifest carries one named
-switch, `PENDING_LIST_MAY_BE_NON_EMPTY`. While it is `true`, each port's last test (the
-pending list is empty) is skipped. The release branch sets it to `false`, and every port then
-fails on any entry that is left.
+**1.1.0 does not ship with a non-empty pending list.** Two things hold that, and neither
+depends on a person remembering.
+
+- **The test in every port.** The manifest carries one named switch,
+  `PENDING_LIST_MAY_BE_NON_EMPTY`. While it is `true`, each port's last test (the pending
+  list is empty) is skipped, and reported as skipped, never as a pass. Set to `false`, every
+  port fails on any entry that is left.
+- **The release scripts.** `scripts/eject-release-gate.mjs` refuses a version with no
+  prerelease suffix while the list holds an entry, and while the switch is anything but
+  `false`. Both conditions are checked, so emptying the list and leaving the switch on is
+  refused too: the switch is what makes each port run its last test. A manifest that cannot
+  be read is refused. `scripts/release.mjs` calls it first in its preflight,
+  before anything is built or published, and `scripts/finish-release.mjs` calls it as gate
+  0, before the tag. A prerelease version (`1.1.0-rc.3`) is allowed, because a release
+  candidate is how the remaining entries get exercised by an adopter.
+
+A registry published outside those two scripts does not pass through the gate. The
+procedure in `docs/RELEASING.md` has the operator run the gate by hand before one:
+`node scripts/eject-release-gate.mjs <version>` exits non-zero on a refusal.
 
 **The gaps.** `gap` in a pending entry is a number from this list.
 
@@ -785,7 +826,7 @@ fails on any entry that is left.
 | 10 | Angular has no reference templates. | Outside the census until the package is published |
 | 11 | Tests that asserted a gap, and hand-kept lists. | Closed here |
 | 12 | Documents that claimed more than the code delivered. | Corrected here, below |
-| 13 | An owned Java `entity` constructs the packaged `extractor` generator when no extractor is in the run. Found by the guard on its first run. | Pending |
+| 13 | An owned Java `entity` constructs the packaged `extractor` generator when no extractor is in the run. Found by the guard on its first run. | Pending. It closes with the Java work on gaps 4, 5 and 7, which owns the `entity` and `extractor` copies |
 
 **What the guard found on its first run**, beyond the gaps the audit listed:
 
@@ -794,6 +835,78 @@ fails on any entry that is left.
   registry entry, so no registry-driven test had ever run it. Registering it put it in two
   such suites, both failed, and the generator is fixed.
 - The registry-driven suites in each port now run the newly registered generators too.
+- The TypeScript `requirement-tests` copy imported two types, the renderer's argument record
+  and the renderer signature, from the packaged generator and its template. They are the
+  contract a renderer is written against, so they are now declared beside the requirement
+  walk, which is engine. The package's exports are unchanged.
+
+**Stated limits of the guard.** Each of these is a place where the guard checks less than
+the standard says. They are written down so that a green run is not read as more than it
+is.
+
+*What the reference scan cannot see.*
+
+- **JVM: a dependency that leaves no class reference in bytecode.** The scan reads the
+  compiled constant pool. `javac` inlines a `static final` String or primitive constant, and
+  the Kotlin compiler inlines a `const val` and the body of an `inline` function, so a copy
+  that reads one of those from an emit class shows no reference to it. The constant pool is
+  used because it is one reader for both JVM languages and it sees what the code calls
+  after resolution, with no second parser to keep in step with two compilers.
+- **TypeScript and Python: a module name built at run time.** `import(name)` and
+  `import_module(name)` with a computed name cannot be resolved by reading the file. A
+  string literal is read in both.
+
+*What is compiled, and from what.*
+
+- **Kotlin depth does not run the eject goal.** The goal lives in `maven-plugin`, which
+  depends on `codegen-kotlin`, and the Kotlin compile test has to live in `codegen-kotlin`.
+  The test reads the reference source the jar ships and rewrites its package line, which
+  is the one edit eject makes to a Kotlin copy. If eject starts doing more than that, this
+  test will not see it.
+- **C# compiles only the generator file.** The helper-runtime files eject writes beside it
+  are compiled by `HelperRuntimeTests`, against the web framework they need.
+
+*What "emits what the packaged generator emits" allows.*
+
+- **One difference per port: the helper-runtime import.** Amendment 3 hands the runtime
+  over, so an owned copy's output imports it from the project and the packaged output
+  imports it from the package. TypeScript compares the import block as a set for the three
+  generators that hand the HTTP adapter over. Python compares `routes` as a multiset of
+  lines. C# rewrites one `using`. Java points the packaged generator at the owned runtime
+  package.
+- **"Emits something" is per generator, across the shared models.** No one model makes
+  every generator emit: a prompt generator needs a template, a grid generator a layout.
+  Each generator must emit over at least one model, and is compared over empty output on
+  the models that do not concern it.
+- **TypeScript `shared-model` refuses one of the shared models**, because it re-reads the
+  sources strictly. The packaged and the owned generator must refuse it with the same
+  message. That is a comparison of two refusals, not of two outputs.
+- **Java compares `entity` in one flavour** (`type=interface`). The flavours are covered by
+  `EntityExtractorEjectRoundTripTest`.
+
+*What the census does not reach.*
+
+- **Angular**, because its package is not published (above).
+- **Python modules outside `metaobjects.codegen`.** The scan walks that package, which is
+  where every generator lives today.
+- **`exemptEmitters`.** An entry is checked for a path that exists, a reason and a ruling.
+  That the code at the path is not a generator is the ruling's claim, and no test checks
+  it.
+- **One hand-kept list is left:** the compile test in the Java `codegen-base` module, which
+  cannot see the registry from where it sits.
+
+*What changed in existing tests so the new rows could run.*
+
+- **The older registry-conformance tests in C#, Java, Kotlin and Python subtract the names
+  with a pending census entry.** The manifest lists `api-docs` for those ports (gap 6) and
+  their registries do not hold it yet. The pending entry is the one record of that
+  difference. Deleting the entry removes the subtraction.
+- **Two registry-driven Java suites pass an `outputFilename` argument** to generators that
+  write one file, so the five newly registered rows run in them. It is a test argument;
+  no generator changed.
+- **The TypeScript test "no docs-layer entry is left that `meta gen` runs" now names two:**
+  `requirements` and `agent-docs`. `meta gen` runs a wired factory of either. That was
+  true before they were registered and is visible now.
 
 **Document corrections.** Each of these claimed more than the code delivered.
 

@@ -48,10 +48,22 @@ Decide explicitly for every branch the scan returns: merge it into this cut, or 
 Note that `no-mistakes/*` branches are usually gate replays of work already on `main` — confirm
 rather than assume. Do not skip past the list.
 
-**The eject pending list (1.1.0).** `fixtures/generator-registry-conformance/registry.json`
-carries `eject.PENDING_LIST_MAY_BE_NON_EMPTY`. Set it to `false` on the release branch and run
-each port's eject-contract test: any entry left in `eject.pending` then fails the port it
-names. 1.1.0 does not ship with a non-empty list (ADR-0034 Amendment 8).
+**The eject pending list (1.1.0).** 1.1.0 does not ship while
+`fixtures/generator-registry-conformance/registry.json` has an entry in `eject.pending`
+(ADR-0034 Amendment 8). The release scripts enforce it: `scripts/release.mjs` (first check of
+its preflight) and `scripts/finish-release.mjs` (gate 0, before the tag) refuse a version with
+no prerelease suffix while the list holds an entry, or while
+`eject.PENDING_LIST_MAY_BE_NON_EMPTY` is anything but `false`. A release candidate
+(`1.1.0-rc.3`) is allowed.
+
+To clear it for a final release: close the gaps and delete their entries, set the switch to
+`false`, and run each port's eject-contract test, which then requires an empty list instead of
+skipping that check. A registry you publish outside those two scripts does not pass through
+the gate, so run it yourself first; it exits non-zero on a refusal:
+
+```
+node scripts/eject-release-gate.mjs <version>
+```
 
 **Why this is step 0 and not a nicety:** `0.21.1` shipped *without* a `timestampMode` fix that was
 already written and sitting on an unmerged branch. Because versions are immutable on all four

@@ -76,7 +76,7 @@ file is where that is declared, and each port's eject-contract test asserts it.
 | `engineSurface.<port>.engine` | The members of those namespaces an owned copy may still import: the generator base and runner, questions about the model, naming and type-mapping tables. Anything else inside `codegenPackages` writes output and is handed over with the generator. Anything outside them is core and imported freely. |
 | `exemptEmitters` | Code that writes into an adopter's repository and is not a generator, ruled out of eject with a reason. |
 | `pending` | Every place the contract does not hold yet. |
-| `PENDING_LIST_MAY_BE_NON_EMPTY` | The release switch. While `true`, a port's "the pending list is empty" test is skipped. The release branch sets it `false`. |
+| `PENDING_LIST_MAY_BE_NON_EMPTY` | The release switch. While `true`, a port's "the pending list is empty" test is reported as skipped. Set to `false`, every port requires an empty list. The release scripts refuse a final version (one with no prerelease suffix) while it is not `false` or the list holds an entry (`scripts/eject-release-gate.mjs`). |
 
 **A `pending` entry** is `{generator, port, assertion, gap}`:
 
@@ -104,6 +104,9 @@ assertions:
 3. **Depth.** Each generator, ejected alone into an empty project, compiles or loads,
    references nothing in `codegenPackages` outside `engine`, and emits what the packaged
    generator emits.
+
+What each port's reference scan reads, and the limits of the guard, are in ADR-0034
+Amendment 8.
 
 ## Shared (cross-port) names
 

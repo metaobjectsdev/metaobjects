@@ -142,13 +142,34 @@ def test_completeness_every_exemption_carries_a_reason_and_a_ruling() -> None:
 # ---------------------------------------------------------------------------------------
 
 
+#: The calls that import a module named by a string: ``importlib.import_module("m")``,
+#: a bare ``import_module("m")`` and ``__import__("m")``.
+_IMPORT_CALLS = {"import_module", "__import__"}
+
+
+def _imported_by_call(node: ast.Call) -> str | None:
+    """The module a call imports by a string LITERAL, or ``None``. A name built at run time
+    cannot be read here; that limit is stated in ADR-0034 Amendment 8."""
+    func = node.func
+    name = func.attr if isinstance(func, ast.Attribute) else func.id if isinstance(func, ast.Name) else None
+    if name not in _IMPORT_CALLS or not node.args:
+        return None
+    first = node.args[0]
+    return first.value if isinstance(first, ast.Constant) and isinstance(first.value, str) else None
+
+
 def _imports(path: Path, module_name: str) -> set[str]:
-    """Every module *path* imports, resolved to a dotted name. A ``from p import a`` names
-    ``p.a`` when that is a module, else ``p``."""
+    """Every module *path* imports, resolved to a dotted name: its import statements, and
+    its ``import_module`` / ``__import__`` calls on a string literal. A ``from p import a``
+    names ``p.a`` when that is a module, else ``p``."""
     package = module_name.rpartition(".")[0]
     out: set[str] = set()
     for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-        if isinstance(node, ast.Import):
+        if isinstance(node, ast.Call):
+            named = _imported_by_call(node)
+            if named is not None:
+                out.add(named)
+        elif isinstance(node, ast.Import):
             out.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
             base = node.module or ""
@@ -208,6 +229,30 @@ def test_depth_an_owned_copy_imports_only_the_engine_surface(tmp_path: Path) -> 
     problems += [f"{n}: pending depth entry for a generator that is not ejectable"
                  for n in sorted(set(pending) - ejectable)]
     assert not problems, "\n".join(problems)
+
+
+def test_depth_the_scan_reads_string_imports_as_well_as_import_statements(tmp_path: Path) -> None:
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        "import importlib\n"
+        "from importlib import import_module\n"
+        "a = importlib.import_module('metaobjects.codegen.extract_delegate_emitter')\n"
+        "b = import_module('metaobjects.codegen.type_map')\n"
+        "c = __import__('metaobjects.codegen.fr010_field_mapping')\n"
+        "d = importlib.import_module(name)\n",
+        encoding="utf-8",
+    )
+    found = _imports(probe, "codegen.generators.probe")
+    assert {
+        "metaobjects.codegen.extract_delegate_emitter",
+        "metaobjects.codegen.type_map",
+        "metaobjects.codegen.fr010_field_mapping",
+    } <= found
+    surface = contract.EngineSurface()
+    assert sorted(m for m in found if surface.outside(m)) == [
+        "metaobjects.codegen.extract_delegate_emitter",
+        "metaobjects.codegen.fr010_field_mapping",
+    ]
 
 
 def test_depth_every_engine_surface_entry_names_a_real_module() -> None:

@@ -34,6 +34,11 @@ const SCRIPT = readFileSync(resolve(REPO, "scripts/finish-release.mjs"), "utf8")
 // module is that ONE derivation serves four scripts. Stubbing it would let this suite pass
 // while the shipped derivation was wrong — which is the defect the module exists for.
 const MAVEN_COORD = readFileSync(resolve(REPO, "scripts/maven-coordinate.mjs"), "utf8");
+// Gate 0 asks the eject release gate, and the fixture ships the real one for the same reason.
+const EJECT_GATE = readFileSync(resolve(REPO, "scripts/eject-release-gate.mjs"), "utf8");
+const EJECT_MANIFEST = "fixtures/generator-registry-conformance/registry.json";
+/** The shared file as the release branch leaves it: nothing pending, the switch off. */
+const EJECT_CLEAR = `${JSON.stringify({ eject: { PENDING_LIST_MAY_BE_NON_EMPTY: false, pending: [] } })}\n`;
 
 const created: string[] = [];
 afterAll(() => { for (const d of created) rmSync(d, { recursive: true, force: true }); });
@@ -133,6 +138,7 @@ function makeRepo(spec: Spec = {}): Fixture {
     "site-reference/index.html": "<!doctype html><title>reference</title>\n",
     "docs/llms/llms.txt": mirror,
     "docs/llms/llms-full.txt": mirror,
+    [EJECT_MANIFEST]: EJECT_CLEAR,
     ...spec.files,
   };
   for (const rel of spec.omit ?? []) delete files[rel];
@@ -166,6 +172,7 @@ function makeRepo(spec: Spec = {}): Fixture {
     ...files,
     "scripts/finish-release.mjs": SCRIPT,
     "scripts/maven-coordinate.mjs": MAVEN_COORD,
+    "scripts/eject-release-gate.mjs": EJECT_GATE,
   })) {
     const full = join(work, rel);
     mkdirSync(dirname(full), { recursive: true });
@@ -224,6 +231,36 @@ describe("finish-release: the version argument", () => {
     const r = makeRepo().run("v0.24.6", "--check");
     expect(r.code).not.toBe(0);
     expect(r.out).toContain("usage:");
+  });
+});
+
+describe("finish-release gate 0: the eject contract", () => {
+  const withEject = (eject: unknown) => makeRepo({ files: { [EJECT_MANIFEST]: `${JSON.stringify({ eject })}\n` } });
+  const entry = { generator: "entity", port: "typescript", assertion: "depth", gap: 3 };
+
+  test("an entry left in the pending list is refused, before any other gate", () => {
+    const r = withEject({ PENDING_LIST_MAY_BE_NON_EMPTY: true, pending: [entry] }).run(RELEASE, "--check");
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain("the eject contract does not hold yet");
+    expect(r.out).toContain("1 entry is left");
+    expect(r.out).not.toContain("on main, clean, synced with origin");
+  });
+
+  test("an empty list is still refused while the switch is on", () => {
+    const r = withEject({ PENDING_LIST_MAY_BE_NON_EMPTY: true, pending: [] }).run(RELEASE, "--check");
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain("PENDING_LIST_MAY_BE_NON_EMPTY is still true");
+  });
+
+  test("a tree with no shared file is refused, not waved through", () => {
+    const r = makeRepo({ omit: [EJECT_MANIFEST] }).run(RELEASE, "--check");
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain("is missing");
+  });
+
+  test("an empty list with the switch off passes this gate", () => {
+    const r = makeRepo().run(RELEASE, "--check");
+    expect(r.out).toContain("eject contract: the pending list is empty and its switch is off");
   });
 });
 
