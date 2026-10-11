@@ -291,7 +291,7 @@ public class SpringAutoSetStampingTest {
      * {@code activatedAt}/{@code pingedAt}) so they fired {@code true} and the controller emitted
      * {@code DeviceDto.stampForInsert(dto)} / {@code patch.stampAutoSetOnUpdate()} — but
      * {@code SpringDtoGenerator.emitTphUnion} gates the union {@code DeviceDto}'s
-     * {@code stampForInsert} helper on {@code AutoSetSupport.hasAutoSetFields(base)}, which is
+     * {@code stampForInsert} helper on {@code SpringGeneratorSupport.hasAutoSetFields(base)}, which is
      * FALSE here (the base has no {@code @autoSet} field), so {@code DeviceDto} never gets that
      * static method: a non-compiling controller. Fails before the fix (the controller string
      * assertions below saw the phantom calls); passes after.

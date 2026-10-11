@@ -18,7 +18,37 @@ const replaceV: Change[] = [
 test("postgres emits all three view kinds", () => {
   expect(emit(createV, { dialect: "postgres" }).up).toMatch(/CREATE VIEW/i);
   expect(emit(dropV, { dialect: "postgres" }).up).toMatch(/DROP VIEW/i);
-  expect(emit(replaceV, { dialect: "postgres" }).up).toMatch(/CREATE OR REPLACE VIEW/i);
+  const proven: Change[] = [{ ...replaceV[0]!, kind: "replace-view", proven: { restorable: true } } as Change];
+  expect(emit(proven, { dialect: "postgres" }).up).toMatch(/CREATE OR REPLACE VIEW "v" AS/);
+});
+
+// Postgres refuses a replace that changes an existing column, and it refuses at apply. A
+// replace nothing proved (a diff with no dialect, whose changes can be emitted for any
+// database) is written the way SQLite writes every replace.
+test("postgres writes an unproven replace as DROP + CREATE", () => {
+  const { up, down } = emit(
+    [{ kind: "replace-view", view: { name: "v", sql: "SELECT 1 AS x" }, restore: { name: "v", sql: "SELECT 0 AS x" }, status: ALLOWED }],
+    { dialect: "postgres" },
+  );
+  expect(up).not.toMatch(/OR REPLACE/i);
+  expect(up.indexOf('DROP VIEW IF EXISTS "v";')).toBeGreaterThanOrEqual(0);
+  expect(up.indexOf('DROP VIEW IF EXISTS "v";')).toBeLessThan(up.indexOf('CREATE VIEW "v" AS'));
+  expect(down).not.toMatch(/OR REPLACE/i);
+  expect(down.indexOf('DROP VIEW "v";')).toBeLessThan(down.indexOf('CREATE VIEW "v" AS\nSELECT 0 AS x;'));
+});
+
+test("postgres restores a proven replace in place only when the columns are the same", () => {
+  const replace = (restorable: boolean): Change[] => [{
+    kind: "replace-view", view: { name: "v", sql: "SELECT 1 AS x" }, restore: { name: "v", sql: "SELECT 0 AS x" },
+    proven: { restorable }, status: ALLOWED,
+  }];
+  const inPlace = emit(replace(true), { dialect: "postgres" }).down;
+  expect(inPlace).toContain('CREATE OR REPLACE VIEW "v" AS\nSELECT 0 AS x;');
+  expect(inPlace).not.toContain("DROP VIEW");
+  // An appended column: undoing it removes one, which a replace cannot do.
+  const dropped = emit(replace(false), { dialect: "postgres" }).down;
+  expect(dropped).not.toMatch(/OR REPLACE/i);
+  expect(dropped.indexOf('DROP VIEW "v";')).toBeLessThan(dropped.indexOf('CREATE VIEW "v" AS\nSELECT 0 AS x;'));
 });
 
 test("sqlite renders view DDL (DROP+CREATE for replace, no OR REPLACE)", () => {

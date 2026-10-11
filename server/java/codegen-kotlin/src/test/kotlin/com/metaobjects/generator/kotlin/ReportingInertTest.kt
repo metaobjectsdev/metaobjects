@@ -23,13 +23,14 @@ import kotlin.test.assertTrue
  * `dimension.*`, `measure.*` and `segment.*` generate nothing anywhere. An `object.report`
  * with no read-only source generates nothing anywhere. A report that declares a read-only
  * `source.rdb @kind: view` is lowered to that view (by TypeScript migrate), and Kotlin
- * generates exactly four files for it (FR-044 Plan 3), one from each of four generators:
+ * generates exactly five files for it (FR-044 Plan 3), one from each of five generators:
  * its read-only Exposed table ([KotlinExposedTableGenerator]), its row data class
- * ([KotlinEntityGenerator]), its filter allowlist ([KotlinFilterAllowlistGenerator]) and its
- * read-only controller ([KotlinSpringControllerGenerator]). Every other generator in
- * [GENERATOR_REGISTRY] — names, relations, repository, validator, the prompt tier — emits
+ * ([KotlinEntityGenerator]), its filter allowlist ([KotlinFilterAllowlistGenerator]), its
+ * read-only controller ([KotlinSpringControllerGenerator]) and its physical names
+ * ([KotlinNamesGenerator]). Every other generator in
+ * [GENERATOR_REGISTRY] — relations, repository, validator, the prompt tier — emits
  * for a model that USES the vocabulary exactly what it emits for the same model without it,
- * byte for byte, and those four emit nothing else new.
+ * byte for byte, and those five emit nothing else new.
  *
  * The model pair is `fixtures/codegen-noop/reporting/{with,without}`, shared with the other
  * four ports' copies of this test. `with/` carries three sourceless reports
@@ -110,7 +111,7 @@ class ReportingInertTest {
         return if (differing.isEmpty()) null else "$label: $differing differ once reporting nodes are declared"
     }
 
-    /** What a generator may add for the with-model: one file of the view-backed report, from four generators. */
+    /** What a generator may add for the with-model: one file of the view-backed report, from five generators. */
     private fun allowedFor(info: GeneratorInfo): Set<String> = setOfNotNull(STORE_TOTALS_FILES[info.name])
 
     @Test
@@ -125,7 +126,7 @@ class ReportingInertTest {
     }
 
     @Test
-    fun `only four generators emit for a report, each one file, for the view-backed one`() {
+    fun `only five generators emit for a report, each one file, for the view-backed one`() {
         // Every generator is compared before anything is asserted, so one red run names
         // every leak rather than the first.
         val leaks = GENERATOR_REGISTRY.values.mapNotNull { info ->
@@ -143,7 +144,7 @@ class ReportingInertTest {
     }
 
     @Test
-    fun `the view-backed report emits exactly one file from each of the four generators`() {
+    fun `the view-backed report emits exactly one file from each of the five generators`() {
         // Else the allowance above is vacuous: each file really is emitted.
         for ((name, path) in STORE_TOTALS_FILES) {
             val info = GENERATOR_REGISTRY.getValue(name)
@@ -160,7 +161,7 @@ class ReportingInertTest {
             val hits = files.filter { (path, text) -> report in path || report in text }.keys
             assertTrue(hits.isEmpty(), "$report leaked into $hits")
         }
-        // The view-backed report is named by its four files and by nothing else.
+        // The view-backed report is named by its five files and by nothing else.
         val hits = files.filter { (path, text) -> "StoreTotals" in path || "StoreTotals" in text }.keys
         assertEquals(STORE_TOTALS_FILES.values.toSet(), hits)
     }
@@ -244,6 +245,8 @@ class ReportingInertTest {
             "entity" to "acme/shop/StoreTotals.kt",
             "filter-allowlist" to "acme/shop/StoreTotalsFilterAllowlist.kt",
             "routes" to "acme/shop/StoreTotalsController.kt",
+            // D7: the served report's view and derived columns get names constants too.
+            "names" to "acme/shop/StoreTotalsNames.kt",
         )
 
         /** `StoreTotals`: three measures over `Purchase` — two counts and a sum of a currency. */

@@ -20,8 +20,12 @@ import type {
 
 const BODY = "SELECT id, label FROM t";
 
-function col(name: string, nullable: boolean): ColumnDescriptor {
-  return { name, sqlType: name === "id" ? { kind: "integer", bits: 64 } : { kind: "text" }, nullable };
+function col(name: string, nullable: boolean, maxLength?: number): ColumnDescriptor {
+  return {
+    name,
+    sqlType: name === "id" ? { kind: "integer", bits: 64 } : { kind: "text", ...(maxLength !== undefined ? { maxLength } : {}) },
+    nullable,
+  };
 }
 
 const PARENT_FK: FkDescriptor = {
@@ -30,7 +34,7 @@ const PARENT_FK: FkDescriptor = {
 
 /** Table `t` (read by the view) plus table `p` (which `t`'s FK points at). */
 function snap(
-  opts: { labelNullable?: boolean; fk?: boolean; views: ViewDescriptor[] },
+  opts: { labelNullable?: boolean; labelMaxLength?: number; fk?: boolean; views: ViewDescriptor[] },
 ): SchemaSnapshot {
   return {
     tables: [
@@ -39,7 +43,7 @@ function snap(
       },
       {
         name: "t",
-        columns: [col("id", false), col("label", opts.labelNullable ?? true), col("parentId", true)],
+        columns: [col("id", false), col("label", opts.labelNullable ?? true, opts.labelMaxLength), col("parentId", true)],
         indexes: [],
         foreignKeys: opts.fk === true ? [PARENT_FK] : [],
         primaryKey: ["id"],
@@ -71,14 +75,29 @@ function viewChanges(changes: readonly Change[]): Change[] {
 }
 
 describe("D3 — a view recreated only around a table change is marked unchanged", () => {
+  // Postgres alters nullability in place, so it plans no view change for it (D4); a type
+  // change to a column the view reads is what strands a view there.
+  test("postgres: NOT NULL change on a table the view reads plans no view change", async () => {
+    const r = await diff({
+      expected: snap({ labelNullable: false, views: [expectedView()] }),
+      actual: snap({ labelNullable: true, views: [actualView("postgres")] }),
+      dialect: "postgres",
+    });
+    expect(r.changes.some((c) => c.kind === "change-column-nullable")).toBe(true);
+    expect(viewChanges(r.changes)).toEqual([]);
+  });
+
   for (const dialect of ["sqlite", "d1", "postgres"] as const) {
-    test(`${dialect}: NOT NULL change on a table the view reads`, async () => {
+    test(`${dialect}: ${dialect === "postgres" ? "type" : "NOT NULL"} change on a table the view reads`, async () => {
       const r = await diff({
-        expected: snap({ labelNullable: false, views: [expectedView()] }),
+        expected: snap(dialect === "postgres"
+          ? { labelNullable: true, labelMaxLength: 255, views: [expectedView()] }
+          : { labelNullable: false, views: [expectedView()] }),
         actual: snap({ labelNullable: true, views: [actualView(dialect)] }),
         dialect,
+        allow: { typeChange: true },
       });
-      expect(r.changes.some((c) => c.kind === "change-column-nullable")).toBe(true);
+      expect(r.changes.some((c) => c.kind === (dialect === "postgres" ? "change-column-type" : "change-column-nullable"))).toBe(true);
 
       // The pair is still planned: the migration SQL needs it.
       const views = viewChanges(r.changes);
@@ -214,7 +233,7 @@ describe("D3 — an adoption Pass 2c supersedes keeps its gate", () => {
   test("postgres: an unstamped view over an altered table still needs allow.adoptView", async () => {
     const unstamped: ViewDescriptor = { name: "v", sql: " SELECT t.id, t.label FROM t;" };
     const args = {
-      expected: snap({ labelNullable: false, views: [expectedView()] }),
+      expected: snap({ labelNullable: true, labelMaxLength: 255, views: [expectedView()] }),
       actual: snap({ labelNullable: true, views: [unstamped] }),
       dialect: "postgres" as const,
     };
@@ -222,11 +241,34 @@ describe("D3 — an adoption Pass 2c supersedes keeps its gate", () => {
     const drop = r.changes.find((c) => c.kind === "drop-view");
     expect(drop).toMatchObject({
       unmanagedActual: true,
-      reason: { kind: "unfingerprinted", tables: ["t"] },
+      reason: { kind: "unfingerprinted" },
       status: { state: "blocked" },
     });
 
-    const allowed = await diff({ ...args, allow: { adoptView: true, nullableToNotNull: true } });
+    const allowed = await diff({ ...args, allow: { adoptView: true, typeChange: true } });
     expect(allowed.blocked).toEqual([]);
+  });
+
+  // The database proved the replace legal, but a replace cannot run around the ALTER of a
+  // column the view reads. Pass 2c turns it into the pair, which names the altered table
+  // and keeps the adoption gate.
+  test("postgres: a proven replace of an unstamped view over an altered table becomes the pair, still gated", async () => {
+    const unstamped: ViewDescriptor = { name: "v", sql: " SELECT t.id, t.label FROM t;" };
+    const columns = [
+      { name: "id", type: "bigint", collation: "0" },
+      { name: "label", type: "text", collation: "100" },
+    ];
+    const r = await diff({
+      expected: snap({ labelNullable: true, labelMaxLength: 255, views: [expectedView()] }),
+      actual: snap({ labelNullable: true, views: [unstamped] }),
+      dialect: "postgres",
+      viewReplaceProbe: async () => ({ expected: columns, live: columns }),
+    });
+    expect(viewChanges(r.changes).map((c) => c.kind).sort()).toEqual(["create-view", "drop-view"]);
+    expect(r.changes.find((c) => c.kind === "drop-view")).toMatchObject({
+      unmanagedActual: true,
+      reason: { kind: "unfingerprinted", tables: ["t"] },
+      status: { state: "blocked" },
+    });
   });
 });

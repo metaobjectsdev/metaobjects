@@ -84,10 +84,15 @@ def _block_installed_runtime(monkeypatch) -> None:
 # --- what eject writes ------------------------------------------------------------------
 
 
-def test_routes_entry_lists_its_runtime_and_nothing_else_does() -> None:
-    assert GENERATOR_REGISTRY["routes"].runtime == RUNTIME_MODULES
-    others = {n: e.runtime for n, e in GENERATOR_REGISTRY.items() if n != "routes" and e.runtime}
-    assert others == {}
+def test_routes_entry_lists_the_runtime_its_output_imports_and_nothing_else_does() -> None:
+    """``shared_predicates`` is handed over through the same field but no generated code
+    imports it (``test_eject_independence.py`` covers it), so it is set aside here."""
+    output_runtime = {
+        n: tuple(m for m in e.runtime if m != "shared_predicates")
+        for n, e in GENERATOR_REGISTRY.items()
+    }
+    assert output_runtime.pop("routes") == RUNTIME_MODULES
+    assert {n: r for n, r in output_runtime.items() if r} == {}
 
 
 def test_every_runtime_module_is_self_contained() -> None:
@@ -146,7 +151,7 @@ def test_eject_never_overwrites_an_owned_runtime_copy(tmp_path, monkeypatch, cap
 
 def test_eject_of_a_generator_without_runtime_writes_no_runtime(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
-    assert main(["eject", "entity", "filter-allowlist", "names"]) == 0
+    assert main(["eject", "names", "output-prompt", "trace-helper"]) == 0
     assert not (tmp_path / "codegen" / "runtime").exists()
 
 

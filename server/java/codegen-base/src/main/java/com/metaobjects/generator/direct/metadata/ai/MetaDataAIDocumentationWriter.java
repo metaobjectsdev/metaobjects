@@ -157,7 +157,6 @@ public class MetaDataAIDocumentationWriter extends JsonDirectWriter<MetaDataAIDo
         JsonObject info = new JsonObject();
         info.addProperty("version", version);
         info.addProperty("generatedFrom", "TypeDefinition Registry");
-        info.addProperty("generationTimestamp", System.currentTimeMillis());
         info.addProperty("aiOptimized", true);
         info.addProperty("inheritanceSupport", includeInheritance);
         info.addProperty("totalTypes", typeRegistry.getRegisteredTypes().size());

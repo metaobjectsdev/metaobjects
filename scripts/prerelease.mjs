@@ -3,7 +3,7 @@
 // unreleased change can be iterated against downstream consumers without cutting a real
 // release on npm / PyPI / NuGet / Maven Central.
 //
-//   bun run prerelease:publish                       # next iteration, npm (the default scope)
+//   bun run prerelease:publish                       # next iteration, npm + Maven (the default scope)
 //   bun run prerelease:publish --only npm,csharp     # pick ports
 //   bun run prerelease:publish --only all            # all four
 //   bun run prerelease:publish --iter 5              # pin the iteration number
@@ -24,7 +24,7 @@
 //   npm    0.24.0-rc.3     SemVer2, verbatim
 //   NuGet  0.24.0-rc.3     SemVer2, verbatim
 //   PyPI   0.24.0rc3       PEP 440 canonical form
-//   Maven  7.24.0-rc.3     same minor.patch on the historical major 7
+//   Maven  7.24.0-rc.3     same minor.patch, major = npm major + 7 (1.1.0-rc.2 -> 8.1.0-rc.2)
 //
 // The iteration counter — not a commit sha — is the collision breaker, because npm STRIPS
 // SemVer build metadata: `0.24.0-rc.1+aaa` and `0.24.0-rc.1+bbb` compare EQUAL, so the
@@ -220,7 +220,10 @@ const V = {
 };
 
 const ALL = ["npm", "python", "csharp", "java"];
-const onlyArg = flag("only", "npm");
+// The default is npm AND Maven: a JVM adopter cannot test a candidate that exists only on npm, and
+// the one that tried had to build the Maven artifacts from source by hand. Python and C# stay opt-in.
+const DEFAULT_ONLY = "npm,java";
+const onlyArg = flag("only", DEFAULT_ONLY);
 const ONLY = onlyArg === "all" ? ALL : onlyArg.split(",").map((s) => s.trim());
 const unknown = ONLY.filter((p) => !ALL.includes(p));
 if (unknown.length) die(`--only expects ${ALL.join("|")}|all, got '${unknown.join(",")}'`);
@@ -238,6 +241,9 @@ ok(`publish target verified: ${expectedHost} (configured registry; not a public 
 const VERSION_FILES = [
   "server/typescript/packages/*/package.json", "client/web/packages/*/package.json",
   "server/java/pom.xml", "server/java/**/pom.xml",
+  // Names the reactor version in a <metaobjects.version> property; check-pom-versions.sh fails
+  // the Java step if it lags, so the candidate bump has to reach it too.
+  "examples/showcase/jvm/pom.xml",
   "server/python/pyproject.toml", "server/csharp/Directory.Build.props",
   "bun.lock",
 ];
@@ -357,7 +363,10 @@ if (wants("java")) {
   // Tree-wide sed, NOT `mvn versions:set` — versions:set walks only the reactor and
   // silently skips the two reactor-EXCLUDED integration-test modules, whose parent
   // version then lags (see scripts/check-pom-versions.sh, docs/RELEASING.md).
-  const poms = sh(`grep -rl '${javaReleased}' --include=pom.xml server/java`).trim().split("\n").filter(Boolean);
+  const poms = [
+    ...sh(`grep -rl '${javaReleased}' --include=pom.xml server/java`).trim().split("\n").filter(Boolean),
+    "examples/showcase/jvm/pom.xml",
+  ];
   touch(...poms);
   sh(`sed -i 's/${javaReleased.replace(/\./g, "\\.")}/${V.maven}/g' ${poms.map((f) => `'${f}'`).join(" ")}`);
   sh("scripts/check-pom-versions.sh");

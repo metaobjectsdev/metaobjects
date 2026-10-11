@@ -112,7 +112,7 @@ public class SpringProjectionDtoCompileRunTest extends SharedRegistryTestBase {
         assertTrue("a concrete entity (even view-kind) gets a read DTO",
                 SpringDtoGenerator.appliesTo(summary));
         assertTrue("view-kind projection gets a read-only repository",
-                SpringRepositoryGenerator.appliesTo(summary));
+                SpringGeneratorSupport.repositoryAppliesTo(summary));
         assertTrue("view-kind projection gets a read-only controller",
                 SpringControllerGenerator.appliesTo(summary));
         assertTrue("view-kind projection gets a filter allowlist (its list route filters)",

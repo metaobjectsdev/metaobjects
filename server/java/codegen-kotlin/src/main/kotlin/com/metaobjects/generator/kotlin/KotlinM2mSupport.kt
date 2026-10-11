@@ -215,7 +215,7 @@ object KotlinM2mSupport {
      * helper (doing so silently reused a wrong-target/wrong-junction query — see
      * `KotlinTphM2mShadowedCodegenTest`). It gets its OWN helper, suffixed by the
      * `@discriminatorValue` of the subtype that first introduces it (mirrors the Java port's
-     * per-subtype finder shape, `SpringRepositoryGenerator.m2mFinderNameForSubtype` /
+     * per-subtype finder shape, `SpringGeneratorSupport.m2mFinderNameForSubtype` /
      * `findTagsForBridge`): `<name><Suffix>Query`. A LATER mount whose nav resolves to that SAME
      * shape (structural equality) reuses that same helper rather than minting another — so two
      * subtypes shadowing a name identically still share one helper, matching the plain-name case.

@@ -102,7 +102,6 @@ describe("down statements stay bare — a rollback must fail loudly", () => {
         view: {
           name: "v",
           sql: "SELECT 1 AS one",
-          columns: [{ name: "one", sqlType: { kind: "integer", bits: 32 } }],
         },
       },
     ]);

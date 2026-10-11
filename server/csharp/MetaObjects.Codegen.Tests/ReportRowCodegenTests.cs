@@ -412,11 +412,11 @@ public class ReportRowCodegenTests
         Load(Report("SalesCube", "\"@kind\": \"view\", \"@view\": \"v_sales_cube\"", AllDimensions, AllMeasures));
 
     [Theory]
-    // Dimensions: the @of field's type; nullable unless it has no @via and @of is @required.
+    // Dimensions: the @of field's type; nullable unless @of is @required and every @via hop is a required reference.
     [InlineData("public long Store { get; set; }")]
     [InlineData("public string? Channel { get; set; }")]
     [InlineData("public SalesCubeStatus Status { get; set; }")]
-    [InlineData("public string? StoreRegion { get; set; }")]             // @required at the source, reached by @via
+    [InlineData("public string StoreRegion { get; set; } = default!;")] // @required at the source, reached by @via over a required reference (INNER join)
     [InlineData("public DateTimeOffset SoldAtHour { get; set; }")]       // hour of an instant
     [InlineData("public DateOnly SoldAtDay { get; set; }")]              // day or coarser is a date
     [InlineData("public DateOnly SoldAtMonth { get; set; }")]

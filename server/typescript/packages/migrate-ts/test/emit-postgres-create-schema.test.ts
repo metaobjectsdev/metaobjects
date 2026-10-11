@@ -21,7 +21,6 @@ const v = (name: string, schema?: string): ViewDescriptor => ({
   name,
   ...(schema !== undefined ? { schema } : {}),
   sql: "SELECT 1 AS one",
-  columns: [{ name: "one", sqlType: { kind: "integer", bits: 32 } }],
 });
 
 describe("a chain that creates an object in a non-default schema creates the schema first", () => {

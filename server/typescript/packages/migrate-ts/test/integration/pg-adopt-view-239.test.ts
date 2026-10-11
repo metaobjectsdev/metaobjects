@@ -64,10 +64,6 @@ describe("PG adopt-view structural change round-trip (#239)", () => {
       name: "v_foo",
       sql: body,
       fingerprint: viewFingerprint(body),
-      columns: [
-        { name: "a", sqlType: { kind: "text" as const } },
-        { name: "c", sqlType: { kind: "text" as const } },
-      ],
       dependsOn: ["t_239"],
     };
     const expected: SchemaSnapshot = { tables: actual.tables, views: [expectedView] };

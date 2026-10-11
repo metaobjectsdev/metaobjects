@@ -94,7 +94,7 @@ The 15 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 |---|---|---|
 | `KotlinEntityGenerator` | `<Entity>.kt` — Kotlin `data class` (Jackson-compatible; no `@Serializable`). For a value object this data class IS the template tier's payload/response type (ADR-0056); a value object a responding prompt parses into also gets `<Vo>Extracted.kt` (the lenient mirror, written by the parser tier once per run, beside it) | every `object.entity`, `object.value`, and `object.projection` |
 | `KotlinExposedTableGenerator` | `<Entity>Table.kt` — Exposed `Table` object with PK + FK + `@storage` columns | entities with `source.rdb` |
-| `KotlinNamesGenerator` | `<Entity>Names.kt` — physical database name constants mirroring the metadata tree (per-role source name + kind + schema, columns, identity/index names) | every object with a declared/inherited primary `source.rdb` |
+| `KotlinNamesGenerator` | `<Entity>Names.kt` — physical database name constants mirroring the metadata tree (per-role source name + kind + schema, columns, identity/index names) | every object with a declared/inherited primary `source.rdb`, and every served report (its view and derived columns) |
 | `KotlinRelationsGenerator` | `<Entity>Relations.kt` — extension fns for `cardinality=many` query helpers | entities with to-many relationships |
 | `KotlinRepositoryGenerator` | `<Entity>RepositoryBase.kt` — persistence repository base (row-mapper + CRUD + patch) | writable entities (`source.rdb @kind="table"`) |
 | `KotlinFilterAllowlistGenerator` | `<Entity>FilterAllowlist.kt` — FR-009 filter allowlist (filterable field names + allowed ops per field) | writable entities (`source.rdb @kind="table"`) |
@@ -418,9 +418,11 @@ then measures). `KotlinEntityGenerator` writes `<Report>`, an immutable data cla
 property per derived field and no validation annotations. `KotlinFilterAllowlistGenerator`
 writes `<Report>FilterAllowlist`, and `KotlinSpringControllerGenerator` writes
 `<Report>Controller`: one `@GetMapping` list handler, a `@PostMapping` answering 405, and no
-`/{id}` mapping. Every derived field with filter operators is filterable and sortable. No
-`<Report>Names` is written, and nothing from any other generator. A report with no view source,
-or an abstract one, generates nothing. See [reporting](../features/reporting.md) for the vocabulary, the columns a
+`/{id}` mapping. Every derived field with filter operators is filterable and sortable. A fifth,
+the opt-in `KotlinNamesGenerator`, writes `<Report>Names` when you wire it: the view name and
+one constant per derived column (see [`<Entity>Names`](#entitynames--the-physical-names-as-constants)).
+Nothing is written by any other generator. A report with no view source, or an abstract one,
+generates nothing. See [reporting](../features/reporting.md) for the vocabulary, the columns a
 report gets and the REST contract. An excerpt of the table, under the default snake_case
 column naming:
 
@@ -437,10 +439,14 @@ object ProgramMinutesTable : Table("v_program_minutes") {
 - A report has no identity, so the object has no `primaryKey`. List it and count it; there is
   no by-id read and no write.
 - A column is nullable exactly when the derived field can be null: a `sum`, `avg`, `min`, `max`
-  or ratio, and a dimension reached through `@via`. Two exceptions: a measure that declares
-  `@default` is never null, and in a `@spine` report neither is a dimension over a `@required`
-  or primary-key column of the spine entity. Each gets a column with no `.nullable()` and a
-  property with no `?` and no `= null`.
+  or ratio, a dimension over an optional field, and a dimension reached through `@via` when a
+  hop can leave a row without a match. Three cases are never null: a measure that declares
+  `@default`; a dimension reached through `@via` whose `@of` field is required and whose every
+  hop is a belongs-to reference over a required foreign key, which the view joins `INNER`; and
+  in a `@spine` report a dimension over a `@required` or primary-key column of the spine
+  entity. Each gets a column with no `.nullable()` and a property with no `?` and no `= null`.
+  The rule is the report's, not Kotlin's: see
+  [reporting](../features/reporting.md#a-reports-fields-are-derived-not-declared).
 - A derived decimal with no declared precision (an `avg`, a ratio, a `sum` of a decimal) is
   read as `decimal(name, 38, 18)`. Exposed rounds a decimal to the column's scale when it reads
   it, so the value is exact to 18 places. The object maps a view, so those numbers never reach
@@ -448,7 +454,8 @@ object ProgramMinutesTable : Table("v_program_minutes") {
 - An enum dimension is typed by the enum class of the entity it reads (`ProgramStatus` for a
   dimension over `Program.status`), so it compares against the same constants as the entity's
   own column. No per-report enum is generated.
-- The view and its columns are bound by string literal even when `useNames` is on.
+- The table binds the view and its columns by string literal even when `useNames` is on;
+  `<Report>Names` is for your own SQL over the view.
 - `gen` fails, naming the report and the dimension or measure, when a derived field is named
   after a Kotlin hard keyword or when two derived fields land on one column property (see
   below for the `Column` suffix). Rename the item.

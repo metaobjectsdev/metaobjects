@@ -83,16 +83,18 @@ async function tryLoadConfig(metaRoot: string): Promise<Config | undefined> {
 // ---------------------------------------------------------------------------
 
 /**
- * The migrations directory and dialect `meta migrate` would use with no flags — what
- * `meta gen` needs to word its "now migrate" next step and find the committed snapshot.
+ * The migrations directory, dialect and format `meta migrate` would use with no flags — what
+ * `meta gen` needs to word its "now migrate" next step and read the committed snapshot the
+ * way `meta migrate` reads it.
  */
 export async function resolveMigrateDefaults(
   metaRoot: string,
-): Promise<{ outDir: string; dialect: Dialect | undefined }> {
+): Promise<{ outDir: string; dialect: Dialect | undefined; format: MigrateFormat }> {
   const config = await tryLoadConfig(metaRoot);
   return {
     outDir: config?.migrate?.outDir ?? MIGRATE_DEFAULTS.outDir,
     dialect: config?.migrate?.dialect ?? MIGRATE_DEFAULTS.dialect,
+    format: config?.migrate?.format ?? MIGRATE_DEFAULTS.format,
   };
 }
 

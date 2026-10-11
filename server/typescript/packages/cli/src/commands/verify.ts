@@ -45,7 +45,7 @@ import { lintNodeNames } from "../lib/name-lint.js";
 import { lintDeprecatedReferences } from "../lib/deprecation-lint.js";
 import { lintDuplicateFields, lintReferenceFields } from "../lib/field-lint.js";
 import { FileSource } from "@metaobjectsdev/metadata/core";
-import { resolveD1Config, resolveMigrateConfig } from "../lib/config.js";
+import { resolveD1Config, resolveMigrateConfig, type ResolvedMigrateConfig } from "../lib/config.js";
 import {
   buildWranglerExecuteArgs,
   defaultWranglerRunner,
@@ -84,6 +84,8 @@ import {
   type D1Binding,
   type D1Runner,
   type DriftResult,
+  postgresViewReplaceProbe,
+  withoutFlywayHistory,
 } from "@metaobjectsdev/migrate-ts";
 import {
   DEFAULT_METAOBJECTS_DIR,
@@ -123,9 +125,11 @@ const ERR_UNKNOWN_ATTR = "ERR_UNKNOWN_ATTR";
 
 /**
  * A no-flags MigrateFlags, so `resolveMigrateConfig` yields exactly what `meta migrate`
- * would use with nothing passed on the command line — config value, else default.
+ * would use with nothing passed on the command line — config value, else default. The one
+ * migrate flag verify also takes, `--migration-format`, is laid over it per invocation, so
+ * the format resolves flag > config > default exactly as it does for `meta migrate`.
  *
- * verify consumes `outDir` (#292) and — for the replay gate ONLY — `dialect`. The #292
+ * verify consumes `outDir` (#292), `format` and — for the replay gate ONLY — `dialect`. The #292
  * restriction that reading anything else "would be reaching into migrate's decisions"
  * was written about the DRIFT gate, whose dialect comes from the live `--db` URL. The
  * replay gate has no `--db` at all, and the dialect a committed chain was EMITTED for
@@ -176,6 +180,7 @@ export async function verifyCommand(
     emitStructured({ error: msg, hint: "run `meta verify --help` for the accepted flags" }, fmt);
     return 2;
   }
+  const migrateFlags: MigrateFlags = { ...EMPTY_MIGRATE_FLAGS, format: flags.migrationFormat };
 
   // ADR-0021 D2 — explicit verify subverbs. Each flag selects one drift mode;
   // any combination runs each and the overall exit code is the MAX (non-zero on
@@ -503,7 +508,7 @@ export async function verifyCommand(
     // Resolve the migrations directory and the chain's dialect through MIGRATE's own
     // precedence, never a second derivation — verify must not look somewhere migrate
     // does not write, nor assume a dialect the chain was not emitted for.
-    const migrateConfig = await resolveMigrateConfig(EMPTY_MIGRATE_FLAGS, projectRoot);
+    const migrateConfig = await resolveMigrateConfig(migrateFlags, projectRoot);
 
     if (migrateConfig.format === "flyway") {
       log.error(
@@ -1313,6 +1318,11 @@ export async function verifyCommand(
 
     try {
       const allow = tokensToAllowOptions(flags.allow);
+      // Resolve the migrate config once for this whole path: `tryLoadConfig` is uncached,
+      // and the flyway filter below and checkCommittedSnapshot's migrations-dir read want
+      // the same value — resolving twice would read and parse `.metaobjects/config.json`
+      // twice per `meta verify --db`.
+      const migrateConfig = await resolveMigrateConfig(migrateFlags, projectRoot);
       // Expected views from the single view-SQL source (codegen-ts), so view-body
       // drift is detected against the live DB.
       const viewStrategy = forgeConfig?.columnNamingStrategy ?? "snake_case";
@@ -1324,9 +1334,15 @@ export async function verifyCommand(
         // `actual` this drift comparison uses, and re-introspecting for it would both
         // cost a second round trip and open a window where the two could disagree.
         actual = await introspect(kysely.db, kysely.dialect);
+        // Flyway owns its history table; it is no drift under the flyway format, as in `meta migrate`.
+        if (migrateConfig.format === "flyway") {
+          actual = withoutFlywayHistory(actual);
+        }
         driftResult = await computeDriftFromActual(actual, kysely.dialect, root, {
           allow,
           views: expectedViews,
+          // The same question `meta migrate` asks, so the report names the change it plans.
+          ...(kysely.dialect === "postgres" ? { viewReplaceProbe: postgresViewReplaceProbe(kysely.db) } : {}),
           ...(schemaScope !== undefined ? { inScope: schemaScope } : {}),
           // The import exclusion reaches scopeExpectedSchema through this option bag —
           // there is no direct call on this path to attach it to.
@@ -1340,7 +1356,7 @@ export async function verifyCommand(
 
       const snapshotDrift =
         driftResult.changes.length === 0
-          ? await checkCommittedSnapshot(actual, kysely.dialect, kysely.displayUrl, driftResult)
+          ? await checkCommittedSnapshot(actual, kysely.dialect, kysely.displayUrl, driftResult, migrateConfig)
           : [];
 
       return reportSchemaDrift(driftResult, [...ledgerDrift, ...snapshotDrift], kysely.displayUrl);
@@ -1465,13 +1481,15 @@ export async function verifyCommand(
     dialect: Dialect,
     displayUrl: string,
     governed: GovernedScope,
+    // Resolved by the caller and threaded through — see the `verify --db` branch: the same
+    // run's flyway filter reads this config too, and `tryLoadConfig` does not cache.
+    migrateConfig: ResolvedMigrateConfig,
   ): Promise<string[]> {
     if (dialect === "d1") return []; // d1 keeps migrations Wrangler-native; no offline snapshot
-    // Resolve the migrations dir through migrate's OWN precedence (flag > config >
-    // default) rather than re-deriving it, so verify can never look somewhere migrate
-    // does not write. Only `outDir` is consumed; the rest of the resolved config is
-    // migrate's business.
-    const migrateConfig = await resolveMigrateConfig(EMPTY_MIGRATE_FLAGS, projectRoot);
+    // The migrations dir comes from migrate's OWN precedence (flag > config > default)
+    // rather than a re-derivation here, so verify can never look somewhere migrate does
+    // not write. Only `outDir` and `format` are consumed; the rest of the resolved config
+    // is migrate's business.
     const dir = resolvePath(projectRoot, migrateConfig.outDir);
     let snapshot: SchemaSnapshot | null;
     try {
@@ -1480,6 +1498,7 @@ export async function verifyCommand(
       return [];
     }
     if (snapshot === null) return [];
+    if (migrateConfig.format === "flyway") snapshot = withoutFlywayHistory(snapshot);
 
     // Out-of-scope objects leave BOTH sides of this comparison, and the schema pin
     // comes from the scope decision the DRIFT comparison already made — one door

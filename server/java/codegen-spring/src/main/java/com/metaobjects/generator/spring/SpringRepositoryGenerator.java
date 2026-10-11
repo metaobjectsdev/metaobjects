@@ -4,6 +4,7 @@ package com.metaobjects.generator.spring;
 // com.metaobjects.generator.spring when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.spring.SpringGeneratorSupport;
 import com.metaobjects.generator.spring.SpringM2mSupport;
 import com.metaobjects.generator.spring.SpringNaming;
 import com.metaobjects.generator.spring.SpringTypeMapper;
@@ -94,7 +95,7 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
             MetaObject entity = RestSurfaceGate.restShapeOf(declared);
             if (entity == null) continue;
             if (TphPlan.isTphSubtype(entity)) continue; // folded into the base — no own repository
-            if (!appliesTo(entity)) continue;
+            if (!SpringGeneratorSupport.repositoryAppliesTo(entity)) continue;
             // F22 — a view-only projection gets a READ-ONLY seam: nothing that writes. A
             // served report (FR-044) takes the same path: list and count, no findById.
             if (RestSurfaceGate.isReadOnly(entity)) emitReadOnly(entity, outRoot);
@@ -104,18 +105,6 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         }
     }
 
-    /**
-     * True iff this generator emits a repository interface for {@code entity} — the same
-     * shared {@link RestSurfaceGate#emitsRestSurface} decision the controller and the
-     * filter allowlist make, because the controller delegates to this interface by name.
-     *
-     * <p>A READ-ONLY view-kind {@code object.projection} (F22) emits a repository too, but
-     * a read-only one: list / count / findById and nothing that writes. See
-     * {@link #emitReadOnly(MetaObject, Path)}.</p>
-     */
-    public static boolean appliesTo(MetaObject entity) {
-        return RestSurfaceGate.emitsRestSurface(entity);
-    }
 
     protected void emit(MetaObject entity, Path outRoot) {
         String[] split = SpringNaming.splitFqn(entity.getName());
@@ -169,8 +158,8 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append(targetSubtypeJavadocClause(nav));
             src.append(". */\n");
             src.append("    List<").append(nav.targetDtoType()).append("> ")
-               .append(m2mFinderName(nav.relationName())).append("(").append(pkType).append(" sourceId")
-               .append(targetSubtypeParam(nav)).append(");\n");
+               .append(SpringGeneratorSupport.m2mFinderName(nav.relationName())).append("(").append(pkType).append(" sourceId")
+               .append(SpringGeneratorSupport.targetSubtypeParam(nav)).append(");\n");
         }
 
         // ADR-0038 reverse navigation — one finder PAIR per FK this entity holds
@@ -358,8 +347,8 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append(targetSubtypeJavadocClause(nav));
             src.append(". */\n");
             src.append("    List<").append(nav.targetDtoType()).append("> ")
-               .append(m2mFinderName(nav.relationName())).append("(").append(pkType).append(" sourceId")
-               .append(targetSubtypeParam(nav)).append(");\n");
+               .append(SpringGeneratorSupport.m2mFinderName(nav.relationName())).append("(").append(pkType).append(" sourceId")
+               .append(SpringGeneratorSupport.targetSubtypeParam(nav)).append(");\n");
         }
         for (TphPlan.Subtype st : plan.subtypes()) {
             for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(st.entity(), loader)) {
@@ -386,9 +375,9 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
                 }
                 src.append(" */\n");
                 src.append("    List<").append(nav.targetDtoType()).append("> ")
-                   .append(m2mFinderNameForSubtype(nav.relationName(), st.value()))
+                   .append(SpringGeneratorSupport.m2mFinderNameForSubtype(nav.relationName(), st.value()))
                    .append("(").append(pkType).append(" sourceId")
-                   .append(targetSubtypeParam(nav)).append(");\n");
+                   .append(SpringGeneratorSupport.targetSubtypeParam(nav)).append(");\n");
             }
         }
         src.append("}\n");
@@ -402,51 +391,9 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         }
     }
 
-    /** Repository finder name for an M:N relationship: {@code tags} → {@code findTags}. */
-    public static String m2mFinderName(String relationName) {
-        if (relationName.isEmpty()) return "find";
-        return "find" + Character.toUpperCase(relationName.charAt(0)) + relationName.substring(1);
-    }
 
-    /**
-     * FR-017 x FR-018: the subtype-scoped M:N finder name, e.g. {@code ("tags", "Bridge")} →
-     * {@code findTagsForBridge}. Distinct from {@link #m2mFinderName} because a TPH interface
-     * may need BOTH the whole-table finder (base-declared relationship) AND a per-subtype one
-     * for the exact same relation name (an inherited relationship resolved by more than one
-     * subtype) — same naming shape as the existing {@code list<Suffix>}/{@code get<Suffix>}
-     * per-subtype CRUD methods.
-     */
-    public static String m2mFinderNameForSubtype(String relationName, String discriminatorValue) {
-        return m2mFinderName(relationName) + "For" + SpringNaming.capitalize(discriminatorValue);
-    }
 
-    /**
-     * FW-8 follow-up (target-side TPH gate): the extra finder parameter clause for {@code nav} —
-     * {@code ", String targetSubtype"} when {@code nav}'s target is a concrete TPH subtype,
-     * empty otherwise. Threading this same {@code targetDiscriminatorValue() != null} test at
-     * every finder declaration AND its matching controller call site (see
-     * {@link SpringControllerGenerator}) is what keeps a widened finder's interface signature
-     * and call site in agreement — a real disagreement here is a javac compile error, not a
-     * silently-wrong runtime result, because each (relation name, source scope) pair is its own
-     * distinct Java method (never a single shared seam multiple mounts must agree on the arity
-     * of, unlike the Python port's one Protocol method per relation name).
-     */
-    public static String targetSubtypeParam(SpringM2mSupport.M2mNav nav) {
-        return nav.targetDiscriminatorValue() != null ? ", String targetSubtype" : "";
-    }
 
-    /**
-     * The matching CALL-SITE argument clause for {@link #targetSubtypeParam} — the quoted
-     * discriminator literal when {@code nav}'s target is TPH, empty otherwise. Used by
-     * {@link SpringControllerGenerator} at every M:N call site (unscoped base finder AND every
-     * subtype-scoped {@code find<Rel>For<Disc>} finder) so each call site's argument count
-     * always matches its own finder's declared parameter count.
-     */
-    static String targetSubtypeCallArg(SpringM2mSupport.M2mNav nav) {
-        return nav.targetDiscriminatorValue() != null
-            ? ", \"" + nav.targetDiscriminatorValue() + "\""
-            : "";
-    }
 
     /**
      * The javadoc clause naming a widened finder's target-subtype literal, appended right
@@ -525,5 +472,29 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
     @Override
     protected String getSingleOutputFilename(MetaObject md) {
         return SpringNaming.splitFqn(md.getName())[1] + "Repository.java";
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#repositoryAppliesTo}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    public static boolean appliesTo(MetaObject entity) {
+        return SpringGeneratorSupport.repositoryAppliesTo(entity);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#m2mFinderName}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    public static String m2mFinderName(String relationName) {
+        return SpringGeneratorSupport.m2mFinderName(relationName);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#m2mFinderNameForSubtype}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    public static String m2mFinderNameForSubtype(String relationName, String discriminatorValue) {
+        return SpringGeneratorSupport.m2mFinderNameForSubtype(relationName, discriminatorValue);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#targetSubtypeParam}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    public static String targetSubtypeParam(SpringM2mSupport.M2mNav nav) {
+        return SpringGeneratorSupport.targetSubtypeParam(nav);
     }
 }

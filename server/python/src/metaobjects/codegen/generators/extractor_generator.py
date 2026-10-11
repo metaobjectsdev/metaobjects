@@ -47,11 +47,12 @@ from metaobjects.codegen.generators.find_inbound import (
     inbound_templates,
     response_shape,
 )
-from metaobjects.codegen.generators.entity_model import has_literal_default
 from metaobjects.codegen.value_objects import is_field_required, model_class_name, pkg_of
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_data import MetaData
+
+from ..runtime.shared_predicates import has_literal_default
 
 _GENERATOR_NAME = "extractor-generator"
 

@@ -276,6 +276,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     columnNamingStrategy: forgeConfig.columnNamingStrategy,
     projectRoot,
     migrateOutDir: migrateDefaults.outDir,
+    migrateFormat: migrateDefaults.format,
     changedFiles: result.files.filter((f) => CHANGED_STATUSES.has(f.status)).map((f) => f.path),
   });
 

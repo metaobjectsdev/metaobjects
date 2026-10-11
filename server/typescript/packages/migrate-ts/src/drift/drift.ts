@@ -23,6 +23,8 @@ import { collectUnmanagedNames } from "../unmanaged.js";
 import { withoutViewRecreates } from "../view-change-reason.js";
 import { scopeExpectedSchema, scopedDiffInputs, type ObjectScopePredicate } from "../scope.js";
 import type { AllowOptions, Dialect, DiffResult, SchemaSnapshot } from "../types.js";
+import { postgresViewReplaceProbe } from "../view-replace-probe.js";
+import type { ViewReplaceProbe } from "../view-replace.js";
 
 export interface ComputeDriftOptions {
   /**
@@ -48,6 +50,13 @@ export interface ComputeDriftOptions {
    * itself; pass these so view drift is detected. Defaults to none.
    */
   views?: readonly import("../expected-schema.js").ExpectedViewInput[];
+  /**
+   * Postgres: the live-database probe that decides whether a changed view is reported as
+   * a replace or as a drop and a create (passed through to `diff`). `computeDrift`
+   * supplies it from its connection; a caller of `computeDriftFromActual` passes its own
+   * so the drift report names the change `meta migrate` would plan.
+   */
+  viewReplaceProbe?: ViewReplaceProbe;
   /**
    * Per-command scope (`migrate.scope`): objects whose declaring FQN this predicate
    * rejects are governed by somebody else. They leave the expected side AND are
@@ -139,6 +148,7 @@ export async function computeDriftFromActual(
     dialect,
     allow: opts?.allow ?? {},
     ...(opts?.ignoreTables !== undefined ? { ignoreTables: opts.ignoreTables } : {}),
+    ...(opts?.viewReplaceProbe !== undefined ? { viewReplaceProbe: opts.viewReplaceProbe } : {}),
   });
   return {
     ...result,
@@ -166,5 +176,10 @@ export async function computeDrift(
   opts?: ComputeDriftOptions,
 ): Promise<DriftResult> {
   const actual = await introspect(db, dialect);
-  return computeDriftFromActual(actual, dialect, metadata, opts);
+  return computeDriftFromActual(actual, dialect, metadata, {
+    ...opts,
+    ...(dialect === "postgres" && opts?.viewReplaceProbe === undefined
+      ? { viewReplaceProbe: postgresViewReplaceProbe(db) }
+      : {}),
+  });
 }

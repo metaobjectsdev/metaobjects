@@ -18,7 +18,7 @@
 
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import {
-  buildExpectedSchema, diff, emit, introspectPostgres, collectUnmanagedNames,
+  buildExpectedSchema, diff, emit, introspectPostgres, postgresViewReplaceProbe, collectUnmanagedNames,
   type AllowOptions, type SchemaSnapshot,
 } from "@metaobjectsdev/migrate-ts";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
@@ -79,7 +79,7 @@ function expectedFor(root: MetaRoot): SchemaSnapshot {
 async function migrate(root: MetaRoot, allow: AllowOptions = {}) {
   const expected = expectedFor(root);
   const unmanagedNames = collectUnmanagedNames(root);
-  const result = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres", allow, unmanagedNames });
+  const result = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres", viewReplaceProbe: postgresViewReplaceProbe(k), allow, unmanagedNames });
   const emittable = result.changes.filter((c) => c.status.state !== "blocked");
   const { up } = emittable.length === 0 ? { up: "" } : emit(emittable, { dialect: "postgres" });
   if (result.blocked.length === 0 && up.trim().length > 0) await applyRaw(up);
@@ -88,7 +88,7 @@ async function migrate(root: MetaRoot, allow: AllowOptions = {}) {
 
 /** THE gate: re-diffing the just-migrated database proposes nothing. */
 async function assertConverged(expected: SchemaSnapshot, unmanagedNames: string[] = []): Promise<void> {
-  const followup = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres", unmanagedNames });
+  const followup = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres", viewReplaceProbe: postgresViewReplaceProbe(k), unmanagedNames });
   if (followup.changes.length > 0) {
     console.error("NOT CONVERGED — a further `meta migrate` would emit:");
     for (const c of followup.changes) console.error("  -", c.kind, JSON.stringify(c).slice(0, 200));
@@ -639,23 +639,26 @@ describe("report views — inline models on real Postgres", () => {
     ]);
   }, 60_000);
 
-  test("CHANGE A REPORT: adding a measure is a drop and a create of that view, and then converges", async () => {
+  test("CHANGE A REPORT: a measure added at the end replaces the view in place, and then converges", async () => {
     const before = await loadInline(metricModel(["samples"]));
     const first = await migrate(before);
     await assertConverged(first.expected, first.unmanagedNames);
+    const oid = async (): Promise<string> =>
+      String((await select(`SELECT 'public."v_metrics_by_kind"'::regclass::oid::text AS oid`))[0]!.oid);
+    const created = await oid();
 
     const after = await loadInline(metricModel(["samples", "total"]));
-    // A plain `meta migrate`, no --allow: the drop is PAIRED with the create of the same view,
-    // which is not a destructive change. Passing dropView here would hide a broken pairing.
     const { result, up, expected, unmanagedNames } = await migrate(after);
     expect(result.blocked).toEqual([]);
 
+    // The existing columns are a prefix of the new ones, by name and by type, which is the
+    // one change Postgres accepts as CREATE OR REPLACE. Applying it is the proof the report's
+    // column types were derived correctly: Postgres refuses the statement otherwise.
     const viewChanges = result.changes.filter((c) => c.kind.endsWith("-view"));
-    expect(viewChanges.map((c) => c.kind).sort()).toEqual(["create-view", "drop-view"]);
-    expect(up).toContain(`DROP VIEW`);
-    expect(up).toContain(`CREATE VIEW "v_metrics_by_kind" AS`);
-    // A fail-safe drop and create, not CREATE OR REPLACE (the report carries no column list).
-    expect(up).not.toContain("CREATE OR REPLACE");
+    expect(viewChanges.map((c) => c.kind)).toEqual(["replace-view"]);
+    expect(up).toContain(`CREATE OR REPLACE VIEW "v_metrics_by_kind" AS`);
+    expect(up).not.toContain("DROP VIEW");
+    expect(await oid()).toBe(created);
 
     const cols = await sql.raw(
       `SELECT column_name FROM information_schema.columns WHERE table_name = 'v_metrics_by_kind' ORDER BY ordinal_position`,

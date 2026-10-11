@@ -135,6 +135,11 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
   --allow <csv>         Accepted for parity with 'migrate'; does NOT affect the
                         verify drift gate (the gate fails on ANY detected change)
   --skip-schema         Skip the schema-drift gate even when --db is present
+  --migration-format default|flyway
+                        Migration file layout (default: default), as for 'meta migrate'.
+                        Under 'flyway' the schema-drift gate leaves flyway_schema_history
+                        out of the comparison, because Flyway owns it. Also settable
+                        once as migrate.format in .metaobjects/config.json.
   --d1 <binding>        D1 binding name from wrangler.toml (only with --dialect d1)
   --remote              Target remote D1 instead of local (only with --dialect d1) —
                         the ONLY way to verify the actual deployed D1 database
@@ -338,6 +343,11 @@ FLAGS:
   --dialect sqlite|postgres|d1   Optional override (auto-detected from --db URL scheme)
   --allow <csv>         Accepted for parity with 'migrate'; does NOT affect the drift gate
   --skip-schema         Skip the schema-drift gate even when --db is present
+  --migration-format default|flyway
+                        Migration file layout (default: default), as for 'meta migrate'.
+                        Under 'flyway' the schema-drift gate leaves flyway_schema_history
+                        out of the comparison, because Flyway owns it. Also settable
+                        once as migrate.format in .metaobjects/config.json.
   --d1 <binding>        D1 binding name from wrangler.toml (only with --dialect d1)
   --remote              Target remote D1 instead of local (only with --dialect d1) —
                         the ONLY way to verify the actual deployed D1 database

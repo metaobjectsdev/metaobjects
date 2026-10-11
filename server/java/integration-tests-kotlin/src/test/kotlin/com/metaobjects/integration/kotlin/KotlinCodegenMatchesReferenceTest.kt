@@ -113,7 +113,7 @@ internal class KotlinCodegenMatchesReferenceTest {
         "ProgramMinutes" to EntityExpectation(
             columns = listOf(
                 ExpectedColumn("program", families = setOf("long"), nullable = false),
-                ExpectedColumn("programTitle", families = setOf("varchar"), nullable = true),
+                ExpectedColumn("programTitle", families = setOf("varchar"), nullable = false),
                 ExpectedColumn("weeks", families = setOf("long"), nullable = false),
                 ExpectedColumn("longWeeks", families = setOf("long"), nullable = false),
                 ExpectedColumn("labels", families = setOf("long"), nullable = false),
@@ -275,7 +275,7 @@ internal class KotlinCodegenMatchesReferenceTest {
         ),
         "WeekShapes" to EntityExpectation(
             columns = listOf(
-                ExpectedColumn("programTitle", families = setOf("varchar"), nullable = true),
+                ExpectedColumn("programTitle", families = setOf("varchar"), nullable = false),
                 ExpectedColumn("weeks", families = setOf("long"), nullable = false),
                 ExpectedColumn("unlabelled", families = setOf("long"), nullable = false),
                 ExpectedColumn("labelledMinutes", families = setOf("long"), nullable = true),
@@ -287,7 +287,7 @@ internal class KotlinCodegenMatchesReferenceTest {
         ),
         "SessionsByProgram" to EntityExpectation(
             columns = listOf(
-                ExpectedColumn("programTitle", families = setOf("varchar"), nullable = true),
+                ExpectedColumn("programTitle", families = setOf("varchar"), nullable = false),
                 ExpectedColumn("weekKey", families = setOf("long"), nullable = true),
                 ExpectedColumn("sessions", families = setOf("long"), nullable = false),
                 ExpectedColumn("sessionMinutes", families = setOf("long"), nullable = true),

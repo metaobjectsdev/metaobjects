@@ -83,9 +83,20 @@ need_registry() {
 HOSTPORT="${BASE#*://}"
 
 # ── version normalization — the same table as scripts/prerelease.mjs ──────────────────
-# canonical  <base>-rc.<N>  ->  npm/nuget verbatim · PEP 440 <base>rc<N> · Maven 7.<min>.<pat>-rc.<N>
+# canonical  <base>-rc.<N>  ->  npm/nuget verbatim · PEP 440 <base>rc<N> · Maven <npm major + 7>.<min>.<pat>-rc.<N>
 py_version()    { echo "$1" | sed -E 's/-rc\.([0-9]+)$/rc\1/'; }
-maven_version() { echo "$1" | sed -E 's/^[0-9]+\./7./'; }
+# The JVM major runs npm major + 7 (ADR-0035): 0.x -> 7.x, 1.x -> 8.x. Derived here in shell
+# rather than through scripts/maven-coordinate.mjs because this script is handed to
+# collaborators on its own, and a JVM-only machine has no Node. test-prerelease-link.sh holds
+# it to that module's mavenVersion() so the two cannot drift.
+maven_version() {
+  local v="$1"
+  if [[ ! "$v" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-.+)?$ ]]; then
+    printf '"%s" is not a three-part version\n' "$v" >&2
+    return 1
+  fi
+  echo "$((10#${BASH_REMATCH[1]} + 7)).${BASH_REMATCH[2]}.${BASH_REMATCH[3]}${BASH_REMATCH[4]}"
+}
 
 # ── ecosystem detection ───────────────────────────────────────────────────────────────
 # Detection walks the project, it does not test the root. A Maven- or pip-rooted monorepo
@@ -129,11 +140,31 @@ strip_block() {  # strip_block <file> <begin> <end>
 
 # Keep an untracked managed file out of commits without touching the shared .gitignore.
 local_exclude() {  # local_exclude <relative-path>
-  local rel="$1" gi
-  gi="$(git -C "$PROJECT" rev-parse --git-dir 2>/dev/null)" || return 0
-  [ -d "$PROJECT/$gi/info" ] || mkdir -p "$PROJECT/$gi/info"
-  local ex="$PROJECT/$gi/info/exclude"
-  grep -qxF "$rel" "$ex" 2>/dev/null || echo "$rel" >> "$ex"
+  local rel="$1" ex prefix
+  # --git-path, not --git-dir: in a linked worktree the git dir is a private directory, and the
+  # exclude file git READS is the shared one in the common dir. The answer is relative to the
+  # directory git ran in, or absolute when the git dir is elsewhere; joining an absolute one onto
+  # $PROJECT is what once wrote a stray `home/.../info/exclude` tree into the work tree.
+  ex="$(git -C "$PROJECT" rev-parse --git-path info/exclude 2>/dev/null)" || return 0
+  case "$ex" in /*) ;; *) ex="$PROJECT/$ex" ;; esac
+  # Exclude patterns are relative to the repository root, and $PROJECT may be a subdirectory.
+  prefix="$(git -C "$PROJECT" rev-parse --show-prefix 2>/dev/null || true)"
+  mkdir -p "$(dirname "$ex")"
+  grep -qxF "$prefix$rel" "$ex" 2>/dev/null || echo "$prefix$rel" >> "$ex"
+}
+
+# Refuse to report success while a file this script wrote could still be committed. The managed
+# .npmrc can hold a registry credential, and `git add -A` takes anything untracked and not ignored.
+# A tracked file is the project's own (the caller has already warned); outside a repository there
+# is nothing to commit.
+assert_ignored() {  # assert_ignored <relative-path>...
+  git -C "$PROJECT" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  local rel bad=()
+  for rel in "$@"; do
+    tracked "$rel" && continue
+    git -C "$PROJECT" check-ignore -q -- "$rel" || bad+=("$rel")
+  done
+  [ ${#bad[@]} -eq 0 ] || die "git does not ignore: ${bad[*]} — they hold the registry address (and a token when one was needed), and 'git add -A' would commit them. Add them to .git/info/exclude or .gitignore, then run link again."
 }
 
 tracked() { git -C "$PROJECT" ls-files --error-unmatch "$1" >/dev/null 2>&1; }
@@ -433,7 +464,7 @@ link_npm() {
   # pre-release pin and no registry to resolve it from — `link` reported success and the
   # breakage surfaced later as `notarget` inside that sub-project. `check` already walked
   # nested roots; that asymmetry was the bug.
-  local wrote=0 root rel f
+  local wrote=0 root rel f written=()
   while IFS= read -r root; do
     f="$root/.npmrc"
     strip_block "$f" "$BEGIN" "$END"
@@ -447,8 +478,10 @@ link_npm() {
     else
       local_exclude "$rel"
     fi
+    written+=("$rel")
     wrote=$(( wrote + 1 ))
   done < <(npm_install_roots)
+  assert_ignored ${written+"${written[@]}"}
   say "wrote $wrote .npmrc file(s) (scope $NPM_SCOPE only) + git local excludes"
   [ -n "$auth" ] && warn "the registry required a token, so .npmrc now holds a credential — do not commit it"
   repin_npm "$VERSION"

@@ -16,7 +16,7 @@ import org.jetbrains.exposed.sql.Table
  * fetched by id. Column names are the derived field names (the corpus's `literal` naming).
  */
 object SessionsByProgramView : Table("v_sessions_by_program") {
-    val programTitle = varchar("programTitle", 200).nullable()
+    val programTitle = varchar("programTitle", 200)
     val weekKey = long("weekKey").nullable()
     val sessions = long("sessions")
     val sessionMinutes = long("sessionMinutes").nullable()

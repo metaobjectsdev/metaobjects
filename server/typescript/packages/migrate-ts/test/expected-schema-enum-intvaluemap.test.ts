@@ -163,7 +163,7 @@ describe("buildExpectedSchema — int-backed field.enum (@intValueMap)", () => {
 // @intValueMap on a field that already has a column is a text<->integer
 // change-column-type, and `isWidening` returns false for ANY cross-kind pair
 // (sql-type.ts: `if (from.kind !== to.kind) return false`), so
-// `blockedReasonFor`'s change-column-type branch blocks it unless allow.typeChange
+// `blockFor`'s change-column-type branch blocks it unless allow.typeChange
 // is passed. This proves that end-to-end through the real metadata path rather
 // than asserting it about hand-built snapshots.
 describe("int-backed enum — backing-mode change is blocked by the existing guard", () => {

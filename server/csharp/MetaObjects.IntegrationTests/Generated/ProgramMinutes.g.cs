@@ -13,8 +13,10 @@ public class ProgramMinutes
     [Column("program")]
     public long Program { get; set; }
     [Column("programTitle")]
+    [Required(AllowEmptyStrings = true)]
     [MaxLength(200)]
-    public string? ProgramTitle { get; set; }
+    [MinLength(1)]
+    public string ProgramTitle { get; set; } = default!;
     [Column("weeks")]
     public long Weeks { get; set; }
     [Column("longWeeks")]

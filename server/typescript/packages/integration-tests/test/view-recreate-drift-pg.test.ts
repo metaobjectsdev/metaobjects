@@ -8,7 +8,7 @@
  */
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import {
-  buildExpectedSchema, collectUnmanagedNames, computeDriftFromActual, diff, emit, introspectPostgres,
+  buildExpectedSchema, collectUnmanagedNames, computeDriftFromActual, diff, emit, introspectPostgres, postgresViewReplaceProbe,
   isViewRecreateOnly, type SchemaSnapshot,
 } from "@metaobjectsdev/migrate-ts";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
@@ -47,6 +47,21 @@ const views = () => buildProjectionViews(canonical, { dialect: "postgres", colum
 const expectedSchema = (): SchemaSnapshot =>
   buildExpectedSchema(canonical, { columnNamingStrategy: STRATEGY, views: views() });
 
+/**
+ * The expected schema once the metadata widens `weeks.durationMinutes` to a bigint. Postgres blocks
+ * a type change on a column a view reads, so this is the change that strands every view over it
+ * (a nullability or default change does not: it alters in place). The views' SQL is untouched, so
+ * their fingerprints still match.
+ */
+let widened = false;
+const expectedForRun = (): SchemaSnapshot => {
+  const schema = expectedSchema();
+  if (!widened) return schema;
+  const weeks = schema.tables.find((t) => t.name === "weeks")!;
+  weeks.columns.find((c) => c.name === "durationMinutes")!.sqlType = { kind: "integer", bits: 64 };
+  return schema;
+};
+
 async function applyRaw(text: string): Promise<void> {
   for (const stmt of text.split(/;\s*\n/).map((s) => s.trim()).filter(Boolean)) {
     await sql.raw(stmt.endsWith(";") ? stmt : `${stmt};`).execute(k);
@@ -54,35 +69,41 @@ async function applyRaw(text: string): Promise<void> {
 }
 
 async function migrate(allow = {}) {
-  const expected = expectedSchema();
+  const expected = expectedForRun();
   const unmanagedNames = collectUnmanagedNames(canonical);
-  const result = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres", allow, unmanagedNames });
+  const result = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres", viewReplaceProbe: postgresViewReplaceProbe(k), allow, unmanagedNames });
   expect(result.blocked).toEqual([]);
   const { up } = result.changes.length === 0 ? { up: "" } : emit(result.changes, { dialect: "postgres" });
   if (up.trim().length > 0) await applyRaw(up);
   return { result, up };
 }
 
-/** The canonical model migrated from empty, then `weeks.durationMinutes` made nullable by hand. */
-async function migratedWithNullableWeeks(): Promise<void> {
+/** The canonical model migrated from empty, then the metadata widens `weeks.durationMinutes`. */
+async function migratedThenWidened(): Promise<void> {
+  widened = false;
   await migrate();
-  await sql.raw(`ALTER TABLE "weeks" ALTER COLUMN "durationMinutes" DROP NOT NULL`).execute(k);
+  widened = true;
 }
 
 describe("D3 — a view recreated only around a column change is not drift (postgres)", () => {
   test("drift reports the column and no view", async () => {
-    await migratedWithNullableWeeks();
-    const drift = await computeDriftFromActual(await introspectPostgres(k), "postgres", canonical, {
+    await migratedThenWidened();
+    // computeDriftFromActual builds its own expected schema from the metadata, so mirror the
+    // widening on the other side: the database column reads as the wider type.
+    const actual = await introspectPostgres(k);
+    actual.tables.find((t) => t.name === "weeks")!.columns.find((c) => c.name === "durationMinutes")!.sqlType =
+      { kind: "integer", bits: 64 };
+    const drift = await computeDriftFromActual(actual, "postgres", canonical, {
       columnNamingStrategy: STRATEGY,
       views: views(),
     });
-    expect(drift.changes.map((c) => c.kind)).toEqual(["change-column-nullable"]);
+    expect(drift.changes.map((c) => c.kind)).toEqual(["change-column-type"]);
     expect(drift.blocked.filter(isViewChange)).toEqual([]);
   }, 60_000);
 
   test("the diff plans each pair marked unchanged; it applies and converges", async () => {
-    await migratedWithNullableWeeks();
-    const { result, up } = await migrate({ nullableToNotNull: true });
+    await migratedThenWidened();
+    const { result, up } = await migrate({ typeChange: true });
     const pairs = result.changes.filter(isViewChange);
     expect(pairs.length).toBeGreaterThan(0);
     for (const c of pairs) {
@@ -92,9 +113,10 @@ describe("D3 — a view recreated only around a column change is not drift (post
     expect(up).toContain(`CREATE VIEW "v_program_minutes"`);
 
     const followup = await diff({
-      expected: expectedSchema(),
+      expected: expectedForRun(),
       actual: await introspectPostgres(k),
       dialect: "postgres",
+      viewReplaceProbe: postgresViewReplaceProbe(k),
       unmanagedNames: collectUnmanagedNames(canonical),
     });
     expect(followup.changes).toEqual([]);

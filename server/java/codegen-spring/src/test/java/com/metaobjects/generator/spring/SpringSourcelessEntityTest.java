@@ -77,7 +77,7 @@ public class SpringSourcelessEntityTest extends SharedRegistryTestBase {
         assertFalse("no identity: nothing to address", RestSurfaceGate.isSourcelessEntity(note));
 
         assertFalse("no store MetaObjects manages: no controller", SpringControllerGenerator.appliesTo(order));
-        assertFalse("no store MetaObjects manages: no repository", SpringRepositoryGenerator.appliesTo(order));
+        assertFalse("no store MetaObjects manages: no repository", SpringGeneratorSupport.repositoryAppliesTo(order));
         assertTrue("the adopter's list endpoint needs the allowlist", SpringFilterAllowlistGenerator.appliesTo(order));
         assertFalse(SpringFilterAllowlistGenerator.appliesTo(item));
 

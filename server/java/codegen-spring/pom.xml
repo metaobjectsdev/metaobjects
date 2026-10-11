@@ -224,6 +224,28 @@
                             </resources>
                         </configuration>
                     </execution>
+                    <!-- The emit rules the generators share (GeneratorRegistry.EJECT_SUPPORT).
+                         Eject copies one beside every ejected generator whose source imports
+                         it, in the owned package, so an owned generator never calls this
+                         jar's copy of a rule the adopter may want to change. -->
+                    <execution>
+                        <id>ship-eject-support-source</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/META-INF/metaobjects/reference/java/support</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>src/main/java/com/metaobjects/generator/spring</directory>
+                                    <includes>
+                                        <include>SpringGeneratorSupport.java</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
         </plugins>

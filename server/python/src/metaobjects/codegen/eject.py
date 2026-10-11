@@ -17,6 +17,11 @@ its registry entry, and eject hands that over too: the runtime source lands in
 generator emits that source into the generated package and its output imports the local
 copy. Core modules (loader, registry, render, extract, ``ObjectManager``) stay package
 imports. An existing runtime copy is never overwritten, even with ``--force``.
+
+The emit rules several generators share (``shared_predicates``) are listed and copied the
+same way. A generator imports them relatively from its ``runtime`` sibling, so the verbatim
+copy in ``codegen/generators/`` reads ``codegen/runtime/shared_predicates.py`` with no
+edit, and two owned generators read the one copy.
 """
 from __future__ import annotations
 
@@ -70,14 +75,15 @@ def packaged_source(entry: GeneratorEntry) -> str:
 
 def ejected_source(entry: GeneratorEntry) -> str:
     """What ``eject`` writes for *entry*: the packaged source, with the runtime switch on
-    when its output imports helper runtime. This is the reference an owned copy is
-    compared against."""
+    when it carries one (a generator whose output imports helper runtime does). This is
+    the reference an owned copy is compared against."""
     source = packaged_source(entry)
-    if not entry.runtime:
+    switches = source.count(_RUNTIME_SWITCH_OFF)
+    if switches == 0:
         return source
-    if source.count(_RUNTIME_SWITCH_OFF) != 1:
+    if switches != 1:
         raise RuntimeError(
-            f"{entry.source_module} must carry exactly one {_RUNTIME_SWITCH_OFF!r} line "
+            f"{entry.source_module} must carry at most one {_RUNTIME_SWITCH_OFF!r} line "
             "for eject to hand its runtime over"
         )
     return source.replace(_RUNTIME_SWITCH_OFF, _RUNTIME_SWITCH_ON)
@@ -142,7 +148,7 @@ def eject(names: list[str], root: Path, *, force: bool = False) -> EjectResult:
             rt.parent.mkdir(parents=True, exist_ok=True)
             rt.write_text(packaged_runtime_path(module).read_text(encoding="utf-8"),
                           encoding="utf-8")
-            out.append(f"  runtime {rel}: copied — its generated output imports this copy")
+            out.append(f"  runtime {rel}: copied — your owned generator reads this copy")
     out.append("")
     out.append(
         "The copies are yours: edit them freely. Keep only one of the packaged name and your "

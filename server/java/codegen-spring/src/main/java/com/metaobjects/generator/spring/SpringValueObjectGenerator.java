@@ -4,6 +4,7 @@ package com.metaobjects.generator.spring;
 // com.metaobjects.generator.spring when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.spring.SpringGeneratorSupport;
 import com.metaobjects.generator.spring.SpringNaming;
 import com.metaobjects.generator.spring.SpringRecordBuilder;
 import com.metaobjects.generator.spring.SpringTypeMapper;
@@ -45,7 +46,7 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
  * </ul>
  *
  * <p>Its record carries jakarta bean-validation constraints on each member (reusing
- * {@link SpringDtoGenerator#validationAnnotations(MetaField)}) plus {@code @Valid} on any nested
+ * {@link SpringGeneratorSupport#validationAnnotations(MetaField)}) plus {@code @Valid} on any nested
  * value-object member, so {@code validator.validate(bean)} cascades to depth &ge; 2 (spec section
  * 0). The record name is the value object's short name (e.g. {@code Marker}), emitted into the
  * value object's own Java package; {@link SpringTypeMapper} and the template tier reference it
@@ -122,12 +123,12 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         boolean usesValidation = false;
         boolean usesValid = false;
         for (MetaField field : fields) {
-            String a = SpringDtoGenerator.validationAnnotations(field);
+            String a = SpringGeneratorSupport.validationAnnotations(field);
             // valueObjectRefOf, not isValueObjectJsonbField: it spans BOTH shapes that carry a
             // value object (field.object @objectRef and field.map @objectRef). The entity DTO
             // cascades into a map of value objects; a VO nesting the same shape must too, or
             // the nested constraints go unenforced one level down.
-            if (SpringDtoGenerator.valueObjectRefOf(field) != null) {
+            if (SpringGeneratorSupport.valueObjectRefOf(field) != null) {
                 a = a.isEmpty() ? "@Valid" : "@Valid " + a;
                 usesValid = true;
             }
@@ -194,7 +195,7 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
      * package-level shared enum is typed by the materialized standalone type (a bare {@code E}
      * in the same package, else its FQN) or — when {@code @provided} — the configured external
      * {@code <ns>.E}; an enum array wraps it in {@code List<…>}. Every other field (including
-     * inline enums) delegates verbatim to {@link SpringDtoGenerator#componentType}, so the inline
+     * inline enums) delegates verbatim to {@link SpringGeneratorSupport#componentType}, so the inline
      * default stays byte-identical. Mirrors {@link SpringDtoGenerator}'s own
      * {@code componentTypeFr019} — the two generators resolve a shared field to the SAME
      * reference because both call {@link Fr019SharedEnum#sharedEnumForField}.
@@ -207,7 +208,7 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
                 return field.isArrayType() ? "java.util.List<" + ref + ">" : ref;
             }
         }
-        return SpringDtoGenerator.componentType(field, owner);
+        return SpringGeneratorSupport.componentType(field, owner);
     }
 
     /**

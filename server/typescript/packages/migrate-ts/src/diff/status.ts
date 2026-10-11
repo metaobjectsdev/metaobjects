@@ -33,39 +33,46 @@ export function applyStatus(changes: Change[], allow: AllowOptions = {}): void {
     }
   }
   for (const c of changes) {
-    const blockedReason = blockedReasonFor(c, allow, recreatedViews);
-    if (blockedReason !== null) {
-      c.status = { state: "blocked", blockedReason };
-    } else {
-      c.status = { state: "allowed" };
-    }
+    const block = blockFor(c, allow, recreatedViews);
+    c.status = block !== null ? { state: "blocked", ...block } : { state: "allowed" };
   }
 }
 
-function blockedReasonFor(
+/** Why a change is blocked, and the one `AllowOptions` field that lifts that block. */
+interface Block {
+  blockedBy: keyof AllowOptions;
+  blockedReason: string;
+}
+
+/** Null when `allow[blockedBy]` is granted, else the block naming it. */
+function gate(allow: AllowOptions, blockedBy: keyof AllowOptions, blockedReason: string): Block | null {
+  return allow[blockedBy] ? null : { blockedBy, blockedReason };
+}
+
+function blockFor(
   c: Change,
   allow: AllowOptions,
   recreatedViews: ReadonlySet<string>,
-): string | null {
+): Block | null {
   switch (c.kind) {
     case "drop-column":
-      return allow.dropColumn ? null : "destructive: drop-column not allowed (pass allow.dropColumn)";
+      return gate(allow, "dropColumn", "destructive: drop-column not allowed (pass allow.dropColumn)");
     case "drop-table":
-      return allow.dropTable ? null : "destructive: drop-table not allowed (pass allow.dropTable)";
+      return gate(allow, "dropTable", "destructive: drop-table not allowed (pass allow.dropTable)");
     case "drop-index":
       // Carried through a rename-column: the same rule over the same data — nothing is lost.
       if (c.carriedByRename === true) return null;
-      return allow.dropIndex ? null : "destructive: drop-index not allowed (pass allow.dropIndex)";
+      return gate(allow, "dropIndex", "destructive: drop-index not allowed (pass allow.dropIndex)");
     case "drop-fk":
       // Carried through a rename-column: the same rule over the same data — nothing is lost.
       if (c.carriedByRename === true) return null;
-      return allow.dropFk ? null : "destructive: drop-fk not allowed (pass allow.dropFk)";
+      return gate(allow, "dropFk", "destructive: drop-fk not allowed (pass allow.dropFk)");
     case "drop-check":
       // Carried through a rename-column: the same rule over the same data — nothing is lost.
       if (c.carriedByRename === true) return null;
       // Re-spelled for older SQLite: the same rule comes straight back.
       if (c.respelled === true) return null;
-      return allow.dropCheck ? null : "destructive: drop-check not allowed (pass allow.dropCheck)";
+      return gate(allow, "dropCheck", "destructive: drop-check not allowed (pass allow.dropCheck)");
     case "drop-view": {
       // A drop that would destroy relations we do NOT manage is gated INDEPENDENTLY of
       // whether our own view survives. Even the recreate pair — where our view comes
@@ -74,10 +81,13 @@ function blockedReasonFor(
       // FIRST: it is the one thing `allow.dropView` must never be able to wave through.
       const external = c.dependents ?? [];
       if (external.length > 0 && !allow.dropViewCascade) {
-        return `destructive: dropping view "${c.view}" would CASCADE into ${external.length} object(s) `
-          + `MetaObjects does not manage and cannot restore `
-          + `(${external.map((d) => `${d.schema}.${d.name}`).join(", ")}) `
-          + `— pass allow.dropViewCascade to destroy them, or migrate them off this view first`;
+        return {
+          blockedBy: "dropViewCascade",
+          blockedReason: `destructive: dropping view "${c.view}" would CASCADE into ${external.length} object(s) `
+            + `MetaObjects does not manage and cannot restore `
+            + `(${external.map((d) => `${d.schema}.${d.name}`).join(", ")}) `
+            + `— pass allow.dropViewCascade to destroy them, or migrate them off this view first`,
+        };
       }
       // #239: the drop half of ADOPTING an unmanaged view (no fingerprint) whose shape
       // changed too much for a legal CREATE OR REPLACE. It is paired with a create-view,
@@ -85,13 +95,16 @@ function blockedReasonFor(
       // hand-written) SQL needs explicit consent, exactly like the replace-view adopt
       // path. Gate on allow.adoptView BEFORE the recreate-pair auto-allow.
       if (c.unmanagedActual && !allow.adoptView) {
-        return `existing view "${c.view}" carries no MetaObjects fingerprint — it is hand-written, `
-          + `or was created before view fingerprinting. Its shape changed, so adopting it means `
-          + `DROP + rebuild, which takes ownership and cannot be undone. Pass allow.adoptView to adopt it`;
+        return {
+          blockedBy: "adoptView",
+          blockedReason: `existing view "${c.view}" carries no MetaObjects fingerprint — it is hand-written, `
+            + `or was created before view fingerprinting. Its shape changed, so adopting it means `
+            + `DROP + rebuild, which takes ownership and cannot be undone. Pass allow.adoptView to adopt it`,
+        };
       }
       // Identity, not bare name — see viewIdentity().
       if (recreatedViews.has(viewIdentity(c.view, c.schema))) return null; // recreate pair — view survives
-      return allow.dropView ? null : "destructive: drop-view not allowed (pass allow.dropView)";
+      return gate(allow, "dropView", "destructive: drop-view not allowed (pass allow.dropView)");
     }
 
     case "replace-view":
@@ -103,9 +116,12 @@ function blockedReasonFor(
       // Every environment upgrading from a pre-fingerprint toolchain hits this exactly
       // once, then its views are stamped and it never fires again.
       if (c.unmanagedActual && !allow.adoptView) {
-        return `existing view "${c.view.name}" carries no MetaObjects fingerprint — it is hand-written, `
-          + `or was created before view fingerprinting. Overwriting it takes ownership and cannot be undone. `
-          + `Pass allow.adoptView to adopt it`;
+        return {
+          blockedBy: "adoptView",
+          blockedReason: `existing view "${c.view.name}" carries no MetaObjects fingerprint — it is hand-written, `
+            + `or was created before view fingerprinting. Overwriting it takes ownership and cannot be undone. `
+            + `Pass allow.adoptView to adopt it`,
+        };
       }
       return null;
 
@@ -115,7 +131,7 @@ function blockedReasonFor(
       const refusal = autoSequenceDropRefusal(c.table, c.column, c.fromDefault, c.toDefault, allow);
       if (refusal !== null) return refusal;
       if (isWidening(c.from, c.to)) return null;     // widening always allowed
-      return allow.typeChange ? null : "lossy type change (pass allow.typeChange)";
+      return gate(allow, "typeChange", "lossy type change (pass allow.typeChange)");
     }
 
     case "change-column-nullable":
@@ -123,7 +139,7 @@ function blockedReasonFor(
       // notnull (false) → nullable (true): allowed
       // nullable (true) → notnull (false): requires flag (existing data must satisfy)
       if (c.from === false && c.to === true) return null;
-      return allow.nullableToNotNull ? null : "nullable→notnull requires existing data to satisfy (pass allow.nullableToNotNull)";
+      return gate(allow, "nullableToNotNull", "nullable→notnull requires existing data to satisfy (pass allow.nullableToNotNull)");
 
     case "change-column-default": {
       // Ordinary default changes (literal→literal, adding/removing a plain
@@ -165,14 +181,14 @@ function blockedReasonFor(
  */
 function autoSequenceDropRefusal(
   table: string, column: string, from: ColumnDefault | undefined, to: ColumnDefault | undefined,
-  allow: { dropIdentityDefault?: boolean },
-): string | null {
-  if (!dropsAutoSequenceDefault(from, to) || allow.dropIdentityDefault) return null;
-  return `column "${table}"."${column}" has a live Postgres auto-increment default `
+  allow: AllowOptions,
+): Block | null {
+  if (!dropsAutoSequenceDefault(from, to)) return null;
+  return gate(allow, "dropIdentityDefault", `column "${table}"."${column}" has a live Postgres auto-increment default `
     + `(${from!.value}) but its metadata declares no @generation — this is ambiguous: it `
     + `could mean @generation was never declared, or that auto-increment is being removed on `
     + `purpose. Dropping the default is destructive (every insert that omits the column starts `
     + `failing), so this refuses rather than guessing. Declare @generation: increment on the `
     + `identity to keep the sequence, or pass --allow drop-identity-default if removing it is `
-    + `intentional`;
+    + `intentional`);
 }

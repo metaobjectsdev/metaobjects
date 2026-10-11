@@ -2,7 +2,7 @@
 // both `meta migrate` and `meta verify --db`. Keeping a single copy avoids the
 // two commands drifting on which `--allow` tokens exist or how a change reads.
 
-import { allowOptionFor, isViewRecreateOnly, suggestColumnRenames } from "@metaobjectsdev/migrate-ts";
+import { allowOptionFor, describeSqlType, isViewRecreateOnly, suggestColumnRenames } from "@metaobjectsdev/migrate-ts";
 import type { AllowOptions, Change, ColumnRenameSuggestion, ViewChangeReason } from "@metaobjectsdev/migrate-ts";
 import type { BlockedEntry } from "./output.js";
 
@@ -71,7 +71,7 @@ export function describeChange(c: Change): string {
       const from = c.fromDefault?.value ?? "none";
       const to = c.toDefault?.value ?? "none";
       const dflt = from === to && c.fromDefault?.kind === c.toDefault?.kind ? "" : `, default ${from} → ${to}`;
-      return `${c.table}.${c.column} (${c.from.kind} → ${c.to.kind}${dflt})`;
+      return `${c.table}.${c.column} (${describeSqlType(c.from)} → ${describeSqlType(c.to)}${dflt})`;
     }
     case "change-column-nullable": return `${c.table}.${c.column} (${c.from ? "NULL" : "NOT NULL"} → ${c.to ? "NULL" : "NOT NULL"})`;
     case "change-column-default": return `${c.table}.${c.column}`;
