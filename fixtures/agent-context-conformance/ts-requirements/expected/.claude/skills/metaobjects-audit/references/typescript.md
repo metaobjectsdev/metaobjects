@@ -71,43 +71,52 @@ here — the table is its second pass, not its definition.
 `meta eject <name>...` copies the reference generator templates a project chooses into
 `codegen/generators/*.ts`. Since 1.0.4 `meta init` scaffolds that directory EMPTY with
 `generators: []` (a project initialised on an earlier CLI got four wired copies, so both
-shapes are normal). `metaobjects.config.ts` imports the **owned** local copies:
+shapes are normal). A generator reaches `metaobjects.config.ts` one of two ways, and both
+are supported from 1.1:
 
 ```ts
-import { entityFile } from "./codegen/generators/entity";
-import { queriesFile } from "./codegen/generators/queries";
+// run as shipped — nothing copied, fixes arrive by upgrading
+import { entityFile, queriesFile } from "@metaobjectsdev/codegen-ts/generators";
+// owned — a local copy the project can change
+import { routesFile } from "./codegen/generators/routes";
 ```
 
-**Removed import path.** `entityFile` / `queriesFile` / `routesFile` / `barrel` were
-exported from `@metaobjectsdev/codegen-ts/generators` and deprecated; **1.0 removed them**
-(ADR-0035 A3). On 1.0+ this no longer resolves:
-
-```ts
-import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
-```
-
-**Do NOT flag the subpath itself.** `@metaobjectsdev/codegen-ts/generators` is the supported,
-non-deprecated home of the generators it still exports — the prompt/output tier
-(`promptRender`, `outputParser`, `outputPrompt`, `extractor`, `renderHelper`),
-`traceHelperFile`, `routesFileHono`, `namesFile` and `callableFile`. The prompt tier can
-also be ejected (`meta eject prompt-render`), but owning it is optional; `traceHelperFile`
-and `callableFile` are package-only and this subpath is their only home. The CLI's own
-prompt-gate warning tells adopters to import `promptRender` from exactly this path. A
-project importing those from it is CORRECT, and reporting it as un-adopted scaffold-and-own
-is a false finding.
-
-**Finding this in a project:** grep for the four removed NAMES on that path, never the path
-alone:
+**Audit the owned copies first.** A copy exists to carry a change. One that carries none
+is duplication, and it falls behind the reference:
 
 ```bash
+meta eject --list
+```
+
+marks each owned copy `identical to the reference`, `same content as the reference, your
+formatting`, or `DIFFERS: N line(s) behind, M line(s) of your own`. A copy that is
+identical, or behind with `0 line(s) of your own`, is a **finding**: recommend replacing
+its local import with the package import and deleting the file, then `meta gen` and a
+review of the diff. A copy with lines of its own is an intentional customization. Check
+only how far behind it is.
+
+**Do NOT flag the subpath itself.** `@metaobjectsdev/codegen-ts/generators` is the supported
+home of every generator factory: the entity tier (`entityFile`, `queriesFile`, `routesFile`,
+`routesFileHono`, `namesFile`, `barrel`), the prompt/output tier (`promptRender`,
+`outputParser`, `outputPrompt`, `extractor`, `renderHelper`), `traceHelperFile`,
+`callableFile` and the rest. The CLI's own prompt-gate warning tells adopters to import
+`promptRender` from exactly this path. A project importing from it is CORRECT, and
+reporting it as un-adopted scaffold-and-own is a false finding.
+
+**The one version where an import is a blocker.** `entityFile` / `queriesFile` /
+`routesFile` / `barrel` were removed from that subpath at 1.0 (ADR-0035 A3) and restored in
+1.1 (ADR-0034 Amendment 5). On a 1.0.x install a config importing them fails to load with
+a message naming `meta eject`. Check the installed version before reading a hit as a
+finding, and match the four NAMES, never the path alone:
+
+```bash
+npm list @metaobjectsdev/codegen-ts
 grep -rn '@metaobjectsdev/codegen-ts/generators' . \
   | grep -E 'entityFile|queriesFile|routesFile|barrel'
 ```
 
-A hit is a 1.0 upgrade blocker (the import fails to resolve) — recommend `meta init` (or
-`meta eject <name>`) to scaffold the owned copies, then import those locally. The owned
-generator files themselves (`codegen/generators/*.ts`) are the second thing to audit: are
-they stale relative to the reference templates, or intentionally customized?
+On 1.0.x a hit is an upgrade blocker: recommend upgrading to 1.1, or `meta eject <name>`
+and importing the copies locally. On 1.1 and later a hit is correct.
 
 ---
 

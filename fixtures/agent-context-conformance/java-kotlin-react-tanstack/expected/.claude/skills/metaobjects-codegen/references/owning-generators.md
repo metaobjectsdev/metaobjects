@@ -10,7 +10,7 @@ it there, in the same change, and keep going:
 
 | Port | Where the fix goes |
 |---|---|
-| **TypeScript** | Your ejected copy under `codegen/generators/` — and, for routes, the HTTP adapter it calls: `meta eject routes` / `routes-hono` / `entity` also copy that adapter's source (mount helpers, filter parser, error envelopes, pagination) into `codegen/runtime/`, and the ejected output imports it from there, so a bug in a route's behaviour is fixed in that copy. If you are running a generator you never ejected, `meta eject <name>` it first. A generator that `meta eject --list` does not name (the prompt tier, for one) has no reference template yet: replace it in `generators` with your own `Generator`, starting from its source in the installed package. |
+| **TypeScript** | Your ejected copy under `codegen/generators/` — and, for routes, the HTTP adapter it calls: `meta eject routes` / `routes-hono` / `entity` also copy that adapter's source (mount helpers, filter parser, error envelopes, pagination) into `codegen/runtime/`, and the ejected output imports it from there, so a bug in a route's behaviour is fixed in that copy. If you are running a generator you never ejected (imported from its package), `meta eject <name>` it first and swap the import for the local one eject prints. A generator `meta gen --list` marks `package-only` (the `template` primitive, `shared-model`) has no reference template: replace it in `generators` with your own `Generator`, starting from its source in the installed package. |
 | **Java / Kotlin** | Your own generator class. Subclass the reference generator and override the `protected` method that emits the wrong piece; when that piece is `private`, copy the reference generator's source (Apache-2.0) into your own package and edit it. Put the class in a codegen module that the module running `metaobjects:generate` depends on — the plugin loads `<classname>` from that module's compile classpath, and `provided` scope keeps it out of your packaged app — then point `<classname>` at it. Full steps: the Java and Kotlin references. |
 | **C# / Python** | Your owned copy (`dotnet meta eject <name>` / `metaobjects eject <name>`, then edit it), or a generator of your own that replaces the artifact — an `IGenerator` in `codegen/Program.cs` on C#, a `module:symbol` entry on Python — or a template spec (`--template-spec`). |
 
@@ -41,6 +41,26 @@ adopt the surface you decided against.
 Every port gets a reference generator's source the same way — its `eject` command — and
 writes a new one against the same small interface (the top of the skill). Your language
 reference has the per-port mechanics.
+
+## Run it as shipped, or own a copy
+
+Owning a generator is how you **change** it. It is not a precondition for running one, and
+a copy you never change is a cost: it duplicates the reference and falls behind it, so the
+project misses fixes it would have received by upgrading.
+
+| You want | Do |
+|---|---|
+| A stock generator's output, unchanged | Wire it from its package and copy nothing. TypeScript: the import line on its `meta gen --list` row, for example `import { entityFile } from "@metaobjectsdev/codegen-ts/generators";`. Other ports: select it by its stable name. |
+| To change what a stock generator emits | Eject it, edit the copy, and point the config at the copy. On TypeScript the factory keeps its name, so that is one import line. |
+| To stop carrying a copy you never changed | `meta eject --list` (TypeScript) or `gen --list` (other ports) marks each owned copy identical to the reference or differing from it. One with no lines of your own is unmodified. On TypeScript, replace its local import with the package import, delete the file, run `meta gen` and review the diff. |
+
+A generator you import is still a reference helper: its output can change when you upgrade,
+and `verify --codegen` reports that as drift until you regenerate. If output has to hold
+still across upgrades, own the copy.
+
+On TypeScript `@metaobjectsdev/*` 1.0.x, `entityFile`, `queriesFile`, `routesFile` and
+`barrel` are not exported from the package and an owned copy is the only way to run them.
+1.1 restored the import. Check the installed version before replacing a copy with it.
 
 ## A generator of your own beside the references
 

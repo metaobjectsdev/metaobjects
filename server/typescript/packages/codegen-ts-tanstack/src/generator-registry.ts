@@ -21,6 +21,7 @@ export const tanstackGeneratorRegistry: Record<string, GeneratorRegistryEntry> =
       "Per-entity TanStack Query hooks (useEntity / useEntities / useCreate / useUpdate / useDelete).",
     tier: "native",
     factory: () => tanstackQuery(),
+    factoryExport: "tanstackQuery",
     options: "filter?, target?",
     framework: "tanstack",
     requires: ["entity"],
@@ -37,6 +38,7 @@ export const tanstackGeneratorRegistry: Record<string, GeneratorRegistryEntry> =
       "Per-entity TanStack Table column definitions, from a layout.dataGrid declaration.",
     tier: "native",
     factory: () => tanstackGrid(),
+    factoryExport: "tanstackGrid",
     options: "filter?, tphSubtypeGrids?, target?",
     framework: "tanstack",
     requires: ["entity"],
@@ -52,6 +54,7 @@ export const tanstackGeneratorRegistry: Record<string, GeneratorRegistryEntry> =
       "Per-entity server-driven grid state hook (sort/filter/page) over the generated columns.",
     tier: "native",
     factory: () => tanstackGridHook(),
+    factoryExport: "tanstackGridHook",
     options: "filter?, tphSubtypeGrids?, target?",
     framework: "tanstack",
     // `grid` is here because the emitted hook imports the columns module's filter

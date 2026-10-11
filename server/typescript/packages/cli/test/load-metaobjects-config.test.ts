@@ -33,6 +33,38 @@ describe("loadMetaobjectsConfig", () => {
     }
   });
 
+  // 1.0 removed these four from the package and made an owned copy the only path; 1.1
+  // restored them (ADR-0034 Amendment 5). The loader refused this exact config with a
+  // migration message in between, so it is the config to pin: it must LOAD, and every
+  // entry must be a generator the runner can call.
+  test("loads a config importing the stock entity, queries, routes and barrel factories", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mo-cfg-stock-"));
+    try {
+      writeFileSync(
+        join(dir, "metaobjects.config.ts"),
+        [
+          `import { defineConfig } from "@metaobjectsdev/codegen-ts";`,
+          `import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";`,
+          `export default defineConfig({`,
+          `  outDir: "out",`,
+          `  dialect: "sqlite",`,
+          `  dbImport: "../db",`,
+          `  generators: [entityFile(), queriesFile(), routesFile(), barrel()],`,
+          `});`,
+        ].join("\n"),
+      );
+      const cfg = await loadMetaobjectsConfig(dir);
+      expect(cfg.generators.map((g) => (typeof g === "string" ? g : g.name))).toEqual([
+        "entity-file", "queries-file", "routes-file", "barrel",
+      ]);
+      for (const g of cfg.generators) {
+        expect(typeof g === "string" ? undefined : typeof g.generate).toBe("function");
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   // Regression for the launch-B3 nodenext fix: `meta init` now scaffolds the
   // ADR-0034 owned-generator imports with a `.js` extension (nodenext-safe). The
   // jiti-based loader must still resolve those relative `.js` specifiers to the

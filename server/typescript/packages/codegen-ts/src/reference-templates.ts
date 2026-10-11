@@ -25,6 +25,10 @@ export const REFERENCE_GENERATOR_NAMES = [
   // The Cube exporter (FR-044 Plan 4): the owned part is which entities get a cube, the
   // file layout and the YAML call; `buildCubeModel` and `renderCubeYaml` stay in the package.
   "cube-model",
+  // The stored-procedure / table-function wrapper and the LLM-call trace helper: thin
+  // generators over `renderCallableFile` / `renderTraceHelper`, so the owned part is which
+  // objects get a module and where it lands.
+  "callable", "trace-helper",
 ] as const;
 export type ReferenceGeneratorName = (typeof REFERENCE_GENERATOR_NAMES)[number];
 

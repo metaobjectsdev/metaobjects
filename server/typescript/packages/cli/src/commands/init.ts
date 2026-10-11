@@ -17,8 +17,9 @@ import { DEFAULT_DOCS_DIR } from "@metaobjectsdev/codegen-ts";
 import { describeError } from "../lib/error-text.js";
 import { SUBTYPE_ROOT, TYPE_METADATA, TYPE_SUBTYPE_SEPARATOR } from "@metaobjectsdev/metadata/constants";
 
-// ADR-0034 scaffold-and-own — `meta init` copies the codegen reference templates into
-// the consumer's repo so they OWN them; metaobjects.config.ts imports them locally.
+// ADR-0034 scaffold-and-own — where `meta eject` and `meta generator new` put a generator
+// the consumer OWNS. `meta init` scaffolds it empty; metaobjects.config.ts imports from it
+// locally, or imports a stock generator from its package (Amendment 5).
 const OWNED_GENERATORS_DIR = "codegen/generators";
 
 
@@ -105,14 +106,21 @@ export default defineConfig({
   // would emit, so you can see what your metadata is already asking for. Group by
   // \`layer\`: model / persistence / api / client / docs / capability.
   //
-  // Then take the ones you want:
+  // Every row carries a \`wire.import\` line and a \`wire.entry\`. To run a generator as
+  // shipped, add its import at the top of this file and its entry below:
   //
-  //   meta eject entity queries routes barrel
+  //   import { entityFile, queriesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
   //
-  // That copies each generator into ./codegen/generators/ — YOURS to edit, and what
-  // \`meta gen\` runs — and prints the import line to add here, the entry to add below,
-  // what to install, and any config keys those generators read (\`dbImport\`,
-  // \`apiPrefix\`, \`extStyle\`, …). Add them here as you go.
+  // then call each one in the array below: entityFile(), queriesFile(), barrel().
+  // The row also lists what to install and the config keys the generator reads
+  // (\`dbImport\`, \`apiPrefix\`, \`extStyle\`, …). Add them here as you go.
+  //
+  // Need one to emit something different? Own it:
+  //
+  //   meta eject entity
+  //
+  // copies that generator into ./codegen/generators/ — YOURS to edit — and prints the
+  // local import to swap in for the package one. \`meta gen\` then runs your copy.
   //
   // Need an output nothing in that catalog emits — OpenAPI, JSON Schema, a client, a
   // service layer, docs? Write your own generator; that is the normal path:
@@ -148,9 +156,11 @@ Next steps:
   1. Author entities under metaobjects/ (start from the scaffolded meta.common.json)
   2. meta gen --list --probe    # the catalog: every generator, grouped by layer, with
                                 #   how many files each would emit for YOUR model
-  3. meta eject <name>...       # take the ones you want — copies them into
+  3. Wire the ones you want in metaobjects.config.ts: each catalog row prints the
+     import that runs it as shipped.
+     meta eject <name>...       # need to change what one emits? copies it into
                                 #   codegen/generators/ (yours to edit) and prints the
-                                #   import, the entry to wire, and what to install
+                                #   import to swap in and what to install
      meta generator new <name>  # an output no reference emits? write your own — this
                                 #   scaffolds a working one and wires it
   4. meta gen                  # generate from exactly what you wired

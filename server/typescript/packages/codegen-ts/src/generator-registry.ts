@@ -27,14 +27,11 @@
 import type { Generator } from "./generator.js";
 import type { MetaobjectsGenConfig } from "./metaobjects-config.js";
 import { REFERENCE_GENERATOR_NAMES } from "./reference-templates.js";
-// The four ADR-0034 ownable generators are no longer exported from ./generators/index.js
-// (1.0 removed them — see that file's header). They remain the engine's internal composers
-// and the stable-name registry still constructs them, so import them from their own modules.
-import { entityFile } from "./generators/entity-file.js";
-import { queriesFile } from "./generators/queries-file.js";
-import { routesFile } from "./generators/routes-file.js";
-import { barrel } from "./generators/barrel.js";
 import {
+  entityFile,
+  queriesFile,
+  routesFile,
+  barrel,
   callableFile,
   routesFileHono,
   namesFile,
@@ -105,6 +102,16 @@ export interface GeneratorRegistryEntry {
   tier: GeneratorTier;
   /** Constructs the generator with sensible defaults. Calling it must not throw. */
   factory: () => Generator;
+  /**
+   * The name this generator's factory is exported under from its package's public
+   * factory module — `@metaobjectsdev/codegen-ts/generators` for this package, the
+   * package root for the framework packages. It is what an adopter imports to run the
+   * generator as shipped, so `meta gen --list` prints it.
+   *
+   * Resolved, not trusted: a gate imports that module and requires a function under this
+   * name whose generator carries the same implementation name as {@link factory}'s.
+   */
+  factoryExport: string;
   /** Optional one-line options summary for `--list`. */
   options?: string;
   /** The framework this generator's OUTPUT targets. Absent = framework-neutral. */
@@ -178,6 +185,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Per-entity Drizzle table + typed model module (the entity module).",
     tier: "native",
     factory: () => entityFile(),
+    factoryExport: "entityFile",
     options: "filter?, target?",
     requires: [],
     runtimePackages: ["@metaobjectsdev/runtime-ts"],
@@ -193,6 +201,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Per-entity physical database name constants (table/view, schema, columns).",
     tier: "native",
     factory: () => namesFile(),
+    factoryExport: "namesFile",
     options: "filter?, target?",
     configKeys: ["columnNamingStrategy"],
     ejectable: ejectable("names"),
@@ -204,6 +213,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Single index.ts re-exporting every generated entity module.",
     tier: "native",
     factory: () => barrel(),
+    factoryExport: "barrel",
     options: "target?",
     requires: ["entity"],
     configKeys: ["extStyle"],
@@ -218,6 +228,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Per-entity typed query helpers (findById/create/...).",
     tier: "native",
     factory: () => queriesFile(),
+    factoryExport: "queriesFile",
     options: "filter?, target?",
     requires: ["entity"],
     // zod: a TYPE-only import — the create inputs are `z.input<typeof <Entity>InsertSchema>`.
@@ -234,6 +245,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Per-entity Fastify CRUD routes (drizzle-fastify mountCrudRoutes).",
     tier: "native",
     factory: () => routesFile(),
+    factoryExport: "routesFile",
     options: "filter?, target?",
     framework: "fastify",
     requires: ["entity"],
@@ -249,6 +261,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Per-entity Hono CRUD routes (runtime-ts/hono mountCrudRoutes).",
     tier: "native",
     factory: () => routesFileHono(),
+    factoryExport: "routesFileHono",
     options: "filter?, target?",
     framework: "hono",
     requires: ["entity"],
@@ -267,6 +280,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
       "Per-entity/template SDK API reference (the generated code's API, human + agent forms).",
     tier: "native",
     factory: () => apiDocsFile(),
+    factoryExport: "apiDocsFile",
     options: "filter?, target?",
     ejectable: ejectable("api-docs"),
   },
@@ -277,6 +291,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Neutral per-entity / per-template Markdown documentation pages.",
     tier: "neutral",
     factory: () => docsFile(),
+    factoryExport: "docsFile",
     ejectable: ejectable("docs"),
     note: "neutral artifact — use `meta docs` (the single docs door, ADR-0021 D1); not part of the recommended `meta gen` native suite.",
   },
@@ -287,6 +302,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Mermaid ER diagram of the entity/relationship model.",
     tier: "neutral",
     factory: () => mermaidErDiagram(),
+    factoryExport: "mermaidErDiagram",
     ejectable: ejectable("mermaid-er"),
     note: "neutral artifact owned by the docs engine (ADR-0020); surfaced via `meta docs`, not the recommended `meta gen` native suite.",
   },
@@ -301,6 +317,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Per-entity callable/service surface wrapping the query helpers.",
     tier: "native",
     factory: () => callableFile(),
+    factoryExport: "callableFile",
     options: "filter?, target?",
     requires: ["entity"],
     runtimePeers: ["drizzle-orm"],
@@ -314,6 +331,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Per-template prompt-render helper over the render engine.",
     tier: "native",
     factory: () => promptRender(),
+    factoryExport: "promptRender",
     options: "filter?, target?",
     // ADR-0056: the handles take each payload value object's OWN interface, which entityFile() emits.
     requires: ["entity"],
@@ -327,6 +345,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Per-template response parser: a strict parse<Name> / safeParse<Name> for a reply that is bare JSON in the @responseRef shape, plus a tolerant extractLenient<Name>WithLoader(root, text) for a raw model reply (prose, code fences) that reports per field instead of throwing on a bad reply; it throws only when root does not declare the response value object.",
     tier: "native",
     factory: () => outputParser(),
+    factoryExport: "outputParser",
     options: "filter?, target?",
     // ADR-0056: the strict parse returns the response value object's OWN interface (entityFile()).
     requires: ["entity"],
@@ -341,6 +360,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Per-template typed extract<Name> helper: tolerant recovery of the typed response from dirty model text; throws only when a @required field is lost.",
     tier: "native",
     factory: () => extractor(),
+    factoryExport: "extractor",
     options: "filter?, target?",
     requires: ["entity", "output-parser"],
     runtimePackages: ["@metaobjectsdev/metadata", "@metaobjectsdev/render"],
@@ -353,6 +373,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Per-template output-format prompt fragment generator.",
     tier: "native",
     factory: () => outputPrompt(),
+    factoryExport: "outputPrompt",
     options: "filter?, target?",
     runtimePackages: ["@metaobjectsdev/render"],
     ejectable: ejectable("output-prompt"),
@@ -364,6 +385,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Per-template.output render helper (document/email typed wrappers).",
     tier: "native",
     factory: () => renderHelper(),
+    factoryExport: "renderHelper",
     options: "filter?, target?",
     // ADR-0056: the helper takes the payload value object's OWN interface (entityFile()).
     requires: ["entity"],
@@ -378,6 +400,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Generic Mustache template primitive (walk + template → files).",
     tier: "native",
     factory: () => templatePrimitive(),
+    factoryExport: "templateGenerator",
     options: "name, walk, template, format?, filter?, provider?, target?",
     ejectable: ejectable("template"),
   },
@@ -389,9 +412,18 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
       "Per-entity typed record<Entity>/call<Entity> trace helpers (extract + buildLlmCallRow + persist; LlmCallBase-derived entities only).",
     tier: "native",
     factory: () => traceHelperFile(),
+    factoryExport: "traceHelperFile",
     options: "outDir?, target?",
     // ADR-0056: typed by the request/response value objects' OWN interfaces (entityFile()).
     requires: ["entity"],
+    // What the emitted `<Entity>.trace.ts` imports. `ai-runtime` is reached only by the
+    // `call<Entity>` half, which every loadable prompt gets (a prompt requires @textRef).
+    runtimePackages: [
+      "@metaobjectsdev/ai-runtime",
+      "@metaobjectsdev/metadata",
+      "@metaobjectsdev/render",
+      "@metaobjectsdev/runtime-ts",
+    ],
     ejectable: ejectable("trace-helper"),
   },
   "requirement-tests": {
@@ -401,6 +433,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Per-requirement test stub, one per requirement.functional claim in the ledger.",
     tier: "native",
     factory: () => requirementTests(),
+    factoryExport: "requirementTests",
     options: "filter?, grain?, target?",
     ejectable: ejectable("requirement-tests"),
   },
@@ -411,6 +444,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Cube data model files (model/cubes/*.yml, model/views/*.yml) for the reporting vocabulary: cubes, joins, dimensions, measures, segments, a rollup per served report and a view per served @spine report.",
     tier: "native",
     factory: () => cubeModel(),
+    factoryExport: "cubeModel",
     options: "dialect?, filter?, target?",
     // The emitted YAML imports nothing: Cube reads it from its own project.
     requires: [],
@@ -430,6 +464,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     // everything, so a placeholder here constructs without throwing — real use
     // always supplies both, same as `template`'s templatePrimitive() above).
     factory: () => sharedModelFile({ name: "shared-model", include: [] }),
+    factoryExport: "sharedModelFile",
     options: "name, include, exclude?, files?, version?, target?",
     ejectable: ejectable("shared-model"),
   },

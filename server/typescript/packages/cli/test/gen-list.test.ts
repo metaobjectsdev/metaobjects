@@ -100,9 +100,12 @@ describe("meta gen --list (ADR-0021 D3)", () => {
       await genCommand(["--list"], tmp);
       const text = out();
       const line = (name: string) => text.split("\n").find((l) => l.startsWith(`  ${name} `)) ?? "";
-      expect(line("callable")).toContain("package-only");
+      expect(line("shared-model")).toContain("package-only");
       expect(line("template")).toContain("package-only");
-      // An ejectable entry is never marked.
+      // An ejectable entry is never marked. `callable` and `trace-helper` were marked
+      // until they gained reference templates.
+      expect(line("callable")).not.toContain("package-only");
+      expect(line("trace-helper")).not.toContain("package-only");
       expect(line("prompt-render")).not.toContain("package-only");
       expect(line("entity")).not.toContain("package-only");
       expect(text).toContain("package-only = no reference template ships");

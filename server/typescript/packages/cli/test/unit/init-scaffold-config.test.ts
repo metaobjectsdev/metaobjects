@@ -92,7 +92,10 @@ describe("meta init scaffolds the owned-codegen tier, empty (ADR-0034 Amendment 
     await init({ cwd: tmp, quiet: true });
     const body = readFileSync(join(tmp, "metaobjects.config.ts"), "utf-8");
     expect(body).not.toMatch(/^import .* from "\.\/codegen\/generators\//m);
-    expect(body).not.toContain("@metaobjectsdev/codegen-ts/generators");
+    // The package import appears ONLY as a commented example of how to wire one; an
+    // uncommented line would be the default suite Amendment 2 removed.
+    expect(body).not.toMatch(/^import .* from "@metaobjectsdev\/codegen-ts\/generators"/m);
+    expect(body).toMatch(/^\s*\/\/\s+import \{ entityFile, queriesFile, barrel \} from "@metaobjectsdev\/codegen-ts\/generators";$/m);
   });
 
   test("an ejected generator is the copyable reference template, and re-init preserves it", async () => {
@@ -103,7 +106,8 @@ describe("meta init scaffolds the owned-codegen tier, empty (ADR-0034 Amendment 
     const entityPath = join(tmp, "codegen/generators/entity.ts");
     const entity = readFileSync(entityPath, "utf-8");
     expect(entity).toContain("REFERENCE TEMPLATE");
-    // It imports the stable engine, never the deprecated `/generators` export.
+    // It imports the stable engine, never the packaged factory it is a copy of: an owned
+    // generator that called the package's would not own what it emits.
     expect(entity).toContain('from "@metaobjectsdev/codegen-ts"');
     expect(entity).not.toContain("@metaobjectsdev/codegen-ts/generators");
 

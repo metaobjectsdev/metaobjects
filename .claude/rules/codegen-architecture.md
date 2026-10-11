@@ -33,7 +33,7 @@ generator new <name> [--scope entity|package|model]` writes a working one into
 are exported from the package root (`objectRefTarget`, `enumValues`, `servedPath`, the case
 helpers); the guide and every port's shape are in `docs/recipes/write-your-own-generator.md`.
 
-**Built-in factories**: `entityFile`, `queriesFile`, `routesFile`, `formFile`, `barrel`. Per ADR-0034 (scaffold-and-own) and its Amendment 2 (opt-in codegen), `meta init` scaffolds `codegen/generators/` EMPTY with `generators: []`; `meta gen --list --probe` is the catalog, and `meta eject <name>...` copies each chosen reference template into the consumer repo at `codegen/generators/*.ts` and prints the import and entry to wire. The owned copy is the ONLY import path for `entityFile`/`queriesFile`/`routesFile`/`barrel`: the deprecated `@metaobjectsdev/codegen-ts/generators` re-export of them was **removed at the 1.0 cut**.
+**Built-in factories**: `entityFile`, `queriesFile`, `routesFile`, `formFile`, `barrel`. Per ADR-0034 (scaffold-and-own) and its Amendment 2 (opt-in codegen), `meta init` scaffolds `codegen/generators/` EMPTY with `generators: []`; `meta gen --list --probe` is the catalog, and `meta eject <name>...` copies each chosen reference template into the consumer repo at `codegen/generators/*.ts` and prints the import and entry to wire. `entityFile`/`queriesFile`/`routesFile`/`barrel` are also importable from `@metaobjectsdev/codegen-ts/generators` to run them as shipped (that export was removed at the 1.0 cut and **restored in 1.1**, ADR-0034 Amendment 5); the owned copy is how you change what one emits.
 
 **User wiring** (`metaobjects.config.ts`):
 

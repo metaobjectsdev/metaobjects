@@ -198,7 +198,8 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
   `routesFile`/`barrel` exports from `@metaobjectsdev/codegen-ts/generators` — scoped by
   NAME, not by path, because that subpath carries ~20 exports and only those four were
   deprecated; the owned copies written by `meta init` / `meta eject` are the path now
-  (ADR-0034). FR-024's declared-API surface was ratified as DEFERRED rather than rushed in,
+  (ADR-0034). (1.1 restored the four exports: import to run a generator as shipped, eject
+  to change it. ADR-0034 Amendment 5.) FR-024's declared-API surface was ratified as DEFERRED rather than rushed in,
   which is what removed the last candidate for a breaking round.
 
 - **Standing caveat on the evidence.** All nine estates are maintainer-owned, which the G3d

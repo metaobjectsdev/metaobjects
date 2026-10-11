@@ -44,6 +44,63 @@ export function catalogPackages(): string[] {
   return SLICES.map(([pkg]) => pkg);
 }
 
+
+/** The engine package. Its factories live on a `/generators` subpath, not at the root. */
+const CORE_CODEGEN_PACKAGE = "@metaobjectsdev/codegen-ts";
+
+/**
+ * The module a catalog entry's factory is imported from to run it as shipped.
+ *
+ * The engine serves its factories from `/generators` (its root is the engine and the
+ * primitives an owned generator composes); the framework packages serve theirs from the
+ * root. Undefined for a name no slice registers.
+ */
+export function factoryModuleOf(name: string): string | undefined {
+  const pkg = packageOf(name);
+  if (pkg === undefined) return undefined;
+  return pkg === CORE_CODEGEN_PACKAGE ? `${pkg}/generators` : pkg;
+}
+
+/** How one generator reaches `generators: [...]` — the import line and the entry. */
+export interface GeneratorWiring {
+  import: string;
+  entry: string;
+}
+
+/**
+ * The option names an entry's `options` summary lists WITHOUT a trailing `?` — the ones
+ * its factory cannot be called without (`template`, `shared-model`).
+ */
+function requiredOptionNames(entry: GeneratorRegistryEntry): string[] {
+  return (entry.options ?? "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter((o) => o !== "" && !o.endsWith("?"));
+}
+
+/**
+ * How to wire a catalog entry AS SHIPPED: import its factory from the package, no copy.
+ *
+ * This is the half of "import by default, eject to customize" the catalog owns. The
+ * other half is `meta eject`, which prints the same two facts for the owned copy — the
+ * symbol is the same in both (gated), so moving between them is one import line.
+ *
+ * Undefined for the `docs` layer: those generators are the engine behind `meta docs`,
+ * which is their door, and wiring one into `generators: [...]` is the deprecated route.
+ */
+export function packagedWiring(entry: GeneratorRegistryEntry): GeneratorWiring | undefined {
+  if (entry.layer === "docs") return undefined;
+  const from = factoryModuleOf(entry.name);
+  if (from === undefined) return undefined;
+  const required = requiredOptionNames(entry);
+  return {
+    import: `import { ${entry.factoryExport} } from "${from}";`,
+    entry: required.length === 0
+      ? `${entry.factoryExport}()`
+      : `${entry.factoryExport}({ ${required.join(", ")} })`,
+  };
+}
+
 /**
  * The composed catalog, keyed by stable name.
  *

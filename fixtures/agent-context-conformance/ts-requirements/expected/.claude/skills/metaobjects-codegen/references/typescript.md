@@ -119,16 +119,16 @@ PROJECT ROOT that CONTAINS the metadata — never the metadata directory itself.
 ## The generators
 
 Server-side, framework-neutral. **None is wired by default** — `meta init` writes
-`generators: []` and an empty `codegen/generators/`. `meta eject <name>...` copies the
-ownable ones into your repo, imported from `./codegen/generators/*` (ADR-0034); 1.0
-REMOVED their `@metaobjectsdev/codegen-ts/generators` export, so an owned copy is the only
-path for those. The engine primitives come from the package main entry,
-`@metaobjectsdev/codegen-ts`. The `/generators` subpath itself is NOT deprecated. It
-exports the prompt tier (`promptRender`, `outputParser`, `outputPrompt`, `extractor`,
-`renderHelper`), `namesFile` and `requirementTests`, which you may import from there OR
-eject to own, and it is the only home of the package-only generators — `traceHelperFile`,
-`callableFile` — which ship no reference template (`meta gen --list` marks them
-`package-only`).
+`generators: []` and an empty `codegen/generators/`. Every generator below is imported from
+`@metaobjectsdev/codegen-ts/generators` to run it as shipped; `meta gen --list` prints
+each import line. To change what one emits, `meta eject <name>...` copies it into your
+repo, imported from `./codegen/generators/*` instead (ADR-0034); the factory keeps its
+name. Import by default and eject to customize: an owned copy you never change only falls
+behind the reference. (`entityFile` / `queriesFile` / `routesFile` / `barrel` were removed
+from that subpath at 1.0 and restored in 1.1, so on a 1.0.x install an owned copy is the
+only path for those four.) The engine primitives come from the package main entry,
+`@metaobjectsdev/codegen-ts`. Two entries cannot be ejected and are `package-only` in
+`meta gen --list`: the `template` primitive and `shared-model`.
 
 **`requirementTests()` — one test stub per requirement the model claims.** A recommended
 approach, not a contract: a `live` or `partial` requirement gets a stub that fails until

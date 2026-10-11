@@ -1,9 +1,10 @@
-// The repo's OWN copies of the ADR-0034 reference templates — the same move `meta init`
-// scaffolds into a consumer's `codegen/generators/*.ts`. They exist because 1.0 removes
+// The repo's OWN copies of the ADR-0034 reference templates — what `meta eject` writes
+// into a consumer's `codegen/generators/*.ts`. They date from 1.0, which removed
 // `entityFile` / `queriesFile` / `routesFile` / `barrel` from
-// `@metaobjectsdev/codegen-ts/generators` (readiness G2, ADR-0035 A3), and the suites that
-// drive `runGen` need a generator set. Taking the OWNED copies rather than reaching for an
-// engine internal means this repo's tests exercise the artifact an adopter actually runs.
+// `@metaobjectsdev/codegen-ts/generators`; 1.1 restored that import (ADR-0034 Amendment 5),
+// and these stay because the owned path is still supported and still needs exercising.
+// Taking the OWNED copies means this repo's suites run the artifact an adopter who ejects
+// actually runs.
 //
 // The copies are byte-gated against `readReferenceTemplate()` by `test/owned-copies-current.test.ts`,
 // so they cannot drift from the templates `meta init` ships. Refresh with:
