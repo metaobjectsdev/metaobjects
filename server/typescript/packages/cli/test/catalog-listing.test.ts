@@ -229,8 +229,13 @@ describe("--probe — what would this emit for MY model", () => {
     const rows = await probeRows();
     for (const r of rows) {
       const p = r.project!;
-      const answered = typeof p.wouldEmit === "number" || typeof p.probeError === "string";
+      // A row with a `door` is the third answer, not a silent skip: `meta gen` does not
+      // run that generator at all, so the row names the command that does instead of a
+      // count that would read as "nothing in your model needs this".
+      const answered =
+        typeof p.wouldEmit === "number" || typeof p.probeError === "string" || r.door !== undefined;
       expect(answered, `${r.name} reported neither a count nor a reason`).toBe(true);
+      if (r.door !== undefined) expect(p.wouldEmit, `${r.name} has a door and a count`).toBeNull();
     }
   });
 
@@ -247,8 +252,9 @@ describe("--probe — what would this emit for MY model", () => {
       expect(p.wouldEmit, `${name} should not report a count`).toBeNull();
       expect(String(p.probeError), `${name} should say why`).toContain(name);
     }
-    // ...and everything else still answered.
-    expect(rows.filter((r) => typeof r.project!.wouldEmit === "number").length)
+    // ...and everything else still answered: with a count, or with the door `meta gen`
+    // leaves that generator to (those two are not probed at all).
+    expect(rows.filter((r) => typeof r.project!.wouldEmit === "number" || r.door !== undefined).length)
       .toBeGreaterThan(rows.length - 4);
   });
 

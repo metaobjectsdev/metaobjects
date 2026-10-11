@@ -127,12 +127,20 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   // would find no manifest there and silently skip the nudge. `meta verify` makes
   // the same call for the same reason; the two commands describe this and the
   // anti-pattern scan below as one advisory pass, so they must scan one tree.
-  warnIfAgentContextStale(projectRoot);
+  //
+  // EVERY warning this run prints is also collected here, in the order printed, because
+  // the structured result carries them. They used to reach stderr only — and on a pipe,
+  // where the default format is the document, a reader of that document saw a clean run:
+  // a wired `apiDocsFile()` produced no API docs and the result gave no reason (ADR-0025
+  // has `meta gen` warn about and skip it). A new warning site adds to this list.
+  const warnings: string[] = [];
+  const advise = (line: string | undefined): void => { if (line !== undefined) warnings.push(line); };
+  advise(warnIfAgentContextStale(projectRoot));
   // Advisory: the committed hash manifest is what makes hand-edit detection work on a
   // machine that did not generate the output. Silent unless it is ignored. Keyed on
   // projectRoot, not cwd, for the same reason its neighbour is — the manifest belongs to
   // whichever directory `resolveCollection` decided the metadata lives in.
-  warnIfManifestIgnored(projectRoot);
+  advise(warnIfManifestIgnored(projectRoot));
 
   let forgeConfig;
   try {
@@ -162,7 +170,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   const unknownAttrs = unknownAttrFindings.length > 0
     ? [...unknownAttrFindings, UNKNOWN_ATTR_GEN_ADVICE]
     : [];
-  for (const w of unknownAttrs) log.warn(`warning: ${w}`);
+  for (const w of unknownAttrs) { log.warn(`warning: ${w}`); warnings.push(w); }
 
   // FR-023 §11.1 item 2 — refuse a positional that names ONLY objects imported
   // from a dependency and excluded from output by the default exclusion rule.
@@ -210,7 +218,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     return 1;
   }
 
-  for (const w of result.warnings) { log.warn(w); }
+  for (const w of result.warnings) { log.warn(w); warnings.push(w); }
 
   // A first-run POINTER, not a warning: an empty selection is the designed state of a
   // fresh `meta init`, so calling it a problem would make every new project start with
@@ -243,7 +251,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   if (!cliConfig.dryRun) {
     for (const w of runtimeBoundaryWarnings(
       findRuntimeBoundaryCrossings(projectRoot, result.files.map((f) => f.path)),
-    )) log.warn(`warning: ${w}`);
+    )) { log.warn(`warning: ${w}`); warnings.push(w); }
   }
 
   const targetDirs = Array.from(new Set(
@@ -277,9 +285,10 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     dialect: forgeConfig.dialect,
     dryRun: cliConfig.dryRun,
     // Text mode already printed these to stderr above; the structured forms carry them.
-    warnings: fmt === "text" ? [] : unknownAttrs,
+    warnings: fmt === "text" ? [] : warnings,
     antiPatterns,
     generatorCount: forgeConfig.generators?.length ?? 0,
+    skippedDocGenerators: result.skippedDocGenerators,
     ...(migrateAdvice !== undefined ? { migrateAdvice } : {}),
   };
   const output =

@@ -98,7 +98,9 @@ export interface GeneratorRegistryEntry {
   layer: Layer;
   /** One-line (no newline) human description for `--list`. */
   description: string;
-  /** "native" = recommended `meta gen` suite; "neutral" = `meta docs`-owned. */
+  /** "native" = idiomatic per-port emission; "neutral" = a language-neutral artifact.
+   *  Which COMMAND runs an entry is a separate fact, and not derivable from this:
+   *  `api-docs` is native and run by `meta docs`, `mermaid-er` neutral and run by `meta gen`. */
   tier: GeneratorTier;
   /** Constructs the generator with sensible defaults. Calling it must not throw. */
   factory: () => Generator;
@@ -278,6 +280,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     layer: "docs",
     description:
       "Per-entity/template SDK API reference (the generated code's API, human + agent forms).",
+    note: "the api surface of `meta docs` (the single docs door, ADR-0025), which runs it with nothing wired.",
     tier: "native",
     factory: () => apiDocsFile(),
     factoryExport: "apiDocsFile",
@@ -304,7 +307,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     factory: () => mermaidErDiagram(),
     factoryExport: "mermaidErDiagram",
     ejectable: ejectable("mermaid-er"),
-    note: "neutral artifact owned by the docs engine (ADR-0020); surfaced via `meta docs`, not the recommended `meta gen` native suite.",
+    note: "run by `meta gen`, which writes the diagram as a file of its own (docs/model.md). `meta docs` already draws the same diagram on its overview page with nothing wired, which is what most projects want.",
   },
 
   // ----- capability -------------------------------------------------------

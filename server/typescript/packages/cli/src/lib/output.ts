@@ -72,6 +72,12 @@ export interface GenResultShape {
    */
   generatorCount: number;
   /**
+   * The wired doc generators this run skipped (ADR-0025: their door is `meta docs`).
+   * Absent means none. Each also has a line in `warnings`; this is the count the
+   * summary and the next step are worded from.
+   */
+  skippedDocGenerators?: readonly string[];
+  /**
    * The "now migrate" next step, worded for this project's dialect — or absent when
    * this run cannot have changed the database schema (see gen-migrate-advice.ts).
    */
@@ -100,13 +106,30 @@ const GEN_WORDS: Record<GenFileStatus, string> = {
   removed: "REMOVED",
 };
 
+/**
+ * A third way to emit nothing: every wired generator is a doc generator, and `meta gen`
+ * skips those. Without this the run read "no entities to generate — author entities in
+ * this project's metadata sources" for a project that has them.
+ */
+function onlyDocGeneratorsWired(result: GenResultShape): boolean {
+  const skipped = result.skippedDocGenerators?.length ?? 0;
+  return result.files.length === 0 && skipped > 0 && skipped === result.generatorCount;
+}
+
+const ONLY_DOC_GENERATORS_SUMMARY =
+  "every wired generator is a doc generator, which `meta gen` skips, so nothing was generated";
+const ONLY_DOC_GENERATORS_TEXT =
+  "Nothing was generated: every wired generator is a doc generator, and `meta gen` skips those. Run `meta docs`.";
+const DOCS_DOOR_HELP =
+  "run `meta docs` for documentation, and remove the doc generators from `generators` in metaobjects.config.ts";
+
 export function formatGenResult(result: GenResultShape, opts: FormatOptions): string {
   const symbols = opts.isTTY ? GEN_GLYPHS : GEN_WORDS;
   // A value-object-only project uses no dialect — show only the outDir in that case.
   const header = `meta gen${result.dryRun ? " --dry-run" : ""} — ${result.dialect ? `${result.dialect}, ` : ""}${result.outDir}`;
 
   if (result.files.length === 0) {
-    return `${header}\n\n  No entities to generate.\n`;
+    return `${header}\n\n  ${onlyDocGeneratorsWired(result) ? ONLY_DOC_GENERATORS_TEXT : "No entities to generate."}\n`;
   }
 
   const lines: string[] = [header, ""];
@@ -297,7 +320,7 @@ export function genResultToData(result: GenResultShape): {
   // however good the metadata is, and telling its author to go write entities is a
   // false statement about a project that already has them.
   const noGenerators = result.generatorCount === 0;
-  const summary = result.files.length !== 0
+  let summary = result.files.length !== 0
     ? parts.join(", ")
     : noGenerators
       ? "no generators are wired in metaobjects.config.ts, so nothing was generated"
@@ -307,6 +330,17 @@ export function genResultToData(result: GenResultShape): {
     : noGenerators
       ? ["add generators to the `generators: []` array in metaobjects.config.ts — `meta gen --list` names each one with the import that runs it as shipped, and `meta eject <name>` copies one into your repo to change what it emits"]
       : ["author entities in this project's metadata sources then re-run `meta gen`"];
+  // Skipped doc generators get a next step of their own, because `help` is what an
+  // agent acts on. When they are ALL that was wired, they are also the whole summary.
+  const skippedDocs = result.skippedDocGenerators?.length ?? 0;
+  if (onlyDocGeneratorsWired(result)) {
+    summary = ONLY_DOC_GENERATORS_SUMMARY;
+    help.splice(0, help.length, DOCS_DOOR_HELP);
+  } else if (skippedDocs > 0) {
+    help.push(
+      `\`meta gen\` skipped ${skippedDocs} doc generator(s) — see warnings[]; ${DOCS_DOOR_HELP}`,
+    );
+  }
   // An absent section is STATED, never omitted: a reader must be able to tell
   // "the scan found nothing" from "the scan never ran".
   const antiPatterns = result.antiPatterns

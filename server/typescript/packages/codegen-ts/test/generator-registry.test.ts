@@ -7,6 +7,7 @@ import {
   type GeneratorRegistryEntry,
 } from "../src/generator-registry.js";
 import { REFERENCE_GENERATOR_NAMES } from "../src/reference-templates.js";
+import { isPackagedDocsGenerator } from "../src/packaged-docs-generators.js";
 
 // ADR-0021 D3 — stable-name generator registry. The stable names are the
 // cross-port contract; this test pins them + asserts each entry carries a
@@ -74,6 +75,27 @@ describe("generator-registry (ADR-0021 D3)", () => {
   test("neutral entries carry a note pointing at the canonical door", () => {
     expect(generatorRegistry["docs"]?.note ?? "").toContain("meta docs");
     expect((generatorRegistry["mermaid-er"]?.note ?? "").length).toBeGreaterThan(0);
+  });
+
+  // Resolved, not listed: the set is whatever the RUNNER skips. `api-docs` is native,
+  // so the neutral check above never reached it, and its row presented a generator
+  // `meta gen` refuses to run as something to wire.
+  test("every entry `meta gen` skips says on its row that the door is `meta docs`", () => {
+    const skipped = Object.values(generatorRegistry).filter((e) => isPackagedDocsGenerator(e.factory().name));
+    expect(skipped.map((e) => e.name).sort()).toEqual(["api-docs", "docs"]);
+    for (const entry of skipped) {
+      expect(entry.note ?? "", `${entry.name}.note`).toContain("meta docs");
+      expect(entry.layer, `${entry.name}.layer`).toBe("docs");
+    }
+  });
+
+  // The other direction. `mermaid-er` sits in the docs layer and `meta docs` has never
+  // run it: `meta gen` writes its file. Its note pointed at `meta docs` all the same.
+  test("a docs-layer entry `meta gen` runs says so, and does not name `meta docs` as its door", () => {
+    const run = Object.values(generatorRegistry)
+      .filter((e) => e.layer === "docs" && !isPackagedDocsGenerator(e.factory().name));
+    expect(run.map((e) => e.name)).toEqual(["mermaid-er"]);
+    expect(run[0]?.note ?? "").toContain("run by `meta gen`");
   });
 
   test("every factory constructs a Generator with a name without throwing", () => {

@@ -35,6 +35,20 @@ Other flags: `--layout flat|package`, `--base-url <url>`. Configure defaults in 
 (it documents what the codegen produced); with no config it is skipped with a note,
 and the model surface still emits from metadata alone.
 
+**Never wire `docsFile()` or `apiDocsFile()` into `generators`.** They are the engines
+behind `meta docs`, so `meta gen` warns about each one it finds in the suite and skips it:
+no docs are written by that run. The warning is on stderr, and in a structured run
+(`--format json|toon`, the default on a pipe) it is in the result's `warnings[]` with a
+`meta docs` next step in `help[]`. `meta gen --list` marks both rows ``run by `meta docs` ``
+(`door: "meta docs"` in `--format json`) and `--probe` gives them no file count.
+`meta verify` reports the wiring as an advisory row, rule `doc-generator-in-gen`. Remove
+the entry and run `meta docs`.
+
+**`mermaid-er` is the one docs-layer generator `meta gen` does run.** `meta docs` already
+draws the ER diagram on its overview page with nothing wired, which is what most projects
+want. `mermaidErDiagram()` (or the stable name `"mermaid-er"`) in `generators` writes the
+same diagram as a file of its own, `docs/model.md`; `meta docs` never writes that file.
+
 **Before calling any generated code, read `./docs/api/AGENT-API.md`** — it has the
 exact imports, signatures, payload field shapes, and runnable examples for this
 project's generated API, so you don't have to guess them.

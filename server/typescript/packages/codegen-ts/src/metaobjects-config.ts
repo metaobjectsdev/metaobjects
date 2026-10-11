@@ -4,6 +4,7 @@ import type { Generator } from "./generator.js";
 import type { ExtStyle } from "./render-context.js";
 import type { OutputLayout, ResolvedTarget } from "./import-path.js";
 import { generatorRegistry } from "./generator-registry.js";
+import { DOCS_DOOR_COMMAND, isPackagedDocsGenerator } from "./packaged-docs-generators.js";
 import { normalizeTimestampMode } from "./dialect-module.js";
 
 /**
@@ -375,24 +376,30 @@ export function resolveTargets(config: MetaobjectsGenConfig): Record<string, Res
  * to its factory result (default options). ADR-0021 #1.
  *
  * Errors:
- *  - a NEUTRAL name (`docs`, `mermaid-er`) is owned by `meta docs` (ADR-0021 D1)
- *    and is not selectable in the gen suite.
- *  - an UNKNOWN name throws listing the available NATIVE names.
+ *  - `docs`, the neutral name `meta docs` owns (ADR-0021 D1), is not selectable in the
+ *    gen suite. `mermaid-er` is neutral too and DOES resolve: `meta gen` is the command
+ *    that runs it (see packaged-docs-generators.ts). It was refused here as "owned by
+ *    'meta docs'" while its factory, wired in the same array, ran.
+ *  - an UNKNOWN name throws listing the names `meta gen` runs. `api-docs` is left out
+ *    of that list: it resolves, and the runner warns about and skips it (ADR-0025).
  */
 export function resolveGenerators(specs: readonly GeneratorSpec[]): Generator[] {
   return specs.map((spec) => {
     if (typeof spec !== "string") return spec;
     const entry = generatorRegistry[spec];
     if (entry === undefined) {
-      const native = Object.values(generatorRegistry)
-        .filter((e) => e.tier === "native")
+      // What `meta gen` RUNS, so a generator it skips is not offered: the list named
+      // `api-docs`, and the run it recommended then warned about and skipped it.
+      const runnable = Object.values(generatorRegistry)
+        .filter((e) => !isPackagedDocsGenerator(e.factory().name))
         .map((e) => e.name)
         .sort();
       throw new Error(
-        `unknown generator "${spec}". Available native generators: ${native.join(", ")}.`,
+        `unknown generator "${spec}". Available generators: ${runnable.join(", ")}. ` +
+        `Documentation is not a 'meta gen' generator: run '${DOCS_DOOR_COMMAND}'.`,
       );
     }
-    if (entry.tier !== "native") {
+    if (entry.tier !== "native" && isPackagedDocsGenerator(entry.factory().name)) {
       throw new Error(
         `generator "${spec}" is neutral (owned by 'meta docs'); ` +
         `not selectable in the gen suite.`,

@@ -1,0 +1,42 @@
+// ADR-0025 — the packaged doc generators `meta docs` runs and `meta gen` therefore skips.
+//
+// ONE definition, read by everything that has to agree about it: the runner (which
+// warns about and skips one found in a `meta gen` config), `resolveGenerators` (which
+// must not offer one as a selectable name) and the CLI catalog (whose row says the
+// door is `meta docs`). They used to answer separately — the runner skipped
+// `api-docs` while the unknown-name error offered it and `meta gen --list` presented
+// it as something to wire.
+//
+// Keyed by the generator's IMPLEMENTATION name, because that is what a constructed
+// generator carries. The value is the factory call an adopter wrote, for the message.
+//
+// `mermaid-er-diagram` is NOT one of them, and that is a ruling rather than an
+// omission: `meta docs` has never run it. `meta docs` draws the ER diagram on its
+// overview page through `docsFile()`; `mermaidErDiagram()` writes the same diagram as a
+// file of its own, and `meta gen` is the only command that writes that file. It sits
+// in the `docs` layer by what it produces, not by which command runs it.
+const PACKAGED_DOCS_FACTORY_CALLS: ReadonlyMap<string, string> = new Map([
+  ["docs-file", "docsFile()"],
+  ["api-docs", "apiDocsFile()"],
+]);
+
+/** The command that produces what these generators emit. */
+export const DOCS_DOOR_COMMAND = "meta docs";
+
+/** True iff `meta gen` warns about and skips the generator with this implementation name. */
+export function isPackagedDocsGenerator(implName: string): boolean {
+  return PACKAGED_DOCS_FACTORY_CALLS.has(implName);
+}
+
+/** The factory call an adopter wrote to wire it (`apiDocsFile()`), for a message. */
+export function packagedDocsFactoryCall(implName: string): string {
+  return PACKAGED_DOCS_FACTORY_CALLS.get(implName) ?? implName;
+}
+
+/** The runner's warning for one skipped doc generator. */
+export function packagedDocsSkipWarning(implName: string): string {
+  return (
+    `[${implName}] docs are produced by '${DOCS_DOOR_COMMAND}' (ADR-0025); ` +
+    `remove ${packagedDocsFactoryCall(implName)} from generators. Skipped.`
+  );
+}
