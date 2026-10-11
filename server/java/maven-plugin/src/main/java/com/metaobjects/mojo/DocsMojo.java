@@ -160,7 +160,9 @@ public class DocsMojo extends AbstractMetaDataMojo {
                 ? com.metaobjects.generator.kotlin.apidocs.DocsPaths.Layout.PACKAGE
                 : com.metaobjects.generator.kotlin.apidocs.DocsPaths.Layout.FLAT;
         com.metaobjects.generator.kotlin.apidocs.KotlinApiModel model =
-                new com.metaobjects.generator.kotlin.apidocs.KotlinApiModelBuilder().build(loader, projectName);
+                new com.metaobjects.generator.kotlin.apidocs.KotlinApiModelBuilder(
+                        com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig.fromArgs(getGlobals()))
+                        .build(loader, projectName);
         com.metaobjects.generator.kotlin.apidocs.KotlinApiDocsRenderer renderer =
                 new com.metaobjects.generator.kotlin.apidocs.KotlinApiDocsRenderer();
 

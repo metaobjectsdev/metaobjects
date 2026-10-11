@@ -120,7 +120,7 @@ class KotlinApiDocsSourceSelectionKtTest {
 
     @Test
     fun theDocumentedDataAccessSymbolIsTheOneTheGeneratorsEmit() {
-        val model = KotlinApiModelBuilder().build(loader, PROJECT)
+        val model = KotlinApiModelBuilder(com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig.fromArgs(null)).build(loader, PROJECT)
         val unit = model.units.single { it.node.endsWith("PhaseSummary") }
         val dataAccess = unit.symbols.filter { it.kind == ApiSymbolKind.DATA_ACCESS }
 

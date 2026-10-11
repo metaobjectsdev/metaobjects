@@ -222,7 +222,7 @@ class KotlinM2mCodegenTest {
             listOf("acme::graph::Node", "acme::graph::NodeBase", "acme::graph::NodeLink"),
             loader.root.getChildren(MetaObject::class.java, false).map { it.name },
         )
-        val navs = KotlinM2mSupport.resolve(node, loader)
+        val navs = KotlinM2mSupport.resolve(node, loader, com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig.fromArgs(null))
         assertEquals(1, navs.size, "expected the inherited peers navigation; saw $navs")
         assertEquals("peers", navs[0].relationName)
         assertEquals("aId", navs[0].sourceField)

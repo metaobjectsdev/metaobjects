@@ -349,9 +349,8 @@ public class Fr019SharedProvidedConformanceTest extends SharedRegistryTestBase {
         assertTrue("TicketLabel.denomination must reference the configured external Currency; saw:\n" + label,
             label.contains("com.acme.ext.Currency denomination"));
         assertFalse("TicketLabel must nest no enum; saw:\n" + label, label.contains("enum "));
-        assertTrue("the shared Priority must be emitted by the value-object run itself",
-            Files.readString(voOut.resolve("acme/shop/Priority.java"))
-                .contains("public enum Priority { LOW, MEDIUM, HIGH }"));
+        assertFalse("the DTO generator owns shared enum files; a value-object run writes none by default",
+            Files.exists(voOut.resolve("acme/shop/Priority.java")));
         assertFalse("the @provided Currency must never be generated",
             Files.exists(voOut.resolve("acme/shop/Currency.java")));
     }

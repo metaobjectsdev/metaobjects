@@ -87,7 +87,7 @@ class KotlinM2mSupportAbstractMidLevelTargetTest {
     fun `abstract mid-level target resolves with no target discriminator`() {
         val loader = loader(abstractMidLevelFixture)
         val party = loader.getMetaObjectByName("acme::auth::Party")
-        val navs = KotlinM2mSupport.resolve(party, loader)
+        val navs = KotlinM2mSupport.resolve(party, loader, com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig.fromArgs(null))
         val nav = navs.single { it.relationName == "auths" }
         assertNull(nav.targetDiscriminator,
             "an abstract mid-level target has no single discriminator value; traversal stays unfiltered")
@@ -98,7 +98,7 @@ class KotlinM2mSupportAbstractMidLevelTargetTest {
         val loader = loader(brokenConcreteDiscriminatorFixture)
         val party = loader.getMetaObjectByName("acme::auth::Party")
         assertFailsWith<M2MFields.M2MDerivationException> {
-            KotlinM2mSupport.resolve(party, loader)
+            KotlinM2mSupport.resolve(party, loader, com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig.fromArgs(null))
         }
     }
 }

@@ -80,7 +80,7 @@ class ApiDocsCrossPortConformanceKtTest {
         val metaJson = Files.readString(caseDir().resolve("input/meta.json"))
         val loader: MetaDataLoader = loadString("apiDocsCrossPort", metaJson)
 
-        val model = KotlinApiModelBuilder().build(loader, PROJECT)
+        val model = KotlinApiModelBuilder(com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig.fromArgs(null)).build(loader, PROJECT)
 
         // ---- coverage: the Kotlin builder documents the SAME unit set the manifest lists ----
         val manifestNodes = sortedSetOf<String>()

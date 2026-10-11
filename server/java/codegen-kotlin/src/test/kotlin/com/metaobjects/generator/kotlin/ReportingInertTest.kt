@@ -190,7 +190,7 @@ class ReportingInertTest {
      * sourceless one has none.
      */
     private fun apiDocs(variant: String): Map<String, String> {
-        val model = KotlinApiModelBuilder().build(load(variant), "shop")
+        val model = KotlinApiModelBuilder(com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig.fromArgs(null)).build(load(variant), "shop")
         val renderer = KotlinApiDocsRenderer()
         val pages = TreeMap<String, String>()
         for (unit in model.units) {

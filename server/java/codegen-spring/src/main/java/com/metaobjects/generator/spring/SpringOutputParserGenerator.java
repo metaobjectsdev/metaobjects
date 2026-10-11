@@ -140,7 +140,9 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         fr019Config = Fr019SharedEnum.ProvidedEnumConfig.of(
             getArg("providedEnumNamespace"), getArg("providedEnumPackages"));
-        Fr019SharedEnum.emitMaterialized(loader, outRoot);
+        if (Boolean.parseBoolean(getArg(Fr019SharedEnum.ARG_EMIT_SHARED_ENUMS, "false"))) {
+            Fr019SharedEnum.emitMaterialized(loader, outRoot);
+        }
 
         // ADR-0052: the direction rule lives in FindInbound, never re-derived here.
         for (MetaTemplate tmpl : FindInbound.inboundTemplates(loader)) {

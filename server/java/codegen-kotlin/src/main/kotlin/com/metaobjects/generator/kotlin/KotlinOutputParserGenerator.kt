@@ -5,6 +5,7 @@ package com.metaobjects.generator.kotlin
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
 import com.metaobjects.generator.kotlin.FindInbound
+import com.metaobjects.generator.kotlin.Fr019SharedEnum
 import com.metaobjects.generator.kotlin.KotlinExtractSchemaEmitter
 import com.metaobjects.generator.kotlin.KotlinNaming
 import com.metaobjects.generator.kotlin.PackageMapping
@@ -68,6 +69,13 @@ import com.metaobjects.generator.util.GeneratedFileWriter
  */
 open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
+    /**
+     * FR-019: where a `@provided` enum is referenced from, read from the same two generator args
+     * every generator that types an enum takes ([Fr019SharedEnum.ProvidedEnumConfig.fromArgs]).
+     */
+    private val providedEnums: Fr019SharedEnum.ProvidedEnumConfig
+        get() = Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args)
+
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
     override fun execute(loader: MetaDataLoader) {
@@ -122,7 +130,7 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
         val emitStrict = !FindInbound.isXml(format)
         val formatEnum = if (FindInbound.isXml(format)) "Format.XML" else "Format.JSON"
 
-        KotlinExtractSchemaEmitter.emitMirrorFiles(responseVo, outRoot, emittedMirrors)
+        KotlinExtractSchemaEmitter.emitMirrorFiles(responseVo, outRoot, emittedMirrors, providedEnums)
 
         val src = buildString {
             append("// GENERATED — DO NOT EDIT — response parser for template.prompt `")

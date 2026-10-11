@@ -14,18 +14,34 @@ import com.squareup.kotlinpoet.ClassName
  * shared-materialize half of FR-019 is already satisfied — [KotlinTypeMapper.enumTypeName] and
  * [resolveSharedEnumDecl] below both delegate to the SAME cross-generator authority,
  * `EnumField.resolveSharedEnumDeclaration` (metadata module), so the two can never disagree. This
- * object adds the `@provided` arm: detecting a `@provided` shared enum (skip materialization) and
- * resolving its reference to a per-port-configured namespace (ADR-0001 — never an FQN in
- * metadata). The namespace binds to the enum's declaring metadata package via a
- * package→namespace map + a single fallback, both generator args.
+ * object holds the `@provided` arm [KotlinTypeMapper.enumTypeName] applies: detecting a
+ * `@provided` shared enum (skip materialization) and resolving its reference to a
+ * per-port-configured namespace (ADR-0001 — never an FQN in metadata). The namespace binds to
+ * the enum's declaring metadata package via a package→namespace map + a single fallback, both
+ * generator args every generator that types an enum reads through [ProvidedEnumConfig.fromArgs].
  */
 object Fr019SharedEnum {
+
+    /** Generator arg: the single fallback namespace every `@provided` enum is referenced from. */
+    const val ARG_PROVIDED_ENUM_NAMESPACE: String = "providedEnumNamespace"
+
+    /** Generator arg: the `;`-delimited `<metaPackage>=<namespace>` map (see [parsePackageMap]). */
+    const val ARG_PROVIDED_ENUM_PACKAGES: String = "providedEnumPackages"
 
     /** Per-port config for resolving a `@provided` enum's Kotlin namespace. Generator args only. */
     data class ProvidedEnumConfig(val fallbackNamespace: String?, val packageNamespaces: Map<String, String>) {
         companion object {
-            fun of(fallback: String?, packageMapArg: String?): ProvidedEnumConfig =
-                ProvidedEnumConfig(fallback?.trim()?.takeIf { it.isNotEmpty() }, parsePackageMap(packageMapArg))
+            /**
+             * The config a generator's args declare — the ONE place the two arg names are read, so
+             * every generator that types an enum resolves a `@provided` one from the same input.
+             * Absent args give a config under which a `@provided` enum is a [GeneratorException].
+             */
+            @JvmStatic
+            fun fromArgs(args: Map<String, String>?): ProvidedEnumConfig =
+                ProvidedEnumConfig(
+                    args?.get(ARG_PROVIDED_ENUM_NAMESPACE)?.trim()?.takeIf { it.isNotEmpty() },
+                    parsePackageMap(args?.get(ARG_PROVIDED_ENUM_PACKAGES)),
+                )
         }
     }
 
@@ -80,15 +96,13 @@ object Fr019SharedEnum {
     }
 
     /**
-     * The [ClassName] a consuming property emits for a `@provided` shared enum — `<ns>.<Name>`, with
-     * `ns` resolved from the package map (keyed by the enum's declaring metadata package) then the
-     * single fallback. Throws a codegen-time [GeneratorException] naming the enum + package when
-     * unresolved. Returns `null` when [field] is NOT a `@provided` shared enum, so the caller falls
-     * back to the normal materialized [KotlinTypeMapper.enumTypeName].
+     * The [ClassName] of the `@provided` shared enum [decl] — `<ns>.<Name>`, with `ns` resolved
+     * from the package map (keyed by the enum's declaring metadata package) then the single
+     * fallback. Throws a codegen-time [GeneratorException] naming the enum, its package and the
+     * two args when neither resolves, so no generator can emit a reference to a class nothing
+     * writes. Called only by [KotlinTypeMapper.enumTypeName].
      */
-    fun providedClassName(field: MetaField<*>, config: ProvidedEnumConfig): ClassName? {
-        val decl = resolveSharedEnumDecl(field) ?: return null
-        if (!isProvided(decl)) return null
+    fun providedClassName(decl: EnumField, config: ProvidedEnumConfig): ClassName {
         val (_, shortRaw) = PackageMapping.splitFqn(decl.name)
         val simple = shortRaw.replaceFirstChar { it.uppercase() }
         val metaPackage = metaPackageOf(decl.name)
@@ -97,8 +111,8 @@ object Fr019SharedEnum {
             throw GeneratorException(
                 "provided enum \"$simple\" (declared in package \"$metaPackage\") is marked @provided " +
                 "but no Kotlin namespace is configured to reference it from. Map its package via the " +
-                "providedEnumPackages generator arg (\"$metaPackage=your.app.enums\") or set the single " +
-                "providedEnumNamespace fallback, so the generated code can reference \"$simple\"."
+                "$ARG_PROVIDED_ENUM_PACKAGES generator arg (\"$metaPackage=your.app.enums\") or set the single " +
+                "$ARG_PROVIDED_ENUM_NAMESPACE fallback, so the generated code can reference \"$simple\"."
             )
         }
         return ClassName(ns, simple)

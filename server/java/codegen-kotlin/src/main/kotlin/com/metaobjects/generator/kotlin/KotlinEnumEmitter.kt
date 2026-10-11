@@ -37,8 +37,11 @@ object KotlinEnumEmitter {
         field: EnumField,
         outRoot: Path,
         emittedFqns: MutableSet<String>,
+        provided: Fr019SharedEnum.ProvidedEnumConfig,
     ): Boolean {
-        val enumClassName = KotlinTypeMapper.enumTypeName(field, owner) ?: return false
+        // FR-019: a @provided shared enum is referenced externally, never materialized.
+        if (Fr019SharedEnum.isProvidedEnumField(field)) return false
+        val enumClassName = KotlinTypeMapper.enumTypeName(field, owner, provided) ?: return false
         if (!emittedFqns.add(enumClassName.canonicalName)) return false // dedupe by enum FQN
         // Read members from the DECLARATION (FR-019: EnumField.resolveSharedEnumDeclaration — the
         // same authority enumTypeName just resolved), never from whichever consuming field is

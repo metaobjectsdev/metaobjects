@@ -143,7 +143,7 @@ class KotlinApiDocsAccuracyKtTest {
     @BeforeTest
     fun setUp() {
         loader = loadString("apidocs-accuracy", fixture)
-        model = KotlinApiModelBuilder().build(loader, PROJECT)
+        model = KotlinApiModelBuilder(com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig.fromArgs(null)).build(loader, PROJECT)
 
         outDir = Files.createTempDirectory("kapidocs-gen-")
         templateRoot = Files.createTempDirectory("kapidocs-tpl-")

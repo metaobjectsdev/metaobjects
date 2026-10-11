@@ -87,8 +87,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
-        fr019Config = Fr019SharedEnum.ProvidedEnumConfig.of(
-            getArg("providedEnumNamespace"), getArg("providedEnumPackages"))
+        fr019Config = Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args)
         // emitAbstractShapes (default OFF): when ON, an abstract entity is emitted as a Kotlin
         // `interface` shape (read-only properties) instead of being suppressed. It is NEVER
         // emitted as an instantiable data class — abstracts are scaffolding.
@@ -162,7 +161,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // the class already emitted for the entity it reads from, the same class the
         // report's Exposed table types the column by, so the generated row mapper compiles.
         // Empty for every other object.
-        reportEnumClasses = KotlinGenUtil.reportEnumClasses(obj, loader)
+        reportEnumClasses = KotlinGenUtil.reportEnumClasses(obj, loader, fr019Config)
         try {
             emitDataClass(obj, outRoot, loader, emittedEnumFqns)
         } finally {
@@ -193,17 +192,14 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         for (field in obj.metaFields) {
             // A report's enum field references an entity's class; nothing is materialized.
             if (reportRow) break
-            // FR-019: a @provided shared enum is referenced externally, never materialized — skip it.
-            if (field is EnumField && !Fr019SharedEnum.isProvidedEnumField(field))
-                KotlinEnumEmitter.emitEnumFile(obj, field, outRoot, emittedEnumFqns)
+            if (field is EnumField) KotlinEnumEmitter.emitEnumFile(obj, field, outRoot, emittedEnumFqns, fr019Config)
         }
         // FR-017 TPH: the base union folds in subtype-only fields (below). A folded field.enum
         // resolves to a typed enum ClassName, so its enum file must be emitted here (owner = base,
         // matching the fold's type resolution) — the declaring subtype is skipped in execute(), so
         // no other pass emits it. No-op for a non-TPH entity (collectSubtypeFields is empty).
         for (field in KotlinTphPlan.collectSubtypeFields(obj, loader)) {
-            if (field is EnumField && !Fr019SharedEnum.isProvidedEnumField(field))
-                KotlinEnumEmitter.emitEnumFile(obj, field, outRoot, emittedEnumFqns)
+            if (field is EnumField) KotlinEnumEmitter.emitEnumFile(obj, field, outRoot, emittedEnumFqns, fr019Config)
         }
 
         val (pkg, shortName) = PackageMapping.splitFqn(obj.name)
@@ -379,9 +375,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      */
     protected open fun emitAbstractShape(obj: MetaObject, outRoot: Path, loader: MetaDataLoader, emittedEnumFqns: MutableSet<String>) {
         for (field in obj.metaFields) {
-            // FR-019: a @provided shared enum is referenced externally, never materialized — skip it.
-            if (field is EnumField && !Fr019SharedEnum.isProvidedEnumField(field))
-                KotlinEnumEmitter.emitEnumFile(obj, field, outRoot, emittedEnumFqns)
+            if (field is EnumField) KotlinEnumEmitter.emitEnumFile(obj, field, outRoot, emittedEnumFqns, fr019Config)
         }
 
         val (pkg, shortName) = PackageMapping.splitFqn(obj.name)
@@ -426,13 +420,11 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     /** The Kotlin TypeName for a single (non-array) element of [field]. */
     protected open fun resolveElementType(field: MetaField<*>, owner: MetaObject, loader: MetaDataLoader): TypeName {
-        // FR-019: a @provided shared enum is referenced at its configured external namespace
-        // (<ns>.E) instead of the materialized in-package class; an unresolved namespace throws.
-        Fr019SharedEnum.providedClassName(field, fr019Config)?.let { return it }
         // FR-044: a report's derived enum field → the class of the entity field it reads.
         if (owner is ReportReadModel) reportEnumClasses[field.name]?.let { return it }
-        // field.enum → typed enum class generated alongside this entity.
-        KotlinTypeMapper.enumTypeName(field, owner)?.let { return it }
+        // field.enum → the typed enum class generated alongside this entity, the shared one it
+        // reaches, or (FR-019) the configured external class of a @provided one.
+        KotlinTypeMapper.enumTypeName(field, owner, fr019Config)?.let { return it }
         if (field is ObjectField) {
             val ref = readObjectRef(field)
             val target = ref?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }

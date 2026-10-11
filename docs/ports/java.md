@@ -300,6 +300,32 @@ object it emits — so its output ships whenever `entity` is in your `<generator
 there is no `<generator>` entry for it. The other four ports expose `extractor` as a
 standalone generator; Java fuses it, which is why it carries a stable name here at all.
 
+### Shared and `@provided` enums
+
+A package-level abstract `field.enum` that fields extend is one top-level Java `enum`,
+`<pkg>/<Name>.java`, referenced by every DTO, value-object record and output parser that
+reaches it (directly or through another field). `SpringDtoGenerator` owns those files and
+writes all of them. `SpringValueObjectGenerator` and `SpringOutputParserGenerator` write none
+unless asked, which is what keeps a separate `outputDir` per generator from compiling two
+copies of one class:
+
+```xml
+<generator>
+  <classname>com.metaobjects.generator.spring.SpringValueObjectGenerator</classname>
+  <args>
+    <outputDir>${project.build.directory}/generated-sources/java</outputDir>
+    <!-- Only when the DTO generator is NOT in this build. -->
+    <emitSharedEnums>true</emitSharedEnums>
+  </args>
+</generator>
+```
+
+A `@provided` enum is never generated. All three generators reference it where
+`providedEnumNamespace` (one namespace for every provided enum) or `providedEnumPackages`
+(`<metaPackage>=<namespace>` entries separated by `;`) point, and fail at generate time,
+naming the enum, when neither resolves it. Set them once for every generator in the plugin's
+`<globals>`.
+
 ### Reports
 
 A concrete `object.report` whose read source is a `source.rdb` of `@kind: view` is served

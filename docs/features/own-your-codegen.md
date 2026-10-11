@@ -194,6 +194,16 @@ The selection that actually hits this today is `entity` together with `value-obj
 both emit a Java type for an `object.value` at the same path — a POJO class and a record,
 which are not two spellings of one thing. Pick the one your tier needs.
 
+**A separate `outputDir` per generator is safe for shared enums, because one generator owns
+them.** A package-level abstract enum that fields extend is one Java type, written once as
+`<pkg>/<Name>.java`. `SpringDtoGenerator` (`dto`) owns those files: it writes every shared
+enum the model uses, including one only a value object or an output parser references. The
+value-object and output-parser generators reference the type and write none, so two output
+directories never hold the same class. If your `<generators>` run `value-object` or
+`output-parser` WITHOUT `dto`, on a model where one of their objects reaches a shared enum,
+give exactly one of them `<emitSharedEnums>true</emitSharedEnums>` and it writes the files
+into its own `outputDir`.
+
 **Ownership still wins over the collision error.** The marker question is asked first, so
 a path you hand-own is refused before it is ever claimed: two generators colliding on a
 file you took ownership of produce two warnings and a green build, not a failed reactor.

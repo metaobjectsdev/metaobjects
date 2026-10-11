@@ -85,7 +85,9 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         fr019Config = Fr019SharedEnum.ProvidedEnumConfig.of(
             getArg("providedEnumNamespace"), getArg("providedEnumPackages"));
-        Fr019SharedEnum.emitMaterialized(loader, outRoot);
+        if (Boolean.parseBoolean(getArg(Fr019SharedEnum.ARG_EMIT_SHARED_ENUMS, "false"))) {
+            Fr019SharedEnum.emitMaterialized(loader, outRoot);
+        }
         for (MetaObject vo : valueShapes(loader)) {
             emit(vo, outRoot);
         }

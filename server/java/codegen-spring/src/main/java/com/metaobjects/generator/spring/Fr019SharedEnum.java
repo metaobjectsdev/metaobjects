@@ -184,12 +184,21 @@ public final class Fr019SharedEnum {
     }
 
     /**
-     * Emit each materialized shared enum ONCE as a standalone top-level Java {@code enum} in its
-     * declaring package — {@code <pkg>/<Name>.java} containing {@code public enum <Name> { A, B, C }}.
-     * Every generator whose output REFERENCES a shared type (the DTO, value-object and output-parser
-     * generators) calls this, so the type exists whichever of them a run includes; the content is a
-     * pure function of the declaration, so the repeated write is byte-identical. Provided enums
-     * emit nothing (referenced externally).
+     * The opt-in generator arg ({@code emitSharedEnums=true}) with which the value-object and
+     * output-parser generators write the materialized shared enums into their own
+     * {@code outputDir}. {@link SpringDtoGenerator} owns those files and always writes them, so
+     * the arg is for a run that includes one of the other two WITHOUT the DTO generator. Leaving
+     * it off elsewhere is what keeps one {@code <Name>.java} per shared enum when the generators
+     * write to separate output directories.
+     */
+    public static final String ARG_EMIT_SHARED_ENUMS = "emitSharedEnums";
+
+    /**
+     * Write each materialized shared enum as a standalone top-level Java {@code enum} in its
+     * declaring package — {@code <pkg>/<Name>.java} containing {@code public enum <Name> { A, B, C }}
+     * — for EVERY shared enum the model consumes, whichever object reaches it. Provided enums
+     * emit nothing (referenced externally). Called by {@link SpringDtoGenerator} on every run and
+     * by the value-object and output-parser generators only under {@link #ARG_EMIT_SHARED_ENUMS}.
      */
     public static void emitMaterialized(MetaDataLoader loader, Path outRoot) {
         for (SharedEnum shared : materializedSharedEnums(loader)) {

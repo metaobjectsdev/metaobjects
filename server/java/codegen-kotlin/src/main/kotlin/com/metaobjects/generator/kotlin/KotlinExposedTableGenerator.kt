@@ -6,6 +6,7 @@ package com.metaobjects.generator.kotlin
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
 import com.metaobjects.generator.kotlin.ExposedApi
 import com.metaobjects.generator.kotlin.ExposedImports
+import com.metaobjects.generator.kotlin.Fr019SharedEnum
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinNaming
 import com.metaobjects.generator.kotlin.KotlinTphPlan
@@ -111,6 +112,13 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * `exposedApi` generator arg (`<args><exposedApi>1</exposedApi></args>` in the pom).
      */
     protected fun exposedApi(): ExposedApi = ExposedApi.parse(getArg(ExposedApi.ARG_EXPOSED_API))
+
+    /**
+     * FR-019: where a `@provided` enum is referenced from, read from the same two generator args
+     * every generator that types an enum takes ([Fr019SharedEnum.ProvidedEnumConfig.fromArgs]).
+     */
+    private val providedEnums: Fr019SharedEnum.ProvidedEnumConfig
+        get() = Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args)
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -398,7 +406,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val model = ReportReadModel.of(report)
         val pkg = PackageMapping.splitFqn(report.name).first
         reportPlans[model] = ReportTablePlan(
-            enumClasses = KotlinGenUtil.reportEnumClasses(shape),
+            enumClasses = KotlinGenUtil.reportEnumClasses(shape, providedEnums),
             unsizedDecimals = shape.fields()
                 .filter { it.typeSource == null && it.subType == DecimalField.SUBTYPE_DECIMAL }
                 .mapTo(HashSet()) { it.name },
@@ -505,7 +513,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * [KotlinEntityGenerator] emits for it — and [KotlinGenUtil.reportEnumClasses] for a report.
      */
     private fun enumClassFor(field: MetaField<*>, entity: MetaObject): ClassName? =
-        reportPlans[entity]?.enumClasses?.get(field.name) ?: KotlinTypeMapper.enumTypeName(field, entity)
+        reportPlans[entity]?.enumClasses?.get(field.name) ?: KotlinTypeMapper.enumTypeName(field, entity, providedEnums)
 
     /**
      * The Exposed column spec of a non-enum scalar [field] of [entity]: the type mapper's,
@@ -927,7 +935,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 if (field is EnumField) consider(enumClassFor(field, entity))
             }
             for (field in KotlinTphPlan.collectSubtypeFields(entity, loader)) {
-                if (field is EnumField) consider(KotlinTypeMapper.enumTypeName(field, entity))
+                if (field is EnumField) consider(KotlinTypeMapper.enumTypeName(field, entity, providedEnums))
             }
         }
 

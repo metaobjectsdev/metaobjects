@@ -112,8 +112,9 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         fr019Config = Fr019SharedEnum.ProvidedEnumConfig.of(
             getArg("providedEnumNamespace"), getArg("providedEnumPackages"));
-        // FR-019: materialize each shared (package-level abstract, non-@provided) enum ONCE as a
-        // standalone Java enum, so consuming DTOs reference it instead of redeclaring it inline.
+        // FR-019: this generator OWNS the shared enum files. It writes every materialized shared
+        // (package-level abstract, non-@provided) enum the model consumes, including one only a
+        // value object or an output parser references, so those generators write none by default.
         Fr019SharedEnum.emitMaterialized(loader, outRoot);
         boolean emitAbstractShapes = Boolean.parseBoolean(getArg("emitAbstractShapes", "false"));
         for (MetaObject declared : loader.getMetaObjects()) {

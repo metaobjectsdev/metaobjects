@@ -165,7 +165,14 @@ disagree.
 read, so a chained declaration materializes the members it inherits), never from whichever
 consuming field is visited first. The shared type is emitted whenever any generated consumer
 references it, including when the only consumer is a multi-hop projection or value-object
-field.
+field. Where a port has several generators that reference the type, ONE of them owns the file,
+so generators writing to separate output directories never produce two copies of one class: in
+Java that is `SpringDtoGenerator`, which writes every shared enum the model uses, and the
+value-object and output-parser generators write it only under `emitSharedEnums=true`, for a
+build that runs them without it. A `@provided` declaration is never generated, and the reference
+to it is resolved inside the same type resolver every generator calls, from the same
+`providedEnumNamespace` / `providedEnumPackages` configuration, so no generator can name a
+class in the declaration's own package.
 
 **This supersedes #259's remedy.** #259 reported a type that did not generate, and was fixed by
 giving a Kotlin projection its own copy of the enum. The projection now references the shared

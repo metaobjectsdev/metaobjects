@@ -62,8 +62,13 @@ Total hand-written lines did not fall, so do not read it as a total line reducti
   type instead of nesting a copy (`TicketPayload.Priority` becomes the top-level `Priority`),
   and an inline enum that redeclares `@values` or `@intValueMap` under a shared enum moves from
   the shared enum's name to `<Owner><Field>` (`TaskDto.Priority` becomes `TaskDto.TaskPhase`).
-  Every other inline enum, in every port, keeps its previous name and bytes. The **Fixed** entry
-  lists each port's before and after.
+  Every other inline enum, in every port, keeps its previous name and bytes. Two build
+  settings follow from it. Java: `SpringDtoGenerator` owns the shared enum files, so a pom
+  that runs the value-object or output-parser generator WITHOUT it, on a model where one of
+  their objects reaches a shared enum, must set `emitSharedEnums=true` on one of them. Kotlin:
+  every generator that types an enum now needs `providedEnumNamespace` /
+  `providedEnumPackages` for a model with a `@provided` enum; set them in the plugin's
+  `<globals>`. The **Fixed** entry lists each port's before and after.
 
 **Not in 1.1.0.** Derived measures, the preview `reporting` library, the dbt exporter, the second
 requirements slice and the advisory lint port, the JSON Schema and OpenAPI generators, the
@@ -576,10 +581,30 @@ until you regenerate.
     Java types that do not convert. Migration: `TicketPayload.Priority` becomes the top-level
     `Priority`, and a `@provided` enum is referenced where `providedEnumNamespace` /
     `providedEnumPackages` point, which the value-object and output-parser generators now read.
+    The file for a shared enum has ONE writer, `SpringDtoGenerator`, which writes every shared
+    enum the model uses, including one only a value object or an output parser reaches. So a
+    separate `outputDir` per generator still compiles: no second copy of the class is written.
+    A pom that runs the value-object or output-parser generator WITHOUT the DTO generator, on a
+    model where one of their objects reaches a shared enum, must set
+    `<emitSharedEnums>true</emitSharedEnums>` on one of them, or the type it references is not
+    generated. (Before this change such a value object nested its own copy, so nothing was
+    missing.)
   - An inline enum on a chain that redeclares `@values` or `@intValueMap` under a shared enum
     was nested under the shared enum's own name and shadowed it inside the DTO. It is now named
     `<Owner><Field>`: `TaskDto.Priority` (with the redeclared members) becomes
     `TaskDto.TaskPhase`. It stays inline, with its own members.
+
+  Kotlin has one more change, to configuration:
+
+  - Every Kotlin generator that types an enum now takes `providedEnumNamespace` /
+    `providedEnumPackages`: the entity, Exposed table, Spring controller, relations and
+    output-parser generators, and the API pages `mvn metaobjects:docs` writes. Only the entity
+    generator read them before, so for a `@provided` enum the data class named your class while
+    the Exposed table and the controller named a class in the declaration's package that nothing
+    generates, and the output did not compile. They now all resolve it through one function. A
+    generator configured without the args fails at generate time for a model with a `@provided`
+    enum, naming the enum, its package and both args. Set them once in the plugin's `<globals>`
+    and every generator, and the docs goal, reads the same values.
 
   Nothing else moves. Every other inline enum, in every port, keeps its previous name and bytes:
   in Java an inline enum that extends another field is still named for its top-most super

@@ -187,7 +187,10 @@ object KotlinTypeMapper {
      * collapses every field reaching it onto ONE class, however many hops away (a projection or
      * value-object field included: #259's per-object remedy is superseded — see that method's
      * Javadoc for the full rule, including the own-{@code @values}/{@code @intValueMap}
-     * short-circuit). With no reachable declaration the field keeps its per-object
+     * short-circuit). A declaration marked `@provided` is never generated: the answer is the
+     * class [provided] names for it ([Fr019SharedEnum.providedClassName]), and an unconfigured one
+     * is a `GeneratorException` here, in whichever generator asked. Every caller gets that answer
+     * from this one function. With no reachable declaration the field keeps its per-object
      * {@code <EntityShortName><FieldNamePascalCase>} naming, in the same Kotlin package as the
      * entity (derived from the entity's metadata FQN via [PackageMapping.splitFqn]).
      *
@@ -198,11 +201,16 @@ object KotlinTypeMapper {
      * helper still produces a useful ClassName for documentation / debug output. Generators that
      * actually emit code always pass the owning entity.
      */
-    fun enumTypeName(field: MetaField<*>, entity: MetaObject?): ClassName? {
+    fun enumTypeName(
+        field: MetaField<*>,
+        entity: MetaObject?,
+        provided: Fr019SharedEnum.ProvidedEnumConfig,
+    ): ClassName? {
         if (field !is EnumField) return null
 
-        val declaration = EnumField.resolveSharedEnumDeclaration(field)
+        val declaration = Fr019SharedEnum.resolveSharedEnumDecl(field)
         if (declaration != null) {
+            if (Fr019SharedEnum.isProvided(declaration)) return Fr019SharedEnum.providedClassName(declaration, provided)
             val (declPkg, declShort) = PackageMapping.splitFqn(declaration.name)
             return ClassName(declPkg, declShort.replaceFirstChar { it.uppercase() })
         }
