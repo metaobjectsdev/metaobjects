@@ -222,9 +222,9 @@ const CASES: readonly Case[] = [
   ] as const).map(([kind, column, type]): Case => ({ kind, host: REPORT, view: "v_week_stats", column, retyped: cast(type) })),
 ];
 
-async function load(host: unknown, programFields: unknown[] = []): Promise<MetaRoot> {
+async function load(host: unknown, programFields: unknown[] = [], others: unknown[] = []): Promise<MetaRoot> {
   const json = JSON.stringify({
-    "metadata.root": { package: "acme", children: [program(programFields), WEEK, WEEK_BRIEF, host] },
+    "metadata.root": { package: "acme", children: [program(programFields), WEEK, WEEK_BRIEF, ...others, host] },
   });
   const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
   expect(errors).toEqual([]);
@@ -240,8 +240,8 @@ async function applyRaw(text: string, db: Db = k): Promise<void> {
 interface Model { expected: SchemaSnapshot; view: ViewDescriptor }
 
 /** The expected schema of a model, and the one view under test. */
-async function model(host: unknown, viewName: string, programFields: unknown[] = []): Promise<Model> {
-  const root = await load(host, programFields);
+async function model(host: unknown, viewName: string, programFields: unknown[] = [], others: unknown[] = []): Promise<Model> {
+  const root = await load(host, programFields, others);
   const expected = buildExpectedSchema(root, {
     columnNamingStrategy: STRATEGY,
     views: buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: STRATEGY }),
@@ -503,6 +503,82 @@ describe("an @sql body that reads every column (postgres)", () => {
 
     const changed = await plan(after.expected);
     expect(kindsOf(changed.changes)).toEqual(["replace-view"]);
+    await apply(changed.changes);
+    expect(await viewOid(SUMMARY_VIEW)).toBe(oid);
+    expect((await plan(after.expected)).changes).toEqual([]);
+  }, 60_000);
+});
+
+// An `@sql` view's tracked tables are its anchors, not the tables its body joins. The replace
+// runs after the plan's table changes, with the live view standing while they run, and
+// Postgres refuses to retype or drop what a standing view reads.
+describe("an @sql body that joins a table the view does not track (postgres)", () => {
+  const badge = (points?: "int" | "long"): unknown => ({
+    "object.entity": { name: "Badge", children: [
+      { "source.rdb": { "@table": "badges" } },
+      { "field.long": { name: "id" } },
+      { "field.long": { name: "programId", "@required": true } },
+      ...(points !== undefined ? [{ [`field.${points}`]: { name: "points", "@required": true } }] : []),
+      { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+    ] },
+  });
+  const scoredView = (scored: string): unknown => ({
+    "object.projection": { name: "ProgramSummary", children: [
+      { "source.rdb": { "@kind": "view", "@view": SUMMARY_VIEW, "@sql": `SELECT p."id" AS "id", ${scored} AS "scored" FROM "programs" p` } },
+      { "identity.primary": { name: "id", extends: "Program.id", "@fields": "id" } },
+      { "field.long": { name: "id", extends: "Program.id" } },
+    ] },
+  });
+  const overPoints = (threshold: number): string =>
+    `(SELECT count(*) FROM "badges" b WHERE b."programId" = p."id" AND b."points" > ${threshold})`;
+  const OVER_BADGES = `(SELECT count(*) FROM "badges" b WHERE b."programId" = p."id")`;
+  const BEFORE = { scored: overPoints(0), others: [badge("int")] };
+
+  test.each([
+    {
+      change: "retypes a column the body reads", scored: overPoints(1), others: [badge("long")],
+      statement: `ALTER TABLE "badges" ALTER COLUMN "points" TYPE BIGINT`,
+      refusal: /cannot alter type of a column used by a view or rule/, planned: "change-column-type",
+    },
+    {
+      change: "drops a column the live body reads", scored: OVER_BADGES, others: [badge()],
+      statement: `ALTER TABLE "badges" DROP COLUMN "points"`,
+      refusal: /cannot drop column points of table badges because other objects depend on it/, planned: "drop-column",
+    },
+    {
+      change: "drops the table the live body reads", scored: "0::bigint", others: [],
+      statement: `DROP TABLE "badges"`,
+      refusal: /cannot drop table badges because other objects depend on it/, planned: "drop-table",
+    },
+  ])("a body change in a plan that $change is dropped and created, and applies", async (c) => {
+    await migrate((await model(scoredView(BEFORE.scored), SUMMARY_VIEW, [], BEFORE.others)).expected);
+    const after = await model(scoredView(c.scored), SUMMARY_VIEW, [], c.others);
+    expect(after.view.dependsOn).toEqual(["programs"]);
+
+    // Postgres accepts the replace today, and refuses the table change while the view stands.
+    const rollback = new Error("rollback");
+    await expect(k.transaction().execute(async (trx) => {
+      await sql.raw(`CREATE OR REPLACE VIEW "${SUMMARY_VIEW}" AS ${after.view.sql}`).execute(trx);
+      throw rollback;
+    })).rejects.toBe(rollback);
+    await expect(sql.raw(c.statement).execute(k)).rejects.toThrow(c.refusal);
+
+    const changed = await plan(after.expected, { dropColumn: true, dropTable: true });
+    expect(changed.blocked).toEqual([]);
+    expect(kindsOf(changed.changes)).toEqual([c.planned, "create-view", "drop-view"].sort());
+    await apply(changed.changes);
+
+    expect(await columnTypes(SUMMARY_VIEW)).toEqual({ id: "bigint", scored: "bigint" });
+    expect((await plan(after.expected)).changes).toEqual([]);
+  }, 60_000);
+
+  test("a body change beside a change to a table it does not read is replaced in place", async () => {
+    await migrate((await model(scoredView("0::bigint"), SUMMARY_VIEW, [], BEFORE.others)).expected);
+    const oid = await viewOid(SUMMARY_VIEW);
+    const after = await model(scoredView("1::bigint"), SUMMARY_VIEW, [], [badge("long")]);
+
+    const changed = await plan(after.expected);
+    expect(kindsOf(changed.changes)).toEqual(["change-column-type", "replace-view"]);
     await apply(changed.changes);
     expect(await viewOid(SUMMARY_VIEW)).toBe(oid);
     expect((await plan(after.expected)).changes).toEqual([]);

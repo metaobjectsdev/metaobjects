@@ -1001,9 +1001,12 @@ until you regenerate.
   - **A replace is never planned without that proof.** When the probe cannot run, the plan is a
     drop and a create: an offline `meta migrate` (the default, which diffs the committed
     snapshot and has no database to ask), a role with no `TEMPORARY` privilege, a new
-    definition that does not compile yet because it reads a column the same migration adds, or
+    definition that does not compile yet because it reads a column the same migration adds,
     an `@sql` body with `SELECT *` or `NATURAL JOIN` in a migration that also adds a column (its
-    column list changes once the column exists, so an answer taken before would not hold).
+    column list changes once the column exists, so an answer taken before would not hold), or
+    an `@sql` body that joins a table the view does not track in a migration that also retypes,
+    drops or renames a column of that table the body reads, or drops that table (Postgres
+    refuses those changes while the old view stands).
     Before, an offline plan replaced a view in place when its recorded columns looked compatible.
   - **A drop and a create discards the privileges granted on the view.** `DROP VIEW` removes the
     view's grants with it, and `meta migrate` writes no `GRANT`, so a role that had `SELECT` on a

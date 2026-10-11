@@ -174,6 +174,79 @@ describe("the planner replaces a view only on the probe's evidence", () => {
     });
   });
 
+  // The replace runs after the plan's table changes and leaves the live view standing while
+  // they run. Postgres refuses to retype or drop a column, or drop a table, that a standing
+  // view reads (https://www.postgresql.org/docs/current/sql-altertable.html, DROP COLUMN and
+  // SET DATA TYPE; sql-droptable.html, RESTRICT). Pass 2c covers a table in `dependsOn`; an
+  // `@sql` body joins tables its `dependsOn` does not list.
+  describe("a body that reads a table outside dependsOn, in a plan that changes that table", () => {
+    type Columns = SchemaSnapshot["tables"][number]["columns"];
+    const POINTS: Columns[number] = { name: "points", sqlType: { kind: "integer", bits: 32 }, nullable: false };
+    const NOTE: Columns[number] = { name: "note", sqlType: { kind: "text" }, nullable: true };
+    const withScores = (views: ViewDescriptor[], columns?: Columns): SchemaSnapshot => {
+      const s = snap(views);
+      if (columns === undefined) return s;
+      return { ...s, tables: [...s.tables, { name: "scores", columns, indexes: [], foreignKeys: [], primaryKey: [], checks: [] }] };
+    };
+    const joined = (threshold: number): string =>
+      `SELECT g.id AS id, (SELECT count(*) FROM scores s WHERE s.points > ${threshold}) AS scored FROM games g`;
+    const UNJOINED = "SELECT g.id AS id, 0::bigint AS scored FROM games g";
+    const same = { expected: [ID, col("scored", "bigint")], live: [ID, col("scored", "bigint")] };
+    const WIDE_POINTS: Columns[number] = { ...POINTS, sqlType: { kind: "integer", bits: 64 } };
+    const opts = (probe: ViewReplaceProbe) =>
+      ({ dialect: "postgres" as const, viewReplaceProbe: probe, allow: { dropColumn: true, dropTable: true } });
+
+    test.each([
+      ["retypes a column the body reads", joined(1), [WIDE_POINTS, NOTE], "change-column-type"],
+      ["drops a column the live body reads", UNJOINED, [NOTE], "drop-column"],
+      ["drops the table the live body reads", UNJOINED, undefined, "drop-table"],
+    ] as const)("a plan that %s drops and creates the view, and the probe is not asked", async (_, body, columns, change) => {
+      const { probe, asked } = stub(same);
+      const r = await diff(
+        withScores([view(body)], columns === undefined ? undefined : [...columns]),
+        withScores([view(joined(0))], [POINTS, NOTE]),
+        opts(probe),
+      );
+      expect(kinds(r)).toEqual([change, "drop-view", "create-view"]);
+      expect(r.blocked).toEqual([]);
+      expect(asked).toEqual([]);
+    });
+
+    test("a changed column the bodies do not read leaves the replace to the probe", async () => {
+      const { probe, asked } = stub(same);
+      const r = await diff(
+        withScores([view(joined(1))], [POINTS, { ...NOTE, sqlType: { kind: "integer", bits: 32 } }]),
+        withScores([view(joined(0))], [POINTS, NOTE]),
+        opts(probe),
+      );
+      expect(kinds(r)).toEqual(["change-column-type", "replace-view"]);
+      expect(asked).toHaveLength(1);
+    });
+
+    test("a changed table the bodies do not read leaves the replace to the probe", async () => {
+      const { probe, asked } = stub(same);
+      const r = await diff(
+        withScores([view(NEW_BODY)], [WIDE_POINTS, NOTE]),
+        withScores([view(OLD_BODY)], [POINTS, NOTE]),
+        opts(probe),
+      );
+      expect(kinds(r)).toEqual(["change-column-type", "replace-view"]);
+      expect(asked).toHaveLength(1);
+    });
+
+    // Postgres changes nullability in place under a view.
+    test("a nullability change on a column the body reads leaves the replace to the probe", async () => {
+      const { probe, asked } = stub(same);
+      const r = await diff(
+        withScores([view(joined(1))], [{ ...POINTS, nullable: true }, NOTE]),
+        withScores([view(joined(0))], [POINTS, NOTE]),
+        opts(probe),
+      );
+      expect(kinds(r)).toEqual(["change-column-nullable", "replace-view"]);
+      expect(asked).toHaveLength(1);
+    });
+  });
+
   test("SQLite and D1 never ask: a replace there is written as DROP + CREATE", async () => {
     for (const dialect of ["sqlite", "d1"] as const) {
       const { probe, asked } = stub({ expected: [ID], live: [ID] });
