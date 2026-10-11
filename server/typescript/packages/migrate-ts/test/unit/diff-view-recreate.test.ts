@@ -96,7 +96,7 @@ describe("diff — Pass 2c view dependency-recreate", () => {
   });
 
   test("column change on a table the view does NOT depend on → no view change", async () => {
-    const independent: ViewDescriptor = { name: "v", sql: BODY, dependsOn: ["other"] };
+    const independent: ViewDescriptor = { name: "v", sql: "SELECT c FROM other", dependsOn: ["other"] };
     const r = await diff(snap("integer", [independent]), snap("text", [independent]));
     const k = kinds(r.changes);
     expect(k).toContain("change-column-type");

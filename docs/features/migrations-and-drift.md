@@ -440,11 +440,18 @@ and a `CREATE VIEW`:
   or retypes a column, changes its nullability or default, or drops a table). `meta migrate`
   does not parse the body, so it cannot tell which tables the body joins. The probe sees the
   schema before those changes, the replace runs after them, and Postgres refuses to retype or
-  drop what a standing view reads. A derived projection or report view is not affected: it
-  lists every table it reads;
+  drop what a standing view reads. A derived projection or report view lists every table its
+  new definition reads, so a change to some other table does not do this to it;
 - a body that reads columns it does not name (`SELECT *`, `NATURAL JOIN`), in a migration
   that also alters any table or any other view. Its column list comes from what it reads, so
-  an answer taken before the change would not hold.
+  an answer taken before the change would not hold;
+- any view, derived ones included, whose definition **in the database** reads a table the new
+  definition no longer reads, in a migration that also retypes, drops or renames a column of
+  that table, or drops the table. The probe proves the new definition only. The old view
+  stands while the table changes, and Postgres refuses to retype or drop what it reads.
+  `meta migrate` finds the table by name in the old view's stored definition, so a view that
+  merely names something spelled like that table is dropped and created too. Renaming the
+  table alone does not do this: a view follows a renamed table.
 
 A drop and a create of the same view needs no `--allow`. It has two costs a replace does not:
 
@@ -458,7 +465,11 @@ Plan with `--from-db` to get the in-place replace when it is legal, which keeps 
 grant the privileges again after the migration is applied.
 
 SQLite and D1 have no `CREATE OR REPLACE VIEW`: every replaced view is written as `DROP VIEW`
-and `CREATE VIEW` there, so there is no refusal to avoid and no probe.
+and `CREATE VIEW` there, so there is no refusal to avoid and no probe. They refuse something
+else: a `DROP COLUMN`, or the rebuild of a table, while a view that reads the table stands. So
+a view is dropped before such a change and created after it, for every table its definition
+in the database names, including one the new definition no longer reads and one an `@sql`
+body joins. The D1 foreign-key cascade does the same for every table it rebuilds.
 
 **A cascading drop is blocked, loudly.** If dropping a view would destroy dependent
 objects — another application's view, a materialized view — `meta migrate` blocks and

@@ -588,6 +588,113 @@ describe("an @sql body in a plan that changes a table's columns (postgres)", () 
   }, 60_000);
 });
 
+// The probe proves the NEW body. The LIVE view stands while the plan's table changes run, and
+// it may read a table the new body no longer reads: that table is not among the tables the
+// new view lists, so nothing but the live body's own text says the view reads it.
+describe("a derived view whose live body reads a table the new body does not (postgres)", () => {
+  const BADGES = [{ "relationship.aggregation": { name: "badges", "@cardinality": "many", "@objectRef": "Badge" } }];
+  const ownedBadge = (points: Record<string, unknown> | undefined, table = "badges"): unknown => ({
+    "object.entity": { name: "Badge", children: [
+      { "source.rdb": { "@table": table } },
+      { "field.long": { name: "id" } },
+      { "field.long": { name: "programId", "@required": true } },
+      ...(points !== undefined ? [points] : []),
+      { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+      { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
+    ] },
+  });
+  const POINTS = { "field.int": { name: "points", "@required": true } };
+  const total = (origin: Record<string, unknown>): unknown =>
+    summary({ "field.long": { name: "total", children: [{ "origin.aggregate": { "@agg": "sum", ...origin } }] } });
+  const OVER_BADGES = total({ "@of": "Badge.points", "@via": "Program.badges" });
+  const OVER_WEEKS = total({ "@of": "Week.durationMinutes", ...VIA });
+
+  /** The view sums badge points; the model then sums week minutes into the same column. */
+  async function repointed(programFields: unknown[], others: unknown[]): Promise<Model> {
+    await migrate((await model(OVER_BADGES, SUMMARY_VIEW, BADGES, [ownedBadge(POINTS)])).expected);
+    expect(await columnTypes(SUMMARY_VIEW)).toEqual({ id: "bigint", total: "bigint" });
+    const after = await model(OVER_WEEKS, SUMMARY_VIEW, programFields, others);
+    expect(after.view.dependsOn).not.toContain("badges");
+    return after;
+  }
+  const planWith = async (expected: SchemaSnapshot, renames: Parameters<typeof diff>[0]["renames"] = []) =>
+    diff({
+      expected, actual: await introspectPostgres(k), dialect: "postgres", renames,
+      allow: { dropColumn: true, dropTable: true }, viewReplaceProbe: postgresViewReplaceProbe(k),
+    });
+  const converged = async (expected: SchemaSnapshot) => {
+    expect(await columnTypes(SUMMARY_VIEW)).toEqual({ id: "bigint", total: "bigint" });
+    expect((await plan(expected)).changes).toEqual([]);
+  };
+
+  test.each([
+    {
+      change: "retypes a column the live body reads", programFields: BADGES,
+      others: [ownedBadge({ "field.long": { name: "points", "@required": true } })],
+      statement: `ALTER TABLE "badges" ALTER COLUMN "points" TYPE BIGINT`,
+      refusal: /cannot alter type of a column used by a view or rule/, planned: "change-column-type",
+    },
+    {
+      change: "drops a column the live body reads", programFields: BADGES, others: [ownedBadge(undefined)],
+      statement: `ALTER TABLE "badges" DROP COLUMN "points"`,
+      refusal: /cannot drop column points of table badges because other objects depend on it/, planned: "drop-column",
+    },
+    {
+      change: "drops the table the live body reads", programFields: [], others: [],
+      statement: `DROP TABLE "badges"`,
+      refusal: /cannot drop table badges because other objects depend on it/, planned: "drop-table",
+    },
+  ])("a plan that $change drops and creates the view, and applies", async (c) => {
+    const after = await repointed(c.programFields, c.others);
+
+    // Postgres accepts the replace today, and refuses the table change while the view stands.
+    const rollback = new Error("rollback");
+    await expect(k.transaction().execute(async (trx) => {
+      await sql.raw(`CREATE OR REPLACE VIEW "${SUMMARY_VIEW}" AS ${after.view.sql}`).execute(trx);
+      throw rollback;
+    })).rejects.toBe(rollback);
+    await expect(sql.raw(c.statement).execute(k)).rejects.toThrow(c.refusal);
+
+    const changed = await planWith(after.expected);
+    expect(changed.blocked).toEqual([]);
+    const kinds = kindsOf(changed.changes);
+    expect(kinds).toContain(c.planned);
+    expect(kinds).toContain("drop-view");
+    expect(kinds).toContain("create-view");
+    expect(kinds).not.toContain("replace-view");
+    await apply(changed.changes);
+    await converged(after.expected);
+  }, 60_000);
+
+  // Postgres lets a column be renamed under a view, so this one is not a refusal. The view
+  // is recreated all the same: the planner sees the rename as a drop until it is resolved.
+  test("a plan that renames a column the live body reads drops and creates the view, and applies", async () => {
+    const after = await repointed(BADGES, [ownedBadge({ "field.int": { name: "pts", "@required": true } })]);
+
+    const changed = await planWith(after.expected, [{ kind: "column", table: "badges", from: "points", to: "pts" }]);
+    expect(changed.blocked).toEqual([]);
+    expect(kindsOf(changed.changes)).toEqual(["create-view", "drop-view", "rename-column"]);
+    await apply(changed.changes);
+    await converged(after.expected);
+  }, 60_000);
+
+  // A view holds the OID of each table it reads, so it follows a rename: nothing is refused,
+  // and the view is replaced in place.
+  test("a plan that renames the table the live body reads replaces the view in place, and applies", async () => {
+    const after = await repointed(BADGES, [ownedBadge(POINTS, "awards")]);
+    const oid = await viewOid(SUMMARY_VIEW);
+
+    const changed = await planWith(after.expected, [{ kind: "table", from: "badges", to: "awards" }]);
+    expect(changed.blocked).toEqual([]);
+    expect(kindsOf(changed.changes)).toEqual(["rename-table", "replace-view"]);
+    await apply(changed.changes);
+
+    expect(await viewOid(SUMMARY_VIEW)).toBe(oid);
+    expect(await scalar(`SELECT to_regclass('public.awards') IS NOT NULL AND to_regclass('public.badges') IS NULL`)).toBe(true);
+    await converged(after.expected);
+  }, 60_000);
+});
+
 // `SELECT *` over another view is re-expanded when the view is replaced. The probe sees that
 // other view as it stands; once the same plan has appended a column to it, the new column
 // lands in the middle of this view's column list.

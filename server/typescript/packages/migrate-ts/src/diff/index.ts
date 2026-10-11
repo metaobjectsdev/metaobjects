@@ -12,6 +12,7 @@ import { PrimaryKeyChangeError } from "../errors.js";
 import { detectColumnRenames, detectTableRenames } from "./rename-heuristic.js";
 import { firstViewSqlDifference, viewSqlEquals } from "../view-sql-compare.js";
 import { viewReplaceIsLegal, type ViewReplaceProbe } from "../view-replace.js";
+import { liveViewReadsTable, sqlNamesIdentifier } from "../view-reads.js";
 import { checkExprEquals, checkExprRespelledNullSafe, normalizeCheckExpr, renameExprIdentifiers } from "../check-expr-compare.js";
 import { isPgAutoSequenceDefault } from "../pg-identity-default.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
@@ -967,8 +968,8 @@ async function diffViews(
  * and for a derived body and an opaque `@sql` one alike.
  *
  * The probe answers for the schema as it stands, and the replace runs after the rest of
- * this plan. When the plan may change what the body reads
- * ({@link planMayChangeWhatBodyReads}), the answer would not hold and the probe is not asked.
+ * this plan, with the live view standing meanwhile. When the plan may change what either
+ * body reads ({@link planMayChangeWhatBodyReads}), the probe is not asked.
  */
 async function pushViewUpdate(
   expected: ViewDescriptor, actual: ViewDescriptor, changes: Change[],
@@ -984,7 +985,7 @@ async function pushViewUpdate(
   const reason: ViewChangeReason = unmanaged
     ? { kind: "unfingerprinted" }
     : { kind: "definition", compared: "fingerprint" };
-  const evidence = probe === undefined || planMayChangeWhatBodyReads(expected, changes)
+  const evidence = probe === undefined || planMayChangeWhatBodyReads(expected, actual, changes)
     ? undefined
     : await probe(expected, actual);
   if (evidence !== undefined && viewReplaceIsLegal(evidence.expected, evidence.live)) {
@@ -1104,34 +1105,28 @@ function viewReadsEveryColumn(sql: string): boolean {
 }
 
 /**
- * Per-column identifier matches, compiled once per column name: a wide schema diff revisits
- * the same column names across tables and views, and recompiling a RegExp per test would
- * rebuild identical state over and over.
- */
-const columnIdentifierRes = new Map<string, RegExp>();
-function columnIdentifierRe(column: string): RegExp {
-  let re = columnIdentifierRes.get(column);
-  if (re === undefined) {
-    const escaped = column.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    re = new RegExp(`(?<![A-Za-z0-9_])"?${escaped}"?(?![A-Za-z0-9_])`, "i");
-    columnIdentifierRes.set(column, re);
-  }
-  return re;
-}
-
-/**
- * Does `sql` read any of `cols`? A textual match on the identifier. It can over-report (a
- * column name that is also an alias), which is the safe direction: a wrongly recreated view
- * costs a drop and a create, a missed one fails the ALTER at apply. A body can also read a
- * column WITHOUT naming it, and those forms are `readsEverything`
- * ({@link viewReadsEveryColumn}), computed once per view rather than per altered column.
+ * Does `sql` read any of `cols`? A textual match on the identifier
+ * ({@link sqlNamesIdentifier}), which can over-report. A body can also read a column
+ * WITHOUT naming it, and those forms are `readsEverything` ({@link viewReadsEveryColumn}),
+ * computed once per view rather than per altered column.
  */
 function viewReadsAnyColumn(sql: string, cols: Iterable<string>, readsEverything: boolean): boolean {
   if (readsEverything) return true;
   for (const col of cols) {
-    if (columnIdentifierRe(col).test(sql)) return true;
+    if (sqlNamesIdentifier(sql, col)) return true;
   }
   return false;
+}
+
+/**
+ * The name each table has in the database before this plan runs. Pass 1c turns a renamed
+ * table's drop and create into a `rename-table`, and every other change on that table is
+ * keyed by its NEW name, which a live view body cannot hold yet.
+ */
+function liveTableNames(changes: readonly Change[]): (table: string) => string {
+  const renamedFrom = new Map<string, string>();
+  for (const c of changes) if (c.kind === "rename-table") renamedFrom.set(c.to, c.from);
+  return (table) => renamedFrom.get(table) ?? table;
 }
 
 /**
@@ -1142,28 +1137,45 @@ const TABLE_COLUMN_CHANGES = new Set<Change["kind"]>([
   ...VIEW_RECREATE_TRIGGERS_UNKNOWN_DIALECT, "add-column", "drop-table",
 ]);
 const VIEW_CHANGES = new Set<Change["kind"]>(["create-view", "replace-view", "drop-view"]);
+/** Postgres refuses each of these on a table while a view that reads it stands. */
+const TABLE_CHANGES_A_VIEW_BLOCKS = new Set<Change["kind"]>([...VIEW_RECREATE_TRIGGERS_PG, "drop-table"]);
 
 /**
- * May the rest of this plan change what the view's body reads?
+ * May the rest of this plan change what the view reads, in its new body or its live one?
  *
  * The invariant: a probe's answer is trusted only when the plan cannot change what the
- * probed body reads. The probe sees the schema as it stands. The replace runs after the
- * plan's table changes and after the view changes planned ahead of it, and the live view
- * stands while they run. `changes` holds both by the time a view is planned.
+ * probed body reads, and the live view may stand only while the plan changes nothing it
+ * reads. The probe sees the schema as it stands and proves the NEW body. The replace runs
+ * after the plan's table changes and after the view changes planned ahead of it, and the
+ * LIVE view stands while they run. `changes` holds both by the time a view is planned.
  *
  *   - A derived body names every column it reads and lists every table it reads in
  *     `dependsOn`. Pass 2c turns its replace into the pair when one of those tables
- *     changes, and nothing else in the plan reaches it: the probe decides.
+ *     changes, so for the new body the probe decides.
  *   - An opaque `@sql` body may read a table `dependsOn` does not list (ADR-0043), so a
  *     change to any table's columns may be a change to what it reads.
  *   - A body that reads columns it does not name (`SELECT *`, `NATURAL JOIN`) takes its
  *     column list from what it reads, so a change to any table's columns or to any other
  *     view may change that list.
+ *   - The live body, of any view, may read a table the new body no longer reads. That
+ *     table is outside `dependsOn`, so Pass 2c does not see it, and the probe never saw the
+ *     live body. Postgres refuses to retype, drop or rename a column of it, or to drop it,
+ *     while the live view stands. The live body's own text says which tables it reads.
  */
-function planMayChangeWhatBodyReads(expected: ViewDescriptor, changes: readonly Change[]): boolean {
+function planMayChangeWhatBodyReads(
+  expected: ViewDescriptor, actual: ViewDescriptor, changes: readonly Change[],
+): boolean {
   const unnamedColumns = expected.sql !== undefined && viewReadsEveryColumn(expected.sql);
-  if (!unnamedColumns && expected.opaque !== true) return false;
-  return changes.some((c) => TABLE_COLUMN_CHANGES.has(c.kind) || (unnamedColumns && VIEW_CHANGES.has(c.kind)));
+  const untracked = unnamedColumns || expected.opaque === true;
+  const tracked = expected.dependsOn ?? [];
+  const liveName = liveTableNames(changes);
+  return changes.some((c) => {
+    if (untracked && TABLE_COLUMN_CHANGES.has(c.kind)) return true;
+    if (unnamedColumns && VIEW_CHANGES.has(c.kind)) return true;
+    if (!TABLE_CHANGES_A_VIEW_BLOCKS.has(c.kind)) return false;
+    const table = (c as { table?: string }).table;
+    return typeof table === "string" && !tracked.includes(table) && liveViewReadsTable(actual, liveName(table));
+  });
 }
 
 function recreateViewsDependingOnChangedTables(
@@ -1208,12 +1220,14 @@ function recreateViewsDependingOnChangedTables(
     if (c.kind === "create-view") createQueued.add(queuedId);
   }
 
+  const liveName = liveTableNames(changes);
   for (const v of expectedViews) {
     const id = viewIdentity(v);
     const viewChanges = definitionQueued.has(id);
     const sql = v.sql;
     const readsEverything = sql !== undefined && viewReadsEveryColumn(sql);
-    const tables = (v.dependsOn ?? []).filter((t) => {
+    const tracked = v.dependsOn ?? [];
+    const tables = tracked.filter((t) => {
       if (!alteredTables.has(t)) return false;
       // A view whose own definition is unchanged is stranded only if it READS an altered
       // column. One already queued for a replace (its definition differs) is recreated
@@ -1222,6 +1236,16 @@ function recreateViewsDependingOnChangedTables(
       if (cols === null || viewChanges || sql === undefined) return true;
       return viewReadsAnyColumn(sql, cols, readsEverything);
     });
+    const prior = actualById.get(id);
+    // Where a triggering change rebuilds the table, the view in the database is stranded by
+    // every table ITS body reads, and that body may read one `dependsOn` leaves out: a
+    // table the new body no longer reads, or one an `@sql` body joins (ADR-0043). On
+    // Postgres the same case is settled when the view is planned (pushViewUpdate).
+    if (!columnScoped && prior !== undefined) {
+      for (const t of alteredTables.keys()) {
+        if (!tracked.includes(t) && liveViewReadsTable(prior, liveName(t))) tables.push(t);
+      }
+    }
     if (tables.length === 0) continue;
 
     // Brand-new view (create-view already queued): the DB has no prior view to
@@ -1239,7 +1263,6 @@ function recreateViewsDependingOnChangedTables(
         changes.splice(i, 1);
       }
     }
-    const prior = actualById.get(id);
     const reason = recreateReason(v, prior, superseded, tables, dialect);
     changes.push({
       kind: "drop-view", view: v.name, ...schemaSpread(v.schema),

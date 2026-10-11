@@ -1007,8 +1007,20 @@ until you regenerate.
     standing view reads), or a body that reads columns it does not name (`SELECT *`,
     `NATURAL JOIN`) in a migration that also alters any table or any other view (its column
     list comes from what it reads, so an answer taken before would not hold). A derived
-    projection or report view lists every table it reads and is not affected.
+    projection or report view lists every table its new definition reads, so a change to some
+    other table does not do this to it, with one exception that holds for every view: when
+    the definition in the database reads a table the new one no longer reads, and the same
+    migration retypes, drops or renames a column of that table or drops it, the plan is a drop
+    and a create. The probe proves the new definition only, and Postgres refuses those changes
+    while the old view stands. The table is found by name in the old view's stored
+    definition. Renaming the table alone keeps the replace: a view follows a renamed table.
     Before, an offline plan replaced a view in place when its recorded columns looked compatible.
+  - **SQLite and D1 drop a view before changing any table its stored definition reads.** They
+    refuse a `DROP COLUMN`, and the rebuild of a table, while a view that reads the table
+    stands. A view was already dropped before and created after such a change for the tables
+    its model lists. It now is for every table the definition in the database names as well:
+    one the new definition no longer reads, and one an `@sql` body joins. The D1 foreign-key
+    cascade does the same for every table it rebuilds, including a view the migration drops.
   - **A drop and a create discards the privileges granted on the view.** `DROP VIEW` removes the
     view's grants with it, and `meta migrate` writes no `GRANT`, so a role that had `SELECT` on a
     projection's view loses it, with nothing reported. It needs no `--allow` and applies cleanly.
