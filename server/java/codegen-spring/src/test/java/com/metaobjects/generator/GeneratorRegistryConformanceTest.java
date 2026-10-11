@@ -89,6 +89,7 @@ public class GeneratorRegistryConformanceTest {
     /** Manifest entries whose {@code ports} array includes this port. */
     private static Map<String, Tier> manifestSliceForPort(JsonNode manifest) {
         Map<String, Tier> slice = new TreeMap<>();
+        Set<String> pending = pendingCensus(manifest);
         JsonNode generators = manifest.get("generators");
         assertTrue("manifest must have a 'generators' object", generators != null && generators.isObject());
         Iterator<Map.Entry<String, JsonNode>> it = generators.fields();
@@ -108,7 +109,7 @@ public class GeneratorRegistryConformanceTest {
             }
             // A name the shared file expects here and lists as a pending census gap is the
             // eject contract's to report (EjectContractTest), which fails once it is registered.
-            if (includesPort && !pendingCensus(manifest).contains(name)) {
+            if (includesPort && !pending.contains(name)) {
                 Tier tier = "neutral".equals(entry.path("tier").asText("native"))
                         ? Tier.NEUTRAL : Tier.NATIVE;
                 slice.put(name, tier);
