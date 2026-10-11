@@ -29,8 +29,11 @@ here.**
     copy matched the reference. `entity`, `routes` and `routes-hono` also move their
     HTTP-adapter import from `codegen/runtime/` back to `@metaobjectsdev/runtime-ts`, which
     then has to be installed again. For those three, a copy is unchanged only when
-    `meta eject --list` also marks every `codegen/runtime/` file it reaches identical: if
-    you edited the adapter, keep the owned generator. Steps and the diff to expect:
+    `meta eject --list --format text` also marks every `codegen/runtime/` file it reaches
+    identical: if you edited the adapter, keep the owned generator. Those rows are printed
+    in the text form only (`meta gen --list --format json` carries them as
+    `source.runtimeCopy[]`), so a listing without them is not evidence that the adapter is
+    unchanged. Steps and the diff to expect:
     [own-your-codegen](docs/features/own-your-codegen.md#replacing-an-unmodified-owned-copy-with-the-import).
   - **An imported generator is still a reference helper.** Its output is not covered by the
     compatibility policy and can change in a MINOR; `meta verify --codegen` reports that

@@ -85,21 +85,40 @@ import { routesFile } from "./codegen/generators/routes";
 is duplication, and it falls behind the reference:
 
 ```bash
-meta eject --list
+meta eject --list --format text
 ```
 
-marks each owned copy `identical to the reference`, `same content as the reference, your
-formatting`, or `DIFFERS: N line(s) behind, M line(s) of your own`. A copy that is
-identical, or behind with `0 line(s) of your own`, is a **finding**: recommend replacing
-its local import with the package import and deleting the file, then `meta gen` and a
-review of the diff. A copy with lines of its own is an intentional customization. Check
-only how far behind it is.
+Pass `--format text`. Away from a terminal the default is a structured document, and
+that document holds the generator rows only: it has no `codegen/runtime/` rows at all.
+
+The text listing marks each owned copy `identical to the reference`, `same content as the
+reference, your formatting`, or `DIFFERS: N line(s) behind, M line(s) of your own`. Those
+are the `--format text` labels. In `--format json` or `toon` the same row carries
+`status` (`identical`, `reformatted` or `differs`), `behind` and `own`. A copy that is
+identical or reformatted, or behind with `0 line(s) of your own` (`own: 0`), is a
+**finding**: recommend replacing its local import with the package import and deleting
+the file, then `meta gen` and a review of the diff. A copy with lines of its own is an
+intentional customization. Check only how far behind it is.
 
 **`entity`, `routes` and `routes-hono` own more than the generator file.** Ejecting one
 also copies the HTTP adapter its output imports into `codegen/runtime/`, and a route fix
-is often made there with the generator file left untouched. The same listing marks each
-copied runtime file `identical to the package`, `DIFFERS` or `not in the package`. For
-these three, the copy is unmodified only when the generator file AND every
+is often made there with the generator file left untouched. Read the state of those files
+from one of two places:
+
+- `meta eject --list --format text` prints a block of `codegen/runtime/` rows after the
+  generators, each marked `identical to the package`, `same content as the package, your
+  formatting`, `DIFFERS: N line(s) only in the package, M line(s) only in yours`, or
+  `not in the package`.
+- `meta gen --list --format json` puts them on the generator's own row, inside its
+  `source` object: an owned row has `owned: true` there and a `runtimeCopy` array, one
+  entry per adapter file that generator reaches, with `path` and `verdict` (`identical`,
+  `reformatted` or `differs`).
+
+**A listing with no runtime rows is not evidence that the adapter is unmodified.** If
+`codegen/runtime/` exists and the output you read shows no row for its files, you have
+not checked: run one of the two commands above.
+
+For these three, the copy is unmodified only when the generator file AND every
 `codegen/runtime/` file it reaches are marked identical. If any of those files differs or
 is not in the package, the copy carries a customization: it is **not a finding**, and do
 not recommend the package import. The packaged generator imports

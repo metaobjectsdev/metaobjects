@@ -91,7 +91,9 @@ Between 1.0 and 1.1 an owned copy was the only way to run `entity`, `queries`, `
 and `barrel`, so many projects carry copies they never changed. A copy like that only
 falls behind the reference. To drop one:
 
-1. Run `meta eject --list`. A copy marked `identical to the reference` or
+1. Run `meta eject --list --format text`. At a terminal `--format text` is already the
+   default; in a script or an agent's shell the default is a structured document that
+   lists the generators only. A copy marked `identical to the reference` or
    `same content as the reference, your formatting` is unmodified. So is one marked
    `DIFFERS` with `0 line(s) of your own`: it is only behind. A copy with lines of your
    own is a customization; keep it, or check what the lines are with
@@ -99,8 +101,12 @@ falls behind the reference. To drop one:
 
    For `entity`, `routes` and `routes-hono`, check the adapter too. Ejecting one also
    copied the HTTP adapter into `codegen/runtime/`, and a route fix is often made there
-   with the generator file left untouched. The same listing marks each of those files
-   `identical`, `DIFFERS` or `not in the package`. The copy is unmodified only when the
+   with the generator file left untouched. The text listing marks each of those files
+   `identical`, `DIFFERS` or `not in the package`; `meta gen --list --format json` carries
+   the same comparison as `source.runtimeCopy[]` on the generator's row, with a `verdict`
+   per file. A listing with no `codegen/runtime/` rows is not evidence that the adapter is
+   unmodified: the structured form of `meta eject --list` never prints them. The copy is
+   unmodified only when the
    generator file and every `codegen/runtime/` file it reaches
    ([the table below](#what-meta-eject-hands-over-and-what-stays-core-typescript)) are
    marked identical. If one differs, the copy carries your change: keep the owned
@@ -172,11 +178,12 @@ judges only files `meta gen` wrote.
 
 `meta eject --list` and `meta gen --list` compare every file under `codegen/runtime/` with
 the installed `@metaobjectsdev/runtime-ts` (the same formatting-blind comparison used for
-owned generators) and mark it `identical`, `DIFFERS`, or `not in the package`. After
-upgrading the package:
+owned generators) and mark it `identical`, `DIFFERS`, or `not in the package`. `meta eject
+--list` prints those rows in its text form only, so pass `--format text` when not at a
+terminal. After upgrading the package:
 
 ```bash
-meta eject --list                       # which copied files differ from the new version
+meta eject --list --format text         # which copied files differ from the new version
 diff -u node_modules/@metaobjectsdev/runtime-ts/src/drizzle-fastify/filter-parser.ts \
         codegen/runtime/drizzle-fastify/filter-parser.ts
 ```

@@ -29,11 +29,13 @@ Actual cutovers run through the existing skills mapped per finding tier (§ Brid
   `codegen/generators/*` (via `meta eject`, or `meta init` on a CLI before 1.0.4), and
   which does it import from `@metaobjectsdev/codegen-ts/generators`? Both are supported
   from 1.1. Two findings to look for. **An unmodified owned copy** is duplication that
-  falls behind the reference: `meta eject --list` marks each copy, and one with no lines
-  of its own should be replaced by the package import. For `entity`, `routes` and
-  `routes-hono` that holds only when every `codegen/runtime/` file the copy reaches is
-  also marked identical: an edited adapter is a customization, and such a copy is not a
-  finding. **An import of `entityFile` /
+  falls behind the reference: `meta eject --list --format text` marks each copy, and one
+  with no lines of its own should be replaced by the package import. For `entity`,
+  `routes` and `routes-hono` that holds only when every `codegen/runtime/` file the copy
+  reaches is also marked identical: an edited adapter is a customization, and such a copy
+  is not a finding. Those runtime rows appear only with `--format text` (or as the
+  `runtimeCopy` array inside the row's `source` object in `meta gen --list --format
+  json`); a listing with no runtime rows is not evidence that the adapter is unmodified. **An import of `entityFile` /
   `queriesFile` / `routesFile` / `barrel` on a 1.0.x install** fails to load, because 1.0
   removed those four and 1.1 restored them: there it is an upgrade blocker, fixed by
   upgrading to 1.1 or by ejecting. Importing anything from that subpath is otherwise

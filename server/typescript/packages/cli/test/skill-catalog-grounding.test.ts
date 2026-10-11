@@ -77,8 +77,9 @@ function namesInCommands(files: readonly string[]): Named[] {
           const tok = toks[i]!;
           if (tok.startsWith("--")) {
             // Skip the flag AND its value: `--format json` must not read `json` as a
-            // generator name. A `--flag=value` form carries its own value already.
-            if (!tok.includes("=")) i++;
+            // generator name. A `--flag=value` form carries its own value already, and
+            // a flag followed by another flag (`--list --format text`) took no value.
+            if (!tok.includes("=") && !(toks[i + 1] ?? "").startsWith("--")) i++;
             continue;
           }
           if (tok === "" || PLACEHOLDERS.has(tok)) continue;
