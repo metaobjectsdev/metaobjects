@@ -45,7 +45,7 @@ import type { MetaData } from "./shared/meta-data.js";
 import { ParseError } from "./errors.js";
 import type { AttrSchema, TypeRegistry } from "./registry.js";
 import { childRuleMatches } from "./registry.js";
-import { TYPE_FIELD, TYPE_METADATA } from "./shared/base-types.js";
+import { TYPE_FIELD } from "./shared/base-types.js";
 import { ATTR_SUBTYPE_PROPERTIES } from "./core/attr/attr-constants.js";
 // #337: turns "unknown X" into "retired in V — here is the migration". Changes no load
 // outcome; retired vocabulary still fails with the same code.
@@ -58,6 +58,7 @@ import {
   FIELD_ATTR_INT_VALUE_MAP,
   ENUM_MEMBER_PATTERN,
 } from "./core/field/field-constants.js";
+import { isSharedEnumDeclaration } from "./core/field/shared-enum.js";
 import {
   FIELD_ATTR_DB_COLUMN_TYPE,
   DB_COLUMN_TYPE_VALUES,
@@ -337,18 +338,13 @@ function validateNode(
   // only own @values need checking here (mirrors the own-attrs-only policy of
   // Checks 2+3 above — inherited attrs were validated on the declaring node).
   if (node.type === TYPE_FIELD && node.subType === FIELD_SUBTYPE_ENUM) {
-    // #246: the shared-enum super, if any — a root-level abstract field.enum (one
-    // whose parent is the metadata root, not an object). FR-019 materializes such a
-    // declaration ONCE per port as a single named type, so anything a consuming
-    // field re-declares that is part of the shared TYPE's contract is a conflict.
-    // Immediate-super-only, matching codegen's resolveSharedEnumDecl (enum-shared.ts)
-    // so the validator and the collapse agree on what "shared" means.
-    const sharedSuper =
-      node.superData !== undefined &&
-      node.superData.isAbstract &&
-      node.superData.parent?.type === TYPE_METADATA
-        ? node.superData
-        : undefined;
+    // #246: the shared-enum super, if any. FR-019 materializes a shared declaration
+    // ONCE per port as a single named type, so anything a field directly under it
+    // re-declares that is part of the shared TYPE's contract is a conflict. The
+    // predicate is the one codegen's resolver walks with (core/field/shared-enum.ts).
+    // Only the IMMEDIATE super is checked: a redeclaration further down the chain is
+    // legal, and the resolver answers it with a per-object inline type.
+    const sharedSuper = isSharedEnumDeclaration(node.superData) ? node.superData : undefined;
 
     // ADR-0039: own — validates the @values DECLARED on this node; a concrete enum
     // extending an abstract one inherits already-validated @values (own-attrs-only).

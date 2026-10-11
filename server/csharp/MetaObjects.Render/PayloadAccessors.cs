@@ -34,21 +34,18 @@ public static class PayloadAccessors
     public static string HasAccessorName(string fieldName) => HasPrefix + Capitalize(fieldName);
 
     /// <summary>
-    /// Positional accessors injected into every map-shaped ELEMENT of a collection, so a list
-    /// separator needs no hand-computed <c>last</c> flag:
+    /// The positional accessor injected into every map-shaped ELEMENT of a collection, so a
+    /// list separator needs no hand-computed <c>last</c> flag:
     /// <c>{{#items}}{{name}}{{^-last}}, {{/-last}}{{/items}}</c>. The leading <c>-</c> cannot
     /// collide with a field name and is still an ordinary Mustache tag name, so the template
     /// stays valid Mustache. A scalar element has nowhere to hold a key and carries none; an
     /// authored key of the same name wins, as for <c>has&lt;Field&gt;</c>.
     /// </summary>
-    public const string FirstAccessor = "-first";
-
-    /// <inheritdoc cref="FirstAccessor"/>
     public const string LastAccessor = "-last";
 
-    /// <summary>True when <paramref name="name"/> is <c>-first</c>/<c>-last</c> and the scope is a collection element.</summary>
+    /// <summary>True when <paramref name="name"/> is <c>-last</c> and the scope is a collection element.</summary>
     public static bool IsPositionalAccessor(bool inElement, string name) =>
-        inElement && (name == FirstAccessor || name == LastAccessor);
+        inElement && name == LastAccessor;
 
     /// <summary>Capitalize the first character, leaving an already-uppercase one untouched.</summary>
     public static string Capitalize(string s)
@@ -142,46 +139,50 @@ public static class PayloadAccessors
             for (int i = 0; i < outList.Count; i++)
             {
                 if (outList[i] is not Dictionary<string, object?> el) continue;
-                el.TryAdd(FirstAccessor, i == 0);
                 el.TryAdd(LastAccessor, i == outList.Count - 1);
             }
             return outList;
         }
 
-        // ADR-0056 — a generated value-object POCO. Its members are PascalCase C# properties
-        // that carry the metadata field name in [JsonPropertyName], while a template names the
-        // FIELD (`{{bio}}`). So the POCO is viewed as the map of its wire names, which also gives
-        // it the derived has<Field> accessors a map payload gets. Only a type that declares wire
-        // names is viewed this way: a record or anonymous object whose members ARE the field
-        // names keeps resolving by reflection, exactly as before.
-        if (WireNamedProperties(payload.GetType()) is { } props)
+        // ADR-0056 — a typed payload (a generated value-object POCO, a record, an anonymous
+        // object). A template names the FIELD (`{{bio}}`), and a generated POCO carries that
+        // name in [JsonPropertyName] on a PascalCase member, so a typed object is viewed as the
+        // map of its readable public members keyed by wire name (or the member's own name when
+        // it declares none — exactly the name reflection lookup resolved before). The view is
+        // what carries the derived has<Field> and -last accessors, so a typed payload renders
+        // byte-identically to the equal map payload. A scalar-like value (number, enum, date,
+        // Guid, JsonElement, ...) is never viewed: its string form is its own.
+        if (IsScalarLike(payload.GetType())) return payload;
         {
             var asMap = new Dictionary<string, object?>(StringComparer.Ordinal);
-            foreach (var (name, prop) in props) asMap[name] = prop.GetValue(payload);
+            foreach (var (name, read) in MemberReaders(payload.GetType())) asMap.TryAdd(name, read(payload));
             return WithDerivedAccessors(asMap, depth);
         }
-
-        return payload;
     }
 
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, (string, System.Reflection.PropertyInfo)[]?>
-        WireNameCache = new();
+    private static bool IsScalarLike(Type t) =>
+        t.IsPrimitive || t.IsEnum || t.Namespace is "System" || t.Namespace?.StartsWith("System.", StringComparison.Ordinal) == true;
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, (string, Func<object, object?>)[]>
+        MemberCache = new();
 
     /// <summary>
-    /// The readable public properties of <paramref name="type"/>, each keyed by its
-    /// <c>[JsonPropertyName]</c> (or its own name when it has none) — or null when no property
-    /// declares a wire name, which leaves the type to Mustache's reflection lookup.
+    /// The readable public instance members of <paramref name="type"/>, each keyed by its
+    /// <c>[JsonPropertyName]</c> (or its own name when it has none). Cached per type.
     /// </summary>
-    private static (string, System.Reflection.PropertyInfo)[]? WireNamedProperties(Type type) =>
-        WireNameCache.GetOrAdd(type, static t =>
+    private static (string, Func<object, object?>)[] MemberReaders(Type type) =>
+        MemberCache.GetOrAdd(type, static t =>
         {
-            var props = t.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
-                .Where(p => p.CanRead && p.GetIndexParameters().Length == 0)
-                .ToArray();
-            string? WireName(System.Reflection.PropertyInfo p) =>
-                (p.GetCustomAttributes(typeof(System.Text.Json.Serialization.JsonPropertyNameAttribute), inherit: true)
-                    .FirstOrDefault() as System.Text.Json.Serialization.JsonPropertyNameAttribute)?.Name;
-            if (!props.Any(p => WireName(p) is not null)) return null;
-            return props.Select(p => (WireName(p) ?? p.Name, p)).ToArray();
+            const System.Reflection.BindingFlags Flags =
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance;
+            string WireName(System.Reflection.MemberInfo m) =>
+                (m.GetCustomAttributes(typeof(System.Text.Json.Serialization.JsonPropertyNameAttribute), inherit: true)
+                    .FirstOrDefault() as System.Text.Json.Serialization.JsonPropertyNameAttribute)?.Name ?? m.Name;
+            var readers = new List<(string, Func<object, object?>)>();
+            foreach (var p in t.GetProperties(Flags).Where(p => p.CanRead && p.GetIndexParameters().Length == 0))
+                readers.Add((WireName(p), o => p.GetValue(o)));
+            foreach (var f in t.GetFields(Flags))
+                readers.Add((WireName(f), o => f.GetValue(o)));
+            return readers.ToArray();
         });
 }

@@ -149,17 +149,27 @@ describe("entityFile() — emitAbstractShapes knob", () => {
       renderContext,
       warn: () => {},
     };
-    return (await entityFile().generate(ctx)).map((f) => f.path);
+    return entityFile().generate(ctx);
   }
 
   test("default (on): abstract entity emits its shape file", async () => {
-    const paths = await runWith(true);
+    const paths = (await runWith(true)).map((f) => f.path);
     expect(paths).toContain("Base.ts");
     expect(paths).toContain("Widget.ts");
   });
 
+  // Generated-output contract: the field-rules constant belongs to `object.value` only. An
+  // abstract object's shape file goes through the same composer and must not carry one.
+  test("abstract entity's shape file carries no value-object field-rules constant", async () => {
+    const base = (await runWith(true)).find((f) => f.path === "Base.ts");
+    expect(base).toBeDefined();
+    expect(base!.content).toContain("export interface Base");
+    expect(base!.content).not.toContain("export const Base =");
+    expect(base!.content).not.toContain("$entity:");
+  });
+
   test("off: abstract entity emits no file; concrete still emits", async () => {
-    const paths = await runWith(false);
+    const paths = (await runWith(false)).map((f) => f.path);
     expect(paths).not.toContain("Base.ts");
     expect(paths).toContain("Widget.ts");
   });

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ....datatype import DataType
-from ....shared.base_types import TYPE_ORIGIN
+from ....shared.base_types import TYPE_FIELD, TYPE_METADATA, TYPE_ORIGIN
 from ...meta_data import MetaData
 from . import field_constants as fc
 
@@ -102,3 +102,69 @@ class MetaField(MetaData):
             obj.set(key, value)
             return
         setattr(obj, key, value)
+
+
+def is_shared_enum_declaration(node: MetaData) -> bool:
+    """A "shared enum declaration" (FR-019 / #246): a ``field.enum`` that is
+    abstract AND a direct child of the metadata root — a sibling of
+    ``object.entity``, not a field nested inside an object. This is the ONE
+    predicate the loader validator and every codegen enum-naming/materializing
+    site call to decide what "shared" means (single authority in the meta layer,
+    not duplicated in codegen or the loader). See
+    :func:`resolve_shared_enum_declaration` for the full resolution rule."""
+    if node.type != TYPE_FIELD or node.sub_type != fc.FIELD_SUBTYPE_ENUM:
+        return False
+    parent = node.parent
+    return bool(node.is_abstract and parent is not None and parent.type == TYPE_METADATA)
+
+
+def _declares_own_enum_vocabulary(node: MetaData) -> bool:
+    """ADR-0039 sanctioned own read: whether *node* itself declares an OWN
+    ``@values`` or OWN ``@intValueMap`` — i.e. starts a new enum vocabulary rather
+    than inheriting one. This is the deliberate own/resolving split in
+    :func:`resolve_shared_enum_declaration`'s rule (b): the walk must see whether
+    THIS node introduces its own member set, which an effective/resolving read
+    would mask by reporting the inherited value instead."""
+    return (
+        node.attr(fc.FIELD_ATTR_VALUES) is not None
+        or node.attr(fc.FIELD_ATTR_INT_VALUE_MAP) is not None
+    )
+
+
+def resolve_shared_enum_declaration(field: MetaData) -> MetaData | None:
+    """The shared enum DECLARATION *field* resolves to via its ``extends`` chain,
+    or ``None`` when it resolves to none (the common inline case — a per-object
+    ``field.enum`` with its own ``@values``, or a chain that never reaches a
+    shared declaration).
+
+    Walks from *field* itself up through ``extends``. At each node, in order:
+
+    (a) the node IS a shared declaration (:func:`is_shared_enum_declaration`) —
+        that node wins. Nearest wins: a chained root abstract (``Money extends
+        Currency``) answers ``Money``, never continuing on to ``Currency``.
+    (b) the node declares its OWN ``@values``/``@intValueMap``
+        (:func:`_declares_own_enum_vocabulary`) — the answer is ``None``. The node
+        starts a new vocabulary, so nothing further up the chain counts, even a
+        mid-chain redeclaration the loader's own #246 check still allows to load.
+    (c) otherwise, continue to the node's super.
+
+    A non-enum node, the end of the chain, or a cycle answers ``None``. There is
+    no condition on the hosting object's subtype (entity, projection, value
+    object all qualify) and no hop limit.
+
+    THE single authority both the loader's #246 validator (which calls
+    :func:`is_shared_enum_declaration` on the field's IMMEDIATE super only) and
+    every codegen enum-naming/materializing site call — so they cannot drift
+    (ADR-0039)."""
+    if field.sub_type != fc.FIELD_SUBTYPE_ENUM:
+        return None
+    seen: set[int] = set()
+    node: MetaData | None = field
+    while node is not None and node.sub_type == fc.FIELD_SUBTYPE_ENUM and id(node) not in seen:
+        seen.add(id(node))
+        if is_shared_enum_declaration(node):
+            return node
+        if _declares_own_enum_vocabulary(node):
+            return None
+        node = node.super_data
+    return None

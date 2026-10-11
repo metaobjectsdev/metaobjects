@@ -161,7 +161,7 @@ public final class Verify {
                     if (atRoot) ctx.referencedAtRoot().add(s.value().split("\\.")[0]);
                     PayloadField field = resolve(stack, s.value());
                     if (field == null) {
-                        // A positional {{#-first}} / {{^-last}} gate is a BOOLEAN on the current
+                        // A positional {{^-last}} gate is a BOOLEAN on the current
                         // collection element: it pushes nothing, so the body walks in the SAME scope.
                         if (PayloadAccessors.isPositionalAccessor(inElement, s.value())) {
                             walk(s.children(), stack, seen, ctx, inElement);
@@ -184,12 +184,21 @@ public final class Verify {
                     // `#` over a container pushes its element fields; `^` (and `#`
                     // over a scalar, used as a conditional) keep the current context.
                     boolean push = !s.inverted() && field.fields() != null;
+                    // `-last` is available in the body only when the INNERMOST enclosing ARRAY
+                    // section iterates OBJECT elements: a `#` over an array field sets the flag
+                    // fresh (true for array-of-objects, false for array-of-scalars, which carry
+                    // no element key even inside an outer object array). Any other section
+                    // (scalar conditional, single nested object, `^`) is not an iteration, so it
+                    // inherits the enclosing scope's flag unchanged.
+                    boolean childInElement = !s.inverted() && field.isArray()
+                        ? field.fields() != null
+                        : inElement;
                     if (push) {
                         List<List<PayloadField>> next = new ArrayList<>(stack);
                         next.add(field.fields());
-                        walk(s.children(), Collections.unmodifiableList(next), seen, ctx, true);
+                        walk(s.children(), Collections.unmodifiableList(next), seen, ctx, childInElement);
                     } else {
-                        walk(s.children(), stack, seen, ctx, inElement);
+                        walk(s.children(), stack, seen, ctx, childInElement);
                     }
                 }
                 case PartialTok p -> {

@@ -177,63 +177,34 @@ object KotlinTypeMapper {
      * Compute the generated Kotlin enum-class name for an [EnumField] hung off [entity].
      *
      * Returns {@code null} when [field] is not an {@link EnumField} (the caller should
-     * fall through to the generic [kotlinTypeName] mapping). Naming rule:
-     * {@code <EntityShortName><FieldNamePascalCase>}, in the same Kotlin package as the
+     * fall through to the generic [kotlinTypeName] mapping).
+     *
+     * Shared-enum naming (FR-019 / ADR-0026): when [field]'s `extends` chain reaches a
+     * package-level ABSTRACT {@code field.enum} that is a direct child of the metadata root — a
+     * shared-enum DECLARATION, resolved by the single cross-generator authority
+     * [EnumField.resolveSharedEnumDeclaration] (metadata module; the SAME function the Java/Spring
+     * port and the loader's #246 validator use) — the type is named for THAT declaration and
+     * collapses every field reaching it onto ONE class, however many hops away (a projection or
+     * value-object field included: #259's per-object remedy is superseded — see that method's
+     * Javadoc for the full rule, including the own-{@code @values}/{@code @intValueMap}
+     * short-circuit). With no reachable declaration the field keeps its per-object
+     * {@code <EntityShortName><FieldNamePascalCase>} naming, in the same Kotlin package as the
      * entity (derived from the entity's metadata FQN via [PackageMapping.splitFqn]).
      *
-     * Entity-prefixing prevents collisions across entities (e.g., {@code Player.status} →
-     * {@code PlayerStatus}; {@code Game.status} → {@code GameStatus}). When [entity] is
-     * null (e.g., bare-mapper unit tests) the enum class is rendered with no package
-     * prefix and no entity-name prefix — only the field name pascalised — so the helper
-     * still produces a useful ClassName for documentation / debug output. Generators that
+     * Entity-prefixing (the inline case) prevents collisions across entities (e.g.,
+     * {@code Player.status} → {@code PlayerStatus}; {@code Game.status} → {@code GameStatus}).
+     * When [entity] is null (e.g., bare-mapper unit tests) the inline-case enum class is rendered
+     * with no package prefix and no entity-name prefix — only the field name pascalised — so the
+     * helper still produces a useful ClassName for documentation / debug output. Generators that
      * actually emit code always pass the owning entity.
      */
     fun enumTypeName(field: MetaField<*>, entity: MetaObject?): ClassName? {
         if (field !is EnumField) return null
 
-        // Shared-enum naming: when this field `extends` a package-level ABSTRACT enum super (e.g.
-        // two fields both `extends: Priority`), ALL such fields collapse onto ONE enum class named
-        // for the top-most super (`Priority`) so the generated type is shared (and deduped by FQN at
-        // emission). When there is no super, fall back to the per-entity `<EntityShort><FieldPascal>`
-        // naming. Mirrors the C#/TS/Python ports.
-        //
-        // The collapse decision keys on the DIRECT (immediate) super, NOT the top-most root: collapse
-        // onto a SHARED enum type ONLY when the field's IMMEDIATE `extends` target is a package-level
-        // abstract enum — identified by having NO declaring object. A field whose direct super is a
-        // CONCRETE entity/projection field (e.g. a read-model projection `extends`-ing `ActiveNpc.status`)
-        // does NOT collapse — even when that entity field itself `extends` a shared abstract enum (#259,
-        // the two-hop case): it falls through to the per-object naming below, so the projection gets its
-        // OWN `<ProjectionShort><FieldPascal>` enum in its OWN package (self-contained — no cross-package
-        // reference), populated with the values it inherits via `extends` ([KotlinEnumEmitter.readEnumValues]
-        // is inheritance-aware across ANY number of hops). Keying on the top-most root instead (an earlier
-        // bug) walked PAST the concrete entity super to the shared abstract root and wrongly collapsed the
-        // projection onto the shared type, so its per-projection enum was never emitted. Without any guard
-        // at all, a concrete-super field named the enum from the super's bare short name (`status`), which
-        // `splitFqn` collapsed to a root-package `Status` — colliding across every entity with a `status`.
-        val immediateSuper = field.superField
-        if (immediateSuper != null && runCatching { immediateSuper.declaringObject }.getOrNull() == null) {
-            // The DIRECT super is a package-level abstract enum → collapse onto the shared type, named
-            // for THAT declaration — the immediate super, NOT the top-most root of an abstract chain.
-            //
-            // Naming by the top-most root (the previous behaviour) contradicted this file's own FR-019
-            // arm, which resolves the shared declaration from the IMMEDIATE super
-            // ([Fr019SharedEnum.resolveSharedEnumDecl]) exactly as TS/C#/Java/Python do. On a CHAINED
-            // declaration (root abstract `Money extends` root abstract `@provided Currency`) the two
-            // halves disagreed: the materialize-vs-reference decision saw `Money` (own @provided absent
-            // → materialize) while the NAME collapsed to `Currency`, so Kotlin emitted a local
-            // `Currency.kt` that collided with the `com.acme.ext.Currency` reference emitted for fields
-            // extending `Currency` directly.
-            //
-            // Per ADR-0026 §2 a materialized type is named for ITS OWN declaration, so a chain yields one
-            // type per declaration, each carrying the member set it inherits ([KotlinEnumEmitter
-            // .readEnumValues] is inheritance-aware across any number of hops). #246 guarantees a chained
-            // declaration can never MUTATE the vocabulary it inherits — it may rename it, nothing more.
-            //
-            // Non-chained output is byte-identical: with no further super the root walk returned the
-            // immediate super anyway. The #259 two-hop projection guard is the `declaringObject == null`
-            // condition above, which is evaluated FIRST and is unaffected.
-            val (superPkg, superShort) = PackageMapping.splitFqn(immediateSuper.name)
-            return ClassName(superPkg, superShort.replaceFirstChar { it.uppercase() })
+        val declaration = EnumField.resolveSharedEnumDeclaration(field)
+        if (declaration != null) {
+            val (declPkg, declShort) = PackageMapping.splitFqn(declaration.name)
+            return ClassName(declPkg, declShort.replaceFirstChar { it.uppercase() })
         }
 
         val fieldPascal = field.name.replaceFirstChar { it.uppercase() }

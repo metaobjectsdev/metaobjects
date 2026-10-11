@@ -114,7 +114,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             getArg("providedEnumNamespace"), getArg("providedEnumPackages"));
         // FR-019: materialize each shared (package-level abstract, non-@provided) enum ONCE as a
         // standalone Java enum, so consuming DTOs reference it instead of redeclaring it inline.
-        emitSharedEnums(loader, outRoot);
+        Fr019SharedEnum.emitMaterialized(loader, outRoot);
         boolean emitAbstractShapes = Boolean.parseBoolean(getArg("emitAbstractShapes", "false"));
         for (MetaObject declared : loader.getMetaObjects()) {
             // FR-044: a served report's row DTO is emitted from its read model (one
@@ -905,26 +905,6 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         return componentType(field, owner);
     }
 
-    /**
-     * FR-019: emit each materialized shared enum (package-level abstract, non-{@code @provided},
-     * consumed by ≥1 entity field) ONCE as a standalone top-level Java {@code enum} in its declaring
-     * package — {@code <pkg>/<Name>.java} containing {@code public enum <Name> { A, B, C }}. Consuming
-     * DTOs reference this type. Provided enums emit nothing here (referenced externally).
-     */
-    private void emitSharedEnums(MetaDataLoader loader, Path outRoot) {
-        for (Fr019SharedEnum.SharedEnum shared : Fr019SharedEnum.materializedSharedEnums(loader)) {
-            StringBuilder src = new StringBuilder();
-            if (!shared.javaPackage().isEmpty()) {
-                src.append("package ").append(shared.javaPackage()).append(";\n\n");
-            }
-            src.append("/** GENERATED — shared enum ").append(shared.name())
-               .append(". Do not hand-edit; regenerated from metadata. */\n");
-            src.append(SpringTypeMapper.enumDeclaration(shared.name(), shared.values(), shared.intValueMap()))
-               .append("\n");
-            writeSharedEnumFile(shared, outRoot, src.toString());
-        }
-    }
-
     // === #234 strict field.uri / field.inet bind-layer enforcement =============
 
     /**
@@ -1072,18 +1052,6 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             GeneratedFileWriter.write(outFile, src.toString());
         } catch (IOException e) {
             throw new GeneratorException("failed writing MetaNetBindings.java for package " + pkg + ": " + e, e);
-        }
-    }
-
-    /** Write {@code <outRoot>/<pkg-as-dirs>/<Name>.java} for a materialized shared enum. */
-    private void writeSharedEnumFile(Fr019SharedEnum.SharedEnum shared, Path outRoot, String body) {
-        try {
-            Path outFile = outRoot.resolve(shared.javaPackage().replace('.', '/'))
-                                  .resolve(shared.name() + ".java");
-            GeneratedFileWriter.write(outFile, body);
-        } catch (IOException e) {
-            throw new GeneratorException(
-                "failed writing shared enum " + shared.name() + ".java: " + e, e);
         }
     }
 

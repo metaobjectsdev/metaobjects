@@ -1,10 +1,8 @@
 package com.metaobjects.generator.kotlin
 
-import com.metaobjects.MetaRoot
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.MetaField
 import com.metaobjects.generator.GeneratorException
-import com.metaobjects.generator.util.GeneratorUtil
 import com.squareup.kotlinpoet.ClassName
 
 /**
@@ -13,11 +11,13 @@ import com.squareup.kotlinpoet.ClassName
  *
  * Kotlin already materializes a package-level abstract `field.enum` ONCE as a standalone
  * `enum class` ([KotlinEnumEmitter] + [KotlinTypeMapper.enumTypeName], deduped by FQN), so the
- * shared-materialize half of FR-019 is already satisfied. This object adds the `@provided` arm:
- * detecting a `@provided` shared enum (skip materialization) and resolving its reference to a
- * per-port-configured namespace (ADR-0001 — never an FQN in metadata). The namespace binds to the
- * enum's declaring metadata package via a package→namespace map + a single fallback, both
- * generator args.
+ * shared-materialize half of FR-019 is already satisfied — [KotlinTypeMapper.enumTypeName] and
+ * [resolveSharedEnumDecl] below both delegate to the SAME cross-generator authority,
+ * `EnumField.resolveSharedEnumDeclaration` (metadata module), so the two can never disagree. This
+ * object adds the `@provided` arm: detecting a `@provided` shared enum (skip materialization) and
+ * resolving its reference to a per-port-configured namespace (ADR-0001 — never an FQN in
+ * metadata). The namespace binds to the enum's declaring metadata package via a
+ * package→namespace map + a single fallback, both generator args.
  */
 object Fr019SharedEnum {
 
@@ -48,18 +48,16 @@ object Fr019SharedEnum {
     }
 
     /**
-     * The package-level abstract `field.enum` a concrete enum field resolves to via `extends`, or
-     * `null` for an inline enum. Qualifies only when the immediate super is (a) an [EnumField],
-     * (b) abstract, AND (c) a direct child of the metadata root ([MetaRoot]) — a sibling of
-     * `object.entity`, not an abstract field nested inside an object.
+     * The shared-enum declaration [field] resolves to via `extends`, or `null` when the field is
+     * an inline enum. Delegates entirely to the single cross-generator authority,
+     * `EnumField.resolveSharedEnumDeclaration` (metadata module) — the SAME function
+     * [KotlinTypeMapper.enumTypeName], the Java/Spring port, and the loader's #246 validator call,
+     * so no two of them can disagree about what "shared" means. See that method's Javadoc for the
+     * full rule (nearest-declaration-wins, an own-`@values`/`@intValueMap` node stops the walk, no
+     * hop limit, no hosting-object-subtype condition).
      */
-    fun resolveSharedEnumDecl(field: MetaField<*>): EnumField? {
-        if (field !is EnumField) return null
-        val sup = field.superField as? EnumField ?: return null
-        if (!GeneratorUtil.isAbstract(sup)) return null
-        if (sup.parent !is MetaRoot) return null
-        return sup
-    }
+    fun resolveSharedEnumDecl(field: MetaField<*>): EnumField? =
+        EnumField.resolveSharedEnumDeclaration(field) as? EnumField
 
     /**
      * Read `@provided` on an enum declaration. ADR-0039: `@provided` is a

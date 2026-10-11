@@ -1,7 +1,7 @@
 // FR-019 — shared + externally-provided enum resolution.
 //
 // A reusable enum is a ROOT/package-level abstract `field.enum` (a sibling of
-// object.entity) that concrete entity fields `extends`. Per ADR-0026 such a
+// object.entity) that object fields reach through `extends`. Per ADR-0026 such a
 // declaration is materialized ONCE per port and referenced, instead of being
 // redeclared inline in every consuming entity file.
 //
@@ -12,15 +12,17 @@
 //     reference an existing hand-written/third-party type, resolved via per-port
 //     codegen config (the namespace/module never lives in metadata — ADR-0001).
 //
+// WHICH declaration a field resolves to is decided in the metadata layer
+// (`resolveSharedEnumDeclaration`, ADR-0026 Amendment 1) — the same function the
+// loader's #246 check uses. This module adds only the TypeScript naming and the
+// `@provided` read.
+//
 // The common inline case (a concrete `field.enum` with @values declared directly,
-// no root-extends) is UNCHANGED — it stays a per-entity `<Entity><Field>` union.
+// no shared declaration on its extends chain) is UNCHANGED — it stays a per-entity
+// `<Entity><Field>` union.
 
 import type { MetaField, MetaRoot } from "@metaobjectsdev/metadata";
-import {
-  FIELD_SUBTYPE_ENUM,
-  FIELD_ATTR_PROVIDED,
-  TYPE_METADATA,
-} from "@metaobjectsdev/metadata";
+import { FIELD_ATTR_PROVIDED, resolveSharedEnumDeclaration } from "@metaobjectsdev/metadata";
 import { toPascalCase } from "./naming.js";
 import { enumValues } from "./enum-meta.js";
 
@@ -28,45 +30,26 @@ import { enumValues } from "./enum-meta.js";
 export interface SharedEnum {
   /** The materialized type name — the abstract declaration's PascalCase name (cross-port identity). */
   readonly name: string;
-  /** Member symbols (the @values SSOT). */
+  /** The declaration's package-qualified key (`<package>::<Name>`). */
+  readonly declaration: string;
+  /** Member symbols (the @values SSOT), read from the declaration. */
   readonly values: string[];
   /** True when the declaration carries `@provided: true` (reference, don't materialize). */
   readonly provided: boolean;
 }
 
-/**
- * The root-level abstract `field.enum` a concrete enum field resolves to via
- * `extends`, or undefined when the field is an inline enum (no root-abstract
- * super). A super qualifies only when it is (a) an abstract field, AND (b) a
- * direct child of the metadata root (a package-level declaration) — NOT an
- * abstract field nested inside another object.
- */
-export function resolveSharedEnumDecl(field: MetaField): MetaField | undefined {
-  if (field.subType !== FIELD_SUBTYPE_ENUM) return undefined;
-  // Walk the extends chain: the NEAREST root-level abstract enum wins, so a field
-  // that extends a concrete (or nested) enum field which itself extends the shared
-  // declaration still resolves to it. The seen-set guards a malformed cyclic chain.
-  const seen = new Set<MetaField>([field]);
-  let sup = field.resolveSuper();
-  while (sup !== undefined && !seen.has(sup)) {
-    if (sup.subType !== FIELD_SUBTYPE_ENUM) return undefined;
-    // The declaration must sit at the package/root level (sibling of object.entity),
-    // i.e. its parent node is the metadata root.
-    if (sup.isAbstract && sup.parent !== undefined && sup.parent.type === TYPE_METADATA) return sup;
-    seen.add(sup);
-    sup = sup.resolveSuper();
-  }
-  return undefined;
-}
-
 /** The shared-enum descriptor a field resolves to, or undefined for inline enums. */
 export function sharedEnumForField(field: MetaField): SharedEnum | undefined {
-  const decl = resolveSharedEnumDecl(field);
+  const decl = resolveSharedEnumDeclaration(field);
   if (decl === undefined) return undefined;
-  const values = enumValues(field);
+  // The member set is the DECLARATION's (resolving, so `Money extends Currency` reads
+  // the members it inherits) — never a consuming field's, so what is materialized
+  // cannot depend on which consumer is visited first.
+  const values = enumValues(decl);
   if (values === undefined) return undefined;
   return {
     name: toPascalCase(decl.name),
+    declaration: decl.resolutionKey(),
     values,
     // ADR-0039 sanctioned own: @provided is a declaration-layer provenance marker
     // ("THIS type is supplied by hand-written/third-party code"), like `abstract` —
@@ -80,9 +63,10 @@ export function sharedEnumForField(field: MetaField): SharedEnum | undefined {
 
 /**
  * All shared (root-level abstract) enum declarations in the loaded root that are
- * actually CONSUMED by at least one concrete entity field — keyed by the
- * materialized type name. A declaration nobody extends is not materialized (no
- * dangling type). Deterministic order: first-consumption order across entities.
+ * actually CONSUMED by at least one object field (entity, projection or value
+ * object, through any number of `extends` hops) — keyed by the materialized type
+ * name. A declaration nobody extends is not materialized (no dangling type).
+ * Deterministic order: first-consumption order across objects.
  *
  * `select` (FR-023 §11.1 item 2), when given, narrows which CONSUMING entities
  * count toward "is this enum used" — an entity for which `select(entity.

@@ -10,38 +10,3 @@ export interface ProgramDescriptionPayload {
   lessonCount?: number | undefined;
 }
 export const ProgramDescriptionPayloadInsertSchema = z.object({});
-/**
- * Metadata constants for the value object ProgramDescriptionPayload: each field's name, label, view and the
- * validation rules derived from its validator children (e.g. `ProgramDescriptionPayload.<field>.rules.maxLength.value`).
- */
-export const ProgramDescriptionPayload = {
-  $entity: "ProgramDescriptionPayload",
-  title: {
-    name: "title",
-    label: "Title",
-    view: "text",
-    htmlType: "text",
-    rules: {
-      required: "Title is required",
-      maxLength: { value: 200, message: "Must be 200 characters or fewer" },
-    },
-  },
-  summary: {
-    name: "summary",
-    label: "Summary",
-    view: "text",
-    htmlType: "text",
-  },
-  authorName: {
-    name: "authorName",
-    label: "Author Name",
-    view: "text",
-    htmlType: "text",
-  },
-  lessonCount: {
-    name: "lessonCount",
-    label: "Lesson Count",
-    view: "number",
-    htmlType: "number",
-  },
-} as const;

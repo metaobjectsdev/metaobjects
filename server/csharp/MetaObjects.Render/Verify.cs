@@ -17,8 +17,11 @@ namespace MetaObjects.Render;
 /// A plain field-tree node mirroring an <c>object.value</c> view-object's field
 /// walk. <see cref="Fields"/> present → a context-pushing field (object /
 /// array-of-object); null → a scalar (string/number/boolean/scalar-array).
+/// <see cref="IsArray"/> is the field's EFFECTIVE (resolving) array-ness — the one fact
+/// <c>Verify</c> needs to tell a single nested object's conditional <c>{{#x}}</c> apart
+/// from an array-of-objects' iterating <c>{{#x}}</c>, since both carry <see cref="Fields"/>.
 /// </summary>
-public sealed record PayloadField(string Name, IReadOnlyList<PayloadField>? Fields = null);
+public sealed record PayloadField(string Name, IReadOnlyList<PayloadField>? Fields = null, bool IsArray = false);
 
 /// <summary>A single drift finding: a code + the offending var path / partial ref / slot.</summary>
 public sealed record VerifyError(string Code, string Path);
@@ -175,7 +178,7 @@ public static class Verify
                         var field = Resolve(stack, s.Value);
                         if (field is null)
                         {
-                            // A positional `-first` / `-last` gate is a BOOLEAN on the current
+                            // A positional `-last` gate is a BOOLEAN on the current
                             // collection element: it pushes nothing, so the body walks in the SAME scope.
                             if (PayloadAccessors.IsPositionalAccessor(inElement, s.Value))
                             {
@@ -198,12 +201,21 @@ public static class Verify
                         // `#` over a container pushes its element fields; `^` (and `#`
                         // over a scalar, used as a conditional) keep the current context.
                         bool push = !s.Inverted && field.Fields is not null;
+                        // The ONE positional-accessor rule (#304-class hardening): `-last` is
+                        // available in the body only when the INNERMOST enclosing ARRAY section
+                        // iterates OBJECT elements. A non-inverted section over an array field
+                        // sets the flag fresh — true for array-of-objects (Fields present), false
+                        // for array-of-scalars (no per-element Fields, so no `-last` even though
+                        // an outer object array still encloses it). Any other section (scalar
+                        // conditional, single nested object, `^`-inverted) is not an array
+                        // iteration at all, so it inherits the current scope's flag unchanged.
+                        bool childInElement = !s.Inverted && field.IsArray ? field.Fields is not null : inElement;
                         if (push)
                         {
                             var next = new List<IReadOnlyList<PayloadField>>(stack) { field.Fields! };
-                            Walk(s.Children, next, seen, true);
+                            Walk(s.Children, next, seen, childInElement);
                         }
-                        else Walk(s.Children, stack, seen, inElement);
+                        else Walk(s.Children, stack, seen, childInElement);
                         break;
 
                     case PartialTok p:

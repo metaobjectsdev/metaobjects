@@ -474,12 +474,13 @@ The following conformance fixtures gate this feature's behavior across ports:
 
 **Template drift (`fixtures/verify-conformance/`)** — the `Renderer.verify` engine
 asserts that every variable, section, partial, and required-tag in a template
-resolves against its declared payload. 31 fixtures, grouped:
+resolves against its declared payload. 37 fixtures, grouped:
 
 - *Variables*: `verify-var-known-clean`, `verify-var-unknown`, `verify-var-implicit-iterator-clean`, `verify-var-unescaped-and-triple-unknown`
 - *Dotted paths*: `verify-dotted-path-clean`, `verify-dotted-path-head-nonfield`, `verify-dotted-path-tail-nonfield`
 - *Sections*: `verify-section-over-nonfield`, `verify-section-pushes-element-clean`, `verify-section-element-nonfield`, `verify-nested-sections-clean`, `verify-nested-section-nonfield`, `verify-parent-context-in-section-clean`, `verify-scalar-section-conditional-clean`, `verify-scalar-section-conditional-nonfield`
 - *Inverted sections*: `verify-inverted-section-clean`, `verify-inverted-section-over-nonfield`
+- *Positional accessor (`-last`)*: `verify-positional-accessor-clean`, `verify-positional-accessor-transparent-sections-clean`, `verify-positional-accessor-outside-element`, `verify-positional-accessor-object-section`, `verify-positional-accessor-scalar-list`, `verify-positional-accessor-nested-scalar-list`
 - *Partials*: `verify-partial-no-provider`, `verify-partial-unresolved`, `verify-partial-resolved-clean`, `verify-partial-resolved-drift`, `verify-partial-in-section-context`
 - *Required slots / tags*: `verify-required-slot-used-clean`, `verify-required-slot-unused`, `verify-required-slot-via-section`, `verify-required-tags-present`, `verify-required-tag-in-partial`, `verify-required-tag-self-closing`, `verify-required-tag-missing-open`, `verify-required-tag-missing-close`, `verify-required-tag-prefix-no-overmatch`
 

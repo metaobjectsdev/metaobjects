@@ -823,18 +823,26 @@ public final class ValidationPhase {
     /**
      * The shared-enum super of {@code node}, or null when it has none.
      *
-     * <p>"Shared" (FR-019 / #246) means the immediate super is abstract AND declared at
-     * metadata-root — its parent is the {@link MetaRoot}, not an object. Such a declaration
+     * <p>"Shared" (FR-019 / #246) means the immediate super is itself a shared-enum
+     * DECLARATION — {@link EnumField#isSharedEnumDeclaration}: abstract AND declared at
+     * metadata-root (its parent is the {@link MetaRoot}, not an object). Such a declaration
      * is materialized ONCE per port as a single named type, so anything a consuming field
      * re-declares that belongs to the shared TYPE's contract (its {@code @values} member
      * set, or the {@code @intValueMap} integer backing of that set) is a conflict.
      *
-     * <p>Immediate-super-only, matching codegen's {@code Fr019SharedEnum.resolveSharedEnumDecl}
-     * so the validator and the shared-enum collapse agree on what "shared" means.
+     * <p>Immediate-super-only — this check does NOT walk multiple hops the way codegen's
+     * {@code EnumField.resolveSharedEnumDeclaration} does when resolving a field's generated
+     * type. The relationship is real, not coincidental: both call the SAME
+     * {@link EnumField#isSharedEnumDeclaration} predicate to decide "is this node a shared
+     * declaration" — this method applies it once, at the immediate super, because #246 is only
+     * a conflict when THIS node's own {@code @values}/{@code @intValueMap} collide with a
+     * declaration one hop away; a redeclaration two-or-more hops down the chain starts its own
+     * (non-shared) vocabulary instead of conflicting with anything, which is exactly what
+     * {@code resolveSharedEnumDeclaration}'s rule (b) also answers NONE for.
      */
     private static MetaData sharedEnumSuper(MetaData node) {
         MetaData sup = node.getSuperData();
-        return (sup != null && isAbstract(sup) && sup.getParent() instanceof MetaRoot) ? sup : null;
+        return (sup instanceof MetaField<?> supField && EnumField.isSharedEnumDeclaration(supField)) ? sup : null;
     }
 
     /**

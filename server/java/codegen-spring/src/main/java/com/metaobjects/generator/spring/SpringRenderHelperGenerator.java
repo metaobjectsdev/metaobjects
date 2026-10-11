@@ -326,6 +326,9 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         seen.add(vo.getName());
         List<PayloadField> fields = new ArrayList<>();
         for (MetaField<?> field : vo.getMetaFields()) {
+            // ADR-0039: isArrayType() is the EFFECTIVE (inherited-via-extends) array-ness; the
+            // own-only isArray() flag would read false for a field that inherits @isArray.
+            boolean isArray = field.isArrayType();
             if (field instanceof ObjectField of) {
                 // Resolve the nested @objectRef by BARE short-name — the cross-port
                 // render-helper consensus (TS findObject: c.type === OBJECT &&
@@ -339,11 +342,11 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
                 if (target != null && MetaObject.SUBTYPE_VALUE.equals(target.getSubType())) {
                     List<PayloadField> children =
                         derivePayloadFieldTree(loader, target, new LinkedHashSet<>(seen));
-                    fields.add(PayloadField.object(field.getName(), children));
+                    fields.add(PayloadField.object(field.getName(), children, isArray));
                     continue;
                 }
             }
-            fields.add(PayloadField.scalar(field.getName()));
+            fields.add(PayloadField.scalar(field.getName(), isArray));
         }
         return fields;
     }
@@ -390,7 +393,7 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
     /**
      * Emit a {@code List<PayloadField>} as deterministic Java construction code
      * ({@code java.util.List.of(...)}): {@code PayloadField.scalar("name")} and
-     * {@code PayloadField.object("nested", List.of(...))}. An empty tree emits
+     * {@code PayloadField.object("nested", List.of(...))}, each with a trailing {@code , true} when the field is an array. An empty tree emits
      * {@code java.util.List.of()}.
      */
     protected static String fieldTreeLiteral(List<PayloadField> fields) {
@@ -402,10 +405,10 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
             if (f.fields() != null) {
                 sb.append("com.metaobjects.render.PayloadField.object(")
                   .append(quote(f.name())).append(", ")
-                  .append(fieldTreeLiteral(f.fields())).append(")");
+                  .append(fieldTreeLiteral(f.fields())).append(f.isArray() ? ", true)" : ")");
             } else {
                 sb.append("com.metaobjects.render.PayloadField.scalar(")
-                  .append(quote(f.name())).append(")");
+                  .append(quote(f.name())).append(f.isArray() ? ", true)" : ")");
             }
         }
         sb.append(")");

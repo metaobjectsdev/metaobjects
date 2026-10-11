@@ -239,14 +239,18 @@ Each fixture is a directory under `fixtures/verify-conformance/`:
 
 - **`payload.json`** is a `PayloadField[]` — the recursive field tree a port
   derives from an `object.value` view-object. A node *with* a `fields` array is a
-  context-pushing field (object / array-of-object); a node *without* is a scalar:
+  context-pushing field (object / array-of-object); a node *without* is a scalar.
+  A node may carry `"isArray": true`, the field's effective array-ness: with
+  `fields` it is a list of objects, without it a list of scalars. Absent means not
+  a list. It decides where the positional accessor `-last` is available:
 
   ```json
   [
     { "name": "displayName" },
-    { "name": "posts", "fields": [
+    { "name": "posts", "isArray": true, "fields": [
       { "name": "title" },
-      { "name": "tags", "fields": [{ "name": "name" }] }
+      { "name": "tags", "isArray": true, "fields": [{ "name": "name" }] },
+      { "name": "labels", "isArray": true }
     ] }
   ]
   ```

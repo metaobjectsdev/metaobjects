@@ -49,6 +49,7 @@ from ..meta.core.field.field_constants import (
     FIELD_SUBTYPE_URI,
     FIELD_SUBTYPE_UUID,
 )
+from ..meta.core.field.meta_field import is_shared_enum_declaration
 from ..meta.persistence.db.db_constants import (
     DB_COLUMN_TYPE_JSONB,
     DB_COLUMN_TYPE_UUID,
@@ -74,7 +75,6 @@ from ..shared.base_types import (
     TYPE_IDENTITY,
     TYPE_INDEX,
     TYPE_LAYOUT,
-    TYPE_METADATA,
     TYPE_OBJECT,
     TYPE_ORIGIN,
     TYPE_RELATIONSHIP,
@@ -604,32 +604,6 @@ def _validate_attr_schema(
 _ENUM_MEMBER_RE = re.compile(ENUM_MEMBER_PATTERN)
 
 
-def _shared_enum_super(node: MetaData) -> MetaData | None:
-    """The shared-enum super of ``node``, or ``None`` when it has none.
-
-    "Shared" (FR-019 / #246) means the immediate super is abstract AND declared at
-    metadata-root — its parent is the ``metadata.root`` node, not an object. Such a
-    declaration is materialized ONCE per port as a single named type, so anything a
-    consuming field re-declares that belongs to the shared TYPE's contract (its
-    ``@values`` member set, or the ``@intValueMap`` integer backing of that set) is a
-    conflict. A concrete super, or a non-root abstract super (e.g. one nested inside
-    an object), is legal and not flagged.
-
-    Immediate-super-only, matching codegen's ``resolve_shared_enum_decl``
-    (``codegen/generators/fr019_shared_enum.py``) so the validator and the
-    shared-enum collapse agree on what "shared" means.
-    """
-    sup = node.super_data
-    if (
-        sup is not None
-        and sup.is_abstract
-        and sup.parent is not None
-        and sup.parent.type == TYPE_METADATA
-    ):
-        return sup
-    return None
-
-
 def _validate_enum_values(
     root: MetaData,
     errors: list[MetaError],
@@ -709,8 +683,13 @@ def _validate_enum_values(
         # #246: own @values AND extends a shared package-level abstract enum —
         # one shared enum type has one member set, so the own @values would be
         # silently dropped by the shared-enum codegen collapse. Mirrors the TS
-        # reference (attr-schema-validate.ts).
-        if _shared_enum_super(node) is not None:
+        # reference (attr-schema-validate.ts). IMMEDIATE super only — the single
+        # authority is ``is_shared_enum_declaration``
+        # (``meta/core/field/meta_field.py``), the same predicate
+        # ``resolve_shared_enum_declaration`` uses at every step of its walk, so a
+        # mid-chain redeclaration further up still loads (only a value/map owned
+        # directly under a shared declaration conflicts).
+        if node.super_data is not None and is_shared_enum_declaration(node.super_data):
             errors.append(
                 MetaError(
                     f"{label} declares its own '@{FIELD_ATTR_VALUES}' but extends "
@@ -779,9 +758,10 @@ def _validate_enum_int_value_map(node: MetaData, errors: list[MetaError]) -> Non
     # shared enum is materialized once as a single type, so a per-field map would
     # give one logical type N storage encodings (and, where a port emits per-TYPE
     # codec artifacts, two same-named declarations). Same remedy as the @values
-    # half: declare it on the shared declaration and inherit it.
-    shared_super = _shared_enum_super(node)
-    if shared_super is not None:
+    # half: declare it on the shared declaration and inherit it. IMMEDIATE super
+    # only — same ``is_shared_enum_declaration`` authority as the @values check
+    # above.
+    if node.super_data is not None and is_shared_enum_declaration(node.super_data):
         errors.append(
             MetaError(
                 f"{label} declares its own '@{FIELD_ATTR_INT_VALUE_MAP}' but extends "

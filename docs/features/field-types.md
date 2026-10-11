@@ -222,8 +222,9 @@ Two rules follow from int-backing being a **persistence-layer codec**:
 Reuse a constraint set across entities by declaring one **abstract** `field.enum`
 (with the `@values`) and having each concrete field `extends` it — including
 **across packages** (declare the shared enum in a common package and reference it
-by FQN). Every field that extends the same abstract enum collapses onto one
-generated enum type, so the members stay in exactly one place:
+by FQN). Every field that reaches the same abstract enum, directly or through other
+fields, collapses onto one generated enum type, so the members stay in exactly one
+place:
 
 ```jsonc
 // meta.common.json — package acme::common
@@ -243,11 +244,21 @@ Two rules the loader/codegen enforce:
   inherit the shared set. If you need a **different** member set, declare a
   separate `field.enum` with its own `@values` rather than extending the shared
   one — extending is for *reuse* of one member set, not for overriding it.
-- **Inherited members resolve through any number of `extends` hops.** A projection
-  field that extends an entity field which itself extends a shared abstract enum
-  gets the shared members transitively — the projection still materializes its own
-  per-projection enum type, populated from the inherited set (a projection is
-  self-contained: its enum lives in the projection's own package).
+- **A field keeps the shared type through any number of `extends` hops.** A field
+  that extends another field which itself reaches the shared abstract enum has the
+  SAME generated type as a field that extends it directly, whatever object hosts it
+  (entity, projection, value object):
+
+  ```jsonc
+  { "field.enum": { "name": "status",  "extends": "acme::common::RecordStatus" } }   // on Order
+  { "field.enum": { "name": "current", "extends": "acme::orders::Order.status" } }   // on OrderView: RecordStatus too
+  ```
+
+  The walk stops at the first field that declares its own `@values` or
+  `@intValueMap`: that field starts a new vocabulary, so it and everything extending
+  it get a per-object inline enum instead. A chain that never reaches a package-level
+  abstract enum is inline as well. Declaring the vocabulary at package level is how
+  you ask for one type.
 
 ## Embedded value objects — `field.object` + `@storage`
 

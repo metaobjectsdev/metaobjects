@@ -18,6 +18,8 @@
 // looked at this shape.
 
 import { test, expect, describe } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { render } from "../src/render.js";
 import { verify } from "../src/verify.js";
 import { hasAccessorName, accessorValue, withDerivedAccessors } from "../src/payload-accessors.js";
@@ -134,8 +136,8 @@ describe("verify — accepts exactly what render resolves", () => {
 //
 // The first draft rebuilt ANY non-array object from Object.entries(), which flattened
 // everything carrying its own prototype: a Date stringified to "[object Object]" and a
-// class instance lost its getters. Rendering is not allowed to reshape the payload; only
-// plain map-shaped values get derived keys, which is also what the other four ports do.
+// class instance lost its getters. Rendering is not allowed to reshape the payload: only
+// a plain object is copied, and anything with its own prototype is read through a view.
 describe("only PLAIN objects are rebuilt", () => {
   test("a Date still renders as a Date", () => {
     const out = r("{{when}}", { when: new Date("2020-01-02T03:04:05Z") });
@@ -159,5 +161,124 @@ describe("only PLAIN objects are rebuilt", () => {
 
   test("plain nested objects still get accessors", () => {
     expect(r("{{#inner}}{{#hasXs}}Y{{/hasXs}}{{/inner}}", { inner: { xs: [1] } })).toBe("Y");
+  });
+});
+
+// ── A typed payload renders exactly like the equal plain-object payload ─────────
+//
+// The oracle is the shared `render-list-separator` fixture: its `expected.txt` is what every
+// port must produce from its `payload.json`. Here the SAME data arrives as class instances,
+// the shape a caller holds when the payload is built by constructors rather than literals.
+// Before the derived accessors reached typed elements, a list of instances rendered a
+// trailing separator (`a, b, c, `) because no element carried `-last`.
+describe("a typed payload renders like the equal plain-object payload", () => {
+  const dir = join(import.meta.dir, "../../../../../fixtures/render-conformance/render-list-separator");
+  const template = readFileSync(join(dir, "template.mustache"), "utf8");
+  const expected = readFileSync(join(dir, "expected.txt"), "utf8");
+  interface Fixture {
+    items: { name: string }[];
+    solo: { name: string }[];
+    none: { name: string }[];
+    groups: { tags: { label: string }[] }[];
+    entries: { name: string; note?: string; owner: { nick: string } }[];
+    authored: { name: string }[];
+  }
+  const json = JSON.parse(readFileSync(join(dir, "payload.json"), "utf8")) as Fixture;
+
+  class Named {
+    constructor(readonly name: string) {}
+  }
+  class Tag {
+    constructor(readonly label: string) {}
+  }
+  class Group {
+    constructor(readonly tags: Tag[]) {}
+  }
+  // A private field behind a getter: the getter only works when it runs against the
+  // instance itself, which is what a view over the instance has to preserve.
+  class Owner {
+    readonly #nick: string;
+    constructor(nick: string) {
+      this.#nick = nick;
+    }
+    get nick(): string {
+      return this.#nick;
+    }
+  }
+  class Entry {
+    constructor(
+      readonly name: string,
+      readonly owner: Owner,
+      readonly note?: string,
+    ) {}
+  }
+  // An AUTHORED `-last` member: it must win over the derived position.
+  class Pinned {
+    readonly "-last" = true;
+    constructor(readonly name: string) {}
+  }
+  class Payload {
+    readonly items = json.items.map((i) => new Named(i.name));
+    readonly solo = json.solo.map((i) => new Named(i.name));
+    readonly none = json.none.map((i) => new Named(i.name));
+    readonly groups = json.groups.map((g) => new Group(g.tags.map((t) => new Tag(t.label))));
+    readonly entries = json.entries.map((e) => new Entry(e.name, new Owner(e.owner.nick), e.note));
+    readonly authored = json.authored.map((a) => new Pinned(a.name));
+  }
+
+  test("the list-separator fixture renders its expected output from class instances", () => {
+    expect(r(template, json)).toBe(expected);
+    expect(r(template, new Payload())).toBe(expected);
+  });
+
+  test("a frozen typed payload renders the same", () => {
+    const frozen = Object.freeze(new Payload());
+    for (const item of frozen.items) Object.freeze(item);
+    expect(r(template, frozen)).toBe(expected);
+  });
+
+  test("has<Field> is derived for a class instance exactly as for the equal plain object", () => {
+    class Hero {
+      readonly abilities = ["fly"];
+      readonly bio = "  ";
+      readonly level = 3;
+      get nickname(): string {
+        return "Ace";
+      }
+    }
+    const tpl =
+      "{{#hasAbilities}}A{{/hasAbilities}}{{^hasBio}}no-bio{{/hasBio}}{{#hasNickname}}N{{/hasNickname}}" +
+      "[{{#hasLevel}}L{{/hasLevel}}]";
+    const plain = { abilities: ["fly"], bio: "  ", level: 3, nickname: "Ace" };
+    expect(r(tpl, plain)).toBe("Ano-bioN[]");
+    expect(r(tpl, new Hero())).toBe(r(tpl, plain));
+  });
+
+  test("an authored has<Field> member wins on a class instance", () => {
+    class Quiet {
+      readonly abilities = ["fly"];
+      readonly hasAbilities = false;
+    }
+    expect(r("{{#hasAbilities}}A{{/hasAbilities}}{{^hasAbilities}}none{{/hasAbilities}}", new Quiet())).toBe("none");
+  });
+
+  test("a value nested in a class instance keeps its own string form", () => {
+    class Stamped {
+      readonly when = new Date("2020-01-02T03:04:05Z");
+    }
+    expect(r("{{when}}", new Stamped())).toBe(r("{{when}}", { when: new Date("2020-01-02T03:04:05Z") }));
+  });
+
+  test("a method on a class instance still resolves as a computed value", () => {
+    class Person {
+      constructor(
+        readonly first: string,
+        readonly last: string,
+      ) {}
+      full(): string {
+        return `${this.first} ${this.last}`;
+      }
+    }
+    expect(r("{{full}}", new Person("Ada", "Lovelace"))).toBe("Ada Lovelace");
   });
 });

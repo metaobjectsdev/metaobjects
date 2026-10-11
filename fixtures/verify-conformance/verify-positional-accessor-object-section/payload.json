@@ -1,0 +1,12 @@
+[
+  { "name": "displayName" },
+  { "name": "posts", "isArray": true, "fields": [
+    { "name": "title" },
+    { "name": "note" },
+    { "name": "author", "fields": [{ "name": "name" }] },
+    { "name": "tags", "isArray": true, "fields": [{ "name": "name" }] },
+    { "name": "labels", "isArray": true }
+  ] },
+  { "name": "owner", "fields": [{ "name": "name" }] },
+  { "name": "labels", "isArray": true }
+]

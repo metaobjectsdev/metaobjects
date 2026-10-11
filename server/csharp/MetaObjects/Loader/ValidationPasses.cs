@@ -10,6 +10,7 @@
 
 using System.Text.RegularExpressions;
 using MetaObjects.Core.Attr;
+using MetaObjects.Core.Field;
 using MetaObjects.Core.Relationship;
 using MetaObjects.Core.Requirement;
 using MetaObjects.Meta;
@@ -2559,21 +2560,19 @@ public static partial class ValidationPasses
 
     /// <summary>
     /// The shared-enum super of <paramref name="field"/>, or null when it has none.
-    /// "Shared" (FR-019 / #246) means the immediate super is abstract AND declared at
-    /// metadata-root — a metadata.root child, not one nested under an object. Such a
-    /// declaration is materialized ONCE per port as a single named type, so anything a
-    /// consuming field re-declares that belongs to the shared TYPE's contract (its
-    /// @values member set, or the @intValueMap integer backing of that set) is a conflict.
-    /// Immediate-super-only, matching codegen's Fr019SharedEnum.ResolveSharedEnumDecl so
-    /// the validator and the shared-enum collapse agree on what "shared" means.
+    /// "Shared" (FR-019 / #246) means the IMMEDIATE super is a shared enum declaration per
+    /// <see cref="SharedEnumDeclaration.IsSharedEnumDeclaration"/> — the single cross-port
+    /// authority also used by every codegen port's naming/materialization walk
+    /// (<see cref="SharedEnumDeclaration.ResolveSharedEnumDeclaration"/>), so this check and
+    /// that walk can never disagree about what "shared" means. Such a declaration is
+    /// materialized ONCE per port as a single named type, so anything a consuming field
+    /// re-declares that belongs to the shared TYPE's contract (its @values member set, or
+    /// the @intValueMap integer backing of that set) is a conflict — checked immediate-super-only
+    /// because that is the one hop a field can own a conflicting redeclaration against; a
+    /// mid-chain redeclaration further up the chain is a different field's own concern.
     /// </summary>
-    private static MetaData? SharedEnumSuper(MetaField field)
-    {
-        var sup = field.SuperData;
-        return sup is not null && sup.IsAbstract && sup.Parent is { } p && p.Type == TYPE_METADATA
-            ? sup
-            : null;
-    }
+    private static MetaField? SharedEnumSuper(MetaField field) =>
+        field.ResolveSuper() is { } sup && SharedEnumDeclaration.IsSharedEnumDeclaration(sup) ? sup : null;
 
     private static void WalkEnumValues(MetaData node, List<MetaError> errors)
     {

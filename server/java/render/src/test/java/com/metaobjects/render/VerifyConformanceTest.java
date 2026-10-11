@@ -154,10 +154,11 @@ public class VerifyConformanceTest {
 
     private static PayloadField parseField(JsonNode el) {
         String name = el.get("name").asText();
+        boolean isArray = el.path("isArray").asBoolean(false);
         if (el.has("fields") && el.get("fields").isArray()) {
-            return new PayloadField(name, parseFields(el.get("fields")));
+            return new PayloadField(name, parseFields(el.get("fields")), isArray);
         }
-        return PayloadField.scalar(name);
+        return PayloadField.scalar(name, isArray);
     }
 
     private static List<String> stringArray(JsonNode array) {

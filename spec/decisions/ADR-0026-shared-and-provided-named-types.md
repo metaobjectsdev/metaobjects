@@ -128,3 +128,53 @@ codegen + fixtures effort for a need Option 1 already serves.
 - [ADR-0001](ADR-0001-cross-language-type-binding.md) — bind metadata→native types at build time, per port (no FQN in metadata).
 - [enum datatype design](../../docs/superpowers/specs/2026-05-23-enum-datatype-design.md) — D6 abstract-enum reuse; int-backed values + display labels remain deferred.
 - [FR-019](../../docs/superpowers/specs/2026-06-06-fr-019-shared-and-provided-enums-design.md) — implementation (enum shared-materialization + `@provided`, with value-object `@provided` as a noted follow-up).
+
+## Amendment 1 (2026-10-10) — type identity through an `extends` chain
+
+§2 says a field that `extends` a shared declaration references its one type, and says nothing
+about a field that reaches the declaration through ANOTHER field. Each port filled that gap on
+its own, and more than once per port: the loader's #246 check, the type namer and the
+materializer each carried a private notion of "the super". Four defects came from two of those
+answers disagreeing: a projection whose enum type did not generate (#259), a chained root
+abstract named after the wrong declaration, an own `@values` silently dropped (#246), and a
+two-hop field that got its own inlined copy of a shared enum.
+
+**The rule.** A *shared enum declaration* is a `field.enum` that is abstract AND a direct child
+of the metadata root. To resolve an enum field's type, start at the field itself and walk its
+`extends` chain. At each node, in this order:
+
+1. the node is a shared enum declaration: that declaration is the answer (the nearest wins, so
+   `Money extends Currency` answers `Money`);
+2. the node declares its OWN `@values` or its OWN `@intValueMap`: there is no shared type. The
+   node starts a new vocabulary, and the field keeps a per-object inline type;
+3. otherwise continue at the node's super.
+
+A non-enum node, the end of the chain or a cycle answers "no shared type". The hosting object's
+subtype plays no part, and there is no hop limit: an entity, projection or value-object field
+that reaches a shared declaration through any number of hops references that one type.
+
+**One authority per port.** The walk lives in each port's metadata layer
+(`resolveSharedEnumDeclaration` / `isSharedEnumDeclaration`, named idiomatically), and both the
+loader and every codegen site call it. The #246 check asks the predicate about the IMMEDIATE
+super only, which is unchanged: own `@values` or `@intValueMap` directly under a shared
+declaration is `ERR_ENUM_EXTENDS_VALUES_CONFLICT`, and a redeclaration further down the chain
+loads and is answered by step 2. The two JVM generators share the Java function, so they cannot
+disagree.
+
+**Materialization.** The member set and the int map are read from the DECLARATION (a resolving
+read, so a chained declaration materializes the members it inherits), never from whichever
+consuming field is visited first. The shared type is emitted whenever any generated consumer
+references it, including when the only consumer is a multi-hop projection or value-object
+field.
+
+**This supersedes #259's remedy.** #259 reported a type that did not generate, and was fixed by
+giving a Kotlin projection its own copy of the enum. The projection now references the shared
+type, and the shared type always generates. A field whose chain ends at an inline,
+object-hosted enum keeps each port's inline naming and output byte for byte. Sharing an inline
+enum across objects stays out of scope.
+
+**Gate.** `fixtures/codegen-conformance/shared-provided-enum/expected-enum-types.json` is a
+port-neutral decision table: for every object-hosted enum field of the shared input, the
+declaration it resolves to (or none), whether that declaration is `@provided`, and which
+declarations are materialized. All five ports compute it from the function their generators
+call and must match it in both directions.

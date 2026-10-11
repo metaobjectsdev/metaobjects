@@ -23,35 +23,33 @@ public final class PayloadAccessors {
     public static final String HAS_PREFIX = "has";
 
     /**
-     * Positional accessors injected into every map-shaped ELEMENT of a collection, so a list
+     * The positional accessor injected into every map-shaped ELEMENT of a collection, so a list
      * separator needs no hand-computed {@code last} flag:
      * {@code {{#items}}{{name}}{{^-last}}, {{/-last}}{{/items}}}. The leading {@code -} cannot
      * collide with a field name and is still an ordinary Mustache tag name, so the template stays
      * valid Mustache. A scalar element has nowhere to hold a key and carries none. An authored key
      * of the same name wins, as for {@code has<Field>}.
      */
-    public static final String FIRST_ACCESSOR = "-first";
     public static final String LAST_ACCESSOR = "-last";
 
     private PayloadAccessors() { /* no instances */ }
 
-    /** Adds {@code -first}/{@code -last} to the map-shaped elements of an already-derived list. */
+    /** Adds {@code -last} to the map-shaped elements of an already-derived list. */
     @SuppressWarnings("unchecked")
     private static java.util.List<Object> withPositionalAccessors(java.util.List<Object> elements) {
         int last = elements.size() - 1;
         for (int i = 0; i < elements.size(); i++) {
             if (elements.get(i) instanceof java.util.Map<?, ?> m) {
                 java.util.Map<String, Object> el = (java.util.Map<String, Object>) m;
-                el.putIfAbsent(FIRST_ACCESSOR, i == 0);
                 el.putIfAbsent(LAST_ACCESSOR, i == last);
             }
         }
         return elements;
     }
 
-    /** True when {@code name} is {@code -first}/{@code -last} and the scope is a collection element. */
+    /** True when {@code name} is {@code -last} and the scope is a collection element. */
     public static boolean isPositionalAccessor(boolean inElement, String name) {
-        return inElement && (FIRST_ACCESSOR.equals(name) || LAST_ACCESSOR.equals(name));
+        return inElement && LAST_ACCESSOR.equals(name);
     }
 
     /**
@@ -101,8 +99,9 @@ public final class PayloadAccessors {
 
     /**
      * A view over {@code payload} carrying its derived {@code has<Field>} accessors,
-     * recursively — for map-shaped payloads and Java records (viewed as the map of their
-     * components).
+     * recursively — for map-shaped payloads, Java records (viewed as the map of their
+     * components) and getter-based beans, which covers Kotlin data classes (viewed as the map of
+     * their getters and public fields).
      *
      * <p>Without it, the SAME payload data renders differently depending on the shape it
      * arrived in, which is the divergence the shared {@code render-derived-has-accessor} fixture
@@ -187,6 +186,77 @@ public final class PayloadAccessors {
             for (int i = 0; i < n; i++) out.add(withDerivedAccessors(java.lang.reflect.Array.get(payload, i), depth + 1));
             return withPositionalAccessors(out);
         }
+        if (isViewableBean(payload)) {
+            java.util.Map<String, Object> members = new java.util.LinkedHashMap<>();
+            for (MemberReader r : readersFor(payload.getClass())) {
+                try {
+                    members.putIfAbsent(r.name(), r.read(payload));
+                } catch (ReflectiveOperationException | RuntimeException e) {
+                    // Left out rather than failing the render, as for a record component.
+                }
+            }
+            return withDerivedAccessors(members, depth);
+        }
         return payload;
+    }
+
+    // A getter-based bean's readable members, resolved ONCE per class like the record accessors.
+    // Names are the ones the Mustache engine already resolved on such an object: the getter's own
+    // name (getName, isActive), the property name it implies (name,
+    // active) and public fields. Only getters are read — a fluent method is never invoked
+    // as a side effect of viewing — and nothing declared by Object (so no getClass) is exposed.
+    private static final java.util.concurrent.ConcurrentHashMap<Class<?>, MemberReader[]> MEMBERS =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
+    private record MemberReader(String name, java.lang.reflect.Method getter, java.lang.reflect.Field field) {
+        Object read(Object target) throws ReflectiveOperationException {
+            return getter != null ? getter.invoke(target) : field.get(target);
+        }
+    }
+
+    private static MemberReader[] readersFor(Class<?> type) {
+        return MEMBERS.computeIfAbsent(type, c -> {
+            java.util.List<MemberReader> readers = new java.util.ArrayList<>();
+            for (java.lang.reflect.Method m : c.getMethods()) {
+                if (m.getDeclaringClass() == Object.class || m.getParameterCount() != 0
+                        || java.lang.reflect.Modifier.isStatic(m.getModifiers())
+                        || m.getReturnType() == void.class) continue;
+                String n = m.getName();
+                String property = n.startsWith("get") ? n.substring(3) : n.startsWith("is") ? n.substring(2) : null;
+                if (property == null || property.isEmpty() || !Character.isUpperCase(property.charAt(0))) continue;
+                try {
+                    m.setAccessible(true);
+                } catch (RuntimeException e) {
+                    continue;
+                }
+                readers.add(new MemberReader(n, m, null));
+                readers.add(new MemberReader(decapitalize(property), m, null));
+            }
+            for (java.lang.reflect.Field f : c.getFields()) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                try {
+                    f.setAccessible(true);
+                } catch (RuntimeException e) {
+                    continue;
+                }
+                readers.add(new MemberReader(f.getName(), null, f));
+            }
+            return readers.toArray(new MemberReader[0]);
+        });
+    }
+
+    /** The Java Beans rule: lowercase the first character unless the first two are both upper case. */
+    private static String decapitalize(String s) {
+        if (s.length() > 1 && Character.isUpperCase(s.charAt(0)) && Character.isUpperCase(s.charAt(1))) return s;
+        return Character.toLowerCase(s.charAt(0)) + s.substring(1);
+    }
+
+    /** A scalar-like or platform value keeps its own string form; only an application bean is viewed. */
+    private static boolean isViewableBean(Object payload) {
+        if (payload instanceof Enum<?> || payload instanceof CharSequence || payload instanceof Number
+                || payload instanceof Boolean || payload instanceof Character || payload instanceof Iterable<?>) return false;
+        String n = payload.getClass().getName();
+        return !(n.startsWith("java.") || n.startsWith("javax.") || n.startsWith("jdk.")
+                || n.startsWith("kotlin.") || n.startsWith("sun.") || n.startsWith("com.sun."));
     }
 }

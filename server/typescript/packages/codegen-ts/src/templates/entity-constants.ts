@@ -93,10 +93,11 @@ function renderFieldEntry(f: UiFieldDescriptor): string {
 }
 
 /**
- * A value object's field-rules constant: `export const <VO> = { $entity, <field>: { name, label,
- * view, rules, ... } } as const`. The same per-field shape an entity's constant carries, minus
- * `$table` and `$path` — a value object has no source and no route — so a caller reads a limit as
- * `<VO>.<field>.rules.maxLength.value` instead of reaching through the Zod schema's getters.
+ * The field-rules constant of an `object.value`: `export const <VO> = { $entity, <field>: { name,
+ * label, view, rules, ... } } as const`. The same per-field shape an entity's constant carries,
+ * minus `$table` and `$path` — a value object has no source and no route — so a caller reads a
+ * limit as `<VO>.<field>.rules.maxLength.value` instead of reaching through the Zod schema's
+ * getters. Emitted for the value subtype only (see `renderValueObjectFile`).
  */
 export function renderValueObjectConstants(obj: MetaObject, emittedName?: string): Code {
   const descriptor = buildEntityUiDescriptor(obj);

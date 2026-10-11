@@ -7,9 +7,9 @@
 
 import {
   type MetaData,
-  TYPE_FIELD,
   FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_OBJECT_REF,
+  isMetaField,
   resolveObjectRef,
 } from "@metaobjectsdev/metadata";
 import type { PayloadField } from "@metaobjectsdev/render";
@@ -44,17 +44,21 @@ export function derivePayloadFieldTree(
   const voPkg = vo.package ?? vo.fileDefaultPackage ?? "";
   const nextSeen = new Set(seen).add(voName);
   const fields: PayloadField[] = [];
-  for (const f of vo.children().filter((c) => c.type === TYPE_FIELD)) {
+  for (const f of vo.children().filter(isMetaField)) {
+    // ADR-0039: effective array-ness — `isArray` may be inherited via extends. Carried only
+    // when true, so verify can tell a list of objects from a single object and a list of
+    // scalars from a scalar.
+    const arrayness = f.resolvedIsArray() ? { isArray: true } : {};
     if (f.subType === FIELD_SUBTYPE_OBJECT) {
       // ADR-0039: effective attr — @objectRef may be inherited via extends.
       const ref = f.attr(FIELD_ATTR_OBJECT_REF);
       if (typeof ref === "string") {
         const fieldPkg = f.parent?.package ?? f.parent?.fileDefaultPackage ?? voPkg;
-        fields.push({ name: f.name, fields: derivePayloadFieldTree(root, ref, fieldPkg, nextSeen) });
+        fields.push({ name: f.name, fields: derivePayloadFieldTree(root, ref, fieldPkg, nextSeen), ...arrayness });
         continue;
       }
     }
-    fields.push({ name: f.name });
+    fields.push({ name: f.name, ...arrayness });
   }
   return fields;
 }

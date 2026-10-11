@@ -51,7 +51,36 @@ describe("derivePayloadFieldTree — mirrors the payload-codegen VO walk", () =>
     expect(tree).toEqual([
       { name: "displayName" },
       { name: "postCount" },
-      { name: "posts", fields: [{ name: "title" }] },
+      { name: "posts", fields: [{ name: "title" }], isArray: true },
+    ]);
+  });
+
+  // verify tells a list of objects from a single object, and a list of scalars from a scalar,
+  // by the node's array-ness — the field's EFFECTIVE isArray, so one inherited through
+  // `extends` counts exactly like one declared on the field.
+  test("array-ness is carried for object lists and scalar lists, including when inherited", async () => {
+    const root = await loadRoot([
+      { "field.string": { name: "Labels", abstract: true, isArray: true } },
+      { "object.value": { name: "Tag", children: [{ "field.string": { name: "name" } }] } },
+      {
+        "object.value": {
+          name: "Card",
+          children: [
+            { "field.string": { name: "title" } },
+            { "field.string": { name: "aliases", isArray: true } },
+            { "field.string": { name: "labels", extends: "Labels" } },
+            { "field.object": { name: "owner", "@objectRef": "Tag" } },
+            { "field.object": { name: "tags", isArray: true, "@objectRef": "Tag" } },
+          ],
+        },
+      },
+    ]);
+    expect(derivePayloadFieldTree(root, "Card", "acme::ai")).toEqual([
+      { name: "title" },
+      { name: "aliases", isArray: true },
+      { name: "labels", isArray: true },
+      { name: "owner", fields: [{ name: "name" }] },
+      { name: "tags", fields: [{ name: "name" }], isArray: true },
     ]);
   });
 

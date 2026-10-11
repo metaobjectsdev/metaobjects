@@ -1,12 +1,17 @@
 package com.metaobjects.generator.kotlin
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.metaobjects.field.EnumField
+import com.metaobjects.field.MetaField
 import com.metaobjects.metadata.ktx.loadString
 import com.metaobjects.loader.MetaDataLoader
+import com.metaobjects.`object`.MetaObject
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.readText
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -118,5 +123,146 @@ class KotlinFr019SharedProvidedConformanceTest {
         val ex = assertThrows<RuntimeException> { generate(null) }
         assertTrue(ex.message?.contains("Currency") == true,
             "error must name the provided enum Currency; was: ${ex.message}")
+    }
+
+    // =========================================================================
+    // Decision table — one shared-enum rule for BOTH JVM generators
+    // =========================================================================
+
+    private fun readExpectedEnumTypes(): com.fasterxml.jackson.databind.JsonNode {
+        val path = Path.of(System.getProperty("user.dir")).resolve("../../..").normalize()
+            .resolve("fixtures/codegen-conformance/shared-provided-enum/expected-enum-types.json")
+        assertTrue(Files.exists(path), "expected-enum-types.json must exist at $path")
+        return ObjectMapper().readTree(Files.readString(path))
+    }
+
+    /** `<package>::<Object>.<field>` -> `{"shared": <declaration FQN>|null, "provided": bool}`,
+     *  computed via [Fr019SharedEnum.resolveSharedEnumDecl] for every object-hosted `field.enum`
+     *  on every concrete entity/projection/value object — no condition on the hosting object's
+     *  subtype. The SAME function [KotlinTypeMapper.enumTypeName] calls for naming. */
+    private fun computeDecisionTable(loader: MetaDataLoader): Map<String, Map<String, Any?>> {
+        val out = LinkedHashMap<String, Map<String, Any?>>()
+        for (owner in loader.metaObjects) {
+            val subType = owner.subType
+            if (subType != MetaObject.SUBTYPE_ENTITY && subType != MetaObject.SUBTYPE_PROJECTION
+                && subType != MetaObject.SUBTYPE_VALUE) continue
+            for (field in owner.metaFields) {
+                if (field !is EnumField) continue
+                val key = "${owner.name}.${field.name}"
+                val decl = Fr019SharedEnum.resolveSharedEnumDecl(field)
+                out[key] = if (decl == null) {
+                    mapOf("shared" to null, "provided" to false)
+                } else {
+                    mapOf("shared" to decl.name, "provided" to Fr019SharedEnum.isProvided(decl))
+                }
+            }
+        }
+        return out
+    }
+
+    @Test
+    fun `decision table matches shared fixture expectation`() {
+        val loader = loadFixture()
+        val actual = computeDecisionTable(loader)
+        val expected = readExpectedEnumTypes()
+
+        val expectedFields = expected.get("fields")
+        val expectedKeys = expectedFields.fieldNames().asSequence().toList()
+        for (key in expectedKeys) {
+            assertTrue(actual.containsKey(key), "decision table missing key $key; actual keys: ${actual.keys}")
+            val expectedEntry = expectedFields.get(key)
+            val expectedShared = if (expectedEntry.get("shared").isNull) null else expectedEntry.get("shared").asText()
+            val actualEntry = actual.getValue(key)
+            assertEquals(expectedShared, actualEntry["shared"], "mismatched 'shared' for $key")
+            assertEquals(expectedEntry.get("provided").asBoolean(), actualEntry["provided"], "mismatched 'provided' for $key")
+        }
+        assertEquals(expectedKeys.size, actual.size, "decision table has extra keys beyond the fixture; actual: ${actual.keys}")
+
+        val expectedMaterialized = expected.get("materialized").map { it.asText() }.sorted()
+        val out = Files.createTempDirectory("kgen-fr019-decision-")
+        try {
+            KotlinEntityGenerator().apply { setArgs(mapOf("outputDir" to out.toString(), "providedEnumNamespace" to "com.acme.ext")) }
+                .execute(loadFixture())
+            val actualMaterialized = expectedMaterialized.filter { name ->
+                Files.exists(out.resolve("acme/shop/$name.kt"))
+            }.sorted()
+            assertEquals(expectedMaterialized, actualMaterialized,
+                "materialized shared enums must match the fixture")
+            // And nothing ELSE claiming to be a shared declaration got materialized either —
+            // the @provided Currency must never be written.
+            assertFalse(Files.exists(out.resolve("acme/shop/Currency.kt")),
+                "@provided Currency must never be materialized")
+        } finally {
+            out.toFile().deleteRecursively()
+        }
+    }
+
+    // =========================================================================
+    // Generated-output assertions — the multi-hop / provided / negative cases
+    // =========================================================================
+
+    @Test
+    fun `multi-hop projection and value-object fields reference the shared type`() {
+        val out = generate("com.acme.ext")
+        try {
+            // Task.importance (two hops) and Subtask.rank (three hops) both reach Priority.
+            // Multi-hop fields reference the ONE shared Priority — on an entity (Task.importance,
+            // two hops; Subtask.rank, three hops), a projection (TicketSummary.level) and a value
+            // object (TicketBadge.badge) alike — and no per-object enum is written for any of them.
+            val shop = out.resolve("acme/shop")
+            assertTrue(Files.exists(shop.resolve("Priority.kt")), "shared Priority.kt must be emitted")
+            for (stale in listOf("TaskImportance", "TaskUrgency", "SubtaskRank", "TicketSummaryLevel", "TicketBadgeBadge"))
+                assertFalse(Files.exists(shop.resolve("$stale.kt")),
+                    "$stale.kt must NOT be materialized — the field references the shared type")
+            val task = shop.resolve("Task.kt").readText()
+            assertTrue("val importance: Priority?" in task, "Task.importance must be typed Priority; saw:\n$task")
+            val subtask = shop.resolve("Subtask.kt").readText()
+            assertTrue("val rank: Priority" in subtask, "Subtask.rank must be typed Priority; saw:\n$subtask")
+            for (name in listOf("TicketSummary.kt", "TicketBadge.kt")) {
+                val f = shop.resolve(name)
+                if (Files.exists(f)) assertTrue("Priority" in f.readText(), "$name must reference Priority; saw:\n${f.readText()}")
+            }
+        } finally {
+            out.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `refund fields resolve to distinct shared declarations on the same object`() {
+        val out = generate("com.acme.ext")
+        try {
+            val refund = out.resolve("acme/shop/Refund.kt").readText()
+            assertTrue("ticketTier" in refund && "invoiceTier" in refund && "unit" in refund
+                && "tender" in refund && "orderStatus" in refund,
+                "Refund.kt must declare all five fields; saw:\n$refund")
+            assertTrue("com.acme.ext.Currency" in refund,
+                "Refund.tender must reference the configured external namespace; saw:\n$refund")
+        } finally {
+            out.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `own values or intValueMap stops the walk and keeps an inline per-object enum`() {
+        val out = generate("com.acme.ext")
+        try {
+            // An inline enum is its own per-object file (<Object><Field>.kt) the data class types its
+            // property by, and no shared type stands in for it.
+            fun assertInline(owner: String, field: String, property: String) {
+                val type = owner + field.replaceFirstChar { it.uppercase() }
+                val file = out.resolve("acme/shop/$type.kt")
+                assertTrue(Files.exists(file), "$owner.$field must keep its inline enum file $type.kt")
+                assertTrue("enum class $type" in file.readText(), "$type.kt must declare enum class $type")
+                val src = out.resolve("acme/shop/$owner.kt").readText()
+                assertTrue("val $property: $type" in src, "$owner.$field must be typed $type; saw:\n$src")
+            }
+            assertInline("Task", "phase", "phase")
+            assertInline("Task", "weight", "weight")
+            assertInline("Subtask", "phase", "phase")
+            assertInline("Subtask", "weight", "weight")
+            assertInline("Refund", "orderStatus", "orderStatus")
+        } finally {
+            out.toFile().deleteRecursively()
+        }
     }
 }

@@ -252,6 +252,9 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
         seen.add(vo.name)
         val fields = ArrayList<PayloadField>()
         for (field in vo.metaFields) {
+            // ADR-0039: isArrayType() is the EFFECTIVE (inherited-via-extends) array-ness; the
+            // own-only isArray flag would read false for a field that inherits @isArray.
+            val isArray = field.isArrayType
             if (field is ObjectField) {
                 // Resolve the nested @objectRef by BARE short-name — the cross-port
                 // render-helper consensus. Do NOT use the package-FOLDING resolver here;
@@ -259,11 +262,11 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
                 val target = resolveNestedObjectRef(loader, field)
                 if (target != null && MetaObject.SUBTYPE_VALUE == target.subType) {
                     val children = derivePayloadFieldTree(loader, target, LinkedHashSet(seen))
-                    fields.add(PayloadField.`object`(field.name, children))
+                    fields.add(PayloadField.`object`(field.name, children, isArray))
                     continue
                 }
             }
-            fields.add(PayloadField.scalar(field.name))
+            fields.add(PayloadField.scalar(field.name, isArray))
         }
         return fields
     }
@@ -318,10 +321,10 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
             if (f.fields() != null) {
                 sb.append("com.metaobjects.render.PayloadField.`object`(")
                   .append(quote(f.name())).append(", ")
-                  .append(fieldTreeLiteral(f.fields())).append(")")
+                  .append(fieldTreeLiteral(f.fields())).append(if (f.isArray()) ", true)" else ")")
             } else {
                 sb.append("com.metaobjects.render.PayloadField.scalar(")
-                  .append(quote(f.name())).append(")")
+                  .append(quote(f.name())).append(if (f.isArray()) ", true)" else ")")
             }
         }
         sb.append(")")

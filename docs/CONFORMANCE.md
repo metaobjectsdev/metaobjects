@@ -28,7 +28,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 |---|---|---|---|---|---|---|
 | [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 374 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 16 | 16 / 16 | 15 / 16 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 15 / 16 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 16 / 16 |
-| [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 34 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 37 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 16 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 48 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
@@ -38,7 +38,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 42 cases | ✓ (generated Zod + run-time `runValidators`) | ✓ | ✓ | ✓ | ✓ (generated Pydantic + run-time `run_validators`) |
 | [`fixtures/registry-conformance/`](../fixtures/registry-conformance/) | 1 canonical manifest | ✓ (reference emitter) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/object-model-conformance/`](../fixtures/object-model-conformance/) | 1 shared metadata fixture (per-port scenarios) | ✓ | ✓ | ✓ | ✓ | ✓ |
-| [`fixtures/codegen-conformance/`](../fixtures/codegen-conformance/) | 4 | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`fixtures/codegen-conformance/`](../fixtures/codegen-conformance/) | 5 shared inputs; `shared-provided-enum` also carries the enum-type decision table every port answers | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/template-codegen-conformance/`](../fixtures/template-codegen-conformance/) | 3 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/template-output-render-conformance/`](../fixtures/template-output-render-conformance/) | 5 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/generator-registry-conformance/`](../fixtures/generator-registry-conformance/) | 1 canonical manifest | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -291,12 +291,14 @@ All 16 fixtures → [features/templates-and-payloads.md](features/templates-and-
 spreadsheet / CSV-injection escape); 11 pin Mustache-engine semantics — dotted-path
 lookup, parent-context fallthrough, falsy/empty-array section behavior, inverted
 sections, nested partials, standalone-tag whitespace stripping, raw-HTML bypass,
-trailing-newline preservation, unicode multibyte handling, and the `-first` / `-last` list-separator accessors.
+trailing-newline preservation, unicode multibyte handling, and the `-last` list-separator accessor.
 
-### `fixtures/verify-conformance/` (34)
+### `fixtures/verify-conformance/` (37)
 
-All 34 fixtures → [features/migrations-and-drift.md](features/migrations-and-drift.md)
-(template drift section — `Renderer.verify`).
+All 37 fixtures → [features/migrations-and-drift.md](features/migrations-and-drift.md)
+(template drift section — `Renderer.verify`). A node of a fixture's `payload.json` field tree
+may carry `"isArray": true`; with `fields` it is a list of objects, without it a list of
+scalars. The six `verify-positional-accessor-*` cases pin where `-last` is available.
 
 ### `fixtures/persistence-conformance/` (52 — 46 query + 6 migration)
 
@@ -522,7 +524,7 @@ files into a real Cube.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 374 + yaml 16 + verify 34
+The fixtures in the nine corpora mapped above (metamodel 374 + yaml 16 + verify 37
 + render 16 + persistence 52 + api-contract 88 + source-resolution 25 + scope 10 +
 dependency 23) each map to a feature doc, and so do the two requirement corpora and the
 `cube-model` corpus, whose case lists live in their own READMEs. None are orphaned today. The remaining

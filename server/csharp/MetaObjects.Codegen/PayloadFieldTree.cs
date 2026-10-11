@@ -56,6 +56,11 @@ public static class PayloadFieldTree
         var fields = new List<PayloadField>();
         foreach (var f in vo.Children().Where(c => c.Type == TYPE_FIELD))
         {
+            // ADR-0039: ResolvedIsArray() — the EFFECTIVE (inherited-via-extends) array-ness,
+            // never the own flag — is what Verify's positional-accessor rule needs to tell an
+            // array-of-scalars (no `-last`) from a single scalar, and an array-of-objects from
+            // a single nested object (both carry child Fields; only IsArray disambiguates).
+            var isArray = f.ResolvedIsArray();
             // ADR-0039: resolving — @objectRef may be inherited via extends (TS reads f.attr).
             if (f.SubType == FIELD_SUBTYPE_OBJECT && f.Attr(FIELD_ATTR_OBJECT_REF) is string refName)
             {
@@ -65,10 +70,10 @@ public static class PayloadFieldTree
                 var fieldPkg = f.Parent is not null
                     ? global::MetaObjects.NamingRefs.EffectivePackage(f.Parent)
                     : voPkg;
-                fields.Add(new PayloadField(f.Name, BuildTree(root, refName, fieldPkg, visiting)));
+                fields.Add(new PayloadField(f.Name, BuildTree(root, refName, fieldPkg, visiting), isArray));
             }
             else
-                fields.Add(new PayloadField(f.Name));
+                fields.Add(new PayloadField(f.Name, IsArray: isArray));
         }
         visiting.Remove(vo.ResolutionKey());
         return fields;

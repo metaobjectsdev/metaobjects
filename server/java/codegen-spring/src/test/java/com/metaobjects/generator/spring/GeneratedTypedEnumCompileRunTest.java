@@ -127,16 +127,17 @@ public class GeneratedTypedEnumCompileRunTest extends SharedRegistryTestBase {
 
         generate(loader, gen);
 
-        // The source must declare EXACTLY ONE nested enum named for the super (Priority), not
-        // <Owner><Field> (CurrentPriority / PreviousPriority).
+        // The value object REFERENCES the shared declaration (ADR-0026 amendment: no condition on
+        // the hosting object's subtype), so its record declares no enum of its own and the
+        // shared type is emitted exactly once, as its own file, by the value-object run itself.
         String src = Files.readString(gen.resolve("acme/orders/TicketPayload.java"));
-        int firstDecl = src.indexOf("public enum Priority {");
-        assertTrue("must emit a nested `public enum Priority`; saw:\n" + src, firstDecl >= 0);
-        assertEquals("must emit EXACTLY ONE `enum Priority` (deduped); saw:\n" + src,
-                firstDecl, src.lastIndexOf("public enum Priority {"));
-        assertFalse("must NOT name the enum <Owner><Field>; saw:\n" + src,
-                src.contains("public enum CurrentPriority")
-                        || src.contains("public enum PreviousPriority"));
+        assertFalse("the record must reference the shared enum, not nest one; saw:\n" + src,
+                src.contains("enum "));
+        String shared = Files.readString(gen.resolve("acme/orders/Priority.java"));
+        int firstDecl = shared.indexOf("public enum Priority {");
+        assertTrue("must emit a standalone `public enum Priority`; saw:\n" + shared, firstDecl >= 0);
+        assertEquals("must emit EXACTLY ONE `enum Priority`; saw:\n" + shared,
+                firstDecl, shared.lastIndexOf("public enum Priority {"));
 
         Path classes = compile(gen);
         try (URLClassLoader cl = new URLClassLoader(

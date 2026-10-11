@@ -42,7 +42,7 @@ number. The first landed on 1.0.x: 439 lines of handler code retired. The second
 and it is a SQL reduction only: in an adopter, hand-written SQL went from 75 lines to 15 (-80%).
 Total hand-written lines did not fall, so do not read it as a total line reduction.
 
-**Two diffs to expect when you upgrade.**
+**Three diffs to expect when you upgrade.**
 
 - **An ejected generator needs a resync (G11).** An owned copy keeps the gate and the options it
   was copied with, so it does not receive the new report behaviour until you resync it. The
@@ -53,6 +53,11 @@ Total hand-written lines did not fall, so do not read it as a total line reducti
   surface of a keyless projection (no `/:id` route, no by-id function, and no write verbs in the
   API docs), and `meta verify --docs` reports the affected pages as stale until they are
   regenerated. Run `meta gen` and review the diff; three-way merge preserves hand edits.
+- **A multi-hop enum field references the shared enum.** A field that reaches a
+  package-level abstract enum through another field used to get its own enum type; it now
+  references the shared one, in every port. In Kotlin this includes a projection or value-object
+  field: its former `<Object><Field>` enum file is no longer generated, and code that imported
+  that type imports the shared enum instead. A model with no such field regenerates unchanged.
 
 **Not in 1.1.0.** Derived measures, the preview `reporting` library, the dbt exporter, the second
 requirements slice and the advisory lint port, the JSON Schema and OpenAPI generators, the
@@ -68,27 +73,39 @@ generator catalog and the Atlas evaluation are 1.2 work.
   generated-share figure must carry the net hand-written line change (a figure to report, not
   the test) and is never a target.
   Documentation only; no code or generator changed.
-- **Templates: `-first` / `-last` list accessors, so a separator needs no payload flag (every
-  port).** `{{#tags}}{{name}}{{^-last}}, {{/-last}}{{/tags}}` renders `a, b, c`. Every map-shaped
-  element of a collection now carries two derived booleans, `-first` and `-last`; the names start
-  with `-`, which no field name can, and they are ordinary Mustache tag names, so a template that
-  uses them is still valid Mustache. An authored key of the same name wins, a nested list keeps
-  its own position, and a template that uses neither renders byte-for-byte as before.
-  `meta verify --templates` accepts them inside a section over a container field and reports them
-  anywhere else as `ERR_VAR_NOT_ON_PAYLOAD`, including inside a list of scalars, where an element
-  cannot carry a key. Gated by the new `render-list-separator` render fixture and three
-  `verify-positional-accessor-*` verify fixtures, run by TypeScript, C#, Java, Kotlin and Python.
-  An adopter's payloads carried hand-computed `last` and `has<Field>` flags: `last` is what this
-  removes, and the emptiness half was already derived (`{{#hasTags}}` / `{{^hasTags}}`, see
-  `docs/features/templates-and-payloads.md`, "List separators and emptiness").
+- **Templates: a `-last` list accessor, so a separator needs no payload flag (every port).**
+  `{{#tags}}{{name}}{{^-last}}, {{/-last}}{{/tags}}` renders `a, b, c`. Every object element of a
+  collection now carries a derived boolean `-last`; the name starts with `-`, which no field name
+  can, and it is an ordinary Mustache tag name, so a template that uses it is still valid
+  Mustache. An authored member of the same name wins, a nested list keeps its own position, and
+  a template that does not use it renders byte-for-byte as before. It works whatever shape the
+  payload arrives in, and so does `has<Field>`: a map or plain object, a TypeScript class
+  instance, a C# object with or without `[JsonPropertyName]`, a Java record or getter-based
+  bean, a Kotlin data class, a Pydantic model. The same data renders the same bytes.
+  `meta verify --templates` accepts `-last` only when the innermost enclosing section over a
+  list iterates objects, and reports it as `ERR_VAR_NOT_ON_PAYLOAD` anywhere else: at the top
+  level, inside a list of scalars, and inside a list of scalars nested in a list of objects,
+  where the lookup would bind to the outer element and separate the inner list wrongly. A
+  scalar conditional or a single nested object inside a list is transparent, so `-last` there
+  is the enclosing element's. To decide that, the verify field tree now records which fields
+  are lists; a generated render helper for a payload with a list field is rewritten by `meta
+  gen` to carry that flag, and a helper with none is unchanged. Gated by the
+  `render-list-separator` render fixture and six `verify-positional-accessor-*` verify
+  fixtures, run by TypeScript, C#, Java, Kotlin and Python, plus a typed-payload render test in
+  each port. An adopter's payloads carried hand-computed `last` and `has<Field>` flags: `last`
+  is what this removes, and the emptiness half was already derived (`{{#hasTags}}` /
+  `{{^hasTags}}`, see `docs/features/templates-and-payloads.md`, "List separators and
+  emptiness").
 - **TypeScript: a value object gets a field-rules constant.** An entity has long emitted
   `<Entity>.<field>.rules`; a value object emitted only its interface and Zod schema, so a caller
-  reading a limit such as `maxLength` went through the schema's getters. A value object's module
-  now also exports `const <ValueObject> = { $entity, <field>: { name, label, view, rules, ... } }`,
-  the same per-field shape without `$table` and `$path`, since a value object has no source and no
-  route. `meta gen` adds the constant to existing value-object modules; three-way merge preserves
-  hand edits. A TPH subtype and a sourceless entity are unchanged. An ejected `entity` generator
-  needs `meta eject entity --force` to pick it up.
+  reading a limit such as `maxLength` went through the schema's getters. An `object.value`
+  module now also exports `const <ValueObject> = { $entity, <field>: { name, label, view,
+  rules, ... } }`, the same per-field shape without `$table` and `$path`, since a value object
+  has no source and no route. Only the value subtype takes it: an abstract object, a TPH
+  subtype, a sourceless entity, a sourceless projection and an entity emitted to a contract-only
+  target are unchanged. `meta gen` adds the constant to existing value-object modules;
+  three-way merge preserves hand edits. An ejected `entity` generator picks it up without a
+  resync, because the owned copy calls the package's value-object composer.
 
 - **TypeScript: the `cube-model` reference generator (FR-044 Plan 4).** `cubeModel()` writes the
   reporting vocabulary as Cube data-model files, `model/cubes/<Cube>.yml`: a cube for each
@@ -512,16 +529,24 @@ until you regenerate.
 
 ### Fixed
 
-- **Shared-enum dedup now survives a multi-hop `extends` (TypeScript, C#, Java, Python).** An enum
-  field that extends another field which itself extends a shared (package-level abstract) enum was
-  resolved only when it extended the abstract directly, so a two-hop field got its own inlined
-  `<Entity><Field>` enum beside the shared `enums.ts` one. The resolver now walks the `extends`
-  chain and takes the nearest root-level abstract enum, so the field references the shared type,
-  and the chain's `@values` are read through every hop (C# read one). An adopter's generated code
-  changes only where such a field exists: the duplicate enum disappears and the field references
-  the shared one. Kotlin is unchanged: it names a projection's enum per object on purpose (#259),
-  and keeps doing so. Gated by a `Task` entity added to the shared `shared-provided-enum`
-  fixture.
+- **One shared-enum rule in all five ports: a field keeps the shared type through any number
+  of `extends` hops.** An enum field that extends another field which itself reaches a shared
+  (package-level abstract) enum was resolved only when it extended the abstract directly, so a
+  two-hop field got its own inlined enum beside the shared one, and each port decided the
+  question in more than one place. The rule is now one function per port, in the metadata
+  layer, that the loader and every generator call (ADR-0026 Amendment 1): walk the `extends`
+  chain from the field; the nearest package-level abstract enum is the field's type; a field
+  that declares its own `@values` or `@intValueMap` on the way starts a new vocabulary and
+  keeps a per-object inline enum, as does a chain that never reaches a shared declaration. The
+  hosting object does not matter: an entity, projection or value-object field all reference the
+  one shared type. The shared type's members and int map are read from the declaration, so what
+  is generated no longer depends on which consumer is visited first, and it is generated
+  whenever any consumer references it, including when the only consumer is a projection or a
+  value object. `ERR_ENUM_EXTENDS_VALUES_CONFLICT` is unchanged: it still fires for own
+  `@values` or `@intValueMap` directly under a shared declaration, and a redeclaration further
+  down the chain still loads. This supersedes the per-projection enum copy #259 introduced in
+  Kotlin. Gated by a decision table every port answers
+  (`fixtures/codegen-conformance/shared-provided-enum/expected-enum-types.json`).
 
 - **`meta verify --db` no longer reports a matching view as drift, and says what differs when a
   view does not.** An adopter on 1.1.0-rc.2 rebuilt a SQLite database from the committed chain:

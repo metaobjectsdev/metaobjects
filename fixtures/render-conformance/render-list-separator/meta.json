@@ -1,1 +1,1 @@
-{ "format": "text", "note": "Positional -first/-last accessors on collection elements: separator via {{^-last}}, lead-in via {{#-first}}, nested lists keep their own position, single-element and empty lists, authored key wins" }
+{ "format": "text", "note": "Positional -last accessor on collection elements: separator via {{^-last}}, nested lists keep their own position, single-element and empty lists, a scalar conditional and a single nested object inside a list see the enclosing element's position, authored key wins" }

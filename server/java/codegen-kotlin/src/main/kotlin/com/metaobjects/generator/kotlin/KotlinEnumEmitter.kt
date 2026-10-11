@@ -40,7 +40,12 @@ object KotlinEnumEmitter {
     ): Boolean {
         val enumClassName = KotlinTypeMapper.enumTypeName(field, owner) ?: return false
         if (!emittedFqns.add(enumClassName.canonicalName)) return false // dedupe by enum FQN
-        val members = readEnumValues(field)
+        // Read members from the DECLARATION (FR-019: EnumField.resolveSharedEnumDeclaration — the
+        // same authority enumTypeName just resolved), never from whichever consuming field is
+        // visited first, so output cannot depend on visit order. For an inline field (no reachable
+        // declaration) the field itself IS the declaration-equivalent — its own resolving read.
+        val declaration = EnumField.resolveSharedEnumDeclaration(field) as? EnumField ?: field
+        val members = readEnumValues(declaration)
         if (members.isNullOrEmpty()) {
             // #259: a field.enum must resolve to a NON-EMPTY @values set — the loader's ValidationPhase
             // guarantees it (a root enum owns @values or fails ERR_MISSING_REQUIRED_ATTR; a field with a

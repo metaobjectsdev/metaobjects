@@ -94,15 +94,18 @@ export type ${entity.name}Update = Partial<${entity.name}Insert>;
 /**
  * The string-literal-union type-alias name for a `field.enum` field — the SINGLE
  * source of truth for enum-union naming (reused by the entity inferred-types
- * emitter AND the payload-VO emitter so both agree byte-for-byte).
+ * emitter, the payload-VO emitter and the extractor so all agree byte-for-byte).
  *
- * - If the field extends an abstract field.enum (super), use the super field's
- *   PascalCase name (so multiple fields sharing one abstract enum collapse to a
- *   single alias).
- * - Otherwise use `<Owner><FieldPascal>` for inline enums, where `<Owner>` is the
- *   owning object's name (entity OR payload value-object).
+ * - A field that resolves to a shared enum declaration (through any number of
+ *   `extends` hops) takes that declaration's PascalCase name — the one type every
+ *   consumer of the declaration references.
+ * - Otherwise the enum is inline. One that extends another field keeps that
+ *   immediate super's PascalCase name; one with no super is `<Owner><FieldPascal>`,
+ *   where `<Owner>` is the owning object's name (entity OR payload value-object).
  */
 export function enumUnionAliasName(ownerName: string, field: MetaField): string {
+  const shared = sharedEnumForField(field);
+  if (shared !== undefined) return shared.name;
   const superField = field.resolveSuper();
   return superField !== undefined
     ? toPascalCase(superField.name)

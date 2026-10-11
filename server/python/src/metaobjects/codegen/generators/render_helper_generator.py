@@ -136,21 +136,31 @@ def _derive_payload_field_tree(
                 target = _resolve_nested_object_ref(root, ref, field_pkg)
                 if target is not None and target.sub_type == OBJECT_SUBTYPE_VALUE:
                     children = _derive_payload_field_tree(root, target, next_seen)
-                    fields.append(PayloadField(f.name, children))
+                    # ADR-0039 resolving read: an array of this VO (vs a single
+                    # nested instance) gates `-last` availability in `verify`.
+                    fields.append(
+                        PayloadField(f.name, children, is_array=f.resolved_is_array())
+                    )
                     continue
-        fields.append(PayloadField(f.name))
+        fields.append(PayloadField(f.name, is_array=f.resolved_is_array()))
     return fields
 
 
 def _field_tree_literal(fields: list[PayloadField]) -> str:
     """Emit a ``list[PayloadField]`` as a deterministic Python literal:
-    ``[PayloadField("name"), PayloadField("nested", [PayloadField("x")])]``."""
+    ``[PayloadField("name"), PayloadField("nested", [PayloadField("x")])]``.
+
+    The array flag is emitted only when true, so a helper with no array field
+    stays byte-identical to before ``is_array`` existed."""
     parts: list[str] = []
     for f in fields:
+        args = [_py_str(f.name)]
         if f.fields is not None:
-            parts.append(f"PayloadField({_py_str(f.name)}, {_field_tree_literal(f.fields)})")
-        else:
-            parts.append(f"PayloadField({_py_str(f.name)})")
+            args.append(_field_tree_literal(f.fields))
+        elif f.is_array:
+            args.append("None")  # fill the positional `fields` slot before the kwarg
+        kw = ", is_array=True" if f.is_array else ""
+        parts.append(f"PayloadField({', '.join(args)}{kw})")
     return "[" + ", ".join(parts) + "]"
 
 
