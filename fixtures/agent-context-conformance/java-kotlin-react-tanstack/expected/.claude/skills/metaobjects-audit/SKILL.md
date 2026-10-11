@@ -8,8 +8,9 @@ description: Use when assessing how well a project has adopted MetaObjects — g
 **Thesis.** Typed metadata is the durable spine; generated code is the disposable
 artifact. Hand-writing a layer the metadata could own creates a second source of
 truth for one fact — it will drift. This audit hunts those second sources of truth
-and proposes folding them into the spine — where doing so costs fewer hand-written lines
-than it saves, more of that shape are coming, or silent drift is the risk. A one-off layer
+and proposes folding them into the spine — where the generator code plus its generated output
+and added metadata is fewer lines than the hand-written code it replaces, more of that shape
+are coming, or silent drift is the risk. A one-off layer
 that fails that cost test is acceptable, not a defect.
 
 **Boundary — read-only.** Deliverables: `.metaobjects/adoption-audit.json` (machine-readable
@@ -51,8 +52,9 @@ Actual cutovers run through the existing skills mapped per finding tier (§ Brid
 Compute **leverage ratio** = `generated_lines / (metadata_lines + generator_lines)`;
 healthy = multi-× (example: ~4.7k spine → ~15.7k generated ≈ 3.3×). **Never report a
 generated-share or leverage figure alone, and never as a target:** pair it with the **net
-hand-written line change** (app lines removed minus generator and metadata lines added;
-generator code is hand-written cost). A share can rise while total hand-written code grows.
+hand-written line change**, a figure to report and not the cost test (hand-written lines
+removed minus generator and metadata lines added). A share can rise while total hand-written
+code grows.
 
 **Coverage matrix:** per entity/projection/value — query helpers? view? routes? UI?
 The gap between "modeled + query helpers" and "has view + route + UI" is the headline

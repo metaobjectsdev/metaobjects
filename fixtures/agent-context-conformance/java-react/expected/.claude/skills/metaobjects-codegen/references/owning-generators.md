@@ -55,10 +55,8 @@ written.
 **Is it worth a generator? Run the cost test first.** Write an adopter-owned generator only
 when at least one holds:
 
-1. **It is smaller.** The generator plus its emitted output, plus the metadata it adds, is
-   fewer lines than the hand-written code it replaces. Count generator code as hand-written
-   cost: it is code the team reads, tests and maintains. A generated-line total does not
-   count; the emitted files cost nothing to write but the generator that makes them does.
+1. **It is smaller.** The generator code plus its generated output, plus the metadata it
+   adds, is fewer lines than the hand-written code it replaces.
 2. **More instances are coming.** The app will keep adding entities, routes or events of this
    shape, so the generator's cost is paid back as the model grows.
 3. **Drift protection is the point.** A change to the model could pass the compiler and go
