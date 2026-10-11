@@ -1,0 +1,61 @@
+name: report-all-types-breakdown
+description: |
+  AllTypesBreakdown groups AllTypes by a boolean, an enum, a NULLABLE int-backed enum
+  (read as its member symbol), a date and a uuid, and aggregates an int sum, a decimal avg,
+  a currency max, a long min and a count with an inline `in` @filter. Its report @filter
+  mixes a relative timestamp with a PT duration (`tsVal < now - PT1H`) and a `ne`.
+
+    r1 true  HIGH   PUBLISHED(5) 2026-05-01 U1  iVal 10 dec 1.5  money 1000 long 7
+    r2 true  HIGH   PUBLISHED(5) 2026-05-01 U1  iVal 20 dec 2.5  money 3000 long 3   (same group as r1)
+    r3 false LOW    null         2026-05-02 U2  iVal 5  dec 0.5  money 200  long 9
+    r4 true  MEDIUM DRAFT(0)     2026-05-01 U3  iVal 1  dec 4.25 money 50   long 2
+    r5 iVal 99      -> out of scope (ne)
+    r6 tsVal in the future -> out of scope (relative bound)
+seed-data: |
+  INSERT INTO "all_types" (
+    "id","sVal","iVal","lVal","dVal","fVal","decVal","bVal","dateVal","timeVal","tsVal","tsTzVal",
+    "moneyVal","enumVal","intEnumVal","uuidVal","uriVal","inetVal","inet6Val"
+  ) VALUES
+    ('00000000-0000-4000-8000-000000000001','r1',10,7,0.5,0.5,1.5,true,'2026-05-01','00:00:00',
+     '2026-05-01T00:00:00','2026-05-01T00:00:00Z',1000,'HIGH',5,
+     'a1111111-1111-4111-8111-111111111111','urn:x:1','10.0.0.1','fe80::1'),
+    ('00000000-0000-4000-8000-000000000002','r2',20,3,0.5,0.5,2.5,true,'2026-05-01','00:00:00',
+     '2026-05-01T00:00:00','2026-05-01T00:00:00Z',3000,'HIGH',5,
+     'a1111111-1111-4111-8111-111111111111','urn:x:2','10.0.0.2','fe80::2'),
+    ('00000000-0000-4000-8000-000000000003','r3',5,9,0.5,0.5,0.5,false,'2026-05-02','00:00:00',
+     '2026-05-02T00:00:00','2026-05-02T00:00:00Z',200,'LOW',NULL,
+     'b2222222-2222-4222-8222-222222222222','urn:x:3','10.0.0.3','fe80::3'),
+    ('00000000-0000-4000-8000-000000000004','r4',1,2,0.5,0.5,4.25,true,'2026-05-01','00:00:00',
+     '2026-05-01T00:00:00','2026-05-01T00:00:00Z',50,'MEDIUM',0,
+     'c3333333-3333-4333-8333-333333333333','urn:x:4','10.0.0.4','fe80::4'),
+    ('00000000-0000-4000-8000-000000000005','r5',99,1,0.5,0.5,9,true,'2026-05-01','00:00:00',
+     '2026-05-01T00:00:00','2026-05-01T00:00:00Z',9999,'HIGH',5,
+     'a1111111-1111-4111-8111-111111111111','urn:x:5','10.0.0.5','fe80::5'),
+    ('00000000-0000-4000-8000-000000000006','r6',2,1,0.5,0.5,9,true,'2026-05-01','00:00:00',
+     (now() AT TIME ZONE 'UTC') + INTERVAL '1 day','2026-05-01T00:00:00Z',9999,'HIGH',5,
+     'a1111111-1111-4111-8111-111111111111','urn:x:6','10.0.0.6','fe80::6');
+queries:
+  - name: every-dimension-type
+    op: list
+    entity: AllTypesBreakdown
+    sort: [{ field: dateKey, dir: asc }, { field: level, dir: asc }]
+    expect:
+      - { flag: true, level: "HIGH", legacyStatus: "PUBLISHED", dateKey: "2026-05-01",
+          uuidKey: "a1111111-1111-4111-8111-111111111111", allRows: "2", totalInts: "30", avgDec: "2",
+          maxMoney: "3000", minLong: "3", highRows: "2" }
+      - { flag: true, level: "MEDIUM", legacyStatus: "DRAFT", dateKey: "2026-05-01",
+          uuidKey: "c3333333-3333-4333-8333-333333333333", allRows: "1", totalInts: "1", avgDec: "4.25",
+          maxMoney: "50", minLong: "2", highRows: "1" }
+      - { flag: false, level: "LOW", legacyStatus: null, dateKey: "2026-05-02",
+          uuidKey: "b2222222-2222-4222-8222-222222222222", allRows: "1", totalInts: "5", avgDec: "0.5",
+          maxMoney: "200", minLong: "9", highRows: "0" }
+  - name: filter-on-a-boolean-dimension
+    op: count
+    entity: AllTypesBreakdown
+    filter: { flag: { eq: true } }
+    expect: 2
+  - name: filter-isnull-on-a-nullable-enum-dimension
+    op: count
+    entity: AllTypesBreakdown
+    filter: { legacyStatus: { isNull: true } }
+    expect: 1

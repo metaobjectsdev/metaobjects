@@ -1,0 +1,33 @@
+name: report-tph-base-filter
+description: |
+  AuthsByKind is declared from the TPH base (Auth), the supported way to report on a
+  subset of subtypes: an @filter on the discriminator (`type <> 'PriorAuth'`). A row whose
+  type is null is dropped by the comparison, as in any SQL.
+
+    1 Bridge   A-1     2 Bridge   A-1     3 Copay    C-1
+    4 PriorAuth P-1    5 Referral R-1     6 Referral R-2     7 (no type) N-1
+  Bridge: 2 rows, 1 distinct reference. Copay: 1, 1. Referral: 2, 2.
+seed-data: |
+  INSERT INTO "auths" ("id","type","reference","quantity","urgency") VALUES
+    (1, 'Bridge',    'A-1', 2,    NULL),
+    (2, 'Bridge',    'A-1', 3,    NULL),
+    (3, 'Copay',     'C-1', NULL, NULL),
+    (4, 'PriorAuth', 'P-1', NULL, NULL),
+    (5, 'Referral',  'R-1', NULL, 'routine'),
+    (6, 'Referral',  'R-2', NULL, 'urgent'),
+    (7, NULL,        'N-1', NULL, NULL);
+queries:
+  - name: discriminator-filter-and-distinct-count
+    op: list
+    entity: AuthsByKind
+    sort: [{ field: kind, dir: asc }]
+    expect:
+      - { kind: "Bridge", auths: "2", distinctRefs: "1" }
+      - { kind: "Copay", auths: "1", distinctRefs: "1" }
+      - { kind: "Referral", auths: "2", distinctRefs: "2" }
+  - name: filter-on-the-discriminator-dimension
+    op: list
+    entity: AuthsByKind
+    filter: { kind: { eq: "Referral" } }
+    expect:
+      - { kind: "Referral", auths: "2", distinctRefs: "2" }

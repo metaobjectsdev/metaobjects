@@ -11,14 +11,17 @@
           { "field.enum":       { "name": "status", "@required": true, "@values": ["OPEN", "PAID", "VOID"] } },
           { "field.long":       { "name": "amountCents", "@required": true } },
           { "field.date":       { "name": "issuedOn", "@required": true } },
+          { "field.boolean":    { "name": "disputed", "@required": true } },
           { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } },
           { "segment.filter":      { "name": "paid", "@filter": { "status": "PAID" } } },
           { "dimension.attribute": { "name": "status", "@of": "Invoice.status" } },
+          { "dimension.attribute": { "name": "disputed", "@of": "Invoice.disputed" } },
           { "dimension.time":      { "name": "issuedOn", "@of": "Invoice.issuedOn", "@grains": ["day", "month"] } },
           { "measure.aggregate":   { "name": "invoices", "@agg": "count", "@of": "Invoice.id" } },
           { "measure.aggregate":   { "name": "paidInvoices", "@agg": "count", "@of": "Invoice.id", "@segment": "paid" } },
           { "measure.aggregate":   { "name": "totalCents", "@agg": "sum", "@of": "Invoice.amountCents" } },
           { "measure.aggregate":   { "name": "paidCents", "@agg": "sum", "@of": "Invoice.amountCents", "@segment": "paid" } },
+          { "measure.aggregate":   { "name": "bigInvoices", "@agg": "count", "@of": "Invoice.id", "@filter": { "amountCents": { "gte": 60000 } } } },
           { "measure.ratio":       { "name": "paidShare", "@numerator": "paidInvoices", "@denominator": "invoices" } }
         ]
       }},
@@ -43,10 +46,33 @@
         "children": [ { "source.rdb": { "@kind": "view", "@view": "v_invoice_totals" } } ]
       }},
       { "object.report": {
+        "name": "InvoiceCalendar",
+        "@from": "Invoice",
+        "@dimensions": ["issuedOn:day", "issuedOn:month"],
+        "@measures": ["invoices", "totalCents"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_invoice_calendar" } } ]
+      }},
+      { "object.report": {
+        "name": "InvoiceDisputes",
+        "@from": "Invoice",
+        "@dimensions": ["disputed"],
+        "@measures": ["invoices", "bigInvoices"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_invoice_disputes" } } ]
+      }},
+      { "object.report": {
         "name": "InvoiceDays",
         "@from": "Invoice",
         "@dimensions": ["issuedOn:day"],
         "@measures": ["invoices"]
+      }},
+      { "object.entity": {
+        "name": "Category",
+        "children": [
+          { "source.rdb":       { "@table": "categories" } },
+          { "field.long":       { "name": "id" } },
+          { "field.string":     { "name": "name", "@required": true } },
+          { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
+        ]
       }},
       { "object.entity": {
         "name": "Product",
@@ -54,7 +80,10 @@
           { "source.rdb":       { "@table": "products" } },
           { "field.long":       { "name": "id" } },
           { "field.string":     { "name": "name", "@required": true } },
-          { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
+          { "field.uuid":       { "name": "sku" } },
+          { "field.long":       { "name": "categoryId" } },
+          { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } },
+          { "identity.reference": { "name": "fkCategory", "@fields": "categoryId", "@references": "Category" } }
         ]
       }},
       { "object.entity": {
@@ -68,7 +97,11 @@
           { "identity.reference": { "name": "fkProduct", "@fields": "productId", "@references": "Product" } },
           { "dimension.attribute": { "name": "productId", "@of": "Product.id", "@via": "Sale.fkProduct" } },
           { "dimension.attribute": { "name": "productName", "@of": "Product.name", "@via": "Sale.fkProduct" } },
+          { "dimension.attribute": { "name": "categoryName", "@of": "Category.name", "@via": "Sale.fkProduct.fkCategory" } },
+          { "dimension.attribute": { "name": "productSku", "@of": "Product.sku", "@via": "Sale.fkProduct" } },
           { "measure.aggregate":   { "name": "sales", "@agg": "count", "@of": "Sale.id" } },
+          { "measure.aggregate":   { "name": "maxCents", "@agg": "max", "@of": "Sale.amountCents" } },
+          { "measure.aggregate":   { "name": "largeSales", "@agg": "count", "@of": "Sale.id", "@filter": { "amountCents": { "gte": 10000 } } } },
           { "measure.aggregate":   { "name": "revenueCents", "@agg": "sum", "@of": "Sale.amountCents" } },
           { "measure.aggregate":   { "name": "revenueOrZero", "@agg": "sum", "@of": "Sale.amountCents", "@default": 0 } }
         ]
@@ -80,6 +113,20 @@
         "@dimensions": ["productId", "productName"],
         "@measures": ["sales", "revenueCents", "revenueOrZero"],
         "children": [ { "source.rdb": { "@kind": "view", "@view": "v_product_revenue" } } ]
+      }},
+      { "object.report": {
+        "name": "SalesByCategory",
+        "@from": "Sale",
+        "@dimensions": ["categoryName"],
+        "@measures": ["sales", "revenueCents", "maxCents", "largeSales"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_sales_by_category" } } ]
+      }},
+      { "object.report": {
+        "name": "SalesBySku",
+        "@from": "Sale",
+        "@dimensions": ["productSku"],
+        "@measures": ["sales", "revenueCents"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_sales_by_sku" } } ]
       }}
     ]
   }

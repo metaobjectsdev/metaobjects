@@ -318,7 +318,7 @@ Because M:N membership is a **set**, the runner compares `relate` results
 
 ### Report scenarios (FR-044)
 
-Nine `queries/report-*.yaml` scenarios read a view-backed `object.report` through the
+Nineteen `queries/report-*.yaml` scenarios read a view-backed `object.report` through the
 port's runtime. They use only `op: list` and `op: count`, single-key `sort`, `filter` and
 `limit`: a report has no primary key, so there is no `op: get` and no write. The schema is
 still the committed `canonical/schema.postgres.sql`, which creates each report's view, so a
@@ -349,6 +349,16 @@ then measures in `@measures` order; a time dimension is named `<name><Grain>`, f
 | `report-spine-zero-rows` | `@spine`: a program with no weeks has a row (`weeks` `0`, `totalMinutes` and `longShare` null, the `@default: 0` measures `0`); `count` is the number of programs; a measure filter drops the empty rows; filter and sort on a defaulted measure |
 | `report-spine-scoped` | `@spine` with a report `@segment`: a program whose weeks are all out of scope keeps its row, with `weeks` `0` |
 | `report-default-empty` | `@default: 0` with no `@spine`, over an empty table: the twin of `report-totals-empty`, the sum and the ratio reading `0` |
+| `report-all-types-breakdown` | dimensions over a boolean, a string enum, a nullable int-backed enum (read as its symbol), a date and a uuid; `sum` of an int, `avg` of a decimal, `max` of a currency, `min` of a long; an inline `in` measure filter; a report `@filter` mixing a relative timestamp with a `PT` duration and a `ne` |
+| `report-filter-operators` | a report `@segment` built from `or`, `like` and equality, ANDed with a report `@filter` (`in`, `lt`); an inline `ne` measure filter; a segment and filter that leave no row, so an `avg` `@default: -1` applies |
+| `report-measure-filters` | an inline measure `@filter` on `isNull: true`, `isNull: false`, `lt`, a two-operator range and a `like` ANDed with a segment |
+| `report-multi-hop` | a two-hop `@via` dimension, and a `@spine` whose rows come from the program at the end of that path |
+| `report-negative-default` | `@default: -1` on an `avg` and `@default: 0` on a decimal `max` over an empty table, against the undefaulted twin |
+| `report-numeric-types` | `sum`, `avg`, `min` and `max` over float, double and decimal columns; a measure filter on a double |
+| `report-self-reference` | a dimension reached through the entity's own reference; a root row lands in the null group |
+| `report-time-grains-extended` | `day`, `quarter` and `year` grains on one time dimension at once; the year and quarter boundaries; `avg`, `min` and `max` of a currency |
+| `report-time-min-max` | day and month buckets on an instant and a date; `min` and `max` of a `TIMESTAMPTZ`, a naive `TIMESTAMP` and a `DATE`; a distinct count of a uuid |
+| `report-tph-base-filter` | a report declared from a TPH base with an `@filter` on the discriminator |
 
 Wire shapes follow the view's column types and [`normalization.md`](./normalization.md):
 `count` and the integral `sum` are `BIGINT` (string), `min`/`max` of an int are `INTEGER`

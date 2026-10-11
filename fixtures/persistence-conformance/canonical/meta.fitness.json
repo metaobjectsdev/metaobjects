@@ -19,7 +19,14 @@
           { "measure.aggregate": { "name": "listValue", "@agg": "sum", "@of": "Program.priceCents", "@segment": "published" } },
           { "segment.filter":    { "name": "published", "@filter": { "status": "PUBLISHED" } } },
           { "dimension.attribute": { "name": "status", "@of": "Program.status" } },
-          { "measure.aggregate":   { "name": "programs", "@agg": "count", "@of": "Program.id" } }
+          { "measure.aggregate":   { "name": "programs", "@agg": "count", "@of": "Program.id" } },
+          { "segment.filter":      { "name": "live", "@filter": { "status": { "in": ["DRAFT", "PUBLISHED"] } } } },
+          { "segment.filter":      { "name": "introOrFree", "@filter": { "or": [ { "title": { "like": "Intro%" } }, { "priceCents": 0 } ] } } },
+          { "measure.aggregate":   { "name": "notDrafts", "@agg": "count", "@of": "Program.id", "@filter": { "status": { "ne": "DRAFT" } } } },
+          { "measure.aggregate":   { "name": "avgPrice", "@agg": "avg", "@of": "Program.priceCents" } },
+          { "measure.aggregate":   { "name": "cheapest", "@agg": "min", "@of": "Program.priceCents" } },
+          { "measure.aggregate":   { "name": "priciest", "@agg": "max", "@of": "Program.priceCents" } },
+          { "measure.aggregate":   { "name": "avgPriceOrMinusOne", "@agg": "avg", "@of": "Program.priceCents", "@default": -1 } }
         ]
       }},
       { "object.entity": {
@@ -47,7 +54,12 @@
           { "measure.ratio":       { "name": "longShare", "@numerator": "longWeeks", "@denominator": "weeks" } },
           { "dimension.attribute": { "name": "programKey", "@of": "Program.id", "@via": "Week.fkProgram" } },
           { "measure.aggregate":   { "name": "totalMinutesOrZero", "@agg": "sum", "@of": "Week.durationMinutes", "@default": 0 } },
-          { "measure.ratio":       { "name": "longShareOrZero", "@numerator": "longWeeks", "@denominator": "weeks", "@default": 0 } }
+          { "measure.ratio":       { "name": "longShareOrZero", "@numerator": "longWeeks", "@denominator": "weeks", "@default": 0 } },
+          { "measure.aggregate":   { "name": "unlabelled", "@agg": "count", "@of": "Week.id", "@filter": { "label": { "isNull": true } } } },
+          { "measure.aggregate":   { "name": "labelledMinutes", "@agg": "sum", "@of": "Week.durationMinutes", "@filter": { "label": { "isNull": false } } } },
+          { "measure.aggregate":   { "name": "shortWeeks", "@agg": "count", "@of": "Week.id", "@filter": { "durationMinutes": { "lt": 30 } } } },
+          { "measure.aggregate":   { "name": "midWeeks", "@agg": "count", "@of": "Week.id", "@filter": { "durationMinutes": { "gt": 30, "lte": 60 } } } },
+          { "measure.aggregate":   { "name": "longWMinutes", "@agg": "sum", "@of": "Week.durationMinutes", "@segment": "long", "@filter": { "label": { "like": "W%" } } } }
         ]
       }},
       { "object.entity": {
@@ -58,7 +70,26 @@
           { "field.string": { "name": "label", "@required": true, "@maxLength": 80 } },
           { "field.long":   { "name": "parentId" } },
           { "identity.primary":   { "name": "id", "@fields": "id", "@generation": "increment" } },
-          { "identity.reference": { "name": "fkParent", "@fields": "parentId", "@references": "Node" } }
+          { "identity.reference": { "name": "fkParent", "@fields": "parentId", "@references": "Node" } },
+          { "dimension.attribute": { "name": "parentLabel", "@of": "Node.label", "@via": "Node.fkParent" } },
+          { "measure.aggregate":   { "name": "nodes", "@agg": "count", "@of": "Node.id" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "Session",
+        "children": [
+          { "source.rdb": { "@table": "sessions" } },
+          { "field.long": { "name": "id" } },
+          { "field.long": { "name": "weekId", "@required": true } },
+          { "field.int":  { "name": "minutes", "@required": true } },
+          { "identity.primary":   { "name": "id", "@fields": "id", "@generation": "increment" } },
+          { "identity.reference": { "name": "fkWeek", "@fields": "weekId", "@references": "Week" } },
+          { "dimension.attribute": { "name": "weekKey", "@of": "Week.id", "@via": "Session.fkWeek" } },
+          { "dimension.attribute": { "name": "programKey", "@of": "Program.id", "@via": "Session.fkWeek.fkProgram" } },
+          { "dimension.attribute": { "name": "programTitle", "@of": "Program.title", "@via": "Session.fkWeek.fkProgram" } },
+          { "measure.aggregate":   { "name": "sessions", "@agg": "count", "@of": "Session.id" } },
+          { "measure.aggregate":   { "name": "sessionMinutes", "@agg": "sum", "@of": "Session.minutes" } },
+          { "measure.aggregate":   { "name": "sessionMinutesOrZero", "@agg": "sum", "@of": "Session.minutes", "@default": 0 } }
         ]
       }},
       { "object.entity": {
@@ -69,7 +100,18 @@
           { "field.float":  { "name": "tempC",  "@required": true } },
           { "field.double": { "name": "massKg", "@required": true } },
           { "field.decimal": { "name": "preciseKg", "@required": true, "@precision": 9, "@scale": 4 } },
-          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
+          { "measure.aggregate": { "name": "readings", "@agg": "count", "@of": "Measurement.id" } },
+          { "measure.aggregate": { "name": "totalMassKg", "@agg": "sum", "@of": "Measurement.massKg" } },
+          { "measure.aggregate": { "name": "avgMassKg", "@agg": "avg", "@of": "Measurement.massKg" } },
+          { "measure.aggregate": { "name": "maxTempC", "@agg": "max", "@of": "Measurement.tempC" } },
+          { "measure.aggregate": { "name": "minTempC", "@agg": "min", "@of": "Measurement.tempC" } },
+          { "measure.aggregate": { "name": "totalPreciseKg", "@agg": "sum", "@of": "Measurement.preciseKg" } },
+          { "measure.aggregate": { "name": "avgPreciseKg", "@agg": "avg", "@of": "Measurement.preciseKg" } },
+          { "measure.aggregate": { "name": "maxPreciseKg", "@agg": "max", "@of": "Measurement.preciseKg" } },
+          { "measure.aggregate": { "name": "heavyReadings", "@agg": "count", "@of": "Measurement.id", "@filter": { "massKg": { "gte": 10 } } } },
+          { "measure.aggregate": { "name": "avgPreciseKgOrMinusOne", "@agg": "avg", "@of": "Measurement.preciseKg", "@default": -1 } },
+          { "measure.aggregate": { "name": "maxPreciseKgOrZero", "@agg": "max", "@of": "Measurement.preciseKg", "@default": 0 } }
         ]
       }},
       { "object.entity": {
@@ -87,7 +129,11 @@
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "uuid" } },
           { "dimension.time":      { "name": "recordedAt", "@of": "Asset.recordedAt", "@grains": ["hour", "day"] } },
           { "dimension.time":      { "name": "asOfDate", "@of": "Asset.asOfDate", "@grains": ["week", "month"] } },
-          { "measure.aggregate":   { "name": "assets", "@agg": "count", "@of": "Asset.id" } }
+          { "measure.aggregate":   { "name": "assets", "@agg": "count", "@of": "Asset.id" } },
+          { "measure.aggregate":   { "name": "owners", "@agg": "count", "@distinct": true, "@of": "Asset.ownerId" } },
+          { "measure.aggregate":   { "name": "firstRecorded", "@agg": "min", "@of": "Asset.recordedAt" } },
+          { "measure.aggregate":   { "name": "lastObserved", "@agg": "max", "@of": "Asset.observedAt" } },
+          { "measure.aggregate":   { "name": "lastAsOf", "@agg": "max", "@of": "Asset.asOfDate" } }
         ]
       }},
       { "object.projection": {
@@ -206,7 +252,10 @@
           { "field.long":   { "name": "id" } },
           { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay", "PriorAuth", "Referral"] } },
           { "field.string": { "name": "reference", "@required": true, "@maxLength": 80 } },
-          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
+          { "dimension.attribute": { "name": "kind", "@of": "Auth.type" } },
+          { "measure.aggregate":   { "name": "auths", "@agg": "count", "@of": "Auth.id" } },
+          { "measure.aggregate":   { "name": "distinctRefs", "@agg": "count", "@distinct": true, "@of": "Auth.reference" } }
         ]
       }},
       { "object.entity": {
@@ -294,7 +343,18 @@
           { "field.inet":      { "name": "inet6Val", "@required": true } },
           { "field.object":    { "name": "settings", "@objectRef": "Settings", "@storage": "jsonb" } },
           { "field.object":    { "name": "labels", "@objectRef": "Label", "@storage": "jsonb", "isArray": true } },
-          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "uuid" } }
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "uuid" } },
+          { "dimension.attribute": { "name": "flag", "@of": "AllTypes.bVal" } },
+          { "dimension.attribute": { "name": "level", "@of": "AllTypes.enumVal" } },
+          { "dimension.attribute": { "name": "legacyStatus", "@of": "AllTypes.intEnumVal" } },
+          { "dimension.attribute": { "name": "dateKey", "@of": "AllTypes.dateVal" } },
+          { "dimension.attribute": { "name": "uuidKey", "@of": "AllTypes.uuidVal" } },
+          { "measure.aggregate":   { "name": "allRows", "@agg": "count", "@of": "AllTypes.id" } },
+          { "measure.aggregate":   { "name": "totalInts", "@agg": "sum", "@of": "AllTypes.iVal" } },
+          { "measure.aggregate":   { "name": "avgDec", "@agg": "avg", "@of": "AllTypes.decVal" } },
+          { "measure.aggregate":   { "name": "maxMoney", "@agg": "max", "@of": "AllTypes.moneyVal" } },
+          { "measure.aggregate":   { "name": "minLong", "@agg": "min", "@of": "AllTypes.lVal" } },
+          { "measure.aggregate":   { "name": "highRows", "@agg": "count", "@of": "AllTypes.id", "@filter": { "enumVal": { "in": ["MEDIUM", "HIGH"] } } } }
         ]
       }},
 
@@ -353,6 +413,49 @@
       { "object.report": { "name": "FitnessTotalsFilled", "@from": "Week",
         "@measures": ["weeks", "totalMinutesOrZero", "longShareOrZero"],
         "children": [ { "source.rdb": { "@kind": "view", "@view": "v_fitness_totals_filled" } } ] } },
+
+      { "object.report": { "name": "MeasurementStats", "@from": "Measurement",
+        "@measures": ["readings", "totalMassKg", "avgMassKg", "maxTempC", "minTempC", "totalPreciseKg", "avgPreciseKg", "maxPreciseKg", "heavyReadings"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_measurement_stats" } } ] } },
+      { "object.report": { "name": "MeasurementStatsFilled", "@from": "Measurement",
+        "@measures": ["readings", "avgPreciseKgOrMinusOne", "maxPreciseKgOrZero"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_measurement_stats_filled" } } ] } },
+      { "object.report": { "name": "AssetDays", "@from": "Asset",
+        "@dimensions": ["recordedAt:day", "asOfDate:month"],
+        "@measures": ["assets", "owners", "firstRecorded", "lastObserved", "lastAsOf"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_asset_days" } } ] } },
+      { "object.report": { "name": "AllTypesBreakdown", "@from": "AllTypes",
+        "@dimensions": ["flag", "level", "legacyStatus", "dateKey", "uuidKey"],
+        "@measures": ["allRows", "totalInts", "avgDec", "maxMoney", "minLong", "highRows"],
+        "@filter": { "tsVal": { "lt": { "now": "-PT1H" } }, "iVal": { "ne": 99 } },
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_all_types_breakdown" } } ] } },
+      { "object.report": { "name": "ProgramsOverTime", "@from": "Program",
+        "@dimensions": ["createdAt:day", "createdAt:quarter", "createdAt:year"],
+        "@measures": ["programs", "avgPrice", "cheapest", "priciest"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_programs_over_time" } } ] } },
+      { "object.report": { "name": "LiveIntroPrograms", "@from": "Program",
+        "@dimensions": ["status"], "@measures": ["programs", "notDrafts", "listValue"],
+        "@segment": "introOrFree", "@filter": { "status": { "in": ["DRAFT", "PUBLISHED"] }, "priceCents": { "lt": 5000 } },
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_live_intro_programs" } } ] } },
+      { "object.report": { "name": "ProgramsEmptyScope", "@from": "Program",
+        "@measures": ["programs", "avgPriceOrMinusOne"], "@segment": "live", "@filter": { "priceCents": { "gt": 1000000 } },
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_programs_empty_scope" } } ] } },
+      { "object.report": { "name": "WeekShapes", "@from": "Week",
+        "@dimensions": ["programTitle"],
+        "@measures": ["weeks", "unlabelled", "labelledMinutes", "shortWeeks", "midWeeks", "longWMinutes"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_week_shapes" } } ] } },
+      { "object.report": { "name": "SessionsByProgram", "@from": "Session",
+        "@dimensions": ["programTitle", "weekKey"], "@measures": ["sessions", "sessionMinutes"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_sessions_by_program" } } ] } },
+      { "object.report": { "name": "ProgramSessions", "@from": "Session", "@spine": "Session.fkWeek.fkProgram",
+        "@dimensions": ["programKey", "programTitle"], "@measures": ["sessions", "sessionMinutes", "sessionMinutesOrZero"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_program_sessions" } } ] } },
+      { "object.report": { "name": "NodesByParent", "@from": "Node",
+        "@dimensions": ["parentLabel"], "@measures": ["nodes"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_nodes_by_parent" } } ] } },
+      { "object.report": { "name": "AuthsByKind", "@from": "Auth",
+        "@dimensions": ["kind"], "@measures": ["auths", "distinctRefs"], "@filter": { "type": { "ne": "PriorAuth" } },
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_auths_by_kind" } } ] } },
 
       { "template.prompt": {
         "name": "coachNote",

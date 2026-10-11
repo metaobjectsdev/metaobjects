@@ -32,7 +32,7 @@ describe("canonical report-shapes artifact (report-shapes.json)", () => {
     expect(generated).toBe(committed);
   });
 
-  test("the nine canonical reports appear in declaration order, with the contract's byte format", () => {
+  test("the canonical reports appear in declaration order, with the contract's byte format", () => {
     const committed = readReportShapesJson();
     expect(committed.endsWith("}\n")).toBe(true);
     expect(committed.startsWith('{\n  "reports": [\n    {\n      "report": "fitness::ProgramMinutes"')).toBe(true);
@@ -47,6 +47,18 @@ describe("canonical report-shapes artifact (report-shapes.json)", () => {
       ["fitness::ProgramRoster", "v_program_roster"],
       ["fitness::ProgramLongWeeks", "v_program_long_weeks"],
       ["fitness::FitnessTotalsFilled", "v_fitness_totals_filled"],
+      ["fitness::MeasurementStats", "v_measurement_stats"],
+      ["fitness::MeasurementStatsFilled", "v_measurement_stats_filled"],
+      ["fitness::AssetDays", "v_asset_days"],
+      ["fitness::AllTypesBreakdown", "v_all_types_breakdown"],
+      ["fitness::ProgramsOverTime", "v_programs_over_time"],
+      ["fitness::LiveIntroPrograms", "v_live_intro_programs"],
+      ["fitness::ProgramsEmptyScope", "v_programs_empty_scope"],
+      ["fitness::WeekShapes", "v_week_shapes"],
+      ["fitness::SessionsByProgram", "v_sessions_by_program"],
+      ["fitness::ProgramSessions", "v_program_sessions"],
+      ["fitness::NodesByParent", "v_nodes_by_parent"],
+      ["fitness::AuthsByKind", "v_auths_by_kind"],
     ]);
   });
 

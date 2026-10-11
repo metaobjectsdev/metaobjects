@@ -1429,7 +1429,7 @@ describe("Table H — the canonical model", () => {
     "fixtures", "persistence-conformance", "canonical", "meta.fitness.json",
   );
 
-  test("Program, Week and Asset are Table H's cubes; the @spine reports add facts cubes and views", async () => {
+  test("Program, Week and Asset are Table H's cubes; the @spine reports add facts cubes and views; the other canonical entities add theirs", async () => {
     const result = await loadUris([pathToFileURL(CANONICAL).href]);
     expect(result.errors.map((e) => e.message)).toEqual([]);
     const model = buildCubeModel(result.root, { dialect: "postgres", columnNamingStrategy: "literal" });
@@ -1454,6 +1454,17 @@ describe("Table H — the canonical model", () => {
           { joinPath: "Program.ProgramLongWeeksFacts", includes: [{ name: "weeks" }, { name: "totalMinutesOrZero" }] },
         ],
       },
+      {
+        // The third @spine report: its facts cube is reached through the Session -> Week reference.
+        name: "ProgramSessions",
+        cubes: [
+          { joinPath: "Program", includes: [{ name: "id", alias: "programKey" }, { name: "title", alias: "programTitle" }] },
+          {
+            joinPath: "Program.ProgramSessions_fkWeek.ProgramSessionsFacts",
+            includes: [{ name: "sessions" }, { name: "sessionMinutes" }, { name: "sessionMinutesOrZero" }],
+          },
+        ],
+      },
     ]);
     const weeks: CubeMeasureSpec = { name: "weeks", sql: '{CUBE}."id"', type: "count" };
     const longWeeks: CubeMeasureSpec = { name: "longWeeks", sql: '{CUBE}."id"', type: "count", filters: [{ sql: '{CUBE}."durationMinutes" >= 60' }] };
@@ -1462,7 +1473,15 @@ describe("Table H — the canonical model", () => {
     const longShare: CubeMeasureSpec = { name: "longShare", sql: "CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0)", type: "number" };
     const longShareOrZero: CubeMeasureSpec = { name: "longShareOrZero", sql: "COALESCE(CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0), 0)", type: "number" };
     const key: CubeDimensionSpec = { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true };
-    expect(model.cubes).toEqual([
+    // The other canonical entities (Node, Session, Measurement, the Auth family, AllTypes) and the
+    // join-path cubes carry no report of Table H's; only their presence is asserted here.
+    expect(model.cubes.map((c) => c.name)).toEqual([
+      "Program", "Week", "Node", "Session", "Measurement", "Asset", "Auth", "BridgeAuth", "CopayAuth", "PriorAuthAuth",
+      "ReferralAuth", "AllTypes", "Node_fkParent", "ProgramRosterFacts", "ProgramLongWeeksFacts",
+      "ProgramSessionsFacts", "ProgramSessions_fkWeek",
+    ]);
+    const tableH = new Set(["Program", "Week", "Asset", "ProgramRosterFacts", "ProgramLongWeeksFacts"]);
+    expect(model.cubes.filter((c) => tableH.has(c.name))).toEqual([
       {
         name: "Program",
         sqlTable: '"programs"',
@@ -1470,6 +1489,7 @@ describe("Table H — the canonical model", () => {
         joins: [
           { name: "ProgramRosterFacts", relationship: "one_to_many", sql: '{CUBE}."id" = {ProgramRosterFacts}."programId"' },
           { name: "ProgramLongWeeksFacts", relationship: "one_to_many", sql: '{CUBE}."id" = {ProgramLongWeeksFacts}."programId"' },
+          { name: "ProgramSessions_fkWeek", relationship: "one_to_many", sql: '{CUBE}."id" = {ProgramSessions_fkWeek}."programId"' },
         ],
         dimensions: [
           { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true },
@@ -1486,14 +1506,32 @@ describe("Table H — the canonical model", () => {
             filters: [{ sql: `{CUBE}."status" = 'PUBLISHED'` }],
           },
           { name: "programs", sql: '{CUBE}."id"', type: "count" },
+          { name: "notDrafts", sql: '{CUBE}."id"', type: "count", filters: [{ sql: `{CUBE}."status" <> 'DRAFT'` }] },
+          { name: "avgPrice", sql: '{CUBE}."priceCents"', type: "avg" },
+          { name: "cheapest", sql: '{CUBE}."priceCents"', type: "min" },
+          { name: "priciest", sql: '{CUBE}."priceCents"', type: "max" },
+          { name: "avgPriceOrMinusOneRaw", sql: '{CUBE}."priceCents"', type: "avg", public: false },
+          { name: "avgPriceOrMinusOne", sql: "COALESCE({avgPriceOrMinusOneRaw}, -1)", type: "number" },
         ],
         segments: [
           { name: "published", sql: `{CUBE}."status" = 'PUBLISHED'` },
+          { name: "live", sql: `{CUBE}."status" IN ('DRAFT', 'PUBLISHED')` },
+          { name: "introOrFree", sql: `({CUBE}."title" LIKE 'Intro%' OR {CUBE}."priceCents" = 0)` },
           // RecentPrograms' relative @filter: a scope segment, and no rollup.
           { name: "recentProgramsScope", sql: `{CUBE}."created_ts" >= ((now() AT TIME ZONE 'UTC') - INTERVAL 'P30D')` },
+          { name: "liveIntroProgramsScope", sql: `({CUBE}."status" IN ('DRAFT', 'PUBLISHED') AND {CUBE}."priceCents" < 5000)` },
+          { name: "programsEmptyScopeScope", sql: `{CUBE}."priceCents" > 1000000` },
         ],
         // Coarsest first: ProgramsByWeek groups by one column, ProgramsByMonth by two.
         preAggregations: [
+          {
+            name: "ProgramsEmptyScope", type: "rollup", measures: ["programs", "avgPriceOrMinusOne"], dimensions: [],
+            segments: ["live", "programsEmptyScopeScope"],
+          },
+          {
+            name: "LiveIntroPrograms", type: "rollup", measures: ["programs", "notDrafts", "listValue"], dimensions: ["status"],
+            segments: ["introOrFree", "liveIntroProgramsScope"],
+          },
           {
             name: "ProgramsByWeek", type: "rollup", measures: ["programs"], dimensions: [], segments: ["published"],
             timeDimension: "createdAt", granularity: "week",
@@ -1501,6 +1539,15 @@ describe("Table H — the canonical model", () => {
           {
             name: "ProgramsByMonth", type: "rollup", measures: ["programs", "listValue"], dimensions: ["status"],
             segments: [], timeDimension: "createdAt", granularity: "month",
+          },
+          {
+            name: "ProgramsOverTime", type: "rollup", measures: ["programs", "avgPrice", "cheapest", "priciest"],
+            dimensions: [], segments: [],
+            timeDimensions: [
+              { dimension: "createdAt", granularity: "day" },
+              { dimension: "createdAt", granularity: "quarter" },
+              { dimension: "createdAt", granularity: "year" },
+            ],
           },
         ],
       },
@@ -1532,6 +1579,17 @@ describe("Table H — the canonical model", () => {
           totalMinutesOrZeroRaw,
           totalMinutesOrZero,
           longShareOrZero,
+          { name: "unlabelled", sql: '{CUBE}."id"', type: "count", filters: [{ sql: '{CUBE}."label" IS NULL' }] },
+          { name: "labelledMinutes", sql: '{CUBE}."durationMinutes"', type: "sum", filters: [{ sql: '{CUBE}."label" IS NOT NULL' }] },
+          { name: "shortWeeks", sql: '{CUBE}."id"', type: "count", filters: [{ sql: '{CUBE}."durationMinutes" < 30' }] },
+          {
+            name: "midWeeks", sql: '{CUBE}."id"', type: "count",
+            filters: [{ sql: '({CUBE}."durationMinutes" > 30 AND {CUBE}."durationMinutes" <= 60)' }],
+          },
+          {
+            name: "longWMinutes", sql: '{CUBE}."durationMinutes"', type: "sum",
+            filters: [{ sql: `({CUBE}."durationMinutes" >= 60 AND {CUBE}."label" LIKE 'W%')` }],
+          },
         ],
         segments: [{ name: "long", sql: '{CUBE}."durationMinutes" >= 60' }],
         // Coarsest first: FitnessTotals and FitnessTotalsFilled group by nothing, so Cube's first
@@ -1542,6 +1600,11 @@ describe("Table H — the canonical model", () => {
           {
             name: "FitnessTotalsFilled", type: "rollup", measures: ["weeks", "totalMinutesOrZero", "longShareOrZero"],
             dimensions: [], segments: [],
+          },
+          {
+            name: "WeekShapes", type: "rollup",
+            measures: ["weeks", "unlabelled", "labelledMinutes", "shortWeeks", "midWeeks", "longWMinutes"],
+            dimensions: ["programTitle"], segments: [],
           },
           {
             name: "ProgramMinutes", type: "rollup",
@@ -1562,9 +1625,23 @@ describe("Table H — the canonical model", () => {
             meta: { grains: ["week", "month"] },
           },
         ],
-        measures: [{ name: "assets", sql: '{CUBE}."id"', type: "count" }],
+        measures: [
+          { name: "assets", sql: '{CUBE}."id"', type: "count" },
+          { name: "owners", sql: '{CUBE}."ownerId"', type: "count_distinct" },
+          { name: "firstRecorded", sql: '{CUBE}."recordedAt"', type: "min" },
+          { name: "lastObserved", sql: '{CUBE}."observedAt"', type: "max" },
+          { name: "lastAsOf", sql: '{CUBE}."asOfDate"', type: "max" },
+        ],
         segments: [],
         preAggregations: [
+          {
+            name: "AssetDays", type: "rollup", measures: ["assets", "owners", "firstRecorded", "lastObserved", "lastAsOf"],
+            dimensions: [], segments: [],
+            timeDimensions: [
+              { dimension: "recordedAt", granularity: "day" },
+              { dimension: "asOfDate", granularity: "month" },
+            ],
+          },
           {
             name: "AssetActivity", type: "rollup", measures: ["assets"], dimensions: [], segments: [],
             timeDimensions: [

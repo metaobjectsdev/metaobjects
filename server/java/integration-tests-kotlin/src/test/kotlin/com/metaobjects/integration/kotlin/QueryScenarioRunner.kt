@@ -16,15 +16,8 @@ import com.metaobjects.integration.kotlin.tables.ProgramStatView
 import com.metaobjects.integration.kotlin.tables.ProgramTable
 import com.metaobjects.integration.kotlin.tables.ProgramView
 import com.metaobjects.integration.kotlin.tables.WeekTable
-import com.metaobjects.integration.kotlin.tables.AssetActivityView
-import com.metaobjects.integration.kotlin.tables.FitnessTotalsFilledView
-import com.metaobjects.integration.kotlin.tables.FitnessTotalsView
-import com.metaobjects.integration.kotlin.tables.ProgramLongWeeksView
-import com.metaobjects.integration.kotlin.tables.ProgramMinutesView
-import com.metaobjects.integration.kotlin.tables.ProgramRosterView
-import com.metaobjects.integration.kotlin.tables.ProgramsByMonthView
-import com.metaobjects.integration.kotlin.tables.ProgramsByWeekView
-import com.metaobjects.integration.kotlin.tables.RecentProgramsView
+import com.metaobjects.integration.kotlin.tables.ReportViews
+import com.metaobjects.integration.kotlin.tables.SessionTable
 import org.jetbrains.exposed.sql.AndOp
 import org.jetbrains.exposed.sql.Column
 import org.jetbrains.exposed.sql.Database
@@ -522,31 +515,24 @@ object QueryScenarioRunner {
         root.getChildren(MetaObject::class.java, false).firstOrNull { it.shortName == name }
             ?: error("Entity '$name' not found in canonical metadata root")
 
-    private fun tableFor(entity: String): Table = when (entity) {
-        "Program" -> ProgramTable
-        "Week" -> WeekTable
-        "Node" -> NodeTable
-        "Measurement" -> MeasurementTable
-        "ProgramStat" -> ProgramStatView
-        "ProgramView" -> ProgramView
-        // FR-044: a view-backed report is read through the view its lowering created. It has
-        // no primary key, so only `list` and `count` reach these.
-        "ProgramMinutes" -> ProgramMinutesView
-        "FitnessTotals" -> FitnessTotalsView
-        "ProgramsByMonth" -> ProgramsByMonthView
-        "ProgramsByWeek" -> ProgramsByWeekView
-        "RecentPrograms" -> RecentProgramsView
-        "AssetActivity" -> AssetActivityView
-        // A @spine report (rows from the spine entity) and a report of defaulted measures.
-        "ProgramRoster" -> ProgramRosterView
-        "ProgramLongWeeks" -> ProgramLongWeeksView
-        "FitnessTotalsFilled" -> FitnessTotalsFilledView
-        "Asset" -> AssetTable
-        "AllTypes" -> AllTypesTable
-        // FR-017 TPH: the discriminator base + all its subtypes share the single `auths` table.
-        "Auth", "BridgeAuth", "CopayAuth", "PriorAuthAuth" -> AuthTable
-        else -> error("No Exposed Table registered for entity '$entity' — extend QueryScenarioRunner.tableFor")
-    }
+    private fun tableFor(entity: String): Table =
+        // FR-044: a view-backed report is read through the view its lowering created — from the
+        // same registry the codegen cross-check iterates, so the two lanes cannot name different
+        // sets. It has no primary key, so only `list` and `count` reach these.
+        ReportViews.BY_NAME[entity] ?: when (entity) {
+            "Program" -> ProgramTable
+            "Week" -> WeekTable
+            "Node" -> NodeTable
+            "Measurement" -> MeasurementTable
+            "ProgramStat" -> ProgramStatView
+            "ProgramView" -> ProgramView
+            "Session" -> SessionTable
+            "Asset" -> AssetTable
+            "AllTypes" -> AllTypesTable
+            // FR-017 TPH: the discriminator base + all its subtypes share the single `auths` table.
+            "Auth", "BridgeAuth", "CopayAuth", "PriorAuthAuth" -> AuthTable
+            else -> error("No Exposed Table registered for entity '$entity' — extend QueryScenarioRunner.tableFor or tables/ReportViews")
+        }
 
     // -----------------------------------------------------------------------
     // Filter / by / sort
@@ -693,6 +679,8 @@ object QueryScenarioRunner {
             type == "uuid" -> if (raw is UUID) raw else UUID.fromString(raw.toString().lowercase())
             type.contains("bigint") || type.contains("int8") -> (raw as? Number)?.toLong() ?: raw.toString().toLong()
             type.contains("int") -> (raw as? Number)?.toInt() ?: raw.toString().toInt()
+            // A filter on a DATE column (a report's date dimension) supplies the day as text.
+            type == "date" -> if (raw is LocalDate) raw else LocalDate.parse(raw.toString())
             else -> raw
         }
     }

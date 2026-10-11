@@ -1,0 +1,36 @@
+name: report-self-reference
+description: |
+  NodesByParent groups Node by a dimension reached through the entity's own reference
+  (Node.fkParent), so the view joins nodes to nodes. A root has a null parent and lands in
+  the null group (the join is a LEFT OUTER JOIN, because parentId is optional).
+
+    1 root      (no parent)        2 a      (parent root)
+    3 b         (parent root)      4 c      (parent a)
+    5 top       (no parent)
+  null group: root and top (2); 'root' group: a and b (2); 'a' group: c (1).
+seed-data: |
+  INSERT INTO "nodes" ("id","label","parentId") VALUES
+    (1, 'root', NULL),
+    (2, 'a',    1),
+    (3, 'b',    1),
+    (4, 'c',    2),
+    (5, 'top',  NULL);
+queries:
+  - name: group-by-the-parents-label
+    op: list
+    entity: NodesByParent
+    sort: [{ field: nodes, dir: asc }, { field: parentLabel, dir: asc }]
+    expect:
+      - { parentLabel: "a", nodes: "1" }
+      - { parentLabel: "root", nodes: "2" }
+      - { parentLabel: null, nodes: "2" }
+  - name: filter-isnull-on-the-self-joined-dimension
+    op: list
+    entity: NodesByParent
+    filter: { parentLabel: { isNull: true } }
+    expect:
+      - { parentLabel: null, nodes: "2" }
+  - name: count-groups
+    op: count
+    entity: NodesByParent
+    expect: 3

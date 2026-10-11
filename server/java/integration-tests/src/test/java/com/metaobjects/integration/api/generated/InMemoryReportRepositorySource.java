@@ -113,6 +113,7 @@ final class InMemoryReportRepositorySource {
                 else if (type == BigDecimal.class) value = new BigDecimal(raw);
                 else if (type == LocalDate.class) value = LocalDate.parse(raw);
                 else if (type == Boolean.class) value = Boolean.valueOf(raw);
+                else if (type == java.util.UUID.class) value = java.util.UUID.fromString(raw);
                 else if (type == String.class) value = raw;
                 else if (type.isEnum()) value = enumConstant(type, raw);
                 else throw new IllegalStateException("no operand coercion for " + type.getName() + " (" + field + ")");

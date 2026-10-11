@@ -1,0 +1,21 @@
+name: report-filter-on-string-dimension
+description: >
+  ?filter[categoryName][like]=Too% — a string dimension takes `like` as well as `eq`.
+  The pattern is anchored, as on any list route.
+requests:
+  - id: r1
+    method: GET
+    path: /api/sales_by_categories?filter[categoryName][like]=Too%25
+    expect:
+      status: 200
+      body:
+        equals:
+          - { categoryName: "Tools", sales: 2, revenueCents: 30000, maxCents: 18000, largeSales: 2 }
+  - id: r2
+    method: GET
+    path: /api/sales_by_categories?filter[categoryName][eq]=Toys
+    expect:
+      status: 200
+      body:
+        equals:
+          - { categoryName: "Toys", sales: 1, revenueCents: 4500, maxCents: 4500, largeSales: 0 }

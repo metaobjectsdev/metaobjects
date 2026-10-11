@@ -26,7 +26,11 @@ const SERVED_PATHS: Array<[string, string]> = [
   ["InvoiceStatusTotals", "/api/invoice_status_totals"],
   ["InvoicesByMonth", "/api/invoices_by_months"],
   ["InvoiceTotals", "/api/invoice_totals"],
+  ["InvoiceCalendar", "/api/invoice_calendars"],
+  ["InvoiceDisputes", "/api/invoice_disputes"],
   ["ProductRevenue", "/api/product_revenues"],
+  ["SalesByCategory", "/api/sales_by_categories"],
+  ["SalesBySku", "/api/sales_by_skus"],
 ];
 
 describe("api contract report (FR-044) — GENERATED routes lane", () => {

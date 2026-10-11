@@ -1,0 +1,43 @@
+name: report-time-grains-extended
+description: |
+  ProgramsOverTime groups Program.createdAt at three grains at once (day, quarter, year),
+  with avg, min and max over a currency column. The seed straddles a year boundary
+  (2025-12-31 23:59:59 vs 2026-01-01 00:00:00) and a quarter boundary (2026-03-31 23:00:00
+  vs 2026-04-01 00:00:00), and puts two programs on 2026-01-01 so one group holds two rows.
+  Dates are "YYYY-MM-DD"; the quarter bucket is the first day of the quarter and the year
+  bucket is January 1st. avg of a BIGINT is NUMERIC (canonical decimal string).
+seed-data: |
+  INSERT INTO "programs" ("id","title","priceCents","status","created_ts") VALUES
+    (1, 'P1', 1000, 'PUBLISHED', '2025-12-31T23:59:59'),
+    (2, 'P2', 2000, 'PUBLISHED', '2026-01-01T00:00:00'),
+    (3, 'P3', 4000, 'PUBLISHED', '2026-01-01T12:00:00'),
+    (4, 'P4', 3000, 'PUBLISHED', '2026-03-31T23:00:00'),
+    (5, 'P5', 5000, 'PUBLISHED', '2026-04-01T00:00:00');
+queries:
+  - name: day-quarter-year
+    op: list
+    entity: ProgramsOverTime
+    sort: [{ field: createdAtDay, dir: asc }]
+    expect:
+      - { createdAtDay: "2025-12-31", createdAtQuarter: "2025-10-01", createdAtYear: "2025-01-01",
+          programs: "1", avgPrice: "1000", cheapest: "1000", priciest: "1000" }
+      - { createdAtDay: "2026-01-01", createdAtQuarter: "2026-01-01", createdAtYear: "2026-01-01",
+          programs: "2", avgPrice: "3000", cheapest: "2000", priciest: "4000" }
+      - { createdAtDay: "2026-03-31", createdAtQuarter: "2026-01-01", createdAtYear: "2026-01-01",
+          programs: "1", avgPrice: "3000", cheapest: "3000", priciest: "3000" }
+      - { createdAtDay: "2026-04-01", createdAtQuarter: "2026-04-01", createdAtYear: "2026-01-01",
+          programs: "1", avgPrice: "5000", cheapest: "5000", priciest: "5000" }
+  - name: filter-on-a-quarter-bucket
+    op: list
+    entity: ProgramsOverTime
+    filter: { createdAtQuarter: { eq: "2026-01-01" } }
+    sort: [{ field: createdAtDay, dir: asc }]
+    expect:
+      - { createdAtDay: "2026-01-01", createdAtQuarter: "2026-01-01", createdAtYear: "2026-01-01",
+          programs: "2", avgPrice: "3000", cheapest: "2000", priciest: "4000" }
+      - { createdAtDay: "2026-03-31", createdAtQuarter: "2026-01-01", createdAtYear: "2026-01-01",
+          programs: "1", avgPrice: "3000", cheapest: "3000", priciest: "3000" }
+  - name: count-groups
+    op: count
+    entity: ProgramsOverTime
+    expect: 4

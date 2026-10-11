@@ -21,21 +21,25 @@ const seedReports = (): Record<string, Array<Record<string, unknown>>> => {
 };
 
 describe("api-contract report corpus", () => {
-  test("the model loads and four of its five reports are view-backed", async () => {
+  test("the model loads and all but one of its reports are view-backed", async () => {
     const root = await loadMetadataFile(join(API_CONTRACT_REPORT_DIR, "meta.json"));
     const reports = root.objects().filter((o) => o.subType === OBJECT_SUBTYPE_REPORT);
     expect(reports.map((r) => r.name)).toEqual(
-      ["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceDays", "ProductRevenue"]);
+      ["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes", "InvoiceDays",
+        "ProductRevenue", "SalesByCategory", "SalesBySku"]);
     expect(reports.filter((r) => reportReadSource(r) !== undefined).map((r) => r.name)).toEqual(
-      ["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "ProductRevenue"]);
+      ["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
+        "ProductRevenue", "SalesByCategory", "SalesBySku"]);
   });
 
   test("the route segments are the ones the scenarios call", async () => {
     const root = await loadMetadataFile(join(API_CONTRACT_REPORT_DIR, "meta.json"));
     const segment = (name: string): string => pluralize(toSnakeCase(name));
-    expect(["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "ProductRevenue"].map(segment)).toEqual(
-      ["invoice_status_totals", "invoices_by_months", "invoice_totals", "product_revenues"]);
-    expect(root.objects().length).toBe(8);
+    expect(["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
+      "ProductRevenue", "SalesByCategory", "SalesBySku"].map(segment)).toEqual(
+      ["invoice_status_totals", "invoices_by_months", "invoice_totals", "invoice_calendars", "invoice_disputes",
+        "product_revenues", "sales_by_categories", "sales_by_skus"]);
+    expect(root.objects().length).toBe(13);
   });
 
   test("each seeded report row has exactly the report's derived fields", async () => {
@@ -47,7 +51,8 @@ describe("api-contract report corpus", () => {
       for (const row of rows) expect(Object.keys(row)).toEqual(fields);
     }
     expect(Object.keys(seedReports())).toEqual(
-      ["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "ProductRevenue"]);
+      ["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
+        "SalesByCategory", "SalesBySku", "ProductRevenue"]);
   });
 
   // A lane inserts every top-level key but `reports` in file order, so the order is the
@@ -55,9 +60,9 @@ describe("api-contract report corpus", () => {
   test("the base tables of seed.json are the model's tables, listed parents first", async () => {
     const root = await loadMetadataFile(join(API_CONTRACT_REPORT_DIR, "meta.json"));
     const tables = Object.keys(seed).filter((k) => k !== SEED_REPORTS_KEY);
-    expect(tables).toEqual(["invoices", "products", "sales"]);
+    expect(tables).toEqual(["invoices", "categories", "products", "sales"]);
     // Every key is an entity's table and every row key one of its fields (seedInserts throws otherwise).
-    expect(seedInserts(root, seed).length).toBe(5 + 3 + 3);
+    expect(seedInserts(root, seed).length).toBe(5 + 2 + 3 + 3);
     for (const [i, table] of tables.entries()) {
       const entity = root.objects().find((o) => o.isEntity() && resolveTableName(o) === table);
       if (entity === undefined) throw new Error(`no entity has table ${table}`);
@@ -71,9 +76,9 @@ describe("api-contract report corpus", () => {
     }
   });
 
-  test("every scenario parses, and there are sixteen", () => {
+  test("every scenario parses, and there are twenty-two", () => {
     const scenarios = loadScenarios(API_CONTRACT_REPORT_SCENARIOS_DIR);
-    expect(scenarios.length).toBe(16);
+    expect(scenarios.length).toBe(22);
     for (const s of scenarios) expect(s.requests.length).toBeGreaterThan(0);
   });
 

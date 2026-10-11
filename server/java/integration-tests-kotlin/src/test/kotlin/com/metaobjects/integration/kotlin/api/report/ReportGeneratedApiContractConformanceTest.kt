@@ -21,8 +21,8 @@ import java.util.stream.Stream
 
 /**
  * FR-044 Plan 3: the Kotlin GENERATED-controller lane for the view-backed-report
- * api-contract sub-corpus. Drives the four generated read-only report controllers over an
- * embedded Tomcat: GET list with the FR-009 filter and sort allowlists over the report's
+ * api-contract sub-corpus. Drives the corpus's served reports' generated read-only
+ * controllers over an embedded Tomcat: GET list with the FR-009 filter and sort allowlists over the report's
  * DERIVED fields, `POST` answering `405 {"error": "method_not_allowed"}`, and no `/{id}`.
  *
  * Generated lane ONLY, on purpose and on every port (see the sub-corpus README): what is
@@ -46,9 +46,9 @@ internal class ReportGeneratedApiContractConformanceTest {
     }
 
     @Test
-    fun `the corpus has its sixteen scenarios`() {
+    fun `the corpus has its twenty-two scenarios`() {
         // A lane that silently ran fewer would still be green.
-        assertEquals(16, scenarios().count())
+        assertEquals(22, scenarios().count())
     }
 
     @Test

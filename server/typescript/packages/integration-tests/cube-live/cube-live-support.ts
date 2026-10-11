@@ -4,6 +4,7 @@
 
 import { expect } from "bun:test";
 import {
+  FIELD_ATTR_INT_VALUE_MAP,
   GRAIN_HOUR,
   OBJECT_REPORT_ATTR_FILTER,
   OBJECT_REPORT_ATTR_SEGMENT,
@@ -45,6 +46,9 @@ export interface CubeQuery {
   readonly timezone: "UTC";
 }
 
+/** The grains one Cube query can ask together, finest first: each bucket lies inside the next. */
+const NESTING_ORDER: readonly string[] = ["day", "month", "quarter", "year"];
+
 export type ColumnKind = "attribute" | "time" | "hour" | "measure";
 
 /** One report field: its view column and the Cube row key that carries it. */
@@ -52,6 +56,18 @@ export interface PlannedColumn {
   readonly field: string;
   readonly cubeKey: string;
   readonly kind: ColumnKind;
+  /**
+   * A coarser grain of a dimension the query already asks at a finer one. Cube answers a time
+   * dimension at ONE granularity per query, so the report's other grains are read off that
+   * bucket's start: day, month, quarter and year nest, and the group the finest grain makes is
+   * the group they make.
+   */
+  readonly derive?: { readonly fromKey: string; readonly grain: string };
+  /**
+   * An int-backed enum: the view holds the stored integer, Cube's `CASE` the member symbol (as
+   * every port's read returns it). Maps the integer, as text, to its symbol.
+   */
+  readonly symbols?: Readonly<Record<string, string>>;
 }
 
 export interface QueryPlan {
@@ -86,10 +102,29 @@ export function cubeQueryFor(report: MetaObject, root: MetaRoot): QueryPlan {
       const member = `${cube}.${f.dimension.name}`;
       if (f.grain === undefined) {
         dimensions.push(member);
-        columns.push({ field: f.name, cubeKey: member, kind: "attribute" });
+        const intMap = f.typeSource?.attr(FIELD_ATTR_INT_VALUE_MAP);
+        const symbols =
+          typeof intMap === "object" && intMap !== null
+            ? Object.fromEntries(Object.entries(intMap as Record<string, unknown>).map(([symbol, n]) => [String(n), symbol]))
+            : undefined;
+        // A date dimension is a Cube `time` member: it sends the day as a midnight timestamp.
+        columns.push({ field: f.name, cubeKey: member, kind: f.subType === "date" ? "time" : "attribute", ...(symbols === undefined ? {} : { symbols }) });
       } else {
-        timeDimensions.push({ dimension: member, granularity: f.grain });
-        columns.push({ field: f.name, cubeKey: `${member}.${f.grain}`, kind: f.grain === GRAIN_HOUR ? "hour" : "time" });
+        // One granularity per time dimension per Cube query: ask the finest grain the report
+        // lists, and derive the coarser ones from that bucket (see PlannedColumn.derive).
+        const dimName = f.dimension.name;
+        const grains = shape.fields.filter((g) => g.dimension?.name === dimName && g.grain !== undefined).map((g) => g.grain as string);
+        const rank = (g: string): number => NESTING_ORDER.indexOf(g);
+        if (grains.length > 1 && grains.some((g) => rank(g) < 0)) {
+          throw new Error(`${report.name}.${f.name}: ${member} at ${grains.join(" and ")} does not nest, so one Cube query cannot ask both`);
+        }
+        const fine = grains.slice().sort((x, y) => rank(x) - rank(y))[0] as string;
+        if (!timeDimensions.some((t) => t.dimension === member)) timeDimensions.push({ dimension: member, granularity: fine });
+        columns.push(
+          f.grain === fine
+            ? { field: f.name, cubeKey: `${member}.${fine}`, kind: f.grain === GRAIN_HOUR ? "hour" : "time" }
+            : { field: f.name, cubeKey: `${member}.${f.grain}`, kind: "time", derive: { fromKey: `${member}.${fine}`, grain: f.grain } },
+        );
       }
     }
   }
@@ -113,35 +148,68 @@ export function canonicalDecimal(s: string): string {
   return s.includes(".") ? s.replace(/\.?0+$/, "") : s;
 }
 
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TEMPORAL_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?)?(Z|[+-]\d{2}(:?\d{2})?)?$/;
+
 /** True when the string already names its offset (`Z`, `+00:00`, `-0500`). */
 export const HAS_ZONE_RE = /(Z|[+-]\d{2}(:?\d{2})?)$/;
 
+/**
+ * Read a temporal string as a UTC instant: an explicit offset wins, a date-only value is
+ * midnight, and a naive wall clock (`2026-05-01T08:30:00.000` — Cube's spelling with the
+ * query pinned to UTC) is read as UTC. One zone-handling site for every temporal column.
+ */
+function isoInstant(s: string, where: string): string {
+  const d = new Date(DATE_ONLY_RE.test(s) ? `${s}T00:00:00Z` : HAS_ZONE_RE.test(s) ? s : `${s}Z`);
+  if (Number.isNaN(d.getTime())) throw new Error(`${where}: '${s}' is not a timestamp`);
+  return d.toISOString();
+}
+
 export function normalize(kind: ColumnKind, raw: unknown, where: string): string | null {
   if (raw === null || raw === undefined) return null;
-  if (typeof raw !== "string" && typeof raw !== "number") throw new Error(`${where}: unexpected value ${JSON.stringify(raw)}`);
+  if (typeof raw !== "string" && typeof raw !== "number" && typeof raw !== "boolean") throw new Error(`${where}: unexpected value ${JSON.stringify(raw)}`);
   const s = String(raw);
   switch (kind) {
     case "time":
       // A day, week, month, quarter or year bucket: Cube sends `2026-05-01T00:00:00.000`, the view a DATE.
       return s.slice(0, 10);
-    case "hour": {
+    case "hour":
       // An instant. Cube sends the wall clock in the query time zone (UTC, fixed by the query);
       // the view sends a timestamptz with its offset.
-      const d = new Date(HAS_ZONE_RE.test(s) ? s : `${s}Z`);
-      if (Number.isNaN(d.getTime())) throw new Error(`${where}: '${s}' is not a timestamp`);
-      return d.toISOString();
-    }
+      return isoInstant(s, where);
     case "attribute":
-    case "measure":
       return DECIMAL_RE.test(s) ? canonicalDecimal(s) : s;
+    case "measure":
+      // A min or max over a date or a timestamp is a temporal value: Cube sends every one as
+      // `YYYY-MM-DDTHH:MM:SS.sss` (a date at midnight), the view as the column's own text, with an
+      // offset for a timestamptz. Both are read as UTC instants and compared as such.
+      if (TEMPORAL_RE.test(s)) return isoInstant(s, where);
+      return DECIMAL_RE.test(s) ? canonicalDecimal(s) : s;
+  }
+}
+
+/** The start of the month, quarter or year that holds `day` (`YYYY-MM-DD`). */
+function coarsen(day: string, grain: string): string {
+  const [y, m] = day.split("-") as [string, string];
+  switch (grain) {
+    case "month":
+      return `${y}-${m}-01`;
+    case "quarter":
+      return `${y}-${String(Math.floor((Number(m) - 1) / 3) * 3 + 1).padStart(2, "0")}-01`;
+    case "year":
+      return `${y}-01-01`;
+    default:
+      throw new Error(`cannot derive a ${grain} bucket from a day`);
   }
 }
 
 export function fromCubeRow(row: Record<string, unknown>, plan: QueryPlan): NormalRow {
   const out: NormalRow = {};
   for (const c of plan.columns) {
-    if (!(c.cubeKey in row)) throw new Error(`Cube's row has no '${c.cubeKey}': ${JSON.stringify(row)}`);
-    out[c.field] = normalize(c.kind, row[c.cubeKey], `Cube ${c.cubeKey}`);
+    const key = c.derive?.fromKey ?? c.cubeKey;
+    if (!(key in row)) throw new Error(`Cube's row has no '${key}': ${JSON.stringify(row)}`);
+    const value = normalize(c.kind, row[key], `Cube ${key}`);
+    out[c.field] = c.derive === undefined || value === null ? value : coarsen(value, c.derive.grain);
   }
   return out;
 }
@@ -150,7 +218,10 @@ export function fromViewRow(row: Record<string, string | null>, plan: QueryPlan,
   const want = plan.columns.map((c) => c.field).sort();
   expect(Object.keys(row).sort()).toEqual(want);
   const out: NormalRow = {};
-  for (const c of plan.columns) out[c.field] = normalize(c.kind, row[c.field], `${view}.${c.field}`);
+  for (const c of plan.columns) {
+    const raw = row[c.field];
+    out[c.field] = normalize(c.kind, raw !== null && raw !== undefined && c.symbols?.[raw] !== undefined ? c.symbols[raw] : raw, `${view}.${c.field}`);
+  }
   return out;
 }
 

@@ -163,10 +163,14 @@ class GeneratedReportControllerHarness(
         const val ENTITY_PKG = "acme.sales"
 
         /**
-         * The four reports of the corpus that declare a view. `InvoiceDays` declares none.
-         * `ProductRevenue` declares `@spine` and a measure with `@default`.
+         * The reports of the corpus that declare a view. `InvoiceDays` declares none.
+         * `ProductRevenue` declares `@spine` and a measure with `@default`; `InvoiceCalendar` lists
+         * one time dimension at two grains; `SalesByCategory` reaches a dimension through two references.
          */
-        val SERVED = listOf("InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "ProductRevenue")
+        val SERVED = listOf(
+            "InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
+            "ProductRevenue", "SalesByCategory", "SalesBySku",
+        )
 
         private fun snakeCase(s: String): String = buildString {
             for (c in s) {

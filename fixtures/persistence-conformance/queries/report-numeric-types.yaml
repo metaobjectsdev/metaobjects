@@ -1,0 +1,31 @@
+name: report-numeric-types
+description: |
+  MeasurementStats is a no-dimension report over Measurement: sum, avg, min and max over a
+  float, a double and a decimal column, plus a count carrying an inline measure @filter
+  (massKg >= 10). Every value is dyadic (see normalization.md) so each port renders the
+  same plain-decimal string.
+
+  Four readings: massKg 8.5 / 12.5 / 20.25 / 7.5 (sum 48.75, avg 12.1875), tempC 1.5 / -2.25 /
+  4.5 / 0.5 (REAL: max 4.5, min -2.25), preciseKg 1.25 / 2.5 / 0.75 / 3.5 (NUMERIC(9,4): sum 8,
+  avg 2, max 3.5). Two readings weigh 10 or more.
+
+  MeasurementStatsFilled carries @default on an avg (-1) and on a decimal max (0). Here the
+  table has data, so neither default applies; report-negative-default reads the empty table.
+seed-data: |
+  INSERT INTO "measurements" ("id","tempC","massKg","preciseKg") VALUES
+    (1,  1.5,  8.5, 1.25),
+    (2, -2.25, 12.5, 2.5),
+    (3,  4.5, 20.25, 0.75),
+    (4,  0.5,  7.5, 3.5);
+queries:
+  - name: float-double-decimal-aggregates
+    op: list
+    entity: MeasurementStats
+    expect:
+      - { readings: "4", totalMassKg: "48.75", avgMassKg: "12.1875", maxTempC: "4.5", minTempC: "-2.25",
+          totalPreciseKg: "8", avgPreciseKg: "2", maxPreciseKg: "3.5", heavyReadings: "2" }
+  - name: defaults-do-not-apply-to-a-present-value
+    op: list
+    entity: MeasurementStatsFilled
+    expect:
+      - { readings: "4", avgPreciseKgOrMinusOne: "2", maxPreciseKgOrZero: "3.5" }

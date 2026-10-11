@@ -1,15 +1,19 @@
 {
   "invoices": [
-    { "id": 1, "reference": "INV-1001", "status": "PAID", "amountCents": 125000, "issuedOn": "2026-04-30" },
-    { "id": 2, "reference": "INV-1002", "status": "OPEN", "amountCents":  40000, "issuedOn": "2026-05-01" },
-    { "id": 3, "reference": "INV-1003", "status": "OPEN", "amountCents":  90500, "issuedOn": "2026-05-17" },
-    { "id": 4, "reference": "INV-1004", "status": "VOID", "amountCents":      0, "issuedOn": "2026-05-31" },
-    { "id": 5, "reference": "INV-1005", "status": "PAID", "amountCents":  60000, "issuedOn": "2026-06-01" }
+    { "id": 1, "reference": "INV-1001", "status": "PAID", "amountCents": 125000, "issuedOn": "2026-04-30", "disputed": false },
+    { "id": 2, "reference": "INV-1002", "status": "OPEN", "amountCents":  40000, "issuedOn": "2026-05-01", "disputed": true },
+    { "id": 3, "reference": "INV-1003", "status": "OPEN", "amountCents":  90500, "issuedOn": "2026-05-17", "disputed": true },
+    { "id": 4, "reference": "INV-1004", "status": "VOID", "amountCents":      0, "issuedOn": "2026-05-31", "disputed": false },
+    { "id": 5, "reference": "INV-1005", "status": "PAID", "amountCents":  60000, "issuedOn": "2026-06-01", "disputed": false }
+  ],
+  "categories": [
+    { "id": 1, "name": "Tools" },
+    { "id": 2, "name": "Toys" }
   ],
   "products": [
-    { "id": 1, "name": "Atlas" },
-    { "id": 2, "name": "Beacon" },
-    { "id": 3, "name": "Cinder" }
+    { "id": 1, "name": "Atlas",  "sku": "11111111-1111-4111-8111-111111111111", "categoryId": 1 },
+    { "id": 2, "name": "Beacon", "sku": "22222222-2222-4222-8222-222222222222", "categoryId": 2 },
+    { "id": 3, "name": "Cinder", "sku": "33333333-3333-4333-8333-333333333333", "categoryId": null }
   ],
   "sales": [
     { "id": 1, "productId": 1, "amountCents": 12000 },
@@ -29,6 +33,25 @@
     ],
     "InvoiceTotals": [
       { "invoices": 5, "totalCents": 315500, "paidShare": "0.4" }
+    ],
+    "InvoiceCalendar": [
+      { "issuedOnDay": "2026-04-30", "issuedOnMonth": "2026-04-01", "invoices": 1, "totalCents": 125000 },
+      { "issuedOnDay": "2026-05-01", "issuedOnMonth": "2026-05-01", "invoices": 1, "totalCents": 40000 },
+      { "issuedOnDay": "2026-05-17", "issuedOnMonth": "2026-05-01", "invoices": 1, "totalCents": 90500 },
+      { "issuedOnDay": "2026-05-31", "issuedOnMonth": "2026-05-01", "invoices": 1, "totalCents": 0 },
+      { "issuedOnDay": "2026-06-01", "issuedOnMonth": "2026-06-01", "invoices": 1, "totalCents": 60000 }
+    ],
+    "InvoiceDisputes": [
+      { "disputed": false, "invoices": 3, "bigInvoices": 2 },
+      { "disputed": true, "invoices": 2, "bigInvoices": 1 }
+    ],
+    "SalesByCategory": [
+      { "categoryName": "Tools", "sales": 2, "revenueCents": 30000, "maxCents": 18000, "largeSales": 2 },
+      { "categoryName": "Toys", "sales": 1, "revenueCents": 4500, "maxCents": 4500, "largeSales": 0 }
+    ],
+    "SalesBySku": [
+      { "productSku": "11111111-1111-4111-8111-111111111111", "sales": 2, "revenueCents": 30000 },
+      { "productSku": "22222222-2222-4222-8222-222222222222", "sales": 1, "revenueCents": 4500 }
     ],
     "ProductRevenue": [
       { "productId": 1, "productName": "Atlas",  "sales": 2, "revenueCents": 30000, "revenueOrZero": 30000 },

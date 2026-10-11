@@ -1,0 +1,31 @@
+name: report-filter-boolean-dimension
+description: >
+  A boolean dimension (Invoice.disputed) is a derived field that takes `eq`. It reaches the
+  wire as a JSON boolean, and `?filter[disputed][eq]=true` parses to one on every port.
+  `bigInvoices` is a count with an inline filter (amountCents >= 60000).
+requests:
+  - id: r1
+    method: GET
+    path: /api/invoice_disputes?sort=disputed:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { disputed: false, invoices: 3, bigInvoices: 2 }
+          - { disputed: true, invoices: 2, bigInvoices: 1 }
+  - id: r2
+    method: GET
+    path: /api/invoice_disputes?filter[disputed][eq]=true
+    expect:
+      status: 200
+      body:
+        equals:
+          - { disputed: true, invoices: 2, bigInvoices: 1 }
+  - id: r3
+    method: GET
+    path: /api/invoice_disputes?filter[disputed][eq]=false
+    expect:
+      status: 200
+      body:
+        equals:
+          - { disputed: false, invoices: 3, bigInvoices: 2 }

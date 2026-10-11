@@ -321,6 +321,538 @@
           "typeSource": null
         }
       ]
+    },
+    {
+      "report": "fitness::MeasurementStats",
+      "from": "fitness::Measurement",
+      "view": "v_measurement_stats",
+      "fields": [
+        {
+          "name": "readings",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "totalMassKg",
+          "role": "measure",
+          "subType": "double",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "avgMassKg",
+          "role": "measure",
+          "subType": "double",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "maxTempC",
+          "role": "measure",
+          "subType": "float",
+          "required": false,
+          "typeSource": "fitness::Measurement.tempC"
+        },
+        {
+          "name": "minTempC",
+          "role": "measure",
+          "subType": "float",
+          "required": false,
+          "typeSource": "fitness::Measurement.tempC"
+        },
+        {
+          "name": "totalPreciseKg",
+          "role": "measure",
+          "subType": "decimal",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "avgPreciseKg",
+          "role": "measure",
+          "subType": "decimal",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "maxPreciseKg",
+          "role": "measure",
+          "subType": "decimal",
+          "required": false,
+          "typeSource": "fitness::Measurement.preciseKg"
+        },
+        {
+          "name": "heavyReadings",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        }
+      ]
+    },
+    {
+      "report": "fitness::MeasurementStatsFilled",
+      "from": "fitness::Measurement",
+      "view": "v_measurement_stats_filled",
+      "fields": [
+        {
+          "name": "readings",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "avgPreciseKgOrMinusOne",
+          "role": "measure",
+          "subType": "decimal",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "maxPreciseKgOrZero",
+          "role": "measure",
+          "subType": "decimal",
+          "required": true,
+          "typeSource": "fitness::Measurement.preciseKg"
+        }
+      ]
+    },
+    {
+      "report": "fitness::AssetDays",
+      "from": "fitness::Asset",
+      "view": "v_asset_days",
+      "fields": [
+        {
+          "name": "recordedAtDay",
+          "role": "dimension",
+          "subType": "date",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "asOfDateMonth",
+          "role": "dimension",
+          "subType": "date",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "assets",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "owners",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "firstRecorded",
+          "role": "measure",
+          "subType": "timestamp",
+          "required": false,
+          "typeSource": "fitness::Asset.recordedAt"
+        },
+        {
+          "name": "lastObserved",
+          "role": "measure",
+          "subType": "timestamp",
+          "required": false,
+          "typeSource": "fitness::Asset.observedAt"
+        },
+        {
+          "name": "lastAsOf",
+          "role": "measure",
+          "subType": "date",
+          "required": false,
+          "typeSource": "fitness::Asset.asOfDate"
+        }
+      ]
+    },
+    {
+      "report": "fitness::AllTypesBreakdown",
+      "from": "fitness::AllTypes",
+      "view": "v_all_types_breakdown",
+      "fields": [
+        {
+          "name": "flag",
+          "role": "dimension",
+          "subType": "boolean",
+          "required": true,
+          "typeSource": "fitness::AllTypes.bVal"
+        },
+        {
+          "name": "level",
+          "role": "dimension",
+          "subType": "enum",
+          "required": true,
+          "typeSource": "fitness::AllTypes.enumVal"
+        },
+        {
+          "name": "legacyStatus",
+          "role": "dimension",
+          "subType": "enum",
+          "required": false,
+          "typeSource": "fitness::AllTypes.intEnumVal"
+        },
+        {
+          "name": "dateKey",
+          "role": "dimension",
+          "subType": "date",
+          "required": true,
+          "typeSource": "fitness::AllTypes.dateVal"
+        },
+        {
+          "name": "uuidKey",
+          "role": "dimension",
+          "subType": "uuid",
+          "required": true,
+          "typeSource": "fitness::AllTypes.uuidVal"
+        },
+        {
+          "name": "allRows",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "totalInts",
+          "role": "measure",
+          "subType": "long",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "avgDec",
+          "role": "measure",
+          "subType": "decimal",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "maxMoney",
+          "role": "measure",
+          "subType": "currency",
+          "required": false,
+          "typeSource": "fitness::AllTypes.moneyVal"
+        },
+        {
+          "name": "minLong",
+          "role": "measure",
+          "subType": "long",
+          "required": false,
+          "typeSource": "fitness::AllTypes.lVal"
+        },
+        {
+          "name": "highRows",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        }
+      ]
+    },
+    {
+      "report": "fitness::ProgramsOverTime",
+      "from": "fitness::Program",
+      "view": "v_programs_over_time",
+      "fields": [
+        {
+          "name": "createdAtDay",
+          "role": "dimension",
+          "subType": "date",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "createdAtQuarter",
+          "role": "dimension",
+          "subType": "date",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "createdAtYear",
+          "role": "dimension",
+          "subType": "date",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "programs",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "avgPrice",
+          "role": "measure",
+          "subType": "decimal",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "cheapest",
+          "role": "measure",
+          "subType": "currency",
+          "required": false,
+          "typeSource": "fitness::Program.priceCents"
+        },
+        {
+          "name": "priciest",
+          "role": "measure",
+          "subType": "currency",
+          "required": false,
+          "typeSource": "fitness::Program.priceCents"
+        }
+      ]
+    },
+    {
+      "report": "fitness::LiveIntroPrograms",
+      "from": "fitness::Program",
+      "view": "v_live_intro_programs",
+      "fields": [
+        {
+          "name": "status",
+          "role": "dimension",
+          "subType": "enum",
+          "required": true,
+          "typeSource": "fitness::Program.status"
+        },
+        {
+          "name": "programs",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "notDrafts",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "listValue",
+          "role": "measure",
+          "subType": "currency",
+          "required": false,
+          "typeSource": "fitness::Program.priceCents"
+        }
+      ]
+    },
+    {
+      "report": "fitness::ProgramsEmptyScope",
+      "from": "fitness::Program",
+      "view": "v_programs_empty_scope",
+      "fields": [
+        {
+          "name": "programs",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "avgPriceOrMinusOne",
+          "role": "measure",
+          "subType": "decimal",
+          "required": true,
+          "typeSource": null
+        }
+      ]
+    },
+    {
+      "report": "fitness::WeekShapes",
+      "from": "fitness::Week",
+      "view": "v_week_shapes",
+      "fields": [
+        {
+          "name": "programTitle",
+          "role": "dimension",
+          "subType": "string",
+          "required": false,
+          "typeSource": "fitness::Program.title"
+        },
+        {
+          "name": "weeks",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "unlabelled",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "labelledMinutes",
+          "role": "measure",
+          "subType": "long",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "shortWeeks",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "midWeeks",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "longWMinutes",
+          "role": "measure",
+          "subType": "long",
+          "required": false,
+          "typeSource": null
+        }
+      ]
+    },
+    {
+      "report": "fitness::SessionsByProgram",
+      "from": "fitness::Session",
+      "view": "v_sessions_by_program",
+      "fields": [
+        {
+          "name": "programTitle",
+          "role": "dimension",
+          "subType": "string",
+          "required": false,
+          "typeSource": "fitness::Program.title"
+        },
+        {
+          "name": "weekKey",
+          "role": "dimension",
+          "subType": "long",
+          "required": false,
+          "typeSource": "fitness::Week.id"
+        },
+        {
+          "name": "sessions",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "sessionMinutes",
+          "role": "measure",
+          "subType": "long",
+          "required": false,
+          "typeSource": null
+        }
+      ]
+    },
+    {
+      "report": "fitness::ProgramSessions",
+      "from": "fitness::Session",
+      "view": "v_program_sessions",
+      "fields": [
+        {
+          "name": "programKey",
+          "role": "dimension",
+          "subType": "long",
+          "required": true,
+          "typeSource": "fitness::Program.id"
+        },
+        {
+          "name": "programTitle",
+          "role": "dimension",
+          "subType": "string",
+          "required": true,
+          "typeSource": "fitness::Program.title"
+        },
+        {
+          "name": "sessions",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "sessionMinutes",
+          "role": "measure",
+          "subType": "long",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "sessionMinutesOrZero",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        }
+      ]
+    },
+    {
+      "report": "fitness::NodesByParent",
+      "from": "fitness::Node",
+      "view": "v_nodes_by_parent",
+      "fields": [
+        {
+          "name": "parentLabel",
+          "role": "dimension",
+          "subType": "string",
+          "required": false,
+          "typeSource": "fitness::Node.label"
+        },
+        {
+          "name": "nodes",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        }
+      ]
+    },
+    {
+      "report": "fitness::AuthsByKind",
+      "from": "fitness::Auth",
+      "view": "v_auths_by_kind",
+      "fields": [
+        {
+          "name": "kind",
+          "role": "dimension",
+          "subType": "enum",
+          "required": false,
+          "typeSource": "fitness::Auth.type"
+        },
+        {
+          "name": "auths",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "distinctRefs",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        }
+      ]
     }
   ]
 }

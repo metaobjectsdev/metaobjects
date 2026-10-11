@@ -87,7 +87,7 @@ public static class WriteCoercion
         if (underlying == typeof(double))  return double.Parse(raw, NumberStyles.Float, CultureInfo.InvariantCulture);
         if (underlying == typeof(float))   return float.Parse(raw, NumberStyles.Float, CultureInfo.InvariantCulture);
         if (underlying == typeof(decimal)) return decimal.Parse(raw, NumberStyles.Float, CultureInfo.InvariantCulture);
-        if (underlying == typeof(DateOnly)) return DateOnly.ParseExact(raw, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+        if (underlying == typeof(DateOnly)) return ParseDate(raw);
         if (underlying == typeof(TimeOnly)) return ParseTime(raw);
         if (underlying == typeof(DateTime)) return ParseDateTime(raw);
         // ADR-0036 Wave 2 — a default field.timestamp binds to DateTimeOffset (an absolute
@@ -117,6 +117,14 @@ public static class WriteCoercion
             .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(ICollection<>))
             ?.GetGenericArguments()[0];
     }
+
+    /// <summary>
+    /// The corpus authoring form of a `field.date`: an ISO calendar date. One parse, because
+    /// the write codec here and the filter-operand coercion in DbContextAdapter must answer
+    /// the SAME authoring string with the SAME DateOnly — restated, they can only drift.
+    /// </summary>
+    public static DateOnly ParseDate(string raw) =>
+        DateOnly.ParseExact(raw, "yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     private static bool ParseBool(string raw) => raw switch
     {

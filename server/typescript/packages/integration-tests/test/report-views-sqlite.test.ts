@@ -29,10 +29,11 @@ import { join } from "node:path";
 import { Kysely, sql } from "kysely";
 import { LibsqlDialect } from "@libsql/kysely-libsql";
 import {
-  buildExpectedSchema, diff, emit, introspectSqlite, type Change, type SchemaSnapshot,
+  buildExpectedSchema, diff, emit, introspectSqlite, type SchemaSnapshot,
 } from "@metaobjectsdev/migrate-ts";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobjectsdev/metadata";
+import { isInetResidue } from "../src/drift-residue.ts";
 import { loadMetadataDir } from "../src/load-metadata.ts";
 import { CANONICAL_DIR } from "../src/paths.ts";
 
@@ -71,16 +72,8 @@ function expectedFor(root: MetaRoot): SchemaSnapshot {
   });
 }
 
-/**
- * `field.inet` has no SQLite storage class of its own: the canonical model's `all_types`
- * table declares two, SQLite introspects them back as TEXT, and the diff reports a blocked
- * `text -> inet` change on every run. That is a property of the table, not of any report
- * (nothing here reads `all_types`), and it is the only residue the canonical model leaves.
- * It is named, not swallowed: a residual change on any OTHER table or on any view fails.
- */
-const INET_COLUMNS: ReadonlySet<string> = new Set(["inetVal", "inet6Val"]);
-const isInetResidue = (c: Change): boolean =>
-  c.kind === "change-column-type" && c.table === "all_types" && INET_COLUMNS.has(c.column) && c.to.kind === "inet";
+// The known `field.inet`-on-SQLite residue is named once in `../src/drift-residue.ts` —
+// with the view-recreation it silences — so the lanes that tolerate it cannot drift apart.
 
 /** build -> introspect -> diff -> emit -> apply. */
 async function migrate(root: MetaRoot) {
@@ -153,7 +146,7 @@ describe("report views — canonical model on real SQLite", () => {
     ({ expected } = await migrate(canonical));
   });
 
-  test("CONVERGENCE: the nine canonical views apply, then a second and third migrate propose nothing (the emitter is deterministic)", async () => {
+  test("CONVERGENCE: the canonical views apply, then a second and third migrate propose nothing (the emitter is deterministic)", async () => {
     const views = (await select(`SELECT name FROM sqlite_master WHERE type = 'view' ORDER BY name`)).map((r) => r.name);
     for (const v of [
       "v_program_minutes", "v_fitness_totals", "v_programs_by_month",

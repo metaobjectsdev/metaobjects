@@ -556,6 +556,8 @@ there.
 | Grains | Cube offers every granularity on a time dimension. | `@grains` is carried as `meta.grains`, not enforced. |
 | Ad-hoc queries | Cube lets a caller pick any members. | Nothing here checks the numbers for a combination no report declares. |
 | Rollup freshness | Cube refreshes a rollup on its refresh key, and the exporter writes none, so Cube's default applies. | A rollup can trail the table until it refreshes. The view is never stale. A report with a relative date gets no rollup for this reason. |
+| Empty scope | A report with no dimension whose scope reads no rows returns one row from the view: the count `0` and each measure's `@default`. Cube answers from the rollup, which is empty, and sums it to null for every measure, the count and the default included. | `ProgramsEmptyScope` is the one canonical report where the rows differ; the live check requires both answers, so the difference stays an executed check. |
+| Several grains | A report that lists one time dimension at several grains gets a rollup naming that dimension once per grain. A Cube query names a time dimension once, at one granularity, so Cube 1.7.43 matches no query to that rollup. | The rollup is declared and never used; Cube answers from the source table and the rows equal the view's. `ProgramsOverTime` is the canonical case. |
 | Encodings | Cube's REST API sends numbers as strings and time buckets as `YYYY-MM-DDTHH:MM:SS.sss`. Where a rollup sends `60`, the view sends `60.0000000000000000`, and where Cube sends `2026-05-01T00:00:00.000`, the view sends `2026-05-01`. | Clients normalize them. The live check does, before it compares rows. |
 
 ## Checking it
@@ -584,13 +586,13 @@ container and the network are removed on every exit path. It checks six things o
 
 1. The generated canonical model is the reviewed golden.
 2. Cube compiles it and lists every cube and member the files declare.
-3. For each of the nine canonical reports, the Cube query above, answered from the report's
+3. For each of the canonical reports, the Cube query above, answered from the report's
    rollup when the model has one (the lane asserts the rollup name in `usedPreAggregations`),
    returns the rows of `SELECT * FROM <view>`, after the normalization the Encodings row above
-   describes. The two `@spine` reports, `ProgramRoster` and `ProgramLongWeeks`, are queried
-   through their Cube views, and their 7 rows each include the programs with no weeks (and, for
-   `ProgramLongWeeks`, the two whose weeks are all short); `FitnessTotalsFilled`, a report of
-   defaulted measures, is answered from its rollup.
+   describes. The three `@spine` reports, `ProgramRoster`, `ProgramLongWeeks` and
+   `ProgramSessions`, are queried through their Cube views, and their 11 rows each include the
+   programs with no weeks (and, for `ProgramLongWeeks`, the two whose weeks are all short);
+   `FitnessTotalsFilled`, a report of defaulted measures, is answered from its rollup.
 4. Every case of the mapping corpus that has an expected tree (34 of the 44: 32 Postgres and
    2 MySQL) compiles in the same Cube, and each `title` and `description` it declares comes back
    from `/v1/meta` as declared. Compiling runs no SQL, so the MySQL cases compile against the

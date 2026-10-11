@@ -39,6 +39,7 @@ import { JOIN_PATH_SEPARATOR, cubeModel, defineConfig, runGen, servedReport } fr
 import {
   DOC_ATTR_DESCRIPTION,
   DOC_ATTR_TITLE,
+  FIELD_ATTR_INT_VALUE_MAP,
   GRAIN_HOUR,
   OBJECT_REPORT_ATTR_FILTER,
   OBJECT_REPORT_ATTR_SEGMENT,
@@ -109,7 +110,7 @@ const CORPUS_BUDGET_MS = CORPUS_CASES.length * CASE_BUDGET_MS;
  * `<cube>__<rollup>` in snake case, TWO underscores (executed on 1.7.43); undefined means Table F
  * emits no rollup and Cube reads the source tables (a relative date, or a `@spine` report, which
  * is a Cube view). `rows` is the row count on canonical/seed.sql: a `@spine` report has one row
- * per program, the four with no weeks (and, for ProgramLongWeeks, the two whose weeks are all
+ * per program, the eight with no weeks (and, for ProgramLongWeeks, the two whose weeks are all
  * short) included.
  */
 interface ExpectedReport {
@@ -117,6 +118,19 @@ interface ExpectedReport {
   readonly view: string;
   readonly preAggregation: string | undefined;
   readonly rows: number;
+  /**
+   * A known difference (docs/features/cube-export.md, "Where a Cube query and the view differ"):
+   * the rows Cube answers where the view's differ. The test requires Cube to send exactly these
+   * and the view NOT to, so the difference stays an executed check rather than a skipped one.
+   */
+  readonly cubeRows?: readonly Record<string, string | null>[];
+  /**
+   * The model declares a rollup for this report and Cube never matches it, so it answers from the
+   * source table (`preAggregation` is then undefined). Today that is a report listing ONE time
+   * dimension at several grains: the `time_dimensions` entry repeats the dimension and Cube 1.7.43
+   * matches no query to it (a query names a time dimension once, at one granularity).
+   */
+  readonly unusedRollup?: true;
 }
 
 const TABLE_I: readonly ExpectedReport[] = [
@@ -126,9 +140,23 @@ const TABLE_I: readonly ExpectedReport[] = [
   { report: "ProgramsByWeek", view: "v_programs_by_week", preAggregation: "dev_pre_aggregations.program__programs_by_week", rows: 5 },
   { report: "RecentPrograms", view: "v_recent_programs", preAggregation: undefined, rows: 1 },
   { report: "AssetActivity", view: "v_asset_activity", preAggregation: "dev_pre_aggregations.asset__asset_activity", rows: 2 },
-  { report: "ProgramRoster", view: "v_program_roster", preAggregation: undefined, rows: 7 },
-  { report: "ProgramLongWeeks", view: "v_program_long_weeks", preAggregation: undefined, rows: 7 },
+  { report: "ProgramRoster", view: "v_program_roster", preAggregation: undefined, rows: 11 },
+  { report: "ProgramLongWeeks", view: "v_program_long_weeks", preAggregation: undefined, rows: 11 },
   { report: "FitnessTotalsFilled", view: "v_fitness_totals_filled", preAggregation: "dev_pre_aggregations.week__fitness_totals_filled", rows: 1 },
+  { report: "MeasurementStats", view: "v_measurement_stats", preAggregation: "dev_pre_aggregations.measurement__measurement_stats", rows: 1 },
+  { report: "MeasurementStatsFilled", view: "v_measurement_stats_filled", preAggregation: "dev_pre_aggregations.measurement__measurement_stats_filled", rows: 1 },
+  { report: "AssetDays", view: "v_asset_days", preAggregation: "dev_pre_aggregations.asset__asset_days", rows: 1 },
+  { report: "AllTypesBreakdown", view: "v_all_types_breakdown", preAggregation: undefined, rows: 2 },
+  { report: "ProgramsOverTime", view: "v_programs_over_time", preAggregation: undefined, rows: 7, unusedRollup: true },
+  { report: "LiveIntroPrograms", view: "v_live_intro_programs", preAggregation: "dev_pre_aggregations.program__live_intro_programs", rows: 2 },
+  // No dimension, no row in scope: the view reads one row with the count 0 and the default; Cube
+  // sums the (empty) rollup, which is null for every measure, the count and the default included.
+  { report: "ProgramsEmptyScope", view: "v_programs_empty_scope", preAggregation: "dev_pre_aggregations.program__programs_empty_scope", rows: 1, cubeRows: [{ avgPriceOrMinusOne: null, programs: null }] },
+  { report: "WeekShapes", view: "v_week_shapes", preAggregation: "dev_pre_aggregations.week__week_shapes", rows: 3 },
+  { report: "SessionsByProgram", view: "v_sessions_by_program", preAggregation: "dev_pre_aggregations.session__sessions_by_program", rows: 3 },
+  { report: "ProgramSessions", view: "v_program_sessions", preAggregation: undefined, rows: 11 },
+  { report: "NodesByParent", view: "v_nodes_by_parent", preAggregation: "dev_pre_aggregations.node__nodes_by_parent", rows: 3 },
+  { report: "AuthsByKind", view: "v_auths_by_kind", preAggregation: "dev_pre_aggregations.auth__auths_by_kind", rows: 3 },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -254,15 +282,17 @@ describe(`cube-model live check (${CUBE_IMAGE}, development mode)`, () => {
   test.skipIf(skip)("Table I covers exactly the canonical model's served reports", () => {
     const served = requireCanonical().objects().filter(servedReport).map((r) => r.name).sort();
     expect(served).toEqual(TABLE_I.map((e) => e.report).sort());
+    // Loop-invariant: walk and parse the golden tree ONCE, not once per report.
+    const golden = readTree(CANONICAL_EXPECTED_DIR);
+    const views = declaredViews(golden).map((v) => String(v.name));
     for (const want of TABLE_I) {
       const report = findReport(want.report);
       expect(reportReadSource(report)?.physicalName).toBe(want.view);
       // Table I's rollup column agrees with the golden: a rollup named after the report on its
       // `@from` cube exactly when Table I expects Cube to answer from one.
       const cube = reportShape(report, requireCanonical()).from.name;
-      expect(declaredRollups(readTree(CANONICAL_EXPECTED_DIR), cube).includes(want.report)).toBe(want.preAggregation !== undefined);
+      expect(declaredRollups(golden, cube).includes(want.report)).toBe(want.preAggregation !== undefined || want.unusedRollup === true);
       // And a Cube view named after the report exactly when it declares @spine.
-      const views = declaredViews(readTree(CANONICAL_EXPECTED_DIR)).map((v) => String(v.name));
       expect(views.includes(want.report)).toBe(reportSpine(report) !== undefined);
     }
   });
@@ -292,10 +322,15 @@ describe(`cube-model live check (${CUBE_IMAGE}, development mode)`, () => {
         );
       }
       expect(viewRows.length).toBe(want.rows);
-      if (!rowsMatch) {
+      if (!rowsMatch && want.cubeRows === undefined) {
         console.error(`${want.report}: Cube's SQL for ${JSON.stringify(plan.query)}:\n${await cubeSql(s, plan.query)}`);
       }
-      expect(cubeRows).toEqual(viewRows);
+      if (want.cubeRows !== undefined) {
+        expect(cubeRows).toEqual([...want.cubeRows]);
+        expect(cubeRows).not.toEqual(viewRows);
+      } else {
+        expect(cubeRows).toEqual(viewRows);
+      }
     }, TEST_TIMEOUT_MS);
   }
 

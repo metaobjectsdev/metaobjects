@@ -480,7 +480,7 @@ the empty rows, `isNull=true` matches nothing, and a sort on it orders the same 
 engine.
 
 Gated by [`fixtures/api-contract-conformance/report/`](../../fixtures/api-contract-conformance/report/)
-(16 scenarios), **generated lane only, on all five ports**, for the reason `projection/`
+(22 scenarios), **generated lane only, on all five ports**, for the reason `projection/`
 gives. The columns, their types and the per-port generated files are in
 [reporting.md](reporting.md#how-a-report-is-served).
 

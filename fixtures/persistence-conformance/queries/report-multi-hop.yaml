@@ -1,0 +1,59 @@
+name: report-multi-hop
+description: |
+  Two-hop @via. Session reaches its program through Session.fkWeek.fkProgram, so
+  SessionsByProgram joins weeks and programs, and ProgramSessions takes its rows from the
+  program at the end of that two-hop path (@spine).
+
+    Alpha (1): week 10 holds sessions 30 and 40, week 11 holds 50
+    Beta  (2): week 20 holds 25
+    Gamma (3): no weeks
+    Delta (4): week 40 holds no sessions
+
+  ProgramSessions keeps Gamma and Delta with `sessions` 0, `sessionMinutes` null and the
+  @default: 0 measure 0. The undefaulted sum is null, the defaulted one is 0.
+seed-data: |
+  INSERT INTO "programs" ("id","title","priceCents","status","created_ts") VALUES
+    (1, 'Alpha', 1000, 'PUBLISHED', '2026-01-01T00:00:00'),
+    (2, 'Beta',  2000, 'PUBLISHED', '2026-01-01T00:00:00'),
+    (3, 'Gamma', 3000, 'DRAFT',     '2026-01-01T00:00:00'),
+    (4, 'Delta', 4000, 'DRAFT',     '2026-01-01T00:00:00');
+  INSERT INTO "weeks" ("id","programId","label","durationMinutes") VALUES
+    (10, 1, 'W1', 30),
+    (11, 1, 'W2', 30),
+    (20, 2, 'W1', 30),
+    (40, 4, 'W1', 30);
+  INSERT INTO "sessions" ("id","weekId","minutes") VALUES
+    (100, 10, 30),
+    (101, 10, 40),
+    (102, 11, 50),
+    (200, 20, 25);
+queries:
+  - name: grouped-by-a-dimension-two-hops-away
+    op: list
+    entity: SessionsByProgram
+    sort: [{ field: weekKey, dir: asc }]
+    expect:
+      - { programTitle: "Alpha", weekKey: "10", sessions: "2", sessionMinutes: "70" }
+      - { programTitle: "Alpha", weekKey: "11", sessions: "1", sessionMinutes: "50" }
+      - { programTitle: "Beta", weekKey: "20", sessions: "1", sessionMinutes: "25" }
+  - name: spine-over-a-two-hop-path
+    op: list
+    entity: ProgramSessions
+    sort: [{ field: programKey, dir: asc }]
+    expect:
+      - { programKey: "1", programTitle: "Alpha", sessions: "3", sessionMinutes: "120", sessionMinutesOrZero: "120" }
+      - { programKey: "2", programTitle: "Beta", sessions: "1", sessionMinutes: "25", sessionMinutesOrZero: "25" }
+      - { programKey: "3", programTitle: "Gamma", sessions: "0", sessionMinutes: null, sessionMinutesOrZero: "0" }
+      - { programKey: "4", programTitle: "Delta", sessions: "0", sessionMinutes: null, sessionMinutesOrZero: "0" }
+  - name: count-spine-rows
+    op: count
+    entity: ProgramSessions
+    expect: 4
+  - name: filter-on-the-defaulted-measure
+    op: list
+    entity: ProgramSessions
+    filter: { sessionMinutesOrZero: { eq: 0 } }
+    sort: [{ field: programKey, dir: asc }]
+    expect:
+      - { programKey: "3", programTitle: "Gamma", sessions: "0", sessionMinutes: null, sessionMinutesOrZero: "0" }
+      - { programKey: "4", programTitle: "Delta", sessions: "0", sessionMinutes: null, sessionMinutesOrZero: "0" }

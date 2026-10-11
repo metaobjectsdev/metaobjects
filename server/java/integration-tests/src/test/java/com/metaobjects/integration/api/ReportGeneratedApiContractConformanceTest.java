@@ -23,9 +23,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * FR-044 Plan 3 — the Java GENERATED-controller lane for the view-backed-report
- * api-contract sub-corpus. Boots the four GENERATED Spring report controllers on one
- * embedded Tomcat, each behind an in-memory repository seam seeded with what its view
- * returns, and drives all sixteen scenarios.
+ * api-contract sub-corpus. Boots the corpus's served reports' GENERATED Spring controllers
+ * on one embedded Tomcat, each behind an in-memory repository seam seeded with what its
+ * view returns, and drives every scenario of the corpus. (Counts move with the fixture;
+ * the pinned numbers live in {@link #theCorpusCarriesItsTwentyTwoScenarios()} and
+ * {@link ReportCorpus#SERVED}, not in prose.)
  *
  * <p>Generated lane ONLY, on purpose and on every port (see the sub-corpus README). What
  * is under test is whether the port's GENERATOR emits a read route for a served report,
@@ -61,9 +63,9 @@ final class ReportGeneratedApiContractConformanceTest {
     }
 
     @Test
-    void theCorpusCarriesItsSixteenScenarios() {
+    void theCorpusCarriesItsTwentyTwoScenarios() {
         // A scenarios directory that resolved to nothing would leave this lane green and empty.
-        assertEquals(16, SCENARIOS.size());
+        assertEquals(22, SCENARIOS.size());
     }
 
     @ParameterizedTest(name = "{0}")
