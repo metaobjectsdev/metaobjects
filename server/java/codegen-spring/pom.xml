@@ -160,10 +160,10 @@
                  resource IS the source, one file, one owner. See
                  com.metaobjects.generator.GeneratorRegistry.EJECT_RESOURCE_ROOT.
 
-                 Deliberately excludes "extractor" (ExtractorCodeGenerator — fused into
-                 "entity", not separately wirable) and "template" (TemplateScopeGenerator —
-                 a generic declarative primitive with no emit logic to own); see
-                 GeneratorRegistry's javadoc on those two entries. -->
+                 "entity" and "extractor" are not in this list because codegen-base owns
+                 them: its pom ships their source the same way. "template"
+                 (TemplateScopeGenerator) ships nowhere: it is a generic declarative
+                 primitive with no emit logic to own; see GeneratorRegistry. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-resources-plugin</artifactId>

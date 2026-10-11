@@ -34,46 +34,51 @@ public class EjectSupportTest {
     }
 
     @Test
-    public void javasFusedExtractorGenericTemplateAndEntangledEntityAreRegisteredButNotEjectable() {
-        List<EjectSupport.Entry> all = EjectSupport.allEntries();
-        boolean sawJavaExtractor = false, sawJavaTemplate = false, sawJavaEntity = false;
-        for (EjectSupport.Entry e : all) {
-            if (e.port == EjectSupport.Port.JAVA && e.stableName.equals("extractor")) {
-                sawJavaExtractor = true;
-                assertNull("extractor is fused into entity — not ejectable on Java", e.resourcePath);
-            }
-            if (e.port == EjectSupport.Port.JAVA && e.stableName.equals("template")) {
-                sawJavaTemplate = true;
-                assertNull("template is a generic declarative primitive — not ejectable", e.resourcePath);
-            }
-            if (e.port == EjectSupport.Port.JAVA && e.stableName.equals("entity")) {
-                sawJavaEntity = true;
-                assertNull("entity lives in codegen-base and is entangled with the fused "
-                        + "extractor plus a same-package writer hierarchy — not ejectable on Java",
-                        e.resourcePath);
-            }
+    public void onJavaOnlyTheGenericTemplateIsRegisteredButNotEjectable() {
+        java.util.Set<String> notEjectable = new java.util.TreeSet<>();
+        for (EjectSupport.Entry e : EjectSupport.allEntries()) {
+            if (e.port == EjectSupport.Port.JAVA && e.resourcePath == null) notEjectable.add(e.stableName);
         }
-        assertTrue(sawJavaExtractor);
-        assertTrue(sawJavaTemplate);
-        assertTrue(sawJavaEntity);
+        // PINNED: template is the Mustache primitive, with no emit logic to own. entity and
+        // extractor were the other two until ADR-0034 Amendment 6; a generator that joins
+        // this set has to be ruled on, not slipped in.
+        assertEquals(java.util.Set.of("template"), notEjectable);
     }
 
     @Test
-    public void kotlinsEntityIsEjectableAndUnambiguousSinceJavasIsNot() {
+    public void entityAndExtractorAreEjectableOnBothPortsAndSoNeedAPort() {
         Map<String, List<EjectSupport.Entry>> catalog = EjectSupport.ejectableByStableName();
-        assertEquals(1, catalog.get("entity").size());
-        EjectSupport.Resolution r = EjectSupport.resolve("entity", catalog, null, null);
-        assertTrue(r.ok());
-        assertEquals(EjectSupport.Port.KOTLIN, r.entry.port);
+        for (String name : List.of("entity", "extractor")) {
+            assertEquals(name, 2, catalog.get(name).size());
+            EjectSupport.Resolution noHint = EjectSupport.resolve(name, catalog, null, null);
+            assertFalse(name, noHint.ok());
+            assertTrue(noHint.error, noHint.error.contains("-Dport"));
+
+            EjectSupport.Resolution java = EjectSupport.resolve(name, catalog, EjectSupport.Port.JAVA, null);
+            assertTrue(name, java.ok());
+            assertEquals(EjectSupport.Port.JAVA, java.entry.port);
+            assertTrue(java.entry.classname,
+                    java.entry.classname.startsWith("com.metaobjects.generator.direct.object.javacode."));
+
+            EjectSupport.Resolution kotlin = EjectSupport.resolve(name, catalog, EjectSupport.Port.KOTLIN, null);
+            assertTrue(name, kotlin.ok());
+            assertEquals(EjectSupport.Port.KOTLIN, kotlin.entry.port);
+        }
     }
 
     @Test
-    public void kotlinsExtractorIsEjectable() {
-        List<EjectSupport.Entry> all = EjectSupport.allEntries();
-        boolean found = all.stream().anyMatch(e ->
-                e.port == EjectSupport.Port.KOTLIN && e.stableName.equals("extractor")
-                        && e.resourcePath != null);
-        assertTrue("Kotlin's extractor is a standalone generator, unlike Java's fused one", found);
+    public void onlyTheJavaExtractorCarriesAWiringNoteAndItNamesTheOwnedClass() {
+        for (EjectSupport.Entry e : EjectSupport.allEntries()) {
+            boolean javaExtractor = e.port == EjectSupport.Port.JAVA && e.stableName.equals("extractor");
+            if (!javaExtractor) {
+                assertNull(e.port.id + " " + e.stableName, e.wiringNote("com.acme.codegen"));
+                continue;
+            }
+            String note = e.wiringNote("com.acme.codegen");
+            assertTrue(note, note.contains(
+                    "<classname>com.acme.codegen.ExtractorCodeGenerator</classname>"));
+            assertFalse(note, note.contains("{owned}"));
+        }
     }
 
     @Test
@@ -165,6 +170,34 @@ public class EjectSupportTest {
     @Test(expected = IllegalStateException.class)
     public void rewritePackageRejectsSourceWithNoPackageLine() {
         EjectSupport.rewritePackage("class Foo {}", "com.acme.codegen");
+    }
+
+    /**
+     * ADR-0034 Amendment 6: an owned generator extends and calls the classes copied with it,
+     * never the packaged ones. So an import of a copied class follows the copy, and an
+     * import of anything else (here the {@code extractor} generator, which is not part of
+     * {@code entity}'s copy, and a class whose name merely starts like a copied one) stays.
+     */
+    @Test
+    public void anImportOfAClassCopiedAlongFollowsTheCopyAndNoOtherImportMoves() {
+        EjectSupport.Entry entity = EjectSupport.resolve(
+                "entity", EjectSupport.ejectableByStableName(), EjectSupport.Port.JAVA, null).entry;
+        String src = "package com.metaobjects.generator.direct.object.javacode;\n\n"
+                + "import com.metaobjects.generator.direct.object.BaseObjectCodeWriter;\n"
+                + "import com.metaobjects.generator.direct.object.BaseObjectCodeWriterFactory;\n"
+                + "import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;\n"
+                + "import com.metaobjects.generator.direct.GenerationContext;\n\n"
+                + "public class Foo extends BaseObjectCodeWriter {}\n";
+
+        assertEquals("package com.metaobjects.generator.direct.object.javacode;\n\n"
+                + "import com.acme.codegen.BaseObjectCodeWriter;\n"
+                + "import com.metaobjects.generator.direct.object.BaseObjectCodeWriterFactory;\n"
+                + "import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;\n"
+                + "import com.metaobjects.generator.direct.GenerationContext;\n\n"
+                + "public class Foo extends BaseObjectCodeWriter {}\n",
+                EjectSupport.rewriteCopiedImports(src, entity.sources(), "com.acme.codegen"));
+        assertTrue(EjectSupport.ownedSource(entity, src, "com.acme.codegen")
+                .startsWith("package com.acme.codegen;\n"));
     }
 
     // ------------------------------------------------------------------------------------

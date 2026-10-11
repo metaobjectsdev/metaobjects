@@ -40,6 +40,12 @@ import java.util.stream.Collectors;
  * codegen/src/main/(java|kotlin)/<package path>/}. On first use it also writes {@code
  * codegen/pom.xml}.
  *
+ * <p><b>The rest of a generator's emit comes with it.</b> The Java {@code entity} generator
+ * emits each class body through writer classes, and {@code extractor} reads its names from
+ * one. Those classes ({@link EjectSupport.Entry#with}) are copied into the same package as
+ * the generator, and the imports the copies have of one another are pointed at the copies
+ * ({@link EjectSupport#ownedSource}), so the owned generator extends and calls owned code.
+ *
  * <p><b>The helper runtime comes too.</b> The Java controller, DTO and repository output
  * imports helper classes ({@code FilterParser}, {@code PatchValidationException},
  * {@code ConstraintErrors}, …) that are not core (ADR-0034 Amendment 3). Ejecting such a
@@ -160,28 +166,40 @@ public class MetaDataEjectMojo extends AbstractMojo {
         // with no single obvious app module fails the whole call, not half of it.
         Path runtimeRoot = runtime.isEmpty() ? null : resolveRuntimeRoot();
 
+        // Two generators named in one call may share a class copied with each of them; it
+        // is written once.
+        Set<Path> copied = new LinkedHashSet<>();
         for (EjectSupport.Resolution r : resolved) {
             EjectSupport.Entry e = r.entry;
             portsTouched.add(e.port);
 
-            String reference;
-            try {
-                reference = readResource(e.resourcePath);
-            } catch (IOException ex) {
-                throw new MojoExecutionException(
-                        "Could not read reference source for \"" + e.stableName + "\" at classpath "
-                            + "resource " + e.resourcePath, ex);
-            }
-            String rewritten = EjectSupport.rewritePackage(reference, pkg);
-            if (!e.runtime.isEmpty()) {
-                rewritten = EjectSupport.rewriteRuntimePackage(rewritten, runtimePkg);
-            }
-
             String langDir = e.port == EjectSupport.Port.KOTLIN ? "kotlin" : "java";
             Path pkgDir = codegenRoot.resolve("src/main/" + langDir).resolve(pkg.replace('.', '/'));
-            Path target = pkgDir.resolve(e.simpleName() + "." + e.port.extension);
 
-            reportEject(e, target, rewritten, write(pkgDir, target, rewritten, force));
+            for (String source : e.sources()) {
+                String simpleName = EjectSupport.simpleNameOf(source);
+                Path target = pkgDir.resolve(simpleName + "." + e.port.extension);
+                if (!copied.add(target)) continue;
+
+                boolean generator = source.equals(e.classname);
+                String resource = e.resourceOf(source);
+                String reference;
+                try {
+                    reference = readResource(resource);
+                } catch (IOException ex) {
+                    throw new MojoExecutionException(
+                            "Could not read reference source for \"" + e.stableName + "\" at classpath "
+                                + "resource " + resource, ex);
+                }
+                String rewritten = EjectSupport.ownedSource(e, reference, pkg);
+                if (generator && !e.runtime.isEmpty()) {
+                    rewritten = EjectSupport.rewriteRuntimePackage(rewritten, runtimePkg);
+                }
+
+                String what = generator ? "\"" + e.stableName + "\""
+                        : simpleName + " (with \"" + e.stableName + "\")";
+                reportEject(what, target, rewritten, write(pkgDir, target, rewritten, force));
+            }
             classnameChanges.add("  " + e.stableName + ": " + e.classname + "  ->  "
                     + pkg + "." + e.simpleName());
         }
@@ -193,6 +211,11 @@ public class MetaDataEjectMojo extends AbstractMojo {
         }
 
         printWiring(pomWritten, classnameChanges);
+        // Wiring a generator's entry adds to the generic report, in the order requested.
+        for (EjectSupport.Resolution r : resolved) {
+            String note = r.entry.wiringNote(pkg);
+            if (note != null) getLog().info(note);
+        }
         if (!runtime.isEmpty()) {
             printRuntimeWiring(runtimeRoot, runtimePkg, requested, codegenRoot);
         }
@@ -328,15 +351,15 @@ public class MetaDataEjectMojo extends AbstractMojo {
         }
     }
 
-    private void reportEject(EjectSupport.Entry e, Path target, String rewritten, WriteStatus status)
+    private void reportEject(String what, Path target, String rewritten, WriteStatus status)
             throws MojoExecutionException {
         switch (status) {
             case CREATED:
-                getLog().info("Ejected \"" + e.stableName + "\" -> " + target
+                getLog().info("Ejected " + what + " -> " + target
                         + ". You own it now (ADR-0034 scaffold-and-own).");
                 break;
             case REPLACED:
-                getLog().info("Ejected \"" + e.stableName + "\" -> " + target + ", REPLACING the file "
+                getLog().info("Ejected " + what + " -> " + target + ", REPLACING the file "
                         + "that was there (-Dforce=true).");
                 break;
             case PRESERVED:
@@ -567,12 +590,26 @@ public class MetaDataEjectMojo extends AbstractMojo {
             Path found = walk.filter(p -> p.getFileName().toString().equals(filename))
                     .findFirst().orElse(null);
             if (found == null) return null;
-            String owned = Files.readString(found, StandardCharsets.UTF_8);
-            String reference = readResource(e.resourcePath);
-            EjectSupport.Comparison cmp = EjectSupport.compare(owned, reference);
-            return cmp.verdict == EjectSupport.Verdict.IDENTICAL
+            // The generator is owned together with every class copied with it, so the verdict
+            // is over all of them, each against what eject would write beside this copy. One
+            // that has gone missing counts as wholly behind.
+            String ownedPackage = srcRoot.relativize(found.getParent()).toString()
+                    .replace(found.getFileSystem().getSeparator(), ".");
+            int behind = 0;
+            int ownedOnly = 0;
+            for (String source : e.sources()) {
+                Path file = found.resolveSibling(
+                        EjectSupport.simpleNameOf(source) + "." + e.port.extension);
+                String owned = Files.exists(file) ? Files.readString(file, StandardCharsets.UTF_8) : "";
+                String reference = EjectSupport.rewriteCopiedImports(
+                        readResource(e.resourceOf(source)), e.sources(), ownedPackage);
+                EjectSupport.Comparison cmp = EjectSupport.compare(owned, reference);
+                behind += cmp.behind;
+                ownedOnly += cmp.ownedOnly;
+            }
+            return behind == 0 && ownedOnly == 0
                     ? "[owned — identical]"
-                    : "[owned — DIFFERS: " + cmp.behind + " behind, " + cmp.ownedOnly + " of your own]";
+                    : "[owned — DIFFERS: " + behind + " behind, " + ownedOnly + " of your own]";
         } catch (IOException ex) {
             return "[owned — could not compare: " + ex.getMessage() + "]";
         }

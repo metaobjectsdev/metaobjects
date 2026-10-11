@@ -218,11 +218,9 @@ public abstract class BaseObjectCodeWriter extends FileDirectWriter<BaseObjectCo
             // Deleting this line is the documented gesture for taking ownership of the file.
             List<String> docs = Arrays.asList(
                     "GENERATED — regenerated from metadata. Delete this line to own this file.",
-                    "ObjectCodeWriter:         " + getClass().getName(),
                     "MetaObject:               " + mo.getName(),
                     "SuperObject:              " + (superObject != null ? superObject.getName() : ""),
                     "MetaDataLoader:           " + getLoader().toString(),
-                    "Generated On:             " + (new Date()).toString(),
                     "Context:                  " + (context != null ? "initialized" : "null")
             );
             

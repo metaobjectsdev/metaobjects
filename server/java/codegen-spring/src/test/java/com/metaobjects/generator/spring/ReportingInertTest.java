@@ -72,8 +72,6 @@ public class ReportingInertTest extends SharedRegistryTestBase {
         "repository", "acme/shop/StoreTotalsRepository.java",
         "filter-allowlist", "acme/shop/StoreTotalsFilterAllowlist.java",
         "routes", "acme/shop/StoreTotalsController.java");
-    private static final java.util.regex.Pattern GENERATED_ON =
-        java.util.regex.Pattern.compile("Generated On:[^\\n]*");
 
     private static Path model(String variant) {
         return SpringTestFixtures.findCorpusRoot().getParent()
@@ -121,10 +119,7 @@ public class ReportingInertTest extends SharedRegistryTestBase {
         }
         try (Stream<Path> s = Files.walk(outDir)) {
             for (Path p : s.filter(Files::isRegularFile).collect(Collectors.toList())) {
-                // The model tier stamps a wall-clock "Generated On:" line into every class
-                // header; two runs a second apart differ there and nowhere else by design.
-                files.put(outDir.relativize(p).toString(),
-                    GENERATED_ON.matcher(Files.readString(p, StandardCharsets.UTF_8)).replaceAll("Generated On: <time>"));
+                files.put(outDir.relativize(p).toString(), Files.readString(p, StandardCharsets.UTF_8));
             }
         }
         return files;
@@ -204,7 +199,6 @@ public class ReportingInertTest extends SharedRegistryTestBase {
         // Each is compared above on its error message alone, which proves nothing about its
         // output. Pinned by name so a generator that starts throwing cannot drop out
         // silently; the list may only shrink.
-        //   extractor  not a Generator at all: fused into `entity`, which emits it
         //   template   needs a `template` arg (no default template exists)
         List<String> threw = new ArrayList<>();
         StringBuilder why = new StringBuilder();
@@ -216,7 +210,7 @@ public class ReportingInertTest extends SharedRegistryTestBase {
             }
         }
         threw.sort(null);
-        assertEquals(why.toString(), List.of("extractor", "template"), threw);
+        assertEquals(why.toString(), List.of("template"), threw);
     }
 
     @Test

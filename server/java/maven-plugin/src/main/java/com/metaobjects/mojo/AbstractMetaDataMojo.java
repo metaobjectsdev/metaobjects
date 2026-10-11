@@ -14,6 +14,7 @@ import com.metaobjects.generator.template.TemplateScopeGenerator;
 import com.metaobjects.loader.LoaderConfigurable;
 import com.metaobjects.loader.LoaderConfigurationConstants;
 import com.metaobjects.loader.LoaderOptions;
+import com.metaobjects.generator.EmitsObjectExtractors;
 import com.metaobjects.generator.EmitsPhysicalNameConstants;
 import com.metaobjects.loader.MetaDataLoader;
 import org.apache.maven.plugin.AbstractMojo;
@@ -199,9 +200,16 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         // aggregation point that makes it safe to default from the run instead: the same
         // decision TypeScript makes from its `emitsNames` generator marker and C# from
         // GeneratorRegistry.IncludesNames. An explicit `<useNames>` in the pom still wins.
+        //
+        // The same aggregation answers a second question for the Java `entity` generator: is
+        // a separate `extractor` generator in this run? `entity` writes the <Name>Extractor
+        // classes itself unless one is, so a run holding both has one emitter per file
+        // rather than two that agree until the owned one is edited.
         for ( int i = 0; i < generatorImpls.size(); i++ ) {
+            Map<String, String> derived =
+                EmitsPhysicalNameConstants.deriveUseNames( argsByGenerator.get(i), generatorImpls );
             generatorImpls.get(i).setArgs(
-                EmitsPhysicalNameConstants.deriveUseNames( argsByGenerator.get(i), generatorImpls ) );
+                EmitsObjectExtractors.deriveEmitExtractors( derived, generatorImpls ) );
         }
 
         return generatorImpls;

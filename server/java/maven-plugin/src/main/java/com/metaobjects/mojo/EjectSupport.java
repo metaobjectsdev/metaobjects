@@ -62,6 +62,12 @@ public final class EjectSupport {
          *  eject copies alongside it (empty for every Kotlin generator — see
          *  {@link #allEntries()}). */
         public final List<String> runtime;
+        /** Wiring the generic eject report cannot know, with {@code {owned}} standing for the
+         *  owned copy's class name, or {@code null} (see {@link #wiringNote}). */
+        public final String note;
+        /** Fully-qualified names of the classes eject copies WITH this generator into the
+         *  same owned package: the rest of its emit (empty for most generators). */
+        public final List<String> with;
 
         public Entry(Port port, String stableName, String classname, String description, String resourcePath) {
             this(port, stableName, classname, description, resourcePath, List.of());
@@ -69,25 +75,59 @@ public final class EjectSupport {
 
         public Entry(Port port, String stableName, String classname, String description,
                      String resourcePath, List<String> runtime) {
+            this(port, stableName, classname, description, resourcePath, runtime, null, List.of());
+        }
+
+        public Entry(Port port, String stableName, String classname, String description,
+                     String resourcePath, List<String> runtime, String note, List<String> with) {
             this.port = port;
             this.stableName = stableName;
             this.classname = classname;
             this.description = description;
             this.resourcePath = resourcePath;
             this.runtime = List.copyOf(runtime);
+            this.note = note;
+            this.with = List.copyOf(with);
+        }
+
+        /** Every class eject copies for this generator, by fully-qualified name: the
+         *  generator first, then {@link #with}. */
+        public List<String> sources() {
+            List<String> out = new ArrayList<>();
+            out.add(classname);
+            out.addAll(with);
+            return out;
+        }
+
+        /** Classpath resource holding the reference source of {@code source}, one of
+         *  {@link #sources()}. */
+        public String resourceOf(String source) {
+            return source.equals(classname) ? resourcePath
+                    : GeneratorRegistry.EJECT_RESOURCE_ROOT + simpleNameOf(source) + ".java";
+        }
+
+        /** {@link #note} with the owned copy's class name filled in, or {@code null} when
+         *  this generator's only wiring is the {@code <classname>} change. */
+        public String wiringNote(String ownedPackage) {
+            return note == null ? null : note.replace("{owned}", ownedPackage + "." + simpleName());
         }
 
         /** The simple class name — also the filename stem the ejected copy is written as. */
         public String simpleName() {
-            int dot = classname.lastIndexOf('.');
-            return dot < 0 ? classname : classname.substring(dot + 1);
+            return simpleNameOf(classname);
         }
+    }
+
+    /** The simple name of a fully-qualified class name. */
+    public static String simpleNameOf(String classname) {
+        int dot = classname.lastIndexOf('.');
+        return dot < 0 ? classname : classname.substring(dot + 1);
     }
 
     /**
      * Every generator BOTH registries declare, ejectable or not (an entry with a {@code
      * null} {@link Entry#resourcePath} is registered but not ejectable — see {@code
-     * GeneratorRegistry}'s "extractor"/"template" javadoc). Insertion order: Java first,
+     * GeneratorRegistry}'s "template" entry). Insertion order: Java first,
      * then Kotlin, each in its own registry's declared order.
      *
      * <p>Only Java entries carry helper runtime. The Kotlin generators emit their filter
@@ -100,7 +140,8 @@ public final class EjectSupport {
         List<Entry> out = new ArrayList<>();
         for (GeneratorRegistry.GeneratorInfo info : GeneratorRegistry.list().values()) {
             out.add(new Entry(Port.JAVA, info.stableName(), info.classname(), info.description(),
-                    info.ejectResourcePath(), info.ejectRuntime()));
+                    info.ejectResourcePath(), info.ejectRuntime(), info.ejectNote(),
+                    info.ejectWith()));
         }
         for (Map.Entry<String, GeneratorInfo> e : GeneratorRegistryKt.getGENERATOR_REGISTRY().entrySet()) {
             GeneratorInfo info = e.getValue();
@@ -198,8 +239,9 @@ public final class EjectSupport {
     }
 
     // ------------------------------------------------------------------------------------
-    // package rewrite — the ONE edit a copy gets (ADR-0034; the JVM eject design's "the
-    // package rename is the only edit").
+    // package rewrite — the edit every copy gets (ADR-0034; the JVM eject design's "the
+    // package rename is the only edit"). A generator copied WITH other classes gets one
+    // more, which is the same rename seen from the importing side: see rewriteCopiedImports.
     // ------------------------------------------------------------------------------------
 
     private static final Pattern PACKAGE_LINE = Pattern.compile("(?m)^package\\s+[\\w.]+\\s*;?\\s*$");
@@ -218,6 +260,32 @@ public final class EjectSupport {
         boolean semicolon = m.group().stripTrailing().endsWith(";");
         String replacement = "package " + newPackage + (semicolon ? ";" : "");
         return new StringBuilder(source).replace(m.start(), m.end(), replacement).toString();
+    }
+
+    /**
+     * Point every import of a class in {@code copied} (fully-qualified names) at its copy in
+     * {@code ownedPackage}. The classes eject copies for one generator land in one package,
+     * so a bare same-package reference between them already means the copy; an
+     * {@code import} of one would still name the packaged class, and the owned generator
+     * would go on extending and calling code its owner cannot edit. An import of anything
+     * else is left alone.
+     */
+    public static String rewriteCopiedImports(String source, List<String> copied, String ownedPackage) {
+        String out = source;
+        for (String classname : copied) {
+            out = out.replaceAll("(?m)^import\\s+" + Pattern.quote(classname) + "\\s*;",
+                    Matcher.quoteReplacement("import " + ownedPackage + "." + simpleNameOf(classname) + ";"));
+        }
+        return out;
+    }
+
+    /**
+     * The owned copy of {@code reference}, the source of one of {@code entry}'s
+     * {@link Entry#sources()}: its package renamed to {@code ownedPackage}, and its imports
+     * of the classes copied with it pointed at those copies.
+     */
+    public static String ownedSource(Entry entry, String reference, String ownedPackage) {
+        return rewriteCopiedImports(rewritePackage(reference, ownedPackage), entry.sources(), ownedPackage);
     }
 
     // ------------------------------------------------------------------------------------

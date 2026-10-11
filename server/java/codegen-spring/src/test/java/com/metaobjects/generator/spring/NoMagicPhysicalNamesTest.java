@@ -1,5 +1,6 @@
 package com.metaobjects.generator.spring;
 
+import com.metaobjects.generator.EmitsObjectExtractors;
 import com.metaobjects.generator.EmitsPhysicalNameConstants;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorRegistry;
@@ -452,15 +453,17 @@ public class NoMagicPhysicalNamesTest {
         }
         // A registry entry that cannot be built as a Generator is skipped — but the SET of
         // them is PINNED, because silently dropping entries is how a generator escapes this
-        // gate. The pin is GeneratorRegistryConformanceTest.FUSED_NOT_WIRABLE, which owns
+        // gate. The pin is GeneratorRegistryConformanceTest.NOT_WIRABLE, which owns
         // the question and states the reason; asserting it here too means this suite cannot
         // quietly start covering less than that ruling says it does.
         assertEquals("registry entries that are not Generators",
-            new TreeSet<>(GeneratorRegistryConformanceTest.FUSED_NOT_WIRABLE), notGenerators);
+            new TreeSet<>(GeneratorRegistryConformanceTest.NOT_WIRABLE), notGenerators);
         // Derive `useNames` from the suite through the SHIPPED helper — the identical call
         // AbstractMetaDataMojo.buildGenerators makes. Re-implementing it here would leave
-        // the gate measuring the test's own logic.
-        Map<String, String> runArgs = EmitsPhysicalNameConstants.deriveUseNames(args, suite);
+        // the gate measuring the test's own logic. The same goes for who writes the
+        // extractors: the registry holds both `entity` and `extractor`, as a pom may.
+        Map<String, String> runArgs = EmitsObjectExtractors.deriveEmitExtractors(
+            EmitsPhysicalNameConstants.deriveUseNames(args, suite), suite);
         for (Generator g : suite) {
             g.setArgs(new HashMap<>(runArgs));
             g.execute(loader);

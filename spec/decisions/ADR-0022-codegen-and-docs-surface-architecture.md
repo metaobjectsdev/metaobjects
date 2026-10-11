@@ -131,6 +131,9 @@ asserts it, with the one legitimate exception PINNED: `extractor` is fused into 
 this port (`JavaObjectCodeGenerator.execute` emits it), so its output ships but it is not
 separately wirable.
 
+_Update 2026-10-11: that exception is gone. `ExtractorCodeGenerator` is a wirable generator
+and the pinned set is empty ([ADR-0034](ADR-0034-codegen-scaffold-and-own.md) Amendment 6)._
+
 ## Consequences
 
 - One canonical place for the codegen + docs architecture (this ADR). A

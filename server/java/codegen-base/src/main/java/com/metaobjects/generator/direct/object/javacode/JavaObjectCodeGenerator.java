@@ -1,5 +1,13 @@
 package com.metaobjects.generator.direct.object.javacode;
 
+// Eject note (ADR-0034 Amendment 6): `mvn metaobjects:eject -Dnames=entity` copies this file
+// together with JavaCodeGenerator, BaseObjectCodeGenerator and the four writers, into one
+// package. The classes named bare below are those copies. ExtractorCodeGenerator is the
+// `extractor` generator and is NOT part of this copy, so it is imported by name: that is
+// what keeps the ejected copy compiling, and calling the packaged one.
+import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;
+
+import com.metaobjects.generator.EmitsObjectExtractors;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.direct.GenerationContext;
 import com.metaobjects.generator.direct.object.BaseObjectCodeWriter;
@@ -13,6 +21,7 @@ import com.metaobjects.registry.ObjectClassBindingProvider;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Collection;
@@ -33,6 +42,16 @@ import java.util.Map;
  * emission loop (which already iterates EVERY {@code MetaObject} in the loader, so the
  * nested sub-objects referenced via {@code @objectRef} are emitted as their own files) —
  * is inherited unchanged from the legacy framework.</p>
+ *
+ * <p><b>Owning this generator</b> ({@code mvn metaobjects:eject -Dnames=entity -Dport=java},
+ * ADR-0034 Amendment 6). The copy is this file and the rest of its emit, in one package:
+ * {@link JavaCodeGenerator} and {@code BaseObjectCodeGenerator} (arguments, and where each
+ * file lands), and the writers that emit the class body ({@code BaseObjectCodeWriter},
+ * {@link JavaCodeWriter}, {@link PojoAwareCodeWriter}, {@link ValueObjectCodeWriter}). This
+ * file holds which flavors exist and which writer each one gets ({@link #createWriter}),
+ * the {@code ObjectClassBindingProvider} source and its {@code META-INF/services}
+ * registration, and whether the Extractors are written here. To change a field, a
+ * constructor or an accessor, edit the writer.</p>
  */
 public class JavaObjectCodeGenerator extends JavaCodeGenerator {
 
@@ -56,6 +75,16 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
     /** Whether this run emits CONCRETE classes (and therefore a binding provider). */
     private boolean isConcreteFlavor() {
         return FLAVOR_POJO_AWARE.equals(getFlavor()) || FLAVOR_VALUE_OBJECT.equals(getFlavor());
+    }
+
+    /**
+     * Whether this generator writes the Extractors itself: the
+     * {@link EmitsObjectExtractors#ARG_EMIT_EXTRACTORS} arg, default {@code true}. The Maven
+     * plugin sets it to {@code false} when a separate {@code extractor} generator is in the
+     * same {@code <generators>} list, so each file has one emitter.
+     */
+    public boolean emitsExtractors() {
+        return Boolean.parseBoolean(getArg(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS, "true"));
     }
 
     // FQN ("pkg::Name") of the generated provider class self-registered via ServiceLoader.
@@ -99,7 +128,9 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
      * self-registering {@link ObjectClassBindingProvider} covering every generated object
      * (keyed on the package-folded metadata resolution key {@code pkg::Name}, which is what
      * {@link MetaObject#newInstance()} looks up), plus its {@code META-INF/services}
-     * registration so the provider is discoverable via {@code ServiceLoader}.
+     * registration so the provider is discoverable via {@code ServiceLoader}. It also writes
+     * a {@code <Name>Extractor} beside each concrete class, unless
+     * {@link EmitsObjectExtractors#ARG_EMIT_EXTRACTORS} says a separate extractor generator does.
      */
     @Override
     public void execute(MetaDataLoader loader) {
@@ -113,9 +144,9 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
         // to its generated fully-qualified Java class name, reusing the SAME naming hooks
         // the writer used so the binding targets the class that was actually emitted.
         JavaCodeWriter namer = (JavaCodeWriter)
-                createWriter(loader, null, new PrintWriter(new java.io.StringWriter()), globalContext);
+                createWriter(loader, null, new PrintWriter(new StringWriter()), globalContext);
         Map<String, String> fqnToClass = new LinkedHashMap<>();
-        ExtractorCodeGenerator extractorGen = new ExtractorCodeGenerator();
+        ExtractorCodeGenerator extractorGen = emitsExtractors() ? new ExtractorCodeGenerator() : null;
         Collection<MetaObject> metadata =
                 GeneratorUtil.getFilteredMetaData(loader, getFilterClass(), getMetaDataFilters());
         try {
@@ -134,7 +165,9 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
                 // Key on the package-folded resolution key — NOT the dotted Java FQN.
                 fqnToClass.put(mo.getName(), generatedFqn);
                 // Emit a <Name>Extractor alongside each CONCRETE flavored class.
-                extractorGen.emit(getOutputDir(), javaPkg, javaClass, mo.getName());
+                if (extractorGen != null) {
+                    extractorGen.emit(getOutputDir(), javaPkg, javaClass, mo.getName());
+                }
             }
         } catch (IOException e) {
             throw new GeneratorException("Unable to emit generated Extractor: " + e, e);

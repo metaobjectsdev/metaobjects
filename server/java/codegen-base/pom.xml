@@ -91,7 +91,58 @@
                     </execution>
                 </executions>
             </plugin>
-            
+
+            <!-- `mvn metaobjects:eject` ships the verbatim source of every ejectable generator
+                 inside the jar that owns it, as a classpath resource under
+                 META-INF/metaobjects/reference/java/ (see codegen-spring's pom for the same
+                 execution, and com.metaobjects.generator.GeneratorRegistry.EJECT_RESOURCE_ROOT).
+                 Copied at BUILD TIME from the src/main/java files the compiler just compiled,
+                 so the resource IS the source: one file, one owner, nothing to drift.
+
+                 These are "entity" (JavaObjectCodeGenerator) and "extractor"
+                 (ExtractorCodeGenerator), and the rest of their emit, which eject copies
+                 with them into the same owned package (GeneratorInfo.ejectWith(), ADR-0034
+                 Amendment 6): the generator bases and the writers that emit the class body
+                 for "entity", and the writer "extractor" reads its names from. "template"
+                 (TemplateScopeGenerator) is not shipped: it is the Mustache primitive and
+                 has no emit logic of its own. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>ship-eject-reference-source</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/META-INF/metaobjects/reference/java</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>src/main/java/com/metaobjects/generator/direct/object/javacode</directory>
+                                    <includes>
+                                        <include>JavaObjectCodeGenerator.java</include>
+                                        <include>ExtractorCodeGenerator.java</include>
+                                        <include>JavaCodeGenerator.java</include>
+                                        <include>JavaCodeWriter.java</include>
+                                        <include>PojoAwareCodeWriter.java</include>
+                                        <include>ValueObjectCodeWriter.java</include>
+                                    </includes>
+                                </resource>
+                                <resource>
+                                    <directory>src/main/java/com/metaobjects/generator/direct/object</directory>
+                                    <includes>
+                                        <include>BaseObjectCodeGenerator.java</include>
+                                        <include>BaseObjectCodeWriter.java</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
         </plugins>
     </build>
 </project>

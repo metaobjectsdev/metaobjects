@@ -520,7 +520,9 @@ The JVM plugin loads generator classes from your project's classpath, but only f
 classes compiled **before** `generate-sources` runs, and the plugin's own copy of a class
 always wins over one with the same name. So eject puts each copy into a separate
 `codegen/` Maven module, under your own package (`-Dpackage`, default
-`<groupId>.codegen`). The package declaration is the only line it changes. On first use
+`<groupId>.codegen`). The package declaration is the only line it changes, except for a
+generator that is copied with other classes (Java `entity` and `extractor`, below): there
+the imports those copies have of one another change too. On first use
 it writes `codegen/pom.xml`, which depends on `metaobjects-codegen-spring` or
 `metaobjects-codegen-kotlin` at the plugin's version.
 
@@ -537,6 +539,69 @@ from which the goal infers it. `requirement-tests` is one such name:
 `JUnitRequirementTestsGenerator.java` and `-Dport=kotlin` copies
 `KotlinRequirementTestsGenerator.kt`, each with its default rendering. The identity
 function, the digest and the renderer and filter hook types stay in the package.
+
+### Java `entity` and `extractor`
+
+```bash
+mvn metaobjects:eject -Dnames=entity,extractor -Dport=java
+```
+
+Both names exist in both ports, so pass `-Dport`. Their reference source ships in
+`metaobjects-codegen-base`, not `metaobjects-codegen-spring`; your `codegen/` module
+reaches it through the same dependency.
+
+**`entity` copies seven files, and together they are the generator.**
+`JavaObjectCodeGenerator` does not emit a class body itself. A writer does, one per
+flavor, so the writers come with it:
+
+| Copied file | What it holds |
+|---|---|
+| `JavaObjectCodeGenerator` | Which flavors exist and which writer each one gets (`createWriter`); the `ObjectClassBindingProvider` source and its `META-INF/services` registration; whether the `<Name>Extractor` classes are written here. |
+| `JavaCodeGenerator`, `BaseObjectCodeGenerator` | The generator's arguments, and the directory and file name each class lands in. |
+| `BaseObjectCodeWriter` | The class header comment, and the per-field loop every flavor shares. |
+| `JavaCodeWriter` | The Java type of each field; accessor, parameter, class and package names; the body of the interface flavor. |
+| `PojoAwareCodeWriter`, `ValueObjectCodeWriter` | The fields, the constructor and the accessor bodies of the two concrete flavors. |
+
+All seven land in one package and use one another, never the packaged classes: eject
+rewrites the package line of each and, where one imports another, that import. To change a
+field, a constructor or an accessor, edit the writer. You subclass nothing. `-Dlist` gives
+`entity` one verdict over all seven files.
+
+What stays in the package holds no emit: `MultiFileDirectGeneratorBase` (the
+one-file-per-object loop), `FileDirectWriter` (indentation and `println`) and
+`GeneratedFileWriter` (the write guard: a file with no `GENERATED` marker is left alone).
+The owned `entity` still calls the packaged `ExtractorCodeGenerator` to write the
+extractors, until you wire an `extractor` generator of your own.
+
+**`extractor` copies three files.** `ExtractorCodeGenerator.java` holds its emit.
+`JavaCodeWriter` and `BaseObjectCodeWriter` come with it because that is where it reads the
+package and class name of the type each extractor casts to. Eject both generators into the
+same package, which is the default, and they share the one `JavaCodeWriter`: a naming
+change made there moves the classes and their extractors together.
+
+`extractor` is a generator of its own: add it to `<generators>` with the same `outputDir`,
+`pkgPrefix`, `pkgSuffix`, `namePrefix` and `nameSuffix` as your `entity` generator, and the
+same `<filters>` if that one has any. An extractor casts to the generated flavored class,
+so `entity` with a concrete `flavor` has to be in the same run and has to select the same
+objects: an extractor for an object `entity` wrote no class for does not compile.
+
+```xml
+<generator>
+  <classname>com.acme.codegen.ExtractorCodeGenerator</classname>
+  <args><outputDir>${project.build.directory}/generated-sources/metaobjects</outputDir></args>
+</generator>
+```
+
+`entity` still writes the extractors itself when no separate `extractor` generator is in
+the run, so a pom that wires only `entity` emits what it always did. When one is in
+`<generators>`, the plugin tells `entity` to leave those files to it: it sets
+`emitExtractors` to `false`, whatever the pom says, so each file has one emitter. Outside
+Maven, set `emitExtractors=false` on `entity` yourself.
+
+A pom with more than one `entity` entry needs one `extractor` entry per `entity` entry,
+each with that entry's `outputDir`, naming args and `<filters>`. A single `extractor`
+generator in the run stops every `entity` entry writing its extractors, so an `entity`
+entry left without one gets none.
 
 ### What eject hands over, and what stays core
 
@@ -610,13 +675,16 @@ diff -u -I '^package ' -I '^// metaobjects:owned-runtime' \
 
 Apply the hunks you want by hand. For a generator, diff `reference/java/<Generator>.java`
 against `codegen/src/main/java/<package>/<Generator>.java` the same way, and also ignore
-`RUNTIME_PACKAGE`. Or, if you have no edits of your own (`-Dlist` says `identical`),
-re-eject with `-Dforce`.
+`RUNTIME_PACKAGE`. `entity` and `extractor`, and the classes copied with them, are in
+`metaobjects-codegen-base-$V.jar` instead; for those also pass `-I '^import '`, because
+eject pointed the copies' imports of one another at your package. Or, if you have no edits
+of your own (`-Dlist` says `identical`), re-eject with `-Dforce`.
 
 `-Dport` is needed only when a name exists in both ports and your project's dependencies
-do not say which. Every Kotlin generator is ejectable. In Java, `entity`, `extractor` and
-`template` are not: `entity` shares internal writer classes with `extractor`, and
-`template` is the Mustache primitive, which has no emit logic of its own to own.
+do not say which. Every Kotlin generator is ejectable, and every Java generator except
+`template`. `template` is the Mustache primitive: the template you supply is its emit
+logic, so the generator has none of its own to hand over. That holds in every port that
+ships it.
 
 ## C#: `dotnet meta eject`
 

@@ -1,9 +1,22 @@
 package com.metaobjects.generator.direct.object.javacode;
 
+// Eject note (ADR-0034 Amendment 6): `mvn metaobjects:eject -Dnames=extractor` copies this
+// file together with JavaCodeWriter and BaseObjectCodeWriter, into one package. JavaCodeWriter,
+// named bare below, is that copy: the names an owned extractor writes come from owned code.
+import com.metaobjects.generator.EmitsObjectExtractors;
+import com.metaobjects.generator.GeneratorBase;
+import com.metaobjects.generator.GeneratorException;
+import com.metaobjects.generator.direct.object.BaseObjectCodeGenerator;
 import com.metaobjects.generator.util.GeneratedFileWriter;
+import com.metaobjects.generator.util.GeneratorUtil;
+import com.metaobjects.io.util.IOUtil;
+import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.object.MetaObject;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 
 /**
  * Emits a generated {@code <Name>Extractor} — the Task-6 payoff that wraps the Phase-B
@@ -33,12 +46,24 @@ import java.io.IOException;
  * flavored type. The {@code extractLenient(...)} overload widens through {@code ExtractionResult<?>}
  * to expose the typed {@code ExtractionResult<<Type>>}.</p>
  *
- * <p>This is a plain emission helper (direct {@code StringBuilder} emit; no templates) driven
- * by {@link JavaObjectCodeGenerator#execute}. Its emission steps are {@code protected} so a
- * downstream generator can override one step (e.g. {@link #writeExtractMethod}) without
- * reimplementing the whole class.</p>
+ * <p><b>Two ways to run it.</b> Wired on its own as a {@code <generator>}, {@link #execute}
+ * writes one Extractor per concrete object, named by the same {@code pkgPrefix} /
+ * {@code pkgSuffix} / {@code namePrefix} / {@code nameSuffix} args the {@code entity}
+ * generator takes, so give both the same values. Left out of the run, the {@code entity}
+ * generator ({@link JavaObjectCodeGenerator}) calls {@link #emit} itself for each concrete
+ * flavored class, which is what it has always done. A run that holds both writes each file
+ * once: {@link EmitsObjectExtractors} is how {@code entity} knows to leave them to this.</p>
+ *
+ * <p>An Extractor casts to the generated flavored class, so it needs the {@code entity}
+ * generator with a concrete {@code flavor} in the same run, selecting the same objects: give
+ * both generators the same {@code <filters>}. An Extractor for an object {@code entity} wrote
+ * no class for does not compile.</p>
+ *
+ * <p>Emission is a direct {@code StringBuilder} emit (no templates). Its steps are
+ * {@code protected} so a subclass can override one (e.g. {@link #writeExtractMethod})
+ * without reimplementing the whole class.</p>
  */
-public class ExtractorCodeGenerator {
+public class ExtractorCodeGenerator extends GeneratorBase implements EmitsObjectExtractors {
 
     /** Fully-qualified name of the runtime extract entry point (emitted as a source FQN string). */
     public static final String META_OBJECT_EXTRACT_FQN =
@@ -53,6 +78,46 @@ public class ExtractorCodeGenerator {
 
     /** Suffix appended to the flavored class's simple name to form the Extractor class name. */
     public static final String EXTRACTOR_SUFFIX = "Extractor";
+
+    /**
+     * Write one {@code <Name>Extractor} per concrete object the filters select. Abstract
+     * objects get none: {@code MetaObject.newInstance()} cannot build one, so an extractor
+     * for it could never return a typed graph.
+     */
+    @Override
+    public void execute(MetaDataLoader loader) {
+        if (!hasArg(ARG_OUTPUTDIR)) {
+            throw new GeneratorException(
+                    "You must set a valid output directory with arg '" + ARG_OUTPUTDIR + "'");
+        }
+        File outputDir = getOutputDir();
+        JavaCodeWriter namer = createNamer(loader);
+        try {
+            for (MetaObject mo : GeneratorUtil.getFilteredMetaData(
+                    loader, MetaObject.class, getMetaDataFilters())) {
+                if (IOUtil.isAbstract(mo)) {
+                    continue;
+                }
+                emit(outputDir, namer.getLanguagePackage(mo), namer.getClassName(mo), mo.getName());
+            }
+        } catch (IOException e) {
+            throw new GeneratorException("Unable to emit generated Extractor: " + e, e);
+        }
+    }
+
+    /**
+     * The writer whose naming hooks say which package and class each Extractor sits beside.
+     * It names; it never writes. It has to be the writer your {@code entity} generator names
+     * its classes through, so both agree: ejected into one package, the two share one copy.
+     */
+    protected JavaCodeWriter createNamer(MetaDataLoader loader) {
+        JavaCodeWriter namer = new JavaCodeWriter(loader, new PrintWriter(new StringWriter()));
+        namer.withPkgPrefix(getArg(BaseObjectCodeGenerator.ARG_PKGPREFIX, ""))
+             .withPkgSuffix(getArg(BaseObjectCodeGenerator.ARG_PKGSUFFIX, ""))
+             .withNamePrefix(getArg(BaseObjectCodeGenerator.ARG_NAMEPREFIX, ""))
+             .withNameSuffix(getArg(BaseObjectCodeGenerator.ARG_NAMESUFFIX, ""));
+        return namer;
+    }
 
     /**
      * Emit {@code <className>Extractor.java} into {@code outputDir} under the package directory

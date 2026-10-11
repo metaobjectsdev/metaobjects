@@ -26,6 +26,11 @@ For each concrete flavor, the generator also emits, per object:
   `orThrow`) and `static ExtractionResult<<Name>> extractLenient(MetaDataLoader, String)`
   (never-throws), both wrapping the runtime `MetaObjectExtractor.extract`.
 
+The Extractors have a generator of their own as well, `ExtractorCodeGenerator`, wirable as
+a separate `<generator>` with the same `outputDir` and naming args. When one is in the run
+`JavaObjectCodeGenerator` leaves the files to it (`emitExtractors=false`, which the Maven
+plugin sets from the generator list; `EmitsObjectExtractors` is the marker it reads).
+
 Abstract objects are skipped for both the binding entry and the Extractor (they cannot be
 `newInstance()`-d — honors the abstract-codegen invariant: no instance artifacts for abstracts).
 
@@ -50,6 +55,35 @@ factory seam. A downstream project subclasses a writer (override a `protected` s
 generator (override `createWriter` to return its writer). Proven by
 `DownstreamCustomizationTest` (overrides `getGetterMethodName` → `fetch<Name>()` via a
 `createWriter` override, compiled + asserted).
+
+## Owning the generators (`mvn metaobjects:eject`)
+
+`JavaObjectCodeGenerator` (`entity`) and `ExtractorCodeGenerator` (`extractor`) eject into
+the adopter's `codegen/` module, each with the rest of its emit (ADR-0034 Amendment 6).
+This module's pom ships the sources under `META-INF/metaobjects/reference/java/`, and
+`GeneratorRegistry` (in `codegen-spring`) declares which classes go with which generator.
+
+| Generator | Copied with it, into the same owned package |
+|---|---|
+| `entity` | `JavaCodeGenerator`, `BaseObjectCodeGenerator`, `BaseObjectCodeWriter`, `JavaCodeWriter`, `PojoAwareCodeWriter`, `ValueObjectCodeWriter` |
+| `extractor` | `JavaCodeWriter`, `BaseObjectCodeWriter` |
+
+Eject rewrites each file's package line and, where one copied class imports another, that
+import. So the owned generator extends and calls the owned copies: an adopter changes the
+class body by editing a writer, not by subclassing one. What a copy may still rely on in
+this module, and so what has to keep working for it:
+
+- `MultiFileDirectGeneratorBase` and `FileDirectWriter`, which the copies extend;
+- `GenerationContext`, `GeneratorUtil`, `JavaIdentifiers` and `GeneratedFileWriter`;
+- `ExtractorCodeGenerator.emit(...)`, which an owned `entity` calls until an `extractor`
+  generator is wired beside it.
+
+Two rules keep a copy set ejectable, and `EjectedBaseGeneratorsCompileTest` fails when
+either is broken. A class in a copy set may name another class of this package by its bare
+name only if that class is in the same set; anything else (the owned `entity` naming
+`ExtractorCodeGenerator`) is imported explicitly. And a copied class calls nothing that is
+not `public` on a class left behind. A new class the writers come to depend on is added to
+the set in three places: this module's pom, `GeneratorRegistry`, and that test.
 
 ## Deviation list (what is NOT reused as-is, and why)
 
@@ -76,6 +110,9 @@ The default is reuse; these are the accounted-for exceptions.
    `MetaObject` already in the loader, so the inherited flat multi-file loop emits every
    referenced sub-object exactly once — no visited-set/cycle guard needed (the spec's
    recursive-emission note is superseded by this simpler sound behavior).
+6. **Class header (changed).** `BaseObjectCodeWriter` no longer writes the
+   `ObjectCodeWriter:` and `Generated On:` header lines. Generated output holds nothing
+   that varies between runs or between a packaged writer and an owned copy of it.
 
 ## Status / known gaps
 

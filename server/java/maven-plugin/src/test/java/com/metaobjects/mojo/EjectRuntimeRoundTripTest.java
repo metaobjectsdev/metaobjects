@@ -107,6 +107,9 @@ public class EjectRuntimeRoundTripTest {
         a.put("outputDir", outDir.toString());
         a.put("packageName", "fitness");
         a.put("templateRoot", canonical.resolve("prompts").toString());
+        // Required by the entity generator (JavaObjectCodeGenerator), ignored by the rest.
+        a.put("type", "class");
+        a.put("flavor", "pojoAware");
         return a;
     }
 
