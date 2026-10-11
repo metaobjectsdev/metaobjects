@@ -1,11 +1,8 @@
 package com.metaobjects.generator.direct.object.javacode;
 
-// Eject note (ADR-0034, JVM eject design): this sibling stays in
-// com.metaobjects.generator.direct.object.javacode when this generator is copied out via
-// `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
-// same-package bare-name resolution, is what keeps the ejected copy compiling.
-import com.metaobjects.generator.direct.object.javacode.JavaCodeWriter;
-
+// Eject note (ADR-0034 Amendment 6): `mvn metaobjects:eject -Dnames=extractor` copies this
+// file together with JavaCodeWriter and BaseObjectCodeWriter, into one package. JavaCodeWriter,
+// named bare below, is that copy: the names an owned extractor writes come from owned code.
 import com.metaobjects.generator.EmitsObjectExtractors;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.GeneratorException;
@@ -110,8 +107,8 @@ public class ExtractorCodeGenerator extends GeneratorBase implements EmitsObject
 
     /**
      * The writer whose naming hooks say which package and class each Extractor sits beside.
-     * It names; it never writes. Override it when your {@code entity} generator names its
-     * classes through a writer of your own, so both agree.
+     * It names; it never writes. It has to be the writer your {@code entity} generator names
+     * its classes through, so both agree: ejected into one package, the two share one copy.
      */
     protected JavaCodeWriter createNamer(MetaDataLoader loader) {
         JavaCodeWriter namer = new JavaCodeWriter(loader, new PrintWriter(new StringWriter()));

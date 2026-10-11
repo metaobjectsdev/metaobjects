@@ -518,7 +518,9 @@ The JVM plugin loads generator classes from your project's classpath, but only f
 classes compiled **before** `generate-sources` runs, and the plugin's own copy of a class
 always wins over one with the same name. So eject puts each copy into a separate
 `codegen/` Maven module, under your own package (`-Dpackage`, default
-`<groupId>.codegen`). The package declaration is the only line it changes. On first use
+`<groupId>.codegen`). The package declaration is the only line it changes, except for a
+generator that is copied with other classes (Java `entity` and `extractor`, below): there
+the imports those copies have of one another change too. On first use
 it writes `codegen/pom.xml`, which depends on `metaobjects-codegen-spring` or
 `metaobjects-codegen-kotlin` at the plugin's version.
 
@@ -546,33 +548,39 @@ Both names exist in both ports, so pass `-Dport`. Their reference source ships i
 `metaobjects-codegen-base`, not `metaobjects-codegen-spring`; your `codegen/` module
 reaches it through the same dependency.
 
-**`entity` copies `JavaObjectCodeGenerator.java`, and that one file is the generator.**
-What it holds is yours to change:
+**`entity` copies seven files, and together they are the generator.**
+`JavaObjectCodeGenerator` does not emit a class body itself. A writer does, one per
+flavor, so the writers come with it:
 
-- which flavors exist, and which writer each one gets (`createWriter`);
-- the `ObjectClassBindingProvider` source and its `META-INF/services` registration;
-- whether the `<Name>Extractor` classes are written here.
-
-The class body is not in that file. It comes from the flavor writers, which stay in
-`metaobjects-codegen-base` as supported surface for an owned copy to call and subclass:
-
-| Stays in the package | What an owned generator does with it |
+| Copied file | What it holds |
 |---|---|
-| `JavaCodeWriter` (interface flavor), `PojoAwareCodeWriter`, `ValueObjectCodeWriter` | Builds one per file in `createWriter`. To change a field, a constructor or an accessor, subclass the writer, override the `protected` step (`writeFields`, `writeConstructor`, `writeGetter`, `writeSetter`, `getGetterMethodName`, ...) and return your subclass. |
-| `JavaCodeWriter.javaPackageOf(mo)` / `javaClassNameOf(mo)` | Names the generated type without writing it. They answer through the same naming steps a subclass overrides, so the binding provider and the extractors follow a rename. |
-| `JavaCodeGenerator`, `BaseObjectCodeGenerator` | The base your copy extends: argument parsing, and the one-file-per-object loop. |
-| `GeneratedFileWriter` | The write guard: a file with no `GENERATED` marker is left alone. |
+| `JavaObjectCodeGenerator` | Which flavors exist and which writer each one gets (`createWriter`); the `ObjectClassBindingProvider` source and its `META-INF/services` registration; whether the `<Name>Extractor` classes are written here. |
+| `JavaCodeGenerator`, `BaseObjectCodeGenerator` | The generator's arguments, and the directory and file name each class lands in. |
+| `BaseObjectCodeWriter` | The class header comment, and the per-field loop every flavor shares. |
+| `JavaCodeWriter` | The Java type of each field; accessor, parameter, class and package names; the body of the interface flavor. |
+| `PojoAwareCodeWriter`, `ValueObjectCodeWriter` | The fields, the constructor and the accessor bodies of the two concrete flavors. |
 
-This is the same split the TypeScript prompt tier uses: the copy owns which objects get
-output, where it lands and how it is composed, and the body composer stays in the
-package. Copying the writers out as well would hand you the whole writer hierarchy to
-keep in step with the reference, when a change to the class body is one overridden step.
+All seven land in one package and use one another, never the packaged classes: eject
+rewrites the package line of each and, where one imports another, that import. To change a
+field, a constructor or an accessor, edit the writer. You subclass nothing. `-Dlist` gives
+`entity` one verdict over all seven files.
 
-**`extractor` copies `ExtractorCodeGenerator.java`, which holds all of its emit.** It is a
-generator of its own: add it to `<generators>` with the same `outputDir`, `pkgPrefix`,
-`pkgSuffix`, `namePrefix` and `nameSuffix` as your `entity` generator, and the same
-`<filters>` if that one has any. An extractor casts to the generated flavored class, so
-`entity` with a concrete `flavor` has to be in the same run and has to select the same
+What stays in the package holds no emit: `MultiFileDirectGeneratorBase` (the
+one-file-per-object loop), `FileDirectWriter` (indentation and `println`) and
+`GeneratedFileWriter` (the write guard: a file with no `GENERATED` marker is left alone).
+The owned `entity` still calls the packaged `ExtractorCodeGenerator` to write the
+extractors, until you wire an `extractor` generator of your own.
+
+**`extractor` copies three files.** `ExtractorCodeGenerator.java` holds its emit.
+`JavaCodeWriter` and `BaseObjectCodeWriter` come with it because that is where it reads the
+package and class name of the type each extractor casts to. Eject both generators into the
+same package, which is the default, and they share the one `JavaCodeWriter`: a naming
+change made there moves the classes and their extractors together.
+
+`extractor` is a generator of its own: add it to `<generators>` with the same `outputDir`,
+`pkgPrefix`, `pkgSuffix`, `namePrefix` and `nameSuffix` as your `entity` generator, and the
+same `<filters>` if that one has any. An extractor casts to the generated flavored class,
+so `entity` with a concrete `flavor` has to be in the same run and has to select the same
 objects: an extractor for an object `entity` wrote no class for does not compile.
 
 ```xml
@@ -584,9 +592,9 @@ objects: an extractor for an object `entity` wrote no class for does not compile
 
 `entity` still writes the extractors itself when no separate `extractor` generator is in
 the run, so a pom that wires only `entity` emits what it always did. When one is in
-`<generators>`, the plugin tells `entity` to leave those files to it (it sets
-`emitExtractors` to `false`), so each file has one emitter. Outside Maven, set
-`emitExtractors=false` on `entity` yourself.
+`<generators>`, the plugin tells `entity` to leave those files to it: it sets
+`emitExtractors` to `false`, whatever the pom says, so each file has one emitter. Outside
+Maven, set `emitExtractors=false` on `entity` yourself.
 
 ### What eject hands over, and what stays core
 
@@ -660,9 +668,10 @@ diff -u -I '^package ' -I '^// metaobjects:owned-runtime' \
 
 Apply the hunks you want by hand. For a generator, diff `reference/java/<Generator>.java`
 against `codegen/src/main/java/<package>/<Generator>.java` the same way, and also ignore
-`RUNTIME_PACKAGE`. `entity` and `extractor` are in `metaobjects-codegen-base-$V.jar`
-instead. Or, if you have no edits of your own (`-Dlist` says `identical`), re-eject with
-`-Dforce`.
+`RUNTIME_PACKAGE`. `entity` and `extractor`, and the classes copied with them, are in
+`metaobjects-codegen-base-$V.jar` instead; for those also pass `-I '^import '`, because
+eject pointed the copies' imports of one another at your package. Or, if you have no edits
+of your own (`-Dlist` says `identical`), re-eject with `-Dforce`.
 
 `-Dport` is needed only when a name exists in both ports and your project's dependencies
 do not say which. Every Kotlin generator is ejectable, and every Java generator except

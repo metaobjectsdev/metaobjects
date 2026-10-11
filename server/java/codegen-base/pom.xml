@@ -99,11 +99,13 @@
                  Copied at BUILD TIME from the src/main/java files the compiler just compiled,
                  so the resource IS the source: one file, one owner, nothing to drift.
 
-                 These two are "entity" and "extractor". The flavor writers beside them
-                 (JavaCodeWriter, PojoAwareCodeWriter, ValueObjectCodeWriter) are NOT shipped:
-                 they are the supported surface an owned copy calls, not part of the copy
-                 (ADR-0034 Amendment 6). "template" (TemplateScopeGenerator) is not shipped
-                 either: it is the Mustache primitive and has no emit logic of its own. -->
+                 These are "entity" (JavaObjectCodeGenerator) and "extractor"
+                 (ExtractorCodeGenerator), and the rest of their emit, which eject copies
+                 with them into the same owned package (GeneratorInfo.ejectWith(), ADR-0034
+                 Amendment 6): the generator bases and the writers that emit the class body
+                 for "entity", and the writer "extractor" reads its names from. "template"
+                 (TemplateScopeGenerator) is not shipped: it is the Mustache primitive and
+                 has no emit logic of its own. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-resources-plugin</artifactId>
@@ -122,6 +124,17 @@
                                     <includes>
                                         <include>JavaObjectCodeGenerator.java</include>
                                         <include>ExtractorCodeGenerator.java</include>
+                                        <include>JavaCodeGenerator.java</include>
+                                        <include>JavaCodeWriter.java</include>
+                                        <include>PojoAwareCodeWriter.java</include>
+                                        <include>ValueObjectCodeWriter.java</include>
+                                    </includes>
+                                </resource>
+                                <resource>
+                                    <directory>src/main/java/com/metaobjects/generator/direct/object</directory>
+                                    <includes>
+                                        <include>BaseObjectCodeGenerator.java</include>
+                                        <include>BaseObjectCodeWriter.java</include>
                                     </includes>
                                 </resource>
                             </resources>

@@ -17,8 +17,9 @@ import java.util.Map;
  * copy failed the build as an output path collision.</p>
  *
  * <p>Same shape as {@link EmitsPhysicalNameConstants}: the Maven mojo builds the whole
- * {@link Generator} list before it runs any of it, so that is where the answer is derived,
- * and an explicit value in the pom always wins.</p>
+ * {@link Generator} list before it runs any of it, so that is where the answer is derived.
+ * Unlike {@code useNames} it is not a preference a pom can pin the other way: with a separate
+ * extractor generator in the run, {@code entity} writing them too is the duplicate.</p>
  */
 public interface EmitsObjectExtractors {
 
@@ -37,13 +38,13 @@ public interface EmitsObjectExtractors {
     /**
      * {@code args} with {@link #ARG_EMIT_EXTRACTORS} derived from the run's generator set.
      *
-     * <p>An explicit value in {@code args} wins. Absent, it becomes {@code "false"} exactly
-     * when a separate extractor generator is in the run, and is left unset otherwise, so a
-     * run without one behaves as it always has.</p>
+     * <p>It is {@code "false"} whenever a separate extractor generator is in the run,
+     * whatever {@code args} said, so each file has one emitter. Otherwise {@code args} is
+     * returned as it came, so a run without one behaves as it always has.</p>
      */
     static Map<String, String> deriveEmitExtractors(Map<String, String> args,
                                                     Collection<? extends Generator> generators) {
-        if (args.containsKey(ARG_EMIT_EXTRACTORS) || !includesExtractors(generators)) return args;
+        if (!includesExtractors(generators)) return args;
         Map<String, String> derived = new HashMap<>(args);
         derived.put(ARG_EMIT_EXTRACTORS, "false");
         return derived;

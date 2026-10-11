@@ -73,8 +73,14 @@ public class EmitExtractorsDerivationTest {
         assertFalse(seen.get(0).containsKey(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS));
     }
 
+    /**
+     * One emitter per file is not a preference a pom can pin the other way. A {@code true}
+     * here used to win, which put {@code entity} back on the paths the separate extractor
+     * writes: the same bytes until the owned extractor is edited, then an output path
+     * collision.
+     */
     @Test
-    public void an_explicit_pom_value_wins_over_the_derivation() {
+    public void an_explicit_true_in_the_pom_does_not_bring_back_a_second_emitter() {
         Map<String, String> pinned = new HashMap<>();
         pinned.put(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS, "true");
 
@@ -82,6 +88,16 @@ public class EmitExtractorsDerivationTest {
                 param(UseNamesDerivationTest.RecordingGenerator.class, pinned),
                 param(RecordingExtractorGenerator.class, null));
 
-        assertEquals("true", seen.get(0).get(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS));
+        assertEquals("false", seen.get(0).get(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS));
+    }
+
+    @Test
+    public void an_explicit_false_with_no_separate_extractor_is_passed_through() {
+        Map<String, String> pinned = new HashMap<>();
+        pinned.put(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS, "false");
+
+        List<Map<String, String>> seen = run(param(UseNamesDerivationTest.RecordingGenerator.class, pinned));
+
+        assertEquals("false", seen.get(0).get(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS));
     }
 }

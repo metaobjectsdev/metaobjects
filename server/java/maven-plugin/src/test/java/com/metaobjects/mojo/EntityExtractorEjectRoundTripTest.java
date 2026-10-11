@@ -1,5 +1,6 @@
 package com.metaobjects.mojo;
 
+import com.metaobjects.generator.EmitsObjectExtractors;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;
 import com.metaobjects.generator.direct.object.javacode.JavaObjectCodeGenerator;
@@ -38,7 +39,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -48,16 +48,18 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
- * The Java {@code entity} and {@code extractor} generators are ejectable, proven four ways
- * (ADR-0034 Amendment 6): {@code mvn metaobjects:eject} copies each one; the copy, unchanged
- * and compiled against the published jars, writes the same bytes as the packaged generator
- * over the shared persistence corpus; {@code -Dlist} reports them and their owned copies like
- * any other generator; and {@code mvn metaobjects:verify} runs the owned copies when the pom
- * names them.
+ * The Java {@code entity} and {@code extractor} generators are ejectable, proven five ways
+ * (ADR-0034 Amendment 6): {@code mvn metaobjects:eject} copies each one with the rest of its
+ * emit, the writers included; the copies, unchanged and compiled against the published jars,
+ * write the same bytes as the packaged generator over the shared persistence corpus; an edit
+ * to an owned writer changes the class body the owned generator writes; {@code -Dlist}
+ * reports them and their owned copies like any other generator; and
+ * {@code mvn metaobjects:verify} runs the owned copies when the pom names them.
  *
  * <p>{@link EjectRoundTripTest} is the same proof for {@code names}. These two get their own
- * because they were the two Java generators that could not be ejected: {@code entity} reached
- * into its writers' package, and {@code extractor} was not a generator a pom could name.</p>
+ * because they were the two Java generators that could not be ejected: {@code entity}'s
+ * class body is emitted by writer classes outside the generator, and {@code extractor} was
+ * not a generator a pom could name.</p>
  */
 public class EntityExtractorEjectRoundTripTest {
 
@@ -65,12 +67,13 @@ public class EntityExtractorEjectRoundTripTest {
     private static final String OWNED_ENTITY = OWNED_PACKAGE + ".JavaObjectCodeGenerator";
     private static final String OWNED_EXTRACTOR = OWNED_PACKAGE + ".ExtractorCodeGenerator";
 
-    /**
-     * The model tier still stamps a wall-clock {@code Generated On:} line into each class
-     * header on this branch, so two runs of the SAME generator a second apart differ there.
-     * It is taken out of a comparison for that reason and no other.
-     */
-    private static final Pattern GENERATED_ON = Pattern.compile("Generated On:[^\\n]*");
+    /** Every file {@code -Dnames=entity,extractor} writes: the two generators, the bases
+     *  {@code entity} extends, and the writers that emit the class body. */
+    private static final List<String> OWNED_FILES = List.of(
+            "JavaObjectCodeGenerator.java", "ExtractorCodeGenerator.java",
+            "JavaCodeGenerator.java", "BaseObjectCodeGenerator.java",
+            "BaseObjectCodeWriter.java", "JavaCodeWriter.java",
+            "PojoAwareCodeWriter.java", "ValueObjectCodeWriter.java");
 
     @Rule
     public TemporaryFolder tempFolder = new TemporaryFolder();
@@ -129,8 +132,10 @@ public class EntityExtractorEjectRoundTripTest {
         mojo.port = "java";
         mojo.execute();
         Path dir = projectDir.resolve("codegen/src/main/java/com/acme/codegen");
-        assertTrue(Files.exists(dir.resolve("JavaObjectCodeGenerator.java")));
-        assertTrue(Files.exists(dir.resolve("ExtractorCodeGenerator.java")));
+        try (Stream<Path> files = Files.list(dir)) {
+            assertEquals(OWNED_FILES.stream().sorted().collect(Collectors.toList()),
+                    files.map(f -> f.getFileName().toString()).sorted().collect(Collectors.toList()));
+        }
         return dir;
     }
 
@@ -183,13 +188,6 @@ public class EntityExtractorEjectRoundTripTest {
         return out;
     }
 
-    private static Map<String, String> withoutTheClock(Map<String, String> tree) {
-        Map<String, String> out = new TreeMap<>();
-        tree.forEach((path, content) ->
-                out.put(path, GENERATED_ON.matcher(content).replaceAll("Generated On: <time>")));
-        return out;
-    }
-
     private static void assertSameTree(String label, Map<String, String> packaged, Map<String, String> owned) {
         assertEquals(label + ": same set of generated files",
                 new ArrayList<>(packaged.keySet()), new ArrayList<>(owned.keySet()));
@@ -218,8 +216,8 @@ public class EntityExtractorEjectRoundTripTest {
                 "pkgPrefix", "com.example", "pkgSuffix", "model", "namePrefix", "My", "nameSuffix", "Vo"));
 
         for (Map.Entry<String, Map<String, String>> flavor : flavors.entrySet()) {
-            Map<String, String> packaged = withoutTheClock(generate(new JavaObjectCodeGenerator(), flavor.getValue()));
-            Map<String, String> copy = withoutTheClock(generate(owned(classes, OWNED_ENTITY), flavor.getValue()));
+            Map<String, String> packaged = generate(new JavaObjectCodeGenerator(), flavor.getValue());
+            Map<String, String> copy = generate(owned(classes, OWNED_ENTITY), flavor.getValue());
             assertTrue(flavor.getKey() + ": the corpus generated only " + packaged.size() + " files",
                     packaged.size() >= 17);
             assertSameTree(flavor.getKey(), packaged, copy);
@@ -230,7 +228,6 @@ public class EntityExtractorEjectRoundTripTest {
     public void anUnchangedEjectedExtractorWritesWhatThePackagedOneAndEntityWrite() throws Exception {
         ClassLoader classes = compileOwned(ejectBoth(tempFolder.newFolder("adopter").toPath()));
 
-        // The extractor's output carries no clock, so this comparison is of the raw bytes.
         Map<String, String> packaged = generate(new ExtractorCodeGenerator(), Map.of());
         Map<String, String> copy = generate(owned(classes, OWNED_EXTRACTOR), Map.of());
         assertTrue("the corpus generated only " + packaged.size() + " extractors", packaged.size() >= 17);
@@ -263,6 +260,65 @@ public class EntityExtractorEjectRoundTripTest {
 
         Map<String, String> extractor = generate(owned(classes, OWNED_EXTRACTOR), Map.of());
         assertTrue(extractor.get("fitness/ProgramExtractor.java").contains("GENERATED (owned extractor copy)"));
+    }
+
+    /**
+     * The class body is owned, not just the generator around it. Each of the four writers is
+     * edited where it emits, and each edit has to reach the output of the flavor that writer
+     * serves, with no subclass and no change to the owned generator.
+     */
+    @Test
+    public void anEditToEachOwnedWriterChangesTheClassBody() throws Exception {
+        Path ownedDir = ejectBoth(tempFolder.newFolder("adopter").toPath());
+        edit(ownedDir.resolve("BaseObjectCodeWriter.java"),
+                "\"MetaObject:               \" + mo.getName()", "\"MetaObject (owned base):  \" + mo.getName()");
+        edit(ownedDir.resolve("JavaCodeWriter.java"),
+                "println(true, \"// \"+comment);", "println(true, \"// owned: \"+comment);");
+        edit(ownedDir.resolve("PojoAwareCodeWriter.java"),
+                "\"return this.\" + fieldName + \";\"", "\"return this.\" + fieldName + \"; // owned pojo\"");
+        edit(ownedDir.resolve("ValueObjectCodeWriter.java"),
+                "holderName + \".getValue();\"", "holderName + \".getValue(); // owned value object\"");
+        ClassLoader classes = compileOwned(ownedDir);
+
+        Map<String, String> valueObject = Map.of("type", "class", "flavor", "valueObject");
+        String pojo = generate(owned(classes, OWNED_ENTITY), POJO).get("fitness/Program.java");
+        assertTrue(pojo, pojo.contains(" * MetaObject (owned base):  fitness::Program"));
+        assertTrue(pojo, pojo.contains("// owned: Methods for MetaField: "));
+        assertTrue(pojo, pojo.contains("; // owned pojo"));
+        String vo = generate(owned(classes, OWNED_ENTITY), valueObject).get("fitness/Program.java");
+        assertTrue(vo, vo.contains(".getValue(); // owned value object"));
+        assertTrue(vo, vo.contains(" * MetaObject (owned base):  fitness::Program"));
+
+        // The packaged generator still writes through the packaged writers.
+        for (Map<String, String> flavor : List.of(POJO, valueObject)) {
+            String packaged = generate(new JavaObjectCodeGenerator(), flavor).get("fitness/Program.java");
+            assertTrue(packaged, packaged.contains(" * MetaObject:               fitness::Program"));
+            assertFalse(packaged, packaged.contains("// owned"));
+        }
+    }
+
+    /**
+     * The owned extractor reads each class name from the owned writer, so a rename there
+     * moves the extractor with the class it casts to. Read from the packaged writer, it
+     * would go on naming a class the owned {@code entity} no longer writes.
+     */
+    @Test
+    public void theOwnedExtractorNamesItsClassesThroughTheOwnedWriter() throws Exception {
+        Path ownedDir = ejectBoth(tempFolder.newFolder("adopter").toPath());
+        edit(ownedDir.resolve("JavaCodeWriter.java"),
+                "return GeneratorUtil.toCamelCase(name, true);\n    }\n\n    @Override\n    protected void writeGetter",
+                "return GeneratorUtil.toCamelCase(name, true) + \"Row\";\n    }\n\n    @Override\n    protected void writeGetter");
+        ClassLoader classes = compileOwned(ownedDir);
+
+        Map<String, String> entity = new HashMap<>(POJO);
+        entity.put(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS, "false");
+        String program = generate(owned(classes, OWNED_ENTITY), entity).get("fitness/Program.java");
+        assertTrue(program, program.contains("public class ProgramRow extends "));
+
+        Map<String, String> extractors = generate(owned(classes, OWNED_EXTRACTOR), Map.of());
+        String extractor = extractors.get("fitness/ProgramRowExtractor.java");
+        assertTrue(String.valueOf(extractors.keySet()), extractor != null);
+        assertTrue(extractor, extractor.contains("public static ProgramRow extract("));
     }
 
     private static void edit(Path source, String from, String to) throws IOException {
@@ -318,6 +374,16 @@ public class EntityExtractorEjectRoundTripTest {
         assertTrue(row(edited, "extractor"),
                 row(edited, "extractor").endsWith("[owned — DIFFERS: 1 behind, 1 of your own]"));
         assertTrue(row(edited, "entity"), row(edited, "entity").endsWith("[owned — identical]"));
+
+        // A writer is part of the generator it was copied with: an edit to one only entity
+        // has shows on entity's row, and leaves the extractor's count where it was.
+        edit(ownedDir.resolve("PojoAwareCodeWriter.java"),
+                "println(true, \"super(mo);\");", "println(true, \"super(mo); // mine\");");
+        String writerEdited = list(projectDir);
+        assertTrue(row(writerEdited, "entity"),
+                row(writerEdited, "entity").endsWith("[owned — DIFFERS: 1 behind, 1 of your own]"));
+        assertTrue(row(writerEdited, "extractor"),
+                row(writerEdited, "extractor").endsWith("[owned — DIFFERS: 1 behind, 1 of your own]"));
     }
 
     @Test
@@ -420,30 +486,29 @@ public class EntityExtractorEjectRoundTripTest {
     }
 
     /**
-     * Generate with the owned copies and confirm the drift check finds nothing to report.
+     * Generate with the owned copies, let the wall clock move on to a later second, and
+     * confirm the drift check finds nothing to report.
      *
-     * <p>{@link #GENERATED_ON} is why this may take a second pass: the verify goal compares
-     * bytes, so a regeneration that lands in a later wall-clock second than the tree it is
-     * compared with differs in the class headers and nowhere else. A pass that did not cross
-     * a second and still reports drift is a real failure and is thrown as one.</p>
+     * <p>The wait is the point. The verify goal compares bytes, and each class header used
+     * to carry a {@code Generated On:} line at second resolution, so the goal reported every
+     * class file as drifted unless it ran in the same second as the generate it checked.
+     * Generated output carries no clock now, and a verify on an unchanged model has to pass
+     * whenever it runs.</p>
      */
     private Path generatedInSync(ClassLoader classes) throws Exception {
-        for (int attempt = 1; ; attempt++) {
-            Path committed = tempFolder.newFolder().toPath();
-            long second = System.currentTimeMillis() / 1000;
-            MetaDataGeneratorMojo gen = generateGoal(classes);
-            configure(gen, committed);
-            gen.execute();
+        Path committed = tempFolder.newFolder().toPath();
+        MetaDataGeneratorMojo gen = generateGoal(classes);
+        configure(gen, committed);
+        gen.execute();
 
-            MetaDataVerifyMojo verify = verifyGoal(classes);
-            configure(verify, committed);
-            try {
-                verify.execute();
-                return committed;
-            } catch (MojoFailureException e) {
-                boolean crossedASecond = System.currentTimeMillis() / 1000 != second;
-                if (!crossedASecond || attempt == 5) throw e;
-            }
+        long generatedIn = System.currentTimeMillis() / 1000;
+        while (System.currentTimeMillis() / 1000 == generatedIn) {
+            Thread.sleep(50);
         }
+
+        MetaDataVerifyMojo verify = verifyGoal(classes);
+        configure(verify, committed);
+        verify.execute();
+        return committed;
     }
 }

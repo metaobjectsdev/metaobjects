@@ -13,35 +13,53 @@ here.**
 ### Added
 
 - **The Java `entity` and `extractor` generators can be ejected.**
-  `mvn metaobjects:eject -Dnames=entity,extractor -Dport=java` copies
-  `JavaObjectCodeGenerator.java` and `ExtractorCodeGenerator.java` into your `codegen/`
-  module. They were the two Java generators that could not be owned: `entity` compiled only
-  inside its writers' package, and `extractor` was a step inside `entity` that no
-  `<generator>` entry could name. An unchanged copy of either emits what the packaged
-  generator emits, `-Dlist` marks the copies `identical` or `DIFFERS`, and
-  `mvn metaobjects:verify` runs them when your pom names them. Every Java generator is now
-  ejectable except `template`. Ruling and reasoning: ADR-0034 Amendment 6.
-  - **The owned `entity` is the generator, not the class body.** The copy holds the flavor
-    selection, the writer factory (`createWriter`), the `ObjectClassBindingProvider` source
-    and its `META-INF/services` registration. The class body stays in
-    `metaobjects-codegen-base`'s flavor writers (`JavaCodeWriter`, `PojoAwareCodeWriter`,
-    `ValueObjectCodeWriter`), which are now supported surface: subclass one, override a
-    `protected` step and return it from `createWriter`. Details:
+  `mvn metaobjects:eject -Dnames=entity,extractor -Dport=java` copies each generator, with
+  the rest of its emit, into your `codegen/` module. They were the two Java generators that
+  could not be owned: `entity`'s class body is emitted by writer classes outside the
+  generator, and `extractor` was a step inside `entity` that no `<generator>` entry could
+  name. Unchanged copies emit what the packaged generator emits, `-Dlist` marks them
+  `identical` or `DIFFERS`, and `mvn metaobjects:verify` runs them when your pom names them.
+  Every Java generator is now ejectable except `template`. Ruling and reasoning: ADR-0034
+  Amendment 6.
+  - **The owned `entity` includes the class body.** Eject copies seven files into one
+    package: `JavaObjectCodeGenerator`, the two bases it extends (`JavaCodeGenerator`,
+    `BaseObjectCodeGenerator`), and the four writers that emit each class
+    (`BaseObjectCodeWriter`, `JavaCodeWriter`, `PojoAwareCodeWriter`,
+    `ValueObjectCodeWriter`). The copies use one another, never the packaged classes: where
+    one imports another, eject rewrites that import along with the package line. You change
+    a field, a constructor or an accessor by editing the writer, with nothing to subclass.
+    `-Dlist` gives `entity` one verdict over all seven files. Details:
     [own-your-codegen](docs/features/own-your-codegen.md#java-entity-and-extractor).
   - **`extractor` is a generator of its own (Java).** `ExtractorCodeGenerator` can be named
     in `<generators>`, with the same `outputDir`, `pkgPrefix`, `pkgSuffix`, `namePrefix`,
     `nameSuffix` and `<filters>` as your `entity` generator. When it is, the plugin sets
-    `emitExtractors=false` on `entity`, so each `<Name>Extractor` has one emitter. Outside
-    Maven, set that arg yourself.
-  - **Nothing changes for a pom that wires only `entity`.** It still writes the extractors,
-    and its output is byte for byte what it was.
-  - New public API in `metaobjects-codegen-base`: `JavaCodeWriter.javaPackageOf(mo)` and
+    `emitExtractors=false` on `entity`, so each `<Name>Extractor` has one emitter; an
+    `emitExtractors=true` in the pom does not override that. Outside Maven, set the arg
+    yourself. Ejecting it also copies `JavaCodeWriter` and `BaseObjectCodeWriter`, where it
+    reads class names from. In the same package as an owned `entity`, the two share that
+    one copy.
+  - **A pom that wires only `entity` still writes the extractors.** Its class files change
+    once, in the header comment only: see **Changed** below.
+  - New public API: in `metaobjects-codegen-base`, `JavaCodeWriter.javaPackageOf(mo)` and
     `javaClassNameOf(mo)` (the generated type's package and name, as a subclass's naming
-    overrides leave them), the `EmitsObjectExtractors` marker, and
-    `JavaObjectCodeGenerator.ARG_EMIT_EXTRACTORS`.
+    overrides leave them) and the `EmitsObjectExtractors` marker, whose
+    `ARG_EMIT_EXTRACTORS` names the `emitExtractors` arg; in `metaobjects-codegen-spring`,
+    `GeneratorRegistry.GeneratorInfo.ejectWith()`, the classes eject copies with a
+    generator.
 
 ### Changed
 
+- **Java classes written by `entity` lose two header lines, and `mvn metaobjects:verify` no
+  longer depends on the clock.** The header comment of every class `JavaObjectCodeGenerator`
+  writes carried `ObjectCodeWriter:` (the writer's class name) and `Generated On:` (the
+  wall-clock second of the run). Both lines are removed. **Expect a one-time diff in every
+  regenerated Java class file, in the header comment only.** The timestamp meant
+  `mvn metaobjects:verify`, which compares bytes, reported `[content-differs]` for every
+  class file unless it ran in the same second as the generate it checked. Generated output
+  now holds nothing that varies between runs, so regenerating an unchanged model writes the
+  same bytes and verify passes whenever it runs. The writer's class name is dropped, not
+  replaced by a stable name: it would differ between a packaged writer and an owned copy of
+  it, and dropping the line is the smaller change.
 - **`mvn metaobjects:eject -Dnames=entity` and `-Dnames=extractor` need a port when the
   project does not imply one.** Both names are now ejectable on Java and on Kotlin. A
   project that declares exactly one of `metaobjects-codegen-spring` and

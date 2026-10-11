@@ -116,7 +116,7 @@ public class StandaloneExtractorGeneratorTest {
     public void entityLeavesTheExtractorsAloneWhenToldASeparateGeneratorWritesThem() throws Exception {
         Path out = tmp.newFolder("split").toPath();
         Map<String, String> args = entityArgs(out, "pojoAware");
-        args.put(JavaObjectCodeGenerator.ARG_EMIT_EXTRACTORS, "false");
+        args.put(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS, "false");
         run(new JavaObjectCodeGenerator(), args, loadMeta());
 
         assertTrue("entity wrote extractors it was told to leave: " + extractors(out).keySet(),
@@ -212,10 +212,11 @@ public class StandaloneExtractorGeneratorTest {
                 args, List.of(new JavaObjectCodeGenerator(), new ExtractorCodeGenerator()))
                 .get(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS));
 
-        // An explicit value in the pom wins over the derivation.
+        // An explicit "true" does not bring the second emitter back: with a separate
+        // extractor in the run, entity writing them too is the duplicate.
         Map<String, String> pinned = new HashMap<>(args);
         pinned.put(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS, "true");
-        assertEquals("true", EmitsObjectExtractors.deriveEmitExtractors(
+        assertEquals("false", EmitsObjectExtractors.deriveEmitExtractors(
                 pinned, List.of(new JavaObjectCodeGenerator(), new ExtractorCodeGenerator()))
                 .get(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS));
     }

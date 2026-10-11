@@ -1,5 +1,6 @@
 package com.metaobjects.generator.spring;
 
+import com.metaobjects.generator.EmitsObjectExtractors;
 import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;
 import com.metaobjects.generator.direct.object.javacode.JavaObjectCodeGenerator;
 import com.metaobjects.generator.Generator;
@@ -191,7 +192,7 @@ public class CodegenCompileConformanceTest extends SharedRegistryTestBase {
     @Test
     public void theJavaModelTierCompilesWithTheExtractorsFromTheirOwnGenerator() throws Exception {
         Map<String, String> entityOnly = new LinkedHashMap<>(AS_CLASS);
-        entityOnly.put(JavaObjectCodeGenerator.ARG_EMIT_EXTRACTORS, "false");
+        entityOnly.put(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS, "false");
         Map<String, Map<String, String>> selection = new LinkedHashMap<>();
         selection.put("entity", entityOnly);
         selection.put("extractor", PLAIN);

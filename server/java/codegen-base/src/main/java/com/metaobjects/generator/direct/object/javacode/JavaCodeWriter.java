@@ -228,7 +228,7 @@ public class JavaCodeWriter extends BaseObjectCodeWriter {
      * <p>The public view of the {@code protected} {@link #getLanguagePackage} hook, so it
      * answers with whatever a subclass overrode. A generator that has to name the generated
      * type without writing it (the binding provider and the {@code <Name>Extractor} both do)
-     * asks here. Supported surface for an owned generator (ADR-0034 Amendment 6).</p>
+     * asks here.</p>
      */
     public String javaPackageOf(MetaObject mo) {
         return getLanguagePackage(mo);

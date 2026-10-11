@@ -172,6 +172,34 @@ public class EjectSupportTest {
         EjectSupport.rewritePackage("class Foo {}", "com.acme.codegen");
     }
 
+    /**
+     * ADR-0034 Amendment 6: an owned generator extends and calls the classes copied with it,
+     * never the packaged ones. So an import of a copied class follows the copy, and an
+     * import of anything else (here the {@code extractor} generator, which is not part of
+     * {@code entity}'s copy, and a class whose name merely starts like a copied one) stays.
+     */
+    @Test
+    public void anImportOfAClassCopiedAlongFollowsTheCopyAndNoOtherImportMoves() {
+        EjectSupport.Entry entity = EjectSupport.resolve(
+                "entity", EjectSupport.ejectableByStableName(), EjectSupport.Port.JAVA, null).entry;
+        String src = "package com.metaobjects.generator.direct.object.javacode;\n\n"
+                + "import com.metaobjects.generator.direct.object.BaseObjectCodeWriter;\n"
+                + "import com.metaobjects.generator.direct.object.BaseObjectCodeWriterFactory;\n"
+                + "import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;\n"
+                + "import com.metaobjects.generator.direct.GenerationContext;\n\n"
+                + "public class Foo extends BaseObjectCodeWriter {}\n";
+
+        assertEquals("package com.metaobjects.generator.direct.object.javacode;\n\n"
+                + "import com.acme.codegen.BaseObjectCodeWriter;\n"
+                + "import com.metaobjects.generator.direct.object.BaseObjectCodeWriterFactory;\n"
+                + "import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;\n"
+                + "import com.metaobjects.generator.direct.GenerationContext;\n\n"
+                + "public class Foo extends BaseObjectCodeWriter {}\n",
+                EjectSupport.rewriteCopiedImports(src, entity.sources(), "com.acme.codegen"));
+        assertTrue(EjectSupport.ownedSource(entity, src, "com.acme.codegen")
+                .startsWith("package com.acme.codegen;\n"));
+    }
+
     // ------------------------------------------------------------------------------------
     // owned-copy comparison
     // ------------------------------------------------------------------------------------

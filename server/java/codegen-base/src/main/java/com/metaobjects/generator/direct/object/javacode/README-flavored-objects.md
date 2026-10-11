@@ -58,24 +58,32 @@ generator (override `createWriter` to return its writer). Proven by
 
 ## Owning the generators (`mvn metaobjects:eject`)
 
-`JavaObjectCodeGenerator` (`entity`) and `ExtractorCodeGenerator` (`extractor`) each eject
-as one file, package-renamed, into the adopter's `codegen/` module (ADR-0034 Amendment 6).
-This module's pom ships the two sources under `META-INF/metaobjects/reference/java/`.
+`JavaObjectCodeGenerator` (`entity`) and `ExtractorCodeGenerator` (`extractor`) eject into
+the adopter's `codegen/` module, each with the rest of its emit (ADR-0034 Amendment 6).
+This module's pom ships the sources under `META-INF/metaobjects/reference/java/`, and
+`GeneratorRegistry` (in `codegen-spring`) declares which classes go with which generator.
 
-What an owned copy may rely on, and so what this package has to keep working for it:
+| Generator | Copied with it, into the same owned package |
+|---|---|
+| `entity` | `JavaCodeGenerator`, `BaseObjectCodeGenerator`, `BaseObjectCodeWriter`, `JavaCodeWriter`, `PojoAwareCodeWriter`, `ValueObjectCodeWriter` |
+| `extractor` | `JavaCodeWriter`, `BaseObjectCodeWriter` |
 
-- the flavor writers `JavaCodeWriter`, `PojoAwareCodeWriter` and `ValueObjectCodeWriter`,
-  their public constructors and fluent options, and their `protected` emission steps;
-- `JavaCodeWriter.javaPackageOf(mo)` / `javaClassNameOf(mo)`, the public views of the
-  naming steps (a generator outside this package cannot call the `protected` ones);
-- `JavaCodeGenerator` and `BaseObjectCodeGenerator`, which the owned `entity` extends;
-- `ExtractorCodeGenerator.emit(...)`, which the owned `entity` calls.
+Eject rewrites each file's package line and, where one copied class imports another, that
+import. So the owned generator extends and calls the owned copies: an adopter changes the
+class body by editing a writer, not by subclassing one. What a copy may still rely on in
+this module, and so what has to keep working for it:
 
-The writers are deliberately NOT part of the copy. Each generated class's header names the
-writer class that wrote it, so a writer copied into another package would change every
-generated file. Two rules keep a reference ejectable, and `EjectedBaseGeneratorsCompileTest`
-fails when either is broken: import a sibling class explicitly rather than by its bare
-name, and call nothing on another class that is not `public`.
+- `MultiFileDirectGeneratorBase` and `FileDirectWriter`, which the copies extend;
+- `GenerationContext`, `GeneratorUtil`, `JavaIdentifiers` and `GeneratedFileWriter`;
+- `ExtractorCodeGenerator.emit(...)`, which an owned `entity` calls until an `extractor`
+  generator is wired beside it.
+
+Two rules keep a copy set ejectable, and `EjectedBaseGeneratorsCompileTest` fails when
+either is broken. A class in a copy set may name another class of this package by its bare
+name only if that class is in the same set; anything else (the owned `entity` naming
+`ExtractorCodeGenerator`) is imported explicitly. And a copied class calls nothing that is
+not `public` on a class left behind. A new class the writers come to depend on is added to
+the set in three places: this module's pom, `GeneratorRegistry`, and that test.
 
 ## Deviation list (what is NOT reused as-is, and why)
 
@@ -103,11 +111,13 @@ The default is reuse; these are the accounted-for exceptions.
    referenced sub-object exactly once — no visited-set/cycle guard needed (the spec's
    recursive-emission note is superseded by this simpler sound behavior).
 6. **`JavaCodeWriter.javaPackageOf` / `javaClassNameOf` (new, additive).** Public views of
-   the `protected` `getLanguagePackage` / `getClassName` steps, added so a generator in
-   another package (an ejected `JavaObjectCodeGenerator`) can name a generated type. The
-   steps themselves stay `protected`: widening them would break every subclass that
-   overrides one as `protected`. This is the one edit to the otherwise unchanged
-   `JavaCodeWriter`.
+   the `protected` `getLanguagePackage` / `getClassName` steps, so a generator can name a
+   generated type whichever package its writer is in. The steps themselves stay
+   `protected`: widening them would break every subclass that overrides one as
+   `protected`.
+7. **Class header (changed).** `BaseObjectCodeWriter` no longer writes the
+   `ObjectCodeWriter:` and `Generated On:` header lines. Generated output holds nothing
+   that varies between runs or between a packaged writer and an owned copy of it.
 
 ## Status / known gaps
 

@@ -163,14 +163,17 @@ separate `metaobjects-codegen-base` module instead.)
 | `ExtractorCodeGenerator` | also in `metaobjects-codegen-base`. One `<Name>Extractor` per concrete object, the same files `JavaObjectCodeGenerator` writes when this is not wired. Wire it as its own `<generator>` only to own it or to give it different args: same `outputDir`, `pkgPrefix` / `pkgSuffix` / `namePrefix` / `nameSuffix` and `<filters>` as the entity generator, which must run a concrete flavor in the same `<generators>` (an extractor for an object the entity generator wrote no class for does not compile). The plugin then stops the entity generator writing them. |
 
 **Owning one of these two.** `mvn metaobjects:eject -Dnames=entity,extractor -Dport=java`
-copies `JavaObjectCodeGenerator.java` and `ExtractorCodeGenerator.java` into the
-`codegen/` module (`-Dport` is required: both names are ejectable on both JVM ports).
-The owned entity generator holds the flavor selection, `createWriter`, the binding provider
-source and its `META-INF/services` registration. The class body is not in it: it comes
-from `JavaCodeWriter` / `PojoAwareCodeWriter` / `ValueObjectCodeWriter`, which stay in the
-package. To change a field, a constructor or an accessor, subclass the writer, override the
-`protected` step and return it from `createWriter`; do not copy the writers out. Every
-Java generator can be ejected except `template`.
+copies each generator into the `codegen/` module with the rest of its emit (`-Dport` is
+required: both names are ejectable on both JVM ports). For `entity` that is seven files in
+one package: `JavaObjectCodeGenerator` (flavor selection, `createWriter`, the binding
+provider source and its `META-INF/services` registration), the bases it extends
+(`JavaCodeGenerator`, `BaseObjectCodeGenerator`), and the writers that emit the class body
+(`BaseObjectCodeWriter`, `JavaCodeWriter`, `PojoAwareCodeWriter`, `ValueObjectCodeWriter`).
+The copies use one another, not the packaged classes. To change a field, a constructor or
+an accessor, edit the owned writer; do not subclass a packaged one. `extractor` copies
+`ExtractorCodeGenerator` with `JavaCodeWriter` and `BaseObjectCodeWriter`, and shares them
+with `entity` when both are in one package. Every Java generator can be ejected except
+`template`.
 
 **Projections (read-only views).** An `object.projection` (read-only `source.rdb`
 `@kind: view` child) is served read-only through OMDB at the ObjectManager layer
