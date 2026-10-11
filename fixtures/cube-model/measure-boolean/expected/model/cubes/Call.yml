@@ -8,40 +8,26 @@ cubes:
         type: number
         primary_key: true
     measures:
-      - name: anyFailedRaw
-        sql: 'CAST({CUBE}."failed" AS INTEGER)'
-        type: max
-        public: false
       - name: anyFailed
-        sql: '{anyFailedRaw} = 1'
+        sql: 'bool_or({CUBE}."failed")'
         type: boolean
-      - name: allFailedRaw
-        sql: 'CAST({CUBE}."failed" AS INTEGER)'
-        type: min
-        public: false
       - name: allFailed
-        sql: '{allFailedRaw} = 1'
+        sql: 'bool_and({CUBE}."failed")'
         type: boolean
-      - name: anySlowFailedRaw
-        sql: 'CAST({CUBE}."failed" AS INTEGER)'
-        type: max
-        filters:
-          - sql: '{CUBE}."duration_ms" >= 1000'
-        public: false
       - name: anySlowFailed
-        sql: '{anySlowFailedRaw} = 1'
+        sql: 'bool_or({CUBE}."failed") FILTER (WHERE {CUBE}."duration_ms" >= 1000)'
         type: boolean
       - name: anyFailedOrFalseRaw
-        sql: 'CAST({CUBE}."failed" AS INTEGER)'
-        type: max
+        sql: 'bool_or({CUBE}."failed")'
+        type: boolean
         public: false
       - name: anyFailedOrFalse
-        sql: 'COALESCE({anyFailedOrFalseRaw}, 0) = 1'
+        sql: 'COALESCE({anyFailedOrFalseRaw}, FALSE)'
         type: boolean
       - name: allFailedOrTrueRaw
-        sql: 'CAST({CUBE}."failed" AS INTEGER)'
-        type: min
+        sql: 'bool_and({CUBE}."failed")'
+        type: boolean
         public: false
       - name: allFailedOrTrue
-        sql: 'COALESCE({allFailedOrTrueRaw}, 1) = 1'
+        sql: 'COALESCE({allFailedOrTrueRaw}, TRUE)'
         type: boolean

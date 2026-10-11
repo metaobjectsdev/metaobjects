@@ -170,38 +170,6 @@ describe("measure.aggregate with @default", () => {
   });
 });
 
-describe("measure.aggregate with @agg any / all", () => {
-  const refunded: Json = { "field.boolean": { name: "refunded" } };
-  const anyRefund = (attrs: Json = {}): Json => ({
-    "measure.aggregate": { name: "anyRefund", "@agg": "any", "@of": "Sale.refunded", ...attrs },
-  });
-
-  test("a rollup lists the boolean <m>, never its numeric <m>Raw, so the report keeps its rollup", async () => {
-    const model = await build([sale([refunded, anyRefund()]), report("SaleFlags", ["sales", "anyRefund"])]);
-    expect(cube(model, "Sale").preAggregations).toEqual([
-      { name: "SaleFlags", type: "rollup", measures: ["sales", "anyRefund"], dimensions: [], segments: [] },
-    ]);
-  });
-
-  test("ERR_CUBE_MEMBER_COLLISION: a declared member named <m>Raw names the @agg as the reason", async () => {
-    const err = await refusal([
-      sale([refunded, anyRefund(), { "measure.aggregate": { name: "anyRefundRaw", "@agg": "count", "@of": "Sale.id" } }]),
-    ]);
-    expect(err.code).toBe("ERR_CUBE_MEMBER_COLLISION");
-    expect(err.message).toContain(
-      "the measure 'anyRefundRaw' the exporter adds for the @agg of measure 'acme::shop::Sale.anyRefund' and " +
-        "measure 'acme::shop::Sale.anyRefundRaw' are both named 'anyRefundRaw'",
-    );
-  });
-
-  test("with @default the collision still names the @default", async () => {
-    const err = await refusal([
-      sale([refunded, anyRefund({ "@default": 0 }), { "measure.aggregate": { name: "anyRefundRaw", "@agg": "count", "@of": "Sale.id" } }]),
-    ]);
-    expect(err.message).toContain("the exporter adds for the @default of measure 'acme::shop::Sale.anyRefund'");
-  });
-});
-
 describe("measure.ratio with @default", () => {
   const perSale = (attrs: Json = {}): Json => ({
     "measure.ratio": { name: "perSale", "@numerator": "revenue", "@denominator": "sales", ...attrs },

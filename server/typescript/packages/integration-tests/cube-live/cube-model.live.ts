@@ -282,7 +282,7 @@ describe(`cube-model live check (${CUBE_IMAGE}, development mode)`, () => {
       const loadMs = Date.now() - t0;
 
       // Rows first, so a rollup mismatch can say whether the numbers were right anyway.
-      const cubeRows = sortRows(result.data.map((row) => fromCubeRow(row, plan)), plan);
+      const cubeRows = sortRows(result.data.map((row) => fromCubeRow(row, plan, GEN_CONFIG.dialect)), plan);
       const viewRows = sortRows(selectView(s, want.view).map((row) => fromViewRow(row, plan, want.view)), plan);
       const rowsMatch = Bun.deepEquals(cubeRows, viewRows);
       const used = Object.keys(result.usedPreAggregations ?? {}).sort();

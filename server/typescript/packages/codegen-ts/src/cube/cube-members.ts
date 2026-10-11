@@ -50,6 +50,7 @@ import type {
   CubeSegmentSpec,
 } from "./cube-model-spec.js";
 import { CUBE_SELF, cubeColumn, cubeSqlRenderer, memberRef } from "./cube-sql.js";
+import type { ReportDialect } from "../projection/time-sql.js";
 
 /** What every member mapping reads: the model, the dialect, the column naming strategy. */
 export interface MemberContext {
@@ -146,43 +147,34 @@ export function dimensionColumn(
   );
 }
 
-/** `<m>Raw`: the member that holds a measure.aggregate's aggregate when `<m>` reads it (Table G, added members). */
+/** `<m>Raw`: the member that holds a defaulted measure.aggregate's aggregate (Table G, added members). */
 export function rawMeasureName(measure: string): string {
   return `${measure}Raw`;
 }
 
-/** `@agg: any` / `all`: the measure is a boolean (R10). */
-function isBooleanAggregate(m: MetaMeasure): boolean {
-  // ADR-0039: agg() resolves, so a measure inherited through extends keeps its aggregate.
-  const agg = m.agg();
-  return agg === AGG_ANY || agg === AGG_ALL;
-}
-
 /**
- * The `<m>Raw` twin a measure earns: a non-ratio `measure.aggregate` with `@default`, or with
- * `@agg: any` / `all`, gets one. `measureMembers` emits under this name and the facts cube keeps
- * it — one rule, two consumers.
+ * The `<m>Raw` twin a measure earns: only a non-ratio `measure.aggregate` with `@default` gets one.
+ * `measureMembers` emits under this name and the facts cube keeps it — one rule, two consumers.
  */
-export function rawMemberName(m: MetaMeasure): string | undefined {
-  if (m.isRatio()) return undefined;
+export function defaultedRawMemberName(m: MetaMeasure): string | undefined {
   // ADR-0039: defaultValue() resolves, so a measure inherited through extends keeps its default.
-  return m.defaultValue() !== undefined || isBooleanAggregate(m) ? rawMeasureName(m.name) : undefined;
+  return !m.isRatio() && m.defaultValue() !== undefined ? rawMeasureName(m.name) : undefined;
 }
 
 /**
- * One measure as Cube members. `raw` is the Table D aggregate, `public: false`, under `<m>Raw`,
- * and is present in two cases. A measure.aggregate with `@default`: `measure` reads it through
- * `COALESCE` (the zero-rows / measure-defaults plan, Table D: `COALESCE(E, n)`). An `@agg: any` /
- * `all`: `raw` is a `max` / `min` over the column as `0` / `1`, an additive number a rollup can
- * hold, and `measure` is the `boolean` that reads it as `= 1`.
+ * One measure as Cube members. `raw` is present for a measure.aggregate with `@default`: it is
+ * the Table D aggregate, `public: false`, under `<m>Raw`, and `measure` reads it through
+ * `COALESCE` (the zero-rows / measure-defaults plan, Table D: `COALESCE(E, n)`).
  */
 export interface MeasureMembers {
   readonly raw?: CubeMeasureSpec;
   readonly measure: CubeMeasureSpec;
 }
 
-/** `COALESCE(<sql>, n)`: `n` is the measure's integer `@default`. */
-function withDefault(sql: string, n: number): string {
+/** `COALESCE(<sql>, n)`: `n` is the measure's integer `@default`. A boolean measure's `@default` is
+ *  0 or 1, written as a boolean literal on Postgres (the view's own form). */
+function withDefault(sql: string, n: number, boolean: boolean, d: ReportDialect): string {
+  if (boolean && d === "postgres") return `COALESCE(${sql}, ${n === 1 ? "TRUE" : "FALSE"})`;
   return `COALESCE(${sql}, ${String(n)})`;
 }
 
@@ -197,16 +189,20 @@ export function measureMembers(entity: MetaObject, m: MetaMeasure, where: string
     const num = memberRef(ratioOperand(entity, m, m.numerator(), where).name);
     const den = memberRef(ratioOperand(entity, m, m.denominator(), where).name);
     const quotient = mc.dialect === "postgres" ? `CAST(${num} AS NUMERIC) / NULLIF(${den}, 0)` : `${num} / NULLIF(${den}, 0)`;
-    return { measure: { name: m.name, sql: n === undefined ? quotient : withDefault(quotient, n), type: "number", ...docOf(m) } };
+    return { measure: { name: m.name, sql: n === undefined ? quotient : withDefault(quotient, n, false, mc.dialect), type: "number", ...docOf(m) } };
   }
   const aggregate = aggregateSpec(entity, m, where, mc);
-  const raw = rawMemberName(m);
-  if (raw === undefined) return { measure: { name: m.name, ...aggregate, ...docOf(m) } };
-  const value = n === undefined ? memberRef(raw) : withDefault(memberRef(raw), n);
-  const boolean = isBooleanAggregate(m);
+  if (n === undefined) return { measure: { name: m.name, ...aggregate, ...docOf(m) } };
+  // Past the ratio branch, this measure satisfies the helper's rule: its twin name exists.
+  const raw = defaultedRawMemberName(m)!;
   return {
     raw: { name: raw, ...aggregate, public: false },
-    measure: { name: m.name, sql: boolean ? `${value} = 1` : value, type: boolean ? "boolean" : "number", ...docOf(m) },
+    measure: {
+      name: m.name,
+      sql: withDefault(memberRef(raw), n, aggregate.type === "boolean", mc.dialect),
+      type: aggregate.type === "boolean" ? "boolean" : "number",
+      ...docOf(m),
+    },
   };
 }
 
@@ -239,17 +235,20 @@ function aggregateSpec(
     const filter = [...cols.map((x) => `${x} IS NOT NULL`), ...(c === undefined ? [] : [c])].join(" AND ");
     return { sql: `ROW(${cols.join(", ")})`, type: "count_distinct", filters: [{ sql: filter }] };
   }
-  const filters = c === undefined ? {} : { filters: [{ sql: c }] };
   if (agg === AGG_ANY || agg === AGG_ALL) {
-    // A boolean OR / AND as a `max` / `min` over the column as `0` / `1`: an additive number, so a
-    // rollup holds it and Cube re-aggregates it, which a `boolean` leaf does not allow. Postgres
-    // has no MAX(boolean), so the column is cast; MySQL stores a boolean as `0` / `1` already.
-    // A null stays null, so the aggregate ignores it as `bool_or` / `bool_and` do.
+    // A boolean OR / AND, written as the view writes it (report-ddl-emit.ts) and typed `boolean`.
+    // Cube's min/max cannot take a boolean column (Postgres has no MAX(boolean)), and the
+    // condition travels in the SQL: the aggregate is Cube's `boolean` type, which takes none.
     const col = cols[0]!;
-    return { sql: d === "postgres" ? `CAST(${col} AS INTEGER)` : col, type: agg === AGG_ANY ? "max" : "min", ...filters };
+    if (d === "postgres") {
+      const fn = agg === AGG_ANY ? "bool_or" : "bool_and";
+      return { sql: c === undefined ? `${fn}(${col})` : `${fn}(${col}) FILTER (WHERE ${c})`, type: "boolean" };
+    }
+    const fn = agg === AGG_ANY ? "MAX" : "MIN";
+    return { sql: `${fn}(${c === undefined ? col : `CASE WHEN ${c} THEN ${col} END`})`, type: "boolean" };
   }
   const type: CubeMeasureType = agg === AGG_COUNT ? (distinct ? "count_distinct" : "count") : agg;
-  return { sql: cols[0]!, type, ...filters };
+  return { sql: cols[0]!, type, ...(c === undefined ? {} : { filters: [{ sql: c }] }) };
 }
 
 /** A `segment.filter`: its filter over `entity`'s fields. */

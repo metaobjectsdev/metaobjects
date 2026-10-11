@@ -68,7 +68,10 @@ export interface PlannedColumn {
    * every port's read returns it). Maps the integer, as text, to its symbol.
    */
   readonly symbols?: Readonly<Record<string, string>>;
-  /** A boolean measure (`@agg: any` / `all`): Cube must send a JSON boolean, never `1` / `0`. */
+  /**
+   * A boolean measure (`@agg: any` / `all`). Over Postgres Cube must send a JSON boolean. Over
+   * MySQL, which has no boolean type, Cube sends the string `"1"` or `"0"`, and nothing else.
+   */
   readonly boolean?: true;
 }
 
@@ -208,15 +211,20 @@ function coarsen(day: string, grain: string): string {
   }
 }
 
-export function fromCubeRow(row: Record<string, unknown>, plan: QueryPlan): NormalRow {
+export function fromCubeRow(row: Record<string, unknown>, plan: QueryPlan, dialect: "postgres" | "mysql"): NormalRow {
   const out: NormalRow = {};
   for (const c of plan.columns) {
     const key = c.derive?.fromKey ?? c.cubeKey;
     if (!(key in row)) throw new Error(`Cube's row has no '${key}': ${JSON.stringify(row)}`);
-    if (c.boolean === true && row[key] !== null && row[key] !== undefined && typeof row[key] !== "boolean") {
-      throw new Error(`Cube ${key}: a boolean measure came back as ${typeof row[key]} ${JSON.stringify(row[key])}, not a JSON boolean`);
+    const raw = row[key];
+    if (c.boolean === true && raw !== null && raw !== undefined) {
+      const wellFormed = dialect === "postgres" ? typeof raw === "boolean" : raw === "1" || raw === "0";
+      if (!wellFormed) {
+        const want = dialect === "postgres" ? "a JSON boolean" : 'the string "1" or "0"';
+        throw new Error(`Cube ${key}: a boolean measure came back as ${typeof raw} ${JSON.stringify(raw)}, not ${want}`);
+      }
     }
-    const value = normalize(c.kind, row[key], `Cube ${key}`);
+    const value = normalize(c.kind, raw, `Cube ${key}`);
     out[c.field] = c.derive === undefined || value === null ? value : coarsen(value, c.derive.grain);
   }
   return out;

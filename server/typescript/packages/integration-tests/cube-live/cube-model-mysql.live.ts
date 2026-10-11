@@ -189,7 +189,7 @@ describe(`cube-model MySQL live check (${CUBE_IMAGE} over ${CUBE_MYSQL_IMAGE}, d
       const t0 = Date.now();
       const result = await load(s, plan.query);
       const used = Object.keys(result.usedPreAggregations ?? {}).sort();
-      const cubeRows = sortRows(result.data.map((row) => fromCubeRow(row, plan)), plan);
+      const cubeRows = sortRows(result.data.map((row) => fromCubeRow(row, plan, GEN_CONFIG.dialect)), plan);
       const viewRows = sortRows(selectView(s, want.view).map((row) => fromViewRow(row, plan, want.view)), plan);
       timings.push(`${want.report}: ${cubeRows.length} row(s) compared, served from ${used[0] ?? "the source table"}, load ${Date.now() - t0} ms`);
       expect(viewRows.length).toBe(want.rows);

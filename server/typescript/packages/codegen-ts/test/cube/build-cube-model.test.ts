@@ -1482,15 +1482,13 @@ describe("Table H — the canonical model", () => {
     const totalMinutesOrZero: CubeMeasureSpec = { name: "totalMinutesOrZero", sql: "COALESCE({totalMinutesOrZeroRaw}, 0)", type: "number" };
     const longShare: CubeMeasureSpec = { name: "longShare", sql: "CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0)", type: "number" };
     const longShareOrZero: CubeMeasureSpec = { name: "longShareOrZero", sql: "COALESCE(CAST({longWeeks} AS NUMERIC) / NULLIF({weeks}, 0), 0)", type: "number" };
-    // @agg any / all: <m>Raw is a `max` / `min` over the column as 0 / 1 (an additive number a
-    // rollup can hold), and <m> is the `boolean` that reads it as `= 1`, its @default inside.
-    const deloadBit = 'CAST({CUBE}."deload" AS INTEGER)';
-    const anyDeloadRaw: CubeMeasureSpec = { name: "anyDeloadRaw", sql: deloadBit, type: "max", public: false };
-    const anyDeload: CubeMeasureSpec = { name: "anyDeload", sql: "{anyDeloadRaw} = 1", type: "boolean" };
-    const anyDeloadOrFalseRaw: CubeMeasureSpec = { name: "anyDeloadOrFalseRaw", sql: deloadBit, type: "max", public: false };
-    const anyDeloadOrFalse: CubeMeasureSpec = { name: "anyDeloadOrFalse", sql: "COALESCE({anyDeloadOrFalseRaw}, 0) = 1", type: "boolean" };
-    const allDeloadOrTrueRaw: CubeMeasureSpec = { name: "allDeloadOrTrueRaw", sql: deloadBit, type: "min", public: false };
-    const allDeloadOrTrue: CubeMeasureSpec = { name: "allDeloadOrTrue", sql: "COALESCE({allDeloadOrTrueRaw}, 1) = 1", type: "boolean" };
+    // @agg any / all: Cube's `boolean` measure, the aggregate as the view writes it; a @default is
+    // the <m>Raw aggregate and a boolean COALESCE over it.
+    const anyDeload: CubeMeasureSpec = { name: "anyDeload", sql: 'bool_or({CUBE}."deload")', type: "boolean" };
+    const anyDeloadOrFalseRaw: CubeMeasureSpec = { name: "anyDeloadOrFalseRaw", sql: 'bool_or({CUBE}."deload")', type: "boolean", public: false };
+    const anyDeloadOrFalse: CubeMeasureSpec = { name: "anyDeloadOrFalse", sql: "COALESCE({anyDeloadOrFalseRaw}, FALSE)", type: "boolean" };
+    const allDeloadOrTrueRaw: CubeMeasureSpec = { name: "allDeloadOrTrueRaw", sql: 'bool_and({CUBE}."deload")', type: "boolean", public: false };
+    const allDeloadOrTrue: CubeMeasureSpec = { name: "allDeloadOrTrue", sql: "COALESCE({allDeloadOrTrueRaw}, TRUE)", type: "boolean" };
     const key: CubeDimensionSpec = { name: "id", sql: '{CUBE}."id"', type: "number", primaryKey: true };
     // The other canonical entities (Node, Session, Measurement, the Auth family, AllTypes) and the
     // join-path cubes carry no report of Table H's; only their presence is asserted here.
@@ -1610,17 +1608,14 @@ describe("Table H — the canonical model", () => {
             name: "longWMinutes", sql: '{CUBE}."durationMinutes"', type: "sum",
             filters: [{ sql: `({CUBE}."durationMinutes" >= 60 AND {CUBE}."label" LIKE 'W%')` }],
           },
-          anyDeloadRaw,
           anyDeload,
-          { name: "allDeloadRaw", sql: deloadBit, type: "min", public: false },
-          { name: "allDeload", sql: "{allDeloadRaw} = 1", type: "boolean" },
+          { name: "allDeload", sql: 'bool_and({CUBE}."deload")', type: "boolean" },
           anyDeloadOrFalseRaw,
           anyDeloadOrFalse,
           allDeloadOrTrueRaw,
           allDeloadOrTrue,
-          // A condition on a boolean aggregate is the leaf's `filters` entry, as for any aggregate.
-          { name: "anyLongDeloadRaw", sql: deloadBit, type: "max", filters: [{ sql: '{CUBE}."durationMinutes" >= 60' }], public: false },
-          { name: "anyLongDeload", sql: "{anyLongDeloadRaw} = 1", type: "boolean" },
+          // A condition on a boolean aggregate travels in the SQL, as the view writes it.
+          { name: "anyLongDeload", sql: 'bool_or({CUBE}."deload") FILTER (WHERE {CUBE}."durationMinutes" >= 60)', type: "boolean" },
         ],
         segments: [{ name: "long", sql: '{CUBE}."durationMinutes" >= 60' }],
         // Coarsest first: FitnessTotals and FitnessTotalsFilled group by nothing, so Cube's first
@@ -1720,7 +1715,7 @@ describe("Table H — the canonical model", () => {
         public: false,
         joins: [],
         dimensions: [key],
-        measures: [weeks, anyDeloadRaw, anyDeload, anyDeloadOrFalseRaw, anyDeloadOrFalse, allDeloadOrTrueRaw, allDeloadOrTrue],
+        measures: [weeks, anyDeload, anyDeloadOrFalseRaw, anyDeloadOrFalse, allDeloadOrTrueRaw, allDeloadOrTrue],
         segments: [],
         preAggregations: [],
       },
