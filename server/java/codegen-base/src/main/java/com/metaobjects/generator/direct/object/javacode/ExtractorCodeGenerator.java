@@ -98,7 +98,7 @@ public class ExtractorCodeGenerator extends GeneratorBase implements EmitsObject
                 if (IOUtil.isAbstract(mo)) {
                     continue;
                 }
-                emit(outputDir, namer.javaPackageOf(mo), namer.javaClassNameOf(mo), mo.getName());
+                emit(outputDir, namer.getLanguagePackage(mo), namer.getClassName(mo), mo.getName());
             }
         } catch (IOException e) {
             throw new GeneratorException("Unable to emit generated Extractor: " + e, e);

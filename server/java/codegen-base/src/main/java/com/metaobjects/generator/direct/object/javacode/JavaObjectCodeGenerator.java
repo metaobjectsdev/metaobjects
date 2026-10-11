@@ -159,8 +159,8 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
                 if (IOUtil.isAbstract(mo)) {
                     continue;
                 }
-                String javaPkg = namer.javaPackageOf(mo);
-                String javaClass = namer.javaClassNameOf(mo);
+                String javaPkg = namer.getLanguagePackage(mo);
+                String javaClass = namer.getClassName(mo);
                 String generatedFqn = isNotBlank(javaPkg) ? javaPkg + "." + javaClass : javaClass;
                 // Key on the package-folded resolution key — NOT the dotted Java FQN.
                 fqnToClass.put(mo.getName(), generatedFqn);

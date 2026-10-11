@@ -130,22 +130,13 @@ public final class GeneratorRegistry {
                              Tier tier, Layer layer, String ejectResourcePath,
                              List<String> ejectRuntime) {
             this(stableName, classname, description, tier, layer, ejectResourcePath,
-                    ejectRuntime, null);
+                    ejectRuntime, null, List.of());
         }
 
         /**
          * @param ejectNote wiring the generic eject report cannot know, printed after it;
          *      {@code null} for a generator whose only wiring is the {@code <classname>}
          *      change. {@code {owned}} in it is replaced by the owned copy's class name.
-         */
-        public GeneratorInfo(String stableName, String classname, String description,
-                             Tier tier, Layer layer, String ejectResourcePath,
-                             List<String> ejectRuntime, String ejectNote) {
-            this(stableName, classname, description, tier, layer, ejectResourcePath,
-                    ejectRuntime, ejectNote, List.of());
-        }
-
-        /**
          * @param ejectWith fully-qualified names of the classes that hold the rest of this
          *      GENERATOR's emit (its bases and writers), closed over their references to each
          *      other. {@code mvn metaobjects:eject} copies each one's source (shipped at
@@ -360,15 +351,7 @@ public final class GeneratorRegistry {
                                  String classname, String description, Tier tier, Layer layer,
                                  String ejectResourcePath, List<String> ejectRuntime) {
         register(m, stableName, classname, description, tier, layer, ejectResourcePath,
-                ejectRuntime, null);
-    }
-
-    private static void register(Map<String, GeneratorInfo> m, String stableName,
-                                 String classname, String description, Tier tier, Layer layer,
-                                 String ejectResourcePath, List<String> ejectRuntime,
-                                 String ejectNote) {
-        register(m, stableName, classname, description, tier, layer, ejectResourcePath,
-                ejectRuntime, ejectNote, List.of());
+                ejectRuntime, null, List.of());
     }
 
     private static void register(Map<String, GeneratorInfo> m, String stableName,

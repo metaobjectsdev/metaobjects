@@ -75,12 +75,7 @@ public final class EjectSupport {
 
         public Entry(Port port, String stableName, String classname, String description,
                      String resourcePath, List<String> runtime) {
-            this(port, stableName, classname, description, resourcePath, runtime, null);
-        }
-
-        public Entry(Port port, String stableName, String classname, String description,
-                     String resourcePath, List<String> runtime, String note) {
-            this(port, stableName, classname, description, resourcePath, runtime, note, List.of());
+            this(port, stableName, classname, description, resourcePath, runtime, null, List.of());
         }
 
         public Entry(Port port, String stableName, String classname, String description,

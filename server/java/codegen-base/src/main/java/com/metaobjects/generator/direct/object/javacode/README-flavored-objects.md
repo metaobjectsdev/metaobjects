@@ -110,12 +110,7 @@ The default is reuse; these are the accounted-for exceptions.
    `MetaObject` already in the loader, so the inherited flat multi-file loop emits every
    referenced sub-object exactly once — no visited-set/cycle guard needed (the spec's
    recursive-emission note is superseded by this simpler sound behavior).
-6. **`JavaCodeWriter.javaPackageOf` / `javaClassNameOf` (new, additive).** Public views of
-   the `protected` `getLanguagePackage` / `getClassName` steps, so a generator can name a
-   generated type whichever package its writer is in. The steps themselves stay
-   `protected`: widening them would break every subclass that overrides one as
-   `protected`.
-7. **Class header (changed).** `BaseObjectCodeWriter` no longer writes the
+6. **Class header (changed).** `BaseObjectCodeWriter` no longer writes the
    `ObjectCodeWriter:` and `Generated On:` header lines. Generated output holds nothing
    that varies between runs or between a packaged writer and an owned copy of it.
 

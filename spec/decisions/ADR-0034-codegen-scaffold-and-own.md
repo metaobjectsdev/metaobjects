@@ -400,11 +400,14 @@ where a file lands is computed there from the same naming arguments the writer r
 casts to. Ejected into the same package as `entity`, the two generators share that one
 copy, so a naming change is made once and both follow it.
 
-**Decision 2: naming is read through two new public methods, and the `protected` steps stay
-`protected`.** `JavaCodeWriter.javaPackageOf(mo)` and `javaClassNameOf(mo)` are public views
-of the naming steps, so they answer with whatever a subclass overrode. Making the steps
-themselves public would have broken every existing subclass that overrides one as
-`protected`: Java refuses an override with weaker access.
+**Decision 2: the naming steps stay `protected`, and no public view of them is added.** Both
+generators name each generated type by calling `getLanguagePackage` and `getClassName` on a
+`JavaCodeWriter`. That call compiles only in the writer's own package, which is why a lone
+copy of the generator did not compile. Decision 1 removes the cause: `JavaCodeWriter` is
+copied with each generator into the same package, so the call compiles in the copy as it
+does in the reference. An earlier draft added public `javaPackageOf` / `javaClassNameOf`
+methods for a generator in another package to call. Nothing is in another package any more,
+so they were removed before release rather than shipped as a second name for each step.
 
 **Decision 3: `extractor` is a generator of its own, and `entity` still writes its files
 when nothing else will.** `ExtractorCodeGenerator` implements `Generator`: a `<generator>`
