@@ -52,6 +52,22 @@ same target rules, and is drift-gated the same way. The runner adds no header to
 on TypeScript, C# and Python none is needed, because the hash manifest records what was
 written.
 
+**Is it worth a generator? Run the cost test first.** Write an adopter-owned generator only
+when at least one holds:
+
+1. **It is smaller.** The generator code plus its generated output, plus the metadata it
+   adds, is fewer lines than the hand-written code it replaces.
+2. **More instances are coming.** The app will keep adding entities, routes or events of this
+   shape, so the generator's cost is paid back as the model grows.
+3. **Drift protection is the point.** A change to the model could pass the compiler and go
+   wrong silently (a runtime lookup by name, a string a consumer compares), and regeneration
+   plus `verify` is what catches it.
+
+Otherwise hand-write it: a one-off layer that reads typed generated properties cannot drift
+and is a fine place to stop. A generator with a general shape (usable by any app on this
+model) belongs in the MetaObjects library, not copied into each app; that is an upstream
+request, not a reason to grow your own.
+
 Write a new generator when the *shape* needs to change. When a reference's shape is right
 and only its *target* is wrong — a different framework than the reference emits for — eject
 that generator and retarget it instead; see "Your framework isn't the default" below.
@@ -125,10 +141,10 @@ convention, not the method name.
 a normal source file. Copy it and customize the copy (three-way merge preserves your
 edits on regen), or customize the template a built-in renders from. Reach for a
 custom generator when you want the change applied **consistently across every
-entity** (the scale win); a one-off edit when it's genuinely one file.
+entity** and it passes the cost test above; a one-off edit when it's genuinely one file.
 
 **The decision ladder:** an output the model describes that no reference emits → write
-a generator (the top of the skill) · a reference is close → eject it and customize the
+a generator if it passes the cost test (the top of the skill) · a reference is close → eject it and customize the
 copy · a reference fits → use it · only the genuinely un-modelable (business algorithms,
 external calls) is hand-written outside codegen — and it still imports the generated
 types.

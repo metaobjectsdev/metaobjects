@@ -46,7 +46,9 @@ exact config, generator names and commands for this project; read it. The other 
 or none emits it the way this application needs it. OpenAPI, JSON Schema, Zod schemas,
 DTOs or a client for a framework nothing here ships, a service layer in the house style,
 a data dictionary, a search-index mapping, test fixtures. That is a generator, and you
-write it now, in this change. Do not hand-write the output (it drifts the day the model
+write it now, in this change — once it passes the cost test in `references/owning-generators.md`
+(smaller than the code it replaces, generator counted; more instances expected; or drift
+protection is the point). Do not hand-write the output (it drifts the day the model
 changes and nothing notices), do not wait for MetaObjects to ship it, and do not ask
 permission: a generator in this repo is ordinary source you own.
 

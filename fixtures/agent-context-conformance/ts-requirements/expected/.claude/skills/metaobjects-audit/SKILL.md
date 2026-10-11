@@ -8,7 +8,10 @@ description: Use when assessing how well a project has adopted MetaObjects — g
 **Thesis.** Typed metadata is the durable spine; generated code is the disposable
 artifact. Hand-writing a layer the metadata could own creates a second source of
 truth for one fact — it will drift. This audit hunts those second sources of truth
-and proposes folding them into the spine.
+and proposes folding them into the spine — where the generator code plus its generated output
+and added metadata is fewer lines than the hand-written code it replaces, more of that shape
+are coming, or silent drift is the risk. A one-off layer
+that fails that cost test is acceptable, not a defect.
 
 **Boundary — read-only.** Deliverables: `.metaobjects/adoption-audit.json` (machine-readable
 findings) + a rendered Markdown report. The audit **never edits code, never authors
@@ -47,7 +50,11 @@ Actual cutovers run through the existing skills mapped per finding tier (§ Brid
 
 **Census:** generated output line/file counts + metadata/owned-generator lines.
 Compute **leverage ratio** = `generated_lines / (metadata_lines + generator_lines)`;
-healthy = multi-× (example: ~4.7k spine → ~15.7k generated ≈ 3.3×).
+healthy = multi-× (example: ~4.7k spine → ~15.7k generated ≈ 3.3×). **Never report a
+generated-share or leverage figure alone, and never as a target:** pair it with the **net
+hand-written line change**, a figure to report and not the cost test (hand-written lines
+removed minus generator and metadata lines added). A share can rise while total hand-written
+code grows.
 
 **Coverage matrix:** per entity/projection/value — query helpers? view? routes? UI?
 The gap between "modeled + query helpers" and "has view + route + UI" is the headline
@@ -314,6 +321,7 @@ with full force). Full guidance: `docs/features/downstream-metadata-decisions.md
 | **CODEGEN CANDIDATE (high)** | Standard CRUD/list/form over a modeled or modelable entity. | Author the view + generate; parity-gate. |
 | **CODEGEN CANDIDATE (partial)** | Generatable data layer, bespoke presentation. | Generate data layer; keep viz hand-written. |
 | **DYNAMIC-RUNTIME CANDIDATE** | Behavior that could be metadata-driven at runtime. | Assess runtime-metadata feasibility. |
+| **ACCEPTABLE (one-off)** | A hand-written layer the metadata could own, but an owned generator for it would cost more lines than it replaces, no more instances are expected, and nothing drifts silently (it reads typed generated properties). | Report as acceptable. Not a defect, not a recommendation to generate. Re-class if it recurs or drift appears. |
 | **BESPOKE (keep)** | Genuine custom: irreducible SQL (recursive CTEs, window functions, set ops — NOT plain count/sum/avg rollups, which are `origin.aggregate` on a projection), graph, SSE, auth, search, viz. | Leave hand-written — still import generated types. |
 | **VOCAB CANDIDATE (advisory)** | A recurring, closed hand-coded pattern (parallel integration modules / an ad-hoc string discriminator) that project-registered vocabulary — a custom subtype/attr via a provider — plus a small owned generator would own. | Propose the provider + `metadata_sketch`; apply the ADR-0037 ordered test; advisory only. |
 
@@ -385,7 +393,12 @@ Per finding: `file:line` → what → generated-equivalent exists? → recommend
   · new shape → **author a declarative template-spec / custom generator from the metadata**
   · genuinely un-modelable → hand-write (still import the generated types).
 - **Generator-gap check:** missing generators that block the biggest wins? Recommend per gap:
-  own + customize / author a template-spec / fix upstream / stopgap.
+  own + customize / author a template-spec / fix upstream / stopgap. **Cost-test every
+  recommendation to generate** (`metaobjects-codegen` → `references/owning-generators.md`): an
+  owned generator is worth it only if generator + output is smaller than the code it replaces,
+  more instances are expected, or drift protection is the point. A layer that fails is
+  ACCEPTABLE, and an owned generator larger than the code it replaced is itself a finding.
+  A general-shape generator belongs in the library, not in each app.
 - **Verify the DB artifact, not just the types** — computed view columns may appear in the
   contract but be dropped from the view DDL; the contract may lie.
 - **An *undeclared* hand-authored DB view is invisible to `meta verify --db`.** A view that is
