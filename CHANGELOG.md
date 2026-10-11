@@ -29,8 +29,8 @@ here.**
     `protected` step and return it from `createWriter`. Details:
     [own-your-codegen](docs/features/own-your-codegen.md#java-entity-and-extractor).
   - **`extractor` is a generator of its own (Java).** `ExtractorCodeGenerator` can be named
-    in `<generators>`, with the same `outputDir`, `pkgPrefix`, `pkgSuffix`, `namePrefix` and
-    `nameSuffix` as your `entity` generator. When it is, the plugin sets
+    in `<generators>`, with the same `outputDir`, `pkgPrefix`, `pkgSuffix`, `namePrefix`,
+    `nameSuffix` and `<filters>` as your `entity` generator. When it is, the plugin sets
     `emitExtractors=false` on `entity`, so each `<Name>Extractor` has one emitter. Outside
     Maven, set that arg yourself.
   - **Nothing changes for a pom that wires only `entity`.** It still writes the extractors,

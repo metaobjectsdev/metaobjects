@@ -169,6 +169,26 @@ public class StandaloneExtractorGeneratorTest {
     }
 
     @Test
+    public void givenEntitysFiltersItWritesAnExtractorForExactlyTheClassesEntityWrites() throws Exception {
+        List<String> filters = List.of(PKG + "::Drawing");
+
+        Path fused = tmp.newFolder("fused").toPath();
+        JavaObjectCodeGenerator entity = new JavaObjectCodeGenerator();
+        entity.setFilters(filters);
+        run(entity, entityArgs(fused, "pojoAware"), loadMeta());
+
+        Path standalone = tmp.newFolder("standalone").toPath();
+        ExtractorCodeGenerator extractor = new ExtractorCodeGenerator();
+        extractor.setFilters(filters);
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", standalone.toString());
+        run(extractor, args, loadMeta());
+
+        assertEquals(List.of("acme/shapes/DrawingExtractor.java"), List.copyOf(extractors(standalone).keySet()));
+        assertEquals(extractors(fused), extractors(standalone));
+    }
+
+    @Test
     public void itRefusesToRunWithNoOutputDirectory() {
         try {
             run(new ExtractorCodeGenerator(), new HashMap<>(), loadMeta());

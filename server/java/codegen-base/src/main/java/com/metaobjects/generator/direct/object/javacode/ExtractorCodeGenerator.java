@@ -58,7 +58,9 @@ import java.io.StringWriter;
  * once: {@link EmitsObjectExtractors} is how {@code entity} knows to leave them to this.</p>
  *
  * <p>An Extractor casts to the generated flavored class, so it needs the {@code entity}
- * generator with a concrete {@code flavor} in the same run.</p>
+ * generator with a concrete {@code flavor} in the same run, selecting the same objects: give
+ * both generators the same {@code <filters>}. An Extractor for an object {@code entity} wrote
+ * no class for does not compile.</p>
  *
  * <p>Emission is a direct {@code StringBuilder} emit (no templates). Its steps are
  * {@code protected} so a subclass can override one (e.g. {@link #writeExtractMethod})

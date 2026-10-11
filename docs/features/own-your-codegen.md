@@ -570,9 +570,10 @@ keep in step with the reference, when a change to the class body is one overridd
 
 **`extractor` copies `ExtractorCodeGenerator.java`, which holds all of its emit.** It is a
 generator of its own: add it to `<generators>` with the same `outputDir`, `pkgPrefix`,
-`pkgSuffix`, `namePrefix` and `nameSuffix` as your `entity` generator. An extractor casts
-to the generated flavored class, so `entity` with a concrete `flavor` has to be in the
-same run.
+`pkgSuffix`, `namePrefix` and `nameSuffix` as your `entity` generator, and the same
+`<filters>` if that one has any. An extractor casts to the generated flavored class, so
+`entity` with a concrete `flavor` has to be in the same run and has to select the same
+objects: an extractor for an object `entity` wrote no class for does not compile.
 
 ```xml
 <generator>

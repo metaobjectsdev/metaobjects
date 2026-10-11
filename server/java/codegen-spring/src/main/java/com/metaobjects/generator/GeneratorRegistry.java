@@ -264,8 +264,9 @@ public final class GeneratorRegistry {
                 "extractor: `entity` writes the <Name>Extractor classes itself unless a separate "
                     + "extractor generator is in <generators>. If yours has no entry for one, add "
                     + "<generator><classname>{owned}</classname></generator> with the same outputDir, "
-                    + "pkgPrefix, pkgSuffix, namePrefix and nameSuffix args as your entity generator. "
-                    + "`entity` then leaves those files to it.");
+                    + "pkgPrefix, pkgSuffix, namePrefix and nameSuffix args, and the same <filters>, as "
+                    + "your entity generator: an extractor for an object entity wrote no class for does "
+                    + "not compile. `entity` then leaves those files to it.");
         // "template" stays registered but is NOT ejectable: it is already a generic,
         // declaratively-configured primitive (Mustache template + output pattern) with no
         // emit LOGIC in it to own — you customize it via args/template-spec, not by editing
