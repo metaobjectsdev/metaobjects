@@ -17,8 +17,11 @@ namespace MetaObjects.Render;
 /// A plain field-tree node mirroring an <c>object.value</c> view-object's field
 /// walk. <see cref="Fields"/> present → a context-pushing field (object /
 /// array-of-object); null → a scalar (string/number/boolean/scalar-array).
+/// <see cref="IsArray"/> is the field's EFFECTIVE (resolving) array-ness — the one fact
+/// <c>Verify</c> needs to tell a single nested object's conditional <c>{{#x}}</c> apart
+/// from an array-of-objects' iterating <c>{{#x}}</c>, since both carry <see cref="Fields"/>.
 /// </summary>
-public sealed record PayloadField(string Name, IReadOnlyList<PayloadField>? Fields = null);
+public sealed record PayloadField(string Name, IReadOnlyList<PayloadField>? Fields = null, bool IsArray = false);
 
 /// <summary>A single drift finding: a code + the offending var path / partial ref / slot.</summary>
 public sealed record VerifyError(string Code, string Path);
@@ -153,7 +156,7 @@ public static class Verify
         // (no second resolution pass).
         var staticTexts = new List<string> { templateText };
 
-        void Walk(IReadOnlyList<Tok> tokens, List<IReadOnlyList<PayloadField>> stack, List<string> seen)
+        void Walk(IReadOnlyList<Tok> tokens, List<IReadOnlyList<PayloadField>> stack, List<string> seen, bool inElement = false)
         {
             bool atRoot = stack.Count == 1 && ReferenceEquals(stack[0], root);
             foreach (var tok in tokens)
@@ -164,22 +167,30 @@ public static class Verify
                         if (v.Value == ".") break; // implicit iterator — always valid
                         if (atRoot) referencedAtRoot.Add(v.Value.Split('.')[0]);
                         if (Resolve(stack, v.Value) is null
-                            && !PayloadAccessors.IsBooleanAccessor(stack, v.Value))
+                            && !PayloadAccessors.IsBooleanAccessor(stack, v.Value)
+                            && !PayloadAccessors.IsPositionalAccessor(inElement, v.Value))
                             errors.Add(new VerifyError(ERR_VAR_NOT_ON_PAYLOAD, v.Value));
                         break;
 
                     case SectionTok s:
-                        if (s.Value == ".") { Walk(s.Children, stack, seen); break; }
+                        if (s.Value == ".") { Walk(s.Children, stack, seen, inElement); break; }
                         if (atRoot) referencedAtRoot.Add(s.Value.Split('.')[0]);
                         var field = Resolve(stack, s.Value);
                         if (field is null)
                         {
+                            // A positional `-last` gate is a BOOLEAN on the current
+                            // collection element: it pushes nothing, so the body walks in the SAME scope.
+                            if (PayloadAccessors.IsPositionalAccessor(inElement, s.Value))
+                            {
+                                Walk(s.Children, stack, seen, inElement);
+                                break;
+                            }
                             // A derived `has<Field>` gate is a BOOLEAN over the current
                             // context: it resolves nothing and pushes nothing, so walk the
                             // body in the SAME scope — what `{{#hasX}}{{#x}}…` depends on.
                             if (PayloadAccessors.IsBooleanAccessor(stack, s.Value))
                             {
-                                Walk(s.Children, stack, seen);
+                                Walk(s.Children, stack, seen, inElement);
                                 break;
                             }
                             // Unresolved section head is itself drift; skip the body
@@ -190,12 +201,21 @@ public static class Verify
                         // `#` over a container pushes its element fields; `^` (and `#`
                         // over a scalar, used as a conditional) keep the current context.
                         bool push = !s.Inverted && field.Fields is not null;
+                        // The ONE positional-accessor rule (#304-class hardening): `-last` is
+                        // available in the body only when the INNERMOST enclosing ARRAY section
+                        // iterates OBJECT elements. A non-inverted section over an array field
+                        // sets the flag fresh — true for array-of-objects (Fields present), false
+                        // for array-of-scalars (no per-element Fields, so no `-last` even though
+                        // an outer object array still encloses it). Any other section (scalar
+                        // conditional, single nested object, `^`-inverted) is not an array
+                        // iteration at all, so it inherits the current scope's flag unchanged.
+                        bool childInElement = !s.Inverted && field.IsArray ? field.Fields is not null : inElement;
                         if (push)
                         {
                             var next = new List<IReadOnlyList<PayloadField>>(stack) { field.Fields! };
-                            Walk(s.Children, next, seen);
+                            Walk(s.Children, next, seen, childInElement);
                         }
-                        else Walk(s.Children, stack, seen);
+                        else Walk(s.Children, stack, seen, childInElement);
                         break;
 
                     case PartialTok p:
@@ -208,7 +228,7 @@ public static class Verify
                             break;
                         }
                         staticTexts.Add(text);
-                        Walk(Tokenize(text), stack, new List<string>(seen) { p.Value });
+                        Walk(Tokenize(text), stack, new List<string>(seen) { p.Value }, inElement);
                         break;
                 }
             }

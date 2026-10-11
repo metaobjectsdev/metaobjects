@@ -96,7 +96,7 @@ object KotlinM2mSupport {
      * @param loader the loader (for the model root, to find junction + target entities)
      * @return the resolved M:N navigations, in declaration order
      */
-    fun resolve(entity: MetaObject, loader: MetaDataLoader): List<M2mNav> {
+    fun resolve(entity: MetaObject, loader: MetaDataLoader, provided: Fr019SharedEnum.ProvidedEnumConfig): List<M2mNav> {
         val root = loader.root
         val out = ArrayList<M2mNav>()
         for (rel in entity.relationships) {
@@ -152,8 +152,7 @@ object KotlinM2mSupport {
                             "resolve to a field on storage object \"${target.name}\" — target narrowing " +
                             "cannot be derived."
                     )
-                val enumSimple = runCatching { KotlinTypeMapper.enumTypeName(discMetaField, target)?.simpleName }
-                    .getOrNull()
+                val enumSimple = KotlinTypeMapper.enumTypeName(discMetaField, target, provided)?.simpleName
                     ?: throw M2MFields.M2MDerivationException(
                         "M:N relationship \"$relLabel\": discriminator field \"$discField\" on " +
                             "\"${target.name}\" is not a materialized enum — target narrowing cannot " +
@@ -221,7 +220,12 @@ object KotlinM2mSupport {
      * shape (structural equality) reuses that same helper rather than minting another — so two
      * subtypes shadowing a name identically still share one helper, matching the plain-name case.
      */
-    fun tphQueryFnNames(base: MetaObject, plan: KotlinTphPlan.Plan, loader: MetaDataLoader): Map<M2mNav, String> {
+    fun tphQueryFnNames(
+        base: MetaObject,
+        plan: KotlinTphPlan.Plan,
+        loader: MetaDataLoader,
+        provided: Fr019SharedEnum.ProvidedEnumConfig,
+    ): Map<M2mNav, String> {
         val names = LinkedHashMap<M2mNav, String>()
         val firstShapePerName = HashMap<String, M2mNav>()
         fun visit(navs: List<M2mNav>, suffixSource: String?) {
@@ -237,10 +241,26 @@ object KotlinM2mSupport {
                 }
             }
         }
-        visit(resolve(base, loader), null)
-        for (st in plan.subtypes) visit(resolve(st.entity, loader), st.value)
+        visit(resolve(base, loader, provided), null)
+        for (st in plan.subtypes) visit(resolve(st.entity, loader, provided), st.value)
         return names
     }
+
+    @Deprecated(
+        "Pass the generator's Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args) as a third argument, so a " +
+            "@provided discriminator enum is typed by its configured class. Without it a @provided enum is " +
+            "named by the class in its declaration's own package.",
+    )
+    fun resolve(entity: MetaObject, loader: MetaDataLoader): List<M2mNav> =
+        resolve(entity, loader, Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
+
+    @Deprecated(
+        "Pass the generator's Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args) as a fourth argument, so a " +
+            "@provided discriminator enum is typed by its configured class. Without it a @provided enum is " +
+            "named by the class in its declaration's own package.",
+    )
+    fun tphQueryFnNames(base: MetaObject, plan: KotlinTphPlan.Plan, loader: MetaDataLoader): Map<M2mNav, String> =
+        tphQueryFnNames(base, plan, loader, Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
 
     /** The single primary-key field name of an entity (defaults to `id`). */
     private fun primaryKeyField(entity: MetaObject): String {

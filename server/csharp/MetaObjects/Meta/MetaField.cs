@@ -202,10 +202,21 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     /// <summary>
     /// Effective enum member symbols: own <c>@values</c> first, then the
     /// inherited (super) values. Returns <see langword="null"/> when neither
-    /// this field nor any super carries <c>@values</c>.
+    /// this field nor any super carries <c>@values</c>, which is also the answer for a
+    /// cyclic <c>extends</c> chain (the loader does not reject one).
     /// </summary>
-    public IReadOnlyList<string>? EffectiveEnumValues =>
-        EnumValues ?? (ResolveSuper()?.EnumValues);
+    public IReadOnlyList<string>? EffectiveEnumValues
+    {
+        get
+        {
+            var visited = new HashSet<MetaData>(ReferenceEqualityComparer.Instance);
+            for (MetaField? node = this; node is not null && visited.Add(node); node = node.ResolveSuper())
+            {
+                if (node.EnumValues is { } own) return own;
+            }
+            return null;
+        }
+    }
 
     /// <summary>
     /// True if the field is required (NOT NULL).

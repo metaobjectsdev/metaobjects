@@ -128,3 +128,83 @@ codegen + fixtures effort for a need Option 1 already serves.
 - [ADR-0001](ADR-0001-cross-language-type-binding.md) — bind metadata→native types at build time, per port (no FQN in metadata).
 - [enum datatype design](../../docs/superpowers/specs/2026-05-23-enum-datatype-design.md) — D6 abstract-enum reuse; int-backed values + display labels remain deferred.
 - [FR-019](../../docs/superpowers/specs/2026-06-06-fr-019-shared-and-provided-enums-design.md) — implementation (enum shared-materialization + `@provided`, with value-object `@provided` as a noted follow-up).
+
+## Amendment 1 (2026-10-10) — type identity through an `extends` chain
+
+§2 says a field that `extends` a shared declaration references its one type, and says nothing
+about a field that reaches the declaration through ANOTHER field. Each port filled that gap on
+its own, and more than once per port: the loader's #246 check, the type namer and the
+materializer each carried a private notion of "the super". Four defects came from two of those
+answers disagreeing: a projection whose enum type did not generate (#259), a chained root
+abstract named after the wrong declaration, an own `@values` silently dropped (#246), and a
+two-hop field that got its own inlined copy of a shared enum.
+
+**The rule.** A *shared enum declaration* is a `field.enum` that is abstract AND a direct child
+of the metadata root. To resolve an enum field's type, start at the field itself and walk its
+`extends` chain. At each node, in this order:
+
+1. the node is a shared enum declaration: that declaration is the answer (the nearest wins, so
+   `Money extends Currency` answers `Money`);
+2. the node declares its OWN `@values` or its OWN `@intValueMap`: there is no shared type. The
+   node starts a new vocabulary, and the field keeps a per-object inline type;
+3. otherwise continue at the node's super.
+
+A non-enum node, the end of the chain or a cycle answers "no shared type". The hosting object's
+subtype plays no part, and there is no hop limit: an entity, projection or value-object field
+that reaches a shared declaration through any number of hops references that one type.
+
+**One authority per port.** The walk lives in each port's metadata layer
+(`resolveSharedEnumDeclaration` / `isSharedEnumDeclaration`, named idiomatically), and both the
+loader and every codegen site call it. The #246 check asks the predicate about the IMMEDIATE
+super only, which is unchanged: own `@values` or `@intValueMap` directly under a shared
+declaration is `ERR_ENUM_EXTENDS_VALUES_CONFLICT`, and a redeclaration further down the chain
+loads and is answered by step 2. The two JVM generators share the Java function, so they cannot
+disagree.
+
+**Materialization.** The member set and the int map are read from the DECLARATION (a resolving
+read, so a chained declaration materializes the members it inherits), never from whichever
+consuming field is visited first. The shared type is emitted whenever any generated consumer
+references it, including when the only consumer is a multi-hop projection or value-object
+field. Where a port has several generators that reference the type, ONE of them owns the file,
+so generators writing to separate output directories never produce two copies of one class: in
+Java that is `SpringDtoGenerator`, which writes every shared enum the model uses, and the
+value-object and output-parser generators write it only under `emitSharedEnums=true`, for a
+build that runs them without it. A `@provided` declaration is never generated, and the reference
+to it is resolved inside the same type resolver every generator calls, from the same
+`providedEnumNamespace` / `providedEnumPackages` configuration, so no generator can name a
+class in the declaration's own package.
+
+**This supersedes #259's remedy.** #259 reported a type that did not generate, and was fixed by
+giving a Kotlin projection its own copy of the enum. The projection now references the shared
+type, and the shared type always generates. A field whose chain ends at an inline,
+object-hosted enum keeps each port's inline naming and output byte for byte. Sharing an inline
+enum across objects stays out of scope.
+
+**What changes in each port.** One case is common to all five: a field that reaches a shared
+declaration through two or more hops, with nothing redeclared on the way, references the shared
+type. Before, it generated an inline union named for the field it extends (TypeScript), a nested
+`<Entity><Field>` enum (C#), a nested enum that reused the shared declaration's name inside the
+DTO (Java), an `<Object><Field>` enum file that is no longer written (Kotlin), or an inline
+`Literal[...]` (Python).
+
+Java alone changes in two further ways, because Java alone had these behaviors:
+
+- *Value objects.* The value-object generator nested a copy of any enum a field extended, a
+  shared or `@provided` declaration included, so one declaration became two Java types that do
+  not convert (`TicketPayload.Priority` beside the top-level `Priority`). A value-object field
+  that reaches a shared or `@provided` declaration, in one hop or many, now references it.
+- *A redeclaration under a shared declaration.* Java names an inline enum that has a super for
+  its TOP-MOST super. For a field answered by step 2 whose top-most super is a shared
+  declaration, that name is the shared type's own, nested with different members and shadowing
+  it inside the DTO. That one case is named `<Owner><Field>` instead (`TaskDto.Priority`
+  becomes `TaskDto.TaskPhase`). It stays inline.
+
+Every other inline enum keeps its name: Java's top-most-super name where no shared declaration
+is on the chain (`ShipmentSummaryDto.Status`), pinned by a golden test against the previous
+generator's output.
+
+**Gate.** `fixtures/codegen-conformance/shared-provided-enum/expected-enum-types.json` is a
+port-neutral decision table: for every object-hosted enum field of the shared input, the
+declaration it resolves to (or none), whether that declaration is `@provided`, and which
+declarations are materialized. All five ports compute it from the function their generators
+call and must match it in both directions.

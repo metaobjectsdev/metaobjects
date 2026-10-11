@@ -35,6 +35,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.metaobjects.generator.spring.Fr019SharedEnum;
 import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
@@ -118,6 +119,16 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
  */
 public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<MetaObject> {
 
+    /**
+     * FR-019 per-port config for resolving {@code @provided} enum namespaces, parsed from the
+     * same {@code providedEnumNamespace} / {@code providedEnumPackages} generator args
+     * {@link SpringDtoGenerator} and {@link SpringValueObjectGenerator} read — a parsed enum
+     * field here may equally reach a shared/{@code @provided} declaration, and all three
+     * generators must resolve it to the SAME reference.
+     */
+    private Fr019SharedEnum.ProvidedEnumConfig fr019Config =
+        new Fr019SharedEnum.ProvidedEnumConfig(null, java.util.Map.of());
+
     @Override
     protected Class<MetaObject> getFilterClass() {
         return MetaObject.class;
@@ -127,6 +138,11 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
     public void execute(MetaDataLoader loader) {
         parseArgs();
         Path outRoot = Paths.get(outDir.getAbsolutePath());
+        fr019Config = Fr019SharedEnum.ProvidedEnumConfig.of(
+            getArg("providedEnumNamespace"), getArg("providedEnumPackages"));
+        if (Boolean.parseBoolean(getArg(Fr019SharedEnum.ARG_EMIT_SHARED_ENUMS, "false"))) {
+            Fr019SharedEnum.emitMaterialized(loader, outRoot);
+        }
 
         // ADR-0052: the direction rule lives in FindInbound, never re-derived here.
         for (MetaTemplate tmpl : FindInbound.inboundTemplates(loader)) {
@@ -371,12 +387,17 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         }
 
         // Enum fields: the assembled value is a validated member string; the record component
-        // is the enum nested in the value object's record. Bridge string → enum via
-        // `<Vo>.<Enum>.valueOf(s)` (per-element for arrays, dropping nulls). Checked BEFORE
+        // is either the enum nested in the value object's record (inline) or a shared/
+        // @provided top-level type (FR-019 — resolved by the SAME Fr019SharedEnum authority
+        // SpringDtoGenerator and SpringValueObjectGenerator use). Bridge string → enum via
+        // `<Enum>.valueOf(s)` (per-element for arrays, dropping nulls). Checked BEFORE
         // the generic scalar-array branch (enum-before-isArray). Safe: @values == the generated
         // constants and the engine validated the member.
         if (field instanceof EnumField ef) {
-            String enumType = payloadClass + "." + SpringTypeMapper.enumTypeName(owner, ef);
+            Fr019SharedEnum.SharedEnum shared = Fr019SharedEnum.sharedEnumForField(ef);
+            String enumType = shared != null
+                ? Fr019SharedEnum.qualifiedTypeReference(shared, fr019Config)
+                : payloadClass + "." + SpringTypeMapper.enumTypeName(owner, ef);
             if (field.isArrayType()) {
                 // asStringList returns null when the array is absent/malformed — guard with an
                 // empty list so the stream never NPEs.

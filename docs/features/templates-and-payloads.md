@@ -209,6 +209,42 @@ For the `lobby/welcome` template:
 </prompt>
 ```
 
+## List separators and emptiness
+
+A template needs a separator between list items and a way to ask "is there anything here", and
+neither needs a payload field the caller computes.
+
+- **Separator — `-last`.** Every object element of a collection carries a derived boolean, so
+  `{{#tags}}{{name}}{{^-last}}, {{/-last}}{{/tags}}` renders `a, b, c` with no `last` flag in
+  the payload. The name starts with `-`, which no field name can, and it is an ordinary Mustache
+  tag name, so the template is still valid Mustache and any Mustache tool parses it. An authored
+  member of the same name wins. A nested list keeps its own position, independent of the list
+  around it.
+- **Emptiness — `has<Field>`.** `{{#hasTags}}…{{/hasTags}}` / `{{^hasTags}}…{{/hasTags}}` is
+  derived from the field `tags` (string: non-blank, collection: non-empty, object: present).
+  `{{#tags}}` over an empty list already renders nothing; `hasTags` is for the block that
+  surrounds the loop, a heading or a wrapper element.
+
+Both work the same whatever shape the payload arrives in: a map or plain object, or the port's
+typed payload (a TypeScript class instance, a C# object with or without `[JsonPropertyName]`, a
+Java record or getter-based bean, a Kotlin data class, a Pydantic model). The same data renders
+the same bytes.
+
+**Where `-last` is available.** `meta verify --templates` accepts `-last` only when the
+innermost enclosing section over a LIST iterates objects. Anything else is reported as
+`ERR_VAR_NOT_ON_PAYLOAD`:
+
+| Where `-last` appears | Verdict |
+|---|---|
+| Inside `{{#posts}}`, a list of objects | accepted |
+| Inside a scalar conditional or a single nested object within that list (`{{#posts}}{{#note}}…{{/note}}{{/posts}}`) | accepted: those sections do not iterate, so the post's position is still the one in reach |
+| Inside `{{#labels}}`, a list of scalars | reported: a scalar element has nowhere to carry a key. Give the list an object element instead |
+| Inside a list of scalars nested in a list of objects (`{{#posts}}{{#labels}}…{{/labels}}{{/posts}}`) | reported: the lookup would fall through to the POST's position and separate the labels wrongly |
+| At the top level, or inside a section over a single object that no list encloses | reported |
+
+A template that verify accepts renders correctly; that is the rule the table follows. Output of a
+template that does not use `-last` is byte-for-byte what it was.
+
 ## What each port generates
 
 ### TypeScript
@@ -680,6 +716,7 @@ for payload typing per #270)
 - [`fixtures/render-conformance/render-empty-array-falsiness/`](../../fixtures/render-conformance/render-empty-array-falsiness/) — `{{#xs}}…{{/xs}}` over an empty array renders nothing (vs. iterates)
 - [`fixtures/render-conformance/render-falsy-values/`](../../fixtures/render-conformance/render-falsy-values/) — `false`, `null`, empty string, `0` — which are truthy for `{{#x}}` sections (per Mustache spec, not JS truthiness)
 - [`fixtures/render-conformance/render-inverted-section/`](../../fixtures/render-conformance/render-inverted-section/) — `{{^x}}…{{/x}}` renders when `x` is falsy/absent
+- [`fixtures/render-conformance/render-list-separator/`](../../fixtures/render-conformance/render-list-separator/) — the `-last` positional accessor: `{{^-last}}, {{/-last}}` separators, nested lists, single-element and empty lists, a scalar conditional and a single nested object inside a list, an authored key
 - [`fixtures/render-conformance/render-nested-partials/`](../../fixtures/render-conformance/render-nested-partials/) — `{{>partial}}` resolves through the provider, supports nesting
 - [`fixtures/render-conformance/render-standalone-tag-stripping/`](../../fixtures/render-conformance/render-standalone-tag-stripping/) — a line containing only a section/partial tag is removed (whitespace + newline)
 - [`fixtures/render-conformance/render-raw-html-bypass/`](../../fixtures/render-conformance/render-raw-html-bypass/) — `{{{x}}}` (or `{{&x}}`) emits raw, unescaped under `@format=html`

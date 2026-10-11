@@ -286,6 +286,11 @@ public class RenderHelperGenerator : IGenerator
         var fields = new List<PayloadField>();
         foreach (var f in vo.Children().Where(c => c.Type == TYPE_FIELD))
         {
+            // ADR-0039: ResolvedIsArray() — the effective array-ness — is the one fact Verify's
+            // positional-accessor rule needs to tell an array-of-objects/array-of-scalars
+            // section from a single-object/scalar one (both carry child Fields for the object
+            // case; only IsArray tells them apart).
+            var isArray = f.ResolvedIsArray();
             if (f.SubType == FIELD_SUBTYPE_OBJECT &&
                 // ADR-0039: resolving — @objectRef may be inherited via extends (TS reads f.attr).
                 f.Attr(FIELD_ATTR_OBJECT_REF) is string refName)
@@ -300,11 +305,11 @@ public class RenderHelperGenerator : IGenerator
                 if (target is not null && target.SubType == OBJECT_SUBTYPE_VALUE)
                 {
                     var children = DerivePayloadFieldTree(root, target, new HashSet<string>(seen, StringComparer.Ordinal));
-                    fields.Add(new PayloadField(f.Name, children));
+                    fields.Add(new PayloadField(f.Name, children, isArray));
                     continue;
                 }
             }
-            fields.Add(new PayloadField(f.Name));
+            fields.Add(new PayloadField(f.Name, IsArray: isArray));
         }
         return fields;
     }
@@ -329,7 +334,9 @@ public class RenderHelperGenerator : IGenerator
     /// Emit a <c>IReadOnlyList&lt;PayloadField&gt;</c> as a deterministic C# array
     /// literal: <c>new PayloadField[] { new PayloadField("name"),
     /// new PayloadField("nested", new PayloadField[] { ... }) }</c>. An empty tree
-    /// emits <c>new global::MetaObjects.Render.PayloadField[] { }</c>.
+    /// emits <c>new global::MetaObjects.Render.PayloadField[] { }</c>. The array flag is
+    /// emitted ONLY when true (<c>IsArray: true</c>), so a helper with no array field in
+    /// its payload stays byte-identical to before this flag existed.
     /// </summary>
     private static string FieldTreeLiteral(IReadOnlyList<PayloadField> fields)
     {
@@ -338,10 +345,11 @@ public class RenderHelperGenerator : IGenerator
         {
             if (i > 0) sb.Append(", ");
             var f = fields[i];
+            var arrayArg = f.IsArray ? ", IsArray: true" : "";
             if (f.Fields is not null)
-                sb.Append($"new global::MetaObjects.Render.PayloadField({Quote(f.Name)}, {FieldTreeLiteral(f.Fields)})");
+                sb.Append($"new global::MetaObjects.Render.PayloadField({Quote(f.Name)}, {FieldTreeLiteral(f.Fields)}{arrayArg})");
             else
-                sb.Append($"new global::MetaObjects.Render.PayloadField({Quote(f.Name)})");
+                sb.Append($"new global::MetaObjects.Render.PayloadField({Quote(f.Name)}{arrayArg})");
         }
         sb.Append(" }");
         return sb.ToString();

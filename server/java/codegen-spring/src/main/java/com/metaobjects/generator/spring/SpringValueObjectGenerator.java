@@ -28,6 +28,7 @@ import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import com.metaobjects.generator.spring.Fr019SharedEnum;
 import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
@@ -62,6 +63,17 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
  */
 public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<MetaObject> {
 
+    /**
+     * FR-019 per-port config for resolving {@code @provided} enum namespaces, parsed from the
+     * same {@code providedEnumNamespace} / {@code providedEnumPackages} generator args
+     * {@link SpringDtoGenerator} reads — a value-object field may equally reach a shared
+     * declaration (a projection/value-object field extending an entity field that in turn
+     * extends a root-level abstract enum), and the two generators must resolve it to the SAME
+     * reference.
+     */
+    private Fr019SharedEnum.ProvidedEnumConfig fr019Config =
+        new Fr019SharedEnum.ProvidedEnumConfig(null, java.util.Map.of());
+
     @Override
     protected Class<MetaObject> getFilterClass() {
         return MetaObject.class;
@@ -71,6 +83,11 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
     public void execute(MetaDataLoader loader) {
         parseArgs();
         Path outRoot = Paths.get(outDir.getAbsolutePath());
+        fr019Config = Fr019SharedEnum.ProvidedEnumConfig.of(
+            getArg("providedEnumNamespace"), getArg("providedEnumPackages"));
+        if (Boolean.parseBoolean(getArg(Fr019SharedEnum.ARG_EMIT_SHARED_ENUMS, "false"))) {
+            Fr019SharedEnum.emitMaterialized(loader, outRoot);
+        }
         for (MetaObject vo : valueShapes(loader)) {
             emit(vo, outRoot);
         }
@@ -138,7 +155,7 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         for (int i = 0; i < fields.size(); i++) {
             MetaField field = fields.get(i);
             String a = annotations.get(i);
-            String type = SpringDtoGenerator.componentType(field, vo);
+            String type = componentTypeFr019(field, vo);
             // A field named notify/wait/toString/… cannot BE a record component (JLS 8.10.3),
             // so it is escaped here and pinned back to its declared name on the wire.
             String component = SpringNaming.recordComponentName(field.getName());
@@ -173,15 +190,40 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
     }
 
     /**
-     * Nested {@code public enum <Name> { <members> }} declarations for the value object's inline
+     * FR-019-aware component type for a value-object field. A {@code field.enum} resolving to a
+     * package-level shared enum is typed by the materialized standalone type (a bare {@code E}
+     * in the same package, else its FQN) or — when {@code @provided} — the configured external
+     * {@code <ns>.E}; an enum array wraps it in {@code List<…>}. Every other field (including
+     * inline enums) delegates verbatim to {@link SpringDtoGenerator#componentType}, so the inline
+     * default stays byte-identical. Mirrors {@link SpringDtoGenerator}'s own
+     * {@code componentTypeFr019} — the two generators resolve a shared field to the SAME
+     * reference because both call {@link Fr019SharedEnum#sharedEnumForField}.
+     */
+    private String componentTypeFr019(MetaField<?> field, MetaObject owner) {
+        if (field instanceof EnumField) {
+            Fr019SharedEnum.SharedEnum shared = Fr019SharedEnum.sharedEnumForField(field);
+            if (shared != null) {
+                String ref = Fr019SharedEnum.typeReference(shared, owner, fr019Config);
+                return field.isArrayType() ? "java.util.List<" + ref + ">" : ref;
+            }
+        }
+        return SpringDtoGenerator.componentType(field, owner);
+    }
+
+    /**
+     * Nested {@code public enum <Name> { <members> }} declarations for the value object's INLINE
      * enum members, deduped by enum-type name — mirrors {@link SpringDtoGenerator}'s record body.
-     * A VO with no enum members yields an empty list (the common case).
+     * A field resolving to a package-level shared enum (materialized standalone or
+     * {@code @provided} externally) is referenced, never nested — skipped here, the same guard
+     * {@code SpringDtoGenerator.collectEnumDecls} applies. A VO with no own enum members yields
+     * an empty list (the common case).
      */
     private static List<String> collectEnumDecls(MetaObject owner, List<MetaField> fields) {
         Set<String> seen = new LinkedHashSet<>();
         List<String> decls = new ArrayList<>();
         for (MetaField<?> field : fields) {
             if (!(field instanceof EnumField ef)) continue;
+            if (Fr019SharedEnum.sharedEnumForField(field) != null) continue;
             List<String> values = SpringTypeMapper.effectiveEnumValues(ef);
             if (values.isEmpty()) continue;
             String typeName = SpringTypeMapper.enumTypeName(owner, ef);

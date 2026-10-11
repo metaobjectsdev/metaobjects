@@ -1,0 +1,29 @@
+{
+  "fields": {
+    "acme::shop::Ticket.priority": { "shared": "acme::shop::Priority", "provided": false },
+    "acme::shop::Ticket.severity": { "shared": "acme::shop::Priority", "provided": false },
+    "acme::shop::Ticket.tier": { "shared": "acme::shop::Priority", "provided": false },
+    "acme::shop::Ticket.currency": { "shared": "acme::shop::Currency", "provided": true },
+    "acme::shop::Order.priority": { "shared": "acme::shop::Priority", "provided": false },
+    "acme::shop::Order.status": { "shared": null, "provided": false },
+    "acme::shop::Task.urgency": { "shared": "acme::shop::Priority", "provided": false },
+    "acme::shop::Task.importance": { "shared": "acme::shop::Priority", "provided": false },
+    "acme::shop::Task.phase": { "shared": null, "provided": false },
+    "acme::shop::Task.weight": { "shared": null, "provided": false },
+    "acme::shop::Subtask.rank": { "shared": "acme::shop::Priority", "provided": false },
+    "acme::shop::Subtask.phase": { "shared": null, "provided": false },
+    "acme::shop::Subtask.weight": { "shared": null, "provided": false },
+    "acme::shop::Invoice.money": { "shared": "acme::shop::Money", "provided": false },
+    "acme::shop::Invoice.tier": { "shared": "acme::shop::Money", "provided": false },
+    "acme::shop::Refund.unit": { "shared": "acme::shop::Money", "provided": false },
+    "acme::shop::Refund.tender": { "shared": "acme::shop::Currency", "provided": true },
+    "acme::shop::Refund.orderStatus": { "shared": null, "provided": false },
+    "acme::shop::Refund.ticketTier": { "shared": "acme::shop::Priority", "provided": false },
+    "acme::shop::Refund.invoiceTier": { "shared": "acme::shop::Money", "provided": false },
+    "acme::shop::TicketSummary.level": { "shared": "acme::shop::Priority", "provided": false },
+    "acme::shop::TicketBadge.badge": { "shared": "acme::shop::Priority", "provided": false },
+    "acme::shop::TicketLabel.grade": { "shared": "acme::shop::Priority", "provided": false },
+    "acme::shop::TicketLabel.denomination": { "shared": "acme::shop::Currency", "provided": true }
+  },
+  "materialized": ["Money", "Priority"]
+}

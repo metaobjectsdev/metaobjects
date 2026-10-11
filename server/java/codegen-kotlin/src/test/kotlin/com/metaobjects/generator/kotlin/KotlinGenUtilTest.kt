@@ -106,7 +106,7 @@ class KotlinGenUtilTest {
         val outDir: Path = Files.createTempDirectory("kgu-mirrors-")
         try {
             val digest = loader.getMetaObjectByName("acme::app::Digest") as MetaObject
-            KotlinExtractSchemaEmitter.emitMirrorFiles(digest, outDir, mutableSetOf())
+            KotlinExtractSchemaEmitter.emitMirrorFiles(digest, outDir, mutableSetOf(), com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig.fromArgs(null))
             return Files.walk(outDir).filter { Files.isRegularFile(it) }
                 .map { outDir.relativize(it).toString() }.toList().toSet()
         } finally {

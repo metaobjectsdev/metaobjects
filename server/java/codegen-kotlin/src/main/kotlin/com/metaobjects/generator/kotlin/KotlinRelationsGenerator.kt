@@ -6,6 +6,7 @@ package com.metaobjects.generator.kotlin
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
 import com.metaobjects.generator.kotlin.ExposedApi
 import com.metaobjects.generator.kotlin.ExposedImports
+import com.metaobjects.generator.kotlin.Fr019SharedEnum
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinM2mSupport
 import com.metaobjects.generator.kotlin.KotlinNaming
@@ -77,6 +78,13 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
      * `exposedApi` generator arg (`<args><exposedApi>1</exposedApi></args>` in the pom).
      */
     protected fun exposedApi(): ExposedApi = ExposedApi.parse(getArg(ExposedApi.ARG_EXPOSED_API))
+
+    /**
+     * FR-019: where a `@provided` enum is referenced from, read from the same two generator args
+     * every generator that types an enum takes ([Fr019SharedEnum.ProvidedEnumConfig.fromArgs]).
+     */
+    private val providedEnums: Fr019SharedEnum.ProvidedEnumConfig
+        get() = Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args)
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -317,10 +325,10 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
      * name)`, ADR-0039) gets its OWN distinctly-named helper — see [KotlinM2mSupport.tphQueryFnNames].
      */
     private fun tphAugmentedM2mNavs(entity: MetaObject, loader: MetaDataLoader): List<KotlinM2mSupport.NamedM2mNav> {
-        val ownNavs = KotlinM2mSupport.resolve(entity, loader)
+        val ownNavs = KotlinM2mSupport.resolve(entity, loader, providedEnums)
         val plan = KotlinTphPlan.planFor(entity, loader)
             ?: return ownNavs.map { KotlinM2mSupport.NamedM2mNav(it, KotlinM2mSupport.defaultQueryFnName(it.relationName)) }
-        return KotlinM2mSupport.tphQueryFnNames(entity, plan, loader)
+        return KotlinM2mSupport.tphQueryFnNames(entity, plan, loader, providedEnums)
             .map { (nav, fnName) -> KotlinM2mSupport.NamedM2mNav(nav, fnName) }
     }
 

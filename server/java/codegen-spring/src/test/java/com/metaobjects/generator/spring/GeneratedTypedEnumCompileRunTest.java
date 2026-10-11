@@ -38,8 +38,9 @@ import static org.junit.Assert.*;
  *   <li>the record's {@code priority} accessor's return type {@link Class#isEnum() is an enum}
  *       named {@code <Owner><Field>}, with value the {@code HIGH} constant;</li>
  *   <li>{@code labels} is a {@code List} of the generated {@code Labels} enum, members [A, B];</li>
- *   <li>a shared abstract {@code field.enum} extended by two fields emits EXACTLY ONE nested
- *       {@code enum Priority} (named for the super), and both fields are typed {@code Priority}.</li>
+ *   <li>a shared abstract {@code field.enum} extended by two fields is ONE top-level
+ *       {@code enum Priority} both fields are typed by; the DTO generator owns that file, and
+ *       the value-object generator writes it only under {@code emitSharedEnums=true}.</li>
  * </ul>
  *
  * <p><b>Java structural note.</b> Unlike the C#/Kotlin/TS/Python ports, the Java port has no
@@ -125,18 +126,21 @@ public class GeneratedTypedEnumCompileRunTest extends SharedRegistryTestBase {
         MetaDataLoader loader = SpringTestFixtures.loadFixture(
                 ws, "shared-enum", SpringTestFixtures.SHARED_ENUM_FIXTURE);
 
-        generate(loader, gen);
+        // No DTO generator in this run, so the value-object generator is asked to write the
+        // shared enum files it references (emitSharedEnums=true).
+        generate(loader, gen, Map.of(Fr019SharedEnum.ARG_EMIT_SHARED_ENUMS, "true"));
 
-        // The source must declare EXACTLY ONE nested enum named for the super (Priority), not
-        // <Owner><Field> (CurrentPriority / PreviousPriority).
+        // The value object REFERENCES the shared declaration (ADR-0026 amendment: no condition on
+        // the hosting object's subtype), so its record declares no enum of its own and the
+        // shared type is emitted exactly once, as its own file.
         String src = Files.readString(gen.resolve("acme/orders/TicketPayload.java"));
-        int firstDecl = src.indexOf("public enum Priority {");
-        assertTrue("must emit a nested `public enum Priority`; saw:\n" + src, firstDecl >= 0);
-        assertEquals("must emit EXACTLY ONE `enum Priority` (deduped); saw:\n" + src,
-                firstDecl, src.lastIndexOf("public enum Priority {"));
-        assertFalse("must NOT name the enum <Owner><Field>; saw:\n" + src,
-                src.contains("public enum CurrentPriority")
-                        || src.contains("public enum PreviousPriority"));
+        assertFalse("the record must reference the shared enum, not nest one; saw:\n" + src,
+                src.contains("enum "));
+        String shared = Files.readString(gen.resolve("acme/orders/Priority.java"));
+        int firstDecl = shared.indexOf("public enum Priority {");
+        assertTrue("must emit a standalone `public enum Priority`; saw:\n" + shared, firstDecl >= 0);
+        assertEquals("must emit EXACTLY ONE `enum Priority`; saw:\n" + shared,
+                firstDecl, shared.lastIndexOf("public enum Priority {"));
 
         Path classes = compile(gen);
         try (URLClassLoader cl = new URLClassLoader(
@@ -151,16 +155,90 @@ public class GeneratedTypedEnumCompileRunTest extends SharedRegistryTestBase {
         }
     }
 
+    @Test
+    public void valueObjectRunWritesNoSharedEnumFileByDefault() throws Exception {
+        Path gen = tmp.newFolder("gen-shared-enum-default").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(
+                tmp.newFolder("ws-shared-enum-default").toPath(), "shared-enum-default",
+                SpringTestFixtures.SHARED_ENUM_FIXTURE);
+
+        generate(loader, gen);
+
+        // The DTO generator owns shared enum files; without the opt-in neither the
+        // value-object nor the output-parser generator writes one.
+        assertEquals("no Priority.java without emitSharedEnums", List.of(), filesNamed("Priority.java", gen));
+        // The record still REFERENCES the shared type and nests no copy.
+        String src = Files.readString(gen.resolve("acme/orders/TicketPayload.java"));
+        assertTrue("record must be typed by the shared enum; saw:\n" + src, src.contains("Priority currentPriority"));
+        assertFalse("record must not nest an enum; saw:\n" + src, src.contains("enum "));
+    }
+
+    /**
+     * The DTO and value-object generators write to SEPARATE output directories, and a build
+     * compiles both roots together (the Maven plugin registers each as a compile source root).
+     * One shared enum is reached by an entity and by a value object: exactly one
+     * {@code Priority.java} may exist across the two roots, or javac reports a duplicate class.
+     */
+    @Test
+    public void splitOutputDirectoriesHoldOneSharedEnumFileAndCompileTogether() throws Exception {
+        String fixture = """
+            {
+              "metadata.root": { "package": "acme::orders", "children": [
+                { "field.enum": { "name": "Priority", "abstract": true, "@values": ["LOW","HIGH"] } },
+                { "object.entity": { "name": "Ticket", "children": [
+                    { "field.long": { "name": "id" } },
+                    { "field.enum": { "name": "priority", "extends": "Priority" } },
+                    { "source.rdb": { "@table": "tickets" } },
+                    { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+                ] } },
+                { "object.value": { "name": "TicketPayload", "children": [
+                    { "field.enum": { "name": "priority", "extends": "Priority" } }
+                ] } }
+              ] }
+            }
+            """;
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(
+                tmp.newFolder("ws-split").toPath(), "split-output-dirs", fixture);
+        Path dtoOut = tmp.newFolder("gen-split-dto").toPath();
+        Path voOut = tmp.newFolder("gen-split-vo").toPath();
+
+        SpringDtoGenerator dtoGen = new SpringDtoGenerator();
+        dtoGen.setArgs(Map.of("outputDir", dtoOut.toString()));
+        dtoGen.execute(loader);
+        SpringValueObjectGenerator voGen = new SpringValueObjectGenerator();
+        voGen.setArgs(Map.of("outputDir", voOut.toString()));
+        voGen.execute(loader);
+
+        assertEquals("exactly one Priority.java, in the DTO generator's directory",
+                List.of(dtoOut.resolve("acme/orders/Priority.java")), filesNamed("Priority.java", dtoOut, voOut));
+
+        Path classes = compile(dtoOut, voOut);
+        try (URLClassLoader cl = new URLClassLoader(
+                new URL[]{ classes.toUri().toURL() }, getClass().getClassLoader())) {
+            Class<?> viaDto = cl.loadClass("acme.orders.TicketDto").getMethod("priority").getReturnType();
+            Class<?> viaVo = cl.loadClass("acme.orders.TicketPayload").getMethod("priority").getReturnType();
+            assertEquals("acme.orders.Priority", viaDto.getName());
+            assertSame("the DTO and the value object must be typed by the SAME enum class", viaDto, viaVo);
+        }
+    }
+
     // -----------------------------------------------------------------------------------------
     // shared harness
     // -----------------------------------------------------------------------------------------
 
     private static void generate(MetaDataLoader loader, Path gen) {
+        generate(loader, gen, Map.of());
+    }
+
+    /** Value-object + output-parser run; {@code valueObjectArgs} are extra args for the former. */
+    private static void generate(MetaDataLoader loader, Path gen, Map<String, String> valueObjectArgs) {
         Map<String, String> args = new HashMap<>();
         args.put("outputDir", gen.toString());
 
+        Map<String, String> payloadArgs = new HashMap<>(args);
+        payloadArgs.putAll(valueObjectArgs);
         SpringValueObjectGenerator payloadGen = new SpringValueObjectGenerator();
-        payloadGen.setArgs(args);
+        payloadGen.setArgs(payloadArgs);
         payloadGen.execute(loader);
 
         SpringOutputParserGenerator parserGen = new SpringOutputParserGenerator();
@@ -168,19 +246,30 @@ public class GeneratedTypedEnumCompileRunTest extends SharedRegistryTestBase {
         parserGen.execute(loader);
     }
 
-    private Path compile(Path gen) throws Exception {
-        List<File> sources;
-        try (Stream<Path> s = Files.walk(gen)) {
-            sources = s.filter(p -> p.toString().endsWith(".java"))
-                       .map(Path::toFile)
-                       .collect(Collectors.toList());
+    private static List<Path> filesNamed(String fileName, Path... roots) throws Exception {
+        List<Path> found = new java.util.ArrayList<>();
+        for (Path root : roots) {
+            try (Stream<Path> s = Files.walk(root)) {
+                s.filter(p -> p.getFileName().toString().equals(fileName)).forEach(found::add);
+            }
         }
-        assertFalse("expected generated .java files under " + gen, sources.isEmpty());
+        return found;
+    }
+
+    /** Compile every generated root TOGETHER, as a build with several source roots does. */
+    private Path compile(Path... gens) throws Exception {
+        List<File> sources = new java.util.ArrayList<>();
+        for (Path gen : gens) {
+            try (Stream<Path> s = Files.walk(gen)) {
+                s.filter(p -> p.toString().endsWith(".java")).map(Path::toFile).forEach(sources::add);
+            }
+        }
+        assertFalse("expected generated .java files under " + List.of(gens), sources.isEmpty());
 
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         assertNotNull("JDK (not JRE) required — getSystemJavaCompiler() returned null", javac);
 
-        Path classes = tmp.newFolder("classes-" + gen.getFileName()).toPath();
+        Path classes = tmp.newFolder("classes-" + gens[0].getFileName()).toPath();
         String cp = System.getProperty("java.class.path");
         DiagnosticCollector<JavaFileObject> diags = new DiagnosticCollector<>();
         var fm = javac.getStandardFileManager(diags, null, null);

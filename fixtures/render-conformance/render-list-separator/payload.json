@@ -1,0 +1,15 @@
+{
+  "items": [{ "name": "a" }, { "name": "b" }, { "name": "c" }],
+  "solo": [{ "name": "only" }],
+  "none": [],
+  "groups": [
+    { "tags": [{ "label": "x" }, { "label": "y" }] },
+    { "tags": [{ "label": "z" }] }
+  ],
+  "entries": [
+    { "name": "a", "note": "x", "owner": { "nick": "ann" } },
+    { "name": "b", "owner": { "nick": "bob" } },
+    { "name": "c", "note": "z", "owner": { "nick": "cy" } }
+  ],
+  "authored": [{ "name": "p", "-last": true }, { "name": "q", "-last": true }]
+}

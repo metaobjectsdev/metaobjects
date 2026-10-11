@@ -58,7 +58,16 @@ import com.metaobjects.template.TemplateConstants
  * record), so the wire shape is documented via the MODEL + VALIDATION symbols (matching what the
  * generators actually emit).
  */
-class KotlinApiModelBuilder {
+class KotlinApiModelBuilder(
+    /** FR-019: where a `@provided` enum is referenced from — the same config every generator takes. */
+    private val providedEnums: com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig,
+) {
+
+    @Deprecated(
+        "Pass Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args), so a @provided enum is documented by its " +
+            "configured class. Without it a @provided enum is named by the class in its declaration's own package.",
+    )
+    constructor() : this(com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
 
     private companion object {
         /** Structured formats that additionally get an output-format prompt + a tolerant extractor. */
@@ -329,7 +338,7 @@ class KotlinApiModelBuilder {
         rest("PUT $base/{id}", "update (PUT alias)")
         rest("DELETE $base/{id}", "delete")
         // FR-018 M:N traversal — GET /<source-plural>/{id}/<relation>.
-        for (nav in KotlinM2mSupport.resolve(obj, loader)) {
+        for (nav in KotlinM2mSupport.resolve(obj, loader, providedEnums)) {
             rest(
                 "GET $base/{id}/${nav.relationName}",
                 "M:N traversal — the related ${nav.targetShortName} rows",
@@ -497,7 +506,7 @@ class KotlinApiModelBuilder {
      * entity-CRUD DTO) now agree. Keeps the documented type == the generated type on both surfaces.
      */
     private fun kotlinTypeLabel(field: MetaField<*>, owner: MetaObject, forPayload: Boolean = false): String {
-        KotlinTypeMapper.enumTypeName(field, owner)?.let { enumType ->
+        KotlinTypeMapper.enumTypeName(field, owner, providedEnums)?.let { enumType ->
             val simple = enumType.simpleName
             return if (field.isArrayType) "List<$simple>" else simple
         }

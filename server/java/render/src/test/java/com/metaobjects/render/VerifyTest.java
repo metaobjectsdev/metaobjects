@@ -234,4 +234,50 @@ public class VerifyTest {
         assertEquals(1, drift.size());
         assertEquals("ERR_VAR_NOT_ON_PAYLOAD", drift.get(0).code());
     }
+
+    // ---- -last availability: the innermost enclosing ARRAY section must iterate objects ----
+
+    private static final List<PayloadField> POSITIONAL_PAYLOAD = List.of(
+        PayloadField.object("posts", List.of(
+            PayloadField.scalar("title"),
+            PayloadField.scalar("note"),
+            PayloadField.object("author", List.of(PayloadField.scalar("name"))),
+            PayloadField.scalar("labels", true)), true));
+
+    @Test
+    public void lastIsAcceptedInsideAnObjectListSection() {
+        assertTrue(Verify.check("{{#posts}}{{title}}{{^-last}}, {{/-last}}{{/posts}}",
+            POSITIONAL_PAYLOAD, VerifyOptions.empty()).isEmpty());
+    }
+
+    @Test
+    public void lastIsRejectedInsideAScalarListNestedInAnObjectList() {
+        var errors = Verify.check("{{#posts}}{{#labels}}{{.}}{{^-last}}, {{/-last}}{{/labels}}{{/posts}}",
+            POSITIONAL_PAYLOAD, VerifyOptions.empty());
+        assertEquals(1, errors.size());
+        assertEquals("ERR_VAR_NOT_ON_PAYLOAD", errors.get(0).code());
+        assertEquals("-last", errors.get(0).path());
+    }
+
+    @Test
+    public void scalarConditionalAndSingleObjectSectionsAreTransparentToLast() {
+        assertTrue(Verify.check(
+            "{{#posts}}{{#note}}{{note}}{{^-last}}; {{/-last}}{{/note}}{{#author}}{{name}}{{^-last}}, {{/-last}}{{/author}}{{/posts}}",
+            POSITIONAL_PAYLOAD, VerifyOptions.empty()).isEmpty());
+    }
+
+    @Test
+    public void twoComponentConstructorIsANonArrayField() {
+        PayloadField scalar = new PayloadField("name", null);
+        PayloadField nested = new PayloadField("owner", List.of(new PayloadField("nick", null)));
+        assertEquals(PayloadField.scalar("name"), scalar);
+        assertEquals(PayloadField.object("owner", List.of(PayloadField.scalar("nick"))), nested);
+        assertTrue(Verify.check("{{name}}{{#owner}}{{nick}}{{/owner}}",
+            List.of(scalar, nested), VerifyOptions.empty()).isEmpty());
+        // A non-array section does not iterate, so it offers no -last of its own.
+        var errors = Verify.check("{{#owner}}{{nick}}{{^-last}},{{/-last}}{{/owner}}",
+            List.of(nested), VerifyOptions.empty());
+        assertEquals(1, errors.size());
+        assertEquals("-last", errors.get(0).path());
+    }
 }

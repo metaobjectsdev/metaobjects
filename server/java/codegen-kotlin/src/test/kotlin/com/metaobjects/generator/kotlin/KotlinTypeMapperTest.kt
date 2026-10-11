@@ -377,13 +377,13 @@ class KotlinTypeMapperTest {
         val entity = loader.metaObjects.first { it.name == "acme::demo::Player" }
         val field = entity.metaFields.first { it.name == "status" } as EnumField
 
-        val name = KotlinTypeMapper.enumTypeName(field, entity)
+        val name = KotlinTypeMapper.enumTypeName(field, entity, com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig.fromArgs(null))
         assertEquals("acme.demo", name?.packageName)
         assertEquals("PlayerStatus", name?.simpleName)
 
         // Non-enum fields → null (caller falls through to kotlinTypeName).
         val idField = entity.metaFields.first { it.name == "id" }
-        assertNull(KotlinTypeMapper.enumTypeName(idField, entity))
+        assertNull(KotlinTypeMapper.enumTypeName(idField, entity, com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig.fromArgs(null)))
     }
 
     // === Long-text dispatch (varchar vs text) ===

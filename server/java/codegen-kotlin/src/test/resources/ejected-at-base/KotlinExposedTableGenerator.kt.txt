@@ -1,0 +1,2320 @@
+package com.metaobjects.generator.kotlin
+
+// Eject note (ADR-0034, JVM eject design): these siblings stay in
+// com.metaobjects.generator.kotlin when this generator is copied out via
+// `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
+// same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.kotlin.ExposedApi
+import com.metaobjects.generator.kotlin.ExposedImports
+import com.metaobjects.generator.kotlin.KotlinGenUtil
+import com.metaobjects.generator.kotlin.KotlinNaming
+import com.metaobjects.generator.kotlin.KotlinTphPlan
+import com.metaobjects.generator.kotlin.KotlinTypeMapper
+import com.metaobjects.generator.kotlin.PackageMapping
+
+import com.metaobjects.MetaData
+import com.metaobjects.database.CoreDBMetaDataProvider
+import com.metaobjects.database.IndexNaming
+import com.metaobjects.MetaRoot
+import com.metaobjects.field.EnumField
+import com.metaobjects.field.MapField
+import com.metaobjects.field.MetaField
+import com.metaobjects.field.DecimalField
+import com.metaobjects.field.ObjectField
+import com.metaobjects.generator.GeneratorException
+import com.metaobjects.generator.GeneratorIOWriter
+import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
+import com.metaobjects.identity.MetaIdentity
+import com.metaobjects.identity.ReferenceIdentity
+import com.metaobjects.index.LookupIndex
+import com.metaobjects.loader.MetaDataLoader
+import com.metaobjects.`object`.MetaObject
+import com.metaobjects.relationship.CompositionRelationship
+import com.metaobjects.relationship.MetaRelationship
+import com.metaobjects.relationship.RelationshipReferences
+import com.metaobjects.reporting.ReportReadModel
+import com.metaobjects.reporting.ReportShape
+import com.metaobjects.source.MetaSource
+import com.metaobjects.source.RdbSource
+import com.squareup.kotlinpoet.ClassName
+import java.io.OutputStream
+import java.io.PrintWriter
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
+import org.slf4j.LoggerFactory
+import com.metaobjects.generator.util.GeneratedFileWriter
+import com.metaobjects.generator.util.RestSurfaceGate
+
+/**
+ * Generator: one Exposed Table `object` per `object.entity` that has a `source.rdb` child.
+ * Entities without source.rdb are skipped (no persistence layer).
+ *
+ * <p>A view-backed `object.report` (FR-044) also gets one — the read-only mapping of the view
+ * `meta migrate` creates, with one column per derived field. See [emitReport] for which
+ * reports emit and which do not.
+ *
+ * <p>Exposed's `Column<T>` types are inferred by the Kotlin compiler from the initialiser
+ * expressions (e.g., `val name = varchar("name", 100)`). KotlinPoet's [com.squareup.kotlinpoet.PropertySpec]
+ * requires an explicit type, which would force `val name: Column<String> = ...` — verbose and
+ * brittle. Rather than fight the API, this generator hand-rolls the file body as a string;
+ * the syntactic surface is small (~20 lines per file) and matches the idiomatic Exposed style.
+ *
+ * <p>Args:
+ * <ul>
+ *   <li>{@code outputDir} (required): output directory root.</li>
+ * </ul>
+ */
+open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+
+    /**
+     * The project's column-naming strategy for fields carrying no explicit `@column`,
+     * from the `columnNaming` generator arg
+     * (`<args><columnNaming>literal</columnNaming></args>` in the pom). Values match the
+     * cross-port vocabulary: `snake_case` (this port's default, and its historical
+     * behaviour), `literal`, `kebab-case`.
+     *
+     * It is CONFIG, not metadata — ADR-0023 does not apply. The same model must be able
+     * to drive a snake_case Postgres schema and a literal-column one, which is precisely
+     * why the strategy lives beside the generator rather than in the metadata, and why
+     * the byte-gated registry prose for `@column` describes it as the default *"via
+     * columnNamingStrategy"*.
+     */
+    protected fun columnNaming(): String =
+        getArg(KotlinGenUtil.ARG_COLUMN_NAMING, KotlinGenUtil.DEFAULT_COLUMN_NAMING)
+
+    /**
+     * Task 6 — whether the table binding references `<Entity>Names.NAME` /
+     * `<Entity>Names.<FIELD>_COLUMN` instead of respelling the physical name/column as a
+     * string literal.
+     *
+     * The literal fallback below is the answer for a DIRECT programmatic call only. In a
+     * Maven run the arg is DERIVED: [com.metaobjects.generator.EmitsPhysicalNameConstants]
+     * marks [KotlinNamesGenerator], and `AbstractMetaDataMojo.buildGenerators` builds the
+     * whole `<generators>` list before executing any of it, so a pom that wires the names
+     * generator gets `useNames=true` without asking. An explicit `<useNames>` still wins.
+     *
+     * (The premise this defaulted OFF for — "Kotlin generators are selected by FQCN with no
+     * runner aggregating markers" — was simply false; the mojo IS that aggregation point.
+     * The default stays `false` because it is the honest answer when nothing aggregated:
+     * referencing `<Entity>Names` in a run without the names generator emits code that does
+     * not compile.) A PRESENCE guard, not a divergence/equality guard — see
+     * [KotlinGenUtil.primaryRdbSource].
+     */
+    protected fun useNames(): Boolean =
+        (getArg(KotlinGenUtil.ARG_USE_NAMES, "false") ?: "false").toBoolean()
+
+    /**
+     * Exposed output-API version (issue #390) — `0` (default) emits Exposed 0.x
+     * (`org.jetbrains.exposed.sql.*`, byte-identical to every release before this arg
+     * existed); `1` emits Exposed 1.x (`org.jetbrains.exposed.v1.*`). From the
+     * `exposedApi` generator arg (`<args><exposedApi>1</exposedApi></args>` in the pom).
+     */
+    protected fun exposedApi(): ExposedApi = ExposedApi.parse(getArg(ExposedApi.ARG_EXPOSED_API))
+
+    override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
+
+    override fun execute(loader: MetaDataLoader) {
+        parseArgs()
+        val outRoot = Paths.get(outDir.absolutePath)
+
+        // Pass 1a: identity.reference decorations — per-entity field→FK target
+        // metadata used to decorate the field column with `.references(...)`
+        // inline (rather than emit a separate FK row, which would duplicate the
+        // field's regular column emission).
+        val refDecorationMap = buildIdentityReferenceDecorations(loader)
+
+        // Pass 1b: compute FK columns globally across all entities so the "many"
+        // side (`relationship.composition @cardinality: many`) on Author can
+        // contribute the FK column to PostTable even when Post has no reciprocal.
+        val fkMap = buildGlobalFkMap(loader, refDecorationMap)
+
+        // Packages that emit at least one table carrying a
+        // instant (default, non-`@localTime`) column. Each such package gets ONE
+        // shared `MetaInstantWithTimeZoneColumnType.kt` support file (emitted in
+        // pass 3 below) instead of inlining the helper into every table file —
+        // multiple instant-timestamp tables in one package would otherwise
+        // redeclare the top-level support class/extension and fail to compile.
+        val packagesNeedingInstantTzHelper = sortedSetOf<String>()
+
+        // Packages that emit at least one table carrying a `field.uri` or `field.inet`
+        // column (ADR-0036/0037 Wave 3). Each such package gets ONE shared
+        // `MetaInetUriColumnType.kt` support file (the custom `Column<URI>`/`Column<InetAddress>`
+        // column types + the `uriColumn(...)`/`inetColumn(...)` builder extensions), emitted in
+        // pass 3 — same multi-table-per-package sharing rationale as the instant-tz helper.
+        val packagesNeedingInetUriHelper = sortedSetOf<String>()
+
+        // Packages that emit at least one table carrying a typed `field.object @storage:jsonb`
+        // or `field.map` column. Each such package gets ONE shared `MetaJsonbMapper.kt` support
+        // file (the `internal metaJsonbMapper` ObjectMapper the generated jsonb() codecs call) —
+        // same `internal` per-package sharing rationale as the instant-tz / inet-uri helpers.
+        val packagesNeedingJacksonMapper = sortedSetOf<String>()
+
+        // Packages that emit at least one table carrying a `field.string @dbColumnType=uuid`
+        // column (R6 Plan 2b physical escape hatch). Each such package gets ONE shared
+        // `MetaUuidStringColumnType.kt` support file (the custom `Column<String>` column type +
+        // the `uuidString(...)` builder extension), emitted in pass 3 — same multi-table-per-
+        // package sharing rationale as the other helpers.
+        val packagesNeedingUuidStringHelper = sortedSetOf<String>()
+
+        // Pass 2: emit one Table per entity using its own metadata + the
+        // inbound FKs accumulated in Pass 1.
+        // FR-024 (ADR-0028): object.projection is emitted too — a projection with
+        // an rdb view-kind source is queried through an Exposed Table exactly like
+        // a view-kind entity was pre-FR-024 (read-only by construction; projections
+        // carry no relationships/references, so passes 1+3 stay entity-only).
+        for (entity in loader.metaObjects) {
+            // FR-044: a report declares no fields, so it is emitted from its derived shape
+            // rather than through the entity/projection path below.
+            if (entity.subType == MetaObject.SUBTYPE_REPORT) {
+                emitReport(
+                    entity, outRoot, loader,
+                    packagesNeedingInstantTzHelper, packagesNeedingInetUriHelper, packagesNeedingJacksonMapper,
+                    packagesNeedingUuidStringHelper,
+                )
+                continue
+            }
+            if (entity.subType != MetaObject.SUBTYPE_ENTITY &&
+                entity.subType != MetaObject.SUBTYPE_PROJECTION) continue
+            // Abstract entities are inheritance scaffolding — never emit a persistence table.
+            if (KotlinGenUtil.isAbstractEntity(entity)) continue
+            // FR-017 TPH: a discriminator subtype folds into its base's single table — the base
+            // emits the union table. A per-subtype table would map the SAME physical table with
+            // a partial column set (a footgun). The subtype inherits source.rdb via extends, so
+            // the resolving lookup below would otherwise emit one — mirror the controller's skip.
+            if (KotlinTphPlan.isTphSubtype(entity)) continue
+            // #214 FR-024 §7: a WRITE-THROUGH entity read-view (own writable table source + own
+            // read-only replica view source + derived origin.* fields) emits TWO Exposed objects:
+            // the derived-free write `<Short>Table` AND the derived-carrying read-only `<Short>View`.
+            // Detected order-independently via MetaObject.isWriteThrough() — NEVER firstRdbSource,
+            // which returns the FIRST-declared source and can't pick table-vs-view. A projection
+            // owns only a read-only source (isWriteThrough() = false), so it stays on the single-
+            // object path below.
+            if (entity.subType == MetaObject.SUBTYPE_ENTITY && entity.isWriteThrough) {
+                emitWriteThrough(
+                    entity, outRoot, loader, fkMap, refDecorationMap,
+                    packagesNeedingInstantTzHelper, packagesNeedingInetUriHelper, packagesNeedingJacksonMapper,
+                    packagesNeedingUuidStringHelper,
+                )
+                continue
+            }
+            // R27: role-scoped resolving source lookup — an entity inheriting its
+            // source.rdb via extends must still emit a table (own-only .children
+            // returned null → no table). MUST be primaryRdbSource, not firstRdbSource:
+            // an object may declare two own sources of the SAME writable-or-read-only-ness
+            // (two read-only views, or two writable tables) in either declaration order,
+            // and firstRdbSource picks whichever was declared FIRST rather than whichever
+            // is role=primary. This is the SAME selector KotlinGenUtil.resolveObjectNames
+            // uses to build <Entity>Names.NAME/@kind, so the table binding and the names
+            // artifact can never resolve two different source nodes for the same entity
+            // (see KotlinGenUtil.primaryRdbSource's doc for the full shape + why the
+            // write-through branch above never reaches this line).
+            val sourceRdb = KotlinGenUtil.primaryRdbSource(entity) ?: continue
+            val kind = sourceRdb.effectiveKind
+            // table + view + materializedView → emit; view-like kinds are emitted read-only.
+            // storedProc → skip; consumer should wire KotlinStoredProcGenerator for those entities.
+            // tableFunction → skip with a warning (no dedicated generator yet).
+            if (kind != MetaSource.KIND_TABLE && !isViewKind(sourceRdb)) {
+                if (kind == MetaSource.KIND_STORED_PROC) {
+                    LOG.warn(
+                        "skipping {} — source.rdb @kind='storedProc' is not handled by KotlinExposedTableGenerator; use KotlinStoredProcGenerator for stored procs",
+                        entity.name
+                    )
+                } else {
+                    LOG.warn(
+                        "skipping {} — source.rdb @kind='{}' is not supported by KotlinExposedTableGenerator (table/view/materializedView only)",
+                        entity.name, kind
+                    )
+                }
+                continue
+            }
+            val fkColumns = if (isViewKind(sourceRdb)) emptyList() else fkMap[entity.name].orEmpty()
+            val refDecorations =
+                if (isViewKind(sourceRdb)) emptyMap() else refDecorationMap[entity.name].orEmpty()
+            val usedInstantTzHelper = emit(entity, sourceRdb, outRoot, loader, fkColumns, refDecorations)
+            if (usedInstantTzHelper) {
+                packagesNeedingInstantTzHelper += PackageMapping.splitFqn(entity.name).first
+            }
+            // ADR-0036/0037 Wave 3: does this table carry a `field.uri`/`field.inet` column?
+            // Walk direct fields AND flattened object sub-fields — the same two surfaces that
+            // contribute columns (mirrors the instant-tz detection inside emit()).
+            if (entityNeedsInetUriHelper(entity, loader)) {
+                packagesNeedingInetUriHelper += PackageMapping.splitFqn(entity.name).first
+            }
+            // Does this table carry a typed jsonb column (field.object non-flattened, or field.map)?
+            // If so its package needs the shared metaJsonbMapper support file.
+            if (entityNeedsJacksonMapper(entity, loader)) {
+                packagesNeedingJacksonMapper += PackageMapping.splitFqn(entity.name).first
+            }
+            // R6 Plan 2b: does this table carry a `field.string @dbColumnType=uuid` column? If
+            // so its package needs the shared MetaUuidStringColumnType support file.
+            if (entityNeedsUuidStringHelper(entity, loader)) {
+                packagesNeedingUuidStringHelper += PackageMapping.splitFqn(entity.name).first
+            }
+        }
+
+        // Pass 3: emit ONE shared `MetaInstantWithTimeZoneColumnType.kt` per package
+        // that has at least one instant (default, non-`@localTime`) column. The helper
+        // (custom `ColumnType<Instant>` + `Table.instantWithTimeZone(...)` extension) is
+        // `internal`, so every `*Table.kt` in the same package + module shares the single
+        // declaration with no redeclaration / private-access clash.
+        for (pkg in packagesNeedingInstantTzHelper) {
+            emitInstantTzSupportFile(pkg, outRoot)
+        }
+
+        // Pass 3b (ADR-0036/0037 Wave 3): emit ONE shared `MetaInetUriColumnType.kt` per
+        // package that has at least one `field.uri`/`field.inet` column. Same `internal`
+        // per-package sharing rationale as the instant-tz helper above.
+        for (pkg in packagesNeedingInetUriHelper) {
+            emitInetUriSupportFile(pkg, outRoot)
+        }
+
+        // Pass 3c: emit ONE shared `MetaJsonbMapper.kt` per package that has at least one typed
+        // `field.object @storage:jsonb` / `field.map` column. The `internal metaJsonbMapper`
+        // ObjectMapper is package+module-private, so every `*Table.kt` in the package shares it.
+        for (pkg in packagesNeedingJacksonMapper) {
+            emitJsonbMapperSupportFile(pkg, outRoot)
+        }
+
+        // Pass 3d (R6 Plan 2b): emit ONE shared `MetaUuidStringColumnType.kt` per package that
+        // has at least one `field.string @dbColumnType=uuid` column. Same `internal` per-package
+        // sharing rationale as the other helpers.
+        for (pkg in packagesNeedingUuidStringHelper) {
+            emitUuidStringSupportFile(pkg, outRoot)
+        }
+    }
+
+    /**
+     * #214 FR-024 §7 — emit the TWO Exposed objects of a write-through entity read-view:
+     *
+     *  - the WRITE `<Short>Table` from the entity's OWN writable `source.rdb` (physical `@table`
+     *    name), EXCLUDING derived (`origin.*`) fields but keeping the PK / autoIncrement /
+     *    `.references(...)` / `uniqueIndex` write shape (`excludeDerivedFields = true`,
+     *    `isView` = false since the source is a table kind);
+     *  - the READ `<Short>View` from the entity's OWN read-only replica view source (physical
+     *    name via [RdbSource.getPhysicalName]), carrying ALL fields incl. derived, in the
+     *    read-only shape (no autoIncrement / references / uniqueIndex — the existing view-kind
+     *    branch of [emit], reached because the source is a view kind).
+     *
+     * Both objects live in the same package, so the per-package instant-tz / inet-uri / jsonb
+     * support-file needs are recorded once (the sets dedupe). Order-independent: the sources are
+     * selected by writable-vs-read-only classification, not declaration order.
+     */
+    private fun emitWriteThrough(
+        entity: MetaObject,
+        outRoot: Path,
+        loader: MetaDataLoader,
+        fkMap: Map<String, List<FkColumnSpec>>,
+        refDecorationMap: Map<String, Map<String, RefDecoration>>,
+        packagesNeedingInstantTzHelper: MutableSet<String>,
+        packagesNeedingInetUriHelper: MutableSet<String>,
+        packagesNeedingJacksonMapper: MutableSet<String>,
+        packagesNeedingUuidStringHelper: MutableSet<String>,
+    ) {
+        val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
+        val writeSource = KotlinGenUtil.writableRdbSource(entity)
+        val readSource = KotlinGenUtil.readOnlyRdbSource(entity)
+        // Defensive: isWriteThrough() already guaranteed both are present; a null here would be a
+        // metadata-model contract break, so fail loud rather than emit a half table.
+        if (writeSource == null || readSource == null) {
+            LOG.warn(
+                "skipping write-through {} — expected both a writable and a read-only source.rdb (write={}, read={})",
+                entity.name, writeSource != null, readSource != null
+            )
+            return
+        }
+        // WRITE table: derived-free, full write shape (PK/autoIncrement/references/uniqueIndex).
+        val usedInstantTzWrite = emit(
+            entity, writeSource, outRoot, loader,
+            fkMap[entity.name].orEmpty(), refDecorationMap[entity.name].orEmpty(),
+            objectNameOverride = KotlinNaming.tableObjectName(shortName),
+            excludeDerivedFields = true,
+        )
+        // READ view: carries ALL fields incl. derived; read-only shape (no FK/uniqueIndex — the
+        // isView branch of emit(), since readSource is a view kind).
+        val usedInstantTzRead = emit(
+            entity, readSource, outRoot, loader,
+            emptyList(), emptyMap(),
+            objectNameOverride = KotlinNaming.viewObjectName(shortName),
+            excludeDerivedFields = false,
+        )
+        if (usedInstantTzWrite || usedInstantTzRead) packagesNeedingInstantTzHelper += pkg
+        if (entityNeedsInetUriHelper(entity, loader)) packagesNeedingInetUriHelper += pkg
+        if (entityNeedsJacksonMapper(entity, loader)) packagesNeedingJacksonMapper += pkg
+        if (entityNeedsUuidStringHelper(entity, loader)) packagesNeedingUuidStringHelper += pkg
+    }
+
+    /**
+     * FR-044 — emit the read-only `<Short>Table` of a view-backed `object.report`.
+     *
+     * Which reports emit (contract Table A):
+     *
+     *  - no read-only source: NOTHING. The report has no view, so there is nothing to map
+     *    (a sourceless object generates nothing, #248).
+     *  - `source.rdb @kind: view`: the table object, bound to the source's physical name.
+     *    The same for a view marked `@unmanaged: true` or carrying an authored `@sql` body:
+     *    migrate does not derive (or does not create) that view, but the view exists and
+     *    Table B still defines the columns a reader gets, so the mapping is needed either way.
+     *  - `@kind: materializedView` / `storedProc` / `tableFunction`: NOTHING. The lowering
+     *    skips those kinds, so no relation with the Table B columns is promised.
+     *  - an abstract report: NOTHING.
+     *
+     * The columns are the report's DERIVED fields — one per dimension, then one per measure —
+     * taken from the JVM's single definition of that shape ([ReportShape], via
+     * [ReportReadModel], which presents them as ordinary field nodes). So the report goes
+     * through the same [emit] as a view-kind projection, with three differences, which reach
+     * it through the report's [ReportTablePlan] and its being a [ReportReadModel]:
+     *
+     *  - it binds its view and columns by LITERAL even when the names generator is in the
+     *    run ([bindsThroughNames]): [KotlinNamesGenerator] emits nothing for a report;
+     *  - an enum column references the enum class of the entity the dimension reads
+     *    ([KotlinGenUtil.reportEnumClasses]): no generator emits a per-report enum;
+     *  - a derived decimal with no declared precision reads at [REPORT_DECIMAL_PRECISION] /
+     *    [REPORT_DECIMAL_SCALE] ([scalarColumnSpec]).
+     *
+     * A report has no identity, so the table has no `primaryKey`, and no index or reference.
+     * The data class, filter allowlist and read-only controller of the same report come from
+     * their own generators, each through `RestSurfaceGate.restShapeOf` (FR-044 Plan 3).
+     */
+    private fun emitReport(
+        report: MetaObject,
+        outRoot: Path,
+        loader: MetaDataLoader,
+        packagesNeedingInstantTzHelper: MutableSet<String>,
+        packagesNeedingInetUriHelper: MutableSet<String>,
+        packagesNeedingJacksonMapper: MutableSet<String>,
+        packagesNeedingUuidStringHelper: MutableSet<String>,
+    ) {
+        // Table A, from the one JVM predicate every REST-surface generator asks: a report
+        // is served only when it is concrete and its read source is `@kind: view`.
+        if (!RestSurfaceGate.isServedReport(report)) return
+        // The source the report is READ from, by the rule that names the lowered view.
+        val source = ReportShape.readSource(report) as? RdbSource ?: return
+
+        // Table B, derived ONCE for the report; everything below reads this one shape.
+        val shape = ReportShape.of(report, loader.root)
+        refuseUncompilableReportColumns(shape)
+        refuseObjectFieldReportColumns(shape)
+        val model = ReportReadModel.of(report)
+        val pkg = PackageMapping.splitFqn(report.name).first
+        reportPlans[model] = ReportTablePlan(
+            enumClasses = KotlinGenUtil.reportEnumClasses(shape),
+            unsizedDecimals = shape.fields()
+                .filter { it.typeSource == null && it.subType == DecimalField.SUBTYPE_DECIMAL }
+                .mapTo(HashSet()) { it.name },
+        )
+        try {
+            if (emit(model, source, outRoot, loader, emptyList(), emptyMap())) packagesNeedingInstantTzHelper += pkg
+        } finally {
+            reportPlans.remove(model)
+        }
+        if (entityNeedsInetUriHelper(model, loader)) packagesNeedingInetUriHelper += pkg
+        if (entityNeedsJacksonMapper(model, loader)) packagesNeedingJacksonMapper += pkg
+        if (entityNeedsUuidStringHelper(model, loader)) packagesNeedingUuidStringHelper += pkg
+    }
+
+    /**
+     * What [emit] needs to know about the report it is emitting that the read model's
+     * field nodes do not say. Built once per report by [emitReport].
+     *
+     * @property enumClasses derived enum field name → the generated enum class its column is typed by
+     * @property unsizedDecimals derived decimal fields the shape gives no type source, so no precision
+     */
+    private class ReportTablePlan(val enumClasses: Map<String, ClassName>, val unsizedDecimals: Set<String>)
+
+    /**
+     * The plan of the report being emitted, keyed by its read model for the duration of
+     * that one [emit] call. Identity-keyed because node equality is structural. It is how
+     * the three report differences reach [emit] without a parameter on a `protected open`
+     * function an adopter's subclass may override.
+     */
+    private val reportPlans = java.util.IdentityHashMap<ReportReadModel, ReportTablePlan>()
+
+    /**
+     * Refuse a report whose derived field names cannot become the column properties of one
+     * Kotlin `object`. `gen` would otherwise exit 0 and the adopter's build would be the
+     * first thing to disagree.
+     *
+     * Two cases, both loadable. A derived field named after a Kotlin hard keyword (`in`,
+     * `is`, `object`, …) is not a legal property name. And [KotlinNaming.safeColumnProperty]
+     * renames a field that collides with an Exposed `Table` member (`source` becomes
+     * `sourceColumn`), which can land on a second derived field already called that.
+     *
+     * Scoped to reports: an entity field has the same two hazards and they are left as they
+     * were. A report that generates no table (see [emitReport]) is never checked.
+     */
+    private fun refuseUncompilableReportColumns(shape: ReportShape) {
+        val report = shape.report()
+        val seen = HashMap<String, ReportShape.Field>()
+        for (f in shape.fields()) {
+            if (f.name in KOTLIN_HARD_KEYWORDS) {
+                throw GeneratorException(
+                    "report \"${report.shortName}\": its ${describeItem(f)} generates the Exposed column " +
+                        "property \"${f.name}\", and `${f.name}` is a Kotlin keyword, so the generated " +
+                        "table would not compile. Rename the ${f.role.wireName()}."
+                )
+            }
+            val property = KotlinNaming.safeColumnProperty(f.name, exposedApi())
+            val prior = seen.put(property, f) ?: continue
+            throw GeneratorException(
+                "report \"${report.shortName}\": its ${describeItem(prior)} and its ${describeItem(f)} both " +
+                    "generate the Exposed column property \"$property\" (a name that collides with a member " +
+                    "of Exposed's Table gets a \"Column\" suffix), so the generated table would not " +
+                    "compile. Rename one of them."
+            )
+        }
+    }
+
+    /**
+     * Refuse a report with a derived field typed by a `field.object` (a dimension over an
+     * embedded value object, say). The loader accepts it, but no port reads one through a
+     * report's row: the read model the table is built from ([ReportReadModel]) refuses it
+     * too, with the same sentence. Refused here first so `gen` fails as a generator error
+     * naming the report and the dimension or measure.
+     */
+    private fun refuseObjectFieldReportColumns(shape: ReportShape) {
+        for (f in shape.fields()) {
+            val src = f.typeSource ?: continue
+            // ADR-0039: resolving — an @objectRef the @of field inherits counts.
+            if (src.subType != ObjectField.SUBTYPE_OBJECT && !src.hasMetaAttr(MetaField.ATTR_OBJECT_REF)) continue
+            throw GeneratorException(
+                "report \"${shape.report().shortName}\": its ${describeItem(f)} reads " +
+                    "\"${f.typeSourceKey()}\", a field.${src.subType}. A report over a field.object is " +
+                    "not supported; group by a scalar field."
+            )
+        }
+    }
+
+    /**
+     * `measure "x"` or `dimension "x"`. The derived name IS the item name here: only a time
+     * dimension derives a different one (`<name><Grain>`), and that is never a keyword, a
+     * `Table` member or a `…Column` name, so a time dimension is never refused.
+     */
+    private fun describeItem(f: ReportShape.Field): String = "${f.role.wireName()} \"${f.name}\""
+
+    /**
+     * Whether the table of [entity] references `<Entity>Names` constants: only when the
+     * names generator is in the run ([useNames]) AND emits an artifact for [entity]. It
+     * emits none for a report (FR-044), so a report binds its view and columns by literal.
+     */
+    private fun bindsThroughNames(entity: MetaObject): Boolean = useNames() && entity !is ReportReadModel
+
+    /**
+     * The generated enum class a `field.enum` column of [entity]'s table is typed by:
+     * [KotlinTypeMapper.enumTypeName] for an entity or projection — the class
+     * [KotlinEntityGenerator] emits for it — and [KotlinGenUtil.reportEnumClasses] for a report.
+     */
+    private fun enumClassFor(field: MetaField<*>, entity: MetaObject): ClassName? =
+        reportPlans[entity]?.enumClasses?.get(field.name) ?: KotlinTypeMapper.enumTypeName(field, entity)
+
+    /**
+     * The Exposed column spec of a non-enum scalar [field] of [entity]: the type mapper's,
+     * except for a report's derived decimal that carries no declared precision (an `avg`, a
+     * ratio, or a `sum` of a decimal — Table B gives those no type source).
+     *
+     * Exposed's decimal column rounds every value it reads to the column's declared scale,
+     * so the mapper's default of four places would silently turn a ratio of 2/3 into 0.6667.
+     * These columns are an unconstrained NUMERIC in the view, so they are read at the widest
+     * precision and scale a Postgres NUMERIC is commonly declared with. The object maps a
+     * view, so the two numbers never reach DDL.
+     */
+    private fun scalarColumnSpec(entity: MetaObject, field: MetaField<*>, colExpr: String, api: ExposedApi): String {
+        if (reportPlans[entity]?.unsizedDecimals?.contains(field.name) == true) {
+            return "decimal($colExpr, $REPORT_DECIMAL_PRECISION, $REPORT_DECIMAL_SCALE)"
+        }
+        return KotlinTypeMapper.exposedColumnSpec(field, colExpr, api)
+    }
+
+    /**
+     * True iff [entity] carries at least one `field.uri`/`field.inet` column — on a direct
+     * field OR a flattened `object.value` sub-field. Mirrors the instant-tz detection inside
+     * [emit] (which walks the same two surfaces).
+     */
+    private fun entityNeedsInetUriHelper(entity: MetaObject, loader: MetaDataLoader): Boolean {
+        if (entity.metaFields.any { it !is ObjectField && KotlinTypeMapper.usesInetUriHelper(it) }) {
+            return true
+        }
+        for (field in entity.metaFields) {
+            if (field !is ObjectField) continue
+            if (readStorage(field) != STORAGE_FLATTENED) continue
+            val ref = readObjectRef(field) ?: continue
+            val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+            if (target.metaFields.any { KotlinTypeMapper.usesInetUriHelper(it) }) return true
+        }
+        return false
+    }
+
+    /**
+     * True iff [entity] contributes at least one typed jsonb column that calls the shared
+     * `metaJsonbMapper` — a `field.map` (always jsonb) OR a `field.object` with jsonb/default
+     * storage (`@storage` != `flattened`) on a direct field, OR a `field.map` nested inside a
+     * flattened `object.value` sub-field. Mirrors what [buildObjectColumns] + the flattened
+     * sub-field path actually emit, so the support file is present exactly when referenced.
+     */
+    private fun entityNeedsJacksonMapper(entity: MetaObject, loader: MetaDataLoader): Boolean {
+        for (field in entity.metaFields) {
+            if (field is MapField) return true          // field.map is always a jsonb Jackson column
+            if (field is ObjectField) {
+                if (readStorage(field) != STORAGE_FLATTENED) return true   // typed jsonb object column
+                // A flattened object.value sub-field can itself be a field.map (a jsonb Jackson column).
+                val ref = readObjectRef(field) ?: continue
+                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+                if (target.metaFields.any { it is MapField }) return true
+            }
+        }
+        return false
+    }
+
+    /**
+     * True iff [entity] carries at least one `field.string @dbColumnType=uuid` column (R6 Plan
+     * 2b) — on a direct field only (unlike the inet-uri/jsonb helpers, a flattened `object.value`
+     * sub-field is materialised per-subfield by [KotlinTypeMapper]'s flattened path, which never
+     * calls [KotlinTypeMapper.exposedColumnSpec]'s `StringField`/`@dbColumnType` branch for a
+     * nested sub-field the same way, so there is no flattened surface to walk here). Mirrors
+     * [entityNeedsInetUriHelper]'s direct-field walk.
+     */
+    private fun entityNeedsUuidStringHelper(entity: MetaObject, loader: MetaDataLoader): Boolean =
+        entity.metaFields.any { it !is ObjectField && KotlinTypeMapper.usesUuidStringHelper(it) }
+
+    /**
+     * Emit the per-package `MetaJsonbMapper.kt` support file: an `internal` shared Jackson
+     * [com.fasterxml.jackson.databind.ObjectMapper] (`metaJsonbMapper`) that the generated typed
+     * `jsonb()` column codecs call to encode/decode `field.object @storage:jsonb` value objects
+     * and `field.map` maps. Jackson (kotlin + jsr310 modules) is used INSTEAD of kotlinx so the
+     * generated data classes stay plain (no `@Serializable`, no compiler plugin) — every java.time
+     * / java.util / java.math / java.net field a jsonb VO may carry round-trips with no per-type
+     * plumbing. `internal` keeps it package+module-private while every `*Table.kt` shares it.
+     *
+     * Consumer classpath: the generated code needs `com.fasterxml.jackson.core:jackson-databind`,
+     * `com.fasterxml.jackson.module:jackson-module-kotlin`, and
+     * `com.fasterxml.jackson.datatype:jackson-datatype-jsr310` on its runtime classpath.
+     */
+    private fun emitJsonbMapperSupportFile(pkg: String, outRoot: Path) =
+        // The jsonb block is fully-qualified (no imports needed).
+        emitSupportFile(pkg, outRoot, JSONB_MAPPER_SUPPORT_FILE_NAME, imports = "", block = JSONB_MAPPER_SUPPORT_BLOCK)
+
+    /**
+     * Emit the per-package `MetaInetUriColumnType.kt` support file (ADR-0036/0037 Wave 3):
+     * `internal` custom Exposed column types for `field.uri` (a `Column<java.net.URI>` over
+     * plain `text`) and `field.inet` (a `Column<java.net.InetAddress>` over the Postgres-native
+     * `inet` type), plus the `Table.uriColumn(name)` / `Table.inetColumn(name)` column-builder
+     * extensions the generated tables call. `internal` keeps it package+module-private while
+     * every `*Table.kt` in the package shares the one declaration.
+     */
+    private fun emitInetUriSupportFile(pkg: String, outRoot: Path) {
+        val api = exposedApi()
+        emitSupportFile(pkg, outRoot, INET_URI_SUPPORT_FILE_NAME, inetUriSupportFileImports(api), inetUriSupportBlock(api))
+    }
+
+    /**
+     * Emit the per-package `MetaUuidStringColumnType.kt` support file (R6 Plan 2b): an
+     * `internal` custom Exposed column type for `field.string @dbColumnType=uuid` — a
+     * `Column<String>` persisted through the Postgres-native `uuid` type, delegating every
+     * JDBC/DDL concern to Exposed's own `UUIDColumnType` — plus the `Table.uuidString(name)`
+     * column-builder extension the generated tables call. `internal` keeps it package+module-
+     * private while every `*Table.kt` in the package shares the one declaration.
+     */
+    private fun emitUuidStringSupportFile(pkg: String, outRoot: Path) {
+        val api = exposedApi()
+        emitSupportFile(
+            pkg, outRoot, UUID_STRING_SUPPORT_FILE_NAME,
+            uuidStringSupportFileImports(api), uuidStringSupportBlock(api),
+        )
+    }
+
+    /**
+     * Emit the per-package `MetaInstantWithTimeZoneColumnType.kt` support file for
+     * instant (default, non-`@localTime`) columns: an `internal` custom `ColumnType<Instant>`
+     * (DDL `TIMESTAMP WITH TIME ZONE`) plus the `internal Table.instantWithTimeZone(name)`
+     * column-builder extension that the generated table files call. `internal` keeps it
+     * package+module-private (no leakage) while letting EVERY `*Table.kt` in the package use
+     * the single shared declaration — fixing the multi-table-per-package redeclaration that the
+     * earlier inline-per-file emission caused.
+     */
+    private fun emitInstantTzSupportFile(pkg: String, outRoot: Path) {
+        val api = exposedApi()
+        emitSupportFile(pkg, outRoot, INSTANT_TZ_SUPPORT_FILE_NAME, instantTzSupportFileImports(api), instantTzSupportBlock(api))
+    }
+
+    /**
+     * Emit one `internal` per-package support file (`<fileName>.kt`): a package header (when the
+     * package is non-empty), optional import lines, then the declaration block. Shared by the
+     * jsonb-mapper / inet-uri / instant-tz emitters, which differ only in file name, imports, and
+     * block — the `internal` declarations let every `*Table.kt` in the package reuse one copy.
+     */
+    private fun emitSupportFile(pkg: String, outRoot: Path, fileName: String, imports: String, block: String) {
+        val body = buildString {
+            if (pkg.isNotEmpty()) append("package $pkg\n\n")
+            if (imports.isNotEmpty()) { append(imports); append("\n") }
+            append(block)
+            append("\n")
+        }
+        val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$fileName.kt")
+        GeneratedFileWriter.write(outFile, body)
+    }
+
+    /**
+     * True when {@code source.rdb @kind} names a view-like construct
+     * (view / materializedView). View-like sources are read-only: the generator
+     * emits the Table declaration without auto-increment on the PK and without
+     * FK constraints (views inherit FKs from their underlying tables; declaring
+     * them again on the view confuses Exposed and serves no purpose).
+     */
+    private fun isViewKind(sourceRdb: RdbSource): Boolean {
+        val k = sourceRdb.effectiveKind
+        return k == MetaSource.KIND_VIEW || k == MetaSource.KIND_MATERIALIZED_VIEW
+    }
+
+    /**
+     * Emit one `*Table.kt` for [entity]. Returns `true` when the table carries at
+     * least one instant (default, non-`@localTime`) column — the caller uses that to
+     * record the package as needing the shared `MetaInstantWithTimeZoneColumnType.kt`
+     * support file (emitted once per package, not per table).
+     */
+    protected open fun emit(
+        entity: MetaObject,
+        sourceRdb: RdbSource,
+        outRoot: Path,
+        loader: MetaDataLoader,
+        fkColumns: List<FkColumnSpec>,
+        refDecorations: Map<String, RefDecoration>,
+        // #214: a write-through entity read-view emits TWO objects from the SAME entity — the
+        // write `<Short>Table` and the read `<Short>View` — so the caller passes an explicit
+        // object name (default: `tableObjectName(shortName)`, byte-identical for a vanilla entity).
+        objectNameOverride: String? = null,
+        // #214: on the write table, DERIVED fields (`origin.*` children) are excluded — they are
+        // not stored on the writable table, only computed by the read view. Vanilla entities carry
+        // no derived fields, so the default `false` keeps their output byte-identical.
+        excludeDerivedFields: Boolean = false,
+    ): Boolean {
+        val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
+        // issue #390: read once per emit() call and threaded through every Exposed FQN /
+        // column-spec decision below via KotlinTypeMapper + ExposedImports.
+        val api = exposedApi()
+        val isView = isViewKind(sourceRdb)
+        val tableObjectName = objectNameOverride ?: KotlinNaming.tableObjectName(shortName)
+        // FR-016: getPhysicalName() implements the four-step rule (kind-matching
+        // alias -> legacy @table -> snake_case(source.name) -> pluralize(snake_case(entity))),
+        // so it returns a valid name for any rdb @kind. The local fallback is
+        // kept as a defensive default for synthetic sources with no parent.
+        val tableName = sourceRdb.physicalName?.takeIf { it.isNotEmpty() }
+            ?: (shortName.lowercase() + "s")
+
+        // Task 6 / R27 — reference the constant whenever the names generator is in the run
+        // (gated on the arg, never on string equality — see KotlinGenUtil.primaryRdbSource's
+        // doc). <Entity>Names keys its sources by @role, so the reference is selected by the
+        // ROLE of the source THIS call binds: `SOURCE_PRIMARY_TABLE` for the write table,
+        // `SOURCE_REPLICA_VIEW` for the replica.
+        //
+        // That role key is what changed the answer for emitWriteThrough, which calls this
+        // function twice for ONE entity against two DIFFERENT own sources. The artifact used
+        // to carry the primary source's physical name and nothing else, so the read view had
+        // no slot to reference and kept its literal "deliberately" — a comment describing a
+        // missing member as a design. Both calls reference a constant now.
+        //
+        // The selection is no longer reference identity with the primary source either. The
+        // question is not "is this the primary?" but "which slot describes this source?",
+        // and the artifact answers it by role; two sources in one role that DISAGREE are
+        // refused when the artifact is built (KotlinGenUtil.sourcesOf), so a role key cannot
+        // silently stand for the wrong name.
+        val names = if (bindsThroughNames(entity)) KotlinGenUtil.resolveObjectNames(entity, columnNaming()) else null
+        // The slot describing THIS source, and the only thing that decides whether the names
+        // arm is taken at all. Null when the names generator is out of the run, or when the
+        // source's @kind carries no physical-name alias — a future @kind with no alias
+        // declares no member, and falling back to the literal keeps this from emitting a
+        // reference to nothing.
+        val srcNames = names?.sources?.get(sourceRdb.role)?.takeIf { it.alias != null }
+        // The member prefix is built from the source node's own metamodel type and role, and
+        // the physical-name segment from the metamodel's kind→alias map — the SAME two
+        // transforms KotlinNamesGenerator declares the member with, so the reference and the
+        // declaration cannot name two different members.
+        val sourcePrefix = KotlinNaming.namesObjectName(shortName) +
+            ".${KotlinNaming.namesMember(sourceRdb.type)}_${KotlinNaming.namesMember(sourceRdb.role)}_"
+        val tableExpr =
+            if (srcNames != null) "$sourcePrefix${KotlinNaming.namesMember(srcNames.alias!!)}"
+            else "\"$tableName\""
+
+        // @schema — Exposed takes the qualified name in the SAME string argument
+        // (`Table("sales.widgets")`), so qualification is a prefix on `tableExpr` rather than
+        // a separate parameter. It must be honoured because migrate-ts creates the table
+        // qualified (`CREATE TABLE "sales"."widgets"`) and owns where a table lives under
+        // ADR-0015; an unqualified Exposed table binds whatever the connection's search_path
+        // resolves to, so the generated code read the right table or a different one
+        // depending on the deployment, never failing loudly either way.
+        //
+        // Read off the SAME source node this call is binding, not off the entity, so a
+        // write-through entity's replica view keeps its own schema rather than borrowing the
+        // write table's. On the names arm it concatenates the constant; on the literal arm it
+        // spells the schema, and both produce the same string at runtime.
+        val tableSchema = sourceRdb.schema?.takeIf { it.isNotEmpty() }
+        val qualifiedTableExpr = when {
+            // The names arm reads the SCHEMA member off the same role slot the table name
+            // came from, so a replica view with its own @schema qualifies with its own.
+            srcNames?.schema != null -> "${sourcePrefix}SCHEMA + \".\" + $tableExpr"
+            srcNames != null || tableSchema == null -> tableExpr
+            // Names off: fold the two literals into one rather than emitting
+            // `"sales." + "widgets"`.
+            else -> "\"$tableSchema.$tableName\""
+        }
+
+        // Task 6 — see [columnExpr]. Kept as a local alias so the many call sites in this
+        // function stay short; the rule itself lives in one place. Both column loops below
+        // — the entity's own fields AND the TPH fold of its subtypes' fields — go through
+        // it, so "which artifact carries this column" is decided once.
+        fun columnExprFor(f: MetaField<*>): String = columnExpr(entity, f)
+
+        // Walk the `extends` chain so identities declared on an abstract base
+        // entity (the BaseEntity pattern: `identity.primary` on `id`) are
+        // picked up by tables for concrete entities that extend it. Own-only
+        // collection misses inherited primary identities and the generated
+        // table comes out with no `override val primaryKey = PrimaryKey(...)`
+        // declaration. `getIdentities(true)` returns own + super-chain (with
+        // MetaData's dedupe by type+name letting an own-declared identity
+        // override an inherited one of the same name).
+        val allIdentities = entity.getIdentities(true)
+        val primary = allIdentities.firstOrNull { it.isPrimary }
+        // Secondary identities → Exposed `uniqueIndex(name, col1, ...)` calls.
+        // Views inherit uniqueness from their underlying tables; never emit
+        // uniqueIndex on a view (Exposed can't add indexes to a view object).
+        // Walks the `extends` chain via the same `getIdentities(true)` path
+        // used for the primary identity so secondaries on an abstract base
+        // entity (e.g. `Named` with `identity.secondary by_name`) are picked
+        // up by concrete child tables. Stable order = declaration order.
+        val secondaries = if (isView) emptyList() else allIdentities.filter { it.isSecondary }
+        // Composite PKs (e.g. a junction table keyed by (userId, roleId)) must
+        // emit `PrimaryKey(userId, roleId)` — earlier code only took the FIRST
+        // field and silently truncated. Every PK-member field is non-nullable
+        // (it's part of the primary key). autoIncrement only applies to the
+        // single-field case; a composite tuple can't be auto-generated, so the
+        // generator falls back to the LLM/DB-side default.
+        val primaryFieldNames = primary?.let { KotlinGenUtil.keyFields(entity, it) }.orEmpty()
+        val primaryFieldSet = primaryFieldNames.toSet()
+        val singlePrimaryFieldName = primaryFieldNames.singleOrNull()
+        // Views inherit PKs from underlying tables — never emit autoIncrement on a
+        // view column, even when @generation=increment is declared on the primary
+        // identity (a relic of the parent entity's declaration).
+        val incrementPk = primary?.isIncrement == true && !isView && singlePrimaryFieldName != null
+        // R6 Plan 2a: a single-field uuid PK with @generation:uuid gets a server-side
+        // gen_random_uuid() DEFAULT (the Postgres-side mint). Routed through the SAME
+        // generation signal as increment — distinct only in the emitted column suffix.
+        // Views never carry a generated default (they inherit the underlying PK).
+        val uuidGeneratedPk = primary?.isUuid == true && !isView && singlePrimaryFieldName != null
+
+        val objectColumns = buildObjectColumns(entity, primaryFieldSet, loader, excludeDerivedFields)
+        // A `field.string @dbColumnType=jsonb` open bag now decodes to a kotlinx `JsonElement`
+        // (issue #98) via `{ Json.parseToJsonElement(it) }`, so its table file needs the
+        // `kotlinx.serialization.json.Json` import too (that open bag is the ONLY column that still
+        // uses kotlinx — the object/map jsonb columns use the Jackson metaJsonbMapper). Detect it on
+        // direct fields AND flattened object sub-fields — the same two surfaces that contribute
+        // columns / imports. Folding it into the jsonb-import decision (rather than
+        // `columnFunctionImports`) keeps the `jsonb` extension import emitted exactly once.
+        val hasStringJsonbOpenBag = entity.metaFields.any { KotlinTypeMapper.isJsonbOpenBag(it) } ||
+            entity.metaFields.any { f ->
+                f is ObjectField && readStorage(f) == STORAGE_FLATTENED &&
+                    (readObjectRef(f)?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
+                        ?.metaFields?.any { KotlinTypeMapper.isJsonbOpenBag(it) } ?: false)
+            }
+        // Object/map jsonb columns → the Jackson metaJsonbMapper codec (a same-package `internal`
+        // val in MetaJsonbMapper.kt); the open-bag `field.string @dbColumnType=jsonb` → kotlinx
+        // `Json.parseToJsonElement` (a runtime API needing NO compiler plugin). They share the
+        // `jsonb` extension import but need DIFFERENT codec support: the object/map path needs the
+        // Jackson mapper file, the open-bag path needs the `kotlinx...Json` import.
+        val hasJacksonJsonbColumn = objectColumns.any { it.kind == ObjectColumnKind.JSONB }
+        val needsJsonbExtensionImport = hasJacksonJsonbColumn || hasStringJsonbOpenBag
+        val needsKotlinxJsonImport = hasStringJsonbOpenBag
+        val needsRefOptForDecor = refDecorations.values.any { it.hasReferenceOption }
+
+        // Does any column on this table use the TZ-aware instant (default, non-`@localTime`)
+        // opt-in? If so the table calls the `instantWithTimeZone(...)` column-builder
+        // extension, which lives in the package-shared `MetaInstantWithTimeZoneColumnType.kt`
+        // support file (emitted once per package — see emitInstantTzSupportFile). The
+        // extension is `internal` + same-package, so the table needs NO import for it (and the
+        // return value's `Column<Instant>` type is inferred). Walk direct fields AND flattened
+        // object sub-fields (same surfaces that contribute columns / imports above).
+        var needsInstantTzHelper = entity.metaFields.any {
+            it !is ObjectField && KotlinTypeMapper.usesInstantWithTimeZone(it)
+        }
+        if (!needsInstantTzHelper) {
+            for (field in entity.metaFields) {
+                if (field !is ObjectField) continue
+                if (readStorage(field) != STORAGE_FLATTENED) continue
+                val ref = readObjectRef(field) ?: continue
+                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+                if (target.metaFields.any { KotlinTypeMapper.usesInstantWithTimeZone(it) }) {
+                    needsInstantTzHelper = true
+                    break
+                }
+            }
+        }
+
+        // Walk every field that will actually become a Table column and collect the
+        // imports its column function requires. Member functions on Table (varchar,
+        // integer, long, etc.) return null and are skipped; extension functions from
+        // org.jetbrains.exposed.sql.javatime (date / timestampWithTimeZone / ...)
+        // return their FQN so the generated file imports them. Without this the
+        // generated tables compile-fail with unresolved-reference errors. Flattened
+        // object sub-fields are walked too — they emit columns of their own.
+        val columnFunctionImports = sortedSetOf<String>()
+        for (field in entity.metaFields) {
+            // field.object AND field.map columns are produced by buildObjectColumns (single jsonb
+            // column) — their imports (the `jsonb` extension + the metaJsonbMapper support file) are
+            // handled via the jsonb-import decision above, not here.
+            if (field is ObjectField || field is MapField) continue
+            // EnumField uses enumerationByName (a Table member) when generated, regardless
+            // of what the type-mapper would return for a bare column emission — skip it
+            // here so it doesn't accidentally drag in a non-applicable import.
+            if (field is EnumField) continue
+            // The `field.string @dbColumnType=jsonb` open bag's `jsonb` extension import is
+            // emitted via the jsonb-import decision (alongside the `Json` import its codec needs) —
+            // skip here so the `import ...json.jsonb` line isn't emitted twice.
+            if (KotlinTypeMapper.isJsonbOpenBag(field)) continue
+            KotlinTypeMapper.exposedColumnImport(field, api)?.let { columnFunctionImports += it }
+        }
+        // Flattened object sub-columns also contribute column functions (and thus
+        // potentially imports). Walk the field.object children's referenced object.value
+        // sub-fields the same way buildObjectColumns does.
+        for (field in entity.metaFields) {
+            if (field !is ObjectField) continue
+            if (readStorage(field) != STORAGE_FLATTENED) continue
+            val ref = readObjectRef(field) ?: continue
+            val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+            for (subField in target.metaFields) {
+                if (subField is EnumField) continue
+                // jsonb open bag → its `jsonb`/`Json` imports come via the jsonb-import decision (skip here).
+                if (KotlinTypeMapper.isJsonbOpenBag(subField)) continue
+                KotlinTypeMapper.exposedColumnImport(subField, api)?.let { columnFunctionImports += it }
+            }
+        }
+
+        // Cross-package FK-target imports: when a `.references(...)` call (from
+        // either an `identity.reference` decoration or a `relationship.composition`
+        // FK column) points at a table that lives in a different Kotlin package,
+        // the generated file must import the target's <TableName> symbol or the
+        // bare reference fails to resolve. Same-package targets need no import
+        // (the Kotlin compiler resolves them via the file's package). Soft
+        // identity.reference decorations (targetFqn == null) emit no
+        // `.references(...)` call and so contribute no import.
+        val crossPackageTableImports = sortedSetOf<String>().apply {
+            fun consider(targetFqn: String?, targetTable: String?) {
+                if (targetFqn == null || targetTable == null) return
+                val targetPkg = PackageMapping.splitFqn(targetFqn).first
+                if (targetPkg.isNotEmpty() && targetPkg != pkg) {
+                    add("$targetPkg.$targetTable")
+                }
+            }
+            for (fk in fkColumns) consider(fk.targetFqn, fk.targetTable)
+            for (decor in refDecorations.values) consider(decor.targetFqn, decor.targetTable)
+        }
+
+        // #246: cross-package shared-enum imports. A `field.enum` that `extends` an abstract enum
+        // super declared in a DIFFERENT package (the FR-019 shared-enum collapse) resolves — via
+        // KotlinTypeMapper.enumTypeName — to ONE enum class named for the super and generated in
+        // the SUPER'S package, not this table's. The `enumerationByName(...)` column token below
+        // references that class by simple name only; unlike KotlinEntityGenerator's data class
+        // (KotlinPoet auto-imports the full ClassName it is handed), this generator hand-rolls its
+        // file body as a string, so a cross-package reference is unresolved without an explicit
+        // import here. Walks the same two enum-field surfaces the column-emit loops below use:
+        // own fields, plus (TPH) the base's folded-in subtype-only fields. Same-package enums
+        // (including this entity's own per-entity <EntityShort><FieldPascal> naming) contribute no
+        // import, so a single-package model's output stays byte-identical.
+        val crossPackageEnumImports = sortedSetOf<String>().apply {
+            fun consider(cn: ClassName?) {
+                if (cn != null && cn.packageName.isNotEmpty() && cn.packageName != pkg) {
+                    add("${cn.packageName}.${cn.simpleName}")
+                }
+            }
+            for (field in entity.metaFields) {
+                if (field is EnumField) consider(enumClassFor(field, entity))
+            }
+            for (field in KotlinTphPlan.collectSubtypeFields(entity, loader)) {
+                if (field is EnumField) consider(KotlinTypeMapper.enumTypeName(field, entity))
+            }
+        }
+
+        val source = buildString {
+            if (pkg.isNotEmpty()) {
+                append("package $pkg\n\n")
+            }
+            append("import ${ExposedImports.core(api, "Table")}\n")
+            if (fkColumns.any { it.hasReferenceOption } || needsRefOptForDecor) {
+                append("import ${ExposedImports.core(api, "ReferenceOption")}\n")
+            }
+            for (imp in columnFunctionImports) {
+                append("import $imp\n")
+            }
+            for (imp in crossPackageTableImports) {
+                append("import $imp\n")
+            }
+            for (imp in crossPackageEnumImports) {
+                append("import $imp\n")
+            }
+            if (needsJsonbExtensionImport) {
+                append("import ${ExposedImports.json(api, "jsonb")}\n")
+            }
+            // Only the open-bag `field.string @dbColumnType=jsonb` (JsonElement) uses kotlinx Json.
+            // Object/map jsonb columns use the same-package `metaJsonbMapper` (no import needed).
+            if (needsKotlinxJsonImport) {
+                append("import kotlinx.serialization.json.Json\n")
+            }
+            // R6 Plan 2a: the gen_random_uuid() server default uses CustomFunction +
+            // UUIDColumnType, which need explicit imports (neither is a Table member). Under
+            // 1.x the java.util.UUID-binding UUIDColumnType moved to core.java (issue #390) —
+            // uuid PK generation always needs java.util.UUID, never kotlin.uuid.Uuid, so this
+            // is unconditional on [ExposedApi], not gated by whether the column itself is a
+            // `field.uuid` vs a `@dbColumnType=uuid` string.
+            if (uuidGeneratedPk) {
+                append("import ${ExposedImports.core(api, "CustomFunction")}\n")
+                val uuidColumnTypeImport =
+                    if (api == ExposedApi.V1) ExposedImports.javaUuid("UUIDColumnType")
+                    else ExposedImports.core(api, "UUIDColumnType")
+                append("import $uuidColumnTypeImport\n")
+            }
+            // an instant (default) timestamp calls the `instantWithTimeZone(...)` extension
+            // from the package-shared MetaInstantWithTimeZoneColumnType.kt support file. That
+            // extension is `internal` + same-package, so the table file needs NO import for it
+            // and NO Instant/Column imports (the column's `Column<Instant>` type is inferred).
+            append("\n")
+            if (isView) {
+                append("/** READ-ONLY VIEW — generated from view metadata; do not insert/update/delete directly. */\n")
+            }
+            append("/** GENERATED — do not hand-edit. Regenerated from metadata. */\n")
+            append("object $tableObjectName : Table($qualifiedTableExpr) {\n")
+            // PK column(s) FIRST so a self-referential FK column (e.g.
+            // `parentId = uuid(...).references(SelfTable.id)`) can reference the
+            // PK `val id` — Kotlin object initializers run top-to-bottom, so a
+            // forward reference to a later `val` is a compile error ("must be
+            // initialized"). Inherited PK fields (BaseEntity) otherwise sort last.
+            // Stable sort preserves declaration order within each group.
+            val pkFirstFields = entity.metaFields.sortedBy { if (it.name in primaryFieldSet) 0 else 1 }
+            for (field in pkFirstFields) {
+                // ObjectField AND MapField columns are produced by buildObjectColumns() so we
+                // can emit @storage flattened (N columns) or jsonb (1 column) uniformly; a
+                // field.map is always a single jsonb column.
+                if (field is ObjectField || field is MapField) continue
+                // #214: on the WRITE table of a write-through entity, a DERIVED (origin.*) field
+                // has no physical column — it is computed by the read view — so it is excluded.
+                // No-op for a vanilla entity or the read view (excludeDerivedFields = false).
+                if (excludeDerivedFields && KotlinGenUtil.isDerivedField(field)) continue
+                val isPk = field.name in primaryFieldSet
+                // #195: an origin.aggregate @agg:any|all|collect view column is COALESCE-guaranteed
+                // non-null (any→false, all→true, collect→[]), so it is emitted NON-null even when the
+                // field is not @required — keeping the view column consistent with the projection
+                // data-class read type ([KotlinEntityGenerator]); the PR-#80 read/write invariant.
+                val nullable = !isPk && !KotlinGenUtil.isRequiredField(field) &&
+                    !KotlinGenUtil.originGuaranteedNonNull(field)
+                val baseSpec = if (field is EnumField) {
+                    // field.enum → a typed Exposed column referencing the generated enum
+                    // class: enumerationByName (VARCHAR) when string-backed, or
+                    // customEnumeration (INTEGER) when the enum declares @intValueMap.
+                    // #246: the enum may be a CROSS-PACKAGE shared type (FR-019 collapse
+                    // onto an abstract super in another package) — the full ClassName is
+                    // kept so its package is available; the import itself is emitted (only
+                    // when cross-package) via crossPackageEnumImports above.
+                    //
+                    // Task 6 — the entity's OWN field, same as the non-enum branch below:
+                    // route through columnExprFor so an enum column substitutes the
+                    // <Entity>Names.<MEMBER>_COLUMN constant exactly like every other
+                    // column here, instead of keeping its own separate literal.
+                    enumColumnSpec(field, entity, columnExprFor(field))
+                } else {
+                    // Task 6 — the entity's OWN field, so its physical column is exactly
+                    // what <Entity>Names.<MEMBER>_COLUMN names (KotlinNamesGenerator
+                    // builds that constant from this SAME entity's resolving metaFields
+                    // via the SAME resolveColumnName). No equality check needed: the
+                    // reference and the value it stands for are derived from one shared
+                    // transform (KotlinNaming.namesMember), so they cannot disagree.
+                    scalarColumnSpec(entity, field, columnExprFor(field), api)
+                }
+                val withAuto = when {
+                    isPk && incrementPk -> "$baseSpec.autoIncrement()"
+                    // uuid PK + @generation:uuid → server-side gen_random_uuid() default.
+                    isPk && uuidGeneratedPk -> "$baseSpec$GEN_RANDOM_UUID_DEFAULT_SUFFIX"
+                    else -> baseSpec
+                }
+                // Decorate with .references(TargetTable.id[, onDelete=..., onUpdate=...])
+                // when an enforced identity.reference on this entity names this field.
+                // Soft references (@enforce: false) carry a null targetTable — the dedup
+                // pass still uses the entry to suppress an inferred FK, but no physical
+                // .references(...) call is emitted here. Decoration applies BEFORE
+                // .nullable() so the chain reads naturally.
+                val decoration = refDecorations[field.name]
+                val decorated = if (decoration != null && decoration.emitsReference)
+                    "$withAuto.references(${decoration.targetTable}.${decoration.targetPkProperty}${decoration.refSuffix})" else withAuto
+                val full = if (nullable) "$decorated.nullable()" else decorated
+                append("    val ${KotlinNaming.safeColumnProperty(field.name, exposedApi())} = $full\n")
+            }
+            // FR-017 TPH: a discriminator base's single table also carries every subtype-only
+            // column, emitted NULLABLE (a row of another subtype stores null there, even when the
+            // field is @required on its subtype). collectSubtypeFields is empty for a non-TPH entity.
+            //
+            // Task 6 — these columns go through the SAME columnExprFor as the base's own fields
+            // above. Each `field` belongs to a TPH SUBTYPE, not `entity`, so the base's
+            // <Entity>Names does not carry it; [columnExpr] resolves that miss against the
+            // SUBTYPE's own artifact (`<Sub>Names.<MEMBER>_COLUMN`, emitted in the same run
+            // because a subtype inherits the base's source). This loop used to build a quoted
+            // literal under a comment calling itself out of the substitution's reach — it never
+            // was: the constant existed the whole time, one object over.
+            for (field in KotlinTphPlan.collectSubtypeFields(entity, loader)) {
+                if (field is ObjectField || field is MapField) continue
+                val baseSpec = if (field is EnumField) {
+                    // #246: same cross-package-aware handling as the base-column loop above — the
+                    // import (when cross-package) is emitted via crossPackageEnumImports. Int-backed
+                    // enums take the customEnumeration form here too.
+                    enumColumnSpec(field, entity, columnExprFor(field))
+                } else {
+                    KotlinTypeMapper.exposedColumnSpec(field, columnExprFor(field), api)
+                }
+                append("    val ${KotlinNaming.safeColumnProperty(field.name, exposedApi())} = $baseSpec.nullable()\n")
+            }
+            for (oc in objectColumns) {
+                append("    val ${KotlinNaming.safeColumnProperty(oc.propertyName, exposedApi())} = ${oc.columnExpr}\n")
+            }
+            for (fk in fkColumns) {
+                append("    val ${KotlinNaming.safeColumnProperty(fk.propertyName, exposedApi())} = ${fk.columnExpr}\n")
+            }
+            if (primaryFieldNames.isNotEmpty()) {
+                val pkRefs = primaryFieldNames.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
+                append("\n    override val primaryKey = PrimaryKey($pkRefs)\n")
+            }
+            // Emit `init { uniqueIndex("<name>", col1, ...) }` for identity.secondary
+            // and `init { index("<name>", false, col1, ...) }` for index.lookup, all
+            // inside a single init block. Skips entries whose fields list is empty
+            // (defensive — the metadata constraint already requires at least one field).
+            // ADR-0039: getChildren(LookupIndex::class.java, true) uses the resolving
+            // accessor so inherited index.lookup nodes from abstract base entities are
+            // visible. Views never carry indexes (they inherit from underlying tables).
+            val emittableSecondaries = secondaries.filter { it.fields.isNotEmpty() }
+            val lookupIndexes = if (isView) emptyList()
+                else entity.getChildren(LookupIndex::class.java, true)
+                    .filter { it.fields.isNotEmpty() }
+            if (emittableSecondaries.isNotEmpty() || lookupIndexes.isNotEmpty()) {
+                append("\n    init {\n")
+                for (sec in emittableSecondaries) {
+                    val cols = sec.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
+                    append("        uniqueIndex(${indexNameExpr(sec, shortName)}, $cols)\n")
+                }
+                for (idx in lookupIndexes) {
+                    val cols = idx.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
+                    append("        index(${indexNameExpr(idx, shortName)}, false, $cols)\n")
+                }
+                append("    }\n")
+            }
+            append("}\n")
+            // NOTE: the instant (default, non-`@localTime`) support helper
+            // (MetaInstantWithTimeZoneColumnType + instantWithTimeZone extension) is NO LONGER
+            // inlined here. It is emitted ONCE PER PACKAGE as a shared internal
+            // MetaInstantWithTimeZoneColumnType.kt file (see emitInstantTzSupportFile), so
+            // multiple instant-timestamp tables in one package don't redeclare it.
+        }
+
+        val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$tableObjectName.kt")
+        GeneratedFileWriter.write(outFile, source)
+        return needsInstantTzHelper
+    }
+
+    // === field.object + @storage column emission ============================
+
+    protected enum class ObjectColumnKind { FLATTENED, JSONB }
+
+    /**
+     * The rendered column-name EXPRESSION for a field the table of [entity] binds: either
+     * the quoted physical-name literal, or — when the names artifact is in this run
+     * ([useNames]) — a reference to the `<MEMBER>_COLUMN` constant on the artifact that
+     * CARRIES the field.
+     *
+     * THIS entity's artifact first. It already carries every field [entity] resolves —
+     * inherited ones included, re-exported by reference from an abstract base's fragment
+     * (see [KotlinNamesGenerator]) — so an `extends` chain needs no redirect, and taking one
+     * would be wrong: a column an abstract base declares must reference `<Entity>Names`,
+     * the object whose table this is, not the fragment it happens to be spelled in.
+     *
+     * A MISS means the field belongs to a different entity entirely — under TPH, exactly
+     * the subtype whose own columns this base's table absorbs. Only then is the reference
+     * resolved against the DECLARING entity's artifact, reached through the field's own
+     * parent link. C# is the reference (its emitter passes the subtype to `ColumnRef`);
+     * TypeScript resolves the same way. The declaring object's artifact is emitted in this
+     * same run: every object under a TPH base — concrete subtype or abstract intermediate —
+     * inherits the base's source, and [KotlinNamesGenerator] emits for any object with a
+     * declared OR inherited primary source (#248), so the reference resolves.
+     *
+     * Unlike the TABLE-name reference this is not scoped to which source the emit call
+     * targets: a field's column name does not depend on which of a write-through entity's
+     * two own sources is being emitted, so it is correct for both the write table and the
+     * read view.
+     *
+     * EVERY site that names a column goes through here or [ownColumnExpr] — the scalar
+     * loop, the enum spec, the TPH fold, and the single-jsonb `field.object` / `field.map`
+     * columns in [buildObjectColumns]. Those last two used to build their own literal, which
+     * is how a `@storage: jsonb` value-object column went on spelling its physical name in
+     * a run where every scalar beside it referenced a constant; the TPH fold did the same
+     * for longer. A second copy of a substitution rule is a second chance to miss a branch.
+     */
+    protected fun columnExpr(entity: MetaObject, f: MetaField<*>): String {
+        if (!bindsThroughNames(entity)) return "\"${KotlinGenUtil.resolveColumnName(f, columnNaming())}\""
+        // ADR-0039: metaFields is the RESOLVING accessor — an inherited field is a HIT here,
+        // and the artifact of `entity` is where its constant is read from.
+        if (entity.metaFields.any { it.name == f.name }) return ownColumnExpr(entity, f)
+        // getDeclaringObject() is the field's actual parent node — for a field reached
+        // through a subtype's resolving accessor, the object that DECLARES it. Null only for
+        // a root-level abstract field, which no table loop can hand us; the literal is the
+        // same last-resort fallback as running without the names generator.
+        val declaring: MetaObject = f.declaringObject
+            ?: return "\"${KotlinGenUtil.resolveColumnName(f, columnNaming())}\""
+        return "${namesObjectRef(entity, declaring)}.${KotlinNaming.namesMember(f.name)}_COLUMN"
+    }
+
+    /**
+     * The rendered index-name EXPRESSION for an `identity.secondary` / `index.lookup` this
+     * table binds: the `<Entity>Names.<IDENTITY|INDEX>_<N>_INDEX` constant when the names
+     * artifact is in this run ([useNames]), the quoted name otherwise.
+     *
+     * BOTH arms go through [IndexNaming], which is the whole point. This loop used to answer
+     * the question itself with `sec.shortName ?: sec.name`, under a comment saying it was
+     * stripping the package prefix "the loader adds" — the loader adds none to a nested
+     * node, so that expression had been a no-op for its whole life while reading as the site
+     * that owned the rule. The names artifact computed the same string independently.
+     * `fdb4118f1` is what that arrangement costs when the two answers drift.
+     *
+     * [shortName] is the entity whose table this is, and its artifact is where the constant
+     * lives: `secondaries` and `lookupIndexes` are both read through RESOLVING accessors, so
+     * an index declared on an abstract base is part of THIS entity's resolved set and its
+     * artifact re-exports it. No declaring-entity redirect is needed, unlike [columnExpr] —
+     * the TPH fold folds a subtype's COLUMNS into the base's table, never its indexes.
+     */
+    protected fun indexNameExpr(node: MetaData, shortName: String): String {
+        val name = IndexNaming.resolve(node)
+        if (!useNames()) return "\"$name\""
+        val member = "${KotlinNaming.namesMember(node.type)}_${KotlinNaming.namesMember(name)}_INDEX"
+        return "${KotlinNaming.namesObjectName(shortName)}.$member"
+    }
+
+    /**
+     * The rendered column-name EXPRESSION for one of [entity]'s OWN (or inherited) fields —
+     * the hit arm of [columnExpr]. Reads `<Entity>Names.<MEMBER>_COLUMN` unconditionally:
+     * [KotlinNamesGenerator] builds that constant from this SAME entity's resolving
+     * metaFields via the SAME resolveColumnName, so the reference and the value it stands
+     * for derive from one shared transform ([KotlinNaming.namesMember]) and cannot disagree.
+     */
+    protected fun ownColumnExpr(entity: MetaObject, f: MetaField<*>): String {
+        val (_, shortName) = PackageMapping.splitFqn(entity.name)
+        return if (bindsThroughNames(entity))
+            "${KotlinNaming.namesObjectName(shortName)}.${KotlinNaming.namesMember(f.name)}_COLUMN"
+        else "\"${KotlinGenUtil.resolveColumnName(f, columnNaming())}\""
+    }
+
+    /**
+     * The `<To>Names` object as referenced from a file emitted for [from]: bare when both
+     * live in the same Kotlin package (or [to] has none), package-qualified otherwise. A
+     * TPH subtype may live in a different package from its base, and this generator
+     * hand-rolls its file body, so a cross-package reference must be fully qualified or it
+     * does not resolve. Same rule [KotlinNamesGenerator] applies to a super reference.
+     */
+    private fun namesObjectRef(from: MetaObject, to: MetaObject): String {
+        val (fromPkg, _) = PackageMapping.splitFqn(from.name)
+        val (toPkg, toShort) = PackageMapping.splitFqn(to.name)
+        val obj = KotlinNaming.namesObjectName(toShort)
+        return if (toPkg == fromPkg || toPkg.isEmpty()) obj else "$toPkg.$obj"
+    }
+
+    /** A single Exposed column derived from a `field.object` (one per flattened sub-field, or one total for jsonb). */
+    protected data class ObjectColumnSpec(
+        val propertyName: String,
+        val columnExpr: String,
+        val kind: ObjectColumnKind,
+    )
+
+    /**
+     * Build the Exposed columns contributed by each `field.object` on [entity].
+     *
+     * <ul>
+     *   <li>{@code @storage="flattened"}: one column per field of the referenced
+     *       `object.value`, with property name {@code <parentField><SubFieldCap>} and
+     *       physical column {@code <parentField>_<subField>} (snake-joined). Nullable
+     *       sub-fields → nullable columns.</li>
+     *   <li>{@code @storage="jsonb"} or absent (default-to-jsonb per CLAUDE.md):
+     *       one {@code jsonb(name, encoder, decoder)} column encoded/decoded through the shared
+     *       Jackson {@code metaJsonbMapper} (the per-package MetaJsonbMapper.kt support file).</li>
+     * </ul>
+     *
+     * Skips field.object children whose `@objectRef` cannot be resolved (defensive — the loader's
+     * validation phase already gates the attr being present).
+     */
+    protected open fun buildObjectColumns(
+        entity: MetaObject,
+        primaryFieldNames: Set<String>,
+        loader: MetaDataLoader,
+        // #214: on the WRITE table of a write-through entity, a DERIVED (origin.*) field.object /
+        // field.map has no physical column (it is computed by the read view) — exclude it, exactly
+        // as the scalar-column loop does. Without this a derived value-object column becomes a
+        // phantom on the write `<Short>Table` (declared but never written/selected; a @required one
+        // would break Exposed insert). Default false → byte-identical for a vanilla entity + the view.
+        excludeDerived: Boolean = false,
+    ): List<ObjectColumnSpec> {
+        val api = exposedApi()
+        val result = mutableListOf<ObjectColumnSpec>()
+        for (field in entity.metaFields) {
+            if (excludeDerived && KotlinGenUtil.isDerivedField(field)) continue
+            // field.map → a single jsonb column (the JSON object). Keys are always strings;
+            // never flattened, never a native array. Same JSONB emission as a jsonb-stored
+            // field.object.
+            if (field is MapField) {
+                val parentName = field.name
+                val parentNullable = parentName !in primaryFieldNames &&
+                    !KotlinGenUtil.isRequiredField(field)
+                // The map column IS a field of `entity`, so it reaches the names artifact like
+                // any scalar — see [ownColumnExpr].
+                val colExpr = ownColumnExpr(entity, field)
+                // Jackson codec: a Map<String, V> stored in one JSONB column, encoded/decoded via
+                // the shared metaJsonbMapper (MetaJsonbMapper.kt support file). A TypeReference
+                // captures the erased generic so the read decodes back to Map<String, V> — NOT the
+                // reified `Json.encodeToString(it)` (which needs the kotlinx compiler plugin).
+                val valueType = mapValueTypeFqn(field, loader)
+                val expr = "jsonb($colExpr, { metaJsonbMapper.writeValueAsString(it) }, " +
+                    "{ metaJsonbMapper.readValue(it, object : com.fasterxml.jackson.core.type.TypeReference<Map<String, $valueType>>() {}) })"
+                val full = if (parentNullable) "$expr.nullable()" else expr
+                result.add(ObjectColumnSpec(parentName, full, ObjectColumnKind.JSONB))
+                continue
+            }
+            if (field !is ObjectField) continue
+            val parentName = field.name
+            val parentNullable = parentName !in primaryFieldNames && !KotlinGenUtil.isRequiredField(field)
+            val storage = readStorage(field)        // null → default to jsonb
+            if (storage == STORAGE_FLATTENED) {
+                val ref = readObjectRef(field) ?: continue
+                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+                for (subField in target.metaFields) {
+                    val propertyName = parentName + subField.name.replaceFirstChar { it.uppercase() }
+                    // Physical column name: the parent's resolved column + "_" + the
+                    // sub-field's. Both halves go through resolveColumnName, so an explicit
+                    // `@column` on either wins — the same rule as the TS reference's
+                    // flattenObjectField (`resolveColumnName(field, strategy) + "_" + inner.name`).
+                    // E.g. parent "homeAddress" + sub "streetLine1" → "home_address_street_line1".
+                    val colName = KotlinGenUtil.resolveColumnName(field, columnNaming()) + "_" +
+                        KotlinGenUtil.resolveColumnName(subField, columnNaming())
+                    // Task 6 — out of scope: this composite name belongs to neither a
+                    // single field of `entity` nor of `target` — <Entity>Names has no
+                    // constant for it. Always literal; useNames() does not reach here.
+                    val baseSpec = KotlinTypeMapper.exposedColumnSpec(subField, "\"$colName\"", api)
+                    // Sub-column is nullable iff the parent is nullable OR the sub-field itself is.
+                    val nullable = parentNullable || !KotlinGenUtil.isRequiredField(subField)
+                    val full = if (nullable) "$baseSpec.nullable()" else baseSpec
+                    result.add(ObjectColumnSpec(propertyName, full, ObjectColumnKind.FLATTENED))
+                }
+            } else {
+                // jsonb (explicit) OR absent (default per CLAUDE.md back-compat rule).
+                // Physical column name snake_case-d to match the rest of the column emission.
+                // The column stores the referenced value object (or List<VO> for @isArray) as a
+                // single JSONB column, encoded/decoded through the shared Jackson metaJsonbMapper
+                // (the per-package MetaJsonbMapper.kt support file). Jackson — NOT kotlinx — because
+                // the generated entity/value data classes are plain (no @Serializable): a kotlinx
+                // serializer (`VO.serializer()`) would require the compiler plugin, and the moment
+                // that plugin is enabled every VO carrying a java.util.UUID / java.time.* /
+                // java.math.BigDecimal / java.net.* field fails to compile. Jackson round-trips them
+                // via its kotlin + jsr310 modules with zero per-type plumbing.
+                // Like the map branch above: a single-jsonb value-object column is ONE field of
+                // `entity`, so it carries a constant — see [ownColumnExpr]. (The flattened
+                // branch above is the genuine exception: its composite belongs to no single
+                // field of either object.)
+                val colExpr = ownColumnExpr(entity, field)
+                val ref = readObjectRef(field)
+                val target = ref?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
+                val decode = if (target != null) {
+                    // Fully-qualify the VO (Kotlin dotted form) so the emitted column needs no extra import.
+                    val voFqn = PackageMapping.toKotlin(target.name)
+                    if (field.isArrayType) {
+                        // List<VO> → a Jackson TypeReference captures the erased generic.
+                        "metaJsonbMapper.readValue(it, object : com.fasterxml.jackson.core.type.TypeReference<List<$voFqn>>() {})"
+                    } else {
+                        "metaJsonbMapper.readValue(it, $voFqn::class.java)"
+                    }
+                } else {
+                    // No resolvable @objectRef (defensive — validation gates the attr): decode to a
+                    // generic Jackson tree so the column still type-checks without kotlinx.
+                    "metaJsonbMapper.readValue(it, com.fasterxml.jackson.databind.JsonNode::class.java)"
+                }
+                val expr = "jsonb($colExpr, { metaJsonbMapper.writeValueAsString(it) }, { $decode })"
+                val full = if (parentNullable) "$expr.nullable()" else expr
+                result.add(ObjectColumnSpec(parentName, full, ObjectColumnKind.JSONB))
+            }
+        }
+        return result
+    }
+
+    /** Read the `@storage` attr (own-only); null when absent. `protected` so subclasses that
+     *  override [buildObjectColumns] can reuse it. */
+    protected fun readStorage(field: ObjectField): String? {
+        if (!field.hasMetaAttr(ATTR_STORAGE, true)) return null
+        return runCatching { field.getMetaAttr(ATTR_STORAGE, true).valueAsString }.getOrNull()
+    }
+
+    /** Read the `@objectRef` attr (resolving); null when absent. Accepts any [MetaField] so both
+     *  `field.object` and an `@objectRef`-valued `field.map` can share the lookup. `protected` so
+     *  subclasses that override [buildObjectColumns] can reuse it. */
+    protected fun readObjectRef(field: MetaField<*>): String? {
+        if (!field.hasMetaAttr(ObjectField.ATTR_OBJECTREF, true)) return null
+        return runCatching { field.getMetaAttr(ObjectField.ATTR_OBJECTREF, true).valueAsString }
+            .getOrNull()
+    }
+
+    /**
+     * The Kotlin/Java source type of a [MapField]'s value V (the `V` in `Map<String, V>`),
+     * fully-qualified so the emitted Jackson `TypeReference` needs no import. An `@objectRef` map →
+     * the referenced VO's FQN; a scalar `@valueType` map → the scalar's canonical name (e.g.
+     * `kotlin.String`, `java.math.BigDecimal`); neither resolvable → `Any` (an untyped JSON bag).
+     */
+    private fun mapValueTypeFqn(field: MapField, loader: MetaDataLoader): String {
+        val target = readObjectRef(field)?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
+        if (target != null) return PackageMapping.toKotlin(target.name)
+        return KotlinTypeMapper.mapValueScalarTypeName(field)?.toString() ?: "Any"
+    }
+
+    // `protected companion` (was `private`) so subclasses overriding [buildObjectColumns] can
+    // reference the @storage vocabulary constants.
+    protected companion object {
+
+        /** Cross-language @storage attr on field.object — values: flattened | jsonb (default). */
+        const val ATTR_STORAGE = "storage"
+        const val STORAGE_FLATTENED = "flattened"
+
+        /**
+         * FR-044 — the precision and scale a report's derived decimal is READ at when the
+         * shape gives it none (an `avg`, a ratio, a `sum` of a decimal). See [scalarColumnSpec].
+         */
+        const val REPORT_DECIMAL_PRECISION = 38
+        const val REPORT_DECIMAL_SCALE = 18
+
+        /**
+         * Kotlin's hard keywords: never usable as an identifier without backticks, so a
+         * report's derived field named after one cannot be a column property. See
+         * [refuseUncompilableReportColumns].
+         */
+        val KOTLIN_HARD_KEYWORDS: Set<String> = setOf(
+            "as", "break", "class", "continue", "do", "else", "false", "for", "fun", "if", "in",
+            "interface", "is", "null", "object", "package", "return", "super", "this", "throw",
+            "true", "try", "typealias", "typeof", "val", "var", "when", "while",
+        )
+
+        /**
+         * Exposed column suffix that renders a Postgres `DEFAULT gen_random_uuid()`
+         * server-side mint on a native uuid column (R6 Plan 2a, `@generation: uuid`).
+         * `CustomFunction("gen_random_uuid", UUIDColumnType())` emits the bare SQL
+         * function call; `.defaultExpression(...)` makes it the column DEFAULT.
+         */
+        const val GEN_RANDOM_UUID_DEFAULT_SUFFIX =
+            ".defaultExpression(CustomFunction(\"gen_random_uuid\", UUIDColumnType()))"
+
+        @JvmStatic
+        val LOG = LoggerFactory.getLogger(KotlinExposedTableGenerator::class.java)
+
+        /**
+         * File name (sans `.kt`) of the per-package shared support file emitted for
+         * instant (default, non-`@localTime`) columns. One per package that has ≥1 such column.
+         */
+        const val INSTANT_TZ_SUPPORT_FILE_NAME = "MetaInstantWithTimeZoneColumnType"
+
+        /**
+         * Imports for the per-package [instantTzSupportBlock] support file, keyed by
+         * [ExposedApi] (issue #390 — V1's symbols fan out across `v1.core` /
+         * `v1.core.statements.api` / `v1.core.vendors` / `v1.javatime`). Kept here (rather
+         * than FQN-ing every reference inline) so the emitted support file reads idiomatically.
+         */
+        fun instantTzSupportFileImports(api: ExposedApi): String = if (api == ExposedApi.V1) """
+            |import java.time.Instant
+            |import ${ExposedImports.core(api, "Column")}
+            |import ${ExposedImports.core(api, "ColumnType")}
+            |import ${ExposedImports.core(api, "IDateColumnType")}
+            |import ${ExposedImports.core(api, "Table")}
+            |import ${ExposedImports.javatime(api, "JavaInstantColumnType")}
+            |import ${ExposedImports.statementsApi(api, "PreparedStatementApi")}
+            |import ${ExposedImports.statementsApi(api, "RowApi")}
+            |import ${ExposedImports.vendors(api, "currentDialect")}
+            |""".trimMargin() else """
+            |import java.time.Instant
+            |import org.jetbrains.exposed.sql.Column
+            |import org.jetbrains.exposed.sql.ColumnType
+            |import org.jetbrains.exposed.sql.IDateColumnType
+            |import org.jetbrains.exposed.sql.Table
+            |import org.jetbrains.exposed.sql.javatime.JavaInstantColumnType
+            |import org.jetbrains.exposed.sql.statements.api.PreparedStatementApi
+            |import org.jetbrains.exposed.sql.vendors.currentDialect
+            |""".trimMargin()
+
+        /**
+         * Shared support body emitted ONCE PER PACKAGE (into [INSTANT_TZ_SUPPORT_FILE_NAME].kt)
+         * for any package that has at least one instant (default, non-`@localTime`) column. Defines:
+         *
+         *  - `MetaInstantWithTimeZoneColumnType` — a `ColumnType<Instant>` that delegates ALL
+         *    value/JDBC handling (read, bind, normalize, millisecond-truncate, wire string) to
+         *    Exposed's tested `JavaInstantColumnType`, overriding ONLY `sqlType()` to return the
+         *    dialect's `TIMESTAMP WITH TIME ZONE` (Postgres: `timestamp with time zone`). This
+         *    yields a `Column<Instant>` — matching the `Instant` data-class property (no
+         *    `Instant`↔`OffsetDateTime` coercion) — while keeping the TZ-aware column so the
+         *    seeded-offset → read-back-UTC normalization contract holds.
+         *  - `Table.instantWithTimeZone(name)` — the column-builder extension the generated
+         *    tables call (`val createdAt = instantWithTimeZone("created_at")`).
+         *
+         * Both are declared `internal` (package + module-private) so EVERY `*Table.kt` in the
+         * same package shares the ONE declaration — multiple instant-timestamp tables per
+         * package no longer redeclare a top-level class/extension (the bug the prior per-file
+         * inline emission caused). Note: the `$` lines below have no Kotlin string templates,
+         * so this trimMargin block is emitted verbatim. The ONLY textual difference between
+         * [ExposedApi] versions is `readObject`'s row-accessor parameter type (issue #390 —
+         * `java.sql.ResultSet` under 0.x, `RowApi` under 1.x; see [instantTzSupportFileImports]
+         * for the matching import).
+         */
+        fun instantTzSupportBlock(api: ExposedApi): String {
+            val readObjectParamType = if (api == ExposedApi.V1) "RowApi" else "java.sql.ResultSet"
+            return """
+            |/**
+            | * GENERATED — do not hand-edit.
+            | * Custom Exposed column type for instant (default, non-`@localTime`): a
+            | * `Column<java.time.Instant>` whose SQL DDL is `TIMESTAMP WITH TIME ZONE`.
+            | * Delegates all value/JDBC handling to Exposed's `JavaInstantColumnType` and
+            | * overrides only `sqlType()`, so the column type matches the `Instant` data-class
+            | * property (no Instant↔OffsetDateTime coercion) while staying timezone-aware.
+            | */
+            |internal class MetaInstantWithTimeZoneColumnType :
+            |    ColumnType<Instant>(),
+            |    IDateColumnType {
+            |    private val delegate = JavaInstantColumnType()
+            |    override val hasTimePart: Boolean get() = delegate.hasTimePart
+            |    override fun sqlType(): String =
+            |        currentDialect.dataTypeProvider.timestampWithTimeZoneType()
+            |    override fun valueFromDB(value: Any): Instant? = delegate.valueFromDB(value)
+            |    override fun notNullValueToDB(value: Instant): Any = delegate.notNullValueToDB(value)
+            |    override fun nonNullValueToString(value: Instant): String = delegate.nonNullValueToString(value)
+            |    override fun nonNullValueAsDefaultString(value: Instant): String =
+            |        delegate.nonNullValueAsDefaultString(value)
+            |    override fun readObject(rs: $readObjectParamType, index: Int): Any? = delegate.readObject(rs, index)
+            |    override fun setParameter(
+            |        stmt: PreparedStatementApi,
+            |        index: Int,
+            |        value: Any?,
+            |    ) = delegate.setParameter(stmt, index, value)
+            |}
+            |
+            |/**
+            | * Column builder for instant (default, non-`@localTime`): a `Column<Instant>` backed by
+            | * a `TIMESTAMP WITH TIME ZONE` Postgres column (see [MetaInstantWithTimeZoneColumnType]).
+            | */
+            |internal fun Table.instantWithTimeZone(name: String): Column<Instant> =
+            |    registerColumn(name, MetaInstantWithTimeZoneColumnType())
+            |""".trimMargin()
+        }
+
+        /**
+         * File name (sans `.kt`) of the per-package support file emitted for `field.uri` /
+         * `field.inet` columns (ADR-0036/0037 Wave 3). One per package that has ≥1 such column.
+         */
+        const val INET_URI_SUPPORT_FILE_NAME = "MetaInetUriColumnType"
+
+        /**
+         * Imports for the per-package [inetUriSupportBlock] support file, keyed by [ExposedApi]
+         * (issue #390). V1 carries two EXTRA imports over the mechanical FQN fan-out:
+         * `JdbcPreparedStatementImpl` and `java.sql.Types`, both needed by
+         * `MetaInetColumnType.setParameter`'s raw-statement bind (see [inetUriSupportBlock]).
+         */
+        fun inetUriSupportFileImports(api: ExposedApi): String = if (api == ExposedApi.V1) """
+            |import java.net.InetAddress
+            |import java.net.URI
+            |import java.sql.Types
+            |import ${ExposedImports.core(api, "Column")}
+            |import ${ExposedImports.core(api, "ColumnType")}
+            |import ${ExposedImports.core(api, "Table")}
+            |import ${ExposedImports.statementsApi(api, "PreparedStatementApi")}
+            |import ${ExposedImports.vendors(api, "currentDialect")}
+            |import org.jetbrains.exposed.v1.jdbc.statements.jdbc.JdbcPreparedStatementImpl
+            |""".trimMargin() else """
+            |import java.net.InetAddress
+            |import java.net.URI
+            |import org.jetbrains.exposed.sql.Column
+            |import org.jetbrains.exposed.sql.ColumnType
+            |import org.jetbrains.exposed.sql.Table
+            |import org.jetbrains.exposed.sql.statements.api.PreparedStatementApi
+            |import org.jetbrains.exposed.sql.vendors.currentDialect
+            |""".trimMargin()
+
+        /**
+         * Shared support body emitted ONCE PER PACKAGE (into [INET_URI_SUPPORT_FILE_NAME].kt)
+         * for any package with at least one `field.uri` / `field.inet` column. Defines two
+         * `internal` custom column types + their `Table` column-builder extensions:
+         *
+         *  - `MetaUriColumnType` — a `ColumnType<java.net.URI>` over plain `text` (Postgres has
+         *    no uri type). Reads the JDBC string and parses it to a `URI`; writes the `URI`'s
+         *    string form. Yields `Column<URI>` so the column matches the data-class property.
+         *  - `MetaInetColumnType` — a `ColumnType<java.net.InetAddress>` over the Postgres-native
+         *    `inet` type. Reads the JDBC string and resolves it to an `InetAddress`; binds the
+         *    address' host-literal string (`getHostAddress`) so the JDBC driver routes it to the
+         *    native `inet` column.
+         *
+         * Both are `internal` so every `*Table.kt` in the package shares the one declaration.
+         * The `$` lines below carry no Kotlin string templates — emitted verbatim. The ONLY
+         * textual difference between [ExposedApi] versions is `MetaInetColumnType.setParameter`'s
+         * bind call (issue #390). 0.x's `stmt[index] = value.hostAddress` binds the address
+         * STRING with no explicit JDBC type, which the Postgres driver defaults to `VARCHAR` —
+         * `Postgres then refuses the implicit varchar→inet cast ("column is of type inet but
+         * expression is of type character varying"). [A LATENT 0.x DEFECT, left untouched per
+         * exposedApi=0's byte-identical contract: `integration-tests-kotlin`'s persistence-
+         * conformance reference harness already works around it with a HAND-MAINTAINED
+         * `MetaInetStringColumnType` that never exercises the generator's own 0.x emission for a
+         * real write.] 1.x's `PreparedStatementApi.set` dropped the 2-arg form entirely (only a
+         * 3-arg `set(index, value, columnType)` remains, decompiled to confirm it discards
+         * `columnType` and still calls the bare 2-arg `PreparedStatement.setObject` — so routing
+         * through it would not even reach a DIFFERENT bind), so 1.x reaches the raw
+         * `java.sql.PreparedStatement` (via `JdbcPreparedStatementImpl.statement`, the same
+         * escape hatch the reference harness already uses) and binds with `Types.OTHER` — the
+         * exact pattern that already round-trips for 0.x's reference harness and OMDB's JVM
+         * `InetCodec`.
+         */
+        fun inetUriSupportBlock(api: ExposedApi): String {
+            // `setParameter`'s `value` has ALREADY been through `notNullValueToDB` by the time
+            // `fillParameters`'s default implementation calls here (confirmed by decompiling it:
+            // it calls `columnType.valueToDB(value)` — which for a non-null value delegates to
+            // `notNullValueToDB` — THEN `columnType.setParameter(this, index, <converted value>)`).
+            // So `value` is the STRING `notNullValueToDB` returned, never the original
+            // `InetAddress` — an `is InetAddress` check here is always false, on EITHER
+            // [ExposedApi]. 0.x's `stmt[index] = value.hostAddress` therefore always falls to its
+            // own `else super.setParameter(...)`, binding that string with NO JDBC type hint —
+            // the SAME latent defect [inetUriSupportBlock]'s doc above names (left untouched for
+            // exposedApi=0's byte-identical contract: this whole block is the ONE place this
+            // generator's text differs by [ExposedApi], so the 0.x branch below reproduces the
+            // ORIGINAL lines verbatim, comment included, rather than varying just the call). 1.x's
+            // replacement checks nullness, not type, matching the reference harness's
+            // `MetaInetStringColumnType` exactly — and REPLACES the two-line `if/else`, so it
+            // carries its own trailing brace (no shared `else super.setParameter(...)` line below).
+            val inetSetParameterBlock = if (api == ExposedApi.V1) {
+                "        val raw = (stmt as JdbcPreparedStatementImpl).statement\n" +
+                    "        if (value == null) raw.setNull(index, Types.OTHER)\n" +
+                    "        else raw.setObject(index, value.toString(), Types.OTHER)\n" +
+                    "    }"
+            } else {
+                "        // Bind as a string and let the Postgres JDBC driver coerce it to the native\n" +
+                    "        // `inet` column. Anything else — a null for a nullable column above all —\n" +
+                    "        // goes to the base implementation, which knows how to bind it: `stmt[index]`\n" +
+                    "        // takes a non-null Any, so widening the local to Any? did not compile.\n" +
+                    "        if (value is InetAddress) stmt[index] = value.hostAddress\n" +
+                    "        else super.setParameter(stmt, index, value)\n" +
+                    "    }"
+            }
+            return """
+            |/**
+            | * GENERATED — do not hand-edit.
+            | * Custom Exposed column type for `field.uri`: a `Column<java.net.URI>` whose SQL DDL
+            | * is plain `text` (Postgres has no uri type). The native URI binding matches the data
+            | * class property; the value persists as its string form.
+            | */
+            |internal class MetaUriColumnType : ColumnType<URI>() {
+            |    override fun sqlType(): String = currentDialect.dataTypeProvider.textType()
+            |    override fun valueFromDB(value: Any): URI = when (value) {
+            |        is URI -> value
+            |        else -> URI.create(value.toString())
+            |    }
+            |    override fun notNullValueToDB(value: URI): Any = value.toString()
+            |    override fun nonNullValueToString(value: URI): String = "'${'$'}value'"
+            |}
+            |
+            |/** Column builder for `field.uri`: a `Column<java.net.URI>` over a `text` column. */
+            |internal fun Table.uriColumn(name: String): Column<URI> =
+            |    registerColumn(name, MetaUriColumnType())
+            |
+            |/**
+            | * GENERATED — do not hand-edit.
+            | * Custom Exposed column type for `field.inet`: a `Column<java.net.InetAddress>` whose
+            | * SQL DDL is the Postgres-native `inet`. The native InetAddress binding matches the data
+            | * class property; the value binds/reads as its host-literal string.
+            | */
+            |internal class MetaInetColumnType : ColumnType<InetAddress>() {
+            |    override fun sqlType(): String = "inet"
+            |    override fun valueFromDB(value: Any): InetAddress = when (value) {
+            |        is InetAddress -> value
+            |        else -> InetAddress.getByName(value.toString())
+            |    }
+            |    override fun notNullValueToDB(value: InetAddress): Any = value.hostAddress
+            |    override fun nonNullValueToString(value: InetAddress): String = "'${'$'}{value.hostAddress}'"
+            |    override fun setParameter(stmt: PreparedStatementApi, index: Int, value: Any?) {
+            |${inetSetParameterBlock}
+            |}
+            |
+            |/** Column builder for `field.inet`: a `Column<java.net.InetAddress>` over an `inet` column. */
+            |internal fun Table.inetColumn(name: String): Column<InetAddress> =
+            |    registerColumn(name, MetaInetColumnType())
+            |""".trimMargin()
+        }
+
+        /**
+         * File name (sans `.kt`) of the per-package support file emitted for a `field.string
+         * @dbColumnType=uuid` column (R6 Plan 2b). One per package that has ≥1 such column.
+         */
+        const val UUID_STRING_SUPPORT_FILE_NAME = "MetaUuidStringColumnType"
+
+        /**
+         * Imports for the per-package [uuidStringSupportBlock] support file, keyed by
+         * [ExposedApi]. The delegate's FQN is the one textual difference between versions
+         * (issue #390 — 1.x's bare `UUIDColumnType` binds `kotlin.uuid.Uuid`; `javaUuid`'s
+         * `UUIDColumnType` is the java.util.UUID-backed replacement — the SAME substitution
+         * [KotlinTypeMapper.exposedColumnSpec] already makes for a native `field.uuid` column
+         * under 1.x).
+         */
+        fun uuidStringSupportFileImports(api: ExposedApi): String {
+            val uuidColumnTypeImport =
+                if (api == ExposedApi.V1) ExposedImports.javaUuid("UUIDColumnType")
+                else ExposedImports.core(api, "UUIDColumnType")
+            return """
+            |import ${ExposedImports.core(api, "Column")}
+            |import ${ExposedImports.core(api, "ColumnType")}
+            |import ${ExposedImports.core(api, "Table")}
+            |import $uuidColumnTypeImport
+            |import ${ExposedImports.statementsApi(api, "PreparedStatementApi")}
+            |""".trimMargin()
+        }
+
+        /**
+         * Shared support body emitted ONCE PER PACKAGE (into [UUID_STRING_SUPPORT_FILE_NAME].kt)
+         * for any package with at least one `field.string @dbColumnType=uuid` column (R6 Plan 2b
+         * physical escape hatch).
+         *
+         * ADR-0037: `@dbColumnType` is a PHYSICAL-only escape hatch — the field's LOGICAL/native
+         * Kotlin type is unchanged, so [KotlinTypeMapper.kotlinTypeName] keeps the data-class
+         * property `String` (matching every other port — Java's OMDB converts String↔UUID at its
+         * JDBC codec, the layer BELOW its ORM; TS/Python/C# keep the column's own `string`/`str`/
+         * `string` type too — see `JdbcCodecs.UuidCodec`, the per-port notes under `docs/ports`).
+         * Exposed has no codec layer below its typed `Column<T>` (unlike a JDBC
+         * `PreparedStatement`/`ResultSet`), so
+         * THIS custom `ColumnType<String>` — not a raw `uuid(...)`/`javaUUID(...)` native
+         * `Column<UUID>` — IS that lowest layer for Exposed: it persists through the real
+         * Postgres `uuid` column type (delegating every JDBC/DDL concern to Exposed's own
+         * battle-tested `UUIDColumnType`, never re-implementing uuid binding) while surfacing a
+         * plain `String` to every Kotlin caller above it (the generated entity data class, the
+         * controller's filter dispatch and PATCH bind) — so they never see `java.util.UUID` and
+         * never have to convert.
+         *
+         * Defines ONE `internal` custom column type + its `Table` column-builder extension:
+         *  - `MetaUuidStringColumnType` — a `ColumnType<String>` that delegates `sqlType()` /
+         *    `setParameter()` verbatim to a `UUIDColumnType()` instance, converting ONLY at the
+         *    Kotlin-value boundary (`UUID.fromString`/`.toString()`) for `notNullValueToDB` /
+         *    `valueFromDB` / `nonNullValueToString`.
+         *  - `Table.uuidString(name)` — the builder extension the generated table calls.
+         *
+         * `internal` so every `*Table.kt` in the package shares the one declaration (the same
+         * multi-table-per-package redeclaration concern as the instant-tz / inet-uri helpers).
+         */
+        fun uuidStringSupportBlock(api: ExposedApi): String = """
+            |/**
+            | * GENERATED — do not hand-edit.
+            | * Custom Exposed column type for `field.string @dbColumnType=uuid` (ADR-0037
+            | * physical-only escape hatch): a `Column<String>` persisted through the real
+            | * Postgres `uuid` type. Every SQL/JDBC concern is DELEGATED to Exposed's own
+            | * `java.util.UUID`-backed `UUIDColumnType` — this class converts ONLY at the
+            | * Kotlin-value boundary, so the generated entity/controller see a plain `String`
+            | * (matching every other MetaObjects port) while the column keeps its native uuid
+            | * physical type.
+            | */
+            |internal class MetaUuidStringColumnType : ColumnType<String>() {
+            |    private val delegate = UUIDColumnType()
+            |    override fun sqlType(): String = delegate.sqlType()
+            |    override fun valueFromDB(value: Any): String =
+            |        requireNotNull(delegate.valueFromDB(value)) { "null uuid column value" }.toString()
+            |    override fun notNullValueToDB(value: String): Any =
+            |        delegate.notNullValueToDB(java.util.UUID.fromString(value))
+            |    override fun nonNullValueToString(value: String): String =
+            |        delegate.nonNullValueToString(java.util.UUID.fromString(value))
+            |    override fun setParameter(stmt: PreparedStatementApi, index: Int, value: Any?) =
+            |        delegate.setParameter(stmt, index, value)
+            |}
+            |
+            |/** Column builder for `field.string @dbColumnType=uuid`: a `Column<String>` over a native `uuid` column. */
+            |internal fun Table.uuidString(name: String): Column<String> =
+            |    registerColumn(name, MetaUuidStringColumnType())
+            |""".trimMargin()
+
+        /**
+         * File name (sans `.kt`) of the per-package support file holding the shared Jackson
+         * `metaJsonbMapper`. One per package that emits ≥1 typed `field.object @storage:jsonb`
+         * or `field.map` column.
+         */
+        const val JSONB_MAPPER_SUPPORT_FILE_NAME = "MetaJsonbMapper"
+
+        /**
+         * Shared support body emitted ONCE PER PACKAGE (into [JSONB_MAPPER_SUPPORT_FILE_NAME].kt).
+         * Declares the `internal metaJsonbMapper` [com.fasterxml.jackson.databind.ObjectMapper] the
+         * generated typed `jsonb()` codecs call. Fully-qualified references so the file needs no
+         * imports. The kotlin module binds Kotlin data classes; jsr310 handles java.time; dates
+         * serialize as ISO-8601 strings (not epoch millis). `internal` → package+module-private,
+         * shared by every `*Table.kt` in the package.
+         */
+        val JSONB_MAPPER_SUPPORT_BLOCK: String = """
+            |/**
+            | * GENERATED — do not hand-edit.
+            | * Shared Jackson ObjectMapper backing the typed `field.object @storage:jsonb` and
+            | * `field.map` Exposed `jsonb()` columns in this package. Jackson (not kotlinx) is the
+            | * codec, so the generated entity/value data classes carry NO `@Serializable` and need
+            | * NO per-type serializer plumbing — every java.time / java.util / java.math / java.net
+            | * field a jsonb value object may carry round-trips through the kotlin + jsr310 modules
+            | * with no compiler plugin.
+            | *
+            | * Consumer classpath: jackson-databind, jackson-module-kotlin, jackson-datatype-jsr310.
+            | */
+            |internal val metaJsonbMapper: com.fasterxml.jackson.databind.ObjectMapper =
+            |    com.fasterxml.jackson.databind.json.JsonMapper.builder()
+            |        .addModule(com.fasterxml.jackson.module.kotlin.kotlinModule())
+            |        .addModule(com.fasterxml.jackson.datatype.jsr310.JavaTimeModule())
+            |        .disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            |        .build()
+            |""".trimMargin()
+    }
+
+    // === FK column emission from relationship.composition ====================
+
+    /** A foreign-key column derived from a `relationship.composition` child. */
+    protected data class FkColumnSpec(
+        val propertyName: String,
+        val columnExpr: String,
+        /**
+         * Suffix appended after the target column inside `.references(...)`; either
+         * "" or {@code ", onDelete = ..., onUpdate = ..."}. Non-empty implies the
+         * file must import {@code ReferenceOption}.
+         */
+        val refSuffix: String,
+        /**
+         * `true` when authored directly on the FK-owning entity (to-one side);
+         * `false` when inferred from the inverse to-many declaration on the
+         * other entity. Declared specs take precedence over inferred specs
+         * pointing at the same target table.
+         */
+        val declared: Boolean,
+        /**
+         * Target table object the FK references (e.g. {@code "AuthorTable"}).
+         * Used to suppress an inferred FK when a declared FK already covers
+         * the same target table — the FK-owning side has already named the
+         * relationship physically (possibly with a custom column name) and we
+         * must not double-emit a second FK to the same parent.
+         */
+        val targetTable: String,
+        /**
+         * Metadata FQN of the target entity (e.g. {@code "acme::blog::Author"}).
+         * Used by the emit pass to add a cross-package Kotlin import when the
+         * target table lives in a different package than the entity owning the FK.
+         */
+        val targetFqn: String,
+    ) {
+        /** True when {@link #refSuffix} mentions a ReferenceOption (drives the import). */
+        val hasReferenceOption: Boolean get() = refSuffix.isNotEmpty()
+    }
+
+    /**
+     * Pass 1: build a global FK map keyed by FQN of the entity that should
+     * carry the column. Combines two sources:
+     *
+     * <ul>
+     *   <li><b>Declared</b> — every `relationship.composition @cardinality: one` (default)
+     *       child on entity X contributes a column to {@code X}'s table pointing at
+     *       {@code @objectRef}'s table. Same behavior as the old per-entity scan.</li>
+     *   <li><b>Inferred</b> — every `relationship.composition @cardinality: many` on
+     *       entity X contributes a column to the {@code @objectRef} entity's table
+     *       (since the FK in a one-to-many lives on the many side). Column name
+     *       defaults to {@code <X.shortNameLowercased>Id}; {@code @onDelete} /
+     *       {@code @onUpdate} propagate so the side that authored the lifecycle
+     *       intent (e.g. {@code "the parent cascades into its children"}) shapes
+     *       the inferred FK.</li>
+     * </ul>
+     *
+     * Dedup: when a column name on a given target entity is contributed by both
+     * a declared (to-one) spec and an inferred (inverse to-many) spec, the
+     * declared spec wins — the FK-owning entity authored its own physical name
+     * and we don't double-emit.
+     */
+    protected open fun buildGlobalFkMap(
+        loader: MetaDataLoader,
+        refDecorationMap: Map<String, Map<String, RefDecoration>>,
+    ): Map<String, List<FkColumnSpec>> {
+        // Use list-per-entity so the emit order is deterministic (insertion-ordered).
+        val acc = linkedMapOf<String, MutableList<FkColumnSpec>>()
+
+        for (entity in loader.metaObjects) {
+            if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
+            // FR-017 TPH: a subtype shares its base's single table, so its INHERITED to-many
+            // composition is already covered by the base's inverse FK — emitting one per subtype
+            // would target the folded-away <Sub>Table. Mirror the table-emission skip.
+            if (KotlinTphPlan.isTphSubtype(entity)) continue
+            // ADR-0039: relationships are inheritable — RESOLVE via entity.relationships;
+            // entity.children (own-only) would miss an inherited relationship.
+            for (child in entity.relationships) {
+                if (child.subType != CompositionRelationship.SUBTYPE_COMPOSITION) continue
+
+                val objectRef = child.objectRef ?: continue
+                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, objectRef) ?: continue
+
+                if (child.cardinality == MetaRelationship.CARDINALITY_MANY) {
+                    // Inferred: FK belongs on `target`, pointing back at `entity`.
+                    val spec = buildInverseFkSpec(entity, child) ?: continue
+                    acc.getOrPut(target.name) { mutableListOf() }.add(spec)
+                } else {
+                    // Declared (cardinality "one" or unspecified): FK belongs on `entity`.
+                    val spec = buildDeclaredFkSpec(target, child) ?: continue
+                    acc.getOrPut(entity.name) { mutableListOf() }.add(spec)
+                }
+            }
+        }
+
+        // Dedup pass 1: a declared (to-one) FK suppresses any inferred FK pointing at
+        // the same target table. Catches both shapes:
+        //   (a) declared + inferred share a property name (rare but possible
+        //       when the user picks `<owner>Id` themselves).
+        //   (b) declared uses a custom column name (e.g. `creatorId`) — the
+        //       inferred `<owner>Id` (e.g. `authorId`) must NOT also be
+        //       emitted; the FK-owning side already named the relationship.
+        // Dedup pass 2: an identity.reference decoration on a field column ALSO
+        // suppresses any inferred FK to the same target table — the canonical
+        // shape (Program many→Week, Week identity.reference→Program) would
+        // otherwise emit `programId` twice on WeekTable (once as the decorated
+        // field column, once as a separate FK row). Soft references (no targetTable)
+        // still suppress by FIELD NAME — the field column already exists so the
+        // inferred FK row would duplicate the column.
+        return acc.mapValues { (entityName, specs) ->
+            val declaredTargets = specs.asSequence().filter { it.declared }.map { it.targetTable }.toSet()
+            val declaredNames = specs.asSequence().filter { it.declared }.map { it.propertyName }.toSet()
+            val decorations = refDecorationMap[entityName].orEmpty()
+            val decoratedTargets = decorations.values.mapNotNull { it.targetTable }.toSet()
+            val decoratedNames = decorations.keys
+            specs.filterNot { spec ->
+                !spec.declared && (
+                    spec.targetTable in declaredTargets || spec.propertyName in declaredNames ||
+                    spec.targetTable in decoratedTargets || spec.propertyName in decoratedNames
+                )
+            }
+        }
+    }
+
+    /**
+     * Build the FK spec for a to-one (declared) composition relationship on the
+     * FK-owning entity. Returns null when {@code @objectRef} fails to resolve.
+     *
+     * Naming: property name = {@code @column} attr (verbatim) if present, else
+     * literal {@code <relationshipShortName>Id}. {@code shortName} is used
+     * because relationship.name is fully-qualified after loading (e.g.
+     * "acme::demo::author") and would produce an illegal Kotlin identifier with
+     * "::" embedded.
+     */
+    private fun buildDeclaredFkSpec(target: MetaObject, rel: MetaRelationship): FkColumnSpec? {
+        // FW-3: `target` may be a TPH subtype (or an abstract mid-level folded into a
+        // discriminator base) with no Exposed Table object of its own — the FK must reference
+        // the STORAGE object's table instead, or the emitted `.references(<Sub>Table.pk)` names
+        // a table this generator never emits.
+        val storageTarget = KotlinTphPlan.storageObjectOf(target)
+        val targetTable = PackageMapping.splitFqn(storageTarget.name).second + "Table"
+        val relShortName = rel.shortName ?: rel.name
+        val propertyName = readColumnAttr(rel) ?: (relShortName + "Id")
+        val colName = KotlinGenUtil.applyColumnNamingStrategy(propertyName, columnNaming())
+        val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
+        return FkColumnSpec(
+            propertyName = propertyName,
+            columnExpr = "${fkColumnBuilder(storageTarget, colName)}.references($targetTable.${primaryKeyProperty(storageTarget)}$refSuffix)",
+            refSuffix = refSuffix,
+            declared = true,
+            targetTable = targetTable,
+            targetFqn = storageTarget.name,
+        )
+    }
+
+    /**
+     * Build the FK spec for the inverse side of a to-many composition
+     * relationship: when entity X declares `cardinality: many` to Y, Y's table
+     * carries a column pointing back at X's table.
+     *
+     * Naming: column = {@code <ownerShortName.lowercased()>Id} (e.g. Author →
+     * {@code "authorId"}). The to-many side is the lifecycle authority, so its
+     * {@code @onDelete} / {@code @onUpdate} attrs propagate into the inferred
+     * FK's ReferenceOption arguments.
+     */
+    private fun buildInverseFkSpec(owner: MetaObject, rel: MetaRelationship): FkColumnSpec? {
+        // FW-3: `owner` may itself be a TPH subtype or an abstract mid-level (e.g. a to-many
+        // composition declared ON a subtype, or on an abstract level between the base and its
+        // subtypes) — its rows, and its primary key, live in the discriminator base's shared
+        // table. Redirect before naming/referencing the owner's table.
+        val storageOwner = KotlinTphPlan.storageObjectOf(owner)
+        // Skip when the storage owner has no rdb source — there would be no OwnerTable to
+        // reference. ADR-0039: resolving (an inherited source.rdb still means it is persisted).
+        if (!KotlinGenUtil.hasRdbSource(storageOwner)) return null
+        val ownerShort = PackageMapping.splitFqn(storageOwner.name).second
+        val ownerTable = ownerShort + "Table"
+        val propertyName = ownerShort.replaceFirstChar { it.lowercaseChar() } + "Id"
+        val colName = KotlinGenUtil.applyColumnNamingStrategy(propertyName, columnNaming())
+        val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
+        return FkColumnSpec(
+            propertyName = propertyName,
+            columnExpr = "${fkColumnBuilder(storageOwner, colName)}.references($ownerTable.${primaryKeyProperty(storageOwner)}$refSuffix)",
+            refSuffix = refSuffix,
+            declared = false,
+            targetTable = ownerTable,
+            targetFqn = storageOwner.name,
+        )
+    }
+
+    /**
+     * Lower a pair of {@code @onDelete} / {@code @onUpdate} raw attr values
+     * (kebab-case per the metamodel, e.g. {@code "cascade"} / {@code "set-null"})
+     * into the suffix portion of an Exposed {@code .references(...)} call.
+     *
+     * Returns either "" (no options) or {@code ", onDelete = ..., onUpdate = ..."}
+     * ready to splice after the target column. Shared by both
+     * `relationship.composition` (declared + inferred) and `identity.reference`
+     * paths so the lowering rules stay in lockstep.
+     */
+    private fun referentialActionSuffix(onDeleteRaw: String?, onUpdateRaw: String?): String {
+        val parts = mutableListOf<String>()
+        onDeleteRaw?.let { mapReferentialAction(it) }?.let { parts += "onDelete = ReferenceOption.$it" }
+        onUpdateRaw?.let { mapReferentialAction(it) }?.let { parts += "onUpdate = ReferenceOption.$it" }
+        return if (parts.isEmpty()) "" else ", " + parts.joinToString(", ")
+    }
+
+    // === identity.reference FK decoration ====================================
+
+    /**
+     * Decoration applied to a regular field column when an `identity.reference`
+     * names that field. The codegen appends `.references(targetTable.id[, refSuffix])`
+     * to the field's column initializer (rather than emitting a separate FK row,
+     * which would duplicate the column).
+     *
+     * A {@code null} {@link #targetTable} indicates a soft reference (`@enforce: false`):
+     * the entry still occupies the field-name key so dedup against an inferred FK works,
+     * but the column emission pass skips the `.references(...)` decoration.
+     */
+    protected data class RefDecoration(
+        /** Target table object name (e.g. {@code "ProgramTable"}); null for soft refs. */
+        val targetTable: String?,
+        /** Kotlin property name of the target's PK column (e.g. {@code "id"}, {@code "goalId"}). */
+        val targetPkProperty: String,
+        /** Suffix portion after the target column — either "" or {@code ", onDelete = ..., onUpdate = ..."}. */
+        val refSuffix: String,
+        /**
+         * Metadata FQN of the target entity (e.g. {@code "acme::edu::Program"}); null for soft refs.
+         * Used by the emit pass to add a cross-package Kotlin import when the target table lives
+         * in a different package than the entity owning the decorated field.
+         */
+        val targetFqn: String?,
+    ) {
+        /** True when {@link #refSuffix} mentions a ReferenceOption (drives the import). */
+        val hasReferenceOption: Boolean get() = refSuffix.isNotEmpty()
+        /** True when this decoration emits a `.references(...)` call (enforced + resolvable). */
+        val emitsReference: Boolean get() = targetTable != null
+    }
+
+    /**
+     * Pass 1a: walk every entity's `identity.reference` children and build a
+     * map of {@code entity.name -> (fieldName -> RefDecoration)} so the column
+     * emission pass can decorate the matching field column inline.
+     *
+     * Single-field references only for v1; multi-field composite FKs
+     * ({@code @fields: "a,b"}) are deferred — they require Exposed's compound-FK
+     * API and are uncommon in practice. Skipped composites are logged as a WARN
+     * so a user authoring `@fields: ["a", "b"]` isn't silently ignored.
+     *
+     * Soft references ({@code @enforce: false}) still register an entry (with
+     * {@code targetTable = null}) so the FK-dedup pass can suppress a redundant
+     * inferred FK to the same column — but the column emission pass skips
+     * decoration so no physical constraint is generated.
+     */
+    protected open fun buildIdentityReferenceDecorations(
+        loader: MetaDataLoader,
+    ): Map<String, Map<String, RefDecoration>> {
+        val acc = linkedMapOf<String, MutableMap<String, RefDecoration>>()
+        for (entity in loader.metaObjects) {
+            if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
+            // ADR-0039: identity.reference children are inheritable — RESOLVE via
+            // getIdentities(true); entity.children (own-only) would miss inherited FK refs.
+            for (child in entity.getIdentities(true)) {
+                if (child !is ReferenceIdentity) continue
+                val fields = child.fields
+                if (fields.size != 1) {
+                    LOG.warn(
+                        "skipping identity.reference '{}' on {} — multi-field composite FKs (@fields={}) are not yet supported by KotlinExposedTableGenerator",
+                        child.name, entity.name, fields
+                    )
+                    continue
+                }
+                val fieldName = fields[0]
+                val targetEntityName = child.targetEntity ?: continue
+                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, targetEntityName) ?: continue
+                // FW-3: `target` may be a TPH subtype (e.g. `@references: BridgeAuth`) or an
+                // abstract mid-level, neither of which has an Exposed Table of its own — its rows
+                // live in, and its primary key belongs to, the discriminator base's shared table.
+                // The referential-action correlation below stays keyed to the DECLARED `target`
+                // (a relationship may specifically name the subtype); only the PHYSICAL
+                // table/column decoration redirects to the storage object.
+                val storageTarget = KotlinTphPlan.storageObjectOf(target)
+                // Skip when the storage target has no rdb source — Exposed cannot reference a
+                // non-table. ADR-0039: resolving (an inherited source.rdb still means a table).
+                if (!KotlinGenUtil.hasRdbSource(storageTarget)) continue
+                // Soft references register a null-targetTable entry so dedup-vs-inferred works,
+                // but column emission will skip the `.references(...)` decoration.
+                val targetTable = if (child.isEnforced)
+                    PackageMapping.splitFqn(storageTarget.name).second + "Table" else null
+                val targetFqn = if (child.isEnforced) storageTarget.name else null
+                // ADR-0047 — resolve the decorated FK's referential actions with the
+                // cross-port precedence (mirrors the TS migrate engine's
+                // resolveReferentialActions): (1) @onDelete / @onUpdate declared directly
+                // on the identity.reference (registered cross-port — the explicit per-FK
+                // override); (2) a correlated relationship on the FK-owning entity;
+                // (3) the reverse relationship on the TARGET entity (the documented
+                // parent-side authoring shape) — a relationship contributes its explicit
+                // action, else its subtype default (composition→cascade,
+                // aggregation→set-null, association→restrict; onUpdate default cascade).
+                // Guards: @through (M:N) relationships never correlate with a direct FK;
+                // the child-side tier correlates by INVERTING the #368 relationship->
+                // reference ladder (not by target alone, which let a second FK inherit
+                // the first relationship's actions); and the reverse relationship
+                // contributes nothing when this entity holds more than one enforced
+                // reference to the same target, or when the target declares more than
+                // one relationship back at this entity.
+                val (resolvedOnDelete, resolvedOnUpdate) =
+                    resolveDecorationActions(loader, entity, child, target)
+                val refSuffix = referentialActionSuffix(resolvedOnDelete, resolvedOnUpdate)
+                acc.getOrPut(entity.name) { linkedMapOf() }[fieldName] =
+                    RefDecoration(targetTable, primaryKeyProperty(storageTarget), refSuffix, targetFqn)
+            }
+        }
+        return acc
+    }
+
+    /**
+     * ADR-0047 — resolve the referential actions for a decorated `identity.reference`
+     * FK column. Returns a (onDelete, onUpdate) pair of RAW kebab-case action values
+     * (null = no clause). Precedence: reference-level attr → correlated child-side
+     * relationship → correlated parent-side (reverse) relationship, the relationship
+     * tiers resolving explicit-action-else-subtype-default. See
+     * [buildIdentityReferenceDecorations] for the guard rationale.
+     */
+    private fun resolveDecorationActions(
+        loader: MetaDataLoader,
+        entity: MetaObject,
+        ref: ReferenceIdentity,
+        target: MetaObject,
+    ): Pair<String?, String?> {
+        val refOnDelete: String? = ref.onDeleteRaw
+        val refOnUpdate: String? = ref.onUpdateRaw
+        if (refOnDelete != null && refOnUpdate != null) return refOnDelete to refOnUpdate
+
+        // (2) child-side correlation, then (3) parent-side reverse correlation.
+        // ADR-0039: relationships are inheritable — RESOLVE via getRelationships(true).
+        //
+        // #368: [entity] may declare MORE THAN ONE identity.reference onto this same
+        // target (Match.homeTeamRef / awayTeamRef both -> Team). Matching `rel` on the
+        // target ALONE cannot say which of those references `rel` supplies actions FOR,
+        // so every FK past the first silently inherited the FIRST relationship's
+        // @onDelete / @onUpdate — homeTeamRef's `restrict` landing on awayTeamRef's
+        // `cascade` FK, in a table Exposed compiles and the database accepts. Resolve it
+        // with the INVERSE of the relationship->reference ladder: `rel` belongs to `ref`
+        // iff the ladder, applied to `rel`, resolves back to `ref` ITSELF — not merely
+        // "to some reference on this target". `rel` and `ref` are both declared on (or
+        // inherited into) `entity`, the exact shape the ladder is built for, so this is
+        // a direct inversion rather than a second parallel rule. Mirrors the TS migrate
+        // engine's resolveReferentialActions and the C# ReferentialActions port.
+        val childSide = entity.relationships.firstOrNull { rel ->
+            rel.through == null && rel.objectRef != null &&
+                KotlinGenUtil.resolveObjectByShortOrFqn(loader, rel.objectRef) === target &&
+                RelationshipReferences.resolveRelationshipReference(
+                    entity, rel.shortName, rel.objectRef, rel.sourceRefField) === ref
+        }
+        var rel = childSide
+        // When the tier-3 satisfiability guard fires, the reverse relationship's
+        // AUTHORED @onUpdate still applies (only the inferred contributions drop).
+        var suppressedReverseOnUpdate: String? = null
+        if (rel == null) {
+            val reverse = findReverseRelationship(loader, entity, ref, target)
+            if (reverse != null) {
+                // Tier-3 satisfiability guard (mirrors TS resolveReferentialActions):
+                // an INFERRED set-null default (parent-side aggregation, no explicit
+                // @onDelete) is unsatisfiable on a NOT NULL FK column — the INFERRED
+                // contributions drop rather than emitting a ReferenceOption the
+                // database would reject, while anything explicitly authored survives
+                // (an explicit set-null flows through; an explicit @onUpdate is
+                // honored rather than silently discarded with the guard).
+                val fkField = ref.fields.singleOrNull()?.let { fn ->
+                    entity.metaFields.firstOrNull { it.name == fn }
+                }
+                val unsatisfiableInferredSetNull = reverse.onDeleteRaw == null &&
+                    MetaRelationship.ON_DELETE_DEFAULT_BY_SUBTYPE[reverse.subType] == MetaRelationship.ACTION_SET_NULL &&
+                    fkField != null && KotlinGenUtil.isRequiredField(fkField)
+                if (unsatisfiableInferredSetNull) {
+                    suppressedReverseOnUpdate = reverse.onUpdateRaw
+                } else {
+                    rel = reverse
+                }
+            }
+        }
+
+        val onDelete = refOnDelete
+            ?: rel?.let { it.onDeleteRaw ?: MetaRelationship.ON_DELETE_DEFAULT_BY_SUBTYPE[it.subType] }
+        val onUpdate = refOnUpdate
+            ?: (rel?.let { it.onUpdateRaw ?: MetaRelationship.ON_UPDATE_DEFAULT } ?: suppressedReverseOnUpdate)
+        return onDelete to onUpdate
+    }
+
+    /**
+     * ADR-0047 tier-3 correlation — the relationship declared on the TARGET (parent)
+     * entity pointing back at the FK-owning entity. Fails closed (null) when the
+     * relationship is M:N (`@through`), when [entity] does not hold exactly one
+     * enforced reference to [target] that is [ref] itself (the reverse relationship
+     * cannot say which FK carries the ownership edge; a soft `@enforce: false` ref
+     * never correlates), or when [target] declares more than one relationship back at
+     * [entity]. Mirrors the TS migrate engine's findReverseRelationship.
+     */
+    private fun findReverseRelationship(
+        loader: MetaDataLoader,
+        entity: MetaObject,
+        ref: ReferenceIdentity,
+        target: MetaObject,
+    ): MetaRelationship? {
+        // ADR-0039: identity.reference children are inheritable — RESOLVE via getIdentities(true).
+        val enforcedRefsToTarget = entity.getIdentities(true)
+            .filterIsInstance<ReferenceIdentity>()
+            .filter { r ->
+                r.isEnforced && r.targetEntity != null &&
+                    KotlinGenUtil.resolveObjectByShortOrFqn(loader, r.targetEntity) === target
+            }
+        if (enforcedRefsToTarget.singleOrNull() !== ref) return null
+        // #368: fail closed on ambiguity rather than taking the first match — when more
+        // than one non-@through relationship on [target] resolves back to [entity] (e.g.
+        // a "posts" composition and a separate "latestPost" association both pointing at
+        // Post), none of them is preferred. This is the tier-2 ambiguity's mirror image
+        // (multiple RELATIONSHIPS rather than multiple REFERENCES) and the ladder cannot
+        // resolve it: the ladder picks among references declared on the SAME object as
+        // the relationship, whereas here the candidates live on [target] while [ref]
+        // lives on [entity]. Mirrors the TS findReverseRelationship.
+        return target.relationships.filter { rel ->
+            rel.through == null && rel.objectRef != null &&
+                KotlinGenUtil.resolveObjectByShortOrFqn(loader, rel.objectRef) === entity
+        }.singleOrNull()
+    }
+
+    /**
+     * The Kotlin property name of [target]'s single-field primary key — `"id"` for the
+     * BaseEntity pattern, but `"goalId"`, `"code"`, … when the entity's `identity.primary`
+     * names a different field. FK emission must reference the TARGET's real PK column, not a
+     * hardcoded `.id` (which fails to compile when the target PK isn't named `id`). Falls back
+     * to `"id"` when no primary identity resolves (defensive). Safe-renamed for reserved members.
+     */
+    private fun primaryKeyProperty(target: MetaObject): String {
+        val pkField = target.getIdentities(true).firstOrNull { it.isPrimary }?.fields?.firstOrNull()
+        return KotlinNaming.safeColumnProperty(pkField ?: "id", exposedApi())
+    }
+
+    /**
+     * The Exposed column builder for a FK column pointing at [target]'s primary key.
+     * The FK column's SQL type MUST match the referenced PK's — Exposed's typed
+     * `Column<S : T>.references(Column<T>)` rejects a mismatch at compile time, so a
+     * hard-coded `long("author_id")` referencing a uuid PK broke the build of ANY
+     * relationship aimed at a uuid-keyed entity. Derived from the target's single-field
+     * `identity.primary` via [KotlinTypeMapper.exposedColumnSpec] (uuid → `uuid("col")`,
+     * long → `long("col")`, int → `integer("col")`, string → text/varchar), with the FK's
+     * own physical column name. Falls back to `long("col")` when the PK field can't be
+     * resolved — the historical default (same lossy-tolerant policy as
+     * [primaryKeyProperty]).
+     */
+    private fun fkColumnBuilder(target: MetaObject, colName: String): String {
+        // ADR-0039: resolving lookups — the identity and its field may be inherited.
+        val pkFieldName = target.getIdentities(true).firstOrNull { it.isPrimary }
+            ?.fields?.firstOrNull() ?: return "long(\"$colName\")"
+        val pkField = target.metaFields.firstOrNull { it.name == pkFieldName }
+            ?: return "long(\"$colName\")"
+        // Task 6 — out of scope: colName here is a RELATIONSHIP-synthesized FK column
+        // name (e.g. "author_id" from the composition's shortName + "Id"), not a
+        // metaField of any single object — no <Entity>Names constant names it. Always
+        // literal; useNames() does not reach here.
+        return runCatching { KotlinTypeMapper.exposedColumnSpec(pkField, "\"$colName\"", exposedApi()) }
+            .getOrDefault("long(\"$colName\")")
+    }
+
+    /** Read the `@column` attr on a relationship (inheritance allowed); null when absent. */
+    private fun readColumnAttr(rel: MetaRelationship): String? {
+        if (!rel.hasMetaAttr(CoreDBMetaDataProvider.COLUMN, true)) return null
+        return runCatching { rel.getMetaAttr(CoreDBMetaDataProvider.COLUMN, true).valueAsString }
+            .getOrNull()
+    }
+
+    /**
+     * Map a kebab-case metadata referential action to Exposed's `ReferenceOption` name.
+     * Metadata: `cascade | set-null | restrict | no-action` (per MetaRelationship).
+     * Exposed: `CASCADE | SET_NULL | RESTRICT | NO_ACTION | SET_DEFAULT`.
+     * Returns null for unknown values rather than throwing — keeps codegen resilient
+     * against future-vocabulary metadata; the loader already validates the enum set.
+     */
+    private fun mapReferentialAction(kebab: String): String? = when (kebab) {
+        MetaRelationship.ACTION_CASCADE    -> "CASCADE"
+        MetaRelationship.ACTION_SET_NULL   -> "SET_NULL"
+        MetaRelationship.ACTION_RESTRICT   -> "RESTRICT"
+        MetaRelationship.ACTION_NO_ACTION  -> "NO_ACTION"
+        else -> null
+    }
+
+    /**
+     * Exposed column spec for a `field.enum`.
+     *
+     * String-backed (the default) → `enumerationByName`: a VARCHAR column holding the
+     * member symbol. Int-backed (`@intValueMap`) → `customEnumeration` over an INTEGER
+     * column, with the declared symbol↔int mapping inlined as `when` expressions.
+     *
+     * The mapping is emitted INLINE rather than through a generated lookup-map support
+     * file, for two reasons. A `when` over an enum is exhaustive, so a member with no
+     * mapping is a COMPILE error in the adopter's build rather than a runtime surprise;
+     * and it allocates nothing per row, where a `mapOf(...)` inside the lambda would
+     * rebuild the map on every read and every write.
+     *
+     * ADR-0039: `@values` and `@intValueMap` are both read RESOLVING, so a field that
+     * `extends` a shared abstract enum inherits the members AND their mapping.
+     *
+     * [colExpr] is the ready-to-splice Kotlin column-name expression — a quoted string
+     * literal, or (Task 6, `useNames()`) a bare `<Entity>Names.<MEMBER>_COLUMN`
+     * reference — supplied by the caller so this one code path (previously a
+     * hardcoded literal, never routed through [KotlinExposedTableGenerator.emit]'s
+     * `columnExprFor`) substitutes exactly like every other column site.
+     */
+    private fun enumColumnSpec(field: EnumField, entity: MetaObject, colExpr: String): String {
+        val enumCn = enumClassFor(field, entity)
+            ?: error("enumTypeName returned null for EnumField '${field.name}' on ${entity.name}")
+        val simple = enumCn.simpleName
+        val intMap = readIntValueMap(field)
+            ?: return "enumerationByName($colExpr, ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, $simple::class)"
+
+        // `; ` separates the branches: this is a one-line `when`, and space-separated
+        // branches do not parse (`Foo.DRAFT 5 -> ...`).
+        val fromDb = intMap.entries.joinToString("; ") { (sym, i) -> "$i -> $simple.$sym" }
+        val toDb = intMap.entries.joinToString("; ") { (sym, i) -> "$simple.$sym -> $i" }
+        // An int with no member is corrupt data the model does not describe: fail loudly
+        // rather than substituting a member. The write side needs no `else` — it is
+        // exhaustive over the enum by construction, since @intValueMap's keys are
+        // validated to match @values exactly.
+        return "customEnumeration($colExpr, \"INTEGER\", " +
+            "{ v -> when ((v as Number).toInt()) { $fromDb; " +
+            "else -> error(\"unmapped stored value \$v for $simple\") } }, " +
+            "{ e -> when (e) { $toDb } })"
+    }
+
+    /** The declared symbol→int map (`@intValueMap`), or null when the enum is string-backed. */
+    private fun readIntValueMap(field: EnumField): Map<String, Int>? {
+        if (!field.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP)) return null
+        val raw = runCatching { field.getMetaAttr(EnumField.ATTR_INT_VALUE_MAP).value }.getOrNull()
+        val m = (raw as? Map<*, *>) ?: return null
+        val out = LinkedHashMap<String, Int>()
+        for ((k, v) in m) {
+            val key = k?.toString() ?: continue
+            val i = (v as? Number)?.toInt() ?: continue
+            out[key] = i
+        }
+        return out.ifEmpty { null }
+    }
+
+    // === MultiFileDirectGeneratorBase abstract-method stubs ====================
+    override fun writeSingleFile(md: MetaObject, writer: GeneratorIOWriter<*>?) { /* unused */ }
+    override fun <T : GeneratorIOWriter<*>?> getSingleWriter(
+        loader: MetaDataLoader?, md: MetaObject?, pw: PrintWriter?
+    ): T? = null
+    override fun <T : GeneratorIOWriter<*>?> getFinalWriter(
+        loader: MetaDataLoader?, out: OutputStream?
+    ): T? = null
+    override fun writeFinalFile(metadata: MutableCollection<MetaObject>?, writer: GeneratorIOWriter<*>?) { /* none */ }
+    override fun getSingleOutputFilePath(md: MetaObject): String =
+        PackageMapping.splitFqn(md.name).first.replace('.', '/')
+    override fun getSingleOutputFilename(md: MetaObject): String =
+        PackageMapping.splitFqn(md.name).second + "Table.kt"
+}

@@ -48,7 +48,7 @@ class ProjectionDocsRoutesKtTest {
         val expected = ObjectMapper().readTree(Files.readString(corpus.resolve("docs-routes.json"))).get("units")
         val loader = loadString("projectionDocs", Files.readString(corpus.resolve("meta.json")))
 
-        val model = KotlinApiModelBuilder().build(loader, "projection-docs")
+        val model = KotlinApiModelBuilder(com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig.fromArgs(null)).build(loader, "projection-docs")
 
         for ((node, routes) in expected.fields().asSequence().map { it.key to it.value }) {
             val want = routes.map { it.asText() }.sorted()

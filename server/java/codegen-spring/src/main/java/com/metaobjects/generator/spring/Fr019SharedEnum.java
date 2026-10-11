@@ -1,13 +1,15 @@
 package com.metaobjects.generator.spring;
 
-import com.metaobjects.MetaRoot;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.generator.GeneratorException;
+import com.metaobjects.generator.util.GeneratedFileWriter;
 import com.metaobjects.generator.util.GeneratorUtil;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -21,10 +23,13 @@ import java.util.Map;
  * C# {@code Fr019SharedEnum}).
  *
  * <p>A reusable enum is a ROOT/package-level abstract {@code field.enum} (a sibling of
- * {@code object.entity}) that concrete entity fields {@code extends}. Per ADR-0026 such a
- * declaration is materialized ONCE per port as a standalone Java {@code enum} (one file,
- * {@code Priority.java}) and referenced, instead of being redeclared inline (a nested
- * {@code public enum E}) in every consuming DTO record.</p>
+ * {@code object.entity}) that a concrete field anywhere — on an {@code object.entity},
+ * {@code object.projection}, or {@code object.value} — reaches via (possibly multi-hop)
+ * {@code extends}, resolved by the single cross-generator authority
+ * {@link EnumField#resolveSharedEnumDeclaration}. Per ADR-0026 such a declaration is
+ * materialized ONCE per port as a standalone Java {@code enum} (one file, {@code Priority.java})
+ * and referenced, instead of being redeclared inline (a nested {@code public enum E}) in every
+ * consuming record.</p>
  *
  * <p>Two cases on the abstract declaration:</p>
  * <ul>
@@ -95,19 +100,16 @@ public final class Fr019SharedEnum {
     }
 
     /**
-     * The root-level abstract {@code field.enum} a concrete enum field resolves to via
-     * {@code extends}, or {@code null} when the field is an inline enum (no root-abstract super).
-     * A super qualifies only when it is (a) an {@link EnumField}, (b) abstract, AND (c) a direct
-     * child of the metadata root ({@link MetaRoot}) — NOT an abstract field nested inside an object.
+     * The shared-enum declaration {@code field} resolves to via {@code extends}, or {@code null}
+     * when the field is an inline enum. Delegates entirely to the single cross-generator
+     * authority, {@link EnumField#resolveSharedEnumDeclaration} (metadata module) — the SAME
+     * function the Kotlin port and the #246 loader validator call, so the two JVM generators and
+     * the loader can never disagree about what "shared" means. See that method's Javadoc for the
+     * full rule (nearest-declaration-wins, an own-{@code @values}/{@code @intValueMap} node stops
+     * the walk, no hop limit, no hosting-object-subtype condition).
      */
     public static MetaField<?> resolveSharedEnumDecl(MetaField<?> field) {
-        if (!(field instanceof EnumField)) return null;
-        MetaField<?> sup = field.getSuperField();
-        if (!(sup instanceof EnumField)) return null;
-        if (!GeneratorUtil.isAbstract(sup)) return null;
-        // The declaration must sit at the package/root level (a sibling of object.entity).
-        if (!(sup.getParent() instanceof MetaRoot)) return null;
-        return sup;
+        return EnumField.resolveSharedEnumDeclaration(field);
     }
 
     /** The shared-enum descriptor a field resolves to, or {@code null} for inline enums. */
@@ -145,16 +147,25 @@ public final class Fr019SharedEnum {
 
     /**
      * All shared (root-level abstract) enum declarations in the loaded model that are actually
-     * CONSUMED by at least one concrete entity field — keyed by materialized type name, sorted by
+     * CONSUMED by at least one concrete object field — keyed by materialized type name, sorted by
      * name (deterministic). A declaration nobody extends is not materialized (no dangling type).
-     * Only {@code object.entity} fields are considered (the DTO scope); payload value-objects keep
-     * their own inline nesting.
+     * Scans every concrete {@code object.entity}, {@code object.projection} AND
+     * {@code object.value} (there is no condition on the hosting object's SUBTYPE — a projection
+     * or value-object field reaching a shared declaration must-generate it too); abstract objects
+     * are skipped (nothing is generated for them directly — a concrete subtype's resolving
+     * {@link MetaObject#getMetaFields()} already sees their inherited fields). Scans the WHOLE
+     * loader regardless of which objects a particular generator invocation is narrowed to, so a
+     * run filtered down to a single consuming object still materializes the type it reaches.
      */
     public static List<SharedEnum> collectSharedEnums(MetaDataLoader loader) {
         Map<String, SharedEnum> out = new LinkedHashMap<>();
-        for (MetaObject entity : loader.getMetaObjects()) {
-            if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) continue;
-            for (MetaField<?> field : entity.getMetaFields()) {
+        for (MetaObject owner : loader.getMetaObjects()) {
+            if (GeneratorUtil.isAbstract(owner)) continue;
+            String subType = owner.getSubType();
+            if (!MetaObject.SUBTYPE_ENTITY.equals(subType)
+                && !MetaObject.SUBTYPE_PROJECTION.equals(subType)
+                && !MetaObject.SUBTYPE_VALUE.equals(subType)) continue;
+            for (MetaField<?> field : owner.getMetaFields()) {
                 SharedEnum shared = sharedEnumForField(field);
                 if (shared == null) continue;
                 out.putIfAbsent(shared.name(), shared);
@@ -173,6 +184,44 @@ public final class Fr019SharedEnum {
     }
 
     /**
+     * The opt-in generator arg ({@code emitSharedEnums=true}) with which the value-object and
+     * output-parser generators write the materialized shared enums into their own
+     * {@code outputDir}. {@link SpringDtoGenerator} owns those files and always writes them, so
+     * the arg is for a run that includes one of the other two WITHOUT the DTO generator. Leaving
+     * it off elsewhere is what keeps one {@code <Name>.java} per shared enum when the generators
+     * write to separate output directories.
+     */
+    public static final String ARG_EMIT_SHARED_ENUMS = "emitSharedEnums";
+
+    /**
+     * Write each materialized shared enum as a standalone top-level Java {@code enum} in its
+     * declaring package — {@code <pkg>/<Name>.java} containing {@code public enum <Name> { A, B, C }}
+     * — for EVERY shared enum the model consumes, whichever object reaches it. Provided enums
+     * emit nothing (referenced externally). Called by {@link SpringDtoGenerator} on every run and
+     * by the value-object and output-parser generators only under {@link #ARG_EMIT_SHARED_ENUMS}.
+     */
+    public static void emitMaterialized(MetaDataLoader loader, Path outRoot) {
+        for (SharedEnum shared : materializedSharedEnums(loader)) {
+            StringBuilder src = new StringBuilder();
+            if (!shared.javaPackage().isEmpty()) {
+                src.append("package ").append(shared.javaPackage()).append(";\n\n");
+            }
+            src.append("/** GENERATED — shared enum ").append(shared.name())
+               .append(". Do not hand-edit; regenerated from metadata. */\n");
+            src.append(SpringTypeMapper.enumDeclaration(shared.name(), shared.values(), shared.intValueMap()))
+               .append("\n");
+            try {
+                Path outFile = outRoot.resolve(shared.javaPackage().replace('.', '/'))
+                                      .resolve(shared.name() + ".java");
+                GeneratedFileWriter.write(outFile, src.toString());
+            } catch (IOException e) {
+                throw new GeneratorException(
+                    "failed writing shared enum " + shared.name() + ".java: " + e, e);
+            }
+        }
+    }
+
+    /**
      * The Java type reference a consuming DTO component emits for a shared/provided enum:
      * <ul>
      *   <li>materialized → a bare {@code E} when {@code owner} shares the enum's package, else the
@@ -188,7 +237,18 @@ public final class Fr019SharedEnum {
             if (shared.javaPackage().isEmpty() || shared.javaPackage().equals(ownerJavaPkg)) {
                 return shared.name();
             }
-            return shared.javaPackage() + "." + shared.name();
+        }
+        return qualifiedTypeReference(shared, cfg);
+    }
+
+    /**
+     * The always-qualified reference ({@code <pkg>.E} / {@code <ns>.E}) for generated code that
+     * lives in a package of its own — the output parser sits in {@code <pkg>.prompts}, never in
+     * the enum's package, so it cannot use the bare same-package form.
+     */
+    public static String qualifiedTypeReference(SharedEnum shared, ProvidedEnumConfig cfg) {
+        if (!shared.provided()) {
+            return shared.javaPackage().isEmpty() ? shared.name() : shared.javaPackage() + "." + shared.name();
         }
         String ns = cfg.packageNamespaces().get(shared.metaPackage());
         if (ns == null || ns.isBlank()) ns = cfg.fallbackNamespace();

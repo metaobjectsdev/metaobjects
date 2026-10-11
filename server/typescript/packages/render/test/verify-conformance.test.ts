@@ -16,7 +16,9 @@ import {
 // Verify-conformance corpus: the cross-language template-drift oracle (FR-004
 // Plan #3 C). Each fixture dir under fixtures/verify-conformance/ holds
 //   payload.json         the payload FIELD-TREE — PayloadField[], the declared
-//                        shape (NOT render data, unlike render-conformance)
+//                        shape (NOT render data, unlike render-conformance); a node
+//                        may carry "isArray": true (a list of objects with `fields`,
+//                        a list of scalars without)
 //   template.mustache    the template text whose {{vars}} are drift-checked
 //   partials/*.mustache  optional partial bodies, referenced as `partials/<name>`
 //   options.json         optional { requiredSlots?, requiredTags?: string[]; provider?: "with" | "without" }

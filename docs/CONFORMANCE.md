@@ -28,9 +28,9 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 |---|---|---|---|---|---|---|
 | [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 374 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 16 | 16 / 16 | 15 / 16 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 15 / 16 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 16 / 16 |
-| [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 31 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 37 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
-| [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 15 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 16 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 48 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 17 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 52 (46 query + 6 migration) | all 52 (the 19 `report-*` also on SQLite, MySQL and D1) | 46 query (migrations TS-only, ADR-0015); the 19 `report-*` also on MySQL | 46 query (via Exposed); the 19 `report-*` also on SQLite and MySQL | 46 query; the 19 `report-*` also on SQLite and MySQL | 46 query (Postgres only: pg8000) |
@@ -38,7 +38,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 42 cases | ✓ (generated Zod + run-time `runValidators`) | ✓ | ✓ | ✓ | ✓ (generated Pydantic + run-time `run_validators`) |
 | [`fixtures/registry-conformance/`](../fixtures/registry-conformance/) | 1 canonical manifest | ✓ (reference emitter) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/object-model-conformance/`](../fixtures/object-model-conformance/) | 1 shared metadata fixture (per-port scenarios) | ✓ | ✓ | ✓ | ✓ | ✓ |
-| [`fixtures/codegen-conformance/`](../fixtures/codegen-conformance/) | 4 | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`fixtures/codegen-conformance/`](../fixtures/codegen-conformance/) | 5 shared inputs; `shared-provided-enum` also carries the enum-type decision table every port answers | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/template-codegen-conformance/`](../fixtures/template-codegen-conformance/) | 3 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/template-output-render-conformance/`](../fixtures/template-output-render-conformance/) | 5 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/generator-registry-conformance/`](../fixtures/generator-registry-conformance/) | 1 canonical manifest | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -284,19 +284,21 @@ before its base in one file, etc.) and 7 `error-yaml-*` fixtures that pin the
 YAML 1.1 coercion guards (bool / null / hex in string contexts; numeric in enum
 contexts; reserved-as-attr).
 
-### `fixtures/render-conformance/` (15)
+### `fixtures/render-conformance/` (16)
 
-All 15 fixtures → [features/templates-and-payloads.md](features/templates-and-payloads.md)
+All 16 fixtures → [features/templates-and-payloads.md](features/templates-and-payloads.md)
 (render engine output section). 4 are end-to-end shape examples (prompt / email /
-spreadsheet / CSV-injection escape); 10 pin Mustache-engine semantics — dotted-path
+spreadsheet / CSV-injection escape); 11 pin Mustache-engine semantics — dotted-path
 lookup, parent-context fallthrough, falsy/empty-array section behavior, inverted
 sections, nested partials, standalone-tag whitespace stripping, raw-HTML bypass,
-trailing-newline preservation, and unicode multibyte handling.
+trailing-newline preservation, unicode multibyte handling, and the `-last` list-separator accessor.
 
-### `fixtures/verify-conformance/` (31)
+### `fixtures/verify-conformance/` (37)
 
-All 31 fixtures → [features/migrations-and-drift.md](features/migrations-and-drift.md)
-(template drift section — `Renderer.verify`).
+All 37 fixtures → [features/migrations-and-drift.md](features/migrations-and-drift.md)
+(template drift section — `Renderer.verify`). A node of a fixture's `payload.json` field tree
+may carry `"isArray": true`; with `fields` it is a list of objects, without it a list of
+scalars. The six `verify-positional-accessor-*` cases pin where `-last` is available.
 
 ### `fixtures/persistence-conformance/` (52 — 46 query + 6 migration)
 
@@ -522,8 +524,8 @@ files into a real Cube.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 374 + yaml 16 + verify 31
-+ render 15 + persistence 52 + api-contract 88 + source-resolution 25 + scope 10 +
+The fixtures in the nine corpora mapped above (metamodel 374 + yaml 16 + verify 37
++ render 16 + persistence 52 + api-contract 88 + source-resolution 25 + scope 10 +
 dependency 23) each map to a feature doc, and so do the two requirement corpora and the
 `cube-model` corpus, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider

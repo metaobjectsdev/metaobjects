@@ -21,12 +21,15 @@ UNCHANGED — it stays a per-entity ``Literal[...]`` (byte-identical default).
 """
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
-from metaobjects.meta.core.field.meta_field import MetaField
+from metaobjects.meta.core.field.meta_field import (
+    MetaField,
+    resolve_shared_enum_declaration,
+)
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.meta_data import MetaData
-from metaobjects.shared.base_types import TYPE_METADATA
 from metaobjects.shared.separators import PACKAGE_SEP
 from metaobjects.codegen import type_map
 from metaobjects.codegen.config import GenConfig
@@ -48,21 +51,17 @@ def _pascal(name: str) -> str:
 
 
 def resolve_shared_enum_decl(field: MetaField) -> MetaData | None:
-    """The package-level abstract ``field.enum`` *field* resolves to via ``extends``, or ``None``
-    for an inline enum. Qualifies only when the immediate super is (a) a ``field.enum``,
-    (b) abstract, AND (c) a direct child of the metadata root — a sibling of ``object.entity``,
-    not an abstract field nested inside an object."""
-    if field.sub_type != fc.FIELD_SUBTYPE_ENUM:
-        return None
-    sup = field.super_data
-    if sup is None or sup.sub_type != fc.FIELD_SUBTYPE_ENUM:
-        return None
-    if not getattr(sup, "is_abstract", False):
-        return None
-    parent = sup.parent
-    if parent is None or parent.type != TYPE_METADATA:
-        return None
-    return sup
+    """Deprecated name of
+    :func:`metaobjects.meta.core.field.meta_field.resolve_shared_enum_declaration`,
+    kept so a generator ejected before the resolver moved to the metadata layer
+    still imports. Same answer, including through a multi-hop ``extends``."""
+    warnings.warn(
+        "resolve_shared_enum_decl is deprecated; call "
+        "metaobjects.meta.core.field.meta_field.resolve_shared_enum_declaration",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return resolve_shared_enum_declaration(field)
 
 
 def is_provided(decl: MetaData) -> bool:
@@ -91,11 +90,16 @@ def _meta_package_of(decl: MetaData) -> str:
 
 
 def shared_enum_for_field(field: MetaField) -> SharedEnum | None:
-    """The shared-enum descriptor *field* resolves to, or ``None`` for inline enums."""
-    decl = resolve_shared_enum_decl(field)
+    """The shared-enum descriptor *field* resolves to, or ``None`` for inline enums.
+
+    The member set is read off the DECLARATION *decl* (a resolving ``attrs()``
+    read, never off *field*) so materialization cannot depend on which consuming
+    field a generator happens to visit first — every field resolving to the same
+    shared declaration must describe that declaration identically."""
+    decl = resolve_shared_enum_declaration(field)
     if decl is None:
         return None
-    values = type_map.effective_enum_values(field)
+    values = type_map.effective_enum_values(decl)
     if not values:
         return None
     return SharedEnum(

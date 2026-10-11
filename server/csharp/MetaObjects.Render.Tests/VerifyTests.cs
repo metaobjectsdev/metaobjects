@@ -18,8 +18,8 @@ public class VerifyTests
         new PayloadField("posts",
         [
             new PayloadField("title"),
-            new PayloadField("tags", [new PayloadField("name")]),
-        ]),
+            new PayloadField("tags", [new PayloadField("name")], IsArray: true),
+        ], IsArray: true),
     ];
 
     private static List<string> Codes(string text, IReadOnlyList<PayloadField> fields, VerifyOptions? o = null) =>

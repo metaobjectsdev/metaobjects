@@ -1,8 +1,8 @@
 // Value-object file composer — emits a streamlined "value-only" module for
-// metaobjects with no writable source.rdb child. Output is just the TS
-// interface + the Zod schema (and enum type aliases when applicable); no
-// Drizzle table, no Infer*Model aliases, no filter allowlists, no constants
-// object.
+// metaobjects with no writable source.rdb child. Output is the TS interface +
+// the Zod schema (and enum type aliases when applicable); no Drizzle table, no
+// Infer*Model aliases, no filter allowlists. An `object.value` also gets a
+// field-rules constant (`<VO>.<field>.rules`), without `$table` or `$path`.
 //
 // Two objects land here that are more than a value: a TPH subtype (it shares the
 // base's table) and a SOURCELESS ENTITY (identity, no source: a record in a store
@@ -15,6 +15,7 @@
 
 import { joinCode, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
+import { OBJECT_SUBTYPE_VALUE } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "../render-context.js";
 import { renderValueObjectInterface, renderEnumTypeAliases } from "./inferred-types.js";
 import {
@@ -24,12 +25,13 @@ import {
   renderTphSubtypeReadSchema,
   tphDiscriminatorPin,
 } from "./zod-validators.js";
-import { renderEntityConstants } from "./entity-constants.js";
+import { renderEntityConstants, renderValueObjectConstants } from "./entity-constants.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants.js";
 import { namesRef, namesConstArg } from "../names.js";
 import { isSourcelessEntity } from "../source-detect.js";
+import { isAbstract } from "../instance-artifacts.js";
 
 export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: RenderContext): string {
   const enumAliases = renderEnumTypeAliases(obj, ctx);
@@ -83,6 +85,14 @@ export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: Ren
     // object stays insert-only (no PATCH semantics — an UpdateSchema would mislead).
     tphSubtype || sourceless ? renderZodValidators(obj, ctx) : renderInsertSchemaOnly(obj, ctx),
     ...(tphConstants !== null ? [tphConstants] : []),
+    // An `object.value` gets a field-rules constant, so a caller reads `<VO>.<field>.rules`
+    // rather than the Zod schema's getters. It has no table or route, so the constant carries
+    // no `$table`/`$path`. Only the value subtype: an abstract object, a TPH subtype, a
+    // sourceless entity and an entity emitted to a contract-only target also land in this
+    // composer, and none of them takes it.
+    ...(obj.subType === OBJECT_SUBTYPE_VALUE && !isAbstract(obj)
+      ? [renderValueObjectConstants(obj, ctx ? ctx.valueObjectEmittedName(obj) : undefined)]
+      : []),
     ...(tphFilterAllowlist !== null ? [tphFilterAllowlist] : []),
     ...(tphSortAllowlist !== null ? [tphSortAllowlist] : []),
     ...(tphFilterType !== null ? [tphFilterType] : []),

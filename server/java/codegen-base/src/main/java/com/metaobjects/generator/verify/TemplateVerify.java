@@ -189,16 +189,19 @@ public final class TemplateVerify {
         seen.add(vo.getName());
         List<PayloadField> fields = new ArrayList<>();
         for (MetaField<?> field : vo.getMetaFields()) {
+            // ADR-0039: isArrayType() is the EFFECTIVE (inherited-via-extends) array-ness; the
+            // own-only isArray() flag would read false for a field that inherits @isArray.
+            boolean isArray = field.isArrayType();
             if (field instanceof ObjectField of) {
                 MetaObject target = resolveNestedObjectRef(loader, of);
                 if (target != null && MetaObject.SUBTYPE_VALUE.equals(target.getSubType())) {
                     List<PayloadField> children =
                             derivePayloadFieldTree(loader, target, new LinkedHashSet<>(seen));
-                    fields.add(PayloadField.object(field.getName(), children));
+                    fields.add(PayloadField.object(field.getName(), children, isArray));
                     continue;
                 }
             }
-            fields.add(PayloadField.scalar(field.getName()));
+            fields.add(PayloadField.scalar(field.getName(), isArray));
         }
         return fields;
     }

@@ -13,3 +13,38 @@ export const InstructorProfileInsertSchema = z.object({
   bio: z.string().max(2000).optional(),
   credentialsSummary: z.string().max(300).optional(),
 });
+/**
+ * Metadata constants for the value object InstructorProfile: each field's name, label, view and the
+ * validation rules derived from its validator children (e.g. `InstructorProfile.<field>.rules.maxLength.value`).
+ */
+export const InstructorProfile = {
+  $entity: "InstructorProfile",
+  displayName: {
+    name: "displayName",
+    label: "Display Name",
+    view: "text",
+    htmlType: "text",
+    rules: {
+      required: "Display Name is required",
+      maxLength: { value: 120, message: "Must be 120 characters or fewer" },
+    },
+  },
+  bio: {
+    name: "bio",
+    label: "Bio",
+    view: "text",
+    htmlType: "text",
+    rules: {
+      maxLength: { value: 2000, message: "Must be 2000 characters or fewer" },
+    },
+  },
+  credentialsSummary: {
+    name: "credentialsSummary",
+    label: "Credentials Summary",
+    view: "text",
+    htmlType: "text",
+    rules: {
+      maxLength: { value: 300, message: "Must be 300 characters or fewer" },
+    },
+  },
+} as const;

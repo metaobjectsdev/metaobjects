@@ -98,7 +98,7 @@ public final class Verify {
         staticTexts.add(templateText);
 
         WalkContext ctx = new WalkContext(provider, root, errors, referencedAtRoot, staticTexts);
-        walk(tokenize(templateText), List.of(root), List.of(), ctx);
+        walk(tokenize(templateText), List.of(root), List.of(), ctx, false);
 
         if (opts.requiredSlots() != null) {
             for (String slot : opts.requiredSlots()) {
@@ -139,7 +139,8 @@ public final class Verify {
             List<Tok> tokens,
             List<List<PayloadField>> stack,
             List<String> seen,
-            WalkContext ctx
+            WalkContext ctx,
+            boolean inElement
     ) {
         boolean atRoot = stack.size() == 1 && stack.get(0) == ctx.root();
         for (Tok tok : tokens) {
@@ -147,25 +148,32 @@ public final class Verify {
                 case VarTok v -> {
                     if (".".equals(v.value())) break;   // implicit iterator — always valid
                     if (atRoot) ctx.referencedAtRoot().add(v.value().split("\\.")[0]);
-                    if (resolve(stack, v.value()) == null && !isBooleanAccessor(stack, v.value())) {
+                    if (resolve(stack, v.value()) == null && !isBooleanAccessor(stack, v.value())
+                            && !PayloadAccessors.isPositionalAccessor(inElement, v.value())) {
                         ctx.errors().add(new VerifyError(ERR_VAR_NOT_ON_PAYLOAD, v.value()));
                     }
                 }
                 case SectionTok s -> {
                     if (".".equals(s.value())) {
-                        walk(s.children(), stack, seen, ctx);
+                        walk(s.children(), stack, seen, ctx, inElement);
                         break;
                     }
                     if (atRoot) ctx.referencedAtRoot().add(s.value().split("\\.")[0]);
                     PayloadField field = resolve(stack, s.value());
                     if (field == null) {
+                        // A positional {{^-last}} gate is a BOOLEAN on the current
+                        // collection element: it pushes nothing, so the body walks in the SAME scope.
+                        if (PayloadAccessors.isPositionalAccessor(inElement, s.value())) {
+                            walk(s.children(), stack, seen, ctx, inElement);
+                            break;
+                        }
                         // An auto-derived boolean accessor ({{#hasAbilities}}) is a
                         // presence GATE over an optional/collection field reachable on
                         // the current scope — not a payload slot of its own. It keeps
                         // the current context (no push); its body still resolves against
                         // the enclosing scope.
                         if (isBooleanAccessor(stack, s.value())) {
-                            walk(s.children(), stack, seen, ctx);
+                            walk(s.children(), stack, seen, ctx, inElement);
                             break;
                         }
                         // Unresolved section head is itself drift; skip the body
@@ -176,12 +184,21 @@ public final class Verify {
                     // `#` over a container pushes its element fields; `^` (and `#`
                     // over a scalar, used as a conditional) keep the current context.
                     boolean push = !s.inverted() && field.fields() != null;
+                    // `-last` is available in the body only when the INNERMOST enclosing ARRAY
+                    // section iterates OBJECT elements: a `#` over an array field sets the flag
+                    // fresh (true for array-of-objects, false for array-of-scalars, which carry
+                    // no element key even inside an outer object array). Any other section
+                    // (scalar conditional, single nested object, `^`) is not an iteration, so it
+                    // inherits the enclosing scope's flag unchanged.
+                    boolean childInElement = !s.inverted() && field.isArray()
+                        ? field.fields() != null
+                        : inElement;
                     if (push) {
                         List<List<PayloadField>> next = new ArrayList<>(stack);
                         next.add(field.fields());
-                        walk(s.children(), Collections.unmodifiableList(next), seen, ctx);
+                        walk(s.children(), Collections.unmodifiableList(next), seen, ctx, childInElement);
                     } else {
-                        walk(s.children(), stack, seen, ctx);
+                        walk(s.children(), stack, seen, ctx, childInElement);
                     }
                 }
                 case PartialTok p -> {
@@ -195,7 +212,7 @@ public final class Verify {
                     ctx.staticTexts().add(text);
                     List<String> nextSeen = new ArrayList<>(seen);
                     nextSeen.add(p.value());
-                    walk(tokenize(text), stack, Collections.unmodifiableList(nextSeen), ctx);
+                    walk(tokenize(text), stack, Collections.unmodifiableList(nextSeen), ctx, inElement);
                 }
             }
         }

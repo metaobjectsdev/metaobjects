@@ -16,6 +16,8 @@
 package com.metaobjects.field;
 
 import com.metaobjects.DataTypes;
+import com.metaobjects.MetaData;
+import com.metaobjects.MetaRoot;
 import com.metaobjects.attr.BooleanAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
@@ -23,7 +25,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -308,5 +312,65 @@ public class EnumField extends PrimitiveField<String> {
             }
         }
         return true;
+    }
+
+    // -----------------------------------------------------------------------
+    // FR-019 — single shared-enum-declaration authority (ADR-0026)
+    // -----------------------------------------------------------------------
+    //
+    // ONE predicate decides "what is this enum field's type" for every JVM codegen site
+    // (Java/Spring and Kotlin) AND the #246 loader validator (ValidationPhase.sharedEnumSuper,
+    // immediate-super-only): a shared enum DECLARATION is an abstract field.enum that is a
+    // direct child of the metadata root. Resolving a field walks its extends chain and, at
+    // each node, in order: (a) the node IS a declaration -> that is the answer (nearest wins);
+    // (b) the node declares its OWN @values or OWN @intValueMap -> NONE (it starts a new,
+    // unshared vocabulary); (c) otherwise continue to its super. A non-enum node, the end of
+    // the chain, or a cycle answers NONE. There is no condition on the hosting object's
+    // subtype (entity / projection / value all qualify) and no hop limit.
+
+    /**
+     * True iff {@code node} is itself a shared-enum DECLARATION: an abstract {@code field.enum}
+     * that is a direct child of the metadata root ({@link MetaRoot}) — a sibling of
+     * {@code object.entity}, not a field nested inside an object. ADR-0039: both facts
+     * (own {@code @isAbstract}, and parentage) are declaration-layer and read own-only — neither
+     * is ever inherited through {@code extends}.
+     */
+    public static boolean isSharedEnumDeclaration(MetaField<?> node) {
+        if (!(node instanceof EnumField)) return false;
+        return isOwnAbstract(node) && node.getParent() instanceof MetaRoot;
+    }
+
+    private static boolean isOwnAbstract(MetaData node) {
+        return node.hasMetaAttr(MetaData.ATTR_IS_ABSTRACT, false)
+            && Boolean.TRUE.equals(node.getMetaAttr(MetaData.ATTR_IS_ABSTRACT, false).getValue());
+    }
+
+    /** True iff {@code node} declares its OWN {@code @values} or OWN {@code @intValueMap} —
+     *  the rule-(b) "starts a new vocabulary" stop condition. Own-only (ADR-0039): an inherited
+     *  {@code @values}/{@code @intValueMap} does not stop the walk at this node. */
+    private static boolean declaresOwnValuesOrIntMap(MetaField<?> node) {
+        return node.hasMetaAttr(ATTR_VALUES, false) || node.hasMetaAttr(ATTR_INT_VALUE_MAP, false);
+    }
+
+    /**
+     * Resolve the shared-enum declaration {@code field}'s {@code extends} chain reaches, per the
+     * FR-019 rule above, or {@code null} for an inline field (the field keeps its per-object
+     * generated type exactly as before this rule existed). Walks {@code field} itself first (a
+     * field extending a chain that, two hops up, redeclares its own {@code @values} answers NONE
+     * even when a further hop would reach a declaration), then each super in turn. Cycle-guarded
+     * by identity.
+     */
+    public static MetaField<?> resolveSharedEnumDeclaration(MetaField<?> field) {
+        if (!(field instanceof EnumField)) return null;
+        Set<MetaField<?>> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        MetaField<?> node = field;
+        while (node != null) {
+            if (!seen.add(node)) return null; // cycle
+            if (!(node instanceof EnumField)) return null; // non-enum node ends the chain
+            if (isSharedEnumDeclaration(node)) return node; // (a) nearest declaration wins
+            if (declaresOwnValuesOrIntMap(node)) return null; // (b) starts its own vocabulary
+            node = node.getSuperField(); // (c) continue
+        }
+        return null; // end of chain
     }
 }

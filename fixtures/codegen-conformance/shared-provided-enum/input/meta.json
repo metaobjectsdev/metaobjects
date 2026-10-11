@@ -6,23 +6,67 @@
       { "field.enum": { "name": "Currency", "abstract": true, "@provided": true, "@values": ["USD", "EUR", "GBP"] } },
       { "field.enum": { "name": "Money", "abstract": true, "extends": "Currency" } },
       { "object.entity": { "name": "Ticket", "children": [
-        { "field.long":  { "name": "id" } },
-        { "field.enum":  { "name": "priority", "extends": "Priority" } },
-        { "field.enum":  { "name": "currency", "extends": "Currency" } },
-        { "source.rdb":  { "@table": "tickets" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "priority", "extends": "Priority" } },
+        { "field.enum": { "name": "severity", "extends": "Priority" } },
+        { "field.enum": { "name": "tier", "extends": "Priority" } },
+        { "field.enum": { "name": "currency", "extends": "Currency" } },
+        { "source.rdb": { "@table": "tickets" } },
         { "identity.primary": { "name": "pk", "@fields": ["id"] } }
       ] } },
       { "object.entity": { "name": "Order", "children": [
-        { "field.long":  { "name": "id" } },
-        { "field.enum":  { "name": "priority", "extends": "Priority" } },
-        { "source.rdb":  { "@table": "orders" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "priority", "extends": "Priority" } },
+        { "field.enum": { "name": "status", "@values": ["NEW", "PAID"] } },
+        { "source.rdb": { "@table": "orders" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+      ] } },
+      { "object.entity": { "name": "Task", "children": [
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "urgency", "extends": "acme::shop::Ticket.priority" } },
+        { "field.enum": { "name": "importance", "extends": "acme::shop::Ticket.severity" } },
+        { "field.enum": { "name": "phase", "extends": "acme::shop::Ticket.tier", "@values": ["OPEN", "DONE"] } },
+        { "field.enum": { "name": "weight", "extends": "acme::shop::Ticket.severity", "@intValueMap": { "LOW": 1, "MEDIUM": 2, "HIGH": 3 } } },
+        { "source.rdb": { "@table": "tasks" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+      ] } },
+      { "object.entity": { "name": "Subtask", "children": [
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "rank", "extends": "acme::shop::Task.importance" } },
+        { "field.enum": { "name": "phase", "extends": "acme::shop::Task.phase" } },
+        { "field.enum": { "name": "weight", "extends": "acme::shop::Task.weight" } },
+        { "source.rdb": { "@table": "subtasks" } },
         { "identity.primary": { "name": "pk", "@fields": ["id"] } }
       ] } },
       { "object.entity": { "name": "Invoice", "children": [
-        { "field.long":  { "name": "id" } },
-        { "field.enum":  { "name": "money", "extends": "Money" } },
-        { "source.rdb":  { "@table": "invoices" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "money", "extends": "Money" } },
+        { "field.enum": { "name": "tier", "extends": "Money" } },
+        { "source.rdb": { "@table": "invoices" } },
         { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+      ] } },
+      { "object.entity": { "name": "Refund", "children": [
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "unit", "extends": "acme::shop::Invoice.money" } },
+        { "field.enum": { "name": "tender", "extends": "acme::shop::Ticket.currency" } },
+        { "field.enum": { "name": "orderStatus", "extends": "acme::shop::Order.status" } },
+        { "field.enum": { "name": "ticketTier", "extends": "acme::shop::Ticket.tier" } },
+        { "field.enum": { "name": "invoiceTier", "extends": "acme::shop::Invoice.tier" } },
+        { "source.rdb": { "@table": "refunds" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+      ] } },
+      { "object.projection": { "name": "TicketSummary", "children": [
+        { "source.rdb": { "@kind": "view", "@view": "v_ticket_summary" } },
+        { "field.long": { "name": "id", "extends": "acme::shop::Ticket.id" } },
+        { "field.enum": { "name": "level", "extends": "acme::shop::Ticket.severity" } },
+        { "identity.primary": { "name": "pk", "extends": "acme::shop::Ticket.pk" } }
+      ] } },
+      { "object.value": { "name": "TicketBadge", "children": [
+        { "field.enum": { "name": "badge", "extends": "acme::shop::Ticket.severity" } }
+      ] } },
+      { "object.value": { "name": "TicketLabel", "children": [
+        { "field.enum": { "name": "grade", "extends": "Priority" } },
+        { "field.enum": { "name": "denomination", "extends": "Currency" } }
       ] } }
     ]
   }

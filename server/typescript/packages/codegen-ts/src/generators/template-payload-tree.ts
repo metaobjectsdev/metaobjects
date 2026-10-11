@@ -71,6 +71,7 @@ export function buildEnrichedPayloadTree(
       owner,
       type: neutralTypeStr(f),
       required: isFieldRequired(f),
+      ...(f.resolvedIsArray() ? { isArray: true } : {}),
     };
     if (f.subType === FIELD_SUBTYPE_OBJECT) {
       const ref = f.attr(FIELD_ATTR_OBJECT_REF);

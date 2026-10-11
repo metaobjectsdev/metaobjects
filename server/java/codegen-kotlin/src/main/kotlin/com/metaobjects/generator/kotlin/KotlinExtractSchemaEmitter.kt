@@ -63,20 +63,41 @@ object KotlinExtractSchemaEmitter {
      * `field.object @objectRef`, skipping any FQN already in [emitted] (the run-wide dedupe, and
      * the cycle guard).
      */
-    fun emitMirrorFiles(rootVo: MetaObject, outRoot: Path, emitted: MutableSet<String>) {
+    fun emitMirrorFiles(
+        rootVo: MetaObject,
+        outRoot: Path,
+        emitted: MutableSet<String>,
+        provided: Fr019SharedEnum.ProvidedEnumConfig,
+    ) {
         if (!emitted.add(rootVo.name)) return
         val (pkg, _) = PackageMapping.splitFqn(rootVo.name)
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("${mirrorName(rootVo)}.kt")
-        GeneratedFileWriter.write(outFile, mirrorSource(rootVo))
+        GeneratedFileWriter.write(outFile, mirrorSource(rootVo, provided))
         for (field in rootVo.metaFields) {
             val nested = objectRefValueObject(field) ?: continue
             KotlinNaming.requireReferenceable(pkg, nested, "value object '${rootVo.name}'")
-            emitMirrorFiles(nested, outRoot, emitted)
+            emitMirrorFiles(nested, outRoot, emitted, provided)
         }
     }
 
+    @Deprecated(
+        "Pass the generator's Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args) as a fourth argument, so a " +
+            "@provided enum is typed by its configured class. Without it a @provided enum is named by the " +
+            "class in its declaration's own package.",
+    )
+    fun emitMirrorFiles(rootVo: MetaObject, outRoot: Path, emitted: MutableSet<String>) =
+        emitMirrorFiles(rootVo, outRoot, emitted, Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
+
+    @Deprecated(
+        "Pass the generator's Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args) as a second argument, so a " +
+            "@provided enum is typed by its configured class. Without it a @provided enum is named by the " +
+            "class in its declaration's own package.",
+    )
+    fun mirrorSource(vo: MetaObject): String =
+        mirrorSource(vo, Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
+
     /** The full Kotlin source of [vo]'s mirror file. */
-    fun mirrorSource(vo: MetaObject): String {
+    fun mirrorSource(vo: MetaObject, provided: Fr019SharedEnum.ProvidedEnumConfig): String {
         val (pkg, short) = PackageMapping.splitFqn(vo.name)
         val mirror = mirrorName(vo)
         val fields = vo.metaFields.toList()
@@ -98,7 +119,7 @@ object KotlinExtractSchemaEmitter {
             append("    /** The strict [").append(short).append("]. Call only once the extract report shows no lost or malformed required field. */\n")
             append("    fun toStrict(): ").append(short).append(" = ").append(short).append("(\n")
             for (field in fields) {
-                append("        ").append(field.name).append(" = ").append(strictArg(field, vo)).append(",\n")
+                append("        ").append(field.name).append(" = ").append(strictArg(field, vo, provided)).append(",\n")
             }
             append("    )\n\n")
             append("    companion object {\n\n")
@@ -195,7 +216,7 @@ object KotlinExtractSchemaEmitter {
      * property is non-null ([KotlinGenUtil.isNullableShapeProperty] — the same predicate the entity
      * generator uses, so the two cannot disagree).
      */
-    private fun strictArg(field: MetaField<*>, owner: MetaObject): String {
+    private fun strictArg(field: MetaField<*>, owner: MetaObject, provided: Fr019SharedEnum.ProvidedEnumConfig): String {
         val name = field.name
         val nullable = KotlinGenUtil.isNullableShapeProperty(field)
         // `!!` where the strict property is non-null; a safe call where it may be null.
@@ -211,7 +232,7 @@ object KotlinExtractSchemaEmitter {
         // String, the strict property is the generated enum class. `valueOf` is safe because the
         // loader validated @values against the enum constants.
         if (field is EnumField) {
-            val enumType = KotlinTypeMapper.enumTypeName(field, owner)
+            val enumType = KotlinTypeMapper.enumTypeName(field, owner, provided)
             if (enumType != null) {
                 val enumFqn = enumType.canonicalName
                 return if (field.isArrayType()) {

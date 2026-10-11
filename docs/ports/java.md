@@ -306,6 +306,61 @@ on `entity` yourself. A pom with more than one `entity` entry needs one `extract
 per `entity` entry, each with that entry's `outputDir`, naming args and `<filters>`: a
 single `extractor` generator in the run stops every `entity` entry writing its extractors.
 
+### Shared and `@provided` enums
+
+A package-level abstract `field.enum` that fields extend is one top-level Java `enum`,
+`<pkg>/<Name>.java`, referenced by every DTO, value-object record and output parser that
+reaches it (directly or through another field). `SpringDtoGenerator` owns those files and
+writes all of them. `SpringValueObjectGenerator` and `SpringOutputParserGenerator` write none
+unless asked, which is what keeps a separate `outputDir` per generator from compiling two
+copies of one class:
+
+```xml
+<generator>
+  <classname>com.metaobjects.generator.spring.SpringValueObjectGenerator</classname>
+  <args>
+    <outputDir>${project.build.directory}/generated-sources/java</outputDir>
+    <!-- Only when the DTO generator is NOT in this build. -->
+    <emitSharedEnums>true</emitSharedEnums>
+  </args>
+</generator>
+```
+
+A `@provided` enum is never generated. All three generators reference it where
+`providedEnumNamespace` (one namespace for every provided enum) or `providedEnumPackages`
+(`<metaPackage>=<namespace>` entries separated by `;`) point, and fail at generate time,
+naming the enum, when neither resolves it. Set them once for every generator in the plugin's
+`<globals>`.
+
+**If you own `value-object` or `output-parser`.** A copy ejected before 1.1.0 nests a shared or
+`@provided` enum inside the value-object record (`TicketPayload.Priority`) and parses into that
+nested type. The packaged generators now reference the top-level enum. The two generators must
+agree, so an old copy of one beside the packaged other generates code that does not compile
+whenever a response value object has a field that reaches such an enum:
+
+| You own (ejected before 1.1.0) | Packaged | What fails to compile |
+|---|---|---|
+| `output-parser` | `value-object` | The parser emits `<Payload>.<Enum>.valueOf(s)` for an enum the record no longer nests. |
+| `value-object` | `output-parser` | The record still nests the enum, and the parser passes the top-level shared type to the record's constructor. |
+
+Bring every copy you own of the two to the new shape in one change. `mvn metaobjects:eject -Dlist`
+prints `[owned — identical]` or `[owned — DIFFERS: N behind, M of your own]` beside each
+generator. `behind` counts reference lines your copy lacks; `of your own` counts lines of your
+copy the reference does not have, which includes lines a release changed, so an unedited old
+copy also reads `DIFFERS`. For a copy you did not edit, re-eject it, naming only the generators
+you own:
+
+```bash
+mvn metaobjects:eject -Dnames=value-object,output-parser -Dport=java -Dforce
+```
+
+`-Dport=java` is there because `output-parser` is also a Kotlin generator. `-Dforce` replaces
+the copy and rewrites `codegen/pom.xml`, so review both diffs. For an edited copy, diff the new
+reference against it and apply the hunks by hand, as in
+[Pulling an upstream fix into your copy](../features/own-your-codegen.md#what-eject-hands-over-and-what-stays-core).
+An owned `dto` copy needs nothing for this: it asks the packaged `Fr019SharedEnum` helper for
+each enum's type, so it follows the new rule without a change.
+
 ### Reports
 
 A concrete `object.report` whose read source is a `source.rdb` of `@kind: view` is served

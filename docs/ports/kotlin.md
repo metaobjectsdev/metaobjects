@@ -254,6 +254,37 @@ Every generator above that emits Exposed code reads one shared `exposedApi` arg:
   not others emits a mix of `org.jetbrains.exposed.sql.*` and `.v1.*` imports that cannot
   compile together.
 
+### `@provided` enums (`providedEnumNamespace` / `providedEnumPackages`)
+
+A `field.enum` declared `@provided` is your own enum class: MetaObjects never generates it,
+and every generated reference points at the namespace you configure. Every Kotlin generator
+that types an enum reads the same two args: `KotlinEntityGenerator`,
+`KotlinExposedTableGenerator`, `KotlinSpringControllerGenerator`, `KotlinRelationsGenerator`,
+`KotlinOutputParserGenerator`, and the API pages `mvn metaobjects:docs` writes. Set them once,
+in the plugin's `<globals>`, so no generator can be left out:
+
+```xml
+<configuration>
+  <globals>
+    <!-- One namespace for every @provided enum ... -->
+    <providedEnumNamespace>com.acme.enums</providedEnumNamespace>
+    <!-- ... or one per metadata package: <metaPackage>=<namespace>, separated by ';'. -->
+    <providedEnumPackages>acme::shop=com.acme.shop.enums;acme::billing=com.acme.money</providedEnumPackages>
+  </globals>
+</configuration>
+```
+
+`providedEnumPackages` is consulted first and `providedEnumNamespace` is the fallback. A model
+with a `@provided` enum and neither arg fails at generate time, in whichever generator reaches
+the enum first, with an error naming the enum, its package and both args. It applies to a
+field that reaches the provided enum through another field as well as one that extends it
+directly.
+
+A generator you ejected before 1.1.0 keeps compiling: the helper signatures it calls remain as
+deprecated forms. Those forms take no config, so they name a `@provided` enum by the class in
+its declaration's own package, as they did before, and never fail. Re-eject the generator to
+read the two args (the 1.1.0 CHANGELOG has the command).
+
 **Why 1.x.** Exposed 0.x shares one `IdentifierManagerApi` per `Database` across all
 threads, and its identifier caches are plain `LinkedHashMap`s mutated on every query —
 under concurrent load they corrupt (`ClassCastException`, or a thread spinning forever

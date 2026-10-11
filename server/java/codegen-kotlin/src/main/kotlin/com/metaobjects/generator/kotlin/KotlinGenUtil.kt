@@ -696,7 +696,10 @@ public object KotlinGenUtil {
      *   cannot reach this; it guards a tree built in code, where typing the column by a
      *   guessed class would compile against the wrong enum.
      */
-    fun reportEnumClasses(shape: ReportShape): Map<String, com.squareup.kotlinpoet.ClassName> {
+    fun reportEnumClasses(
+        shape: ReportShape,
+        provided: Fr019SharedEnum.ProvidedEnumConfig,
+    ): Map<String, com.squareup.kotlinpoet.ClassName> {
         val report = shape.report()
         val out = LinkedHashMap<String, com.squareup.kotlinpoet.ClassName>()
         for (f in shape.fields()) {
@@ -710,7 +713,7 @@ public object KotlinGenUtil {
                         "entity that reference names does not resolve, so the generated column has no enum " +
                         "class to be typed by."
                 )
-            out[f.name] = KotlinTypeMapper.enumTypeName(f.typeSource, owner)
+            out[f.name] = KotlinTypeMapper.enumTypeName(f.typeSource, owner, provided)
                 ?: throw GeneratorException(
                     "report \"${report.shortName}\": its $item is an enum with no generated enum class."
                 )
@@ -718,10 +721,30 @@ public object KotlinGenUtil {
         return out
     }
 
+    @Deprecated(
+        "Pass the generator's Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args) as a second argument, so a " +
+            "@provided enum is typed by its configured class. Without it a @provided enum is named by the " +
+            "class in its declaration's own package.",
+    )
+    fun reportEnumClasses(shape: ReportShape): Map<String, com.squareup.kotlinpoet.ClassName> =
+        reportEnumClasses(shape, Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
+
+    @Deprecated(
+        "Pass the generator's Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args) as a third argument, so a " +
+            "@provided enum is typed by its configured class. Without it a @provided enum is named by the " +
+            "class in its declaration's own package.",
+    )
+    fun reportEnumClasses(obj: MetaObject, loader: MetaDataLoader): Map<String, com.squareup.kotlinpoet.ClassName> =
+        reportEnumClasses(obj, loader, Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
+
     /** [reportEnumClasses] for a report's read model; empty for any other object. */
-    fun reportEnumClasses(obj: MetaObject, loader: MetaDataLoader): Map<String, com.squareup.kotlinpoet.ClassName> {
+    fun reportEnumClasses(
+        obj: MetaObject,
+        loader: MetaDataLoader,
+        provided: Fr019SharedEnum.ProvidedEnumConfig,
+    ): Map<String, com.squareup.kotlinpoet.ClassName> {
         val report = (obj as? ReportReadModel)?.report() ?: return emptyMap()
-        return reportEnumClasses(ReportShape.of(report, loader.root))
+        return reportEnumClasses(ReportShape.of(report, loader.root), provided)
     }
 
     /**

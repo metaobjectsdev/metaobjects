@@ -53,7 +53,7 @@ number. The first landed on 1.0.x: 439 lines of handler code retired. The second
 and it is a SQL reduction only: in an adopter, hand-written SQL went from 75 lines to 15 (-80%).
 Total hand-written lines did not fall, so do not read it as a total line reduction.
 
-**Two diffs to expect when you upgrade.**
+**Three diffs to expect when you upgrade.**
 
 - **An ejected generator needs a resync (G11).** An owned copy keeps the gate and the options it
   was copied with, so it does not receive the new report behaviour until you resync it. The
@@ -64,6 +64,27 @@ Total hand-written lines did not fall, so do not read it as a total line reducti
   surface of a keyless projection (no `/:id` route, no by-id function, and no write verbs in the
   API docs), and `meta verify --docs` reports the affected pages as stale until they are
   regenerated. Run `meta gen` and review the diff; three-way merge preserves hand edits.
+- **A multi-hop enum field references the shared enum.** A field that reaches a
+  package-level abstract enum through another field, with no `@values` or `@intValueMap`
+  redeclared on the way, used to get an enum type of its own; it now references the shared one,
+  in every port. In Kotlin its former `<Object><Field>` enum file is no longer written, and code
+  that imported that type imports the shared enum instead. Java has two more diffs: a
+  value-object field that reaches a shared or `@provided` enum, even in one hop, references that
+  type instead of nesting a copy (`TicketPayload.Priority` becomes the top-level `Priority`),
+  and an inline enum that redeclares `@values` or `@intValueMap` under a shared enum moves from
+  the shared enum's name to `<Owner><Field>` (`TaskDto.Priority` becomes `TaskDto.TaskPhase`).
+  Every other inline enum, in every port, keeps its previous name and bytes. Two build
+  settings follow from it. Java: `SpringDtoGenerator` owns the shared enum files, so a pom
+  that runs the value-object or output-parser generator WITHOUT it, on a model where one of
+  their objects reaches a shared enum, must set `emitSharedEnums=true` on one of them. Kotlin:
+  every generator that types an enum now needs `providedEnumNamespace` /
+  `providedEnumPackages` for a model with a `@provided` enum; set them in the plugin's
+  `<globals>`. An owned (ejected) Kotlin generator keeps compiling and keeps its previous
+  `@provided` answer until you re-eject it. An owned Java `value-object` or `output-parser`
+  generator must be re-ejected, or merged with its new reference, when a response value object
+  reaches a shared or `@provided` enum: an old copy of one beside the packaged other generates
+  code that does not compile. The **Fixed** entry lists each port's before and after, and the
+  re-eject commands.
 
 **Not in 1.1.0.** Derived measures, the preview `reporting` library, the dbt exporter, the second
 requirements slice and the advisory lint port, the JSON Schema and OpenAPI generators, the
@@ -112,6 +133,48 @@ generator catalog and the Atlas evaluation are 1.2 work.
   generated-share figure must carry the net hand-written line change (a figure to report, not
   the test) and is never a target.
   Documentation only; no code or generator changed.
+- **Templates: a `-last` list accessor, so a separator needs no payload flag (every port).**
+  `{{#tags}}{{name}}{{^-last}}, {{/-last}}{{/tags}}` renders `a, b, c`. Every object element of a
+  collection now carries a derived boolean `-last`; the name starts with `-`, which no field name
+  can, and it is an ordinary Mustache tag name, so a template that uses it is still valid
+  Mustache. An authored member of the same name wins, a nested list keeps its own position, and
+  a template that does not use it renders byte-for-byte as before. It works whatever shape the
+  payload arrives in, and so does `has<Field>`: a map or plain object, a TypeScript class
+  instance, a C# object with or without `[JsonPropertyName]`, a Java record or getter-based
+  bean, a Kotlin data class, a Pydantic model. The same data renders the same bytes. Which
+  typed payloads are overlaid depends on the shape. A TypeScript class instance, a C# object
+  with no `[JsonPropertyName]` member, a Java getter-based bean and a Kotlin data class are
+  overlaid, never copied: the object's own members (methods and fields included) resolve as
+  they always did and only when the template names them, its string form is its own, and the
+  derived names are added on top. A Java record, a C# object with a `[JsonPropertyName]`
+  member and a Pydantic model are viewed as the map of their fields, exactly as before this
+  change: every field is read up front, and the derived names are added to that map. A method
+  on a Java record that is not a component accessor does not resolve.
+  `meta verify --templates` accepts `-last` only when the innermost enclosing section over a
+  list iterates objects, and reports it as `ERR_VAR_NOT_ON_PAYLOAD` anywhere else: at the top
+  level, inside a list of scalars, and inside a list of scalars nested in a list of objects,
+  where the lookup would bind to the outer element and separate the inner list wrongly. A
+  scalar conditional or a single nested object inside a list is transparent, so `-last` there
+  is the enclosing element's. To decide that, the verify field tree now records which fields
+  are lists; a generated render helper for a payload with a list field is rewritten by `meta
+  gen` to carry that flag, and a helper with none is unchanged. Gated by the
+  `render-list-separator` render fixture and six `verify-positional-accessor-*` verify
+  fixtures, run by TypeScript, C#, Java, Kotlin and Python, plus a typed-payload render test in
+  each port. An adopter's payloads carried hand-computed `last` and `has<Field>` flags: `last`
+  is what this removes, and the emptiness half was already derived (`{{#hasTags}}` /
+  `{{^hasTags}}`, see `docs/features/templates-and-payloads.md`, "List separators and
+  emptiness").
+- **TypeScript: a value object gets a field-rules constant.** An entity has long emitted
+  `<Entity>.<field>.rules`; a value object emitted only its interface and Zod schema, so a caller
+  reading a limit such as `maxLength` went through the schema's getters. An `object.value`
+  module now also exports `const <ValueObject> = { $entity, <field>: { name, label, view,
+  rules, ... } }`, the same per-field shape without `$table` and `$path`, since a value object
+  has no source and no route. Only the value subtype takes it: an abstract object, a TPH
+  subtype, a sourceless entity, a sourceless projection and an entity emitted to a contract-only
+  target are unchanged. `meta gen` adds the constant to existing value-object modules;
+  three-way merge preserves hand edits. An ejected `entity` generator picks it up without a
+  resync, because the owned copy calls the package's value-object composer.
+
 - **TypeScript: the `cube-model` reference generator (FR-044 Plan 4).** `cubeModel()` writes the
   reporting vocabulary as Cube data-model files, `model/cubes/<Cube>.yml`: a cube for each
   table-backed entity that declares dimensions, measures or segments, a join for each to-one
@@ -551,6 +614,126 @@ until you regenerate.
   admits the empty string, as the generated schema already did.
 
 ### Fixed
+
+- **One shared-enum rule in all five ports: a field keeps the shared type through any number
+  of `extends` hops.** An enum field that extends another field which itself reaches a shared
+  (package-level abstract) enum was resolved only when it extended the abstract directly, so a
+  two-hop field got its own inlined enum beside the shared one, and each port decided the
+  question in more than one place. The rule is now one function per port, in the metadata
+  layer, that the loader and every generator call (ADR-0026 Amendment 1): walk the `extends`
+  chain from the field; the nearest package-level abstract enum is the field's type; a field
+  that declares its own `@values` or `@intValueMap` on the way starts a new vocabulary and
+  keeps a per-object inline enum, as does a chain that never reaches a shared declaration. The
+  hosting object does not matter: an entity, projection or value-object field all reference the
+  one shared type. The shared type's members and int map are read from the declaration, so what
+  is generated no longer depends on which consumer is visited first, and it is generated
+  whenever any consumer references it, including when the only consumer is a projection or a
+  value object. `ERR_ENUM_EXTENDS_VALUES_CONFLICT` is unchanged: it still fires for own
+  `@values` or `@intValueMap` directly under a shared declaration, and a redeclaration further
+  down the chain still loads. This supersedes the per-projection enum copy #259 introduced in
+  Kotlin. Gated by a decision table every port answers
+  (`fixtures/codegen-conformance/shared-provided-enum/expected-enum-types.json`).
+
+  What regenerates differently, port by port. The first case is the same in all five: a field
+  that reaches a shared enum through two or more hops, with nothing redeclared on the way, now
+  references the shared type. What it generated before:
+
+  | Port | Before, for such a field |
+  |---|---|
+  | TypeScript | an inline union and `<Name>Enum` constant in the object's own module, named for the field it extends |
+  | C# | a nested `<Entity><Field>` enum |
+  | Java | a nested enum in the DTO that reused the shared enum's name and shadowed it there |
+  | Kotlin | an `<Object><Field>` enum file, which is no longer written |
+  | Python | an inline `Literal[...]` |
+
+  Java has two more changes, and no other port has them:
+
+  - A value-object field that reaches a shared or `@provided` enum, in one hop or many, now
+    references that type. The record used to nest its own copy, so one declaration became two
+    Java types that do not convert. Migration: `TicketPayload.Priority` becomes the top-level
+    `Priority`, and a `@provided` enum is referenced where `providedEnumNamespace` /
+    `providedEnumPackages` point, which the value-object and output-parser generators now read.
+    The file for a shared enum has ONE writer, `SpringDtoGenerator`, which writes every shared
+    enum the model uses, including one only a value object or an output parser reaches. So a
+    separate `outputDir` per generator still compiles: no second copy of the class is written.
+    A pom that runs the value-object or output-parser generator WITHOUT the DTO generator, on a
+    model where one of their objects reaches a shared enum, must set
+    `<emitSharedEnums>true</emitSharedEnums>` on one of them, or the type it references is not
+    generated. (Before this change such a value object nested its own copy, so nothing was
+    missing.)
+  - An inline enum on a chain that redeclares `@values` or `@intValueMap` under a shared enum
+    was nested under the shared enum's own name and shadowed it inside the DTO. It is now named
+    `<Owner><Field>`: `TaskDto.Priority` (with the redeclared members) becomes
+    `TaskDto.TaskPhase`. It stays inline, with its own members.
+  - **Upgrading an owned Java `value-object` or `output-parser` generator.** This applies if you
+    own (ejected) either generator and a response value object has a field that reaches a
+    shared or `@provided` enum. The two generators must emit the same shape, and a copy ejected
+    before this release emits the old one. One old copy beside one packaged generator produces
+    code that does not compile:
+    - An owned old `output-parser` with the packaged `value-object`: the parser emits
+      `<Payload>.<Enum>.valueOf(s)` (`TicketPayload.Priority.valueOf(s)`) for an enum the record
+      no longer nests.
+    - An owned old `value-object` with the packaged `output-parser`: the record still nests
+      `TicketPayload.Priority`, and the parser passes the top-level `Priority` to the record's
+      constructor.
+
+    Bring every copy you own of the two to the new shape in one change, so the pair agrees.
+    `mvn metaobjects:eject -Dlist` shows where each copy stands: it prints
+    `[owned — identical]` or `[owned — DIFFERS: N behind, M of your own]` beside the generator.
+    `behind` counts reference lines your copy lacks. `of your own` counts lines of your copy the
+    reference does not have, which includes lines this release changed, so a copy you never
+    edited also reads `DIFFERS` after the upgrade. Whether you edited a copy is in your own
+    history (`git log -- codegen/`). For a copy you did not edit, re-eject it:
+    `mvn metaobjects:eject -Dnames=value-object,output-parser -Dport=java -Dforce`, naming only
+    the generators you own. `-Dport=java` is there because `output-parser` is also a Kotlin
+    generator. `-Dforce` replaces the copy and rewrites `codegen/pom.xml`, so review both diffs.
+    For an edited copy, extract the new reference from the `metaobjects-codegen-spring` jar
+    (`META-INF/metaobjects/reference/java/SpringValueObjectGenerator.java` and
+    `SpringOutputParserGenerator.java`), diff it against your copy ignoring the package line,
+    and apply the hunks by hand: the procedure is "Pulling an upstream fix into your copy" in
+    `docs/features/own-your-codegen.md`. An owned `dto` copy needs nothing for this: it asks
+    the packaged `Fr019SharedEnum` helper for each enum's type, so it follows the new rule
+    without a change.
+
+  Kotlin has one more change, to configuration:
+
+  - Every Kotlin generator that types an enum now takes `providedEnumNamespace` /
+    `providedEnumPackages`: the entity, Exposed table, Spring controller, relations and
+    output-parser generators, and the API pages `mvn metaobjects:docs` writes. Only the entity
+    generator read them before, so for a `@provided` enum the data class named your class while
+    the Exposed table and the controller named a class in the declaration's package that nothing
+    generates, and the output did not compile. They now all resolve it through one function. A
+    generator configured without the args fails at generate time for a model with a `@provided`
+    enum, naming the enum, its package and both args. Set them once in the plugin's `<globals>`
+    and every generator, and the docs goal, reads the same values.
+  - **Upgrading an owned Kotlin generator.** A copy ejected before this release keeps compiling
+    unchanged. The helper signatures it calls remain as deprecated forms:
+    `KotlinTypeMapper.enumTypeName(field, entity)`, `KotlinEnumEmitter.emitEnumFile` without a
+    config, `KotlinM2mSupport.resolve` and `tphQueryFnNames`, both
+    `KotlinGenUtil.reportEnumClasses` forms, `KotlinExtractSchemaEmitter.emitMirrorFiles` and
+    `mirrorSource`, `Fr019SharedEnum.ProvidedEnumConfig.of`,
+    `Fr019SharedEnum.providedClassName(field, config)` and the no-argument
+    `KotlinApiModelBuilder()`. They apply the same enum rule, so an owned copy also types a
+    multi-hop field by the shared enum. What the forms that take no config cannot do is read the
+    two args: for a `@provided` enum they give the answer they gave before, the class in the
+    declaration's own package, and they do not fail. So an owned entity generator still names
+    your configured class (it reads the args itself), and an owned Exposed table, Spring
+    controller, relations or output-parser generator still names the declaration-package class.
+    To get the configured class from every generator, re-eject the five that type an enum:
+    `mvn metaobjects:eject -Dnames=entity,exposed-table,routes,relations,output-parser
+    -Dport=kotlin -Dforce`. `-Dforce` overwrites the copy, so use it only on one you have not
+    edited (`mvn metaobjects:eject -Dlist` shows how far each copy is from its reference). For an edited copy,
+    extract the new reference from the `metaobjects-codegen-kotlin` jar
+    (`META-INF/metaobjects/reference/kotlin/<Generator>.kt`), diff it against your copy
+    ignoring the package line, and apply the hunks by hand: the procedure is "Pulling an
+    upstream fix into your copy" in `docs/features/own-your-codegen.md`.
+
+  Nothing else moves. Every other inline enum, in every port, keeps its previous name and bytes:
+  in Java an inline enum that extends another field is still named for its top-most super
+  (`ShipmentSummaryDto.Status`), which a golden test pins against the previous generator's
+  output. A model regenerates unchanged unless it has a field that reaches a shared enum through
+  another field, or, in Java only, a value-object field that reaches a shared or `@provided`
+  enum or a redeclaration under a shared enum.
 
 - **`meta verify --db` no longer reports a matching view as drift, and says what differs when a
   view does not.** An adopter on 1.1.0-rc.2 rebuilt a SQLite database from the committed chain:

@@ -1,0 +1,46 @@
+{
+  "metadata.root": {
+    "package": "acme::shipping",
+    "children": [
+      { "object.entity": { "name": "Shipment", "children": [
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "status", "@required": true, "@values": ["PENDING", "SHIPPED", "DELIVERED"] } },
+        { "field.enum": { "name": "mode", "@values": ["AIR", "SEA"] } },
+        { "source.rdb": { "@table": "shipments" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+      ] } },
+      { "object.entity": { "name": "Parcel", "children": [
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "phase", "extends": "acme::shipping::Shipment.status" } },
+        { "source.rdb": { "@table": "parcels" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+      ] } },
+      { "object.entity": { "name": "Crate", "children": [
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "stage", "extends": "acme::shipping::Parcel.phase" } },
+        { "source.rdb": { "@table": "crates" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+      ] } },
+      { "object.projection": { "name": "ShipmentSummary", "children": [
+        { "source.rdb": { "@kind": "view", "@view": "v_shipment_summary" } },
+        { "field.long": { "name": "id", "extends": "acme::shipping::Shipment.id" } },
+        { "field.enum": { "name": "status", "extends": "acme::shipping::Shipment.status" } },
+        { "identity.primary": { "name": "pk", "extends": "acme::shipping::Shipment.pk" } }
+      ] } },
+      { "object.value": { "name": "ShipmentNote", "children": [
+        { "field.string": { "name": "text", "@required": true } },
+        { "field.enum": { "name": "kind", "@values": ["INFO", "ALERT"] } },
+        { "field.enum": { "name": "status", "extends": "acme::shipping::Shipment.status" } },
+        { "field.enum": { "name": "stage", "extends": "acme::shipping::Parcel.phase" } }
+      ] } },
+      { "template.prompt": {
+        "name": "Note",
+        "@payloadRef": "ShipmentNote",
+        "@responseRef": "ShipmentNote",
+        "@textRef": "shipping/note",
+        "@format": "text",
+        "@responseFormat": "json"
+      } }
+    ]
+  }
+}

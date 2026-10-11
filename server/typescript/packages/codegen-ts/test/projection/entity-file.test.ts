@@ -296,6 +296,18 @@ describe("renderEntityFile — source-aware dispatch", () => {
       expect(out).not.toContain("InferSelectModel");
     });
 
+    // Generated-output contract: the field-rules constant (`export const <Name> = { $entity, … }`)
+    // belongs to `object.value` only. A table-backed entity reaches the same plain-shape composer
+    // on a contract-only target, and a constant there would name the entity "the value object"
+    // while carrying no `$table`/`$path`.
+    test("write-through entity: emits no value-object field-rules constant", async () => {
+      const { root, entity } = await loadVanillaFixture();
+      const out = renderEntityFile(entity, contractCtx(root));
+      expect(out).toContain(`export interface ${entity.name}`);
+      expect(out).not.toContain(`export const ${entity.name} =`);
+      expect(out).not.toContain("$entity:");
+    });
+
     test("no runtime-ts allowlists in a contract target", async () => {
       const { root, projection } = await loadProjectionFixture();
       const out = renderEntityFile(projection, contractCtx(root));

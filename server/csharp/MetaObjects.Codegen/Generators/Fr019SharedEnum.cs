@@ -22,6 +22,7 @@
 // enum. Shared + @provided are additive branches gated on "root-level abstract
 // field.enum", so the inline default output is byte-identical (the drift gate).
 
+using MetaObjects.Core.Field;
 using MetaObjects.Meta;
 using MetaObjects.Shared;
 using static MetaObjects.Core.Field.FieldConstants;
@@ -42,28 +43,24 @@ public sealed record SharedEnum(string Name, IReadOnlyList<string> Values, bool 
 public static class Fr019SharedEnum
 {
     /// <summary>
-    /// The root-level abstract <c>field.enum</c> a concrete enum field resolves to via
-    /// <c>extends</c>, or <see langword="null"/> when the field is an inline enum (no
-    /// root-abstract super). A super qualifies only when it is (a) an abstract field, AND
-    /// (b) a direct child of the metadata root (a package-level declaration) — NOT an
-    /// abstract field nested inside another object.
+    /// The shared enum declaration a concrete enum field resolves to via <c>extends</c>, or
+    /// <see langword="null"/> when the field is an inline enum. Delegates the walk to
+    /// <see cref="SharedEnumDeclaration.ResolveSharedEnumDeclaration"/> — the single
+    /// cross-port/loader authority (#246 / FR-019) — so naming and materialization can never
+    /// drift from what the loader's conflict check agrees is "shared".
     /// </summary>
-    public static MetaField? ResolveSharedEnumDecl(MetaField field)
-    {
-        if (field.SubType != FIELD_SUBTYPE_ENUM) return null;
-        if (field.ResolveSuper() is not { } sup) return null;
-        if (!sup.IsAbstract) return null;
-        // The declaration must sit at the package/root level (sibling of object.entity),
-        // i.e. its parent node is the metadata root.
-        if (sup.Parent is not { } parent || parent.Type != BaseTypes.TYPE_METADATA) return null;
-        return sup;
-    }
+    public static MetaField? ResolveSharedEnumDecl(MetaField field) =>
+        SharedEnumDeclaration.ResolveSharedEnumDeclaration(field);
 
     /// <summary>The shared-enum descriptor a field resolves to, or null for inline enums.</summary>
     public static SharedEnum? SharedEnumForField(MetaField field)
     {
         if (ResolveSharedEnumDecl(field) is not { } decl) return null;
-        if (field.EffectiveEnumValues is not { Count: > 0 } values) return null;
+        // Read the member set from the DECLARATION, not the consuming field: every field
+        // sharing this declaration must agree on its materialized shape, so the read must be
+        // anchored at the one node the shape is owned by rather than wherever the walk
+        // happened to start — output cannot depend on which consumer codegen visits first.
+        if (decl.EffectiveEnumValues is not { Count: > 0 } values) return null;
         return new SharedEnum(
             Name: CSharpNaming.Pascal(decl.Name),
             Values: values,

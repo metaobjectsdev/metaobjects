@@ -11,7 +11,7 @@
 
 import Mustache from "mustache";
 import type { Provider } from "./provider.js";
-import { HAS_PREFIX, hasAccessorName } from "./payload-accessors.js";
+import { HAS_PREFIX, LAST_ACCESSOR, hasAccessorName } from "./payload-accessors.js";
 
 /** A `{{var}}` references a field the (contextual) payload does not declare. */
 export const ERR_VAR_NOT_ON_PAYLOAD = "ERR_VAR_NOT_ON_PAYLOAD";
@@ -25,11 +25,14 @@ export const ERR_OUTPUT_TAG_MISSING = "ERR_OUTPUT_TAG_MISSING";
 /**
  * A plain field-tree node mirroring an `object.value` view-object's field walk.
  * `fields` present → a context-pushing field (object / array-of-object); absent
- * → a scalar (string/number/boolean/scalar-array).
+ * → a scalar (string/number/boolean/scalar-array). `isArray` is the field's
+ * effective array-ness: with `fields` it is a list of objects, without it a list
+ * of scalars.
  */
 export interface PayloadField {
   name: string;
   fields?: PayloadField[];
+  isArray?: boolean;
 }
 
 export interface VerifyError {
@@ -82,6 +85,17 @@ function isBooleanAccessor<F extends PayloadField>(stack: ResolveStack<F>, name:
     for (const f of stack[i]!) if (name === hasAccessorName(f.name)) return true;
   }
   return false;
+}
+
+/**
+ * True when `name` is the positional accessor `-last` and it is available in the current scope.
+ * `positional` is true exactly when the innermost enclosing ARRAY section iterates object
+ * elements — the engine puts `-last` on each of those (payload-accessors.ts). An array of
+ * scalars makes it unavailable even inside an outer object list: a scalar element carries no
+ * key, so the lookup would bind to the OUTER element's position and render wrong.
+ */
+function isPositionalAccessor(positional: boolean, name: string): boolean {
+  return positional && name === LAST_ACCESSOR;
 }
 
 function find<F extends PayloadField>(fields: F[], name: string): F | undefined {
@@ -172,7 +186,7 @@ export function verify(
   // (no second resolution pass).
   const staticTexts: string[] = [templateText];
 
-  function walk(tokens: Token[], stack: ResolveStack, seen: readonly string[]): void {
+  function walk(tokens: Token[], stack: ResolveStack, seen: readonly string[], positional = false): void {
     const atRoot = stack.length === 1 && stack[0] === root;
     for (const tok of tokens) {
       const type = tok[0] as string;
@@ -184,7 +198,7 @@ export function verify(
           // {{{x}}} (spec); mustache.js emits "&" for it too
           if (value === ".") break; // implicit iterator — always valid
           if (atRoot) referencedAtRoot.add(value.split(".")[0]!);
-          if (!resolve(stack, value) && !isBooleanAccessor(stack, value))
+          if (!resolve(stack, value) && !isBooleanAccessor(stack, value) && !isPositionalAccessor(positional, value))
             errors.push({ code: ERR_VAR_NOT_ON_PAYLOAD, path: value });
           break;
         }
@@ -193,17 +207,23 @@ export function verify(
           // {{^x}}…{{/x}}
           const sub = Array.isArray(tok[4]) ? (tok[4] as Token[]) : [];
           if (value === ".") {
-            walk(sub, stack, seen);
+            walk(sub, stack, seen, positional);
             break;
           }
           if (atRoot) referencedAtRoot.add(value.split(".")[0]!);
           const field = resolve(stack, value);
           if (!field) {
+            // A positional `-last` gate is a BOOLEAN on the current element: it pushes
+            // nothing, so the body walks in the SAME scope.
+            if (isPositionalAccessor(positional, value)) {
+              walk(sub, stack, seen, positional);
+              break;
+            }
             // A derived `has<Field>` gate is a BOOLEAN over the current context, so it
             // resolves nothing and pushes nothing — walk the body in the SAME scope,
             // which is what `{{#hasAbilities}}{{#abilities}}…` depends on.
             if (isBooleanAccessor(stack, value)) {
-              walk(sub, stack, seen);
+              walk(sub, stack, seen, positional);
               break;
             }
             // Unresolved section head is itself drift; skip the body (its
@@ -214,7 +234,12 @@ export function verify(
           // `#` over a container pushes its element fields; `^` (and `#` over a
           // scalar, used as a conditional) keep the current context.
           const push = type === "#" && field.fields !== undefined;
-          walk(sub, push ? [...stack, field.fields!] : stack, seen);
+          // Only a `#` over an ARRAY iterates, so only it moves the positional scope: object
+          // elements carry `-last`, scalar elements do not. A section over a non-array field
+          // (a scalar conditional, a single nested object) and every `^` section are
+          // transparent — the enclosing element's position is still the one in reach.
+          const iterates = type === "#" && field.isArray === true;
+          walk(sub, push ? [...stack, field.fields!] : stack, seen, iterates ? field.fields !== undefined : positional);
           break;
         }
         case ">": {
@@ -227,7 +252,7 @@ export function verify(
             break;
           }
           staticTexts.push(text);
-          walk(parse(text), stack, [...seen, value]);
+          walk(parse(text), stack, [...seen, value], positional);
           break;
         }
         default:

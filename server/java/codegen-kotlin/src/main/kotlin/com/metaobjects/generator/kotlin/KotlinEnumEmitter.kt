@@ -37,10 +37,18 @@ object KotlinEnumEmitter {
         field: EnumField,
         outRoot: Path,
         emittedFqns: MutableSet<String>,
+        provided: Fr019SharedEnum.ProvidedEnumConfig,
     ): Boolean {
-        val enumClassName = KotlinTypeMapper.enumTypeName(field, owner) ?: return false
+        // FR-019: a @provided shared enum is referenced externally, never materialized.
+        if (!provided.providedInDeclarationPackage && Fr019SharedEnum.isProvidedEnumField(field)) return false
+        val enumClassName = KotlinTypeMapper.enumTypeName(field, owner, provided) ?: return false
         if (!emittedFqns.add(enumClassName.canonicalName)) return false // dedupe by enum FQN
-        val members = readEnumValues(field)
+        // Read members from the DECLARATION (FR-019: EnumField.resolveSharedEnumDeclaration — the
+        // same authority enumTypeName just resolved), never from whichever consuming field is
+        // visited first, so output cannot depend on visit order. For an inline field (no reachable
+        // declaration) the field itself IS the declaration-equivalent — its own resolving read.
+        val declaration = EnumField.resolveSharedEnumDeclaration(field) as? EnumField ?: field
+        val members = readEnumValues(declaration)
         if (members.isNullOrEmpty()) {
             // #259: a field.enum must resolve to a NON-EMPTY @values set — the loader's ValidationPhase
             // guarantees it (a root enum owns @values or fails ERR_MISSING_REQUIRED_ATTR; a field with a
@@ -73,6 +81,21 @@ object KotlinEnumEmitter {
         // and re-refuse, turning one WARN into one per referencing field.
         return true
     }
+
+    /**
+     * [emitEnumFile] with no provided-enum config. It does not skip a `@provided` enum: as before
+     * the config existed, the caller decides that with [Fr019SharedEnum.isProvidedEnumField].
+     */
+    @Deprecated(
+        "Pass the generator's Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args) as a fifth argument; that form " +
+            "skips a @provided enum itself.",
+    )
+    fun emitEnumFile(
+        owner: MetaObject,
+        field: EnumField,
+        outRoot: Path,
+        emittedFqns: MutableSet<String>,
+    ): Boolean = emitEnumFile(owner, field, outRoot, emittedFqns, Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
 
     /**
      * Read the `@values` string-array attr, INCLUDING inherited values — a field that

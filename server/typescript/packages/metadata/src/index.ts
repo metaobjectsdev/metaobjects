@@ -122,6 +122,9 @@ export {
 // Core node classes
 export { MetaObject } from "./core/object/meta-object.js";
 export { MetaField } from "./core/field/meta-field.js";
+// The one authority for "which type does this enum field have" — the loader's #246
+// check and every codegen site share it (ADR-0026 Amendment 1).
+export { isSharedEnumDeclaration, resolveSharedEnumDeclaration } from "./core/field/shared-enum.js";
 export { MetaAttr } from "./core/attr/meta-attr.js";
 
 // Runtime object model — backing objects + FQN→factory binding (Phase A).

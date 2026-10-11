@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from .payload_accessors import is_boolean_accessor
+from .payload_accessors import is_boolean_accessor, is_positional_accessor
 
 #: A ``{{var}}`` references a field the (contextual) payload does not declare.
 ERR_VAR_NOT_ON_PAYLOAD = "ERR_VAR_NOT_ON_PAYLOAD"
@@ -47,10 +47,18 @@ class PayloadField:
 
     ``fields`` present → a context-pushing field (object / array-of-object);
     ``fields is None`` → a scalar (string/number/boolean/scalar-array).
+
+    ``is_array`` is the field's EFFECTIVE ``isArray`` (resolving read, when built
+    from real metadata) — distinct from ``fields is not None``: an array of
+    SCALARS has ``is_array=True`` and ``fields=None``; a single nested object has
+    ``is_array=False`` and ``fields`` present. The combination of the two decides
+    whether ``-last`` is available inside a ``{{#x}}`` section over this field
+    (see the walk in :func:`verify`).
     """
 
     name: str
     fields: list[PayloadField] | None = None
+    is_array: bool = False
 
 
 @dataclass(frozen=True)
@@ -208,7 +216,10 @@ def verify(
     static_texts: list[str] = [template_text]
 
     def walk(
-        tokens: list[_Token], stack: list[list[PayloadField]], seen: list[str]
+        tokens: list[_Token],
+        stack: list[list[PayloadField]],
+        seen: list[str],
+        in_element: bool = False,
     ) -> None:
         at_root = len(stack) == 1 and stack[0] is root
         for tok in tokens:
@@ -217,34 +228,51 @@ def verify(
                     continue  # implicit iterator — always valid
                 if at_root:
                     referenced_at_root.add(tok.value.split(".")[0])
-                if _resolve(stack, tok.value) is None and not is_boolean_accessor(
-                    stack, tok.value
+                if (
+                    _resolve(stack, tok.value) is None
+                    and not is_boolean_accessor(stack, tok.value)
+                    and not is_positional_accessor(in_element, tok.value)
                 ):
                     errors.append(VerifyError(ERR_VAR_NOT_ON_PAYLOAD, tok.value))
             elif isinstance(tok, _Section):
                 if tok.value == ".":
-                    walk(tok.children, stack, seen)
+                    walk(tok.children, stack, seen, in_element)
                     continue
                 if at_root:
                     referenced_at_root.add(tok.value.split(".")[0])
                 field = _resolve(stack, tok.value)
                 if field is None:
+                    # A positional `-last` gate is a BOOLEAN on the current element:
+                    # it pushes nothing, so the body walks in the SAME scope.
+                    if is_positional_accessor(in_element, tok.value):
+                        walk(tok.children, stack, seen, in_element)
+                        continue
                     # A derived `has<Field>` gate is a BOOLEAN over the current context:
                     # it resolves nothing and pushes nothing, so walk the body in the SAME
                     # scope — what `{{#hasAbilities}}{{#abilities}}…` depends on.
                     if is_boolean_accessor(stack, tok.value):
-                        walk(tok.children, stack, seen)
+                        walk(tok.children, stack, seen, in_element)
                         continue
                     # Unresolved section head is itself drift; skip the body (its
                     # context is unknowable, walking it would cascade false errors).
                     errors.append(VerifyError(ERR_VAR_NOT_ON_PAYLOAD, tok.value))
                     continue
-                # `#` over a container pushes its element fields; `^` (and `#` over a
-                # scalar, used as a conditional) keep the current context.
-                if not tok.inverted and field.fields is not None:
-                    walk(tok.children, [*stack, field.fields], seen)
+                # `^` (inverted) never pushes and never changes whether `-last` is
+                # available — it always inherits the enclosing flag unchanged.
+                if tok.inverted:
+                    walk(tok.children, stack, seen, in_element)
+                    continue
+                # `#`: an ARRAY section sets the flag explicitly — true only when
+                # its elements are objects (there is an element shape to carry
+                # `-last` on); an array of scalars rules `-last` OUT here, even
+                # when an outer object array enclosed this section. A non-array
+                # section (object or scalar conditional) changes nothing of its
+                # own — it inherits whatever the enclosing context already had.
+                next_in_element = field.fields is not None if field.is_array else in_element
+                if field.fields is not None:
+                    walk(tok.children, [*stack, field.fields], seen, next_in_element)
                 else:
-                    walk(tok.children, stack, seen)
+                    walk(tok.children, stack, seen, next_in_element)
             else:  # _Partial
                 if provider is None:
                     continue  # can't resolve without a provider
@@ -255,7 +283,7 @@ def verify(
                     errors.append(VerifyError(ERR_PARTIAL_UNRESOLVED, tok.value))
                     continue
                 static_texts.append(body)
-                walk(_tokenize(body), stack, [*seen, tok.value])
+                walk(_tokenize(body), stack, [*seen, tok.value], in_element)
 
     walk(_tokenize(template_text), [root], [])
 

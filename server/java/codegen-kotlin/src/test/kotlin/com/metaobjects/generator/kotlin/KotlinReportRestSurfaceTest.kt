@@ -380,7 +380,7 @@ class KotlinReportRestSurfaceTest {
 
     @Test
     fun `api docs document a served report as a list and nothing else`() {
-        val model = KotlinApiModelBuilder().build(withModel(), "shop")
+        val model = KotlinApiModelBuilder(com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig.fromArgs(null)).build(withModel(), "shop")
         val unit = model.units.single { it.node == "StoreTotals" }
         assertEquals("report", unit.kind)
         assertEquals(

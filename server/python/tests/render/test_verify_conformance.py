@@ -53,12 +53,20 @@ _FIXTURES = sorted(p.name for p in _CORPUS.iterdir() if p.is_dir())
 
 
 def _parse_fields(raw: Any) -> list[PayloadField]:
-    """Parse the payload.json field-tree (recursive) into PayloadField[]."""
+    """Parse the payload.json field-tree (recursive) into PayloadField[].
+
+    ``isArray`` (absent = false) carries the field's array-ness, which gates
+    ``-last`` availability (an array of scalars never carries it, even nested
+    inside an outer object array)."""
     fields: list[PayloadField] = []
     for node in raw:
         sub = node.get("fields")
         fields.append(
-            PayloadField(node["name"], _parse_fields(sub) if sub is not None else None)
+            PayloadField(
+                node["name"],
+                _parse_fields(sub) if sub is not None else None,
+                is_array=bool(node.get("isArray", False)),
+            )
         )
     return fields
 

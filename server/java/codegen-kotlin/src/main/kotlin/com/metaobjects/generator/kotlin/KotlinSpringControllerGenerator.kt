@@ -6,6 +6,7 @@ package com.metaobjects.generator.kotlin
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
 import com.metaobjects.generator.kotlin.ExposedApi
 import com.metaobjects.generator.kotlin.ExposedImports
+import com.metaobjects.generator.kotlin.Fr019SharedEnum
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinM2mSupport
 import com.metaobjects.generator.kotlin.KotlinNaming
@@ -105,6 +106,13 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      * `exposedApi` generator arg (`<args><exposedApi>1</exposedApi></args>` in the pom).
      */
     protected fun exposedApi(): ExposedApi = ExposedApi.parse(getArg(ExposedApi.ARG_EXPOSED_API))
+
+    /**
+     * FR-019: where a `@provided` enum is referenced from, read from the same two generator args
+     * every generator that types an enum takes ([Fr019SharedEnum.ProvidedEnumConfig.fromArgs]).
+     */
+    private val providedEnums: Fr019SharedEnum.ProvidedEnumConfig
+        get() = Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args)
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -274,7 +282,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val allowlistName = "${shortName}FilterAllowlist"
         // FR-018: M:N navs declared on this entity (derived junction FK fields via the
         // cross-port SSOT). Drives the GET /{id}/<relationName> traversal sub-resources.
-        val m2mNavs = KotlinM2mSupport.resolve(entity, loader)
+        val m2mNavs = KotlinM2mSupport.resolve(entity, loader, providedEnums)
         val source = buildString {
             if (pkg.isNotEmpty()) {
                 append("package $pkg\n\n")
@@ -515,7 +523,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                     val elem: String = if (field is ObjectField) {
                         voElementTypeFqn(field, loader)
                     } else {
-                        (KotlinTypeMapper.enumTypeName(field, entity) ?: KotlinTypeMapper.kotlinTypeName(field)).toString()
+                        (KotlinTypeMapper.enumTypeName(field, entity, providedEnums) ?: KotlinTypeMapper.kotlinTypeName(field)).toString()
                     }
                     val ktType = if (field.isArrayType) "kotlin.collections.List<$elem>" else elem
                     val fn = field.name
@@ -653,7 +661,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             .firstOrNull { it.isPrimary }?.fields?.firstOrNull() ?: DEFAULT_PK_FIELD
         val pkParamType = primaryKeyParamType(base, pkFieldName)
         val discField = base.metaFields.first { it.name == plan.discriminatorField }
-        val discEnum = KotlinTypeMapper.enumTypeName(discField, base)?.simpleName
+        val discEnum = KotlinTypeMapper.enumTypeName(discField, base, providedEnums)?.simpleName
             ?: error("TPH base ${base.name}: discriminator field '${plan.discriminatorField}' is not an enum")
         // The controller scopes/injects the discriminator as `<Enum>.<Value>` (an enum constant), so
         // every @discriminatorValue MUST be a valid Kotlin identifier — fail loud at generation with a
@@ -723,15 +731,15 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // scoped by a Stage-0 discriminator check (see emitTphSubtypeM2mEndpoint): a subtype
         // resource carries the same sub-resources as any other, and the junction FK addresses
         // the shared base table, so without that check a sibling's id would traverse it too.
-        val baseM2mNavs = KotlinM2mSupport.resolve(base, loader)
-        fun subtypeM2mNavs(st: KotlinTphPlan.Subtype) = KotlinM2mSupport.resolve(st.entity, loader)
+        val baseM2mNavs = KotlinM2mSupport.resolve(base, loader, providedEnums)
+        fun subtypeM2mNavs(st: KotlinTphPlan.Subtype) = KotlinM2mSupport.resolve(st.entity, loader, providedEnums)
         // FW-8 follow-up: the TPH-group-wide query-helper NAME for every distinct nav shape
         // (base's own + every subtype's own) — the SAME decision KotlinRelationsGenerator makes
         // for AuthRelations.kt (KotlinM2mSupport.tphQueryFnNames), keyed by structural M2mNav
         // equality so a nav resolved here and the identical nav resolved there agree on the
         // helper to call. A subtype that SHADOWS a relation name with a genuinely different nav
         // (own children shadow super on (type, name), ADR-0039) gets its OWN disambiguated entry.
-        val m2mHelperNames = KotlinM2mSupport.tphQueryFnNames(base, plan, loader)
+        val m2mHelperNames = KotlinM2mSupport.tphQueryFnNames(base, plan, loader, providedEnums)
         // When NO subtype has a settable column (a PK + discriminator + only object/jsonb columns) the
         // controller emits no ObjectMapper/Validator ctor param or TypeReference import (they would be
         // unused → allWarningsAsErrors). A real TPH base always contributes ≥1 base scalar, so this is
@@ -1046,7 +1054,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                         // The union column's element type — a field.enum's materialized enum class resolved
                         // with the BASE as owner (exactly as the union data class + table type the folded
                         // column), NOT the wire String — so the bound value matches Exposed's Column<E?>.
-                        val elem = KotlinTypeMapper.enumTypeName(field, base) ?: KotlinTypeMapper.kotlinTypeName(field)
+                        val elem = KotlinTypeMapper.enumTypeName(field, base, providedEnums) ?: KotlinTypeMapper.kotlinTypeName(field)
                         val ktType = if (field.isArrayType) "kotlin.collections.List<$elem>" else "$elem"
                         val fn = field.name
                         val cap = capitalizeFirst(fn)
@@ -1772,7 +1780,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
 
     /** The enum class an int-backed [field] maps to, or null — see [ScalarFieldSpec]. */
     private fun intBackedEnumType(field: com.metaobjects.field.MetaField<*>, owner: MetaObject): String? =
-        if (KotlinGenUtil.isIntBackedEnum(field)) KotlinTypeMapper.enumTypeName(field, owner)?.canonicalName else null
+        if (KotlinGenUtil.isIntBackedEnum(field)) KotlinTypeMapper.enumTypeName(field, owner, providedEnums)?.canonicalName else null
 
     /**
      * The element Kotlin type the generated `<Entity>Table`'s column for [field] holds —
@@ -1885,7 +1893,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // FR-044: a report's int-backed enum column is typed by the enum of the entity it
         // reads (the class its table and data class use), so its filter arm compares through
         // that class. Empty for a projection, whose arms are unchanged.
-        val reportEnums = KotlinGenUtil.reportEnumClasses(entity, loader)
+        val reportEnums = KotlinGenUtil.reportEnumClasses(entity, loader, providedEnums)
         val scalarFields: List<ScalarFieldSpec> = entity.metaFields
             .filterNot { it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it) }
             .map {

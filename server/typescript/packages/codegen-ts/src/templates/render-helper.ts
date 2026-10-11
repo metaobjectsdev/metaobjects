@@ -27,7 +27,6 @@
 
 import {
   type MetaData,
-  TYPE_FIELD,
   TYPE_TEMPLATE,
   FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_OBJECT_REF,
@@ -42,6 +41,7 @@ import {
   TEMPLATE_ATTR_SUBJECT_REF,
   TEMPLATE_ATTR_HTML_BODY_REF,
   TEMPLATE_ATTR_TEXT_BODY_REF,
+  isMetaField,
   resolveObjectRef,
 } from "@metaobjectsdev/metadata";
 import {
@@ -108,16 +108,19 @@ function derivePayloadFieldTree(
   const voPkg = vo.package ?? vo.fileDefaultPackage ?? "";
   const nextSeen = new Set(seen).add(voName);
   const fields: PayloadField[] = [];
-  for (const f of vo.children().filter((c) => c.type === TYPE_FIELD)) {
+  for (const f of vo.children().filter(isMetaField)) {
+    // ADR-0039: effective array-ness — `isArray` may be inherited via extends. Carried only
+    // when true, so a helper for a payload with no list field is byte-identical.
+    const arrayness = f.resolvedIsArray() ? { isArray: true } : {};
     if (f.subType === FIELD_SUBTYPE_OBJECT) {
       const ref = f.attr(FIELD_ATTR_OBJECT_REF);
       if (typeof ref === "string") {
         const fieldPkg = f.parent?.package ?? f.parent?.fileDefaultPackage ?? voPkg;
-        fields.push({ name: f.name, fields: derivePayloadFieldTree(root, ref, fieldPkg, nextSeen) });
+        fields.push({ name: f.name, fields: derivePayloadFieldTree(root, ref, fieldPkg, nextSeen), ...arrayness });
         continue;
       }
     }
-    fields.push({ name: f.name });
+    fields.push({ name: f.name, ...arrayness });
   }
   return fields;
 }

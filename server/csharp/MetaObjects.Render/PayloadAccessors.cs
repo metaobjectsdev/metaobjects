@@ -33,6 +33,20 @@ public static class PayloadAccessors
     /// </summary>
     public static string HasAccessorName(string fieldName) => HasPrefix + Capitalize(fieldName);
 
+    /// <summary>
+    /// The positional accessor injected into every map-shaped ELEMENT of a collection, so a
+    /// list separator needs no hand-computed <c>last</c> flag:
+    /// <c>{{#items}}{{name}}{{^-last}}, {{/-last}}{{/items}}</c>. The leading <c>-</c> cannot
+    /// collide with a field name and is still an ordinary Mustache tag name, so the template
+    /// stays valid Mustache. A scalar element has nowhere to hold a key and carries none; an
+    /// authored key of the same name wins, as for <c>has&lt;Field&gt;</c>.
+    /// </summary>
+    public const string LastAccessor = "-last";
+
+    /// <summary>True when <paramref name="name"/> is <c>-last</c> and the scope is a collection element.</summary>
+    public static bool IsPositionalAccessor(bool inElement, string name) =>
+        inElement && name == LastAccessor;
+
     /// <summary>Capitalize the first character, leaving an already-uppercase one untouched.</summary>
     public static string Capitalize(string s)
     {
@@ -89,12 +103,18 @@ public static class PayloadAccessors
     }
 
     /// <summary>
-    /// A view over <paramref name="payload"/> carrying its derived <c>has&lt;Field&gt;</c>
-    /// accessors, recursively. NON-MUTATING — a render must not change the object it was
-    /// handed. An AUTHORED key always wins. Recursion follows Mustache's own scoping, so
+    /// A view over <paramref name="payload"/> carrying its derived accessors, recursively:
+    /// <c>has&lt;Field&gt;</c> on every object, and <c>-last</c> on every object that is an
+    /// element of a collection. NON-MUTATING — a render must not change the object it was
+    /// handed. An AUTHORED member always wins. Recursion follows Mustache's own scoping, so
     /// every nested object and every collection ELEMENT becomes a context in its own right.
+    /// A typed object with no wire names comes back as an overlay only
+    /// <see cref="Renderer"/>'s engine resolves (<see cref="ViewType"/> / <see cref="ViewLookup"/>).
     /// </summary>
-    public static object? WithDerivedAccessors(object? payload, int depth = 0)
+    public static object? WithDerivedAccessors(object? payload, int depth = 0) => Derive(payload, depth, null);
+
+    /// <summary><paramref name="last"/> is set only for an element of a collection: its position.</summary>
+    private static object? Derive(object? payload, int depth, bool? last)
     {
         if (depth > 32 || payload is null) return payload; // pathological graph
         if (payload is string) return payload;
@@ -105,7 +125,7 @@ public static class PayloadAccessors
             foreach (System.Collections.DictionaryEntry e in dict)
             {
                 if (e.Key is not string k) continue;
-                outMap[k] = WithDerivedAccessors(e.Value, depth + 1);
+                outMap[k] = Derive(e.Value, depth + 1, null);
             }
             foreach (System.Collections.DictionaryEntry e in dict)
             {
@@ -115,30 +135,34 @@ public static class PayloadAccessors
                 bool? derived = AccessorValue(e.Value);
                 if (derived is not null) outMap[name] = derived;
             }
+            if (last is bool position) outMap.TryAdd(LastAccessor, position);
             return outMap;
         }
 
         if (payload is System.Collections.IEnumerable seq)
         {
-            var outList = new List<object?>();
-            foreach (var item in seq) outList.Add(WithDerivedAccessors(item, depth + 1));
+            var items = seq.Cast<object?>().ToList();
+            var outList = new List<object?>(items.Count);
+            for (int i = 0; i < items.Count; i++) outList.Add(Derive(items[i], depth + 1, i == items.Count - 1));
             return outList;
         }
 
         // ADR-0056 — a generated value-object POCO. Its members are PascalCase C# properties
         // that carry the metadata field name in [JsonPropertyName], while a template names the
         // FIELD (`{{bio}}`). So the POCO is viewed as the map of its wire names, which also gives
-        // it the derived has<Field> accessors a map payload gets. Only a type that declares wire
-        // names is viewed this way: a record or anonymous object whose members ARE the field
-        // names keeps resolving by reflection, exactly as before.
+        // it the derived accessors a map payload gets.
         if (WireNamedProperties(payload.GetType()) is { } props)
         {
             var asMap = new Dictionary<string, object?>(StringComparer.Ordinal);
             foreach (var (name, prop) in props) asMap[name] = prop.GetValue(payload);
-            return WithDerivedAccessors(asMap, depth);
+            return Derive(asMap, depth, last);
         }
 
-        return payload;
+        // A value the engine treats specially by its TYPE — a scalar, a formattable value, a
+        // lambda, a dynamic object — is handed over untouched. Any other object is overlaid.
+        if (payload is IConvertible or IFormattable or Delegate or System.Dynamic.IDynamicMetaObjectProvider)
+            return payload;
+        return new TypedView(payload, depth, last);
     }
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, (string, System.Reflection.PropertyInfo)[]?>
@@ -147,7 +171,7 @@ public static class PayloadAccessors
     /// <summary>
     /// The readable public properties of <paramref name="type"/>, each keyed by its
     /// <c>[JsonPropertyName]</c> (or its own name when it has none) — or null when no property
-    /// declares a wire name, which leaves the type to Mustache's reflection lookup.
+    /// declares a wire name, which leaves the type to the overlay.
     /// </summary>
     private static (string, System.Reflection.PropertyInfo)[]? WireNamedProperties(Type type) =>
         WireNameCache.GetOrAdd(type, static t =>
@@ -161,4 +185,57 @@ public static class PayloadAccessors
             if (!props.Any(p => WireName(p) is not null)) return null;
             return props.Select(p => (WireName(p) ?? p.Name, p)).ToArray();
         });
+
+    /// <summary>
+    /// The derived-accessor overlay of a typed object. The object stays the thing members are
+    /// resolved on, and only when the template asks for one; the overlay adds the derived names
+    /// on top, and its string form is the object's own.
+    /// </summary>
+    private sealed class TypedView(object target, int depth, bool? last)
+    {
+        internal readonly object Target = target;
+        internal readonly int Depth = depth;
+        internal readonly bool? Last = last;
+
+        public override string? ToString() => Target.ToString();
+    }
+
+    /// <summary>The overlay type <see cref="ViewLookup"/> is registered for.</summary>
+    internal static Type ViewType => typeof(TypedView);
+
+    // The engine's own reflective member lookup, so a typed object resolves exactly the
+    // members it always did: properties, fields and parameterless methods.
+    private static readonly Stubble.Core.Settings.RendererSettingsDefaults.ValueGetterDelegate OwnMember =
+        Stubble.Core.Settings.RendererSettingsDefaults.DefaultValueGetters()[typeof(object)];
+
+    private const System.Reflection.BindingFlags PublicInstance =
+        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance;
+
+    /// <summary>
+    /// The engine's value getter for an overlay: the object's own member when it has one of that
+    /// name, else the derived <c>-last</c> / <c>has&lt;Field&gt;</c>.
+    /// </summary>
+    internal static object? ViewLookup(object value, string key, bool ignoreCase)
+    {
+        var view = (TypedView)value;
+        if (OwnMember(view.Target, key, ignoreCase) is { } own) return Derive(own, view.Depth + 1, null);
+        var flags = ignoreCase ? PublicInstance | System.Reflection.BindingFlags.IgnoreCase : PublicInstance;
+        Type type = view.Target.GetType();
+        if (type.GetMember(key, flags).Length > 0) return null; // authored wins, even when null
+        if (key == LastAccessor) return view.Last;
+        if (!key.StartsWith(HasPrefix, StringComparison.Ordinal) || key.Length == HasPrefix.Length) return null;
+        string rest = key.Substring(HasPrefix.Length);
+        foreach (string field in new[] { char.ToLowerInvariant(rest[0]) + rest.Substring(1), rest })
+        {
+            if (HasAccessorName(field) != key) continue;
+            object? read;
+            if (type.GetProperty(field, PublicInstance) is { CanRead: true } prop && prop.GetIndexParameters().Length == 0)
+                read = prop.GetValue(view.Target);
+            else if (type.GetField(field, PublicInstance) is { } fld)
+                read = fld.GetValue(view.Target);
+            else continue;
+            if (AccessorValue(read) is { } derived) return derived;
+        }
+        return null;
+    }
 }

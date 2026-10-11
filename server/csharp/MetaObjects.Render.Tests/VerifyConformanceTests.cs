@@ -68,9 +68,10 @@ public class VerifyConformanceTests
     private static PayloadField ParseField(JsonElement el)
     {
         var name = el.GetProperty("name").GetString()!;
+        var isArray = el.TryGetProperty("isArray", out var ia) && ia.ValueKind == JsonValueKind.True;
         return el.TryGetProperty("fields", out var fields) && fields.ValueKind == JsonValueKind.Array
-            ? new PayloadField(name, ParseFields(fields))
-            : new PayloadField(name);
+            ? new PayloadField(name, ParseFields(fields), isArray)
+            : new PayloadField(name, IsArray: isArray);
     }
 
     // (code, path) ordinal order, so the comparison is a sorted multiset independent of
