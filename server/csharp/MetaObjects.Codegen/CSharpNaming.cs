@@ -1192,4 +1192,34 @@ public static class CSharpNaming
             }
         }
     }
+
+    private static readonly char[] CSharpEscapeChars = { '\\', '"', '\t', '\n', '\r' };
+
+    /// <summary>
+    /// Escape a value for embedding inside a C# double-quoted string literal.
+    /// <para>Scans before it builds: the names generator calls this two-to-four times per
+    /// member of every entity, and virtually every value — "object", "entity", a field
+    /// name, a snake_case column — contains none of these. <c>IndexOfAny</c> is vectorized
+    /// and allocates nothing, so the common case costs no allocation at all.</para>
+    /// </summary>
+    public static string CSharpStringLiteral(string value) =>
+        value.IndexOfAny(CSharpEscapeChars) < 0 ? value : CSharpStringLiteralSlow(value);
+
+    private static string CSharpStringLiteralSlow(string value)
+    {
+        var sb = new System.Text.StringBuilder(value.Length + 4);
+        foreach (char c in value)
+        {
+            switch (c)
+            {
+                case '\\': sb.Append("\\\\"); break;
+                case '"': sb.Append("\\\""); break;
+                case '\t': sb.Append("\\t"); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                default: sb.Append(c); break;
+            }
+        }
+        return sb.ToString();
+    }
 }

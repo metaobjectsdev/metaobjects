@@ -24,6 +24,8 @@ public sealed class GeneratorRegistryTests
         "names",
         // ADR-0057 — per-requirement xUnit tests calling a project-owned witness.
         "requirement-tests",
+        // ADR-0025 — the api reference `dotnet meta docs` writes, as a generator a project can own.
+        "api-docs",
     ];
 
     [Fact]

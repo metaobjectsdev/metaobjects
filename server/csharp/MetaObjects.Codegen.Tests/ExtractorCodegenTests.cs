@@ -38,7 +38,7 @@ public sealed class ExtractorCodegenTests
     //   • labels  : REQUIRED enum ARRAY -> IReadOnlyList<OrderLabels> (per-element Enum.Parse)
     //   • note    : scalar (not @required)
     //   • shipTo  : single nested Customer (not @required)
-    private const string Model = """
+    internal const string Model = """
     { "metadata.root": { "package": "acme::orders", "children": [
       { "object.value": { "name": "Customer", "children": [
         { "field.string": { "name": "name", "@required": true } }

@@ -3,7 +3,8 @@
 // This is the ACCURATE-BY-CONSTRUCTION half of the api-docs pipeline: every
 // documented symbol name comes from the CSharpNaming seam (never re-concatenated
 // here), and every inclusion decision comes from the corresponding generator's
-// static AppliesTo(...) predicate (never re-implemented here). The result is that
+// AppliesTo(...) predicate (never re-implemented here), asked through
+// GeneratorApplicability so a project that owns a copy of a generator documents the copy. The result is that
 // what this builder documents == what the generators emit, by SHARING the single
 // source of truth rather than mirroring it.
 //
@@ -34,12 +35,26 @@ namespace MetaObjects.Codegen.ApiDocs;
 public sealed class CSharpApiModelBuilder
 {
     private readonly GenConfig _config;
+    private readonly GeneratorApplicability _applies;
 
     /// <param name="config">
     /// The codegen config (namespace + binding) used ONLY to resolve a symbol's display
     /// namespace via the same <see cref="PackageBindingResolver"/> the generators use.
     /// </param>
-    public CSharpApiModelBuilder(GenConfig config) => _config = config;
+    public CSharpApiModelBuilder(GenConfig config) : this(config, GeneratorApplicability.Packaged)
+    {
+    }
+
+    /// <param name="config">As above.</param>
+    /// <param name="applicability">
+    /// What each documented generator emits for — the answers the run's own generators give when a
+    /// project owns a copy (see <see cref="GeneratorApplicability.From"/>).
+    /// </param>
+    public CSharpApiModelBuilder(GenConfig config, GeneratorApplicability applicability)
+    {
+        _config = config;
+        _applies = applicability;
+    }
 
     /// <summary>Build the SDK-surface model for <paramref name="project"/> from <paramref name="root"/>.</summary>
     public CSharpApiModel Build(MetaRoot root, string project)
@@ -100,7 +115,7 @@ public sealed class CSharpApiModelBuilder
         // and skip it. A value object passes none of the AppliesTo predicates → MODEL only.
 
         // DATA_ACCESS — the DbSet on the generated AppDbContext (entity OR projection).
-        if (DbContextGenerator.AppliesTo(obj, root))
+        if (_applies.DbContext(obj, root))
         {
             var dbSet = CSharpNaming.DbSetName(obj);
             symbols.Add(new ApiSymbol(
@@ -116,7 +131,7 @@ public sealed class CSharpApiModelBuilder
         // writable source) gets a read-only DbSet but no write shape, so documenting
         // "validation on the create/update shape" for it would over-claim. This matches
         // the Python builder's writable-table gate (read-only projections excluded).
-        if (DbContextGenerator.AppliesTo(obj, root) && !obj.IsReadOnlyProjection())
+        if (_applies.DbContext(obj, root) && !obj.IsReadOnlyProjection())
         {
             var cls = CSharpNaming.ModelClassName(obj);
             symbols.Add(new ApiSymbol(
@@ -129,11 +144,11 @@ public sealed class CSharpApiModelBuilder
         // REST — one symbol per verb+path the routes generator registers. AddRestSymbols
         // itself emits only the read verbs (GET list / GET by id) for a read-only
         // projection (its `writable` gate), so the documented routes match generation.
-        if (RoutesGenerator.AppliesTo(obj, root))
+        if (_applies.Routes(obj, root))
             AddRestSymbols(symbols, obj, ns, root);
 
         // FILTER — the per-entity filter allowlist (every routed read surface).
-        if (FilterAllowlistGenerator.AppliesTo(obj))
+        if (_applies.FilterAllowlist(obj))
         {
             var filter = CSharpNaming.FilterAllowlistName(obj);
             symbols.Add(new ApiSymbol(
@@ -183,7 +198,7 @@ public sealed class CSharpApiModelBuilder
         var name = tmpl.Name;
         var symbols = new List<ApiSymbol>();
 
-        if (RenderHelperGenerator.AppliesTo(tmpl, root))
+        if (_applies.RenderHelper(tmpl, root))
         {
             var render = CSharpNaming.RenderHelperName(name);
             var returns = IsEmailKind(tmpl) ? "EmailDocument" : "string";
@@ -199,7 +214,7 @@ public sealed class CSharpApiModelBuilder
         if (PayloadShape(tmpl, root) is { } reqVo)
             symbols.Add(PayloadSymbol(reqVo, root, "the typed payload value object rendered INTO the template"));
         // ADR-0052: the inbound symbols belong to the RESPONDING PROMPT, not to an output.
-        if (OutputPromptGenerator.AppliesTo(tmpl, root))
+        if (_applies.OutputPrompt(tmpl, root))
         {
             var prompt = CSharpNaming.ResponseFormatClassName(name);
             symbols.Add(new ApiSymbol(
@@ -207,7 +222,7 @@ public sealed class CSharpApiModelBuilder
                 $"static class {prompt}",
                 "builds the response-format prompt fragment"));
         }
-        if (OutputParserGenerator.AppliesTo(tmpl, root))
+        if (_applies.OutputParser(tmpl, root))
         {
             var parser = CSharpNaming.ParserClassName(name);
             symbols.Add(new ApiSymbol(
@@ -232,7 +247,7 @@ public sealed class CSharpApiModelBuilder
     /// <summary>The value object a template's <c>@payloadRef</c> resolves to (ADR-0042 package-local), or null.</summary>
     private static MetaData? PayloadShape(MetaData tmpl, MetaRoot root) =>
         tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is string payloadRef
-            ? RenderHelperGenerator.ResolveValueObject(root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl))
+            ? ValueObjectNames.ResolveValueObject(root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl))
             : null;
 
     /// <summary>A PAYLOAD symbol for a value object's POCO: its emitted name, in its own namespace.</summary>

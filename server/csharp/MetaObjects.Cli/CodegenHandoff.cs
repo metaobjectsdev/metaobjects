@@ -18,6 +18,16 @@ public static class CodegenHandoff
     public static bool HasOwnedCodegen(string projectRoot) =>
         File.Exists(Path.Combine(projectRoot, "codegen", "Codegen.csproj"));
 
+    /// <summary>True iff <paramref name="projectRoot"/> owns the api-docs generator: the ejected
+    /// codegen project exists AND carries <c>codegen/generators/ApiDocsGenerator.cs</c>. That file is
+    /// what `dotnet meta docs` hands off for — the project's own copy writes the reference, and the
+    /// owned project's package version is one that knows the <c>docs</c> command (a project
+    /// scaffolded before api-docs could be ejected has no such file, and its package does not).</summary>
+    public static bool HasOwnedDocs(string projectRoot) =>
+        HasOwnedCodegen(projectRoot) &&
+        MetaObjects.Codegen.GeneratorRegistry.Get("api-docs")?.SourceFileName is { } file &&
+        File.Exists(Path.Combine(projectRoot, "codegen", "generators", file));
+
     /// <summary>
     /// When <paramref name="projectRoot"/> has an ejected codegen project, run `dotnet
     /// run --project codegen -- &lt;args&gt;` (inheriting this process's console) and set
@@ -26,7 +36,9 @@ public static class CodegenHandoff
     /// </summary>
     public static bool TryRun(string projectRoot, string[] args, out int exitCode)
     {
-        if (!HasOwnedCodegen(projectRoot))
+        // `docs` hands off only for a project that owns the api-docs generator.
+        var handsOff = args is ["docs", ..] ? HasOwnedDocs(projectRoot) : HasOwnedCodegen(projectRoot);
+        if (!handsOff)
         {
             exitCode = 0;
             return false;

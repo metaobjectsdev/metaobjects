@@ -1014,7 +1014,9 @@ ejectable generator's `.cs` file ships embedded in `MetaObjects.Codegen`, and a 
 byte-identical to the file the package compiles. Eject writes it to
 `codegen/generators/<Name>Generator.cs`, renaming its namespace to `Codegen.Generators` and
 adding the `using` lines that rename needs; nothing else changes, except in `routes` (see
-[below](#ejecting-routes-hands-over-the-helper-runtime-too)).
+[below](#ejecting-routes-hands-over-the-helper-runtime-too)). The emitters the generator
+writes its output through come with it
+([below](#ejecting-a-generator-hands-over-the-emitters-it-writes-through)).
 
 On first use eject also writes `codegen/Codegen.csproj`, a console project referencing
 `MetaObjects.Codegen` at the tool's version, and `codegen/Program.cs`, which lists your
@@ -1031,13 +1033,87 @@ them. So ejecting `names` from a nine-generator selection changes one generator'
 not the other eight. The owned project finds metadata exactly as the tool does, including
 `.metaobjects/config.json`'s `sources` and `libraries`. Eject never overwrites a copy without `--force`, and
 `dotnet meta gen --list` marks owned copies `identical` or `DIFFERS: N behind, M of your
-own`. The `template` primitive is not ejectable; it has no emit logic of its own.
+own`, and names an emitter that was edited or removed after eject
+(`Fr019SharedEnum.cs DIFFERS: 0 behind, 1 of your own`). The `template` primitive is not
+ejectable; it has no emit logic of its own.
 
 `dotnet meta eject requirement-tests` copies `RequirementTestsGenerator.cs`, which holds the
 generator and its default rendering. Its options are public properties you set in
 `codegen/Program.cs` (`new RequirementTestsGenerator { WitnessClass = "…" }`); the hook
 types (`IRequirementTestRenderer`, `IRequirementTestFilter`), the identity function and the
 digest stay in the package.
+
+### Ejecting a generator hands over the emitters it writes through
+
+A generator that calls an emitter writes part of its output through it. If eject left the
+emitter in the package, the copy would own the orchestration and the package would still own
+the text, and a defect in that text would wait for a release. So eject copies the emitters
+too, next to the generator in `codegen/generators/`, in the same `Codegen.Generators`
+namespace:
+
+| Eject | Also writes |
+|---|---|
+| `entity` | `Fr019SharedEnum.cs` (shared and provided enums), `M2MNavigation.cs` (the many-to-many navigation), `ReverseFinders.cs` (the reverse FK finders), `XmlDocBuilder.cs` (doc comments) |
+| `db-context` | `Fr019SharedEnum.cs`, `M2MNavigation.cs`, `XmlDocBuilder.cs` |
+| `routes` | `M2MNavigation.cs` |
+| `output-parser`, `extractor` | `ExtractDelegateEmitter.cs`, `Fr010FieldMapping.cs`; `extractor` also `Fr019SharedEnum.cs` |
+| `output-prompt` | `OutputFormatSpecEmitter.cs`, `Fr010FieldMapping.cs` |
+| `api-docs` | the page model, builder, renderer and path math (below), `Fr010FieldMapping.cs`, `M2MNavigation.cs` |
+
+The copies are the packaged source with the same namespace edit as the generator and no
+other change. A file two generators share is written once: a later eject finds it, says
+`[kept — already yours]` and leaves your edits alone, and `--force` replaces it with the
+reference as it replaces the generator. The copies see one another as members of their own
+namespace, and a member of the namespace you are in wins over a name a `using` brings in, so
+an owned generator reaches its owned emitters and never the packaged ones of the same name.
+
+**What stays in the package is the engine**, public and unchanged: the generator contract
+(`IGenerator`, `GenContext`, `GenConfig`, `EmittedFile`), the naming and type-mapping tables
+(`CSharpNaming`, `ValueObjectNames`, `PackageBindingResolver`), and the questions a generator
+asks of the model (`FindInbound`, `TphPlan`, `InstanceArtifacts`, `ReportRows`). Anything that
+returns emitted text is handed over; a table or a model question is not. The line is written
+down and checked: a test ejects each generator the registry lists into an empty project,
+compiles it against the public API and fails on any reference to a packaged emitter, generator
+or docs writer that is not on that list.
+
+**A copy you ejected before the emitters were handed over** keeps compiling and running, with
+the packaged emitters. To own them, eject the same name into a scratch directory and copy the
+emitter files into your project; your copy and your edits are untouched:
+
+```bash
+scratch=$(mktemp -d)
+dotnet meta eject entity --root "$scratch"
+cp "$scratch"/codegen/generators/{Fr019SharedEnum,M2MNavigation,ReverseFinders,XmlDocBuilder}.cs codegen/generators/
+dotnet meta gen --list    # no longer reports an emitter missing
+```
+
+### `api-docs`: the api reference as an owned generator
+
+`dotnet meta docs` writes the C# api reference. `dotnet meta eject api-docs` copies the
+generator that writes it, with the page model (`CSharpApiModel.cs`), the builder that decides
+what to document (`CSharpApiModelBuilder.cs`), the renderer (`CSharpApiDocsRenderer.cs`) and
+the page-path math (`DocsPaths.cs`). Change which nodes get a page, how a page reads, or
+where it lands, by editing them.
+
+Once `codegen/generators/ApiDocsGenerator.cs` exists, `dotnet meta docs` hands off to
+`dotnet run --project codegen -- docs` with the same arguments, and the reference is written
+by your copy. A project that owns `codegen/` but not `api-docs` keeps the packaged reference:
+the hand-off for `docs` is keyed to the generator, not to the project, because an owned
+project pinned to an older `MetaObjects.Codegen` does not know the `docs` command.
+
+**It describes the generators you run.** The reference documents a route, an allowlist, a
+render helper only if the generator that emits it would. The packaged generators answer that
+through their static `AppliesTo`; when `docs` runs, the answers come from the generators in
+your `Program.cs` list instead, so an owned `routes` whose `AppliesTo` you changed is
+documented as it behaves. A generator you left in the package keeps answering as the package
+does. The builder asks through `GenContext.Applicability`
+(`GeneratorApplicability.From(list)` builds it), never through a generator class, which is
+why the copy depends on nothing but the engine.
+
+`Program.cs` lists `new ApiDocsGenerator()` beside the code generators. `dotnet meta gen` and
+`verify --codegen` skip it, and `gen` says so (`"api-docs" writes the api reference, so
+gen skipped it. Run it with dotnet meta docs.`): it writes pages under the docs directory,
+not code under `--out`.
 
 ### Ejecting routes hands over the helper runtime too
 

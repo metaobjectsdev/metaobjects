@@ -156,7 +156,7 @@ public class HelperRuntimeTests
             Root = root,
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
         };
-        var ownedRoutes = EjectedGeneratorCompileTests.CompileAndInstantiate("routes", "RoutesGenerator", []);
+        var ownedRoutes = EjectedGeneratorsAloneTests.EjectAlone("routes").Generator;
         var generators = new List<IGenerator>
         {
             new EntityGenerator(), new DbContextGenerator(), new FilterAllowlistGenerator(), new NamesGenerator(), ownedRoutes,

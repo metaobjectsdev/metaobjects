@@ -101,6 +101,20 @@ public sealed record GeneratorRegistryEntry
     /// </summary>
     public string? SourceFileName { get; init; }
     /// <summary>
+    /// The emitter source files <c>dotnet meta eject</c> hands over WITH this generator, as
+    /// package-relative paths (<c>Generators/Fr019SharedEnum.cs</c>, <c>Docs/XmlDocBuilder.cs</c>) —
+    /// each also an embedded resource of the same name (see <c>MetaObjects.Codegen.csproj</c>).
+    /// A generator that calls an emitter writes part of the output through it, so an owned copy
+    /// that left the emitter in the package would own a shell: a defect in that part of the output
+    /// would still wait for a MetaObjects release. The list is the CLOSURE — what the generator
+    /// calls, and what those call in turn — never anything the copy could not compile without,
+    /// and never the engine (naming and type-mapping tables, the model walks, the generator
+    /// base), which stays packaged and public. EjectedGeneratorsAloneTests ejects each generator
+    /// alone into an empty project and fails on a missing entry, and on one nothing calls.
+    /// Files shared by several generators are copied once and never overwritten.
+    /// </summary>
+    public IReadOnlyList<string> Companions { get; init; } = [];
+    /// <summary>
     /// Stable names of the generators whose output this one's output references. A run
     /// that selects this entry without them gets a warning from <c>gen</c> (see
     /// <see cref="GeneratorRegistry.UnsatisfiedRequires"/>) and <c>--list</c> shows them.
@@ -145,6 +159,7 @@ public static class GeneratorRegistry
                 Layer = GeneratorLayer.Model,
                 Factory = _ => new EntityGenerator(),
                 SourceFileName = "EntityGenerator.cs",
+                Companions = ["Generators/Fr019SharedEnum.cs", "Generators/M2MNavigation.cs", "Generators/ReverseFinders.cs", "Docs/XmlDocBuilder.cs"],
             },
             ["db-context"] = new()
             {
@@ -154,6 +169,7 @@ public static class GeneratorRegistry
                 Layer = GeneratorLayer.Persistence,
                 Factory = _ => new DbContextGenerator(),
                 SourceFileName = "DbContextGenerator.cs",
+                Companions = ["Generators/Fr019SharedEnum.cs", "Generators/M2MNavigation.cs", "Docs/XmlDocBuilder.cs"],
                 // DbSet<Entity> for every entity class EntityGenerator emits.
                 Requires = ["entity"],
             },
@@ -165,6 +181,7 @@ public static class GeneratorRegistry
                 Layer = GeneratorLayer.Api,
                 Factory = _ => new RoutesGenerator(),
                 SourceFileName = "RoutesGenerator.cs",
+                Companions = ["Generators/M2MNavigation.cs"],
                 // The handlers take AppDbContext, read <Entity>FilterAllowlist and bind the
                 // entity classes; without any of the three the output does not compile.
                 Requires = ["entity", "db-context", "filter-allowlist"],
@@ -178,6 +195,7 @@ public static class GeneratorRegistry
                 Factory = _ => new OutputParserGenerator(),
                 Note = "Needs `entity` in the same run: it references each value object's own POCO (ADR-0056).",
                 SourceFileName = "OutputParserGenerator.cs",
+                Companions = ["Generators/ExtractDelegateEmitter.cs", "Generators/Fr010FieldMapping.cs"],
                 // ADR-0056: the value object's own POCO, which EntityGenerator emits.
                 Requires = ["entity"],
             },
@@ -190,6 +208,7 @@ public static class GeneratorRegistry
                 Factory = _ => new ExtractorGenerator(),
                 Note = "Needs `entity` in the same run: it references each value object's own POCO (ADR-0056).",
                 SourceFileName = "ExtractorGenerator.cs",
+                Companions = ["Generators/ExtractDelegateEmitter.cs", "Generators/Fr010FieldMapping.cs", "Generators/Fr019SharedEnum.cs"],
                 // ADR-0056: the value object's own POCO, which EntityGenerator emits.
                 Requires = ["entity"],
             },
@@ -201,6 +220,7 @@ public static class GeneratorRegistry
                 Layer = GeneratorLayer.Capability,
                 Factory = _ => new OutputPromptGenerator(),
                 SourceFileName = "OutputPromptGenerator.cs",
+                Companions = ["Generators/OutputFormatSpecEmitter.cs", "Generators/Fr010FieldMapping.cs"],
             },
             ["render-helper"] = new()
             {
@@ -232,6 +252,25 @@ public static class GeneratorRegistry
                 Layer = GeneratorLayer.Model,
                 Factory = _ => new NamesGenerator(),
                 SourceFileName = "NamesGenerator.cs",
+            },
+            // The api reference `dotnet meta docs` writes (ADR-0025), as a generator so a project can own
+            // it. It is not part of `gen`: it implements IDocsGenerator, which `gen` skips.
+            ["api-docs"] = new()
+            {
+                Name = "api-docs",
+                Description = "Per-entity/template SDK API reference (generated-code API; human + agent forms).",
+                Tier = GeneratorTier.Native,
+                Layer = GeneratorLayer.Docs,
+                Factory = _ => new ApiDocsGenerator(),
+                Note = "Run by `dotnet meta docs` as its api surface (ADR-0025), not by `dotnet meta gen`: a `gen` run that lists it skips it with a warning.",
+                SourceFileName = "ApiDocsGenerator.cs",
+                // The page IR, its builder, the renderer and the path math; and the field walk and the
+                // M:N navigation the builder documents with.
+                Companions = [
+                    "ApiDocs/CSharpApiModel.cs", "ApiDocs/CSharpApiModelBuilder.cs",
+                    "ApiDocs/CSharpApiDocsRenderer.cs", "ApiDocs/DocsPaths.cs",
+                    "Generators/Fr010FieldMapping.cs", "Generators/M2MNavigation.cs",
+                ],
             },
             ["template"] = new()
             {

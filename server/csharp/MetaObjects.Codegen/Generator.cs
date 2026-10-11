@@ -268,6 +268,16 @@ public sealed class GenContext
     public required MetaRoot Root { get; init; }
     public required GenConfig Config { get; init; }
     public Action<string> Warn { get; init; } = _ => { };
+
+    /// <summary>
+    /// What the api-docs generator asks of the generators it documents (see
+    /// <see cref="GeneratorApplicability"/>). The packaged generators' answers unless the run
+    /// supplies the ones its own generator list gives.
+    /// </summary>
+    public GeneratorApplicability Applicability { get; init; } = GeneratorApplicability.Packaged;
+
+    /// <summary>The facts of a docs run, or <c>null</c> in a code run.</summary>
+    public DocsRunFacts? Docs { get; init; }
 }
 
 /// <summary>A codegen unit. Kebab-case <see cref="Name"/> surfaces in diagnostics.</summary>

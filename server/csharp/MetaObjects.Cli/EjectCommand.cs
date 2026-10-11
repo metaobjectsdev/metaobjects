@@ -9,6 +9,11 @@
 //   - a generator whose OUTPUT imports the helper runtime (routes) brings that runtime's
 //     source with it, into codegen/runtime/ (see MetaObjects.Codegen.HelperRuntime), so
 //     the adopter owns every line their generated routes call;
+//   - a generator that writes part of its output through an emitter (the registry entry's
+//     Companions: the prompt tier's field mapping and format-spec writer, the entity tier's
+//     enum, navigation and doc-comment writers, the api reference's page builder) brings
+//     that emitter's source with it, beside it under codegen/, so the copy is the generator
+//     and not a shell around the package's;
 //   - an existing copy is NEVER overwritten without --force;
 //   - every name is validated BEFORE anything is written (a partial eject — some names
 //     copied, one refused — is worse than refusing the whole call);
@@ -161,6 +166,7 @@ public static class EjectCommand
             File.WriteAllText(dest, rewritten);
             outLines.Add($"ejected \"{name}\" -> codegen/generators/{file} [{status}]");
         }
+        outLines.AddRange(EjectCompanions(root, names.Select(n => known[n]).ToList(), force));
         var runtimeUsers = names.Where(n => HelperRuntime.UsedBy(EjectableGenerators.ReadSource(n)!)).ToList();
         if (runtimeUsers.Count > 0)
             outLines.AddRange(EjectRuntime(root, runtimeUsers, force));
@@ -196,6 +202,42 @@ public static class EjectCommand
         }
 
         return new Outcome(0, outLines, []);
+    }
+
+    /// <summary>
+    /// Copy the emitters the ejected <paramref name="entries"/> write their output through
+    /// (<see cref="GeneratorRegistryEntry.Companions"/>) next to the generators, each once however
+    /// many of them call it. A file that already exists is the adopter's and is kept — possibly
+    /// edited, possibly shared with a generator ejected earlier — unless <paramref name="force"/>,
+    /// which replaces it with the reference exactly as it replaces the generator copy.
+    /// </summary>
+    private static List<string> EjectCompanions(string root, IReadOnlyList<GeneratorRegistryEntry> entries, bool force)
+    {
+        var companions = entries.SelectMany(e => e.Companions).Distinct(StringComparer.Ordinal).ToList();
+        var lines = new List<string>();
+        if (companions.Count == 0) return lines;
+
+        lines.Add("");
+        lines.Add(
+            $"{string.Join(", ", entries.Where(e => e.Companions.Count > 0).Select(e => $"\"{e.Name}\""))} " +
+            "write their output through emitters; copied their source so you own that too:");
+        foreach (var sourcePath in companions)
+        {
+            var relative = EjectableGenerators.OwnedRelativePath(sourcePath);
+            var dest = Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));
+            string status;
+            if (!File.Exists(dest)) status = "created";
+            else if (force) status = "replaced";
+            else
+            {
+                lines.Add($"  {relative} [kept — already yours]");
+                continue;
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+            File.WriteAllText(dest, EjectableGenerators.RewriteForEject(EjectableGenerators.ReadSourcePath(sourcePath)));
+            lines.Add($"  {relative} [{status}]");
+        }
+        return lines;
     }
 
     /// <summary>

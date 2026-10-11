@@ -138,6 +138,48 @@ generator catalog and the Atlas evaluation are 1.2 work.
     `GeneratorRegistry.GeneratorInfo.ejectWith()`, the classes eject copies with a
     generator.
 
+- **C#: an ejected generator owns the emitters it writes through, and `api-docs` can be
+  ejected.** `dotnet meta eject` used to copy one file per generator, so an owned `entity`
+  still called four packaged writers, and an owned `output-parser`, `extractor` or
+  `output-prompt` still called the prompt tier's field mapping and format-spec writer. A
+  defect in any of them waited for a release. Eject now hands
+  over the writers with the generator, into `codegen/generators/`, in the same
+  `Codegen.Generators` namespace: `Fr019SharedEnum`, `XmlDocBuilder`, `M2MNavigation` and
+  `ReverseFinders` with `entity`, `db-context` and `routes` as each calls them;
+  `ExtractDelegateEmitter`, `Fr010FieldMapping` and `OutputFormatSpecEmitter` with
+  `output-parser`, `extractor` and `output-prompt`. A file two generators share is copied once
+  and never overwritten (`--force` replaces it, as it replaces the generator). What stays in
+  the package is the engine: the generator base, `CSharpNaming`, `ValueObjectNames` and
+  `PackageBindingResolver` (the naming and type-mapping tables), and the questions asked of
+  the model (`FindInbound`, `TphPlan`, `InstanceArtifacts`, `ReportRows`). `template` is not
+  ejectable: it has no emit logic of its own. Packaged output is unchanged and gated to be.
+  - **`api-docs` is a generator you can own.** `dotnet meta eject api-docs` copies the page
+    generator with its page model, builder, renderer and path math. `dotnet meta docs` hands
+    off to `dotnet run --project codegen -- docs` once `codegen/generators/ApiDocsGenerator.cs`
+    exists, so your copy writes the reference. What the reference documents comes from the
+    generators in your `Program.cs` list: an owned `routes` whose `AppliesTo` you changed is
+    documented as it behaves, not as the packaged one does (`GeneratorApplicability.From`).
+    `dotnet meta gen` skips a docs generator and says so, and `verify --codegen` leaves it out.
+    New public API in `MetaObjects.Codegen`: `IDocsGenerator`, `DocsRunFacts`,
+    `GeneratorApplicability`, `GenContext.Applicability` and `GenContext.Docs`,
+    `CodegenCli.RunDocs`, and `ValueObjectNames.ResolveValueObject` (moved from
+    `RenderHelperGenerator`, where it was `internal`). `CSharpStringLiteral` moved from
+    `Fr010FieldMapping` to `CSharpNaming`, so `names` needs no emitter; the old member stays as an
+    `[Obsolete]` forwarder (see **Deprecated**).
+  - **A copy you ejected before this release** keeps compiling and running: it finds the
+    packaged emitters as it always did. `dotnet meta gen --list` now marks it as missing the
+    ones it was not handed (`Fr019SharedEnum.cs missing`). To own them, eject the same name
+    into a scratch directory (`dotnet meta eject entity --root <scratch>`) and copy the emitter
+    files from its `codegen/generators/` into yours; your copy and your edits are untouched,
+    and it resolves the new files by namespace.
+  - **A gate for the rule.** For every ejectable generator the registry lists, a test ejects it
+    alone, compiles it against the public API, fails on any reference to a packaged emitter,
+    generator or docs writer outside a written engine surface, fails on a handed-over file
+    nothing calls, and compares its output with the packaged generator's over the shared
+    corpora. A registered generator with no eject source and no written exemption fails it, as
+    does a generator class the package ships that no registry entry builds.
+  The cross-port manifest lists `api-docs` for `csharp`.
+
 - **The stock `entity`, `queries`, `routes` and `barrel` generators are importable again
   (TypeScript).** `entityFile`, `queriesFile`, `routesFile` and `barrel` are exported from
   `@metaobjectsdev/codegen-ts/generators` once more, beside `namesFile`, `routesFileHono`
@@ -743,6 +785,12 @@ until you regenerate.
 
   One rule is relaxed: an authored `validator.length @min: 0` on a `@required` string now
   admits the empty string, as the generated schema already did.
+
+### Deprecated
+
+- **C#: `Fr010FieldMapping.CSharpStringLiteral(string)` is `[Obsolete]`.** It forwards to
+  `CSharpNaming.CSharpStringLiteral(string)`, which every generator now calls (so an ejected
+  `names` needs no emitter). Same signature and result; switch the call when you next touch it.
 
 ### Removed
 

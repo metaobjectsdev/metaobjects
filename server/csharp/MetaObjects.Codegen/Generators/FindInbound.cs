@@ -94,7 +94,7 @@ public static class FindInbound
         // Java is immune by construction — its FindInbound.responseShape resolves value-only
         // too. This makes C# fail closed the same way: an unresolvable-or-wrong-typed ref yields
         // no parser rather than an uncompilable one.
-        var vo = RenderHelperGenerator.ResolveValueObject(root, reference, referrerPkg);
+        var vo = ValueObjectNames.ResolveValueObject(root, reference, referrerPkg);
         if (vo is null) return null;
         return new InboundShape(vo, reference, ResponseFormatOf(tmpl));
     }

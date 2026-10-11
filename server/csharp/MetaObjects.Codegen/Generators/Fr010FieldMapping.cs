@@ -46,7 +46,7 @@ public static class Fr010FieldMapping
         if (attr is not IReadOnlyDictionary<string, object?> d) return "null";
         var entries = d.Where(kv => kv.Value is not null)
             .OrderBy(kv => kv.Key, System.StringComparer.Ordinal)
-            .Select(kv => $"[\"{CSharpStringLiteral(kv.Key)}\"] = \"{CSharpStringLiteral(kv.Value!.ToString()!)}\"")
+            .Select(kv => $"[\"{CSharpNaming.CSharpStringLiteral(kv.Key)}\"] = \"{CSharpNaming.CSharpStringLiteral(kv.Value!.ToString()!)}\"")
             .ToList();
         if (entries.Count == 0) return "null";
         return "new Dictionary<string, string> { " + string.Join(", ", entries) + " }";
@@ -226,33 +226,7 @@ public static class Fr010FieldMapping
         (field.Attr(MetaObjects.Template.TemplateConstants.FIELD_ATTR_XML_TEXT) is string s &&
          s.Equals("true", StringComparison.OrdinalIgnoreCase));
 
-    private static readonly char[] CSharpEscapeChars = { '\\', '"', '\t', '\n', '\r' };
-
-    /// <summary>
-    /// Escape a value for embedding inside a C# double-quoted string literal.
-    /// <para>Scans before it builds: the names generator calls this two-to-four times per
-    /// member of every entity, and virtually every value — "object", "entity", a field
-    /// name, a snake_case column — contains none of these. <c>IndexOfAny</c> is vectorized
-    /// and allocates nothing, so the common case costs no allocation at all.</para>
-    /// </summary>
-    public static string CSharpStringLiteral(string value) =>
-        value.IndexOfAny(CSharpEscapeChars) < 0 ? value : CSharpStringLiteralSlow(value);
-
-    private static string CSharpStringLiteralSlow(string value)
-    {
-        var sb = new System.Text.StringBuilder(value.Length + 4);
-        foreach (char c in value)
-        {
-            switch (c)
-            {
-                case '\\': sb.Append("\\\\"); break;
-                case '"': sb.Append("\\\""); break;
-                case '\t': sb.Append("\\t"); break;
-                case '\n': sb.Append("\\n"); break;
-                case '\r': sb.Append("\\r"); break;
-                default: sb.Append(c); break;
-            }
-        }
-        return sb.ToString();
-    }
+    /// <summary>Escape a value for embedding inside a C# double-quoted string literal.</summary>
+    [Obsolete("Moved to CSharpNaming.CSharpStringLiteral, which every generator now calls; this forwarder keeps the 1.0.x member.")]
+    public static string CSharpStringLiteral(string value) => CSharpNaming.CSharpStringLiteral(value);
 }

@@ -195,6 +195,60 @@ public sealed class EjectEndToEndTests : IDisposable
     }
 
     /// <summary>
+    /// An owned api-docs generator, run for real (ADR-0025 / ADR-0034 Amendment 3): eject `routes` and
+    /// `api-docs`, change what the owned routes serves, and run the owned project's `docs` command. The
+    /// reference is written by the OWNED api-docs copy and describes the OWNED routes, so the edit shows up
+    /// in the pages; and the same owned project's `gen` skips the docs generator and says so.
+    /// </summary>
+    [Fact]
+    public void Owned_api_docs_writes_the_reference_and_describes_the_owned_routes()
+    {
+        var repoRoot = RepoRoot();
+        Directory.CreateDirectory(MetadataDir);
+        File.WriteAllText(Path.Combine(MetadataDir, "meta.acme.json"), """
+        { "metadata.root": { "package": "acme::widgets", "children": [
+          { "object.entity": { "name": "Widget", "children": [
+            { "source.rdb": { "@table": "widgets" } },
+            { "field.uuid":   { "name": "id", "@required": true } },
+            { "field.string": { "name": "label", "@required": true, "@maxLength": 80 } },
+            { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "uuid" } }
+          ]}}
+        ]}}
+        """);
+
+        var eject = EjectCommand.Run(["routes", "api-docs"], _root, force: false);
+        Assert.Equal(0, eject.ExitCode);
+        Assert.True(CodegenHandoff.HasOwnedDocs(_root));
+        PointScaffoldAtThisCheckout(repoRoot);
+
+        // The project's own decision: its routes serve no entity.
+        var routesPath = Path.Combine(_root, "codegen", "generators", "RoutesGenerator.cs");
+        var routes = File.ReadAllText(routesPath);
+        const string signature = "public static bool AppliesTo(MetaObject entity, MetaRoot root) =>";
+        Assert.Contains(signature, routes);
+        File.WriteAllText(routesPath, routes.Replace(
+            signature,
+            "public static bool AppliesTo(MetaObject entity, MetaRoot root) => false;\n" +
+            "    private static bool PackagedAppliesTo(MetaObject entity, MetaRoot root) =>"));
+
+        var docsOut = Path.Combine(_root, "docs");
+        var (docsExit, docsOutput) = RunCodegenProject("docs", MetadataDir, "--out", docsOut, "--namespace", "Acme.Generated");
+        Assert.True(docsExit == 0, $"docs failed (exit {docsExit}):\n{docsOutput}");
+        Assert.Contains("api page(s) written", docsOutput);
+
+        var widget = File.ReadAllText(Directory.GetFiles(docsOut, "Widget.md", SearchOption.AllDirectories).Single());
+        Assert.Contains("DbSet<Widget>", widget);              // the owned api-docs described the model…
+        Assert.DoesNotContain("GET /api/", widget);            // …and what the OWNED routes serve: nothing.
+
+        // The same owned project's gen leaves the docs generator out and says why.
+        var (genExit, genOutput) = RunCodegenProject(
+            "gen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated", "--generators", "api-docs");
+        Assert.True(genExit == 0, $"gen failed (exit {genExit}):\n{genOutput}");
+        Assert.Contains("writes the api reference, so `gen` skipped it", genOutput);
+        Assert.Empty(Directory.Exists(OutDir) ? Directory.GetFiles(OutDir, "*.md", SearchOption.AllDirectories) : []);
+    }
+
+    /// <summary>
     /// The helper runtime an ejected routes generator brings with it (ADR-0034 Amendment 3):
     /// eject routes, generate through the owned project, and build + RUN a real ASP.NET Core
     /// app that compiles the generated output together with codegen/runtime/ and references

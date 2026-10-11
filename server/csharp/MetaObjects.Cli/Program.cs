@@ -274,6 +274,14 @@ static int RunDocs(string[] rest)
     // falls back to the port-neutral .metaobjects/config.json ladder.
     var resolvedMeta = ResolveMetadataDirOrExit(metadataDir);
 
+    // ADR-0034 Amendment 3 hand-off, for a project that owns the api-docs generator: ITS copy
+    // writes the reference, from the generator list in its own codegen/Program.cs.
+    var docsProjectRoot = metadataDir is not null
+        ? GenCommand.ProjectRootFor(metadataDir)
+        : Directory.GetCurrentDirectory();
+    if (CodegenHandoff.TryRun(docsProjectRoot, ["docs", .. rest], out var docsHandoffExit))
+        return docsHandoffExit;
+
     // Default the project label to the input directory's leaf name (cosmetic — surfaces
     // in the AGENT-API header). Trailing-separator-safe.
     project ??= new DirectoryInfo(Path.TrimEndingDirectorySeparator(Path.GetFullPath(resolvedMeta.Directory))).Name;

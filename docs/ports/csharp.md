@@ -81,7 +81,7 @@ for a worked example.
 
 ## Generate
 
-**Own a generator.** `dotnet meta eject <name>...` copies a reference generator into `codegen/generators/` and scaffolds an owned `codegen/` console project that `dotnet meta gen` then runs. See [Own your codegen → C#](../features/own-your-codegen.md#c-dotnet-meta-eject).
+**Own a generator.** `dotnet meta eject <name>...` copies a reference generator into `codegen/generators/` and scaffolds an owned `codegen/` console project that `dotnet meta gen` then runs. Every generator `dotnet meta gen --list` shows is ejectable except `template`, the Mustache primitive, which has no emit logic of its own to own. An ejected generator comes with the emitters it writes its output through (the enum, navigation, doc-comment and prompt-tier writers), so the copy owns the code that writes the file and not a shell around the package's; the naming and type-mapping tables (`CSharpNaming`, `ValueObjectNames`) stay in the package as the engine. `dotnet meta eject api-docs` does the same for the api reference `dotnet meta docs` writes, and the reference then describes the generators you own. See [Own your codegen → C#](../features/own-your-codegen.md#c-dotnet-meta-eject).
 
 ```bash
 # Generate EF Core entities + AppDbContext + CRUD minimal-API routes
