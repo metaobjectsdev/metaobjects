@@ -274,8 +274,8 @@ public static class CodegenCli
     /// Write the api reference for <paramref name="load"/>'s model under <paramref name="outDir"/>.
     /// The docs generator is the one in <paramref name="generators"/> that implements
     /// <see cref="IDocsGenerator"/> — a project's own copy — else the packaged
-    /// <c>api-docs</c>. What it documents is what that list emits for
-    /// (<see cref="GeneratorApplicability.From"/>). A page path two units resolve to fails the run
+    /// <c>api-docs</c>. What it documents is what the packaged generators emit for
+    /// (<see cref="GeneratorApplicability.Packaged"/>). A page path two units resolve to fails the run
     /// before anything is written.
     /// </summary>
     public static DocsOutcome RunDocs(
@@ -293,7 +293,7 @@ public static class CodegenCli
             Entities = load.Root.Objects().Where(o => !o.IsReport()).ToList(),
             Root = load.Root,
             Config = new GenConfig { OutDir = outDir, Namespace = ns },
-            Applicability = GeneratorApplicability.From(generators),
+            Applicability = GeneratorApplicability.Packaged,
             Docs = facts,
         };
 

@@ -50,7 +50,7 @@ public class EjectedGeneratorsAloneTests
         ["MetaObjects.Codegen.GenContext"] = "the per-run state handed to every generator",
         ["MetaObjects.Codegen.GenConfig"] = "the resolved generation config",
         ["MetaObjects.Codegen.DocsRunFacts"] = "the facts of a docs run, carried on GenContext",
-        ["MetaObjects.Codegen.GeneratorApplicability"] = "what the docs generator asks of the generators it documents, answered by the run",
+        ["MetaObjects.Codegen.GeneratorApplicability"] = "what the docs generator asks of the generators it documents, answered by the packaged ones",
         ["MetaObjects.Codegen.PerEntityGenerator"] = "the one-file-per-entity base class",
         ["MetaObjects.Codegen.ColumnNamingStrategy"] = "config enum read by naming",
         // Naming, type mapping and binding: tables, ruled engine.
@@ -244,6 +244,13 @@ public class EjectedGeneratorsAloneTests
         }
     }
 
+    private static MetaRoot LoadInline(string model, string id)
+    {
+        var loaded = new MetaDataLoader().Load([new InMemoryStringSource(model, id: id)]);
+        Assert.Empty(loaded.Errors.Select(e => e.Code + ": " + e.Message));
+        return loaded.Root;
+    }
+
     /// <summary>The corpora every generator is run over: the shared fitness model, and the worked example (the
     /// one with requirements, which the fitness model has none of).</summary>
     private static IEnumerable<(string Label, MetaRoot Root)> Corpora(string generator)
@@ -253,11 +260,11 @@ public class EjectedGeneratorsAloneTests
         // model the extractor's own codegen tests use. (render-helper is left off it: its template files live
         // under the fitness template root, and the model names others.)
         if (generator is "output-parser" or "extractor" or "output-prompt")
-        {
-            var nested = new MetaDataLoader().Load([new InMemoryStringSource(ExtractorCodegenTests.Model, id: "orders.json")]);
-            Assert.Empty(nested.Errors.Select(e => e.Code + ": " + e.Message));
-            yield return ("nested-reply", nested.Root);
-        }
+            yield return ("nested-reply", LoadInline(ExtractorCodegenTests.Model, "orders.json"));
+        // `callable` emits only for a stored-proc or table-function source, which neither shared corpus has:
+        // it also runs over the model its own codegen tests use.
+        if (generator is "callable")
+            yield return ("callable", LoadInline(Fr015CodegenTests.Model, "fr015.json"));
         yield return ("fitness", EjectedGeneratorCompileTests.LoadCorpus());
         var worked = MetaDataLoader.FromDirectory(
             Path.Combine(CorpusPaths.RepoRoot(), "fixtures", "requirement-test-identity-conformance", "worked-example", "input"), strict: true);
@@ -314,10 +321,8 @@ public class EjectedGeneratorsAloneTests
                 string.Join("\n", packageRuntimeLines));
             emitted += want.Count;
         }
-        // Parity of two empty lists proves nothing, so a generator must emit over at least one corpus. The one
-        // exception is `callable`: it needs a stored-proc or table-function source, which neither corpus has.
-        if (name != "callable")
-            Assert.True(emitted > 0, $"\"{name}\" emitted nothing over either corpus, so nothing was proven about it.");
+        // Parity of two empty lists proves nothing, so a generator must emit over at least one corpus.
+        Assert.True(emitted > 0, $"\"{name}\" emitted nothing over any corpus, so nothing was proven about it.");
     }
 
     [Fact]
@@ -330,6 +335,52 @@ public class EjectedGeneratorsAloneTests
 
         var emitters = PackagedTypesReferenced(alone).Where(t => !EngineSurface.ContainsKey(t)).ToList();
         Assert.True(emitters.Count == 0, $"an older copy still binds to the package's {string.Join(", ", emitters)}");
+    }
+
+    /// <summary>
+    /// The other direction of the engine line: what stays packaged must not call what is handed over. An
+    /// engine type that called a handed-over emitter would keep asking the PACKAGED copy after an eject,
+    /// while the owned generators ask the owned one, and the two answers part the moment the copy is edited.
+    /// The oracle is the compiler: the package's own sources, built without the companion files, may fail
+    /// only inside the ejectable generators, which are handed over with them.
+    /// </summary>
+    [Fact]
+    public void The_packaged_engine_compiles_without_the_emitters_eject_hands_over()
+    {
+        var packageDir = Path.Combine(CorpusPaths.RepoRoot(), "server", "csharp", "MetaObjects.Codegen");
+        var handedOver = EjectableGenerators.AllSourcePaths().ToHashSet(StringComparer.Ordinal);
+        var companions = EjectableGenerators.Entries().SelectMany(e => e.Companions).ToHashSet(StringComparer.Ordinal);
+        var sources = Directory.GetFiles(packageDir, "*.cs", SearchOption.AllDirectories)
+            .Select(f => Path.GetRelativePath(packageDir, f).Replace(Path.DirectorySeparatorChar, '/'))
+            .Where(p => !p.StartsWith("bin/", StringComparison.Ordinal) && !p.StartsWith("obj/", StringComparison.Ordinal))
+            .ToList();
+        Assert.Subset(sources.ToHashSet(StringComparer.Ordinal), handedOver);
+
+        var parse = new CSharpParseOptions(LanguageVersion.CSharp12);
+        // The package's own assembly is left off the references: its sources are what is being compiled.
+        var references = References().OfType<PortableExecutableReference>()
+            .Where(r => Path.GetFileNameWithoutExtension(r.FilePath) != PackageAssembly)
+            .ToList();
+        List<(string Path, string Error)> Errors(IEnumerable<string> paths) => CSharpCompilation.Create(
+                "package_" + Guid.NewGuid().ToString("N"),
+                [.. paths.Select(p => CSharpSyntaxTree.ParseText(File.ReadAllText(Path.Combine(packageDir, p)), parse, path: p)),
+                 CSharpSyntaxTree.ParseText(ImplicitUsings, parse, path: "GlobalUsings.g.cs")],
+                references, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary))
+            .GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error)
+            .Select(d => (d.Location.SourceTree?.FilePath ?? "", d.ToString()))
+            .ToList();
+
+        // Whole, the package compiles here, so an error below is the removal's doing and not this setup's.
+        Assert.Empty(Errors(sources).Select(e => e.Error));
+
+        var without = Errors(sources.Where(p => !companions.Contains(p)));
+        Assert.Contains(without, e => handedOver.Contains(e.Path));
+        var engine = without.Where(e => !handedOver.Contains(e.Path)).Select(e => e.Error).ToList();
+        Assert.True(engine.Count == 0,
+            "a packaged type outside the ejectable generators calls an emitter eject hands over, so after an eject " +
+            "the package and the owned copy each answer for themselves. Move what the engine needs into the engine " +
+            "(or call the core authority the emitter delegates to):\n" + string.Join("\n", engine));
     }
 
     [Fact]

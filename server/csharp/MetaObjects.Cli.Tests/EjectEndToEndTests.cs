@@ -196,12 +196,12 @@ public sealed class EjectEndToEndTests : IDisposable
 
     /// <summary>
     /// An owned api-docs generator, run for real (ADR-0025 / ADR-0034 Amendment 3): eject `routes` and
-    /// `api-docs`, change what the owned routes serves, and run the owned project's `docs` command. The
-    /// reference is written by the OWNED api-docs copy and describes the OWNED routes, so the edit shows up
-    /// in the pages; and the same owned project's `gen` skips the docs generator and says so.
+    /// `api-docs`, add a page to the owned api-docs copy, and run the owned project's `docs` command. The
+    /// reference is written by the OWNED api-docs copy, so the added page is on disk beside the model's;
+    /// and the same owned project's `gen` skips the docs generator and says so.
     /// </summary>
     [Fact]
-    public void Owned_api_docs_writes_the_reference_and_describes_the_owned_routes()
+    public void Owned_api_docs_writes_the_reference()
     {
         var repoRoot = RepoRoot();
         Directory.CreateDirectory(MetadataDir);
@@ -221,15 +221,14 @@ public sealed class EjectEndToEndTests : IDisposable
         Assert.True(CodegenHandoff.HasOwnedDocs(_root));
         PointScaffoldAtThisCheckout(repoRoot);
 
-        // The project's own decision: its routes serve no entity.
-        var routesPath = Path.Combine(_root, "codegen", "generators", "RoutesGenerator.cs");
-        var routes = File.ReadAllText(routesPath);
-        const string signature = "public static bool AppliesTo(MetaObject entity, MetaRoot root) =>";
-        Assert.Contains(signature, routes);
-        File.WriteAllText(routesPath, routes.Replace(
-            signature,
-            "public static bool AppliesTo(MetaObject entity, MetaRoot root) => false;\n" +
-            "    private static bool PackagedAppliesTo(MetaObject entity, MetaRoot root) =>"));
+        // The project's own edit: its reference carries a page the packaged generator does not write.
+        var apiDocsPath = Path.Combine(_root, "codegen", "generators", "ApiDocsGenerator.cs");
+        var apiDocs = File.ReadAllText(apiDocsPath);
+        const string lastPage = "yield return Page(facts, \"AGENT-API.md\", renderer.RenderAgentApi(model));";
+        Assert.Contains(lastPage, apiDocs);
+        File.WriteAllText(apiDocsPath, apiDocs.Replace(
+            lastPage,
+            lastPage + "\n        yield return Page(facts, \"OWNED.md\", \"written by the owned api-docs\");"));
 
         var docsOut = Path.Combine(_root, "docs");
         var (docsExit, docsOutput) = RunCodegenProject("docs", MetadataDir, "--out", docsOut, "--namespace", "Acme.Generated");
@@ -237,8 +236,10 @@ public sealed class EjectEndToEndTests : IDisposable
         Assert.Contains("api page(s) written", docsOutput);
 
         var widget = File.ReadAllText(Directory.GetFiles(docsOut, "Widget.md", SearchOption.AllDirectories).Single());
-        Assert.Contains("DbSet<Widget>", widget);              // the owned api-docs described the model…
-        Assert.DoesNotContain("GET /api/", widget);            // …and what the OWNED routes serve: nothing.
+        Assert.Contains("DbSet<Widget>", widget);
+        Assert.Equal(
+            "written by the owned api-docs",
+            File.ReadAllText(Directory.GetFiles(docsOut, "OWNED.md", SearchOption.AllDirectories).Single()));
 
         // The same owned project's gen leaves the docs generator out and says why.
         var (genExit, genOutput) = RunCodegenProject(

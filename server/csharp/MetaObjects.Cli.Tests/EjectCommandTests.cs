@@ -129,6 +129,93 @@ public sealed class EjectCommandTests : IDisposable
         Assert.Contains("adopter's own edit", File.ReadAllText(Path.Combine(CodegenDir, "Program.cs")));
     }
 
+    private string CsprojPath => Path.Combine(CodegenDir, "Codegen.csproj");
+
+    /// <summary>Scaffold with this tool, then re-pin the owned project the way an older tool left it.</summary>
+    private string ScaffoldPinnedAt(string? version)
+    {
+        Assert.Equal(0, EjectCommand.Run(["entity"], _root, force: false).ExitCode);
+        var scaffolded = File.ReadAllText(CsprojPath);
+        var pin = $"Version=\"{EjectCommand.ToolVersion()}\"";
+        Assert.Contains(pin, scaffolded);
+        if (version is not null) File.WriteAllText(CsprojPath, scaffolded.Replace(pin, $"Version=\"{version}\""));
+        return File.ReadAllText(CsprojPath);
+    }
+
+    // Eject writes this tool's sources and never edits the owned project's package pin. A project
+    // scaffolded by an older tool therefore gets sources its pinned package cannot compile, and the
+    // only place that can say so before `dotnet run --project codegen` fails is eject's own report.
+    [Fact]
+    public void Ejecting_into_a_project_pinned_to_an_older_package_warns_and_names_the_line_to_change()
+    {
+        var csproj = ScaffoldPinnedAt("0.9.0");
+        var pinLine = Array.FindIndex(csproj.Split('\n'), l => l.Contains("PackageReference", StringComparison.Ordinal)) + 1;
+
+        var result = EjectCommand.Run(["api-docs"], _root, force: false);
+
+        Assert.Equal(0, result.ExitCode);
+        var warning = Assert.Single(result.Out, l => l.StartsWith("warning:", StringComparison.Ordinal));
+        Assert.Contains("MetaObjects.Codegen 0.9.0", warning);
+        Assert.Contains(EjectCommand.ToolVersion(), warning);
+        Assert.Contains("will not compile", warning);
+        Assert.Contains($"line {pinLine} of codegen/Codegen.csproj", warning);
+        Assert.Contains(
+            $"<PackageReference Include=\"MetaObjects.Codegen\" Version=\"{EjectCommand.ToolVersion()}\" />",
+            result.Out[result.Out.ToList().IndexOf(warning) + 1]);
+        Assert.Equal(csproj, File.ReadAllText(CsprojPath));
+    }
+
+    [Theory]
+    [InlineData(null)]                      // the pin this tool wrote: equal
+    [InlineData("99.0.0")]                  // newer
+    [InlineData("$(MetaObjectsVersion)")]   // not a version eject can read
+    [InlineData("[1.0.0,2.0.0)")]           // a range
+    public void Ejecting_into_a_project_whose_pin_is_not_older_says_nothing_about_it(string? version)
+    {
+        ScaffoldPinnedAt(version);
+
+        var result = EjectCommand.Run(["api-docs"], _root, force: false);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.DoesNotContain(result.Out, l => l.Contains("warning", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Ejecting_into_a_project_with_no_package_pin_says_nothing_about_it()
+    {
+        ScaffoldPinnedAt(null);
+        File.WriteAllText(CsprojPath, "<Project Sdk=\"Microsoft.NET.Sdk\"><ItemGroup><ProjectReference Include=\"../x.csproj\" /></ItemGroup></Project>");
+
+        var result = EjectCommand.Run(["api-docs"], _root, force: false);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.DoesNotContain(result.Out, l => l.Contains("warning", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // The order is semver.org's (§11), whose own worked chain is
+    // 1.0.0-alpha < 1.0.0-alpha.1 < 1.0.0-alpha.beta < 1.0.0-beta.2 < 1.0.0-beta.11 < 1.0.0-rc.1 < 1.0.0.
+    // A string or System.Version comparison gets the release candidate and the two-digit parts wrong.
+    [Theory]
+    [InlineData("1.0.13", "1.1.0", true)]
+    [InlineData("1.1.0-rc.1", "1.1.0", true)]
+    [InlineData("1.1.0", "1.1.0-rc.1", false)]
+    [InlineData("1.1.0", "1.1.0", false)]
+    [InlineData("1.1.0+8ef72c3", "1.1.0", false)]
+    [InlineData("1.9.0", "1.10.0", true)]
+    [InlineData("1.10.0", "1.9.0", false)]
+    [InlineData("1.0.0-alpha", "1.0.0-alpha.1", true)]
+    [InlineData("1.0.0-alpha.1", "1.0.0-alpha.beta", true)]
+    [InlineData("1.0.0-alpha.beta", "1.0.0-beta.2", true)]
+    [InlineData("1.0.0-beta.2", "1.0.0-beta.11", true)]
+    [InlineData("1.0.0-beta.11", "1.0.0-rc.1", true)]
+    [InlineData("1.0.0-rc.1", "1.0.0-beta.11", false)]
+    [InlineData("1.*", "1.1.0", false)]
+    [InlineData("$(MetaObjectsVersion)", "1.1.0", false)]
+    public void A_pin_is_older_by_semantic_version_precedence(string pinned, string required, bool older)
+    {
+        Assert.Equal(older, EjectCommand.IsOlderVersion(pinned, required));
+    }
+
     [Fact]
     public void Ejected_copy_is_content_identical_to_the_rewritten_reference()
     {

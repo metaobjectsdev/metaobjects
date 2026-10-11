@@ -156,9 +156,10 @@ generator catalog and the Atlas evaluation are 1.2 work.
   - **`api-docs` is a generator you can own.** `dotnet meta eject api-docs` copies the page
     generator with its page model, builder, renderer and path math. `dotnet meta docs` hands
     off to `dotnet run --project codegen -- docs` once `codegen/generators/ApiDocsGenerator.cs`
-    exists, so your copy writes the reference. What the reference documents comes from the
-    generators in your `Program.cs` list: an owned `routes` whose `AppliesTo` you changed is
-    documented as it behaves, not as the packaged one does (`GeneratorApplicability.From`).
+    exists, so your copy writes the reference. What the reference documents is still what the
+    packaged generators emit for (`GeneratorApplicability.Packaged`): an owned `routes` whose
+    `AppliesTo` you changed is documented as the packaged one behaves, unless you edit the
+    owned builder.
     `dotnet meta gen` skips a docs generator and says so, and `verify --codegen` leaves it out.
     New public API in `MetaObjects.Codegen`: `IDocsGenerator`, `DocsRunFacts`,
     `GeneratorApplicability`, `GenContext.Applicability` and `GenContext.Docs`,
@@ -168,16 +169,27 @@ generator catalog and the Atlas evaluation are 1.2 work.
     `[Obsolete]` forwarder (see **Deprecated**).
   - **A copy you ejected before this release** keeps compiling and running: it finds the
     packaged emitters as it always did. `dotnet meta gen --list` now marks it as missing the
-    ones it was not handed (`Fr019SharedEnum.cs missing`). To own them, eject the same name
+    ones it was not handed (`Fr019SharedEnum.cs missing`). To own them, first raise the
+    `MetaObjects.Codegen` version in `codegen/Codegen.csproj` to 1.1.0 or later (the 1.1.0
+    emitter files are written against the 1.1.0 package, and some call API 1.0.x does not
+    have), then eject the same name
     into a scratch directory (`dotnet meta eject entity --root <scratch>`) and copy the emitter
     files from its `codegen/generators/` into yours; your copy and your edits are untouched,
     and it resolves the new files by namespace.
+  - **Eject warns about an older package pin.** Eject writes the sources of the tool you run
+    and never edits `codegen/Codegen.csproj`. When that file pins a `MetaObjects.Codegen` older
+    than the tool, `dotnet meta eject` now prints a warning with the pinned version, the
+    tool's version and the line to change; the owned project does not compile until the pin
+    is raised. A 1.0.x project needs this before `dotnet meta eject api-docs`, and before
+    re-ejecting `names`, `render-helper` or a prompt-tier generator.
   - **A gate for the rule.** For every ejectable generator the registry lists, a test ejects it
     alone, compiles it against the public API, fails on any reference to a packaged emitter,
     generator or docs writer outside a written engine surface, fails on a handed-over file
     nothing calls, and compares its output with the packaged generator's over the shared
     corpora. A registered generator with no eject source and no written exemption fails it, as
-    does a generator class the package ships that no registry entry builds.
+    does a generator class the package ships that no registry entry builds. A second test
+    compiles the package without the handed-over emitters, so nothing that stays packaged
+    calls one.
   The cross-port manifest lists `api-docs` for `csharp`.
 
 - **The stock `entity`, `queries`, `routes` and `barrel` generators are importable again

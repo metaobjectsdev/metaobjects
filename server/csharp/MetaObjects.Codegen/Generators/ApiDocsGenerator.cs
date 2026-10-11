@@ -6,8 +6,8 @@
 // land under the docs output directory, relative to it. The project label, the model back-link
 // base and the api subdirectory come from the docs run (`ctx.Docs`), and what each documented
 // generator emits for comes from `ctx.Applicability`, so an owned copy of this generator
-// documents the generators the project actually runs. The page IR, the renderer and the page
-// paths live beside it (ApiDocs/), and eject hands them over with it.
+// names no emitting generator. The page IR, the renderer and the page paths live beside it
+// (ApiDocs/), and eject hands them over with it.
 
 using MetaObjects.Codegen.ApiDocs;
 

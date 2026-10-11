@@ -5,6 +5,7 @@
 // unchanged. Scalar subtypes map to the natural .NET types; date/time/timestamp
 // use the modern DateOnly/TimeOnly/DateTime trio.
 
+using MetaObjects.Core.Field;
 using MetaObjects.Meta;
 using MetaObjects.Codegen.Generators;
 using MetaObjects.Persistence.Db;
@@ -1089,7 +1090,7 @@ public static class CSharpNaming
     ///   <item>Otherwise use <c>&lt;EntityPascal&gt;&lt;FieldPascal&gt;</c>.</item>
     /// </list>
     /// <para>
-    /// The predicate is <see cref="Fr019SharedEnum.ResolveSharedEnumDecl"/> — the SAME one
+    /// The predicate is <see cref="SharedEnumDeclaration.ResolveSharedEnumDeclaration"/> — the SAME one
     /// that decides whether a type is materialized — because a name and a declaration have
     /// to agree. Keying on "has a super" instead let a field that extends another ENTITY's
     /// concrete field (the ordinary way a projection restates a column it reads, e.g.
@@ -1101,7 +1102,7 @@ public static class CSharpNaming
     /// </summary>
     public static string EnumTypeName(MetaObject entity, MetaField field)
     {
-        if (Fr019SharedEnum.ResolveSharedEnumDecl(field) is { } shared)
+        if (SharedEnumDeclaration.ResolveSharedEnumDeclaration(field) is { } shared)
             return Pascal(shared.Name);
         return Pascal(entity.Name) + Pascal(field.Name);
     }

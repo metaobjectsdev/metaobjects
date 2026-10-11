@@ -4,7 +4,7 @@
 // documented symbol name comes from the CSharpNaming seam (never re-concatenated
 // here), and every inclusion decision comes from the corresponding generator's
 // AppliesTo(...) predicate (never re-implemented here), asked through
-// GeneratorApplicability so a project that owns a copy of a generator documents the copy. The result is that
+// GeneratorApplicability so this builder names no generator class. The result is that
 // what this builder documents == what the generators emit, by SHARING the single
 // source of truth rather than mirroring it.
 //
@@ -47,8 +47,7 @@ public sealed class CSharpApiModelBuilder
 
     /// <param name="config">As above.</param>
     /// <param name="applicability">
-    /// What each documented generator emits for — the answers the run's own generators give when a
-    /// project owns a copy (see <see cref="GeneratorApplicability.From"/>).
+    /// What each documented generator emits for (see <see cref="GeneratorApplicability.Packaged"/>).
     /// </param>
     public CSharpApiModelBuilder(GenConfig config, GeneratorApplicability applicability)
     {

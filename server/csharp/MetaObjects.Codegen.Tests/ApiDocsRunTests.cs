@@ -3,8 +3,7 @@
 // A project can own the api reference like any other generator. These cover the engine around it:
 // a docs generator is not a code generator (`gen` skips it and says so), the docs run takes a
 // project's own copy in place of the packaged one, and what the reference documents is what the
-// run's generators emit for — an owned copy of `routes` that serves nothing is documented as
-// serving nothing.
+// PACKAGED generators emit for, whichever generators the run names.
 
 using MetaObjects.Codegen.Generators;
 using MetaObjects.Loader;
@@ -37,13 +36,6 @@ public sealed class ApiDocsRunTests : IDisposable
         public static bool AppliesTo(MetaObject entity, MetaRoot root) => false;
     }
 
-    /// <summary>An owned copy that dropped <c>AppliesTo</c>: nothing to read, so the packaged answer stands.</summary>
-    private sealed class OwnedRoutesWithoutAppliesTo : IGenerator
-    {
-        public string Name => GeneratorRegistry.Get("routes")!.Factory(new GeneratorBuildContext()).Name;
-        public IEnumerable<EmittedFile> Generate(GenContext ctx) => [];
-    }
-
     private sealed class OwnedDocs(string path, string content) : IDocsGenerator
     {
         public string Name => "api-docs";
@@ -65,45 +57,18 @@ public sealed class ApiDocsRunTests : IDisposable
     }
 
     [Fact]
-    public void What_the_reference_documents_follows_the_generators_the_run_names()
+    public void The_reference_documents_the_packaged_generators_whichever_generators_the_run_names()
     {
-        var packaged = CodegenCli.RunDocs(Load(), Path.Combine(_out, "packaged"), "Acme.Generated", Facts, []);
-        var owned = CodegenCli.RunDocs(Load(), Path.Combine(_out, "owned"), "Acme.Generated", Facts, [new OwnedRoutesThatServeNothing()]);
+        var packagedOut = Path.Combine(_out, "packaged");
+        var ownedOut = Path.Combine(_out, "owned");
+        var packaged = CodegenCli.RunDocs(Load(), packagedOut, "Acme.Generated", Facts, []);
+        var owned = CodegenCli.RunDocs(Load(), ownedOut, "Acme.Generated", Facts, [new OwnedRoutesThatServeNothing()]);
 
         Assert.True(packaged.Ok && owned.Ok);
-        Assert.Equal(packaged.WrittenPaths.Order(), owned.WrittenPaths.Order());
-        var rest = (string outDir) => Directory.GetFiles(outDir, "*.md", SearchOption.AllDirectories)
-            .Count(f => File.ReadAllText(f).Contains("GET /api/", StringComparison.Ordinal));
-        Assert.True(rest(Path.Combine(_out, "packaged")) > 0, "the packaged routes serve something, or this proves nothing");
-        Assert.Equal(0, rest(Path.Combine(_out, "owned")));
-    }
-
-    [Fact]
-    public void Applicability_answers_from_an_owned_copy_and_falls_back_to_the_packaged_generator()
-    {
-        var root = Load().Root;
-        var entity = root.Objects().First(o => GeneratorApplicability.Packaged.Routes(o, root));
-
-        Assert.True(GeneratorApplicability.From([]).Routes(entity, root));
-        Assert.False(GeneratorApplicability.From([new OwnedRoutesThatServeNothing()]).Routes(entity, root));
-        Assert.True(GeneratorApplicability.From([new OwnedRoutesWithoutAppliesTo()]).Routes(entity, root));
-        // One owned copy answers one question; every other stays the packaged one.
-        Assert.Equal(
-            GeneratorApplicability.Packaged.DbContext(entity, root),
-            GeneratorApplicability.From([new OwnedRoutesThatServeNothing()]).DbContext(entity, root));
-    }
-
-    [Fact]
-    public void Every_question_the_docs_generator_asks_has_a_generator_that_answers_it()
-    {
-        // The wiring table and the record cannot drift: each property is answered by one registered generator.
-        var properties = typeof(GeneratorApplicability).GetProperties()
-            .Where(p => typeof(Delegate).IsAssignableFrom(p.PropertyType))
-            .Select(p => p.Name)
-            .Order(StringComparer.Ordinal)
-            .ToList();
-        Assert.Equal(properties, GeneratorApplicability.Sources.Keys.Order(StringComparer.Ordinal));
-        Assert.All(GeneratorApplicability.Sources.Values, g => Assert.NotNull(GeneratorRegistry.Get(g)));
+        Assert.Equal(packaged.WrittenPaths, owned.WrittenPaths);
+        string Read(string outDir, string page) => File.ReadAllText(Path.Combine(outDir, page.Replace('/', Path.DirectorySeparatorChar)));
+        Assert.Contains(packaged.WrittenPaths, p => Read(packagedOut, p).Contains("GET /api/", StringComparison.Ordinal));
+        Assert.All(packaged.WrittenPaths, p => Assert.Equal(Read(packagedOut, p), Read(ownedOut, p)));
     }
 
     [Fact]

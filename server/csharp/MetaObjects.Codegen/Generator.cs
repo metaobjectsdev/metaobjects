@@ -271,8 +271,7 @@ public sealed class GenContext
 
     /// <summary>
     /// What the api-docs generator asks of the generators it documents (see
-    /// <see cref="GeneratorApplicability"/>). The packaged generators' answers unless the run
-    /// supplies the ones its own generator list gives.
+    /// <see cref="GeneratorApplicability"/>): the packaged generators' answers.
     /// </summary>
     public GeneratorApplicability Applicability { get; init; } = GeneratorApplicability.Packaged;
 

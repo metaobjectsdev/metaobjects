@@ -20,9 +20,16 @@
 //   - the scaffold (Codegen.csproj / Program.cs) is written ONLY when missing, and is
 //     NEVER touched again by a later eject, --force included: once it exists it is the
 //     adopter's owned config, exactly like metaobjects.config.ts on the TS side, and
-//     eject REPORTS what to wire rather than editing it.
+//     eject REPORTS what to wire rather than editing it;
+//   - the sources eject writes are the TOOL's version's, and an existing Codegen.csproj may pin
+//     an older MetaObjects.Codegen they do not compile against, so eject WARNS when the pin is
+//     older than the tool and names the line to change (it still never edits the file).
 
+using System.Numerics;
 using System.Reflection;
+using System.Text.RegularExpressions;
+using System.Xml;
+using System.Xml.Linq;
 using MetaObjects.Codegen;
 
 namespace MetaObjects.Cli;
@@ -82,6 +89,86 @@ public static class EjectCommand
             return plus < 0 ? informational : informational[..plus];
         }
         return assembly?.ToString(3) ?? "1.0.0";
+    }
+
+    private const string PinnedPackage = "MetaObjects.Codegen";
+
+    // semver.org's grammar for the versions NuGet publishes this package under: three numeric
+    // parts, an optional pre-release, optional build metadata (which never orders).
+    private static readonly Regex SemanticVersion = new(
+        @"^(?<major>[0-9]+)\.(?<minor>[0-9]+)\.(?<patch>[0-9]+)(?:-(?<pre>[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z.-]+)?$",
+        RegexOptions.Compiled);
+
+    /// <summary>
+    /// True when <paramref name="pinned"/> precedes <paramref name="required"/> as semantic
+    /// versions (semver.org §11, so a pre-release precedes its release: <c>1.1.0-rc.1</c> is
+    /// older than <c>1.1.0</c>). False when either is not a plain semantic version — an MSBuild
+    /// property, a range, a floating version — because nothing can be said about such a pin.
+    /// </summary>
+    public static bool IsOlderVersion(string pinned, string required)
+    {
+        var a = SemanticVersion.Match(pinned);
+        var b = SemanticVersion.Match(required);
+        if (!a.Success || !b.Success) return false;
+
+        foreach (var part in (string[])["major", "minor", "patch"])
+        {
+            var order = BigInteger.Parse(a.Groups[part].Value).CompareTo(BigInteger.Parse(b.Groups[part].Value));
+            if (order != 0) return order < 0;
+        }
+        var (preA, preB) = (a.Groups["pre"], b.Groups["pre"]);
+        if (!preA.Success || !preB.Success) return preA.Success && !preB.Success;
+
+        var (idsA, idsB) = (preA.Value.Split('.'), preB.Value.Split('.'));
+        for (var i = 0; i < Math.Min(idsA.Length, idsB.Length); i++)
+        {
+            var numericA = idsA[i].All(char.IsAsciiDigit);
+            var numericB = idsB[i].All(char.IsAsciiDigit);
+            var order = numericA && numericB
+                ? BigInteger.Parse(idsA[i]).CompareTo(BigInteger.Parse(idsB[i]))
+                : numericA != numericB ? (numericA ? -1 : 1) : string.CompareOrdinal(idsA[i], idsB[i]);
+            if (order != 0) return order < 0;
+        }
+        return idsA.Length < idsB.Length;
+    }
+
+    /// <summary>The version <paramref name="csprojPath"/> pins <c>MetaObjects.Codegen</c> to and the
+    /// 1-based line that carries it, or <c>null</c> when the file is not readable XML or has no such
+    /// PackageReference with a version.</summary>
+    private static (string Version, int Line)? PinnedCodegenVersion(string csprojPath)
+    {
+        XDocument doc;
+        try { doc = XDocument.Load(csprojPath, LoadOptions.SetLineInfo); }
+        catch (Exception e) when (e is XmlException or IOException or UnauthorizedAccessException) { return null; }
+
+        var reference = doc.Descendants().FirstOrDefault(e =>
+            e.Name.LocalName == "PackageReference" &&
+            string.Equals((string?)e.Attribute("Include"), PinnedPackage, StringComparison.OrdinalIgnoreCase));
+        XObject? version = reference?.Attribute("Version") as XObject
+            ?? reference?.Elements().FirstOrDefault(e => e.Name.LocalName == "Version");
+        return version switch
+        {
+            XAttribute a => (a.Value.Trim(), ((IXmlLineInfo)a).LineNumber),
+            XElement e => (e.Value.Trim(), ((IXmlLineInfo)e).LineNumber),
+            _ => null,
+        };
+    }
+
+    /// <summary>What eject says when the owned project pins a package older than the sources it was
+    /// just handed: empty when the pin is this tool's version or newer, or cannot be read.</summary>
+    private static IReadOnlyList<string> OlderPinWarning(string csprojPath)
+    {
+        var tool = ToolVersion();
+        if (PinnedCodegenVersion(csprojPath) is not { } pin || !IsOlderVersion(pin.Version, tool)) return [];
+        return
+        [
+            "",
+            $"warning: codegen/Codegen.csproj pins {PinnedPackage} {pin.Version}, older than the {tool} this " +
+            $"eject wrote its sources from. Those sources are written against the {tool} package API, so the " +
+            $"owned project will not compile until the pin is {tool} or later. Eject never edits that file: " +
+            $"change line {pin.Line} of codegen/Codegen.csproj to",
+            $"  <PackageReference Include=\"{PinnedPackage}\" Version=\"{tool}\" />",
+        ];
     }
 
     private static string ProgramCsContent(IEnumerable<string> classNames)
@@ -199,6 +286,7 @@ public static class EjectCommand
                 outLines.Add($"  new {ClassNameFor(known[name])}(),");
             outLines.Add("to the `generators` list there (and remove the packaged import if this " +
                           "replaces a generator you ran unejected before).");
+            if (File.Exists(csprojPath)) outLines.AddRange(OlderPinWarning(csprojPath));
         }
 
         return new Outcome(0, outLines, []);
