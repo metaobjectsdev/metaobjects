@@ -8,7 +8,6 @@ one too. A value object's emitted name comes from
 another object shares its short name)."""
 from __future__ import annotations
 
-import re
 
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -56,40 +55,12 @@ from metaobjects.codegen.value_objects import (
     object_ref_class_name,
 )
 
+from ..runtime.shared_predicates import has_literal_default, is_sql_expr_default
+
 
 def _is_int(value: object) -> bool:
     """A real int (bool is an int subclass, so `@maxLength: true` etc. must not count)."""
     return isinstance(value, int) and not isinstance(value, bool)
-
-
-# SQL expression defaults: anything matching is a SERVER-side default (the DB fills
-# it), NOT a Python literal default — so `@default: gen_random_uuid()` must not emit
-# `id: uuid.UUID = "gen_random_uuid()"`. Mirrors the TS column-mapper's
-# SQL_EXPR_PATTERNS (and migrate-ts EXPR_DEFAULT_PATTERNS) so every port agrees on
-# what counts as an expression.
-_SQL_EXPR_DEFAULT_PATTERNS = (
-    re.compile(r"^now$", re.I),
-    re.compile(r"^now\(\)$", re.I),
-    re.compile(r"^current_timestamp$", re.I),
-    re.compile(r"^current_date$", re.I),
-    re.compile(r"^current_time$", re.I),
-    re.compile(r"\(\)$"),  # anything function-like, e.g. gen_random_uuid()
-)
-
-
-def _is_sql_expr_default(value: object) -> bool:
-    """True iff *value* is a server-side SQL expression default (DB-filled), not a
-    Python literal. Only string defaults can be expressions."""
-    return isinstance(value, str) and any(p.search(value) for p in _SQL_EXPR_DEFAULT_PATTERNS)
-
-
-def has_literal_default(field: MetaField) -> bool:
-    """True iff the read model gives *field* a Python default: a ``@default`` that is not a
-    server-side SQL expression. Such a field is annotated ``T`` (not ``T | None``) with that
-    default, so code that builds the model without a value for it must OMIT the keyword
-    rather than pass ``None`` — the extractor's mapper relies on exactly this."""
-    default_raw = field.attrs().get(fc.FIELD_ATTR_DEFAULT)
-    return default_raw is not None and not _is_sql_expr_default(default_raw)
 
 
 # ADR-0036/0037 Wave 3 — the CANONICAL hostname matcher for @stringFormat: hostname.
@@ -456,7 +427,7 @@ def _create_field_line(
     type_expr, enum_type_name = _type_expr_for_field(field, imports, config, wire=True)
     required = field.attrs().get(fc.FIELD_ATTR_REQUIRED) is True
     default_raw = field.attrs().get(fc.FIELD_ATTR_DEFAULT)
-    literal_default = default_raw is not None and not _is_sql_expr_default(default_raw)
+    literal_default = default_raw is not None and not is_sql_expr_default(default_raw)
     auto_set = field.attrs().get(fc.FIELD_ATTR_AUTO_SET)
     is_auto_set = auto_set in (fc.AUTO_SET_ON_CREATE, fc.AUTO_SET_ON_UPDATE)
     # A field is required in the CREATE shape only when @required AND not server-filled:

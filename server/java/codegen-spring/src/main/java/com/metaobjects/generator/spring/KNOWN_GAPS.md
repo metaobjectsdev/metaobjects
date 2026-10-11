@@ -41,7 +41,7 @@ these once the partial-update story is settled cross-port.
 **Write-through interaction (FR-024 §7, #214).** A write-through entity
 read-view carries DERIVED (`origin.*`) fields on its read shape. The
 `<Entity>Patch` (update input) EXCLUDES all derived fields
-(`SpringDtoGenerator.minusPk` drops `field.isDerived()`), the read `<Entity>Dto`
+(`SpringGeneratorSupport.minusPk` drops `field.isDerived()`), the read `<Entity>Dto`
 carries them, and — because Java shares one `<Entity>Dto` for read AND create —
 a derived field on a write-through entity carries NO client-validation constraints
 (`validationAnnotations` early-returns for it, like an `@autoSet` field), so a `POST`-create
@@ -127,7 +127,7 @@ A `field.object` value-object column mapped to a jsonb column (single or
 `@isArray`) is now bound → validated → written on `PATCH` and `POST`, cross-port
 (TS / Python / Java / Kotlin / C#), gated by
 `fixtures/api-contract-conformance/jsonb/scenarios/jsonb-value-object-patch.yaml`
-in both lanes. `SpringDtoGenerator.settableFields` includes `ObjectField`; a new
+in both lanes. `SpringGeneratorSupport.settableFields` includes `ObjectField`; a new
 `SpringValueObjectGenerator` emits the VO records the DTO/Patch bind. Nested VO
 constraints validate in full (spec §0: `validateValue` does NOT cascade `@Valid`,
 so the controller adds an explicit `validator.validate(voElement)` per present

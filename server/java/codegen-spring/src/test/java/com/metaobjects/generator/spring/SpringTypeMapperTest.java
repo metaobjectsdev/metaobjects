@@ -161,7 +161,7 @@ public class SpringTypeMapperTest extends SharedRegistryTestBase {
         StringField f = new StringField("contactEmail");
         f.addMetaAttr(com.metaobjects.attr.StringAttribute.create(
             StringField.ATTR_STRING_FORMAT, StringField.STRING_FORMAT_EMAIL));
-        assertEquals("@Email", SpringDtoGenerator.validationAnnotations(f));
+        assertEquals("@Email", SpringGeneratorSupport.validationAnnotations(f));
     }
 
     @Test
@@ -170,7 +170,7 @@ public class SpringTypeMapperTest extends SharedRegistryTestBase {
         StringField f = new StringField("host");
         f.addMetaAttr(com.metaobjects.attr.StringAttribute.create(
             StringField.ATTR_STRING_FORMAT, StringField.STRING_FORMAT_HOSTNAME));
-        String ann = SpringDtoGenerator.validationAnnotations(f);
+        String ann = SpringGeneratorSupport.validationAnnotations(f);
         assertEquals(true, ann.startsWith("@Pattern(regexp = "));
         assertEquals(true, ann.contains("[A-Za-z0-9]"));
     }
@@ -182,7 +182,7 @@ public class SpringTypeMapperTest extends SharedRegistryTestBase {
         // DERIVED from isArray, never declared via @dbColumnType:text_array).
         StringField f = new StringField("tags");
         f.setArray(true);
-        assertEquals("java.util.List<String>", SpringDtoGenerator.componentType(f, null));
+        assertEquals("java.util.List<String>", SpringGeneratorSupport.componentType(f, null));
     }
 
     @Test
@@ -193,7 +193,7 @@ public class SpringTypeMapperTest extends SharedRegistryTestBase {
         // was unwired; this pins the cross-port List<UUID> shape.
         com.metaobjects.field.UuidField f = new com.metaobjects.field.UuidField("refs");
         f.setArray(true);
-        assertEquals("java.util.List<java.util.UUID>", SpringDtoGenerator.componentType(f, null));
+        assertEquals("java.util.List<java.util.UUID>", SpringGeneratorSupport.componentType(f, null));
     }
 
     // === field.map (open-keyed map) ==========================================
@@ -289,7 +289,7 @@ public class SpringTypeMapperTest extends SharedRegistryTestBase {
         // would silently produce List<Map<String,String>>, which no other port emits.
         com.metaobjects.field.MapField f = scalarMap("labels", StringField.SUBTYPE_STRING);
         f.setArray(true);
-        assertEquals("java.util.Map<String, String>", SpringDtoGenerator.componentType(f, null));
+        assertEquals("java.util.Map<String, String>", SpringGeneratorSupport.componentType(f, null));
     }
 
     @Test

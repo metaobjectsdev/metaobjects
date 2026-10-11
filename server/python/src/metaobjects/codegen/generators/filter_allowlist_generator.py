@@ -37,12 +37,13 @@ from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
 from metaobjects.codegen.generators.m2m_codegen import build_object_index
-from metaobjects.codegen.generators.router_generator import emits_router
 from metaobjects.codegen.generators.tph_plan import tph_plan_for
 from metaobjects.codegen.instance_artifacts import is_sourceless_entity
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
+
+from ..runtime.shared_predicates import emits_router
 
 
 # Operator sets — preserve insertion order (Python dict order == spec order).
@@ -260,7 +261,7 @@ class FilterAllowlistGenerator:
         """Render the filter allowlist module for ``entity`` (or ``None`` to skip).
 
         Returns ``None`` for exactly the objects that get no router — asked of
-        :func:`~metaobjects.codegen.generators.router_generator.emits_router`
+        :func:`~metaobjects.codegen.runtime.shared_predicates.emits_router`
         rather than re-derived here, because the generated router IMPORTS this
         module and a disagreement is an ImportError at app startup, not a
         cosmetic mismatch.
@@ -268,7 +269,7 @@ class FilterAllowlistGenerator:
         ``object_index`` (optional) lets a TPH discriminator base fold in its
         subtypes' filterable fields (see :meth:`_compute_filterable_ops`).
         """
-        # ONE predicate, shared with the router generator (see its `emits_router`).
+        # ONE predicate, shared with the router generator (see `shared_predicates.emits_router`).
         # This gate previously carried its own copy of the rule, and the copy is
         # what broke twice: once for a view-source-first write-through entity, and
         # again at F22 when the router learned to serve view-only projections and

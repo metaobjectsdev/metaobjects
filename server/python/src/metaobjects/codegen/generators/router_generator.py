@@ -55,7 +55,7 @@ from metaobjects.codegen.generators.m2m_codegen import (
     resolve_m2m_descriptors,
 )
 from metaobjects.codegen.generators.tph_plan import TphPlan, is_tph_subtype, tph_plan_for
-from metaobjects.codegen.instance_artifacts import emits_instance_artifacts, has_item_route
+from metaobjects.codegen.instance_artifacts import has_item_route
 from metaobjects.source_resolution import primary_rdb_source
 from metaobjects.codegen.type_map import PyType, py_type_for
 from metaobjects.meta.core.field import field_constants as fc
@@ -75,13 +75,13 @@ from metaobjects.meta.core.relationship.relationship_references import (
     reference_target_entity,
 )
 from metaobjects.meta.persistence.source.source_constants import (
-    SOURCE_KIND_MATERIALIZED_VIEW,
     SOURCE_KIND_TABLE,
-    SOURCE_KIND_VIEW,
 )
 from metaobjects.naming import DEFAULT_COLUMN_NAMING
 from metaobjects.shared.base_types import TYPE_IDENTITY
 from metaobjects.shared.separators import PACKAGE_SEP
+
+from ..runtime.shared_predicates import READ_ONLY_ROUTED_KINDS, emits_router
 
 #: Where the emitted router imports its helper runtime (``filter_parser``,
 #: ``constraint_errors``) from. ``False`` — the packaged generator — imports the copy
@@ -412,39 +412,6 @@ def reverse_fks_for(entity: MetaObject) -> list[ReverseFk]:
     return out
 
 
-# F22 — the read-only source kinds that still get a REST surface. A view (and a
-# materialized view) is a collection of rows addressable by the identity the
-# projection inherits, which is exactly the shape a collection-and-item REST
-# resource needs. `storedProc` / `tableFunction` are invocations, not collections:
-# they have no such shape and stay skipped, as they are for the writable router.
-_READ_ONLY_ROUTED_KINDS = frozenset({SOURCE_KIND_VIEW, SOURCE_KIND_MATERIALIZED_VIEW})
-
-
-def emits_router(entity: MetaObject) -> bool:
-    """Whether this object gets a generated router — writable CRUD or read-only.
-
-    THE single source of truth for the router emit set, exported so
-    ``filter_allowlist_generator`` can gate on the same answer instead of a
-    second copy of the rule. The generated router does ``from
-    .<snake>_filter_allowlist import ...``, so an allowlist emitted for a
-    different set than the routers is not a cosmetic mismatch — the module is
-    missing at import and the app fails to start. That failure mode is already
-    recorded in this codebase for the write-through case; keeping two copies of
-    the predicate is what let it happen, so there is now one.
-    """
-    if not emits_instance_artifacts(entity):
-        return False
-    src = primary_rdb_source(entity)
-    if src is None:
-        return False
-    kind = src.effective_kind()
-    return (
-        entity.is_write_through()
-        or kind == SOURCE_KIND_TABLE
-        or kind in _READ_ONLY_ROUTED_KINDS
-    )
-
-
 def is_read_only_routed(entity: MetaObject) -> bool:
     """Whether :meth:`RouterGenerator.render_router` chooses the READ-ONLY router for
     this object (a view / materialized-view source that is not write-through): GET list,
@@ -455,7 +422,7 @@ def is_read_only_routed(entity: MetaObject) -> bool:
     if not emits_router(entity) or entity.is_write_through():
         return False
     src = primary_rdb_source(entity)
-    return src is not None and src.effective_kind() in _READ_ONLY_ROUTED_KINDS
+    return src is not None and src.effective_kind() in READ_ONLY_ROUTED_KINDS
 
 
 def _sort_type_and_tables_lines(sort_field_nodes: list[MetaField]) -> list[str]:
@@ -1251,7 +1218,7 @@ class RouterGenerator:
         the descriptor itself never gives two different answers for one column
         within one run.
         """
-        if not emits_instance_artifacts(entity):
+        if not emits_router(entity):
             return None
         # FR-017 TPH: a concrete subtype is folded into its base's single table — it
         # emits no standalone router (its CRUD lives under the base's per-subtype segment).

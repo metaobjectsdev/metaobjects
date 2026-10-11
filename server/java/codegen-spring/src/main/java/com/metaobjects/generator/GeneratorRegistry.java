@@ -249,6 +249,20 @@ public final class GeneratorRegistry {
      *  <SimpleName>.java} per class, for {@code mvn metaobjects:eject} to copy. */
     public static final String EJECT_RUNTIME_RESOURCE_ROOT = EJECT_RESOURCE_ROOT + "runtime/";
 
+    /** Simple names of the support classes the Java generators share: emit rules more than
+     *  one generator applies (which fields a DTO carries, validation annotations, M:N finder
+     *  naming). {@code mvn metaobjects:eject} copies one beside every ejected generator whose
+     *  source imports it, so the adopter owns those rules with the generator. */
+    public static final List<String> EJECT_SUPPORT = List.of("SpringGeneratorSupport");
+
+    /** The package the packaged support classes live in, and the one an ejectable generator
+     *  imports them from. */
+    public static final String SUPPORT_PACKAGE = "com.metaobjects.generator.spring";
+
+    /** Classpath root the support sources are shipped under, one {@code <SimpleName>.java}
+     *  per class, for {@code mvn metaobjects:eject} to copy. */
+    public static final String EJECT_SUPPORT_RESOURCE_ROOT = EJECT_RESOURCE_ROOT + "support/";
+
     private GeneratorRegistry() {
     }
 

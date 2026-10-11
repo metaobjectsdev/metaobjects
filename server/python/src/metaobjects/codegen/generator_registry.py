@@ -137,12 +137,14 @@ class GeneratorEntry:
     #: symbol the copy is wired by. ``None`` = not ejectable (the ``template`` primitive
     #: has no emit logic of its own to own).
     source: Callable[..., Generator] | None = None
-    #: Helper runtime modules (under ``metaobjects.codegen.runtime``) the generator's
-    #: OUTPUT imports. ``metaobjects eject`` copies their source into the adopter's
-    #: ``codegen/runtime/`` beside the owned generator, and the owned copy's output imports
-    #: that copy instead of the installed package (ADR-0034 Amendment 3: the adopter owns
-    #: every helper line its generated code depends on). Core modules — loader, registry,
-    #: render, extract, ``ObjectManager`` — are never listed here: they stay package imports.
+    #: Helper modules (under ``metaobjects.codegen.runtime``) handed over with the
+    #: generator: the runtime its OUTPUT imports, and the emit rules the generator ITSELF
+    #: imports from its ``runtime`` sibling (``shared_predicates``). ``metaobjects eject``
+    #: copies their source into the adopter's ``codegen/runtime/`` beside the owned
+    #: generator, which then reads that copy instead of the installed package (ADR-0034
+    #: Amendment 3: the adopter owns every helper line the generator and its generated code
+    #: depend on). Core modules — loader, registry, render, extract, ``ObjectManager`` — are
+    #: never listed here: they stay package imports.
     runtime: tuple[str, ...] = ()
 
     @property
@@ -189,6 +191,10 @@ def _render_helper_default(ctx: GeneratorBuildContext) -> Generator:
         template_root=ctx.template_root or tempfile.gettempdir())
 
 
+#: The emit rules several generators share, handed over with each of them so owned copies
+#: agree with each other (see ``runtime/shared_predicates.py``).
+_SHARED_PREDICATES: tuple[str, ...] = ("shared_predicates",)
+
 #: Stable name -> GeneratorEntry. The 11 native generators whose manifest `ports`
 #: include `python` (ADR-0021 D3). Set equality, tier AND layer are conformance-tested
 #: against the manifest.
@@ -205,6 +211,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         layer="model",
         factory=lambda _ctx: entity_model(),
         source=entity_model,
+        runtime=_SHARED_PREDICATES,
     ),
     "routes": GeneratorEntry(
         name="routes",
@@ -217,7 +224,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         # generated package fails at import (ModuleNotFoundError).
         requires=("entity", "filter-allowlist"),
         source=router_generator,
-        runtime=_ROUTER_RUNTIME,
+        runtime=_ROUTER_RUNTIME + _SHARED_PREDICATES,
     ),
     "output-parser": GeneratorEntry(
         name="output-parser",
@@ -253,6 +260,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         factory=lambda _ctx: extractor_generator(),
         requires=("entity",),
         source=extractor_generator,
+        runtime=_SHARED_PREDICATES,
     ),
     "requirement-tests": GeneratorEntry(
         name="requirement-tests",
@@ -276,6 +284,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         layer="api",
         factory=lambda _ctx: filter_allowlist_generator(),
         source=filter_allowlist_generator,
+        runtime=_SHARED_PREDICATES,
     ),
     "names": GeneratorEntry(
         name="names",

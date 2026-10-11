@@ -58,7 +58,7 @@ public final class SpringTypeMapper {
      * <p>The returned string is the ELEMENT type, inserted verbatim into the
      * generated record component declaration. Array-ness ({@code isArray=true})
      * wrapping in {@code java.util.List<ElementType>} is the CALLER's concern —
-     * {@code SpringDtoGenerator.componentType} (DTO and value-object records)
+     * {@code SpringGeneratorSupport.componentType} (DTO and value-object records)
      * does it;
      * a Java record accepts a {@code List<String>} component fine (the
      * earlier varargs rationale here was wrong).</p>
@@ -132,7 +132,7 @@ public final class SpringTypeMapper {
         // — via componentType wrapping — List<<VO>> (isArray). Fully-qualified so the
         // consuming DTO / <Entity>Patch / VO record needs no import. Only reached for the
         // VO-ref fields the DTO/patch paths select via
-        // SpringDtoGenerator.isValueObjectJsonbField; a non-VO ObjectField never lands here.
+        // SpringGeneratorSupport.isValueObjectJsonbField; a non-VO ObjectField never lands here.
         if (field instanceof ObjectField of && of.hasMetaAttr(ObjectField.ATTR_OBJECTREF)) {
             MetaObject ref = of.getObjectRef();
             if (ref != null) return fqJavaTypeName(ref);
@@ -151,6 +151,27 @@ public final class SpringTypeMapper {
         throw new IllegalArgumentException(
             "unsupported Spring DTO type mapping for "
                 + field.getClass().getSimpleName() + " '" + field.getName() + "'");
+    }
+
+    /**
+     * The {@code object.value} a {@code field.map @objectRef} maps its values to, else
+     * {@code null} (a scalar-valued {@code @valueType} map, a non-map field, or a
+     * {@code @objectRef} that does not resolve to an {@code object.value}).
+     *
+     * <p>A type-mapping fact, so it lives here and stays packaged: it decides the map's Java
+     * value type below, and the generators' {@code @Valid} cascade and value-object
+     * reachability walk ask the same question through it.</p>
+     */
+    public static MetaObject mapValueObjectRefOf(MetaField<?> field) {
+        if (!(field instanceof MapField mf)) return null;
+        if (!mf.hasMetaAttr(MapField.ATTR_OBJECTREF)) return null;
+        MetaObject ref;
+        try {
+            ref = mf.getObjectRef();
+        } catch (RuntimeException unresolved) {
+            return null;
+        }
+        return (ref != null && MetaObject.SUBTYPE_VALUE.equals(ref.getSubType())) ? ref : null;
     }
 
     /**
@@ -181,7 +202,7 @@ public final class SpringTypeMapper {
         // mapValueObjectRefOf requires object.value, so an @objectRef naming an ENTITY typed the
         // component as that entity while nothing ever emitted a record for it.
         if (field.hasMetaAttr(MapField.ATTR_OBJECTREF)) {
-            MetaObject ref = SpringDtoGenerator.mapValueObjectRefOf(field);
+            MetaObject ref = mapValueObjectRefOf(field);
             return ref == null ? null : fqJavaTypeName(ref);
         }
         // ADR-0039: @valueType is an EFFECTIVE property — getMetaAttr's one-arg RESOLVING form,

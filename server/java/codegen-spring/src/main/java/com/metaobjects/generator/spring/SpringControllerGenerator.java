@@ -5,6 +5,7 @@ package com.metaobjects.generator.spring;
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
 import com.metaobjects.generator.spring.AutoSetSupport;
+import com.metaobjects.generator.spring.SpringGeneratorSupport;
 import com.metaobjects.generator.spring.SpringM2mSupport;
 import com.metaobjects.generator.spring.SpringNaming;
 import com.metaobjects.generator.spring.SpringTypeMapper;
@@ -168,7 +169,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * {@link RestSurfaceGate#isReadOnly(MetaObject)} which of the two shapes is emitted.
      *
      * <p>The predicate itself lives in {@link RestSurfaceGate} and is SHARED with
-     * {@link SpringRepositoryGenerator#appliesTo(MetaObject)} and
+     * {@link SpringGeneratorSupport#repositoryAppliesTo(MetaObject)} and
      * {@link SpringFilterAllowlistGenerator#appliesTo(MetaObject)} — not merely equal to
      * them. The controller NAMES the repository and the allowlist, so a gate widened in
      * one copy and not the others emits a controller importing types nothing generated,
@@ -304,7 +305,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // @required, and the only "workaround" was a client-invented primary key.
         //
         // The TPH create path has always applied this rule, through
-        // SpringDtoGenerator.settableFields ("the PK is auto-generated and the discriminator is
+        // SpringGeneratorSupport.settableFields ("the PK is auto-generated and the discriminator is
         // injected from the URL, so neither is validated from the body") — which is why a TPH
         // entity POSTed fine while a vanilla one did not. This is the vanilla path adopting the
         // same rule, so the two write surfaces finally agree.
@@ -327,7 +328,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // persisting (the caller's value is ignored; a fresh row's updated_at equals its created_at).
         // The stamp is a static helper on the DTO record; entities with no @autoSet field call
         // repository.create(dto) verbatim (byte-identical to the pre-#203 handler).
-        String createArg = AutoSetSupport.hasAutoSetFields(entity)
+        String createArg = SpringGeneratorSupport.hasAutoSetFields(entity)
             ? dtoName + ".stampForInsert(dto)" : "dto";
         src.append("        try {\n");
         src.append("            ").append(dtoName).append(" saved = repository.create(").append(createArg).append(");\n");
@@ -376,7 +377,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // update (the model value is ignored; the server owns the timestamp), injected AFTER the
         // caller's present values are validated and BEFORE delegating so a PATCH that omits the
         // timestamp still bumps it. onCreate columns are never touched here (created_at is immutable).
-        if (AutoSetSupport.hasOnUpdateFields(entity)) {
+        if (SpringGeneratorSupport.hasOnUpdateFields(entity)) {
             src.append("        patch.stampAutoSetOnUpdate();\n");
         }
         src.append("        try {\n");
@@ -404,12 +405,12 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // relationship name. Related-row order is not contractual. The repository finder
         // traverses the junction (hetero / directed self-join / symmetric union-on-read).
         for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(entity, loader)) {
-            String finder = SpringRepositoryGenerator.m2mFinderName(nav.relationName());
+            String finder = SpringGeneratorSupport.m2mFinderName(nav.relationName());
             src.append("    @GetMapping(\"/{id}/").append(nav.relationName()).append("\")\n");
             src.append("    public ResponseEntity<List<").append(nav.targetDtoType()).append(">> ")
                .append(finder).append("(@PathVariable ").append(pkType).append(" id) {\n");
             src.append("        return ResponseEntity.ok(repository.").append(finder)
-               .append("(id").append(SpringRepositoryGenerator.targetSubtypeCallArg(nav)).append("));\n");
+               .append("(id").append(SpringGeneratorSupport.targetSubtypeCallArg(nav)).append("));\n");
             src.append("    }\n\n");
         }
 
@@ -437,7 +438,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * entity with no value-object columns, keeping non-VO controllers byte-identical.
      */
     private static void appendValueObjectValidation(StringBuilder src, MetaObject entity) {
-        for (ObjectField vf : SpringDtoGenerator.valueObjectJsonbFields(entity)) {
+        for (ObjectField vf : SpringGeneratorSupport.valueObjectJsonbFields(entity)) {
             String name = vf.getName();
             // has<Cap>() needs no escape — capitalisation already clears the collision — but
             // the value accessor does.
@@ -458,7 +459,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // with validateValue, which does NOT cascade — so without this the two write paths
         // disagree for maps where they agree for field.object, and a PATCH could write a
         // nested value object POST rejects. The map's VALUES are the beans (keys are strings).
-        for (MetaField vf : SpringDtoGenerator.valueObjectMapFields(entity)) {
+        for (MetaField vf : SpringGeneratorSupport.valueObjectMapFields(entity)) {
             String name = vf.getName();
             String accessor = SpringNaming.recordComponentName(name);
             appendElementValidationLoop(
@@ -937,12 +938,12 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // the per-subtype loop — the overlap is deliberate (FR-017 design): a subtype
         // resource carries the same sub-resources as any other resource.
         for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(base, loader)) {
-            String finder = SpringRepositoryGenerator.m2mFinderName(nav.relationName());
+            String finder = SpringGeneratorSupport.m2mFinderName(nav.relationName());
             src.append("    @GetMapping(\"/{id}/").append(nav.relationName()).append("\")\n");
             src.append("    public ResponseEntity<List<").append(nav.targetDtoType()).append(">> ")
                .append(finder).append("(@PathVariable ").append(pkType).append(" id) {\n");
             src.append("        return ResponseEntity.ok(repository.").append(finder)
-               .append("(id").append(SpringRepositoryGenerator.targetSubtypeCallArg(nav)).append("));\n");
+               .append("(id").append(SpringGeneratorSupport.targetSubtypeCallArg(nav)).append("));\n");
             src.append("    }\n\n");
         }
 
@@ -1004,7 +1005,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             // validateValue applies @NotNull to a null value, so an absent @required column 400s too —
             // matching the vanilla create's whole-bean validate, scoped to this subtype.
             List<MetaField> createValidated =
-                SpringDtoGenerator.settableFields(st.entity(), TphPlan.discriminatorFieldOf(st.entity()));
+                SpringGeneratorSupport.settableFields(st.entity(), TphPlan.discriminatorFieldOf(st.entity()));
             src.append("    @PostMapping(\"/").append(seg).append("\")\n");
             src.append("    public ResponseEntity<?> create").append(suffix)
                .append("(@RequestBody ").append(dtoName).append(" dto) {\n");
@@ -1024,7 +1025,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             // so before this loop its VALUES — which are the beans — were written unvalidated.
             // The vanilla create cascades via @Valid on the DTO component; this is the TPH
             // path's equivalent, so the two write surfaces agree.
-            for (MetaField vf : SpringDtoGenerator.valueObjectMapFields(st.entity())) {
+            for (MetaField vf : SpringGeneratorSupport.valueObjectMapFields(st.entity())) {
                 appendMapValueValidationLoop(
                     src, "dto." + SpringNaming.recordComponentName(vf.getName()) + "()");
             }
@@ -1037,14 +1038,14 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             //
             // Review fix (Task 3): gate on `base`, NOT `st.entity()`. The helper this emits
             // (<Base>Dto.stampForInsert) is only ever generated by
-            // SpringDtoGenerator.emitTphUnion when AutoSetSupport.hasAutoSetFields(base) is true
+            // SpringDtoGenerator.emitTphUnion when SpringGeneratorSupport.hasAutoSetFields(base) is true
             // (@autoSet columns live on the base, shared by every subtype row in the single
             // table) — gating this call on the subtype's own resolving field set instead let a
             // subtype-declared @autoSet column fire `true` here while the helper it calls was
             // never emitted, producing a non-compiling controller. A TPH subtype declaring its
             // OWN @autoSet column is a documented non-goal (uniform with the Kotlin and Python
             // ports, both base-scoped): the column is simply never stamped, not a compile break.
-            String createArg = AutoSetSupport.hasAutoSetFields(base)
+            String createArg = SpringGeneratorSupport.hasAutoSetFields(base)
                 ? dtoName + ".stampForInsert(dto)" : "dto";
             src.append("        try {\n");
             src.append("            ").append(dtoName).append(" saved = repository.createWithType(\"").append(disc)
@@ -1080,7 +1081,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             // bean, so a PRESENT field.map @objectRef had its values written unvalidated. The
             // <Sub>Patch carries the hasX()/x() tristate, so this is the same loop the vanilla
             // PATCH runs — skipping absent keys, and skipping an explicit null (which clears).
-            for (MetaField vf : SpringDtoGenerator.valueObjectMapFields(st.entity())) {
+            for (MetaField vf : SpringGeneratorSupport.valueObjectMapFields(st.entity())) {
                 String mvc = SpringNaming.recordComponentName(vf.getName());
                 appendElementValidationLoop(
                     src, mvc, SpringNaming.capitalize(vf.getName()),
@@ -1094,7 +1095,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             // Review fix (Task 3): gate on `base`, matching the create-arg gate above, for the
             // same reason — a subtype-own @autoSet column is a documented non-goal, never
             // stamped, uniform across ports.
-            if (AutoSetSupport.hasOnUpdateFields(base)) {
+            if (SpringGeneratorSupport.hasOnUpdateFields(base)) {
                 src.append("        patch.stampAutoSetOnUpdate();\n");
             }
             src.append("        try {\n");
@@ -1129,7 +1130,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             // implemented identically to findTags) compiles, type-checks, and silently 200s a
             // sibling's rows — nothing else in the pipeline catches that.
             for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(st.entity(), loader)) {
-                String subFinder = SpringRepositoryGenerator.m2mFinderNameForSubtype(nav.relationName(), disc);
+                String subFinder = SpringGeneratorSupport.m2mFinderNameForSubtype(nav.relationName(), disc);
                 src.append("    @GetMapping(\"/").append(seg).append("/{id}/").append(nav.relationName()).append("\")\n");
                 src.append("    public ResponseEntity<List<").append(nav.targetDtoType()).append(">> ")
                    .append(subFinder).append("(@PathVariable ").append(pkType).append(" id) {\n");
@@ -1137,7 +1138,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
                 src.append("            return ResponseEntity.ok(List.of());\n");
                 src.append("        }\n");
                 src.append("        return ResponseEntity.ok(repository.").append(subFinder)
-                   .append("(id").append(SpringRepositoryGenerator.targetSubtypeCallArg(nav)).append("));\n");
+                   .append("(id").append(SpringGeneratorSupport.targetSubtypeCallArg(nav)).append("));\n");
                 src.append("    }\n\n");
             }
         }
@@ -1248,7 +1249,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * The DTO record components a CALLER never supplies on create, because the server owns them:
      * the primary-key field(s) and every {@code @autoSet} column.
      *
-     * <p>This is the same concept {@link SpringDtoGenerator#settableFields(MetaObject, String)}
+     * <p>This is the same concept {@link SpringGeneratorSupport#settableFields(MetaObject, String)}
      * already excludes for the TPH create path and the {@code <Entity>Patch} — stated here as the
      * COMPLEMENT (what to ignore) rather than the settable set, because the vanilla create
      * validates the whole DTO for its {@code @Valid} cascade and filters the result.</p>
@@ -1264,7 +1265,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             .orElse(List.of());
 
         List<String> out = new ArrayList<>();
-        for (MetaField f : SpringDtoGenerator.scalarFields(entity)) {
+        for (MetaField f : SpringGeneratorSupport.scalarFields(entity)) {
             if (pkFields.contains(f.getName()) || AutoSetSupport.isAutoSet(f)) {
                 String component = SpringNaming.recordComponentName(f.getName());
                 if (!out.contains(component)) out.add(component);

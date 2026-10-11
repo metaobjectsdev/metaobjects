@@ -766,7 +766,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
          * Canonical DNS-hostname matcher for `@stringFormat: hostname` (ADR-0036/0037 Wave 3).
          * Codegen-owned (NOT author `validator.regex`) — one or more dot-separated labels, each
          * 1–63 chars of alphanumerics/hyphens not starting/ending with a hyphen. Byte-identical
-         * to the Spring port's `SpringDtoGenerator.HOSTNAME_REGEX`.
+         * to the Spring port's `SpringGeneratorSupport.HOSTNAME_REGEX`.
          */
         const val HOSTNAME_REGEX =
             "^(?=.{1,253}\$)([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*\$"

@@ -142,16 +142,16 @@ public class SpringAppliesToTest {
         MetaObject abstractEntity = loader.getMetaObjectByName("acme::shop::AbstractEntity");
         MetaObject address = loader.getMetaObjectByName("acme::shop::Address");
 
-        assertTrue("table entity emits a repository", SpringRepositoryGenerator.appliesTo(author));
+        assertTrue("table entity emits a repository", SpringGeneratorSupport.repositoryAppliesTo(author));
         // F22: INVERTED, and the SHAPE of the repository inverted with it. A view-kind
         // projection has a list route, so it has a consumer seam — a READ-ONLY one
         // (list/count/findById, nothing that writes). It used to emit nothing, which is
         // why a projection got no REST surface in Java at all.
         assertTrue("view-kind projection emits a read-only repository",
-            SpringRepositoryGenerator.appliesTo(report));
-        assertFalse("abstract entity emits nothing", SpringRepositoryGenerator.appliesTo(abstractEntity));
+            SpringGeneratorSupport.repositoryAppliesTo(report));
+        assertFalse("abstract entity emits nothing", SpringGeneratorSupport.repositoryAppliesTo(abstractEntity));
         assertFalse("value object is neither an entity nor a projection",
-            SpringRepositoryGenerator.appliesTo(address));
+            SpringGeneratorSupport.repositoryAppliesTo(address));
     }
 
     @Test

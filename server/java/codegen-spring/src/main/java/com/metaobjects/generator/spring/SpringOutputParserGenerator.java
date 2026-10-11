@@ -485,7 +485,7 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
      * needed; the caller reads straight through {@code ExtractMap.asString}).
      *
      * <p>For an ARRAY field this answers for the ELEMENT: {@code javaTypeName} returns the
-     * element type and {@link SpringDtoGenerator#componentType} does the {@code List<...>} wrap.</p>
+     * element type and {@link SpringGeneratorSupport#componentType} does the {@code List<...>} wrap.</p>
      */
     private static String coercerFor(MetaField<?> field) {
         if (field instanceof EnumField) return COERCE_STRING;              // string-backed wire form

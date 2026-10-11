@@ -159,7 +159,7 @@ public class SpringM2mCodegenTest extends SharedRegistryTestBase {
 
     @Test
     public void m2mFinderNameCapitalizesRelation() {
-        assertEquals("findTags", SpringRepositoryGenerator.m2mFinderName("tags"));
-        assertEquals("findFollowing", SpringRepositoryGenerator.m2mFinderName("following"));
+        assertEquals("findTags", SpringGeneratorSupport.m2mFinderName("tags"));
+        assertEquals("findFollowing", SpringGeneratorSupport.m2mFinderName("following"));
     }
 }

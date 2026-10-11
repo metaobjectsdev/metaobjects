@@ -299,7 +299,7 @@ public class SpringControllerGeneratorTest extends SharedRegistryTestBase {
      * was a client-supplied primary key, which defeats the declared strategy (FINDINGS F25).</p>
      *
      * <p>The TPH create path already applied this rule via
-     * {@code SpringDtoGenerator.settableFields}; this pins the vanilla path to the same answer.</p>
+     * {@code SpringGeneratorSupport.settableFields}; this pins the vanilla path to the same answer.</p>
      */
     @Test
     public void createDoesNotValidateServerOwnedColumnsOutOfTheBody() throws Exception {

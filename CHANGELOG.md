@@ -53,13 +53,19 @@ number. The first landed on 1.0.x: 439 lines of handler code retired. The second
 and it is a SQL reduction only: in an adopter, hand-written SQL went from 75 lines to 15 (-80%).
 Total hand-written lines did not fall, so do not read it as a total line reduction.
 
-**Three diffs to expect when you upgrade.**
+**Four diffs to expect when you upgrade.**
 
 - **An ejected generator needs a resync (G11).** An owned copy keeps the gate and the options it
   was copied with, so it does not receive the new report behaviour until you resync it. The
   entries under **Added** and **Fixed** name the command for each affected generator (`meta eject
   hooks --force`, `meta eject routes --force`, `meta eject routes-hono --force`). A generator you
   never ejected needs nothing.
+- **An ejected Java Spring generator needs a re-eject.** A copy of `routes`, `dto`, `repository`
+  or `value-object` made before 1.1.0 calls static helpers on the packaged `SpringDtoGenerator` and
+  `SpringRepositoryGenerator`, which moved to `SpringGeneratorSupport`, so it stops compiling
+  after the upgrade. Run `mvn metaobjects:eject -Dnames=<generator> -Dforce=true` for each one you
+  own (the copy of `SpringGeneratorSupport` it writes beside them is yours too), and merge your
+  own edits back from `git diff`. A generator you never ejected needs nothing.
 - **A keyless projection regenerates differently (G12).** `meta gen` rewrites the read-only
   surface of a keyless projection (no `/:id` route, no by-id function, and no write verbs in the
   API docs), and `meta verify --docs` reports the affected pages as stale until they are
@@ -847,6 +853,37 @@ until you regenerate.
   another field, or, in Java only, a value-object field that reaches a shared or `@provided`
   enum or a redeclaration under a shared enum.
 
+- **`mvn metaobjects:eject` of Java `routes`, `dto` or `value-object` on its own now writes a copy that
+  compiles, and eject hands over the emit rules the generators share.** Found on a 1.1.0 release
+  candidate, before any 1.1.0 artifact was published. The copies called static helpers on the packaged
+  `SpringDtoGenerator` and `SpringRepositoryGenerator` with no import, and eject rewrote only the package
+  line, so the documented `mvn metaobjects:eject -Dnames=routes,names -Dport=java` failed with 12 errors
+  for `routes` and 3 each for `dto` and `value-object`. Only ejecting the whole web tier together
+  compiled, because the siblings then shared a package. The shared rules (field selection, value-object
+  column predicates, component types, validation annotations, M:N finder naming) now sit in one class,
+  `SpringGeneratorSupport`, and eject copies it: ejecting `routes`, `dto`, `repository` or `value-object`
+  writes one `SpringGeneratorSupport.java` beside the owned generators, in their package, and points
+  each owned generator's import at it. An owned generator therefore never calls a packaged `dto` or the
+  packaged rules, and you can change a rule in code you own. That includes the paths through the engine
+  classes a copy still imports: the selection of DTO fields stamped for `@autoSet` now lives with the
+  rules (`SpringGeneratorSupport.stampFields`, `onUpdateFields`, `hasAutoSetFields`,
+  `hasOnUpdateFields`), and `mapValueObjectRefOf`, a type-mapping fact, moved to `SpringTypeMapper`, so
+  no packaged class an owned generator reaches refers to the packaged rules. The copy is left alone without `-Dforce`,
+  `-Dlist` marks it `identical` or `DIFFERS`, and `mvn metaobjects:verify` does not report it as stale
+  output. Generated output is unchanged. A test now ejects each registered Java generator alone through
+  the real goal and compiles what it wrote with the packaged `SpringGeneratorSupport` hidden from the
+  compiler, and another reads the compiled classes to prove no packaged class an owned generator reaches
+  refers to it; Kotlin already compiled alone and no Kotlin generator can reach that class. The Python port
+  had the same shape in two places: `filter-allowlist` imported `emits_router` from the router generator
+  and `extractor` imported `has_literal_default` from the entity generator, so an owned copy of either
+  was not seen by the other. Both predicates moved to `metaobjects/codegen/runtime/shared_predicates.py`,
+  and `metaobjects eject` of `routes`, `filter-allowlist`, `entity` or `extractor` copies it to
+  `codegen/runtime/shared_predicates.py`, which the owned generators read instead of the installed
+  module. Not in this fix: `template` stays package-only by decision. If you called `SpringDtoGenerator.<helper>` or
+  `SpringRepositoryGenerator.appliesTo` from your own code, call `SpringGeneratorSupport.<helper>`
+  (`repositoryAppliesTo`) instead. The four `AutoSetSupport` selectors of 1.0.x (`stampFields`,
+  `onUpdateFields`, `hasAutoSetFields`, `hasOnUpdateFields`) are still there, marked `@Deprecated`,
+  so code that calls them still compiles; the same four are on `SpringGeneratorSupport`.
 - **`meta verify --db` no longer reports a matching view as drift, and says what differs when a
   view does not.** An adopter on 1.1.0-rc.2 rebuilt a SQLite database from the committed chain:
   every report and projection view's stored SQL was byte-identical to the metadata's, yet

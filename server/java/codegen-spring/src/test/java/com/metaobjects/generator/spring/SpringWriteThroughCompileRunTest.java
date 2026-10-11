@@ -122,7 +122,7 @@ public class SpringWriteThroughCompileRunTest extends SharedRegistryTestBase {
 
         // --- write-through IS writable → every write surface emits (unlike a projection) ---
         assertTrue("read DTO applies", SpringDtoGenerator.appliesTo(order));
-        assertTrue("write-through has a repository", SpringRepositoryGenerator.appliesTo(order));
+        assertTrue("write-through has a repository", SpringGeneratorSupport.repositoryAppliesTo(order));
         assertTrue("write-through has a controller", SpringControllerGenerator.appliesTo(order));
         assertTrue("write-through has a filter allowlist", SpringFilterAllowlistGenerator.appliesTo(order));
 
@@ -240,7 +240,7 @@ public class SpringWriteThroughCompileRunTest extends SharedRegistryTestBase {
         assertTrue("view-first Order is still write-through", order.isWriteThrough());
         // The pre-#214 gate keyed on the FIRST source (the view) and wrongly skipped these.
         assertTrue("view-first write-through still gets a repository",
-                SpringRepositoryGenerator.appliesTo(order));
+                SpringGeneratorSupport.repositoryAppliesTo(order));
         assertTrue("view-first write-through still gets a controller",
                 SpringControllerGenerator.appliesTo(order));
         assertTrue("view-first write-through still gets a filter allowlist",

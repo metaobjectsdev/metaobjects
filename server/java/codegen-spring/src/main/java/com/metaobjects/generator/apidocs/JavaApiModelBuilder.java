@@ -10,7 +10,7 @@ import com.metaobjects.generator.spring.SpringNaming;
 import com.metaobjects.generator.spring.SpringOutputParserGenerator;
 import com.metaobjects.generator.spring.SpringOutputPromptGenerator;
 import com.metaobjects.generator.spring.SpringRenderHelperGenerator;
-import com.metaobjects.generator.spring.SpringRepositoryGenerator;
+import com.metaobjects.generator.spring.SpringGeneratorSupport;
 import com.metaobjects.io.util.IOUtil;
 import com.metaobjects.generator.util.GeneratorUtil;
 import com.metaobjects.loader.MetaDataLoader;
@@ -172,7 +172,7 @@ public final class JavaApiModelBuilder {
 
         // DATA_ACCESS — one repository interface symbol; signature lists the
         // CRUD methods plus one find<Rel> per resolved M:N.
-        if (SpringRepositoryGenerator.appliesTo(obj)) {
+        if (SpringGeneratorSupport.repositoryAppliesTo(obj)) {
             String repo = SpringNaming.repositoryName(shortName);
             String dto = SpringNaming.dtoName(shortName);
             symbols.add(symbol(
@@ -278,8 +278,8 @@ public final class JavaApiModelBuilder {
         sb.append("    boolean delete(Long id);\n");
         for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(obj, loader)) {
             sb.append("    List<").append(nav.targetDtoType()).append("> ")
-              .append(SpringRepositoryGenerator.m2mFinderName(nav.relationName())).append("(Long sourceId")
-              .append(SpringRepositoryGenerator.targetSubtypeParam(nav)).append(");\n");
+              .append(SpringGeneratorSupport.m2mFinderName(nav.relationName())).append("(Long sourceId")
+              .append(SpringGeneratorSupport.targetSubtypeParam(nav)).append(");\n");
         }
         sb.append("}");
         return sb.toString();
