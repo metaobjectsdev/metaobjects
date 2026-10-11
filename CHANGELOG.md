@@ -10,68 +10,6 @@ here.**
 
 ## [Unreleased]
 
-### Added
-
-- **The stock `entity`, `queries`, `routes` and `barrel` generators are importable again
-  (TypeScript).** `entityFile`, `queriesFile`, `routesFile` and `barrel` are exported from
-  `@metaobjectsdev/codegen-ts/generators` once more, beside `namesFile`, `routesFileHono`
-  and the prompt tier. 1.0 had removed those four so that an owned copy was the only way to
-  run them. An assessment of an adopter found its owned copies were almost pure duplication
-  of the reference and had already fallen behind it, so the rule is now: **import a stock
-  generator to run it as shipped, and `meta eject` it when you need to change what it
-  emits.** Both paths are supported and tested, and the factory keeps its name in an
-  ejected copy, so moving between them is one import line. Ruling and reasoning:
-  ADR-0034 Amendment 5.
-  - **Nothing changes for a project that owns its copies.** They run as before, and
-    `meta eject --list` and `meta verify --codegen` behave as before.
-  - **To drop a copy you never changed**, replace its local import with the package import,
-    delete the file and run `meta gen`. Only a copy `meta eject --list --format text` marks
-    `identical to the reference` is proven unchanged: `0 line(s) of your own` rules out
-    added or edited lines, not removed or reordered ones, so check the file's history
-    before dropping a copy with any other mark. `queries` and `barrel` regenerate nothing if the
-    copy matched the reference. `entity`, `routes` and `routes-hono` also move their
-    HTTP-adapter import from `codegen/runtime/` back to `@metaobjectsdev/runtime-ts`, which
-    then has to be installed again. For those three, a copy is unchanged only when
-    `meta eject --list --format text` also marks every `codegen/runtime/` file it reaches
-    identical: if you edited the adapter, keep the owned generator. Those rows are printed
-    in the text form only (`meta gen --list --format json` carries them as
-    `source.runtimeCopy[]`), so a listing without them is not evidence that the adapter is
-    unchanged. Steps and the diff to expect:
-    [own-your-codegen](docs/features/own-your-codegen.md#replacing-an-unmodified-owned-copy-with-the-import).
-  - **An imported generator is still a reference helper.** Its output is not covered by the
-    compatibility policy and can change in a MINOR; `meta verify --codegen` reports that
-    until you regenerate. Own the copy if output has to hold still across upgrades.
-- **`meta gen --list` prints how to import each generator.** Every row outside the `docs`
-  layer shows the import line that runs the generator as shipped, and `--format json`
-  carries it as `wire.import`. The catalog prints the import only: each generator's
-  documented options say how to call it. A gate imports each package's factory module and
-  requires the name the catalog prints, and requires an ejectable generator's reference
-  template to export the same symbol.
-- **`callable` and `trace-helper` can be ejected (TypeScript).** Both gained a reference
-  template, so `meta eject callable` and `meta eject trace-helper` copy a generator you
-  own: which objects get a module and where it lands. The module body stays in the package
-  (`renderCallableFile`, `renderTraceHelper`, now exported from `@metaobjectsdev/codegen-ts`),
-  the same split the prompt tier uses. The rule is that every stock generator can be
-  ejected except the `template` primitive, which has no emit logic of its own to own. Not
-  yet ejectable in this change: `shared-model` and the docs tier (`docs`, `api-docs`,
-  `mermaid-er`) in TypeScript, and `entity` and `extractor` in Java.
-
-### Changed
-
-- **`meta init`'s scaffolded `metaobjects.config.ts` shows the import first.** The selection
-  is still empty (`generators: []`), and an existing project is not touched. The comment
-  now shows the package import as the way to wire a generator and `meta eject` as the way to
-  change one. `meta init`'s next steps and `meta gen`'s "no generators are wired" help say
-  the same.
-- **The config loader no longer rejects an import of the four generators.** 1.0.x answered
-  `import { entityFile } from "@metaobjectsdev/codegen-ts/generators"` with a message naming
-  `meta eject`. That import now loads.
-- **The agent-context skills teach "import by default, eject to customize".** The codegen
-  skill and the always-on context no longer send an agent to eject a generator it is not
-  going to change. The audit skill reports an owned copy it can prove unmodified as a
-  finding, and reads
-  an import of the four as a blocker only on a 1.0.x install.
-
 ### Fixed
 
 - `meta verify --docs` now reports a generated page in the docs root that no current object
@@ -165,6 +103,51 @@ generator catalog and the Atlas evaluation are 1.2 work.
     `ARG_EMIT_EXTRACTORS` names the `emitExtractors` arg; in `metaobjects-codegen-spring`,
     `GeneratorRegistry.GeneratorInfo.ejectWith()`, the classes eject copies with a
     generator.
+
+- **The stock `entity`, `queries`, `routes` and `barrel` generators are importable again
+  (TypeScript).** `entityFile`, `queriesFile`, `routesFile` and `barrel` are exported from
+  `@metaobjectsdev/codegen-ts/generators` once more, beside `namesFile`, `routesFileHono`
+  and the prompt tier. 1.0 had removed those four so that an owned copy was the only way to
+  run them. An assessment of an adopter found its owned copies were almost pure duplication
+  of the reference and had already fallen behind it, so the rule is now: **import a stock
+  generator to run it as shipped, and `meta eject` it when you need to change what it
+  emits.** Both paths are supported and tested, and the factory keeps its name in an
+  ejected copy, so moving between them is one import line. Ruling and reasoning:
+  ADR-0034 Amendment 5.
+  - **Nothing changes for a project that owns its copies.** They run as before, and
+    `meta eject --list` and `meta verify --codegen` behave as before.
+  - **To drop a copy you never changed**, replace its local import with the package import,
+    delete the file and run `meta gen`. Only a copy `meta eject --list --format text` marks
+    `identical to the reference` is proven unchanged: `0 line(s) of your own` rules out
+    added or edited lines, not removed or reordered ones, so check the file's history
+    before dropping a copy with any other mark. `queries` and `barrel` regenerate nothing if the
+    copy matched the reference. `entity`, `routes` and `routes-hono` also move their
+    HTTP-adapter import from `codegen/runtime/` back to `@metaobjectsdev/runtime-ts`, which
+    then has to be installed again. For those three, a copy is unchanged only when
+    `meta eject --list --format text` also marks every `codegen/runtime/` file it reaches
+    identical: if you edited the adapter, keep the owned generator. Those rows are printed
+    in the text form only (`meta gen --list --format json` carries them as
+    `source.runtimeCopy[]`), so a listing without them is not evidence that the adapter is
+    unchanged. Steps and the diff to expect:
+    [own-your-codegen](docs/features/own-your-codegen.md#replacing-an-unmodified-owned-copy-with-the-import).
+  - **An imported generator is still a reference helper.** Its output is not covered by the
+    compatibility policy and can change in a MINOR; `meta verify --codegen` reports that
+    until you regenerate. Own the copy if output has to hold still across upgrades.
+- **`meta gen --list` prints how to import each generator.** Every row outside the `docs`
+  layer shows the import line that runs the generator as shipped, and `--format json`
+  carries it as `wire.import`. The catalog prints the import only: each generator's
+  documented options say how to call it. A gate imports each package's factory module and
+  requires the name the catalog prints, and requires an ejectable generator's reference
+  template to export the same symbol.
+- **`callable` and `trace-helper` can be ejected (TypeScript).** Both gained a reference
+  template, so `meta eject callable` and `meta eject trace-helper` copy a generator you
+  own: which objects get a module and where it lands. The module body stays in the package
+  (`renderCallableFile`, `renderTraceHelper`, now exported from `@metaobjectsdev/codegen-ts`),
+  the same split the prompt tier uses. The rule is that every stock generator can be
+  ejected except the `template` primitive, which has no emit logic of its own to own. Not
+  yet ejectable in this change: `shared-model` and the docs tier (`docs`, `api-docs`,
+  `mermaid-er`) in TypeScript. The Java `entity` and `extractor` generators became
+  ejectable in ADR-0034 Amendment 6.
 
 - **Agent skills: a cost test for owned generators.** The `metaobjects-codegen` skill now says when not to write a generator: only when generator code plus
   its generated output and added metadata is fewer lines than the hand-written code it
@@ -569,6 +552,18 @@ until you regenerate.
   With neither or both declared, the goal used to resolve these two names to Kotlin, the
   only port that had them; it now refuses with `ejectable on more than one port` and asks
   for `-Dport=java|kotlin`, as it already did for `names` and `requirement-tests`.
+- **`meta init`'s scaffolded `metaobjects.config.ts` shows the import first.** The selection
+  is still empty (`generators: []`), and an existing project is not touched. The comment
+  now shows the package import as the way to wire a generator and `meta eject` as the way to
+  change one. `meta init`'s next steps and `meta gen`'s "no generators are wired" help say
+  the same.
+- **The config loader no longer rejects an import of the four generators.** 1.0.x answered
+  `import { entityFile } from "@metaobjectsdev/codegen-ts/generators"` with a message naming
+  `meta eject`. That import now loads.
+- **The agent-context skills teach "import by default, eject to customize".** The codegen
+  skill and the always-on context no longer send an agent to eject a generator it is not
+  going to change. The audit skill reports an owned copy it can prove unmodified as a
+  finding, and reads an import of the four as a blocker only on a 1.0.x install.
 - **TypeScript: `RequirementTestArgs` and `RequirementView` gained required fields — a
   compile break for code that builds them by hand.** `RequirementTestArgs` has six new
   required fields (`package`, `unit`, `id`, `witnessKey`, `skip`, `digest`) and
