@@ -1121,9 +1121,10 @@ packaged one behaves. To document your own surface, edit the owned builder
 class, which is why the copy depends on nothing but the engine.
 
 `Program.cs` lists `new ApiDocsGenerator()` beside the code generators. `dotnet meta gen` and
-`verify --codegen` skip it, and `gen` says so (`"api-docs" writes the api reference, so
-gen skipped it. Run it with dotnet meta docs.`): it writes pages under the docs directory,
-not code under `--out`.
+`verify --codegen` skip it: it writes pages under the docs directory, not code under `--out`.
+The skip is silent while the generator is only in that list. When a `--generators` selection
+names `api-docs`, `gen` says so (`"api-docs" writes the api reference, so gen skipped it.
+Run it with dotnet meta docs.`), with or without an owned project.
 
 ### Ejecting routes hands over the helper runtime too
 

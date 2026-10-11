@@ -200,10 +200,17 @@ public static class CodegenCli
     /// to the current directory for a caller that names no project (mirrors
     /// <c>GenConfig.ProjectRoot</c>'s own default).
     /// </param>
+    /// <param name="selection">
+    /// The <c>--generators</c> names the run was asked for, when it was asked by name. A docs
+    /// generator is never run here; one this selection names is reported as skipped
+    /// (<see cref="DocsGeneratorSkipped"/>), and one that is only in <paramref name="generators"/>
+    /// — an owned list, where the docs run looks for it — is left out without a word.
+    /// </param>
     public static GenOutcome RunGen(
         LoadResult load, string outDir, string ns, bool emitAbstractShapes,
         IReadOnlyList<IGenerator> generators, string? projectRoot = null,
-        ColumnNamingStrategy columnNaming = ColumnNamingStrategy.Literal, string baseline = "default")
+        ColumnNamingStrategy columnNaming = ColumnNamingStrategy.Literal, string baseline = "default",
+        IReadOnlyList<string>? selection = null)
     {
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
         if (loadErrors.Count > 0) return new GenOutcome(loadErrors, null);
@@ -228,9 +235,10 @@ public static class CodegenCli
             IncludeNames = generators.Any(g => g.Name == "names"),
         };
 
-        // A docs generator writes the api reference, not code: CodegenRunner leaves it out, and
-        // this run says so rather than writing pages into the generated-code tree.
-        var docsSkipped = generators.OfType<IDocsGenerator>().Select(g => g.Name).ToList();
+        // A docs generator writes the api reference, not code: CodegenRunner leaves it out. A run
+        // asked for one by name says so; an owned list carries one for the docs run, not for this.
+        var docsSkipped = generators.OfType<IDocsGenerator>().Select(g => g.Name)
+            .Where(name => selection?.Contains(name) == true).ToList();
 
         CodegenRunner.RunResult result;
         try
@@ -253,7 +261,7 @@ public static class CodegenCli
         return new GenOutcome(loadErrors, result);
     }
 
-    /// <summary>What a code run says about a docs generator it was handed and did not run.</summary>
+    /// <summary>What a code run says about a docs generator its selection named and it did not run.</summary>
     public static string DocsGeneratorSkipped(string name) =>
         $"\"{name}\" writes the api reference, so `gen` skipped it. Run it with `dotnet meta docs`.";
 
@@ -488,7 +496,7 @@ public static class CodegenCli
         }
 
         WarnUnknownAttrs(meta);
-        var outcome = RunGen(meta.Load(), a.OutDir, a.Namespace, a.EmitAbstractShapes, suite, projectRoot, columnNaming, a.Baseline);
+        var outcome = RunGen(meta.Load(), a.OutDir, a.Namespace, a.EmitAbstractShapes, suite, projectRoot, columnNaming, a.Baseline, a.Selection);
         if (!outcome.Ok)
         {
             ReportFailure(outcome, "codegen (owned) gen");

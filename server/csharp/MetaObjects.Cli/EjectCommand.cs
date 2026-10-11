@@ -134,8 +134,9 @@ public static class EjectCommand
 
     /// <summary>The version <paramref name="csprojPath"/> pins <c>MetaObjects.Codegen</c> to and the
     /// 1-based line that carries it, or <c>null</c> when the file is not readable XML or has no such
-    /// PackageReference with a version.</summary>
-    private static (string Version, int Line)? PinnedCodegenVersion(string csprojPath)
+    /// PackageReference with a version. <c>Scaffolded</c> is true when that line is the whole
+    /// reference in the form eject scaffolds: one element, <c>Include</c> and <c>Version</c>, no children.</summary>
+    private static (string Version, int Line, bool Scaffolded)? PinnedCodegenVersion(string csprojPath)
     {
         XDocument doc;
         try { doc = XDocument.Load(csprojPath, LoadOptions.SetLineInfo); }
@@ -148,8 +149,10 @@ public static class EjectCommand
             ?? reference?.Elements().FirstOrDefault(e => e.Name.LocalName == "Version");
         return version switch
         {
-            XAttribute a => (a.Value.Trim(), ((IXmlLineInfo)a).LineNumber),
-            XElement e => (e.Value.Trim(), ((IXmlLineInfo)e).LineNumber),
+            XAttribute a => (a.Value.Trim(), ((IXmlLineInfo)a).LineNumber,
+                ((IXmlLineInfo)a).LineNumber == ((IXmlLineInfo)reference!).LineNumber
+                && reference.Attributes().Count() == 2 && !reference.Nodes().Any()),
+            XElement e => (e.Value.Trim(), ((IXmlLineInfo)e).LineNumber, false),
             _ => null,
         };
     }
@@ -160,15 +163,14 @@ public static class EjectCommand
     {
         var tool = ToolVersion();
         if (PinnedCodegenVersion(csprojPath) is not { } pin || !IsOlderVersion(pin.Version, tool)) return [];
-        return
-        [
-            "",
+        var warning =
             $"warning: codegen/Codegen.csproj pins {PinnedPackage} {pin.Version}, older than the {tool} this " +
             $"eject wrote its sources from. Those sources are written against the {tool} package API, so the " +
             $"owned project will not compile until the pin is {tool} or later. Eject never edits that file: " +
-            $"change line {pin.Line} of codegen/Codegen.csproj to",
-            $"  <PackageReference Include=\"{PinnedPackage}\" Version=\"{tool}\" />",
-        ];
+            $"set the version on line {pin.Line} of codegen/Codegen.csproj to {tool}";
+        return pin.Scaffolded
+            ? ["", warning + ", so the line reads", $"  <PackageReference Include=\"{PinnedPackage}\" Version=\"{tool}\" />"]
+            : ["", warning + "."];
     }
 
     private static string ProgramCsContent(IEnumerable<string> classNames)

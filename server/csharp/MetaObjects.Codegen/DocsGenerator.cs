@@ -4,7 +4,8 @@
 // from generators, but a docs generator must never be run by `gen`: it writes pages under the
 // docs directory, not code under the generated-code directory, and `gen`'s hash manifest and
 // overwrite policy are about code. A generator that takes part in the docs run says so by
-// implementing IDocsGenerator; `gen` and `verify --codegen` skip it and say they did.
+// implementing IDocsGenerator; `gen` and `verify --codegen` skip it, and `gen` says so when its
+// `--generators` selection named it.
 //
 // One list serves both commands. An owned `codegen/Program.cs` lists a docs generator beside the
 // code generators, and each command runs the half that is its own.

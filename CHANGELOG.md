@@ -160,7 +160,9 @@ generator catalog and the Atlas evaluation are 1.2 work.
     packaged generators emit for (`GeneratorApplicability.Packaged`): an owned `routes` whose
     `AppliesTo` you changed is documented as the packaged one behaves, unless you edit the
     owned builder.
-    `dotnet meta gen` skips a docs generator and says so, and `verify --codegen` leaves it out.
+    `dotnet meta gen` and `verify --codegen` leave a docs generator out. `gen` says so only
+    when a `--generators` selection names `api-docs`; an owned `Program.cs` that lists it runs
+    without a warning.
     New public API in `MetaObjects.Codegen`: `IDocsGenerator`, `DocsRunFacts`,
     `GeneratorApplicability`, `GenContext.Applicability` and `GenContext.Docs`,
     `CodegenCli.RunDocs`, and `ValueObjectNames.ResolveValueObject` (moved from

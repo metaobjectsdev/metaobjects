@@ -100,6 +100,21 @@ public sealed class GenListAndSelectionTests : IDisposable
     }
 
     [Fact]
+    public void Selecting_the_docs_generator_writes_no_pages_and_says_which_command_does()
+    {
+        // api-docs is in the catalog, so a selection can name it; its pages belong to `dotnet meta docs`.
+        var outcome = GenCommand.Run(
+            MetaDir, OutDir, "Acme.Generated",
+            emitAbstractShapes: false, generatorNames: ["entity", "api-docs"], templateRoot: null);
+
+        Assert.True(outcome.Ok, string.Join("; ", outcome.LoadErrors));
+        var warning = Assert.Single(outcome.Result!.Warnings, w => w.Contains("\"api-docs\"", StringComparison.Ordinal));
+        Assert.Contains("`dotnet meta docs`", warning);
+        Assert.NotEmpty(Directory.GetFiles(OutDir, "*.cs", SearchOption.AllDirectories));
+        Assert.Empty(Directory.GetFiles(OutDir, "*.md", SearchOption.AllDirectories));
+    }
+
+    [Fact]
     public void Unknown_generator_name_surfaces_as_an_error_not_a_throw()
     {
         var outcome = GenCommand.Run(

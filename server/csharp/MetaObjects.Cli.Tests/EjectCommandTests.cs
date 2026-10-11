@@ -158,10 +158,34 @@ public sealed class EjectCommandTests : IDisposable
         Assert.Contains("MetaObjects.Codegen 0.9.0", warning);
         Assert.Contains(EjectCommand.ToolVersion(), warning);
         Assert.Contains("will not compile", warning);
-        Assert.Contains($"line {pinLine} of codegen/Codegen.csproj", warning);
+        Assert.Contains($"set the version on line {pinLine} of codegen/Codegen.csproj to {EjectCommand.ToolVersion()}", warning);
         Assert.Contains(
             $"<PackageReference Include=\"MetaObjects.Codegen\" Version=\"{EjectCommand.ToolVersion()}\" />",
             result.Out[result.Out.ToList().IndexOf(warning) + 1]);
+        Assert.Equal(csproj, File.ReadAllText(CsprojPath));
+    }
+
+    // The line the warning names carries only the version in these shapes, so pasting a whole
+    // PackageReference element over it would nest one inside another, or drop what else the
+    // reference declares. The warning names the line and the version and prints no element.
+    [Theory]
+    [InlineData("<PackageReference Include=\"MetaObjects.Codegen\"\n                      Version=\"0.9.0\" />")]
+    [InlineData("<PackageReference Include=\"MetaObjects.Codegen\">\n      <Version>0.9.0</Version>\n    </PackageReference>")]
+    [InlineData("<PackageReference Include=\"MetaObjects.Codegen\" Version=\"0.9.0\" PrivateAssets=\"all\" />")]
+    public void An_older_pin_not_in_the_scaffolded_form_is_named_by_line_and_version_only(string reference)
+    {
+        ScaffoldPinnedAt(null);
+        var csproj =
+            "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <ItemGroup>\n    " + reference + "\n  </ItemGroup>\n</Project>\n";
+        File.WriteAllText(CsprojPath, csproj);
+        var versionLine = Array.FindIndex(csproj.Split('\n'), l => l.Contains("0.9.0", StringComparison.Ordinal)) + 1;
+
+        var result = EjectCommand.Run(["api-docs"], _root, force: false);
+
+        Assert.Equal(0, result.ExitCode);
+        var warning = Assert.Single(result.Out, l => l.StartsWith("warning:", StringComparison.Ordinal));
+        Assert.Contains($"set the version on line {versionLine} of codegen/Codegen.csproj to {EjectCommand.ToolVersion()}.", warning);
+        Assert.DoesNotContain(result.Out, l => l.Contains("<PackageReference", StringComparison.Ordinal));
         Assert.Equal(csproj, File.ReadAllText(CsprojPath));
     }
 

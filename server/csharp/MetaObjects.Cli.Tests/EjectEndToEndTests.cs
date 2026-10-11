@@ -198,7 +198,7 @@ public sealed class EjectEndToEndTests : IDisposable
     /// An owned api-docs generator, run for real (ADR-0025 / ADR-0034 Amendment 3): eject `routes` and
     /// `api-docs`, add a page to the owned api-docs copy, and run the owned project's `docs` command. The
     /// reference is written by the OWNED api-docs copy, so the added page is on disk beside the model's;
-    /// and the same owned project's `gen` skips the docs generator and says so.
+    /// and the same owned project's `gen` skips the docs generator, saying so only when asked for it by name.
     /// </summary>
     [Fact]
     public void Owned_api_docs_writes_the_reference()
@@ -241,12 +241,20 @@ public sealed class EjectEndToEndTests : IDisposable
             "written by the owned api-docs",
             File.ReadAllText(Directory.GetFiles(docsOut, "OWNED.md", SearchOption.AllDirectories).Single()));
 
-        // The same owned project's gen leaves the docs generator out and says why.
-        var (genExit, genOutput) = RunCodegenProject(
-            "gen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated", "--generators", "api-docs");
+        // The same owned project's gen leaves the docs generator out. With the generator only in the
+        // owned list, that is the everyday run and it has nothing to say about it.
+        var (genExit, genOutput) = RunCodegenProject("gen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated");
         Assert.True(genExit == 0, $"gen failed (exit {genExit}):\n{genOutput}");
-        Assert.Contains("writes the api reference, so `gen` skipped it", genOutput);
-        Assert.Empty(Directory.Exists(OutDir) ? Directory.GetFiles(OutDir, "*.md", SearchOption.AllDirectories) : []);
+        Assert.DoesNotContain("writes the api reference", genOutput);
+        Assert.NotEmpty(Directory.GetFiles(OutDir, "*.cs", SearchOption.AllDirectories));
+        Assert.Empty(Directory.GetFiles(OutDir, "*.md", SearchOption.AllDirectories));
+
+        // Asked for by name, it is still left out, and gen says why.
+        var (namedExit, namedOutput) = RunCodegenProject(
+            "gen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated", "--generators", "api-docs");
+        Assert.True(namedExit == 0, $"gen failed (exit {namedExit}):\n{namedOutput}");
+        Assert.Contains("writes the api reference, so `gen` skipped it", namedOutput);
+        Assert.Empty(Directory.GetFiles(OutDir, "*.md", SearchOption.AllDirectories));
     }
 
     /// <summary>

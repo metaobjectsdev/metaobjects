@@ -1,7 +1,7 @@
 // The docs run: `api-docs` as a generator (ADR-0025), what runs it, and what it documents.
 //
 // A project can own the api reference like any other generator. These cover the engine around it:
-// a docs generator is not a code generator (`gen` skips it and says so), the docs run takes a
+// a docs generator is not a code generator (`gen` skips it, and says so when asked for it by name), the docs run takes a
 // project's own copy in place of the packaged one, and what the reference documents is what the
 // PACKAGED generators emit for, whichever generators the run names.
 
@@ -94,13 +94,33 @@ public sealed class ApiDocsRunTests : IDisposable
     }
 
     [Fact]
-    public void A_code_run_skips_a_docs_generator_and_says_so()
+    public void A_code_run_whose_selection_names_a_docs_generator_skips_it_and_says_so()
     {
-        var outcome = CodegenCli.RunGen(Load(), _out, "Acme.Generated", false, [new ApiDocsGenerator(), new EntityGenerator()]);
+        var outcome = CodegenCli.RunGen(
+            Load(), _out, "Acme.Generated", false, [new ApiDocsGenerator(), new EntityGenerator()],
+            selection: ["api-docs", "entity"]);
 
         Assert.True(outcome.Ok);
         Assert.Contains(outcome.Result!.Warnings, w => w == CodegenCli.DocsGeneratorSkipped("api-docs"));
         Assert.Contains("`dotnet meta docs`", CodegenCli.DocsGeneratorSkipped("api-docs"));
+        Assert.DoesNotContain(outcome.Result.Files, f => f.Path.Contains("AGENT-API", StringComparison.Ordinal));
+        Assert.NotEmpty(outcome.Result.Files);
+    }
+
+    // An owned project lists its docs generator beside its code generators, because that one list is
+    // where `docs` finds it. A code run that did not ask for it by name skips it and has nothing to say:
+    // a warning here would fire on every `gen` and could only be cleared by giving the generator up.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("entity")]
+    public void A_code_run_that_only_finds_a_docs_generator_in_its_list_skips_it_silently(string? selected)
+    {
+        var outcome = CodegenCli.RunGen(
+            Load(), _out, "Acme.Generated", false, [new ApiDocsGenerator(), new EntityGenerator()],
+            selection: selected is null ? null : [selected]);
+
+        Assert.True(outcome.Ok);
+        Assert.DoesNotContain(outcome.Result!.Warnings, w => w.Contains("api reference", StringComparison.Ordinal));
         Assert.DoesNotContain(outcome.Result.Files, f => f.Path.Contains("AGENT-API", StringComparison.Ordinal));
         Assert.NotEmpty(outcome.Result.Files);
     }

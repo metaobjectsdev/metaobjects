@@ -169,7 +169,7 @@ public static class GenCommand
         // `codegen/Program.cs` calls too, with its owned generators composed into the same
         // selection (CodegenCli.ComposeGenerators) — one implementation, not two.
         var apiOutcome = MetaObjects.Codegen.CodegenCli.RunGen(
-            load, outDir, ns, emitAbstractShapes, generators, projectRoot, columnNaming, baseline);
+            load, outDir, ns, emitAbstractShapes, generators, projectRoot, columnNaming, baseline, names);
         return new Outcome(apiOutcome.LoadErrors, apiOutcome.Result);
     }
 
