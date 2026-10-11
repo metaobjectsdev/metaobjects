@@ -347,6 +347,79 @@ the guide says to name an instance or a factory function.
 
 Guide: `docs/recipes/write-your-own-generator.md`.
 
+### Amendment 5 (2026-10-11) — the stock generators are importable again; eject is how you customize
+
+**Ruling (maintainer).** Asked whether adopters may import the stock entity, queries and
+barrel generators again instead of having to own copies: *"Yes, everything should be
+ejectable."* Two things follow, and both are the rule from here on:
+
+- **Every stock generator can be run as shipped**, by importing its factory from its
+  package. Nothing is copied, and an upgrade of the package is how its fixes arrive.
+- **Every stock generator can be ejected except `template`**, when the adopter wants to
+  change what it emits. Ejecting is the customization route; it is not a precondition for
+  generating. `template` is the one permanent exception, in every port: it is the Mustache
+  primitive and has no emit logic of its own to own.
+
+**Supersedes** Decision 3 ("you cannot `import { entityFile } from
+"@metaobjectsdev/codegen-ts/generators"`") and the clause of Decision 2 that makes
+scaffold-and-own "the default and only taught path". Decisions 1, 4 and 5 and Amendments 1
+to 4 stand.
+
+**Why.** An assessment of an adopter estate found its owned copies of these generators were
+almost pure duplication of the reference: a few lines of the adopter's own, and the copies
+had already fallen behind the reference they were taken from. Decision 3 removed the
+import so that there would be "no black-box to fight". What it also removed was the option
+of not fighting at all. An adopter who needed nothing changed still had to carry a copy,
+and a copy does not receive fixes: this ADR's own Consequences list "owned forks don't
+auto-receive fixes" as a cost that diff and update "mitigate, not eliminate".
+
+**What Decision 3 was solving, and why it stays solved.** The failure it addressed was an
+adopter discovering mid-build that changing generated code meant forking the package or
+fighting the three-way merge. `meta eject` (Amendment 1) did not exist when Decision 3 was
+written. It now copies any reference at any time, with its helper runtime (Amendment 3,
+2026-09-24), and the catalog names it beside every generator. The exit is one command away
+whichever path a project started on, so restoring the import does not bring the old
+failure back.
+
+**What changed with this amendment.**
+
+1. `entityFile`, `queriesFile`, `routesFile` and `barrel` are exported from
+   `@metaobjectsdev/codegen-ts/generators` again. The config loader's two diagnostics for
+   the removed imports went with the removal.
+2. The catalog says how to import. Each registry entry carries `factoryExport`, and
+   `meta gen --list` prints the import line that runs the generator as shipped
+   (`wire.import` on the JSON row). It is resolved, not trusted: a gate imports each
+   package's public factory module and requires that name, and requires the reference
+   template of an ejectable generator to export the same symbol, so moving between the two
+   paths is one import line. The catalog prints the import only. It does not derive the
+   call: a factory's options are documented with the generator.
+3. `callable` and `trace-helper` gained reference templates and left the package-only list.
+4. `meta init` is unchanged in what it wires, which is nothing (Amendment 2 stands). Its
+   scaffolded comment now shows the import first and eject as the way to change output.
+5. The order of guidance in Amendment 4 gains a first step: **import a stock generator
+   when it already emits what you want; write the generator you need when nothing does;
+   eject a reference when one is close; hand-write only what the model cannot express.**
+
+**What does not change.**
+
+- **The core and helper line of Amendment 3.** An imported generator is still a reference
+  helper. Its output is not covered by `docs/compatibility-policy.md` and may change in a
+  MINOR; after an upgrade `meta verify --codegen` reports the difference as drift until the
+  project regenerates. That is the trade for receiving fixes without a merge. An adopter
+  who needs output to hold still across upgrades ejects.
+- **Existing owned copies.** They keep running exactly as before, and `meta eject --list`
+  keeps marking each one identical to, or differing from, the installed reference.
+- **The byte-identity gate.** It holds every reference template to the factory of the same
+  name, so the two paths start from the same output. The one difference is where the
+  HTTP-adapter import points, because eject hands over that source too (Amendment 3).
+
+**Not yet ejectable in this change.** The rule above is ahead of the code for four
+TypeScript generators: `shared-model`, `docs`, `api-docs` and `mermaid-er`. Each one runs as
+shipped today and gains a reference copy through a sibling change, which updates this list
+when it lands. The Java `entity` and `extractor` generators became ejectable in Amendment 6.
+`template` is not on the list because it is the permanent exception. Every port's
+generators run as shipped, selected by name.
+
 ### Amendment 6 (2026-10-11) — the Java `entity` and `extractor` generators are ejectable
 
 **Ruling (maintainer).** Asked whether adopters may import the stock generators again:

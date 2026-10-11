@@ -67,8 +67,15 @@ $EDITOR metaobjects/meta.myapp.json    # see .metaobjects/AGENTS.md for format
 #    how many files it would emit, so you can see what your metadata already asks for.
 meta gen --list --probe
 
-# 4. Take the ones you want. Prints the import, the entry to wire, and what to install.
-meta eject entity queries routes barrel
+# 4. Wire the ones you want. The catalog prints the import that runs each generator as
+#    shipped; add it to metaobjects.config.ts and call it in `generators: [...]`.
+#    What to install is on the structured row only (`install.dev`, `install.runtime`),
+#    beside the config keys the generator reads (`configKeys`):
+meta gen --list --format json
+
+#    Need to change what one emits? Copy it into your repo and own it. Prints the import
+#    to swap in, the entry to wire, and what to install.
+meta eject entity
 
 #    Need an output none of them emits (OpenAPI, JSON Schema, a client, docs)? Write your
 #    own: this scaffolds a working, commented generator and wires it into the config.
@@ -100,7 +107,7 @@ Running `meta` with no arguments prints a concise status line (whether a `metaob
 
 Scaffolds `metaobjects/` (visible entity declarations, with a placeholder `meta.common.json`), `.metaobjects/` (hidden tool state: `config.json`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`, `.gen-state/`), an **empty** `codegen/generators/` plus its `tsconfig.codegen.json`, and `metaobjects.config.ts` at the repo root.
 
-**It copies no generators and declares no dependencies.** Codegen is opt-in (ADR-0034 Amendment 2): the scaffolded config carries `generators: []` and a comment pointing at the catalog. `meta gen --list --probe` shows what each generator would emit for your model; `meta eject <name>...` copies the ones you choose into `codegen/generators/` — **yours to edit** — and prints the import line, the entry to add, the install command and any config keys those generators read. `meta gen` runs your local copies, never the package's.
+**It copies no generators and declares no dependencies.** Codegen is opt-in (ADR-0034 Amendment 2): the scaffolded config carries `generators: []` and a comment pointing at the catalog. `meta gen --list --probe` shows what each generator would emit for your model, with the import line that runs it as shipped; `meta gen --list --format json` adds what to install (`install.dev`, `install.runtime`) and the config keys each generator reads (`configKeys`), which the text listing does not print. Import a generator from its package to use it unchanged; `meta eject <name>...` copies the ones you want to change into `codegen/generators/` — **yours to edit** — and prints the import line to swap in, the entry to add, the install command and any config keys those generators read. `meta gen` runs whatever `generators: [...]` holds: the package's generator where you imported it, your copy where you ejected it.
 
 Flags:
 - `--force` — overwrite scaffold files (memory records preserved)
@@ -185,15 +192,11 @@ Flags:
 
 Two config files, by design:
 
-**`metaobjects.config.ts`** (at repo root) — generator wiring and codegen knobs, type-checked TS. It starts with `generators: []`; each import below appears when you `meta eject` that generator, which copies it into `codegen/generators/` (ADR-0034 scaffold-and-own) and prints the line to add:
+**`metaobjects.config.ts`** (at repo root) — generator wiring and codegen knobs, type-checked TS. It starts with `generators: []`. Import a stock generator from its package to run it as shipped (`meta gen --list` prints each line):
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-import { entityFile } from "./codegen/generators/entity";
-import { queriesFile } from "./codegen/generators/queries";
-import { routesFile } from "./codegen/generators/routes";
-import { namesFile } from "./codegen/generators/names";
-import { barrel } from "./codegen/generators/barrel";
+import { entityFile, queriesFile, routesFile, namesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   outDir: "packages/database/src/generated",
@@ -205,9 +208,14 @@ export default defineConfig({
 });
 ```
 
-> Importing these generator factories from `@metaobjectsdev/codegen-ts/generators`
-> still works but is **deprecated** (ADR-0034) — own a local copy instead. The
-> package export will be removed in a future major.
+To change what one emits, `meta eject <name>` copies it into `codegen/generators/`
+(ADR-0034 scaffold-and-own) and prints the local import to put in place of the package
+one, for example `import { entityFile } from "./codegen/generators/entity";`. The factory
+keeps its name, so nothing else in the config changes.
+
+> `entityFile`, `queriesFile`, `routesFile` and `barrel` were removed from
+> `@metaobjectsdev/codegen-ts/generators` at 1.0 and restored in 1.1 (ADR-0034
+> Amendment 5). Both the import and an owned copy are supported.
 
 ### Multiple output targets
 
@@ -217,11 +225,9 @@ concern — declare named **targets** and point generators at them with `target`
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators — copied in by `meta eject` (ADR-0034 scaffold-and-own).
-import { entityFile } from "./codegen/generators/entity";
-import { queriesFile } from "./codegen/generators/queries";
-import { routesFile } from "./codegen/generators/routes";
-import { barrel } from "./codegen/generators/barrel";
+// Stock generators, run as shipped. An owned copy (`meta eject`) is wired the same way,
+// from "./codegen/generators/<name>".
+import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { tanstackQuery, tanstackGrid } from "@metaobjectsdev/codegen-ts-tanstack";
 

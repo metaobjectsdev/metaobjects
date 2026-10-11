@@ -21,11 +21,24 @@ import {
 import { reactGeneratorRegistry } from "@metaobjectsdev/codegen-ts-react";
 import { tanstackGeneratorRegistry } from "@metaobjectsdev/codegen-ts-tanstack";
 
-/** The slices, in install-boundary order: the engine, then its framework packages. */
-const SLICES: ReadonlyArray<readonly [string, Record<string, GeneratorRegistryEntry>]> = [
-  ["@metaobjectsdev/codegen-ts", generatorRegistry],
-  ["@metaobjectsdev/codegen-ts-react", reactGeneratorRegistry],
-  ["@metaobjectsdev/codegen-ts-tanstack", tanstackGeneratorRegistry],
+/**
+ * The engine package. Its factories are served from a `/generators` subpath rather than
+ * its root (the root is the engine plus the primitives an owned generator composes); the
+ * framework packages serve theirs from the root. Exported because `eject.ts`'s source
+ * table names the same package — one definition per CLI package, not two.
+ */
+export const CORE_CODEGEN_PACKAGE = "@metaobjectsdev/codegen-ts";
+
+/**
+ * The slices, in install-boundary order: the engine, then its framework packages. The
+ * third element is the module that package serves factories from — a per-package fact
+ * declared at registration, so {@link factoryModuleOf} is a lookup and a new slice
+ * carries its own fact instead of adding a case to a name-keyed branch.
+ */
+const SLICES: ReadonlyArray<readonly [string, Record<string, GeneratorRegistryEntry>, string]> = [
+  [CORE_CODEGEN_PACKAGE, generatorRegistry, `${CORE_CODEGEN_PACKAGE}/generators`],
+  ["@metaobjectsdev/codegen-ts-react", reactGeneratorRegistry, "@metaobjectsdev/codegen-ts-react"],
+  ["@metaobjectsdev/codegen-ts-tanstack", tanstackGeneratorRegistry, "@metaobjectsdev/codegen-ts-tanstack"],
 ];
 
 /**
@@ -45,6 +58,39 @@ export function catalogPackages(): string[] {
 }
 
 /**
+ * The module a catalog entry's factory is imported from to run it as shipped — the third
+ * element of the slice that registers the name. Undefined for a name no slice registers.
+ */
+export function factoryModuleOf(name: string): string | undefined {
+  return SLICES.find(([, slice]) => name in slice)?.[2];
+}
+
+/**
+ * How one generator reaches a config as shipped: the import line for its factory. The
+ * call is not derived here — a factory's options are documented with the generator.
+ */
+export interface GeneratorWiring {
+  import: string;
+}
+
+/**
+ * How to wire a catalog entry AS SHIPPED: import its factory from the package, no copy.
+ *
+ * This is the half of "import by default, eject to customize" the catalog owns. The
+ * other half is `meta eject`, which prints the import for the owned copy — the symbol is
+ * the same in both (gated), so moving between them is one import line.
+ *
+ * Undefined for the `docs` layer: those generators are the engine behind `meta docs`,
+ * which is their door, and wiring one into `generators: [...]` is the deprecated route.
+ */
+export function packagedWiring(entry: GeneratorRegistryEntry): GeneratorWiring | undefined {
+  if (entry.layer === "docs") return undefined;
+  const from = factoryModuleOf(entry.name);
+  if (from === undefined) return undefined;
+  return { import: `import { ${entry.factoryExport} } from "${from}";` };
+}
+
+/**
  * The composed catalog, keyed by stable name.
  *
  * Throws on a name registered by two packages. A stable name identifies ONE generator
@@ -54,7 +100,7 @@ export function catalogPackages(): string[] {
  * another.
  */
 export function composeCatalog(): Record<string, GeneratorRegistryEntry> {
-  return composeSlices(SLICES);
+  return composeSlices(SLICES.map(([pkg, slice]) => [pkg, slice] as const));
 }
 
 /**

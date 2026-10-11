@@ -33,10 +33,9 @@ validation rule) rides along automatically:
 ```ts
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators, copied in by `meta eject` (ADR-0034 scaffold-and-own; `meta init` wires none).
-import { entityFile } from "./codegen/generators/entity";
-import { queriesFile } from "./codegen/generators/queries";
-import { barrel } from "./codegen/generators/barrel";
+// Run as shipped, imported from the package (`meta init` wires none). `meta eject <name>`
+// copies one into ./codegen/generators/ only when you need to change what it emits.
+import { entityFile, queriesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 
 export default defineConfig({

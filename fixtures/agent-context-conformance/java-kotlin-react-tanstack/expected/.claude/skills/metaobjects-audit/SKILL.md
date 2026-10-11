@@ -25,13 +25,27 @@ Actual cutovers run through the existing skills mapped per finding tier (§ Brid
 - [ ] MetaObjects present? (`metaobjects/` dir, metadata sources, `@metaobjectsdev/*` /
   `com.metaobjects:*` / `metaobjects` / `MetaObjects.*` deps).
 - [ ] Count metadata source lines + all `@generated` / `DO NOT EDIT` files repo-wide.
-- [ ] **Owned-generators check:** does the project own generators at `codegen/generators/*`
-  (scaffold-and-own via `meta eject`, or `meta init` on a CLI before 1.0.4), or still import `entityFile` / `queriesFile` /
-  `routesFile` / `barrel` from `@metaobjectsdev/codegen-ts/generators`? Those four were
-  REMOVED at 1.0, so an import of them is an upgrade blocker, not just a style finding.
-  **Match the four NAMES, never the subpath alone** — that subpath is the supported home of
-  the non-ownable generators (`promptRender`, `outputParser`, `routesFileHono`, …), so
-  flagging a hit on the path convicts a correct project.
+- [ ] **Owned-generators check:** which generators does the project own at
+  `codegen/generators/*` (via `meta eject`, or `meta init` on a CLI before 1.0.4), and
+  which does it import from `@metaobjectsdev/codegen-ts/generators`? Both are supported
+  from 1.1. Two findings to look for. **An unmodified owned copy** is duplication that
+  falls behind the reference: `meta eject --list --format text` marks each copy, and one
+  marked `identical to the reference` should be replaced by the package import. That is
+  the only mark that proves a copy unmodified. `same content as the reference, your
+  formatting` and `DIFFERS` with `0 line(s) of your own` rule out added or edited lines,
+  not removed or reordered ones: confirm those from the file's history
+  (`git log -p -- codegen/generators/<name>.ts` shows no edit after the eject) first, and
+  report a copy you cannot confirm as "possibly customized: check its history", not as a
+  copy to drop. For `entity`,
+  `routes` and `routes-hono` that holds only when every `codegen/runtime/` file the copy
+  reaches is also marked identical: an edited adapter is a customization, and such a copy
+  is not a finding. Those runtime rows appear only with `--format text` (or as the
+  `runtimeCopy` array inside the row's `source` object in `meta gen --list --format
+  json`); a listing with no runtime rows is not evidence that the adapter is unmodified. **An import of `entityFile` /
+  `queriesFile` / `routesFile` / `barrel` on a 1.0.x install** fails to load, because 1.0
+  removed those four and 1.1 restored them: there it is an upgrade blocker, fixed by
+  upgrading to 1.1 or by ejecting. Importing anything from that subpath is otherwise
+  correct and is never a finding by itself.
 - [ ] **Cross-language version consistency (silent-drift check).** If the project uses MetaObjects in more than one language (e.g. a TS web client + a Java/Python/C# backend), enumerate EVERY MetaObjects package across ALL ecosystems (npm `@metaobjectsdev/*`, Maven `com.metaobjects:*`, PyPI `metaobjects`, NuGet `MetaObjects.*`) and record each version. **The version-number LINES differ by ecosystem (npm/PyPI/NuGet `0.x`/`1.x` vs Maven `7.x`/`8.x`), so you CANNOT eyeball drift** — a `0.12` next to a `7.7` looks fine but can be badly out of sync. Compare the **`metamodelVersion`** each port reports (the shared spec version on the registry manifest): a mismatch is real cross-language drift and a **finding** — the ports disagree on vocabulary/wire behavior. Also flag any port not on the latest release for its ecosystem. (This is a known real-world failure mode: newest backend, stale client, invisible because the numbers differ.)
 - [ ] Classify: **Greenfield** (none/minimal) · **Partial** · **Deep** → choose path below.
 
@@ -380,16 +394,20 @@ Per finding: `file:line` → what → generated-equivalent exists? → recommend
 
 ## Owned-codegen & scaffold-and-own assessment
 
-- If config imports `entityFile` / `queriesFile` / `routesFile` / `barrel` from
-  `@metaobjectsdev/codegen-ts/generators` instead of owned `codegen/generators/*`,
-  recommend the scaffold-and-own migration (`meta init`, or `meta eject <name>`) — on 1.0+
-  those four no longer resolve. Importing the non-ownable generators from that subpath is
-  correct and is not a finding.
+- A config may import `entityFile` / `queriesFile` / `routesFile` / `barrel` from
+  `@metaobjectsdev/codegen-ts/generators` or from owned `codegen/generators/*`. Both are
+  supported from 1.1, and the import is the right choice for a generator the project does
+  not change. The import is a blocker only on a 1.0.x install, where those four do not
+  resolve: recommend upgrading to 1.1, or `meta eject <name>` if the project has to stay
+  on 1.0.x. On 1.1 the finding is the reverse case, an owned copy proven unmodified by
+  the Phase 0 owned-generators check: recommend the package import. Importing any other
+  generator from that subpath is correct and is not a finding.
 - Audit owned generators: (a) regenerate clean? (b) drifted from reference templates —
   intentional (good) vs stale/accidental (missed upstream fix)? (c) hand-rolling a walk
   that a declarative `scope` + `outputPattern` could replace? (d) bespoke shape better as
   a `templateGenerator` than a forked generator?
-- **Authoring ladder:** built-in fits → use it · close → **own + customize** (the default)
+- **Authoring ladder:** built-in fits → import it as shipped · close → **eject it and
+  customize the copy**
   · new shape → **author a declarative template-spec / custom generator from the metadata**
   · genuinely un-modelable → hand-write (still import the generated types).
 - **Generator-gap check:** missing generators that block the biggest wins? Recommend per gap:

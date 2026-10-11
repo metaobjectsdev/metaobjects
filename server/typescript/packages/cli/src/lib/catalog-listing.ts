@@ -29,7 +29,7 @@ import {
 import * as coreTpl from "@metaobjectsdev/codegen-ts";
 import * as reactTpl from "@metaobjectsdev/codegen-ts-react";
 import * as tanstackTpl from "@metaobjectsdev/codegen-ts-tanstack";
-import { composeCatalog, listCatalog, packageOf } from "./catalog.js";
+import { composeCatalog, listCatalog, packageOf, packagedWiring, type GeneratorWiring } from "./catalog.js";
 import {
   buildLibraryRows, renderLibraryText,
   type LibraryCatalogRow, type LibraryProjectContext,
@@ -69,6 +69,12 @@ export interface GeneratorCatalogRow {
   requires?: readonly string[];
   configKeys?: readonly string[];
   install: { dev: string[]; runtime: string[] };
+  /**
+   * How to run this generator AS SHIPPED: the import line for its package factory. No
+   * copy involved; `meta eject` prints the local import for an owned one. Absent on the
+   * `docs` layer, whose door is `meta docs`.
+   */
+  wire?: GeneratorWiring;
   source: {
     kind: "reference-template" | "package-only";
     ejectable: boolean;
@@ -290,6 +296,11 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
       ? installSetFor([entry])
       : installSetFor([entry], [], { generators: new Set([entry.name]), ...runtimeInstall(owned.packages) });
     const pkg = packageOf(entry.name) ?? "";
+    // The row keeps the stock wiring even when this project owns the copy: the JSON
+    // consumer reads `source.owned` to know what it runs today, and the package line is
+    // the fact it needs to go back to stock. `renderCatalogText` deliberately hides that
+    // line under an owned row — two imports in front of a human invite wiring both.
+    const wire = packagedWiring(entry);
 
     const row: GeneratorCatalogRow = {
       name: entry.name,
@@ -308,6 +319,7 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
       ...(entry.requires !== undefined ? { requires: entry.requires } : {}),
       ...(entry.configKeys !== undefined ? { configKeys: entry.configKeys } : {}),
       install: { dev: install.dev, runtime: install.runtime },
+      ...(wire !== undefined ? { wire } : {}),
       source: {
         kind: entry.ejectable ? "reference-template" : "package-only",
         ejectable: entry.ejectable,
@@ -428,11 +440,13 @@ const LAYER_BLURB: Record<Layer, string> = {
 /**
  * ADR-0034 Amendment 3: every generator is a reference helper, not a guarantee. Said at
  * the top of the catalog because this is where an adopter decides what to depend on.
+ * Amendment 5: both ways to run one are named here — import it, or own a copy.
  */
 export const REFERENCE_HELPER_NOTE: readonly string[] = [
-  "Each generator is a reference helper, not a guarantee: `meta eject <name>` copies it into",
-  "your repo and the copy is yours to change. What MetaObjects guarantees (migrate, verify,",
-  "render) is not a generator and is not listed here.",
+  "Each generator is a reference helper, not a guarantee. Import it from its package to run",
+  "it as shipped, or `meta eject <name>` to copy it into your repo and change what it emits.",
+  "What MetaObjects guarantees (migrate, verify, render) is not a generator and is not",
+  "listed here.",
   "Your database, store or framework is not listed (MongoDB, DynamoDB, Express, NestJS, Vue, …)?",
   "Model it anyway and write or retarget a generator: the metaobjects-codegen skill's",
   "references/any-stack.md has the procedure. MySQL is `dialect: \"mysql\"`.",
@@ -440,8 +454,9 @@ export const REFERENCE_HELPER_NOTE: readonly string[] = [
 
 /** The footer line explaining the `package-only` row mark. */
 export const PACKAGE_ONLY_NOTE =
-  "package-only = no reference template ships for it yet, so `meta eject` cannot copy it; " +
-  "import it from its package instead.";
+  "package-only = no reference template ships for it, so `meta eject` cannot copy it. " +
+  "Run one as shipped by importing its factory — the import sits under its row, except " +
+  "for the docs layer, whose door is `meta docs`.";
 
 /** The human rendering: grouped by layer, because layer is the axis you select by. */
 export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
@@ -490,6 +505,12 @@ export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
     if (r.requires !== undefined && r.requires.length > 0) {
       lines.push(`  ${" ".repeat(width)}     requires: ${r.requires.join(", ")}`);
     }
+    // The import that runs it as shipped. Not shown once the project owns a copy: its
+    // wiring is then the local import `meta eject` printed, and showing the package's
+    // beside an `owned` mark invites wiring both.
+    if (r.wire !== undefined && r.source.owned !== true) {
+      lines.push(`  ${" ".repeat(width)}     ${r.wire.import}`);
+    }
   }
 
   // The library section sits between the generators and the footer: the footer's
@@ -498,8 +519,9 @@ export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
   lines.push(...renderLibraryText(rows.filter((r): r is LibraryCatalogRow => r.kind === "library")));
 
   lines.push("");
-  lines.push("`meta eject <name...>` copies a generator into codegen/generators/ and prints");
-  lines.push("the import to add, the entry to wire, and what to install.");
+  lines.push("To run a generator as shipped, add the import under its row and call it in");
+  lines.push("`generators: [...]`. To change what one emits, `meta eject <name...>` copies it into");
+  lines.push("codegen/generators/ and prints the import to swap in, the entry to wire, and what to install.");
   if (generators.some((r) => !r.source.ejectable)) lines.push(PACKAGE_ONLY_NOTE);
   if (!probed) {
     lines.push("Add --probe to see how many files each would emit for YOUR model.");

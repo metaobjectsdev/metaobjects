@@ -4,8 +4,9 @@
  * docs/recipes/generators/typescript/mongo-repository.ts. This gate does exactly that:
  *
  *   - a model whose `Order` is a SOURCELESS entity (identity, no `source.*`);
- *   - `meta eject entity`, then the example generator copied in verbatim and wired;
- *   - a strict typecheck of both generators, `meta gen`, and `meta verify --codegen`.
+ *   - the example generator copied in verbatim and wired beside the stock entity
+ *     generator, imported from its package;
+ *   - a strict typecheck of the copied generator, `meta gen`, and `meta verify --codegen`.
  *
  * It pins the two halves the recipe depends on: the entity module gives a sourceless entity
  * its create/PATCH schemas and allowlists (and no table), and the example generator picks it
@@ -64,7 +65,6 @@ describe("document-store recipe", () => {
     root = await newShopProject("doc-store-");
     writeModel(root, MODEL);
 
-    expect(await meta(root, "eject", "entity")).toMatchObject({ exit: 0 });
     copyFileSync(EXAMPLE, join(root, "codegen", "generators", "mongo-repository.ts"));
 
     // The wiring the recipe documents.
@@ -73,14 +73,14 @@ describe("document-store recipe", () => {
       .replace(
         'import { defineConfig } from "@metaobjectsdev/cli";',
         'import { defineConfig } from "@metaobjectsdev/cli";\n' +
-          'import { entityFile } from "./codegen/generators/entity.js";\n' +
+          'import { entityFile } from "@metaobjectsdev/codegen-ts/generators";\n' +
           'import { mongoRepositoryGenerator } from "./codegen/generators/mongo-repository.js";',
       )
       .replace("generators: [],", "generators: [entityFile(), mongoRepositoryGenerator()],");
     expect(config).toContain("mongoRepositoryGenerator()");
     writeFileSync(configPath, config);
 
-    const tsc = await typecheckGenerators(root, ["codegen/generators/entity.ts", "codegen/generators/mongo-repository.ts"]);
+    const tsc = await typecheckGenerators(root, ["codegen/generators/mongo-repository.ts"]);
     expect({ step: "tsc", ...tsc }).toMatchObject({ step: "tsc", exit: 0 });
 
     expect(await meta(root, "gen")).toMatchObject({ exit: 0 });

@@ -24,6 +24,7 @@ export const reactGeneratorRegistry: Record<string, GeneratorRegistryEntry> = {
     description: "Per-entity React form component over the generated Zod schema.",
     tier: "native",
     factory: () => formFile(),
+    factoryExport: "formFile",
     options: "filter?, target?",
     // `react`, not "the client framework": `@metaobjectsdev/tanstack` declares `react`
     // as a peer, so form (react) + hooks/grid (tanstack) is the intended composition,

@@ -58,8 +58,9 @@ install what eject prints instead (`qs`, `@types/qs`, the framework, the core
 What stays a package import is core: `@metaobjectsdev/metadata`, `render`, the reply
 parser. Options on each ejected generator: `runtimeImport` moves the copy (relative to the
 output root, like `dbImport`, or a path alias); `runtimeImport: "@metaobjectsdev/runtime-ts"`
-goes back to the package. `meta eject --list` and `meta gen --list` mark each copied file
-identical to or differing from the installed package; to take an upstream fix, read
+goes back to the package. `meta eject --list --format text` and `meta gen --list` mark each
+copied file identical to or differing from the installed package (the structured form of
+`meta eject --list` omits those rows); to take an upstream fix, read
 `diff -u node_modules/@metaobjectsdev/runtime-ts/src/<file> codegen/runtime/<file>` and
 apply it (or `meta eject <name> --force` for a file you never changed).
 

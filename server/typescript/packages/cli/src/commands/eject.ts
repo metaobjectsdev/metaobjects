@@ -1,8 +1,9 @@
 // FR-040 §4.2(a) — `meta eject <generator>...` takes ownership of any reference-template
 // generator, in any package, at any time after `meta init`.
 //
-// Under opt-in codegen this is THE copy door: `meta init` scaffolds the layout and an
-// empty selection, so every generator an adopter runs arrives through here. It takes
+// This is the copy door, for a generator an adopter wants to CHANGE: `meta init`
+// scaffolds the layout and an empty selection, and a generator run as shipped is
+// imported from its package without coming through here (ADR-0034 Amendment 5). It takes
 // MANY names, because a real selection is several — choosing a client tier is
 // `form hooks grid` — and three separate invocations produce three separate install
 // lines for the same package. The consolidated install set is the point.
@@ -24,7 +25,7 @@ import { parseEjectArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { declaredDependencyNames, readPackageManifest } from "../lib/package-manifest.js";
 import { compareOwnedCopy, type OwnedComparison } from "../lib/owned-copy.js";
-import { composeCatalog, packageOf } from "../lib/catalog.js";
+import { composeCatalog, CORE_CODEGEN_PACKAGE, factoryModuleOf, packageOf } from "../lib/catalog.js";
 import { installSetFor, type InstallSet, type OwnedRuntimeInstall } from "../lib/install-set.js";
 import {
   ejectRuntime, ejectsRuntime, runtimeCopyStatus, runtimeDiffCommand, runtimeInstall,
@@ -61,8 +62,6 @@ interface TemplateSource {
 // runtime by selecting this entry via `names.includes(name)`. Reading from the root
 // deletes that machinery without weakening anything: membership is still checked, once,
 // where the untrusted value enters.
-const CORE_CODEGEN_PACKAGE = "@metaobjectsdev/codegen-ts";
-
 const SOURCES: TemplateSource[] = [
   {
     packageName: CORE_CODEGEN_PACKAGE,
@@ -531,12 +530,6 @@ function reportLibrary(result: LibraryEjectResult): void {
  * already-copied half as "preserved" and the adopter cannot tell what happened.
  * Returns the unknown names, or an empty array.
  */
-/** Where a package-only generator's factory is imported from. The core package serves
- *  its generator factories from the `/generators` subpath; the UI packages from the root. */
-function packageFactoryPath(name: string): string {
-  const pkg = packageOf(name) ?? "";
-  return pkg === CORE_CODEGEN_PACKAGE ? `${pkg}/generators` : pkg;
-}
 
 function unknownNames(names: readonly string[]): string[] {
   return names.filter((n) => resolveSource(n) === undefined && !isLibraryName(n));
@@ -613,7 +606,7 @@ function reportOne(result: EjectResult, name: string): void {
   log.info(`In metaobjects.config.ts, "${result.exportName}" must resolve to this file:`);
   log.info(`  ${result.importLine}`);
   log.info(
-    `  - If it is imported from "${result.packageName}", REPLACE that import with the ` +
+    `  - If it is imported from "${factoryModuleOf(name) ?? result.packageName}", REPLACE that import with the ` +
     "line above. Adding a second one leaves `generators` bound to the PACKAGED " +
     "generator, and your edits to this file do nothing.",
   );
@@ -691,7 +684,7 @@ export async function ejectCommand(
   const unknown = unmatched.filter((n) => packageOf(n) === undefined);
   if (packageOnly.length > 0) {
     log.error(
-      `package-only generator(s): ${packageOnly.map((n) => `${n} (${packageFactoryPath(n)})`).join(", ")}. ` +
+      `package-only generator(s): ${packageOnly.map((n) => `${n} (${factoryModuleOf(n) ?? ""})`).join(", ")}. ` +
         "No reference template ships for them, so they cannot be ejected: import the factory " +
         "from the package named beside each one and wire it in `generators: [...]`. " +
         "Nothing was ejected.",

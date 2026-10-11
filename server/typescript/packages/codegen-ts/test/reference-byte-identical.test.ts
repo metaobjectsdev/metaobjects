@@ -37,6 +37,11 @@ import {
 import { renderRequirementTest as builtinRenderRequirementTest } from "../src/templates/requirement-test.js";
 import { cubeModel as builtinCubeModel } from "../src/generators/cube-model.js";
 import { cubeModel as refCubeModel } from "../src/reference/cube-model.js";
+import { callableFile as builtinCallable } from "../src/generators/callable-file.js";
+import { callableFile as refCallable } from "../src/reference/callable.js";
+import { traceHelperFile as builtinTraceHelper } from "../src/generators/trace-helper-file.js";
+import { traceHelperFile as refTraceHelper } from "../src/reference/trace-helper.js";
+import { librarySources } from "@metaobjectsdev/metadata/library";
 import {
   CANONICAL_CONFIG,
   CANONICAL_MODEL,
@@ -136,6 +141,11 @@ const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () 
   // vocabulary), so the pair is compared over two empty sets there; the describe at the end
   // of this file runs both over models that DO, under both Cube dialects.
   "cube-model": { builtin: builtinCubeModel, ref: refCubeModel },
+  // Both emit nothing over the entity-shaped fixtures above (none declares a callable
+  // source or a trace entity); the describe at the end of this file runs each pair over
+  // a model that does.
+  callable: { builtin: builtinCallable, ref: refCallable },
+  "trace-helper": { builtin: builtinTraceHelper, ref: refTraceHelper },
 };
 
 // The prompt tier emits nothing for the entity-shaped fixtures above — none declares a
@@ -839,3 +849,128 @@ describe("ADR-0034 — the cube-model reference is byte-identical to the built-i
     expect(shape(refCubeModel(opts))).toEqual(builtin);
   });
 });
+
+// `callable` and `trace-helper` key on shapes no fixture above carries: a source that is a
+// stored procedure or a table function, and an entity extending the `ai` library's trace
+// anchor with a nested prompt. Without these models each pair would be compared over two
+// empty sets, which is how a reference template ships having lost a branch.
+const CALLABLE_MODEL = {
+  "metadata.root": {
+    package: "demo",
+    children: [
+      {
+        "object.value": {
+          name: "PhaseSummaryArgs",
+          children: [
+            { "field.int": { name: "caseId", "@required": true } },
+            { "field.timestamp": { name: "asOfDate" } },
+          ],
+        },
+      },
+      {
+        // A stored procedure taking typed arguments.
+        "object.projection": {
+          name: "PhaseSummary",
+          children: [
+            { "source.rdb": { "@kind": "storedProc", "@proc": "fn_phase_summary", "@parameterRef": "PhaseSummaryArgs" } },
+            { "field.long": { name: "phaseId" } },
+            { "field.string": { name: "phaseName" } },
+          ],
+        },
+      },
+      {
+        // A zero-argument table function: no `args` parameter, an empty call list.
+        "object.projection": {
+          name: "OpenCase",
+          children: [
+            { "source.rdb": { "@kind": "tableFunction", "@function": "fn_open_cases" } },
+            { "field.long": { name: "caseId" } },
+          ],
+        },
+      },
+      {
+        // An ordinary table: must emit no wrapper on either side.
+        "object.entity": {
+          name: "Case",
+          children: [
+            { "field.long": { name: "id" } },
+            { "source.rdb": { "@table": "cases" } },
+            { "identity.primary": { name: "pk", "@fields": ["id"] } },
+          ],
+        },
+      },
+    ],
+  },
+};
+
+/** One trace entity over the shipped `ai` anchor; `prompt` varies the branch under test. */
+function traceEntity(name: string, table: string, prompt: Record<string, unknown>) {
+  return {
+    "object.entity": {
+      name,
+      extends: "metaobjects::ai::LlmCallBase",
+      children: [
+        { "source.rdb": { "@table": table, "@role": "primary" } },
+        { "identity.primary": { name: "id", "@fields": ["traceId"] } },
+        { "template.prompt": { name: `${name}Prompt`, "@payloadRef": "AskVO", "@responseRef": "AnswerVO", ...prompt } },
+      ],
+    },
+  };
+}
+
+const TRACE_MODEL = {
+  "metadata.root": {
+    package: "app::ops",
+    children: [
+      { "object.value": { name: "AskVO", children: [{ "field.string": { name: "question" } }] } },
+      { "object.value": { name: "AnswerVO", children: [{ "field.string": { name: "answer" } }] } },
+      // A JSON prompt body and a JSON reply.
+      traceEntity("ApiCall", "api_call", { "@textRef": "p/ask", "@format": "json" }),
+      // A plain-text body eliciting an XML reply: the other format literal, and the case
+      // where the body's @format and the reply's @responseFormat differ (ADR-0053).
+      traceEntity("AuditCall", "audit_call", { "@textRef": "p/audit", "@format": "text", "@responseFormat": "xml" }),
+    ],
+  },
+};
+
+describe("ADR-0034 — the callable and trace-helper reference templates over models that carry them", () => {
+  async function compare(
+    root: Parameters<typeof runGen>[0]["metadata"],
+    names: readonly ReferenceGeneratorName[],
+    emitted: RegExp,
+    expected: number,
+  ) {
+    const aDir = mkdtempSync(join(tmpdir(), "codegen-builtin-"));
+    const bDir = mkdtempSync(join(tmpdir(), "codegen-reference-"));
+    try {
+      const a = await gen(aDir, names.map((n) => PAIRS[n].builtin()), root);
+      const b = await gen(bDir, names.map((n) => PAIRS[n].ref()), root);
+      const aKeys = Object.keys(a).sort();
+      // Vacuity guard: exactly the modules the model asks for, no more and no fewer.
+      expect(aKeys.filter((k) => emitted.test(k)).length).toBe(expected);
+      expect(Object.keys(b).sort()).toEqual(aKeys);
+      for (const k of aKeys) expect(`${k}:\n${b[k]}`).toBe(`${k}:\n${a[k]}`);
+    } finally {
+      rmSync(aDir, { recursive: true, force: true });
+      rmSync(bDir, { recursive: true, force: true });
+    }
+  }
+
+  test("callable — a stored procedure with arguments, a zero-argument table function, and a plain table", async () => {
+    const result = await new MetaDataLoader().load([
+      new InMemoryStringSource(JSON.stringify(CALLABLE_MODEL), { id: "callable.json", format: "json" }),
+    ]);
+    expect(result.errors).toEqual([]);
+    await compare(result.root, ["entity", "callable"], /\.callable\.ts$/, 2);
+  });
+
+  test("trace-helper — a JSON reply and an XML one, over the shipped anchor", async () => {
+    const result = await new MetaDataLoader().load([
+      ...librarySources(["ai"]),
+      new InMemoryStringSource(JSON.stringify(TRACE_MODEL), { id: "trace.json", format: "json" }),
+    ]);
+    expect(result.errors).toEqual([]);
+    await compare(result.root, ["entity", "trace-helper"], /\.trace\.ts$/, 2);
+  });
+});
+

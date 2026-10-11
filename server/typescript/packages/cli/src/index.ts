@@ -237,8 +237,9 @@ USAGE:
   meta eject <name>...   Copy each generator into codegen/generators/<name>.ts
   meta eject --list      List every ejectable generator name, grouped by package
 
-Codegen is opt-in — \`meta init\` wires nothing — so this is the door every generator
-you run comes through. Take several at once: the install set is CONSOLIDATED, so
+Eject a generator to CHANGE what it emits. To run one as shipped, import its factory
+from its package instead — \`meta gen --list\` prints the import line — and copy
+nothing. Take several at once: the install set is CONSOLIDATED, so
 \`meta eject form hooks grid\` prints one install line, not three. An unknown name
 refuses the whole call and copies nothing.
 
@@ -251,9 +252,9 @@ FLAGS:
   --help, -h             Print this help
 
 \`meta init\` copies NO generators — codegen is opt-in, and codegen/generators/
-starts empty on purpose. Everything you run comes through here (ADR-0034
-scaffold-and-own): the file is YOURS to edit, and \`meta gen\` runs your copy, not
-the package's. It prints the import line and the entry to add in
+starts empty on purpose. An ejected file is YOURS to edit (ADR-0034
+scaffold-and-own), and \`meta gen\` runs your copy, not the package's. Eject prints
+the import line to swap in for the package one and the entry to add in
 metaobjects.config.ts, and never overwrites a file you already own without --force.
 
 Find names with \`meta gen --list\` — add --probe to see how many files each would

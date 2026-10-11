@@ -1,9 +1,9 @@
 import { defineConfig } from "@metaobjectsdev/cli";
-// ADR-0034 scaffold-and-own: entityFile / queriesFile / routesFile / barrel are OWNED
-// local copies under codegen/generators/, exactly what `meta init` scaffolds into a real
-// consumer project (and what `meta eject <name>` copies on demand). They are the only
-// import path for these four as of 1.0 — the deprecated
-// `@metaobjectsdev/codegen-ts/generators` export of them was removed at the cut.
+// ADR-0034 scaffold-and-own: this example OWNS its four core generators, as local copies
+// under codegen/generators/ — what `meta eject entity queries routes barrel` writes. That
+// is the customization path. Importing the same four from
+// `@metaobjectsdev/codegen-ts/generators` runs them as shipped and works too (removed at
+// 1.0, restored in 1.1 — ADR-0034 Amendment 5).
 import { entityFile } from "./codegen/generators/entity";
 import { queriesFile } from "./codegen/generators/queries";
 import { routesFile } from "./codegen/generators/routes";

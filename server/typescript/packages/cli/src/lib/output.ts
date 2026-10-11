@@ -305,7 +305,7 @@ export function genResultToData(result: GenResultShape): {
   const help = result.files.length !== 0
     ? ["typecheck the generated code with `npx tsc`", ...(result.migrateAdvice !== undefined ? [result.migrateAdvice] : [])]
     : noGenerators
-      ? ["add generators to the `generators: []` array in metaobjects.config.ts — `meta eject --list` names every generator you can own, and `meta init` scaffolds the usual set"]
+      ? ["add generators to the `generators: []` array in metaobjects.config.ts — `meta gen --list` names each one with the import that runs it as shipped, and `meta eject <name>` copies one into your repo to change what it emits"]
       : ["author entities in this project's metadata sources then re-run `meta gen`"];
   // An absent section is STATED, never omitted: a reader must be able to tell
   // "the scan found nothing" from "the scan never ran".

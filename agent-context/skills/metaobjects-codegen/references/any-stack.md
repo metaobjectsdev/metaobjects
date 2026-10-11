@@ -30,8 +30,10 @@ reference generators target React and TanStack. Anything else is this page.
 | **api** — the HTTP surface | Fastify, Hono | §4 |
 | **client** — hooks, forms, grids | React, TanStack | §5 |
 
-The model layer never depends on the store or the framework. Generate it first
-(`meta eject entity`, wire `entityFile()`); everything you write later imports it.
+The model layer never depends on the store or the framework. Generate it first: import
+`entityFile` from `@metaobjectsdev/codegen-ts/generators` and wire `entityFile()`. Nothing
+is copied, and everything you write later imports its output. Eject it (`meta eject
+entity`) only if you need to change what it emits.
 
 ## 3. Persistence
 

@@ -267,10 +267,9 @@ Then wire it into `metaobjects.config.ts`:
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators, copied in by `meta eject` (ADR-0034 scaffold-and-own; `meta init` wires none).
-import { entityFile } from "./codegen/generators/entity";
-import { queriesFile } from "./codegen/generators/queries";
-import { barrel } from "./codegen/generators/barrel";
+// Run as shipped, imported from the package (`meta init` wires none). `meta eject <name>`
+// copies one into ./codegen/generators/ only when you need to change what it emits.
+import { entityFile, queriesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
 import { honoRoutesFile } from "./metaobjects-routes-hono";
 
 export default defineConfig({

@@ -124,11 +124,11 @@ describe("metaobjects.config.ts wiring still scaffolded", () => {
     const configTs = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
     expect(configTs).toContain("defineConfig");
     // ADR-0034 Amendment 2 — the scaffolded config wires nothing and imports nothing.
-    // What it must NOT do is reach for the deprecated package `/generators` export,
-    // which is the one import path 1.0 removed.
+    // The package's `/generators` path may appear in the comment that shows how to wire
+    // one; an uncommented import of it would be the default suite that amendment removed.
     expect(configTs).toContain("generators: []");
     expect(configTs).not.toMatch(/^import .* from "\.\/codegen\/generators\//m);
-    expect(configTs).not.toContain("@metaobjectsdev/codegen-ts/generators");
+    expect(configTs).not.toMatch(/^import .* from "@metaobjectsdev\/codegen-ts\/generators"/m);
   });
 });
 

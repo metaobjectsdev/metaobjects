@@ -66,15 +66,16 @@ repository. A test keeps the two identical.
 
 [`generators/typescript/mongo-repository.ts`](generators/typescript/mongo-repository.ts) is
 a complete example for the MongoDB Node driver. Copy it into `codegen/generators/`, then wire
-it next to the entity generator:
+it next to the stock entity generator, which is imported from its package and run as shipped
+(install the packages its `meta gen --list --format json` row lists under `install`; the text
+listing does not print them):
 
 ```bash
-meta eject entity
 cp <metaobjects>/docs/recipes/generators/typescript/mongo-repository.ts codegen/generators/
 ```
 
 ```ts
-import { entityFile } from "./codegen/generators/entity.js";
+import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
 import { mongoRepositoryGenerator } from "./codegen/generators/mongo-repository.js";
 
 export default defineConfig({

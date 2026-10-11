@@ -185,7 +185,7 @@ MetaObjects has two layers, and only the first is a promise
 | | Core — guaranteed | Helpers — yours |
 |---|---|---|
 | **What** | The metamodel, loader, canonical format and registry; runtime metadata access (the `ObjectManager`, not the HTTP adapters that mount it); schema migrations (`meta migrate`); the drift gates (`meta verify`); prompt render and the reply parser | Every generator that writes code into your repo — the ones you write for the outputs you need, and the reference routes, controllers, ORM wiring, DTOs, forms, grids and hooks you copy |
-| **Promise** | Conformance-gated, the same behaviour in every port that ships it, covered by the [compatibility policy](docs/compatibility-policy.md) | Reference starting points that compile and pass their reference fixtures. Copy one with `meta eject` and change it freely |
+| **Promise** | Conformance-gated, the same behaviour in every port that ships it, covered by the [compatibility policy](docs/compatibility-policy.md) | Reference starting points that compile and pass their reference fixtures. Run one as shipped, or copy it with `meta eject` and change it freely |
 | **A defect is** | A MetaObjects bug, fixed in a release | A bug in the reference, fixed there; your copy is yours |
 
 The test is mechanical: what the tool guarantees is core; what it writes into your repo
@@ -212,7 +212,8 @@ sixth ships two libraries at their own stability labels:
    20-line shape plus JSON Schema and OpenAPI examples to copy. The reference generators
    (Drizzle/Zod + Fastify for TS, Spring REST + DTO + repository for Java, `data class` +
    Exposed for Kotlin, EF Core record + ASP.NET routes for C#, Pydantic + FastAPI for
-   Python) are starting points: eject the one that is close, change it, and regenerate.
+   Python) are starting points: run one as shipped when it already emits what you want, or
+   eject the one that is close, change it, and regenerate.
    The engine that runs generators is core; their output is yours.
 2. **Runtime metadata** — load metadata at runtime, drive behavior dynamically
    (CRUD, validation, relationships, dynamic admin UIs; typed tool payloads are

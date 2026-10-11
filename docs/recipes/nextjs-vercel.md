@@ -30,11 +30,9 @@ config and none of them is metadata.
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators, copied in by `meta eject` (§6) — `meta init` wires none.
-import { entityFile } from "./codegen/generators/entity.js";
-import { queriesFile } from "./codegen/generators/queries.js";
-import { routesFileHono } from "./codegen/generators/routes-hono.js";
-import { barrel } from "./codegen/generators/barrel.js";
+// Run as shipped, imported from the package — `meta init` wires none. §6 covers
+// ejecting one when you need to change what it emits.
+import { entityFile, queriesFile, routesFileHono, barrel } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   outDir: "src/generated",
@@ -57,10 +55,10 @@ export default defineConfig({
 });
 ```
 
-The `.js` specifiers in this file's own imports are correct and are **not** what
-`extStyle` governs. `metaobjects.config.ts` is loaded by the CLI under Node, never by
-Turbopack; `extStyle` decides only how *generated* modules import each other. `meta eject`
-prints these lines for you — paste them as given.
+`extStyle` does **not** govern this file's own imports. `metaobjects.config.ts` is loaded
+by the CLI under Node, never by Turbopack; `extStyle` decides only how *generated* modules
+import each other. If you later eject a generator (§6), the local import `meta eject`
+prints ends in `.js`: that is correct, so paste it as given.
 
 `<Entity>.meta.ts` deliberately does **not** get the directive. It is plain data with no
 hooks and no React import — imported *by* a client component, which under RSC is exactly
@@ -205,7 +203,7 @@ Everything above is configuration. When you need different *output* — a differ
 shape, a different form library, an auth wrapper around every handler — take the generator:
 
 ```bash
-meta eject --list           # all ten reference templates, grouped by package
+meta eject --list           # every stock generator, grouped by package
 meta eject routes-hono      # → codegen/generators/routes-hono.ts
 meta eject form             # → codegen/generators/form.ts
 meta eject hooks            # → codegen/generators/hooks.ts

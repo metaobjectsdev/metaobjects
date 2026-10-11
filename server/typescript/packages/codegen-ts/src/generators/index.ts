@@ -1,20 +1,26 @@
-// Built-in generator factories.
+// Built-in generator factories — the public home of every stock generator.
 //
-// ADR-0034 scaffold-and-own — `entityFile`, `queriesFile`, `routesFile` and `barrel` were
-// exported here and DEPRECATED; 1.0 REMOVED them (ADR-0035 A3, `docs/1.0-readiness.md` G2,
-// `docs/features/migrations/0.x-to-1.0.md` §11). Own a copy instead: `meta init` scaffolds
-// them into `codegen/generators/*.ts` and `meta eject <name>` copies one at any time. They
-// remain in this directory as the engine's internal composers and as the oracle the
-// byte-identity gate holds each reference template to — they are no longer public API.
+// Importing a factory from here runs the generator AS SHIPPED: nothing to copy, and an
+// upgrade of the package is how its fixes arrive. `meta eject <name>` is the other path —
+// it copies the reference template into `codegen/generators/` so the adopter can change
+// what it emits (ADR-0034, Amendment 5). Both are supported; neither is deprecated.
 //
-// The factories BELOW are not deprecated and this subpath is a supported public home for
-// them. The prompt/output tier (`promptRender`, `outputParser`, `outputPrompt`,
-// `extractor`, `renderHelper`) ALSO ships a reference template, so `meta eject <name>`
-// can copy one to own (ADR-0034 Amendment 3); importing it from here is the un-owned
-// path, and the CLI's prompt-gate warning names it. `traceHelperFile`, `callableFile` and
-// the docs/primitive entries are package-only: no reference copy ships, so this subpath
-// is their only home. `routesFileHono` / `namesFile` are wired directly or ejected.
+// `entityFile`, `queriesFile`, `routesFile` and `barrel` were exported here, deprecated,
+// and REMOVED at 1.0 so that an owned copy was the only path. 1.1 restored them: an
+// adopter who changes nothing about a generator should not have to carry a copy of it
+// that falls behind the reference. The byte-identity gate
+// (`test/reference-byte-identical.test.ts`) holds each reference template to the factory
+// of the same name exported here, so the two paths start from the same output.
+//
+// Which entries have a reference copy is declared once, in `REFERENCE_GENERATOR_NAMES`
+// (reference-templates.ts); `meta gen --list` marks every other entry `package-only` —
+// today that is `template`, `shared-model` and the docs tier.
 // See spec/decisions/ADR-0034-codegen-scaffold-and-own.md.
+
+export { entityFile, type EntityFileOpts } from "./entity-file.js";
+export { queriesFile, type QueriesFileOpts } from "./queries-file.js";
+export { routesFile, type RoutesFileOpts } from "./routes-file.js";
+export { barrel, type BarrelOpts } from "./barrel.js";
 
 export { callableFile, type CallableFileOpts } from "./callable-file.js";
 export { routesFileHono, type RoutesFileHonoOpts } from "./routes-file-hono.js";

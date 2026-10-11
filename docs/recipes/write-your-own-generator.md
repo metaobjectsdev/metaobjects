@@ -30,8 +30,10 @@ emits it**, or none emits it the way your application needs it:
 Hand-writing any of these is the anti-pattern: it drifts the day the model changes, and
 nothing tells you. A generator regenerates on every model change and is drift-gated.
 
-Reach for **`eject`** instead only when a reference generator already emits something
-close to what you want (`meta gen --list` is the catalog); then edit your copy. Hand-write
+When a reference generator already emits what you want, run it as shipped: import it from
+its package, or select it by name on the non-TypeScript ports (`meta gen --list` is the
+catalog). Reach for **`eject`** when one is close and you need to change it; then edit your
+copy. Hand-write
 only what the model genuinely cannot express: business logic, calls to other systems.
 
 ## The shape, in every port

@@ -10,7 +10,7 @@ it there, in the same change, and keep going:
 
 | Port | Where the fix goes |
 |---|---|
-| **TypeScript** | Your ejected copy under `codegen/generators/` — and, for routes, the HTTP adapter it calls: `meta eject routes` / `routes-hono` / `entity` also copy that adapter's source (mount helpers, filter parser, error envelopes, pagination) into `codegen/runtime/`, and the ejected output imports it from there, so a bug in a route's behaviour is fixed in that copy. If you are running a generator you never ejected, `meta eject <name>` it first. A generator that `meta eject --list` does not name (the prompt tier, for one) has no reference template yet: replace it in `generators` with your own `Generator`, starting from its source in the installed package. |
+| **TypeScript** | Your ejected copy under `codegen/generators/` — and, for routes, the HTTP adapter it calls: `meta eject routes` / `routes-hono` / `entity` also copy that adapter's source (mount helpers, filter parser, error envelopes, pagination) into `codegen/runtime/`, and the ejected output imports it from there, so a bug in a route's behaviour is fixed in that copy. If you are running a generator you never ejected (imported from its package), `meta eject <name>` it first and swap the import for the local one eject prints. Every stock generator can be ejected except the `template` primitive, which has no emit logic of its own to own. `shared-model` and the docs tier (`docs`, `api-docs`, `mermaid-er`) are not yet ejectable. A generator `meta gen --list` marks `package-only` has no reference template: replace it in `generators` with your own `Generator`, starting from its source in the installed package. |
 | **Java / Kotlin** | Your own generator class. Subclass the reference generator and override the `protected` method that emits the wrong piece; when that piece is `private`, copy the reference generator's source (Apache-2.0) into your own package and edit it. Put the class in a codegen module that the module running `metaobjects:generate` depends on — the plugin loads `<classname>` from that module's compile classpath, and `provided` scope keeps it out of your packaged app — then point `<classname>` at it. Full steps: the Java and Kotlin references. |
 | **C# / Python** | Your owned copy (`dotnet meta eject <name>` / `metaobjects eject <name>`, then edit it), or a generator of your own that replaces the artifact — an `IGenerator` in `codegen/Program.cs` on C#, a `module:symbol` entry on Python — or a template spec (`--template-spec`). |
 
@@ -41,6 +41,26 @@ adopt the surface you decided against.
 Every port gets a reference generator's source the same way — its `eject` command — and
 writes a new one against the same small interface (the top of the skill). Your language
 reference has the per-port mechanics.
+
+## Run it as shipped, or own a copy
+
+Owning a generator is how you **change** it. It is not a precondition for running one, and
+a copy you never change is a cost: it duplicates the reference and falls behind it, so the
+project misses fixes it would have received by upgrading.
+
+| You want | Do |
+|---|---|
+| A stock generator's output, unchanged | Wire it from its package and copy nothing. TypeScript: the import line on its `meta gen --list` row, for example `import { entityFile } from "@metaobjectsdev/codegen-ts/generators";`. Other ports: select it by its stable name. |
+| To change what a stock generator emits | Eject it, edit the copy, and point the config at the copy. On TypeScript the factory keeps its name, so that is one import line. |
+| To stop carrying a copy you never changed | Each port's listing marks every owned copy identical to the reference or differing from it: `meta eject --list --format text` (TypeScript), `metaobjects gen --list` (Python), `dotnet meta gen --list` (C#), `mvn metaobjects:eject -Dlist` (Java, Kotlin). On TypeScript, only a copy marked identical is proven unmodified: there the mark means byte-for-byte equal. On Python, C# and Java/Kotlin, identical compares lines without regard to their order, so it rules out added, edited and removed lines but not reordered ones: confirm from the file's history (`git log -p` on the copy shows no edit after the eject) before dropping it. On every port, one marked as the same content in your formatting, or as differing with no lines of your own, may still carry lines you removed or reordered, because that count rules out added or edited lines only: confirm from the file's history (`git log -p` on the copy shows no edit after the eject) before dropping it. On TypeScript, replace its local import with the package import, delete the file, run `meta gen` and review the diff. `entity`, `routes` and `routes-hono` also own the HTTP adapter under `codegen/runtime/`: treat one as unmodified only when the generator file and every runtime file it reaches are marked identical. The runtime rows are printed by `meta eject --list --format text`, and carried as the `runtimeCopy` array (a `verdict` per file) inside the `source` object of the generator's row in `meta gen --list --format json`. Away from a terminal, `meta eject --list` without `--format text` prints generator rows only, and a listing with no runtime rows is not evidence that the adapter is unmodified. If a runtime file differs, your change lives there, so keep the owned generator, which is what points the output at that adapter. |
+
+A generator you import is still a reference helper: its output can change when you upgrade,
+and `verify --codegen` reports that as drift until you regenerate. If output has to hold
+still across upgrades, own the copy.
+
+On TypeScript `@metaobjectsdev/*` 1.0.x, `entityFile`, `queriesFile`, `routesFile` and
+`barrel` are not exported from the package and an owned copy is the only way to run them.
+1.1 restored the import. Check the installed version before replacing a copy with it.
 
 ## A generator of your own beside the references
 

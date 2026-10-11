@@ -64,16 +64,15 @@ Codegen is wired in a type-checked TS config at the project root. `defineConfig`
 comes from `@metaobjectsdev/cli`; the generators come from their packages.
 
 `meta init` scaffolds this file with **`generators: []`** — nothing is generated until
-you choose it. Each import below appears once you `meta eject` that generator, which
-prints the exact line to add.
+you choose it. Each import below runs a generator as shipped; `meta gen --list` prints
+the exact line for every generator. Only a generator you are going to change is ejected:
+`meta eject <name>` copies it into `codegen/generators/` and prints the local import to
+swap in for the package one.
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators — copied in by `meta eject` (ADR-0034 scaffold-and-own).
-import { entityFile } from "./codegen/generators/entity";
-import { queriesFile } from "./codegen/generators/queries";
-import { routesFile } from "./codegen/generators/routes";
-import { barrel } from "./codegen/generators/barrel";
+// Run as shipped: nothing copied, fixes arrive by upgrading the package.
+import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { tanstackQuery, tanstackGrid } from "@metaobjectsdev/codegen-ts-tanstack";
 
@@ -119,16 +118,18 @@ PROJECT ROOT that CONTAINS the metadata — never the metadata directory itself.
 ## The generators
 
 Server-side, framework-neutral. **None is wired by default** — `meta init` writes
-`generators: []` and an empty `codegen/generators/`. `meta eject <name>...` copies the
-ownable ones into your repo, imported from `./codegen/generators/*` (ADR-0034); 1.0
-REMOVED their `@metaobjectsdev/codegen-ts/generators` export, so an owned copy is the only
-path for those. The engine primitives come from the package main entry,
-`@metaobjectsdev/codegen-ts`. The `/generators` subpath itself is NOT deprecated. It
-exports the prompt tier (`promptRender`, `outputParser`, `outputPrompt`, `extractor`,
-`renderHelper`), `namesFile` and `requirementTests`, which you may import from there OR
-eject to own, and it is the only home of the package-only generators — `traceHelperFile`,
-`callableFile` — which ship no reference template (`meta gen --list` marks them
-`package-only`).
+`generators: []` and an empty `codegen/generators/`. Every generator below is imported from
+`@metaobjectsdev/codegen-ts/generators` to run it as shipped; `meta gen --list` prints
+each import line. To change what one emits, `meta eject <name>...` copies it into your
+repo, imported from `./codegen/generators/*` instead (ADR-0034); the factory keeps its
+name. Import by default and eject to customize: an owned copy you never change only falls
+behind the reference. (`entityFile` / `queriesFile` / `routesFile` / `barrel` were removed
+from that subpath at 1.0 and restored in 1.1, so on a 1.0.x install an owned copy is the
+only path for those four.) The engine primitives come from the package main entry,
+`@metaobjectsdev/codegen-ts`. Every stock generator can be ejected except the `template`
+primitive, which has no emit logic of its own to own. `shared-model` and the docs tier
+(`docs`, `api-docs`, `mermaid-er`) are not yet ejectable; `meta gen --list` marks each
+entry without a reference copy `package-only`.
 
 **`requirementTests()` — one test stub per requirement the model claims.** A recommended
 approach, not a contract: a `live` or `partial` requirement gets a stub that fails until

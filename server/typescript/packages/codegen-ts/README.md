@@ -84,21 +84,19 @@ dependency tree entirely:
 ```ts
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
-import { entityFile } from "./codegen/generators/entity";
-import { queriesFile } from "./codegen/generators/queries";
-import { barrel } from "./codegen/generators/barrel";
+import { entityFile, queriesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   generators: [entityFile({ allowlists: false }), queriesFile(), barrel()],
 });
 ```
 
-The `entityFile` / `queriesFile` / `routesFile` / `barrel` factories are imported
-from the **owned local copies** that `meta init` scaffolds into
-`codegen/generators/` (ADR-0034 scaffold-and-own). Importing them from
-`@metaobjectsdev/codegen-ts/generators` still works but is **deprecated** — own a
-copy instead; the package export will be removed in a future major. The engine and
-primitives (`runGen`, the scope helpers `perEntity` / `perPackage` / `perModel`
+Every generator factory is imported from `@metaobjectsdev/codegen-ts/generators` to run
+it as shipped. To change what one emits, `meta eject <name>` copies its reference template
+into `codegen/generators/` (ADR-0034 scaffold-and-own), and the config imports that local
+copy instead; the factory keeps its name. (`entityFile` / `queriesFile` / `routesFile` /
+`barrel` were removed from that subpath at 1.0 and restored in 1.1, ADR-0034 Amendment 5.)
+The engine and primitives (`runGen`, the scope helpers `perEntity` / `perPackage` / `perModel`
 (`oncePerRun` is a soft-deprecated alias of `perModel`), `RenderContext`, the loader and
 render helpers) remain the stable, versioned import from `@metaobjectsdev/codegen-ts`,
 and an owned generator imports them from there.
@@ -191,11 +189,9 @@ For every `template.prompt` that declares `@responseRef` (ADR-0052 — the inbou
 ```ts
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
-import { entityFile } from "./codegen/generators/entity";
-import { queriesFile } from "./codegen/generators/queries";
-import { barrel } from "./codegen/generators/barrel";
-import { promptRender, outputParser } from "@metaobjectsdev/codegen-ts/generators";
+import {
+  entityFile, queriesFile, barrel, promptRender, outputParser,
+} from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   // entityFile() is required: it emits the value-object interfaces the parser returns.

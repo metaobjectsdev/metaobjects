@@ -15,7 +15,7 @@ describe("reference-templates reader", () => {
     expect([...REFERENCE_GENERATOR_NAMES]).toEqual([
       "entity", "queries", "routes", "routes-hono", "barrel", "names",
       "prompt-render", "output-parser", "extractor", "output-prompt", "render-helper",
-      "requirement-tests", "cube-model",
+      "requirement-tests", "cube-model", "callable", "trace-helper",
     ]);
   });
 
@@ -31,7 +31,8 @@ describe("reference-templates reader", () => {
       const src = readReferenceTemplate(name);
       expect(src).toContain("REFERENCE TEMPLATE");
       expect(src).toContain('from "@metaobjectsdev/codegen-ts"');
-      // Never the deprecated package `/generators` export.
+      // Never the packaged factory it is a copy of — an owned generator that called
+      // the package's would not own what it emits.
       expect(src).not.toContain("@metaobjectsdev/codegen-ts/generators");
     }
   });

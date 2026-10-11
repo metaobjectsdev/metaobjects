@@ -168,8 +168,9 @@ emits an out-of-spec shape fails the cross-port conformance suite.
 ## Where to find the types
 
 Everything on this page comes from the package **main entry**. The
-`@metaobjectsdev/codegen-ts/generators` subpath re-exports some of the same names,
-but it is deprecated (ADR-0034) and removed at the 1.0 cut — do not import from it.
+`@metaobjectsdev/codegen-ts/generators` subpath re-exports some of the same names, but its
+job is the generator factories (`entityFile`, `promptRender`, …); import these shapes from
+the main entry.
 
 The neutral structural shapes, which is what a declarative `scope` generator renders
 against:

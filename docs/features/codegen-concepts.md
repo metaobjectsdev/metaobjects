@@ -36,8 +36,9 @@ gates it with nothing to register. `meta generator new <name>` scaffolds a worki
 TypeScript; every port's shape and two worked examples are in
 [Write your own generator](../recipes/write-your-own-generator.md).
 
-The library also ships a documented **template library** of reference generators; when
-one is close to what you need, you copy it into your repo and own it. A single standard template set has never fit
+The library also ships a documented **template library** of reference generators. When one
+already emits what you want, import it and run it as shipped; when one is close to what you
+need, you copy it into your repo and own it. A single standard template set has never fit
 across projects — framework conventions, naming, structure, and business patterns are
 per-project. Don't fight a black-box generator; own a starting point and edit it.
 Choosing and adapting a starting template is a **human/Claude judgment call**, not a
@@ -48,9 +49,14 @@ scaffolds `codegen/generators/` empty with `generators: []`. `meta gen --list --
 the catalog — every generator, with how many files it would emit for your model — and
 `meta eject <name>...` copies the ones you choose from the reference templates into
 `codegen/generators/`, printing the import and entry to wire, so `meta gen` runs from
-generators you own from the first run. `eject` never clobbers a file you already own. The
-old `@metaobjectsdev/codegen-ts/generators` import of `entityFile` / `queriesFile` /
-`routesFile` / `barrel` was **removed at 1.0** — own the local copy.
+generators you own. `eject` never clobbers a file you already own.
+
+Owning is how you **change** a generator, not a precondition for running one. Every stock
+generator also runs as shipped: import its factory from its package (`meta gen --list`
+prints the line) and wire it, and an upgrade is how its fixes reach you. The
+`@metaobjectsdev/codegen-ts/generators` import of `entityFile` / `queriesFile` /
+`routesFile` / `barrel` was removed at 1.0 and **restored in 1.1** (ADR-0034 Amendment 5).
+See [Import a stock generator, or own a copy](own-your-codegen.md#import-a-stock-generator-or-own-a-copy-typescript).
 
 ## 3. Authoring mechanisms — and their tradeoffs
 

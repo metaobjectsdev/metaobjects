@@ -5,8 +5,8 @@ joins, dimensions, measures, segments, and a rollup for each served report._
 
 **Status:** a TypeScript reference helper (FR-044 Plan 4;
 [ADR-0034](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md) Amendment 3). It is
-listed by `meta gen --list`, copied into your repo with `meta eject cube-model`, and checked
-by `meta verify --codegen`. It is not core: what MetaObjects guarantees is the vocabulary and
+listed by `meta gen --list`, imported from its package to run as shipped (or copied into your
+repo with `meta eject cube-model` to change it), and checked by `meta verify --codegen`. It is not core: what MetaObjects guarantees is the vocabulary and
 the loader's checks on it, and a generator that writes files into your repo is a helper you can
 copy and own. It adds no vocabulary (`metamodelVersion` stays 1.1) and has no runtime: the
 files it writes import nothing.
@@ -55,8 +55,8 @@ that points there:
 ```ts
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Copied in by `meta eject cube-model`: yours to edit (ADR-0034).
-import { cubeModel } from "./codegen/generators/cube-model.js";
+// Run as shipped. `meta eject cube-model` copies it in when you need to change it.
+import { cubeModel } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   outDir: "src/generated",
@@ -66,13 +66,12 @@ export default defineConfig({
 });
 ```
 
-`meta eject cube-model` copies one file, `codegen/generators/cube-model.ts`, and prints the
-import and the entry to wire. It copies nothing into `codegen/runtime/`, because the output
+To change what it emits, `meta eject cube-model` copies one file,
+`codegen/generators/cube-model.ts`, and prints the local import to swap in and the entry to wire. It copies nothing into `codegen/runtime/`, because the output
 imports nothing. What you own in the copy is which entities get a cube, where the files land
 and the YAML call. The mapping (`buildCubeModel`, which raises every refusal below) and the
 YAML writer (`renderCubeYaml`) stay in the package, both exported from
-`@metaobjectsdev/codegen-ts`. To run the package's own copy, import `cubeModel` from
-`@metaobjectsdev/codegen-ts` instead.
+`@metaobjectsdev/codegen-ts`.
 
 | Option | Meaning |
 |---|---|

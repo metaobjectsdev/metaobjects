@@ -16,8 +16,9 @@ replace — if the libraries disappeared tomorrow, you keep working code.
 **MetaObjects is the core; the generators are yours** (ADR-0034 Amendments 3 and 4). The
 core — model, loader, registry, `verify`, `migrate`, prompt render and reply extract — is
 what MetaObjects guarantees. On it, you build the generators the application needs. The
-generators MetaObjects ships are reference examples: copy one with `eject` when it is
-close to what you need, and write your own when it is not. When a generated file is
+generators MetaObjects ships are reference helpers: run one as shipped when it already
+emits what you want, copy it with `eject` when it is close and you need to change it, and
+write your own when nothing fits. When a generated file is
 wrong, fix the generator that emitted it — do not hand-edit around it, and do not treat it
 as a broken core guarantee.
 
@@ -114,8 +115,13 @@ change) and two worked examples to copy — JSON Schema and OpenAPI 3.1, example
 product surface — are in the guide "Write your own generator":
 <https://github.com/metaobjectsdev/metaobjects/blob/main/docs/recipes/write-your-own-generator.md>.
 
-**Eject instead** only when a reference generator already emits something close to what
-you need: `meta gen --list --probe` is the catalog, `meta eject <name>` copies one in.
+**Use a stock generator as shipped** when one already emits what you need:
+`meta gen --list --probe` is the catalog, and each row says how to wire it with nothing
+copied into the repo (an import line on TypeScript, a stable name on the other ports). An
+upgrade is then how its fixes reach you. **Eject** when a reference generator is close and
+you need to change what it emits: `meta eject <name>` copies it in. Do not eject a
+generator you are not going to change, because an unmodified copy only duplicates the
+reference and falls behind it.
 **Hand-write** only what the model cannot express — business logic, calls to other
 systems — and have it import the generated types.
 
@@ -263,7 +269,12 @@ they emit.
    - Do **NOT** apply that rule to `client`. `@metaobjectsdev/tanstack` peers on
      `react`, so a form generator plus the TanStack hook/grid generators is the
      intended composition, not a conflict.
-5. **`meta eject <names...> --format json`** — copies each into `codegen/generators/`
+5. **Wire what you chose.** A generator you will run unchanged is wired from its package:
+   on TypeScript each catalog row carries `wire.import`, plus `install` and `configKeys`,
+   and you write the call from the generator's documented options; on the other ports you
+   select it by its stable name. Copy nothing.
+   For a generator whose output you need to change,
+   **`meta eject <names...> --format json`** copies each into `codegen/generators/`
    (yours to edit), and reports the import line, the entry to add to `generators`, one
    consolidated install command, and any config keys those generators read. On
    TypeScript, a generator whose output calls an HTTP adapter (`routes`, `routes-hono`,

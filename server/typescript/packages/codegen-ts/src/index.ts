@@ -293,6 +293,12 @@ export { renderOutputParser } from "./templates/output-parser.js";
 export { renderExtractor } from "./templates/extractor.js";
 export { renderOutputPrompt } from "./templates/output-prompt.js";
 export { renderRenderHelper } from "./templates/render-helper.js";
+// The same split for the two capability generators that gained reference templates in
+// 1.1: an owned copy of `callable` (src/reference/callable.ts) or `trace-helper`
+// (src/reference/trace-helper.ts) chooses which files to emit and where; the module body
+// stays in these composers.
+export { renderCallableFile, isCallableEntity } from "./templates/callable-file.js";
+export { renderTraceHelper, traceAnchorNodes, extendsTraceAnchor } from "./templates/trace-helper.js";
 
 // Template-driven codegen (rc.12). Factory + framework Provider for adopters
 // who want to wire their own templateGenerator instances. The default
