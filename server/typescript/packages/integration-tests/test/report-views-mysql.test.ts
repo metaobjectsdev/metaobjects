@@ -91,7 +91,7 @@ function reportViews(root: MetaRoot) {
 /**
  * `CREATE VIEW` for every report view of `root` (or only those in `only`), exactly as the recipe
  * shows. The canonical model has grown reports over tables this file's hand-written DDL does not
- * create (measurements, sessions, nodes, auths, all_types): the MySQL lane covers the nine
+ * create (measurements, sessions, nodes, auths, all_types): the MySQL lane covers the eleven
  * canonical reports it has DDL for, and the rest are gated on Postgres in every port.
  */
 async function createViews(root: MetaRoot, only?: readonly string[]): Promise<string[]> {
@@ -191,7 +191,7 @@ const RELATIVE_MODEL = JSON.stringify({ "metadata.root": { package: "acme", chil
       { "source.rdb": { "@kind": "view", "@view": "v_up_to_tomorrow" } } ] } },
 ]}});
 
-/** Every view and table this file creates: the canonical nine, the inline models' and the recipe's. */
+/** Every view and table this file creates: the canonical eleven, the inline models' and the recipe's. */
 const OWN_VIEWS = [
   ...CANONICAL_VIEWS,
   "v_events_by_grain", "v_last_twelve_hours", "v_last_two_weeks", "v_up_to_tomorrow",

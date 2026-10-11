@@ -76,7 +76,7 @@ import {
   opsForField,
 } from "../core/query/query-constants.js";
 import { ATTR_SUBTYPE_FILTER } from "../core/attr/attr-constants.js";
-import { isWritableSource } from "../shared/node-guards.js";
+import { isMetaObject, isMetaRoot, isWritableSource } from "../shared/node-guards.js";
 import { AGG_ALL, AGG_ANY } from "../persistence/origin/origin-constants.js";
 import {
   FILTER_RELATIVE_NOW,
@@ -96,6 +96,7 @@ import {
 import { MetaDimension } from "../core/reporting/meta-dimension.js";
 import { MetaMeasure } from "../core/reporting/meta-measure.js";
 import { MetaSegment } from "../core/reporting/meta-segment.js";
+import { measureResultSubType } from "../core/reporting/report-shape.js";
 import {
   reportDerivedFieldName,
   reportDimensionItems,
@@ -666,7 +667,7 @@ function checkAggregateColumns(
   return { field };
 }
 
-/** M6 — each operand names a measure.aggregate of the same entity, and not an any / all one. */
+/** M6 — each operand names a measure.aggregate of the same entity whose result is a number. */
 function checkRatioOperands(ctx: MemberCtx, ratio: MetaMeasure, err: (message: string) => void): void {
   const operands: [string, string | undefined][] = [
     [REPORTING_ATTR_NUMERATOR, ratio.numerator()],
@@ -682,11 +683,14 @@ function checkRatioOperands(ctx: MemberCtx, ratio: MetaMeasure, err: (message: s
         `@${attr} '${ref}' is a measure.${target.subType}; a ratio's operands must be measure.aggregate ` +
           `(a ratio of ratios is not supported).`,
       );
-    } else if (target instanceof MetaMeasure && (target.agg() === AGG_ANY || target.agg() === AGG_ALL)) {
-      err(
-        `@${attr} '${ref}' is an @agg '${target.agg()}' measure, which is a boolean; a ratio divides numbers. ` +
-          `Count the matching rows instead (@agg: count with a @filter).`,
-      );
+    } else if (target instanceof MetaMeasure && isMetaObject(ctx.host) && isMetaRoot(ctx.root)) {
+      const result = measureResultSubType(target, ctx.host, ctx.root);
+      if (result !== undefined && !NUMERIC_FIELD_SUBTYPES.includes(result)) {
+        err(
+          `@${attr} '${ref}' is a ${result} measure; a ratio divides numbers, so its operands must be numeric ` +
+            `measures (a count, a sum, an avg, or a min or max of a numeric field).`,
+        );
+      }
     }
   }
 }

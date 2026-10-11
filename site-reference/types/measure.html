@@ -124,7 +124,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <p><strong>Allowed children</strong></p>
 <p><em>No structural children.</em></p>
 <h3>measure.ratio</h3>
-<p>A named quotient of two measure.aggregate siblings (FR-044), lowered as numerator / NULLIF(denominator, 0) and typed decimal. A zero denominator yields null.</p>
+<p>A named quotient of two numeric measure.aggregate siblings (FR-044), lowered as numerator / NULLIF(denominator, 0) and typed decimal. A zero denominator yields null.</p>
 <p><strong>When to use:</strong> Averages per unit that are not a plain avg: average days engaged per starter.</p>
 <p><strong>Attributes</strong></p>
 <table>
@@ -155,7 +155,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>—</td>
-<td>Name of a measure.aggregate on the same entity.</td>
+<td>Name of a measure.aggregate on the same entity whose result is numeric: a count, a sum, an avg, or a min or max of a numeric field.</td>
 </tr>
 <tr>
 <td><code>@numerator</code></td>
@@ -164,7 +164,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>—</td>
-<td>Name of a measure.aggregate on the same entity.</td>
+<td>Name of a measure.aggregate on the same entity whose result is numeric: a count, a sum, an avg, or a min or max of a numeric field.</td>
 </tr>
 </tbody></table>
 <p><strong>Allowed children</strong></p>

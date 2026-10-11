@@ -1,0 +1,58 @@
+{
+  "metadata.root": {
+    "package": "acme::ops",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Call",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "calls"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "endedAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "calls",
+                "@agg": "count",
+                "@of": "Call.id"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "lastEndedAt",
+                "@agg": "max",
+                "@of": "Call.endedAt"
+              }
+            },
+            {
+              "measure.ratio": {
+                "name": "endRate",
+                "@numerator": "lastEndedAt",
+                "@denominator": "calls"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

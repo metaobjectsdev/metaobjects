@@ -28,11 +28,11 @@
         { "type": "attr", "subType": "int", "name": "default", "min": 0, "max": 1, "description": "Optional integer the measure reads when it would otherwise be null: nothing matched, every matched value is null, or (a ratio) the denominator is zero or null. The derived report field is then never null. Refused on @agg: count (a count is never null), on min/max over a field that is not numeric, and on @agg any/all unless it is 0 (false) or 1 (true). A ratio's operand carries its own @default into the ratio." }
       ] },
     { "type": "measure", "subType": "ratio",
-      "description": "A named quotient of two measure.aggregate siblings (FR-044), lowered as numerator / NULLIF(denominator, 0) and typed decimal. A zero denominator yields null.",
+      "description": "A named quotient of two numeric measure.aggregate siblings (FR-044), lowered as numerator / NULLIF(denominator, 0) and typed decimal. A zero denominator yields null.",
       "whenToUse": "Averages per unit that are not a plain avg: average days engaged per starter.",
       "children": [
-        { "type": "attr", "subType": "string", "name": "numerator", "min": 1, "max": 1, "description": "Name of a measure.aggregate on the same entity." },
-        { "type": "attr", "subType": "string", "name": "denominator", "min": 1, "max": 1, "description": "Name of a measure.aggregate on the same entity." },
+        { "type": "attr", "subType": "string", "name": "numerator", "min": 1, "max": 1, "description": "Name of a measure.aggregate on the same entity whose result is numeric: a count, a sum, an avg, or a min or max of a numeric field." },
+        { "type": "attr", "subType": "string", "name": "denominator", "min": 1, "max": 1, "description": "Name of a measure.aggregate on the same entity whose result is numeric: a count, a sum, an avg, or a min or max of a numeric field." },
         { "type": "attr", "subType": "int", "name": "default", "min": 0, "max": 1, "description": "Optional integer the measure reads when it would otherwise be null: nothing matched, every matched value is null, or (a ratio) the denominator is zero or null. The derived report field is then never null. Refused on @agg: count (a count is never null) and on min/max over a field that is not numeric. A ratio's operand carries its own @default into the ratio." }
       ] },
     { "type": "segment", "subType": "filter",

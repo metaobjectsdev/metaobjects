@@ -411,13 +411,21 @@ function deriveMeasure(m: MetaMeasure, from: MetaObject, root: MetaRoot): Measur
 /**
  * Table B's subtype for one measure of `from`, whether or not a report lists it (a
  * ratio's operands are measures a report need not list). The same rule `reportShape`
- * applies to a listed measure. Throws a plain Error naming the measure when its `@of`
- * does not resolve (a measure that passed `validateReporting` always resolves).
+ * applies to a listed measure. Undefined when its `@of` does not resolve, which the
+ * loader (rule M6) reads before the model is known to be valid.
+ */
+export function measureResultSubType(measure: MetaMeasure, from: MetaObject, root: MetaRoot): string | undefined {
+  return deriveMeasure(measure, from, root)?.subType;
+}
+
+/**
+ * {@link measureResultSubType} for a model that passed `validateReporting`. Throws a plain
+ * Error naming the measure when its `@of` does not resolve (a valid measure always resolves).
  */
 export function measureDerivedSubType(measure: MetaMeasure, from: MetaObject, root: MetaRoot): string {
-  const derived = deriveMeasure(measure, from, root);
-  if (derived === undefined) throw new Error(`measure '${measure.name}' on '${from.name}': @of does not resolve.`);
-  return derived.subType;
+  const subType = measureResultSubType(measure, from, root);
+  if (subType === undefined) throw new Error(`measure '${measure.name}' on '${from.name}': @of does not resolve.`);
+  return subType;
 }
 
 /** Table B, with Table C's `required`. Throws a plain Error naming the report when a

@@ -169,8 +169,9 @@ What each piece means:
   is a `boolean`: `hasError` is `any` of `failed`. See [Boolean measures](#boolean-measures-any-and-all).
 - **`measure.ratio`** is `numerator / NULLIF(denominator, 0)`, typed decimal. A zero
   denominator yields null, unless the ratio declares `@default`. Both operands are
-  `measure.aggregate` siblings (a ratio of ratios is not supported), and neither is an
-  `@agg: any` or `all` measure: a ratio divides numbers.
+  `measure.aggregate` siblings (a ratio of ratios is not supported), and each must be a
+  numeric measure: a `count`, a `sum`, an `avg`, or a `min` or `max` of a numeric field. A
+  ratio divides numbers, so a boolean, date, timestamp or string operand is refused (rule M6).
 - **`segment.filter`** is a named, reusable `attr.filter`. Use it when the same row rule
   ("active purchase") would otherwise be repeated across measures and reports. An inline
   `@filter` on a measure stays legal.
@@ -481,8 +482,8 @@ and the measure is a `boolean` in every port: `true` or `false` on the wire, nev
   the value. Declare it only where that is true: `all` over no rows is vacuously true
   (`@default: 1`), `any` over no rows is false (`@default: 0`).
 - **Not a ratio operand.** A `measure.ratio` divides numbers, so its `@numerator` and
-  `@denominator` cannot name an `any` or `all` measure (rule M6). For a share, count the
-  matching rows instead: `@agg: count` with a `@filter`.
+  `@denominator` must name numeric measures, and an `any` or `all` measure is a boolean (rule
+  M6). For a share, count the matching rows instead: `@agg: count` with a `@filter`.
 - **How it lowers.** Postgres writes `bool_or(x)` / `bool_and(x)`, with `FILTER (WHERE …)`
   for a condition. SQLite and MySQL have no boolean aggregate, and a boolean there is `0` or
   `1`, so they write `MAX(x)` for `any` and `MIN(x)` for `all` (`MAX(CASE WHEN … THEN x END)`
@@ -692,7 +693,7 @@ the anti-join by hand, and make two reports.
 
 ### What the corpus gates
 
-Nineteen shared scenarios under `fixtures/persistence-conformance/queries/report-*.yaml` read the
+Twenty-one shared scenarios under `fixtures/persistence-conformance/queries/report-*.yaml` read the
 canonical reports through every port's runtime (list and count, filter, sort, an empty table,
 the Monday boundary, an hour bucket, a relative window, a `@spine` report with a program that
 has no weeks, a `@spine` report whose segment leaves a program no facts, and defaulted measures
@@ -704,7 +705,7 @@ tests read the `@spine` and `@default` views and their column types on Postgres,
 MySQL, and on Postgres and SQLite also a fact whose reference is null, an `isNull` condition
 and a two-hop spine.
 
-The nineteen report scenarios run on more than Postgres, wherever a port's runtime has the engine:
+The twenty-one report scenarios run on more than Postgres, wherever a port's runtime has the engine:
 
 | | Postgres | SQLite | MySQL 8.4 | D1 (local runtime) |
 |---|---|---|---|---|
@@ -722,14 +723,14 @@ stay the Postgres wire ones, never loosened: the engine's own spelling (a REAL r
 a scale-keeping `DECIMAL` and a zoneless `DATETIME` on MySQL) is mapped on the actual side by
 each runner, and `report-relative-date` spells its seed per engine (`seed-data-engine`). D1
 has no separate corpus: it is SQLite behind Cloudflare's binding, so TypeScript runs the same
-scenarios and the same twenty-two REST scenarios through Miniflare's local D1 (`meta migrate
+scenarios and the same twenty-five REST scenarios through Miniflare's local D1 (`meta migrate
 --dialect d1`), with no cloud account.
 
 A port without the engine is a stated limitation, not a gap to fill by building a driver:
 Java's OMDB and Python's `ObjectManager` ship the drivers they ship, and a view-reading test
 does not justify a new one.
 
-The REST surface is gated by twenty-two scenarios under
+The REST surface is gated by twenty-five scenarios under
 [`fixtures/api-contract-conformance/report/`](../../fixtures/api-contract-conformance/report/),
 run in the **generated lane on all five ports**: list (a dimension with a segment-scoped sum
 that is null for one group), a time dimension at a grain (`YYYY-MM-DD`), a no-dimension
@@ -811,7 +812,7 @@ row, and a `SUM` over the result would double-count. A to-one hop cannot fan out
 | **M3** | `@distinct: true` with any `@agg` other than `count`. |
 | **M4** | `sum` or `avg` over a non-numeric field (numeric is `int, long, double, float, decimal, currency`); `min` or `max` over a `boolean`, `object` or `map` field; `any` or `all` over a field that is not a `boolean`. |
 | **M5** | An `@segment` that names no `segment` child of the owning entity. |
-| **M6** | A `measure.ratio` whose `@numerator` or `@denominator` names no measure of the entity, names one that is not a `measure.aggregate`, or names an `@agg: any` or `all` measure (a boolean). |
+| **M6** | A `measure.ratio` whose `@numerator` or `@denominator` names no measure of the entity, names one that is not a `measure.aggregate`, or names one whose result is not numeric (not one of `int, long, double, float, decimal, currency`): an `any` or `all`, or a `min` or `max` over a field that is not numeric, such as a date, timestamp, string, uuid or enum. The result type is the measure's column type in [The columns you get](#the-columns-you-get). |
 | **M7** | A `@default` on an `@agg: count`. A count is never null, so the default could never apply. |
 | **M8** | A `@default` on an `@agg: min` or `max` over a field that is not numeric (not one of `int, long, double, float, decimal, currency`). |
 | **M9** | A `@default` on an `@agg: any` or `all` other than `0` (false) or `1` (true). |

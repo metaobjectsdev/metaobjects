@@ -33,7 +33,7 @@ _No structural children._
 
 ### measure.ratio
 
-A named quotient of two measure.aggregate siblings (FR-044), lowered as numerator / NULLIF(denominator, 0) and typed decimal. A zero denominator yields null.
+A named quotient of two numeric measure.aggregate siblings (FR-044), lowered as numerator / NULLIF(denominator, 0) and typed decimal. A zero denominator yields null.
 
 **When to use:** Averages per unit that are not a plain avg: average days engaged per starter.
 
@@ -42,8 +42,8 @@ A named quotient of two measure.aggregate siblings (FR-044), lowered as numerato
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | `@default` | int | no |  |  | — | Optional integer the measure reads when it would otherwise be null: nothing matched, every matched value is null, or (a ratio) the denominator is zero or null. The derived report field is then never null. Refused on @agg: count (a count is never null) and on min/max over a field that is not numeric. A ratio's operand carries its own @default into the ratio. |
-| `@denominator` | string | yes |  |  | — | Name of a measure.aggregate on the same entity. |
-| `@numerator` | string | yes |  |  | — | Name of a measure.aggregate on the same entity. |
+| `@denominator` | string | yes |  |  | — | Name of a measure.aggregate on the same entity whose result is numeric: a count, a sum, an avg, or a min or max of a numeric field. |
+| `@numerator` | string | yes |  |  | — | Name of a measure.aggregate on the same entity whose result is numeric: a count, a sum, an avg, or a min or max of a numeric field. |
 
 **Allowed children**
 

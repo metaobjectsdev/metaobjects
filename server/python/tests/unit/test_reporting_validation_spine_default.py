@@ -723,34 +723,54 @@ def test_m7_default_on_a_distinct_count_of_a_tuple_is_refused() -> None:
     assert "@default cannot apply to @agg: count" in msg
 
 
-def _ratio_over_a_boolean_measure(agg: str, attr: str) -> Model:
+def _ratio_over(attr: str, agg: str, of: str) -> Model:
+    """``refundShare`` = ``revenue`` / ``purchases``, with ``attr`` renamed onto a new measure ``operand``."""
+
     def fn(x: Model) -> None:
-        _set_child(
-            x,
-            "Purchase",
-            "refundFlag",
-            {"measure.aggregate": {"name": "refundFlag", "@agg": agg, "@of": "Purchase.refunded"}},
-        )
+        _set_child(x, "Purchase", "operand", {"measure.aggregate": {"name": "operand", "@agg": agg, "@of": of}})
         ratio = {"name": "refundShare", "@numerator": "revenue", "@denominator": "purchases"}
-        ratio[attr] = "refundFlag"
+        ratio[attr] = "operand"
         _set_child(x, "Purchase", "refundShare", {"measure.ratio": ratio})
 
     return _edit(fn)
 
 
-def test_m6_a_ratio_operand_naming_an_any_measure_is_refused_naming_the_operand() -> None:
-    errors = _errors(_ratio_over_a_boolean_measure("any", "@numerator"))
+_M6_NOT_NUMERIC = (
+    "measure 'refundShare' on entity 'acme::shop::Purchase': @numerator 'operand' is a {result} measure; a ratio "
+    "divides numbers, so its operands must be numeric measures (a count, a sum, an avg, or a min or max of a "
+    "numeric field)."
+)
+
+
+def test_m6_a_ratio_operand_whose_result_is_a_boolean_is_refused_on_the_ratio_node() -> None:
+    errors = _errors(_ratio_over("@numerator", "any", "Purchase.refunded"))
     assert [e.code.value for e in errors] == ["ERR_INVALID_MEASURE"]
-    assert errors[0].message == (
-        "measure 'refundShare' on entity 'acme::shop::Purchase': @numerator 'refundFlag' is an @agg 'any' measure, "
-        "which is a boolean; a ratio divides numbers. Count the matching rows instead (@agg: count with a @filter)."
-    )
+    assert errors[0].message == _M6_NOT_NUMERIC.format(result="boolean")
     assert "['measure.ratio']" in _json_path(errors[0])
+    msg = _single(_ratio_over("@denominator", "all", "Purchase.refunded"), "ERR_INVALID_MEASURE")
+    assert "@denominator 'operand' is a boolean measure" in msg
 
 
-def test_m6_a_ratio_operand_naming_an_all_measure_is_refused() -> None:
-    msg = _single(_ratio_over_a_boolean_measure("all", "@denominator"), "ERR_INVALID_MEASURE")
-    assert "@denominator 'refundFlag' is an @agg 'all' measure" in msg
+def test_m6_a_min_or_max_over_a_field_that_is_not_numeric_is_refused_as_a_ratio_operand() -> None:
+    for agg, of, result in [
+        ("max", "Purchase.purchasedAt", "timestamp"),
+        ("min", "Purchase.purchasedOn", "date"),
+        ("max", "Purchase.status", "string"),
+    ]:
+        msg = _single(_ratio_over("@numerator", agg, of), "ERR_INVALID_MEASURE")
+        assert msg == _M6_NOT_NUMERIC.format(result=result), of
+
+
+def test_m6_a_count_a_sum_an_avg_and_a_min_or_max_over_a_numeric_field_are_legal_ratio_operands() -> None:
+    for agg, of in [
+        ("count", "Purchase.id"),
+        ("sum", "Purchase.amountCents"),
+        ("avg", "Purchase.amountCents"),
+        ("min", "Purchase.amountCents"),
+        ("max", "Purchase.programId"),
+    ]:
+        assert _codes(_ratio_over("@numerator", agg, of)) == [], (agg, of)
+        assert _codes(_ratio_over("@denominator", agg, of)) == [], (agg, of)
 
 
 def test_m8_default_on_a_max_of_a_timestamp_is_refused() -> None:

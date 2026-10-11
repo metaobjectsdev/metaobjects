@@ -143,7 +143,7 @@ export const REPORTING_DEFINITION: ProviderDefinition = {
     {
       "type": "measure",
       "subType": "ratio",
-      "description": "A named quotient of two measure.aggregate siblings (FR-044), lowered as numerator / NULLIF(denominator, 0) and typed decimal. A zero denominator yields null.",
+      "description": "A named quotient of two numeric measure.aggregate siblings (FR-044), lowered as numerator / NULLIF(denominator, 0) and typed decimal. A zero denominator yields null.",
       "whenToUse": "Averages per unit that are not a plain avg: average days engaged per starter.",
       "children": [
         {
@@ -152,7 +152,7 @@ export const REPORTING_DEFINITION: ProviderDefinition = {
           "name": "numerator",
           "min": 1,
           "max": 1,
-          "description": "Name of a measure.aggregate on the same entity."
+          "description": "Name of a measure.aggregate on the same entity whose result is numeric: a count, a sum, an avg, or a min or max of a numeric field."
         },
         {
           "type": "attr",
@@ -160,7 +160,7 @@ export const REPORTING_DEFINITION: ProviderDefinition = {
           "name": "denominator",
           "min": 1,
           "max": 1,
-          "description": "Name of a measure.aggregate on the same entity."
+          "description": "Name of a measure.aggregate on the same entity whose result is numeric: a count, a sum, an avg, or a min or max of a numeric field."
         },
         {
           "type": "attr",

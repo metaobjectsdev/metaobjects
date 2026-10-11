@@ -494,10 +494,15 @@ spell it alike. No new attribute, no new subtype.
   then never null and R9's rules for filter, sort and the row type apply unchanged. The alternative
   (refuse `@default` on a boolean) leaves a `@spine` report no way to read `false` for a row with no
   facts, which is the case the adopter had.
-- **Not a ratio operand.** A `measure.ratio` divides numbers, and Postgres has no cast from
-  boolean to numeric, so an `any` / `all` measure as `@numerator` or `@denominator` is refused
-  (rule M6, `ERR_INVALID_MEASURE`). The rule names these two aggregates only; it is not a general
-  numeric-operand rule, and a `min` / `max` operand is unchanged.
+- **Not a ratio operand.** A `measure.ratio` divides numbers, so rule M6 requires each of
+  `@numerator` and `@denominator` to name a `measure.aggregate` whose result type (Table B) is
+  numeric: `int`, `long`, `double`, `float`, `decimal` or `currency`. The rule reads the derived
+  type, not the aggregate's name, so it refuses an `any` / `all` measure (boolean) and also a
+  `min` / `max` over a field that is not numeric (a date, timestamp, string, boolean, uuid or
+  enum), and allows a `min` / `max` over a numeric field. The lowering casts each operand to
+  `NUMERIC`, which Postgres refuses for a boolean or a timestamp at view creation and SQLite and
+  MySQL answer with a number that means nothing; the loader now refuses the model instead
+  (`ERR_INVALID_MEASURE`).
 - **Lowering.** Postgres `bool_or` / `bool_and` (a condition as `FILTER (WHERE …)`). SQLite and D1
   have no boolean aggregate and store a boolean as `0` / `1`: `MAX` for `any`, `MIN` for `all`
   (a condition as `MAX(CASE WHEN … THEN x END)`). MySQL is the same as SQLite. The default is

@@ -475,40 +475,58 @@ public final class ReportShape {
         }
         MetaMeasure m = declaredMember(from, MetaMeasure.class, name);
         if (m == null) throw unresolved(report, "measure '" + item + "' on '" + from.getShortName() + "'");
-        String agg = m.getAgg();
+        MeasureDerivation derived = deriveMeasure(m, from, root);
+        if (derived == null) throw unresolved(report, "measure '" + name + "' @of");
         // Table C: a count is never null (with or without @distinct); any other measure is
         // not null when it has a @default.
-        boolean required = (!m.isRatio() && ReportingConstants.AGG_COUNT.equals(agg)) || m.getDefaultValue() != null;
-        if (m.isRatio()) {
-            return new Field(name, Role.MEASURE, DecimalField.SUBTYPE_DECIMAL, required, null, null, null, m);
-        }
-        if (ReportingConstants.AGG_COUNT.equals(agg)) {
-            return new Field(name, Role.MEASURE, LongField.SUBTYPE_LONG, required, null, null, null, m);
-        }
+        boolean required = (!m.isRatio() && ReportingConstants.AGG_COUNT.equals(m.getAgg()))
+                || m.getDefaultValue() != null;
+        return new Field(name, Role.MEASURE, derived.subType(), required, derived.typeSource(), null, null, m);
+    }
+
+    /** One measure's Table B subtype, and the {@code @of} field it carries type attrs from (if any). */
+    private record MeasureDerivation(String subType, MetaField<?> typeSource) {}
+
+    /** Table B for one measure. {@code null} when its {@code @of} does not resolve. */
+    private static MeasureDerivation deriveMeasure(MetaMeasure m, MetaObject from, MetaRoot root) {
+        if (m.isRatio()) return new MeasureDerivation(DecimalField.SUBTYPE_DECIMAL, null);
+        String agg = m.getAgg();
+        if (ReportingConstants.AGG_COUNT.equals(agg)) return new MeasureDerivation(LongField.SUBTYPE_LONG, null);
         // any / all are boolean whatever the source (the loader's M4 refuses a non-boolean @of).
         if (ReportingConstants.AGG_ANY.equals(agg) || ReportingConstants.AGG_ALL.equals(agg)) {
-            return new Field(name, Role.MEASURE, BooleanField.SUBTYPE_BOOLEAN, required, null, null, null, m);
+            return new MeasureDerivation(BooleanField.SUBTYPE_BOOLEAN, null);
         }
         List<String> columns = m.getOfColumns();
         MetaField<?> of = columns.isEmpty() ? null
                 : resolveFieldRef(columns.get(0), memberOwner(m, from), root, from);
-        if (of == null) throw unresolved(report, "measure '" + name + "' @of");
+        if (of == null) return null;
         String src = of.getSubType();
         if (ReportingConstants.AGG_SUM.equals(agg)) {
             if (CurrencyField.SUBTYPE_CURRENCY.equals(src)) {
-                return new Field(name, Role.MEASURE, CurrencyField.SUBTYPE_CURRENCY, required, of, null, null, m);
+                return new MeasureDerivation(CurrencyField.SUBTYPE_CURRENCY, of);
             }
             String subType = SUM_LONG.contains(src) ? LongField.SUBTYPE_LONG
                     : FLOATING.contains(src) ? DoubleField.SUBTYPE_DOUBLE
                     : DecimalField.SUBTYPE_DECIMAL;
-            return new Field(name, Role.MEASURE, subType, required, null, null, null, m);
+            return new MeasureDerivation(subType, null);
         }
         if (ReportingConstants.AGG_AVG.equals(agg)) {
-            String subType = FLOATING.contains(src) ? DoubleField.SUBTYPE_DOUBLE : DecimalField.SUBTYPE_DECIMAL;
-            return new Field(name, Role.MEASURE, subType, required, null, null, null, m);
+            return new MeasureDerivation(
+                    FLOATING.contains(src) ? DoubleField.SUBTYPE_DOUBLE : DecimalField.SUBTYPE_DECIMAL, null);
         }
         // min / max keep the source field's type.
-        return new Field(name, Role.MEASURE, src, required, of, null, null, m);
+        return new MeasureDerivation(src, of);
+    }
+
+    /**
+     * Table B's subtype for one measure of {@code from}, whether or not a report lists it (a
+     * ratio's operands are measures a report need not list). The same rule {@link #of(MetaObject, MetaRoot)} applies
+     * to a listed measure. {@code null} when its {@code @of} does not resolve, which the loader
+     * (rule M6) reads before the model is known to be valid.
+     */
+    public static String measureResultSubType(MetaMeasure measure, MetaObject from, MetaRoot root) {
+        MeasureDerivation derived = deriveMeasure(measure, from, root);
+        return derived == null ? null : derived.subType();
     }
 
     private static <T extends MetaData> T declaredMember(MetaObject from, Class<T> type, String name) {

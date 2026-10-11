@@ -62,6 +62,7 @@ from ..meta.core.identity.identity_constants import (
     IDENTITY_REFERENCE_ATTR_REFERENCES,
     IDENTITY_SUBTYPE_REFERENCE,
 )
+from ..meta.core.object.meta_object import MetaObject
 from ..meta.core.object.object_constants import (
     OBJECT_REPORT_ATTR_FILTER,
     OBJECT_REPORT_ATTR_SEGMENT,
@@ -84,6 +85,7 @@ from ..meta.core.reporting.report_accessors import (
     report_measure_names,
     report_spine,
 )
+from ..meta.core.reporting.report_shape import measure_result_sub_type
 from ..meta.core.reporting.reporting_constants import (
     AGG_AVG,
     AGG_COUNT,
@@ -103,6 +105,7 @@ from ..meta.core.reporting.reporting_constants import (
     REPORTING_ATTR_VIA,
 )
 from ..meta.meta_data import MetaData
+from ..meta.meta_root import MetaRoot
 from ..meta.persistence.source.meta_source import MetaSource
 from ..naming_refs import CHILD_REF_SEP, resolve_object_ref
 from ..shared.base_types import (
@@ -721,7 +724,7 @@ def _check_aggregate_columns(
 
 
 def _check_ratio_operands(ctx: _MemberCtx, ratio: MetaMeasure, err: Callable[[str], None]) -> None:
-    """M6 — each operand names a measure.aggregate of the same entity, and not an any / all one."""
+    """M6 — each operand names a measure.aggregate of the same entity whose result is a number."""
     operands: list[tuple[str, str | None]] = [
         (REPORTING_ATTR_NUMERATOR, ratio.numerator()),
         (REPORTING_ATTR_DENOMINATOR, ratio.denominator()),
@@ -737,11 +740,13 @@ def _check_ratio_operands(ctx: _MemberCtx, ratio: MetaMeasure, err: Callable[[st
                 f"@{attr_name} '{ref}' is a measure.{target.sub_type}; a ratio's operands must be measure.aggregate "
                 f"(a ratio of ratios is not supported)."
             )
-        elif isinstance(target, MetaMeasure) and target.agg() in (AGG_ANY, AGG_ALL):
-            err(
-                f"@{attr_name} '{ref}' is an @agg '{target.agg()}' measure, which is a boolean; a ratio divides numbers. "
-                f"Count the matching rows instead (@agg: count with a @filter)."
-            )
+        elif isinstance(target, MetaMeasure) and isinstance(ctx.host, MetaObject) and isinstance(ctx.root, MetaRoot):
+            result = measure_result_sub_type(target, ctx.host, ctx.root)
+            if result is not None and result not in _NUMERIC_FIELD_SUBTYPES:
+                err(
+                    f"@{attr_name} '{ref}' is a {result} measure; a ratio divides numbers, so its operands must be "
+                    f"numeric measures (a count, a sum, an avg, or a min or max of a numeric field)."
+                )
 
 
 # ---------------------------------------------------------------------------

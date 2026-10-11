@@ -267,36 +267,48 @@ public static class ReportShapes
         }
         var m = DeclaredMember<MetaMeasure>(from, TYPE_MEASURE, name)
             ?? throw Unresolved(reportName, $"measure '{item}' on '{from.Name}'");
-        string? agg = m.Agg();
-        // Table C: a count is never null; any other measure is not null when it has a @default.
-        bool required = (!m.IsRatio() && agg == AGG_COUNT) || m.DefaultValue() is not null;
-        if (m.IsRatio())
-            return new ReportField(name, ReportFieldRole.Measure, FIELD_SUBTYPE_DECIMAL, required, Measure: m);
-        if (agg == AGG_COUNT)
-            return new ReportField(name, ReportFieldRole.Measure, FIELD_SUBTYPE_LONG, required, Measure: m);
-        // any / all are boolean whatever the source (the loader's M4 refuses a non-boolean @of).
-        if (agg == AGG_ANY || agg == AGG_ALL)
-            return new ReportField(name, ReportFieldRole.Measure, FIELD_SUBTYPE_BOOLEAN, required, Measure: m);
-        var of = ResolveReportingFieldRef(m.OfColumns().FirstOrDefault() ?? "", ReportingMemberOwner(m, from), root, from)
+        var (subType, typeSource) = DeriveMeasure(m, from, root)
             ?? throw Unresolved(reportName, $"measure '{name}' @of");
+        // Table C: a count is never null; any other measure is not null when it has a @default.
+        bool required = (!m.IsRatio() && m.Agg() == AGG_COUNT) || m.DefaultValue() is not null;
+        return new ReportField(name, ReportFieldRole.Measure, subType, required, typeSource, Measure: m);
+    }
+
+    /// <summary>
+    /// Table B for one measure: its subtype, and the <c>@of</c> field it carries type attrs
+    /// from (if any). Null when its <c>@of</c> does not resolve.
+    /// </summary>
+    private static (string SubType, MetaField? TypeSource)? DeriveMeasure(MetaMeasure m, MetaObject from, MetaRoot root)
+    {
+        if (m.IsRatio()) return (FIELD_SUBTYPE_DECIMAL, null);
+        string? agg = m.Agg();
+        if (agg == AGG_COUNT) return (FIELD_SUBTYPE_LONG, null);
+        // any / all are boolean whatever the source (the loader's M4 refuses a non-boolean @of).
+        if (agg == AGG_ANY || agg == AGG_ALL) return (FIELD_SUBTYPE_BOOLEAN, null);
+        var of = ResolveReportingFieldRef(m.OfColumns().FirstOrDefault() ?? "", ReportingMemberOwner(m, from), root, from);
+        if (of is null) return null;
         string src = of.SubType;
         if (agg == AGG_SUM)
         {
-            if (src == FIELD_SUBTYPE_CURRENCY)
-                return new ReportField(name, ReportFieldRole.Measure, FIELD_SUBTYPE_CURRENCY, required, of, Measure: m);
+            if (src == FIELD_SUBTYPE_CURRENCY) return (FIELD_SUBTYPE_CURRENCY, of);
             string sumType = SumLong.Contains(src) ? FIELD_SUBTYPE_LONG
                 : Floating.Contains(src) ? FIELD_SUBTYPE_DOUBLE
                 : FIELD_SUBTYPE_DECIMAL;
-            return new ReportField(name, ReportFieldRole.Measure, sumType, required, Measure: m);
+            return (sumType, null);
         }
-        if (agg == AGG_AVG)
-        {
-            string avgType = Floating.Contains(src) ? FIELD_SUBTYPE_DOUBLE : FIELD_SUBTYPE_DECIMAL;
-            return new ReportField(name, ReportFieldRole.Measure, avgType, required, Measure: m);
-        }
+        if (agg == AGG_AVG) return (Floating.Contains(src) ? FIELD_SUBTYPE_DOUBLE : FIELD_SUBTYPE_DECIMAL, null);
         // min / max keep the source field's type.
-        return new ReportField(name, ReportFieldRole.Measure, src, required, of, Measure: m);
+        return (src, of);
     }
+
+    /// <summary>
+    /// Table B's subtype for one measure of <paramref name="from"/>, whether or not a report
+    /// lists it (a ratio's operands are measures a report need not list). The same rule
+    /// <see cref="Of"/> applies to a listed measure. Null when its <c>@of</c> does not resolve,
+    /// which the loader (rule M6) reads before the model is known to be valid.
+    /// </summary>
+    public static string? MeasureResultSubType(MetaMeasure measure, MetaObject from, MetaRoot root) =>
+        DeriveMeasure(measure, from, root)?.SubType;
 
     /// <summary>
     /// Table B, with Table C's <c>required</c>. Throws <see cref="InvalidOperationException"/>

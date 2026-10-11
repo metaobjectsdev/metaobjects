@@ -106,7 +106,7 @@ internal class KotlinCodegenMatchesReferenceTest {
                 ExpectedColumn("recordedAt", families = setOf("instantWithTimeZone")),
             ),
         ),
-        // FR-044: the eleven view-backed reports. Each mirrors its hand-written reference
+        // FR-044: the twenty-three view-backed reports. Each mirrors its hand-written reference
         // (`tables/<Report>View.kt`) column for column: the family is the view's real column
         // type, and a column is nullable exactly when the reference's is. A report has no
         // identity, so none carries a primary key.
@@ -214,7 +214,7 @@ internal class KotlinCodegenMatchesReferenceTest {
             ),
             report = "v_fitness_totals_filled",
         ),
-        // Reports for the vocabulary the first nine do not reach (numeric, temporal, boolean/uuid/
+        // Reports for the vocabulary the first eleven do not reach (numeric, temporal, boolean/uuid/
         // int-enum dimensions, multi-hop and self-reference paths, an empty scope).
         "MeasurementStats" to EntityExpectation(
             columns = listOf(

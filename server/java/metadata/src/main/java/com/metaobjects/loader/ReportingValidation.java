@@ -45,6 +45,7 @@ import com.metaobjects.reporting.MetaMeasure;
 import com.metaobjects.reporting.MetaSegment;
 import com.metaobjects.reporting.ReportAccessors;
 import com.metaobjects.reporting.ReportAccessors.ReportDimensionItem;
+import com.metaobjects.reporting.ReportShape;
 import com.metaobjects.reporting.ReportingConstants;
 import com.metaobjects.source.MetaSource;
 import com.metaobjects.util.MetaDataUtil;
@@ -360,7 +361,7 @@ final class ReportingValidation {
     private record MemberCtx(
             MetaRoot root,
             /* The entity whose resolving children the member was reached through. */
-            MetaData host,
+            MetaObject host,
             /* The entity that declares the member (the host, or an ancestor of it). */
             MetaData declaring,
             /* {@code <kind> '<name>' on entity '<declaring FQN>'} — every member message starts with it. */
@@ -706,7 +707,7 @@ final class ReportingValidation {
         return new AggregateColumns(field);
     }
 
-    /** M6 — each operand names a measure.aggregate of the same entity, and not an any / all one. */
+    /** M6 — each operand names a measure.aggregate of the same entity whose result is a number. */
     private static void checkRatioOperands(MemberCtx ctx, MetaMeasure ratio, Consumer<String> err) {
         String[][] operands = {
                 {ReportingConstants.ATTR_NUMERATOR, ratio.getNumerator()},
@@ -722,12 +723,13 @@ final class ReportingValidation {
             } else if (!ReportingConstants.MEASURE_SUBTYPE_AGGREGATE.equals(target.getSubType())) {
                 err.accept("@" + attr + " '" + ref + "' is a measure." + target.getSubType()
                         + "; a ratio's operands must be measure.aggregate (a ratio of ratios is not supported).");
-            } else if (target instanceof MetaMeasure
-                    && (ReportingConstants.AGG_ANY.equals(((MetaMeasure) target).getAgg())
-                    || ReportingConstants.AGG_ALL.equals(((MetaMeasure) target).getAgg()))) {
-                err.accept("@" + attr + " '" + ref + "' is an @agg '" + ((MetaMeasure) target).getAgg()
-                        + "' measure, which is a boolean; a ratio divides numbers. "
-                        + "Count the matching rows instead (@agg: count with a @filter).");
+            } else if (target instanceof MetaMeasure) {
+                String result = ReportShape.measureResultSubType((MetaMeasure) target, ctx.host(), ctx.root());
+                if (result != null && !NUMERIC_FIELD_SUBTYPES.contains(result)) {
+                    err.accept("@" + attr + " '" + ref + "' is a " + result
+                            + " measure; a ratio divides numbers, so its operands must be numeric measures "
+                            + "(a count, a sum, an avg, or a min or max of a numeric field).");
+                }
             }
         }
     }
