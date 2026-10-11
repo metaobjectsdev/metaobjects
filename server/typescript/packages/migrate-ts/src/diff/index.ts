@@ -1237,13 +1237,18 @@ function recreateViewsDependingOnChangedTables(
       return viewReadsAnyColumn(sql, cols, readsEverything);
     });
     const prior = actualById.get(id);
-    // Where a triggering change rebuilds the table, the view in the database is stranded by
-    // every table ITS body reads, and that body may read one `dependsOn` leaves out: a
-    // table the new body no longer reads, or one an `@sql` body joins (ADR-0043). On
-    // Postgres the same case is settled when the view is planned (pushViewUpdate).
-    if (!columnScoped && prior !== undefined) {
-      for (const t of alteredTables.keys()) {
-        if (!tracked.includes(t) && liveViewReadsTable(prior, liveName(t))) tables.push(t);
+    // The view in the database is stranded by every table ITS body reads, and that body
+    // may read one `dependsOn` leaves out: a table the new body no longer reads, or one an
+    // `@sql` body joins (ADR-0043). Its own text says which. On Postgres it is stranded
+    // only when it also reads an altered column, as above. (A Postgres view whose
+    // definition changes never gets this far as a replace: pushViewUpdate plans the pair.)
+    if (prior !== undefined) {
+      const priorReadsEverything = prior.sql !== undefined && viewReadsEveryColumn(prior.sql);
+      for (const [t, cols] of alteredTables) {
+        if (tracked.includes(t) || !liveViewReadsTable(prior, liveName(t))) continue;
+        if (cols === null || prior.sql === undefined || viewReadsAnyColumn(prior.sql, cols, priorReadsEverything)) {
+          tables.push(t);
+        }
       }
     }
     if (tables.length === 0) continue;

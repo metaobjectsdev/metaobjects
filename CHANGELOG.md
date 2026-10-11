@@ -1039,9 +1039,9 @@ until you regenerate.
   - **The snapshot no longer records a view's columns.** Nothing reads them. The format version
     stays `3`, and an older snapshot that carries them still loads; they are dropped on read.
     `ExpectedView.columns` is removed from `@metaobjectsdev/codegen-ts` for the same reason.
-  - SQLite and D1 are unchanged. Neither has `CREATE OR REPLACE VIEW`; a replaced view is
-    written as `DROP VIEW` and `CREATE VIEW` there, as it always was, so there is nothing to
-    refuse.
+  - The replace rule does not apply to SQLite and D1. Neither has `CREATE OR REPLACE VIEW`; a
+    replaced view is written as `DROP VIEW` and `CREATE VIEW` there, as it always was, so there
+    is nothing to refuse.
 - **The `--allow` hint for a blocked view change names a token the parser accepts.** It printed
   `--allow replace-view`, which `meta migrate` rejects (`invalid --allow token`). It names
   `adopt-view` for an unfingerprinted view and `drop-view-cascade` when the drop would cascade.
@@ -1051,7 +1051,11 @@ until you regenerate.
 - **A column change recreates only the views that read the column.** On Postgres a new default or a
   changed nullability no longer drops and rebuilds the views over the table (neither blocks a
   view), and a type change recreates only the views whose SQL names the column (a view that
-  selects `*` or joins `NATURAL` reads columns it does not name, and is always recreated). SQLite and D1 still
+  selects `*` or joins `NATURAL` reads columns it does not name, and is always recreated). That
+  now holds for a table the model does not list for the view as well: an unchanged `@sql` view
+  that joins such a table is dropped before and created after a retype of a column it reads,
+  where the migration failed at apply before (`cannot alter type of a column used by a view or
+  rule`). The table is found by name in the view's stored definition. SQLite and D1 still
   recreate every view over a rebuilt table, and so does a `diff()` called with no `dialect`,
   whose changes may be emitted for SQLite. `verify --db` and `meta migrate` now print the full
   column type in a type change (`text(255) -> text`, `timestamp -> timestamptz`), so a length or

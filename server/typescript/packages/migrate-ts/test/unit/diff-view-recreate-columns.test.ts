@@ -118,3 +118,39 @@ describe("D4 — a view is recreated only when the migration alters a column it 
     expect(kinds(r)).not.toContain("replace-view");
   });
 });
+
+// A view's `dependsOn` lists the tables the model knows it reads. An `@sql` body may join
+// another one (ADR-0043), and Postgres refuses `ALTER COLUMN … TYPE` on a column that a
+// standing view reads, whichever table holds it
+// (https://www.postgresql.org/docs/current/sql-altertable.html, SET DATA TYPE). The view's
+// stored body is what names that table.
+describe("an unchanged view whose stored body reads a table outside dependsOn (postgres)", () => {
+  const POINTS: ColumnDescriptor = { name: "points", sqlType: { kind: "integer", bits: 32 }, nullable: false };
+  const BONUS: ColumnDescriptor = { name: "bonus", sqlType: { kind: "integer", bits: 32 }, nullable: false };
+  const wide = (c: ColumnDescriptor): ColumnDescriptor => ({ ...c, sqlType: { kind: "integer", bits: 64 } });
+  const scores = (cols: ColumnDescriptor[]): TableDescriptor =>
+    ({ name: "scores", columns: [ID, ...cols], indexes: [], foreignKeys: [], primaryKey: ["id"], checks: [] });
+  const JOINED = "SELECT g.id AS id, (SELECT count(*) FROM scores s WHERE s.points > 0) AS scored FROM games g";
+  const joined = view({ sql: JOINED, fingerprint: viewFingerprint(JOINED) });
+  const run = (v: ViewDescriptor, expected: ColumnDescriptor[]) =>
+    diff(
+      { tables: [table([ID, LABEL]), scores(expected)], views: [v] },
+      { tables: [table([ID, LABEL]), scores([POINTS, BONUS])], views: [v] },
+      { dialect: "postgres", allow: { typeChange: true } },
+    );
+
+  test("a type change to a column the body reads recreates it, and names the table", async () => {
+    const r = await run(joined, [wide(POINTS), BONUS]);
+    expect(kinds(r)).toEqual(["change-column-type", "drop-view", "create-view"]);
+    expect(r.changes[1]).toMatchObject({ view: "v_games", reason: { kind: "unchanged", tables: ["scores"] } });
+    expect(r.blocked).toEqual([]);
+  });
+
+  test("a type change to a column of that table the body does not read leaves it alone", async () => {
+    expect(kinds(await run(joined, [POINTS, wide(BONUS)]))).toEqual(["change-column-type"]);
+  });
+
+  test("a view whose body does not name that table is left alone", async () => {
+    expect(kinds(await run(view(), [wide(POINTS), BONUS]))).toEqual(["change-column-type"]);
+  });
+});

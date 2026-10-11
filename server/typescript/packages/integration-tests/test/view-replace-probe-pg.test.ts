@@ -573,6 +573,41 @@ describe("an @sql body in a plan that changes a table's columns (postgres)", () 
     expect((await plan(after.expected)).changes).toEqual([]);
   }, 60_000);
 
+  // The view's definition does not change here, so nothing replaces it: it only has to be
+  // out of the way while the column it reads is retyped.
+  test("an unchanged body in a plan that retypes a column it reads is dropped and created, and applies", async () => {
+    const before = await model(scoredView(BEFORE.scored), SUMMARY_VIEW, [], BEFORE.others);
+    await migrate(before.expected);
+    const after = await model(scoredView(BEFORE.scored), SUMMARY_VIEW, [], [badge("long")]);
+    expect(after.view.fingerprint).toBe(before.view.fingerprint);
+    expect(after.view.dependsOn).toEqual(["programs"]);
+    await expect(sql.raw(`ALTER TABLE "badges" ALTER COLUMN "points" TYPE BIGINT`).execute(k))
+      .rejects.toThrow(/cannot alter type of a column used by a view or rule/);
+
+    const changed = await plan(after.expected);
+    expect(changed.blocked).toEqual([]);
+    expect(kindsOf(changed.changes)).toEqual(["change-column-type", "create-view", "drop-view"]);
+    await apply(changed.changes);
+
+    expect(await scalar(`SELECT format_type(atttypid, atttypmod) FROM pg_attribute
+                          WHERE attrelid = 'public.badges'::regclass AND attname = 'points'`)).toBe("bigint");
+    expect(await columnTypes(SUMMARY_VIEW)).toEqual({ id: "bigint", scored: "bigint" });
+    expect((await plan(after.expected)).changes).toEqual([]);
+  }, 60_000);
+
+  // Postgres retypes a column no view reads with the view standing, so the view stays.
+  test("an unchanged body in a plan that retypes a column it does not read is left standing", async () => {
+    await migrate((await model(scoredView(OVER_BADGES), SUMMARY_VIEW, [], BEFORE.others)).expected);
+    const oid = await viewOid(SUMMARY_VIEW);
+    const after = await model(scoredView(OVER_BADGES), SUMMARY_VIEW, [], [badge("long")]);
+
+    const changed = await plan(after.expected);
+    expect(kindsOf(changed.changes)).toEqual(["change-column-type"]);
+    await apply(changed.changes);
+    expect(await viewOid(SUMMARY_VIEW)).toBe(oid);
+    expect((await plan(after.expected)).changes).toEqual([]);
+  }, 60_000);
+
   // A derived body lists every table it reads, so a change to another table cannot reach it.
   test("a derived view that changes beside the same table change is replaced in place", async () => {
     const flag = (field: string) => summary(computed("flag", "boolean", { op: "isNull", arg: { field } }));

@@ -464,6 +464,13 @@ A drop and a create of the same view needs no `--allow`. It has two costs a repl
 Plan with `--from-db` to get the in-place replace when it is legal, which keeps both. Otherwise
 grant the privileges again after the migration is applied.
 
+A view whose definition does **not** change is dropped and created too, when the migration
+retypes, drops or renames a column the view reads: Postgres refuses to retype or drop it
+while the view stands. The table may be one the model does not list for the view, which is
+the case of an `@sql` body that joins it. `meta migrate` finds it by name in the view's
+stored definition, and recreates the view only when that definition also names the changed
+column. The same two costs apply.
+
 SQLite and D1 have no `CREATE OR REPLACE VIEW`: every replaced view is written as `DROP VIEW`
 and `CREATE VIEW` there, so there is no refusal to avoid and no probe. They refuse something
 else: a `DROP COLUMN`, or the rebuild of a table, while a view that reads the table stands. So
