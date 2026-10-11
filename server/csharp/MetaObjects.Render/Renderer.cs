@@ -97,7 +97,9 @@ public static partial class Renderer
 
         var escaper = Escapers.For(request.Format);
         var stubble = new StubbleBuilder()
-            .Configure(settings => settings.SetEncodingFunction(v => escaper(v)))
+            .Configure(settings => settings
+                .SetEncodingFunction(v => escaper(v))
+                .AddValueGetter(PayloadAccessors.ViewType, PayloadAccessors.ViewLookup))
             .Build();
 
         // Derived `has<Field>` accessors are part of the payload contract, not of the

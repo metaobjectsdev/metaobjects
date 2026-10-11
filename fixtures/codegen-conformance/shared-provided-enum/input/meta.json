@@ -63,6 +63,10 @@
       ] } },
       { "object.value": { "name": "TicketBadge", "children": [
         { "field.enum": { "name": "badge", "extends": "acme::shop::Ticket.severity" } }
+      ] } },
+      { "object.value": { "name": "TicketLabel", "children": [
+        { "field.enum": { "name": "grade", "extends": "Priority" } },
+        { "field.enum": { "name": "denomination", "extends": "Currency" } }
       ] } }
     ]
   }

@@ -54,10 +54,16 @@ Total hand-written lines did not fall, so do not read it as a total line reducti
   API docs), and `meta verify --docs` reports the affected pages as stale until they are
   regenerated. Run `meta gen` and review the diff; three-way merge preserves hand edits.
 - **A multi-hop enum field references the shared enum.** A field that reaches a
-  package-level abstract enum through another field used to get its own enum type; it now
-  references the shared one, in every port. In Kotlin this includes a projection or value-object
-  field: its former `<Object><Field>` enum file is no longer generated, and code that imported
-  that type imports the shared enum instead. A model with no such field regenerates unchanged.
+  package-level abstract enum through another field, with no `@values` or `@intValueMap`
+  redeclared on the way, used to get an enum type of its own; it now references the shared one,
+  in every port. In Kotlin its former `<Object><Field>` enum file is no longer written, and code
+  that imported that type imports the shared enum instead. Java has two more diffs: a
+  value-object field that reaches a shared or `@provided` enum, even in one hop, references that
+  type instead of nesting a copy (`TicketPayload.Priority` becomes the top-level `Priority`),
+  and an inline enum that redeclares `@values` or `@intValueMap` under a shared enum moves from
+  the shared enum's name to `<Owner><Field>` (`TaskDto.Priority` becomes `TaskDto.TaskPhase`).
+  Every other inline enum, in every port, keeps its previous name and bytes. The **Fixed** entry
+  lists each port's before and after.
 
 **Not in 1.1.0.** Derived measures, the preview `reporting` library, the dbt exporter, the second
 requirements slice and the advisory lint port, the JSON Schema and OpenAPI generators, the
@@ -81,7 +87,10 @@ generator catalog and the Atlas evaluation are 1.2 work.
   a template that does not use it renders byte-for-byte as before. It works whatever shape the
   payload arrives in, and so does `has<Field>`: a map or plain object, a TypeScript class
   instance, a C# object with or without `[JsonPropertyName]`, a Java record or getter-based
-  bean, a Kotlin data class, a Pydantic model. The same data renders the same bytes.
+  bean, a Kotlin data class, a Pydantic model. The same data renders the same bytes. A typed
+  object is overlaid, never copied: its own members (methods and fields included) resolve as
+  they always did and only when the template names them, its string form is its own, and the
+  derived names are added on top.
   `meta verify --templates` accepts `-last` only when the innermost enclosing section over a
   list iterates objects, and reports it as `ERR_VAR_NOT_ON_PAYLOAD` anywhere else: at the top
   level, inside a list of scalars, and inside a list of scalars nested in a list of objects,
@@ -547,6 +556,37 @@ until you regenerate.
   down the chain still loads. This supersedes the per-projection enum copy #259 introduced in
   Kotlin. Gated by a decision table every port answers
   (`fixtures/codegen-conformance/shared-provided-enum/expected-enum-types.json`).
+
+  What regenerates differently, port by port. The first case is the same in all five: a field
+  that reaches a shared enum through two or more hops, with nothing redeclared on the way, now
+  references the shared type. What it generated before:
+
+  | Port | Before, for such a field |
+  |---|---|
+  | TypeScript | an inline union and `<Name>Enum` constant in the object's own module, named for the field it extends |
+  | C# | a nested `<Entity><Field>` enum |
+  | Java | a nested enum in the DTO that reused the shared enum's name and shadowed it there |
+  | Kotlin | an `<Object><Field>` enum file, which is no longer written |
+  | Python | an inline `Literal[...]` |
+
+  Java has two more changes, and no other port has them:
+
+  - A value-object field that reaches a shared or `@provided` enum, in one hop or many, now
+    references that type. The record used to nest its own copy, so one declaration became two
+    Java types that do not convert. Migration: `TicketPayload.Priority` becomes the top-level
+    `Priority`, and a `@provided` enum is referenced where `providedEnumNamespace` /
+    `providedEnumPackages` point, which the value-object and output-parser generators now read.
+  - An inline enum on a chain that redeclares `@values` or `@intValueMap` under a shared enum
+    was nested under the shared enum's own name and shadowed it inside the DTO. It is now named
+    `<Owner><Field>`: `TaskDto.Priority` (with the redeclared members) becomes
+    `TaskDto.TaskPhase`. It stays inline, with its own members.
+
+  Nothing else moves. Every other inline enum, in every port, keeps its previous name and bytes:
+  in Java an inline enum that extends another field is still named for its top-most super
+  (`ShipmentSummaryDto.Status`), which a golden test pins against the previous generator's
+  output. A model regenerates unchanged unless it has a field that reaches a shared enum through
+  another field, or, in Java only, a value-object field that reaches a shared or `@provided`
+  enum or a redeclaration under a shared enum.
 
 - **`meta verify --db` no longer reports a matching view as drift, and says what differs when a
   view does not.** An adopter on 1.1.0-rc.2 rebuilt a SQLite database from the committed chain:

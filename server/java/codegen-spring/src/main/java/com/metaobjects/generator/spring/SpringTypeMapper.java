@@ -22,7 +22,9 @@ import com.metaobjects.database.CoreDBMetaDataProvider;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.object.MetaObject;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Centralised mapping from {@link MetaField} subtype to the Java type used in
@@ -315,14 +317,23 @@ public final class SpringTypeMapper {
     }
 
     /**
-     * The generated Java {@code enum} type name for an enum-subtype payload field — the SAME
-     * shared scheme the other ports use ({@code KotlinTypeMapper.enumTypeName} /
-     * C# {@code CSharpNaming.EnumTypeName}): when {@code field} reaches a package-level shared
-     * enum DECLARATION via {@link EnumField#resolveSharedEnumDeclaration} (the single
-     * cross-generator authority — possibly multi-hop, short-circuited by an own
-     * {@code @values}/{@code @intValueMap} along the way), the name is
-     * {@code Pascal(declaration.shortName)}; otherwise (an inline field — no reachable
-     * declaration) it is {@code Pascal(owner.shortName) + Pascal(field.name)}. Members verbatim.
+     * The generated Java {@code enum} type name for an enum-subtype payload field, in this order:
+     * <ol>
+     *   <li>{@code field} reaches a package-level shared enum DECLARATION via
+     *       {@link EnumField#resolveSharedEnumDeclaration} (the single cross-generator authority —
+     *       possibly multi-hop, stopped by an own {@code @values}/{@code @intValueMap} along the
+     *       way): {@code Pascal(declaration.shortName)}.</li>
+     *   <li>otherwise the enum is INLINE (nested in the owner's record). A field with a super is
+     *       named for its top-most super, {@code Pascal(topMostSuper.shortName)}, so every field
+     *       extending the same inline enum shares one nested type; a field with no super is
+     *       {@code Pascal(owner.shortName) + Pascal(field.name)}.</li>
+     *   <li>the one exception to the inline rule: the top-most super is itself a shared
+     *       declaration, which the field does NOT resolve to because a node on the chain
+     *       redeclares {@code @values}/{@code @intValueMap}. The super's name is the shared type's
+     *       own name and would shadow it inside the record, so the inline enum is
+     *       {@code Pascal(owner.shortName) + Pascal(field.name)}.</li>
+     * </ol>
+     * Members verbatim.
      *
      * <p>This is a BARE (unqualified) name — a shared declaration materialized in a different
      * Java package, or marked {@code @provided}, is qualified by
@@ -333,7 +344,29 @@ public final class SpringTypeMapper {
         if (declaration != null) {
             return pascal(SpringNaming.splitFqn(declaration.getName())[1]);
         }
+        MetaField<?> superRoot = resolveSuperRoot(field);
+        if (superRoot != null && !EnumField.isSharedEnumDeclaration(superRoot)) {
+            return pascal(SpringNaming.splitFqn(superRoot.getName())[1]);
+        }
         return pascal(SpringNaming.splitFqn(owner.getName())[1]) + pascal(field.getName());
+    }
+
+    /**
+     * Walk a field's {@code extends} (super-field) chain to the top-most ancestor, returning it,
+     * or {@code null} when the field has no super. Naming an inline enum after the top-most
+     * super makes every extending field share one nested type. Cycle-guarded via a visited set.
+     */
+    static MetaField<?> resolveSuperRoot(MetaField<?> field) {
+        MetaField<?> current = field.getSuperField();
+        if (current == null) return null;
+        Set<String> seen = new HashSet<>();
+        while (true) {
+            MetaField<?> next = current.getSuperField();
+            if (next == null) break;
+            if (!seen.add(current.getName())) break; // cycle guard
+            current = next;
+        }
+        return current;
     }
 
     /**

@@ -27,6 +27,11 @@ public record PayloadField(String name, List<PayloadField> fields, boolean isArr
         Objects.requireNonNull(name, "name");
     }
 
+    /** A non-array field: the two-component form this record had before {@code isArray}. */
+    public PayloadField(String name, List<PayloadField> fields) {
+        this(name, fields, false);
+    }
+
     /** Convenience factory: a single (non-array) scalar field. */
     public static PayloadField scalar(String name) {
         return new PayloadField(name, null, false);

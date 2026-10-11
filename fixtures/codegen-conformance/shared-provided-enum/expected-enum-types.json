@@ -21,7 +21,9 @@
     "acme::shop::Refund.ticketTier": { "shared": "acme::shop::Priority", "provided": false },
     "acme::shop::Refund.invoiceTier": { "shared": "acme::shop::Money", "provided": false },
     "acme::shop::TicketSummary.level": { "shared": "acme::shop::Priority", "provided": false },
-    "acme::shop::TicketBadge.badge": { "shared": "acme::shop::Priority", "provided": false }
+    "acme::shop::TicketBadge.badge": { "shared": "acme::shop::Priority", "provided": false },
+    "acme::shop::TicketLabel.grade": { "shared": "acme::shop::Priority", "provided": false },
+    "acme::shop::TicketLabel.denomination": { "shared": "acme::shop::Currency", "provided": true }
   },
   "materialized": ["Money", "Priority"]
 }

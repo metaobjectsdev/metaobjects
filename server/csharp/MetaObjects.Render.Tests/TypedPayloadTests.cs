@@ -112,4 +112,92 @@ public class TypedPayloadTests
         Assert.Equal("a:y b:n ", viaMaps);
         Assert.Equal(viaMaps, viaTyped);
     }
+
+    // ---- The overlay adds names; it never takes any away -----------------------------------
+
+    private readonly record struct Money(long Cents, string Currency)
+    {
+        public override string ToString() => $"{Currency} {Cents}c";
+    }
+
+    private sealed class Line
+    {
+        public string Sku = "";
+        public Money Price { get; init; }
+        public string Label() => "label:" + Sku;
+        public string Exploding => throw new InvalidOperationException("read a member the template never names");
+    }
+
+    private sealed class Order
+    {
+        public string Id { get; init; } = "";
+        public Money Total { get; init; }
+        public List<Line> Lines { get; init; } = new();
+        public string Summary() => $"order {Id}";
+        public override string ToString() => $"Order[{Id}]";
+    }
+
+    private static Order SampleOrder() => new()
+    {
+        Id = "o-1",
+        Total = new Money(1250, "USD"),
+        Lines =
+        {
+            new Line { Sku = "a", Price = new Money(500, "USD") },
+            new Line { Sku = "b", Price = new Money(750, "USD") },
+        },
+    };
+
+    /// <summary>The engine with no MetaObjects view at all: what a typed payload rendered before.</summary>
+    private static string RenderWithBareEngine(string template, object payload) =>
+        new Stubble.Core.Builders.StubbleBuilder().Build().Render(template, payload);
+
+    [Fact]
+    public void MethodBackedAndFieldBackedMembersStillResolve()
+    {
+        const string template = "{{Summary}}|{{#Lines}}{{Sku}}={{Label}};{{/Lines}}";
+        Assert.Equal("order o-1|a=label:a;b=label:b;", Render(template, SampleOrder()));
+    }
+
+    [Fact]
+    public void AValueRendersThroughItsOwnStringForm()
+    {
+        const string template = "{{Total}}|{{#Lines}}{{Price}};{{/Lines}}|{{#Lines}}{{.}};{{/Lines}}";
+        var order = SampleOrder();
+        Assert.Equal(
+            $"USD 1250c|USD 500c;USD 750c;|{order.Lines[0]};{order.Lines[1]};",
+            Render(template, order));
+    }
+
+    [Fact]
+    public void AMemberTheTemplateNeverNamesIsNeverRead()
+    {
+        // Line.Exploding throws when read. No template below names it.
+        const string template = "{{#Lines}}{{Sku}}{{^-last}},{{/-last}}{{/Lines}}";
+        Assert.Equal("a,b", Render(template, SampleOrder()));
+    }
+
+    [Fact]
+    public void ATemplateWithoutDerivedNamesRendersExactlyAsTheBareEngineDoes()
+    {
+        const string template =
+            "{{Id}} {{Summary}} {{Total}} {{Total.Cents}} {{ToString}}"
+            + "{{#Lines}} [{{Sku}} {{Label}} {{Price}} {{Price.Currency}} {{Id}}]{{/Lines}}"
+            + "{{#Total}} {{Currency}}{{/Total}}{{^Missing}} none{{/Missing}}";
+        var order = SampleOrder();
+        string expected = RenderWithBareEngine(template, order);
+        Assert.Equal(
+            "o-1 order o-1 USD 1250c 1250 Order[o-1] [a label:a USD 500c USD o-1] [b label:b USD 750c USD o-1] USD none",
+            expected);
+        Assert.Equal(expected, Render(template, order));
+    }
+
+    [Fact]
+    public void DerivedNamesSitOnTopOfATypedObjectsOwnMembers()
+    {
+        const string template =
+            "{{#hasLines}}{{#Lines}}{{Label}}{{^-last}} + {{/-last}}{{/Lines}}{{/hasLines}}"
+            + "{{#hasId}} has-id{{/hasId}}{{^hasMissing}} no-missing{{/hasMissing}}";
+        Assert.Equal("label:a + label:b has-id no-missing", Render(template, SampleOrder()));
+    }
 }

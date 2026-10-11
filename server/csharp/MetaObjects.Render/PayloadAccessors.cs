@@ -103,12 +103,18 @@ public static class PayloadAccessors
     }
 
     /// <summary>
-    /// A view over <paramref name="payload"/> carrying its derived <c>has&lt;Field&gt;</c>
-    /// accessors, recursively. NON-MUTATING — a render must not change the object it was
-    /// handed. An AUTHORED key always wins. Recursion follows Mustache's own scoping, so
+    /// A view over <paramref name="payload"/> carrying its derived accessors, recursively:
+    /// <c>has&lt;Field&gt;</c> on every object, and <c>-last</c> on every object that is an
+    /// element of a collection. NON-MUTATING — a render must not change the object it was
+    /// handed. An AUTHORED member always wins. Recursion follows Mustache's own scoping, so
     /// every nested object and every collection ELEMENT becomes a context in its own right.
+    /// A typed object with no wire names comes back as an overlay only
+    /// <see cref="Renderer"/>'s engine resolves (<see cref="ViewType"/> / <see cref="ViewLookup"/>).
     /// </summary>
-    public static object? WithDerivedAccessors(object? payload, int depth = 0)
+    public static object? WithDerivedAccessors(object? payload, int depth = 0) => Derive(payload, depth, null);
+
+    /// <summary><paramref name="last"/> is set only for an element of a collection: its position.</summary>
+    private static object? Derive(object? payload, int depth, bool? last)
     {
         if (depth > 32 || payload is null) return payload; // pathological graph
         if (payload is string) return payload;
@@ -119,7 +125,7 @@ public static class PayloadAccessors
             foreach (System.Collections.DictionaryEntry e in dict)
             {
                 if (e.Key is not string k) continue;
-                outMap[k] = WithDerivedAccessors(e.Value, depth + 1);
+                outMap[k] = Derive(e.Value, depth + 1, null);
             }
             foreach (System.Collections.DictionaryEntry e in dict)
             {
@@ -129,60 +135,107 @@ public static class PayloadAccessors
                 bool? derived = AccessorValue(e.Value);
                 if (derived is not null) outMap[name] = derived;
             }
+            if (last is bool position) outMap.TryAdd(LastAccessor, position);
             return outMap;
         }
 
         if (payload is System.Collections.IEnumerable seq)
         {
-            var outList = new List<object?>();
-            foreach (var item in seq) outList.Add(WithDerivedAccessors(item, depth + 1));
-            for (int i = 0; i < outList.Count; i++)
-            {
-                if (outList[i] is not Dictionary<string, object?> el) continue;
-                el.TryAdd(LastAccessor, i == outList.Count - 1);
-            }
+            var items = seq.Cast<object?>().ToList();
+            var outList = new List<object?>(items.Count);
+            for (int i = 0; i < items.Count; i++) outList.Add(Derive(items[i], depth + 1, i == items.Count - 1));
             return outList;
         }
 
-        // ADR-0056 — a typed payload (a generated value-object POCO, a record, an anonymous
-        // object). A template names the FIELD (`{{bio}}`), and a generated POCO carries that
-        // name in [JsonPropertyName] on a PascalCase member, so a typed object is viewed as the
-        // map of its readable public members keyed by wire name (or the member's own name when
-        // it declares none — exactly the name reflection lookup resolved before). The view is
-        // what carries the derived has<Field> and -last accessors, so a typed payload renders
-        // byte-identically to the equal map payload. A scalar-like value (number, enum, date,
-        // Guid, JsonElement, ...) is never viewed: its string form is its own.
-        if (IsScalarLike(payload.GetType())) return payload;
+        // ADR-0056 — a generated value-object POCO. Its members are PascalCase C# properties
+        // that carry the metadata field name in [JsonPropertyName], while a template names the
+        // FIELD (`{{bio}}`). So the POCO is viewed as the map of its wire names, which also gives
+        // it the derived accessors a map payload gets.
+        if (WireNamedProperties(payload.GetType()) is { } props)
         {
             var asMap = new Dictionary<string, object?>(StringComparer.Ordinal);
-            foreach (var (name, read) in MemberReaders(payload.GetType())) asMap.TryAdd(name, read(payload));
-            return WithDerivedAccessors(asMap, depth);
+            foreach (var (name, prop) in props) asMap[name] = prop.GetValue(payload);
+            return Derive(asMap, depth, last);
         }
+
+        // A value the engine treats specially by its TYPE — a scalar, a formattable value, a
+        // lambda, a dynamic object — is handed over untouched. Any other object is overlaid.
+        if (payload is IConvertible or IFormattable or Delegate or System.Dynamic.IDynamicMetaObjectProvider)
+            return payload;
+        return new TypedView(payload, depth, last);
     }
 
-    private static bool IsScalarLike(Type t) =>
-        t.IsPrimitive || t.IsEnum || t.Namespace is "System" || t.Namespace?.StartsWith("System.", StringComparison.Ordinal) == true;
-
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, (string, Func<object, object?>)[]>
-        MemberCache = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, (string, System.Reflection.PropertyInfo)[]?>
+        WireNameCache = new();
 
     /// <summary>
-    /// The readable public instance members of <paramref name="type"/>, each keyed by its
-    /// <c>[JsonPropertyName]</c> (or its own name when it has none). Cached per type.
+    /// The readable public properties of <paramref name="type"/>, each keyed by its
+    /// <c>[JsonPropertyName]</c> (or its own name when it has none) — or null when no property
+    /// declares a wire name, which leaves the type to the overlay.
     /// </summary>
-    private static (string, Func<object, object?>)[] MemberReaders(Type type) =>
-        MemberCache.GetOrAdd(type, static t =>
+    private static (string, System.Reflection.PropertyInfo)[]? WireNamedProperties(Type type) =>
+        WireNameCache.GetOrAdd(type, static t =>
         {
-            const System.Reflection.BindingFlags Flags =
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance;
-            string WireName(System.Reflection.MemberInfo m) =>
-                (m.GetCustomAttributes(typeof(System.Text.Json.Serialization.JsonPropertyNameAttribute), inherit: true)
-                    .FirstOrDefault() as System.Text.Json.Serialization.JsonPropertyNameAttribute)?.Name ?? m.Name;
-            var readers = new List<(string, Func<object, object?>)>();
-            foreach (var p in t.GetProperties(Flags).Where(p => p.CanRead && p.GetIndexParameters().Length == 0))
-                readers.Add((WireName(p), o => p.GetValue(o)));
-            foreach (var f in t.GetFields(Flags))
-                readers.Add((WireName(f), o => f.GetValue(o)));
-            return readers.ToArray();
+            var props = t.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+                .Where(p => p.CanRead && p.GetIndexParameters().Length == 0)
+                .ToArray();
+            string? WireName(System.Reflection.PropertyInfo p) =>
+                (p.GetCustomAttributes(typeof(System.Text.Json.Serialization.JsonPropertyNameAttribute), inherit: true)
+                    .FirstOrDefault() as System.Text.Json.Serialization.JsonPropertyNameAttribute)?.Name;
+            if (!props.Any(p => WireName(p) is not null)) return null;
+            return props.Select(p => (WireName(p) ?? p.Name, p)).ToArray();
         });
+
+    /// <summary>
+    /// The derived-accessor overlay of a typed object. The object stays the thing members are
+    /// resolved on, and only when the template asks for one; the overlay adds the derived names
+    /// on top, and its string form is the object's own.
+    /// </summary>
+    private sealed class TypedView(object target, int depth, bool? last)
+    {
+        internal readonly object Target = target;
+        internal readonly int Depth = depth;
+        internal readonly bool? Last = last;
+
+        public override string? ToString() => Target.ToString();
+    }
+
+    /// <summary>The overlay type <see cref="ViewLookup"/> is registered for.</summary>
+    internal static Type ViewType => typeof(TypedView);
+
+    // The engine's own reflective member lookup, so a typed object resolves exactly the
+    // members it always did: properties, fields and parameterless methods.
+    private static readonly Stubble.Core.Settings.RendererSettingsDefaults.ValueGetterDelegate OwnMember =
+        Stubble.Core.Settings.RendererSettingsDefaults.DefaultValueGetters()[typeof(object)];
+
+    private const System.Reflection.BindingFlags PublicInstance =
+        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance;
+
+    /// <summary>
+    /// The engine's value getter for an overlay: the object's own member when it has one of that
+    /// name, else the derived <c>-last</c> / <c>has&lt;Field&gt;</c>.
+    /// </summary>
+    internal static object? ViewLookup(object value, string key, bool ignoreCase)
+    {
+        var view = (TypedView)value;
+        if (OwnMember(view.Target, key, ignoreCase) is { } own) return Derive(own, view.Depth + 1, null);
+        var flags = ignoreCase ? PublicInstance | System.Reflection.BindingFlags.IgnoreCase : PublicInstance;
+        Type type = view.Target.GetType();
+        if (type.GetMember(key, flags).Length > 0) return null; // authored wins, even when null
+        if (key == LastAccessor) return view.Last;
+        if (!key.StartsWith(HasPrefix, StringComparison.Ordinal) || key.Length == HasPrefix.Length) return null;
+        string rest = key.Substring(HasPrefix.Length);
+        foreach (string field in new[] { char.ToLowerInvariant(rest[0]) + rest.Substring(1), rest })
+        {
+            if (HasAccessorName(field) != key) continue;
+            object? read;
+            if (type.GetProperty(field, PublicInstance) is { CanRead: true } prop && prop.GetIndexParameters().Length == 0)
+                read = prop.GetValue(view.Target);
+            else if (type.GetField(field, PublicInstance) is { } fld)
+                read = fld.GetValue(view.Target);
+            else continue;
+            if (AccessorValue(read) is { } derived) return derived;
+        }
+        return null;
+    }
 }

@@ -132,4 +132,86 @@ public class TypedPayloadRenderTest {
     public void getClassIsNotExposedOnABean() {
         assertEquals("[]", "[" + render("{{class}}{{getClass}}", new BItem("a")) + "]");
     }
+
+    // ---- The overlay adds names; it never takes any away -----------------------------------
+
+    /** A value with its own string form. */
+    public static final class Money {
+        private final long cents;
+        private final String currency;
+        public Money(long cents, String currency) { this.cents = cents; this.currency = currency; }
+        public long getCents() { return cents; }
+        public String getCurrency() { return currency; }
+        @Override public String toString() { return currency + " " + cents + "c"; }
+    }
+
+    public static class Line {
+        String sku;                                  // package-private field, no getter
+        private final Money price;
+        Line(String sku, Money price) { this.sku = sku; this.price = price; }
+        public String name() { return "name:" + sku; }   // fluent accessor
+        public Money getPrice() { return price; }
+        public String getExploding() { throw new IllegalStateException("read a member the template never names"); }
+    }
+
+    public static class Order {
+        public String getId() { return "o-1"; }
+        public Money getTotal() { return new Money(1250, "USD"); }
+        public List<Line> getLines() {
+            return List.of(new Line("a", new Money(500, "USD")), new Line("b", new Money(750, "USD")));
+        }
+        public String summary() { return "order " + getId(); }   // method resolved by exact name
+        @Override public String toString() { return "Order[" + getId() + "]"; }
+    }
+
+    public static class Basket {
+        public Money getTotal() { return new Money(1250, "USD"); }
+        public List<Line> getLines() { return new Order().getLines(); }
+        public List<Order> getOrders() { return List.of(new Order()); }
+    }
+
+    /** The engine with no MetaObjects view at all: what a typed payload rendered before. */
+    private static String renderWithBareEngine(String template, Object payload) throws IOException {
+        java.io.StringWriter out = new java.io.StringWriter();
+        new com.github.mustachejava.DefaultMustacheFactory()
+            .compile(new java.io.StringReader(template), "bare").execute(out, payload).flush();
+        return out.toString();
+    }
+
+    @Test
+    public void methodFluentAccessorAndNonPrivateFieldStillResolve() {
+        assertEquals("order o-1|a=name:a;b=name:b;",
+            render("{{summary}}|{{#lines}}{{sku}}={{name}};{{/lines}}", new Order()));
+    }
+
+    @Test
+    public void aValueRendersThroughItsOwnStringForm() {
+        assertEquals("USD 1250c|USD 500c;USD 750c;|Order[o-1]",
+            render("{{total}}|{{#lines}}{{price}};{{/lines}}|{{#orders}}{{.}}{{/orders}}", new Basket()));
+    }
+
+    @Test
+    public void aMemberTheTemplateNeverNamesIsNeverRead() {
+        // Line.getExploding() throws when read. The template does not name it.
+        assertEquals("a,b", render("{{#lines}}{{sku}}{{^-last}},{{/-last}}{{/lines}}", new Order()));
+    }
+
+    @Test
+    public void aTemplateWithoutDerivedNamesRendersExactlyAsTheBareEngineDoes() throws IOException {
+        String template = "{{id}} {{summary}} {{total}} {{total.cents}} {{toString}}"
+            + "{{#lines}} [{{sku}} {{name}} {{price}} {{price.currency}} {{id}}]{{/lines}}"
+            + "{{#total}} {{currency}}{{/total}}{{^missing}} none{{/missing}}";
+        String expected = renderWithBareEngine(template, new Order());
+        assertEquals(
+            "o-1 order o-1 USD 1250c 1250 Order[o-1] [a name:a USD 500c USD o-1] [b name:b USD 750c USD o-1] USD none",
+            expected);
+        assertEquals(expected, render(template, new Order()));
+    }
+
+    @Test
+    public void derivedNamesSitOnTopOfATypedObjectsOwnMembers() {
+        assertEquals("name:a + name:b has-id no-missing",
+            render("{{#hasLines}}{{#lines}}{{name}}{{^-last}} + {{/-last}}{{/lines}}{{/hasLines}}"
+                + "{{#hasId}} has-id{{/hasId}}{{^hasMissing}} no-missing{{/hasMissing}}", new Order()));
+    }
 }

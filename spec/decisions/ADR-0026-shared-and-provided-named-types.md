@@ -173,6 +173,29 @@ type, and the shared type always generates. A field whose chain ends at an inlin
 object-hosted enum keeps each port's inline naming and output byte for byte. Sharing an inline
 enum across objects stays out of scope.
 
+**What changes in each port.** One case is common to all five: a field that reaches a shared
+declaration through two or more hops, with nothing redeclared on the way, references the shared
+type. Before, it generated an inline union named for the field it extends (TypeScript), a nested
+`<Entity><Field>` enum (C#), a nested enum that reused the shared declaration's name inside the
+DTO (Java), an `<Object><Field>` enum file that is no longer written (Kotlin), or an inline
+`Literal[...]` (Python).
+
+Java alone changes in two further ways, because Java alone had these behaviors:
+
+- *Value objects.* The value-object generator nested a copy of any enum a field extended, a
+  shared or `@provided` declaration included, so one declaration became two Java types that do
+  not convert (`TicketPayload.Priority` beside the top-level `Priority`). A value-object field
+  that reaches a shared or `@provided` declaration, in one hop or many, now references it.
+- *A redeclaration under a shared declaration.* Java names an inline enum that has a super for
+  its TOP-MOST super. For a field answered by step 2 whose top-most super is a shared
+  declaration, that name is the shared type's own, nested with different members and shadowing
+  it inside the DTO. That one case is named `<Owner><Field>` instead (`TaskDto.Priority`
+  becomes `TaskDto.TaskPhase`). It stays inline.
+
+Every other inline enum keeps its name: Java's top-most-super name where no shared declaration
+is on the chain (`ShipmentSummaryDto.Status`), pinned by a golden test against the previous
+generator's output.
+
 **Gate.** `fixtures/codegen-conformance/shared-provided-enum/expected-enum-types.json` is a
 port-neutral decision table: for every object-hosted enum field of the shared input, the
 declaration it resolves to (or none), whether that declaration is `@provided`, and which

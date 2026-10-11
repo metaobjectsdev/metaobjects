@@ -294,26 +294,66 @@ public class Fr019SharedProvidedConformanceTest extends SharedRegistryTestBase {
     public void ownValuesOrIntValueMapStopsTheWalkAndKeepsAnInlinePerObjectEnum() throws Exception {
         // Task.phase (own @values) and Task.weight (own @intValueMap) each extend a field whose
         // OWN chain reaches the shared Priority — but their own redeclaration stops the walk
-        // before it gets there, so they keep their per-object inline enum. Same for the
-        // Subtask fields that extend them.
+        // before it gets there, so they stay inline. Same for the Subtask fields that extend them.
         MetaDataLoader loader = loadShared();
         Path out = run(loader, "com.acme.ext");
 
+        // Their top-most super is the shared Priority itself, whose name a nested enum would
+        // shadow inside the DTO, so each is named <Owner><Field> and carries its OWN members.
         String taskDto = Files.readString(out.resolve("acme/shop/TaskDto.java"));
-        assertTrue("Task.phase must keep its inline enum; saw:\n" + taskDto,
-            taskDto.contains("public enum TaskPhase"));
-        assertTrue("Task.weight must keep its inline enum; saw:\n" + taskDto,
-            taskDto.contains("public enum TaskWeight"));
+        assertTrue("Task.phase must be the nested TaskPhase with its own members; saw:\n" + taskDto,
+            taskDto.contains("public enum TaskPhase { OPEN, DONE }") && taskDto.contains("TaskPhase phase"));
+        assertTrue("Task.weight must be the nested int-backed TaskWeight; saw:\n" + taskDto,
+            taskDto.contains("public enum TaskWeight {") && taskDto.contains("LOW(1)")
+                && taskDto.contains("HIGH(3)") && taskDto.contains("TaskWeight weight"));
+        // A shared-typed field in the SAME DTO still binds to the top-level shared Priority.
+        assertTrue("Task.urgency must still be typed by the shared Priority; saw:\n" + taskDto,
+            taskDto.contains("Priority urgency"));
+        assertFalse("TaskDto must not nest an enum named for the shared declaration; saw:\n" + taskDto,
+            taskDto.contains("public enum Priority"));
 
         String subtaskDto = Files.readString(out.resolve("acme/shop/SubtaskDto.java"));
-        assertTrue("Subtask.phase must keep its inline enum; saw:\n" + subtaskDto,
-            subtaskDto.contains("public enum SubtaskPhase"));
-        assertTrue("Subtask.weight must keep its inline enum; saw:\n" + subtaskDto,
-            subtaskDto.contains("public enum SubtaskWeight"));
+        assertTrue("Subtask.phase must be the nested SubtaskPhase with the members it inherits; saw:\n" + subtaskDto,
+            subtaskDto.contains("public enum SubtaskPhase { OPEN, DONE }") && subtaskDto.contains("SubtaskPhase phase"));
+        assertTrue("Subtask.weight must be the nested int-backed SubtaskWeight; saw:\n" + subtaskDto,
+            subtaskDto.contains("public enum SubtaskWeight {") && subtaskDto.contains("MEDIUM(2)")
+                && subtaskDto.contains("SubtaskWeight weight"));
+        assertTrue("Subtask.rank must still be typed by the shared Priority; saw:\n" + subtaskDto,
+            subtaskDto.contains("Priority rank"));
+        assertFalse("SubtaskDto must not nest an enum named for the shared declaration; saw:\n" + subtaskDto,
+            subtaskDto.contains("public enum Priority"));
 
+        // Refund.orderStatus extends Order.status, an inline enum with no shared declaration
+        // anywhere on the chain: it keeps the name it always had, the top-most super's.
         String refundDto = Files.readString(out.resolve("acme/shop/RefundDto.java"));
-        assertTrue("Refund.orderStatus must keep its inline enum; saw:\n" + refundDto,
-            refundDto.contains("public enum RefundOrderStatus"));
+        assertTrue("Refund.orderStatus must keep its nested Status enum; saw:\n" + refundDto,
+            refundDto.contains("public enum Status { NEW, PAID }") && refundDto.contains("Status orderStatus"));
+    }
+
+    @Test
+    public void valueObjectFieldOneHopFromASharedOrProvidedDeclarationReferencesItAndNestsNoEnum() throws Exception {
+        // TicketLabel.grade extends the shared Priority and TicketLabel.denomination the
+        // @provided Currency, each in ONE hop. The record references the top-level type and the
+        // configured external type; it declares no enum of its own.
+        Path voOut = tmp.newFolder().toPath();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", voOut.toString());
+        args.put("providedEnumNamespace", "com.acme.ext");
+        SpringValueObjectGenerator voGen = new SpringValueObjectGenerator();
+        voGen.setArgs(args);
+        voGen.execute(loadShared());
+
+        String label = Files.readString(voOut.resolve("acme/shop/TicketLabel.java"));
+        assertTrue("TicketLabel.grade must be typed by the top-level shared Priority; saw:\n" + label,
+            label.contains("Priority grade"));
+        assertTrue("TicketLabel.denomination must reference the configured external Currency; saw:\n" + label,
+            label.contains("com.acme.ext.Currency denomination"));
+        assertFalse("TicketLabel must nest no enum; saw:\n" + label, label.contains("enum "));
+        assertTrue("the shared Priority must be emitted by the value-object run itself",
+            Files.readString(voOut.resolve("acme/shop/Priority.java"))
+                .contains("public enum Priority { LOW, MEDIUM, HIGH }"));
+        assertFalse("the @provided Currency must never be generated",
+            Files.exists(voOut.resolve("acme/shop/Currency.java")));
     }
 
     @Test

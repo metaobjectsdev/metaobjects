@@ -265,4 +265,19 @@ public class VerifyTest {
             "{{#posts}}{{#note}}{{note}}{{^-last}}; {{/-last}}{{/note}}{{#author}}{{name}}{{^-last}}, {{/-last}}{{/author}}{{/posts}}",
             POSITIONAL_PAYLOAD, VerifyOptions.empty()).isEmpty());
     }
+
+    @Test
+    public void twoComponentConstructorIsANonArrayField() {
+        PayloadField scalar = new PayloadField("name", null);
+        PayloadField nested = new PayloadField("owner", List.of(new PayloadField("nick", null)));
+        assertEquals(PayloadField.scalar("name"), scalar);
+        assertEquals(PayloadField.object("owner", List.of(PayloadField.scalar("nick"))), nested);
+        assertTrue(Verify.check("{{name}}{{#owner}}{{nick}}{{/owner}}",
+            List.of(scalar, nested), VerifyOptions.empty()).isEmpty());
+        // A non-array section does not iterate, so it offers no -last of its own.
+        var errors = Verify.check("{{#owner}}{{nick}}{{^-last}},{{/-last}}{{/owner}}",
+            List.of(nested), VerifyOptions.empty());
+        assertEquals(1, errors.size());
+        assertEquals("-last", errors.get(0).path());
+    }
 }

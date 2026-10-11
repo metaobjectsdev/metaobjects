@@ -34,14 +34,16 @@ public final class PayloadAccessors {
 
     private PayloadAccessors() { /* no instances */ }
 
-    /** Adds {@code -last} to the map-shaped elements of an already-derived list. */
+    /** Marks each object element of an already-derived list with its {@code -last} position. */
     @SuppressWarnings("unchecked")
     private static java.util.List<Object> withPositionalAccessors(java.util.List<Object> elements) {
         int last = elements.size() - 1;
         for (int i = 0; i < elements.size(); i++) {
-            if (elements.get(i) instanceof java.util.Map<?, ?> m) {
-                java.util.Map<String, Object> el = (java.util.Map<String, Object>) m;
-                el.putIfAbsent(LAST_ACCESSOR, i == last);
+            Object el = elements.get(i);
+            if (el instanceof TypedView view) {
+                view.last = i == last;
+            } else if (el instanceof java.util.Map<?, ?> m) {
+                ((java.util.Map<String, Object>) m).putIfAbsent(LAST_ACCESSOR, i == last);
             }
         }
         return elements;
@@ -100,8 +102,8 @@ public final class PayloadAccessors {
     /**
      * A view over {@code payload} carrying its derived {@code has<Field>} accessors,
      * recursively — for map-shaped payloads, Java records (viewed as the map of their
-     * components) and getter-based beans, which covers Kotlin data classes (viewed as the map of
-     * their getters and public fields).
+     * components) and any other typed object, which covers getter-based beans and Kotlin data
+     * classes (overlaid by a {@code TypedView}: the object's own members, plus the derived names).
      *
      * <p>Without it, the SAME payload data renders differently depending on the shape it
      * arrived in, which is the divergence the shared {@code render-derived-has-accessor} fixture
@@ -186,77 +188,98 @@ public final class PayloadAccessors {
             for (int i = 0; i < n; i++) out.add(withDerivedAccessors(java.lang.reflect.Array.get(payload, i), depth + 1));
             return withPositionalAccessors(out);
         }
-        if (isViewableBean(payload)) {
-            java.util.Map<String, Object> members = new java.util.LinkedHashMap<>();
-            for (MemberReader r : readersFor(payload.getClass())) {
-                try {
-                    members.putIfAbsent(r.name(), r.read(payload));
-                } catch (ReflectiveOperationException | RuntimeException e) {
-                    // Left out rather than failing the render, as for a record component.
-                }
-            }
-            return withDerivedAccessors(members, depth);
-        }
+        if (isViewable(payload)) return new TypedView(payload, depth);
         return payload;
     }
 
-    // A getter-based bean's readable members, resolved ONCE per class like the record accessors.
-    // Names are the ones the Mustache engine already resolved on such an object: the getter's own
-    // name (getName, isActive), the property name it implies (name,
-    // active) and public fields. Only getters are read — a fluent method is never invoked
-    // as a side effect of viewing — and nothing declared by Object (so no getClass) is exposed.
-    private static final java.util.concurrent.ConcurrentHashMap<Class<?>, MemberReader[]> MEMBERS =
+    /**
+     * A value the engine treats specially by its TYPE — a scalar, an iterable, a lambda — or a
+     * platform value is handed over untouched; only an application object is overlaid.
+     */
+    private static boolean isViewable(Object payload) {
+        if (payload instanceof Enum<?> || payload instanceof CharSequence || payload instanceof Number
+                || payload instanceof Boolean || payload instanceof Character
+                || payload instanceof Iterable<?> || payload instanceof java.util.Iterator<?>
+                || payload instanceof java.util.function.Function<?, ?>
+                || payload instanceof java.util.concurrent.Callable<?>) return false;
+        String n = payload.getClass().getName();
+        return !(n.startsWith("java.") || n.startsWith("javax.") || n.startsWith("jdk.") || n.startsWith("kotlin."));
+    }
+
+    private static final Object MISSING = new Object();
+
+    // The engine's own member lookup, so a typed object resolves exactly the names it always
+    // did: a method by its exact name, getX / isX, and a non-private field.
+    private static final com.github.mustachejava.reflect.ReflectionObjectHandler NATIVE =
+        new com.github.mustachejava.reflect.ReflectionObjectHandler();
+
+    // One resolved lookup per (class, name). Class shapes are immutable, so no eviction.
+    private static final java.util.concurrent.ConcurrentHashMap<Class<?>,
+            java.util.concurrent.ConcurrentHashMap<String, com.github.mustachejava.util.Wrapper>> LOOKUPS =
         new java.util.concurrent.ConcurrentHashMap<>();
 
-    private record MemberReader(String name, java.lang.reflect.Method getter, java.lang.reflect.Field field) {
-        Object read(Object target) throws ReflectiveOperationException {
-            return getter != null ? getter.invoke(target) : field.get(target);
+    /** The value of {@code target}'s own member {@code name}, or {@link #MISSING} when it has none. */
+    private static Object ownMember(Object target, String name) {
+        java.util.List<Object> scope = java.util.Collections.singletonList(target);
+        com.github.mustachejava.util.Wrapper lookup = LOOKUPS
+            .computeIfAbsent(target.getClass(), c -> new java.util.concurrent.ConcurrentHashMap<>())
+            .computeIfAbsent(name, n -> NATIVE.find(n, scope));
+        if (lookup instanceof com.github.mustachejava.reflect.MissingWrapper) return MISSING;
+        try {
+            return lookup.call(scope);
+        } catch (com.github.mustachejava.util.GuardException e) {
+            return MISSING;
         }
     }
 
-    private static MemberReader[] readersFor(Class<?> type) {
-        return MEMBERS.computeIfAbsent(type, c -> {
-            java.util.List<MemberReader> readers = new java.util.ArrayList<>();
-            for (java.lang.reflect.Method m : c.getMethods()) {
-                if (m.getDeclaringClass() == Object.class || m.getParameterCount() != 0
-                        || java.lang.reflect.Modifier.isStatic(m.getModifiers())
-                        || m.getReturnType() == void.class) continue;
-                String n = m.getName();
-                String property = n.startsWith("get") ? n.substring(3) : n.startsWith("is") ? n.substring(2) : null;
-                if (property == null || property.isEmpty() || !Character.isUpperCase(property.charAt(0))) continue;
-                try {
-                    m.setAccessible(true);
-                } catch (RuntimeException e) {
-                    continue;
-                }
-                readers.add(new MemberReader(n, m, null));
-                readers.add(new MemberReader(decapitalize(property), m, null));
-            }
-            for (java.lang.reflect.Field f : c.getFields()) {
-                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
-                try {
-                    f.setAccessible(true);
-                } catch (RuntimeException e) {
-                    continue;
-                }
-                readers.add(new MemberReader(f.getName(), null, f));
-            }
-            return readers.toArray(new MemberReader[0]);
-        });
-    }
+    /**
+     * The derived-accessor overlay of a typed object. To the engine it is a map that holds every
+     * name the object itself resolves — read from the object only when the template asks for it —
+     * plus the derived {@code has<Field>} and {@code -last}; a name the object has always wins.
+     * Its string form is the object's own.
+     */
+    private static final class TypedView extends java.util.AbstractMap<String, Object> {
+        private final Object target;
+        private final int depth;
+        private Boolean last;
 
-    /** The Java Beans rule: lowercase the first character unless the first two are both upper case. */
-    private static String decapitalize(String s) {
-        if (s.length() > 1 && Character.isUpperCase(s.charAt(0)) && Character.isUpperCase(s.charAt(1))) return s;
-        return Character.toLowerCase(s.charAt(0)) + s.substring(1);
-    }
+        TypedView(Object target, int depth) {
+            this.target = target;
+            this.depth = depth;
+        }
 
-    /** A scalar-like or platform value keeps its own string form; only an application bean is viewed. */
-    private static boolean isViewableBean(Object payload) {
-        if (payload instanceof Enum<?> || payload instanceof CharSequence || payload instanceof Number
-                || payload instanceof Boolean || payload instanceof Character || payload instanceof Iterable<?>) return false;
-        String n = payload.getClass().getName();
-        return !(n.startsWith("java.") || n.startsWith("javax.") || n.startsWith("jdk.")
-                || n.startsWith("kotlin.") || n.startsWith("sun.") || n.startsWith("com.sun."));
+        private Object resolve(Object key) {
+            if (!(key instanceof String name) || name.indexOf('.') >= 0) return MISSING;
+            Object own = ownMember(target, name);
+            if (own != MISSING) return withDerivedAccessors(own, depth + 1);
+            if (LAST_ACCESSOR.equals(name)) return last != null ? last : MISSING;
+            if (!name.startsWith(HAS_PREFIX) || name.length() == HAS_PREFIX.length()) return MISSING;
+            String rest = name.substring(HAS_PREFIX.length());
+            for (String field : new String[] { Character.toLowerCase(rest.charAt(0)) + rest.substring(1), rest }) {
+                if (!hasAccessorName(field).equals(name)) continue;
+                Object value = ownMember(target, field);
+                if (value == MISSING) continue;
+                Boolean derived = accessorValue(value);
+                if (derived != null) return derived;
+            }
+            return MISSING;
+        }
+
+        @Override public boolean containsKey(Object key) { return resolve(key) != MISSING; }
+
+        @Override public Object get(Object key) {
+            Object value = resolve(key);
+            return value == MISSING ? null : value;
+        }
+
+        @Override public java.util.Set<java.util.Map.Entry<String, Object>> entrySet() {
+            return java.util.Collections.emptySet();
+        }
+
+        @Override public String toString() { return target.toString(); }
+
+        @Override public boolean equals(Object o) { return o == this; }
+
+        @Override public int hashCode() { return System.identityHashCode(this); }
     }
 }

@@ -65,4 +65,55 @@ class KotlinTypedPayloadRenderTest {
         assertEquals("a:y b:n ", render(template, viaMaps))
         assertEquals(render(template, viaMaps), render(template, viaData))
     }
+
+    // ---- The overlay adds names; it never takes any away -----------------------------------
+
+    class Money(val cents: Long, val currency: String) {
+        override fun toString(): String = "$currency ${cents}c"
+    }
+
+    data class Line(val sku: String, val price: Money) {
+        fun label(): String = "label:$sku"
+        val exploding: String get() = throw IllegalStateException("read a member the template never names")
+    }
+
+    data class Order(val id: String, val total: Money, val lines: List<Line>) {
+        fun summary(): String = "order $id"
+    }
+
+    private val order = Order("o-1", Money(1250, "USD"), listOf(Line("a", Money(500, "USD")), Line("b", Money(750, "USD"))))
+
+    /** The engine with no MetaObjects view at all: what a typed payload rendered before. */
+    private fun renderWithBareEngine(template: String, payload: Any): String {
+        val out = java.io.StringWriter()
+        com.github.mustachejava.DefaultMustacheFactory()
+            .compile(java.io.StringReader(template), "bare").execute(out, payload).flush()
+        return out.toString()
+    }
+
+    @Test
+    fun `a function member and a value's own string form still render`() {
+        assertEquals(
+            "order o-1 USD 1250c|a=label:a USD 500c;b=label:b USD 750c;",
+            render("{{summary}} {{total}}|{{#lines}}{{sku}}={{label}} {{price}};{{/lines}}", order),
+        )
+    }
+
+    @Test
+    fun `a property the template never names is never read`() {
+        assertEquals("a,b", render("{{#lines}}{{sku}}{{^-last}},{{/-last}}{{/lines}}", order))
+    }
+
+    @Test
+    fun `a template without derived names renders exactly as the bare engine does`() {
+        val template = "{{id}} {{summary}} {{total}} {{total.cents}}" +
+            "{{#lines}} [{{sku}} {{label}} {{price}} {{price.currency}} {{id}}]{{/lines}}" +
+            "{{#total}} {{currency}}{{/total}}{{^missing}} none{{/missing}}"
+        val expected = renderWithBareEngine(template, order)
+        assertEquals(
+            "o-1 order o-1 USD 1250c 1250 [a label:a USD 500c USD o-1] [b label:b USD 750c USD o-1] USD none",
+            expected,
+        )
+        assertEquals(expected, render(template, order))
+    }
 }

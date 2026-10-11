@@ -205,7 +205,6 @@ class KotlinFr019SharedProvidedConformanceTest {
     fun `multi-hop projection and value-object fields reference the shared type`() {
         val out = generate("com.acme.ext")
         try {
-            // Task.importance (two hops) and Subtask.rank (three hops) both reach Priority.
             // Multi-hop fields reference the ONE shared Priority — on an entity (Task.importance,
             // two hops; Subtask.rank, three hops), a projection (TicketSummary.level) and a value
             // object (TicketBadge.badge) alike — and no per-object enum is written for any of them.
@@ -218,10 +217,12 @@ class KotlinFr019SharedProvidedConformanceTest {
             assertTrue("val importance: Priority?" in task, "Task.importance must be typed Priority; saw:\n$task")
             val subtask = shop.resolve("Subtask.kt").readText()
             assertTrue("val rank: Priority" in subtask, "Subtask.rank must be typed Priority; saw:\n$subtask")
-            for (name in listOf("TicketSummary.kt", "TicketBadge.kt")) {
-                val f = shop.resolve(name)
-                if (Files.exists(f)) assertTrue("Priority" in f.readText(), "$name must reference Priority; saw:\n${f.readText()}")
-            }
+            val summary = shop.resolve("TicketSummary.kt").readText()
+            assertTrue("val level: Priority" in summary,
+                "TicketSummary.level (projection) must be typed Priority; saw:\n$summary")
+            val badge = shop.resolve("TicketBadge.kt").readText()
+            assertTrue("val badge: Priority" in badge,
+                "TicketBadge.badge (value object) must be typed Priority; saw:\n$badge")
         } finally {
             out.toFile().deleteRecursively()
         }
@@ -232,11 +233,16 @@ class KotlinFr019SharedProvidedConformanceTest {
         val out = generate("com.acme.ext")
         try {
             val refund = out.resolve("acme/shop/Refund.kt").readText()
-            assertTrue("ticketTier" in refund && "invoiceTier" in refund && "unit" in refund
-                && "tender" in refund && "orderStatus" in refund,
-                "Refund.kt must declare all five fields; saw:\n$refund")
-            assertTrue("com.acme.ext.Currency" in refund,
-                "Refund.tender must reference the configured external namespace; saw:\n$refund")
+            // Two fields whose immediate supers are same-named fields ("tier") of different
+            // objects resolve to DIFFERENT shared declarations.
+            assertTrue("val ticketTier: Priority" in refund, "Refund.ticketTier must be typed Priority; saw:\n$refund")
+            assertTrue("val invoiceTier: Money" in refund, "Refund.invoiceTier must be typed Money; saw:\n$refund")
+            assertTrue("val unit: Money" in refund, "Refund.unit must be typed Money; saw:\n$refund")
+            // Refund.tender -> Ticket.currency -> the @provided Currency at the configured namespace.
+            assertTrue("import com.acme.ext.Currency" in refund && "val tender: Currency" in refund,
+                "Refund.tender must be typed by the configured external Currency; saw:\n$refund")
+            assertTrue("val orderStatus: RefundOrderStatus" in refund,
+                "Refund.orderStatus must keep its inline per-object enum; saw:\n$refund")
         } finally {
             out.toFile().deleteRecursively()
         }
