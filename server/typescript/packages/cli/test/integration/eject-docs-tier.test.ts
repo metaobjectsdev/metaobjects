@@ -247,6 +247,16 @@ describe("docs and api-docs — owned copies run by `meta docs`", () => {
           `});`,
         ].join("\n"),
       );
+
+      // The file is not there yet. The error is the generator's own, and is not rewritten
+      // into advice about the packaged page templates.
+      const missing = await meta(root, "docs");
+      expect(missing.exit).toBe(1);
+      expect(missing.output).toContain("ENOENT");
+      expect(missing.output).toContain("MODEL-TITLE");
+      expect(missing.output).not.toContain("templates not found");
+      expect(existsSync(join(root, DOCS))).toBe(false);
+
       writeFileSync(join(root, "MODEL-TITLE"), "From The Project");
 
       // `--templates` repoints `ctx.projectRoot`. The project's files are not there.

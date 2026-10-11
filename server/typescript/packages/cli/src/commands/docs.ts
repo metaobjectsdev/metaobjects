@@ -665,7 +665,7 @@ export async function docsCommand(
       // The framework templates resolve from disk; inside the compiled `meta`
       // binary they live on a virtual fs the provider cannot read. Surface that
       // as an actionable message rather than a cryptic render failure.
-      if (/entity-page|template-page|failed rendering|ENOENT|not found/i.test(msg)) {
+      if (ownedModel === undefined && /entity-page|template-page|failed rendering|ENOENT|not found/i.test(msg)) {
         log.error(
           `docs: failed to render — templates not found. ` +
           `Run 'meta docs' from an installed package layout (with on-disk ` +
