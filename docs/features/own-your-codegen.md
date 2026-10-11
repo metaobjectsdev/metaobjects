@@ -808,8 +808,9 @@ not declare. Eject the generators that share a rule before you change it.
 behind your copy. Two facts you might expect in the rules are engine instead:
 `SpringTypeMapper.mapValueObjectRefOf` (which value object a `field.map @objectRef`
 carries) decides the map's Java type, so it is a type-mapping fact; and `AutoSetSupport`
-keeps only what `@autoSet` means for one field (its policy and its `now()` expression),
-while which DTO fields get stamped is a rule in your copy.
+keeps what `@autoSet` means for one field (its policy and its `now()` expression), plus
+four `@Deprecated` 1.0.x selectors that apply the 1.0.x rule for copies made before 1.1.0.
+Which DTO fields get stamped is a rule in your copy.
 
 **The helper runtime.** The Java `routes`, `dto` and `repository` output imports helper
 classes that are not core, listed in the last column.
