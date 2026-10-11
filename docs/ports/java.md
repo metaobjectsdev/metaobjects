@@ -302,7 +302,9 @@ files to it (`emitExtractors=false`, whatever the pom says), so each one has a s
 emitter. You need the
 separate entry only to own the extractor (`mvn metaobjects:eject -Dnames=extractor
 -Dport=java`) or to run it with different args. Outside Maven, set `emitExtractors=false`
-on `entity` yourself.
+on `entity` yourself. A pom with more than one `entity` entry needs one `extractor` entry
+per `entity` entry, each with that entry's `outputDir`, naming args and `<filters>`: a
+single `extractor` generator in the run stops every `entity` entry writing its extractors.
 
 ### Reports
 

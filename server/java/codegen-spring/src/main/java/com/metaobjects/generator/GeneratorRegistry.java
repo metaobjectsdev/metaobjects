@@ -297,7 +297,10 @@ public final class GeneratorRegistry {
                     + "<generator><classname>{owned}</classname></generator> with the same outputDir, "
                     + "pkgPrefix, pkgSuffix, namePrefix and nameSuffix args, and the same <filters>, as "
                     + "your entity generator: an extractor for an object entity wrote no class for does "
-                    + "not compile. `entity` then leaves those files to it.",
+                    + "not compile. `entity` then leaves those files to it. A pom with more than "
+                    + "one entity entry needs one extractor entry per entity entry, each with that "
+                    + "entry's outputDir, naming args and <filters>: a single extractor generator in "
+                    + "the run stops every entity entry writing its extractors.",
                 OBJECT_NAMING);
         // "template" stays registered but is NOT ejectable: it is already a generic,
         // declaratively-configured primitive (Mustache template + output pattern) with no

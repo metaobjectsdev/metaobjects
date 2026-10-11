@@ -596,6 +596,11 @@ the run, so a pom that wires only `entity` emits what it always did. When one is
 `emitExtractors` to `false`, whatever the pom says, so each file has one emitter. Outside
 Maven, set `emitExtractors=false` on `entity` yourself.
 
+A pom with more than one `entity` entry needs one `extractor` entry per `entity` entry,
+each with that entry's `outputDir`, naming args and `<filters>`. A single `extractor`
+generator in the run stops every `entity` entry writing its extractors, so an `entity`
+entry left without one gets none.
+
 ### What eject hands over, and what stays core
 
 An owned generator is only yours if the code its output depends on is yours too. The Java
