@@ -473,4 +473,28 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
     protected String getSingleOutputFilename(MetaObject md) {
         return SpringNaming.splitFqn(md.getName())[1] + "Repository.java";
     }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#repositoryAppliesTo}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    public static boolean appliesTo(MetaObject entity) {
+        return SpringGeneratorSupport.repositoryAppliesTo(entity);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#m2mFinderName}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    public static String m2mFinderName(String relationName) {
+        return SpringGeneratorSupport.m2mFinderName(relationName);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#m2mFinderNameForSubtype}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    public static String m2mFinderNameForSubtype(String relationName, String discriminatorValue) {
+        return SpringGeneratorSupport.m2mFinderNameForSubtype(relationName, discriminatorValue);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#targetSubtypeParam}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    public static String targetSubtypeParam(SpringM2mSupport.M2mNav nav) {
+        return SpringGeneratorSupport.targetSubtypeParam(nav);
+    }
 }

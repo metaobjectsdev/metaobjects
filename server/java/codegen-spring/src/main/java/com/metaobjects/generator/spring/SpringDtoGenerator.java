@@ -906,4 +906,94 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
     protected String getSingleOutputFilename(MetaObject md) {
         return SpringNaming.splitFqn(md.getName())[1] + "Dto.java";
     }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#settableFields(MetaObject, String)}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    public static List<MetaField> settableFields(MetaObject entity, String alsoExclude) {
+        return SpringGeneratorSupport.settableFields(entity, alsoExclude);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#scalarFields}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    public static List<MetaField> scalarFields(MetaObject entity) {
+        return SpringGeneratorSupport.scalarFields(entity);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#dtoComponentFields}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    public static List<MetaField> dtoComponentFields(MetaObject entity) {
+        return SpringGeneratorSupport.dtoComponentFields(entity);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#valueObjectJsonbFields}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    public static List<ObjectField> valueObjectJsonbFields(MetaObject entity) {
+        return SpringGeneratorSupport.valueObjectJsonbFields(entity);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#valueObjectMapFields}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    public static List<MetaField> valueObjectMapFields(MetaObject entity) {
+        return SpringGeneratorSupport.valueObjectMapFields(entity);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#isValueObjectJsonbField}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    public static boolean isValueObjectJsonbField(MetaField<?> field) {
+        return SpringGeneratorSupport.isValueObjectJsonbField(field);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#componentType}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    public static String componentType(MetaField<?> field, MetaObject owner) {
+        return SpringGeneratorSupport.componentType(field, owner);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#isRequired}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    public static boolean isRequired(MetaField<?> field) {
+        return SpringGeneratorSupport.isRequired(field);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#originGuaranteedNonNull}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    public static boolean originGuaranteedNonNull(MetaField<?> field) {
+        return SpringGeneratorSupport.originGuaranteedNonNull(field);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#validationAnnotations}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    public static String validationAnnotations(MetaField<?> field) {
+        return SpringGeneratorSupport.validationAnnotations(field);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#sizeAnnotation}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    protected static String sizeAnnotation(Integer min, Integer max) {
+        return SpringGeneratorSupport.sizeAnnotation(min, max);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#attrBool}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    protected static boolean attrBool(MetaField<?> field, String attr) {
+        return SpringGeneratorSupport.attrBool(field, attr);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#attrInt}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    protected static Integer attrInt(MetaData node, String... attrNames) {
+        return SpringGeneratorSupport.attrInt(node, attrNames);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#hasValidator}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    protected static boolean hasValidator(MetaField<?> field, Class<? extends MetaValidator> type) {
+        return SpringGeneratorSupport.hasValidator(field, type);
+    }
+
+    /** @deprecated moved to {@link SpringGeneratorSupport#escapeJavaString}; kept so 1.0.x callers still compile. */
+    @Deprecated
+    protected static String escapeJavaString(String s) {
+        return SpringGeneratorSupport.escapeJavaString(s);
+    }
 }

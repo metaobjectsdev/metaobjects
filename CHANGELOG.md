@@ -68,10 +68,11 @@ Total hand-written lines did not fall, so do not read it as a total line reducti
   before 1.1.0, and the upgrade does not change that. Run
   `mvn metaobjects:eject -Dnames=<generator> -Dforce=true` for each one you own to get a copy
   that compiles alone and reads the shared rules from `SpringGeneratorSupport` (the copy of it
-  written beside them is yours too), and merge your own edits back from `git diff`. A copy you
-  repaired by importing the packaged `SpringDtoGenerator` or `SpringRepositoryGenerator` must be
-  re-ejected, because those helpers moved to `SpringGeneratorSupport`. A generator you never
-  ejected needs nothing.
+  written beside them is yours too), and merge your own edits back from `git diff`. Code of your
+  own that calls a static helper on the packaged `SpringDtoGenerator` or
+  `SpringRepositoryGenerator`, or subclasses one of them, still compiles too: the 1.0.x helpers
+  are still there, marked `@Deprecated`, and forward to `SpringGeneratorSupport`. A generator you
+  never ejected needs nothing.
 - **A keyless projection regenerates differently (G12).** `meta gen` rewrites the read-only
   surface of a keyless projection (no `/:id` route, no by-id function, and no write verbs in the
   API docs), and `meta verify --docs` reports the affected pages as stale until they are
@@ -885,11 +886,14 @@ until you regenerate.
   was not seen by the other. Both predicates moved to `metaobjects/codegen/runtime/shared_predicates.py`,
   and `metaobjects eject` of `routes`, `filter-allowlist`, `entity` or `extractor` copies it to
   `codegen/runtime/shared_predicates.py`, which the owned generators read instead of the installed
-  module. Not in this fix: `template` stays package-only by decision. If you called `SpringDtoGenerator.<helper>` or
-  `SpringRepositoryGenerator.appliesTo` from your own code, call `SpringGeneratorSupport.<helper>`
-  (`repositoryAppliesTo`) instead. The four `AutoSetSupport` selectors of 1.0.x (`stampFields`,
-  `onUpdateFields`, `hasAutoSetFields`, `hasOnUpdateFields`) are still there, marked `@Deprecated`,
-  so code that calls them still compiles; the same four are on `SpringGeneratorSupport`.
+  module. Not in this fix: `template` stays package-only by decision. The public and protected
+  static helpers that 1.0.x had on `SpringDtoGenerator` and `SpringRepositoryGenerator` are still
+  there with the same signatures, marked `@Deprecated`, and forward to `SpringGeneratorSupport`
+  (`SpringRepositoryGenerator.appliesTo` to `repositoryAppliesTo`), so code of your own that calls
+  them, or a subclass that uses them, still compiles; call `SpringGeneratorSupport.<helper>` in
+  new code. The four `AutoSetSupport` selectors of 1.0.x (`stampFields`, `onUpdateFields`,
+  `hasAutoSetFields`, `hasOnUpdateFields`) are still there too, marked `@Deprecated`, and apply
+  the 1.0.x rule; the same four are on `SpringGeneratorSupport`.
 - **`meta verify --db` no longer reports a matching view as drift, and says what differs when a
   view does not.** An adopter on 1.1.0-rc.2 rebuilt a SQLite database from the committed chain:
   every report and projection view's stored SQL was byte-identical to the metadata's, yet
