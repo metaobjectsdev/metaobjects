@@ -21,6 +21,24 @@ export type SqlType =
   | { kind: "inet" }        // Postgres-native inet (IPv4/IPv6) — field.inet (ADR-0036/0037 Wave 3)
   | { kind: "array"; element: SqlType };   // native SQL array (e.g. uuid[], text[])
 
+/**
+ * A short human spelling of `t` that keeps what `sqlTypeEquals` compares, so two types that
+ * differ never print alike: `text(255)` against `text`, `timestamptz` against `timestamp`.
+ * For messages only; the dialect renderers own the SQL.
+ */
+export function describeSqlType(t: SqlType): string {
+  switch (t.kind) {
+    case "text": return t.maxLength === undefined ? "text" : `text(${t.maxLength})`;
+    case "integer": return t.bits === 64 ? "bigint" : "integer";
+    case "numeric":
+      return t.precision === undefined ? "numeric"
+        : `numeric(${t.precision}${t.scale === undefined ? "" : `,${t.scale}`})`;
+    case "timestamp": return t.withTimezone ? "timestamptz" : "timestamp";
+    case "array": return `${describeSqlType(t.element)}[]`;
+    default: return t.kind;
+  }
+}
+
 /** Structural equality on SqlType. */
 export function sqlTypeEquals(a: SqlType, b: SqlType): boolean {
   if (a.kind !== b.kind) return false;

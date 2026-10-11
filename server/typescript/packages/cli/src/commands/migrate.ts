@@ -39,6 +39,7 @@ import {
   writeMigrationD1,
   writeMigrationFlyway,
   introspectD1,
+  withoutFlywayHistory,
   applyPending,
   rollbackTo,
   findWranglerConfig,
@@ -54,6 +55,7 @@ import {
   type SchemaProvenance,
   type SchemaSnapshot,
   type TableDescriptor,
+  postgresViewReplaceProbe,
 } from "@metaobjectsdev/migrate-ts";
 import {
   buildWranglerExecuteArgs,
@@ -398,15 +400,19 @@ function nextStepsDetail(dialect: string | undefined): string {
 }
 
 /** Table count of the target DB, or undefined when it can't be reached/introspected
- *  (any failure ⇒ unknown ⇒ never block; the caller warns instead of refusing). */
+ *  (any failure ⇒ unknown ⇒ never block; the caller warns instead of refusing). Under the
+ *  flyway format Flyway's own history table is not counted: a database that holds only that
+ *  table has none of the project's tables. */
 async function countLiveTables(
   url: string,
   dialect: ResolvedMigrateConfig["dialect"],
+  format: ResolvedMigrateConfig["format"],
 ): Promise<number | undefined> {
   try {
     const kysely = await buildKyselyFromUrl(url, dialect);
     try {
-      return (await introspect(kysely.db, kysely.dialect)).tables.length;
+      const live = await introspect(kysely.db, kysely.dialect);
+      return (format === "flyway" ? withoutFlywayHistory(live) : live).tables.length;
     } finally {
       await kysely.close();
     }
@@ -790,6 +796,8 @@ export async function migrateCommand(
     let actual;
     try {
       actual = await introspect(kysely.db, kysely.dialect);
+      // Flyway owns its history table; diffing it proposes DROP TABLE flyway_schema_history.
+      if (config.format === "flyway") actual = withoutFlywayHistory(actual);
     } catch (err) {
       log.error(`migrate: failed to connect to ${kysely.displayUrl}: ${describeError(err)}`);
       await kysely.close();
@@ -810,6 +818,9 @@ export async function migrateCommand(
         ...scopedDiffInputs(scoped, collectUnmanagedNames(metadata)),
         actual,
         dialect: kysely.dialect,
+        // Postgres decides whether a changed view can be replaced in place: the probe
+        // creates the new definition as a temporary view in a transaction it rolls back.
+        ...(kysely.dialect === "postgres" ? { viewReplaceProbe: postgresViewReplaceProbe(kysely.db) } : {}),
         allow: tokensToAllowOptions(config.allow),
         renames: config.renames,
         // #258 — adopting a live DB whose PRIMARY KEY differs from the metadata identity
@@ -1133,6 +1144,7 @@ export async function runBaseline(
     }
     try {
       snapshot = await introspect(kysely.db, kysely.dialect);
+      if (config.format === "flyway") snapshot = withoutFlywayHistory(snapshot);
     } finally {
       await kysely.close();
     }
@@ -1145,7 +1157,7 @@ export async function runBaseline(
     // couldn't reach — we still write the snapshot but WARN: an offline baseline is
     // only correct when the database already matches the metadata, and emits no DDL.
     const liveTableCount = config.databaseUrl !== undefined
-      ? await countLiveTables(config.databaseUrl, config.dialect)
+      ? await countLiveTables(config.databaseUrl, config.dialect, config.format)
       : undefined;
     if (liveTableCount === 0) {
       // `liveTableCount === 0` ⇒ databaseUrl was defined (countLiveTables only
@@ -1395,6 +1407,7 @@ export async function runOfflineGenerate(
     emitStructuredError("no schema snapshot", nextStepsDetail(config.dialect), fmt);
     return 2;
   }
+  if (config.format === "flyway") snapshot = withoutFlywayHistory(snapshot);
 
   const collectedAmbiguous: AmbiguousChange[] = [];
   const onAmbiguousResolution = mapOnAmbiguous(config.onAmbiguous);

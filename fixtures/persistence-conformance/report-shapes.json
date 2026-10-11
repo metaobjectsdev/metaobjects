@@ -16,7 +16,7 @@
           "name": "programTitle",
           "role": "dimension",
           "subType": "string",
-          "required": false,
+          "required": true,
           "typeSource": "fitness::Program.title"
         },
         {
@@ -681,7 +681,7 @@
           "name": "programTitle",
           "role": "dimension",
           "subType": "string",
-          "required": false,
+          "required": true,
           "typeSource": "fitness::Program.title"
         },
         {
@@ -737,7 +737,7 @@
           "name": "programTitle",
           "role": "dimension",
           "subType": "string",
-          "required": false,
+          "required": true,
           "typeSource": "fitness::Program.title"
         },
         {

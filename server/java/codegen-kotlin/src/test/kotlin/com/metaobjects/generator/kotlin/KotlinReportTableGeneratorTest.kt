@@ -96,7 +96,7 @@ class KotlinReportTableGeneratorTest {
             |/** GENERATED — do not hand-edit. Regenerated from metadata. */
             |object ProgramMinutesTable : Table("v_program_minutes") {
             |    val program = long("program")
-            |    val programTitle = varchar("programTitle", 200).nullable()
+            |    val programTitle = varchar("programTitle", 200)
             |    val weeks = long("weeks")
             |    val longWeeks = long("longWeeks")
             |    val labels = long("labels")
@@ -162,7 +162,7 @@ class KotlinReportTableGeneratorTest {
     fun `the naming strategy applies to the derived field name`() {
         val src = canonical(emptyMap()).getValue("fitness/ProgramMinutesTable.kt")   // snake_case default
         assertTrue("    val avgMinutes = decimal(\"avg_minutes\", 38, 18).nullable()\n" in src, src)
-        assertTrue("    val programTitle = varchar(\"program_title\", 200).nullable()\n" in src, src)
+        assertTrue("    val programTitle = varchar(\"program_title\", 200)\n" in src, src)
     }
 
     @Test
@@ -178,7 +178,7 @@ class KotlinReportTableGeneratorTest {
     }
 
     @Test
-    fun `with the names generator in the run a report still binds by literal and gets no names artifact`() {
+    fun `with the names generator in the run a report still binds by literal and gets a names artifact`() {
         val files = emit(
             loadDirectory("report-table-names", canonicalDir()),
             mapOf("columnNaming" to "literal", "useNames" to "true"),
@@ -190,7 +190,10 @@ class KotlinReportTableGeneratorTest {
         assertTrue("object ProgramMinutesTable : Table(\"v_program_minutes\") {" in src, src)
         assertTrue("    val weeks = long(\"weeks\")\n" in src, src)
         assertFalse("Names" in src, src)
-        assertFalse(files.keys.any { it.endsWith("ProgramMinutesNames.kt") }, files.keys.toString())
+        // D7: the view and the derived columns have constants for hand-written SQL.
+        val names = files.getValue("fitness/ProgramMinutesNames.kt")
+        assertTrue("const val SOURCE_PRIMARY_VIEW: String = \"v_program_minutes\"" in names, names)
+        assertTrue("const val PROGRAM_TITLE_COLUMN: String = \"programTitle\"" in names, names)
     }
 
     // --- @spine and @default: what is nullable (Table C) -----------------------------------
@@ -221,11 +224,11 @@ class KotlinReportTableGeneratorTest {
             |""".trimMargin(),
             canonical().getValue("fitness/ProgramRosterTable.kt"),
         )
-        // The same Program.title dimension in ProgramMinutes, which has no @spine, stays
-        // nullable: without @spine Table C changes nothing, and a dimension reached by @via
-        // is never required there.
+        // The same Program.title dimension in ProgramMinutes, which has no @spine, is required:
+        // without @spine, a dimension reached by @via is required when every hop is a
+        // required reference (an INNER join) and the @of field is required (D5).
         assertTrue(
-            "    val programTitle = varchar(\"programTitle\", 200).nullable()\n" in
+            "    val programTitle = varchar(\"programTitle\", 200)\n" in
                 canonical().getValue("fitness/ProgramMinutesTable.kt"),
         )
         // With no dimensions and no @spine, a defaulted sum and ratio are still non-null.
@@ -524,9 +527,10 @@ class KotlinReportTableGeneratorTest {
             generators = listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator()),
         )
         val src = files.getValue("acme/shop/SalesByTierTable.kt")
-        // Store's class, and nullable: a dimension reached by @via can be null.
+        // Store's class, and not nullable: Store.tier is required and the only hop is a required
+        // reference, an INNER join (D5).
         assertTrue(
-            "    val storeTier = enumerationByName(\"store_tier\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, StoreTier::class).nullable()\n" in src,
+            "    val storeTier = enumerationByName(\"store_tier\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, StoreTier::class)\n" in src,
             src,
         )
         // An int-backed enum keeps its mapping, typed by Sale's class.

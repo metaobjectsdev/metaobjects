@@ -14,7 +14,7 @@ import org.jetbrains.exposed.sql.Table
  * column type and nullable exactly where `fixtures/persistence-conformance/report-shapes.json`
  * says `required: false`:
  *   - `program`      = Week.programId (required FK)    → BIGINT  → `long`
- *   - `programTitle` = Program.title, reached by @via  → VARCHAR → `varchar`, nullable
+ *   - `programTitle` = Program.title, required, reached by @via over a required reference (an INNER join) → VARCHAR → `varchar`
  *   - a `count`, with or without @distinct             → BIGINT  → `long` (never null)
  *   - `sum` of an int, cast by the view                → BIGINT  → `long`, nullable
  *   - `avg`, and a ratio                               → NUMERIC → `decimal`, nullable
@@ -27,7 +27,7 @@ import org.jetbrains.exposed.sql.Table
  */
 object ProgramMinutesView : Table("v_program_minutes") {
     val program = long("program")
-    val programTitle = varchar("programTitle", 200).nullable()
+    val programTitle = varchar("programTitle", 200)
     val weeks = long("weeks")
     val longWeeks = long("longWeeks")
     val labels = long("labels")

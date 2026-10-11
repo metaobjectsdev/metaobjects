@@ -26,6 +26,7 @@ import {
   parseWranglerConfig,
   readSnapshot,
   snapshotPath,
+  withoutFlywayHistory,
   type Change,
   type D1Binding,
 } from "@metaobjectsdev/migrate-ts";
@@ -47,6 +48,9 @@ export interface GenMigrateAdviceInput {
   projectRoot: string;
   /** The migrations directory `meta migrate` uses (holds the committed snapshot). */
   migrateOutDir: string;
+  /** `.metaobjects/config.json` `migrate.format`. Under `flyway` the snapshot is read without
+   *  Flyway's history table, as `meta migrate` reads it. */
+  migrateFormat: "default" | "flyway";
   /** Paths (any form) of the files this run wrote, merged or removed. */
   changedFiles: readonly string[];
 }
@@ -75,7 +79,8 @@ export async function genMigrateAdvice(input: GenMigrateAdviceInput): Promise<st
   const snapPath = snapshotPath(resolvePath(input.projectRoot, input.migrateOutDir), schemaDialect);
   const snapshot = existsSync(snapPath) ? await readSnapshot(snapPath) : null;
   if (snapshot !== null) {
-    const actual = { ...snapshot, views: [] };
+    const committed = input.migrateFormat === "flyway" ? withoutFlywayHistory(snapshot) : snapshot;
+    const actual = { ...committed, views: [] };
     try {
       const d = await diff({ expected, actual, dialect: schemaDialect });
       if (d.changes.every((c) => VIEW_CHANGE_KINDS.has(c.kind))) return undefined;

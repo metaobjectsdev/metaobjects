@@ -5,7 +5,6 @@ import type {
 import type { SqlType } from "../sql-type.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 import { renderFingerprintMarker, viewFingerprint } from "../view-fingerprint.js";
-import { viewReplaceIsLegal } from "../view-column-types.js";
 import { columnDefaultsEqual } from "../column-default.js";
 import { dataHazardOf } from "../hazards.js";
 
@@ -176,7 +175,7 @@ function renderUp(c: Change): string {
     case "drop-check":             return `ALTER TABLE IF EXISTS ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT IF EXISTS ${quote(c.check)};`;
     case "create-view":            return renderCreateView(c.view, c.schema, /* orReplace */ false);
     case "drop-view":              return renderDropView(c);
-    case "replace-view":           return renderCreateView(c.view, c.schema, /* orReplace */ true);
+    case "replace-view":           return renderReplaceView(c);
   }
 }
 
@@ -285,8 +284,9 @@ function renderDown(c: Change): string {
         : `-- WARNING: down migration cannot restore the original CHECK definition`;
     case "create-view":            return `DROP VIEW ${quoteQualifiedView(c.view.name, c.schema)};`;
     // The deparsed body introspection captured IS a valid restore payload.
-    case "drop-view":              return renderRestoreView(c.restore, c.view, c.schema);
-    case "replace-view":           return renderRestoreView(c.restore, c.view.name, c.schema, c.view);
+    case "drop-view":              return renderRestoreView(c.restore, c.view, c.schema, "create");
+    case "replace-view":
+      return renderRestoreView(c.restore, c.view.name, c.schema, c.proven?.restorable === true ? "replace" : "drop-and-create");
   }
 }
 
@@ -626,6 +626,19 @@ function renderCreateView(v: ViewDescriptor, schema: string | undefined, orRepla
   return `${create}\n${renderViewComment(qualified, renderFingerprintMarker(fingerprint))}`;
 }
 
+/**
+ * `CREATE OR REPLACE VIEW` only for a replace the planner proved against the live database
+ * (`proven`). Postgres refuses a replace that changes an existing column, and it refuses
+ * at apply, so an unproven one is written as DROP + CREATE, which always applies. The
+ * DROP is not `CASCADE`: if something depends on the view, Postgres says so instead of
+ * destroying it.
+ */
+function renderReplaceView(c: Extract<Change, { kind: "replace-view" }>): string {
+  if (c.proven !== undefined) return renderCreateView(c.view, c.schema, /* orReplace */ true);
+  const qualified = quoteQualifiedView(c.view.name, c.schema);
+  return `DROP VIEW IF EXISTS ${qualified};\n${renderCreateView(c.view, c.schema, /* orReplace */ false)}`;
+}
+
 function renderViewComment(qualifiedView: string, comment: string | null): string {
   if (comment === null) return `COMMENT ON VIEW ${qualifiedView} IS NULL;`;
   return `COMMENT ON VIEW ${qualifiedView} IS '${comment.replace(/'/g, "''")}';`;
@@ -678,8 +691,12 @@ function renderRestoreView(
   restore: ViewDescriptor | undefined,
   name: string,
   schema: string | undefined,
-  /** The view the UP migration left in place — i.e. what the down is replacing. */
-  current?: ViewDescriptor,
+  /**
+   * `create`: the UP migration dropped the view, so nothing stands at the name.
+   * `replace`: the planner proved the view the UP migration left has the restored view's
+   * columns, so it can be replaced in place. `drop-and-create`: it cannot.
+   */
+  how: "create" | "replace" | "drop-and-create",
 ): string {
   if (restore?.sql === undefined || restore.sql.trim().length === 0) {
     return `-- WARNING: down migration cannot restore the original view definition`;
@@ -690,10 +707,10 @@ function renderRestoreView(
   // Postgres's OR-REPLACE prefix rule applies to the down migration too, and usually
   // REFUSES: undoing an appended field means REMOVING a view column, and
   // `CREATE OR REPLACE VIEW` cannot drop columns ("cannot drop columns from view").
-  // So ask the same question the forward path asks, with the arguments swapped — and
-  // fall back to DROP + CREATE when the answer is no.
+  // The planner asked that question with the forward one (`proven.restorable`), and
+  // `how` carries the answer.
   //
-  // The fallback DROP is deliberately NOT `CASCADE`: if a dependent has since been built
+  // The DROP is deliberately NOT `CASCADE`: if a dependent has since been built
   // on the newer shape, Postgres refuses the down migration rather than silently
   // destroying that dependent. Loud beats convenient.
   const stamp = restore.fingerprint !== undefined
@@ -703,8 +720,8 @@ function renderRestoreView(
     // does not have, and the next migrate would believe the stamp and skip it.
     : renderViewComment(qualified, null);
 
-  if (current !== undefined && !viewReplaceIsLegal(restore.columns, current.columns)) {
-    return `DROP VIEW ${qualified};\nCREATE VIEW ${qualified} AS\n${body};\n${stamp}`;
-  }
+  const create = `CREATE VIEW ${qualified} AS\n${body};\n${stamp}`;
+  if (how === "create") return create;
+  if (how === "drop-and-create") return `DROP VIEW ${qualified};\n${create}`;
   return `CREATE OR REPLACE VIEW ${qualified} AS\n${body};\n${stamp}`;
 }

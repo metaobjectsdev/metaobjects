@@ -80,7 +80,7 @@ describe("reportReadModel (FR-044 Table B as a detached read model)", () => {
     const m = model(root, "ProgramMinutes");
     const required = Object.fromEntries(m.fields().map((f) => [f.name, f.attr(FIELD_ATTR_REQUIRED)]));
     expect(required["program"]).toBe(true); // no @via, @of required
-    expect(required["programTitle"]).toBe(false); // reached by @via
+    expect(required["programTitle"]).toBe(true); // reached by @via over a required reference, an INNER join (D5)
     expect(required["weeks"]).toBe(true); // a count is never null
     expect(required["minMinutes"]).toBe(false); // Week.durationMinutes is required; a min is not
   });

@@ -9,6 +9,7 @@
 // artifact every port byte-matches; see ReportShapeTests).
 
 using System.Text;
+using MetaObjects.Core.Relationship;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
 
@@ -156,8 +157,44 @@ public static class ReportShapes
     }
 
     /// <summary>
-    /// Table C (<c>required</c> of a dimension). Without <c>@spine</c>: only a dimension with
-    /// no <c>@via</c> over an <c>@of</c> field that is effectively required (<c>@required</c> or a <c>validator.required</c> child). With
+    /// True when every hop of <paramref name="hops"/>, walked from <paramref name="from"/>, is a
+    /// belongs-to hop over a required foreign key: the hops the view joins INNER, so every row
+    /// of the report has a match. This is the join-type rule of the view lowering (TypeScript
+    /// <c>walkViaPath</c>, #209): the reference is held by the entity the hop leaves, its first
+    /// FK field is required, and every earlier hop is INNER too. <c>@enforce: false</c> does not
+    /// change it. A hop that does not resolve, an ambiguous reference or a has-many hop is not INNER.
+    /// </summary>
+    private static bool ViaJoinsInner(IReadOnlyList<string> hops, MetaObject from, MetaRoot root)
+    {
+        var current = from;
+        foreach (string hopName in hops)
+        {
+            // ADR-0039: resolving Relationships()/ReferenceIdentities(), so an inherited hop is found.
+            var rel = current.Relationships().FirstOrDefault(r => r.Name == hopName);
+            var refNode = rel is null ? current.ReferenceIdentities().FirstOrDefault(r => r.Name == hopName) : null;
+            string? targetRef = rel is not null ? rel.ObjectRef : refNode?.ReferencesRaw;
+            if (string.IsNullOrEmpty(targetRef)) return false;
+            if (NamingRefs.ResolveObjectRef(root, targetRef, NamingRefs.EffectivePackage(current)) is not MetaObject target)
+                return false;
+
+            // The reference the hop crosses, as the lowering resolves it. A has-many hop, whose FK
+            // sits on the child, matches none of the current entity's own references.
+            var reference = refNode
+                ?? RelationshipReferences.ResolveRelationshipReference(current, hopName, target.Name, rel!.SourceRefField);
+            if (reference is null) return false;
+            string? fkName = RelationshipReferences.RefFkField(reference);
+            var fk = fkName is null ? null : current.FindField(fkName);
+            if (fk is null || !fk.IsRequired) return false;
+            current = target;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Table C (<c>required</c> of a dimension). Without <c>@spine</c>: only a dimension over an
+    /// <c>@of</c> field that is effectively required (<c>@required</c> or a <c>validator.required</c> child)
+    /// and, when it has a <c>@via</c>, only when every hop is a required belongs-to reference, the
+    /// hops the view joins INNER (<see cref="ViaJoinsInner"/>). With
     /// <c>@spine</c>: only a dimension whose <c>@via</c> hops equal the spine's (a column of
     /// the spine entity itself, whose rows are the report's rows) over an <c>@of</c> field that
     /// is required (same rule) or a primary-key column of the entity <c>@of</c> names. A dimension
@@ -170,7 +207,14 @@ public static class ReportShapes
         string? via = dim.Via();
         // Effective required-ness, resolving (ADR-0039): the @required attr OR a validator.required child.
         bool ofRequired = of.IsRequired;
-        if (spine is null) return via is null && ofRequired;
+        if (spine is null)
+        {
+            if (via is null) return ofRequired;
+            if (!ofRequired) return false;
+            var viaHops = ReportingViaHops(via, ReportingMemberOwner(dim, from), from, root)
+                ?? throw Unresolved(reportName, $"dimension '{dim.Name}' @via '{via}'");
+            return ViaJoinsInner(viaHops, from, root);
+        }
         if (via is null) return false; // a column of @from: null in a spine row with no facts
         var hops = ReportingViaHops(via, ReportingMemberOwner(dim, from), from, root)
             ?? throw Unresolved(reportName, $"dimension '{dim.Name}' @via '{via}'");

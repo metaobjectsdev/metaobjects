@@ -1,6 +1,6 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { EmitResult } from "./types.js";
+import type { EmitResult, SchemaSnapshot } from "./types.js";
 
 export interface WriteMigrationFlywayOptions {
   /** Flyway migrations dir (e.g. "src/main/resources/db/migration"). Created if missing. */
@@ -95,4 +95,16 @@ function sanitizeSlug(raw: string): string {
 
 function ensureTrailingNewline(s: string): string {
   return s.endsWith("\n") ? s : s + "\n";
+}
+
+/** Flyway's own ledger. The runner creates and owns it, so it is no part of the schema under migration. */
+export const FLYWAY_HISTORY_TABLE = "flyway_schema_history";
+
+/**
+ * `snapshot` without Flyway's history table. Introspecting a Flyway-managed database reports
+ * that table as a live table the metadata never declares, and the diff answers with
+ * `DROP TABLE flyway_schema_history` — a hint that, followed, deletes the runner's ledger.
+ */
+export function withoutFlywayHistory<S extends SchemaSnapshot>(snapshot: S): S {
+  return { ...snapshot, tables: snapshot.tables.filter((t) => t.name !== FLYWAY_HISTORY_TABLE) };
 }

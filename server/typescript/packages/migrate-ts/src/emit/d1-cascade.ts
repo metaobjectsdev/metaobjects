@@ -8,6 +8,7 @@ import {
   quote,
 } from "./sqlite.js";
 import { buildFkEdges, unionEdges, affectedSet, topoOrder } from "./fk-graph.js";
+import { liveViewReadsTable } from "../view-reads.js";
 
 /**
  * Prefix for the transient rebuild tables the cascade recipe creates
@@ -81,14 +82,27 @@ export function emitD1Cascade(
   // Drop them before the rebuild and recreate them after every table is back at its
   // final name. The dispatcher filters any diff-injected view change for these from the
   // native "rest" so they are not emitted twice / out of order.
+  //
+  // A view in the database is stranded by every affected table ITS body reads, and that
+  // body may read one the expected view's `dependsOn` leaves out: a table the new body no
+  // longer reads, or one an `@sql` body joins (ADR-0043). Such a view is the cascade's too
+  // when the model still declares it (recreated below) or this migration drops it.
+  const liveReaders = new Set(
+    actualSchema.views
+      .filter((v) => [...affected].some((t) => liveViewReadsTable(v, t)))
+      .map((v) => v.name),
+  );
   const affectedViews = expectedSchema.views.filter((v) =>
-    (v.dependsOn ?? []).some((t) => affected.has(t)),
+    liveReaders.has(v.name) || (v.dependsOn ?? []).some((t) => affected.has(t)),
   );
   const handledViews = new Set(affectedViews.map((v) => v.name));
+  for (const c of changes) {
+    if (c.kind === "drop-view" && liveReaders.has(c.view)) handledViews.add(c.view);
+  }
 
   const stmts: string[] = [];
 
-  for (const v of affectedViews) stmts.push(`DROP VIEW IF EXISTS ${quote(v.name)};`);
+  for (const view of handledViews) stmts.push(`DROP VIEW IF EXISTS ${quote(view)};`);
 
   // Defer FK enforcement to commit — the D1-legal alternative to the (no-op) OFF bracket.
   stmts.push("PRAGMA defer_foreign_keys = ON;");

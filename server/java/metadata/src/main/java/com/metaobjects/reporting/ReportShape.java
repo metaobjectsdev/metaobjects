@@ -27,9 +27,13 @@ import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.LongField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.TimestampField;
+import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.identity.PrimaryIdentity;
+import com.metaobjects.identity.ReferenceIdentity;
 import com.metaobjects.loader.ValidationPhase;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.relationship.MetaRelationship;
+import com.metaobjects.relationship.RelationshipReferences;
 import com.metaobjects.reporting.ReportAccessors.ReportDimensionItem;
 import com.metaobjects.source.MetaSource;
 import com.metaobjects.validator.RequiredValidator;
@@ -337,8 +341,60 @@ public final class ReportShape {
     }
 
     /**
-     * Table C ({@code required} of a dimension). Without {@code @spine}: only a dimension with
-     * no {@code @via} over an {@code @of} field whose effective {@code @required} is true. With
+     * True when every hop of {@code hops}, walked from {@code from}, is a belongs-to hop over a
+     * required foreign key: the hops the view joins INNER, so every row of the report has a
+     * match. This is the join-type rule of the view lowering (TypeScript {@code walkViaPath},
+     * #209): the reference is held by the entity the hop leaves, its first FK field is required,
+     * and every earlier hop is INNER too. {@code @enforce: false} does not change it. A hop that
+     * does not resolve, an ambiguous reference or a has-many hop is not INNER.
+     */
+    private static boolean viaJoinsInner(List<String> hops, MetaObject from, MetaRoot root) {
+        MetaObject current = from;
+        for (String hopName : hops) {
+            // ADR-0039: resolving getRelationships()/getIdentities(), so an inherited hop is found.
+            MetaRelationship rel = null;
+            for (MetaRelationship r : current.getRelationships()) {
+                if (hopName.equals(r.getShortName())) { rel = r; break; }
+            }
+            ReferenceIdentity refNode = null;
+            if (rel == null) {
+                for (MetaIdentity id : current.getIdentities()) {
+                    if (id instanceof ReferenceIdentity && hopName.equals(id.getShortName())) {
+                        refNode = (ReferenceIdentity) id;
+                        break;
+                    }
+                }
+            }
+            String targetRef = rel != null ? rel.getObjectRef() : refNode != null ? refNode.getTargetEntity() : null;
+            if (targetRef == null || targetRef.isEmpty()) return false;
+            MetaObject target = ValidationPhase.resolveRootObject(root, targetRef, packageOf(current));
+            if (target == null) return false;
+
+            // The reference the hop crosses, as the lowering resolves it. A has-many hop, whose FK
+            // sits on the child, matches none of the current entity's own references.
+            ReferenceIdentity reference = refNode != null
+                    ? refNode
+                    : RelationshipReferences.resolveRelationshipReference(
+                            current, rel.getShortName(), target.getShortName(), rel.getSourceRefField());
+            if (reference == null || reference.getFields().isEmpty()) return false;
+            MetaField<?> fk = current.findMetaField(reference.getFields().get(0)).orElse(null);
+            if (fk == null || !isRequiredField(fk)) return false;
+            current = target;
+        }
+        return true;
+    }
+
+    /** Effective required-ness, resolving (ADR-0039): the {@code @required} attr OR a validator.required child. */
+    private static boolean isRequiredField(MetaField<?> field) {
+        return ReportingAttrs.isTrue(field, MetaField.ATTR_REQUIRED)
+                || field.getValidators().stream().anyMatch(v -> RequiredValidator.SUBTYPE_REQUIRED.equals(v.getSubType()));
+    }
+
+    /**
+     * Table C ({@code required} of a dimension). Without {@code @spine}: only a dimension over an
+     * {@code @of} field whose effective {@code @required} is true and, when it has a {@code @via},
+     * only when every hop is a required belongs-to reference, the hops the view joins INNER
+     * ({@link #viaJoinsInner}). With
      * {@code @spine}: only a dimension whose {@code @via} hops equal the spine's (a column of
      * the spine entity itself, whose rows are the report's rows) over an {@code @of} field that
      * is {@code @required} or a primary-key column of the entity {@code @of} names. A dimension
@@ -347,10 +403,14 @@ public final class ReportShape {
     private static boolean dimensionRequired(MetaDimension dim, MetaObject named, MetaField<?> of, MetaObject from,
                                              MetaRoot root, List<String> spine, MetaObject report) {
         String via = dim.getVia();
-        // Effective required-ness, resolving (ADR-0039): the @required attr OR a validator.required child.
-        boolean ofRequired = ReportingAttrs.isTrue(of, MetaField.ATTR_REQUIRED)
-                || of.getValidators().stream().anyMatch(v -> RequiredValidator.SUBTYPE_REQUIRED.equals(v.getSubType()));
-        if (spine == null) return via == null && ofRequired;
+        boolean ofRequired = isRequiredField(of);
+        if (spine == null) {
+            if (via == null) return ofRequired;
+            if (!ofRequired) return false;
+            List<String> hops = reportingViaHops(via, memberOwner(dim, from), from, root);
+            if (hops == null) throw unresolved(report, "dimension '" + dim.getShortName() + "' @via '" + via + "'");
+            return viaJoinsInner(hops, from, root);
+        }
         if (via == null) return false; // a column of @from: null in a spine row with no facts
         List<String> hops = reportingViaHops(via, memberOwner(dim, from), from, root);
         if (hops == null) throw unresolved(report, "dimension '" + dim.getShortName() + "' @via '" + via + "'");

@@ -185,6 +185,38 @@ class KotlinNamesGeneratorTest {
         assertFalse("READ_ONLY" in src, src)
     }
 
+    @Test fun `a served report gets a names artifact built from its read model`() {
+        // D7: a hand-written query over a report's view had no constant to name the view or
+        // its derived columns. The artifact is the report's READ MODEL (its derived fields),
+        // because the declared report node has no field children.
+        val model = """{
+          "metadata.root": { "package": "acme", "children": [
+            { "object.entity": { "name": "Sale", "children": [
+                { "source.rdb": { "@table": "sales" } },
+                { "field.long": { "name": "id" } },
+                { "field.string": { "name": "channel" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+                { "dimension.attribute": { "name": "channel", "@of": "Sale.channel" } },
+                { "measure.aggregate": { "name": "sales", "@agg": "count", "@of": "Sale.id" } }
+            ] } },
+            { "object.report": { "name": "SalesByChannel", "@from": "Sale",
+                "@dimensions": ["channel"], "@measures": ["sales"], "children": [
+                { "source.rdb": { "@kind": "view", "@view": "v_sales_by_channel" } }
+            ] } },
+            { "object.report": { "name": "Unserved", "@from": "Sale",
+                "@dimensions": ["channel"], "@measures": ["sales"] } }
+          ] }
+        }""".trimIndent()
+        val files = emit(model)
+        val src = files.getValue("acme/SalesByChannelNames.kt")
+        assertTrue("const val SOURCE_PRIMARY_VIEW: String = \"v_sales_by_channel\"" in src, src)
+        assertTrue("const val SUB_TYPE: String = \"report\"" in src, src)
+        assertTrue("const val CHANNEL_COLUMN: String = \"channel\"" in src, src)
+        assertTrue("const val SALES_COLUMN: String = \"sales\"" in src, src)
+        // A report with no view has nothing to name.
+        assertFalse("acme/UnservedNames.kt" in files, files.keys.toString())
+    }
+
     @Test fun `an inherited field and its inherited @column both resolve`() {
         // ADR-0039: entity.metaFields (getMetaFields(), which defaults to
         // includeParentData=true) must see a field AND @column declared on an abstract

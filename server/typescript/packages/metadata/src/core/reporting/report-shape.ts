@@ -22,8 +22,10 @@ import {
   FIELD_SUBTYPE_TIMESTAMP,
 } from "../field/field-constants.js";
 import { TYPE_IDENTITY, TYPE_RELATIONSHIP } from "../../shared/base-types.js";
+import type { MetaReferenceIdentity } from "../identity/meta-identity.js";
 import { IDENTITY_REFERENCE_ATTR_REFERENCES, IDENTITY_SUBTYPE_REFERENCE } from "../identity/identity-constants.js";
-import { RELATIONSHIP_ATTR_OBJECT_REF } from "../relationship/relationship-constants.js";
+import { RELATIONSHIP_ATTR_OBJECT_REF, RELATIONSHIP_ATTR_SOURCE_REF_FIELD } from "../relationship/relationship-constants.js";
+import { resolveRelationshipReference } from "../relationship/resolve-relationship-reference.js";
 import { MetaDimension } from "./meta-dimension.js";
 import { MetaMeasure } from "./meta-measure.js";
 import { identityEffectiveFields } from "../identity/validate-identity-passthrough.js";
@@ -188,26 +190,46 @@ export function reportSpineHops(report: MetaObject, from: MetaObject, root: Meta
 }
 
 /**
+ * One hop of a `@via`/`@spine` path, as the loader's rule R8 walks it: the `relationship.*`
+ * (read through its `@objectRef`) or `identity.reference` (through its `@references`) of
+ * `current` named `hopName`, with its target resolved in `current`'s package. Returns
+ * `target: undefined` for an unresolvable hop or a ref attr that is not a string / does not
+ * reach a metadata object.
+ * ADR-0039: resolving children(), so a hop inherited through extends is found.
+ */
+function resolveViaHop(
+  current: MetaObject,
+  hopName: string,
+  root: MetaRoot,
+): { hop: MetaData; isReference: boolean; target: MetaObject | undefined } | undefined {
+  const rel = current.children().find((c) => c.type === TYPE_RELATIONSHIP && c.name === hopName);
+  const refNode = rel !== undefined
+    ? undefined
+    : current.children().find(
+        (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_REFERENCE && c.name === hopName,
+      );
+  const hop = rel ?? refNode;
+  if (hop === undefined) return undefined;
+  const isReference = rel === undefined;
+  const ref = hop.attr(isReference ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF);
+  const node = typeof ref === "string" ? resolveObjectRef(root, ref, packageOfKey(current.resolutionKey())).node : undefined;
+  return { hop, isReference, target: isMetaObject(node) ? node : undefined };
+}
+
+/**
  * The spine entity: the object at the end of a report's `@spine`, whose rows are the
- * report's rows. Walked hop by hop from `from` as the loader's rule R8 walks it: each hop is
- * a `relationship.*` (its `@objectRef`) or an `identity.reference` (its `@references`) of the
- * entity reached so far, and its target resolves in that entity's package. Undefined when the
- * report declares no `@spine`; throws, as {@link reportSpineHops} does, when one does not
- * resolve (a report that passed `validateReporting` always resolves).
+ * report's rows. Walked hop by hop from `from` as the loader's rule R8 walks it via
+ * {@link resolveViaHop}; an unresolved hop throws, as {@link reportSpineHops} does (a report
+ * that passed `validateReporting` always resolves). Undefined when the report declares no
+ * `@spine`.
  */
 export function reportSpineEntity(report: MetaObject, from: MetaObject, root: MetaRoot): MetaObject | undefined {
   const hops = reportSpineHops(report, from, root);
   if (hops === undefined) return undefined;
   let current: MetaObject = from;
   for (const hop of hops) {
-    // ADR-0039: resolving children(), so a relationship or reference inherited through
-    // extends is a hop, as the loader's walk finds it.
-    const node =
-      current.children().find((c) => c.type === TYPE_RELATIONSHIP && c.name === hop) ??
-      current.children().find((c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_REFERENCE && c.name === hop);
-    const ref = node?.attr(node.type === TYPE_IDENTITY ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF);
-    const target = typeof ref === "string" ? resolveObjectRef(root, ref, packageOfKey(current.resolutionKey())).node : undefined;
-    if (!isMetaObject(target)) throw unresolved(report.name, `@spine '${reportSpine(report) ?? ""}' hop '${hop}'`);
+    const target = resolveViaHop(current, hop, root)?.target;
+    if (target === undefined) throw unresolved(report.name, `@spine '${reportSpine(report) ?? ""}' hop '${hop}'`);
     current = target;
   }
   return current;
@@ -236,8 +258,44 @@ function isTimeGrain(grain: string | undefined): grain is TimeGrain {
 }
 
 /**
- * Table C (`required` of a dimension). Without `@spine`: only a dimension with no `@via`
- * over an `@of` field that is effectively required (`@required`, or a `validator.required` child). With `@spine`: only a dimension
+ * True when every hop of `hops`, walked from `from`, is a belongs-to hop over a required
+ * foreign key: the hops the view joins INNER, so every row of the report has a match. This
+ * is the join-type rule of the view lowering (codegen-ts `walkViaPath`, #209): the reference
+ * is held by the entity the hop leaves, its first FK field is required, and every earlier hop
+ * is INNER too. `@enforce: false` does not change it. A hop that does not resolve, an
+ * ambiguous reference or a has-many hop is not INNER.
+ */
+function viaJoinsInner(hops: readonly string[], from: MetaObject, root: MetaRoot): boolean {
+  let current = from;
+  for (const hopName of hops) {
+    const resolved = resolveViaHop(current, hopName, root);
+    if (resolved === undefined || resolved.target === undefined) return false;
+    const { hop, isReference, target } = resolved;
+
+    // The reference the hop crosses, as the lowering resolves it. A has-many hop, whose FK
+    // sits on the child, matches none of the current entity's own references.
+    let reference: MetaReferenceIdentity | undefined;
+    if (isReference) {
+      reference = hop as unknown as MetaReferenceIdentity;
+    } else {
+      const sourceRefField = hop.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
+      reference = resolveRelationshipReference(
+        current, hopName, target.name, typeof sourceRefField === "string" ? sourceRefField : undefined,
+      );
+    }
+    if (reference === undefined) return false;
+    const fkName = reference.fields[0];
+    const fk = fkName === undefined ? undefined : current.findField(fkName);
+    if (fk === undefined || !fk.isRequired) return false;
+    current = target;
+  }
+  return true;
+}
+
+/**
+ * Table C (`required` of a dimension). Without `@spine`: only a dimension over an `@of` field
+ * that is effectively required (`@required`, or a `validator.required` child), and, when it has a `@via`, only when every hop is a
+ * required belongs-to reference, the hops the view joins INNER ({@link viaJoinsInner}). With `@spine`: only a dimension
  * whose `@via` hops equal the spine's (a column of the spine entity itself, whose rows are
  * the report's rows) over an `@of` field that is `@required` or a primary-key column of the
  * entity `@of` names. A dimension beyond the spine is reached by a LEFT OUTER join.
@@ -252,7 +310,13 @@ function dimensionRequired(
   reportName: string,
 ): boolean {
   const via = dim.via();
-  if (spine === undefined) return via === undefined && of.isRequired;
+  if (spine === undefined) {
+    if (via === undefined) return of.isRequired;
+    if (!of.isRequired) return false;
+    const hops = reportingViaHops(via, reportingMemberOwner(dim, from), from, root);
+    if (hops === undefined) throw unresolved(reportName, `dimension '${dim.name}' @via '${via}'`);
+    return viaJoinsInner(hops, from, root);
+  }
   if (via === undefined) return false; // a column of @from: null in a spine row with no facts
   const hops = reportingViaHops(via, reportingMemberOwner(dim, from), from, root);
   if (hops === undefined) throw unresolved(reportName, `dimension '${dim.name}' @via '${via}'`);

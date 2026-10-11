@@ -597,6 +597,21 @@ until you regenerate.
 
 ### Changed
 
+- **A report's `count` and `sum` columns are `bigint` (`Long` on the JVM).** Replacing a
+  hand-written view with a report can change its column types: a view that cast its counts to
+  `int` now returns `bigint`, so the replacement must be a `DROP VIEW` and a `CREATE VIEW`, not a
+  `CREATE OR REPLACE`, and a repository that read the column as `Int` narrows it
+  (`Math.toIntExact`). The API a repository serves does not have to change.
+- **`@table` is the legacy name of a view's physical-name alias.** The report and projection docs
+  already use `@view` for a view source (`view: "v_name"`). `@table` on a view source still loads
+  and still names the view; new models should use `@view`.
+- **Breaking when upgrading from before 1.0.13: the TypeScript plural of an entity named for a
+  word already ending in `s` is renamed.** The 1.0.13 pluralizer change (see its entry, "Upgrade
+  impact") reaches an adopter jumping straight to 1.1.0 as a renamed exported symbol, not only a
+  changed URL: the plural of `RealmSpecies` was `realmSpecieses` and is now `realmSpecies`, so the
+  generated query, hook and list names change, and code that imports the old name stops compiling
+  until it uses the new one. Search your imports for any entity whose name ends in `s` (`Species`,
+  `Stats`, `Series`) before regenerating.
 - **Java classes written by `entity` lose two header lines, and `mvn metaobjects:verify` no
   longer depends on the clock.** The header comment of every class `JavaObjectCodeGenerator`
   writes carried `ObjectCodeWriter:` (the writer's class name) and `Generated On:` (the
@@ -994,6 +1009,133 @@ until you regenerate.
   refused.** The preset check read `and` and `or` as field names ("references field 'or'
   which is not a filterable field"), so a valid composed preset failed to load. It now
   recurses into each composed clause and checks it like a top-level one, as TypeScript does.
+- **`meta migrate --from-db --migration-format flyway` no longer proposes to drop
+  `flyway_schema_history`.** An adopter on a Flyway-managed database got
+  `DROP TABLE IF EXISTS "flyway_schema_history"` in the preview and a hint to re-run with
+  `--allow drop-table`; following it deletes the runner's ledger. With the flyway format the
+  history table is left out of the diff, since Flyway owns it, and out of a committed snapshot
+  that already records it (one baselined with `--from-db` before this release). That holds in
+  three places. `meta migrate` reads the format from `--migration-format` or from
+  `migrate.format` in `.metaobjects/config.json`. `meta verify --db` reported the table as
+  drift whichever way the format was set; it now leaves it out too, and takes the same
+  `--migration-format default|flyway` flag with the same precedence (flag, then config, then
+  `default`). `meta gen` has no such flag and reads `migrate.format` from the config: with it
+  set, its "now migrate" next step no longer fires for a snapshot whose only difference is the
+  history table. `meta migrate baseline --db` does not count the table either, so a database
+  holding nothing but Flyway's ledger is refused as empty instead of being baselined as already
+  migrated. Other formats are unchanged.
+- **Postgres decides whether a view is replaced in place.** A report's `count` and `sum` columns
+  widen to `bigint`, and Postgres will not change a view column's type in place (`cannot change
+  data type of view column "calls" from integer to bigint`). It refuses at apply, after the
+  migration was planned. `meta migrate` no longer predicts the answer. When a live view exists
+  and its definition differs, a plan against the database (`--from-db`, `--apply`) creates the
+  new definition as a temporary view, reads the column names and types Postgres gave it, compares
+  them with the live view's, and rolls back. The existing columns must keep their name, type and
+  position, and new columns may only come last. When that holds, the plan is `CREATE OR REPLACE
+  VIEW`. Otherwise it is a `DROP VIEW` and a `CREATE VIEW`. `meta verify --db` asks the same
+  question, so its report names the change `meta migrate` would plan.
+  - **Planning against a live Postgres now opens a transaction and rolls it back**, where it only
+    read before. Nothing persists: the temporary view exists only inside the rolled-back work.
+    On a connection that is already in a transaction the probe uses a savepoint, and the
+    caller's transaction stays open and usable.
+  - **A replace is never planned without that proof.** When the probe cannot run, the plan is a
+    drop and a create: an offline `meta migrate` (the default, which diffs the committed
+    snapshot and has no database to ask), a role with no `TEMPORARY` privilege, a new
+    definition that does not compile yet because it reads a column the same migration adds,
+    an `@sql` body in a migration that also changes any table's columns (the body is not
+    parsed, so the tables it joins are unknown, and Postgres refuses to retype or drop what a
+    standing view reads), or a body that reads columns it does not name (`SELECT *`,
+    `NATURAL JOIN`) in a migration that also alters any table or any other view (its column
+    list comes from what it reads, so an answer taken before would not hold). A derived
+    projection or report view lists every table its new definition reads, so a change to some
+    other table does not do this to it, with one exception that holds for every view: when
+    the definition in the database reads a table the new one no longer reads, and the same
+    migration retypes, drops or renames a column of that table or drops it, the plan is a drop
+    and a create. The probe proves the new definition only, and Postgres refuses those changes
+    while the old view stands. The table is found by name in the old view's stored
+    definition. Renaming the table alone keeps the replace: a view follows a renamed table.
+    Before, an offline plan replaced a view in place when its recorded columns looked compatible.
+  - **SQLite and D1 drop a view before changing any table its stored definition reads.** They
+    refuse a `DROP COLUMN`, and the rebuild of a table, while a view that reads the table
+    stands. A view was already dropped before and created after such a change for the tables
+    its model lists. It now is for every table the definition in the database names as well:
+    one the new definition no longer reads, and one an `@sql` body joins. The D1 foreign-key
+    cascade does the same for every table it rebuilds, including a view the migration drops.
+  - **A drop and a create discards the privileges granted on the view.** `DROP VIEW` removes the
+    view's grants with it, and `meta migrate` writes no `GRANT`, so a role that had `SELECT` on a
+    projection's view loses it, with nothing reported. It needs no `--allow` and applies cleanly.
+    In an offline plan every changed Postgres view takes this path, including an appended field
+    that was a `CREATE OR REPLACE VIEW` before. A `DROP VIEW` also fails at apply if another
+    object depends on the view, and says which. To keep grants and dependents across the change,
+    plan with `--from-db`; otherwise grant the privileges again after applying.
+  - **Adopting a view (`--allow adopt-view`) follows the same rule**, for a derived view and for
+    an `@sql` one. A hand-written or pre-fingerprint view with the same columns is still replaced
+    in place when the probe proves it. It becomes a drop and a create when the columns differ, or
+    when the probe cannot run. Before, an `@sql` view, a report's view and a projection with a
+    computed, `first`, `any`, `all` or `collect` column were replaced without any check.
+  - **The comparison is exact.** `json` and `jsonb`, `smallint` and `integer`, `text` and
+    `character varying`, and `numeric(9,2)` and `numeric` are different types to Postgres and to
+    the plan. The tool's own model of view column types, which merged them, is removed.
+  - **The snapshot no longer records a view's columns.** Nothing reads them. The format version
+    stays `3`, and an older snapshot that carries them still loads; they are dropped on read.
+    `ExpectedView.columns` is removed from `@metaobjectsdev/codegen-ts` for the same reason.
+  - The replace rule does not apply to SQLite and D1. Neither has `CREATE OR REPLACE VIEW`; a
+    replaced view is written as `DROP VIEW` and `CREATE VIEW` there, as it always was, so there
+    is nothing to refuse.
+- **The `--allow` hint for a blocked view change names a token the parser accepts.** It printed
+  `--allow replace-view`, which `meta migrate` rejects (`invalid --allow token`). It names
+  `adopt-view` for an unfingerprinted view and `drop-view-cascade` when the drop would cascade.
+  A view drop can sit behind more than one permission, and the hint names the one that blocked
+  this run: after `--allow drop-view-cascade` it asks for `drop-view` or `adopt-view`, not the
+  token you already passed. A test follows every blocked change's hints until nothing is blocked.
+- **A column change recreates only the views that read the column.** On Postgres a new default or a
+  changed nullability no longer drops and rebuilds the views over the table (neither blocks a
+  view), and a type change recreates only the views whose SQL names the column (a view that
+  selects `*` or joins `NATURAL` reads columns it does not name, and is always recreated). That
+  now holds for a table the model does not list for the view as well: an unchanged `@sql` view
+  that joins such a table is dropped before and created after a retype of a column it reads,
+  where the migration failed at apply before (`cannot alter type of a column used by a view or
+  rule`). The table is found by name in the view's stored definition. SQLite and D1 still
+  recreate every view over a rebuilt table, and so does a `diff()` called with no `dialect`,
+  whose changes may be emitted for SQLite. `verify --db` and `meta migrate` now print the full
+  column type in a type change (`text(255) -> text`, `timestamp -> timestamptz`), so a length or
+  time-zone change no longer reads as `text -> text`.
+- **A report dimension reached through `@via` is not nullable when every hop is a required
+  reference.** The view joins such a hop `INNER`, so the column is as required as its `@of`
+  field, but the generated Kotlin, Java, C#, Python and TypeScript types still said nullable
+  (`realmName: String? = null`, `.nullable()`). All five ports now derive the same answer, gated
+  by `report-shapes.json`. **Regenerate to see it:** a dimension of this shape changes from
+  nullable to non-null in the generated row type and Exposed table. A hop over an optional foreign
+  key, a to-one relationship whose foreign key the other entity holds, and a `@spine` report keep
+  their nullable columns.
+- **Kotlin: a served report gets a `<Report>Names` file.** It holds the view name and one constant
+  per derived column, as the TypeScript and Python ports already did, so hand-written SQL over the
+  view has constants to use. The report's Exposed table still binds by literal.
+- **The documentation writers carry no timestamp.** (The generated-class header lost its `Generated On:` line in the entry above.) The two documentation
+  writers in `codegen-base` stamped the clock the same way and no longer do: the HTML type
+  documentation's header reads `Version <version>` without the trailing `• Generated
+  <yyyy-MM-dd HH:mm>`, and the AI documentation JSON has no `generationTimestamp` property in
+  `documentationInfo`. Nothing in the library read either; a script of yours that parses
+  `generationTimestamp` must stop expecting it. No other Java or Kotlin generator writes the
+  time of the run into its output.
+- **`bun run prerelease:publish` publishes the Maven artifacts too, and `prerelease-link` pins
+  the right Maven version.** The default scope was npm only, so a JVM adopter could not test a
+  candidate without building it. The default is now `npm,java` (`--only` still picks ports).
+  `prerelease-link` pinned `1.1.0-rc.N` to Maven `7.1.0-rc.N`; the JVM major is the npm major
+  plus 7, so it is `8.1.0-rc.N`.
+- **`prerelease-link` in a linked git worktree no longer leaves its `.npmrc` files committable.**
+  It wrote the exclude entry to a stray `home/.../info/exclude` tree inside the work tree and left
+  the `.npmrc` files (which can hold a registry credential) untracked but not ignored. It now asks
+  git for the exclude file (`git rev-parse --git-path info/exclude`) and fails if any `.npmrc` it
+  wrote is not ignored.
+- **The independent-oracle CLI (`integration-tests`) loads a project with its providers.** It read
+  the metadata without the providers in `metaobjects.config.ts`, so a project that registers its
+  own vocabulary failed with `Unknown type`.
+- **Docs: a report's columns and a cross-package model.** `fields()` on an `object.report` is
+  empty by design; `docs/features/reporting.md` now says to read the report's read model, that
+  `enforce` is on the `MetaReferenceIdentity` that `referenceIdentities()` returns, and that a bare
+  entity name in `@of`, `@via` and `@spine` resolves in the declaring entity's package (the
+  report's, for `@spine`), so another package's entity needs its package name.
 
 ## [1.0.13] — 2026-10-03
 

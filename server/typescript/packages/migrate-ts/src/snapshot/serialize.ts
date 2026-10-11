@@ -6,7 +6,7 @@ import type { SchemaSnapshot } from "../types.js";
  * SchemaSnapshot descriptor gains a field (a DDL-coverage feature); add the
  * matching upgrade branch in parseSnapshot at the same time.
  *
- * v3 — ViewDescriptor gained `fingerprint`, `columns` and `dependents`. The
+ * v3 — ViewDescriptor gained `fingerprint` and `dependents`. The
  * fingerprint is how Postgres decides whether a view is up to date (Postgres deparses
  * view SQL, so the emitted text can never be compared against what it stores). A
  * toolchain that does not understand these fields would silently fall back to the old
@@ -15,10 +15,11 @@ import type { SchemaSnapshot } from "../types.js";
  * snapshot stays fine: the missing fields read as `undefined`, which every consumer
  * treats as "unknown" and fails safe on.
  *
- * NOTE for anyone touching canonicalize(): a view's `columns` array is ORDER-SENSITIVE.
- * Postgres allows a non-destructive CREATE OR REPLACE only when the old column list is
- * a PREFIX of the new one, so sorting that array would destroy the very information the
- * decision rests on.
+ * A v3 snapshot written before 1.1.0 also records a view's `columns` (the tool's guess at
+ * the view's column types). Nothing reads it any more: whether a view can be replaced in
+ * place is asked of the live database (view-replace.ts). It is no longer written, and
+ * `parseSnapshot` drops it. The version does not move: a reader that still looks for
+ * the field finds it absent, which it already treats as unknown.
  */
 export const SNAPSHOT_FORMAT_VERSION = 3;
 
@@ -31,7 +32,10 @@ function sortByName<T extends { name: string }>(arr: readonly T[]): T[] {
   return [...arr].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
-/** Sort arrays by name so serialization is order-independent. */
+/**
+ * Sort arrays by name so serialization is order-independent, and leave out a view's
+ * `opaque` marker, which is not part of the on-disk format.
+ */
 function canonicalize(s: SchemaSnapshot): SchemaSnapshot {
   return {
     tables: sortByName(s.tables).map((t) => ({
@@ -41,7 +45,11 @@ function canonicalize(s: SchemaSnapshot): SchemaSnapshot {
       foreignKeys: sortByName(t.foreignKeys),
       checks: sortByName(t.checks ?? []),
     })),
-    views: sortByName(s.views),
+    views: sortByName(s.views).map((v) => {
+      const written = { ...v };
+      delete written.opaque;
+      return written;
+    }),
     ...(s.meta ? { meta: s.meta } : {}),
   };
 }
@@ -91,5 +99,6 @@ export function parseSnapshot(text: string): SchemaSnapshot {
       }
     }
   }
+  for (const v of file.snapshot.views ?? []) delete (v as { columns?: unknown }).columns;
   return file.snapshot;
 }

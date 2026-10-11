@@ -13,7 +13,7 @@ There are **7 drift sources**, and the toolchain has a guard for each.
 |---|---|---|
 | **Code-vs-DB** | Codegen — the generated SQL DDL is emitted from the same metadata as the entity / table code. | Build time |
 | **Code-vs-API-doc** | Cross-port codegen from the same metadata. | Build time |
-| **DB-vs-metadata** | `meta verify --db` (TS CLI) — introspects the live DB and fails if it has drifted from metadata. Includes modeled projection **view bodies** (a changed `CREATE VIEW` is `replace-view` drift, reported with what differs: the first differing excerpt of the text on SQLite/D1, a fingerprint mismatch on Postgres). A view `meta migrate` drops and recreates only because the migration alters a table it reads, with its definition unchanged, is not drift and is not reported; a hand-authored *unmodeled* view is unmanaged and never flagged. A schema concern owned by the Node toolchain regardless of server language; on the JVM ports the runtime auto-create/validator path was removed (ADR-0015) and the `metaobjects:verify` Maven goal is not available. Cloudflare D1 has no client wire protocol, so it can't go through `--db`'s Kysely-driver introspection — use `meta verify --dialect d1 [--d1 <binding>] [--remote]` instead (the same wrangler-shelled-out path `meta migrate --dialect d1` uses); `--remote` is required to check the *deployed* database, not the local `wrangler dev` shadow copy. Pointing `--db file:` at wrangler's local D1 state directory (`.wrangler/state/**/d1/**`) still runs, but only verifies that local copy — `verify` warns when it detects this. | CI on every PR |
+| **DB-vs-metadata** | `meta verify --db` (TS CLI) — introspects the live DB and fails if it has drifted from metadata. Includes modeled projection **view bodies** (a changed `CREATE VIEW` is drift, reported with what differs: the first differing excerpt of the text on SQLite/D1, a fingerprint mismatch on Postgres). A view `meta migrate` drops and recreates only because the migration alters a table it reads, with its definition unchanged, is not drift and is not reported; a hand-authored *unmodeled* view is unmanaged and never flagged. A schema concern owned by the Node toolchain regardless of server language; on the JVM ports the runtime auto-create/validator path was removed (ADR-0015) and the `metaobjects:verify` Maven goal is not available. Cloudflare D1 has no client wire protocol, so it can't go through `--db`'s Kysely-driver introspection — use `meta verify --dialect d1 [--d1 <binding>] [--remote]` instead (the same wrangler-shelled-out path `meta migrate --dialect d1` uses); `--remote` is required to check the *deployed* database, not the local `wrangler dev` shadow copy. Pointing `--db file:` at wrangler's local D1 state directory (`.wrangler/state/**/d1/**`) still runs, but only verifies that local copy — `verify` warns when it detects this. | CI on every PR |
 | **Migration-vs-metadata** | The Node `meta migrate` emits migrations FROM metadata diffs — they cannot drift from metadata by construction. Schema migrations for **every** port are owned by this Node toolchain (`@metaobjectsdev/cli migrate`, ADR-0015); the C# and Python migrate surfaces were removed. | Build time |
 | **Generated-edited** | `@generated` headers in emitted code + three-way merge that preserves hand-edits inside non-generated regions. | Code review |
 | **Prompt-vs-payload** | FR-004 `Renderer.verify` parses `{{...}}` references in templates and checks each one exists on the payload VO. | Build time + runtime |
@@ -408,18 +408,75 @@ A projection's `CREATE VIEW` is generated from its `origin.*` children, so `meta
 owns the view. Three things are worth knowing.
 
 **Append projection fields; don't insert them.** Postgres can update a view in place
-(`CREATE OR REPLACE VIEW`) only when the existing output columns are unchanged and any
-new ones are added at the **end**. A view's columns come out in projection *declaration*
-order, so:
+(`CREATE OR REPLACE VIEW`) only when every existing output column keeps its name, type and
+position and any new ones are added at the **end**. A view's columns come out in projection
+*declaration* order, so:
 
-- adding a field **at the end** of a projection → non-destructive replace. Dependent
-  views, grants, and the view's identity all survive.
-- inserting a field **in the middle**, reordering, renaming, or removing one → the view
-  must be **dropped and recreated**, which is destructive to anything that depends on it
-  and is therefore gated (`--allow drop-view`).
+- adding a field **at the end** of a projection, or changing a body without changing a
+  column (a different join path, an `origin.aggregate @filter`) → the view can be replaced
+  in place. Dependent views, grants, and the view's identity all survive.
+- inserting a field **in the middle**, reordering, renaming, removing or retyping one → the
+  view must be **dropped and recreated**, which is destructive to anything that depends on
+  it.
 
-Body-only changes — a different join path, an `origin.aggregate @filter`, a changed
-aggregate that keeps the same result type — are always non-destructive.
+**Postgres decides which, and only a plan against the database can ask it.** The types a
+query produces are Postgres's to say: `max` of a `numeric(9,2)` column is `numeric`,
+`COALESCE` of a `varchar(40)` column and a literal is a bare `character varying`, and `json`
+is not `jsonb`. So `meta migrate` does not predict them. When a live view exists and its
+definition differs, a plan against the database (`meta migrate --from-db`, `--apply`, and the
+drift report of `meta verify --db`) creates the new definition as a **temporary view inside a
+transaction it rolls back**, reads the column names and types Postgres gave it, and compares
+them with the live view's. Planning on this path therefore writes inside a rolled-back
+transaction (a savepoint, when the connection is already in one); nothing persists. A replace
+is planned only on that proof. When the question cannot be asked, the plan is a `DROP VIEW`
+and a `CREATE VIEW`:
+
+- the default **offline** `meta migrate`, which diffs the committed snapshot and has no
+  database;
+- a role that may not create a temporary view (no `TEMPORARY` privilege on the database);
+- a new definition that does not compile against the schema as it stands, because it reads a
+  column the same migration adds;
+- an `@sql` body, in a migration that also changes any table's columns (adds, drops, renames
+  or retypes a column, changes its nullability or default, or drops a table). `meta migrate`
+  does not parse the body, so it cannot tell which tables the body joins. The probe sees the
+  schema before those changes, the replace runs after them, and Postgres refuses to retype or
+  drop what a standing view reads. A derived projection or report view lists every table its
+  new definition reads, so a change to some other table does not do this to it;
+- a body that reads columns it does not name (`SELECT *`, `NATURAL JOIN`), in a migration
+  that also alters any table or any other view. Its column list comes from what it reads, so
+  an answer taken before the change would not hold;
+- any view, derived ones included, whose definition **in the database** reads a table the new
+  definition no longer reads, in a migration that also retypes, drops or renames a column of
+  that table, or drops the table. The probe proves the new definition only. The old view
+  stands while the table changes, and Postgres refuses to retype or drop what it reads.
+  `meta migrate` finds the table by name in the old view's stored definition, so a view that
+  merely names something spelled like that table is dropped and created too. Renaming the
+  table alone does not do this: a view follows a renamed table.
+
+A drop and a create of the same view needs no `--allow`. It has two costs a replace does not:
+
+- **Privileges granted on the view are discarded.** `DROP VIEW` removes the view's grants with
+  it, and `meta migrate` writes no `GRANT`. A role that had `SELECT` on the view loses it, and
+  nothing reports that. In an offline plan every changed Postgres view takes this path.
+- If something depends on the view, Postgres refuses the `DROP VIEW` at apply and names the
+  dependent.
+
+Plan with `--from-db` to get the in-place replace when it is legal, which keeps both. Otherwise
+grant the privileges again after the migration is applied.
+
+A view whose definition does **not** change is dropped and created too, when the migration
+retypes, drops or renames a column the view reads: Postgres refuses to retype or drop it
+while the view stands. The table may be one the model does not list for the view, which is
+the case of an `@sql` body that joins it. `meta migrate` finds it by name in the view's
+stored definition, and recreates the view only when that definition also names the changed
+column. The same two costs apply.
+
+SQLite and D1 have no `CREATE OR REPLACE VIEW`: every replaced view is written as `DROP VIEW`
+and `CREATE VIEW` there, so there is no refusal to avoid and no probe. They refuse something
+else: a `DROP COLUMN`, or the rebuild of a table, while a view that reads the table stands. So
+a view is dropped before such a change and created after it, for every table its definition
+in the database names, including one the new definition no longer reads and one an `@sql`
+body joins. The D1 foreign-key cascade does the same for every table it rebuilds.
 
 **A cascading drop is blocked, loudly.** If dropping a view would destroy dependent
 objects — another application's view, a materialized view — `meta migrate` blocks and
@@ -440,7 +497,10 @@ closed rather than overwrite somebody's hand-written SQL:
 meta migrate --allow adopt-view      # once per environment, after upgrading
 ```
 
-That stamps the existing views. Afterwards they converge silently. This is also what
+That stamps the existing views. Afterwards they converge silently. An adopted view follows
+the rule above, whether the tool derives its body or it is an `@sql` one: replaced in place
+when the database shows its columns are kept, dropped and recreated otherwise, including
+whenever the probe cannot run. This is also what
 closes the loop on the doctrine in
 [downstream-metadata-decisions.md](downstream-metadata-decisions.md): a hand-written view
 sitting where a projection expects one is now **visible to `meta verify --db`** as drift,

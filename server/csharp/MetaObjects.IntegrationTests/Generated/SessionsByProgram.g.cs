@@ -11,8 +11,10 @@ namespace MetaObjects.IntegrationTests.Generated;
 public class SessionsByProgram
 {
     [Column("programTitle")]
+    [Required(AllowEmptyStrings = true)]
     [MaxLength(200)]
-    public string? ProgramTitle { get; set; }
+    [MinLength(1)]
+    public string ProgramTitle { get; set; } = default!;
     [Column("weekKey")]
     public long? WeekKey { get; set; }
     [Column("sessions")]

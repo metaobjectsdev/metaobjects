@@ -51,11 +51,15 @@ const ALLOW_OPTION_BY_KIND: Partial<Record<ChangeKind, keyof AllowOptions>> = {
 
 /**
  * The `AllowOptions` field that unblocks `c`, chosen by what BLOCKED it rather than by its kind
- * alone. A type change carries its column's default change, so one that would drop a live
- * auto-sequence default is blocked by THAT, and `typeChange` would not unblock it. The single
- * source for this error's hints and the CLI's `--allow` token.
+ * alone: `diff` records the gate that refused the change on its status (`blockedBy`), and one
+ * change can sit behind several gates in turn (a view drop: cascade, then adoption, then the
+ * removal itself). A status that records no gate falls back to the change's kind, where a type
+ * change carries its column's default change, so one that would drop a live auto-sequence
+ * default is blocked by THAT, and `typeChange` would not unblock it. The single source for this
+ * error's hints and the CLI's `--allow` token.
  */
 export function allowOptionFor(c: Change): keyof AllowOptions | undefined {
+  if (c.status.blockedBy !== undefined) return c.status.blockedBy;
   if (c.kind === "change-column-type" && dropsAutoSequenceDefault(c.fromDefault, c.toDefault)) {
     return "dropIdentityDefault";
   }

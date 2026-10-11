@@ -30,7 +30,7 @@ One canonical internal string, normalized per ecosystem in exactly one place
 | | canonical | npm | PyPI | NuGet | Maven |
 |---|---|---|---|---|---|
 | form | `<base>-rc.<N>` | `0.24.0-rc.3` | `0.24.0rc3` | `0.24.0-rc.3` | `7.24.0-rc.3` |
-| why | | SemVer2 verbatim | PEP 440 canonical form | SemVer2 verbatim | same `minor.patch` on the historical major `7` |
+| why | | SemVer2 verbatim | PEP 440 canonical form | SemVer2 verbatim | same `minor.patch`, major is the npm major plus 7 (`1.1.0-rc.2` is `8.1.0-rc.2`) |
 
 `<base>` is the in-development version, read from **CHANGELOG.md's topmost `## [x.y.z]`
 header** — the repository's own declaration of what is being worked on, written when the
@@ -100,7 +100,7 @@ cp tools/prerelease/registry.env.example tools/prerelease/registry.env
 Then:
 
 ```bash
-bun run prerelease:publish                      # next iteration, npm (the default scope)
+bun run prerelease:publish                      # next iteration, npm + Maven (the default scope)
 bun run prerelease:publish --only python,csharp # pick ports
 bun run prerelease:publish --only all           # all four
 bun run prerelease:publish --iter 7             # pin the iteration number

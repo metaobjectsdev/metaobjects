@@ -1,11 +1,11 @@
 import { describe, test, expect } from "bun:test";
-import { parseVerifyArgs } from "../../src/lib/args.js";
+import { parseMigrateArgs, parseVerifyArgs } from "../../src/lib/args.js";
 import { DEFAULT_ADVISORY_LIMIT } from "../../src/lib/advisory.js";
 
 describe("parseVerifyArgs", () => {
   test("defaults: prompts/db/dialect undefined, allow empty, skipSchema false, no explicit subverb", () => {
     expect(parseVerifyArgs([])).toEqual({
-      prompts: undefined, db: undefined, dialect: undefined, allow: [], skipSchema: false,
+      prompts: undefined, db: undefined, dialect: undefined, allow: [], skipSchema: false, migrationFormat: undefined,
       templates: false, codegen: false, forbidHandEdits: false, docs: false, deps: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, requireImplementers: false, noOverlayLint: false, noNameLint: false, noDeprecationLint: false, noFieldLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: undefined, remote: false, limit: DEFAULT_ADVISORY_LIMIT,
@@ -13,7 +13,7 @@ describe("parseVerifyArgs", () => {
   });
   test("--prompts <dir> is captured", () => {
     expect(parseVerifyArgs(["--prompts", "templates"])).toEqual({
-      prompts: "templates", db: undefined, dialect: undefined, allow: [], skipSchema: false,
+      prompts: "templates", db: undefined, dialect: undefined, allow: [], skipSchema: false, migrationFormat: undefined,
       templates: false, codegen: false, forbidHandEdits: false, docs: false, deps: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, requireImplementers: false, noOverlayLint: false, noNameLint: false, noDeprecationLint: false, noFieldLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: undefined, remote: false, limit: DEFAULT_ADVISORY_LIMIT,
@@ -21,7 +21,7 @@ describe("parseVerifyArgs", () => {
   });
   test("--db / --dialect / --skip-schema are captured", () => {
     expect(parseVerifyArgs(["--db", "file:x.db", "--dialect", "sqlite", "--skip-schema"])).toEqual({
-      prompts: undefined, db: "file:x.db", dialect: "sqlite", allow: [], skipSchema: true,
+      prompts: undefined, db: "file:x.db", dialect: "sqlite", allow: [], skipSchema: true, migrationFormat: undefined,
       templates: false, codegen: false, forbidHandEdits: false, docs: false, deps: false, anyExplicit: true, noAntipatterns: false, noRequirementLint: false, requireImplementers: false, noOverlayLint: false, noNameLint: false, noDeprecationLint: false, noFieldLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: undefined, remote: false, limit: DEFAULT_ADVISORY_LIMIT,
@@ -31,7 +31,7 @@ describe("parseVerifyArgs", () => {
   // --dialect d1 alone is already an explicit subverb selector (D1 has no --db URL).
   test("--dialect d1 --d1 <binding> --remote are captured; --dialect d1 alone is an explicit subverb", () => {
     expect(parseVerifyArgs(["--dialect", "d1", "--d1", "DB", "--remote"])).toEqual({
-      prompts: undefined, db: undefined, dialect: "d1", allow: [], skipSchema: false,
+      prompts: undefined, db: undefined, dialect: "d1", allow: [], skipSchema: false, migrationFormat: undefined,
       templates: false, codegen: false, forbidHandEdits: false, docs: false, deps: false, anyExplicit: true, noAntipatterns: false, noRequirementLint: false, requireImplementers: false, noOverlayLint: false, noNameLint: false, noDeprecationLint: false, noFieldLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: "DB", remote: true, limit: DEFAULT_ADVISORY_LIMIT,
@@ -40,6 +40,22 @@ describe("parseVerifyArgs", () => {
     expect(bare.anyExplicit).toBe(true);
     expect(bare.d1).toBeUndefined();
     expect(bare.remote).toBe(false);
+  });
+  // One format vocabulary for `meta migrate` and `meta verify`: the same values, and the same
+  // refusal for anything else.
+  test("--migration-format takes meta migrate's values and refuses the rest with its message", () => {
+    expect(parseVerifyArgs([]).migrationFormat).toBeUndefined();
+    expect(parseVerifyArgs(["--migration-format", "flyway"]).migrationFormat).toBe("flyway");
+    expect(parseVerifyArgs(["--migration-format", "default"]).migrationFormat).toBe("default");
+    expect(parseVerifyArgs(["--migration-format", "flyway"]).anyExplicit).toBe(false);
+    const refusal = (parse: () => unknown): string => {
+      try { parse(); } catch (err) { return (err as Error).message; }
+      return "(accepted)";
+    };
+    expect(refusal(() => parseVerifyArgs(["--migration-format", "liquibase"])))
+      .toBe("invalid --migration-format 'liquibase'; expected: default, flyway");
+    expect(refusal(() => parseVerifyArgs(["--migration-format", "liquibase"])))
+      .toBe(refusal(() => parseMigrateArgs(["--migration-format", "liquibase"])));
   });
   test("--no-antipatterns is captured", () => {
     expect(parseVerifyArgs(["--no-antipatterns"]).noAntipatterns).toBe(true);
@@ -60,7 +76,7 @@ describe("parseVerifyArgs", () => {
   test("--allow csv is parsed into tokens", () => {
     expect(parseVerifyArgs(["--allow", "drop-column,drop-table"])).toEqual({
       prompts: undefined, db: undefined, dialect: undefined,
-      allow: ["drop-column", "drop-table"], skipSchema: false,
+      allow: ["drop-column", "drop-table"], skipSchema: false, migrationFormat: undefined,
       templates: false, codegen: false, forbidHandEdits: false, docs: false, deps: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, requireImplementers: false, noOverlayLint: false, noNameLint: false, noDeprecationLint: false, noFieldLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: undefined, remote: false, limit: DEFAULT_ADVISORY_LIMIT,

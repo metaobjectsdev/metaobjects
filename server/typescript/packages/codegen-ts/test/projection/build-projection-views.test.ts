@@ -244,7 +244,6 @@ describe("buildProjectionViews — #208 @sql / @unmanaged DDL-ownership escape v
     expect(v).toBeDefined();
     expect(v!.sql).toBe(RECURSIVE_BODY);       // verbatim body, NOT a synthesized "SELECT nodes.id AS id …"
     expect(v!.sql).toContain("WITH RECURSIVE");
-    expect(v!.columns).toBeUndefined();        // opaque — column list unknown → diff fails safe to drop+create
     // dependsOn is derived from the extends-bound anchor entity (Node → nodes), D7.
     expect(v!.dependsOn).toEqual(["nodes"]);
   });
@@ -286,7 +285,6 @@ describe("buildProjectionViews — #208 @sql / @unmanaged DDL-ownership escape v
     expect(v).toBeDefined();
     expect(v!.sql).toContain("rank() OVER"); // verbatim @sql body
     expect(v!.dependsOn).toEqual(["programs"]); // the host's own table, not []
-    expect(v!.columns).toBeUndefined();
   });
 
   test("@sql on a non-view kind (materializedView) hard-errors at migrate lowering (D4)", async () => {
@@ -329,8 +327,6 @@ describe("buildReportViews — view-backed reports (FR-044 Plan 2, Table A)", ()
     const v = views[0]!;
     expect(v.fqn).toBe("acme::shop::StoreTotals");
     expect(v.dependsOn).toEqual(["purchases"]);
-    expect(v.columns).toBeUndefined();
-    expect("columns" in v).toBe(false);
     expect(v.sql).toContain("FROM \"purchases\" p");
     expect(v.sql).toContain('COUNT(p."id") FILTER (WHERE p."status" = \'active\') AS "purchases"');
     expect(v.sql).not.toContain("CREATE VIEW");
@@ -380,7 +376,6 @@ describe("buildReportViews — view-backed reports (FR-044 Plan 2, Table A)", ()
     expect(views[0]!.sql).toBe(body);
     expect(views[0]!.dependsOn).toEqual(["purchases"]);
     expect(views[0]!.fqn).toBe("acme::shop::StoreTotals");
-    expect("columns" in views[0]!).toBe(false);
   });
 
   test("the projection loop does not see an @sql report either: one view, not two", async () => {
@@ -459,7 +454,7 @@ describe("buildReportViews — view-backed reports (FR-044 Plan 2, Table A)", ()
     });
     const body = "SELECT COUNT(id) AS users FROM users WHERE kind = 'ADMIN'";
     const sql = buildReportViews(await loadModel(tph({ "@kind": "view", "@view": "v_admins", "@sql": body })), PG);
-    expect(sql.map((v) => [v.name, v.sql, v.dependsOn])).toEqual([["v_admins", body, ["users"]]]);
+    expect(sql.map((v) => [v.name, v.sql, v.dependsOn, v.opaque])).toEqual([["v_admins", body, ["users"], true]]);
     // An @unmanaged view is likewise the author's: nothing is created and nothing is refused.
     expect(buildReportViews(await loadModel(tph({ "@kind": "view", "@view": "v_admins", "@unmanaged": true })), PG)).toEqual([]);
     // The derived path is the one that refuses.

@@ -18,8 +18,6 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -378,8 +376,7 @@ public class MetaDataHtmlDocumentationWriter extends GeneratorIOWriter<MetaDataH
         writer.println("    <div class=\"header\">");
         writer.println("        <h1>" + escapeHtml(title) + "</h1>");
         writer.println("        <div class=\"subtitle\">Comprehensive Type System Documentation</div>");
-        writer.println("        <div class=\"version\">Version " + escapeHtml(version) + " • Generated " +
-                       LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")) + "</div>");
+        writer.println("        <div class=\"version\">Version " + escapeHtml(version) + "</div>");
         writer.println("    </div>");
     }
 

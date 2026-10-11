@@ -14,6 +14,8 @@ import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.generator.util.GeneratedFileWriter
 import com.metaobjects.generator.util.GeneratorUtil
+import com.metaobjects.generator.util.RestSurfaceGate
+import com.metaobjects.reporting.ReportReadModel
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import java.io.OutputStream
@@ -95,9 +97,15 @@ open class KotlinNamesGenerator :
         // Pass 1 — every object that participates in the database (#248).
         val emitted = mutableSetOf<String>()
         for (entity in loader.metaObjects) {
-            // FR-044: a report gets no names artifact. Its Exposed table (the one thing Kotlin
-            // generates for a view-backed report) binds its view and columns by literal.
-            if (GeneratorUtil.isReport(entity)) continue
+            // FR-044: a served report (a view-backed one) gets a names artifact built from its
+            // READ MODEL, so the derived columns have constants for hand-written SQL over the
+            // view to use; its Exposed table still binds by literal. A report that is not
+            // served has no view, so there is nothing to name.
+            if (GeneratorUtil.isReport(entity)) {
+                if (RestSurfaceGate.isServedReport(entity) &&
+                    emit(ReportReadModel.of(entity), outRoot, strategy)) emitted += entity.name
+                continue
+            }
             if (emit(entity, outRoot, strategy)) emitted += entity.name
         }
         // Pass 2 — the abstract bases those participants EXTEND, each carrying the columns

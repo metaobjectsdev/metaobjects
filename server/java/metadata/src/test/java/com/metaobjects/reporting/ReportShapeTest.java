@@ -163,7 +163,7 @@ public class ReportShapeTest extends SharedRegistryTestBase {
     }
 
     @Test
-    public void attributeDimensionKeepsTheOfFieldsSubtypeAndIsRequiredOnlyWithoutVia() {
+    public void attributeDimensionKeepsTheOfFieldsSubtypeAndIsRequiredWhenEveryJoinIsInner() {
         ReportShape shape = ReportShape.of(object(canonical, "ProgramMinutes"), canonical);
 
         ReportShape.Field program = field(shape, "program");
@@ -177,7 +177,7 @@ public class ReportShapeTest extends SharedRegistryTestBase {
 
         ReportShape.Field title = field(shape, "programTitle");
         assertEquals("string", title.subType());
-        assertFalse("reached by @via, so nullable", title.required());
+        assertTrue("reached by @via over a required reference (an INNER join) to a required field", title.required());
         assertEquals("fitness::Program.title", title.typeSourceKey());
     }
 
@@ -733,5 +733,91 @@ public class ReportShapeTest extends SharedRegistryTestBase {
             }
             assertUnresolved(expected, report, root);
         }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Table C, a dimension reached through @via (adopter report D5): the view joins a
+    // belongs-to hop over a required foreign key INNER, so the column is as required as the
+    // field it reads. The same model and expectations as the TypeScript report-shape test.
+    // ---------------------------------------------------------------------------
+
+    private static final String VIA_MODEL = "{\"metadata.root\":{\"package\":\"a\",\"children\":["
+        + entityJson("Realm", "realms",
+            "{\"field.string\":{\"name\":\"name\",\"@required\":true}},{\"field.string\":{\"name\":\"motto\"}}")
+        + "," + entityJson("Session", "sessions",
+            "{\"field.long\":{\"name\":\"realmId\",\"@required\":true}},{\"field.long\":{\"name\":\"maybeRealmId\"}},"
+            + "{\"identity.reference\":{\"name\":\"fkRealm\",\"@fields\":[\"realmId\"],\"@references\":\"Realm\"}},"
+            + "{\"identity.reference\":{\"name\":\"fkMaybeRealm\",\"@fields\":[\"maybeRealmId\"],\"@references\":\"Realm\"}},"
+            + "{\"relationship.association\":{\"name\":\"realm\",\"@objectRef\":\"Realm\",\"@cardinality\":\"one\",\"@sourceRefField\":\"realmId\"}},"
+            + "{\"relationship.association\":{\"name\":\"maybeRealm\",\"@objectRef\":\"Realm\",\"@cardinality\":\"one\",\"@sourceRefField\":\"maybeRealmId\"}}")
+        + "," + entityJson("Snap", "snaps",
+            "{\"field.long\":{\"name\":\"sessionId\",\"@required\":true}},{\"field.long\":{\"name\":\"unenforcedSessionId\",\"@required\":true}},"
+            + "{\"identity.reference\":{\"name\":\"fkSession\",\"@fields\":[\"sessionId\"],\"@references\":\"Session\"}},"
+            + "{\"identity.reference\":{\"name\":\"fkLoose\",\"@fields\":[\"unenforcedSessionId\"],\"@references\":\"Session\",\"@enforce\":false}},"
+            + "{\"relationship.association\":{\"name\":\"session\",\"@objectRef\":\"Session\",\"@cardinality\":\"one\"}},"
+            + "{\"relationship.association\":{\"name\":\"stamp\",\"@objectRef\":\"Stamp\",\"@cardinality\":\"one\"}},"
+            + "{\"measure.aggregate\":{\"name\":\"snaps\",\"@agg\":\"count\",\"@of\":\"Snap.id\"}},"
+            + "{\"dimension.attribute\":{\"name\":\"realmName\",\"@of\":\"Realm.name\",\"@via\":\"Snap.fkSession.fkRealm\"}},"
+            + "{\"dimension.attribute\":{\"name\":\"realmMotto\",\"@of\":\"Realm.motto\",\"@via\":\"Snap.fkSession.fkRealm\"}},"
+            + "{\"dimension.attribute\":{\"name\":\"maybeRealmName\",\"@of\":\"Realm.name\",\"@via\":\"Snap.fkSession.fkMaybeRealm\"}},"
+            + "{\"dimension.attribute\":{\"name\":\"looseRealmName\",\"@of\":\"Realm.name\",\"@via\":\"Snap.fkLoose.fkRealm\"}},"
+            + "{\"dimension.attribute\":{\"name\":\"sessionRealmId\",\"@of\":\"Session.realmId\",\"@via\":\"Snap.fkSession\"}},"
+            + "{\"dimension.attribute\":{\"name\":\"relRealmName\",\"@of\":\"Realm.name\",\"@via\":\"Snap.session.realm\"}},"
+            + "{\"dimension.attribute\":{\"name\":\"relMaybeRealmName\",\"@of\":\"Realm.name\",\"@via\":\"Snap.session.maybeRealm\"}},"
+            + "{\"dimension.attribute\":{\"name\":\"relSessionRealmId\",\"@of\":\"Session.realmId\",\"@via\":\"Snap.session\"}},"
+            + "{\"dimension.attribute\":{\"name\":\"mixedRealmName\",\"@of\":\"Realm.name\",\"@via\":\"Snap.session.fkRealm\"}},"
+            + "{\"dimension.attribute\":{\"name\":\"stampLabel\",\"@of\":\"Stamp.label\",\"@via\":\"Snap.stamp\"}}")
+        // The foreign key between Snap and Stamp is held by Stamp, the far side of Snap's `stamp`.
+        + "," + entityJson("Stamp", "stamps",
+            "{\"field.long\":{\"name\":\"snapId\",\"@required\":true}},{\"field.string\":{\"name\":\"label\",\"@required\":true}},"
+            + "{\"identity.reference\":{\"name\":\"fkSnap\",\"@fields\":[\"snapId\"],\"@references\":\"Snap\"}}")
+        + ",{\"object.report\":{\"name\":\"Related\",\"@from\":\"Snap\","
+        + "\"@dimensions\":[\"relRealmName\",\"relMaybeRealmName\",\"relSessionRealmId\",\"mixedRealmName\",\"stampLabel\"],"
+        + "\"@measures\":[\"snaps\"],\"children\":[{\"source.rdb\":{\"@kind\":\"view\",\"@view\":\"v_related\"}}]}}"
+        + ",{\"object.report\":{\"name\":\"Plain\",\"@from\":\"Snap\","
+        + "\"@dimensions\":[\"realmName\",\"realmMotto\",\"maybeRealmName\",\"looseRealmName\",\"sessionRealmId\"],"
+        + "\"@measures\":[\"snaps\"],\"children\":[{\"source.rdb\":{\"@kind\":\"view\",\"@view\":\"v_plain\"}}]}},"
+        + "{\"object.report\":{\"name\":\"Spined\",\"@from\":\"Snap\",\"@spine\":\"Snap.fkSession\","
+        + "\"@dimensions\":[\"realmName\",\"sessionRealmId\"],"
+        + "\"@measures\":[\"snaps\"],\"children\":[{\"source.rdb\":{\"@kind\":\"view\",\"@view\":\"v_spined\"}}]}}"
+        + "]}}";
+
+    private static String entityJson(String name, String table, String children) {
+        return "{\"object.entity\":{\"name\":\"" + name + "\",\"children\":["
+            + "{\"source.rdb\":{\"@table\":\"" + table + "\"}},{\"field.long\":{\"name\":\"id\"}},"
+            + "{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}," + children + "]}}";
+    }
+
+    @Test
+    public void viaDimensionIsRequiredWhenEveryHopIsARequiredBelongsTo() {
+        MetaRoot root = loadJson(VIA_MODEL);
+        ReportShape plain = ReportShape.of(object(root, "Plain"), root);
+        assertTrue("two required hops over a required field", field(plain, "realmName").required());
+        assertTrue("one required hop", field(plain, "sessionRealmId").required());
+        assertTrue("@enforce: false does not change the join type", field(plain, "looseRealmName").required());
+        assertFalse("the target field is optional", field(plain, "realmMotto").required());
+        assertFalse("a hop over a nullable foreign key is a LEFT join", field(plain, "maybeRealmName").required());
+
+        ReportShape spined = ReportShape.of(object(root, "Spined"), root);
+        assertFalse("under @spine every join beyond the spine is LEFT", field(spined, "realmName").required());
+        assertTrue("on the spine, a required field", field(spined, "sessionRealmId").required());
+    }
+
+    /**
+     * The same rule when a hop is a {@code @cardinality: one} relationship instead of the
+     * reference it crosses: the relationship resolves to that reference (by name pairing for
+     * {@code session}, by {@code @sourceRefField} for the two onto Realm), and the foreign key
+     * it holds decides the join.
+     */
+    @Test
+    public void toOneRelationshipHopFollowsTheReferenceItCrosses() {
+        MetaRoot root = loadJson(VIA_MODEL);
+        ReportShape related = ReportShape.of(object(root, "Related"), root);
+        assertTrue("two relationship hops, both over a required foreign key", field(related, "relRealmName").required());
+        assertTrue("one relationship hop", field(related, "relSessionRealmId").required());
+        assertTrue("a relationship hop, then a reference hop", field(related, "mixedRealmName").required());
+        assertFalse("the second relationship crosses a nullable foreign key", field(related, "relMaybeRealmName").required());
+        // A Snap with no Stamp has no match, so the join is LEFT whatever that key and the target field require.
+        assertFalse("the other entity holds the foreign key", field(related, "stampLabel").required());
     }
 }
