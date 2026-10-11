@@ -244,7 +244,9 @@ generator catalog and the Atlas evaluation are 1.2 work.
   `@default` other than `0` or `1` is M9 (both `ERR_INVALID_MEASURE`). An `any` / `all` measure
   is not a legal `measure.ratio` operand (rule M6, tightened under **Changed**). Postgres writes
   `bool_or` / `bool_and`; SQLite and MySQL write `MAX` / `MIN` over `0` / `1`. The `cube-model` generator
-  writes a `type: boolean` measure. See [reporting](docs/features/reporting.md#boolean-measures-any-and-all).
+  writes a `type: boolean` measure, `{<m>Raw} = 1`, over a private `<m>Raw` that is a `max` (`any`)
+  or `min` (`all`) of the column as `0` / `1`, so a report with a boolean measure keeps its rollup.
+  See [reporting](docs/features/reporting.md#boolean-measures-any-and-all).
   No `metamodelVersion` change: the vocabulary is part of 1.1.
 - **TypeScript: the `cube-model` reference generator (FR-044 Plan 4).** `cubeModel()` writes the
   reporting vocabulary as Cube data-model files, `model/cubes/<Cube>.yml`: a cube for each

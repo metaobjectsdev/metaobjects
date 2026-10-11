@@ -489,8 +489,8 @@ and the measure is a `boolean` in every port: `true` or `false` on the wire, nev
   `1`, so they write `MAX(x)` for `any` and `MIN(x)` for `all` (`MAX(CASE WHEN … THEN x END)`
   for a condition). The runtime reads the column as the boolean it is typed as. A default is
   `COALESCE(<the aggregate>, FALSE)` on Postgres and `COALESCE(<the aggregate>, 0)` elsewhere.
-- **Cube.** The export writes a `type: boolean` measure holding the same aggregate, see
-  [cube-export.md](cube-export.md).
+- **Cube.** The export writes a `type: boolean` measure over a private `max` / `min` of the
+  column as `0` / `1`, which a rollup can hold, see [cube-export.md](cube-export.md).
 
 ### What the runtime does with it
 

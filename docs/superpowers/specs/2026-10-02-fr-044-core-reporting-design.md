@@ -517,8 +517,12 @@ existing attribute's closed set, which is a value of `@agg`, not a new attribute
 **Admission.** RDB as above. A store with no boolean aggregate is capability-gated as for any
 aggregate it cannot express exactly; none is lowered today.
 
-**Mapping.** Cube: `type: boolean` holding the aggregate in `sql` (Cube's `min` / `max` cannot take
-a Postgres boolean, and a condition rides in the SQL, as for a MySQL tuple count). MetricFlow has
+**Mapping.** Cube: two members. `<m>Raw` is a private `max` (`any`) or `min` (`all`) over the column
+as `0` / `1` (`CAST(x AS INTEGER)` on Postgres, which has no `MAX(boolean)`; the column itself on
+MySQL), its condition in `filters`; `<m>` is `type: boolean`, `{<m>Raw} = 1`, with a `@default`
+inside the comparison. The leaf is an additive number so that a report with a boolean measure keeps
+its rollup: Cube re-aggregates a `max` / `min` it reads from a rollup, and cannot re-aggregate a
+`boolean` leaf holding `bool_or(x)`. MetricFlow has
 no `any` / `all` aggregation (`sum_boolean` counts the trues); the dbt exporter, when it exists,
 must refuse it by name or map it to `max` / `min` over a 0/1 expression. It is not part of this
 change.
@@ -535,7 +539,7 @@ change.
 | `measure.aggregate` count + `@distinct` (one column) | `count_distinct` | `count_distinct` |
 | `measure.aggregate` count + `@distinct` (tuple) | `count_distinct` over `ROW(…)` with a not-null filter on each column (MySQL: the view's own `COUNT(DISTINCT a, b)` as a `number` measure) | `count_distinct` over an expression |
 | `measure.aggregate` sum/avg/min/max | `sum`/`avg`/`min`/`max` | `sum`/`average`/`min`/`max` |
-| `measure.aggregate` any/all | `boolean` measure holding `bool_or(x)` / `bool_and(x)` (MySQL `MAX(x)` / `MIN(x)`) | none yet: `sum_boolean` counts the trues; the dbt exporter refuses it or maps `max` / `min` over a 0/1 expression |
+| `measure.aggregate` any/all | `boolean` measure `{<m>Raw} = 1` over a private `max` / `min` of the column as `0` / `1` | none yet: `sum_boolean` counts the trues; the dbt exporter refuses it or maps `max` / `min` over a 0/1 expression |
 | `measure.ratio` | `number` measure `{a} / NULLIF({b}, 0)`; on Postgres `CAST({a} AS NUMERIC) / NULLIF({b}, 0)`, with no cast on MySQL | `ratio` metric |
 | `measure.derived` | `number` measure | `derived` metric |
 | `segment` | segment | metric `filter` / saved query filter |

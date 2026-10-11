@@ -78,12 +78,12 @@ import {
   ERR_CUBE_UNSUPPORTED_DIALECT,
 } from "./cube-errors.js";
 import {
-  defaultedRawMemberName,
   dimensionColumn,
   docOf,
   grainsOf,
   measureMembers,
   memberKey,
+  rawMemberName,
   segmentSpec,
   type MemberContext,
 } from "./cube-members.js";
@@ -476,10 +476,12 @@ class CubeModelBuilder {
         draft.declaredOrder.push(dim);
         if (dim.via() === undefined) draft.declaredDims.set(dim, this.ownDimension(draft, dim, where));
       } else if (child.type === TYPE_MEASURE) {
-        const { raw, measure } = measureMembers(draft.entity, child as MetaMeasure, where, this.mc);
+        const declared = child as MetaMeasure;
+        const { raw, measure } = measureMembers(draft.entity, declared, where, this.mc);
         if (raw !== undefined) {
-          // A defaulted measure.aggregate: its aggregate is the member the exporter adds, `<m>Raw`.
-          draft.namespace.add(raw.name, `the measure '${raw.name}' the exporter adds for the @default of ${label}`);
+          // A defaulted or boolean measure.aggregate: its aggregate is the member the exporter adds, `<m>Raw`.
+          const reason = declared.defaultValue() !== undefined ? "@default" : "@agg";
+          draft.namespace.add(raw.name, `the measure '${raw.name}' the exporter adds for the ${reason} of ${label}`);
           draft.measures.push(raw);
         }
         draft.measures.push(measure);
@@ -867,16 +869,16 @@ class CubeModelBuilder {
 
   /**
    * The facts cube's measures: @from's own cube's, in its order, narrowed to those the report lists,
-   * the operands of a listed ratio and the `<m>Raw` of each defaulted one, so every definition is
-   * the ordinary cube's. A measure the report does not list is `public: false`.
+   * the operands of a listed ratio and the `<m>Raw` of each defaulted or boolean one, so every
+   * definition is the ordinary cube's. A measure the report does not list is `public: false`.
    */
   private factsMeasures(shape: ReportShape, from: CubeDraft, where: string): CubeMeasureSpec[] {
     const listed = new Set<string>();
     const needed = new Set<string>();
     const need = (m: MetaMeasure): void => {
       needed.add(m.name);
-      // The `<m>Raw` twin is earned by one rule, in `defaultedRawMemberName`, shared with measureMembers.
-      const raw = defaultedRawMemberName(m);
+      // The `<m>Raw` twin is earned by one rule, in `rawMemberName`, shared with measureMembers.
+      const raw = rawMemberName(m);
       if (raw !== undefined) needed.add(raw);
     };
     for (const f of shape.fields) {

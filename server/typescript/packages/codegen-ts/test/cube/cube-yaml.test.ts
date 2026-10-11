@@ -279,28 +279,42 @@ cubes:
         type: sum
         filters:
           - sql: '({CUBE}."durationMinutes" >= 60 AND {CUBE}."label" LIKE ''W%'')'
+      - name: anyDeloadRaw
+        sql: 'CAST({CUBE}."deload" AS INTEGER)'
+        type: max
+        public: false
       - name: anyDeload
-        sql: 'bool_or({CUBE}."deload")'
+        sql: '{anyDeloadRaw} = 1'
         type: boolean
+      - name: allDeloadRaw
+        sql: 'CAST({CUBE}."deload" AS INTEGER)'
+        type: min
+        public: false
       - name: allDeload
-        sql: 'bool_and({CUBE}."deload")'
+        sql: '{allDeloadRaw} = 1'
         type: boolean
       - name: anyDeloadOrFalseRaw
-        sql: 'bool_or({CUBE}."deload")'
-        type: boolean
+        sql: 'CAST({CUBE}."deload" AS INTEGER)'
+        type: max
         public: false
       - name: anyDeloadOrFalse
-        sql: 'COALESCE({anyDeloadOrFalseRaw}, FALSE)'
+        sql: 'COALESCE({anyDeloadOrFalseRaw}, 0) = 1'
         type: boolean
       - name: allDeloadOrTrueRaw
-        sql: 'bool_and({CUBE}."deload")'
-        type: boolean
+        sql: 'CAST({CUBE}."deload" AS INTEGER)'
+        type: min
         public: false
       - name: allDeloadOrTrue
-        sql: 'COALESCE({allDeloadOrTrueRaw}, TRUE)'
+        sql: 'COALESCE({allDeloadOrTrueRaw}, 1) = 1'
         type: boolean
+      - name: anyLongDeloadRaw
+        sql: 'CAST({CUBE}."deload" AS INTEGER)'
+        type: max
+        filters:
+          - sql: '{CUBE}."durationMinutes" >= 60'
+        public: false
       - name: anyLongDeload
-        sql: 'bool_or({CUBE}."deload") FILTER (WHERE {CUBE}."durationMinutes" >= 60)'
+        sql: '{anyLongDeloadRaw} = 1'
         type: boolean
     segments:
       - name: long
@@ -490,22 +504,26 @@ cubes:
       - name: weeks
         sql: '{CUBE}."id"'
         type: count
+      - name: anyDeloadRaw
+        sql: 'CAST({CUBE}."deload" AS INTEGER)'
+        type: max
+        public: false
       - name: anyDeload
-        sql: 'bool_or({CUBE}."deload")'
+        sql: '{anyDeloadRaw} = 1'
         type: boolean
       - name: anyDeloadOrFalseRaw
-        sql: 'bool_or({CUBE}."deload")'
-        type: boolean
+        sql: 'CAST({CUBE}."deload" AS INTEGER)'
+        type: max
         public: false
       - name: anyDeloadOrFalse
-        sql: 'COALESCE({anyDeloadOrFalseRaw}, FALSE)'
+        sql: 'COALESCE({anyDeloadOrFalseRaw}, 0) = 1'
         type: boolean
       - name: allDeloadOrTrueRaw
-        sql: 'bool_and({CUBE}."deload")'
-        type: boolean
+        sql: 'CAST({CUBE}."deload" AS INTEGER)'
+        type: min
         public: false
       - name: allDeloadOrTrue
-        sql: 'COALESCE({allDeloadOrTrueRaw}, TRUE)'
+        sql: 'COALESCE({allDeloadOrTrueRaw}, 1) = 1'
         type: boolean
 `;
 

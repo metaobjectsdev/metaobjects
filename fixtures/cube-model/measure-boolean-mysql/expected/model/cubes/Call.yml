@@ -8,26 +8,40 @@ cubes:
         type: number
         primary_key: true
     measures:
+      - name: anyFailedRaw
+        sql: '{CUBE}.`failed`'
+        type: max
+        public: false
       - name: anyFailed
-        sql: 'MAX({CUBE}.`failed`)'
+        sql: '{anyFailedRaw} = 1'
         type: boolean
+      - name: allFailedRaw
+        sql: '{CUBE}.`failed`'
+        type: min
+        public: false
       - name: allFailed
-        sql: 'MIN({CUBE}.`failed`)'
+        sql: '{allFailedRaw} = 1'
         type: boolean
+      - name: anySlowFailedRaw
+        sql: '{CUBE}.`failed`'
+        type: max
+        filters:
+          - sql: '{CUBE}.`duration_ms` >= 1000'
+        public: false
       - name: anySlowFailed
-        sql: 'MAX(CASE WHEN {CUBE}.`duration_ms` >= 1000 THEN {CUBE}.`failed` END)'
+        sql: '{anySlowFailedRaw} = 1'
         type: boolean
       - name: anyFailedOrFalseRaw
-        sql: 'MAX({CUBE}.`failed`)'
-        type: boolean
+        sql: '{CUBE}.`failed`'
+        type: max
         public: false
       - name: anyFailedOrFalse
-        sql: 'COALESCE({anyFailedOrFalseRaw}, 0)'
+        sql: 'COALESCE({anyFailedOrFalseRaw}, 0) = 1'
         type: boolean
       - name: allFailedOrTrueRaw
-        sql: 'MIN({CUBE}.`failed`)'
-        type: boolean
+        sql: '{CUBE}.`failed`'
+        type: min
         public: false
       - name: allFailedOrTrue
-        sql: 'COALESCE({allFailedOrTrueRaw}, 1)'
+        sql: 'COALESCE({allFailedOrTrueRaw}, 1) = 1'
         type: boolean

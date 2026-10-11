@@ -68,6 +68,8 @@ export interface PlannedColumn {
    * every port's read returns it). Maps the integer, as text, to its symbol.
    */
   readonly symbols?: Readonly<Record<string, string>>;
+  /** A boolean measure (`@agg: any` / `all`): Cube must send a JSON boolean, never `1` / `0`. */
+  readonly boolean?: true;
 }
 
 export interface QueryPlan {
@@ -96,7 +98,7 @@ export function cubeQueryFor(report: MetaObject, root: MetaRoot): QueryPlan {
       if (f.measure === undefined) throw new Error(`${report.name}.${f.name}: a measure field without its measure`);
       const member = `${cube}.${f.measure.name}`;
       measures.push(member);
-      columns.push({ field: f.name, cubeKey: member, kind: "measure" });
+      columns.push({ field: f.name, cubeKey: member, kind: "measure", ...(f.subType === "boolean" ? { boolean: true as const } : {}) });
     } else {
       if (f.dimension === undefined) throw new Error(`${report.name}.${f.name}: a dimension field without its dimension`);
       const member = `${cube}.${f.dimension.name}`;
@@ -211,6 +213,9 @@ export function fromCubeRow(row: Record<string, unknown>, plan: QueryPlan): Norm
   for (const c of plan.columns) {
     const key = c.derive?.fromKey ?? c.cubeKey;
     if (!(key in row)) throw new Error(`Cube's row has no '${key}': ${JSON.stringify(row)}`);
+    if (c.boolean === true && row[key] !== null && row[key] !== undefined && typeof row[key] !== "boolean") {
+      throw new Error(`Cube ${key}: a boolean measure came back as ${typeof row[key]} ${JSON.stringify(row[key])}, not a JSON boolean`);
+    }
     const value = normalize(c.kind, row[key], `Cube ${key}`);
     out[c.field] = c.derive === undefined || value === null ? value : coarsen(value, c.derive.grain);
   }
