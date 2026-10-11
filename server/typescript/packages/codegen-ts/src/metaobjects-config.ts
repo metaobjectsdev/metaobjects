@@ -104,7 +104,7 @@ export const DEFAULT_EXT_STYLE: ExtStyle = "js";
  * fills inert defaults when they are absent AND the model emits no DB artifacts, and
  * throws a clear error when they are absent but the model DOES emit DB code (#194).
  */
-export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport" | "dialect" | "extStyle"> {
+export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport" | "dialect" | "extStyle" | "routesExpose"> {
   dbImport?: string;
   dialect?: Dialect;
   /** Import-specifier suffix in generated code. Defaults to `"js"` (`./x.js`), which is

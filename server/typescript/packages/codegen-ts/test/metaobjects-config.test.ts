@@ -69,8 +69,8 @@ describe("defineConfig", () => {
 
   test("type-level: MetaobjectsGenConfig embeds ResolvedGenConfig's non-DB fields exactly (#194 — dbImport/dialect are OPTIONAL here, filled by the runner)", () => {
     // Everything except dbImport/dialect matches ResolvedGenConfig field-for-field.
-    expectTypeOf<Pick<MetaobjectsGenConfig, "outDir" | "outputLayout" | "includeHonoRoutes" | "routesExpose" | "includeNames" | "includeUiTier" | "providedEnumModule">>()
-      .toEqualTypeOf<Omit<ResolvedGenConfig, "dbImport" | "dialect" | "extStyle">>();
+    expectTypeOf<Pick<MetaobjectsGenConfig, "outDir" | "outputLayout" | "includeHonoRoutes" | "includeNames" | "includeUiTier" | "providedEnumModule">>()
+      .toEqualTypeOf<Omit<ResolvedGenConfig, "dbImport" | "dialect" | "extStyle" | "routesExpose">>();
     // extStyle is OPTIONAL too: the config `meta init` scaffolds omits it and must still
     // typecheck; the runner fills DEFAULT_EXT_STYLE.
     expectTypeOf<MetaobjectsGenConfig["extStyle"]>().toEqualTypeOf<ExtStyle | undefined>();

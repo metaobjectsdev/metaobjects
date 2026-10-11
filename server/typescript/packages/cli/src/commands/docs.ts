@@ -579,7 +579,7 @@ export async function docsCommand(
     suite = (loadedConfig?.generators ?? []).filter((g): g is Generator => typeof g !== "string");
   }
 
-  const routesExpose = loadedConfig?.routesExpose ?? runRoutesExpose(suite);
+  const routesExpose = runRoutesExpose(suite);
   const ctx: GenContext = {
     entities: root.objects(),
     loadedRoot: root,
