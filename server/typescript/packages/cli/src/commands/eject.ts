@@ -32,6 +32,7 @@ import {
   type RuntimeEjectResult, type RuntimeFileResult,
 } from "../lib/runtime-eject.js";
 import { HTTP_RUNTIME_PACKAGE, OWNED_RUNTIME_DIR } from "@metaobjectsdev/codegen-ts";
+import type { GeneratorRegistryEntry } from "@metaobjectsdev/codegen-ts";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
 import {
   ejectLibrary, ejectableLibraryNames, isLibraryName, libraryStaleness,
@@ -111,6 +112,20 @@ function extractExportName(importLine: string, name: string): string {
   return match[1];
 }
 
+// The CALL a template's header documents, when it is not the bare `<export>()`. A factory
+// that cannot be called without options says so where it says how to import it
+// (`//   generators: [sharedModelFile({ name, include })]`), and a docs generator shows the
+// docs block it is listed in (`//   docs: { generators: [docsFile()] }`). Read from the
+// header for the reason the import line is: the template is the one thing that knows, and
+// the catalog deliberately does not derive a call from an options summary.
+const HEADER_ENTRY_RE = /^\/\/\s+(?:docs: \{ )?generators: \[(\w+\(.*\))\](?: \})?,?\s*$/m;
+
+/** The call to wire: the header's, when it documents one for this template's own export. */
+function extractEntry(templateSource: string, exportName: string): string {
+  const call = HEADER_ENTRY_RE.exec(templateSource)?.[1];
+  return call !== undefined && call.startsWith(`${exportName}(`) ? call : `${exportName}()`;
+}
+
 function extractImportLine(templateSource: string, name: string): string {
   const match = HEADER_IMPORT_RE.exec(templateSource);
   if (!match?.[1]) {
@@ -143,6 +158,9 @@ export interface EjectResult {
   importLine: string;
   /** The symbol the template exports — the binding to REPLACE in the config. */
   exportName: string;
+  /** The call to wire, with any options the factory cannot be called without
+   *  (`sharedModelFile({ name, include })`), as the template's header documents it. */
+  entry: string;
   /** The package the generator currently comes from, i.e. the import to remove. */
   packageName: string;
   /** Advisory lines about packages the ejected file imports but the project lacks. */
@@ -243,6 +261,7 @@ export async function ejectGenerator(opts: EjectOptions): Promise<EjectResult> {
     path: rel,
     importLine,
     exportName,
+    entry: extractEntry(templateSource, exportName),
     packageName: source.packageName,
     dependencyNotes: notes,
     templatePackages: requiredPackages(templateSource),
@@ -466,13 +485,32 @@ async function listOutput(cwd: string): Promise<string> {
 // the command
 // ---------------------------------------------------------------------------
 
+/**
+ * Where an ejected generator's entry goes, and which command then runs it.
+ *
+ *   gen        the top-level `generators`, run by `meta gen` — every generator but two.
+ *   docs-door  `docs: { generators: [...] }`, run by `meta docs` (`docs`, `api-docs`).
+ */
+interface EjectWiring {
+  kind: "gen" | "docs-door";
+  /** The call, with the options the factory cannot be called without. */
+  entry: string;
+}
+
+function wiringFor(entry: GeneratorRegistryEntry | undefined, call: string): EjectWiring {
+  return { kind: entry?.docsSurface !== undefined ? "docs-door" : "gen", entry: call };
+}
+
 /** One row of the `--format json` payload. */
 interface EjectedRow {
   name: string;
   path: string;
   status: EjectResult["status"];
-  /** The two edits an adopter makes in `metaobjects.config.ts`. */
-  wire: { import: string; entry: string };
+  /** The two edits an adopter makes in `metaobjects.config.ts`. `into` is present when the
+   *  entry does NOT go in the top-level `generators`: an owned docs generator (`docs`,
+   *  `api-docs`) is listed in the docs door's own block, and `into` names that key. Such a
+   *  copy is run by `meta docs` and checked by `meta verify --docs`, not by `meta gen`. */
+  wire: { import: string; entry: string; into?: "docs.generators" };
   requires: readonly string[];
   /** The adapter source copied beside it (ADR-0034 Amendment 3). Absent when none. */
   runtime?: RuntimeFileResult[];
@@ -537,7 +575,7 @@ function unknownNames(names: readonly string[]): string[] {
 
 /** Print the per-name text report — every branch below predates this command taking
  *  more than one name, and each was written against a real incident. */
-function reportOne(result: EjectResult, name: string): void {
+function reportOne(result: EjectResult, name: string, wiring: EjectWiring): void {
   if (result.status === "preserved") {
     // "already exists — left untouched" was the whole message, and it answered the
     // question nobody has. What an owner needs to know is whether their copy still
@@ -594,30 +632,45 @@ function reportOne(result: EjectResult, name: string): void {
     log.info(`Ejected "${name}" -> ${result.path}. You own it now (ADR-0034 scaffold-and-own).`);
   }
 
-  // REPLACE, never "paste". A generator reaches `generators: [...]` under ONE binding,
-  // so a reader told to "paste" gets a duplicate identifier at best — and at worst
-  // deletes nothing, keeps `formFile()` in the array bound to the PACKAGE import, and
-  // silently runs the packaged generator while editing the ejected file. That failure
-  // is invisible and is the exact one ejecting exists to prevent.
-  //
-  // But eject reads no config, so it cannot know WHICH of the three states this project
-  // is in, and stating one of them as fact is wrong in the other two. Name the goal,
-  // then the three branches; the reader knows which one they are looking at.
-  log.info(`In metaobjects.config.ts, "${result.exportName}" must resolve to this file:`);
-  log.info(`  ${result.importLine}`);
-  log.info(
-    `  - If it is imported from "${factoryModuleOf(name) ?? result.packageName}", REPLACE that import with the ` +
-    "line above. Adding a second one leaves `generators` bound to the PACKAGED " +
-    "generator, and your edits to this file do nothing.",
-  );
-  log.info(
-    "  - If it is already imported from ./codegen/generators/, it points here already " +
-    "— nothing to change.",
-  );
-  log.info(
-    `  - If ${result.exportName}() is not in \`generators\` yet, add the import above ` +
-    "AND the entry.",
-  );
+  if (wiring.kind === "docs-door") {
+    // A docs generator is the docs door's, so its wiring is stated in that door's terms
+    // and nowhere else: the `docs` block of the config, and the command that reads it.
+    // Sending its owner to the array `meta gen` runs would end in a skipped generator and
+    // a `meta docs` that still runs the packaged one.
+    log.info("`meta docs` runs this generator, in place of the packaged one. In metaobjects.config.ts:");
+    log.info(`  ${result.importLine}`);
+    log.info(`  docs: { generators: [${wiring.entry}] }`);
+    log.info(
+      "  If the `docs` block already lists docs generators, add this entry to that list. " +
+      "`meta verify --docs` then checks the committed pages against your copy. " +
+      "Run `meta docs` to write them.",
+    );
+  } else {
+    // REPLACE, never "paste". A generator reaches `generators: [...]` under ONE binding,
+    // so a reader told to "paste" gets a duplicate identifier at best — and at worst
+    // deletes nothing, keeps `formFile()` in the array bound to the PACKAGE import, and
+    // silently runs the packaged generator while editing the ejected file. That failure
+    // is invisible and is the exact one ejecting exists to prevent.
+    //
+    // But eject reads no config, so it cannot know WHICH of the three states this project
+    // is in, and stating one of them as fact is wrong in the other two. Name the goal,
+    // then the three branches; the reader knows which one they are looking at.
+    log.info(`In metaobjects.config.ts, "${result.exportName}" must resolve to this file:`);
+    log.info(`  ${result.importLine}`);
+    log.info(
+      `  - If it is imported from "${factoryModuleOf(name) ?? result.packageName}", REPLACE that import with the ` +
+      "line above. Adding a second one leaves `generators` bound to the PACKAGED " +
+      "generator, and your edits to this file do nothing.",
+    );
+    log.info(
+      "  - If it is already imported from ./codegen/generators/, it points here already " +
+      "— nothing to change.",
+    );
+    log.info(
+      `  - If ${wiring.entry} is not in \`generators\` yet, add the import above ` +
+      "AND the entry.",
+    );
+  }
   for (const line of result.dependencyNotes) log.info(line);
   if (result.runtime !== undefined && result.runtime.files.length > 0) reportRuntime(result.runtime.files);
 }
@@ -721,15 +774,22 @@ export async function ejectCommand(
         runtimeGenerators.add(name);
         for (const p of result.runtime.packages) runtimePackages.add(p);
       }
+      const catalogEntry = catalog[name];
+      const wiring = wiringFor(catalogEntry, result.entry);
+      const docsDoor = wiring.kind === "docs-door";
       rows.push({
         name,
         path: result.path,
         status: result.status,
-        wire: { import: result.importLine, entry: `${result.exportName}()` },
-        requires: catalog[name]?.requires ?? [],
+        wire: {
+          import: result.importLine,
+          entry: wiring.entry,
+          ...(docsDoor ? { into: "docs.generators" as const } : {}),
+        },
+        requires: catalogEntry?.requires ?? [],
         ...(result.runtime !== undefined ? { runtime: result.runtime.files } : {}),
       });
-      if (fmt === "text") reportOne(result, name);
+      if (fmt === "text") reportOne(result, name, wiring);
     }
   } catch (err) {
     log.error(describeError(err));

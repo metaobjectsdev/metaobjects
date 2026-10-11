@@ -13,9 +13,8 @@ import { isPackagedDocsGenerator } from "../src/packaged-docs-generators.js";
 // cross-port contract; this test pins them + asserts each entry carries a
 // non-empty description and a working factory (constructing it must not throw).
 
-// The recommended NATIVE gen suite (Tier-1). docs/mermaid are deliberately NOT
-// in this list (D1: docs is owned by `meta docs`; mermaid by the neutral docs
-// engine per ADR-0020).
+// The recommended NATIVE gen suite (Tier-1). `docs` is deliberately NOT in this
+// list (D1: it is owned by `meta docs`).
 const EXPECTED_NATIVE = [
   "entity",
   "queries",
@@ -40,7 +39,7 @@ const EXPECTED_NATIVE = [
 // Neutral / `meta docs`-owned (Tier-2). Present in the registry for identity +
 // discoverability, but flagged so they are NOT part of the recommended native
 // `meta gen` surface.
-const EXPECTED_NEUTRAL = ["docs", "mermaid-er"] as const;
+const EXPECTED_NEUTRAL = ["docs"] as const;
 
 describe("generator-registry (ADR-0021 D3)", () => {
   test("contains every expected stable name", () => {
@@ -63,7 +62,7 @@ describe("generator-registry (ADR-0021 D3)", () => {
     }
   });
 
-  test("native generators are flagged native; docs/mermaid flagged neutral", () => {
+  test("native generators are flagged native; docs flagged neutral", () => {
     for (const n of EXPECTED_NATIVE) {
       expect(generatorRegistry[n]?.tier, `${n} tier`).toBe("native");
     }
@@ -74,7 +73,6 @@ describe("generator-registry (ADR-0021 D3)", () => {
 
   test("neutral entries carry a note pointing at the canonical door", () => {
     expect(generatorRegistry["docs"]?.note ?? "").toContain("meta docs");
-    expect((generatorRegistry["mermaid-er"]?.note ?? "").length).toBeGreaterThan(0);
   });
 
   // Resolved, not listed: the set is whatever the RUNNER skips. `api-docs` is native,
@@ -89,18 +87,24 @@ describe("generator-registry (ADR-0021 D3)", () => {
     }
   });
 
-  // The other direction. `mermaid-er` is deprecated and the runner still runs a wired
-  // `mermaidErDiagram()`. Its note said "surfaced via `meta docs`", which `meta docs`
-  // never did: it states the back-compat fact, and does not offer it as a normal choice.
-  test("the docs-layer entry `meta gen` still runs states that it is deprecated", () => {
+  // The other direction. The standalone `mermaid-er` generator was the one docs-layer
+  // entry `meta gen` still ran; 1.1 removed it, so every docs-layer entry is one
+  // `meta docs` runs.
+  test("no docs-layer entry is left that `meta gen` runs", () => {
     const run = Object.values(generatorRegistry)
       .filter((e) => e.layer === "docs" && !isPackagedDocsGenerator(e.factory().name));
-    expect(run.map((e) => e.name)).toEqual(["mermaid-er"]);
-    const note = run[0]?.note ?? "";
-    expect(note).toContain("deprecated");
-    expect(note).toContain("do not add it to a new config");
-    expect(note).toContain("still runs");
-    expect(note).not.toContain("surfaced via");
+    expect(run.map((e) => e.name)).toEqual([]);
+  });
+
+  // Two definitions have to agree: the runner skips by implementation name
+  // (packaged-docs-generators.ts) and the catalog reads `docsSurface` off the row (it
+  // decides the eject wiring and whether a row prints a `generators` import). A row
+  // carrying one and not the other would be skipped by `meta gen` yet offered an import
+  // for `generators`, or the reverse.
+  test("an entry carries `docsSurface` exactly when `meta gen` skips its generator", () => {
+    for (const entry of Object.values(generatorRegistry)) {
+      expect(entry.docsSurface !== undefined, entry.name).toBe(isPackagedDocsGenerator(entry.factory().name));
+    }
   });
 
   test("every factory constructs a Generator with a name without throwing", () => {

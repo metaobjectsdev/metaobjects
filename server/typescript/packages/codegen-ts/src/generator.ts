@@ -2,6 +2,7 @@ import type { ExposeOption } from "./routes-expose.js";
 import type { MetaObject, MetaRoot, TypeRegistry } from "@metaobjectsdev/metadata";
 import type { LibraryManifest } from "@metaobjectsdev/metadata/library";
 import type { RenderContext } from "./render-context.js";
+import type { DocsDoorFacts } from "./docs-door.js";
 import type { ResolvedGenConfig } from "./metaobjects-config.js";
 import type { OrphanPolicy } from "./reconcile-orphans.js";
 import { effectivePackage } from "./docs-paths.js";
@@ -87,8 +88,32 @@ export interface GenContext {
    * the opposite and is meaningful: the caller looked, and this project opted into none.
    */
   libraries?: readonly LibraryManifest[];
+  /**
+   * The real project directory, for a generator that READS the project's own files: the
+   * nearest `package.json`, a version file, anything it resolves against the project. Under
+   * `meta gen` it is `projectRoot`. Under `meta verify --codegen` the run writes into a
+   * throwaway tree, `projectRoot` is that tree (import paths between an output directory
+   * and the project are computed against it, so it has to mirror the layout), and this is
+   * the project the tree mirrors. Under `meta docs` and `meta verify --docs` it is the
+   * directory holding `metaobjects.config.ts`, which `--templates` does not move. Read files
+   * through this; compute output-relative paths against `projectRoot`. Undefined when the
+   * caller supplied neither root.
+   */
+  inputRoot?: string;
+  /**
+   * What the docs door (`meta docs`, `meta verify --docs`) tells the generator it runs for a
+   * surface: where the api pages are, whether the model pages are emitted. Absent on a
+   * `meta gen` run and on a direct `.generate(ctx)` call, where a docs generator's own
+   * options decide instead. On the context rather than on `config` because it is a fact
+   * about the run's door, not something a project sets. See docs-door.ts.
+   */
+  docsDoor?: DocsDoorFacts;
   warn: (msg: string) => void;
 }
+
+/** The `meta docs` surfaces an owned generator can take over (`Generator.docsSurface`). The
+ *  `requirements` and `agent` surfaces are not generators in the catalog and stay packaged. */
+export type OwnedDocsSurface = "model" | "api";
 
 export interface Generator {
   /** kebab-case identifier; surfaces in diagnostics + drift logs. */
@@ -121,6 +146,16 @@ export interface Generator {
    *  Absent `expose` means every verb. A copy ejected before this marker existed needs
    *  `meta eject routes --force` (or the same one-line addition) to be honoured. */
   mountsRoutes?: { readonly expose?: ExposeOption };
+  /** Marks a generator that `meta docs` runs for one of its surfaces IN PLACE OF the
+   *  packaged one: `"model"` for the per-object pages and their index, `"api"` for the
+   *  reference of the generated API. It is how an owned (ejected) docs generator is reached:
+   *  list it in `docs: { generators: [...] }` in metaobjects.config.ts, and `meta docs` and
+   *  `meta verify --docs` read it there by this marker (`docsDoorGenerators`). It does not
+   *  go in the top-level `generators`: `meta gen` does not run documentation (ADR-0021 D1,
+   *  ADR-0025), and skips a generator carrying this marker with a warning that says where
+   *  it belongs. The packaged `docsFile()` / `apiDocsFile()` do not carry it: they are what
+   *  `meta docs` runs when nothing is listed, and need no listing. */
+  docsSurface?: OwnedDocsSurface;
   /** §A6 — marks the generator that emits the <Entity>Names artifact. The runner
    *  aggregates this across the suite into ResolvedGenConfig.includeNames, which the
    *  entity generator reads to decide whether it may reference those constants.

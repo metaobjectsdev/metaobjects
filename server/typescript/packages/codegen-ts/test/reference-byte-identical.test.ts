@@ -3,11 +3,14 @@
 // The reference generators import only "@metaobjectsdev/codegen-ts" (the public engine);
 // if this passes, a consumer can copy them out and own them with no behavior change.
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, readdirSync, readFileSync, cpSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, cpSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { runGen, defineConfig, REFERENCE_GENERATOR_NAMES, HTTP_RUNTIME_PACKAGE, OWNED_RUNTIME_DIR } from "../src/index.js";
-import type { ReferenceGeneratorName, Generator } from "../src/index.js";
+import {
+  runGen, defineConfig, REFERENCE_GENERATOR_NAMES, HTTP_RUNTIME_PACKAGE, OWNED_RUNTIME_DIR,
+  buildPkMap, buildRelationMap, docsDoorGenerators, generatorRegistry, makeRenderContext,
+} from "../src/index.js";
+import type { ReferenceGeneratorName, Generator, GenContext, DocsDoorFacts, OutputLayout } from "../src/index.js";
 import { routesFileHono as builtinRoutesHono, namesFile as builtinNames } from "../src/generators/index.js";
 import { barrel as builtinBarrel } from "../src/generators/barrel.js";
 import { entityFile as builtinEntity } from "../src/generators/entity-file.js";
@@ -41,6 +44,12 @@ import { callableFile as builtinCallable } from "../src/generators/callable-file
 import { callableFile as refCallable } from "../src/reference/callable.js";
 import { traceHelperFile as builtinTraceHelper } from "../src/generators/trace-helper-file.js";
 import { traceHelperFile as refTraceHelper } from "../src/reference/trace-helper.js";
+import { sharedModelFile as builtinSharedModel } from "../src/generators/shared-model-file.js";
+import { sharedModelFile as refSharedModel } from "../src/reference/shared-model.js";
+import { docsFile as builtinDocs } from "../src/generators/docs-file.js";
+import { docsFile as refDocs } from "../src/reference/docs.js";
+import { apiDocsFile as builtinApiDocs } from "../src/generators/api-docs-file.js";
+import { apiDocsFile as refApiDocs } from "../src/reference/api-docs.js";
 import { librarySources } from "@metaobjectsdev/metadata/library";
 import {
   CANONICAL_CONFIG,
@@ -124,6 +133,14 @@ async function gen(
 // its `runtimeImport` option: what this gate compares is the COMPOSITION. The local-copy
 // spelling is gated separately below, as "the same bytes with the import moved".
 const PKG = { runtimeImport: HTTP_RUNTIME_PACKAGE };
+// What the shared-model pair publishes in the fixture loop: every node of one model that is
+// publishable (all of its nodes are packaged and it needs core vocabulary only).
+const SHARED_MODEL_OPTS = {
+  name: "shared",
+  include: ["**"],
+  version: "1.2.3",
+  files: [join(FIXTURE_DIR, "trainer-website-shape.json")],
+};
 const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () => Generator }> = {
   entity: { builtin: builtinEntity, ref: () => refEntity(PKG) },
   queries: { builtin: builtinQueries, ref: refQueries },
@@ -146,6 +163,20 @@ const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () 
   // a model that does.
   callable: { builtin: builtinCallable, ref: refCallable },
   "trace-helper": { builtin: builtinTraceHelper, ref: refTraceHelper },
+  // It has no default selection, so it is constructed with options, and it loads its OWN
+  // `files`: over the fixtures above it publishes one fixed model whichever fixture the loop
+  // is on. The describe at the end of this file runs the pair over each publishable model,
+  // the version default and every refusal.
+  "shared-model": {
+    builtin: () => builtinSharedModel(SHARED_MODEL_OPTS),
+    ref: () => refSharedModel(SHARED_MODEL_OPTS),
+  },
+  // `runGen` runs neither side of these two: the built-in is skipped by name, with a
+  // warning (ADR-0025), and the reference by its `docsSurface` marker. So over the fixtures
+  // above both emit nothing. They are `meta docs`'s generators, and the describe at the end
+  // of this file runs each pair the way that door does.
+  docs: { builtin: builtinDocs, ref: refDocs },
+  "api-docs": { builtin: builtinApiDocs, ref: refApiDocs },
 };
 
 // The prompt tier emits nothing for the entity-shaped fixtures above — none declares a
@@ -974,3 +1005,378 @@ describe("ADR-0034 — the callable and trace-helper reference templates over mo
   });
 });
 
+
+// ---------------------------------------------------------------------------------------
+// ADR-0034 Amendment 7 — the last three: shared-model, docs, api-docs.
+// ---------------------------------------------------------------------------------------
+
+/** What one side did: the files it emitted, in order, or the message it threw (the
+ *  runner's wrapper unwrapped, so a refusal is compared in the generator's own words). */
+type Outcome = { files: [string, string][] } | { threw: string };
+
+async function outcomeOf(run: () => Promise<[string, string][]>): Promise<Outcome> {
+  try {
+    return { files: await run() };
+  } catch (err) {
+    let at: unknown = err;
+    while (at instanceof Error && at.cause instanceof Error) at = at.cause;
+    return { threw: at instanceof Error ? at.message : String(at) };
+  }
+}
+
+function paths(o: Outcome): string[] {
+  if ("threw" in o) throw new Error(`expected files, got a refusal: ${o.threw}`);
+  return o.files.map(([p]) => p);
+}
+
+// The artifact a publisher's `meta gen` writes is what a consumer's `meta deps sync` hashes
+// and loads, so "the same output" here means the same two files to the byte AND the same
+// refusal in the same words: a copy that published a model the built-in refuses would hand
+// a consumer an artifact it cannot load. (That the artifact then VERIFIES in a consumer is
+// gated end to end where both packages meet, in cli/test/integration.)
+describe("ADR-0034 Amendment 7 — the shared-model reference publishes the same artifact", () => {
+  type Opts = Parameters<typeof builtinSharedModel>[0];
+
+  /** One `meta gen` of the generator alone, in a throwaway project. `sourceFiles` is what
+   *  the CLI passes for the project's own files; `packageVersion` writes a package.json. */
+  async function publish(
+    make: (opts: Opts) => Generator,
+    opts: Opts,
+    run: { model: string; sourceFiles?: readonly string[]; packageVersion?: string },
+  ): Promise<Outcome> {
+    const project = mkdtempSync(join(tmpdir(), "codegen-shared-"));
+    try {
+      if (run.packageVersion !== undefined) {
+        writeFileSync(join(project, "package.json"), JSON.stringify({ name: "p", version: run.packageVersion }));
+      }
+      const outDir = join(project, "out");
+      mkdirSync(outDir);
+      const root = await loadFiles([run.model]);
+      return await outcomeOf(async () => {
+        await runGen({
+          config: defineConfig({ outDir, extStyle: "none", dbImport: "~/db", dialect: "sqlite", generators: [make(opts)] }),
+          metadata: root,
+          projectRoot: project,
+          ...(run.sourceFiles !== undefined ? { sourceFiles: run.sourceFiles } : {}),
+        });
+        return readdirSync(outDir).sort().map((f): [string, string] => [f, readFileSync(join(outDir, f), "utf-8")]);
+      });
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  }
+
+  async function both(opts: Opts, run: Parameters<typeof publish>[2]): Promise<Outcome> {
+    const a = await publish(builtinSharedModel, opts, run);
+    const b = await publish(refSharedModel, opts, run);
+    expect(b).toEqual(a);
+    return a;
+  }
+
+  const FITNESS = join(REPO_FIXTURES, "persistence-conformance", "canonical", "meta.fitness.json");
+  const PUBLISHABLE = [
+    ...["single-entity.json", "two-entities-fk.json", "cross-package-vo.json", "trainer-website-shape.json",
+      "extends-chain.json", "autoset-timestamps.json"].map((f) => join(FIXTURE_DIR, f)),
+    FITNESS,
+  ];
+
+  for (const model of PUBLISHABLE) {
+    test(`${model.slice(model.lastIndexOf("/") + 1)}: the artifact and its manifest, byte for byte`, async () => {
+      const a = await both({ name: "shared", include: ["**"], version: "1.2.3" }, { model, sourceFiles: [model] });
+      // Vacuity guard: both files, under the names `meta deps sync` reads.
+      expect(paths(a)).toEqual(["metaobjects.pkg.json", "shared.metaobjects.json"]);
+    });
+  }
+
+  test("the version default: the nearest package.json, in both", async () => {
+    const a = await both({ name: "shared", include: ["**"] }, { model: FITNESS, sourceFiles: [FITNESS], packageVersion: "3.4.5" });
+    const manifest = JSON.parse(("files" in a ? a.files : []).find(([p]) => p === "metaobjects.pkg.json")?.[1] ?? "{}") as { version?: string };
+    expect(manifest.version).toBe("3.4.5");
+  });
+
+  test("`files` narrows what may contribute and wins over the run's own files", async () => {
+    const one = join(FIXTURE_DIR, "single-entity.json");
+    const a = await both({ name: "shared", include: ["**"], version: "1.0.0", files: [one] }, { model: FITNESS, sourceFiles: [FITNESS] });
+    const manifest = JSON.parse(("files" in a ? a.files : []).find(([p]) => p === "metaobjects.pkg.json")?.[1] ?? "{}") as { nodes?: string[] };
+    expect(manifest.nodes).toEqual(["demo::Post"]);
+  });
+
+  // Every refusal, in the same words. Each `threw` is asserted against the built-in's own
+  // message so the comparison cannot pass over two unrelated failures.
+  const REFUSALS: ReadonlyArray<{ label: string; opts: Opts; run: Parameters<typeof publish>[2]; says: RegExp }> = [
+    {
+      label: "no source files",
+      opts: { name: "shared", include: ["**"], version: "1.0.0" },
+      run: { model: FITNESS },
+      says: /no source files to load/,
+    },
+    {
+      label: "an include that selects nothing",
+      opts: { name: "shared", include: ["nowhere::**"], version: "1.0.0" },
+      run: { model: FITNESS, sourceFiles: [FITNESS] },
+      says: /selected no nodes/,
+    },
+    {
+      label: "a selection that is not closed",
+      opts: { name: "shared", include: ["fitness::**"], exclude: ["fitness::Program"], version: "1.0.0" },
+      run: { model: FITNESS, sourceFiles: [FITNESS] },
+      says: /the selection is not closed/,
+    },
+    {
+      label: "a node with no package",
+      opts: { name: "shared", include: ["**"], version: "1.0.0" },
+      run: { model: join(FIXTURE_DIR, "packaged-shape.json"), sourceFiles: [join(FIXTURE_DIR, "packaged-shape.json")] },
+      says: /has no package/,
+    },
+  ];
+  for (const r of REFUSALS) {
+    test(`refused the same way: ${r.label}`, async () => {
+      const a = await both(r.opts, r.run);
+      expect("threw" in a ? a.threw : "").toMatch(r.says);
+    });
+  }
+
+  test("a model that cannot be published says so before a missing version does, in both", async () => {
+    // No `version`, and the selection is not closed. The version is resolved after the
+    // selection has passed, so the refusal is the selection's whether or not a package.json
+    // happens to sit above the temp directory.
+    const a = await both(
+      { name: "shared", include: ["fitness::**"], exclude: ["fitness::Program"] },
+      { model: FITNESS, sourceFiles: [FITNESS] },
+    );
+    expect("threw" in a ? a.threw : "").toMatch(/the selection is not closed/);
+  });
+
+  test("the same generator: its name, its target, and no filter of its own", () => {
+    for (const make of [builtinSharedModel, refSharedModel]) {
+      const plain = make({ name: "shared", include: ["**"] });
+      expect(plain.name).toBe("shared-model");
+      expect(plain.target).toBeUndefined();
+      expect(plain.filter).toBeUndefined();
+      expect(make({ name: "shared", include: ["**"], target: "published" }).target).toBe("published");
+    }
+  });
+});
+
+// `docs` and `api-docs` are run by `meta docs`, never by `runGen`, so the pair is compared
+// the way that door runs a generator: `.generate(ctx)` with the door's facts on
+// `ctx.docsDoor` and the generator's own `filter` as `ctx.matches`. Three things are
+// gated. The reference writes what the built-in writes. The built-in writes under the door
+// what it wrote when `meta docs` passed the same facts as factory options, which is what
+// keeps `meta docs` output unchanged by the seam. And the marker `meta docs` reads off a
+// generator listed in `docs.generators` is on the reference, is what the registry declares,
+// and is not on the built-in.
+describe("ADR-0034 Amendment 7 — the docs and api-docs references write the same pages under the docs door", () => {
+  interface Corpus { label: string; files: string[]; projectRoot?: string }
+  const CORPORA: Corpus[] = [
+    ...FIXTURES.map((f) => ({ label: f, files: [join(FIXTURE_DIR, f)] })),
+    {
+      label: "persistence-conformance fitness corpus (reports, projections, a responding prompt)",
+      files: [join(REPO_FIXTURES, "persistence-conformance", "canonical", "meta.fitness.json")],
+    },
+    {
+      label: "template-output-render corpus (documents and emails, with their template sources)",
+      files: [join(REPO_FIXTURES, "template-output-render-conformance", "meta.json")],
+      // Read-only here: the template page shows the Mustache source, read from `templates/`.
+      projectRoot: join(REPO_FIXTURES, "template-output-render-conformance"),
+    },
+  ];
+  const LAYOUTS: OutputLayout[] = ["flat", "package"];
+  const API_SURFACES = [
+    { label: "TypeScript", subDir: "api" },
+    { label: "Java", subDir: "api/java", baseUrl: "https://docs.example.test/java/" },
+  ];
+
+  /** The context `meta docs` builds for a surface's generator (cli/src/commands/docs.ts). */
+  function doorCtx(
+    root: Awaited<ReturnType<typeof loadFiles>>,
+    generator: Generator,
+    layout: OutputLayout,
+    door: DocsDoorFacts | undefined,
+    run: { projectRoot?: string; includeHonoRoutes?: boolean; apiPrefix?: string } = {},
+  ): GenContext {
+    return {
+      entities: root.objects(),
+      loadedRoot: root,
+      matches: generator.filter ?? (() => true),
+      config: {
+        outDir: "/docs-out",
+        extStyle: "none",
+        dbImport: "",
+        dialect: "sqlite",
+        outputLayout: layout,
+        ...(run.includeHonoRoutes !== undefined ? { includeHonoRoutes: run.includeHonoRoutes } : {}),
+      },
+      ...(door !== undefined ? { docsDoor: door } : {}),
+      renderContext: makeRenderContext({
+        dialect: "sqlite",
+        loadedRoot: root,
+        outDir: "/docs-out",
+        dbImport: "",
+        apiPrefix: run.apiPrefix ?? "",
+        pkMap: buildPkMap(root),
+        relationMap: buildRelationMap(root),
+        outputLayout: layout,
+      }),
+      ...(run.projectRoot !== undefined ? { projectRoot: run.projectRoot } : {}),
+      warn: () => {},
+    };
+  }
+
+  function emit(
+    root: Awaited<ReturnType<typeof loadFiles>>,
+    generator: Generator,
+    layout: OutputLayout,
+    door: DocsDoorFacts | undefined,
+    run?: Parameters<typeof doorCtx>[4],
+  ): Promise<Outcome> {
+    return outcomeOf(async () =>
+      (await generator.generate(doorCtx(root, generator, layout, door, run))).map((f): [string, string] => [f.path, f.content]),
+    );
+  }
+
+  for (const corpus of CORPORA) {
+    for (const layout of LAYOUTS) {
+      test(`model pages — ${corpus.label}, ${layout} layout`, async () => {
+        const root = await loadFiles(corpus.files);
+        const run = corpus.projectRoot !== undefined ? { projectRoot: corpus.projectRoot } : {};
+        // With no api surface beside it, and with two (one in the tree, one federated).
+        for (const door of [{}, { apiSurfaces: API_SURFACES }] satisfies DocsDoorFacts[]) {
+          const a = await emit(root, builtinDocs(), layout, door, run);
+          const b = await emit(root, refDocs(), layout, door, run);
+          expect(b).toEqual(a);
+          // Vacuity guard: the overview page first, then a page per node. A flat layout
+          // over a model with one short name in two packages is REFUSED, by both.
+          if ("files" in a) {
+            expect(a.files[0]?.[0]).toBe("README.md");
+            expect(a.files.length).toBeGreaterThan(1);
+          } else {
+            expect(a.threw).toMatch(/duplicate output path/);
+          }
+        }
+      });
+
+      test(`api pages — ${corpus.label}, ${layout} layout`, async () => {
+        const root = await loadFiles(corpus.files);
+        const run = corpus.projectRoot !== undefined ? { projectRoot: corpus.projectRoot } : {};
+        const doors: Array<{ door: DocsDoorFacts | undefined; run: Parameters<typeof doorCtx>[4] }> = [
+          { door: { apiSubDir: "api", modelSurface: true }, run },
+          { door: { apiSubDir: "reference/ts", modelSurface: false }, run },
+          { door: { apiSubDir: "api", modelSurface: true }, run: { ...run, includeHonoRoutes: true, apiPrefix: "/api" } },
+          // No door at all: a direct call lands in the default directory, in both.
+          { door: undefined, run },
+        ];
+        for (const { door, run: doorRun } of doors) {
+          const a = await emit(root, builtinApiDocs(), layout, door, doorRun);
+          const b = await emit(root, refApiDocs(), layout, door, doorRun);
+          expect(b).toEqual(a);
+          if ("files" in a) {
+            const dir = door?.apiSubDir ?? "docs/api";
+            expect(a.files.slice(0, 2).map(([p]) => p)).toEqual([`${dir}/README.md`, `${dir}/AGENT-API.md`]);
+            expect(a.files.length).toBeGreaterThan(2);
+          } else {
+            expect(a.threw).toMatch(/duplicate output path/);
+          }
+        }
+      });
+    }
+  }
+
+  test("the corpora reach the branches: a report page, a template page, a served report's api page, a Hono route", async () => {
+    const fitness = await loadFiles(CORPORA.find((c) => c.label.startsWith("persistence"))!.files);
+    const model = await emit(fitness, refDocs(), "flat", { apiSurfaces: API_SURFACES });
+    const readme = "files" in model ? model.files[0]![1] : "";
+    // The diagrams are `meta docs`'s: the whole model on the overview page, and one
+    // entity's neighbourhood on its own page. (The standalone `mermaid-er` generator that
+    // also drew the first one was removed in 1.1.)
+    expect(readme).toContain("## Diagram\n\n```mermaid\nerDiagram\n");
+    const week = ("files" in model ? model.files : []).find(([p]) => p === "Week.md")?.[1] ?? "";
+    expect(week).toContain("```mermaid\nflowchart TB\n");
+    expect(readme).toContain("## Reports");
+    expect(readme).toContain("## Templates");
+    expect(readme).toContain("## API reference");
+    expect(readme).toContain("https://docs.example.test/java/README.md");
+    const api = await emit(fitness, refApiDocs(), "flat", { apiSubDir: "api", modelSurface: true }, { includeHonoRoutes: true, apiPrefix: "/api" });
+    const pages = "files" in api ? new Map(api.files) : new Map<string, string>();
+    expect(pages.has("api/ProgramRoster.md")).toBe(true);
+    expect([...pages.values()].some((c) => c.includes("hono"))).toBe(true);
+    expect([...pages.values()].some((c) => c.includes("/api/"))).toBe(true);
+  });
+
+  test("the `filter` option narrows the object pages, in both", async () => {
+    const root = await loadFiles([join(FIXTURE_DIR, "two-entities-fk.json")]);
+    const only = (e: { name: string }) => e.name === "User";
+    const a = await emit(root, builtinDocs({ filter: only }), "flat", {});
+    const b = await emit(root, refDocs({ filter: only }), "flat", {});
+    expect(paths(a)).toEqual(["README.md", "User.md"]);
+    expect(b).toEqual(a);
+  });
+
+  // What keeps `meta docs` unchanged by the seam. It used to construct the built-in with
+  // these facts as factory OPTIONS; it now runs a bare built-in with the facts on the
+  // context. Same bytes, over the corpus with the most branches, in both layouts.
+  test("the built-in writes under the door what it wrote from the same facts as options", async () => {
+    const corpus = CORPORA.find((c) => c.label.startsWith("persistence"))!;
+    const root = await loadFiles(corpus.files);
+    for (const layout of LAYOUTS) {
+      const viaOptions = await emit(root, builtinDocs({ apiSurfaces: API_SURFACES }), layout, undefined);
+      const viaDoor = await emit(root, builtinDocs(), layout, { apiSurfaces: API_SURFACES });
+      expect(paths(viaDoor).length).toBeGreaterThan(1);
+      expect(viaDoor).toEqual(viaOptions);
+      expect(await emit(root, builtinDocs(), layout, {})).toEqual(await emit(root, builtinDocs(), layout, undefined));
+
+      for (const modelSurface of [true, false]) {
+        const apiViaOptions = await emit(root, builtinApiDocs({ subDir: "api", modelSurface }), layout, undefined);
+        const apiViaDoor = await emit(root, builtinApiDocs(), layout, { apiSubDir: "api", modelSurface });
+        expect(paths(apiViaDoor).length).toBeGreaterThan(2);
+        expect(apiViaDoor).toEqual(apiViaOptions);
+      }
+    }
+  });
+
+  test("under the door, the door's facts decide, not the built-in's own options", async () => {
+    // The two page sets link to each other, so they have to be told the same thing. A
+    // built-in constructed with options of its own and then run by the door follows the door.
+    const root = await loadFiles([join(FIXTURE_DIR, "two-entities-fk.json")]);
+    const stale = await emit(root, builtinApiDocs({ subDir: "elsewhere", modelSurface: false }), "flat", { apiSubDir: "api", modelSurface: true });
+    expect(stale).toEqual(await emit(root, builtinApiDocs(), "flat", { apiSubDir: "api", modelSurface: true }));
+    const none = await emit(root, builtinDocs({ apiSurfaces: API_SURFACES }), "flat", {});
+    expect(none).toEqual(await emit(root, builtinDocs(), "flat", {}));
+  });
+
+  test("the marker `meta docs` reads: on the references, declared by the registry, absent from the built-ins", () => {
+    expect(refDocs().docsSurface).toBe("model");
+    expect(refApiDocs().docsSurface).toBe("api");
+    expect(builtinDocs().docsSurface).toBeUndefined();
+    expect(builtinApiDocs().docsSurface).toBeUndefined();
+    // Resolved, not trusted: every reference in this package carries exactly the marker
+    // its registry entry declares, which for all but those two is none. `meta eject` reads
+    // the registry to print where the copy is listed; `meta docs` reads the generator.
+    for (const name of REFERENCE_GENERATOR_NAMES) {
+      expect(`${name}: ${String(PAIRS[name].ref().docsSurface)}`)
+        .toBe(`${name}: ${String(generatorRegistry[name]?.docsSurface)}`);
+    }
+    // And the names are the built-ins', so a diagnostic names the same generator either way.
+    expect(refDocs().name).toBe(builtinDocs().name);
+    expect(refApiDocs().name).toBe(builtinApiDocs().name);
+  });
+
+  test("docsDoorGenerators: the listed copy per surface, nothing when none is listed, a refusal by name otherwise", () => {
+    const model = refDocs();
+    const api = refApiDocs();
+    expect(docsDoorGenerators([model, api])).toEqual({ model, api });
+    expect(docsDoorGenerators([api])).toEqual({ api });
+    // Nothing listed: the door runs the packaged generator for both surfaces.
+    expect(docsDoorGenerators([])).toEqual({});
+    // Two for one surface: each would write the same pages.
+    expect(() => docsDoorGenerators([model, refDocs()])).toThrow(
+      /lists two generators for the model surface \("docs-file" and "docs-file"\)/,
+    );
+    // No marker: the door has no surface to give it. That is the packaged docs generator
+    // (which needs no listing) and any generator `meta gen` runs (which goes elsewhere).
+    expect(() => docsDoorGenerators([builtinDocs()])).toThrow(/lists "docs-file", which carries no `docsSurface`/);
+    expect(() => docsDoorGenerators([model, builtinEntity()])).toThrow(
+      /lists "entity-file", which carries no `docsSurface`/,
+    );
+  });
+});

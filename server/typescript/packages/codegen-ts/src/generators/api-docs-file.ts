@@ -13,7 +13,7 @@
 //   • `README.md` — the consolidated human index (GitHub treats it as landing),
 //   • `AGENT-API.md` — the token-frugal agent form.
 //
-// Unlike `docs`/`mermaid-er` (Tier-2 neutral, owned by `meta docs`), `api-docs`
+// Unlike `docs` (Tier-2 neutral, owned by `meta docs`), `api-docs`
 // is a NATIVE generator: it is REGISTERED in the generator registry (ADR-0022
 // Part 3) — so it appears in `gen --list` and is selectable by its stable name
 // `api-docs`. It is NOT a `meta docs` mode.
@@ -39,7 +39,7 @@ import {
   type DocPagePlacement,
 } from "../docs-paths.js";
 import { projectProvider } from "../render-engine/framework-provider.js";
-import { buildApiModel } from "./api-model.js";
+import { buildApiModelForRun } from "./api-model.js";
 import {
   renderEntityApiPage,
   renderApiIndex,
@@ -82,31 +82,21 @@ export const apiDocsFile = function apiDocsFile(opts?: ApiDocsFileOpts): Generat
       const provider = projectProvider(ctx.projectRoot ?? process.cwd());
       const layout = ctx.config.outputLayout ?? "flat";
 
-      // Per-call output prefix. Default `docs/api`; `meta docs` passes `api`.
-      const apiDir = opts?.subDir ?? DEFAULT_API_DIR;
+      // Per-call output prefix. Default `docs/api`; `meta docs` passes `api`. Under the docs
+      // door the door's facts decide it and the model cross-link, not this factory's options:
+      // the model generator is told the same thing, and the two must agree (docs-door.ts).
+      const door = ctx.docsDoor;
+      const apiDir = (door !== undefined ? door.apiSubDir : opts?.subDir) ?? DEFAULT_API_DIR;
+      const modelSurface = door !== undefined ? door.modelSurface : opts?.modelSurface;
       const indexFilename = `${apiDir}/README.md`;
       const agentFilename = `${apiDir}/AGENT-API.md`;
 
-      // ONE ApiModel feeds every form (Task-1 builder; Task-2 renderers). The
-      // pkMap is reused from the run's renderContext when present (the real gen
-      // run always provides it) and derived otherwise.
-      // Auto-detect: document the OPT-IN Hono CRUD surface iff the Hono routes
-      // generator is actually in the run. The runner aggregates each generator's
-      // `emitsHonoRoutes` marker into ctx.config.includeHonoRoutes, so api-docs
-      // "just works" — it documents Hono exactly when `routesFileHono` is wired,
-      // and omits it (Fastify-only) otherwise. No explicit opt needed.
-      const model = buildApiModel(ctx.loadedRoot, {
-        loadedRoot: ctx.loadedRoot,
-        outputLayout: layout,
-        includeHonoRoutes: ctx.config.includeHonoRoutes ?? false,
-        // The verbs the routes generators actually mount (`expose`), so a page never lists a
-        // route the project does not serve.
-        ...(ctx.config.routesExpose !== undefined && { expose: ctx.config.routesExpose }),
-        // The project's prefix, because every route is mounted inside it. Without
-        // this the page documents `/authors` for routes served at `/api/authors`.
-        apiPrefix: ctx.renderContext?.apiPrefix ?? "",
-        ...(ctx.renderContext?.pkMap !== undefined && { pkMap: ctx.renderContext.pkMap }),
-      });
+      // ONE ApiModel feeds every form (Task-1 builder; Task-2 renderers). The facts of the
+      // run it reads (layout, whether Hono routes are wired, the verbs the routes generators
+      // mount, `apiPrefix`, the pk map) are gathered by `buildApiModelForRun`, which the
+      // reference template calls too, so an owned copy never restates them and cannot fall
+      // behind on one.
+      const model = buildApiModelForRun(ctx);
 
       // Track (path, fqn) for the SAME hard collision backstop docsFile() uses —
       // two units that resolve to one path (flat, cross-package short-name clash)
@@ -126,7 +116,7 @@ export const apiDocsFile = function apiDocsFile(opts?: ApiDocsFileOpts): Generat
         // `<apiDir>/<placement>`. The href is derived from the SAME
         // docPageOutputPath placement via surfaceCrossHref so it resolves in both
         // layouts. ABSENT otherwise.
-        const modelPageHref = opts?.modelSurface
+        const modelPageHref = modelSurface
           ? surfaceCrossHref(path, docPageOutputPath(layout, node))
           : undefined;
         return { path, content: renderEntityApiPage(unit, provider, modelPageHref) };

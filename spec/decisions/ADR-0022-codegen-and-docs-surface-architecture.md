@@ -50,9 +50,14 @@ languages). The confusion was the cross-cutting surface. Resolved:
 
 - **D1 — `meta docs` is the single door for *neutral metadata* documentation.**
   The neutral metadata-doc engine (Part 3) is reached only via `meta docs`, never
-  the `meta gen` pipeline. (`docsFile`/`mermaid-er` stay deprecated from the gen
-  suite.) *This rule governs the neutral docs category only — see Part 3 for
-  SDK/API docs.*
+  the `meta gen` pipeline. (`docsFile` stays deprecated from the gen suite.) *This
+  rule governs the neutral docs category only — see Part 3 for SDK/API docs.*
+  *Amended 2026-10-11:* D1 originally also kept the standalone `mermaid-er`
+  generator, deprecated, in the gen suite. It was the one neutral artifact still
+  written by `meta gen`, which is the exception D1 exists to rule out, and
+  `meta docs` already drew its diagram. 1.1 removed the generator (ADR-0034
+  Amendment 7), so D1 now holds without an exception: the ER diagram, like every
+  other neutral page, comes from `meta docs`.
 - **D2 — `verify` is unified to subverbs** `--db` (schema drift) / `--codegen`
   (regen-and-diff) / `--templates` (template/prompt drift), the same meaning in
   every port; bare `verify` keeps each port's historical default. `--db` is

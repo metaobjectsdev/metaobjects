@@ -20,7 +20,7 @@ import { join } from "node:path";
 import * as coreFactories from "@metaobjectsdev/codegen-ts/generators";
 import * as reactFactories from "@metaobjectsdev/codegen-ts-react";
 import * as tanstackFactories from "@metaobjectsdev/codegen-ts-tanstack";
-import { factoryModuleOf, listCatalog } from "../src/lib/catalog.js";
+import { catalogEntry, factoryModuleOf, listCatalog, packagedWiring } from "../src/lib/catalog.js";
 import { buildCatalogListing, renderCatalogText, type GeneratorCatalogRow } from "../src/lib/catalog-listing.js";
 import { ejectGenerator } from "../src/commands/eject.js";
 
@@ -96,19 +96,46 @@ describe("catalog factory exports", () => {
 });
 
 describe("meta gen --list — how to wire a generator as shipped", () => {
-  test("every row outside the docs layer carries its package import, and no derived call", async () => {
+  test("every row `meta gen` runs carries its package import, and no derived call", async () => {
     const rows = (await buildCatalogListing()).filter(
       (r): r is GeneratorCatalogRow => r.kind === "generator",
     );
     for (const row of rows) {
-      if (row.layer === "docs") {
-        // `meta docs` is that layer's door; a wiring line would teach the deprecated route.
+      if (row.door !== undefined) {
+        // `meta docs` runs it; a line for `generators` would teach wiring `meta gen` skips.
         expect({ name: row.name, wire: row.wire }).toEqual({ name: row.name, wire: undefined });
         continue;
       }
       expect(row.wire?.import).toMatch(/^import \{ \w+ \} from "@metaobjectsdev\/codegen-ts[\w/-]*";$/);
       expect({ name: row.name, keys: Object.keys(row.wire ?? {}) }).toEqual({ name: row.name, keys: ["import"] });
     }
+    // The rows with a door are exactly the two `meta docs` runs.
+    expect(rows.filter((r) => r.door !== undefined).map((r) => r.name).sort()).toEqual(["api-docs", "docs"]);
+  });
+
+  // The import line is withheld because `meta docs` runs the generator (its `docsSurface`
+  // marker), not because of the layer the listing groups it under. A docs-layer generator
+  // that `meta gen` does run must print its import like any other.
+  test("packagedWiring keys on `docsSurface`, not on the docs layer", () => {
+    const entity = catalogEntry("entity");
+    const docs = catalogEntry("docs");
+    const apiDocs = catalogEntry("api-docs");
+    if (entity === undefined || docs === undefined || apiDocs === undefined) throw new Error("catalog entry missing");
+    const entityImport = { import: `import { entityFile } from "@metaobjectsdev/codegen-ts/generators";` };
+
+    expect(packagedWiring(entity)).toEqual(entityImport);
+    // Same generator, filed under the docs layer, no marker: it still gets its import.
+    expect(packagedWiring({ ...entity, layer: "docs" })).toEqual(entityImport);
+    // Same generator, any layer, carrying the marker: `meta docs` runs it, so no import.
+    expect(packagedWiring({ ...entity, docsSurface: "model" })).toBeUndefined();
+    // The two real ones.
+    expect(packagedWiring(docs)).toBeUndefined();
+    expect(packagedWiring(apiDocs)).toBeUndefined();
+    // And with the marker taken off, the docs-layer entry would print its import.
+    const { docsSurface: _marker, ...unmarked } = docs;
+    expect(packagedWiring(unmarked)).toEqual({
+      import: `import { docsFile } from "@metaobjectsdev/codegen-ts/generators";`,
+    });
   });
 
   test("the engine's factories are served from /generators, the framework packages' from the root", async () => {

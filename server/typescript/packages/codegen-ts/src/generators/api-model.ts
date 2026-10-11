@@ -144,6 +144,7 @@ import { generatableObjects } from "../source-detect.js";
 import { effectivePackage } from "../docs-paths.js";
 import { entityOutputPath, type OutputLayout } from "../import-path.js";
 import type { RenderContext } from "../render-context.js";
+import type { GenContext } from "../generator.js";
 import type { PkInfo } from "../pk-resolver.js";
 import {
   modelFieldShapes,
@@ -1257,4 +1258,32 @@ function templateExample(symbolBase: string, symbols: ApiSymbol[]): UnitExample 
     body.push(`const output = ${renderSym.name}(${payloadLit}, provider);`);
   }
   return { imports: importLines(picks), body };
+}
+
+/**
+ * The API model for a RUN: {@link buildApiModel} with its context read off the run rather
+ * than restated by the caller.
+ *
+ * Which facts of a run the documented API depends on is this package's knowledge: the page
+ * layout, whether a Hono routes generator is wired (the runner aggregates each generator's
+ * `emitsHonoRoutes` marker into `ctx.config.includeHonoRoutes`, so the Hono surface is
+ * documented exactly when it is emitted), the verbs each routes generator mounts
+ * (`ctx.config.routesExpose`, from `routesFile({ expose })`), the project's `apiPrefix`
+ * (every route is mounted inside it, so without it a page documents `/authors` for routes
+ * served at `/api/authors`), and the run's primary-key map. The `api-docs` generator and its reference template both
+ * call this, so when the model learns to read another fact of the run, an owned copy reads
+ * it too on its next package upgrade instead of quietly documenting less than the packaged
+ * generator does.
+ */
+export function buildApiModelForRun(ctx: GenContext): ApiModel {
+  return buildApiModel(ctx.loadedRoot, {
+    loadedRoot: ctx.loadedRoot,
+    outputLayout: ctx.config.outputLayout ?? "flat",
+    includeHonoRoutes: ctx.config.includeHonoRoutes ?? false,
+    // The verbs the routes generators actually mount (`expose`), so a page never lists a
+    // route the project does not serve.
+    ...(ctx.config.routesExpose !== undefined && { expose: ctx.config.routesExpose }),
+    apiPrefix: ctx.renderContext?.apiPrefix ?? "",
+    ...(ctx.renderContext?.pkMap !== undefined && { pkMap: ctx.renderContext.pkMap }),
+  });
 }

@@ -126,10 +126,29 @@ name. Import by default and eject to customize: an owned copy you never change o
 behind the reference. (`entityFile` / `queriesFile` / `routesFile` / `barrel` were removed
 from that subpath at 1.0 and restored in 1.1, so on a 1.0.x install an owned copy is the
 only path for those four.) The engine primitives come from the package main entry,
-`@metaobjectsdev/codegen-ts`. Every stock generator can be ejected except the `template`
-primitive, which has no emit logic of its own to own. `shared-model` and the docs tier
-(`docs`, `api-docs`, `mermaid-er`) are not yet ejectable; `meta gen --list` marks each
-entry without a reference copy `package-only`.
+`@metaobjectsdev/codegen-ts`. One entry cannot be ejected and is `package-only` in
+`meta gen --list`: the `template` primitive, which has no emit logic of its own.
+
+Three ejectable entries behave differently from the rest:
+
+- **`docs` and `api-docs` are run by `meta docs`, not `meta gen`.** `meta docs` writes
+  both with nothing wired; never put a docs generator, packaged or owned, in `generators`.
+  To change the pages, `meta eject docs` (or `api-docs`) and list the copy in the docs
+  block, `docs: { generators: [docsFile()] }`: it carries a `docsSurface` marker, and
+  `meta docs` and `meta verify --docs` run it in place of the packaged one. To change only
+  a page's wording, put your own `templates/docs/entity-page.md.mustache` in the project
+  instead.
+- **The ER diagram comes from `meta docs`** (overview page, and each entity's page). The
+  standalone `mermaidErDiagram()` / `"mermaid-er"` generator was removed in 1.1; a config
+  that still wires it fails with a message saying so. Remove it and run `meta docs`.
+- **`shared-model` ejects as a thin generator.** The copy owns which source files may
+  contribute and where the published version comes from. The artifact, its hash and the
+  manifest a consumer's `meta deps sync` verifies stay in the package
+  (`buildSharedModel`, `renderSharedModelFiles`); keep calling both.
+
+In an owned generator, read the project's own files through `ctx.inputRoot`. Under
+`meta verify --codegen` the run writes into a temporary tree and `ctx.projectRoot` is that
+tree. Under `meta docs` it is the directory that holds `metaobjects.config.ts`.
 
 **`requirementTests()` — one test stub per requirement the model claims.** A recommended
 approach, not a contract: a `live` or `partial` requirement gets a stub that fails until

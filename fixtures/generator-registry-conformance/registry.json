@@ -203,13 +203,6 @@
       "layer": "docs",
       "note": "Owned by `meta docs` (the single docs door, ADR-0021 D1); not part of the recommended native suite.",
       "ports": ["typescript"]
-    },
-    "mermaid-er": {
-      "concept": "Neutral Mermaid ER diagram of the entity/relationship model.",
-      "tier": "neutral",
-      "layer": "docs",
-      "note": "Neutral artifact owned by the docs engine (ADR-0020). Deprecated under `meta gen`: a `mermaidErDiagram()` already wired in `generators` still runs; `meta docs` draws the same diagram on its overview page.",
-      "ports": ["typescript"]
     }
   }
 }

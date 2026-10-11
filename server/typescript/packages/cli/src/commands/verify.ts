@@ -1628,7 +1628,7 @@ export async function verifyCommand(
 
     let result;
     try {
-      result = await computeCodegenDrift(forgeConfig, codegenRoot, genConfigDir, genCollection.inScope);
+      result = await computeCodegenDrift(forgeConfig, codegenRoot, genConfigDir, genCollection.inScope, genCollection.ownFiles);
     } catch (err) {
       log.error(`verify --codegen: regeneration failed: ${describeError(err)}`);
       return 1;

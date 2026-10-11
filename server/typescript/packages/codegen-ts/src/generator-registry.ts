@@ -19,12 +19,14 @@
 //
 // Tiering (ADR-0020 / ADR-0021 D1):
 //   - "native"  — the recommended Tier-1 `meta gen` suite (idiomatic emission).
-//   - "neutral" — Tier-2 artifacts owned by the neutral docs engine. `docs` and
-//                 `mermaid-er` are present here for identity/discoverability but
-//                 are NOT part of the recommended native surface — the canonical
-//                 door for documentation is `meta docs` (D1).
+//   - "neutral" — Tier-2 artifacts owned by the neutral docs engine. `docs` is present
+//                 here for identity/discoverability but is NOT part of the native
+//                 surface — the door for documentation is `meta docs` (D1). (The
+//                 standalone `mermaid-er` generator was a second neutral entry until
+//                 1.1 removed it: `meta docs` draws the diagram. See
+//                 metaobjects-config.ts, `removedGeneratorMessage`.)
 
-import type { Generator } from "./generator.js";
+import type { Generator, OwnedDocsSurface } from "./generator.js";
 import type { MetaobjectsGenConfig } from "./metaobjects-config.js";
 import { REFERENCE_GENERATOR_NAMES } from "./reference-templates.js";
 import {
@@ -35,7 +37,6 @@ import {
   callableFile,
   routesFileHono,
   namesFile,
-  mermaidErDiagram,
   promptRender,
   outputParser,
   extractor,
@@ -154,6 +155,16 @@ export interface GeneratorRegistryEntry {
   configKeys?: readonly (keyof MetaobjectsGenConfig)[];
   /** True iff this package ships a `src/reference/<name>.ts` for `meta eject`. */
   ejectable: boolean;
+  /**
+   * The `meta docs` surface an OWNED copy of this generator takes over. Set for the two
+   * generators `meta docs` runs (`docs`, `api-docs`): their owned copy is listed in
+   * `docs: { generators: [...] }`, the docs door's own block, and `meta eject` prints that
+   * wiring for them. Absent for every generator `meta gen` runs.
+   *
+   * Resolved, not trusted: a gate requires the reference template's generator to carry
+   * this same value as its `docsSurface` marker, which is what `meta docs` reads.
+   */
+  docsSurface?: OwnedDocsSurface;
   /** Optional note — used to point neutral entries at their canonical door. */
   note?: string;
 }
@@ -284,6 +295,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     factoryExport: "apiDocsFile",
     options: "filter?, target?",
     ejectable: ejectable("api-docs"),
+    docsSurface: "api",
   },
   docs: {
     name: "docs",
@@ -294,18 +306,8 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     factory: () => docsFile(),
     factoryExport: "docsFile",
     ejectable: ejectable("docs"),
+    docsSurface: "model",
     note: "neutral artifact — use `meta docs` (the single docs door, ADR-0021 D1); not part of the recommended `meta gen` native suite.",
-  },
-  "mermaid-er": {
-    name: "mermaid-er",
-    kind: "generator",
-    layer: "docs",
-    description: "Mermaid ER diagram of the entity/relationship model.",
-    tier: "neutral",
-    factory: () => mermaidErDiagram(),
-    factoryExport: "mermaidErDiagram",
-    ejectable: ejectable("mermaid-er"),
-    note: "neutral artifact owned by the docs engine (ADR-0020), deprecated under `meta gen`: do not add it to a new config. A `mermaidErDiagram()` already wired in `generators` still runs; `meta docs` draws the same diagram on its overview page.",
   },
 
   // ----- capability -------------------------------------------------------

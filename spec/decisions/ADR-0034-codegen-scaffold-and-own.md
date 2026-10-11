@@ -413,12 +413,12 @@ failure back.
   name, so the two paths start from the same output. The one difference is where the
   HTTP-adapter import points, because eject hands over that source too (Amendment 3).
 
-**Not yet ejectable in this change.** The rule above is ahead of the code for four
-TypeScript generators: `shared-model`, `docs`, `api-docs` and `mermaid-er`. Each one runs as
-shipped today and gains a reference copy through a sibling change, which updates this list
-when it lands. The Java `entity` and `extractor` generators became ejectable in Amendment 6.
-`template` is not on the list because it is the permanent exception. Every port's
-generators run as shipped, selected by name.
+**Not yet ejectable in this change.** The rule above was ahead of the code for four
+TypeScript generators when this amendment was written: `shared-model`, `docs`, `api-docs`
+and `mermaid-er`. Amendment 7 closed that list: the first three became ejectable and the
+fourth was removed. The Java `entity` and `extractor` generators became ejectable in
+Amendment 6. `template` is not on the list because it is the permanent exception. Every
+port's generators run as shipped, selected by name.
 
 ### Amendment 6 (2026-10-11) — the Java `entity` and `extractor` generators are ejectable
 
@@ -527,3 +527,116 @@ generator and the classes copied with it, and `mvn metaobjects:verify` to passin
 owned copies' output when it runs in a later second than the generate.
 `StandaloneExtractorGeneratorTest` and `EmitExtractorsDerivationTest` hold the split
 between the two generators.
+
+### Amendment 7 (2026-10-11) — `shared-model`, `docs` and `api-docs` are ejectable; `mermaid-er` is removed; `template` is the one that is not
+
+**Ruling (maintainer).** Amendment 5 recorded the rule, *"everything should be ejectable"*,
+and listed what still was not. An audit of every stock generator in all five ports then
+found eight that could not be ejected and recommended making all of them ejectable in 1.1.0
+except `template`. The answer: *"Go with recommended extraction, everything except
+template."* This amendment covers the TypeScript four: `shared-model`, `docs`, `api-docs`
+and `mermaid-er`. The first three became ejectable. On the fourth, a second ruling: *"Is
+that mermaid just an older version? We should have mermaid still in doc generation right?
+If so let's just get rid of it entirely. Otherwise we do need mermaid in our docs."*
+`meta docs` does still draw the diagrams, so the standalone generator was removed.
+
+**Completes** Amendment 5's closing paragraph, "Not yet ejectable in this change", for
+TypeScript. `shared-model` was held back because its output is a contract a consumer
+verifies, and `docs` and `api-docs` because `meta docs` had no seam to run an owned copy
+through. Each of those named a missing piece rather than a reason to refuse, and this
+amendment supplies the piece. Amendment 6 did the same for the two Java generators.
+Everything else in Amendment 5 stands.
+
+**`shared-model`: the artifact stays in the package, the generator is owned.** Its output
+is a contract: a consumer's `meta deps sync` hashes the artifact, checks the hash against
+the manifest and loads the document with its own vocabulary. That was the reason it was
+package-only, and it is the reason for the split, which is the one `cube-model` uses. Two
+stages are public in `@metaobjectsdev/codegen-ts`. `buildSharedModel` loads the files,
+selects by `include` and `exclude`, refuses a selection that is not closed or that needs
+vocabulary a consumer does not ship, and serializes it. `renderSharedModelFiles` names the
+two files, hashes the artifact and writes the manifest. The reference template calls both
+and owns what belongs to the publishing project: which source files may contribute, and
+where the published version comes from. An owned copy cannot change the bytes or the hash
+without replacing those two calls, which is a decision and not an accident. A test
+publishes with an ejected copy and has a real consumer sync, lock and verify the result.
+
+**`docs` and `api-docs`: `meta docs` gained a seam.** The reason given was that these are
+"the engine behind `meta docs` and have no seam to run an owned copy through". The seam:
+
+- **Which generator runs.** The `docs` block of `metaobjects.config.ts` gained
+  `generators`, the docs door's own list, and `Generator` gained a marker,
+  `docsSurface: "model" | "api"`. An owned copy carries the marker and is listed there:
+  `docs: { generators: [docsFile()] }`. `meta docs` runs it in place of the packaged
+  generator for that surface. `meta verify --docs` calls `meta docs`, so it checks the
+  committed pages against the copy. An entry with no marker, or two for one surface, is
+  refused by name.
+- **Not in the top-level `generators`.** That array is what `meta gen` runs, and
+  documentation keeps one door (ADR-0021 D1, ADR-0025). The copy is imported and called in
+  the same file as every other owned generator, in the list that belongs to the command
+  that runs it. A copy placed in `generators` by mistake is skipped by `meta gen` with a
+  warning that names `docs.generators`, and `meta docs` does not pick it up from there.
+  Every signal about a skipped doc generator covers it, and tells its owner to move the
+  copy where a packaged generator is removed: the run's reported skips and next step, the
+  `meta verify` advisory, and the `meta gen --list` row, which reads as wired once the copy
+  is in the docs block.
+- **What the door tells it.** `meta docs` used to pass the cross-surface facts as factory
+  options: where the api pages are, whether the model pages are written. A listed generator
+  is already constructed, so those facts now ride on the context as `ctx.docsDoor`. The
+  model and api generators are told the same thing, so their links to each other agree.
+  Under the door those facts decide; a generator's own options decide only on a direct
+  call, which has no door.
+
+The packaged `docsFile()` and `apiDocsFile()` do not carry the marker. They are what
+`meta docs` runs when nothing is listed, so they need no listing anywhere, and one placed
+in `generators` still draws the ADR-0025 warning and is still skipped. Nothing changes for
+a project that owns no docs generator: a gate holds the packaged generators to the same
+bytes under the door as they wrote from the same facts as options.
+
+The `requirements` and `agent` surfaces of `meta docs` are not generators in the catalog
+and stay packaged.
+
+**`mermaid-er` is removed, not ejected.** It was the older home of the ER diagram: a
+generator `meta gen` ran, writing the whole-model diagram and a section per entity to a file
+of its own (`docs/model.md`). ADR-0020 moved the diagram into the neutral docs engine, and
+since then `meta docs` has drawn it on its overview page (`README.md`) and has drawn each
+entity's neighbourhood on that entity's page. The standalone generator stayed as a
+deprecated back-compat wrapper that `meta docs` never ran. Making it ejectable would have
+handed adopters a copy of the thing the docs door replaced, with wiring that is not the
+docs door's. So `mermaidErDiagram()`, its registry row, the cross-port manifest row and
+its exports are gone, and the diagram builders stay where `meta docs` uses them
+(`renderMermaidErBlock`, public for an owned `docs` copy, and the neighbourhood diagram).
+A config that still names `"mermaid-er"` or imports `mermaidErDiagram` fails with a message
+saying it was removed and that `meta docs` draws the diagram; the import is diagnosed both
+in the config and in a module the config imports. ADR-0022 Part 2 D1 is amended to match.
+
+**What a copy owns in the docs tier, and what stays.** Owned: which nodes get a page, where
+a page lands, the overview page, and which forms of the API reference are written. In the
+package, and public so a copy imports only the engine: the page payloads
+(`buildEntityDocData`, `buildTemplateDocData`, `buildApiModelForRun`), the renderers
+(`renderDocPage`, `renderEntityApiPage`, `renderApiIndex`, `renderAgentApi`), the ER
+diagram and the page-placement helpers. The wording of a model page was already an
+adopter's without ejecting, by a template file of the same name under `templates/docs/`.
+
+**`meta eject` prints the docs door's wiring for a docs generator.** The registry entries
+for `docs` and `api-docs` declare their `docsSurface`, and a gate requires each reference
+template's generator to carry the same value. For those two, `meta eject` prints the import
+and `docs: { generators: [...] }`, says that `meta docs` runs the copy, and never sends the
+reader to the top-level `generators`. Its JSON row carries
+`wire.into: "docs.generators"`. `meta eject shared-model` prints the entry with the options
+the factory needs, `sharedModelFile({ name, include })`.
+
+**Two defects in `meta verify --codegen` came out of proving this.** The gate regenerates
+into a temporary tree, and it gave generators neither the project's own source files nor a
+way to read the project. So it failed with "no source files to load" for any project that
+wired `sharedModelFile()`, packaged or owned, and would have read the version default from
+the temporary tree. `runGen` now takes `inputRoot`, and generators read the project
+through `ctx.inputRoot`. `ctx.projectRoot` keeps its meaning, the root output paths are
+keyed under, because owned `entity` and `routes` copies compute their adapter import
+against it.
+
+**Still not ejectable: `template`, in every port that ships it.** It is the Mustache primitive. The
+adopter already supplies the template, the walk and the name, and the generator has no
+emit logic of its own, so a copy would own nothing. TypeScript, Java, C# and Python rule
+the same way, and `meta gen --list` marks it `package-only`. This is the one entry the rule
+"every stock generator can be ejected" does not reach, and it is not a gap to close. The
+rest of the audit's list is outside TypeScript and is not covered by this amendment.

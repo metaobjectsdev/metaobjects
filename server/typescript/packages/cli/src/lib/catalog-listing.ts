@@ -79,8 +79,8 @@ export interface GeneratorCatalogRow {
   install: { dev: string[]; runtime: string[] };
   /**
    * How to run this generator AS SHIPPED: the import line for its package factory. No
-   * copy involved; `meta eject` prints the local import for an owned one. Absent on the
-   * `docs` layer, whose door is `meta docs`.
+   * copy involved; `meta eject` prints the local import for an owned one. Absent on a row
+   * with a `door`: `meta docs` runs that generator, and `meta gen` skips it.
    */
   wire?: GeneratorWiring;
   source: {
@@ -102,6 +102,10 @@ export interface GeneratorCatalogRow {
     /** Present iff it is wired as a stable-name STRING that `meta gen` refuses (a neutral
      *  name): the run fails on it, rather than running or skipping the generator. */
     refused?: true;
+    /** Present iff this project lists an owned generator for this row's docs surface in
+     *  `docs: { generators: [...] }`: `meta docs` runs that copy in place of the packaged
+     *  generator. The right place for it, where `wired` (under `generators`) is not. */
+    wiredInDocsDoor?: true;
     /** This generator's framework is a declared dependency. `null` when neutral or unknown. */
     frameworkDetected: boolean | null;
     /** Files this generator WOULD emit for this model. `null` unless --probe, and
@@ -303,6 +307,12 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
       .filter((spec): spec is string => typeof spec === "string" && isNeutralGeneratorName(spec)),
   );
 
+  // The docs surfaces this project took over with an owned generator. Keyed by surface,
+  // as the docs door itself is: an owner may rename the copy.
+  const ownedDocsSurfaces = new Set(
+    (opts.project?.config.docs?.generators ?? []).map((g) => g?.docsSurface).filter((x) => x !== undefined),
+  );
+
   for (const entry of listCatalog()) {
     // Asked of the runner's own definition, never restated: which generators `meta gen`
     // skips is a fact about the runner, and a row that disagreed with it is the defect
@@ -381,6 +391,9 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
       row.project = {
         wired: project.wiredNames.has(entry.name),
         ...(refusedNames.has(entry.name) ? { refused: true as const } : {}),
+        ...(entry.docsSurface !== undefined && ownedDocsSurfaces.has(entry.docsSurface)
+          ? { wiredInDocsDoor: true as const }
+          : {}),
         frameworkDetected,
         wouldEmit,
         ...(probeError !== undefined ? { probeError } : {}),
@@ -481,8 +494,7 @@ export const REFERENCE_HELPER_NOTE: readonly string[] = [
 /** The footer line explaining the `package-only` row mark. */
 export const PACKAGE_ONLY_NOTE =
   "package-only = no reference template ships for it, so `meta eject` cannot copy it. " +
-  "Run one as shipped by importing its factory — the import sits under its row, except " +
-  "for the docs layer, whose door is `meta docs`.";
+  "Run one as shipped by importing its factory — the import sits under its row.";
 
 /**
  * Printed under every row `meta gen` does not run (a row with a `door`). One sentence,
@@ -496,7 +508,7 @@ export const SKIPPED_BY_GEN_NOTE =
 /**
  * Printed under every neutral row. The other outcome for a `generators` entry: the
  * resolver refuses a neutral stable name, so the string fails the run where a
- * constructed generator is skipped or (the deprecated `mermaidErDiagram()`) still runs.
+ * constructed generator is skipped.
  */
 export const NAME_REFUSED_BY_GEN_NOTE =
   "its name as a string under `generators` is refused instead: `meta gen` fails on it.";
@@ -528,6 +540,8 @@ export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
           : r.door !== undefined ? "WIRED but skipped by `meta gen`" : "WIRED",
       );
     }
+    // An owned docs generator in the docs block: the place `meta docs` runs it from.
+    if (r.project?.wiredInDocsDoor) marks.push("WIRED in `docs.generators`");
     if (r.source.owned) marks.push("owned");
     if (r.source.runtimeCopy !== undefined) {
       // The adapter source this generator's output imports, compared to the package.

@@ -20,8 +20,6 @@
 
 import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import { TYPE_TEMPLATE } from "@metaobjectsdev/metadata";
-import { render } from "@metaobjectsdev/render";
-import type { Provider } from "@metaobjectsdev/render";
 import type { Generator, GeneratorFactory, EmittedFile } from "../generator.js";
 import {
   docPageOutputPath,
@@ -33,6 +31,7 @@ import {
   type DocPagePlacement,
 } from "../docs-paths.js";
 import { projectProvider } from "../render-engine/framework-provider.js";
+import { renderDocPage } from "../render-engine/doc-page.js";
 import { renderMermaidErBlock } from "../templates/mermaid-er.js";
 import { buildEntityDocData } from "./docs-data-builder.js";
 import { isReport, servedReport } from "../source-detect.js";
@@ -64,20 +63,6 @@ const TEMPLATE_REF = "docs/entity-page.md";
 // sibling artifact, distinct from the entity page (Task 3).
 const TEMPLATE_PAGE_REF = "docs/template-page.md";
 
-/** Render one docs page, wrapping any engine error with the page ref + output
- *  path so a template failure points at the exact page (shared by the entity
- *  and template.output emission paths — identical error contract). */
-function renderDocPage(ref: string, payload: unknown, provider: Provider, path: string): string {
-  try {
-    return render({ ref, payload, provider, format: "markdown" });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`docs-file: failed rendering '${ref}' for '${path}': ${msg}`, {
-      cause: err instanceof Error ? err : undefined,
-    });
-  }
-}
-
 /**
  * @deprecated ADR-0021 D1: `meta docs` is the single door for documentation.
  * `docsFile()` stays as the INTERNAL engine that `meta docs` calls — do NOT add
@@ -101,8 +86,14 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
       // baseUrl). The api page for a node lives at `<subDir>/<same placement>`,
       // so the from-path doubles as the page placement. ABSENT/empty surfaces ⇒
       // undefined → output byte-identical to historical model-only runs.
+      //
+      // Under the docs door the door's facts decide which surfaces those are, not this
+      // factory's options: the api generator is told the same thing, and the two must agree
+      // (docs-door.ts). The options decide on a direct call, which has no door.
+      const door = ctx.docsDoor;
+      const apiSurfaces = door !== undefined ? door.apiSurfaces : opts?.apiSurfaces;
       const apiRefsFor = (fromPath: string): Array<{ label: string; href: string }> | undefined =>
-        opts?.apiSurfaces?.map((s) => ({ label: s.label, href: apiSurfaceHref(fromPath, s, fromPath) }));
+        apiSurfaces?.map((s) => ({ label: s.label, href: apiSurfaceHref(fromPath, s, fromPath) }));
       // Track every (path, fqn) so we can hard-error on a collision (defense
       // against silent doc-page overwrite) AFTER all pages are placed.
       const placements: DocPagePlacement[] = [];
