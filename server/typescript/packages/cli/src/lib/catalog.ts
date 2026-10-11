@@ -80,11 +80,14 @@ export interface GeneratorWiring {
  * other half is `meta eject`, which prints the import for the owned copy — the symbol is
  * the same in both (gated), so moving between them is one import line.
  *
- * Undefined for the `docs` layer: those generators are the engine behind `meta docs`,
- * which is their door, and wiring one into `generators: [...]` is the deprecated route.
+ * Undefined for an entry `meta docs` runs (one that carries `docsSurface`): that command
+ * is its door, and `meta gen` skips it in `generators: [...]`, so an import line for that
+ * array would be an instruction to wire something the run ignores. Asked of the marker
+ * and not of `layer`: the layer is how the listing is grouped, and a docs-layer generator
+ * that `meta gen` does run would need its import like any other.
  */
 export function packagedWiring(entry: GeneratorRegistryEntry): GeneratorWiring | undefined {
-  if (entry.layer === "docs") return undefined;
+  if (entry.docsSurface !== undefined) return undefined;
   const from = factoryModuleOf(entry.name);
   if (from === undefined) return undefined;
   return { import: `import { ${entry.factoryExport} } from "${from}";` };

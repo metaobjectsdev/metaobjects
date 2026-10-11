@@ -61,15 +61,16 @@ describe("meta gen --list (ADR-0021 D3)", () => {
     }
   });
 
-  test("flags docs/mermaid neutral (not part of the recommended native suite)", async () => {
+  test("flags docs neutral (not part of the recommended native suite)", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "meta-gen-list-"));
     try {
       await genCommand(["--list"], tmp);
       const text = out();
-      // They appear (identity/discoverability) ...
+      // It appears (identity/discoverability) ...
       expect(text).toContain("docs");
-      expect(text).toContain("mermaid-er");
-      // ... but are clearly marked neutral and point at `meta docs`.
+      // ... but is clearly marked neutral and points at `meta docs`. The standalone
+      // `mermaid-er` generator that sat beside it was removed in 1.1.
+      expect(text).not.toContain("mermaid-er");
       expect(text.toLowerCase()).toContain("neutral");
       expect(text).toContain("meta docs");
     } finally {
@@ -100,12 +101,18 @@ describe("meta gen --list (ADR-0021 D3)", () => {
       await genCommand(["--list"], tmp);
       const text = out();
       const line = (name: string) => text.split("\n").find((l) => l.startsWith(`  ${name} `)) ?? "";
-      expect(line("shared-model")).toContain("package-only");
+      // The one entry left: the Mustache primitive, where the adopter already supplies
+      // the template and there is no emit logic to own (ADR-0034 Amendment 7).
       expect(line("template")).toContain("package-only");
+      expect(text.split("\n").filter((l) => l.includes("[package-only]")).length).toBe(1);
       // An ejectable entry is never marked. `callable` and `trace-helper` were marked
-      // until they gained reference templates.
+      // until they gained reference templates; `shared-model` and the docs tier until
+      // Amendment 7.
       expect(line("callable")).not.toContain("package-only");
       expect(line("trace-helper")).not.toContain("package-only");
+      expect(line("shared-model")).not.toContain("package-only");
+      expect(line("docs")).not.toContain("package-only");
+      expect(line("api-docs")).not.toContain("package-only");
       expect(line("prompt-render")).not.toContain("package-only");
       expect(line("entity")).not.toContain("package-only");
       expect(text).toContain("package-only = no reference template ships");

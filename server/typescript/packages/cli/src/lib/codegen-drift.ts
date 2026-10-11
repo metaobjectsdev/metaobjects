@@ -127,12 +127,17 @@ function listFiles(dir: string): string[] {
  *   never committed because the `meta gen` that produced the committed tree
  *   never emitted it either. Undefined ⇒ everything is in scope (byte-identical
  *   to a project with no `scope` declared).
+ * @param sourceFiles the collection's OWN source files, the same list `meta gen`
+ *   threads onto `ctx.sourceFiles`. `shared-model` loads them standalone to build its
+ *   artifact, so without them the regen asked it to publish nothing and this gate
+ *   failed with "no source files to load" on every project that wires it.
  */
 export async function computeCodegenDrift(
   config: MetaobjectsGenConfig,
   metadata: MetaData,
   projectRoot: string,
   scope?: (fqn: string) => boolean,
+  sourceFiles?: readonly string[],
 ): Promise<CodegenDriftResult> {
   const root = isAbsolute(projectRoot) ? projectRoot : resolve(projectRoot);
 
@@ -211,7 +216,13 @@ export async function computeCodegenDrift(
       genStateDir: join(tempRoot, ".gen-state"),
       mergeStrategy: "overwrite",
       baseline: "fresh",
+      // The real project, for a generator that reads its files (`ctx.inputRoot`):
+      // `shared-model` takes its default version from the nearest package.json, and an
+      // owned generator may read anything. `projectRoot` stays the temp tree, which the
+      // owned route and entity generators compute their adapter import against.
+      inputRoot: root,
       ...(scope !== undefined ? { scope } : {}),
+      ...(sourceFiles !== undefined ? { sourceFiles } : {}),
     });
 
     // Diff each committed outDir against its temp mirror.

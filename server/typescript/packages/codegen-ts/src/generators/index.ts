@@ -14,7 +14,10 @@
 //
 // Which entries have a reference copy is declared once, in `REFERENCE_GENERATOR_NAMES`
 // (reference-templates.ts); `meta gen --list` marks every other entry `package-only` —
-// today that is `template`, `shared-model` and the docs tier.
+// today that is `template` alone, the Mustache primitive, which has no emit logic of its
+// own. `docsFile` and `apiDocsFile` are exported here as the generators `meta docs` runs;
+// they need no wiring. An ejected copy of either is listed in `docs: { generators: [...] }`,
+// and `meta docs` then runs the copy (Amendment 7).
 // See spec/decisions/ADR-0034-codegen-scaffold-and-own.md.
 
 export { entityFile, type EntityFileOpts } from "./entity-file.js";
@@ -26,7 +29,6 @@ export { callableFile, type CallableFileOpts } from "./callable-file.js";
 export { routesFileHono, type RoutesFileHonoOpts } from "./routes-file-hono.js";
 export { namesFile } from "./names-file.js";
 /** @deprecated ADR-0021 D1 — neutral artifact owned by `meta docs` (ADR-0020); not part of the recommended `meta gen` suite. */
-export { mermaidErDiagram, type MermaidErOptions } from "./mermaid-er.js";
 export { promptRender, type PromptRenderOpts } from "./prompt-render-file.js";
 export { outputParser, type OutputParserOpts } from "./output-parser-file.js";
 export { extractor, type ExtractorOpts } from "./extractor-file.js";

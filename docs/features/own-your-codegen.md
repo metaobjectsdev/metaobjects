@@ -157,6 +157,116 @@ What the diff in step 4 holds:
 Nothing requires this. An owned copy keeps working, and `meta eject --list` keeps telling
 you how far it is from the reference.
 
+## The docs generators and `shared-model` (TypeScript)
+
+Every stock TypeScript generator can be ejected except one. `template` is the Mustache
+primitive: you already supply its template, its walk and its name, and it has no emit
+logic of its own, so a copy would own nothing. `meta gen --list` marks it `package-only`.
+The C#, Java and Python ports rule the same way for theirs (ADR-0034 Amendment 7).
+
+Three of the ejectable ones differ from the rest in what runs them or in what the copy may
+change.
+
+### `docs` and `api-docs` are run by `meta docs`
+
+`meta docs` writes the model pages and the API reference with nothing wired. Eject one of
+the two generators behind it when you want to change which nodes get a page, where a page
+lands, how the overview page is laid out, or which forms of the API reference are written:
+
+```bash
+meta eject docs api-docs
+```
+
+```ts
+import { docsFile } from "./codegen/generators/docs.js";
+import { apiDocsFile } from "./codegen/generators/api-docs.js";
+
+export default defineConfig({
+  // …
+  docs: { generators: [docsFile(), apiDocsFile()] },
+});
+```
+
+The copies are listed in the `docs` block, which is `meta docs`'s own config, and not in
+the top-level `generators`, which is what `meta gen` runs:
+
+- **`meta docs` runs a listed copy in place of the packaged generator.** Each copy carries
+  a `docsSurface` marker (`"model"` for `docs`, `"api"` for `api-docs`) saying which surface
+  it takes over. The summary line of `meta docs` names the generator, so you can see that
+  your copy ran.
+- **`meta verify --docs` checks against it.** That gate calls `meta docs`, so an edit to
+  the copy shows up as drift in the committed pages until you run `meta docs` again.
+- **One generator per surface, and each must say which.** Two entries for one surface, or
+  an entry with no `docsSurface`, are refused by name.
+- **`meta gen` never runs one.** If a copy ends up in `generators`, `meta gen` skips it
+  with a warning that names `docs.generators`, and `meta docs` keeps running the packaged
+  generator until you move it. The run's `help[]` next step and the `meta verify` advisory
+  (rule `doc-generator-in-gen`) say the same: move it, do not remove it.
+- **`meta gen --list` shows it.** A copy listed in the docs block marks its row
+  ``WIRED in `docs.generators` `` (`project.wiredInDocsDoor` in `--format json`).
+
+You can eject one and not the other. The two page sets link to each other, so `meta docs`
+tells both generators the same facts on `ctx.docsDoor`: the api surfaces from your `docs:`
+config, the directory of the api surface being written, and whether the model pages are
+written. A copy reads them there and takes no options for them.
+
+| | The copy owns | Stays in the package |
+|---|---|---|
+| `docs` | which objects and templates get a page, where a page lands, which page template renders, the whole overview page (`renderIndexPage`) | the page payloads (`buildEntityDocData`, `buildTemplateDocData`), the ER diagram (`renderMermaidErBlock`), the page templates |
+| `api-docs` | which units get a page, where a page lands, whether the index and the agent form (`AGENT-API.md`) are written | the model of the generated API (`buildApiModelForRun`, which also reads the run: layout, `apiPrefix`, whether Hono routes are wired) and its renderers (`renderEntityApiPage`, `renderApiIndex`, `renderAgentApi`) |
+
+Two things need no eject. To change the wording of a model page, put a file of the same
+name in your project (`templates/docs/entity-page.md.mustache` or
+`template-page.md.mustache`); it wins over the packaged one. And the packaged `docsFile()`
+and `apiDocsFile()` are never listed anywhere: `meta docs` runs them when the `docs` block
+names no generator for their surface.
+
+The `requirements` and `agent` pages of `meta docs` are not generators in the catalog and
+cannot be ejected.
+
+### The ER diagram comes from `meta docs`
+
+`meta docs` draws the Mermaid diagrams: the whole model on its overview page (`README.md`)
+and each entity's neighbourhood on that entity's page. An owned `docs` copy decides where
+the whole-model diagram goes, by where it calls `renderMermaidErBlock`.
+
+Before 1.1 a standalone generator, `mermaidErDiagram()` (stable name `mermaid-er`), also
+wrote the whole-model diagram to `docs/model.md` under `meta gen`. It was the older home of
+the same diagram and has been removed. A config that still wires it fails with a message
+saying so. To upgrade, delete the import and the `mermaidErDiagram()` entry (or the
+`"mermaid-er"` name) from `generators`, delete the `docs/model.md` it wrote, and run
+`meta docs`.
+
+### `shared-model`: you own the inputs, the package owns the artifact
+
+`sharedModelFile()` publishes part of your model as an artifact and a manifest that another
+project's `meta deps sync` copies and verifies
+([metadata dependencies](metadata-dependencies.md)). Its output is a contract with that
+other project, so the copy is split the way `cube-model`'s is:
+
+| The copy owns | Stays in the package |
+|---|---|
+| which of your source files may contribute (`files`, default the run's own) | `buildSharedModel`: the load, the `include` / `exclude` selection, the closure check, the serialized document, the re-load with core vocabulary |
+| where the published version comes from (`nearestPackageVersion` reads the nearest `package.json`; replace it with your own source of truth) | `renderSharedModelFiles`: the two file names, the artifact's hash, the manifest |
+
+```bash
+meta eject shared-model
+```
+
+```ts
+import { sharedModelFile } from "./codegen/generators/shared-model.js";
+
+generators: [sharedModelFile({ name: "acme-common", include: ["acme::common::**"] })],
+```
+
+A copy that calls those two functions publishes exactly what the packaged generator
+publishes, and a consumer's sync accepts it. Nothing a consumer checks is in the copy, so
+you cannot change it there by accident; to change it you would have to replace the calls,
+and then you have stopped agreeing with every consumer of the artifact. Read the project's
+own files through `ctx.inputRoot`, as the copy does for the version: under
+`meta verify --codegen` the run writes into a temporary tree and `ctx.projectRoot` is that
+tree.
+
 ## What `meta eject` hands over, and what stays core (TypeScript)
 
 Owning a generator means owning the code it writes **and the code that code calls**,
@@ -422,7 +532,7 @@ generator code. The 20-line programmatic shape for each port is in
 
 | Port | Invocation | Programmatic — write a `Generator` | Declarative — template + scope |
 |---|---|---|---|
-| **TypeScript** | `meta init` → `meta gen --list --probe` → `meta eject <names...>` → `meta gen` (Bun/Node CLI) | **Yes.** `meta generator new <name>` writes a working generator of your own into `codegen/generators/` and wires it — the first move for an output nothing ships. To use a stock generator as shipped, import its factory from its package (`meta gen --list` prints the line) and wire it. To change one: `meta init` scaffolds the LAYOUT and an empty selection (ADR-0034 Amendment 2); `meta eject <name>...` copies each generator you choose into `codegen/generators/*.ts` and prints the import to put in `metaobjects.config.ts`. Edit them freely. The prompt tier (`prompt-render`, `output-parser`, `extractor`, `output-prompt`, `render-helper`) ejects like the rest: you own which templates get a module and where it lands, while the render and extract engines those modules call stay in the package. `requirement-tests` ejects as one file holding the generator and its default stub renderer, so the stub text is yours to change; the requirement walk, each test's identity and the claim digest stay in the package. `cube-model` (the Cube data-model exporter, [cube-export.md](cube-export.md)) ejects as one file as well: which entities get a cube, where the files land and the YAML call are yours, while the mapping (`buildCubeModel`, which raises every refusal) and the YAML writer (`renderCubeYaml`) stay in the package. `callable` and `trace-helper` eject the same way as the prompt tier: the copy decides which objects get a module and where it lands, and the module body comes from `renderCallableFile` / `renderTraceHelper` in the package. Every stock generator can be ejected except the `template` primitive, which has no emit logic of its own to own (the same ruling in every port). Not yet ejectable: the docs tier (`docs`, `api-docs`, `mermaid-er`) and `shared-model` (FR-023's publisher generator). Until each gains a reference copy, `meta gen --list` marks it **package-only** and `meta eject` names it as such. | **Yes** — `templateGenerator({ template, scope, outputPattern })` in the config's `generators: [...]`. No CLI flag: the config already takes generator values. |
+| **TypeScript** | `meta init` → `meta gen --list --probe` → `meta eject <names...>` → `meta gen` (Bun/Node CLI) | **Yes.** `meta generator new <name>` writes a working generator of your own into `codegen/generators/` and wires it — the first move for an output nothing ships. To use a stock generator as shipped, import its factory from its package (`meta gen --list` prints the line) and wire it. To change one: `meta init` scaffolds the LAYOUT and an empty selection (ADR-0034 Amendment 2); `meta eject <name>...` copies each generator you choose into `codegen/generators/*.ts` and prints the import to put in `metaobjects.config.ts`. Edit them freely. The prompt tier (`prompt-render`, `output-parser`, `extractor`, `output-prompt`, `render-helper`) ejects like the rest: you own which templates get a module and where it lands, while the render and extract engines those modules call stay in the package. `requirement-tests` ejects as one file holding the generator and its default stub renderer, so the stub text is yours to change; the requirement walk, each test's identity and the claim digest stay in the package. `cube-model` (the Cube data-model exporter, [cube-export.md](cube-export.md)) ejects as one file as well: which entities get a cube, where the files land and the YAML call are yours, while the mapping (`buildCubeModel`, which raises every refusal) and the YAML writer (`renderCubeYaml`) stay in the package. `callable` and `trace-helper` eject the same way as the prompt tier: the copy decides which objects get a module and where it lands, and the module body comes from `renderCallableFile` / `renderTraceHelper` in the package. `shared-model` (FR-023's publisher generator) ejects as a thin generator: the copy owns which source files contribute and where the version comes from, and the artifact a consumer verifies comes from `buildSharedModel` / `renderSharedModelFiles` in the package. `docs` and `api-docs` eject too, and `meta docs` runs the copy from `docs: { generators: [...] }`, never from the top-level `generators` ([details](#the-docs-generators-and-shared-model-typescript)). Every stock generator can be ejected except the `template` primitive, which has no emit logic of its own to own (the same ruling in every port): `meta gen --list` marks it **package-only** and `meta eject` names it as such. | **Yes** — `templateGenerator({ template, scope, outputPattern })` in the config's `generators: [...]`. No CLI flag: the config already takes generator values. |
 | **Java / Kotlin** | `mvn metaobjects:generate` / `mvn metaobjects:verify` (`metaobjects-maven-plugin`) | **Yes.** Extend `FileEmittingGenerator` and read the model through `ModelWalk` (both in `metaobjects-codegen-base`) for one of your own. Every generator — built-in or your own — is named in `<generator><classname>` and loaded from the project classpath: one seam, not two. There is no default suite, so `<generators>` is the complete list. Kotlin runs through the same goal. | **Yes** — `TemplateScopeGenerator` wired as an ordinary `<generator>`. No CLI flag: `<generator>` is already the seam. |
 | **C#** | `dotnet meta gen` / `dotnet meta verify` (.NET tool) | **Yes.** Implement `IGenerator` in the owned console project `codegen/` and list it in `codegen/Program.cs`; `dotnet meta gen` / `verify --codegen` hand off to that project whenever `codegen/Codegen.csproj` exists. `dotnet meta eject <name>` scaffolds the project, or write its two files by hand. An owned generator the `--generators` selection does not name still runs. | **Yes** — `dotnet meta gen --template-spec <json> --template-root <dir>`. |
 | **Python** | `metaobjects gen` / `metaobjects verify` (console-script) | **Yes.** Name your generator as `module:symbol` in `--generators` or a target's `generators` in `metaobjects.config.yaml`; the symbol is an instance or a function returning one. Read the model through `metaobjects.codegen.model_walk`. (`--provider module:symbol` registers **metamodel vocabulary**, not a generator.) | **Yes** — `metaobjects gen --template-spec <json> --templates <dir>`. |

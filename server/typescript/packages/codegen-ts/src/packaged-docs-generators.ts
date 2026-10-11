@@ -10,9 +10,10 @@
 // Keyed by the generator's IMPLEMENTATION name, because that is what a constructed
 // generator carries. The value is the factory call an adopter wrote, for the message.
 //
-// `mermaid-er-diagram` is not one of them. `mermaidErDiagram()` is deprecated and kept
-// running for a config that already lists it, so the runner does not skip it.
-// `meta docs` draws the same diagram on its overview page through `docsFile()`.
+// An OWNED copy of one of them (docs-door.ts) is skipped too, by its `docsSurface` marker
+// and not by this map: an owner may rename the copy, and the fix for it is a different
+// one. A packaged generator is removed from `generators`; an owned copy is moved to
+// `docs: { generators: [...] }`, where `meta docs` runs it.
 const PACKAGED_DOCS_FACTORY_CALLS: ReadonlyMap<string, string> = new Map([
   ["docs-file", "docsFile()"],
   ["api-docs", "apiDocsFile()"],

@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { runGen } from "../src/runner.js";
-import { defineConfig, resolveGenerators } from "../src/metaobjects-config.js";
+import { defineConfig, REMOVED_GENERATOR_NAMES, removedGeneratorMessage, resolveGenerators } from "../src/metaobjects-config.js";
+import { generatorRegistry } from "../src/generator-registry.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import { routesFile } from "../src/generators/routes-file.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
@@ -58,7 +59,7 @@ describe("resolveGenerators (registry string resolution)", () => {
       const msg = (err as Error).message;
       expect(msg).toContain("entity");
       expect(msg).toContain("routes");
-      // neutral names are NOT advertised as selectable
+      // a removed name is NOT advertised as selectable
       expect(msg).not.toContain("mermaid-er");
       // ...and neither is the native generator `meta gen` skips.
       expect(msg).not.toContain("api-docs");
@@ -70,9 +71,47 @@ describe("resolveGenerators (registry string resolution)", () => {
       .toThrow(/generator "docs" is neutral \(owned by 'meta docs'\); not selectable in the gen suite/);
   });
 
-  test('neutral name "mermaid-er" → neutral error', () => {
-    expect(() => resolveGenerators(["mermaid-er"]))
-      .toThrow(/is neutral \(owned by 'meta docs'\); not selectable in the gen suite/);
+  // 1.1 removed the standalone `mermaid-er` generator: `meta docs` draws the diagram. A
+  // config that still names it worked yesterday, so it is told what happened and what to
+  // do, not "unknown generator", which sends its reader looking for a typo.
+  test('removed name "mermaid-er" → says it was removed and that `meta docs` draws the diagram', () => {
+    let message = "";
+    try {
+      resolveGenerators(["entity", "mermaid-er"]);
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).toContain('generator "mermaid-er" was removed in 1.1');
+    expect(message).toContain("`meta docs` draws the ER diagram");
+    expect(message).toContain('Remove "mermaid-er" from `generators`');
+    expect(message).not.toContain("unknown generator");
+    // And it is gone from the registry, not merely refused.
+    expect(generatorRegistry["mermaid-er"]).toBeUndefined();
+  });
+
+  // The same answer for a caller that must decide something from it (the CLI's verify
+  // advisory), without matching the sentence.
+  test("removedGeneratorMessage answers for a removed name only", () => {
+    expect(removedGeneratorMessage("mermaid-er")).toContain('generator "mermaid-er" was removed in 1.1');
+    expect(removedGeneratorMessage("entity")).toBeUndefined();
+    expect(removedGeneratorMessage("no-such-generator")).toBeUndefined();
+    // A name that is a property of every object is not a removed generator.
+    expect(removedGeneratorMessage("toString")).toBeUndefined();
+    expect(removedGeneratorMessage("constructor")).toBeUndefined();
+  });
+
+  // `meta verify` reports a removed name as a doc generator `meta gen` refuses, with
+  // `meta docs` as what to run instead. That is true only while every removed generator
+  // is one `meta docs` replaced. A removed generator of another kind fails here, so the
+  // advisory is given a rule of its own before the entry is added.
+  test("every removed name is one `meta docs` replaced, and its message says so", () => {
+    expect(Object.keys(REMOVED_GENERATOR_NAMES)).toEqual(["mermaid-er"]);
+    for (const [name, message] of Object.entries(REMOVED_GENERATOR_NAMES)) {
+      expect(message, name).toContain(`generator "${name}" was removed`);
+      expect(message, name).toContain("run `meta docs`");
+      // A removed name must not also be a registered one: the registry would never be reached.
+      expect(generatorRegistry[name], name).toBeUndefined();
+    }
   });
 });
 

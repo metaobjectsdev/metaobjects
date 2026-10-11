@@ -280,6 +280,14 @@ none emits every surface the project has something to say with.
 | requirements | `--requirements` | The declared ledger, as `requirements.md` + `requirements.toon`. | no |
 | agent | `--agent` | Three pages an agent reads BEFORE touching a tier (below). | yes |
 
+The model and api surfaces each run one generator, and either can be replaced by a copy you
+own: `meta eject docs` or `meta eject api-docs`, then list the copy in the `docs` block of
+`metaobjects.config.ts`, `docs: { generators: [docsFile()] }`. `meta docs` runs it in place
+of the packaged generator for the surface its `docsSurface` marker names, and
+`verify --docs` checks the committed pages against it. The requirements and agent surfaces
+are not generators and cannot be replaced. See
+[own-your-codegen](own-your-codegen.md#docs-and-api-docs-are-run-by-meta-docs).
+
 Two flags are NOT members of that set and do not compose with it:
 
 - **`--metamodel`** is a different MODE over a different subject: it documents the BUILT-IN
@@ -578,10 +586,16 @@ name: a doc generator (`docsFile()`, `apiDocsFile()`) listed under `generators` 
 (ADR-0025). The result then says so in `warnings[]` and adds a `meta docs` next step to
 `help[]`; `meta gen --list` marks those rows ``run by `meta docs` `` (`door` in
 `--format json`), and `meta verify` reports the same wiring as an advisory row with rule
-`doc-generator-in-gen`. A neutral stable name written as a string (`"docs"`,
-`"mermaid-er"`) is refused rather than skipped, so `meta gen` fails on it: `meta gen --list`
+`doc-generator-in-gen`. An owned (ejected) docs generator listed there is skipped the
+same way, and every one of those messages tells you to move it to
+`docs: { generators: [...] }`, where `meta docs` runs it, instead of removing it; once it
+is there, its `meta gen --list` row reads ``WIRED in `docs.generators` ``
+(`project.wiredInDocsDoor` in `--format json`). The neutral stable name `"docs"` written
+as a string is refused rather than skipped, so `meta gen` fails on it: `meta gen --list`
 marks that row ``WIRED by name, which `meta gen` refuses`` (`project.refused` in
-`--format json`), and the advisory row's rule is `doc-generator-refused-by-gen`.
+`--format json`), and the advisory row's rule is `doc-generator-refused-by-gen`. The
+name `"mermaid-er"` is refused too, as removed: `meta docs` draws the ER diagram, and
+the message and the same advisory rule say so.
 
 In a structured run every narration line moves to **stderr**, so stdout is one
 parseable document. `--format` is honored by `gen`, `verify` and `migrate`; any

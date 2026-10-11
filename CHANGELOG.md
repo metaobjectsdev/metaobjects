@@ -165,10 +165,10 @@ generator catalog and the Atlas evaluation are 1.2 work.
   own: which objects get a module and where it lands. The module body stays in the package
   (`renderCallableFile`, `renderTraceHelper`, now exported from `@metaobjectsdev/codegen-ts`),
   the same split the prompt tier uses. The rule is that every stock generator can be
-  ejected except the `template` primitive, which has no emit logic of its own to own. Not
-  yet ejectable in this change: `shared-model` and the docs tier (`docs`, `api-docs`,
-  `mermaid-er`) in TypeScript. The Java `entity` and `extractor` generators became
-  ejectable in ADR-0034 Amendment 6.
+  ejected except the `template` primitive, which has no emit logic of its own to own.
+  `shared-model`, `docs` and `api-docs` follow in their own entry below (ADR-0034
+  Amendment 7), and the Java `entity` and `extractor` generators became ejectable in
+  ADR-0034 Amendment 6.
 
 - **Agent skills: a cost test for owned generators.** The `metaobjects-codegen` skill now says when not to write a generator: only when generator code plus
   its generated output and added metadata is fewer lines than the hand-written code it
@@ -508,6 +508,40 @@ generator catalog and the Atlas evaluation are 1.2 work.
   docs` wording come from the packages, and each port's existing generators already type a
   required field as not nullable), so an owned generator needs no resync for this. See
   [docs/features/reporting.md](docs/features/reporting.md#rows-from-a-dimensions-entity).
+- **`shared-model`, `docs` and `api-docs` can be ejected (TypeScript).** With these
+  three, every stock TypeScript generator can be ejected except `template`, the Mustache
+  primitive: you already supply its template and it has no emit logic of its own to own,
+  so it stays `package-only` (the C#, Java and Python ports rule the same way). The
+  standalone `mermaid-er` generator is not among them: it is removed (see **Removed**
+  below). Ruling and reasoning: ADR-0034 Amendment 7. Nothing changes for a project that
+  ejects none of them: packaged output is byte-identical, and gated to be.
+  - **`meta eject shared-model`** copies a thin generator. The copy owns which of your
+    source files may contribute and where the published version comes from. Everything a
+    consumer's `meta deps sync` verifies stays in the package, in two functions the copy
+    calls and `@metaobjectsdev/codegen-ts` now exports: `buildSharedModel` (load, select,
+    closure check, serialize, core-vocabulary re-load) and `renderSharedModelFiles` (the
+    file names, the hash, the manifest). A test publishes with an ejected copy and has a
+    consumer sync, lock and verify the result.
+  - **`meta eject docs` and `meta eject api-docs`** copy the generators behind
+    `meta docs`. List the copy in the docs block of `metaobjects.config.ts`, a new key:
+    `docs: { generators: [docsFile()] }`. It carries a `docsSurface` marker, and
+    `meta docs` and `meta verify --docs` run it in place of the packaged generator for that
+    surface. `meta eject` prints exactly that wiring, and its JSON row carries
+    `door: "docs"` and `wire.into: "docs.generators"`. The copy owns which nodes get a page,
+    where a page lands, the overview page and which forms of the API reference are written.
+    A docs generator does not go in the top-level `generators`: `meta gen` skips one there
+    with a warning that names `docs.generators`. Two entries for one surface, or an entry
+    with no `docsSurface`, are refused by name. The `requirements` and `agent` pages stay
+    packaged.
+  - To change only the wording of a model page you still need no generator: a
+    `templates/docs/entity-page.md.mustache` in your project wins over the packaged one.
+  - Steps and what each copy owns:
+    [own-your-codegen](docs/features/own-your-codegen.md#the-docs-generators-and-shared-model-typescript).
+- **`ctx.inputRoot` for a generator that reads the project's own files.** It is the real
+  project directory. Under `meta gen` it equals `ctx.projectRoot`. Under
+  `meta verify --codegen` the run writes into a temporary tree and `ctx.projectRoot` is
+  that tree, as before, because owned `entity` and `routes` copies compute an import path
+  against it. Read files through `ctx.inputRoot`; `runGen` takes it as `inputRoot`.
 
 ### Changed
 
@@ -670,6 +704,27 @@ until you regenerate.
   One rule is relaxed: an authored `validator.length @min: 0` on a `@required` string now
   admits the empty string, as the generated schema already did.
 
+### Removed
+
+- **The standalone `mermaid-er` generator (TypeScript).** `mermaidErDiagram()`, its
+  `MermaidErOptions` type and the stable name `"mermaid-er"` are gone from
+  `@metaobjectsdev/codegen-ts/generators`, the generator catalog and the cross-port
+  generator manifest. It wrote the whole-model ER diagram to a file of its own
+  (`docs/model.md`) under `meta gen`, and was the older home of a diagram `meta docs` has
+  drawn since the docs engine took it over: the whole model on the overview page
+  (`README.md`), and each entity's neighbourhood on that entity's page. Those diagrams are
+  unchanged, byte for byte. No other port shipped the generator. Ruling: ADR-0034
+  Amendment 7; ADR-0022 Part 2 D1 is amended to match.
+  - **To upgrade**, if your `metaobjects.config.ts` wires it: delete the
+    `mermaidErDiagram` import and its entry in `generators` (or the `"mermaid-er"` name),
+    delete the file it wrote (`docs/model.md` under your output directory, unless you moved
+    it with `outFile`), and run `meta docs`. `meta verify --codegen` reports that file as
+    no longer generated until it is deleted.
+  - **A config that still wires it fails with a message that says this**, instead of the
+    runtime's own words for a missing export. The import is diagnosed in the config and in
+    a module the config imports, and the name is diagnosed as removed, not as unknown.
+  - A project that never wired it sees no change.
+
 ### Fixed
 
 - **A doc generator skipped by `meta gen` is now reported in every output form.** `meta docs`
@@ -692,23 +747,33 @@ until you regenerate.
     docs` `` with the reason under the row, a wired one reads ``WIRED but skipped by `meta
     gen` ``, and `--probe` no longer prints `would emit 0` for them. In `--format json` the row
     carries `note` and `door: "meta docs"`, and `project.wouldEmit` is `null` instead of `0`.
-    The `mermaid-er` row's note now states the back-compat fact: it is deprecated, a
-    `mermaidErDiagram()` already wired in `generators` still runs, and `meta docs` draws the
-    same diagram on its overview page. A neutral name wired as a string (`"docs"`,
-    `"mermaid-er"`), which `meta gen` refuses, reads ``WIRED by name, which `meta gen`
-    refuses`` (`project.refused` in `--format json`).
+    There is no `mermaid-er` row any more: the generator is removed in this release (see
+    **Removed** above). The neutral name `"docs"` wired as a string, which `meta gen`
+    refuses, reads ``WIRED by name, which `meta gen` refuses`` (`project.refused` in
+    `--format json`).
   - **`meta verify`** said nothing about a config wired this way. It now reports each one as an
     advisory row (rule `doc-generator-in-gen`, in `antiPatterns.rows[]`) that names
     `meta verify --docs` as the gate that checks documentation. A neutral name wired as a
     string is reported under rule `doc-generator-refused-by-gen`, because `meta gen` fails on
-    it rather than skipping it. Advisory: the exit code is unchanged.
+    it rather than skipping it. The removed name `"mermaid-er"` is reported under the same
+    rule, with the message `meta gen` fails with. Advisory: the exit code is unchanged.
+  - **An owned docs generator under `generators`** (a copy made with `meta eject docs` or
+    `meta eject api-docs`) is skipped by the same rule and reported in the same places. Its
+    fix is the opposite one, so each message says to move it to
+    `docs: { generators: [...] }`, where `meta docs` runs it, and not to remove it: the
+    runner's warning, the `help[]` next step and the `doc-generator-in-gen` advisory row. A
+    config that wires only such a copy is no longer told `no entities to generate`. Listed
+    in the docs block, its `meta gen --list` row reads ``WIRED in `docs.generators` ``
+    (`project.wiredInDocsDoor` in `--format json`).
   - **The unknown-generator error** listed `api-docs` among the names `meta gen` accepts. It no
     longer does, and it says documentation comes from `meta docs`.
 
-  `runGen()` returns a new `skippedDocGenerators: string[]` beside `warnings`, and
-  `@metaobjectsdev/codegen-ts` exports `isPackagedDocsGenerator` (skipped) and
-  `isNeutralGeneratorName` (refused), so a caller embedding the runner can ask rather than
-  match a sentence. TypeScript only: in the C#, Java, Kotlin and Python
+  `runGen()` returns a new `skippedDocGenerators: string[]` beside `warnings`, with
+  `skippedOwnedDocGenerators` naming the owned copies among them, and
+  `@metaobjectsdev/codegen-ts` exports `isPackagedDocsGenerator` (skipped),
+  `isNeutralGeneratorName` (refused) and `removedGeneratorMessage` (refused as removed), so
+  a caller embedding the runner can ask rather than match a sentence. TypeScript only: in
+  the C#, Java, Kotlin and Python
   ports documentation is a separate command (`dotnet meta docs`, `mvn metaobjects:docs`,
   `metaobjects docs`) and no doc generator is registered for code generation, so there is
   nothing to wire and nothing to skip.
@@ -994,6 +1059,12 @@ until you regenerate.
   refused.** The preset check read `and` and `or` as field names ("references field 'or'
   which is not a filterable field"), so a valid composed preset failed to load. It now
   recurses into each composed clause and checks it like a top-level one, as TypeScript does.
+- **`meta verify --codegen` can check a project that wires `sharedModelFile()`.** The gate
+  regenerates into a temporary tree and passed the generator neither the project's own
+  source files nor a way to read the project, so it failed with "no source files to load"
+  for a packaged or an owned `shared-model`, and would have taken the version default from
+  the temporary tree. It now passes what `meta gen` passes. A publisher's drift gate on its
+  shared artifact, which the dependency docs describe, works as described.
 
 ## [1.0.13] — 2026-10-03
 

@@ -1,6 +1,12 @@
-// Mermaid ER renderer — produces a docs/model.md body with:
-//   1. A top-level ```mermaid erDiagram block of entities + identity.reference relationships.
-//   2. A per-entity prose section consuming the 6 user-facing doc attrs (notes excluded).
+// Mermaid diagrams for `meta docs`:
+//   1. `renderMermaidErBlock` — the whole-model ```mermaid erDiagram block (entities +
+//      identity.reference relationships), on the overview page (README.md).
+//   2. `renderEntityNeighborhoodErBlock` — one entity and its direct neighbours, on that
+//      entity's page.
+//
+// These used to back a standalone `mermaid-er` generator as well, which wrote the first
+// diagram plus per-entity prose to a file of its own under `meta gen`. 1.1 removed it:
+// the diagrams are documentation, and `meta docs` is the one command that writes them.
 //
 // D5: the notes attr is NEVER emitted. Per the Documentation Provider design.
 
@@ -11,14 +17,12 @@ import {
   FIELD_ATTR_OBJECT_REF,
   OBJECT_SUBTYPE_VALUE,
 } from "@metaobjectsdev/metadata";
-import { readDocAttrs } from "./jsdoc.js";
 
-/** Render JUST the fenced ```mermaid erDiagram``` block for the whole model
- *  (entities + identity.reference relationships) — NO per-entity prose. This is
- *  the single neutral ER-diagram builder; both `renderMermaidModel()` (the
- *  standalone model.md body) AND the neutral docs OVERVIEW page (`README.md`,
- *  emitted by the Tier-2 `meta docs` engine) consume it, so there is exactly
- *  ONE place ER topology is computed — no duplicate graph logic (ADR-0020).
+/** Render the fenced ```mermaid erDiagram``` block for the whole model (entities +
+ *  identity.reference relationships). This is the single neutral ER-diagram
+ *  builder: the docs OVERVIEW page (`README.md`, emitted by the Tier-2 `meta docs`
+ *  engine) consumes it, so there is exactly ONE place ER topology is computed
+ *  (ADR-0020).
  *
  *  Abstract entities are excluded — they have no physical table to put in a
  *  diagram (matches migrate-ts/expected-schema.ts's same filter). */
@@ -35,29 +39,6 @@ export function renderMermaidErBlock(root: MetaRoot): string {
     for (const line of renderEntityBlock(entity)) parts.push(`    ${line}`);
   }
   parts.push("```");
-  return parts.join("\n");
-}
-
-/** Render a docs/model.md body: Mermaid erDiagram + per-entity prose. Abstract
- *  entities are excluded — they have no physical table to put in a diagram
- *  (matches migrate-ts/expected-schema.ts's same filter). Reuses the shared
- *  `renderMermaidErBlock()` for the diagram so the ER logic is never duplicated. */
-export function renderMermaidModel(root: MetaRoot): string {
-  const entities = root
-    .objects()
-    .filter((o) => o.isEntity() && !o.isAbstract);
-  const parts: string[] = [];
-
-  parts.push("# Data Model");
-  parts.push("");
-  parts.push(renderMermaidErBlock(root));
-  parts.push("");
-
-  for (const entity of entities) {
-    for (const line of renderEntityProse(entity)) parts.push(line);
-    parts.push("");
-  }
-
   return parts.join("\n");
 }
 
@@ -256,33 +237,4 @@ function fkFieldNames(entity: MetaObject): Set<string> {
 
 function escapeMermaidComment(s: string): string {
   return s.replace(/"/g, '\\"');
-}
-
-function renderEntityProse(entity: MetaObject): string[] {
-  // readDocAttrs handles the typeof-string / Array.isArray guards and intentionally
-  // omits `notes` (D5 contract — never read, never emitted).
-  const docs = readDocAttrs(entity);
-  const out: string[] = [];
-  out.push(`## ${docs.title ?? entity.name}`);
-  if (docs.description) {
-    out.push("");
-    out.push(docs.description);
-  }
-  if (docs.aliases && docs.aliases.length > 0) {
-    out.push("");
-    out.push(`*Aliases:* ${docs.aliases.join(", ")}`);
-  }
-  // Truthy check (not !== undefined): an empty deprecated value is the same
-  // signal as none (no reason ⇒ nothing meaningful to render in the prose callout).
-  if (docs.deprecated) {
-    const replaced = docs.replacedBy ? ` Replaced by **${docs.replacedBy}**.` : "";
-    out.push("");
-    out.push(`> ⚠️ **Deprecated:** ${docs.deprecated}${replaced}`);
-  }
-  if (docs.seeAlso && docs.seeAlso.length > 0) {
-    out.push("");
-    out.push("**See also:**");
-    for (const url of docs.seeAlso) out.push(`- <${url}>`);
-  }
-  return out;
 }

@@ -374,13 +374,16 @@ Because it is codegen output, it is **drift-gated**: `meta verify --codegen` in 
 publisher's own build regenerates and diffs it, so a metadata edit that changes the
 public surface cannot ship unnoticed.
 
-**`shared-model` is registered and discoverable, but deliberately not ejectable.**
-It shows up in `meta gen --list` like any other generator, but `meta eject --list`
-does not offer it (unlike `entity`/`queries`/`routes`/`barrel`, ADR-0034's four
-scaffold-and-own generators). The artifact it emits is a contract whose bytes a
-cross-port corpus pins and whose hash consumers verify — a user-owned, editable copy
-of the generator would invite an artifact that silently stops matching what
-consumers expect.
+**`shared-model` can be ejected, and the artifact stays in the package.**
+`meta eject shared-model` copies a thin generator you own: which of your source files may
+contribute, and where the published version comes from. The artifact is a contract whose
+bytes a cross-port corpus pins and whose hash consumers verify, so everything a consumer
+checks is not in the copy. It stays in two functions the copy calls, `buildSharedModel`
+(load, select, closure check, serialize, core-vocabulary re-load) and
+`renderSharedModelFiles` (the file names, the hash, the manifest). An unmodified copy
+publishes the same bytes as the packaged generator, and a test has a consumer sync and
+verify what an ejected copy published. See
+[own-your-codegen](own-your-codegen.md#shared-model-you-own-the-inputs-the-package-owns-the-artifact).
 
 **Only TypeScript publishes in Phase 1a — and only TypeScript and Python consume.**
 TypeScript and Python are the only two ports that can *consume* a dependency at all
@@ -466,8 +469,8 @@ but **not** built in Phase 1a — do not assume any of the following exists:
   and plain-directory vendoring
 - [`abstracts-and-inheritance.md`](abstracts-and-inheritance.md) — `extends:` and
   `overlay:` within one project; the cross-repository case builds on the same rules
-- [`own-your-codegen.md`](own-your-codegen.md) — generator ownership, and why
-  `shared-model` is registered but not ejectable
+- [`own-your-codegen.md`](own-your-codegen.md) — generator ownership, and what an
+  ejected `shared-model` copy owns
 - [`cli.md`](cli.md) — the `meta deps` command surface and `verify --deps`
 - [`CONFORMANCE.md`](../CONFORMANCE.md) — per-port pass status for
   `dependency-conformance`

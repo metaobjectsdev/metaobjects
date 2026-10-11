@@ -6,7 +6,7 @@
 export { runGen } from "./runner.js";
 export type { RunGenOpts, RunGenResult } from "./runner.js";
 
-export type { Generator, GenContext, EmittedFile, GeneratorFactory } from "./generator.js";
+export type { Generator, GenContext, EmittedFile, GeneratorFactory, OwnedDocsSurface } from "./generator.js";
 export { perEntity, perPackage, perModel, oncePerRun } from "./generator.js";
 // The one aggregation of the UI-tier markers. Exported because `meta docs` is the
 // SECOND door onto `agent/ui.md` and must answer "does this run emit a UI tier?"
@@ -60,7 +60,7 @@ export {
 export { isPackagedDocsGenerator, packagedDocsFactoryCall, DOCS_DOOR_COMMAND } from "./packaged-docs-generators.js";
 
 export type { MetaobjectsGenConfig, NormalizedMetaobjectsGenConfig, ResolvedGenConfig, Dialect, ExtStyle, ColumnNamingStrategy, MetaDataTypeProvider, GeneratorSpec, DocsConfig, ResolvedDocsConfig, DocsSurface, ApiSurface, VerifyConfig } from "./metaobjects-config.js";
-export { defineConfig, normalizeConfig, resolveGenerators, isNeutralGeneratorName, resolveDocsConfig } from "./metaobjects-config.js";
+export { defineConfig, normalizeConfig, resolveGenerators, isNeutralGeneratorName, removedGeneratorMessage, resolveDocsConfig } from "./metaobjects-config.js";
 // The dialect every generator falls back to when a config declares none. Exported because
 // `meta docs` must apply the SAME default `normalizeConfig` does — a command that resolved
 // the dialect differently would document a schema the toolchain does not produce.
@@ -131,6 +131,22 @@ export {
   assertNoDuplicateDocPaths,
 } from "./docs-paths.js";
 export type { DocPageNode, DocPagePlacement } from "./docs-paths.js";
+
+// The docs tier (ADR-0034 Amendment 7). `docsFile()` and `apiDocsFile()` are served from
+// `/generators`; what they compose is public here so an owned (ejected) copy imports only
+// this package. The owned part is which nodes get a page,
+// where it lands and how the index is laid out; the page payloads (`buildEntityDocData`,
+// `buildTemplateDocData`, `buildApiModelForRun`), the renderers and the ER diagram stay in
+// the package. `docsDoorGenerators` is how `meta docs` reads the owned copies out of
+// `docs: { generators: [...] }`.
+export { apiSurfaceHref, surfaceCrossHref } from "./docs-paths.js";
+export { docsDoorGenerators } from "./docs-door.js";
+export type { DocsDoorFacts } from "./docs-door.js";
+export { renderDocPage } from "./render-engine/doc-page.js";
+export { renderMermaidErBlock } from "./templates/mermaid-er.js";
+export { buildApiModel, buildApiModelForRun } from "./generators/api-model.js";
+export type { ApiModel, ApiModelContext, ApiUnitDoc } from "./generators/api-model.js";
+export { renderAgentApi, renderApiIndex, renderEntityApiPage } from "./generators/api-doc-render.js";
 
 export { isProjection, isWriteThrough } from "./projection/projection-detector.js";
 export { isAbstract, emitsInstanceArtifacts, emitsWriteArtifacts } from "./instance-artifacts.js";
@@ -408,6 +424,14 @@ export type {
 // FR-040 §6.4 — the client-component directive for generated CLIENT artifacts.
 // Public so an OWNED generator applies it the same way the built-ins do.
 export { withClientDirective, CLIENT_DIRECTIVE } from "./client-directive.js";
+
+// FR-023 §4.3 — the shared-model contract. `sharedModelFile()` (served from `/generators`) is
+// the reference generator; the two stages it wires are public so an owned (ejected) copy
+// imports only this package and keeps only the parts it owns: which source files may
+// contribute and which version is published. Everything a consumer's `meta deps sync`
+// verifies (the selection, the closure, the bytes, the hash, the manifest) stays here.
+export { buildSharedModel, renderSharedModelFiles } from "./shared-model/build-shared-model.js";
+export type { SharedModel, SharedModelFiles, SharedModelInput } from "./shared-model/build-shared-model.js";
 
 // FR-044 Plan 4 — the Cube exporter. `cubeModel()` is the reference generator; the two pure
 // stages it wires are public so an owned (ejected) copy imports only this package and keeps

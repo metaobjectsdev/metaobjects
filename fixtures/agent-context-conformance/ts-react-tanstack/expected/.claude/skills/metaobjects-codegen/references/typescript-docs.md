@@ -44,11 +44,20 @@ no docs are written by that run. The warning is on stderr, and in a structured r
 `meta verify` reports the wiring as an advisory row, rule `doc-generator-in-gen`. Remove
 the entry and run `meta docs`.
 
-**Do not add `mermaidErDiagram()` to a new config.** It is deprecated: `meta docs` already
-draws the ER diagram on its overview page with nothing wired. A `mermaidErDiagram()`
-already wired in `generators` still runs under `meta gen`. The stable names `"docs"` and
-`"mermaid-er"` written as strings in `generators` are refused, so `meta gen` fails on
-them; `meta verify` reports that as rule `doc-generator-refused-by-gen`.
+**An owned docs generator goes in `docs: { generators: [...] }`, never in `generators`.**
+`meta eject docs` (or `api-docs`) copies the generator and prints that wiring; `meta docs`
+and `meta verify --docs` then run the copy in place of the packaged one. Under
+`generators` it is skipped like the packaged one, and the warning, the `help[]` next step
+and the `doc-generator-in-gen` advisory all say to move it, not to remove it. Listed in
+the docs block, its `meta gen --list` row reads ``WIRED in `docs.generators` ``
+(`project.wiredInDocsDoor` in `--format json`).
+
+**There is no `mermaidErDiagram()` generator.** 1.1 removed it: `meta docs` draws the ER
+diagram on its overview page and on each entity's page with nothing wired. A config that
+still imports it, or names `"mermaid-er"`, fails with a message that says so; delete the
+entry and run `meta docs`. The stable name `"docs"` written as a string in `generators`
+is refused as well, so `meta gen` fails on it. `meta verify` reports both names as rule
+`doc-generator-refused-by-gen`.
 
 **Before calling any generated code, read `./docs/api/AGENT-API.md`** — it has the
 exact imports, signatures, payload field shapes, and runnable examples for this

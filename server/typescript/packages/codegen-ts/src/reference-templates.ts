@@ -29,6 +29,16 @@ export const REFERENCE_GENERATOR_NAMES = [
   // generators over `renderCallableFile` / `renderTraceHelper`, so the owned part is which
   // objects get a module and where it lands.
   "callable", "trace-helper",
+  // The publisher's shared-model artifact: a thin generator over `buildSharedModel` and
+  // `renderSharedModelFiles`. The owned part is which source files may contribute and
+  // which version is published; the artifact, its hash and the manifest that a
+  // consumer's `meta deps sync` verifies stay in the package.
+  "shared-model",
+  // The docs tier (ADR-0034 Amendment 7). `docs` and `api-docs` are run by `meta docs`, which
+  // reads an owned copy out of `docs: { generators: [...] }` by its `docsSurface` marker.
+  // The owned part is which nodes get a page, where it lands and how the index is laid out;
+  // the page payloads and renderers stay in the package.
+  "docs", "api-docs",
 ] as const;
 export type ReferenceGeneratorName = (typeof REFERENCE_GENERATOR_NAMES)[number];
 

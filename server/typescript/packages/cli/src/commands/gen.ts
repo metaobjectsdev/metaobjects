@@ -289,6 +289,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     antiPatterns,
     generatorCount: forgeConfig.generators?.length ?? 0,
     skippedDocGenerators: result.skippedDocGenerators,
+    skippedOwnedDocGenerators: result.skippedOwnedDocGenerators,
     ...(migrateAdvice !== undefined ? { migrateAdvice } : {}),
   };
   const output =

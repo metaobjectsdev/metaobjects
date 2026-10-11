@@ -78,6 +78,11 @@ export interface GenResultShape {
    */
   skippedDocGenerators?: readonly string[];
   /**
+   * The subset of `skippedDocGenerators` that are OWNED copies (they carry a
+   * `docsSurface` marker). Their next step is to move, not to remove. Absent means none.
+   */
+  skippedOwnedDocGenerators?: readonly string[];
+  /**
    * The "now migrate" next step, worded for this project's dialect — or absent when
    * this run cannot have changed the database schema (see gen-migrate-advice.ts).
    */
@@ -122,6 +127,22 @@ const ONLY_DOC_GENERATORS_TEXT =
   "Nothing was generated: every wired generator is a doc generator, and `meta gen` skips those. Run `meta docs`.";
 const DOCS_DOOR_HELP =
   "run `meta docs` for documentation, and remove the doc generators from `generators` in metaobjects.config.ts";
+const DOCS_DOOR_HELP_OWNED =
+  "run `meta docs` for documentation, and move the owned docs generators from `generators` to `docs: { generators: [...] }` in metaobjects.config.ts";
+const DOCS_DOOR_HELP_MIXED =
+  "run `meta docs` for documentation; in metaobjects.config.ts, move the owned docs generators from `generators` to `docs: { generators: [...] }` and remove the packaged ones";
+
+/**
+ * The next step for the doc generators a run skipped. A packaged one is removed from
+ * `generators`. An owned copy is MOVED to the docs block, where `meta docs` runs it:
+ * "remove it" would tell its owner to stop using the generator they ejected.
+ */
+function docsDoorHelp(result: GenResultShape): string {
+  const skipped = result.skippedDocGenerators?.length ?? 0;
+  const owned = result.skippedOwnedDocGenerators?.length ?? 0;
+  if (owned === 0) return DOCS_DOOR_HELP;
+  return owned === skipped ? DOCS_DOOR_HELP_OWNED : DOCS_DOOR_HELP_MIXED;
+}
 
 export function formatGenResult(result: GenResultShape, opts: FormatOptions): string {
   const symbols = opts.isTTY ? GEN_GLYPHS : GEN_WORDS;
@@ -335,10 +356,10 @@ export function genResultToData(result: GenResultShape): {
   const skippedDocs = result.skippedDocGenerators?.length ?? 0;
   if (onlyDocGeneratorsWired(result)) {
     summary = ONLY_DOC_GENERATORS_SUMMARY;
-    help.splice(0, help.length, DOCS_DOOR_HELP);
+    help.splice(0, help.length, docsDoorHelp(result));
   } else if (skippedDocs > 0) {
     help.push(
-      `\`meta gen\` skipped ${skippedDocs} doc generator(s) — see warnings[]; ${DOCS_DOOR_HELP}`,
+      `\`meta gen\` skipped ${skippedDocs} doc generator(s) — see warnings[]; ${docsDoorHelp(result)}`,
     );
   }
   // An absent section is STATED, never omitted: a reader must be able to tell

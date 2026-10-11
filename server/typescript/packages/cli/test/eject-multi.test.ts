@@ -36,7 +36,8 @@ interface EjectPayload {
     name: string;
     path: string;
     status: string;
-    wire: { import: string; entry: string };
+    wire: { import: string; entry: string; into?: string };
+    door?: string;
     requires: string[];
   }>;
   install: { dev: string[]; runtime: string[]; command: string };
@@ -75,17 +76,115 @@ describe("meta eject takes many names", () => {
   });
 
   test("a package-only generator is named as such, not as unknown", async () => {
-    // `shared-model` is a real catalog entry with no reference template. Calling it
-    // "unknown" sends the reader looking for a typo that is not there.
+    // `template` is a real catalog entry with no reference template: it is the Mustache
+    // primitive, the adopter already supplies its template, and there is no emit logic to
+    // own (ADR-0034 Amendment 7). It is the only one left. Calling it "unknown" sends the
+    // reader looking for a typo that is not there.
     const dir = tmp();
     try {
-      expect(await ejectCommand(["shared-model"], dir, "text")).toBe(2);
+      expect(await ejectCommand(["template"], dir, "text")).toBe(2);
       const err = erred.join("\n");
       expect(err).toContain("package-only");
-      expect(err).toContain("shared-model");
-      expect(err).not.toContain("unknown name(s): shared-model");
+      expect(err).toContain("template");
+      expect(err).not.toContain("unknown name(s): template");
       expect(err).toContain("@metaobjectsdev/codegen-ts");
       expect(err).toContain("Nothing was ejected");
+      expect(existsSync(join(dir, "codegen/generators/template.ts"))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("shared-model ejects — a thin generator, and its entry carries the options it needs", async () => {
+    // It used to answer `package-only`. The owned part is which source files may
+    // contribute and which version is published; the artifact, its hash and the manifest
+    // stay in the package (`buildSharedModel`, `renderSharedModelFiles`).
+    const dir = tmp();
+    try {
+      expect(await ejectCommand(["shared-model"], dir, "json")).toBe(0);
+      expect(erred.join("\n")).not.toContain("package-only");
+      const source = readFileSync(join(dir, "codegen/generators/shared-model.ts"), "utf8");
+      expect(source).toContain("export function sharedModelFile(");
+      expect(source).toContain("buildSharedModel");
+      expect(source).toContain("renderSharedModelFiles");
+      // The contract is not in the copy: no hashing, no manifest shape, no file names.
+      expect(source).not.toContain("createHash");
+      expect(source).not.toContain("metaobjects.pkg.json\"");
+      const [row] = payload().ejected;
+      expect(row?.status).toBe("created");
+      // Not `sharedModelFile()`: the factory cannot be called without these two.
+      expect(row?.wire.entry).toBe("sharedModelFile({ name, include })");
+      expect(row?.wire.import).toBe(
+        'import { sharedModelFile } from "./codegen/generators/shared-model.js";',
+      );
+      // An ordinary `meta gen` generator: the entry goes in the top-level `generators`.
+      expect(row?.door).toBeUndefined();
+      expect(row?.wire.into).toBeUndefined();
+      // The two emitted files import nothing, and the copy imports only the engine.
+      const { install } = payload();
+      expect(install.runtime).toEqual([]);
+      expect(install.dev).toEqual([`@metaobjectsdev/codegen-ts@^${cliVersion()}`]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("docs and api-docs eject — and say that `meta docs` runs the copy, not `meta gen`", async () => {
+    const dir = tmp();
+    try {
+      expect(await ejectCommand(["docs", "api-docs"], dir, "json")).toBe(0);
+      expect(erred.join("\n")).not.toContain("package-only");
+      const docs = readFileSync(join(dir, "codegen/generators/docs.ts"), "utf8");
+      const api = readFileSync(join(dir, "codegen/generators/api-docs.ts"), "utf8");
+      // The marker `meta docs` reads off a listed copy is in the file the adopter owns.
+      expect(docs).toContain('docsSurface: "model"');
+      expect(api).toContain('docsSurface: "api"');
+      const rows = payload().ejected;
+      expect(rows.map((r) => r.name)).toEqual(["docs", "api-docs"]);
+      expect(rows.map((r) => r.wire.entry)).toEqual(["docsFile()", "apiDocsFile()"]);
+      expect(rows.map((r) => r.wire.import)).toEqual([
+        'import { docsFile } from "./codegen/generators/docs.js";',
+        'import { apiDocsFile } from "./codegen/generators/api-docs.js";',
+      ]);
+      // The row says which command runs the copy and which config key the entry goes in.
+      // It is the docs block's, never the array `meta gen` runs.
+      expect(rows.map((r) => r.door)).toEqual(["docs", "docs"]);
+      expect(rows.map((r) => r.wire.into)).toEqual(["docs.generators", "docs.generators"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the text report says which command runs an ejected docs generator", async () => {
+    const dir = tmp();
+    try {
+      expect(await ejectCommand(["docs"], dir, "text")).toBe(0);
+      const text = logged.join("\n");
+      expect(text).toContain('Ejected "docs" -> codegen/generators/docs.ts');
+      expect(text).toContain("`meta docs` runs this generator, in place of the packaged one.");
+      expect(text).toContain('import { docsFile } from "./codegen/generators/docs.js";');
+      expect(text).toContain("docs: { generators: [docsFile()] }");
+      expect(text).toContain("`meta verify --docs`");
+      // The wiring is the docs door's, start to finish: nothing sends the reader to the
+      // top-level `generators`, where `meta gen` would skip the copy.
+      expect(text).not.toContain("in `generators` yet");
+      expect(text).not.toContain("leaves `generators` bound");
+      expect(text.replaceAll("docs: { generators:", "")).not.toContain("generators:");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("mermaid-er is not a name any more: the generator was removed, and nothing is copied", async () => {
+    // 1.1 removed the standalone diagram generator (`meta docs` draws the diagram), so
+    // there is neither a reference template nor a catalog row to answer for it.
+    const dir = tmp();
+    try {
+      expect(await ejectCommand(["mermaid-er"], dir, "text")).toBe(2);
+      const err = erred.join("\n");
+      expect(err).toContain("unknown name(s): mermaid-er");
+      expect(err).not.toContain("package-only");
+      expect(existsSync(join(dir, "codegen/generators/mermaid-er.ts"))).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

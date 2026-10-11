@@ -132,6 +132,20 @@ export interface RunGenOpts {
    */
   sourceFiles?: readonly string[];
   /**
+   * The real project directory, threaded onto `GenContext.inputRoot` for a generator that
+   * READS the project's own files (the nearest `package.json`, a version file, anything an
+   * owned generator resolves against the project). Defaults to `projectRoot`, and for
+   * `meta gen` the two are the same directory.
+   *
+   * They differ for `meta verify --codegen`, which regenerates into a throwaway tree:
+   * `projectRoot` is that tree, because output paths, gen-state and the import paths a
+   * generator computes between an output directory and the project are all keyed under it,
+   * and this is the project the tree mirrors. Without it a generator that reads the
+   * project reads an empty temp directory, and the drift gate reports a difference `meta
+   * gen` would never produce.
+   */
+  inputRoot?: string;
+  /**
    * FR-043 §6 — the project's shipped-library selection TOKENS (`Collection.libraries`,
    * e.g. `["ai", "ai/db"]`), resolved to manifests and threaded onto
    * `GenContext.libraries`, and read by the post-selection audit.
@@ -156,6 +170,14 @@ export interface RunGenResult {
    * has to pattern-match a sentence to learn that a wired generator produced nothing.
    */
   skippedDocGenerators: string[];
+  /**
+   * The subset of `skippedDocGenerators` that are OWNED copies: each carries a
+   * `docsSurface` marker (docs-door.ts), so `meta docs` runs it from
+   * `docs: { generators: [...] }`. Reported apart because the fix differs. A packaged
+   * doc generator is removed from `generators`; an owned copy is moved, and telling its
+   * owner to remove it would be telling them to stop using it.
+   */
+  skippedOwnedDocGenerators: string[];
 }
 
 /**
@@ -287,6 +309,10 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   const projectRoot = opts.projectRoot !== undefined
     ? (isAbsolute(opts.projectRoot) ? opts.projectRoot : resolve(opts.projectRoot))
     : undefined;
+  // Where a generator reads the project's own files (`ctx.inputRoot`). See `RunGenOpts.inputRoot`.
+  const inputRoot = opts.inputRoot !== undefined
+    ? (isAbsolute(opts.inputRoot) ? opts.inputRoot : resolve(opts.inputRoot))
+    : projectRoot;
   const genStateDir = opts.genStateDir !== undefined
     ? (isAbsolute(opts.genStateDir)
         ? opts.genStateDir
@@ -408,7 +434,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       reason = "no object children match the configured scope";
     }
     warnings.push(`No entities to generate — ${reason}.`);
-    return { files: [], warnings, conflicts: [], skippedDocGenerators: [] };
+    return { files: [], warnings, conflicts: [], skippedDocGenerators: [], skippedOwnedDocGenerators: [] };
   }
 
   // FR-044: a served report (Table A) is generated from its read model, which the
@@ -422,7 +448,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         "served (it is abstract, or its read source is not a `source.rdb @kind: view`), " +
         "which generates nothing.",
     );
-    return { files: [], warnings, conflicts: [], skippedDocGenerators: [] };
+    return { files: [], warnings, conflicts: [], skippedDocGenerators: [], skippedOwnedDocGenerators: [] };
   }
 
   const safeEntities: MetaObject[] = [];
@@ -436,7 +462,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     safeEntities.push(entity);
   }
   if (safeEntities.length === 0) {
-    return { files: [], warnings, conflicts: [], skippedDocGenerators: [] };
+    return { files: [], warnings, conflicts: [], skippedDocGenerators: [], skippedOwnedDocGenerators: [] };
   }
 
   // Refuse before any generator runs — the one choke point that sees the WHOLE
@@ -682,8 +708,25 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // check below. A Set because a generator may run once per target.
   const emptyGenerators = new Set<string>();
   const skippedDocGenerators: string[] = [];
+  const skippedOwnedDocGenerators: string[] = [];
 
   for (const generator of config.generators) {
+    // An owned docs generator belongs to the docs door (docs-door.ts): `meta docs` runs it
+    // from `docs: { generators: [...] }`. In THIS array it is in the wrong place, and
+    // skipping it silently would leave its owner wondering why `meta docs` still runs the
+    // packaged one. So it is skipped with a warning that names the place, and reported as
+    // skipped like a packaged one: a run that wired nothing else must not read as "no
+    // entities to generate".
+    if (generator.docsSurface !== undefined) {
+      warnings.push(
+        `[${generator.name}] is a docs generator: 'meta docs' runs it, from ` +
+        "`docs: { generators: [...] }` in metaobjects.config.ts, and 'meta gen' does not. " +
+        "Move it there. Skipped.",
+      );
+      skippedDocGenerators.push(generator.name);
+      skippedOwnedDocGenerators.push(generator.name);
+      continue;
+    }
     // ADR-0025: `meta docs` is the single docs door. A `meta gen` config that
     // still lists a deprecated doc generator is warned + skipped, not run — the
     // generator stays as `meta docs`'s internal engine.
@@ -755,6 +798,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       },
       renderContext,
       ...(projectRoot !== undefined && { projectRoot }),
+      ...(inputRoot !== undefined && { inputRoot }),
       registry,
       ...(opts.sourceFiles !== undefined && { sourceFiles: opts.sourceFiles }),
       ...(selectedManifests !== undefined && { libraries: selectedManifests }),
@@ -1047,7 +1091,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     // A preview that hides a pending deletion is worse than no preview at all, so
     // the sweep still runs — in decide-and-report mode, touching nothing.
     sweep(true);
-    return { files: writes, warnings, conflicts, skippedDocGenerators };
+    return { files: writes, warnings, conflicts, skippedDocGenerators, skippedOwnedDocGenerators };
   }
 
   for (const file of emitted) {
@@ -1081,5 +1125,5 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // detect an engine change. Written after a successful run only.
   if (installedEngine !== undefined) saveEngineVersion(genStateDir, installedEngine);
 
-  return { files: writes, warnings, conflicts, skippedDocGenerators };
+  return { files: writes, warnings, conflicts, skippedDocGenerators, skippedOwnedDocGenerators };
 }

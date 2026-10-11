@@ -45,6 +45,8 @@ import {
   renderCoreMetamodelDocs,
 } from "@metaobjectsdev/metadata";
 import { dbEmittingObjects, DEFAULT_DIALECT, DEFAULT_DOCS_DIR, missingDialectMessage, resolveGenerators, runEmitsHonoRoutes, runEmitsUiTier, runRoutesExpose } from "@metaobjectsdev/codegen-ts";
+import { docsDoorGenerators } from "@metaobjectsdev/codegen-ts";
+import type { DocsDoorFacts } from "@metaobjectsdev/codegen-ts";
 import type { MetaDataTypeProvider, MetaRoot } from "@metaobjectsdev/metadata";
 import { generateSite, SITE_TEMPLATE_NAMES, SITE_ASSET_NAMES, readSiteFile } from "@metaobjectsdev/docs-site";
 // The `agent` schema surface takes the physical schema as an ARGUMENT with its resolvers
@@ -611,6 +613,30 @@ export async function docsCommand(
     warn: (msg) => log.warn(`docs: ${msg}`),
   };
 
+  // An owned docs generator (ADR-0034 Amendment 7). It is listed in this door's own config,
+  // `docs: { generators: [...] }`, and says which surface it takes over by its
+  // `docsSurface` marker; for that surface it runs IN PLACE OF the packaged generator, and
+  // `verify --docs`, which calls this command, checks the committed pages against it. An
+  // entry with no marker, or two for one surface, is refused by name.
+  let ownedModel: Generator | undefined;
+  let ownedApi: Generator | undefined;
+  try {
+    ({ model: ownedModel, api: ownedApi } = docsDoorGenerators(loadedConfig?.docs?.generators ?? []));
+  } catch (err) {
+    log.error(`docs: ${describeError(err)}`);
+    return 2;
+  }
+  // The context a surface's generator runs with. The facts the two page sets must agree
+  // on (where the api pages are, whether the model pages exist) ride on `ctx.docsDoor`
+  // rather than on factory options, because a listed generator is already constructed. Its
+  // own `filter` is applied as the gen runner applies one; the packaged generators carry
+  // none, so their context is the one above.
+  const doorCtx = (generator: Generator, facts: DocsDoorFacts): GenContext => ({
+    ...ctx,
+    matches: generator.filter ?? ctx.matches,
+    docsDoor: facts,
+  });
+
   const emit: EmittedFile[] = [];
   let modelFiles: EmittedFile[] = [];
 
@@ -632,9 +658,11 @@ export async function docsCommand(
     // polyglot model page references each port's api docs). `labeled` already
     // carries {label, subDir, baseUrl?} (docsFile ignores the extra `lang`), so
     // pass it straight through. Otherwise no api refs.
-    const modelOpts = apiSelected ? { apiSurfaces: labeled } : {};
+    const modelGenerator = ownedModel ?? docsFile();
     try {
-      modelFiles = await docsFile(modelOpts).generate(ctx);
+      modelFiles = await modelGenerator.generate(
+        doorCtx(modelGenerator, apiSelected ? { apiSurfaces: labeled } : {}),
+      );
     } catch (err) {
       const msg = describeError(err);
       // Duplicate output path (silent-overwrite backstop): the generator already
@@ -683,12 +711,15 @@ export async function docsCommand(
       try {
         // Emit every surface THIS port owns (loop so it generalizes beyond the
         // single ts surface owned today).
+        const apiGenerator = ownedApi ?? apiDocsFile();
         for (const s of labeled.filter((s) => s.lang === "ts")) {
           apiFiles.push(
-            ...(await apiDocsFile({
-              subDir: s.subDir,
-              modelSurface: docsCfg.surfaces.includes("model"),
-            }).generate(ctx)),
+            ...(await apiGenerator.generate(
+              doorCtx(apiGenerator, {
+                apiSubDir: s.subDir,
+                modelSurface: docsCfg.surfaces.includes("model"),
+              }),
+            )),
           );
         }
       } catch (err) {
@@ -773,11 +804,18 @@ export async function docsCommand(
   const modelTemplates = modelFiles.length > 0
     ? modelFiles.length - entityCount - modelOverview
     : 0;
-  const modelSummary = docsCfg.surfaces.includes("model")
-    ? `${modelOverview} overview + ${entityCount} entity page(s) + ${modelTemplates} template page(s)`
-    : "model surface skipped";
+  // An owned generator decides its own page set, so the overview/entity/template split
+  // above (which is the packaged generator's) is not claimed for it: its pages are counted
+  // and it is named, which also tells the reader that their copy is the one that ran.
+  const ownedBy = (g: Generator | undefined): string =>
+    g === undefined ? "" : ` from the owned generator '${g.name}'`;
+  const modelSummary = !docsCfg.surfaces.includes("model")
+    ? "model surface skipped"
+    : ownedModel !== undefined
+      ? `${modelFiles.length} model page(s)${ownedBy(ownedModel)}`
+      : `${modelOverview} overview + ${entityCount} entity page(s) + ${modelTemplates} template page(s)`;
   const apiSummary = apiFiles.length > 0
-    ? `${apiFiles.length} api page(s)`
+    ? `${apiFiles.length} api page(s)${ownedBy(ownedApi)}`
     : "no api pages";
   // Reported only when it actually wrote something. A project with no ledger emits no
   // requirements file, and saying "0 requirement pages" would advertise a surface that

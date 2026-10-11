@@ -283,6 +283,20 @@ export interface DocsConfig {
   baseUrl?: string;
   surfaces?: DocsSurface[];
   apiSurfaces?: ApiSurface[];
+  /**
+   * Docs generators you OWN (`meta eject docs`, `meta eject api-docs`), for `meta docs` to
+   * run in place of its packaged ones. Each carries a `docsSurface` marker saying which
+   * surface it takes over, and one per surface is allowed. Leave it out and `meta docs`
+   * runs the packaged generators, which need no wiring.
+   *
+   * It is here, in the docs door's own block, and not in the top-level `generators`,
+   * because that array is what `meta gen` runs and `meta gen` does not run documentation
+   * (ADR-0021 D1, ADR-0025; ADR-0034 Amendment 7).
+   *
+   *   import { docsFile } from "./codegen/generators/docs.js";
+   *   docs: { generators: [docsFile()] }
+   */
+  generators?: Generator[];
 }
 
 export interface ResolvedDocsConfig {
@@ -380,19 +394,52 @@ export function isNeutralGeneratorName(name: string): boolean {
 }
 
 /**
+ * Stable generator names that used to resolve and no longer do, each with what replaced
+ * it. A name that worked in a config yesterday deserves better than "unknown generator":
+ * that answer sends its reader looking for a typo.
+ *
+ * `mermaid-er` (removed in 1.1) wrote the ER diagram to a file of its own under
+ * `meta gen`. It was the older home of a diagram `meta docs` draws: the whole model on
+ * the overview page, and each entity's neighbourhood on that entity's page.
+ *
+ * Every entry so far is a doc generator `meta docs` replaced, and each message says so.
+ * `meta verify` relies on that to report a removed name under the docs door, so a test
+ * holds it: a removed generator of another kind needs its own advisory first.
+ */
+export const REMOVED_GENERATOR_NAMES: Readonly<Record<string, string>> = {
+  "mermaid-er":
+    'generator "mermaid-er" was removed in 1.1: `meta docs` draws the ER diagram, for the ' +
+    "whole model on its overview page (README.md) and around each entity on that entity's " +
+    'page. Remove "mermaid-er" from `generators` and run `meta docs`.',
+};
+
+/**
+ * What {@link resolveGenerators} says about a stable name it refuses as REMOVED, or
+ * undefined for any other name. A config that lists the STRING makes `meta gen` fail
+ * with this message. Public so a caller can ask instead of matching the sentence.
+ */
+export function removedGeneratorMessage(name: string): string | undefined {
+  // An own-property test: a name such as "toString" must read as unknown, not as removed.
+  return Object.hasOwn(REMOVED_GENERATOR_NAMES, name) ? REMOVED_GENERATOR_NAMES[name] : undefined;
+}
+
+/**
  * Materialize the config `generators` array: pass typed generators through
  * untouched and resolve each stable-name string via the {@link generatorRegistry}
  * to its factory result (default options). ADR-0021 #1.
  *
  * Errors:
- *  - a NEUTRAL name (`docs`, `mermaid-er`) is owned by `meta docs` (ADR-0021 D1)
- *    and is not selectable in the gen suite.
+ *  - a REMOVED name ({@link removedGeneratorMessage}) throws saying what replaced it.
+ *  - a NEUTRAL name (`docs`) is owned by `meta docs` (ADR-0021 D1) and is not
+ *    selectable in the gen suite.
  *  - an UNKNOWN name throws listing the available NATIVE names. `api-docs` is left out
  *    of that list: it resolves, and the runner warns about and skips it (ADR-0025).
  */
 export function resolveGenerators(specs: readonly GeneratorSpec[]): Generator[] {
   return specs.map((spec) => {
     if (typeof spec !== "string") return spec;
+    const removed = removedGeneratorMessage(spec);
+    if (removed !== undefined) throw new Error(removed);
     const entry = generatorRegistry[spec];
     if (entry === undefined) {
       // A native generator the runner skips is not offered: the list named `api-docs`,
