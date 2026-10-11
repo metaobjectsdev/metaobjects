@@ -66,7 +66,7 @@ public class SpringSourcelessProjectionTest extends SharedRegistryTestBase {
 
         // The sourced entity still emits — the no-churn half of the assertion.
         assertTrue("a sourced entity must still get a repository",
-                SpringRepositoryGenerator.appliesTo(author));
+                SpringGeneratorSupport.repositoryAppliesTo(author));
 
         // A sourceless ENTITY is what actually exercises the source gate: it clears
         // appliesTo's leading SUBTYPE_ENTITY check and is rejected only by the
@@ -74,10 +74,10 @@ public class SpringSourcelessProjectionTest extends SharedRegistryTestBase {
         // would be vacuous — the subtype check short-circuits before the source is
         // ever consulted, so deleting the source guard would leave that green.
         assertFalse("a sourceless entity has no table to back a repository",
-                SpringRepositoryGenerator.appliesTo(draft));
+                SpringGeneratorSupport.repositoryAppliesTo(draft));
 
         // The sourceless projection is excluded too (by the subtype gate).
         assertFalse("a sourceless projection has no table to back a repository",
-                SpringRepositoryGenerator.appliesTo(payload));
+                SpringGeneratorSupport.repositoryAppliesTo(payload));
     }
 }

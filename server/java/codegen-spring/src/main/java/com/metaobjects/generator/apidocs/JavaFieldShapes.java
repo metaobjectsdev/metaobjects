@@ -4,6 +4,7 @@ import com.metaobjects.MetaData;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
+import com.metaobjects.generator.spring.SpringGeneratorSupport;
 import com.metaobjects.generator.spring.SpringNaming;
 import com.metaobjects.generator.spring.SpringTypeMapper;
 import com.metaobjects.loader.MetaDataLoader;
@@ -23,13 +24,13 @@ import java.util.List;
  *
  * <h2>DTO field shapes</h2>
  * {@link #dtoFields(MetaObject)} iterates the exact same scalar fields the DTO
- * generator emits ({@link SpringDtoGenerator#scalarFields(MetaObject)} — skips
+ * generator emits ({@link SpringGeneratorSupport#scalarFields(MetaObject)} — skips
  * {@code ObjectField}), and for each field:
  * <ul>
- *   <li><b>type</b> = {@link SpringDtoGenerator#componentType(MetaField, MetaObject)} (the
+ *   <li><b>type</b> = {@link SpringGeneratorSupport#componentType(MetaField, MetaObject)} (the
  *       DTO record component type, incl. the value-constrained enum + {@code List<…>} for arrays).</li>
  *   <li><b>optional</b> = derived from
- *       {@link SpringDtoGenerator#validationAnnotations(MetaField)}: a field is
+ *       {@link SpringGeneratorSupport#validationAnnotations(MetaField)}: a field is
  *       <em>required</em> (optional=false) iff its annotation string contains
  *       {@code @NotNull} or {@code @NotBlank}; otherwise optional=true.</li>
  *   <li><b>note</b> = for {@link EnumField}, the allowed values (effective
@@ -41,9 +42,9 @@ import java.util.List;
  * ({@link com.metaobjects.generator.spring.SpringValueObjectGenerator}, ADR-0056), so
  * {@link #payloadFieldsOf(MetaObject, MetaDataLoader)} documents that record with the SAME
  * rules the record generator uses: <b>type</b> =
- * {@link SpringDtoGenerator#componentType(MetaField, MetaObject)}; <b>optional</b> unless the
+ * {@link SpringGeneratorSupport#componentType(MetaField, MetaObject)}; <b>optional</b> unless the
  * component carries {@code @NotNull} / {@code @NotBlank}
- * ({@link SpringDtoGenerator#validationAnnotations(MetaField)}); enum notes carry the allowed
+ * ({@link SpringGeneratorSupport#validationAnnotations(MetaField)}); enum notes carry the allowed
  * values.
  */
 public final class JavaFieldShapes {
@@ -54,15 +55,15 @@ public final class JavaFieldShapes {
      * The DTO record's documented field shapes for {@code entity}: one
      * {@link FieldShape} per component field the {@link SpringDtoGenerator} emits —
      * scalars PLUS value-object jsonb columns (Program D), matching the record's own
-     * {@link SpringDtoGenerator#dtoComponentFields} iteration. Reuses the generator's
+     * {@link SpringGeneratorSupport#dtoComponentFields} iteration. Reuses the generator's
      * component-type mapping and validation-annotation derivation so the docs can't
      * drift from the record (a @required VO column shows @NotNull → required).
      */
     public static List<FieldShape> dtoFields(MetaObject entity) {
         List<FieldShape> out = new ArrayList<>();
-        for (MetaField field : SpringDtoGenerator.dtoComponentFields(entity)) {
-            String type = SpringDtoGenerator.componentType(field, entity);
-            String annotations = SpringDtoGenerator.validationAnnotations(field);
+        for (MetaField field : SpringGeneratorSupport.dtoComponentFields(entity)) {
+            String type = SpringGeneratorSupport.componentType(field, entity);
+            String annotations = SpringGeneratorSupport.validationAnnotations(field);
             // Required iff the DTO component carries @NotNull or @NotBlank — read
             // straight from the generator's own annotation string (drift-proof).
             boolean required = annotations.contains("@NotNull") || annotations.contains("@NotBlank");
@@ -82,8 +83,8 @@ public final class JavaFieldShapes {
         if (vo == null) return List.of();
         List<FieldShape> out = new ArrayList<>();
         for (MetaField field : vo.getMetaFields()) {
-            String type = SpringDtoGenerator.componentType(field, vo);
-            String annotations = SpringDtoGenerator.validationAnnotations(field);
+            String type = SpringGeneratorSupport.componentType(field, vo);
+            String annotations = SpringGeneratorSupport.validationAnnotations(field);
             boolean required = annotations.contains("@NotNull") || annotations.contains("@NotBlank");
             out.add(new FieldShape(field.getName(), type, !required, enumNote(field)));
         }

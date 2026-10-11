@@ -2,6 +2,7 @@ package com.metaobjects.generator.spring;
 
 import com.metaobjects.field.DateField;
 import com.metaobjects.field.MetaField;
+import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.TimeField;
 import com.metaobjects.field.TimestampField;
 import com.metaobjects.object.MetaObject;
@@ -87,15 +88,25 @@ public final class AutoSetSupport {
         return null;
     }
 
+    // === 1.0.x selectors (deprecated) ============================================
+    //
+    // These four shipped on this class through 1.0.13, and an adopter's own code, or an
+    // ejected copy made before 1.1.0, may still call them. The generators no longer do: the
+    // same selectors live on SpringGeneratorSupport, the rules eject hands over. They stay
+    // here, self-contained, so no packaged engine class calls back into those rules (an
+    // owned generator's path through this class must not reach the packaged rules).
+
     /**
-     * The DTO component fields of {@code entity} carrying a STAMPABLE {@code @autoSet}
-     * (onCreate OR onUpdate) marker, in declared order — the fields {@code stampForInsert}
-     * overwrites with {@code now()}. Reuses {@link SpringDtoGenerator#dtoComponentFields}
-     * so the set matches the DTO record's component order exactly.
+     * The DTO component fields of {@code entity} carrying a stampable {@code @autoSet}
+     * (onCreate OR onUpdate) marker, in declared order.
+     *
+     * @deprecated moved with the other emit rules to {@code SpringGeneratorSupport}; kept so
+     *     1.0.x callers still compile.
      */
+    @Deprecated
     public static List<MetaField> stampFields(MetaObject entity) {
         List<MetaField> out = new ArrayList<>();
-        for (MetaField field : SpringDtoGenerator.dtoComponentFields(entity)) {
+        for (MetaField field : legacyDtoComponentFields(entity)) {
             if (isAutoSet(field) && nowExpr(field) != null) out.add(field);
         }
         return out;
@@ -103,23 +114,68 @@ public final class AutoSetSupport {
 
     /**
      * The DTO component fields of {@code entity} carrying {@code @autoSet: onUpdate}, in
-     * declared order — the fields stamped on update / patch ({@code onCreate} is skipped).
+     * declared order.
+     *
+     * @deprecated moved with the other emit rules to {@code SpringGeneratorSupport}; kept so
+     *     1.0.x callers still compile.
      */
+    @Deprecated
     public static List<MetaField> onUpdateFields(MetaObject entity) {
         List<MetaField> out = new ArrayList<>();
-        for (MetaField field : SpringDtoGenerator.dtoComponentFields(entity)) {
+        for (MetaField field : legacyDtoComponentFields(entity)) {
             if (isOnUpdate(field) && nowExpr(field) != null) out.add(field);
         }
         return out;
     }
 
-    /** True iff {@code entity} declares at least one stampable {@code @autoSet} field. */
+    /**
+     * True iff {@code entity} declares at least one stampable {@code @autoSet} field.
+     *
+     * @deprecated moved with the other emit rules to {@code SpringGeneratorSupport}; kept so
+     *     1.0.x callers still compile.
+     */
+    @Deprecated
     public static boolean hasAutoSetFields(MetaObject entity) {
         return !stampFields(entity).isEmpty();
     }
 
-    /** True iff {@code entity} declares at least one {@code @autoSet: onUpdate} field. */
+    /**
+     * True iff {@code entity} declares at least one {@code @autoSet: onUpdate} field.
+     *
+     * @deprecated moved with the other emit rules to {@code SpringGeneratorSupport}; kept so
+     *     1.0.x callers still compile.
+     */
+    @Deprecated
     public static boolean hasOnUpdateFields(MetaObject entity) {
         return !onUpdateFields(entity).isEmpty();
+    }
+
+    /** The vanilla DTO component fields: every scalar field plus every value-object jsonb
+     *  column, in declared order. Same set as {@code SpringGeneratorSupport.dtoComponentFields},
+     *  restated here so the deprecated selectors stand alone. */
+    private static List<MetaField> legacyDtoComponentFields(MetaObject entity) {
+        List<MetaField> out = new ArrayList<>();
+        for (MetaField field : entity.getMetaFields()) {
+            if (field instanceof ObjectField) {
+                if (legacyIsValueObjectJsonbField((ObjectField) field)) out.add(field);
+                continue;
+            }
+            out.add(field);
+        }
+        return out;
+    }
+
+    private static boolean legacyIsValueObjectJsonbField(ObjectField of) {
+        if (!of.hasMetaAttr(ObjectField.ATTR_OBJECTREF)) return false;
+        MetaObject ref;
+        try {
+            ref = of.getObjectRef();
+        } catch (RuntimeException unresolved) {
+            return false;
+        }
+        if (ref == null || !MetaObject.SUBTYPE_VALUE.equals(ref.getSubType())) return false;
+        if (!of.hasMetaAttr(ObjectField.ATTR_STORAGE)) return true;
+        Object storage = of.getMetaAttr(ObjectField.ATTR_STORAGE).getValue();
+        return "jsonb".equalsIgnoreCase(String.valueOf(storage).trim());
     }
 }

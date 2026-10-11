@@ -100,7 +100,7 @@ public class SpringProjectionRestSurfaceTest extends SharedRegistryTestBase {
         for (MetaObject obj : loader.getMetaObjects()) {
             boolean controller = SpringControllerGenerator.appliesTo(obj);
             assertEquals(obj.getName() + ": repository must agree with controller",
-                    controller, SpringRepositoryGenerator.appliesTo(obj));
+                    controller, SpringGeneratorSupport.repositoryAppliesTo(obj));
             assertEquals(obj.getName() + ": filter allowlist must agree with controller",
                     controller, SpringFilterAllowlistGenerator.appliesTo(obj));
         }

@@ -33,12 +33,18 @@ import java.util.stream.Collectors;
  *
  * <p><b>What it does.</b> For each requested stable name it resolves the generator (see
  * {@link EjectSupport#resolve}), reads its reference source from the classpath resource the
- * owning {@code codegen-spring}/{@code codegen-kotlin} jar ships it as, rewrites ONLY the
- * {@code package ...} declaration (ADR-0034: the package rename is the sole edit — a copy
- * that kept the reference's original package would silently lose to the plugin's own class,
- * since the project classloader is parent-first), and writes it under {@code
- * codegen/src/main/(java|kotlin)/<package path>/}. On first use it also writes {@code
- * codegen/pom.xml}.
+ * owning {@code codegen-spring}/{@code codegen-kotlin} jar ships it as, rewrites the
+ * {@code package ...} declaration (ADR-0034 — a copy that kept the reference's original
+ * package would silently lose to the plugin's own class, since the project classloader is
+ * parent-first), and writes it under {@code codegen/src/main/(java|kotlin)/<package path>/}.
+ * On first use it also writes {@code codegen/pom.xml}.
+ *
+ * <p><b>The shared emit rules come too.</b> The Java routes, DTO, repository and value-object
+ * generators apply rules they share (which fields a DTO carries, validation annotations, M:N
+ * finder naming) through {@code SpringGeneratorSupport}. Ejecting any of them writes ONE copy
+ * of that class beside the owned generators, in their package, and points each owned
+ * generator's import at it — so an owned generator never calls the packaged rules, and the
+ * adopter can change them. Its first line is {@link EjectSupport#OWNED_SUPPORT_MARKER}.
  *
  * <p><b>The rest of a generator's emit comes with it.</b> The Java {@code entity} generator
  * emits each class body through writer classes, and {@code extractor} reads its names from
@@ -169,6 +175,7 @@ public class MetaDataEjectMojo extends AbstractMojo {
         // Two generators named in one call may share a class copied with each of them; it
         // is written once.
         Set<Path> copied = new LinkedHashSet<>();
+        Set<String> support = new LinkedHashSet<>();
         for (EjectSupport.Resolution r : resolved) {
             EjectSupport.Entry e = r.entry;
             portsTouched.add(e.port);
@@ -195,6 +202,10 @@ public class MetaDataEjectMojo extends AbstractMojo {
                 if (generator && !e.runtime.isEmpty()) {
                     rewritten = EjectSupport.rewriteRuntimePackage(rewritten, runtimePkg);
                 }
+                if (e.port == EjectSupport.Port.JAVA) {
+                    support.addAll(EjectSupport.supportFor(rewritten));
+                    rewritten = EjectSupport.rewriteSupportImports(rewritten, pkg);
+                }
 
                 String what = generator ? "\"" + e.stableName + "\""
                         : simpleName + " (with \"" + e.stableName + "\")";
@@ -203,6 +214,8 @@ public class MetaDataEjectMojo extends AbstractMojo {
             classnameChanges.add("  " + e.stableName + ": " + e.classname + "  ->  "
                     + pkg + "." + e.simpleName());
         }
+
+        ejectSupport(support, codegenRoot.resolve("src/main/java").resolve(pkg.replace('.', '/')), pkg);
 
         boolean pomWritten = writeCodegenPomIfNeeded(codegenRoot, pkg, portsTouched);
 
@@ -218,6 +231,43 @@ public class MetaDataEjectMojo extends AbstractMojo {
         }
         if (!runtime.isEmpty()) {
             printRuntimeWiring(runtimeRoot, runtimePkg, requested, codegenRoot);
+        }
+    }
+
+    // ------------------------------------------------------------------------------------
+    // support source
+    // ------------------------------------------------------------------------------------
+
+    /** Write one owned copy of each support class beside the owned generators that import it. */
+    private void ejectSupport(Set<String> support, Path dir, String pkg) throws MojoExecutionException {
+        for (String simpleName : support) {
+            String owned = EjectSupport.ownedSupportSource(readSupport(simpleName), simpleName, pkg);
+            Path target = dir.resolve(simpleName + ".java");
+            switch (write(dir, target, owned, force)) {
+                case CREATED:
+                    getLog().info("Copied support " + simpleName + " -> " + target
+                            + ". The owned generators import this copy; you own it now.");
+                    break;
+                case REPLACED:
+                    getLog().info("Copied support " + simpleName + " -> " + target
+                            + ", REPLACING the file that was there (-Dforce=true).");
+                    break;
+                case PRESERVED:
+                    getLog().info(target + " already exists — " + describeOwned(target, owned)
+                            + " Left untouched (-Dforce=true replaces it).");
+                    break;
+            }
+        }
+    }
+
+    private String readSupport(String simpleName) throws MojoExecutionException {
+        String resource = GeneratorRegistry.EJECT_SUPPORT_RESOURCE_ROOT + simpleName + ".java";
+        try {
+            return readResource(resource);
+        } catch (IOException ex) {
+            throw new MojoExecutionException(
+                    "Could not read reference support source \"" + simpleName + "\" at classpath "
+                        + "resource " + resource, ex);
         }
     }
 
@@ -526,6 +576,11 @@ public class MetaDataEjectMojo extends AbstractMojo {
                 sb.append('\n');
             }
         }
+        String supportRows = ownedSupportRows(codegenRoot);
+        if (!supportRows.isEmpty()) {
+            sb.append("\nOwned support (the shared emit rules, copied by eject beside the generators "
+                    + "that import them):\n").append(supportRows);
+        }
         String runtimeRows = ownedRuntimeRows();
         if (!runtimeRows.isEmpty()) {
             sb.append("\nOwned helper runtime (copied by eject with routes/dto/repository):\n")
@@ -578,21 +633,54 @@ public class MetaDataEjectMojo extends AbstractMojo {
         return sb.toString();
     }
 
-    private String ownedStaleness(Path codegenRoot, EjectSupport.Entry e) {
+    /** One row per owned support copy under {@code codegen/src/main/java}. */
+    private String ownedSupportRows(Path codegenRoot) {
+        StringBuilder sb = new StringBuilder();
+        for (String simple : GeneratorRegistry.EJECT_SUPPORT) {
+            String owned = ownedSupportStaleness(codegenRoot, simple);
+            if (owned != null) sb.append("  ").append(simple).append("  ").append(owned).append('\n');
+        }
+        return sb.toString();
+    }
+
+    /** The owned copy named {@code filename} under {@code codegen/src/main/<lang>}, or
+     *  {@code null}. It may live under ANY package the adopter chose. */
+    private static Path findOwned(Path codegenRoot, String langDir, String filename) throws IOException {
         if (codegenRoot == null) return null;
-        String langDir = e.port == EjectSupport.Port.KOTLIN ? "kotlin" : "java";
-        // The owned copy may live under ANY package the adopter chose — search for a
-        // file with this generator's simple name under codegen/src/main/<lang>.
         Path srcRoot = codegenRoot.resolve("src/main/" + langDir);
         if (!Files.isDirectory(srcRoot)) return null;
-        String filename = e.simpleName() + "." + e.port.extension;
         try (var walk = Files.walk(srcRoot)) {
-            Path found = walk.filter(p -> p.getFileName().toString().equals(filename))
-                    .findFirst().orElse(null);
+            return walk.filter(p -> p.getFileName().toString().equals(filename)).findFirst().orElse(null);
+        }
+    }
+
+    /** One owned support copy's staleness against the reference shipped with this plugin. */
+    private String ownedSupportStaleness(Path codegenRoot, String simple) {
+        try {
+            Path found = findOwned(codegenRoot, "java", simple + ".java");
+            if (found == null) return null;
+            String owned = Files.readString(found, StandardCharsets.UTF_8);
+            String reference = readSupport(simple);
+            EjectSupport.Comparison cmp = EjectSupport.compare(owned, reference);
+            return cmp.verdict == EjectSupport.Verdict.IDENTICAL
+                    ? "[owned — identical]"
+                    : "[owned — DIFFERS: " + cmp.behind + " behind, " + cmp.ownedOnly + " of your own]";
+        } catch (IOException | MojoExecutionException ex) {
+            return "[owned — could not compare: " + ex.getMessage() + "]";
+        }
+    }
+
+    /** The staleness of the owned copy of {@code e}, over every class copied with it;
+     *  {@code null} when there is no such copy. */
+    private String ownedStaleness(Path codegenRoot, EjectSupport.Entry e) {
+        String langDir = e.port == EjectSupport.Port.KOTLIN ? "kotlin" : "java";
+        try {
+            Path found = findOwned(codegenRoot, langDir, e.simpleName() + "." + e.port.extension);
             if (found == null) return null;
             // The generator is owned together with every class copied with it, so the verdict
             // is over all of them, each against what eject would write beside this copy. One
             // that has gone missing counts as wholly behind.
+            Path srcRoot = codegenRoot.resolve("src/main/" + langDir);
             String ownedPackage = srcRoot.relativize(found.getParent()).toString()
                     .replace(found.getFileSystem().getSeparator(), ".");
             int behind = 0;

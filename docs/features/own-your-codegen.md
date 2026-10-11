@@ -614,7 +614,7 @@ like the rest of the package.
   and the `ObjectManager` runtime (`metaobjects.meta…`, `metaobjects.render…`,
   `metaobjects.runtime`) remain package imports in every generator's output, because
   MetaObjects guarantees them. The `entity`, `names` and `filter-allowlist` outputs import
-  no helper runtime at all, so ejecting them copies only the generator.
+  no helper runtime at all, so ejecting them emits no `_runtime/`.
 - **What `verify` sees.** `codegen/runtime/` is owned source. It sits outside every
   outDir, so `verify --codegen` never reports it as drift. The emitted `_runtime/` copy
   is generated output: edit `codegen/runtime/` without regenerating and `verify
@@ -643,6 +643,34 @@ codegen/runtime/`). The same recipe covers the generator itself: `metaobjects ej
 routes` into a scratch directory gives you the new reference to diff your
 `codegen/generators/routes.py` against.
 
+### The rules two generators share come with them
+
+Some emit rules are asked by more than one generator, and the answers have to match.
+`routes` and `filter-allowlist` both ask `emits_router` (which objects get a router; the
+generated router imports the allowlist module, so a mismatch is an import error at
+startup). `entity` and `extractor` both ask `has_literal_default`. These live in one
+module, `shared_predicates`, and ejecting any of those four generators copies it too:
+
+```text
+codegen/
+  generators/routes.py
+  generators/filter_allowlist.py
+  runtime/shared_predicates.py    # the shared rules, now your code
+```
+
+Each generator imports it relatively (`from ..runtime.shared_predicates import ...`), so
+the verbatim copy in `codegen/generators/` reads `codegen/runtime/shared_predicates.py`
+and never the installed module. Two owned generators read the one copy: change
+`emits_router` there and your `routes` and your `filter-allowlist` change together. No
+generated code imports this module. It runs at `gen` time only, so nothing is emitted into
+`_runtime/` for it. The rest works as for the runtime above: an existing copy is kept, and
+`--list` marks it `identical` or `DIFFERS`.
+
+A packaged generator keeps reading the installed rules. If you own `routes` and change
+`emits_router` but still run the packaged `filter-allowlist`, the two disagree. Eject
+`filter-allowlist` too before you change that rule; the same goes for `entity` and
+`extractor` with `has_literal_default`.
+
 ## Java and Kotlin: `mvn metaobjects:eject`
 
 ```bash
@@ -654,11 +682,16 @@ The JVM plugin loads generator classes from your project's classpath, but only f
 classes compiled **before** `generate-sources` runs, and the plugin's own copy of a class
 always wins over one with the same name. So eject puts each copy into a separate
 `codegen/` Maven module, under your own package (`-Dpackage`, default
-`<groupId>.codegen`). The package declaration is the only line it changes, except for a
-generator that is copied with other classes (Java `entity` and `extractor`, below): there
-the imports those copies have of one another change too. On first use
+`<groupId>.codegen`). Every copy compiles on its own, and none calls another generator. The
+package declaration is the only line it changes, except for a generator that is copied with
+other classes (Java `entity` and `extractor`, below) and for the support imports described
+below: there the imports those copies have of one another change too. On first use
 it writes `codegen/pom.xml`, which depends on `metaobjects-codegen-spring` or
 `metaobjects-codegen-kotlin` at the plugin's version.
+
+Eject changes a copy's package declaration, and for a Java generator up to two more
+lines, both described below: its import of `SpringGeneratorSupport`, and its
+`RUNTIME_PACKAGE` constant.
 
 Eject never edits an existing pom. It prints the three things to wire: the `<module>`
 entry for your parent pom, a plugin `<dependency>` on the codegen module for the module
@@ -739,15 +772,48 @@ entry left without one gets none.
 
 ### What eject hands over, and what stays core
 
-An owned generator is only yours if the code its output depends on is yours too. The Java
-`routes`, `dto` and `repository` output imports helper classes that are not core:
+An owned generator is only yours if the rules it applies and the code its output depends
+on are yours too. Eject copies two kinds of source with a Java generator:
 
-| Ejecting | Also copies |
-|---|---|
-| `routes` | `ConstraintErrors`, `FilterParseResult`, `FilterParser`, `FilterPredicate`, `PatchValidationException`, `RecordComponentNames` |
-| `dto` | `PatchValidationException` |
-| `repository` | `FilterPredicate` |
-| any other Java generator, every Kotlin generator | nothing: its output imports only core |
+| Ejecting | Shared emit rules, beside the generator | Helper runtime its output imports |
+|---|---|---|
+| `routes` | `SpringGeneratorSupport` | `ConstraintErrors`, `FilterParseResult`, `FilterParser`, `FilterPredicate`, `PatchValidationException`, `RecordComponentNames` |
+| `dto` | `SpringGeneratorSupport` | `PatchValidationException` |
+| `repository` | `SpringGeneratorSupport` | `FilterPredicate` |
+| `value-object` | `SpringGeneratorSupport` | nothing |
+| any other Java generator, every Kotlin generator | nothing | nothing: its output imports only core |
+
+**The shared emit rules.** `SpringGeneratorSupport` holds the rules those four generators
+apply together: which fields a DTO and a patch carry, which of them are stamped for
+`@autoSet`, the value-object column predicates, component types, validation annotations,
+and the M:N finder names the repository declares and the controller calls. Eject writes
+ONE copy to
+`codegen/src/main/java/<package>/SpringGeneratorSupport.java`, in the owned generators'
+package, and rewrites each owned generator's import to that copy. An owned generator never
+calls the packaged class, so you can change a rule (say, `@NotBlank` where the reference
+emits `@NotNull @Size(min = 1)`) in code you own. Ejecting another of the four later
+shares the same copy. The copy's first line is `// metaobjects:owned-support …`; like an
+owned generator, it is left alone unless you pass `-Dforce`, `-Dlist` marks it `identical`
+or `DIFFERS`, and `mvn metaobjects:verify` never reports it as stale output.
+
+A packaged generator keeps applying the packaged rules, and so do the generated API docs
+pages, which describe the reference shape. If you own `routes` and change a finder name
+but still run the packaged `repository`, the controller calls a method the repository does
+not declare. Eject the generators that share a rule before you change it.
+
+**What stays engine.** The naming and type-mapping tables the rules read (`SpringNaming`,
+`SpringTypeMapper`, `SpringM2mSupport`, `AutoSetSupport`, `TphPlan`) stay in
+`metaobjects-codegen-spring`, and your copies import them. None of them calls
+`SpringGeneratorSupport`, so nothing your owned generator reaches runs the packaged rules
+behind your copy. Two facts you might expect in the rules are engine instead:
+`SpringTypeMapper.mapValueObjectRefOf` (which value object a `field.map @objectRef`
+carries) decides the map's Java type, so it is a type-mapping fact; and `AutoSetSupport`
+keeps what `@autoSet` means for one field (its policy and its `now()` expression), plus
+four `@Deprecated` 1.0.x selectors that apply the 1.0.x rule for copies made before 1.1.0.
+Which DTO fields get stamped is a rule in your copy.
+
+**The helper runtime.** The Java `routes`, `dto` and `repository` output imports helper
+classes that are not core, listed in the last column.
 
 `M2mJoinResolver`, in both ports, is not copied. No generated file imports it; it is a helper
 for traversal code you write by hand. If you call it and want to own it, copy it yourself.
@@ -809,10 +875,12 @@ diff -u -I '^package ' -I '^// metaobjects:owned-runtime' \
 
 Apply the hunks you want by hand. For a generator, diff `reference/java/<Generator>.java`
 against `codegen/src/main/java/<package>/<Generator>.java` the same way, and also ignore
-`RUNTIME_PACKAGE`. `entity` and `extractor`, and the classes copied with them, are in
-`metaobjects-codegen-base-$V.jar` instead; for those also pass `-I '^import '`, because
-eject pointed the copies' imports of one another at your package. Or, if you have no edits
-of your own (`-Dlist` says `identical`), re-eject with `-Dforce`.
+`RUNTIME_PACKAGE` and the `SpringGeneratorSupport` import. `entity` and `extractor`, and the
+classes copied with them, are in `metaobjects-codegen-base-$V.jar` instead; for those also
+pass `-I '^import '`, because eject pointed the copies' imports of one another at your
+package. For the shared rules, diff `reference/java/support/SpringGeneratorSupport.java`
+against your copy, ignoring the package line and `^// metaobjects:owned-support`. Or, if you
+have no edits of your own (`-Dlist` says `identical`), re-eject with `-Dforce`.
 
 `-Dport` is needed only when a name exists in both ports and your project's dependencies
 do not say which. Every Kotlin generator is ejectable, and every Java generator except

@@ -239,9 +239,10 @@ public final class EjectSupport {
     }
 
     // ------------------------------------------------------------------------------------
-    // package rewrite — the edit every copy gets (ADR-0034; the JVM eject design's "the
-    // package rename is the only edit"). A generator copied WITH other classes gets one
-    // more, which is the same rename seen from the importing side: see rewriteCopiedImports.
+    // package rewrite — the edit every copy gets (ADR-0034, the JVM eject design). A generator
+    // copied WITH other classes gets one more, which is the same rename seen from the importing
+    // side: see rewriteCopiedImports. A Java generator may get two further edits, both further
+    // down: its RUNTIME_PACKAGE declaration and its support imports.
     // ------------------------------------------------------------------------------------
 
     private static final Pattern PACKAGE_LINE = Pattern.compile("(?m)^package\\s+[\\w.]+\\s*;?\\s*$");
@@ -329,10 +330,14 @@ public final class EjectSupport {
     /** Whether {@code content} is a runtime file eject wrote (its marker is on the first
      *  non-blank line). */
     public static boolean isOwnedRuntime(String content) {
+        return firstLineStartsWith(content, OWNED_RUNTIME_MARKER);
+    }
+
+    private static boolean firstLineStartsWith(String content, String marker) {
         for (String line : content.split("\n", -1)) {
             String t = line.strip();
             if (t.isEmpty()) continue;
-            return t.startsWith(OWNED_RUNTIME_MARKER);
+            return t.startsWith(marker);
         }
         return false;
     }
@@ -342,6 +347,64 @@ public final class EjectSupport {
         Set<String> out = new LinkedHashSet<>();
         for (Entry e : entries) out.addAll(e.runtime);
         return new ArrayList<>(out);
+    }
+
+    // ------------------------------------------------------------------------------------
+    // support source — the emit rules the Java generators share, handed over with them
+    // ------------------------------------------------------------------------------------
+
+    /** An {@code import} of one of {@link GeneratorRegistry#EJECT_SUPPORT}, from any package:
+     *  group 1 is the package, group 2 the simple name. */
+    private static final Pattern SUPPORT_IMPORT = Pattern.compile(
+            "(?m)^import\\s+([\\w.]+)\\.(" + String.join("|", GeneratorRegistry.EJECT_SUPPORT) + ")\\s*;[ \\t]*$");
+
+    /**
+     * The first line of every support file eject writes: the same job
+     * {@link #OWNED_RUNTIME_MARKER} does for a runtime file. Keep it if you move the file.
+     */
+    public static final String OWNED_SUPPORT_MARKER = "// metaobjects:owned-support";
+
+    /** Simple names of the packaged support classes {@code source} imports, in source order.
+     *  Eject copies exactly these beside the generator. */
+    public static List<String> supportFor(String source) {
+        List<String> out = new ArrayList<>();
+        Matcher m = SUPPORT_IMPORT.matcher(source);
+        while (m.find()) {
+            if (m.group(1).equals(GeneratorRegistry.SUPPORT_PACKAGE) && !out.contains(m.group(2))) {
+                out.add(m.group(2));
+            }
+        }
+        return out;
+    }
+
+    /** Point an ejected generator's imports of the packaged support classes at the copies in
+     *  {@code ownedPackage}. A source that imports none is returned unchanged. */
+    public static String rewriteSupportImports(String source, String ownedPackage) {
+        Matcher m = SUPPORT_IMPORT.matcher(source);
+        StringBuilder out = new StringBuilder();
+        while (m.find()) {
+            String replacement = m.group(1).equals(GeneratorRegistry.SUPPORT_PACKAGE)
+                    ? "import " + ownedPackage + "." + m.group(2) + ";" : m.group();
+            m.appendReplacement(out, Matcher.quoteReplacement(replacement));
+        }
+        return m.appendTail(out).toString();
+    }
+
+    /**
+     * The owned copy of one support class: its package renamed to {@code ownedPackage}, and
+     * the {@link #OWNED_SUPPORT_MARKER} line (naming the reference it came from) on top.
+     * Nothing else changes.
+     */
+    public static String ownedSupportSource(String reference, String simpleName, String ownedPackage) {
+        return OWNED_SUPPORT_MARKER + " — copied by `mvn metaobjects:eject` from "
+                + GeneratorRegistry.SUPPORT_PACKAGE + "." + simpleName
+                + ". You own this file.\n"
+                + rewritePackage(reference, ownedPackage);
+    }
+
+    /** Whether {@code content} is a support file eject wrote. */
+    public static boolean isOwnedSupport(String content) {
+        return firstLineStartsWith(content, OWNED_SUPPORT_MARKER);
     }
 
     // ------------------------------------------------------------------------------------
@@ -366,8 +429,9 @@ public final class EjectSupport {
     }
 
     /** Every non-blank line, trimmed, with the lines eject itself writes dropped — the
-     *  package line, a generator's {@code RUNTIME_PACKAGE} declaration and a runtime file's
-     *  ownership marker are the deliberate edits of eject, not drift. */
+     *  package line, a generator's {@code RUNTIME_PACKAGE} declaration and support imports,
+     *  and a runtime or support file's ownership marker are the deliberate edits of eject,
+     *  not drift. */
     private static List<String> normalizedLines(String source) {
         List<String> out = new ArrayList<>();
         for (String line : source.split("\n", -1)) {
@@ -375,7 +439,8 @@ public final class EjectSupport {
             if (t.isEmpty()) continue;
             if (PACKAGE_LINE.matcher(t).matches()) continue;
             if (RUNTIME_PACKAGE_DECL.matcher(t).matches()) continue;
-            if (t.startsWith(OWNED_RUNTIME_MARKER)) continue;
+            if (SUPPORT_IMPORT.matcher(t).matches()) continue;
+            if (t.startsWith(OWNED_RUNTIME_MARKER) || t.startsWith(OWNED_SUPPORT_MARKER)) continue;
             out.add(t);
         }
         return out;

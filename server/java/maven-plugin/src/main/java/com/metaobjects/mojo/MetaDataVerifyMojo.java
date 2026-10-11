@@ -411,10 +411,11 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
             if (inGen && !inCommitted) {
                 drift.add("[missing-from-repo] " + committedFile + " (generator produces it; not committed)");
             } else if (!inGen && inCommitted) {
-                // Helper runtime copied by `mvn metaobjects:eject` is owned code, not output:
-                // no generator produces it, so an output dir that also holds it (outputDir =
-                // src/main/java is legal) would otherwise report it stale forever.
-                if (isOwnedRuntime(committedFile)) continue;
+                // Helper runtime and support source copied by `mvn metaobjects:eject` are
+                // owned code, not output: no generator produces them, so an output dir that
+                // also holds one (outputDir = src/main/java is legal) would otherwise report
+                // it stale forever.
+                if (isOwnedByEject(committedFile)) continue;
                 drift.add("[stale-in-repo] " + committedFile + " (committed; generator no longer produces it)");
             } else {
                 // Present in both — compare bytes.
@@ -446,11 +447,13 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         return out;
     }
 
-    /** Whether {@code file} carries {@link EjectSupport#OWNED_RUNTIME_MARKER}. */
-    private static boolean isOwnedRuntime(Path file) throws MojoExecutionException {
+    /** Whether {@code file} carries {@link EjectSupport#OWNED_RUNTIME_MARKER} or
+     *  {@link EjectSupport#OWNED_SUPPORT_MARKER}. */
+    private static boolean isOwnedByEject(Path file) throws MojoExecutionException {
         if (!file.getFileName().toString().endsWith(".java")) return false;
         try {
-            return EjectSupport.isOwnedRuntime(Files.readString(file, StandardCharsets.UTF_8));
+            String content = Files.readString(file, StandardCharsets.UTF_8);
+            return EjectSupport.isOwnedRuntime(content) || EjectSupport.isOwnedSupport(content);
         } catch (IOException e) {
             throw new MojoExecutionException("Could not read [" + file + "]", e);
         }

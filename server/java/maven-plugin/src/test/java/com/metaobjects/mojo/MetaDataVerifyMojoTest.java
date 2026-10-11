@@ -117,6 +117,21 @@ public class MetaDataVerifyMojoTest {
         verify.execute();
     }
 
+    /** The same holds for the support source eject copies beside an owned generator. */
+    @Test
+    public void verifyIgnoresOwnedSupportInTheOutputDir() throws Exception {
+        Path codegenDir = committedDir.resolve("com/acme/codegen");
+        Files.createDirectories(codegenDir);
+        Files.writeString(codegenDir.resolve("SpringGeneratorSupport.java"),
+                EjectSupport.ownedSupportSource("package com.metaobjects.generator.spring;\n"
+                    + "public final class SpringGeneratorSupport {}\n", "SpringGeneratorSupport",
+                    "com.acme.codegen"), StandardCharsets.UTF_8);
+
+        MetaDataVerifyMojo verify = new MetaDataVerifyMojo();
+        configure(verify, committedDir);
+        verify.execute();
+    }
+
     @Test
     public void verifyFailsOnMissingCommittedFile() throws Exception {
         Path someKt = firstKtFile(committedDir);

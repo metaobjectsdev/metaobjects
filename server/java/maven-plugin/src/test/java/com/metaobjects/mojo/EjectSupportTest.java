@@ -255,6 +255,38 @@ public class EjectSupportTest {
     }
 
     @Test
+    public void supportImportsMoveToTheOwnedPackageAndAreNotDrift() {
+        String gen = "package com.metaobjects.generator.spring;\n\n"
+                + "import com.metaobjects.generator.spring.SpringGeneratorSupport;\n"
+                + "import com.metaobjects.generator.spring.SpringNaming;\n\n"
+                + "public class G {}\n";
+        assertEquals(List.of("SpringGeneratorSupport"), EjectSupport.supportFor(gen));
+        String owned = EjectSupport.rewriteSupportImports(gen, "com.acme.codegen");
+        assertEquals("package com.metaobjects.generator.spring;\n\n"
+                + "import com.acme.codegen.SpringGeneratorSupport;\n"
+                + "import com.metaobjects.generator.spring.SpringNaming;\n\n"
+                + "public class G {}\n", owned);
+        assertEquals(EjectSupport.Verdict.IDENTICAL, EjectSupport.compare(
+                EjectSupport.rewritePackage(owned, "com.acme.codegen"), gen).verdict);
+        // The owned copy no longer imports a packaged support class: nothing more to hand over.
+        assertEquals(List.of(), EjectSupport.supportFor(owned));
+
+        String none = "package p;\nimport java.util.List;\nclass X {}\n";
+        assertEquals(List.of(), EjectSupport.supportFor(none));
+        assertEquals(none, EjectSupport.rewriteSupportImports(none, "com.acme.codegen"));
+
+        String ref = "package com.metaobjects.generator.spring;\n\npublic final class SpringGeneratorSupport {}\n";
+        String ownedSupport = EjectSupport.ownedSupportSource(ref, "SpringGeneratorSupport", "com.acme.codegen");
+        assertTrue(EjectSupport.isOwnedSupport(ownedSupport));
+        assertFalse(EjectSupport.isOwnedSupport(ref));
+        assertFalse(EjectSupport.isOwnedRuntime(ownedSupport));
+        assertTrue(ownedSupport.contains("\npackage com.acme.codegen;\n"));
+        assertEquals(EjectSupport.Verdict.IDENTICAL, EjectSupport.compare(ownedSupport, ref).verdict);
+        assertEquals(EjectSupport.Verdict.DIFFERS,
+                EjectSupport.compare(ownedSupport + "// mine\n", ref).verdict);
+    }
+
+    @Test
     public void onlyTheJavaWebTierCarriesRuntime() {
         for (EjectSupport.Entry e : EjectSupport.allEntries()) {
             boolean expected = e.port == EjectSupport.Port.JAVA

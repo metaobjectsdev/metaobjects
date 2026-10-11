@@ -283,6 +283,42 @@ public class MetaDataEjectMojoTest {
     }
 
     @Test
+    public void listReportsTheOwnedSupportCopyAndWhetherItWasEdited() throws Exception {
+        mojo("dto", false, "java", null).execute();
+        Path support = codegenRoot().resolve("src/main/java/com/acme/codegen/SpringGeneratorSupport.java");
+        assertTrue(EjectSupport.isOwnedSupport(Files.readString(support, StandardCharsets.UTF_8)));
+
+        assertTrue(listOutput().contains("  SpringGeneratorSupport  [owned — identical]"));
+        // The owned dto's import now names the owned support class; that is eject's edit, not drift.
+        assertTrue(listOutput().contains("Per-entity Spring DTO record.  [owned — identical]"));
+
+        Files.writeString(support, Files.readString(support, StandardCharsets.UTF_8) + "// mine\n",
+                StandardCharsets.UTF_8);
+        assertTrue(listOutput().contains("  SpringGeneratorSupport  [owned — DIFFERS: 0 behind, 1 of your own]"));
+    }
+
+    @Test
+    public void aGeneratorThatImportsNoSupportGetsNoSupportCopy() throws Exception {
+        mojo("names", false, "java", null).execute();
+        try (var files = Files.list(codegenRoot().resolve("src/main/java/com/acme/codegen"))) {
+            assertEquals(List.of("SpringNamesGenerator.java"),
+                    files.map(p -> p.getFileName().toString()).collect(java.util.stream.Collectors.toList()));
+        }
+        assertFalse(listOutput().contains("Owned support"));
+    }
+
+    private String listOutput() throws Exception {
+        MetaDataEjectMojo m = mojo(null, false, null, null);
+        m.list = true;
+        Log log = Mockito.mock(Log.class);
+        m.setLog(log);
+        m.execute();
+        ArgumentCaptor<CharSequence> captor = ArgumentCaptor.forClass(CharSequence.class);
+        Mockito.verify(log).info(captor.capture());
+        return captor.getValue().toString();
+    }
+
+    @Test
     public void namesIsRequiredWhenNotListing() {
         MetaDataEjectMojo m = mojo(null, false, null, null);
         try {
