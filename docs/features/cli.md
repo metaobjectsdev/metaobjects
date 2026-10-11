@@ -549,7 +549,8 @@ on both commands.
 the total:
 
 ```
-meta gen --format json      → { gen[], summary, help[], antiPatterns: { status, total, rows[] } }
+meta gen --format json      → { gen[], summary, help[], antiPatterns: { status, total, rows[] },
+                                warnings[]? }
 meta verify --format json   → { verify[], exitCode, summary, help[],
                                 antiPatterns: { status, total, rows[] },
                                 requirements: { status, total, rows[] },
@@ -566,6 +567,21 @@ text, and the payload's own `notRepresented[]` says so. A view that matches the
 metadata and is recreated only because the migration alters a table it reads is not
 drift, so it appears in neither. `meta migrate` still emits that drop/create pair and
 names the views in a note (`notes[]` in its structured output).
+
+`meta gen`'s `warnings[]` carries **every warning the run printed**, in the order it
+printed them: the runner's own (a generator that emitted nothing, an unsatisfied
+`requires`, a hand-edited file it refused), a generator's `ctx.warn`, an unknown
+attribute, and the CLI's advisories about a stale agent context or an ignored hash
+manifest. The key is absent on a run that printed none. One of them is worth knowing by
+name: a doc generator (`docsFile()`, `apiDocsFile()`) listed under `generators` is
+**warned about and skipped**, because `meta docs` is the door for documentation
+(ADR-0025). The result then says so in `warnings[]` and adds a `meta docs` next step to
+`help[]`; `meta gen --list` marks those rows ``run by `meta docs` `` (`door` in
+`--format json`), and `meta verify` reports the same wiring as an advisory row with rule
+`doc-generator-in-gen`. A neutral stable name written as a string (`"docs"`,
+`"mermaid-er"`) is refused rather than skipped, so `meta gen` fails on it: `meta gen --list`
+marks that row ``WIRED by name, which `meta gen` refuses`` (`project.refused` in
+`--format json`), and the advisory row's rule is `doc-generator-refused-by-gen`.
 
 In a structured run every narration line moves to **stderr**, so stdout is one
 parseable document. `--format` is honored by `gen`, `verify` and `migrate`; any

@@ -39,7 +39,7 @@ import {
   RUNTIME_ENTRIES, resolveRuntimePackage, runtimeClosure, runtimeCopyStatus, runtimeInstall,
   type RuntimeCopyRow,
 } from "./runtime-eject.js";
-import { OWNED_RUNTIME_DIR } from "@metaobjectsdev/codegen-ts";
+import { DOCS_DOOR_COMMAND, isNeutralGeneratorName, isPackagedDocsGenerator, OWNED_RUNTIME_DIR } from "@metaobjectsdev/codegen-ts";
 import { readPackageManifest, declaredDependencyNames } from "./package-manifest.js";
 import { describeError } from "./error-text.js";
 
@@ -62,6 +62,14 @@ export interface GeneratorCatalogRow {
   tier: "native" | "neutral";
   package: string;
   description: string;
+  /** The registry's one line a reader needs before wiring this entry. Printed under the row. */
+  note?: string;
+  /**
+   * Present iff `meta gen` does NOT run this generator: the command that produces its
+   * output instead (ADR-0025). A config that lists it under `generators` is warned about
+   * and skipped, so it is never counted by `--probe`.
+   */
+  door?: string;
   /** From the reference template's `use-when:` header. Absent for a non-ejectable entry. */
   useWhen?: string;
   /** From the reference template's `emits:` header. Absent for a non-ejectable entry. */
@@ -91,9 +99,13 @@ export interface GeneratorCatalogRow {
   project?: {
     /** Wired in this project's `generators: [...]`. */
     wired: boolean;
+    /** Present iff it is wired as a stable-name STRING that `meta gen` refuses (a neutral
+     *  name): the run fails on it, rather than running or skipping the generator. */
+    refused?: true;
     /** This generator's framework is a declared dependency. `null` when neutral or unknown. */
     frameworkDetected: boolean | null;
-    /** Files this generator WOULD emit for this model. `null` unless --probe. */
+    /** Files this generator WOULD emit for this model. `null` unless --probe, and
+     *  `null` for a row with a `door`: `meta gen` does not run it, so there is no count. */
     wouldEmit: number | null;
     /** Why `wouldEmit` is null despite --probe. Absent when it is a number. */
     probeError?: string;
@@ -286,8 +298,16 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
   const runtimeCopies = opts.project === undefined
     ? new Map<string, { files: RuntimeCopyRow[]; packages: string[] }>()
     : await ownedRuntimeByGenerator(opts.project.projectRoot, opts.project.ownedNames);
+  const refusedNames = new Set(
+    (opts.project?.config.generators ?? [])
+      .filter((spec): spec is string => typeof spec === "string" && isNeutralGeneratorName(spec)),
+  );
 
   for (const entry of listCatalog()) {
+    // Asked of the runner's own definition, never restated: which generators `meta gen`
+    // skips is a fact about the runner, and a row that disagreed with it is the defect
+    // this field closes (`api-docs` was listed as one more generator to wire).
+    const door = isPackagedDocsGenerator(entry.factory().name) ? DOCS_DOOR_COMMAND : undefined;
     const template = entry.ejectable ? readTemplate(entry.name) : undefined;
     // A project that owns this generator's adapter copy installs what the COPY imports,
     // not the runtime package — the same trade `meta eject` prints.
@@ -310,6 +330,8 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
       tier: entry.tier,
       package: pkg,
       description: entry.description,
+      ...(entry.note !== undefined ? { note: entry.note } : {}),
+      ...(door !== undefined ? { door } : {}),
       ...(template !== undefined && headerFacet(template, "use-when") !== undefined
         ? { useWhen: headerFacet(template, "use-when")! }
         : {}),
@@ -339,7 +361,10 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
       let wouldEmit: number | null = null;
       let probeError: string | undefined;
       let needsConfig: string[] | undefined;
-      if (opts.probe !== undefined) {
+      // A generator `meta gen` skips is not probed: the run would report 0 files, and
+      // `would emit 0` reads as "nothing in your model needs this" for pages `meta docs`
+      // writes for every entity. The row's `door` is the answer instead.
+      if (opts.probe !== undefined && door === undefined) {
         const outcome = await probeOne(
           entry,
           project,
@@ -355,6 +380,7 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
 
       row.project = {
         wired: project.wiredNames.has(entry.name),
+        ...(refusedNames.has(entry.name) ? { refused: true as const } : {}),
         frameworkDetected,
         wouldEmit,
         ...(probeError !== undefined ? { probeError } : {}),
@@ -458,6 +484,23 @@ export const PACKAGE_ONLY_NOTE =
   "Run one as shipped by importing its factory — the import sits under its row, except " +
   "for the docs layer, whose door is `meta docs`.";
 
+/**
+ * Printed under every row `meta gen` does not run (a row with a `door`). One sentence,
+ * here: the registry's note says what an entry IS, and this says what happens to one
+ * wired into `generators` anyway — the same for every such row, so it is not restated
+ * per entry.
+ */
+export const SKIPPED_BY_GEN_NOTE =
+  "not run by `meta gen`: listed under `generators`, it is warned about and skipped.";
+
+/**
+ * Printed under every neutral row. The other outcome for a `generators` entry: the
+ * resolver refuses a neutral stable name, so the string fails the run where a
+ * constructed generator is skipped or (the deprecated `mermaidErDiagram()`) still runs.
+ */
+export const NAME_REFUSED_BY_GEN_NOTE =
+  "its name as a string under `generators` is refused instead: `meta gen` fails on it.";
+
 /** The human rendering: grouped by layer, because layer is the axis you select by. */
 export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
   const lines: string[] = [];
@@ -477,7 +520,14 @@ export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
     if (r.framework !== undefined) marks.push(r.framework);
     if (r.tier === "neutral") marks.push("neutral");
     if (!r.source.ejectable) marks.push("package-only");
-    if (r.project?.wired) marks.push("WIRED");
+    if (r.door !== undefined) marks.push(`run by \`${r.door}\``);
+    if (r.project?.wired) {
+      marks.push(
+        r.project.refused
+          ? "WIRED by name, which `meta gen` refuses"
+          : r.door !== undefined ? "WIRED but skipped by `meta gen`" : "WIRED",
+      );
+    }
     if (r.source.owned) marks.push("owned");
     if (r.source.runtimeCopy !== undefined) {
       // The adapter source this generator's output imports, compared to the package.
@@ -502,6 +552,9 @@ export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
     }
     const suffix = marks.length > 0 ? `  [${marks.join(", ")}]` : "";
     lines.push(`  ${r.name.padEnd(width)}  —  ${r.description}${suffix}`);
+    if (r.note !== undefined) lines.push(`  ${" ".repeat(width)}     ${r.note}`);
+    if (r.door !== undefined) lines.push(`  ${" ".repeat(width)}     ${SKIPPED_BY_GEN_NOTE}`);
+    if (isNeutralGeneratorName(r.name)) lines.push(`  ${" ".repeat(width)}     ${NAME_REFUSED_BY_GEN_NOTE}`);
     if (r.requires !== undefined && r.requires.length > 0) {
       lines.push(`  ${" ".repeat(width)}     requires: ${r.requires.join(", ")}`);
     }

@@ -17,8 +17,10 @@ import {
   libraryPrefixRows,
   unindexedFkRows,
   referentialActionConflictRows,
+  docGeneratorRows,
   advisoryHelpLines,
 } from "../lib/advisory.js";
+import { scanForDocGeneratorsInGen, type DocGeneratorFinding } from "../lib/doc-generator-advisory.js";
 import { scanForUnprovenancedLibraryPrefix } from "../lib/library-prefix-advisory.js";
 import { scanForUnindexedForeignKeys, type UnindexedFkFinding } from "../lib/fk-index-advisory.js";
 import { scanForReferentialActionConflicts, type ReferentialActionConflictFinding } from "../lib/referential-action-advisory.js";
@@ -1021,6 +1023,17 @@ export async function verifyCommand(
       // advisory only — a model the schema builder refuses is migrate's to report.
     }
 
+    // A doc generator wired under `generators`: `meta gen` skips it (or refuses its
+    // neutral name), and `--codegen` regenerates through the same runner without relaying
+    // its warnings — so this is the only place `verify` can say that the listed generator
+    // produces nothing here.
+    let docGenerators: DocGeneratorFinding[] = [];
+    try {
+      docGenerators = scanForDocGeneratorsInGen(forgeConfig);
+    } catch {
+      // advisory only — a config whose factory throws is `meta gen`'s to report.
+    }
+
     antiPatternSection = ranSection([
       ...antiPatternRows(findings),
       ...missingBaseUrlRows(baseUrl),
@@ -1028,6 +1041,7 @@ export async function verifyCommand(
       ...libraryPrefixRows(libraryPrefix),
       ...unindexedFkRows(unindexedFks),
       ...referentialActionConflictRows(actionConflicts),
+      ...docGeneratorRows(docGenerators),
     ]);
     if (findings.length > 0) {
       log.warn(
@@ -1070,6 +1084,13 @@ export async function verifyCommand(
           `no ejection provenance (advisory — does not fail the build):`,
       );
       warnCapped(libraryPrefix.map((f) => `  ${f.message}`), flags.limit, { structured });
+    }
+    if (docGenerators.length > 0) {
+      log.warn(
+        `meta verify — ${docGenerators.length} doc generator(s) listed under \`generators\`, ` +
+          `which \`meta gen\` does not run (advisory — does not fail the build):`,
+      );
+      warnCapped(docGenerators.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
   }
 

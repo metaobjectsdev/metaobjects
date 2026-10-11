@@ -672,6 +672,46 @@ until you regenerate.
 
 ### Fixed
 
+- **A doc generator skipped by `meta gen` is now reported in every output form.** `meta docs`
+  is the door for documentation (ADR-0025), so `meta gen` warns about and skips a `docsFile()`
+  or `apiDocsFile()` listed under `generators`. That has not changed. What changed is who hears
+  about it:
+  - **`meta gen --format json|toon`** (the default on a pipe) printed the runner's warnings to
+    stderr only, and the result's `warnings` carried unknown-attribute findings alone, so the
+    document described a clean run with no API docs and no reason. `warnings[]` now carries
+    every warning the run printed: all of the runner's (not only this one), a generator's own
+    `ctx.warn`, the runtime-boundary advisory, and the stale-agent-context and ignored-manifest
+    advisories. `help[]` gains a `meta docs` next step when a doc generator was skipped. Text
+    output is unchanged.
+  - **A config that wires only doc generators** was told `no entities to generate` and to
+    `author entities in this project's metadata sources`, for a project that has them. The
+    summary, the next step and the text line now name the real reason.
+  - **`meta gen --list`** presented `api-docs` as one more generator to wire, and printed no
+    note on any row: the registry's notes for `docs` and `mermaid-er` stopped being rendered
+    when the catalog was rewritten. The `api-docs` and `docs` rows now read ``run by `meta
+    docs` `` with the reason under the row, a wired one reads ``WIRED but skipped by `meta
+    gen` ``, and `--probe` no longer prints `would emit 0` for them. In `--format json` the row
+    carries `note` and `door: "meta docs"`, and `project.wouldEmit` is `null` instead of `0`.
+    The `mermaid-er` row's note now states the back-compat fact: it is deprecated, a
+    `mermaidErDiagram()` already wired in `generators` still runs, and `meta docs` draws the
+    same diagram on its overview page. A neutral name wired as a string (`"docs"`,
+    `"mermaid-er"`), which `meta gen` refuses, reads ``WIRED by name, which `meta gen`
+    refuses`` (`project.refused` in `--format json`).
+  - **`meta verify`** said nothing about a config wired this way. It now reports each one as an
+    advisory row (rule `doc-generator-in-gen`, in `antiPatterns.rows[]`) that names
+    `meta verify --docs` as the gate that checks documentation. A neutral name wired as a
+    string is reported under rule `doc-generator-refused-by-gen`, because `meta gen` fails on
+    it rather than skipping it. Advisory: the exit code is unchanged.
+  - **The unknown-generator error** listed `api-docs` among the names `meta gen` accepts. It no
+    longer does, and it says documentation comes from `meta docs`.
+
+  `runGen()` returns a new `skippedDocGenerators: string[]` beside `warnings`, and
+  `@metaobjectsdev/codegen-ts` exports `isPackagedDocsGenerator` (skipped) and
+  `isNeutralGeneratorName` (refused), so a caller embedding the runner can ask rather than
+  match a sentence. TypeScript only: in the C#, Java, Kotlin and Python
+  ports documentation is a separate command (`dotnet meta docs`, `mvn metaobjects:docs`,
+  `metaobjects docs`) and no doc generator is registered for code generation, so there is
+  nothing to wire and nothing to skip.
 - **One shared-enum rule in all five ports: a field keeps the shared type through any number
   of `extends` hops.** An enum field that extends another field which itself reaches a shared
   (package-level abstract) enum was resolved only when it extended the abstract directly, so a

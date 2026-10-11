@@ -30,15 +30,18 @@ export const HASH_MANIFEST_REL = join(".metaobjects", ".gen-state", ".hashes.jso
  * Silent when: it is tracked correctly, the project is not a git repository, git is
  * unavailable, or no generated output has ever been produced (nothing to protect yet).
  * Never throws, never blocks.
+ *
+ * Returns the line it printed, so a command with a structured result can carry it
+ * there too; undefined when it said nothing.
  */
-export function warnIfManifestIgnored(cwd: string): void {
+export function warnIfManifestIgnored(cwd: string): string | undefined {
   // Nothing generated yet ⇒ nothing at risk ⇒ nothing worth saying.
-  if (!existsSync(join(cwd, HASH_MANIFEST_REL))) return;
+  if (!existsSync(join(cwd, HASH_MANIFEST_REL))) return undefined;
 
   // honourGlobalExcludes: TRUE here, and that is the opposite call to the docs gate.
   // The question this warning asks is "will this file reach another machine?", and a
   // per-user ignore file answers it just as truly as a committed .gitignore does.
-  if (isGitIgnored(cwd, HASH_MANIFEST_REL, { honourGlobalExcludes: true }) !== true) return;
+  if (isGitIgnored(cwd, HASH_MANIFEST_REL, { honourGlobalExcludes: true }) !== true) return undefined;
 
   // WHERE the rule actually lives, asked of git rather than assumed. This used to name
   // `.metaobjects/.gitignore` and the literal pattern `.gen-state/`, which is only one of
@@ -56,12 +59,13 @@ export function warnIfManifestIgnored(cwd: string): void {
       : `Find the rule with 'git check-ignore -v ${HASH_MANIFEST_REL}' and replace it with ` +
         `a '/*' form plus a '!' negation for the manifest`;
 
-  log.warn(
+  const msg =
     `${HASH_MANIFEST_REL} is git-ignored, so it never reaches another machine — ` +
-      `on a fresh clone or CI runner 'meta gen' cannot tell your hand edits from its ` +
-      `own stale output, and will refuse to overwrite rather than guess. ${where} ` +
-      `(the glob matters — git will not descend into an excluded directory, so a negation ` +
-      `INSIDE an excluded directory can never apply), then commit the manifest. ` +
-      `If you deliberately do not commit generated output, ignore this.`,
-  );
+    `on a fresh clone or CI runner 'meta gen' cannot tell your hand edits from its ` +
+    `own stale output, and will refuse to overwrite rather than guess. ${where} ` +
+    `(the glob matters — git will not descend into an excluded directory, so a negation ` +
+    `INSIDE an excluded directory can never apply), then commit the manifest. ` +
+    `If you deliberately do not commit generated output, ignore this.`;
+  log.warn(msg);
+  return msg;
 }

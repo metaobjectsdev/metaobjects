@@ -14,17 +14,22 @@ import { log } from "./log.js";
  * Advisory: if a scaffolded MetaObjects agent context predates this CLI version,
  * print a one-line nudge to re-scaffold. Never throws, never blocks — an absent or
  * corrupt manifest is silently ignored (this is a reminder, not a gate).
+ *
+ * Returns the line it printed, so a command with a structured result can carry it
+ * there too; undefined when it said nothing.
  */
-export function warnIfAgentContextStale(cwd: string): void {
+export function warnIfAgentContextStale(cwd: string): string | undefined {
   const p = join(cwd, AGENT_CONTEXT_MANIFEST_PATH);
   let manifest: Manifest | undefined;
   if (existsSync(p)) {
     try {
       manifest = JSON.parse(readFileSync(p, "utf8")) as Manifest;
     } catch {
-      return; // unreadable/corrupt — say nothing
+      return undefined; // unreadable/corrupt — say nothing
     }
   }
   const msg = agentContextStaleness({ manifest, currentVersion: cliVersion() });
-  if (msg !== null) log.warn(msg);
+  if (msg === null) return undefined;
+  log.warn(msg);
+  return msg;
 }

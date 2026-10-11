@@ -43,14 +43,11 @@ import {
 } from "./catalog-gates.js";
 import { libraryManifests, splitLayerToken } from "@metaobjectsdev/metadata/library";
 import { generatorRegistry, type GeneratorRegistryEntry } from "./generator-registry.js";
+import { packagedDocsSkipWarning, isPackagedDocsGenerator } from "./packaged-docs-generators.js";
 
 /** JS-identifier-shape only. Prevents filesystem traversal when metadata comes
  *  from untrusted sources (e.g. MCP). Mirrors the guard in legacy generate.ts. */
 const VALID_ENTITY_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-/** ADR-0025: doc generators whose single door is `meta docs`. If a `meta gen`
- *  config still lists one (by its stable `name`), the runner warns + skips it. */
-const DEPRECATED_DOC_GENERATORS = new Set(["docs-file", "api-docs"]);
 
 export interface RunGenOpts {
   config: MetaobjectsGenConfig;
@@ -152,6 +149,13 @@ export interface RunGenResult {
   /** Subset of `files` with status "conflict" — surfaced separately so the
    *  CLI can print the end-of-run summary. */
   conflicts: WriteResult[];
+  /**
+   * Implementation names of the doc generators this run did NOT execute, in config
+   * order (ADR-0025 — see packaged-docs-generators.ts). Each also has a line in `warnings`; this is
+   * the same fact for a caller that must decide something from it, so that nobody
+   * has to pattern-match a sentence to learn that a wired generator produced nothing.
+   */
+  skippedDocGenerators: string[];
 }
 
 /**
@@ -404,7 +408,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       reason = "no object children match the configured scope";
     }
     warnings.push(`No entities to generate — ${reason}.`);
-    return { files: [], warnings, conflicts: [] };
+    return { files: [], warnings, conflicts: [], skippedDocGenerators: [] };
   }
 
   // FR-044: a served report (Table A) is generated from its read model, which the
@@ -418,7 +422,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         "served (it is abstract, or its read source is not a `source.rdb @kind: view`), " +
         "which generates nothing.",
     );
-    return { files: [], warnings, conflicts: [] };
+    return { files: [], warnings, conflicts: [], skippedDocGenerators: [] };
   }
 
   const safeEntities: MetaObject[] = [];
@@ -432,7 +436,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     safeEntities.push(entity);
   }
   if (safeEntities.length === 0) {
-    return { files: [], warnings, conflicts: [] };
+    return { files: [], warnings, conflicts: [], skippedDocGenerators: [] };
   }
 
   // Refuse before any generator runs — the one choke point that sees the WHOLE
@@ -677,16 +681,15 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // Generators that ran and produced no file. See the note at the `files.length === 0`
   // check below. A Set because a generator may run once per target.
   const emptyGenerators = new Set<string>();
+  const skippedDocGenerators: string[] = [];
 
   for (const generator of config.generators) {
     // ADR-0025: `meta docs` is the single docs door. A `meta gen` config that
     // still lists a deprecated doc generator is warned + skipped, not run — the
     // generator stays as `meta docs`'s internal engine.
-    if (DEPRECATED_DOC_GENERATORS.has(generator.name)) {
-      warnings.push(
-        `[${generator.name}] docs are produced by 'meta docs' (ADR-0025); ` +
-        `remove ${generator.name === "api-docs" ? "apiDocsFile()" : "docsFile()"} from generators. Skipped.`,
-      );
+    if (isPackagedDocsGenerator(generator.name)) {
+      warnings.push(packagedDocsSkipWarning(generator.name));
+      skippedDocGenerators.push(generator.name);
       continue;
     }
     const selfTarget = targetOf(generator);
@@ -1044,7 +1047,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     // A preview that hides a pending deletion is worse than no preview at all, so
     // the sweep still runs — in decide-and-report mode, touching nothing.
     sweep(true);
-    return { files: writes, warnings, conflicts };
+    return { files: writes, warnings, conflicts, skippedDocGenerators };
   }
 
   for (const file of emitted) {
@@ -1078,5 +1081,5 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // detect an engine change. Written after a successful run only.
   if (installedEngine !== undefined) saveEngineVersion(genStateDir, installedEngine);
 
-  return { files: writes, warnings, conflicts };
+  return { files: writes, warnings, conflicts, skippedDocGenerators };
 }

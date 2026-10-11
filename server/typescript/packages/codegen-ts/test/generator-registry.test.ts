@@ -7,6 +7,7 @@ import {
   type GeneratorRegistryEntry,
 } from "../src/generator-registry.js";
 import { REFERENCE_GENERATOR_NAMES } from "../src/reference-templates.js";
+import { isPackagedDocsGenerator } from "../src/packaged-docs-generators.js";
 
 // ADR-0021 D3 — stable-name generator registry. The stable names are the
 // cross-port contract; this test pins them + asserts each entry carries a
@@ -74,6 +75,32 @@ describe("generator-registry (ADR-0021 D3)", () => {
   test("neutral entries carry a note pointing at the canonical door", () => {
     expect(generatorRegistry["docs"]?.note ?? "").toContain("meta docs");
     expect((generatorRegistry["mermaid-er"]?.note ?? "").length).toBeGreaterThan(0);
+  });
+
+  // Resolved, not listed: the set is whatever the RUNNER skips. `api-docs` is native,
+  // so the neutral check above never reached it, and its row presented a generator
+  // `meta gen` refuses to run as something to wire.
+  test("every entry `meta gen` skips says on its row that the door is `meta docs`", () => {
+    const skipped = Object.values(generatorRegistry).filter((e) => isPackagedDocsGenerator(e.factory().name));
+    expect(skipped.map((e) => e.name).sort()).toEqual(["api-docs", "docs"]);
+    for (const entry of skipped) {
+      expect(entry.note ?? "", `${entry.name}.note`).toContain("meta docs");
+      expect(entry.layer, `${entry.name}.layer`).toBe("docs");
+    }
+  });
+
+  // The other direction. `mermaid-er` is deprecated and the runner still runs a wired
+  // `mermaidErDiagram()`. Its note said "surfaced via `meta docs`", which `meta docs`
+  // never did: it states the back-compat fact, and does not offer it as a normal choice.
+  test("the docs-layer entry `meta gen` still runs states that it is deprecated", () => {
+    const run = Object.values(generatorRegistry)
+      .filter((e) => e.layer === "docs" && !isPackagedDocsGenerator(e.factory().name));
+    expect(run.map((e) => e.name)).toEqual(["mermaid-er"]);
+    const note = run[0]?.note ?? "";
+    expect(note).toContain("deprecated");
+    expect(note).toContain("do not add it to a new config");
+    expect(note).toContain("still runs");
+    expect(note).not.toContain("surfaced via");
   });
 
   test("every factory constructs a Generator with a name without throwing", () => {

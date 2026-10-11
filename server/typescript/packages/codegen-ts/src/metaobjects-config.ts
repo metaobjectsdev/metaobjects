@@ -4,6 +4,7 @@ import type { Generator } from "./generator.js";
 import type { ExtStyle } from "./render-context.js";
 import type { OutputLayout, ResolvedTarget } from "./import-path.js";
 import { generatorRegistry } from "./generator-registry.js";
+import { DOCS_DOOR_COMMAND, isPackagedDocsGenerator } from "./packaged-docs-generators.js";
 import { normalizeTimestampMode } from "./dialect-module.js";
 
 /**
@@ -370,6 +371,15 @@ export function resolveTargets(config: MetaobjectsGenConfig): Record<string, Res
 }
 
 /**
+ * True iff {@link resolveGenerators} refuses this stable name as neutral. A config that
+ * lists the STRING makes `meta gen` fail; a constructed generator is never refused here.
+ */
+export function isNeutralGeneratorName(name: string): boolean {
+  const entry = generatorRegistry[name];
+  return entry !== undefined && entry.tier !== "native";
+}
+
+/**
  * Materialize the config `generators` array: pass typed generators through
  * untouched and resolve each stable-name string via the {@link generatorRegistry}
  * to its factory result (default options). ADR-0021 #1.
@@ -377,22 +387,26 @@ export function resolveTargets(config: MetaobjectsGenConfig): Record<string, Res
  * Errors:
  *  - a NEUTRAL name (`docs`, `mermaid-er`) is owned by `meta docs` (ADR-0021 D1)
  *    and is not selectable in the gen suite.
- *  - an UNKNOWN name throws listing the available NATIVE names.
+ *  - an UNKNOWN name throws listing the available NATIVE names. `api-docs` is left out
+ *    of that list: it resolves, and the runner warns about and skips it (ADR-0025).
  */
 export function resolveGenerators(specs: readonly GeneratorSpec[]): Generator[] {
   return specs.map((spec) => {
     if (typeof spec !== "string") return spec;
     const entry = generatorRegistry[spec];
     if (entry === undefined) {
+      // A native generator the runner skips is not offered: the list named `api-docs`,
+      // and the run it recommended then warned about and skipped it.
       const native = Object.values(generatorRegistry)
-        .filter((e) => e.tier === "native")
+        .filter((e) => e.tier === "native" && !isPackagedDocsGenerator(e.factory().name))
         .map((e) => e.name)
         .sort();
       throw new Error(
-        `unknown generator "${spec}". Available native generators: ${native.join(", ")}.`,
+        `unknown generator "${spec}". Available native generators: ${native.join(", ")}. ` +
+        `Documentation is not a 'meta gen' generator: run '${DOCS_DOOR_COMMAND}'.`,
       );
     }
-    if (entry.tier !== "native") {
+    if (isNeutralGeneratorName(spec)) {
       throw new Error(
         `generator "${spec}" is neutral (owned by 'meta docs'); ` +
         `not selectable in the gen suite.`,

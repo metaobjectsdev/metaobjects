@@ -60,6 +60,8 @@ describe("resolveGenerators (registry string resolution)", () => {
       expect(msg).toContain("routes");
       // neutral names are NOT advertised as selectable
       expect(msg).not.toContain("mermaid-er");
+      // ...and neither is the native generator `meta gen` skips.
+      expect(msg).not.toContain("api-docs");
     }
   });
 

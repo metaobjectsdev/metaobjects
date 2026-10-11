@@ -278,6 +278,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     layer: "docs",
     description:
       "Per-entity/template SDK API reference (the generated code's API, human + agent forms).",
+    note: "the api surface of `meta docs` (the single docs door, ADR-0025), which runs it with nothing wired.",
     tier: "native",
     factory: () => apiDocsFile(),
     factoryExport: "apiDocsFile",
@@ -304,7 +305,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     factory: () => mermaidErDiagram(),
     factoryExport: "mermaidErDiagram",
     ejectable: ejectable("mermaid-er"),
-    note: "neutral artifact owned by the docs engine (ADR-0020); surfaced via `meta docs`, not the recommended `meta gen` native suite.",
+    note: "neutral artifact owned by the docs engine (ADR-0020), deprecated under `meta gen`: do not add it to a new config. A `mermaidErDiagram()` already wired in `generators` still runs; `meta docs` draws the same diagram on its overview page.",
   },
 
   // ----- capability -------------------------------------------------------

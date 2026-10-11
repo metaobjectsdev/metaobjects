@@ -90,6 +90,7 @@
       "concept": "Per-entity/template SDK API reference (generated-code API; human + agent forms).",
       "tier": "native",
       "layer": "docs",
+      "note": "Run by `meta docs` as its api surface (ADR-0025), not by `meta gen`: a `meta gen` config that lists it is warned about and skipped.",
       "ports": ["typescript"]
     },
     "trace-helper": {
@@ -207,7 +208,7 @@
       "concept": "Neutral Mermaid ER diagram of the entity/relationship model.",
       "tier": "neutral",
       "layer": "docs",
-      "note": "Neutral artifact owned by the docs engine (ADR-0020); surfaced via `meta docs`.",
+      "note": "Neutral artifact owned by the docs engine (ADR-0020). Deprecated under `meta gen`: a `mermaidErDiagram()` already wired in `generators` still runs; `meta docs` draws the same diagram on its overview page.",
       "ports": ["typescript"]
     }
   }
