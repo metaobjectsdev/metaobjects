@@ -27,11 +27,19 @@ const TABLES = [
   \`reference\` VARCHAR(40) NOT NULL,
   \`status\` VARCHAR(20) NOT NULL,
   \`amountCents\` BIGINT NOT NULL,
-  \`issuedOn\` DATE NOT NULL
+  \`issuedOn\` DATE NOT NULL,
+  \`disputed\` BOOLEAN NOT NULL
+)`,
+  `CREATE TABLE \`categories\` (
+  \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  \`name\` VARCHAR(200) NOT NULL
 )`,
   `CREATE TABLE \`products\` (
   \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  \`name\` VARCHAR(200) NOT NULL
+  \`name\` VARCHAR(200) NOT NULL,
+  \`sku\` VARCHAR(36),
+  \`categoryId\` BIGINT,
+  FOREIGN KEY (\`categoryId\`) REFERENCES \`categories\` (\`id\`)
 )`,
   `CREATE TABLE \`sales\` (
   \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -40,6 +48,7 @@ const TABLES = [
   FOREIGN KEY (\`productId\`) REFERENCES \`products\` (\`id\`)
 )`,
 ];
+
 
 /** The bytes of report/schema.mysql.sql for a loaded report/meta.json. */
 export function generateReportApiMysqlSchemaSql(root: MetaRoot): string {

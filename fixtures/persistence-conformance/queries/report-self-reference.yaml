@@ -6,30 +6,34 @@ description: |
 
     1 root      (no parent)        2 a      (parent root)
     3 b         (parent root)      4 c      (parent a)
-    5 top       (no parent)
-  null group: root and top (2); 'root' group: a and b (2); 'a' group: c (1).
+    5 top       (no parent)        6 lone   (no parent)
+  null group: root, top and lone (3); 'root' group: a and b (2); 'a' group: c (1).
+  The three counts differ so the scenario sorts on the count alone: where a NULL group sorts
+  among the others is the engine's choice (Postgres last, SQLite first), so no scenario may
+  rest on it.
 seed-data: |
   INSERT INTO "nodes" ("id","label","parentId") VALUES
     (1, 'root', NULL),
     (2, 'a',    1),
     (3, 'b',    1),
     (4, 'c',    2),
-    (5, 'top',  NULL);
+    (5, 'top',  NULL),
+    (6, 'lone', NULL);
 queries:
   - name: group-by-the-parents-label
     op: list
     entity: NodesByParent
-    sort: [{ field: nodes, dir: asc }, { field: parentLabel, dir: asc }]
+    sort: [{ field: nodes, dir: asc }]
     expect:
       - { parentLabel: "a", nodes: "1" }
       - { parentLabel: "root", nodes: "2" }
-      - { parentLabel: null, nodes: "2" }
+      - { parentLabel: null, nodes: "3" }
   - name: filter-isnull-on-the-self-joined-dimension
     op: list
     entity: NodesByParent
     filter: { parentLabel: { isNull: true } }
     expect:
-      - { parentLabel: null, nodes: "2" }
+      - { parentLabel: null, nodes: "3" }
   - name: count-groups
     op: count
     entity: NodesByParent

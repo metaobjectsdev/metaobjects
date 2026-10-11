@@ -142,7 +142,7 @@ manifest contains without moving these boundaries.
   A second live file (`cube-model-mysql.live.ts`) runs the MySQL path: the canonical golden
   generated with `dialect: "mysql"` is loaded into the same pinned Cube over a real MySQL 8.4
   holding the report views `buildReportViews` lowers (`fixtures/cube-model/canonical/seed.mysql.sql`),
-  and each of the nine reports' Cube query is compared with `SELECT *` from its view, with the
+  and each of the twenty-one served reports' Cube query is compared with `SELECT *` from its view, with the
   pre-aggregation used asserted. That is the smaller of the two honest options: the two MySQL
   *cases* (escaping, a quoted identifier) are still compiled, not executed, and the goldens hold
   their SQL. The lane runs Cube in development mode, so Cube's production mode with a separate

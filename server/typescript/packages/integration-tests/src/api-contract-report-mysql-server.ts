@@ -33,14 +33,25 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
       \`reference\` VARCHAR(40) NOT NULL,
       \`status\` VARCHAR(20) NOT NULL,
       \`amount_cents\` BIGINT NOT NULL,
-      \`issued_on\` DATE NOT NULL
+      \`issued_on\` DATE NOT NULL,
+      \`disputed\` BOOLEAN NOT NULL
+    )`,
+  },
+  {
+    name: "categories",
+    ddl: `CREATE TABLE \`categories\` (
+      \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      \`name\` VARCHAR(200) NOT NULL
     )`,
   },
   {
     name: "products",
     ddl: `CREATE TABLE \`products\` (
       \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-      \`name\` VARCHAR(200) NOT NULL
+      \`name\` VARCHAR(200) NOT NULL,
+      \`sku\` VARCHAR(36),
+      \`category_id\` BIGINT,
+      FOREIGN KEY (\`category_id\`) REFERENCES \`categories\` (\`id\`)
     )`,
   },
   {

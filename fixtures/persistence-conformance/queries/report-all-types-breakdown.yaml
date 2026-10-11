@@ -10,7 +10,7 @@ description: |
     r3 false LOW    null         2026-05-02 U2  iVal 5  dec 0.5  money 200  long 9
     r4 true  MEDIUM DRAFT(0)     2026-05-01 U3  iVal 1  dec 4.25 money 50   long 2
     r5 iVal 99      -> out of scope (ne)
-    r6 tsVal in the future -> out of scope (relative bound)
+    r6 tsVal in the year 2999 -> out of scope (relative bound; a literal, so the seed is the same SQL on every engine)
 seed-data: |
   INSERT INTO "all_types" (
     "id","sVal","iVal","lVal","dVal","fVal","decVal","bVal","dateVal","timeVal","tsVal","tsTzVal",
@@ -32,7 +32,7 @@ seed-data: |
      '2026-05-01T00:00:00','2026-05-01T00:00:00Z',9999,'HIGH',5,
      'a1111111-1111-4111-8111-111111111111','urn:x:5','10.0.0.5','fe80::5'),
     ('00000000-0000-4000-8000-000000000006','r6',2,1,0.5,0.5,9,true,'2026-05-01','00:00:00',
-     (now() AT TIME ZONE 'UTC') + INTERVAL '1 day','2026-05-01T00:00:00Z',9999,'HIGH',5,
+     '2999-01-01T00:00:00','2026-05-01T00:00:00Z',9999,'HIGH',5,
      'a1111111-1111-4111-8111-111111111111','urn:x:6','10.0.0.6','fe80::6');
 queries:
   - name: every-dimension-type

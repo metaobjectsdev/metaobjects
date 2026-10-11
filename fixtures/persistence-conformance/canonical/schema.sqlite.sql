@@ -29,6 +29,13 @@ CREATE TABLE "nodes" (
   FOREIGN KEY ("parentId") REFERENCES "nodes" ("id")
 );
 
+CREATE TABLE "sessions" (
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  "weekId" INTEGER NOT NULL,
+  "minutes" INTEGER NOT NULL,
+  FOREIGN KEY ("weekId") REFERENCES "weeks" ("id")
+);
+
 CREATE TABLE "measurements" (
   "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   "tempC" REAL NOT NULL,
@@ -237,3 +244,134 @@ CREATE VIEW "v_fitness_totals_filled" AS
     COALESCE(SUM(w."durationMinutes"), 0) AS "totalMinutesOrZero",
     COALESCE(CAST(COUNT(CASE WHEN w."durationMinutes" >= 60 THEN w."id" END) AS REAL) / NULLIF(COUNT(w."id"), 0), 0.0) AS "longShareOrZero"
   FROM "weeks" w;
+
+CREATE VIEW "v_measurement_stats" AS
+  SELECT
+    COUNT(m."id") AS "readings",
+    SUM(m."massKg") AS "totalMassKg",
+    AVG(m."massKg") AS "avgMassKg",
+    MAX(m."tempC") AS "maxTempC",
+    MIN(m."tempC") AS "minTempC",
+    SUM(m."preciseKg") AS "totalPreciseKg",
+    AVG(m."preciseKg") AS "avgPreciseKg",
+    MAX(m."preciseKg") AS "maxPreciseKg",
+    COUNT(CASE WHEN m."massKg" >= 10 THEN m."id" END) AS "heavyReadings"
+  FROM "measurements" m;
+
+CREATE VIEW "v_measurement_stats_filled" AS
+  SELECT
+    COUNT(m."id") AS "readings",
+    COALESCE(AVG(m."preciseKg"), -1.0) AS "avgPreciseKgOrMinusOne",
+    COALESCE(MAX(m."preciseKg"), 0.0) AS "maxPreciseKgOrZero"
+  FROM "measurements" m;
+
+CREATE VIEW "v_asset_days" AS
+  SELECT
+    date(a."recordedAt") AS "recordedAtDay",
+    date(a."asOfDate", 'start of month') AS "asOfDateMonth",
+    COUNT(a."id") AS "assets",
+    COUNT(DISTINCT a."ownerId") AS "owners",
+    MIN(a."recordedAt") AS "firstRecorded",
+    MAX(a."observedAt") AS "lastObserved",
+    MAX(a."asOfDate") AS "lastAsOf"
+  FROM "assets" a
+  GROUP BY date(a."recordedAt"), date(a."asOfDate", 'start of month');
+
+CREATE VIEW "v_all_types_breakdown" AS
+  SELECT
+    a."bVal" AS "flag",
+    a."enumVal" AS "level",
+    a."intEnumVal" AS "legacyStatus",
+    a."dateVal" AS "dateKey",
+    a."uuidVal" AS "uuidKey",
+    COUNT(a."id") AS "allRows",
+    SUM(a."iVal") AS "totalInts",
+    AVG(a."decVal") AS "avgDec",
+    MAX(a."moneyVal") AS "maxMoney",
+    MIN(a."lVal") AS "minLong",
+    COUNT(CASE WHEN a."enumVal" IN ('MEDIUM', 'HIGH') THEN a."id" END) AS "highRows"
+  FROM "all_types" a
+  WHERE (a."tsVal" < strftime('%Y-%m-%dT%H:%M:%f', 'now', '-1 hours') AND a."iVal" <> 99)
+  GROUP BY a."bVal", a."enumVal", a."intEnumVal", a."dateVal", a."uuidVal";
+
+CREATE VIEW "v_programs_over_time" AS
+  SELECT
+    date(p."created_ts") AS "createdAtDay",
+    date(p."created_ts", 'start of month', '-' || ((CAST(strftime('%m', p."created_ts") AS INTEGER) - 1) % 3) || ' months') AS "createdAtQuarter",
+    date(p."created_ts", 'start of year') AS "createdAtYear",
+    COUNT(p."id") AS "programs",
+    AVG(p."priceCents") AS "avgPrice",
+    MIN(p."priceCents") AS "cheapest",
+    MAX(p."priceCents") AS "priciest"
+  FROM "programs" p
+  GROUP BY date(p."created_ts"), date(p."created_ts", 'start of month', '-' || ((CAST(strftime('%m', p."created_ts") AS INTEGER) - 1) % 3) || ' months'), date(p."created_ts", 'start of year');
+
+CREATE VIEW "v_live_intro_programs" AS
+  SELECT
+    p."status" AS "status",
+    COUNT(p."id") AS "programs",
+    COUNT(CASE WHEN p."status" <> 'DRAFT' THEN p."id" END) AS "notDrafts",
+    SUM(CASE WHEN p."status" = 'PUBLISHED' THEN p."priceCents" END) AS "listValue"
+  FROM "programs" p
+  WHERE ((p."title" LIKE 'Intro%' OR p."priceCents" = 0) AND (p."status" IN ('DRAFT', 'PUBLISHED') AND p."priceCents" < 5000))
+  GROUP BY p."status";
+
+CREATE VIEW "v_programs_empty_scope" AS
+  SELECT
+    COUNT(p."id") AS "programs",
+    COALESCE(AVG(p."priceCents"), -1.0) AS "avgPriceOrMinusOne"
+  FROM "programs" p
+  WHERE (p."status" IN ('DRAFT', 'PUBLISHED') AND p."priceCents" > 1000000);
+
+CREATE VIEW "v_week_shapes" AS
+  SELECT
+    p."title" AS "programTitle",
+    COUNT(w."id") AS "weeks",
+    COUNT(CASE WHEN w."label" IS NULL THEN w."id" END) AS "unlabelled",
+    SUM(CASE WHEN w."label" IS NOT NULL THEN w."durationMinutes" END) AS "labelledMinutes",
+    COUNT(CASE WHEN w."durationMinutes" < 30 THEN w."id" END) AS "shortWeeks",
+    COUNT(CASE WHEN (w."durationMinutes" > 30 AND w."durationMinutes" <= 60) THEN w."id" END) AS "midWeeks",
+    SUM(CASE WHEN (w."durationMinutes" >= 60 AND w."label" LIKE 'W%') THEN w."durationMinutes" END) AS "longWMinutes"
+  FROM "weeks" w
+  INNER JOIN "programs" p ON p."id" = w."programId"
+  GROUP BY p."title";
+
+CREATE VIEW "v_sessions_by_program" AS
+  SELECT
+    p."title" AS "programTitle",
+    w."id" AS "weekKey",
+    COUNT(s."id") AS "sessions",
+    SUM(s."minutes") AS "sessionMinutes"
+  FROM "sessions" s
+  INNER JOIN "weeks" w ON w."id" = s."weekId"
+  INNER JOIN "programs" p ON p."id" = w."programId"
+  GROUP BY p."title", w."id";
+
+CREATE VIEW "v_program_sessions" AS
+  SELECT
+    p."id" AS "programKey",
+    p."title" AS "programTitle",
+    COUNT(s."id") AS "sessions",
+    SUM(s."minutes") AS "sessionMinutes",
+    COALESCE(SUM(s."minutes"), 0) AS "sessionMinutesOrZero"
+  FROM "programs" p
+  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId"
+  LEFT OUTER JOIN "sessions" s ON w."id" = s."weekId"
+  GROUP BY p."id", p."title";
+
+CREATE VIEW "v_nodes_by_parent" AS
+  SELECT
+    n0."label" AS "parentLabel",
+    COUNT(n."id") AS "nodes"
+  FROM "nodes" n
+  LEFT OUTER JOIN "nodes" n0 ON n0."id" = n."parentId"
+  GROUP BY n0."label";
+
+CREATE VIEW "v_auths_by_kind" AS
+  SELECT
+    a."type" AS "kind",
+    COUNT(a."id") AS "auths",
+    COUNT(DISTINCT a."reference") AS "distinctRefs"
+  FROM "auths" a
+  WHERE a."type" <> 'PriorAuth'
+  GROUP BY a."type";

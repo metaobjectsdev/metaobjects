@@ -4,8 +4,8 @@
 // TABLES here are the adopter's hand-written DDL, exactly as docs/recipes/mysql.md tells an
 // adopter to write them. The VIEWS are not hand-written: each is `buildReportViews(root,
 // { dialect: "mysql" })`, the one producer of report SQL, wrapped in the recipe's
-// `CREATE VIEW`. Only the tables the report scenarios read are declared (programs, weeks,
-// assets) — the rest of the canonical model gates the entity runtime on Postgres.
+// `CREATE VIEW`. Only the tables the report scenarios read are declared (programs, weeks, nodes,
+// sessions, measurements, assets, auths, all_types) — the rest of the canonical model gates the entity runtime on Postgres.
 //
 // Committed as fixtures/persistence-conformance/canonical/schema.mysql.sql and drift-checked
 // by test/schema-artifact.test.ts, so a port that runs the report scenarios on MySQL executes
@@ -55,6 +55,56 @@ const TABLES = [
   \`observedAt\` DATETIME(3) NOT NULL,
   \`asOfDate\` DATE NOT NULL,
   \`atTime\` TIME(3) NOT NULL
+)`,
+  `CREATE TABLE \`nodes\` (
+  \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  \`label\` VARCHAR(80) NOT NULL,
+  \`parentId\` BIGINT,
+  FOREIGN KEY (\`parentId\`) REFERENCES \`nodes\` (\`id\`)
+)`,
+  `CREATE TABLE \`sessions\` (
+  \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  \`weekId\` BIGINT NOT NULL,
+  \`minutes\` INT NOT NULL,
+  FOREIGN KEY (\`weekId\`) REFERENCES \`weeks\` (\`id\`)
+)`,
+  `CREATE TABLE \`measurements\` (
+  \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  \`tempC\` FLOAT NOT NULL,
+  \`massKg\` DOUBLE NOT NULL,
+  \`preciseKg\` DECIMAL(9,4) NOT NULL
+)`,
+  `CREATE TABLE \`auths\` (
+  \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  \`type\` VARCHAR(16),
+  \`reference\` VARCHAR(80) NOT NULL,
+  \`quantity\` INT,
+  \`copayAmount\` DECIMAL(10,2),
+  \`approver\` VARCHAR(80),
+  \`urgency\` VARCHAR(16)
+)`,
+  `CREATE TABLE \`all_types\` (
+  \`id\` VARCHAR(36) NOT NULL DEFAULT (UUID()) PRIMARY KEY,
+  \`sVal\` VARCHAR(200) NOT NULL,
+  \`iVal\` INT NOT NULL,
+  \`lVal\` BIGINT NOT NULL,
+  \`dVal\` DOUBLE NOT NULL,
+  \`fVal\` FLOAT NOT NULL,
+  \`decVal\` DECIMAL(18,6) NOT NULL,
+  \`bVal\` BOOLEAN NOT NULL,
+  \`dateVal\` DATE NOT NULL,
+  \`timeVal\` TIME(3) NOT NULL,
+  \`tsVal\` DATETIME(3) NOT NULL,
+  \`tsTzVal\` DATETIME(3) NOT NULL,
+  \`moneyVal\` BIGINT NOT NULL,
+  \`enumVal\` VARCHAR(6) NOT NULL,
+  \`intEnumVal\` INT,
+  \`uuidVal\` VARCHAR(36) NOT NULL,
+  \`uriVal\` VARCHAR(255) NOT NULL,
+  \`inetVal\` VARCHAR(45) NOT NULL,
+  \`inet6Val\` VARCHAR(45) NOT NULL,
+  \`settings\` JSON,
+  \`labels\` JSON
 )`,
 ];
 

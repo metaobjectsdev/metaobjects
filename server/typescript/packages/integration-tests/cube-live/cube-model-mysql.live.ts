@@ -39,7 +39,7 @@ import {
 import { loadMetadataFile } from "../src/load-metadata.ts";
 import { CANONICAL_DIR } from "../src/paths.ts";
 import { readCanonicalMysqlSchemaSql } from "../src/canonical-schema-mysql.ts";
-import { cubeQueryFor, fromCubeRow, fromViewRow, getMeta, load, sortRows } from "./cube-live-support.ts";
+import { cubeQueryFor, type ExpectedReport, fromCubeRow, fromViewRow, getMeta, load, sortRows } from "./cube-live-support.ts";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const CANONICAL_MODEL = join(CANONICAL_DIR, "meta.fitness.json");
@@ -51,16 +51,28 @@ const TEST_TIMEOUT_MS = 600_000;
  * Each served canonical report, its view, the rollup Cube answers from (the same table Table I
  * names on Postgres; undefined = the source tables) and its row count on seed.mysql.sql.
  */
-const REPORTS: readonly { readonly report: string; readonly view: string; readonly preAggregation: string | undefined; readonly rows: number }[] = [
+const REPORTS: readonly ExpectedReport[] = [
   { report: "ProgramMinutes", view: "v_program_minutes", preAggregation: "dev_pre_aggregations.week__program_minutes", rows: 3 },
   { report: "FitnessTotals", view: "v_fitness_totals", preAggregation: "dev_pre_aggregations.week__fitness_totals", rows: 1 },
   { report: "ProgramsByMonth", view: "v_programs_by_month", preAggregation: "dev_pre_aggregations.program__programs_by_month", rows: 5 },
   { report: "ProgramsByWeek", view: "v_programs_by_week", preAggregation: "dev_pre_aggregations.program__programs_by_week", rows: 5 },
   { report: "RecentPrograms", view: "v_recent_programs", preAggregation: undefined, rows: 1 },
   { report: "AssetActivity", view: "v_asset_activity", preAggregation: "dev_pre_aggregations.asset__asset_activity", rows: 2 },
-  { report: "ProgramRoster", view: "v_program_roster", preAggregation: undefined, rows: 7 },
-  { report: "ProgramLongWeeks", view: "v_program_long_weeks", preAggregation: undefined, rows: 7 },
+  { report: "ProgramRoster", view: "v_program_roster", preAggregation: undefined, rows: 11 },
+  { report: "ProgramLongWeeks", view: "v_program_long_weeks", preAggregation: undefined, rows: 11 },
   { report: "FitnessTotalsFilled", view: "v_fitness_totals_filled", preAggregation: "dev_pre_aggregations.week__fitness_totals_filled", rows: 1 },
+  { report: "MeasurementStats", view: "v_measurement_stats", preAggregation: "dev_pre_aggregations.measurement__measurement_stats", rows: 1 },
+  { report: "MeasurementStatsFilled", view: "v_measurement_stats_filled", preAggregation: "dev_pre_aggregations.measurement__measurement_stats_filled", rows: 1 },
+  { report: "AssetDays", view: "v_asset_days", preAggregation: "dev_pre_aggregations.asset__asset_days", rows: 1 },
+  { report: "AllTypesBreakdown", view: "v_all_types_breakdown", preAggregation: undefined, rows: 2 },
+  { report: "ProgramsOverTime", view: "v_programs_over_time", preAggregation: undefined, rows: 7 },
+  { report: "LiveIntroPrograms", view: "v_live_intro_programs", preAggregation: "dev_pre_aggregations.program__live_intro_programs", rows: 2 },
+  { report: "ProgramsEmptyScope", view: "v_programs_empty_scope", preAggregation: "dev_pre_aggregations.program__programs_empty_scope", rows: 1, cubeRows: [{ avgPriceOrMinusOne: null, programs: null }] },
+  { report: "WeekShapes", view: "v_week_shapes", preAggregation: "dev_pre_aggregations.week__week_shapes", rows: 3 },
+  { report: "SessionsByProgram", view: "v_sessions_by_program", preAggregation: "dev_pre_aggregations.session__sessions_by_program", rows: 3 },
+  { report: "ProgramSessions", view: "v_program_sessions", preAggregation: undefined, rows: 11 },
+  { report: "NodesByParent", view: "v_nodes_by_parent", preAggregation: "dev_pre_aggregations.node__nodes_by_parent", rows: 3 },
+  { report: "AuthsByKind", view: "v_auths_by_kind", preAggregation: "dev_pre_aggregations.auth__auths_by_kind", rows: 3 },
 ];
 
 const unavailable = dockerUnavailableReason();
@@ -161,11 +173,11 @@ describe(`cube-model MySQL live check (${CUBE_IMAGE} over ${CUBE_MYSQL_IMAGE}, d
     for (const want of REPORTS) expect(reportReadSource(findReport(want.report))?.physicalName).toBe(want.view);
   });
 
-  test.skipIf(skip)("Cube compiles the MySQL model and lists the cubes over the three tables the reports read", async () => {
+  test.skipIf(skip)("Cube compiles the MySQL model and lists the cubes over the tables the reports read", async () => {
     const meta = await getMeta(requireStack());
     expect(meta.error).toBeUndefined();
     const names = new Set(meta.cubes.map((c) => c.name));
-    for (const cube of ["Program", "Week", "Asset"]) expect(names.has(cube)).toBe(true);
+    for (const cube of ["Program", "Week", "Asset", "Session", "Node", "Auth", "Measurement"]) expect(names.has(cube)).toBe(true);
   }, TEST_TIMEOUT_MS);
 
   for (const want of REPORTS) {
@@ -179,7 +191,13 @@ describe(`cube-model MySQL live check (${CUBE_IMAGE} over ${CUBE_MYSQL_IMAGE}, d
       const viewRows = sortRows(selectView(s, want.view).map((row) => fromViewRow(row, plan, want.view)), plan);
       timings.push(`${want.report}: ${cubeRows.length} row(s) compared, served from ${used[0] ?? "the source table"}, load ${Date.now() - t0} ms`);
       expect(viewRows.length).toBe(want.rows);
-      expect(cubeRows).toEqual(viewRows);
+      if (want.cubeRows !== undefined) {
+        // A known difference (docs/features/cube-export.md): Cube sends exactly these rows, the view does not.
+        expect(cubeRows).toEqual([...want.cubeRows]);
+        expect(cubeRows).not.toEqual(viewRows);
+      } else {
+        expect(cubeRows).toEqual(viewRows);
+      }
       expect(used).toEqual(want.preAggregation === undefined ? [] : [want.preAggregation]);
     }, TEST_TIMEOUT_MS);
   }

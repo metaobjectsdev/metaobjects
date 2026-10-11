@@ -361,3 +361,31 @@ export async function cubeSql(s: CubeStack, query: CubeQuery): Promise<string> {
   }
 }
 
+/**
+ * Table I: what each served canonical report must produce. `preAggregation` is the table Cube
+ * names in `usedPreAggregations`: development mode's schema `dev_pre_aggregations`, then
+ * `<cube>__<rollup>` in snake case, TWO underscores (executed on 1.7.43); undefined means Table F
+ * emits no rollup and Cube reads the source tables (a relative date, or a `@spine` report, which
+ * is a Cube view). `rows` is the row count on the lane's seed (canonical/seed.sql, or seed.mysql.sql on MySQL): a `@spine` report has one row
+ * per program, the eight with no weeks (and, for ProgramLongWeeks, the two whose weeks are all
+ * short) included.
+ */
+export interface ExpectedReport {
+  readonly report: string;
+  readonly view: string;
+  readonly preAggregation: string | undefined;
+  readonly rows: number;
+  /**
+   * A known difference (docs/features/cube-export.md, "Where a Cube query and the view differ"):
+   * the rows Cube answers where the view's differ. The test requires Cube to send exactly these
+   * and the view NOT to, so the difference stays an executed check rather than a skipped one.
+   */
+  readonly cubeRows?: readonly Record<string, string | null>[];
+  /**
+   * The model declares a rollup for this report and Cube never matches it, so it answers from the
+   * source table (`preAggregation` is then undefined). Today that is a report listing ONE time
+   * dimension at several grains: the `time_dimensions` entry repeats the dimension and Cube 1.7.43
+   * matches no query to it (a query names a time dimension once, at one granularity).
+   */
+  readonly unusedRollup?: true;
+}
