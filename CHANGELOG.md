@@ -35,15 +35,18 @@ here.**
     until you regenerate. Own the copy if output has to hold still across upgrades.
 - **`meta gen --list` prints how to import each generator.** Every row outside the `docs`
   layer shows the import line that runs the generator as shipped, and `--format json`
-  carries it as `wire.import` and `wire.entry`. A gate imports each package's factory module
-  and requires the name the catalog prints, and requires an ejectable generator's reference
+  carries it as `wire.import`. The catalog prints the import only: each generator's
+  documented options say how to call it. A gate imports each package's factory module and
+  requires the name the catalog prints, and requires an ejectable generator's reference
   template to export the same symbol.
 - **`callable` and `trace-helper` can be ejected (TypeScript).** Both gained a reference
   template, so `meta eject callable` and `meta eject trace-helper` copy a generator you
   own: which objects get a module and where it lands. The module body stays in the package
   (`renderCallableFile`, `renderTraceHelper`, now exported from `@metaobjectsdev/codegen-ts`),
-  the same split the prompt tier uses. Still package-only: the `template` primitive, the
-  docs tier (`docs`, `api-docs`, `mermaid-er`) and `shared-model`.
+  the same split the prompt tier uses. The rule is that every stock generator can be
+  ejected except the `template` primitive, which has no emit logic of its own to own. Not
+  yet ejectable in this change: `shared-model` and the docs tier (`docs`, `api-docs`,
+  `mermaid-er`) in TypeScript, and `entity` and `extractor` in Java.
 
 ### Changed
 

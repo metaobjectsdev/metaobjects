@@ -20,7 +20,7 @@ import { join } from "node:path";
 import * as coreFactories from "@metaobjectsdev/codegen-ts/generators";
 import * as reactFactories from "@metaobjectsdev/codegen-ts-react";
 import * as tanstackFactories from "@metaobjectsdev/codegen-ts-tanstack";
-import { factoryModuleOf, listCatalog, packagedWiring } from "../src/lib/catalog.js";
+import { factoryModuleOf, listCatalog } from "../src/lib/catalog.js";
 import { buildCatalogListing, renderCatalogText, type GeneratorCatalogRow } from "../src/lib/catalog-listing.js";
 import { ejectGenerator } from "../src/commands/eject.js";
 
@@ -87,15 +87,6 @@ describe("catalog factory exports", () => {
         if (ejected.exportName !== entry.factoryExport) {
           differing.push(`${entry.name}: owned copy exports ${ejected.exportName}, package exports ${entry.factoryExport}`);
         }
-        // One symbol is only half the claim: the two paths must print the SAME call.
-        // `packagedWiring` spells required options off the entry's `options` string,
-        // while the eject line is built bare — so equality here also holds the rule
-        // that no ejectable entry has a required option.
-        const packaged = packagedWiring(entry);
-        const ejectEntry = `${ejected.exportName}()`;
-        if (packaged !== undefined && packaged.entry !== ejectEntry) {
-          differing.push(`${entry.name}: package prints "${packaged.entry}", eject prints "${ejectEntry}"`);
-        }
       }
       expect(differing).toEqual([]);
     } finally {
@@ -105,7 +96,7 @@ describe("catalog factory exports", () => {
 });
 
 describe("meta gen --list — how to wire a generator as shipped", () => {
-  test("every row outside the docs layer carries its package import and entry", async () => {
+  test("every row outside the docs layer carries its package import, and no derived call", async () => {
     const rows = (await buildCatalogListing()).filter(
       (r): r is GeneratorCatalogRow => r.kind === "generator",
     );
@@ -116,7 +107,7 @@ describe("meta gen --list — how to wire a generator as shipped", () => {
         continue;
       }
       expect(row.wire?.import).toMatch(/^import \{ \w+ \} from "@metaobjectsdev\/codegen-ts[\w/-]*";$/);
-      expect(row.wire?.entry).toMatch(/^\w+\((\{ [\w, ]+ \})?\)$/);
+      expect({ name: row.name, keys: Object.keys(row.wire ?? {}) }).toEqual({ name: row.name, keys: ["import"] });
     }
   });
 
@@ -128,18 +119,10 @@ describe("meta gen --list — how to wire a generator as shipped", () => {
     );
     expect(byName.get("entity")?.wire).toEqual({
       import: `import { entityFile } from "@metaobjectsdev/codegen-ts/generators";`,
-      entry: "entityFile()",
     });
     expect(byName.get("hooks")?.wire).toEqual({
       import: `import { tanstackQuery } from "@metaobjectsdev/codegen-ts-tanstack";`,
-      entry: "tanstackQuery()",
     });
-  });
-
-  test("a factory that cannot be called bare names the options it needs", () => {
-    const entry = listCatalog().find((e) => e.name === "shared-model");
-    if (entry === undefined) throw new Error("shared-model left the catalog");
-    expect(packagedWiring(entry)?.entry).toBe("sharedModelFile({ name, include })");
   });
 
   test("the text listing prints the import under a row, and drops it once the copy is owned", async () => {

@@ -355,8 +355,10 @@ ejectable."* Two things follow, and both are the rule from here on:
 
 - **Every stock generator can be run as shipped**, by importing its factory from its
   package. Nothing is copied, and an upgrade of the package is how its fixes arrive.
-- **Every stock generator can be ejected**, when the adopter wants to change what it emits.
-  Ejecting is the customization route; it is not a precondition for generating.
+- **Every stock generator can be ejected except `template`**, when the adopter wants to
+  change what it emits. Ejecting is the customization route; it is not a precondition for
+  generating. `template` is the one permanent exception, in every port: it is the Mustache
+  primitive and has no emit logic of its own to own.
 
 **Supersedes** Decision 3 ("you cannot `import { entityFile } from
 "@metaobjectsdev/codegen-ts/generators"`") and the clause of Decision 2 that makes
@@ -385,10 +387,12 @@ failure back.
    `@metaobjectsdev/codegen-ts/generators` again. The config loader's two diagnostics for
    the removed imports went with the removal.
 2. The catalog says how to import. Each registry entry carries `factoryExport`, and
-   `meta gen --list` prints the import line that runs the generator as shipped (`wire` on
-   the JSON row). It is resolved, not trusted: a gate imports each package's public factory
-   module and requires that name, and requires the reference template of an ejectable
-   generator to export the same symbol, so moving between the two paths is one import line.
+   `meta gen --list` prints the import line that runs the generator as shipped
+   (`wire.import` on the JSON row). It is resolved, not trusted: a gate imports each
+   package's public factory module and requires that name, and requires the reference
+   template of an ejectable generator to export the same symbol, so moving between the two
+   paths is one import line. The catalog prints the import only. It does not derive the
+   call: a factory's options are documented with the generator.
 3. `callable` and `trace-helper` gained reference templates and left the package-only list.
 4. `meta init` is unchanged in what it wires, which is nothing (Amendment 2 stands). Its
    scaffolded comment now shows the import first and eject as the way to change output.
@@ -409,13 +413,12 @@ failure back.
   name, so the two paths start from the same output. The one difference is where the
   HTTP-adapter import points, because eject hands over that source too (Amendment 3).
 
-**Still not ejectable, with the reason for each.** In TypeScript: `template`, which is the
-Mustache primitive and has no emit logic of its own (the C#, Java and Python ports rule the
-same way); `shared-model`, whose output is a hash-pinned artifact that a consumer's
-`meta deps sync` verifies, so it is a contract rather than a helper; and `docs`, `api-docs`
-and `mermaid-er`, which are the engine behind `meta docs` and have no seam to run an owned
-copy through. Outside TypeScript, the Java `entity` and `extractor` generators became
-ejectable in Amendment 6. Every port's generators run as shipped, selected by name.
+**Not yet ejectable in this change.** The rule above is ahead of the code for four
+TypeScript generators: `shared-model`, `docs`, `api-docs` and `mermaid-er`. Each one runs as
+shipped today and gains a reference copy through a sibling change, which updates this list
+when it lands. The Java `entity` and `extractor` generators became ejectable in Amendment 6.
+`template` is not on the list because it is the permanent exception. Every port's
+generators run as shipped, selected by name.
 
 ### Amendment 6 (2026-10-11) — the Java `entity` and `extractor` generators are ejectable
 

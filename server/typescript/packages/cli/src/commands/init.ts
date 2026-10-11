@@ -106,14 +106,15 @@ export default defineConfig({
   // would emit, so you can see what your metadata is already asking for. Group by
   // \`layer\`: model / persistence / api / client / docs / capability.
   //
-  // Every row carries a \`wire.import\` line and a \`wire.entry\`. To run a generator as
-  // shipped, add its import at the top of this file and its entry below:
+  // Every row carries the import line that runs its generator as shipped
+  // (\`wire.import\`). Add it at the top of this file:
   //
   //   import { entityFile, queriesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
   //
-  // then call each one in the array below: entityFile(), queriesFile(), barrel().
-  // The row also lists what to install and the config keys the generator reads
-  // (\`dbImport\`, \`apiPrefix\`, \`extStyle\`, …). Add them here as you go.
+  // then call each one in the array below: entityFile(), queriesFile(), barrel(). A
+  // generator's options are in its documentation. The row also lists what to install
+  // and the config keys the generator reads (\`dbImport\`, \`apiPrefix\`, \`extStyle\`, …).
+  // Add them here as you go.
   //
   // Need one to emit something different? Own it:
   //

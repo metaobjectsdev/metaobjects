@@ -127,8 +127,10 @@ name. Import by default and eject to customize: an owned copy you never change o
 behind the reference. (`entityFile` / `queriesFile` / `routesFile` / `barrel` were removed
 from that subpath at 1.0 and restored in 1.1, so on a 1.0.x install an owned copy is the
 only path for those four.) The engine primitives come from the package main entry,
-`@metaobjectsdev/codegen-ts`. Two entries cannot be ejected and are `package-only` in
-`meta gen --list`: the `template` primitive and `shared-model`.
+`@metaobjectsdev/codegen-ts`. Every stock generator can be ejected except the `template`
+primitive, which has no emit logic of its own to own. `shared-model` and the docs tier
+(`docs`, `api-docs`, `mermaid-er`) are not yet ejectable; `meta gen --list` marks each
+entry without a reference copy `package-only`.
 
 **`requirementTests()` — one test stub per requirement the model claims.** A recommended
 approach, not a contract: a `live` or `partial` requirement gets a stub that fails until

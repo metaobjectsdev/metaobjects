@@ -270,8 +270,9 @@ they emit.
      `react`, so a form generator plus the TanStack hook/grid generators is the
      intended composition, not a conflict.
 5. **Wire what you chose.** A generator you will run unchanged is wired from its package:
-   on TypeScript each catalog row carries `wire.import` and `wire.entry`, plus `install`
-   and `configKeys`; on the other ports you select it by its stable name. Copy nothing.
+   on TypeScript each catalog row carries `wire.import`, plus `install` and `configKeys`,
+   and you write the call from the generator's documented options; on the other ports you
+   select it by its stable name. Copy nothing.
    For a generator whose output you need to change,
    **`meta eject <names...> --format json`** copies each into `codegen/generators/`
    (yours to edit), and reports the import line, the entry to add to `generators`, one

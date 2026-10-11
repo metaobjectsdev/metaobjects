@@ -65,33 +65,20 @@ export function factoryModuleOf(name: string): string | undefined {
   return SLICES.find(([, slice]) => name in slice)?.[2];
 }
 
-/** How one generator reaches `generators: [...]` — the import line and the entry. */
+/**
+ * How one generator reaches a config as shipped: the import line for its factory. The
+ * call is not derived here — a factory's options are documented with the generator.
+ */
 export interface GeneratorWiring {
   import: string;
-  entry: string;
-}
-
-/**
- * The option names an entry's `options` summary lists WITHOUT a trailing `?` — the ones
- * its factory cannot be called without. `options` is the option surface's only
- * declaration and this is its only reader: `--list` prints no option list of its own, so
- * the string IS the wiring data, not a caption beside it. The `?`-suffix convention is
- * documented on the field in `generator-registry.ts`, and
- * `catalog-factory-exports.test.ts` pins the two call sites that depend on it.
- */
-function requiredOptionNames(entry: GeneratorRegistryEntry): string[] {
-  return (entry.options ?? "")
-    .split(",")
-    .map((o) => o.trim())
-    .filter((o) => o !== "" && !o.endsWith("?"));
 }
 
 /**
  * How to wire a catalog entry AS SHIPPED: import its factory from the package, no copy.
  *
  * This is the half of "import by default, eject to customize" the catalog owns. The
- * other half is `meta eject`, which prints the same two facts for the owned copy — the
- * symbol is the same in both (gated), so moving between them is one import line.
+ * other half is `meta eject`, which prints the import for the owned copy — the symbol is
+ * the same in both (gated), so moving between them is one import line.
  *
  * Undefined for the `docs` layer: those generators are the engine behind `meta docs`,
  * which is their door, and wiring one into `generators: [...]` is the deprecated route.
@@ -100,13 +87,7 @@ export function packagedWiring(entry: GeneratorRegistryEntry): GeneratorWiring |
   if (entry.layer === "docs") return undefined;
   const from = factoryModuleOf(entry.name);
   if (from === undefined) return undefined;
-  const required = requiredOptionNames(entry);
-  return {
-    import: `import { ${entry.factoryExport} } from "${from}";`,
-    entry: required.length === 0
-      ? `${entry.factoryExport}()`
-      : `${entry.factoryExport}({ ${required.join(", ")} })`,
-  };
+  return { import: `import { ${entry.factoryExport} } from "${from}";` };
 }
 
 /**

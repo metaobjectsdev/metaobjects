@@ -70,9 +70,9 @@ export interface GeneratorCatalogRow {
   configKeys?: readonly string[];
   install: { dev: string[]; runtime: string[] };
   /**
-   * How to run this generator AS SHIPPED: the import line for its package factory and the
-   * entry for `generators: [...]`. No copy involved; `meta eject` prints the same pair for
-   * an owned one. Absent on the `docs` layer, whose door is `meta docs`.
+   * How to run this generator AS SHIPPED: the import line for its package factory. No
+   * copy involved; `meta eject` prints the local import for an owned one. Absent on the
+   * `docs` layer, whose door is `meta docs`.
    */
   wire?: GeneratorWiring;
   source: {

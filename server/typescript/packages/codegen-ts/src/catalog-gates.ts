@@ -92,7 +92,8 @@ export function warnUnsatisfiedRequires(
       `"${stable}" is wired but ${list} ${missing.length === 1 ? "is" : "are"} not. ` +
         `The code "${stable}" emits imports modules ${list} would have emitted, so ` +
         `tsc will report an unresolved import. Wire ${missing.length === 1 ? "it" : "them"} ` +
-        `(\`meta eject ${missing.join(" ")}\` copies the reference generator${missing.length === 1 ? "" : "s"}), ` +
+        `(\`meta gen --list\` prints the import that runs ${missing.length === 1 ? "it" : "each"} as shipped; ` +
+        `\`meta eject ${missing.join(" ")}\` copies the reference generator${missing.length === 1 ? "" : "s"} to change what ${missing.length === 1 ? "it emits" : "they emit"}), ` +
         `or keep your own hand-written module${missing.length === 1 ? "" : "s"} at ${missing.length === 1 ? "that path" : "those paths"}.`,
     );
   }

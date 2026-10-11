@@ -221,10 +221,10 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     narrate(fmt,
       "\nNothing is generated until you choose it — `generators: []` is what `meta init` " +
         "scaffolds, by design.\n" +
-        "  meta gen --list --probe    the catalog, with how many files each generator " +
-        "would emit for YOUR model\n" +
-        "  meta eject <name>...       take the ones you want; it prints the import, the " +
-        "entry to wire, and what to install\n" +
+        "  meta gen --list --probe    the catalog: the import that runs each generator as " +
+        "shipped, and how many files it would emit for YOUR model\n" +
+        "  meta eject <name>...       copy one into your repo to change what it emits; it " +
+        "prints the import to swap in, the entry to wire, and what to install\n" +
         "(`meta docs` needs none of this — documentation is on by default.)",
     );
   }
