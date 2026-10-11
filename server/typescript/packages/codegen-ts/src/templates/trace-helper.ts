@@ -35,6 +35,7 @@ import type { GenContext } from "../generator.js";
 import { responseFormatOf } from "./find-inbound.js";
 import { valueObjectImport, valueObjectImportLines } from "./value-object-import.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
+import { toPascalCase } from "../naming.js";
 import { tphDiscriminatorPin } from "./zod-validators.js";
 
 /** The generator's stable name — the key a library manifest declares its anchor under. */
@@ -91,11 +92,6 @@ export function extendsTraceAnchor(obj: MetaObject, anchors: readonly MetaData[]
   return false;
 }
 
-/** Capitalise the first character. */
-function pascal(s: string): string {
-  return s.length > 0 ? s[0]!.toUpperCase() + s.slice(1) : s;
-}
-
 /**
  * Render the `<Entity>.trace.ts` module for one trace entity, or `undefined` when the
  * entity carries nothing to type a helper by: no nested template.prompt, a prompt
@@ -128,7 +124,7 @@ export function renderTraceHelper(entity: MetaObject, ctx: GenContext, outPath: 
   if (typeof payloadRef !== "string") return undefined;
 
   const entityName = entity.name;
-  const fnName = `record${pascal(entityName)}`;
+  const fnName = `record${toPascalCase(entityName)}`;
 
   // ADR-0056: the request and response types are the value objects' OWN interfaces. ADR-0042:
   // a bare ref resolves in the prompt's package first.
@@ -286,7 +282,7 @@ export function renderTraceHelper(entity: MetaObject, ctx: GenContext, outPath: 
   ];
 
   if (renderable) {
-    const callFn = `call${pascal(entityName)}`;
+    const callFn = `call${toPascalCase(entityName)}`;
     lines.push(
       ``,
       `// ---- Call helper (GENERATE -> CALL -> record) -------------------------------`,

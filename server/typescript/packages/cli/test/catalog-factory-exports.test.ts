@@ -87,6 +87,15 @@ describe("catalog factory exports", () => {
         if (ejected.exportName !== entry.factoryExport) {
           differing.push(`${entry.name}: owned copy exports ${ejected.exportName}, package exports ${entry.factoryExport}`);
         }
+        // One symbol is only half the claim: the two paths must print the SAME call.
+        // `packagedWiring` spells required options off the entry's `options` string,
+        // while the eject line is built bare — so equality here also holds the rule
+        // that no ejectable entry has a required option.
+        const packaged = packagedWiring(entry);
+        const ejectEntry = `${ejected.exportName}()`;
+        if (packaged !== undefined && packaged.entry !== ejectEntry) {
+          differing.push(`${entry.name}: package prints "${packaged.entry}", eject prints "${ejectEntry}"`);
+        }
       }
       expect(differing).toEqual([]);
     } finally {

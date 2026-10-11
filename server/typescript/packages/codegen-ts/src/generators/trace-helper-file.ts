@@ -1,10 +1,10 @@
 // server/typescript/packages/codegen-ts/src/generators/trace-helper-file.ts
 //
-// Stock generator that emits one <Entity>.trace.ts helper file for each concrete
-// entity that (a) extends a library's declared trace anchor (directly or transitively)
-// and (b) nests a template.prompt with @payloadRef and @responseRef. The module body is
-// `renderTraceHelper` (templates/trace-helper.ts); this file is the selection and the
-// output path — the same split the reference template `meta eject trace-helper` copies.
+// Stock generator that emits one <Entity>.trace.ts helper per trace entity. This file is
+// the selection and the output path; what a trace entity IS, and the module body, live in
+// templates/trace-helper.ts (anchor walk: `traceAnchorNodes` / `extendsTraceAnchor`;
+// prompt gating and rendering: `renderTraceHelper`) — the same split the reference
+// template `meta eject trace-helper` copies.
 //
 // Consumer wiring (metaobjects.config.ts):
 //   generators: [..., entityFile(), queriesFile(), traceHelperFile(), barrel()]

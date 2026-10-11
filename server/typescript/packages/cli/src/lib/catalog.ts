@@ -21,11 +21,24 @@ import {
 import { reactGeneratorRegistry } from "@metaobjectsdev/codegen-ts-react";
 import { tanstackGeneratorRegistry } from "@metaobjectsdev/codegen-ts-tanstack";
 
-/** The slices, in install-boundary order: the engine, then its framework packages. */
-const SLICES: ReadonlyArray<readonly [string, Record<string, GeneratorRegistryEntry>]> = [
-  ["@metaobjectsdev/codegen-ts", generatorRegistry],
-  ["@metaobjectsdev/codegen-ts-react", reactGeneratorRegistry],
-  ["@metaobjectsdev/codegen-ts-tanstack", tanstackGeneratorRegistry],
+/**
+ * The engine package. Its factories are served from a `/generators` subpath rather than
+ * its root (the root is the engine plus the primitives an owned generator composes); the
+ * framework packages serve theirs from the root. Exported because `eject.ts`'s source
+ * table names the same package — one definition per CLI package, not two.
+ */
+export const CORE_CODEGEN_PACKAGE = "@metaobjectsdev/codegen-ts";
+
+/**
+ * The slices, in install-boundary order: the engine, then its framework packages. The
+ * third element is the module that package serves factories from — a per-package fact
+ * declared at registration, so {@link factoryModuleOf} is a lookup and a new slice
+ * carries its own fact instead of adding a case to a name-keyed branch.
+ */
+const SLICES: ReadonlyArray<readonly [string, Record<string, GeneratorRegistryEntry>, string]> = [
+  [CORE_CODEGEN_PACKAGE, generatorRegistry, `${CORE_CODEGEN_PACKAGE}/generators`],
+  ["@metaobjectsdev/codegen-ts-react", reactGeneratorRegistry, "@metaobjectsdev/codegen-ts-react"],
+  ["@metaobjectsdev/codegen-ts-tanstack", tanstackGeneratorRegistry, "@metaobjectsdev/codegen-ts-tanstack"],
 ];
 
 /**
@@ -44,21 +57,12 @@ export function catalogPackages(): string[] {
   return SLICES.map(([pkg]) => pkg);
 }
 
-
-/** The engine package. Its factories live on a `/generators` subpath, not at the root. */
-const CORE_CODEGEN_PACKAGE = "@metaobjectsdev/codegen-ts";
-
 /**
- * The module a catalog entry's factory is imported from to run it as shipped.
- *
- * The engine serves its factories from `/generators` (its root is the engine and the
- * primitives an owned generator composes); the framework packages serve theirs from the
- * root. Undefined for a name no slice registers.
+ * The module a catalog entry's factory is imported from to run it as shipped — the third
+ * element of the slice that registers the name. Undefined for a name no slice registers.
  */
 export function factoryModuleOf(name: string): string | undefined {
-  const pkg = packageOf(name);
-  if (pkg === undefined) return undefined;
-  return pkg === CORE_CODEGEN_PACKAGE ? `${pkg}/generators` : pkg;
+  return SLICES.find(([, slice]) => name in slice)?.[2];
 }
 
 /** How one generator reaches `generators: [...]` — the import line and the entry. */
@@ -69,7 +73,11 @@ export interface GeneratorWiring {
 
 /**
  * The option names an entry's `options` summary lists WITHOUT a trailing `?` — the ones
- * its factory cannot be called without (`template`, `shared-model`).
+ * its factory cannot be called without. `options` is the option surface's only
+ * declaration and this is its only reader: `--list` prints no option list of its own, so
+ * the string IS the wiring data, not a caption beside it. The `?`-suffix convention is
+ * documented on the field in `generator-registry.ts`, and
+ * `catalog-factory-exports.test.ts` pins the two call sites that depend on it.
  */
 function requiredOptionNames(entry: GeneratorRegistryEntry): string[] {
   return (entry.options ?? "")
@@ -111,7 +119,7 @@ export function packagedWiring(entry: GeneratorRegistryEntry): GeneratorWiring |
  * another.
  */
 export function composeCatalog(): Record<string, GeneratorRegistryEntry> {
-  return composeSlices(SLICES);
+  return composeSlices(SLICES.map(([pkg, slice]) => [pkg, slice] as const));
 }
 
 /**

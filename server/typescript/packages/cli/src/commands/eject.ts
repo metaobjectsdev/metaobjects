@@ -24,7 +24,7 @@ import { parseEjectArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { declaredDependencyNames, readPackageManifest } from "../lib/package-manifest.js";
 import { compareOwnedCopy, type OwnedComparison } from "../lib/owned-copy.js";
-import { composeCatalog, factoryModuleOf, packageOf } from "../lib/catalog.js";
+import { composeCatalog, CORE_CODEGEN_PACKAGE, factoryModuleOf, packageOf } from "../lib/catalog.js";
 import { installSetFor, type InstallSet, type OwnedRuntimeInstall } from "../lib/install-set.js";
 import {
   ejectRuntime, ejectsRuntime, runtimeCopyStatus, runtimeDiffCommand, runtimeInstall,
@@ -61,8 +61,6 @@ interface TemplateSource {
 // runtime by selecting this entry via `names.includes(name)`. Reading from the root
 // deletes that machinery without weakening anything: membership is still checked, once,
 // where the untrusted value enters.
-const CORE_CODEGEN_PACKAGE = "@metaobjectsdev/codegen-ts";
-
 const SOURCES: TemplateSource[] = [
   {
     packageName: CORE_CODEGEN_PACKAGE,

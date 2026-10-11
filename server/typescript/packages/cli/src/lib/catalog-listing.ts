@@ -296,6 +296,10 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
       ? installSetFor([entry])
       : installSetFor([entry], [], { generators: new Set([entry.name]), ...runtimeInstall(owned.packages) });
     const pkg = packageOf(entry.name) ?? "";
+    // The row keeps the stock wiring even when this project owns the copy: the JSON
+    // consumer reads `source.owned` to know what it runs today, and the package line is
+    // the fact it needs to go back to stock. `renderCatalogText` deliberately hides that
+    // line under an owned row — two imports in front of a human invite wiring both.
     const wire = packagedWiring(entry);
 
     const row: GeneratorCatalogRow = {
@@ -450,8 +454,9 @@ export const REFERENCE_HELPER_NOTE: readonly string[] = [
 
 /** The footer line explaining the `package-only` row mark. */
 export const PACKAGE_ONLY_NOTE =
-  "package-only = no reference template ships for it, so `meta eject` cannot copy it; " +
-  "import it from its package instead.";
+  "package-only = no reference template ships for it, so `meta eject` cannot copy it. " +
+  "Run one as shipped by importing its factory — the import sits under its row, except " +
+  "for the docs layer, whose door is `meta docs`.";
 
 /** The human rendering: grouped by layer, because layer is the axis you select by. */
 export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {

@@ -12,8 +12,9 @@
 // (`test/reference-byte-identical.test.ts`) holds each reference template to the factory
 // of the same name exported here, so the two paths start from the same output.
 //
-// `traceHelperFile`, `callableFile` and the docs/primitive entries are package-only: no
-// reference copy ships, so this subpath is their only home (`meta gen --list` marks them).
+// Which entries have a reference copy is declared once, in `REFERENCE_GENERATOR_NAMES`
+// (reference-templates.ts); `meta gen --list` marks every other entry `package-only` —
+// today that is `template`, `shared-model` and the docs tier.
 // See spec/decisions/ADR-0034-codegen-scaffold-and-own.md.
 
 export { entityFile, type EntityFileOpts } from "./entity-file.js";

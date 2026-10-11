@@ -112,7 +112,12 @@ export interface GeneratorRegistryEntry {
    * name whose generator carries the same implementation name as {@link factory}'s.
    */
   factoryExport: string;
-  /** Optional one-line options summary for `--list`. */
+  /**
+   * The factory's option surface: comma-separated option names, each carrying a trailing
+   * `?` when optional. Nothing renders this string — the CLI's `packagedWiring` derives
+   * the `generators: [...]` call advice from it, so rewording it is a wiring change, not
+   * a copy edit.
+   */
   options?: string;
   /** The framework this generator's OUTPUT targets. Absent = framework-neutral. */
   framework?: GeneratorFramework;
