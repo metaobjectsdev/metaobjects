@@ -97,3 +97,13 @@ def test_shared_enum_members_are_uppercase_with_wire_value_preserved() -> None:
     assert 'STATISTICAL = "statistical"' in enums
     assert 'SEARCH_WEB = "search_web"' in enums
     assert 'statistical = "statistical"' not in enums  # member is not the lowercase value
+
+
+def test_multi_hop_enum_extends_still_resolves_to_the_shared_enum() -> None:
+    """``Task.urgency`` extends ``Ticket.priority`` which extends the shared abstract ``Priority``:
+    the shared declaration is found through the intermediate concrete field."""
+    files = _emit(GenConfig(out_dir="", provided_enum_namespace="acme_ext.enums"))
+    task = files["Task.py"]
+    assert "urgency: Priority" in task
+    assert "from .enums import Priority" in task
+    assert "Literal" not in task

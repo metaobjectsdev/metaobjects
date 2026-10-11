@@ -27,6 +27,17 @@ export function hasAccessorName(fieldName: string): string {
   return HAS_PREFIX + capitalize(fieldName);
 }
 
+/**
+ * Positional accessors injected into every ELEMENT of a collection, so a list separator needs
+ * no hand-computed `last` flag in the payload: `{{#items}}{{name}}{{^-last}}, {{/-last}}{{/items}}`.
+ * `-first` / `-last` are booleans on the element; the leading `-` cannot collide with a field
+ * name, and it is still an ordinary Mustache tag name, so the template stays valid Mustache.
+ * Only MAP-shaped elements carry them (a scalar element has nowhere to hold a key). An authored
+ * key of the same name wins, as it does for `has<Field>`.
+ */
+export const FIRST_ACCESSOR = "-first";
+export const LAST_ACCESSOR = "-last";
+
 /** Capitalize the first character, leaving an already-uppercase one untouched. */
 export function capitalize(s: string): string {
   if (s.length === 0) return s;
@@ -74,7 +85,18 @@ export function accessorValue(value: unknown): boolean | undefined {
 export function withDerivedAccessors<T>(payload: T, depth = 0): T {
   if (depth > 32) return payload; // pathological graph; render is not a validator
   if (Array.isArray(payload)) {
-    return payload.map((v) => withDerivedAccessors(v, depth + 1)) as unknown as T;
+    const last = payload.length - 1;
+    return payload.map((v, i) => {
+      const el = withDerivedAccessors(v, depth + 1);
+      if (el === null || typeof el !== "object" || Array.isArray(el)) return el;
+      const proto = Object.getPrototypeOf(el);
+      if (proto !== Object.prototype && proto !== null) return el;
+      const rec = el as Record<string, unknown>;
+      const out: Record<string, unknown> = { ...rec };
+      if (!Object.prototype.hasOwnProperty.call(rec, FIRST_ACCESSOR)) out[FIRST_ACCESSOR] = i === 0;
+      if (!Object.prototype.hasOwnProperty.call(rec, LAST_ACCESSOR)) out[LAST_ACCESSOR] = i === last;
+      return out;
+    }) as unknown as T;
   }
   if (payload === null || typeof payload !== "object") return payload;
   // PLAIN objects only. Rebuilding from Object.entries() would flatten anything with

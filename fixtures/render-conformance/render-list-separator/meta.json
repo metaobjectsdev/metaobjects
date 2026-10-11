@@ -1,0 +1,1 @@
+{ "format": "text", "note": "Positional -first/-last accessors on collection elements: separator via {{^-last}}, lead-in via {{#-first}}, nested lists keep their own position, single-element and empty lists, authored key wins" }

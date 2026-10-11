@@ -92,6 +92,31 @@ function renderFieldEntry(f: UiFieldDescriptor): string {
   return `  ${f.name}: {\n    ${entries.join(",\n    ")},\n  }`;
 }
 
+/**
+ * A value object's field-rules constant: `export const <VO> = { $entity, <field>: { name, label,
+ * view, rules, ... } } as const`. The same per-field shape an entity's constant carries, minus
+ * `$table` and `$path` — a value object has no source and no route — so a caller reads a limit as
+ * `<VO>.<field>.rules.maxLength.value` instead of reaching through the Zod schema's getters.
+ */
+export function renderValueObjectConstants(obj: MetaObject, emittedName?: string): Code {
+  const descriptor = buildEntityUiDescriptor(obj);
+  // The emitted name (collision-qualified, ADR-0044) matches the value object's interface.
+  const name = emittedName ?? descriptor.entity;
+  const body = joinCode(
+    [code`  $entity: ${JSON.stringify(descriptor.entity)}`, ...descriptor.fields.map((f) => code`${renderFieldEntry(f)}`)],
+    { on: ",\n" },
+  );
+  return code`
+/**
+ * Metadata constants for the value object ${name}: each field's name, label, view and the
+ * validation rules derived from its validator children (e.g. \`${name}.<field>.rules.maxLength.value\`).
+ */
+export const ${name} = {
+${body},
+} as const;
+`;
+}
+
 export function renderEntityConstants(
   obj: MetaObject,
   /**

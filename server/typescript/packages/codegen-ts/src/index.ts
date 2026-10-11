@@ -234,7 +234,7 @@ export { renderBarrel } from "./templates/barrel.js";
 export type { BarrelEntry } from "./templates/barrel.js";
 export { renderFilterType } from "./templates/filter-type.js";
 export { renderFilterAllowlist, renderSortAllowlist } from "./templates/filter-allowlist.js";
-export { renderEntityConstants, resourcePath } from "./templates/entity-constants.js";
+export { renderEntityConstants, renderValueObjectConstants, resourcePath } from "./templates/entity-constants.js";
 export { renderQueriesFile } from "./templates/queries-file.js";
 // #348 — which CRUD verbs a generated routes file mounts. Public because an OWNED
 // routes generator (ADR-0034) composes the same render call and needs the same option.

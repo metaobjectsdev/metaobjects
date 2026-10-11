@@ -49,20 +49,23 @@ def _pascal(name: str) -> str:
 
 def resolve_shared_enum_decl(field: MetaField) -> MetaData | None:
     """The package-level abstract ``field.enum`` *field* resolves to via ``extends``, or ``None``
-    for an inline enum. Qualifies only when the immediate super is (a) a ``field.enum``,
-    (b) abstract, AND (c) a direct child of the metadata root — a sibling of ``object.entity``,
-    not an abstract field nested inside an object."""
+    for an inline enum. The ``extends`` chain is walked and the NEAREST super that is (a) a
+    ``field.enum``, (b) abstract, AND (c) a direct child of the metadata root — a sibling of
+    ``object.entity``, not an abstract field nested inside an object — wins, so a multi-hop
+    chain through concrete enum fields still reaches the shared declaration."""
     if field.sub_type != fc.FIELD_SUBTYPE_ENUM:
         return None
+    seen = {id(field)}
     sup = field.super_data
-    if sup is None or sup.sub_type != fc.FIELD_SUBTYPE_ENUM:
-        return None
-    if not getattr(sup, "is_abstract", False):
-        return None
-    parent = sup.parent
-    if parent is None or parent.type != TYPE_METADATA:
-        return None
-    return sup
+    while sup is not None and id(sup) not in seen:
+        if sup.sub_type != fc.FIELD_SUBTYPE_ENUM:
+            return None
+        parent = sup.parent
+        if getattr(sup, "is_abstract", False) and parent is not None and parent.type == TYPE_METADATA:
+            return sup
+        seen.add(id(sup))
+        sup = sup.super_data
+    return None
 
 
 def is_provided(decl: MetaData) -> bool:

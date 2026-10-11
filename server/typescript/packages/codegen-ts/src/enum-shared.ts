@@ -43,14 +43,20 @@ export interface SharedEnum {
  */
 export function resolveSharedEnumDecl(field: MetaField): MetaField | undefined {
   if (field.subType !== FIELD_SUBTYPE_ENUM) return undefined;
-  const sup = field.resolveSuper();
-  if (sup === undefined) return undefined;
-  if (!sup.isAbstract) return undefined;
-  // The declaration must sit at the package/root level (sibling of object.entity),
-  // i.e. its parent node is the metadata root.
-  const parent = sup.parent;
-  if (parent === undefined || parent.type !== TYPE_METADATA) return undefined;
-  return sup;
+  // Walk the extends chain: the NEAREST root-level abstract enum wins, so a field
+  // that extends a concrete (or nested) enum field which itself extends the shared
+  // declaration still resolves to it. The seen-set guards a malformed cyclic chain.
+  const seen = new Set<MetaField>([field]);
+  let sup = field.resolveSuper();
+  while (sup !== undefined && !seen.has(sup)) {
+    if (sup.subType !== FIELD_SUBTYPE_ENUM) return undefined;
+    // The declaration must sit at the package/root level (sibling of object.entity),
+    // i.e. its parent node is the metadata root.
+    if (sup.isAbstract && sup.parent !== undefined && sup.parent.type === TYPE_METADATA) return sup;
+    seen.add(sup);
+    sup = sup.resolveSuper();
+  }
+  return undefined;
 }
 
 /** The shared-enum descriptor a field resolves to, or undefined for inline enums. */

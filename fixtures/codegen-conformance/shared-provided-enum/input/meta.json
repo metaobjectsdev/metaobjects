@@ -18,6 +18,12 @@
         { "source.rdb":  { "@table": "orders" } },
         { "identity.primary": { "name": "pk", "@fields": ["id"] } }
       ] } },
+      { "object.entity": { "name": "Task", "children": [
+        { "field.long":  { "name": "id" } },
+        { "field.enum":  { "name": "urgency", "extends": "acme::shop::Ticket.priority" } },
+        { "source.rdb":  { "@table": "tasks" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+      ] } },
       { "object.entity": { "name": "Invoice", "children": [
         { "field.long":  { "name": "id" } },
         { "field.enum":  { "name": "money", "extends": "Money" } },

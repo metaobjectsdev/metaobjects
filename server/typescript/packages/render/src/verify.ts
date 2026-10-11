@@ -11,7 +11,7 @@
 
 import Mustache from "mustache";
 import type { Provider } from "./provider.js";
-import { HAS_PREFIX, hasAccessorName } from "./payload-accessors.js";
+import { HAS_PREFIX, FIRST_ACCESSOR, LAST_ACCESSOR, hasAccessorName } from "./payload-accessors.js";
 
 /** A `{{var}}` references a field the (contextual) payload does not declare. */
 export const ERR_VAR_NOT_ON_PAYLOAD = "ERR_VAR_NOT_ON_PAYLOAD";
@@ -82,6 +82,17 @@ function isBooleanAccessor<F extends PayloadField>(stack: ResolveStack<F>, name:
     for (const f of stack[i]!) if (name === hasAccessorName(f.name)) return true;
   }
   return false;
+}
+
+/**
+ * True when `name` is a positional accessor (`-first` / `-last`) and the current scope is an
+ * element of a collection section — the engine injects both into every map-shaped element
+ * (payload-accessors.ts). Like `has<Field>` it is permissive about shape: `inElement` is true
+ * whenever the innermost context was pushed by a `{{#x}}` over a container field, which an
+ * object-typed field also is.
+ */
+function isPositionalAccessor(inElement: boolean, name: string): boolean {
+  return inElement && (name === FIRST_ACCESSOR || name === LAST_ACCESSOR);
 }
 
 function find<F extends PayloadField>(fields: F[], name: string): F | undefined {
@@ -172,7 +183,7 @@ export function verify(
   // (no second resolution pass).
   const staticTexts: string[] = [templateText];
 
-  function walk(tokens: Token[], stack: ResolveStack, seen: readonly string[]): void {
+  function walk(tokens: Token[], stack: ResolveStack, seen: readonly string[], inElement = false): void {
     const atRoot = stack.length === 1 && stack[0] === root;
     for (const tok of tokens) {
       const type = tok[0] as string;
@@ -184,7 +195,7 @@ export function verify(
           // {{{x}}} (spec); mustache.js emits "&" for it too
           if (value === ".") break; // implicit iterator — always valid
           if (atRoot) referencedAtRoot.add(value.split(".")[0]!);
-          if (!resolve(stack, value) && !isBooleanAccessor(stack, value))
+          if (!resolve(stack, value) && !isBooleanAccessor(stack, value) && !isPositionalAccessor(inElement, value))
             errors.push({ code: ERR_VAR_NOT_ON_PAYLOAD, path: value });
           break;
         }
@@ -193,17 +204,23 @@ export function verify(
           // {{^x}}…{{/x}}
           const sub = Array.isArray(tok[4]) ? (tok[4] as Token[]) : [];
           if (value === ".") {
-            walk(sub, stack, seen);
+            walk(sub, stack, seen, inElement);
             break;
           }
           if (atRoot) referencedAtRoot.add(value.split(".")[0]!);
           const field = resolve(stack, value);
           if (!field) {
+            // A positional `-first` / `-last` gate is a BOOLEAN on the current element: it
+            // pushes nothing, so the body walks in the SAME scope.
+            if (isPositionalAccessor(inElement, value)) {
+              walk(sub, stack, seen, inElement);
+              break;
+            }
             // A derived `has<Field>` gate is a BOOLEAN over the current context, so it
             // resolves nothing and pushes nothing — walk the body in the SAME scope,
             // which is what `{{#hasAbilities}}{{#abilities}}…` depends on.
             if (isBooleanAccessor(stack, value)) {
-              walk(sub, stack, seen);
+              walk(sub, stack, seen, inElement);
               break;
             }
             // Unresolved section head is itself drift; skip the body (its
@@ -214,7 +231,7 @@ export function verify(
           // `#` over a container pushes its element fields; `^` (and `#` over a
           // scalar, used as a conditional) keep the current context.
           const push = type === "#" && field.fields !== undefined;
-          walk(sub, push ? [...stack, field.fields!] : stack, seen);
+          walk(sub, push ? [...stack, field.fields!] : stack, seen, push ? true : inElement);
           break;
         }
         case ">": {
@@ -227,7 +244,7 @@ export function verify(
             break;
           }
           staticTexts.push(text);
-          walk(parse(text), stack, [...seen, value]);
+          walk(parse(text), stack, [...seen, value], inElement);
           break;
         }
         default:

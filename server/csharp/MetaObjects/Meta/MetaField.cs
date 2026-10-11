@@ -205,7 +205,7 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     /// this field nor any super carries <c>@values</c>.
     /// </summary>
     public IReadOnlyList<string>? EffectiveEnumValues =>
-        EnumValues ?? (ResolveSuper()?.EnumValues);
+        EnumValues ?? ResolveSuper()?.EffectiveEnumValues;
 
     /// <summary>
     /// True if the field is required (NOT NULL).

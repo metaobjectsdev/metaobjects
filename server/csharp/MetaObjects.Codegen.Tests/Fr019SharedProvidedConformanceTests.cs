@@ -62,6 +62,16 @@ public class Fr019SharedProvidedConformanceTests
     }
 
     [Fact]
+    public void Multi_hop_enum_extends_still_resolves_to_the_shared_enum()
+    {
+        // Task.urgency extends Ticket.priority, which extends the shared abstract Priority.
+        var files = new EntityGenerator().Generate(Ctx(LoadFixture(), providedNs: "Acme.External")).ToList();
+        var task = Assert.Single(files, f => f.Path == "Task.g.cs");
+        Assert.DoesNotContain("public enum", task.Content);
+        Assert.Contains("public Priority? Urgency", task.Content);
+    }
+
+    [Fact]
     public void Provided_enum_is_not_materialized_and_referenced_at_the_configured_namespace()
     {
         var files = new EntityGenerator().Generate(Ctx(LoadFixture(), providedNs: "Acme.External")).ToList();

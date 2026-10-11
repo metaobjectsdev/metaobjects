@@ -27,10 +27,21 @@ __all__ = [
     "accessor_value",
     "with_derived_accessors",
     "is_boolean_accessor",
+    "FIRST_ACCESSOR",
+    "LAST_ACCESSOR",
+    "is_positional_accessor",
 ]
 
 #: The ``has`` prefix every derived boolean accessor carries.
 HAS_PREFIX = "has"
+
+#: Positional accessors injected into every mapping ELEMENT of a collection, so a list
+#: separator needs no hand-computed ``last`` flag: ``{{#items}}{{name}}{{^-last}}, {{/-last}}{{/items}}``.
+#: The leading ``-`` cannot collide with a field name and is still an ordinary Mustache tag
+#: name, so the template stays valid Mustache. Scalar elements carry none (nowhere to hold a
+#: key). An authored key of the same name wins, as for ``has<Field>``.
+FIRST_ACCESSOR = "-first"
+LAST_ACCESSOR = "-last"
 
 _MAX_DEPTH = 32
 
@@ -121,7 +132,15 @@ def with_derived_accessors(payload: Any, depth: int = 0) -> Any:
     if isinstance(payload, (str, bytes)):
         return payload
     if isinstance(payload, Sequence):
-        return [with_derived_accessors(v, depth + 1) for v in payload]
+        last = len(payload) - 1
+        items = []
+        for i, v in enumerate(payload):
+            el = with_derived_accessors(v, depth + 1)
+            if isinstance(el, dict):
+                el.setdefault(FIRST_ACCESSOR, i == 0)
+                el.setdefault(LAST_ACCESSOR, i == last)
+            items.append(el)
+        return items
     return payload
 
 
@@ -142,3 +161,10 @@ def is_boolean_accessor(stack: list[list[Any]], name: str) -> bool:
             if name == has_accessor_name(f.name):
                 return True
     return False
+
+
+def is_positional_accessor(in_element: bool, name: str) -> bool:
+    """True when ``name`` is ``-first`` / ``-last`` and the current scope is an element of a
+    collection section. Permissive about shape, like ``is_boolean_accessor``: ``in_element`` is
+    true whenever the innermost context was pushed by a ``{{#x}}`` over a container field."""
+    return in_element and name in (FIRST_ACCESSOR, LAST_ACCESSOR)

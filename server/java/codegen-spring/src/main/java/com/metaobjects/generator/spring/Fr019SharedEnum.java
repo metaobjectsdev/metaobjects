@@ -97,17 +97,23 @@ public final class Fr019SharedEnum {
     /**
      * The root-level abstract {@code field.enum} a concrete enum field resolves to via
      * {@code extends}, or {@code null} when the field is an inline enum (no root-abstract super).
-     * A super qualifies only when it is (a) an {@link EnumField}, (b) abstract, AND (c) a direct
-     * child of the metadata root ({@link MetaRoot}) — NOT an abstract field nested inside an object.
+     * The {@code extends} chain is walked and the NEAREST super that is (a) an {@link EnumField},
+     * (b) abstract, AND (c) a direct child of the metadata root ({@link MetaRoot}) — NOT an
+     * abstract field nested inside an object — wins, so a multi-hop chain through concrete enum
+     * fields still reaches the shared declaration.
      */
     public static MetaField<?> resolveSharedEnumDecl(MetaField<?> field) {
         if (!(field instanceof EnumField)) return null;
+        java.util.Set<MetaField<?>> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        seen.add(field);
         MetaField<?> sup = field.getSuperField();
-        if (!(sup instanceof EnumField)) return null;
-        if (!GeneratorUtil.isAbstract(sup)) return null;
-        // The declaration must sit at the package/root level (a sibling of object.entity).
-        if (!(sup.getParent() instanceof MetaRoot)) return null;
-        return sup;
+        while (sup != null && seen.add(sup)) {
+            if (!(sup instanceof EnumField)) return null;
+            // The declaration must sit at the package/root level (a sibling of object.entity).
+            if (GeneratorUtil.isAbstract(sup) && sup.getParent() instanceof MetaRoot) return sup;
+            sup = sup.getSuperField();
+        }
+        return null;
     }
 
     /** The shared-enum descriptor a field resolves to, or {@code null} for inline enums. */

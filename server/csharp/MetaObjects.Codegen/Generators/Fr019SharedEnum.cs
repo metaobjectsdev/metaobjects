@@ -44,19 +44,27 @@ public static class Fr019SharedEnum
     /// <summary>
     /// The root-level abstract <c>field.enum</c> a concrete enum field resolves to via
     /// <c>extends</c>, or <see langword="null"/> when the field is an inline enum (no
-    /// root-abstract super). A super qualifies only when it is (a) an abstract field, AND
+    /// root-abstract super). The nearest super in the chain that is (a) an abstract enum field, AND
     /// (b) a direct child of the metadata root (a package-level declaration) — NOT an
     /// abstract field nested inside another object.
     /// </summary>
     public static MetaField? ResolveSharedEnumDecl(MetaField field)
     {
         if (field.SubType != FIELD_SUBTYPE_ENUM) return null;
-        if (field.ResolveSuper() is not { } sup) return null;
-        if (!sup.IsAbstract) return null;
-        // The declaration must sit at the package/root level (sibling of object.entity),
-        // i.e. its parent node is the metadata root.
-        if (sup.Parent is not { } parent || parent.Type != BaseTypes.TYPE_METADATA) return null;
-        return sup;
+        // Walk the extends chain: the NEAREST root-level abstract enum wins, so a field that
+        // extends a concrete (or nested) enum field which itself extends the shared declaration
+        // still resolves to it. The seen-set guards a malformed cyclic chain.
+        var seen = new HashSet<MetaField>(ReferenceEqualityComparer.Instance) { field };
+        var sup = field.ResolveSuper();
+        while (sup is not null && seen.Add(sup))
+        {
+            if (sup.SubType != FIELD_SUBTYPE_ENUM) return null;
+            // The declaration must sit at the package/root level (sibling of object.entity),
+            // i.e. its parent node is the metadata root.
+            if (sup.IsAbstract && sup.Parent is { } parent && parent.Type == BaseTypes.TYPE_METADATA) return sup;
+            sup = sup.ResolveSuper();
+        }
+        return null;
     }
 
     /// <summary>The shared-enum descriptor a field resolves to, or null for inline enums.</summary>

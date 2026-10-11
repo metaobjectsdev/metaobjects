@@ -82,6 +82,16 @@ public class Fr019SharedProvidedConformanceTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void multiHopEnumExtendsStillResolvesToTheSharedEnum() throws Exception {
+        // Task.urgency extends Ticket.priority, which extends the shared abstract Priority.
+        Path out = run(loadShared(), "com.acme.ext");
+        String task = Files.readString(out.resolve("acme/shop/TaskDto.java"));
+        assertTrue("urgency must be typed as the shared enum; saw:\n" + task, task.contains("Priority urgency"));
+        assertFalse("shared enum must NOT be redeclared in TaskDto; saw:\n" + task,
+            task.contains("public enum"));
+    }
+
+    @Test
     public void providedEnumIsNotMaterializedAndReferencedAtTheConfiguredNamespace() throws Exception {
         Path out = run(loadShared(), "com.acme.ext");
 

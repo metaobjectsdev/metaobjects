@@ -3,7 +3,7 @@
   "src/generated/Author.queries.ts": "42cc1ab2fd442559e1e9c5c3f14978f306efcda5472f8b5370d3339753e5a36f",
   "src/generated/Author.routes.ts": "3b0412b4501d02ba8716dae634522202714d467c5f9d577d8ea583868b1187d5",
   "src/generated/Author.ts": "36f28e09c3633848bf3bdb45372e03ae8b036792dec05f503a6f0d3abc1bb1cc",
-  "src/generated/InstructorProfile.ts": "83aa3425bb0f2ba409865339fa0d3b6af3ae63a4cbf1accc41b0e6e5c1841ccc",
+  "src/generated/InstructorProfile.ts": "2643b88401edf303789461d7d05bafd7cb1979b0ff19c27958d156192265986a",
   "src/generated/Lesson.form.tsx": "10435d259837450502de4261ec6220fd6fdeecdf14fb22e377d8fd6d149c172e",
   "src/generated/Lesson.queries.ts": "bc8e9bff3cb70c2c47ecfd07619f90d3f26a3981aca8ce6828f75e2a80fb9273",
   "src/generated/Lesson.routes.ts": "ab910b2a1cfe1d38a49ce5d54de149bdbdfcd5adb077363b913ce6bebd01de13",
@@ -15,7 +15,7 @@
   "src/generated/ProgramDescriptionOutput.output.ts": "f13b7b2108bf8507b6aeb1e819edd06eb2d689ed259dc04784d19d62bee9dfd2",
   "src/generated/ProgramDescriptionOutput.render.ts": "77691e7f4c7dd8658ad2842fb5ea68a4b79e5c5ec69bb7221c618db303f2eb9f",
   "src/generated/ProgramDescriptionPayload.form.tsx": "a9dff101453450117aff3029b2c5259e7d0866667aaab722ba890beaaa20f95d",
-  "src/generated/ProgramDescriptionPayload.ts": "8df741a3271c6e6e8317041dd088f6b5de5f0f2e95c1b637528992c578e487d7",
+  "src/generated/ProgramDescriptionPayload.ts": "18161f91b74c419c062763d21dc5c7395bcb7208ea5adb0661ea91545b12200c",
   "src/generated/ProgramSummary.queries.ts": "743e8ce74eee85bb821cf3d909957fae630085fb1f5a7567dd6bfdcae4364910",
   "src/generated/ProgramSummary.routes.ts": "995e893a6b21e65d7bc031761c18bb7bb0c790abb31cb72546bf95573c980099",
   "src/generated/ProgramSummary.ts": "181f48ed374dfdf2f5b3213e0064833f071fd7029ed9357a6eef764616c2429c",
@@ -23,6 +23,6 @@
   "src/generated/Purchase.queries.ts": "ae7896ebdf3a57332e2c79dc9dd99fef9547054371547d6a469a752a7fc64ad6",
   "src/generated/Purchase.routes.ts": "b1d1df2277754b63f137d5059603abc812a36795656099e7b9df4cf67928549c",
   "src/generated/Purchase.ts": "e37c57f29eda8d7d4a13e8d58ab1695f0d07b8a804b6f5abadaba75adaa66484",
-  "src/generated/SyllabusSection.ts": "bade3037cfbab599b92ea4f0b29509edbdbd5014bf29467e392853b124cdd2e3",
+  "src/generated/SyllabusSection.ts": "655f1fdd3c2f104fe48e8fb9a4147c3977a820f82e2b0a6ce1db8e4bd1b3ca2c",
   "src/generated/index.ts": "b542ee705d68fe1695f930a14bd7fb54bf8e89f4f0688aaba58b7df2c2fb29db"
 }

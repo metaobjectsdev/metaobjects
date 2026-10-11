@@ -22,7 +22,37 @@ public final class PayloadAccessors {
     /** The {@code has} prefix every derived boolean accessor carries. */
     public static final String HAS_PREFIX = "has";
 
+    /**
+     * Positional accessors injected into every map-shaped ELEMENT of a collection, so a list
+     * separator needs no hand-computed {@code last} flag:
+     * {@code {{#items}}{{name}}{{^-last}}, {{/-last}}{{/items}}}. The leading {@code -} cannot
+     * collide with a field name and is still an ordinary Mustache tag name, so the template stays
+     * valid Mustache. A scalar element has nowhere to hold a key and carries none. An authored key
+     * of the same name wins, as for {@code has<Field>}.
+     */
+    public static final String FIRST_ACCESSOR = "-first";
+    public static final String LAST_ACCESSOR = "-last";
+
     private PayloadAccessors() { /* no instances */ }
+
+    /** Adds {@code -first}/{@code -last} to the map-shaped elements of an already-derived list. */
+    @SuppressWarnings("unchecked")
+    private static java.util.List<Object> withPositionalAccessors(java.util.List<Object> elements) {
+        int last = elements.size() - 1;
+        for (int i = 0; i < elements.size(); i++) {
+            if (elements.get(i) instanceof java.util.Map<?, ?> m) {
+                java.util.Map<String, Object> el = (java.util.Map<String, Object>) m;
+                el.putIfAbsent(FIRST_ACCESSOR, i == 0);
+                el.putIfAbsent(LAST_ACCESSOR, i == last);
+            }
+        }
+        return elements;
+    }
+
+    /** True when {@code name} is {@code -first}/{@code -last} and the scope is a collection element. */
+    public static boolean isPositionalAccessor(boolean inElement, String name) {
+        return inElement && (FIRST_ACCESSOR.equals(name) || LAST_ACCESSOR.equals(name));
+    }
 
     /**
      * The boolean-accessor method/section name for a payload field:
@@ -149,13 +179,13 @@ public final class PayloadAccessors {
         if (payload instanceof java.util.Collection<?> coll) {
             java.util.List<Object> out = new java.util.ArrayList<>(coll.size());
             for (Object item : coll) out.add(withDerivedAccessors(item, depth + 1));
-            return out;
+            return withPositionalAccessors(out);
         }
         if (payload.getClass().isArray() && !payload.getClass().getComponentType().isPrimitive()) {
             int n = java.lang.reflect.Array.getLength(payload);
             java.util.List<Object> out = new java.util.ArrayList<>(n);
             for (int i = 0; i < n; i++) out.add(withDerivedAccessors(java.lang.reflect.Array.get(payload, i), depth + 1));
-            return out;
+            return withPositionalAccessors(out);
         }
         return payload;
     }

@@ -1,0 +1,6 @@
+items: {{#items}}{{name}}{{^-last}}, {{/-last}}{{/items}}
+lead:{{#items}}{{#-first}} (first){{/-first}} {{name}}{{/items}}
+solo: {{#solo}}{{name}}{{^-last}}, {{/-last}}{{/solo}}
+none: [{{#none}}{{name}}{{^-last}}, {{/-last}}{{/none}}]
+nested: {{#groups}}[{{#tags}}{{label}}{{^-last}}|{{/-last}}{{/tags}}]{{^-last}};{{/-last}}{{/groups}}
+authored: {{#authored}}{{name}}{{^-last}}, {{/-last}}{{/authored}}

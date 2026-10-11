@@ -109,6 +109,20 @@ describe("FR-019 shared + provided enum conformance (TS)", () => {
     expect(inv).not.toContain('from "@acme/ext-enums"');
   });
 
+  // MULTI-HOP: `Task.urgency extends Ticket.priority`, and `Ticket.priority` itself extends the
+  // root abstract `Priority`. The shared declaration must be found through the intermediate
+  // concrete field, so `Task` references `enums.ts` instead of inlining its own `TaskUrgency`.
+  test("an enum field extending another enum field that extends the shared abstract still dedups", async () => {
+    const files = await gen(await loadSharedFixture(), "@acme/ext-enums");
+    const enums = files["enums.ts"]!;
+    expect(enums.split("export type Priority =").length - 1).toBe(1);
+    const task = files["Task.ts"]!;
+    expect(task).toBeDefined();
+    expect(task).toContain('from "./enums"');
+    expect(task).toContain("PriorityEnum");
+    expect(task).not.toContain("TaskUrgency");
+  });
+
   test("a @provided enum with no providedEnumModule config is a codegen-time error naming the enum", async () => {
     let err: unknown;
     try {

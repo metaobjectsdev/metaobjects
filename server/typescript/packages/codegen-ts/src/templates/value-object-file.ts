@@ -24,7 +24,7 @@ import {
   renderTphSubtypeReadSchema,
   tphDiscriminatorPin,
 } from "./zod-validators.js";
-import { renderEntityConstants } from "./entity-constants.js";
+import { renderEntityConstants, renderValueObjectConstants } from "./entity-constants.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants.js";
@@ -83,6 +83,10 @@ export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: Ren
     // object stays insert-only (no PATCH semantics — an UpdateSchema would mislead).
     tphSubtype || sourceless ? renderZodValidators(obj, ctx) : renderInsertSchemaOnly(obj, ctx),
     ...(tphConstants !== null ? [tphConstants] : []),
+    // A pure value object (no TPH, no sourceless identity) gets a field-rules constant, so a caller
+    // reads `<VO>.<field>.rules` rather than the Zod schema's getters. It has no table or route, so
+    // it takes the constant without `$table`/`$path`.
+    ...(!tphSubtype && !sourceless ? [renderValueObjectConstants(obj, ctx ? ctx.valueObjectEmittedName(obj) : undefined)] : []),
     ...(tphFilterAllowlist !== null ? [tphFilterAllowlist] : []),
     ...(tphSortAllowlist !== null ? [tphSortAllowlist] : []),
     ...(tphFilterType !== null ? [tphFilterType] : []),

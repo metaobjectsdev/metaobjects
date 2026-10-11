@@ -13,3 +13,18 @@ export const SubscriberBlurbPayloadInsertSchema = z.object({
   name: z.string().optional(),
   status: z.enum(["active", "paused", "cancelled"]),
 });
+/**
+ * Metadata constants for the value object SubscriberBlurbPayload: each field's name, label, view and the
+ * validation rules derived from its validator children (e.g. `SubscriberBlurbPayload.<field>.rules.maxLength.value`).
+ */
+export const SubscriberBlurbPayload = {
+  $entity: "SubscriberBlurbPayload",
+  name: { name: "name", label: "Name", view: "text", htmlType: "text" },
+  status: {
+    name: "status",
+    label: "Status",
+    view: "dropdown",
+    rules: { required: "Status is required" },
+    options: ["active", "paused", "cancelled"] as const,
+  },
+} as const;

@@ -98,7 +98,7 @@ public final class Verify {
         staticTexts.add(templateText);
 
         WalkContext ctx = new WalkContext(provider, root, errors, referencedAtRoot, staticTexts);
-        walk(tokenize(templateText), List.of(root), List.of(), ctx);
+        walk(tokenize(templateText), List.of(root), List.of(), ctx, false);
 
         if (opts.requiredSlots() != null) {
             for (String slot : opts.requiredSlots()) {
@@ -139,7 +139,8 @@ public final class Verify {
             List<Tok> tokens,
             List<List<PayloadField>> stack,
             List<String> seen,
-            WalkContext ctx
+            WalkContext ctx,
+            boolean inElement
     ) {
         boolean atRoot = stack.size() == 1 && stack.get(0) == ctx.root();
         for (Tok tok : tokens) {
@@ -147,25 +148,32 @@ public final class Verify {
                 case VarTok v -> {
                     if (".".equals(v.value())) break;   // implicit iterator — always valid
                     if (atRoot) ctx.referencedAtRoot().add(v.value().split("\\.")[0]);
-                    if (resolve(stack, v.value()) == null && !isBooleanAccessor(stack, v.value())) {
+                    if (resolve(stack, v.value()) == null && !isBooleanAccessor(stack, v.value())
+                            && !PayloadAccessors.isPositionalAccessor(inElement, v.value())) {
                         ctx.errors().add(new VerifyError(ERR_VAR_NOT_ON_PAYLOAD, v.value()));
                     }
                 }
                 case SectionTok s -> {
                     if (".".equals(s.value())) {
-                        walk(s.children(), stack, seen, ctx);
+                        walk(s.children(), stack, seen, ctx, inElement);
                         break;
                     }
                     if (atRoot) ctx.referencedAtRoot().add(s.value().split("\\.")[0]);
                     PayloadField field = resolve(stack, s.value());
                     if (field == null) {
+                        // A positional {{#-first}} / {{^-last}} gate is a BOOLEAN on the current
+                        // collection element: it pushes nothing, so the body walks in the SAME scope.
+                        if (PayloadAccessors.isPositionalAccessor(inElement, s.value())) {
+                            walk(s.children(), stack, seen, ctx, inElement);
+                            break;
+                        }
                         // An auto-derived boolean accessor ({{#hasAbilities}}) is a
                         // presence GATE over an optional/collection field reachable on
                         // the current scope — not a payload slot of its own. It keeps
                         // the current context (no push); its body still resolves against
                         // the enclosing scope.
                         if (isBooleanAccessor(stack, s.value())) {
-                            walk(s.children(), stack, seen, ctx);
+                            walk(s.children(), stack, seen, ctx, inElement);
                             break;
                         }
                         // Unresolved section head is itself drift; skip the body
@@ -179,9 +187,9 @@ public final class Verify {
                     if (push) {
                         List<List<PayloadField>> next = new ArrayList<>(stack);
                         next.add(field.fields());
-                        walk(s.children(), Collections.unmodifiableList(next), seen, ctx);
+                        walk(s.children(), Collections.unmodifiableList(next), seen, ctx, true);
                     } else {
-                        walk(s.children(), stack, seen, ctx);
+                        walk(s.children(), stack, seen, ctx, inElement);
                     }
                 }
                 case PartialTok p -> {
@@ -195,7 +203,7 @@ public final class Verify {
                     ctx.staticTexts().add(text);
                     List<String> nextSeen = new ArrayList<>(seen);
                     nextSeen.add(p.value());
-                    walk(tokenize(text), stack, Collections.unmodifiableList(nextSeen), ctx);
+                    walk(tokenize(text), stack, Collections.unmodifiableList(nextSeen), ctx, inElement);
                 }
             }
         }

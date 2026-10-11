@@ -33,6 +33,23 @@ public static class PayloadAccessors
     /// </summary>
     public static string HasAccessorName(string fieldName) => HasPrefix + Capitalize(fieldName);
 
+    /// <summary>
+    /// Positional accessors injected into every map-shaped ELEMENT of a collection, so a list
+    /// separator needs no hand-computed <c>last</c> flag:
+    /// <c>{{#items}}{{name}}{{^-last}}, {{/-last}}{{/items}}</c>. The leading <c>-</c> cannot
+    /// collide with a field name and is still an ordinary Mustache tag name, so the template
+    /// stays valid Mustache. A scalar element has nowhere to hold a key and carries none; an
+    /// authored key of the same name wins, as for <c>has&lt;Field&gt;</c>.
+    /// </summary>
+    public const string FirstAccessor = "-first";
+
+    /// <inheritdoc cref="FirstAccessor"/>
+    public const string LastAccessor = "-last";
+
+    /// <summary>True when <paramref name="name"/> is <c>-first</c>/<c>-last</c> and the scope is a collection element.</summary>
+    public static bool IsPositionalAccessor(bool inElement, string name) =>
+        inElement && (name == FirstAccessor || name == LastAccessor);
+
     /// <summary>Capitalize the first character, leaving an already-uppercase one untouched.</summary>
     public static string Capitalize(string s)
     {
@@ -122,6 +139,12 @@ public static class PayloadAccessors
         {
             var outList = new List<object?>();
             foreach (var item in seq) outList.Add(WithDerivedAccessors(item, depth + 1));
+            for (int i = 0; i < outList.Count; i++)
+            {
+                if (outList[i] is not Dictionary<string, object?> el) continue;
+                el.TryAdd(FirstAccessor, i == 0);
+                el.TryAdd(LastAccessor, i == outList.Count - 1);
+            }
             return outList;
         }
 

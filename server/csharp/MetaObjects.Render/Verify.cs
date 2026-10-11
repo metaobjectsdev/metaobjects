@@ -153,7 +153,7 @@ public static class Verify
         // (no second resolution pass).
         var staticTexts = new List<string> { templateText };
 
-        void Walk(IReadOnlyList<Tok> tokens, List<IReadOnlyList<PayloadField>> stack, List<string> seen)
+        void Walk(IReadOnlyList<Tok> tokens, List<IReadOnlyList<PayloadField>> stack, List<string> seen, bool inElement = false)
         {
             bool atRoot = stack.Count == 1 && ReferenceEquals(stack[0], root);
             foreach (var tok in tokens)
@@ -164,22 +164,30 @@ public static class Verify
                         if (v.Value == ".") break; // implicit iterator — always valid
                         if (atRoot) referencedAtRoot.Add(v.Value.Split('.')[0]);
                         if (Resolve(stack, v.Value) is null
-                            && !PayloadAccessors.IsBooleanAccessor(stack, v.Value))
+                            && !PayloadAccessors.IsBooleanAccessor(stack, v.Value)
+                            && !PayloadAccessors.IsPositionalAccessor(inElement, v.Value))
                             errors.Add(new VerifyError(ERR_VAR_NOT_ON_PAYLOAD, v.Value));
                         break;
 
                     case SectionTok s:
-                        if (s.Value == ".") { Walk(s.Children, stack, seen); break; }
+                        if (s.Value == ".") { Walk(s.Children, stack, seen, inElement); break; }
                         if (atRoot) referencedAtRoot.Add(s.Value.Split('.')[0]);
                         var field = Resolve(stack, s.Value);
                         if (field is null)
                         {
+                            // A positional `-first` / `-last` gate is a BOOLEAN on the current
+                            // collection element: it pushes nothing, so the body walks in the SAME scope.
+                            if (PayloadAccessors.IsPositionalAccessor(inElement, s.Value))
+                            {
+                                Walk(s.Children, stack, seen, inElement);
+                                break;
+                            }
                             // A derived `has<Field>` gate is a BOOLEAN over the current
                             // context: it resolves nothing and pushes nothing, so walk the
                             // body in the SAME scope — what `{{#hasX}}{{#x}}…` depends on.
                             if (PayloadAccessors.IsBooleanAccessor(stack, s.Value))
                             {
-                                Walk(s.Children, stack, seen);
+                                Walk(s.Children, stack, seen, inElement);
                                 break;
                             }
                             // Unresolved section head is itself drift; skip the body
@@ -193,9 +201,9 @@ public static class Verify
                         if (push)
                         {
                             var next = new List<IReadOnlyList<PayloadField>>(stack) { field.Fields! };
-                            Walk(s.Children, next, seen);
+                            Walk(s.Children, next, seen, true);
                         }
-                        else Walk(s.Children, stack, seen);
+                        else Walk(s.Children, stack, seen, inElement);
                         break;
 
                     case PartialTok p:
@@ -208,7 +216,7 @@ public static class Verify
                             break;
                         }
                         staticTexts.Add(text);
-                        Walk(Tokenize(text), stack, new List<string>(seen) { p.Value });
+                        Walk(Tokenize(text), stack, new List<string>(seen) { p.Value }, inElement);
                         break;
                 }
             }

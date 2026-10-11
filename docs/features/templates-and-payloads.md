@@ -209,6 +209,27 @@ For the `lobby/welcome` template:
 </prompt>
 ```
 
+## List separators and emptiness
+
+A template needs a separator between list items and a way to ask "is there anything here", and
+neither needs a payload field the caller computes.
+
+- **Separator — `-first` / `-last`.** Every map-shaped element of a collection carries two
+  derived booleans, so `{{#tags}}{{name}}{{^-last}}, {{/-last}}{{/tags}}` renders `a, b, c` with
+  no `last` flag in the payload. `{{#-first}}…{{/-first}}` is the matching lead-in. The names
+  start with `-`, which no field name can, and they are ordinary Mustache tag names, so the
+  template is still valid Mustache and any Mustache tool parses it. An authored key of the same
+  name wins. A nested list keeps its own position, independent of the list around it.
+- **Emptiness — `has<Field>`.** `{{#hasTags}}…{{/hasTags}}` / `{{^hasTags}}…{{/hasTags}}` is
+  derived from the field `tags` (string: non-blank, collection: non-empty, object: present).
+  `{{#tags}}` over an empty list already renders nothing; `hasTags` is for the block that
+  surrounds the loop, a heading or a wrapper element.
+
+`meta verify --templates` accepts `-first` / `-last` inside a section over a container field and
+reports anything else as `ERR_VAR_NOT_ON_PAYLOAD`: at the top level, and inside a list of
+scalars, where an element has nowhere to carry a key (give the list an object element instead).
+Output of a template that uses neither is byte-for-byte what it was.
+
 ## What each port generates
 
 ### TypeScript
@@ -680,6 +701,7 @@ for payload typing per #270)
 - [`fixtures/render-conformance/render-empty-array-falsiness/`](../../fixtures/render-conformance/render-empty-array-falsiness/) — `{{#xs}}…{{/xs}}` over an empty array renders nothing (vs. iterates)
 - [`fixtures/render-conformance/render-falsy-values/`](../../fixtures/render-conformance/render-falsy-values/) — `false`, `null`, empty string, `0` — which are truthy for `{{#x}}` sections (per Mustache spec, not JS truthiness)
 - [`fixtures/render-conformance/render-inverted-section/`](../../fixtures/render-conformance/render-inverted-section/) — `{{^x}}…{{/x}}` renders when `x` is falsy/absent
+- [`fixtures/render-conformance/render-list-separator/`](../../fixtures/render-conformance/render-list-separator/) — `-first` / `-last` positional accessors: `{{^-last}}, {{/-last}}` separators, lead-in, nested lists, single-element and empty lists
 - [`fixtures/render-conformance/render-nested-partials/`](../../fixtures/render-conformance/render-nested-partials/) — `{{>partial}}` resolves through the provider, supports nesting
 - [`fixtures/render-conformance/render-standalone-tag-stripping/`](../../fixtures/render-conformance/render-standalone-tag-stripping/) — a line containing only a section/partial tag is removed (whitespace + newline)
 - [`fixtures/render-conformance/render-raw-html-bypass/`](../../fixtures/render-conformance/render-raw-html-bypass/) — `{{{x}}}` (or `{{&x}}`) emits raw, unescaped under `@format=html`

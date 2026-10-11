@@ -1,0 +1,10 @@
+{
+  "items": [{ "name": "a" }, { "name": "b" }, { "name": "c" }],
+  "solo": [{ "name": "only" }],
+  "none": [],
+  "groups": [
+    { "tags": [{ "label": "x" }, { "label": "y" }] },
+    { "tags": [{ "label": "z" }] }
+  ],
+  "authored": [{ "name": "p", "-last": true }, { "name": "q", "-last": true }]
+}

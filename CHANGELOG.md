@@ -68,6 +68,28 @@ generator catalog and the Atlas evaluation are 1.2 work.
   generated-share figure must carry the net hand-written line change (a figure to report, not
   the test) and is never a target.
   Documentation only; no code or generator changed.
+- **Templates: `-first` / `-last` list accessors, so a separator needs no payload flag (every
+  port).** `{{#tags}}{{name}}{{^-last}}, {{/-last}}{{/tags}}` renders `a, b, c`. Every map-shaped
+  element of a collection now carries two derived booleans, `-first` and `-last`; the names start
+  with `-`, which no field name can, and they are ordinary Mustache tag names, so a template that
+  uses them is still valid Mustache. An authored key of the same name wins, a nested list keeps
+  its own position, and a template that uses neither renders byte-for-byte as before.
+  `meta verify --templates` accepts them inside a section over a container field and reports them
+  anywhere else as `ERR_VAR_NOT_ON_PAYLOAD`, including inside a list of scalars, where an element
+  cannot carry a key. Gated by the new `render-list-separator` render fixture and three
+  `verify-positional-accessor-*` verify fixtures, run by TypeScript, C#, Java, Kotlin and Python.
+  An adopter's payloads carried hand-computed `last` and `has<Field>` flags: `last` is what this
+  removes, and the emptiness half was already derived (`{{#hasTags}}` / `{{^hasTags}}`, see
+  `docs/features/templates-and-payloads.md`, "List separators and emptiness").
+- **TypeScript: a value object gets a field-rules constant.** An entity has long emitted
+  `<Entity>.<field>.rules`; a value object emitted only its interface and Zod schema, so a caller
+  reading a limit such as `maxLength` went through the schema's getters. A value object's module
+  now also exports `const <ValueObject> = { $entity, <field>: { name, label, view, rules, ... } }`,
+  the same per-field shape without `$table` and `$path`, since a value object has no source and no
+  route. `meta gen` adds the constant to existing value-object modules; three-way merge preserves
+  hand edits. A TPH subtype and a sourceless entity are unchanged. An ejected `entity` generator
+  needs `meta eject entity --force` to pick it up.
+
 - **TypeScript: the `cube-model` reference generator (FR-044 Plan 4).** `cubeModel()` writes the
   reporting vocabulary as Cube data-model files, `model/cubes/<Cube>.yml`: a cube for each
   table-backed entity that declares dimensions, measures or segments, a join for each to-one
@@ -489,6 +511,17 @@ until you regenerate.
   admits the empty string, as the generated schema already did.
 
 ### Fixed
+
+- **Shared-enum dedup now survives a multi-hop `extends` (TypeScript, C#, Java, Python).** An enum
+  field that extends another field which itself extends a shared (package-level abstract) enum was
+  resolved only when it extended the abstract directly, so a two-hop field got its own inlined
+  `<Entity><Field>` enum beside the shared `enums.ts` one. The resolver now walks the `extends`
+  chain and takes the nearest root-level abstract enum, so the field references the shared type,
+  and the chain's `@values` are read through every hop (C# read one). An adopter's generated code
+  changes only where such a field exists: the duplicate enum disappears and the field references
+  the shared one. Kotlin is unchanged: it names a projection's enum per object on purpose (#259),
+  and keeps doing so. Gated by a `Task` entity added to the shared `shared-provided-enum`
+  fixture.
 
 - **`meta verify --db` no longer reports a matching view as drift, and says what differs when a
   view does not.** An adopter on 1.1.0-rc.2 rebuilt a SQLite database from the committed chain:

@@ -63,8 +63,14 @@ describe("renderValueObjectFile", () => {
     expect(out).not.toContain("FilterAllowlist");
     expect(out).not.toContain("SortAllowlist");
     expect(out).not.toContain("$table:");
-    expect(out).not.toContain("$entity:");
+    expect(out).not.toContain("$path:");
     expect(out).not.toContain("UpdateSchema");
+
+    // A value object DOES get a field-rules constant (no $table/$path — it has no source or route),
+    // so a caller reads `SampleOutput.<field>.rules` instead of the Zod schema's getters.
+    expect(out).toContain("export const SampleOutput = {");
+    expect(out).toContain('$entity: "SampleOutput"');
+    expect(out).toMatch(/takeMarkdown: \{[^}]*rules: \{ required: "Take Markdown is required" \}/s);
   });
 
   test("field.object with a FULLY-QUALIFIED @objectRef strips to the bare type + sibling module", () => {
@@ -96,5 +102,15 @@ describe("renderValueObjectFile", () => {
     expect(out).not.toMatch(/title\?:/);
     expect(out).not.toMatch(/url\?:/);
     expect(out).not.toMatch(/snippet\?:/);
+  });
+
+  test("a value object's constant carries a field's @maxLength as rules.maxLength.value", () => {
+    const vo = metaObject(OBJECT_SUBTYPE_VALUE, "Address");
+    const line1 = metaField(FIELD_SUBTYPE_STRING, "line1");
+    line1.setAttr("maxLength", 80);
+    vo.addChild(line1);
+    const out = renderValueObjectFile(vo);
+    expect(out).toContain("export const Address = {");
+    expect(out).toContain('maxLength: { value: 80, message: "Must be 80 characters or fewer" }');
   });
 });

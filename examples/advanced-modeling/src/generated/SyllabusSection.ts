@@ -13,3 +13,36 @@ export const SyllabusSectionInsertSchema = z.object({
   summary: z.string().max(500).optional(),
   orderIndex: z.number().int(),
 });
+/**
+ * Metadata constants for the value object SyllabusSection: each field's name, label, view and the
+ * validation rules derived from its validator children (e.g. `SyllabusSection.<field>.rules.maxLength.value`).
+ */
+export const SyllabusSection = {
+  $entity: "SyllabusSection",
+  heading: {
+    name: "heading",
+    label: "Heading",
+    view: "text",
+    htmlType: "text",
+    rules: {
+      required: "Heading is required",
+      maxLength: { value: 120, message: "Must be 120 characters or fewer" },
+    },
+  },
+  summary: {
+    name: "summary",
+    label: "Summary",
+    view: "text",
+    htmlType: "text",
+    rules: {
+      maxLength: { value: 500, message: "Must be 500 characters or fewer" },
+    },
+  },
+  orderIndex: {
+    name: "orderIndex",
+    label: "Order Index",
+    view: "number",
+    htmlType: "number",
+    rules: { required: "Order Index is required" },
+  },
+} as const;
