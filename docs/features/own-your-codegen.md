@@ -93,13 +93,24 @@ Between 1.0 and 1.1 an owned copy was the only way to run `entity`, `queries`, `
 and `barrel`, so many projects carry copies they never changed. A copy like that only
 falls behind the reference. To drop one:
 
-1. Run `meta eject --list --format text`. At a terminal `--format text` is already the
+1. Decide whether the copy carries a change of yours. Run
+   `meta eject --list --format text`. At a terminal `--format text` is already the
    default; in a script or an agent's shell the default is a structured document that
-   lists the generators only. A copy marked `identical to the reference` or
-   `same content as the reference, your formatting` is unmodified. So is one marked
-   `DIFFERS` with `0 line(s) of your own`: it is only behind. A copy with lines of your
-   own is a customization; keep it, or check what the lines are with
-   `diff -u node_modules/@metaobjectsdev/codegen-ts/src/reference/<name>.ts codegen/generators/<name>.ts`.
+   lists the generators only.
+
+   - **`identical to the reference` is the only mark that proves a copy unmodified.** Such
+     a copy can be replaced without looking further.
+   - **Every other mark needs a look first.** `same content as the reference, your
+     formatting` comes from a comparison that ignores line order, so a copy whose
+     statements you reordered reads the same way. `DIFFERS` with `0 line(s) of your own`
+     rules out lines you added or edited, not lines you removed or reordered: a line you
+     deleted is counted as "behind", exactly like a line upstream added. Before dropping
+     a copy with either mark, confirm it from the file's history
+     (`git log -p -- codegen/generators/<name>.ts` shows no edit after the eject) or from
+     the diff against the reference
+     (`diff -u node_modules/@metaobjectsdev/codegen-ts/src/reference/<name>.ts codegen/generators/<name>.ts`
+     shows only upstream changes).
+   - **A copy with lines of your own is a customization.** Keep it.
 
    For `entity`, `routes` and `routes-hono`, check the adapter too. Ejecting one also
    copied the HTTP adapter into `codegen/runtime/`, and a route fix is often made there
@@ -108,9 +119,9 @@ falls behind the reference. To drop one:
    the same comparison as `source.runtimeCopy[]` on the generator's row, with a `verdict`
    per file. A listing with no `codegen/runtime/` rows is not evidence that the adapter is
    unmodified: the structured form of `meta eject --list` never prints them. The copy is
-   unmodified only when the
-   generator file and every `codegen/runtime/` file it reaches
-   ([the table below](#what-meta-eject-hands-over-and-what-stays-core-typescript)) are
+   unmodified only when the generator file passes the test above and every
+   `codegen/runtime/` file it reaches
+   ([the table below](#what-meta-eject-hands-over-and-what-stays-core-typescript)) is
    marked identical. If one differs, the copy carries your change: keep the owned
    generator, because it is what points the generated code at your adapter (its
    `runtimeImport` option), and the packaged generator always imports
@@ -130,7 +141,9 @@ What the diff in step 4 holds:
 
 - **A copy that matched the reference** regenerates nothing for `queries` and `barrel`.
 - **A copy that was behind** regenerates the changes it was missing. That is the reference
-  catching up, so read it the way you would read an upgrade.
+  catching up, and you can read it the way you would read an upgrade, only once step 1 has
+  confirmed the copy carried no change of your own. A line you had removed from the copy
+  comes back in this same diff, and nothing marks it as yours.
 - **`entity`, `routes` and `routes-hono` also move one import.** An ejected `entity`,
   `routes` or `routes-hono` points its output at the adapter copy in `codegen/runtime/`,
   and the packaged generator imports `@metaobjectsdev/runtime-ts`. So those import lines

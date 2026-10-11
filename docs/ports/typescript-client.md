@@ -79,11 +79,9 @@ fetch URLs (browser-side):
 ```ts
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators, copied in by `meta eject` (ADR-0034 scaffold-and-own; `meta init` wires none).
-import { entityFile } from "./codegen/generators/entity.js";
-import { queriesFile } from "./codegen/generators/queries.js";
-import { routesFile } from "./codegen/generators/routes.js";
-import { barrel } from "./codegen/generators/barrel.js";
+// Run as shipped, imported from the package (`meta init` wires none). `meta eject <name>`
+// copies one into ./codegen/generators/ only when you need to change what it emits.
+import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { tanstackQuery, tanstackGrid, tanstackGridHook } from "@metaobjectsdev/codegen-ts-tanstack";
 
@@ -432,11 +430,9 @@ importBase?, outputLayout?, dbImport? }`.
 ```ts
 // metaobjects.config.ts (multi-target)
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators, copied in by `meta eject` (ADR-0034 scaffold-and-own; `meta init` wires none).
-import { entityFile } from "./codegen/generators/entity";
-import { queriesFile } from "./codegen/generators/queries";
-import { routesFile } from "./codegen/generators/routes";
-import { barrel } from "./codegen/generators/barrel";
+// Run as shipped, imported from the package (`meta init` wires none). `meta eject <name>`
+// copies one into ./codegen/generators/ only when you need to change what it emits.
+import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { tanstackQuery, tanstackGrid, tanstackGridHook } from "@metaobjectsdev/codegen-ts-tanstack";
 
@@ -728,11 +724,9 @@ Metadata (same `Author` entity as the React examples above):
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators, copied in by `meta eject` (ADR-0034 scaffold-and-own; `meta init` wires none).
-import { entityFile } from "./codegen/generators/entity";
-import { queriesFile } from "./codegen/generators/queries";
-import { routesFile } from "./codegen/generators/routes";
-import { barrel } from "./codegen/generators/barrel";
+// Run as shipped, imported from the package (`meta init` wires none). `meta eject <name>`
+// copies one into ./codegen/generators/ only when you need to change what it emits.
+import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
 import {
   angularServiceFile,
   angularFormFile,

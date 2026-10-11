@@ -265,18 +265,16 @@ The project config (`metaobjects.config.ts`) wires up the generators and target 
 
 Codegen is **opt-in**: `meta init` writes `generators: []`, and no port ships a default
 suite. `meta gen --list --probe` is the catalog — it runs every generator against your
-model and reports how many files each would emit — and `meta eject <name>...` copies the
-ones you choose into your repo, printing the import line and the entry to add.
+model and reports how many files each would emit, with the import line that runs it as
+shipped. Import the ones you want from their package; `meta eject <name>...` copies one
+into your repo when you need to change what it emits, printing the local import to swap in.
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-// Owned generators — copied in by `meta eject` (ADR-0034 scaffold-and-own). These files
-// are in YOUR repo and are yours to edit. The default emit targets Fastify on Node;
-// retarget it by editing these, not by switching tools.
-import { entityFile } from "./codegen/generators/entity.js";
-import { queriesFile } from "./codegen/generators/queries.js";
-import { routesFile } from "./codegen/generators/routes.js";
-import { barrel } from "./codegen/generators/barrel.js";
+// Run as shipped: nothing copied, fixes arrive by upgrading the package. The default
+// emit targets Fastify on Node; retarget it by ejecting a generator (ADR-0034
+// scaffold-and-own) and editing your copy, not by switching tools.
+import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   outDir:    "./src/db",
@@ -297,8 +295,9 @@ $ meta init
 # The catalog: every generator by layer, with a file count for YOUR model
 $ meta gen --list --probe
 
-# Take the ones you want — copies them into codegen/generators/ and says what to wire
-$ meta eject entity queries routes barrel
+# Wire the ones you want: add each catalog row's import line to metaobjects.config.ts.
+# To change what one emits, copy it into codegen/generators/ and own it:
+$ meta eject routes
 
 # Generate code from exactly what you wired
 $ meta gen

@@ -94,11 +94,24 @@ that document holds the generator rows only: it has no `codegen/runtime/` rows a
 The text listing marks each owned copy `identical to the reference`, `same content as the
 reference, your formatting`, or `DIFFERS: N line(s) behind, M line(s) of your own`. Those
 are the `--format text` labels. In `--format json` or `toon` the same row carries
-`status` (`identical`, `reformatted` or `differs`), `behind` and `own`. A copy that is
-identical or reformatted, or behind with `0 line(s) of your own` (`own: 0`), is a
-**finding**: recommend replacing its local import with the package import and deleting
-the file, then `meta gen` and a review of the diff. A copy with lines of its own is an
-intentional customization. Check only how far behind it is.
+`status` (`identical`, `reformatted` or `differs`), `behind` and `own`.
+
+**Report a copy as a finding only when you can prove it unmodified.**
+
+- `identical to the reference` (`status: identical`) is the only mark that proves it. That
+  copy is a **finding**: recommend replacing its local import with the package import and
+  deleting the file, then `meta gen` and a review of the diff.
+- `same content as the reference, your formatting` (`reformatted`) and `DIFFERS` with
+  `0 line(s) of your own` (`differs`, `own: 0`) do not prove it. The comparison ignores
+  line order, and a line the adopter deleted counts as "behind" exactly like a line
+  upstream added, so `own: 0` rules out added or edited lines, not removed or reordered
+  ones. Confirm from the file's history
+  (`git log -p -- codegen/generators/<name>.ts` shows no edit after the eject) or from
+  `diff -u node_modules/@metaobjectsdev/codegen-ts/src/reference/<name>.ts codegen/generators/<name>.ts`
+  showing only upstream changes. Confirmed, it is the same finding. Not confirmed, report
+  it as **possibly customized: check its history**, never as a copy to drop.
+- A copy with lines of its own is an intentional customization. Check only how far behind
+  it is.
 
 **`entity`, `routes` and `routes-hono` own more than the generator file.** Ejecting one
 also copies the HTTP adapter its output imports into `codegen/runtime/`, and a route fix
@@ -118,8 +131,8 @@ from one of two places:
 `codegen/runtime/` exists and the output you read shows no row for its files, you have
 not checked: run one of the two commands above.
 
-For these three, the copy is unmodified only when the generator file AND every
-`codegen/runtime/` file it reaches are marked identical. If any of those files differs or
+For these three, the copy is unmodified only when the generator file passes the test
+above AND every `codegen/runtime/` file it reaches is marked identical. If any of those files differs or
 is not in the package, the copy carries a customization: it is **not a finding**, and do
 not recommend the package import. The packaged generator imports
 `@metaobjectsdev/runtime-ts`, so swapping it in would leave the edited adapter unused with

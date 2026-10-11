@@ -1,8 +1,9 @@
 // FR-040 §4.2(a) — `meta eject <generator>...` takes ownership of any reference-template
 // generator, in any package, at any time after `meta init`.
 //
-// Under opt-in codegen this is THE copy door: `meta init` scaffolds the layout and an
-// empty selection, so every generator an adopter runs arrives through here. It takes
+// This is the copy door, for a generator an adopter wants to CHANGE: `meta init`
+// scaffolds the layout and an empty selection, and a generator run as shipped is
+// imported from its package without coming through here (ADR-0034 Amendment 5). It takes
 // MANY names, because a real selection is several — choosing a client tier is
 // `form hooks grid` — and three separate invocations produce three separate install
 // lines for the same package. The consolidated install set is the point.

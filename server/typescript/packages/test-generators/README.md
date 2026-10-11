@@ -1,7 +1,7 @@
 # @metaobjectsdev/test-generators (private, never published)
 
 This repo's **owned copies** of the ADR-0034 reference generators — the same files
-`meta init` scaffolds into a consumer's `codegen/generators/`.
+`meta eject` copies into a consumer's `codegen/generators/`.
 
 Suites that need a generator set to drive `runGen` import them from here, which means they
 exercise the artifact an adopter who EJECTS actually runs. (This package dates from 1.0,

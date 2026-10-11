@@ -25,7 +25,10 @@ here.**
   - **Nothing changes for a project that owns its copies.** They run as before, and
     `meta eject --list` and `meta verify --codegen` behave as before.
   - **To drop a copy you never changed**, replace its local import with the package import,
-    delete the file and run `meta gen`. `queries` and `barrel` regenerate nothing if the
+    delete the file and run `meta gen`. Only a copy `meta eject --list --format text` marks
+    `identical to the reference` is proven unchanged: `0 line(s) of your own` rules out
+    added or edited lines, not removed or reordered ones, so check the file's history
+    before dropping a copy with any other mark. `queries` and `barrel` regenerate nothing if the
     copy matched the reference. `entity`, `routes` and `routes-hono` also move their
     HTTP-adapter import from `codegen/runtime/` back to `@metaobjectsdev/runtime-ts`, which
     then has to be installed again. For those three, a copy is unchanged only when
@@ -65,7 +68,8 @@ here.**
   `meta eject`. That import now loads.
 - **The agent-context skills teach "import by default, eject to customize".** The codegen
   skill and the always-on context no longer send an agent to eject a generator it is not
-  going to change. The audit skill reports an unmodified owned copy as a finding, and reads
+  going to change. The audit skill reports an owned copy it can prove unmodified as a
+  finding, and reads
   an import of the four as a blocker only on a 1.0.x install.
 
 ### Fixed
