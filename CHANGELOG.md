@@ -60,12 +60,18 @@ Total hand-written lines did not fall, so do not read it as a total line reducti
   entries under **Added** and **Fixed** name the command for each affected generator (`meta eject
   hooks --force`, `meta eject routes --force`, `meta eject routes-hono --force`). A generator you
   never ejected needs nothing.
-- **An ejected Java Spring generator needs a re-eject.** A copy of `routes`, `dto`, `repository`
-  or `value-object` made before 1.1.0 calls static helpers on the packaged `SpringDtoGenerator` and
-  `SpringRepositoryGenerator`, which moved to `SpringGeneratorSupport`, so it stops compiling
-  after the upgrade. Run `mvn metaobjects:eject -Dnames=<generator> -Dforce=true` for each one you
-  own (the copy of `SpringGeneratorSupport` it writes beside them is yours too), and merge your
-  own edits back from `git diff`. A generator you never ejected needs nothing.
+- **An ejected Java Spring generator keeps its old rules until you re-eject it.** A copy of
+  `routes`, `dto`, `repository` or `value-object` made before 1.1.0 compiles after the upgrade
+  wherever it compiled before, and applies the rules it was copied with: it calls its own sibling
+  copies, and the four `AutoSetSupport` selectors it calls on the packaged class are still there,
+  marked `@Deprecated`. A copy of `routes`, `dto` or `value-object` ejected alone did not compile
+  before 1.1.0, and the upgrade does not change that. Run
+  `mvn metaobjects:eject -Dnames=<generator> -Dforce=true` for each one you own to get a copy
+  that compiles alone and reads the shared rules from `SpringGeneratorSupport` (the copy of it
+  written beside them is yours too), and merge your own edits back from `git diff`. A copy you
+  repaired by importing the packaged `SpringDtoGenerator` or `SpringRepositoryGenerator` must be
+  re-ejected, because those helpers moved to `SpringGeneratorSupport`. A generator you never
+  ejected needs nothing.
 - **A keyless projection regenerates differently (G12).** `meta gen` rewrites the read-only
   surface of a keyless projection (no `/:id` route, no by-id function, and no write verbs in the
   API docs), and `meta verify --docs` reports the affected pages as stale until they are
