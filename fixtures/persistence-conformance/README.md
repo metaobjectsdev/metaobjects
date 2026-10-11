@@ -318,13 +318,13 @@ Because M:N membership is a **set**, the runner compares `relate` results
 
 ### Report scenarios (FR-044)
 
-Nineteen `queries/report-*.yaml` scenarios read a view-backed `object.report` through the
+Twenty-one `queries/report-*.yaml` scenarios read a view-backed `object.report` through the
 port's runtime. They use only `op: list` and `op: count`, single-key `sort`, `filter` and
 `limit`: a report has no primary key, so there is no `op: get` and no write. The schema is
 still the committed `canonical/schema.postgres.sql`, which creates each report's view, so a
 port reads the view the TypeScript migrate engine produced and never lowers a report itself.
 
-The eleven also run on SQLite and MySQL 8.4 (and TypeScript on D1's local runtime) in every
+The twenty-one also run on SQLite and MySQL 8.4 (and TypeScript on D1's local runtime) in every
 port whose runtime has the engine: they execute `canonical/schema.sqlite.sql` or
 `canonical/schema.mysql.sql` instead, each TypeScript-produced and held equal to its generator
 by a test. The `expect` blocks stay the Postgres wire ones; a runner maps the engine's own

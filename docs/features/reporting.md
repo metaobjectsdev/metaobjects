@@ -169,7 +169,8 @@ What each piece means:
   is a `boolean`: `hasError` is `any` of `failed`. See [Boolean measures](#boolean-measures-any-and-all).
 - **`measure.ratio`** is `numerator / NULLIF(denominator, 0)`, typed decimal. A zero
   denominator yields null, unless the ratio declares `@default`. Both operands are
-  `measure.aggregate` siblings (a ratio of ratios is not supported).
+  `measure.aggregate` siblings (a ratio of ratios is not supported), and neither is an
+  `@agg: any` or `all` measure: a ratio divides numbers.
 - **`segment.filter`** is a named, reusable `attr.filter`. Use it when the same row rule
   ("active purchase") would otherwise be repeated across measures and reports. An inline
   `@filter` on a measure stays legal.
@@ -479,6 +480,9 @@ and the measure is a `boolean` in every port: `true` or `false` on the wire, nev
   null, in the database and in every port's row type, and a filter or sort sees the default as
   the value. Declare it only where that is true: `all` over no rows is vacuously true
   (`@default: 1`), `any` over no rows is false (`@default: 0`).
+- **Not a ratio operand.** A `measure.ratio` divides numbers, so its `@numerator` and
+  `@denominator` cannot name an `any` or `all` measure (rule M6). For a share, count the
+  matching rows instead: `@agg: count` with a `@filter`.
 - **How it lowers.** Postgres writes `bool_or(x)` / `bool_and(x)`, with `FILTER (WHERE …)`
   for a condition. SQLite and MySQL have no boolean aggregate, and a boolean there is `0` or
   `1`, so they write `MAX(x)` for `any` and `MIN(x)` for `all` (`MAX(CASE WHEN … THEN x END)`
@@ -807,7 +811,7 @@ row, and a `SUM` over the result would double-count. A to-one hop cannot fan out
 | **M3** | `@distinct: true` with any `@agg` other than `count`. |
 | **M4** | `sum` or `avg` over a non-numeric field (numeric is `int, long, double, float, decimal, currency`); `min` or `max` over a `boolean`, `object` or `map` field; `any` or `all` over a field that is not a `boolean`. |
 | **M5** | An `@segment` that names no `segment` child of the owning entity. |
-| **M6** | A `measure.ratio` whose `@numerator` or `@denominator` names no measure of the entity, or names one that is not a `measure.aggregate`. |
+| **M6** | A `measure.ratio` whose `@numerator` or `@denominator` names no measure of the entity, names one that is not a `measure.aggregate`, or names an `@agg: any` or `all` measure (a boolean). |
 | **M7** | A `@default` on an `@agg: count`. A count is never null, so the default could never apply. |
 | **M8** | A `@default` on an `@agg: min` or `max` over a field that is not numeric (not one of `int, long, double, float, decimal, currency`). |
 | **M9** | A `@default` on an `@agg: any` or `all` other than `0` (false) or `1` (true). |

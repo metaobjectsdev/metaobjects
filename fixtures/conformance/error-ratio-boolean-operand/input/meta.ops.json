@@ -1,0 +1,58 @@
+{
+  "metadata.root": {
+    "package": "acme::ops",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Call",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "calls"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "failed"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "calls",
+                "@agg": "count",
+                "@of": "Call.id"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "hasError",
+                "@agg": "any",
+                "@of": "Call.failed"
+              }
+            },
+            {
+              "measure.ratio": {
+                "name": "errorShare",
+                "@numerator": "hasError",
+                "@denominator": "calls"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

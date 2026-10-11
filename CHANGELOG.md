@@ -241,7 +241,9 @@ generator catalog and the Atlas evaluation are 1.2 work.
   every port. Null values are ignored, so a group with no rows, no row in the measure's scope or
   only null values reads null; `@default: 0` reads `false` and `@default: 1` reads `true`. New
   rules: `any` / `all` over a field that is not a boolean is M4, and a boolean measure's
-  `@default` other than `0` or `1` is M9 (both `ERR_INVALID_MEASURE`). Postgres writes `bool_or` /
+  `@default` other than `0` or `1` is M9 (both `ERR_INVALID_MEASURE`). A `measure.ratio` divides
+  numbers, so an `any` / `all` measure as its `@numerator` or `@denominator` is refused by M6.
+  Postgres writes `bool_or` /
   `bool_and`; SQLite and MySQL write `MAX` / `MIN` over `0` / `1`. The `cube-model` generator
   writes a `type: boolean` measure. See [reporting](docs/features/reporting.md#boolean-measures-any-and-all).
   No `metamodelVersion` change: the vocabulary is part of 1.1.

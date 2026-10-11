@@ -721,7 +721,7 @@ def _check_aggregate_columns(
 
 
 def _check_ratio_operands(ctx: _MemberCtx, ratio: MetaMeasure, err: Callable[[str], None]) -> None:
-    """M6 — each operand names a measure.aggregate of the same entity."""
+    """M6 — each operand names a measure.aggregate of the same entity, and not an any / all one."""
     operands: list[tuple[str, str | None]] = [
         (REPORTING_ATTR_NUMERATOR, ratio.numerator()),
         (REPORTING_ATTR_DENOMINATOR, ratio.denominator()),
@@ -736,6 +736,11 @@ def _check_ratio_operands(ctx: _MemberCtx, ratio: MetaMeasure, err: Callable[[st
             err(
                 f"@{attr_name} '{ref}' is a measure.{target.sub_type}; a ratio's operands must be measure.aggregate "
                 f"(a ratio of ratios is not supported)."
+            )
+        elif isinstance(target, MetaMeasure) and target.agg() in (AGG_ANY, AGG_ALL):
+            err(
+                f"@{attr_name} '{ref}' is an @agg '{target.agg()}' measure, which is a boolean; a ratio divides numbers. "
+                f"Count the matching rows instead (@agg: count with a @filter)."
             )
 
 

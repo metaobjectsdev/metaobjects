@@ -162,6 +162,8 @@ public class ReportingValidationTest extends SharedRegistryTestBase {
                 "measure 'daysEngaged' on entity 'acme::shop::WorkoutEvent': @of lists 4 columns; a tuple is legal only with @agg: count and @distinct: true (a distinct count of the tuple)."});
         expect.put("error-ratio-operand-not-aggregate", new String[]{"ERR_INVALID_MEASURE",
                 "measure 'ratioOfRatio' on entity 'acme::shop::WorkoutEvent': @numerator 'avgDaysPerStarter' is a measure.ratio; a ratio's operands must be measure.aggregate (a ratio of ratios is not supported)."});
+        expect.put("error-ratio-boolean-operand", new String[]{"ERR_INVALID_MEASURE",
+                "measure 'errorShare' on entity 'acme::ops::Call': @numerator 'hasError' is an @agg 'any' measure, which is a boolean; a ratio divides numbers. Count the matching rows instead (@agg: count with a @filter)."});
         expect.put("error-relative-date-bad-duration", new String[]{"ERR_BAD_ATTR_FILTER",
                 "report 'acme::shop::DailyRevenue': @filter on 'purchasedAt' has relative date '90 days', which is not an ISO-8601 duration (e.g. '-P7D', '-PT12H')."});
         expect.put("error-relative-date-non-temporal", new String[]{"ERR_BAD_ATTR_FILTER",
@@ -836,6 +838,17 @@ public class ReportingValidationTest extends SharedRegistryTestBase {
                 "{\"name\":\"firstDay\",\"@agg\":\"min\",\"@of\":\"WorkoutEvent.dayNumber\",\"@default\":1}"));
         member(doc, "WorkoutEvent", "measure.ratio", "avgDaysPerStarter").addProperty("@default", 0);
         assertEquals(List.of(), loadErrors(doc));
+    }
+
+    @Test
+    public void aRatioDenominatorNamingAnAllMeasureIsRefused() throws IOException {
+        JsonObject doc = cleanModel();
+        childrenOf(doc, "Purchase").add(wrap("measure.aggregate",
+                "{\"name\":\"refundFlag\",\"@agg\":\"all\",\"@of\":\"Purchase.refunded\"}"));
+        childrenOf(doc, "Purchase").add(wrap("measure.ratio",
+                "{\"name\":\"refundShare\",\"@numerator\":\"revenue\",\"@denominator\":\"refundFlag\"}"));
+        String msg = single(doc, "ERR_INVALID_MEASURE");
+        assertTrue(msg, msg.contains("@denominator 'refundFlag' is an @agg 'all' measure"));
     }
 
     @Test

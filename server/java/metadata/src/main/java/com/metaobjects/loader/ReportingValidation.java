@@ -706,7 +706,7 @@ final class ReportingValidation {
         return new AggregateColumns(field);
     }
 
-    /** M6 — each operand names a measure.aggregate of the same entity. */
+    /** M6 — each operand names a measure.aggregate of the same entity, and not an any / all one. */
     private static void checkRatioOperands(MemberCtx ctx, MetaMeasure ratio, Consumer<String> err) {
         String[][] operands = {
                 {ReportingConstants.ATTR_NUMERATOR, ratio.getNumerator()},
@@ -722,6 +722,12 @@ final class ReportingValidation {
             } else if (!ReportingConstants.MEASURE_SUBTYPE_AGGREGATE.equals(target.getSubType())) {
                 err.accept("@" + attr + " '" + ref + "' is a measure." + target.getSubType()
                         + "; a ratio's operands must be measure.aggregate (a ratio of ratios is not supported).");
+            } else if (target instanceof MetaMeasure
+                    && (ReportingConstants.AGG_ANY.equals(((MetaMeasure) target).getAgg())
+                    || ReportingConstants.AGG_ALL.equals(((MetaMeasure) target).getAgg()))) {
+                err.accept("@" + attr + " '" + ref + "' is an @agg '" + ((MetaMeasure) target).getAgg()
+                        + "' measure, which is a boolean; a ratio divides numbers. "
+                        + "Count the matching rows instead (@agg: count with a @filter).");
             }
         }
     }

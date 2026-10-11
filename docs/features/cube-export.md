@@ -569,7 +569,7 @@ and a stale one are drift. A hand edit to a generated file is not drift, but the
 `meta verify --codegen --forbid-hand-edits` makes it fail.
 
 **The mapping corpus** is [`fixtures/cube-model/`](../../fixtures/cube-model/): 46 cases, each
-the smallest model for one rule, 34 with the exact tree the generator writes and 10 with the
+the smallest model for one rule, 36 with the exact tree the generator writes and 10 with the
 exact error message. Every expected file was written by hand from its rule and then compared
 with the generator, never copied from it.
 `codegen-ts/test/cube/cube-model-corpus.test.ts` runs it. The canonical golden,

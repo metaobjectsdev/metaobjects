@@ -608,7 +608,7 @@ public static partial class ValidationPasses
         return true;
     }
 
-    /// <summary>M6 — each operand names a measure.aggregate of the same entity.</summary>
+    /// <summary>M6 — each operand names a measure.aggregate of the same entity, and not an any / all one.</summary>
     private static void CheckRatioOperands(MemberCtx ctx, MetaMeasure ratio, Action<string> err)
     {
         (string Attr, string? Ref)[] operands =
@@ -628,6 +628,11 @@ public static partial class ValidationPasses
             {
                 err($"@{attr} '{@ref}' is a measure.{target.SubType}; a ratio's operands must be measure.aggregate " +
                     "(a ratio of ratios is not supported).");
+            }
+            else if (target is MetaMeasure operand && (operand.Agg() == AGG_ANY || operand.Agg() == AGG_ALL))
+            {
+                err($"@{attr} '{@ref}' is an @agg '{operand.Agg()}' measure, which is a boolean; a ratio divides numbers. " +
+                    "Count the matching rows instead (@agg: count with a @filter).");
             }
         }
     }

@@ -427,6 +427,36 @@ public class ReportingValidationTests
         Assert.Contains("@default cannot apply to @agg: count", msg);
     }
 
+    private static JsonNode RatioOverABooleanMeasure(string agg, string attr)
+    {
+        var m = Positive();
+        ChildrenOf(m, "Purchase").Add(Wrap("measure.aggregate",
+            $$"""{ "name": "refundFlag", "@agg": "{{agg}}", "@of": "Purchase.refunded" }"""));
+        var ratio = new JsonObject { ["name"] = "refundShare", ["@numerator"] = "revenue", ["@denominator"] = "purchases" };
+        ratio[attr] = "refundFlag";
+        ChildrenOf(m, "Purchase").Add(new JsonObject { ["measure.ratio"] = ratio });
+        return m;
+    }
+
+    [Fact]
+    public void M6_a_ratio_operand_naming_an_any_measure_is_refused_naming_the_operand()
+    {
+        var e = Assert.Single(Load(RatioOverABooleanMeasure("any", "@numerator")).Errors);
+        Assert.Equal(ErrorCode.ERR_INVALID_MEASURE, e.Code);
+        Assert.Equal(
+            "measure 'refundShare' on entity 'acme::shop::Purchase': @numerator 'refundFlag' is an @agg 'any' measure, " +
+            "which is a boolean; a ratio divides numbers. Count the matching rows instead (@agg: count with a @filter).",
+            e.Message);
+        Assert.Contains("['measure.ratio']", JsonPathOf(e));
+    }
+
+    [Fact]
+    public void M6_a_ratio_operand_naming_an_all_measure_is_refused()
+    {
+        string msg = Single(Load(RatioOverABooleanMeasure("all", "@denominator")), ErrorCode.ERR_INVALID_MEASURE);
+        Assert.Contains("@denominator 'refundFlag' is an @agg 'all' measure", msg);
+    }
+
     [Fact]
     public void M8_default_on_a_max_of_a_timestamp_is_refused()
     {

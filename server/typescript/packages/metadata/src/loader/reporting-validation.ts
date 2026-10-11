@@ -666,7 +666,7 @@ function checkAggregateColumns(
   return { field };
 }
 
-/** M6 — each operand names a measure.aggregate of the same entity. */
+/** M6 — each operand names a measure.aggregate of the same entity, and not an any / all one. */
 function checkRatioOperands(ctx: MemberCtx, ratio: MetaMeasure, err: (message: string) => void): void {
   const operands: [string, string | undefined][] = [
     [REPORTING_ATTR_NUMERATOR, ratio.numerator()],
@@ -681,6 +681,11 @@ function checkRatioOperands(ctx: MemberCtx, ratio: MetaMeasure, err: (message: s
       err(
         `@${attr} '${ref}' is a measure.${target.subType}; a ratio's operands must be measure.aggregate ` +
           `(a ratio of ratios is not supported).`,
+      );
+    } else if (target instanceof MetaMeasure && (target.agg() === AGG_ANY || target.agg() === AGG_ALL)) {
+      err(
+        `@${attr} '${ref}' is an @agg '${target.agg()}' measure, which is a boolean; a ratio divides numbers. ` +
+          `Count the matching rows instead (@agg: count with a @filter).`,
       );
     }
   }

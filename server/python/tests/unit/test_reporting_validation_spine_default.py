@@ -723,6 +723,36 @@ def test_m7_default_on_a_distinct_count_of_a_tuple_is_refused() -> None:
     assert "@default cannot apply to @agg: count" in msg
 
 
+def _ratio_over_a_boolean_measure(agg: str, attr: str) -> Model:
+    def fn(x: Model) -> None:
+        _set_child(
+            x,
+            "Purchase",
+            "refundFlag",
+            {"measure.aggregate": {"name": "refundFlag", "@agg": agg, "@of": "Purchase.refunded"}},
+        )
+        ratio = {"name": "refundShare", "@numerator": "revenue", "@denominator": "purchases"}
+        ratio[attr] = "refundFlag"
+        _set_child(x, "Purchase", "refundShare", {"measure.ratio": ratio})
+
+    return _edit(fn)
+
+
+def test_m6_a_ratio_operand_naming_an_any_measure_is_refused_naming_the_operand() -> None:
+    errors = _errors(_ratio_over_a_boolean_measure("any", "@numerator"))
+    assert [e.code.value for e in errors] == ["ERR_INVALID_MEASURE"]
+    assert errors[0].message == (
+        "measure 'refundShare' on entity 'acme::shop::Purchase': @numerator 'refundFlag' is an @agg 'any' measure, "
+        "which is a boolean; a ratio divides numbers. Count the matching rows instead (@agg: count with a @filter)."
+    )
+    assert "['measure.ratio']" in _json_path(errors[0])
+
+
+def test_m6_a_ratio_operand_naming_an_all_measure_is_refused() -> None:
+    msg = _single(_ratio_over_a_boolean_measure("all", "@denominator"), "ERR_INVALID_MEASURE")
+    assert "@denominator 'refundFlag' is an @agg 'all' measure" in msg
+
+
 def test_m8_default_on_a_max_of_a_timestamp_is_refused() -> None:
     msg = _single(
         _edit(lambda x: _patch_member(x, "WorkoutEvent", "lastActivityAt", {"@default": 0})), "ERR_INVALID_MEASURE"

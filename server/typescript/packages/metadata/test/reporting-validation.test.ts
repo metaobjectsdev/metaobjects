@@ -535,6 +535,25 @@ describe("validateReporting — measures", () => {
     expect(msg).toContain("'avgDaysPerStarter'");
   });
 
+  test("M6: a ratio operand naming an any / all measure is refused, naming the operand", async () => {
+    const withOperand = (agg: string, attr: string) =>
+      edit((x) => {
+        setChild(x, "Purchase", "refundFlag", {
+          "measure.aggregate": { name: "refundFlag", "@agg": agg, "@of": "Purchase.refunded" },
+        });
+        setChild(x, "Purchase", "refundShare", {
+          "measure.ratio": { name: "refundShare", "@numerator": "revenue", "@denominator": "purchases", [attr]: "refundFlag" },
+        });
+      });
+    expect(await single(withOperand("any", "@numerator"), "ERR_INVALID_MEASURE")).toBe(
+      "measure 'refundShare' on entity 'acme::shop::Purchase': @numerator 'refundFlag' is an @agg 'any' measure, " +
+        "which is a boolean; a ratio divides numbers. Count the matching rows instead (@agg: count with a @filter).",
+    );
+    expect(await single(withOperand("all", "@denominator"), "ERR_INVALID_MEASURE")).toContain(
+      "@denominator 'refundFlag' is an @agg 'all' measure",
+    );
+  });
+
   test("M6: a ratio operand naming nothing is refused", async () => {
     const m = edit((x) => patchMember(x, "WorkoutEvent", "avgDaysPerStarter", { "@denominator": "nobody" }));
     await single(m, "ERR_INVALID_MEASURE");
