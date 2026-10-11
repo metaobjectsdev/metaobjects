@@ -22,6 +22,7 @@ import org.jetbrains.exposed.sql.AndOp
 import org.jetbrains.exposed.sql.Column
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.Op
+import org.jetbrains.exposed.sql.javatime.JavaLocalDateColumnType
 import org.jetbrains.exposed.sql.Query
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
@@ -680,7 +681,9 @@ object QueryScenarioRunner {
             type.contains("bigint") || type.contains("int8") -> (raw as? Number)?.toLong() ?: raw.toString().toLong()
             type.contains("int") -> (raw as? Number)?.toInt() ?: raw.toString().toInt()
             // A filter on a DATE column (a report's date dimension) supplies the day as text.
-            type == "date" -> if (raw is LocalDate) raw else LocalDate.parse(raw.toString())
+            // Keyed off the column type too: SQLite spells a DATE column's SQL type as TEXT.
+            type == "date" || col.columnType is JavaLocalDateColumnType ->
+                if (raw is LocalDate) raw else LocalDate.parse(raw.toString())
             else -> raw
         }
     }
