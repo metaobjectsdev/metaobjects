@@ -203,7 +203,7 @@ Everything above is configuration. When you need different *output* — a differ
 shape, a different form library, an auth wrapper around every handler — take the generator:
 
 ```bash
-meta eject --list           # all ten reference templates, grouped by package
+meta eject --list           # every stock generator, grouped by package
 meta eject routes-hono      # → codegen/generators/routes-hono.ts
 meta eject form             # → codegen/generators/form.ts
 meta eject hooks            # → codegen/generators/hooks.ts
