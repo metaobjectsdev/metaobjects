@@ -20,6 +20,16 @@ here.**
   none shares the gap.
 - The `hand-rolled-aggregate` advisory now names `object.report` for grouped, served or reported
   figures, and says an `object.projection` with `origin.aggregate` still fits a per-row figure.
+- **`meta docs` honours `routesFile({ expose })` and `routesFileHono({ expose })`.** The API
+  pages listed all five verbs for an entity whose routes file mounts fewer (`DELETE` for an entity
+  exposed as `["list", "get"]`), so the adopter overrode the pages by hand. The generators now
+  carry the option in a `mountsRoutes` marker, `meta docs` reads it off the resolved suite
+  (`runRoutesExpose`) and documents only the verbs mounted: `update` lists both `PATCH` and `PUT`,
+  a read-only projection or report still lists `GET`, and a TPH base is narrowed from its
+  read-only pair. Output without `expose` is byte-identical. **An owned (ejected) copy needs the
+  marker to be honoured:** run `meta eject routes --force` (and `routes-hono --force`), or add
+  `mountsRoutes: opts?.expose !== undefined ? { expose: opts.expose } : {}` beside the generator's
+  `name:`. TypeScript only: no other port has an `expose` option.
 
 ## [1.1.0] — 2026-10-10
 

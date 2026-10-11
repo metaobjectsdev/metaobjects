@@ -102,6 +102,7 @@
 // very models this builder was reading it from. The read is gone — see
 // constants.ts.)
 
+import { CRUD_VERBS, TPH_POLYMORPHIC_VERBS, intersectExpose, resolveExpose, type CrudVerb, type ExposeOption } from "../routes-expose.js";
 import {
   type MetaRoot,
   type MetaObject,
@@ -293,6 +294,10 @@ export interface ApiModelContext {
    *  short. Threaded explicitly rather than read off the RenderContext below,
    *  which is a `{ pkMap }` shim and carries nothing else. Defaults to "". */
   apiPrefix?: string;
+  /** The `expose` option the run's routes generators were built with (`runRoutesExpose`).
+   *  The routes generator mounts only these verbs, so the documented endpoints are the same
+   *  subset. Absent means every verb, which documents byte-identically to before. */
+  expose?: ExposeOption;
 }
 
 // ---------------------------------------------------------------------------
@@ -308,6 +313,7 @@ export function buildApiModel(root: MetaRoot, ctx: ApiModelContext): ApiModel {
   const apiPrefix = ctx.apiPrefix ?? "";
   const relationMap = ctx.relationMap ?? buildRelationMap(root);
   const includeHono = ctx.includeHonoRoutes ?? false;
+  const expose = ctx.expose;
 
   const units: ApiUnitDoc[] = [];
 
@@ -316,7 +322,7 @@ export function buildApiModel(root: MetaRoot, ctx: ApiModelContext): ApiModel {
   // every symbol documents is the derived one. `generatableObjects` is the same swap
   // `runGen` hands the generators, so the units are the objects code was emitted for.
   for (const obj of generatableObjects(root.objects(), root)) {
-    units.push(buildEntityUnit(obj, pkCtx, root, layout, relationMap, includeHono, apiPrefix));
+    units.push(buildEntityUnit(obj, pkCtx, root, layout, relationMap, includeHono, apiPrefix, expose));
   }
 
   for (const tmpl of templateOutputs(root)) {
@@ -430,6 +436,7 @@ function buildEntityUnit(
   relationMap: RelationMap,
   includeHono: boolean,
   apiPrefix: string,
+  expose: ExposeOption | undefined,
 ): ApiUnitDoc {
   const name = obj.name;
   const symbols: ApiSymbol[] = [];
@@ -460,10 +467,10 @@ function buildEntityUnit(
     // object gets routes. (Its `filter` option can narrow that further; this builder
     // reads the model, not the wired generator set, and cannot see it. See the module
     // header.)
-    symbols.push(...restSymbols(obj, layout, root, apiPrefix));
+    symbols.push(...restSymbols(obj, layout, root, apiPrefix, expose));
     // The OPT-IN Hono variant mounts the SAME CRUD verbs under the same rules —
     // documented only when the adopter wired it.
-    if (includeHono) symbols.push(...restHonoSymbols(obj, layout, apiPrefix));
+    if (includeHono) symbols.push(...restHonoSymbols(obj, layout, apiPrefix, expose));
   }
 
   // --- relation: the drizzle relations() export, when the resolver files entries
@@ -667,10 +674,11 @@ function validationSymbols(obj: MetaObject, entityMod: string): ApiSymbol[] {
  */
 function restSymbols(
   obj: MetaObject, layout: OutputLayout, root: MetaRoot, apiPrefix: string,
+  expose: ExposeOption | undefined,
 ): ApiSymbol[] {
   const name = obj.name;
   const path = servedPath(obj, apiPrefix);
-  const readOnly = isReadOnlySurface(obj) || isTphDiscriminatorBase(obj, root);
+  const mounted = mountedVerbs(obj, isTphDiscriminatorBase(obj, root), expose);
 
   // REST endpoints are not importable functions — to WIRE them an adopter
   // imports the entity's route registrar (`<entity>Routes`) from the routes
@@ -688,25 +696,46 @@ function restSymbols(
 
   const ep = restEndpointFactory("rest", routesMod, registrar);
 
-  const symbols: ApiSymbol[] = [
-    ep("GET", path, `List ${name} (supports filter/sort/paging query params).`, modelShape),
-  ];
+  const symbols: ApiSymbol[] = [];
+  if (mounted.has("list")) {
+    symbols.push(ep("GET", path, `List ${name} (supports filter/sort/paging query params).`, modelShape));
+  }
   // `/:id` is mounted only when a row can be addressed (`hasItemRoute`): not for a
   // keyless projection, and never for a report.
-  if (!lacksItemSurface(obj)) {
+  if (mounted.has("get") && !lacksItemSurface(obj)) {
     symbols.push(ep("GET", `${path}/:id`, `Fetch a single ${name} by id (404 when not found).`, modelShape));
   }
-
-  if (!readOnly) {
+  if (mounted.has("create")) {
+    symbols.push(ep("POST", path, `Create a ${name} (body validated by ${name}InsertSchema).`, createShape));
+  }
+  if (mounted.has("update")) {
     symbols.push(
-      ep("POST", path, `Create a ${name} (body validated by ${name}InsertSchema).`, createShape),
       ep("PATCH", `${path}/:id`, `Partially update a ${name} by id (body validated by ${name}UpdateSchema).`, updateShape),
       ep("PUT", `${path}/:id`, `PUT alias of PATCH — the same handler and partial body (validated by ${name}UpdateSchema).`, updateShape),
-      ep("DELETE", `${path}/:id`, `Delete a ${name} by id.`),
     );
+  }
+  if (mounted.has("delete")) {
+    symbols.push(ep("DELETE", `${path}/:id`, `Delete a ${name} by id.`));
   }
 
   return symbols;
+}
+
+/**
+ * The CRUD verbs the routes generator mounts for `obj`, as `routes-file.ts` decides them.
+ *
+ * A read-only surface (a projection or a report) mounts `list` and `get` and `expose` cannot
+ * narrow it. A TPH discriminator base is read-only by construction and an author's `expose`
+ * INTERSECTS with that set. Any other entity mounts all five, narrowed by `expose`: the
+ * option a `meta docs` run reads off the configured routes generator, so a page never lists a
+ * verb the adopter did not mount (and overrides by hand).
+ */
+function mountedVerbs(
+  obj: MetaObject, tphBase: boolean, expose: ExposeOption | undefined,
+): ReadonlySet<CrudVerb> {
+  if (isReadOnlySurface(obj)) return new Set<CrudVerb>(["list", "get"]);
+  const fixed = tphBase ? TPH_POLYMORPHIC_VERBS : CRUD_VERBS;
+  return new Set<CrudVerb>(intersectExpose(fixed, resolveExpose(obj, expose)));
 }
 
 /** Build a REST endpoint symbol factory bound to one route surface (kind +
@@ -883,11 +912,11 @@ function callableArgsRef(obj: MetaObject, root: MetaRoot): string | undefined {
  * only when the adopter opts into the Hono variant (includeHonoRoutes).
  */
 function restHonoSymbols(
-  obj: MetaObject, layout: OutputLayout, apiPrefix: string,
+  obj: MetaObject, layout: OutputLayout, apiPrefix: string, expose: ExposeOption | undefined,
 ): ApiSymbol[] {
   const name = obj.name;
   const path = servedPath(obj, apiPrefix);
-  const readOnly = isReadOnlySurface(obj);
+  const mounted = mountedVerbs(obj, false, expose);
 
   const honoMod = entityModulePath(layout, obj, `${name}.routes.hono`);
   const registrar = `register${name}Routes`;
@@ -898,21 +927,25 @@ function restHonoSymbols(
 
   const ep = restEndpointFactory("rest-hono", honoMod, registrar);
 
-  const symbols: ApiSymbol[] = [
-    ep("GET", path, `[Hono] List ${name} (filter/sort/paging query params).`, modelShape),
-  ];
+  const symbols: ApiSymbol[] = [];
+  if (mounted.has("list")) {
+    symbols.push(ep("GET", path, `[Hono] List ${name} (filter/sort/paging query params).`, modelShape));
+  }
   // The same rule as the Fastify surface: no `/:id` without an addressable row.
-  if (!lacksItemSurface(obj)) {
+  if (mounted.has("get") && !lacksItemSurface(obj)) {
     symbols.push(ep("GET", `${path}/:id`, `[Hono] Fetch a single ${name} by id (404 when not found).`, modelShape));
   }
-
-  if (!readOnly) {
+  if (mounted.has("create")) {
+    symbols.push(ep("POST", path, `[Hono] Create a ${name} (body validated by ${name}InsertSchema).`, createShape));
+  }
+  if (mounted.has("update")) {
     symbols.push(
-      ep("POST", path, `[Hono] Create a ${name} (body validated by ${name}InsertSchema).`, createShape),
       ep("PATCH", `${path}/:id`, `[Hono] Partially update a ${name} by id (body validated by ${name}UpdateSchema).`, updateShape),
       ep("PUT", `${path}/:id`, `[Hono] PUT alias of PATCH — the same handler and partial body (validated by ${name}UpdateSchema).`, updateShape),
-      ep("DELETE", `${path}/:id`, `[Hono] Delete a ${name} by id.`),
     );
+  }
+  if (mounted.has("delete")) {
+    symbols.push(ep("DELETE", `${path}/:id`, `[Hono] Delete a ${name} by id.`));
   }
 
   return symbols;

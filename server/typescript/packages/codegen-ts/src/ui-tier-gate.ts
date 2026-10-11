@@ -1,4 +1,5 @@
 import type { Generator } from "./generator.js";
+import { CRUD_VERBS, resolveExpose, type CrudVerb, type ExposeOption } from "./routes-expose.js";
 
 /**
  * Generators that emit a CLIENT UI artifact — a form, a hook, a grid or its columns.
@@ -76,4 +77,31 @@ export function warnUnmarkedUiGenerators(
  */
 export function runEmitsHonoRoutes(generators: readonly Generator[]): boolean {
   return generators.some((g) => g.emitsHonoRoutes === true);
+}
+
+/**
+ * The `expose` option the run's routes generators were built with, for `meta docs` to apply
+ * (a docs page that lists DELETE for a route the adopter does not mount is a lie).
+ *
+ * Undefined when no generator mounts routes, or any of them mounts every verb: documenting
+ * all five is then right. Otherwise a per-entity function returning the UNION of what the
+ * generators mount, since the Fastify and Hono surfaces share one documented verb list.
+ */
+export function runRoutesExpose(generators: readonly Generator[]): ExposeOption | undefined {
+  // Project the markers once, so the body works over "the routes-mounting generators'
+  // options" — a collection, not a filtered list re-projected through `!` in a closure.
+  const mounts = generators
+    .map((g) => g.mountsRoutes)
+    .filter((m): m is NonNullable<typeof m> => m !== undefined);
+  if (mounts.length === 0) return undefined;
+  if (mounts.some((m) => m.expose === undefined)) return undefined;
+  return (entity) => {
+    const union = new Set<CrudVerb>();
+    for (const m of mounts) {
+      const verbs = resolveExpose(entity, m.expose);
+      if (verbs === undefined) return undefined;
+      for (const v of verbs) union.add(v);
+    }
+    return CRUD_VERBS.filter((v) => union.has(v));
+  };
 }

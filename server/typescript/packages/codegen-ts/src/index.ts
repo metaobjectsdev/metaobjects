@@ -11,7 +11,7 @@ export { perEntity, perPackage, perModel, oncePerRun } from "./generator.js";
 // The one aggregation of the UI-tier markers. Exported because `meta docs` is the
 // SECOND door onto `agent/ui.md` and must answer "does this run emit a UI tier?"
 // with the same function the gen runner uses, not a second derivation of it.
-export { runEmitsUiTier, runEmitsHonoRoutes, UI_TIER_GENERATOR_NAMES } from "./ui-tier-gate.js";
+export { runEmitsUiTier, runEmitsHonoRoutes, runRoutesExpose, UI_TIER_GENERATOR_NAMES } from "./ui-tier-gate.js";
 
 // SP-1 declarative Mustache template-codegen — scope walks, neutral data dict,
 // output-pattern, and the JSON template-spec the CLI ports reuse.

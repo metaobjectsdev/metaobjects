@@ -1,3 +1,4 @@
+import type { ExposeOption } from "./routes-expose.js";
 import type { MetaObject, MetaRoot, TypeRegistry } from "@metaobjectsdev/metadata";
 import type { LibraryManifest } from "@metaobjectsdev/metadata/library";
 import type { RenderContext } from "./render-context.js";
@@ -114,6 +115,12 @@ export interface Generator {
    *  that Hono routes are actually being emitted and document them — rather than
    *  silently omitting the Hono CRUD registrars whenever the variant is wired. */
   emitsHonoRoutes?: boolean;
+  /** Marks a generator that mounts the CRUD routes (`routesFile`, `routesFileHono`) and carries
+   *  the `expose` option it was built with. `meta docs` aggregates it across the suite
+   *  (`runRoutesExpose`) so the API docs list the verbs the routes actually mount, not all five.
+   *  Absent `expose` means every verb. A copy ejected before this marker existed needs
+   *  `meta eject routes --force` (or the same one-line addition) to be honoured. */
+  mountsRoutes?: { readonly expose?: ExposeOption };
   /** §A6 — marks the generator that emits the <Entity>Names artifact. The runner
    *  aggregates this across the suite into ResolvedGenConfig.includeNames, which the
    *  entity generator reads to decide whether it may reference those constants.

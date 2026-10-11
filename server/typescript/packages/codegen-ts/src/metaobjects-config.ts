@@ -1,4 +1,5 @@
 import { DEFAULT_COLUMN_NAMING_STRATEGY, type ColumnNamingStrategy, type MetaDataTypeProvider } from "@metaobjectsdev/metadata";
+import type { ExposeOption } from "./routes-expose.js";
 import type { Generator } from "./generator.js";
 import type { ExtStyle } from "./render-context.js";
 import type { OutputLayout, ResolvedTarget } from "./import-path.js";
@@ -60,6 +61,9 @@ export interface ResolvedGenConfig {
    *  api-docs reads this to AUTO-DETECT whether to document the Hono CRUD surface
    *  (it otherwise mirrors the default Fastify-only suite). Undefined ⇒ false. */
   includeHonoRoutes?: boolean;
+  /** The `expose` option the run's routes generators were built with (`runRoutesExpose`), for
+   *  `meta docs` to document only the verbs they mount. Absent documents all five. */
+  routesExpose?: ExposeOption;
   /** §A6 — whether the OPT-IN names generator (namesFile) is active in the run,
    *  aggregated by the runner from the suite's `emitsNames` markers. A generator that
    *  wants to REFERENCE `<Entity>Names` reads this to know the artifact will exist:
