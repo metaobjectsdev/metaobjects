@@ -54,8 +54,10 @@ Two config files, by design:
 ADR-0034 Amendment 2), and the `.gitignore` entries for `.metaobjects/.gen-state/`.
 Choose from the catalog with `meta gen --list --probe`, which reports how many files
 each generator would emit for your model and prints the import line that runs it as
-shipped, beside what to install and the config keys it reads. Import the ones you want
-from their package: nothing is copied, and an upgrade is how their fixes arrive. To change
+shipped. What to install and the config keys a generator reads are in the structured
+catalog only: `meta gen --list --format json` carries `install.dev`, `install.runtime`
+and `configKeys` on each row, and the text listing prints neither. Import the ones you
+want from their package: nothing is copied, and an upgrade is how their fixes arrive. To change
 what one emits, `meta eject <name>` copies its reference template into
 `codegen/generators/` (ADR-0034 scaffold-and-own — yours to edit) and prints the local
 import to swap in; `meta gen` then runs that copy, not the package's.

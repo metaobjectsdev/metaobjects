@@ -56,8 +56,10 @@ Every stock generator can be used two ways:
 | After a package upgrade | output can change; `meta verify --codegen` reports it until you run `meta gen` | output changes only when your copy does |
 
 Start with the import. `meta gen --list` prints the import line under each generator
-(`wire.import` in `--format json`), beside what to install and which config keys it reads.
-The call is yours to write from each generator's documented options:
+(`wire.import` in `--format json`). What to install and which config keys a generator
+reads are on the `--format json` row only, as `install.dev`, `install.runtime` and
+`configKeys`; the text listing does not print them. The call is yours to write from each
+generator's documented options:
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";

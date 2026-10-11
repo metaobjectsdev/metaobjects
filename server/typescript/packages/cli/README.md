@@ -69,6 +69,10 @@ meta gen --list --probe
 
 # 4. Wire the ones you want. The catalog prints the import that runs each generator as
 #    shipped; add it to metaobjects.config.ts and call it in `generators: [...]`.
+#    What to install is on the structured row only (`install.dev`, `install.runtime`),
+#    beside the config keys the generator reads (`configKeys`):
+meta gen --list --format json
+
 #    Need to change what one emits? Copy it into your repo and own it. Prints the import
 #    to swap in, the entry to wire, and what to install.
 meta eject entity
@@ -103,7 +107,7 @@ Running `meta` with no arguments prints a concise status line (whether a `metaob
 
 Scaffolds `metaobjects/` (visible entity declarations, with a placeholder `meta.common.json`), `.metaobjects/` (hidden tool state: `config.json`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`, `.gen-state/`), an **empty** `codegen/generators/` plus its `tsconfig.codegen.json`, and `metaobjects.config.ts` at the repo root.
 
-**It copies no generators and declares no dependencies.** Codegen is opt-in (ADR-0034 Amendment 2): the scaffolded config carries `generators: []` and a comment pointing at the catalog. `meta gen --list --probe` shows what each generator would emit for your model, with the import line that runs it as shipped. Import a generator from its package to use it unchanged; `meta eject <name>...` copies the ones you want to change into `codegen/generators/` — **yours to edit** — and prints the import line to swap in, the entry to add, the install command and any config keys those generators read. `meta gen` runs whatever `generators: [...]` holds: the package's generator where you imported it, your copy where you ejected it.
+**It copies no generators and declares no dependencies.** Codegen is opt-in (ADR-0034 Amendment 2): the scaffolded config carries `generators: []` and a comment pointing at the catalog. `meta gen --list --probe` shows what each generator would emit for your model, with the import line that runs it as shipped; `meta gen --list --format json` adds what to install (`install.dev`, `install.runtime`) and the config keys each generator reads (`configKeys`), which the text listing does not print. Import a generator from its package to use it unchanged; `meta eject <name>...` copies the ones you want to change into `codegen/generators/` — **yours to edit** — and prints the import line to swap in, the entry to add, the install command and any config keys those generators read. `meta gen` runs whatever `generators: [...]` holds: the package's generator where you imported it, your copy where you ejected it.
 
 Flags:
 - `--force` — overwrite scaffold files (memory records preserved)

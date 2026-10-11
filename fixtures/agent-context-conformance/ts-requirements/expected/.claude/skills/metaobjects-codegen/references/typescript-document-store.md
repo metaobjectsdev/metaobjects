@@ -27,8 +27,9 @@ enum fails Zod validation.
    });
    ```
 
-3. `npm install mongodb` and the packages the `entity` row of `npx meta gen --list` lists
-   under install, then `npx meta gen`. Use the repository from your routes:
+3. `npm install mongodb` and the packages the `entity` row of
+   `npx meta gen --list --format json` lists under `install` (the text listing does not
+   print them), then `npx meta gen`. Use the repository from your routes:
    `const orders = orderRepository(client.db("shop")); await orders.create(body);`
 
 What the repository does, built on the generated contract:
