@@ -621,7 +621,7 @@ adopter's without ejecting, by a template file of the same name under `templates
 for `docs` and `api-docs` declare their `docsSurface`, and a gate requires each reference
 template's generator to carry the same value. For those two, `meta eject` prints the import
 and `docs: { generators: [...] }`, says that `meta docs` runs the copy, and never sends the
-reader to the top-level `generators`. Its JSON row carries `door: "docs"` and
+reader to the top-level `generators`. Its JSON row carries
 `wire.into: "docs.generators"`. `meta eject shared-model` prints the entry with the options
 the factory needs, `sharedModelFile({ name, include })`.
 

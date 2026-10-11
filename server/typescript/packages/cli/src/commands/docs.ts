@@ -456,41 +456,30 @@ export async function docsCommand(
     ? resolvePath(cwd, flags.templates)
     : genConfigDir;
 
-  // Best-effort load of metaobjects.config.ts to pick up consumer-supplied
-  // providers (e.g. a project's custom field/object subtypes). Unlike `gen`,
-  // docs does NOT require a config — the Tier-2 "metadata alone" promise must
-  // hold for config-less projects. If the config is absent or invalid, fall
-  // back to defaults; the loader still surfaces a stable unknown-subtype error
-  // if the metadata genuinely uses an unregistered type.
+  // Load metaobjects.config.ts when the project has one, to pick up consumer-supplied
+  // providers (e.g. a project's custom field/object subtypes), the `docs` block and any
+  // owned docs generator it lists. Unlike `gen`, docs does NOT require a config — the
+  // Tier-2 "metadata alone" promise must hold for config-less projects, so an ABSENT
+  // config falls back to defaults and stays silent.
+  //
+  // A config that EXISTS but fails to load is fatal, with the exit code and message
+  // `meta gen` gives the same failure. Carrying on without it would run the packaged
+  // generators over the pages an owned `docs.generators` copy writes, and exit 0.
   let loadedConfig: Awaited<ReturnType<typeof loadMetaobjectsConfig>> | undefined;
   let configProviders: NonNullable<Awaited<ReturnType<typeof loadMetaobjectsConfig>>["providers"]> | undefined;
   // The same config's contributions to the metadata LOAD — providers plus the shipped
   // `libraries` a project opts into (#333). `configProviders` stays separate because the
   // site surface has its own loader and takes providers alone.
   let configLoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
-  // hasConfig gates the api surface: api docs describe the GENERATED REST
-  // surface, which only exists when there is a (loadable) gen config. A config
-  // that EXISTS but fails to load degrades to model-only with a warning.
-  const hasConfig = existsSync(join(genConfigDir, "metaobjects.config.ts"));
-  // Only attempt the load when the file is actually present: absence is the
-  // expected config-less case (stay silent), but a config that EXISTS yet fails
-  // to load is surfaced as a warning rather than silently degrading to
-  // provider-less docs — otherwise a custom-type project would later fail with a
-  // cryptic unknown-subtype error instead of the real config error.
-  if (hasConfig) {
+  if (existsSync(join(genConfigDir, "metaobjects.config.ts"))) {
     try {
       loadedConfig = await loadMetaobjectsConfig(genConfigDir);
-      configProviders = loadedConfig.providers;
-      configLoadOptions = loadMemoryOptionsFrom(loadedConfig);
     } catch (err) {
-      log.warn(
-        `docs: metaobjects.config.ts failed to load (${describeError(err)}); ` +
-          `generating docs without its providers`,
-      );
-      loadedConfig = undefined;
-      configProviders = undefined;
-      configLoadOptions = {};
+      log.error(describeError(err));
+      return 2;
     }
+    configProviders = loadedConfig.providers;
+    configLoadOptions = loadMemoryOptionsFrom(loadedConfig);
   }
 
   // Merge the config `docs:` block with CLI overrides over documented defaults.
@@ -610,6 +599,7 @@ export async function docsCommand(
     } as never,
     renderContext,
     projectRoot,
+    inputRoot: genConfigDir,
     warn: (msg) => log.warn(`docs: ${msg}`),
   };
 
@@ -739,10 +729,6 @@ export async function docsCommand(
           `meta docs: api surface '${s.lang}' (${s.subDir}) is produced by that port's docs command — run it to populate those pages.`,
         );
       }
-    } else if (hasConfig) {
-      // Config present but failed to load — already warned above; don't claim an
-      // api surface we couldn't build.
-      info("meta docs: api surface skipped — metaobjects.config.ts failed to load.");
     } else {
       info("meta docs: api surface skipped — no metaobjects.config.ts (nothing generated to document).");
     }
@@ -768,8 +754,6 @@ export async function docsCommand(
           columnNamingStrategy: strategy,
         }).generate(ctx)),
       );
-    } else if (hasConfig) {
-      info("meta docs: agent surface skipped — metaobjects.config.ts failed to load.");
     } else {
       info(
         "meta docs: agent surface skipped — no metaobjects.config.ts (the physical schema " +

@@ -291,10 +291,11 @@ describe("meta docs — standalone neutral metadata docs", () => {
     expect(files).toContain("Place.md");
   });
 
-  test("a broken metaobjects.config.ts is surfaced (not silently swallowed), docs still generate", async () => {
-    // Basic metadata (no custom types) + a config that THROWS on load. Docs must
-    // still succeed config-less, but the real config error must be surfaced as a
-    // warning rather than silently degrading to provider-less docs.
+  test("a metaobjects.config.ts that fails to load stops docs: the load error, exit 2, nothing written", async () => {
+    // Basic metadata (no custom types) + a config that THROWS on load. `meta gen` answers
+    // this with exit 2 and the load error. Docs used to warn, write the model pages without
+    // the config and exit 0, which runs the packaged generator over the pages an owned
+    // `docs.generators` copy writes.
     const root = await project();
     await writeFile(
       join(root, "metaobjects.config.ts"),
@@ -315,14 +316,9 @@ describe("meta docs — standalone neutral metadata docs", () => {
       console.error = origErr;
     }
 
-    expect(code).toBe(0); // config-less generation still works
-    const files = await readdir(out);
-    expect(files.length).toBeGreaterThan(0);
-    // The config failure is SURFACED (warning on stderr), not silently swallowed,
-    // and carries the loader's real diagnostic so the user can fix it.
-    const stderr = errLogged.join("\n");
-    expect(stderr).toContain("metaobjects.config.ts failed to load");
-    expect(stderr).toContain("generating docs without its providers");
+    expect(code).toBe(2);
+    expect(errLogged.join("\n")).toContain("broken config boom");
+    expect(existsSync(out)).toBe(false);
   });
 
   test("exits non-zero with a clear message when metadata is missing", async () => {

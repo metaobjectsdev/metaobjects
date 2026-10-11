@@ -198,6 +198,9 @@ the top-level `generators`, which is what `meta gen` runs:
   the copy shows up as drift in the committed pages until you run `meta docs` again.
 - **One generator per surface, and each must say which.** Two entries for one surface, or
   an entry with no `docsSurface`, are refused by name.
+- **A config that fails to load stops `meta docs`.** It prints the load error, exits 2 and
+  writes nothing, so an error in your copy never ends with the packaged generator's pages
+  written over yours.
 - **`meta gen` never runs one.** If a copy ends up in `generators`, `meta gen` skips it
   with a warning that names `docs.generators`, and `meta docs` keeps running the packaged
   generator until you move it. The run's `help[]` next step and the `meta verify` advisory
@@ -265,7 +268,8 @@ you cannot change it there by accident; to change it you would have to replace t
 and then you have stopped agreeing with every consumer of the artifact. Read the project's
 own files through `ctx.inputRoot`, as the copy does for the version: under
 `meta verify --codegen` the run writes into a temporary tree and `ctx.projectRoot` is that
-tree.
+tree. An owned `docs` or `api-docs` copy reads through it too: under `meta docs` it is the
+directory that holds `metaobjects.config.ts`.
 
 ## What `meta eject` hands over, and what stays core (TypeScript)
 

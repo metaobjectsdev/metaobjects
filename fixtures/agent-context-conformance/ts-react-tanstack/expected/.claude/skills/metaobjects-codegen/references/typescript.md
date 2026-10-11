@@ -148,7 +148,7 @@ Three ejectable entries behave differently from the rest:
 
 In an owned generator, read the project's own files through `ctx.inputRoot`. Under
 `meta verify --codegen` the run writes into a temporary tree and `ctx.projectRoot` is that
-tree.
+tree. Under `meta docs` it is the directory that holds `metaobjects.config.ts`.
 
 **`requirementTests()` — one test stub per requirement the model claims.** A recommended
 approach, not a contract: a `live` or `partial` requirement gets a stub that fails until

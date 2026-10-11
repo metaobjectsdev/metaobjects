@@ -142,10 +142,9 @@ function resolveCliPkg(specifier: string): string {
  * subpath still exists and serves every other factory, so nothing upstream of here can tell
  * a correct import from a removed one.
  *
- * Two arms, because the import does not have to be in the config. `removedGeneratorImportError`
- * reads the config SOURCE and can name the file and the import. `removedGeneratorRuntimeError`
- * recovers the same diagnostic from the THROW, for a removed export imported by a module the
- * config imports (an owned generator under `codegen/generators/`, typically).
+ * The diagnostic is recovered from the THROW, in `removedGeneratorRuntimeError`, so it
+ * answers for a live import only, wherever that import is: the config itself or a module
+ * the config imports (an owned generator under `codegen/generators/`, typically).
  *
  * `mermaidErDiagram` (removed in 1.1) wrote the ER diagram to a file of its own under
  * `meta gen`. It was the older home of a diagram `meta docs` draws.
@@ -160,35 +159,12 @@ const REMOVED_GENERATOR_EXPORTS: Readonly<Record<string, string>> = {
 };
 const GENERATORS_SUBPATH = "@metaobjectsdev/codegen-ts/generators";
 
-/** The removed factories a config's own source imports, as one message; undefined when none. */
-export function removedGeneratorImportError(source: string): string | undefined {
-  const re = new RegExp(
-    `import\\s*(?:type\\s+)?\\{([^}]*)\\}\\s*from\\s*['"]${GENERATORS_SUBPATH.replace(/[/\\]/g, "\\$&")}['"]`,
-    "g",
-  );
-  const hits = new Set<string>();
-  for (const m of source.matchAll(re)) {
-    for (const raw of (m[1] ?? "").split(",")) {
-      const name = raw.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0]?.trim();
-      if (name !== undefined && REMOVED_GENERATOR_EXPORTS[name] !== undefined) hits.add(name);
-    }
-  }
-  if (hits.size === 0) return undefined;
-  return [...hits]
-    .sort()
-    .map(
-      (name) =>
-        `metaobjects.config.ts imports ${name} from "${GENERATORS_SUBPATH}", and 1.1 removed ` +
-        `that generator: ${REMOVED_GENERATOR_EXPORTS[name] ?? ""}`,
-    )
-    .join("\n");
-}
-
 /**
- * The same diagnostic, recovered from the throw. It cannot name the file (the error carries
- * no reference back to the import that produced it), so it says where to look instead.
- * Matching is on the SYMBOL and on the fact of a missing export, not on one message shape:
- * the shape is the runtime's, and an adopter's runtime is not ours to choose.
+ * The diagnostic for a throw that names a removed factory; undefined for any other throw.
+ * It cannot name the file (the error carries no reference back to the import that produced
+ * it), so it says where to look instead. Matching is on the SYMBOL and on the fact of a
+ * missing export, not on one message shape: the shape is the runtime's, and an adopter's
+ * runtime is not ours to choose.
  */
 export function removedGeneratorRuntimeError(err: unknown): string | undefined {
   const message = err instanceof Error ? err.message : String(err ?? "");
@@ -199,8 +175,8 @@ export function removedGeneratorRuntimeError(err: unknown): string | undefined {
   if (hit === undefined) return undefined;
   return (
     `${hit} is no longer exported from "${GENERATORS_SUBPATH}": 1.1 removed that generator. ` +
-    `Your metaobjects.config.ts does not import it itself, so the import is in a module the ` +
-    `config imports, most often one of your own under codegen/generators/. ` +
+    `The import is in your metaobjects.config.ts or in a module the config imports, most ` +
+    `often one of your own under codegen/generators/. ` +
     `${REMOVED_GENERATOR_EXPORTS[hit] ?? ""}`
   );
 }
@@ -438,8 +414,6 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
   // a belt-and-suspenders fallback for runtimes where jiti's transformer IS
   // active, but under Bun the pre-processed source is the operative fix.
   const original = await readFile(fullPath, "utf8");
-  const removed = removedGeneratorImportError(original);
-  if (removed !== undefined) throw new Error(removed);
   const processed = rewriteImportSpecifiers(original, aliasMap);
 
   // When any specifiers were rewritten, write the modified source to a temp
@@ -489,8 +463,6 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
     try {
       raw = (await jiti.import(loadPath)) as MetaobjectsGenConfig | { default: MetaobjectsGenConfig };
     } catch (err) {
-      // The second arm of the removed-generator diagnostic: the import is in a module the
-      // config imports, so the source scan above saw a clean config.
       const runtime = removedGeneratorRuntimeError(err);
       if (runtime !== undefined) throw new Error(runtime);
       throw err;

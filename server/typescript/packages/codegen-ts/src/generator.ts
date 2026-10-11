@@ -94,8 +94,10 @@ export interface GenContext {
    * `meta gen` it is `projectRoot`. Under `meta verify --codegen` the run writes into a
    * throwaway tree, `projectRoot` is that tree (import paths between an output directory
    * and the project are computed against it, so it has to mirror the layout), and this is
-   * the project the tree mirrors. Read files through this; compute output-relative paths
-   * against `projectRoot`. Undefined when the caller supplied neither root.
+   * the project the tree mirrors. Under `meta docs` and `meta verify --docs` it is the
+   * directory holding `metaobjects.config.ts`, which `--templates` does not move. Read files
+   * through this; compute output-relative paths against `projectRoot`. Undefined when the
+   * caller supplied neither root.
    */
   inputRoot?: string;
   /**

@@ -189,6 +189,76 @@ describe("docs and api-docs — owned copies run by `meta docs`", () => {
     }
   }, 180_000);
 
+  test("an owned copy that fails to load stops `meta docs`: the pages are not rewritten by the packaged generator", async () => {
+    const root = setupRepo(PACKAGED);
+    try {
+      expect(await meta(root, "eject", "docs")).toMatchObject({ exit: 0 });
+      writeFileSync(join(root, "metaobjects.config.ts"), config([OWNED_DOCS_IMPORT], "docsFile()"));
+      edit(root, "codegen/generators/docs.ts", 'out.push("# Data Model");', 'out.push("# Our Model");');
+      expect(await meta(root, "docs")).toMatchObject({ exit: 0 });
+      const owned = tree(root, DOCS);
+      expect(owned.get("README.md")).toStartWith("# Our Model\n");
+
+      // An error in the copy: the config imports it, so the config no longer loads.
+      const copy = join(root, "codegen", "generators", "docs.ts");
+      writeFileSync(copy, `${readFileSync(copy, "utf8")}\nthrow new Error("owned docs copy is broken");\n`);
+
+      // `meta gen` is the reference for this failure: exit 2 and the load error.
+      const gen = await meta(root, "gen", "--format", "text");
+      expect(gen.exit).toBe(2);
+      expect(gen.output).toContain("owned docs copy is broken");
+
+      const docs = await meta(root, "docs");
+      expect(docs.exit).toBe(2);
+      expect(docs.output).toContain("owned docs copy is broken");
+      // The packaged generator would have put "# Data Model" back.
+      expect(tree(root, DOCS)).toEqual(owned);
+      expect((await meta(root, "verify", "--docs")).exit).not.toBe(0);
+
+      // And with no pages on disk, none are written.
+      rmSync(join(root, DOCS), { recursive: true, force: true });
+      expect((await meta(root, "docs")).exit).toBe(2);
+      expect(existsSync(join(root, DOCS))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 180_000);
+
+  test("a docs generator reads the project's own files through `ctx.inputRoot` under `meta docs`", async () => {
+    // Hand-written, as the guide has an owned generator read a project file:
+    // `join(ctx.inputRoot, <file>)`.
+    const root = setupRepo(
+      config([`import { titlePage } from "./codegen/generators/title-page.js";`], "titlePage()"),
+    );
+    try {
+      mkdirSync(join(root, "codegen", "generators"), { recursive: true });
+      writeFileSync(
+        join(root, "codegen", "generators", "title-page.ts"),
+        [
+          `import { readFileSync } from "node:fs";`,
+          `import { join } from "node:path";`,
+          `import type { Generator } from "@metaobjectsdev/codegen-ts";`,
+          `export const titlePage = (): Generator => ({`,
+          `  name: "title-page",`,
+          `  docsSurface: "model",`,
+          `  generate: (ctx) => [`,
+          `    { path: "README.md", content: "# " + readFileSync(join(ctx.inputRoot as string, "MODEL-TITLE"), "utf8") + "\\n" },`,
+          `  ],`,
+          `});`,
+        ].join("\n"),
+      );
+      writeFileSync(join(root, "MODEL-TITLE"), "From The Project");
+
+      // `--templates` repoints `ctx.projectRoot`. The project's files are not there.
+      mkdirSync(join(root, "elsewhere"), { recursive: true });
+      expect(await meta(root, "docs", "--templates", "elsewhere")).toMatchObject({ exit: 0 });
+      expect(tree(root, DOCS).get("README.md")).toBe("# From The Project\n");
+      expect(await meta(root, "verify", "--docs")).toMatchObject({ exit: 0 });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 180_000);
+
   test("`meta gen` is untouched by listed docs generators, and points a misplaced one at the docs door", async () => {
     const root = setupRepo(PACKAGED);
     try {
@@ -310,12 +380,40 @@ describe("mermaid-er — removed; `meta docs` draws the diagrams", () => {
     try {
       const gen = await meta(root, "gen", "--format", "text");
       expect(gen.exit).not.toBe(0);
-      expect(gen.output).toContain('imports mermaidErDiagram from "@metaobjectsdev/codegen-ts/generators", and 1.1 removed that generator');
+      expect(gen.output).toContain('mermaidErDiagram is no longer exported from "@metaobjectsdev/codegen-ts/generators": 1.1 removed that generator');
+      // True of this project: the import is in the config itself.
+      expect(gen.output).toContain("in your metaobjects.config.ts or in a module the config imports");
       expect(gen.output).toContain("`meta docs` draws the ER diagram");
       expect(gen.output).toContain("delete the import and the `mermaidErDiagram()` entry");
-      // Not the runtime's own words for a missing export.
-      expect(gen.output).not.toContain("is not a function");
       expect(existsSync(join(root, OUT))).toBe(false);
+
+      // `meta docs` reads the same config, so it stops on it too and writes no page.
+      const docs = await meta(root, "docs");
+      expect(docs.exit).toBe(2);
+      expect(docs.output).toContain("mermaidErDiagram is no longer exported");
+      expect(existsSync(join(root, DOCS))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  test("a commented-out import of the removed factory is not an import: the config loads", async () => {
+    const root = setupRepo(
+      [
+        `import { defineConfig } from "@metaobjectsdev/codegen-ts";`,
+        `import { entityFile } from "@metaobjectsdev/codegen-ts/generators";`,
+        `// import { mermaidErDiagram } from "@metaobjectsdev/codegen-ts/generators";`,
+        `/* import { mermaidErDiagram } from "@metaobjectsdev/codegen-ts/generators"; */`,
+        `export default defineConfig({ outDir: ${JSON.stringify(OUT)}, dialect: "sqlite", generators: [entityFile()] });`,
+      ].join("\n"),
+    );
+    try {
+      const gen = await meta(root, "gen", "--format", "text");
+      expect(gen).toMatchObject({ exit: 0 });
+      expect(gen.output).not.toContain("mermaidErDiagram");
+      expect([...tree(root, OUT).keys()]).toContain("User.ts");
+      expect(await meta(root, "docs")).toMatchObject({ exit: 0 });
+      expect(tree(root, DOCS).has("README.md")).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

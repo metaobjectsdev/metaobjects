@@ -33,7 +33,8 @@ Other flags: `--layout flat|package`, `--base-url <url>`. Configure defaults in 
 `docs:` block in `metaobjects.config.ts` (`outDir`, `layout`, `baseUrl`,
 `surfaces`); CLI flags override it. The api surface needs the gen config
 (it documents what the codegen produced); with no config it is skipped with a note,
-and the model surface still emits from metadata alone.
+and the model surface still emits from metadata alone. A config that exists but fails to
+load stops `meta docs` (the load error, exit 2, nothing written), as it stops `meta gen`.
 
 **Never wire `docsFile()` or `apiDocsFile()` into `generators`.** They are the engines
 behind `meta docs`, so `meta gen` warns about each one it finds in the suite and skips it:

@@ -527,7 +527,7 @@ generator catalog and the Atlas evaluation are 1.2 work.
     `docs: { generators: [docsFile()] }`. It carries a `docsSurface` marker, and
     `meta docs` and `meta verify --docs` run it in place of the packaged generator for that
     surface. `meta eject` prints exactly that wiring, and its JSON row carries
-    `door: "docs"` and `wire.into: "docs.generators"`. The copy owns which nodes get a page,
+    `wire.into: "docs.generators"`. The copy owns which nodes get a page,
     where a page lands, the overview page and which forms of the API reference are written.
     A docs generator does not go in the top-level `generators`: `meta gen` skips one there
     with a warning that names `docs.generators`. Two entries for one surface, or an entry
@@ -541,7 +541,9 @@ generator catalog and the Atlas evaluation are 1.2 work.
   project directory. Under `meta gen` it equals `ctx.projectRoot`. Under
   `meta verify --codegen` the run writes into a temporary tree and `ctx.projectRoot` is
   that tree, as before, because owned `entity` and `routes` copies compute an import path
-  against it. Read files through `ctx.inputRoot`; `runGen` takes it as `inputRoot`.
+  against it. Under `meta docs` and `meta verify --docs` it is the directory that holds
+  `metaobjects.config.ts`, and `--templates` does not move it. Read files through
+  `ctx.inputRoot`; `runGen` takes it as `inputRoot`.
 
 ### Changed
 
@@ -657,6 +659,16 @@ until you regenerate.
 - **The config loader no longer rejects an import of the four generators.** 1.0.x answered
   `import { entityFile } from "@metaobjectsdev/codegen-ts/generators"` with a message naming
   `meta eject`. That import now loads.
+- **`meta docs` stops on a `metaobjects.config.ts` that fails to load.** It prints the load
+  error, exits 2 and writes nothing, as `meta gen` does. `meta verify --docs` calls
+  `meta docs`, so it fails on the same config. Before, `meta docs` warned, wrote the model
+  pages without the config and exited 0. With an owned docs generator listed in
+  `docs: { generators: [...] }` that would have overwritten your pages with the packaged
+  generator's output, so the fallback is removed. A project with no `metaobjects.config.ts`
+  is unaffected: `meta docs` still writes the model pages from metadata alone.
+  **To upgrade**, if a docs build has been passing with a config-load warning, fix the
+  config. A config that still imports the removed `mermaidErDiagram` is one such case (see
+  **Removed** below).
 - **The agent-context skills teach "import by default, eject to customize".** The codegen
   skill and the always-on context no longer send an agent to eject a generator it is not
   going to change. The audit skill reports an owned copy it can prove unmodified as a

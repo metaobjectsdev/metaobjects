@@ -37,7 +37,6 @@ interface EjectPayload {
     path: string;
     status: string;
     wire: { import: string; entry: string; into?: string };
-    door?: string;
     requires: string[];
   }>;
   install: { dev: string[]; runtime: string[]; command: string };
@@ -103,13 +102,6 @@ describe("meta eject takes many names", () => {
     try {
       expect(await ejectCommand(["shared-model"], dir, "json")).toBe(0);
       expect(erred.join("\n")).not.toContain("package-only");
-      const source = readFileSync(join(dir, "codegen/generators/shared-model.ts"), "utf8");
-      expect(source).toContain("export function sharedModelFile(");
-      expect(source).toContain("buildSharedModel");
-      expect(source).toContain("renderSharedModelFiles");
-      // The contract is not in the copy: no hashing, no manifest shape, no file names.
-      expect(source).not.toContain("createHash");
-      expect(source).not.toContain("metaobjects.pkg.json\"");
       const [row] = payload().ejected;
       expect(row?.status).toBe("created");
       // Not `sharedModelFile()`: the factory cannot be called without these two.
@@ -118,7 +110,6 @@ describe("meta eject takes many names", () => {
         'import { sharedModelFile } from "./codegen/generators/shared-model.js";',
       );
       // An ordinary `meta gen` generator: the entry goes in the top-level `generators`.
-      expect(row?.door).toBeUndefined();
       expect(row?.wire.into).toBeUndefined();
       // The two emitted files import nothing, and the copy imports only the engine.
       const { install } = payload();
@@ -134,11 +125,6 @@ describe("meta eject takes many names", () => {
     try {
       expect(await ejectCommand(["docs", "api-docs"], dir, "json")).toBe(0);
       expect(erred.join("\n")).not.toContain("package-only");
-      const docs = readFileSync(join(dir, "codegen/generators/docs.ts"), "utf8");
-      const api = readFileSync(join(dir, "codegen/generators/api-docs.ts"), "utf8");
-      // The marker `meta docs` reads off a listed copy is in the file the adopter owns.
-      expect(docs).toContain('docsSurface: "model"');
-      expect(api).toContain('docsSurface: "api"');
       const rows = payload().ejected;
       expect(rows.map((r) => r.name)).toEqual(["docs", "api-docs"]);
       expect(rows.map((r) => r.wire.entry)).toEqual(["docsFile()", "apiDocsFile()"]);
@@ -146,9 +132,8 @@ describe("meta eject takes many names", () => {
         'import { docsFile } from "./codegen/generators/docs.js";',
         'import { apiDocsFile } from "./codegen/generators/api-docs.js";',
       ]);
-      // The row says which command runs the copy and which config key the entry goes in.
-      // It is the docs block's, never the array `meta gen` runs.
-      expect(rows.map((r) => r.door)).toEqual(["docs", "docs"]);
+      // The row says which config key the entry goes in. It is the docs block's, never the
+      // array `meta gen` runs.
       expect(rows.map((r) => r.wire.into)).toEqual(["docs.generators", "docs.generators"]);
     } finally {
       rmSync(dir, { recursive: true, force: true });

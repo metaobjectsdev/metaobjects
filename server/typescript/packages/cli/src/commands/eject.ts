@@ -507,12 +507,10 @@ interface EjectedRow {
   path: string;
   status: EjectResult["status"];
   /** The two edits an adopter makes in `metaobjects.config.ts`. `into` is present when the
-   *  entry does NOT go in the top-level `generators`: an owned docs generator is listed in
-   *  the docs door's own block, and `into` names that key. */
+   *  entry does NOT go in the top-level `generators`: an owned docs generator (`docs`,
+   *  `api-docs`) is listed in the docs door's own block, and `into` names that key. Such a
+   *  copy is run by `meta docs` and checked by `meta verify --docs`, not by `meta gen`. */
   wire: { import: string; entry: string; into?: "docs.generators" };
-  /** Present when the copy is run by `meta docs` (and checked by `meta verify --docs`)
-   *  rather than by `meta gen`: the `docs` and `api-docs` generators. */
-  door?: "docs";
   requires: readonly string[];
   /** The adapter source copied beside it (ADR-0034 Amendment 3). Absent when none. */
   runtime?: RuntimeFileResult[];
@@ -788,7 +786,6 @@ export async function ejectCommand(
           entry: wiring.entry,
           ...(docsDoor ? { into: "docs.generators" as const } : {}),
         },
-        ...(docsDoor ? { door: "docs" as const } : {}),
         requires: catalogEntry?.requires ?? [],
         ...(result.runtime !== undefined ? { runtime: result.runtime.files } : {}),
       });

@@ -288,6 +288,11 @@ of the packaged generator for the surface its `docsSurface` marker names, and
 are not generators and cannot be replaced. See
 [own-your-codegen](own-your-codegen.md#docs-and-api-docs-are-run-by-meta-docs).
 
+"Needs a gen config? no" means the surface is written when the project has no
+`metaobjects.config.ts`. A config that exists but fails to load stops `meta docs`, as it
+stops `meta gen`: the load error, exit 2, nothing written. Carrying on without it would run
+the packaged generator over the pages an owned copy writes.
+
 Two flags are NOT members of that set and do not compose with it:
 
 - **`--metamodel`** is a different MODE over a different subject: it documents the BUILT-IN
