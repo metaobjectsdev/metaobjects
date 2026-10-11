@@ -145,13 +145,19 @@ public class TypedPayloadRenderTest {
         @Override public String toString() { return currency + " " + cents + "c"; }
     }
 
+    /** Every read of {@link Line#getExploding()}, counted before it throws. */
+    static final java.util.concurrent.atomic.AtomicInteger EXPLODING_READS = new java.util.concurrent.atomic.AtomicInteger();
+
     public static class Line {
         String sku;                                  // package-private field, no getter
         private final Money price;
         Line(String sku, Money price) { this.sku = sku; this.price = price; }
         public String name() { return "name:" + sku; }   // fluent accessor
         public Money getPrice() { return price; }
-        public String getExploding() { throw new IllegalStateException("read a member the template never names"); }
+        public String getExploding() {
+            EXPLODING_READS.incrementAndGet();
+            throw new IllegalStateException("read a member the template never names");
+        }
     }
 
     public static class Order {
@@ -192,8 +198,12 @@ public class TypedPayloadRenderTest {
 
     @Test
     public void aMemberTheTemplateNeverNamesIsNeverRead() {
-        // Line.getExploding() throws when read. The template does not name it.
+        // Line.getExploding() counts each read and then throws. The template does not name it.
+        // The count is what proves laziness: a view that read every member up front and
+        // swallowed the failure would still render "a,b".
+        EXPLODING_READS.set(0);
         assertEquals("a,b", render("{{#lines}}{{sku}}{{^-last}},{{/-last}}{{/lines}}", new Order()));
+        assertEquals(0, EXPLODING_READS.get());
     }
 
     @Test

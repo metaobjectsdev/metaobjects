@@ -281,4 +281,22 @@ describe("a typed payload renders like the equal plain-object payload", () => {
     }
     expect(r("{{full}}", new Person("Ada", "Lovelace"))).toBe("Ada Lovelace");
   });
+
+  // The count is what proves laziness: a view that read every member up front and swallowed
+  // the failure would still render "a,b".
+  test("a member the template never names is never read", () => {
+    let reads = 0;
+    class Line {
+      constructor(readonly sku: string) {}
+      get exploding(): string {
+        reads += 1;
+        throw new Error("read a member the template never names");
+      }
+    }
+    class Order {
+      readonly lines = [new Line("a"), new Line("b")];
+    }
+    expect(r("{{#lines}}{{sku}}{{^-last}},{{/-last}}{{/lines}}", new Order())).toBe("a,b");
+    expect(reads).toBe(0);
+  });
 });

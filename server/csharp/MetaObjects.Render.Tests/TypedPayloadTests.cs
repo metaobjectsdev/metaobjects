@@ -120,12 +120,22 @@ public class TypedPayloadTests
         public override string ToString() => $"{Currency} {Cents}c";
     }
 
+    /// <summary>Every read of <see cref="Line.Exploding"/>, counted before it throws.</summary>
+    private static int s_explodingReads;
+
     private sealed class Line
     {
         public string Sku = "";
         public Money Price { get; init; }
         public string Label() => "label:" + Sku;
-        public string Exploding => throw new InvalidOperationException("read a member the template never names");
+        public string Exploding
+        {
+            get
+            {
+                Interlocked.Increment(ref s_explodingReads);
+                throw new InvalidOperationException("read a member the template never names");
+            }
+        }
     }
 
     private sealed class Order
@@ -172,9 +182,13 @@ public class TypedPayloadTests
     [Fact]
     public void AMemberTheTemplateNeverNamesIsNeverRead()
     {
-        // Line.Exploding throws when read. No template below names it.
+        // Line.Exploding counts each read and then throws. The template does not name it.
+        // The count is what proves laziness: a view that read every member up front and
+        // swallowed the failure would still render "a,b".
         const string template = "{{#Lines}}{{Sku}}{{^-last}},{{/-last}}{{/Lines}}";
+        Interlocked.Exchange(ref s_explodingReads, 0);
         Assert.Equal("a,b", Render(template, SampleOrder()));
+        Assert.Equal(0, Volatile.Read(ref s_explodingReads));
     }
 
     [Fact]

@@ -16,6 +16,11 @@ import kotlin.test.assertEquals
  */
 class KotlinTypedPayloadRenderTest {
 
+    companion object {
+        /** Every read of [Line.exploding], counted before it throws. */
+        val explodingReads = java.util.concurrent.atomic.AtomicInteger()
+    }
+
     data class Item(val name: String)
     data class Tag(val label: String)
     data class Group(val tags: List<Tag>)
@@ -74,7 +79,11 @@ class KotlinTypedPayloadRenderTest {
 
     data class Line(val sku: String, val price: Money) {
         fun label(): String = "label:$sku"
-        val exploding: String get() = throw IllegalStateException("read a member the template never names")
+        val exploding: String
+            get() {
+                explodingReads.incrementAndGet()
+                throw IllegalStateException("read a member the template never names")
+            }
     }
 
     data class Order(val id: String, val total: Money, val lines: List<Line>) {
@@ -120,7 +129,11 @@ class KotlinTypedPayloadRenderTest {
 
     @Test
     fun `a property the template never names is never read`() {
+        // Line.exploding counts each read and then throws. The count is what proves laziness: a
+        // view that read every property up front and swallowed the failure would still render "a,b".
+        explodingReads.set(0)
         assertEquals("a,b", render("{{#lines}}{{sku}}{{^-last}},{{/-last}}{{/lines}}", order))
+        assertEquals(0, explodingReads.get())
     }
 
     @Test

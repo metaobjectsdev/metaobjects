@@ -97,10 +97,15 @@ generator catalog and the Atlas evaluation are 1.2 work.
   a template that does not use it renders byte-for-byte as before. It works whatever shape the
   payload arrives in, and so does `has<Field>`: a map or plain object, a TypeScript class
   instance, a C# object with or without `[JsonPropertyName]`, a Java record or getter-based
-  bean, a Kotlin data class, a Pydantic model. The same data renders the same bytes. A typed
-  object is overlaid, never copied: its own members (methods and fields included) resolve as
+  bean, a Kotlin data class, a Pydantic model. The same data renders the same bytes. Which
+  typed payloads are overlaid depends on the shape. A TypeScript class instance, a C# object
+  with no `[JsonPropertyName]` member, a Java getter-based bean and a Kotlin data class are
+  overlaid, never copied: the object's own members (methods and fields included) resolve as
   they always did and only when the template names them, its string form is its own, and the
-  derived names are added on top.
+  derived names are added on top. A Java record, a C# object with a `[JsonPropertyName]`
+  member and a Pydantic model are viewed as the map of their fields, exactly as before this
+  change: every field is read up front, and the derived names are added to that map. A method
+  on a Java record that is not a component accessor does not resolve.
   `meta verify --templates` accepts `-last` only when the innermost enclosing section over a
   list iterates objects, and reports it as `ERR_VAR_NOT_ON_PAYLOAD` anywhere else: at the top
   level, inside a list of scalars, and inside a list of scalars nested in a list of objects,
