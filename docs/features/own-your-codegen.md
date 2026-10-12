@@ -811,7 +811,8 @@ other classes (the emitters it writes through, below, and Java `entity` and `ext
 for the support imports and the template prefix described below: there the imports those
 copies have of one another change too. On first use
 it writes `codegen/pom.xml`, which depends on `metaobjects-codegen-spring` or
-`metaobjects-codegen-kotlin` at the plugin's version.
+`metaobjects-codegen-kotlin` at the plugin's version, or on both when that call ejects for both
+ports.
 
 Eject changes a copy's package declaration, and for a Java generator up to three more
 lines, each described below: its import of `SpringGeneratorSupport`, its
@@ -996,20 +997,23 @@ documents both surfaces can own both generators in one `codegen/` module without
 class twice. Eject prints each copy's class name, for example
 `com.acme.codegen.apidocs.java.JavaApiDocsGenerator`. No other generator's package changes.
 
-**The second port needs the pom changed, and eject prints the change.** Eject never edits an
-existing pom, so the `codegen/pom.xml` the first eject wrote builds that port only, and the
-module still builds green with the other port's copies left out. When the pom does not declare
-what a port in the module needs, eject warns and prints what to add, in either order:
+**The pom builds the ports the module held when eject wrote it.** Eject writes
+`codegen/pom.xml` once and never edits an existing one, so how a module comes to hold both ports
+decides what is left for you to do:
 
-- **Java first, then Kotlin.** Add the `metaobjects-codegen-kotlin` dependency, the
-  `kotlin.compiler.jvmTarget` property, and `kotlin-maven-plugin` with `src/main/kotlin` as its
-  `<sourceDirs>`.
-- **Kotlin first, then Java.** Add the `metaobjects-codegen-spring` dependency, remove
-  `<sourceDirectory>src/main/kotlin</sourceDirectory>` so that Maven compiles `src/main/java`
-  again, and give `kotlin-maven-plugin` `src/main/kotlin` as its `<sourceDirs>`.
+- **Both ports in one call** (a Java-only name beside a Kotlin-only one, for example
+  `-Dnames=html-docs,exposed-table`). The pom eject writes builds both. Nothing to change.
+- **Java first, then Kotlin in a later call.** Add the `metaobjects-codegen-kotlin` dependency,
+  the `kotlin.compiler.jvmTarget` property, and `kotlin-maven-plugin` with `src/main/kotlin` as
+  its `<sourceDirs>`.
+- **Kotlin first, then Java in a later call.** Add the `metaobjects-codegen-spring` dependency,
+  remove `<sourceDirectory>src/main/kotlin</sourceDirectory>` so that Maven compiles
+  `src/main/java` again, and give `kotlin-maven-plugin` `src/main/kotlin` as its `<sourceDirs>`.
 
-Either way the pom ends up with both dependencies, Maven's default Java source root, and the
-Kotlin plugin pointed at its own.
+In the two later-call orders the module still builds green with the new port's copies left out,
+so eject warns and prints what to add. All three orders end with the same pom: both
+dependencies, Maven's default Java source root, and the Kotlin plugin pointed at its own.
+`-Dforce` rewrites the pom for every port the module holds.
 
 The generator is a `DocsGenerator`. List it, with `<classname>` set to your copy, in the
 `<generators>` the docs goal reads, and `metaobjects:docs` runs it for its surface in place of the
