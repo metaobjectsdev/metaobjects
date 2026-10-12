@@ -2,10 +2,6 @@
 
 > Part of the `metaobjects-codegen` skill's TypeScript reference. Read it when generating or wiring documentation.
 
-Documentation is NOT a `meta gen` generator. The single door is the `meta docs`
-command, which emits three cross-linked **surfaces** under one output dir (default
-`./docs`):
-
 ## Contents
 - Never wire `docsFile()` or `apiDocsFile()` into `generators`
 - An owned docs generator goes in `docs: { generators: [...] }`, never in `generators`
@@ -13,6 +9,10 @@ command, which emits three cross-linked **surfaces** under one output dir (defau
 - Before calling any generated code, read `./docs/api/AGENT-API.md`
 - Ejecting routes hands over the adapter too
 - Wire a generator only for output you consume, and narrow it with its `filter`
+
+Documentation is NOT a `meta gen` generator. The single door is the `meta docs`
+command, which emits three cross-linked **surfaces** under one output dir (default
+`./docs`):
 
 - **model surface** (`./docs/<Entity>.md`, `./docs/<Template>.md`) — the neutral
   metadata reference: one page per entity and per template, including the linked
