@@ -13,7 +13,7 @@ and an `object.report` combines them by name. Four node kinds:
 
 - `dimension.attribute` / `dimension.time` — what to group by (`@of: Entity.field`; a time
   dimension lists the `@grains` it supports: `hour`, `day`, `week`, `month`, `quarter`, `year`);
-- `measure.aggregate` (`@agg`: `count`, `sum`, `avg`, `min`, `max`) and `measure.ratio`
+- `measure.aggregate` (`@agg`: `count`, `sum`, `avg`, `min`, `max`, `any`, `all`) and `measure.ratio`
   (`@numerator` / `@denominator`, both measures of the entity);
 - `segment.filter` — a named, reusable `@filter` ("active purchase");
 - `object.report` — a top-level object: `@from` an entity, `@dimensions` (`name` or

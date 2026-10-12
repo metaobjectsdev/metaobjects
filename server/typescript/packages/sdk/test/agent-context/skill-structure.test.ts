@@ -3,7 +3,7 @@
 // The shape Anthropic's skill-authoring guidance asks for, enforced on the shipped skills
 // rather than left to whoever edits one next: a SKILL.md body under 500 lines, a contents
 // list at the top of every long reference file, and every reference file reachable from its
-// SKILL.md in one hop (a reference linked only from another reference is read partially).
+// SKILL.md in one hop (a row of its reference table) (a reference linked only from another reference is read partially).
 import { test, expect, describe } from "bun:test";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -40,12 +40,18 @@ describe("shipped skill structure", () => {
     expect(missing).toEqual([]);
   });
 
-  test("every reference file is named in its own SKILL.md (one hop, not two)", () => {
+  test("every reference file is linked from its own SKILL.md as `references/<file>` (one hop, not two)", () => {
     const unlinked: string[] = [];
     for (const skill of SKILLS) {
-      const body = readFileSync(join(SKILLS_ROOT, skill, "SKILL.md"), "utf8");
+      const lines = readFileSync(join(SKILLS_ROOT, skill, "SKILL.md"), "utf8").split("\n");
       for (const file of referenceFiles(skill)) {
-        if (!body.includes(file)) unlinked.push(`${skill}/references/${file}`);
+        // A link is the backticked path anywhere, or the bare backticked file name in a
+        // reference-table row (`references/typescript.md`, `java.md`, ...). A file name that
+        // only appears inside prose or inside another path does not count.
+        const linked = lines.some(
+          (l) => l.includes(`\`references/${file}\``) || (l.startsWith("|") && l.includes(`\`${file}\``)),
+        );
+        if (!linked) unlinked.push(`${skill}/references/${file}`);
       }
     }
     expect(unlinked).toEqual([]);
