@@ -97,9 +97,10 @@ If your agent can't fetch URLs (or you want it to follow the prompt verbatim), s
 the file into your workspace instead — `curl -fsSL https://metaobjects.dev/assess.md
 -o metaobjects-assess.md` (don't commit it) — and say: *"Read
 `metaobjects-assess.md` and run the assessment it contains against this
-repository."* The prompt is one Markdown file
-([source](agent-context/skills/metaobjects-fit-assessment/SKILL.md)); read it first
-if you like — you should never point your agent at a prompt you haven't vetted.
+repository."* The file is built from the
+[skill](agent-context/skills/metaobjects-fit-assessment/SKILL.md) and its
+`references/` by [`scripts/build-assess-prompt.mjs`](scripts/build-assess-prompt.mjs);
+read it first if you like — you should never point your agent at a prompt you haven't vetted.
 
 The catch, stated plainly: it runs in **your** agent on **your** tokens. The quick
 pass takes roughly 5–30 minutes of agent time, depending on the agent and the

@@ -14,6 +14,22 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
 
 ---
 
+## Contents
+- Object — `object.*`
+- Field — `field.*`
+- Source — `source.rdb`
+- Relationship — `relationship.*`
+- Identity — `identity.*`
+- Index — `index.*` (non-unique retrieval)
+- Origin — `origin.*` (derived fields — on projections AND entity read-views)
+- Validator — `validator.*`
+- View / Layout — `view.*`, `layout.*`
+- Template — `template.*` (prompt pillar)
+- Attr — `attr.*`
+- Requirement — `requirement.*` (capability ledger)
+- Common documentation attrs (any node)
+- Cross-cutting
+
 ## Object — `object.*`
 
 - **`object.entity`** (`@discriminator` / `@discriminatorValue` for STI/TPH) — hunt
@@ -78,7 +94,7 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
   generates the rest — and the reason an enum member compared as a bare string is NOT one — is
   the Cross-cutting entry below.
 - **`@kind` = `view` / `materializedView`** — hunt hand-written SQL views where an authored
-  read-only source belongs. Apply the **view-necessity test** (SKILL.md, drift signature 8): a
+  read-only source belongs. Apply the **view-necessity test** (`drift-signatures.md`, signature 8): a
   hand-written `CREATE VIEW` (or read-only SQL mirroring a read model) is a CODEGEN CANDIDATE when
   its shape is expressible via `origin.passthrough` / `origin.aggregate` /
   `origin.computed` / `origin.first` + `extends`. Route by shape: an entity's OWN columns plus an
@@ -222,7 +238,7 @@ artifact for a person or a file and generates **no parser**.
   closed* variant set hand-coded as parallel modules (channels / providers / export targets)
   that a project-registered subtype with a closed variant discriminator + a small owned
   generator would own. Apply the ADR-0037 ordered test before proposing; advisory (VOCAB
-  CANDIDATE); see SKILL.md axis I "New-vocabulary OPPORTUNITY".
+  CANDIDATE); see `vocabulary-hygiene.md` "New-vocabulary OPPORTUNITY".
 
 ## Requirement — `requirement.*` (capability ledger)
 
@@ -311,7 +327,7 @@ to nothing, and does not check that each claimed node complies).
   constant) are exempt as consequences of that rule, not as a list. Raw SQL, the API resource path and
   the hand-built form are the three commonest shapes, never the set; a GraphQL field, a queue topic, a
   cache key or a `COPY` header scores by the same rule. Procedure, the emitted-vs-adopted ratio and the
-  deferral rule: SKILL.md signature 11.
+  deferral rule: `drift-signatures.md` signature 11.
 
 - **`extends`** (any depth, cross-package `::`) — hunt copy-pasted base-entity field blocks
   that should be an abstract base inherited via `extends` (the inheritance mechanism;

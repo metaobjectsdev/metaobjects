@@ -12,6 +12,14 @@ uses (`mvn metaobjects:generate`). Schema migration and live-DB drift are
 
 ---
 
+## Contents
+- Finding generated files
+- Run codegen + verify
+- Drift signatures (what to grep for)
+- Owned generators
+- Version-skew check
+- Calibration gaps (do NOT flag these)
+
 ## Finding generated files
 
 Generated sources land under:

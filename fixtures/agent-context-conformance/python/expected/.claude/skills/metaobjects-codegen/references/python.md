@@ -6,6 +6,17 @@ are **Node-`meta`-owned** (ADR-0015): `meta migrate` / `meta verify --db` run
 through the Node `meta` tool — the Python CLI has **no `migrate` subcommand** and
 `metaobjects verify --db` is rejected. Everything below is `metaobjects`.
 
+## Contents
+- Install
+- Run
+- Docs — `metaobjects docs`
+- Write your own generator
+- Generators
+- Discriminator inheritance (TPH)
+- No ORM — you own persistence (unlike the C# port)
+- Known gaps (current — may require a hand-edit)
+- Re-scaffold this context
+
 ## Install
 
 ```bash

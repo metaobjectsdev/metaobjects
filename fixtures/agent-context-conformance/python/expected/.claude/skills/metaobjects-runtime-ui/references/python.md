@@ -8,6 +8,13 @@ OMDB: a method-based API (`find_by_id` / `find_many` / `count` / `create` / `upd
 pluggable driver. It is **pure data-access** (CRUD / query / codec); schema is owned by
 the Node `meta` migration tool, not the runtime.
 
+## Contents
+- Construct an `ObjectManager`
+- CRUD + query
+- Return-type contract
+- Serving the REST contract
+- Physical names in your repository implementation
+
 ## Construct an `ObjectManager`
 
 `ObjectManager(root, driver)` takes a loaded metadata `root` plus a `PostgresDriver`

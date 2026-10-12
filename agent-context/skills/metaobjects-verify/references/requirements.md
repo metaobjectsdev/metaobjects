@@ -3,6 +3,18 @@
 This project declares `requirement.*` nodes, so `verify` checks them. **There is no
 subverb**: requirements are metadata, so they are checked on *every* `meta verify` run.
 
+## Contents
+- Which command runs the gate
+- The split, and why it matters when you read a failure
+- A load failure on RETIRED vocabulary — run `meta upgrade`, do not hand-sweep
+- The status asymmetry — the one that surprises people
+- Exit codes
+- The strict switch — `--require-implementers`
+- The error codes, and the fix for each
+- The authoring lint — a second section, never an error
+- `verify` does not look at your tests
+- What a green run does NOT prove
+
 ## Which command runs the gate
 
 Every port's `verify` runs the same gate, with the same codes, severities and message

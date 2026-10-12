@@ -6,6 +6,14 @@ binary `meta`). The full feature set ships here; other ports are measured agains
 
 ---
 
+## Contents
+- Finding generated files
+- Run codegen + verify
+- Drift signatures (what to grep for)
+- Owned generators — scaffold-and-own (ADR-0034)
+- Version-skew check
+- Calibration gaps (do NOT flag these)
+
 ## Finding generated files
 
 Generated files carry the header:

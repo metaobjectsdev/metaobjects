@@ -64,9 +64,38 @@ not an edit. Confirm rather than change:
 
 - [ ] `www/llms.txt` / `www/llms-full.txt` — **gitignored there**, copied from this repo's
       `docs/llms/` at deploy. Fix them here (§A), never in the site repo.
-- [ ] `www/assess.md` — **gitignored there**, copied from this repo's
-      `agent-context/skills/metaobjects-fit-assessment/SKILL.md` (its body, from the first
-      top-level heading) at deploy. Fix it here.
+- [ ] `www/assess.md` — **gitignored there**, built at deploy from the pinned tag by
+      `node scripts/build-assess-prompt.mjs --out <path>`, which inlines the skill's
+      `references/` files into one prompt. A bare copy of
+      `agent-context/skills/metaobjects-fit-assessment/SKILL.md` is **not** the hosted form
+      any more: the capability sheet and the JSON contract live in `references/`. The site
+      deploy must call the script when the tag has it (and may keep the old `sed` copy for
+      tags that do not). Fix the content here.
+      **Required before the first release tag that carries the split skill becomes the
+      pinned one** — in the site repo's `.github/workflows/deploy.yml`, replace the `SKILL=…`
+      `if` block that writes `www/assess.md` with:
+
+      ```bash
+      if [ -f scripts/build-assess-prompt.mjs ]; then
+        # tags with the split skill: the script is the only complete form
+        if node scripts/build-assess-prompt.mjs --out /tmp/assess.md && [ -s /tmp/assess.md ]; then
+          cp /tmp/assess.md "$GITHUB_WORKSPACE/www/assess.md"
+        else
+          echo "::warning::metaobjects $TAG could not build assess.md — /assess.md will 404."
+        fi
+      else
+        # older tags: the skill is one file, so the old copy is complete
+        SKILL=agent-context/skills/metaobjects-fit-assessment/SKILL.md
+        if [ -f "$SKILL" ] && sed -n '/^# /,$p' "$SKILL" | sed '/^<!--$/,/^-->$/d' > /tmp/assess.md && [ -s /tmp/assess.md ]; then
+          cp /tmp/assess.md "$GITHUB_WORKSPACE/www/assess.md"
+        else
+          echo "::warning::metaobjects $TAG has no usable fit-assessment skill — /assess.md will 404."
+        fi
+      fi
+      ```
+
+      A script that exists but fails must NOT fall back to the `sed` copy: on these tags that
+      copy is missing the capability sheet and the JSON contract.
 - [ ] `www/index.html` and every other page — the four registry coordinates plus
       `metamodel` are injected into any element carrying `data-registry="…"`, and the
       derived counts (`fixtures`, `corpora`, `baseTypes`) into any element carrying

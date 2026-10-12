@@ -2,6 +2,13 @@
 
 > Part of the `metaobjects-codegen` skill. Read it when generated output is wrong, when your framework is not the one a reference emits for, or when you write or review a generator (the `own*()` accessor table is here).
 
+## Contents
+- A defect in generated code is a defect in your generator
+- Run it as shipped, or own a copy
+- A generator of your own beside the references
+- Your framework isn't the default — the retargeting procedure
+- Never read metadata through an `own*()` accessor (ADR-0039) — top bug source
+
 ## A defect in generated code is a defect in your generator
 
 When generated output does not compile, has the wrong shape, or collides with code you

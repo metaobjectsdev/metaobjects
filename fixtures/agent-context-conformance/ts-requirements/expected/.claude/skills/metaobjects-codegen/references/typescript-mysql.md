@@ -10,6 +10,12 @@ refuses `--dialect mysql` — so you write and evolve the DDL yourself, and `met
 `--replay` and the `agent/schema.md` docs page do not apply. `meta verify --codegen`,
 `--templates` and `--docs` work as on any dialect.
 
+## Contents
+- TypeScript setup
+- Writing the DDL
+- Reports
+- Behaviour that differs from Postgres and SQLite
+
 ## TypeScript setup
 
 ```ts

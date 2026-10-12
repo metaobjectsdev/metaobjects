@@ -5,6 +5,16 @@ The C# port targets .NET consumers (EF Core + ASP.NET). Codegen runs through the
 is **schema-migrations only** on the C# side (ADR-0015): `meta migrate` /
 `meta verify --db` are Node-`meta`-owned; everything below is `dotnet meta`.
 
+## Contents
+- Install
+- Run
+- `MetaObjects.Codegen` generators
+- Docs — `dotnet meta docs`
+- Persistence + routes are the deployed artifact
+- Write your own generator
+- Extending the generators (open-for-extension, ADR-0002)
+- Re-scaffold this context
+
 ## Install
 
 Per the always-on descriptor:

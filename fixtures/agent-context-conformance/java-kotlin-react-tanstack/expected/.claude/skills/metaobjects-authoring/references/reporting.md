@@ -1,6 +1,20 @@
 # Reporting: the columns a report gets, and how it behaves
 
-> Part of the `metaobjects-authoring` skill. The skill covers declaring dimensions, measures, segments and a report. Read this when you need to know what a report returns: its column names and types, the time-grain and null rules, rows with no facts (`@spine`), defaults for empty measures (`@default`), what differs between databases, and what it leaves out.
+> Part of the `metaobjects-authoring` skill. `declaring-reports.md` covers declaring dimensions, measures, segments and a report. Read this when you need to know what a report returns: its column names and types, the time-grain and null rules, rows with no facts (`@spine`), defaults for empty measures (`@default`), what differs between databases, and what it leaves out.
+
+## Contents
+- A report is served only with a view source
+- The columns you get
+- Time grains
+- Relative dates
+- Nulls and zeros
+- Rows with no facts: `@spine`
+- Joins: a dimension through a required reference drops rows
+- Engine differences
+- Known limits
+- How a report is served
+- Exporting to Cube
+- What a report does not have
 
 ## A report is served only with a view source
 

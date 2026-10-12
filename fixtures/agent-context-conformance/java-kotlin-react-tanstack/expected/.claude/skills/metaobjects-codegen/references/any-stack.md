@@ -10,6 +10,14 @@ generators cover some stacks. Every other stack is reached the same way: keep th
 source of truth, generate what is built in, and write or retarget a generator for the rest.
 Nothing below needs a new MetaObjects release, a new metamodel attribute, or permission.
 
+## Contents
+- Find out what is built in — do not guess
+- Split the app into layers and decide each one
+- Persistence
+- An HTTP framework that is not built in
+- A UI framework that is not built in
+- Prove it works
+
 ## 1. Find out what is built in — do not guess
 
 ```bash
