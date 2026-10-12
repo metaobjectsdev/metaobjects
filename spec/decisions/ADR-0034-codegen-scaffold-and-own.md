@@ -789,21 +789,14 @@ owned copy still references. The list works in both directions.
   the same change. A depth entry is compared module by module, so a copy that stops
   importing one of three packaged modules fails until the entry says so.
 
-**1.1.0 does not ship with a non-empty pending list.** Two things hold that, and neither
-depends on a person remembering.
-
-- **The test in every port.** The manifest carries one named switch,
-  `PENDING_LIST_MAY_BE_NON_EMPTY`. While it is `true`, each port's last test (the pending
-  list is empty) is skipped, and reported as skipped, never as a pass. Set to `false`, every
-  port fails on any entry that is left.
-- **The release scripts.** `scripts/eject-release-gate.mjs` refuses a version with no
-  prerelease suffix while the list holds an entry, and while the switch is anything but
-  `false`. Both conditions are checked, so emptying the list and leaving the switch on is
-  refused too: the switch is what makes each port run its last test. A manifest that cannot
-  be read is refused. `scripts/release.mjs` calls it first in its preflight,
-  before anything is built or published, and `scripts/finish-release.mjs` calls it as gate
-  0, before the tag. A prerelease version (`1.1.0-rc.3`) is allowed, because a release
-  candidate is how the remaining entries get exercised by an adopter.
+**1.1.0 does not ship with a non-empty pending list.** The release scripts are what holds
+that rule, and there is no manual step. `scripts/eject-release-gate.mjs` refuses a version
+with no prerelease suffix while the list holds an entry. A manifest that cannot be read is
+refused. `scripts/release.mjs` calls it first in its preflight, before anything is built or
+published, and `scripts/finish-release.mjs` calls it as gate 0, before the tag. A prerelease
+version (`1.1.0-rc.3`) is allowed, because a release candidate is how the remaining entries
+get exercised by an adopter. An empty list is a proven one: each port's test fails on a gap
+that is not listed, so nothing can be left out of the list to pass the gate.
 
 A registry published outside those two scripts does not pass through the gate. The
 procedure in `docs/RELEASING.md` has the operator run the gate by hand before one:

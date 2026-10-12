@@ -41,8 +41,6 @@ const MANIFEST_PATH = join(FIXTURES, "generator-registry-conformance", "registry
 /** Inside the workspace, so an ejected generator resolves `@metaobjectsdev/*` as a project's does. */
 const WORKSPACE_TMP = resolve(import.meta.dirname, "fixtures", "__tmp__");
 const CODEGEN_ENGINE = "@metaobjectsdev/codegen-ts";
-/** The shared file's release switch: while true, the pending list may hold entries. */
-const RELEASE_SWITCH = "PENDING_LIST_MAY_BE_NON_EMPTY";
 
 type Assertion = "census" | "completeness" | "depth";
 interface Pending { generator: string; port: string; assertion: Assertion; gap: number; outside?: string[] }
@@ -50,7 +48,6 @@ interface Manifest {
   ports: string[];
   generators: Record<string, { ports: string[]; eject: "full" | { exempt: string; ruling: string } }>;
   eject: {
-    [RELEASE_SWITCH]: boolean;
     engineSurface: Record<string, { codegenPackages: string[]; engine: string[] }>;
     exemptEmitters: { name: string; port: string; path: string; exempt: string; ruling: string }[];
     pending: Pending[];
@@ -538,7 +535,7 @@ describe("eject contract — depth", () => {
 });
 
 // ---------------------------------------------------------------------------------------
-// the shared file itself, and the release gate
+// the shared file itself
 // ---------------------------------------------------------------------------------------
 
 describe("eject contract — the shared file", () => {
@@ -553,11 +550,5 @@ describe("eject contract — the shared file", () => {
 
   test("every port declares an engine surface", () => {
     expect(Object.keys(manifest.eject.engineSurface).sort()).toEqual([...manifest.ports].sort());
-  });
-
-  // Skipped only by the shared file's named switch, which the release branch sets false.
-  // `skipIf`, so the run reports it as skipped and never as a pass.
-  test.skipIf(manifest.eject[RELEASE_SWITCH] === true)("the pending list is empty (the 1.1.0 release gate)", () => {
-    expect(manifest.eject.pending.filter((p) => p.port === PORT)).toEqual([]);
   });
 });

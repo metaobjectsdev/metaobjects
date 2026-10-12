@@ -289,7 +289,7 @@ public class EjectContractTests
     }
 
     // ---------------------------------------------------------------------------------
-    // the shared file itself, and the release gate
+    // the shared file itself
     // ---------------------------------------------------------------------------------
 
     [Fact]
@@ -326,26 +326,5 @@ public class EjectContractTests
                 Assert.Equal(entry.Outside.OrderBy(o => o, StringComparer.Ordinal), entry.Outside);
             }
         }
-    }
-
-    /// <summary>A fact that reports itself SKIPPED, never passed, while the shared file's
-    /// release switch is on. The reason is set when the test is discovered.</summary>
-    private sealed class ReleaseGateFactAttribute : FactAttribute
-    {
-        public ReleaseGateFactAttribute()
-        {
-            if (EjectContract.PendingListMayBeNonEmpty())
-                Skip = $"{EjectContract.ReleaseSwitch} is true in the shared manifest";
-        }
-    }
-
-    /// <summary>The release gate: 1.1.0 does not ship with a non-empty pending list. Skipped
-    /// only by the shared file's named switch, which the release branch sets false.</summary>
-    [ReleaseGateFact]
-    public void The_pending_list_is_empty()
-    {
-        var mine = EjectContract.AllPending().Where(p => p.Port == EjectContract.Port).ToList();
-        Assert.True(mine.Count == 0,
-            "the eject contract does not hold yet for: " + string.Join("; ", mine.Select(p => $"{p.Generator} ({p.Assertion}, gap {p.Gap})")));
     }
 }

@@ -12,7 +12,6 @@ import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.uri.URIHelper;
 import org.apache.maven.project.MavenProject;
-import org.junit.Assume;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -37,7 +36,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -79,8 +77,6 @@ import static org.junit.Assert.assertTrue;
 public class EjectContractTest {
 
     private static final String PORT = "java";
-    /** The shared file's release switch: while true, the pending list may hold entries. */
-    private static final String RELEASE_SWITCH = "PENDING_LIST_MAY_BE_NON_EMPTY";
     private static final String OWNED_PACKAGE = "com.acme.codegen";
     private static final String OWNED_RUNTIME_PACKAGE = "com.acme.runtime";
 
@@ -554,7 +550,7 @@ public class EjectContractTest {
     }
 
     // ---------------------------------------------------------------------------------
-    // the shared file itself, and the release gate
+    // the shared file itself
     // ---------------------------------------------------------------------------------
 
     @Test
@@ -569,18 +565,5 @@ public class EjectContractTest {
             assertFalse(g.getKey(), eject.getAsJsonObject().get("exempt").getAsString().isBlank());
             assertFalse(g.getKey(), eject.getAsJsonObject().get("ruling").getAsString().isBlank());
         }
-    }
-
-    /** The release gate: 1.1.0 does not ship with a non-empty pending list. Skipped only by
-     *  the shared file's named switch, which the release branch sets false. */
-    @Test
-    public void thePendingListIsEmpty() {
-        Assume.assumeFalse(RELEASE_SWITCH + " is true in " + MANIFEST_PATH,
-                manifest().getAsJsonObject("eject").get(RELEASE_SWITCH).getAsBoolean());
-        Set<String> mine = new LinkedHashSet<>();
-        for (JsonElement e : allPending()) {
-            if (PORT.equals(e.getAsJsonObject().get("port").getAsString())) mine.add(e.toString());
-        }
-        assertEquals("the eject contract does not hold yet for these", Set.of(), mine);
     }
 }

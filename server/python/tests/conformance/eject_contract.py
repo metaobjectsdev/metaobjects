@@ -15,11 +15,6 @@ from typing import Any
 
 PORT = "python"
 
-#: The shared file's release switch. While it is ``true`` the last test in
-#: ``test_eject_contract.py`` is skipped; the release branch sets it to ``false`` in the one
-#: shared file and every port then requires an empty pending list.
-RELEASE_SWITCH = "PENDING_LIST_MAY_BE_NON_EMPTY"
-
 ASSERTIONS = ("census", "completeness", "depth")
 
 
@@ -41,10 +36,6 @@ def manifest() -> dict[str, Any]:
 def port_slice() -> dict[str, dict[str, Any]]:
     """The generators the manifest expects this port to expose."""
     return {n: s for n, s in manifest()["generators"].items() if PORT in s.get("ports", [])}
-
-
-def pending_list_may_be_non_empty() -> bool:
-    return manifest()["eject"][RELEASE_SWITCH] is True
 
 
 def is_exempt(name: str) -> bool:

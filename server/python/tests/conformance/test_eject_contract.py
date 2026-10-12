@@ -347,7 +347,7 @@ def test_depth_an_unchanged_owned_copy_emits_what_the_packaged_generator_emits(
 
 
 # ---------------------------------------------------------------------------------------
-# the shared file itself, and the release gate
+# the shared file itself
 # ---------------------------------------------------------------------------------------
 
 
@@ -366,11 +366,3 @@ def test_every_pending_entry_is_well_formed() -> None:
         key = (entry["generator"], entry["port"], entry["assertion"], entry.get("outside") and entry["gap"])
         assert key not in seen, f"duplicate pending entry: {entry}"
         seen.add(key)
-
-
-def test_the_pending_list_is_empty() -> None:
-    """The release gate: 1.1.0 does not ship with a non-empty pending list."""
-    if contract.pending_list_may_be_non_empty():
-        pytest.skip(f"{contract.RELEASE_SWITCH} is true in {contract.manifest_path().name}")
-    mine = [p for p in contract.manifest()["eject"]["pending"] if p["port"] == contract.PORT]
-    assert mine == [], "the eject contract does not hold yet for: " + json.dumps(mine, indent=2)

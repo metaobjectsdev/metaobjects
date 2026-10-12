@@ -52,14 +52,13 @@ rather than assume. Do not skip past the list.
 `fixtures/generator-registry-conformance/registry.json` has an entry in `eject.pending`
 (ADR-0034 Amendment 8). The release scripts enforce it: `scripts/release.mjs` (first check of
 its preflight) and `scripts/finish-release.mjs` (gate 0, before the tag) refuse a version with
-no prerelease suffix while the list holds an entry, or while
-`eject.PENDING_LIST_MAY_BE_NON_EMPTY` is anything but `false`. A release candidate
-(`1.1.0-rc.3`) is allowed.
+no prerelease suffix while the list holds an entry. A release candidate (`1.1.0-rc.3`) is
+allowed.
 
-To clear it for a final release: close the gaps and delete their entries, set the switch to
-`false`, and run each port's eject-contract test, which then requires an empty list instead of
-skipping that check. A registry you publish outside those two scripts does not pass through
-the gate, so run it yourself first; it exits non-zero on a refusal:
+To clear it for a final release: close the gaps and delete their entries. There is no other
+step. Each port's eject-contract test fails on a gap that is not listed, so an entry cannot be
+deleted before its gap is closed. A registry you publish outside those two scripts does not
+pass through the gate, so run it yourself first; it exits non-zero on a refusal:
 
 ```
 node scripts/eject-release-gate.mjs <version>

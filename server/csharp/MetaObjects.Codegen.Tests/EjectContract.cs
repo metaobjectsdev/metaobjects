@@ -15,10 +15,6 @@ internal static class EjectContract
 {
     internal const string Port = "csharp";
 
-    /// <summary>The shared file's release switch. While it is true the pending list may hold
-    /// entries; the release branch sets it false and every port then requires none.</summary>
-    internal const string ReleaseSwitch = "PENDING_LIST_MAY_BE_NON_EMPTY";
-
     internal static readonly string[] Assertions = ["census", "completeness", "depth"];
 
     internal sealed record PendingEntry(string Generator, string Port, string Assertion, int Gap, IReadOnlyList<string>? Outside);
@@ -49,8 +45,6 @@ internal static class EjectContract
 
     internal static bool IsExempt(string name) =>
         Generators()[name].GetProperty("eject").ValueKind == JsonValueKind.Object;
-
-    internal static bool PendingListMayBeNonEmpty() => Eject.GetProperty(ReleaseSwitch).GetBoolean();
 
     internal static IReadOnlyList<PendingEntry> AllPending() =>
         Eject.GetProperty("pending").EnumerateArray()

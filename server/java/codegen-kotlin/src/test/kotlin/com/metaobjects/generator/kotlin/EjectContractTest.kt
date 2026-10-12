@@ -19,7 +19,6 @@ import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import org.junit.Assume
 
 /**
  * The eject contract, asserted for the Kotlin port (ADR-0034 Amendment 8).
@@ -272,24 +271,8 @@ class EjectContractTest {
         assertEquals(emptyList(), silent, "emitted nothing over the corpora, so nothing was compared")
     }
 
-    // ---------------------------------------------------------------------------------
-    // the release gate
-    // ---------------------------------------------------------------------------------
-
-    /** 1.1.0 does not ship with a non-empty pending list. Skipped only by the shared file's
-     *  named switch, which the release branch sets false. */
-    @Test
-    fun `the pending list is empty`() {
-        Assume.assumeFalse("$RELEASE_SWITCH is true in $MANIFEST_PATH",
-            manifest.get("eject").get(RELEASE_SWITCH).asBoolean())
-        val mine = manifest.get("eject").get("pending").filter { it.get("port").asText() == PORT }.map { it.toString() }
-        assertEquals(emptyList(), mine, "the eject contract does not hold yet for these")
-    }
-
     companion object {
         private const val PORT = "kotlin"
-        /** The shared file's release switch: while true, the pending list may hold entries. */
-        private const val RELEASE_SWITCH = "PENDING_LIST_MAY_BE_NON_EMPTY"
         private const val OWNED_PACKAGE = "com.acme.owned"
         private val PACKAGED_CLASS = Regex("com/metaobjects/[A-Za-z0-9_/$]+")
         private val PACKAGE_LINE = Regex("(?m)^package\\s+[\\w.]+\\s*$")

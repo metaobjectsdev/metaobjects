@@ -68,11 +68,11 @@ const MAVEN_VERSION = mavenVersion(VERSION);
 // ── 0. the eject contract holds ────────────────────────────────────────────
 // Every final release ends here, including one where npm sat out and `release.mjs`, which
 // asks the same question before its first publish, never ran. A tag is not cut for a tree
-// whose shared manifest still lists a generator that does not hand over its emit, or that
-// still has every port skipping the test that would say so (ADR-0034 Amendment 8).
+// whose shared manifest still lists a generator that does not hand over its emit
+// (ADR-0034 Amendment 8).
 const ejectRefusal = ejectReleaseRefusalAt(VERSION, REPO);
 if (ejectRefusal !== null) die(ejectRefusal);
-ok("eject contract: the pending list is empty and its switch is off");
+ok("eject contract: the pending list is empty");
 
 // ── 1. the working tree is the tree that will be tagged ──────────────────────
 // A tag points at a COMMIT, so anything uncommitted is silently excluded. Tagging with

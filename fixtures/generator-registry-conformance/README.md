@@ -75,8 +75,7 @@ file is where that is declared, and each port's eject-contract test asserts it.
 | `engineSurface.<port>.codegenPackages` | The namespaces that hold generators and their emit code. TypeScript: source paths under `server/typescript/packages/`. Python: module names. C#: type names. Java and Kotlin: class names. `**` matches any run of characters, `*` one segment. |
 | `engineSurface.<port>.engine` | The members of those namespaces an owned copy may still import: the generator base and runner, questions about the model, naming and type-mapping tables. Anything else inside `codegenPackages` writes output and is handed over with the generator. Anything outside them is core and imported freely. |
 | `exemptEmitters` | Code that writes into an adopter's repository and is not a generator, ruled out of eject with a reason. |
-| `pending` | Every place the contract does not hold yet. |
-| `PENDING_LIST_MAY_BE_NON_EMPTY` | The release switch. While `true`, a port's "the pending list is empty" test is reported as skipped. Set to `false`, every port requires an empty list. The release scripts refuse a final version (one with no prerelease suffix) while it is not `false` or the list holds an entry (`scripts/eject-release-gate.mjs`). |
+| `pending` | Every place the contract does not hold yet. The release scripts refuse a final version (one with no prerelease suffix) while the list holds an entry (`scripts/eject-release-gate.mjs`). |
 
 **A `pending` entry** is `{generator, port, assertion, gap}`:
 
