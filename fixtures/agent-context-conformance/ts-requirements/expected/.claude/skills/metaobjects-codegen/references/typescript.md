@@ -79,7 +79,7 @@ import { tanstackQuery, tanstackGrid } from "@metaobjectsdev/codegen-ts-tanstack
 export default defineConfig({
   outDir: "src/generated",
   dialect: "postgres",                 // "postgres" | "sqlite" | "d1" | "mysql" (mysql: codegen + runtime; migrate does not own it)
-  extStyle: "js",                      // "js" (default) for Node ESM / plain tsc; "none" for a bundler-resolution toolchain — see SKILL.md "Your framework isn't the default"
+  extStyle: "js",                      // "js" (default) for Node ESM / plain tsc; "none" for a bundler-resolution toolchain — see `owning-generators.md` "Your framework isn't the default"
   apiPrefix: "/api",                   // flows to routes AND client fetch URLs
   columnNamingStrategy: "snake_case",  // "snake_case" (default) | "literal" | "kebab-case"
   timestampMode: "string",             // "string" (default, ISO-8601 wire contract) | "date" (Drizzle native Date)

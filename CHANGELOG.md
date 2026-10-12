@@ -800,7 +800,7 @@ until you regenerate.
   One rule is relaxed: an authored `validator.length @min: 0` on a `@required` string now
   admits the empty string, as the generated schema already did.
 - **The shipped agent skills fit the skill-authoring limits.** `metaobjects-audit` (601 lines to
-  261), `metaobjects-authoring` (804 to 479) and `metaobjects-fit-assessment` (666 to 481) moved
+  263), `metaobjects-authoring` (804 to 479) and `metaobjects-fit-assessment` (666 to 481) moved
   sections into `references/` files, each with a row and an "open it when" condition in the
   skill's reference table, which now sits at the top of `metaobjects-audit`,
   `metaobjects-prompts` and `metaobjects-runtime-ui` as well. The text moved and none was cut; `meta init`
