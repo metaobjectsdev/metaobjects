@@ -909,7 +909,7 @@ is.
 
 *What changed in existing tests so the new rows could run.*
 
-- **The older registry-conformance tests in C#, Java, Kotlin and Python subtract the names
+- **The older registry-conformance tests in C#, Java and Kotlin subtract the names
   with a pending census entry.** The manifest lists `api-docs` for those ports (gap 6) and
   the Java and Kotlin registries do not hold it yet. The pending entry is the one record of
   that difference. Deleting the entry removes the subtraction, as it has in C# and Python.
