@@ -135,7 +135,7 @@ manifest contains without moving these boundaries.
 - *Cube accepts the output — queried on Postgres, compiled in both dialects.* The `cube` lane
   (`scripts/ci-local.sh --only cube`, which needs Docker) loads the canonical golden and the 36
   cases that hold a tree into a pinned Cube (`cubejs/cube:v1.7.43`) and requires each to
-  compile, the two MySQL cases included: compiling a model runs no SQL, so the lane's Postgres
+  compile, the three MySQL cases included: compiling a model runs no SQL, so the lane's Postgres
   data source serves them too. For the canonical reports it compares the Cube query with the
   report view (a `@spine` report through its Cube view, its empty spine rows included), and for
   the `escaping` and `measure-default` cases it reads the SQL back from Cube's `/v1/sql`.
@@ -143,8 +143,8 @@ manifest contains without moving these boundaries.
   generated with `dialect: "mysql"` is loaded into the same pinned Cube over a real MySQL 8.4
   holding the report views `buildReportViews` lowers (`fixtures/cube-model/canonical/seed.mysql.sql`),
   and each of the twenty-three served reports' Cube query is compared with `SELECT *` from its view, with the
-  pre-aggregation used asserted. That is the smaller of the two honest options: the two MySQL
-  *cases* (escaping, a quoted identifier) are still compiled, not executed, and the goldens hold
+  pre-aggregation used asserted. That is the smaller of the two honest options: the three MySQL
+  *cases* (`dimension-time-mysql`, `measure-mysql`, `measure-boolean-mysql`) are still compiled, not executed, and the goldens hold
   their SQL. The lane runs Cube in development mode, so Cube's production mode with a separate
   Cube Store is not gated.
 - *The lane is a gate, not a second corpus.* Like the codegen-compile gate, it reuses

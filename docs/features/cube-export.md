@@ -645,7 +645,7 @@ the table names above are the development-mode form.
   refuses the model with `ERR_CUBE_AMBIGUOUS_PATH`, naming both. The lossless form needs a
   nested alias for each path. That is more machinery than a rare model is worth yet, so the
   exporter errors rather than guess.
-- **The two MySQL mapping cases are compiled, never executed.** The corpus pins their SQL byte
+- **The three MySQL mapping cases are compiled, never executed.** The corpus pins their SQL byte
   for byte and Cube compiles them, but no MySQL database runs them. The MySQL path runs only the
   served reports. The tuple distinct count's MySQL form was compared with the view's on mysql:8.4
   by hand when it was built.
