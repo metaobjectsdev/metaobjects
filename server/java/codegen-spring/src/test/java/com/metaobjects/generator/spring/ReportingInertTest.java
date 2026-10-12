@@ -1,5 +1,6 @@
 package com.metaobjects.generator.spring;
 
+import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorRegistry;
 import com.metaobjects.generator.GeneratorRegistry.GeneratorInfo;
@@ -109,6 +110,11 @@ public class ReportingInertTest extends SharedRegistryTestBase {
                 if ("entity".equals(info.stableName())) {
                     args.put("type", "class");
                     args.put("flavor", "pojoAware");
+                }
+                // A generator that writes ONE file is told its name; a per-object generator
+                // given one would write every object into it.
+                if (!(gen instanceof MultiFileDirectGeneratorBase)) {
+                    args.put("outputFilename", gen.getClass().getSimpleName() + ".out");
                 }
                 gen.setArgs(args).execute(loader);
             }

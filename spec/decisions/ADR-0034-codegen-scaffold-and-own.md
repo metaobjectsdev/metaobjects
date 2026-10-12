@@ -48,7 +48,8 @@ component library — code you copy into your project and own."
    framework: read the project → pick/compose → copy → wire → customize). The actor —
    a human or Claude — does the copy + config wiring with plain file operations. A
    copied generator imports the *primitives* from the package but **owns the emit
-   logic**. Tooling stays minimal: `meta init` scaffolds a sensible default generator
+   logic** (this was the intent, not yet what every generator shipped: see Amendment 8).
+   Tooling stays minimal: `meta init` scaffolds a sensible default generator
    set + local-import config for a running start; it does **not** interview the
    project or select templates. **Adding a new starting point is adding a documented
    file, never a CLI change.**
@@ -226,7 +227,9 @@ reference is scaffolding; this amendment stops describing it as anything else.
   framework-specific traps. They stay in the package and keep their tests and the
   api-contract lanes, but they are not a promise. An adopter who ejects the route
   generator owns the call into them and can mount routes by hand instead.
-- **Ejecting a helper hands over ALL of its code (follow-through, 2026-09-26).** "An adopter
+- **Ejecting a helper hands over ALL of its code (follow-through, 2026-09-26; true of the
+  runtime helpers and the `routes` composition described here, and made the rule for every
+  generator's emit by Amendment 8).** "An adopter
   who ejects the route generator owns the call into them" was half of owning it: the
   output still imported the adapter from the package, so an adapter defect still waited on
   a release. `meta eject routes` / `routes-hono` / `entity` now also copy the adapter
@@ -640,3 +643,302 @@ emit logic of its own, so a copy would own nothing. TypeScript, Java, C# and Pyt
 the same way, and `meta gen --list` marks it `package-only`. This is the one entry the rule
 "every stock generator can be ejected" does not reach, and it is not a gap to close. The
 rest of the audit's list is outside TypeScript and is not covered by this amendment.
+
+### Amendment 8 (2026-10-11) — the eject contract: every generator hands over its emit, and a test in every port holds it to that
+
+**Ruling (maintainer).** Asked whether every stock generator should be ejectable: *"Yes,
+everything should be ejectable."* An audit of all five ports followed. It found that three
+separate pieces of work had each made a named list ejectable, that the rule had become
+stricter each time, and that the stricter rule was never applied back to the whole catalog.
+The newest generator had been built as a thin copy two weeks after "ejecting a helper hands
+over all of its code" was written, with every lane green. No test stated the rule, so nothing
+failed when a generator broke it. The maintainer accepted the audit's six recommendations:
+
+1. **The owned copy holds the emit, in TypeScript too.** A TypeScript reference template that
+   calls a packaged `render*` composer hands over which objects get a file and where it
+   lands, and nothing that writes the file. That is not ownership. The TypeScript references
+   are made whole by copying the template modules a reference calls into the project with
+   it, the way `meta eject` already copies the HTTP adapter, and not by inlining them by
+   hand.
+2. **Naming and type-mapping tables are engine.** They stay packaged and public. Everything
+   that returns emitted text is handed over.
+3. **The docs command's emitter is in scope in C#, Python, Java and Kotlin**, as the
+   TypeScript docs tier already is. The docs-site builders are exempt: `meta docs
+   --scaffold-site` already copies the site's templates and assets, and those are what an
+   adopter changes.
+4. **The Java generators that no registry listed are registered**, and the four that are not
+   deprecated get eject source. The deprecated Mustache generator is registered and exempt.
+5. **`template` is exempt in every port that ships it.** It is the Mustache primitive: the
+   template and the walk the adopter supplies are its emit logic.
+6. **The prompt-tier emitters are handed over in every port**, although a shared corpus
+   pins their output byte for byte. `shared-model` got the same answer for the same
+   objection.
+
+**Supersedes.**
+
+- **FR-040 section 4.2**, "Not chosen: shipping fat reference templates that inline the
+  renderer". The choice it rejected is the rule now, reached by copying the template
+  modules and not by inlining.
+- **The eject-in-every-port design's rule** "A copy imports only public API. Where a
+  reference generator uses an internal helper, the helper is made public in the same
+  change." A helper that writes output is copied with the generator. Making it public
+  leaves the adopter calling code they cannot edit.
+- **Decision 2's clause** "A copied generator imports the primitives from the package but
+  owns the emit logic", as a description of what shipped. It described the intent. Until
+  this amendment's pending list is empty it does not describe every generator.
+- **Amendment 3's "Ejecting a helper hands over ALL of its code"**, as a description of what
+  shipped. It was true of the runtime helpers a generator's output imports and of the
+  TypeScript `routes` composition. It was not yet true of the emit behind `entity`,
+  `queries`, `names`, the prompt tier or the UI tier.
+
+**The standard.** For every stock generator, in every port:
+
+- **It is in the registry.** A generator that is not registered is outside the catalog, the
+  eject command and every test that reads them.
+- **It ships eject source**, unless the shared manifest exempts it with a written reason
+  and the ruling that grants it.
+- **Its owned copy holds its emit.** Ejected alone into an empty project, the copy compiles
+  or loads, calls nothing that writes output from the package, and emits what the packaged
+  generator emits.
+
+**The engine surface.** An owned copy still imports the package. What it may import is
+written down per port, in the shared manifest
+(`fixtures/generator-registry-conformance/registry.json`, `eject.engineSurface`):
+
+- `codegenPackages` names the namespaces that hold generators and their emit code.
+- `engine` lists the members of those namespaces an owned copy may still import: the
+  generator base and runner, the file writer and formatter, questions about the model (which
+  objects are served, the TPH plan, which templates respond), and the naming and
+  type-mapping tables of ruling 2.
+- Everything else inside `codegenPackages` writes output and is handed over with the
+  generator.
+- Everything outside `codegenPackages` is core by Amendment 3 (the loader and metamodel,
+  the runtime, render and the reply parser) and is imported freely.
+
+Adding a module to `engine` is a reviewed decision in one file. It cannot happen by leaving
+a name off a list.
+
+**Engine-surface names that were a judgment call.** Most of each `engine` list is a base
+class, a runner, a writer or a naming table, and needs no argument. These names sit closer
+to the line. Each answers a question about the model and returns no emitted text, which is
+the rule of ruling 2, but each was classified by that rule and not ruled on by name. They
+are listed so a maintainer can review them in one place. A name on an `engine` list is not
+checked further by the guard.
+
+| Port | Names |
+|---|---|
+| TypeScript | `requirement-walk.ts`, `relation-resolver.ts`, `render-context.ts`, `templates/find-inbound.ts`, `templates/find-templates.ts`, `render-engine/framework-provider.ts` |
+| C# | `ReportRows`, `PackageBindingResolver`, `GeneratorApplicability` |
+| Java | `BaseObjectCodeGenerator`, `SpringM2mSupport`, `AutoSetSupport`, `TphPlan`, `FindInbound` |
+| Kotlin | `ExposedApi`, `ExposedImports`, `KotlinGenUtil`, `KotlinM2mSupport` |
+| Python | `value_objects`, `find_inbound`, `tph_plan`, `requirement_walk` |
+
+**Exemptions.** Each is an entry in the shared manifest with its reason.
+
+| What | Port | Why |
+|---|---|---|
+| `template` | TypeScript, C#, Java, Python | The Mustache primitive. The adopter's template and walk are its emit logic (ruling 5). |
+| `mustache` | Java | Deprecated in favour of `template` (ADR-0021 D4), kept so existing poms build (ruling 4). |
+| The docs-site builders | TypeScript | Not a generator. The site's templates and assets are already copied into the project (ruling 3). |
+
+Angular's generators are outside the census because the package is not published
+(ADR-0048). The census reads the publish set, so they enter it on promotion.
+
+**The guard.** Every port has an eject-contract test, driven by the shared manifest. Each
+generator there carries `"eject": "full"` or an exemption.
+
+1. **Census.** The test scans what the port ships for every generator implementation and
+   fails on one the registry does not hold: every exported factory whose type returns a
+   `Generator` in the published TypeScript codegen packages, every concrete `Generator`
+   class on the Maven plugin's classpath, every `IGenerator` in the shipped C# assemblies,
+   every class with a `generate` method under `metaobjects.codegen`. It also holds the
+   registry to the names the manifest gives the port.
+2. **Completeness.** Every registered generator ships eject source unless exempt. The other
+   hand-kept lists are derived from the registry or held equal to it: the TypeScript
+   reference directories, the JVM reference sources each jar ships, the C# embedded
+   resources, and the compile-test lists.
+3. **Depth.** Each generator is ejected alone and compiled or loaded. The test resolves what
+   the copy references in the codegen packages and fails on anything outside the engine
+   surface. The unchanged copy must emit what the packaged generator emits, over shared
+   models that make every generator emit something. One difference is allowed: an owned
+   copy's output imports the helper runtime the adopter owns.
+
+   How each port resolves a reference:
+
+   | Port | What is read | What counts |
+   |---|---|---|
+   | TypeScript | The compiler's checker, each binding followed through any barrel to the file that declares it | A static import or re-export, type-only ones too; an inline `import("…").Type`; a dynamic `import("…")`, counted as the module it names |
+   | C# | The Roslyn semantic model of the owned file | Every type the file names |
+   | Java, Kotlin | The constant pool of the compiled copy | Every class the bytecode refers to |
+   | Python | The syntax tree of the owned module | Import statements, and `importlib.import_module` / `__import__` on a string literal |
+
+   A type declared in an emit module counts in TypeScript because a copy that imports it is
+   still tied to that module's shape.
+
+The tests that asserted a gap were removed with the lists they pinned: a `--list` test that
+required named generators to be `package-only`, and a Java test that pinned the set of
+generators with no eject source.
+
+**The pending list, and the release gate.** The standard is ahead of the code. Every place
+it does not hold yet is one entry in the manifest's `eject.pending` list: the generator, the
+port, the assertion and the gap number below, and for a depth entry the packaged modules the
+owned copy still references. The list works in both directions.
+
+- A gap that is not listed fails the port's test.
+- A listed entry that now passes fails it too, so closing a gap means deleting its entry in
+  the same change. A depth entry is compared module by module, so a copy that stops
+  importing one of three packaged modules fails until the entry says so.
+
+**1.1.0 does not ship with a non-empty pending list.** `scripts/eject-release-gate.mjs`
+refuses a version with no prerelease suffix while the list holds an entry. A manifest that
+cannot be read is refused. A prerelease version (`1.1.0-rc.3`, or `1.1.0rc3` as PyPI spells
+it) is allowed, because a release candidate is how the remaining entries get exercised by an
+adopter. An empty list is a
+proven one: each port's test fails on a gap that is not listed, so nothing can be left out
+of the list to pass the gate.
+
+Every scripted path that publishes or tags a release calls the gate:
+
+- `scripts/release.mjs` calls it first in its preflight, before anything is built or
+  published.
+- `scripts/finish-release.mjs` calls it as gate 0, before the tag.
+- The four publish workflows (`publish-npm.yml`, `publish-python.yml`, `publish-java.yml`,
+  `publish-csharp.yml`) run it as the step after checkout, with the version that workflow
+  is about to publish: the committed one, or in `publish-csharp.yml` the `version` input
+  when one is given.
+
+A tag push cannot be exercised in the repository's own checks, so a test is what holds the
+workflows to the rule. `scripts/eject-release-gate.test.ts` parses each workflow, walks
+each job's steps in order to check that the gate step comes before the first publishing
+step, and runs the gate step's own shell against a throwaway repository. The same test
+fails when a publish workflow is added that it does not list.
+
+Four publishes are typed by hand, and only the procedure holds them to the rule. They are
+the `bun publish` loop that promotes npm (`docs/RELEASING.md` step 3), the `bun publish` of
+an isolated one-package patch, the `uv publish` that is the PyPI fallback when its workflow
+cannot run, and the local `mvn -Prelease deploy`. `docs/RELEASING.md` has the gate as the
+command before each. An operator who skips it is not stopped at the publish. The first
+refusal is then `scripts/finish-release.mjs`, which withholds the tag.
+
+**The gaps.** `gap` in a pending entry is a number from this list.
+
+| # | Gap | State |
+|---|---|---|
+| 0 | TypeScript generators with no reference template: `shared-model`, `docs`, `api-docs`. `mermaid-er` is removed, not ejected. | Closed by Amendment 7. The three copies call packaged builders, which is gap 3 |
+| 1 | Java `routes`, `dto` and `value-object` did not compile when ejected alone. | Closed before this amendment |
+| 2 | TypeScript `requirementsFile` and `agentDocsFile` were in no registry. | Registered here as `requirements` and `agent-docs`; reference templates pending |
+| 3 | TypeScript reference templates that call packaged composers. | Pending |
+| 4 | Prompt-tier emitters that stay packaged in C#, Python, Java and Kotlin. | Closed in C#. Pending in Python, Java and Kotlin |
+| 5 | Fragment emitters behind otherwise whole generators (shared enums, M:N navigation, doc comments, record builders). | Closed in C#. Pending in Python, Java and Kotlin |
+| 6 | The docs command's emitter in C#, Python, Java and Kotlin is not a registered `api-docs`. | Closed in C#. Pending in Python, Java and Kotlin |
+| 7 | Java generators outside the registry. | Registered here as `plantuml`, `html-docs`, `ai-docs`, `json-schema` and `mustache`; eject source pending for the first four |
+| 8 | The docs-site builders. | Exempt (ruling 3) |
+| 9 | Python generators that called another generator's packaged module. | Closed before this amendment |
+| 10 | Angular has no reference templates. | Outside the census until the package is published |
+| 11 | Tests that asserted a gap, and hand-kept lists. | Closed here |
+| 12 | Documents that claimed more than the code delivered. | Corrected here, below |
+| 13 | An owned Java `entity` constructs the packaged `extractor` generator when no extractor is in the run. Found by the guard on its first run. | Pending. It closes with the Java work on gaps 4, 5 and 7, which owns the `entity` and `extractor` copies |
+
+**What the guard found on its first run**, beyond the gaps the audit listed:
+
+- Gap 13.
+- The Java PlantUML generator threw on any model whose package has one segment. It had no
+  registry entry, so no registry-driven test had ever run it. Registering it put it in two
+  such suites, both failed, and the generator is fixed.
+- The registry-driven suites in each port now run the newly registered generators too.
+- The TypeScript `requirement-tests` copy imported two types, the renderer's argument record
+  and the renderer signature, from the packaged generator and its template. They are the
+  contract a renderer is written against, so they are now declared beside the requirement
+  walk, which is engine. The package's exports are unchanged.
+
+**Stated limits of the guard.** Each of these is a place where the guard checks less than
+the standard says. They are written down so that a green run is not read as more than it
+is.
+
+*What the reference scan cannot see.*
+
+- **JVM: a dependency that leaves no class reference in bytecode.** The scan reads the
+  compiled constant pool. `javac` inlines a `static final` String or primitive constant, and
+  the Kotlin compiler inlines a `const val` and the body of an `inline` function, so a copy
+  that reads one of those from an emit class shows no reference to it. The constant pool is
+  used because it is one reader for both JVM languages and it sees what the code calls
+  after resolution, with no second parser to keep in step with two compilers.
+- **TypeScript and Python: a module name built at run time.** `import(name)` and
+  `import_module(name)` with a computed name cannot be resolved by reading the file. A
+  string literal is read in both.
+
+*What is compiled, and from what.*
+
+- **Kotlin depth does not run the eject goal.** The goal lives in `maven-plugin`, which
+  depends on `codegen-kotlin`, and the Kotlin compile test has to live in `codegen-kotlin`.
+  The test reads the reference source the jar ships and rewrites its package line, which
+  is the one edit eject makes to a Kotlin copy. If eject starts doing more than that, this
+  test will not see it.
+- **C# compiles the generator and the emitters eject hands over with it**, which is every
+  file eject writes under `codegen/generators`. The helper-runtime files eject writes
+  elsewhere are compiled by `HelperRuntimeTests`, against the web framework they need.
+
+*What "emits what the packaged generator emits" allows.*
+
+- **One difference per port: the helper-runtime import.** Amendment 3 hands the runtime
+  over, so an owned copy's output imports it from the project and the packaged output
+  imports it from the package. TypeScript compares the import block as a set for the three
+  generators that hand the HTTP adapter over. Python compares `routes` as a multiset of
+  lines. C# rewrites one `using`. Java points the packaged generator at the owned runtime
+  package.
+- **"Emits something" is per generator, across the shared models.** No one model makes
+  every generator emit: a prompt generator needs a template, a grid generator a layout.
+  Each generator must emit over at least one model, and is compared over empty output on
+  the models that do not concern it.
+- **TypeScript `shared-model` refuses one of the shared models**, because it re-reads the
+  sources strictly. The packaged and the owned generator must refuse it with the same
+  message. That is a comparison of two refusals, not of two outputs.
+- **Java compares `entity` in one flavour** (`type=interface`). The flavours are covered by
+  `EntityExtractorEjectRoundTripTest`.
+
+*What the census does not reach.*
+
+- **Angular**, because its package is not published (above).
+- **Python modules outside `metaobjects.codegen`.** The scan walks that package, which is
+  where every generator lives today.
+- **`exemptEmitters`.** An entry is checked for a path that exists, a reason and a ruling.
+  That the code at the path is not a generator is the ruling's claim, and no test checks
+  it.
+- **One hand-kept list is left:** the compile test in the Java `codegen-base` module, which
+  cannot see the registry from where it sits.
+
+*What changed in existing tests so the new rows could run.*
+
+- **The older registry-conformance tests in C#, Java, Kotlin and Python subtract the names
+  with a pending census entry.** The manifest lists `api-docs` for those ports (gap 6) and
+  the Java, Kotlin and Python registries do not hold it yet. The pending entry is the one
+  record of that difference. Deleting the entry removes the subtraction, as it has in C#.
+- **Two registry-driven Java suites pass an `outputFilename` argument** to generators that
+  write one file, so the five newly registered rows run in them. It is a test argument;
+  no generator changed.
+- **The TypeScript test "no docs-layer entry is left that `meta gen` runs" now names two:**
+  `requirements` and `agent-docs`. `meta gen` runs a wired factory of either. That was
+  true before they were registered and is visible now.
+
+**Document corrections.** Each of these claimed more than the code delivered.
+
+- Decision 2 and Amendment 3 of this ADR, superseded above.
+- `docs/features/own-your-codegen.md` said owning a generator means owning the code it
+  writes and the code that code calls. It now says where that is not yet true and points
+  here.
+- `server/java/README.md` listed the PlantUML and Mustache modules as ejectable codegen.
+  Neither had eject source.
+- The Java registry's documentation pointed at a design passage for "why some registered
+  generators deliberately carry no eject source". No such passage exists. It now points at
+  the shared manifest, where each exemption has its reason.
+- `fixtures/generator-registry-conformance/README.md` gained the `eject` contract.
+
+**What does not change.**
+
+- **The core and helper line of Amendment 3.** A generator is still a reference helper.
+- **Amendment 5.** Every stock generator still runs as shipped, by import or by name.
+  Ejecting is how an adopter changes what one emits.
+- **Existing owned copies.** They keep running. A copy made before a gap closes keeps
+  calling the package where it did; re-ejecting takes the whole emit.
+- **Packaged output.** This amendment adds registry rows and tests. No generator emits
+  different bytes because of it.

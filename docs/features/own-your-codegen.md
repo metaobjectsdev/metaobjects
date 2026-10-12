@@ -159,10 +159,13 @@ you how far it is from the reference.
 
 ## The docs generators and `shared-model` (TypeScript)
 
-Every stock TypeScript generator can be ejected except one. `template` is the Mustache
+Every stock TypeScript generator can be ejected except three. `template` is the Mustache
 primitive: you already supply its template, its walk and its name, and it has no emit
-logic of its own, so a copy would own nothing. `meta gen --list` marks it `package-only`.
-The C#, Java and Python ports rule the same way for theirs (ADR-0034 Amendment 7).
+logic of its own, so a copy would own nothing. That exemption is permanent, and the C#,
+Java and Python ports rule the same way for theirs (ADR-0034 Amendment 7). `requirements`
+and `agent-docs`, the pages `meta docs` and `meta docs --agent` write, were registered by
+the eject census and do not ship a reference template yet (ADR-0034 Amendment 8).
+`meta gen --list` marks all three `package-only`.
 
 Three of the ejectable ones differ from the rest in what runs them or in what the copy may
 change.
@@ -274,7 +277,11 @@ directory that holds `metaobjects.config.ts`.
 ## What `meta eject` hands over, and what stays core (TypeScript)
 
 Owning a generator means owning the code it writes **and the code that code calls**,
-when that code is a helper. On TypeScript the generated routes call an HTTP adapter —
+when that code is a helper. That is the rule for every generator in every port
+(ADR-0034 Amendment 8). It is not yet true of all of them: several owned copies still call
+emit code in the package, and `fixtures/generator-registry-conformance/registry.json` lists
+each one under `eject.pending` until it is closed. What follows is the part that is
+already handed over. On TypeScript the generated routes call an HTTP adapter —
 the mount helpers, the filter/sort parser, the error envelopes, pagination — and that
 adapter is where most route defects have lived. So ejecting a generator whose output
 calls it copies the adapter's source too:
@@ -997,10 +1004,11 @@ against your copy, ignoring the package line and `^// metaobjects:owned-support`
 have no edits of your own (`-Dlist` says `identical`), re-eject with `-Dforce`.
 
 `-Dport` is needed only when a name exists in both ports and your project's dependencies
-do not say which. Every Kotlin generator is ejectable, and every Java generator except
-`template`. `template` is the Mustache primitive: the template you supply is its emit
-logic, so the generator has none of its own to hand over. That holds in every port that
-ships it.
+do not say which. Every Kotlin generator is ejectable. Every Java generator is too, except
+`template`, the deprecated `mustache`, and four that are registered and do not ship eject
+source yet (`plantuml`, `html-docs`, `ai-docs`, `json-schema`). `template` is the Mustache
+primitive: the template you supply is its emit logic, so the generator has none of its own
+to hand over. That holds in every port that ships it.
 
 ## C#: `dotnet meta eject`
 

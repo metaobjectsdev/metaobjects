@@ -48,6 +48,8 @@ import {
   traceHelperFile,
   sharedModelFile,
   requirementTests,
+  requirementsFile,
+  agentDocsFile,
   cubeModel,
 } from "./generators/index.js";
 
@@ -308,6 +310,31 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     ejectable: ejectable("docs"),
     docsSurface: "model",
     note: "neutral artifact — use `meta docs` (the single docs door, ADR-0021 D1); not part of the recommended `meta gen` native suite.",
+  },
+
+  requirements: {
+    name: "requirements",
+    kind: "generator",
+    layer: "docs",
+    description: "The requirement ledger as documentation: requirements.md for people and requirements.toon for tools.",
+    tier: "neutral",
+    factory: () => requirementsFile(),
+    factoryExport: "requirementsFile",
+    options: "outDir?, target?",
+    ejectable: ejectable("requirements"),
+    note: "neutral artifact — `meta docs` writes it as its requirements surface; a project that declares no requirement.* node gets no file.",
+  },
+  "agent-docs": {
+    name: "agent-docs",
+    kind: "generator",
+    layer: "docs",
+    description: "Pages written for a coding agent working in the project: the schema, the UI surface and the requirements.",
+    tier: "neutral",
+    factory: () => agentDocsFile(),
+    factoryExport: "agentDocsFile",
+    options: "subDir?, schema?, columnNamingStrategy?, target?",
+    ejectable: ejectable("agent-docs"),
+    note: "neutral artifact — `meta docs --agent` writes it; not part of the recommended `meta gen` native suite.",
   },
 
   // ----- capability -------------------------------------------------------

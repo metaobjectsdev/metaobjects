@@ -105,6 +105,29 @@ generator catalog and the Atlas evaluation are 1.2 work.
 
 ### Added
 
+- **The eject contract: every generator hands over its emit, and a test in every port holds
+  it to that** (ADR-0034 Amendment 8). `fixtures/generator-registry-conformance/registry.json`
+  now says, for each generator, `"eject": "full"` or an exemption with its reason, and lists
+  per port the packaged modules an owned copy may still import (the engine surface). Each
+  port's eject-contract test asserts three things from it: every generator the port ships is
+  in its registry; every registered generator ships eject source unless exempt; and each
+  generator, ejected alone, compiles or loads, references no emit code left in the package,
+  and emits what the packaged generator emits. `template` is exempt in every port that ships
+  it, with the deprecated Java Mustache generator and the docs-site builders. Where the
+  contract does not hold yet, the file's `eject.pending` list names the generator, the port
+  and the packaged modules its owned copy still calls. A port's test fails on an unlisted gap
+  and on a listed one that has closed. The release does not ship while the list has entries:
+  `scripts/release.mjs`, `scripts/finish-release.mjs` and the four publish workflows refuse a
+  version with no prerelease suffix until the list is empty (`scripts/eject-release-gate.mjs`); a
+  release candidate is allowed. No generator emits different bytes because of this change.
+- **Seven generators that no registry listed are registered**, so `--list`, the eject
+  commands and the registry-driven tests see them. TypeScript: `requirements` (the ledger
+  pages `meta docs` writes) and `agent-docs` (the pages `meta docs --agent` writes), both
+  neutral and both still run by `meta docs`; a `generators` entry naming either string is
+  refused the way `"docs"` is. Java: `plantuml`, `html-docs`, `ai-docs`, `json-schema` and the
+  deprecated `mustache`, each by the class name a pom already uses. None of the seven ships
+  eject source yet; `mustache` will not.
+
 - **The Java `entity` and `extractor` generators can be ejected.**
   `mvn metaobjects:eject -Dnames=entity,extractor -Dport=java` copies each generator, with
   the rest of its emit, into your `codegen/` module. They were the two Java generators that
@@ -871,6 +894,13 @@ until you regenerate.
   - A project that never wired it sees no change.
 
 ### Fixed
+
+- **The Java PlantUML generator no longer throws on a single-segment package.**
+  `PlantUMLGenerator` failed with `StringIndexOutOfBoundsException` for any model whose
+  package has one segment (`acme`, not `acme::shop`), which is most small models. It was in
+  no registry, so no registry-driven test ran it; registering it (above) put it in two such
+  suites and both failed. A package with no parent now draws no parent namespace. Output
+  for a multi-segment package is unchanged.
 
 - **A doc generator skipped by `meta gen` is now reported in every output form.** `meta docs`
   is the door for documentation (ADR-0025), so `meta gen` warns about and skips a `docsFile()`

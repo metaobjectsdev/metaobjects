@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { genCommand } from "../src/commands/gen.js";
+import { listCatalog } from "../src/lib/catalog.js";
 
 // ADR-0021 D3 — `meta gen --list` discoverability surface.
 //
@@ -93,29 +94,21 @@ describe("meta gen --list (ADR-0021 D3)", () => {
     }
   });
 
-  test("marks each generator that ships no reference copy as package-only, and says why", async () => {
+  test("marks exactly the generators that ship no reference copy as package-only, and says why", async () => {
     // The note above says `meta eject` copies a generator; for an entry with no
     // reference template that is false, so the row has to say so where it is read.
+    // WHICH entries those are is the eject contract's to rule on (eject-contract.test.ts,
+    // against the shared manifest); this holds the mark to the catalog, row by row.
     const tmp = mkdtempSync(join(tmpdir(), "meta-gen-list-"));
     try {
       await genCommand(["--list"], tmp);
       const text = out();
       const line = (name: string) => text.split("\n").find((l) => l.startsWith(`  ${name} `)) ?? "";
-      // The one entry left: the Mustache primitive, where the adopter already supplies
-      // the template and there is no emit logic to own (ADR-0034 Amendment 7).
-      expect(line("template")).toContain("package-only");
-      expect(text.split("\n").filter((l) => l.includes("[package-only]")).length).toBe(1);
-      // An ejectable entry is never marked. `callable` and `trace-helper` were marked
-      // until they gained reference templates; `shared-model` and the docs tier until
-      // Amendment 7.
-      expect(line("callable")).not.toContain("package-only");
-      expect(line("trace-helper")).not.toContain("package-only");
-      expect(line("shared-model")).not.toContain("package-only");
-      expect(line("docs")).not.toContain("package-only");
-      expect(line("api-docs")).not.toContain("package-only");
-      expect(line("prompt-render")).not.toContain("package-only");
-      expect(line("entity")).not.toContain("package-only");
-      expect(text).toContain("package-only = no reference template ships");
+      const catalog = listCatalog();
+      for (const entry of catalog) {
+        expect(line(entry.name).includes("package-only"), entry.name).toBe(!entry.ejectable);
+      }
+      expect(text.includes("package-only = no reference template ships")).toBe(catalog.some((e) => !e.ejectable));
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

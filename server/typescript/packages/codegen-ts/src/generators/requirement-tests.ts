@@ -27,15 +27,14 @@ import {
   requirementTestUnits,
   requirementTestIdentity,
   NO_CONCERN,
+  type RequirementTestArgs,
   type RequirementTestGrain,
+  type RequirementTestRenderer,
   type RequirementView,
 } from "../requirement-walk.js";
-import {
-  renderRequirementTest,
-  type RequirementTestArgs,
-} from "../templates/requirement-test.js";
+import { renderRequirementTest } from "../templates/requirement-test.js";
 
-export type RequirementTestRenderer = (a: RequirementTestArgs) => string;
+export type { RequirementTestRenderer };
 
 export interface RequirementTestsOpts {
   /** Generator name — surfaces in diagnostics and drift logs. */

@@ -20,6 +20,9 @@ drifted from the reference.
 - **No config edits.** Eject prints the one line or element to add, and the entry to remove.
 - **`--list` marks owned copies** `identical`, or `DIFFERS: N behind, M of your own`, comparing
   sorted, whitespace-normalised lines against the packaged reference, as `owned-copy.ts` does.
+- *(Superseded by ADR-0034 Amendment 8, 2026-10-11: a helper that writes output is copied
+  with the generator. Making it public leaves the adopter calling code they cannot edit. The
+  bullet below records the rule as it was.)*
 - **A copy imports only public API.** Where a reference generator uses an internal helper, the
   helper is made public in the same change. The alternative, copying helpers alongside, would give
   the adopter code they did not ask to own. Making them public widens the engine's API surface,

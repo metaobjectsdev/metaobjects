@@ -59,6 +59,11 @@ class GeneratorRegistryConformanceTest {
         val ports: Set<String>,
     )
 
+    private fun pendingCensus(): Set<String> =
+        ObjectMapper().readTree(Files.readString(manifestPath)).get("eject").get("pending")
+            .filter { it.get("port").asText() == port && it.get("assertion").asText() == "census" }
+            .map { it.get("generator").asText() }.toSet()
+
     private fun loadManifest(): List<ManifestEntry> {
         val root: JsonNode = ObjectMapper().readTree(Files.readString(manifestPath))
         val generators = root.get("generators")
@@ -78,7 +83,9 @@ class GeneratorRegistryConformanceTest {
     fun `registry stable names equal the manifest kotlin slice`() {
         val manifest = loadManifest()
 
-        val expected = manifest.filter { port in it.ports }.map { it.name }.toSortedSet()
+        // A name the shared file expects here and lists as a pending census gap is the eject
+        // contract's to report (EjectContractTest), which fails once it is registered.
+        val expected = (manifest.filter { port in it.ports }.map { it.name } - pendingCensus()).toSortedSet()
         val actual = GENERATOR_REGISTRY.keys.toSortedSet()
 
         val missing = (expected - actual).sorted()

@@ -35,8 +35,8 @@ to make the choice cheap, and `layer` is the axis it is cheap along.
 | `persistence` | queries, db-context, repository, exposed-table, relations, stored-proc | app shape |
 | `api` | routes, routes-hono, filter-allowlist, validator, spring-config | app shape |
 | `client` | form, hooks, grid, grid-hook | app shape |
-| `docs` | docs, api-docs | on by default (`meta docs`) |
-| `capability` | prompt-render, output-parser, output-prompt, extractor, render-helper, trace-helper, requirement-tests, cube-model, shared-model, template, callable | `meta gen --list --probe` |
+| `docs` | docs, api-docs, requirements, agent-docs, plantuml, html-docs, ai-docs | on by default (`meta docs`); the Java `plantuml`, `html-docs` and `ai-docs` are wired in the pom |
+| `capability` | prompt-render, output-parser, output-prompt, extractor, render-helper, trace-helper, requirement-tests, cube-model, shared-model, template, callable, json-schema, mustache | `meta gen --list --probe` |
 
 Six, not ten. An earlier draft split `capability` into `trace` / `requirements` /
 `publish` / `primitive`, each with **one member** — a layer with one member does
@@ -54,6 +54,58 @@ not a defect to be tidied. Do not add a seventh value to make it look tidier.
 
 `layer` rather than a reuse of "tier", which is already taken twice
 (native/neutral in ADR-0020, and server/UI elsewhere).
+
+## `eject` — the eject contract
+
+Every stock generator can be ejected, and the owned copy holds its emit
+([ADR-0034](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md) Amendment 8). This
+file is where that is declared, and each port's eject-contract test asserts it.
+
+**Per generator**, `eject` is one of:
+
+- `"full"`: the generator ships eject source in every port that lists it, and its owned
+  copy imports nothing from the codegen packages but the engine surface.
+- `{"exempt": "<reason>", "ruling": "<ADR reference>"}`: the generator is not ejectable, and
+  this says why. An exemption cannot be made by leaving a name off a list.
+
+**The top-level `eject` block** holds:
+
+| Key | What it is |
+|---|---|
+| `engineSurface.<port>.codegenPackages` | The namespaces that hold generators and their emit code. TypeScript: source paths under `server/typescript/packages/`. Python: module names, with a package listed by its own name as well as by `name.**`, because importing the package reaches what its `__init__` re-exports. C#: type names. Java and Kotlin: class names. `**` matches any run of characters, `*` one segment. |
+| `engineSurface.<port>.engine` | The members of those namespaces an owned copy may still import: the generator base and runner, questions about the model, naming and type-mapping tables. Anything else inside `codegenPackages` writes output and is handed over with the generator. Anything outside them is core and imported freely. |
+| `exemptEmitters` | Code that writes into an adopter's repository and is not a generator, ruled out of eject with a reason. |
+| `pending` | Every place the contract does not hold yet. The release scripts and the publish workflows refuse a final version (one with no prerelease suffix) while the list holds an entry (`scripts/eject-release-gate.mjs`). |
+
+**A `pending` entry** is `{generator, port, assertion, gap}`:
+
+- `assertion` is `census` (the manifest lists the generator for the port and the port's
+  registry does not hold it), `completeness` (registered, no eject source) or `depth` (its
+  owned copy references code outside the engine surface).
+- `gap` is a number from the gap list in ADR-0034 Amendment 8.
+- A `depth` entry also has `outside`: the packaged modules its owned copy still references,
+  sorted. A generator with two gaps has two `depth` entries, each listing what that gap
+  closes.
+
+The list is checked in both directions. A gap that is not listed fails the port's test. A
+listed entry that passes fails it too, so the change that closes a gap deletes its entry.
+`outside` is compared exactly, so partial progress is recorded as it is made.
+
+**Each port's test** (TypeScript `cli/test/eject-contract.test.ts`, C#
+`EjectContractTests`, Java `EjectContractTest` in `maven-plugin`, Kotlin `EjectContractTest`
+in `codegen-kotlin`, Python `tests/conformance/test_eject_contract.py`) makes three
+assertions:
+
+1. **Census.** Every generator implementation the port ships is in its registry, and the
+   registry exposes the names this file gives the port.
+2. **Completeness.** Every registered generator ships eject source unless exempt here, and
+   every other list of ejectable generators is derived from the registry or equal to it.
+3. **Depth.** Each generator, ejected alone into an empty project, compiles or loads,
+   references nothing in `codegenPackages` outside `engine`, and emits what the packaged
+   generator emits.
+
+What each port's reference scan reads, and the limits of the guard, are in ADR-0034
+Amendment 8.
 
 ## Shared (cross-port) names
 

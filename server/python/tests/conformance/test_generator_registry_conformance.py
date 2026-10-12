@@ -16,6 +16,8 @@ from pathlib import Path
 
 from metaobjects.codegen.generator_registry import GENERATOR_REGISTRY, GeneratorBuildContext
 
+from . import eject_contract
+
 PORT = "python"
 
 
@@ -45,7 +47,9 @@ def _manifest_python_slice() -> dict[str, dict]:
 
 
 def test_registry_name_set_equals_manifest_python_slice() -> None:
-    expected = set(_manifest_python_slice().keys())
+    # A name the shared file expects here and lists as a pending census gap is the eject
+    # contract's to report (test_eject_contract.py), which fails once it is registered.
+    expected = set(_manifest_python_slice().keys()) - set(eject_contract.pending("census"))
     actual = set(GENERATOR_REGISTRY.keys())
 
     extras = sorted(actual - expected)

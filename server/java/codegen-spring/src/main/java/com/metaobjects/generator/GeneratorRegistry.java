@@ -1,5 +1,8 @@
 package com.metaobjects.generator;
 
+import com.metaobjects.generator.direct.metadata.ai.MetaDataAIDocumentationGenerator;
+import com.metaobjects.generator.direct.metadata.file.json.MetaDataFileJsonSchemaGenerator;
+import com.metaobjects.generator.direct.metadata.html.MetaDataHtmlDocumentationGenerator;
 import com.metaobjects.generator.direct.object.BaseObjectCodeGenerator;
 import com.metaobjects.generator.direct.object.BaseObjectCodeWriter;
 import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;
@@ -117,9 +120,10 @@ public final class GeneratorRegistry {
          *      as shipped inside the {@code codegen-*} jar that owns it (e.g. {@code
          *      META-INF/metaobjects/reference/java/SpringNamesGenerator.java}), or {@code
          *      null} when this generator is not ejectable — {@code mvn metaobjects:eject}
-         *      reads this field to resolve {@code -Dnames}. One registered generator carries
-         *      none: "template", the Mustache primitive, which has no emit logic to own
-         *      (ADR-0034 Amendment 6).
+         *      reads this field to resolve {@code -Dnames}. Which generators may carry none
+         *      is ruled in the shared manifest ({@code fixtures/generator-registry-conformance/
+         *      registry.json}, the {@code eject} entries) and asserted by {@code
+         *      EjectContractTest}: "template" and "mustache" are exempt, with reasons.
          * @param ejectRuntime simple names of the helper-runtime classes this generator's
          *      OUTPUT imports (from {@link #RUNTIME_PACKAGE}), closed over their own references
          *      to each other. {@code mvn metaobjects:eject} copies their source (shipped under
@@ -232,6 +236,14 @@ public final class GeneratorRegistry {
             JavaCodeGenerator.class.getName(), BaseObjectCodeGenerator.class.getName(),
             BaseObjectCodeWriter.class.getName(), JavaCodeWriter.class.getName(),
             PojoAwareCodeWriter.class.getName(), ValueObjectCodeWriter.class.getName());
+
+    /** The two generators that live in modules this one does not depend on
+     *  ({@code codegen-plantuml}, {@code codegen-mustache}), so they are named, not
+     *  referenced. {@code GeneratorRegistryConformanceTest} loads every registered class. */
+    private static final String PLANTUML_GENERATOR =
+            "com.metaobjects.generator.direct.plantuml.PlantUMLGenerator";
+    private static final String MUSTACHE_GENERATOR =
+            "com.metaobjects.generator.mustache.MustacheTemplateGenerator";
 
     private static final Map<String, GeneratorInfo> REGISTRY = buildRegistry();
 
@@ -350,6 +362,24 @@ public final class GeneratorRegistry {
                 "Per-object physical database name constants (table/view/schema/column) "
                     + "for a hand-written consumer to reference instead of a string literal.", Tier.NATIVE, Layer.MODEL,
                 ejectPath(SpringNamesGenerator.class));
+        // The generators below were wirable by class name and in no registry, so no catalog,
+        // eject command or test saw them (ADR-0034 Amendment 8). They are registered so the
+        // eject contract covers them. None ships eject source yet; "mustache" never will: it
+        // is deprecated in favour of "template".
+        register(m, "plantuml", PLANTUML_GENERATOR,
+                "PlantUML class diagram of the object model.", Tier.NATIVE, Layer.DOCS);
+        register(m, "html-docs", MetaDataHtmlDocumentationGenerator.class.getName(),
+                "Single-page HTML reference of the registered metamodel types, read from the "
+                    + "type registry.", Tier.NATIVE, Layer.DOCS);
+        register(m, "ai-docs", MetaDataAIDocumentationGenerator.class.getName(),
+                "JSON reference of the registered metamodel types written for an AI reader, "
+                    + "read from the type registry.", Tier.NATIVE, Layer.DOCS);
+        register(m, "json-schema", MetaDataFileJsonSchemaGenerator.class.getName(),
+                "JSON Schema that validates metadata files, read from the type registry.",
+                Tier.NATIVE, Layer.CAPABILITY);
+        register(m, "mustache", MUSTACHE_GENERATOR,
+                "The pre-`template` Mustache generator, kept so a pom that names its class keeps "
+                    + "building. Deprecated: use `template`.", Tier.NATIVE, Layer.CAPABILITY);
         return Collections.unmodifiableMap(m);
     }
 

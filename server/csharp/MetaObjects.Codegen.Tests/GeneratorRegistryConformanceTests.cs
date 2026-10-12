@@ -72,8 +72,11 @@ public sealed class GeneratorRegistryConformanceTests
     {
         var manifest = LoadManifest();
 
+        // A name the shared file expects here and lists as a pending census gap is the eject
+        // contract's to report (EjectContractTests), which fails once it is registered.
+        var pendingCensus = EjectContract.Pending("census");
         var expected = manifest
-            .Where(e => e.Ports.Contains(Port))
+            .Where(e => e.Ports.Contains(Port) && !pendingCensus.ContainsKey(e.Name))
             .Select(e => e.Name)
             .ToHashSet(StringComparer.Ordinal);
 

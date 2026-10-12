@@ -87,8 +87,8 @@ the corpora above do two different jobs. Only the first is a promise to adopters
   exporter's output, a TypeScript reference helper),
   `requirement-test-identity-conformance/` (which tests the `requirement-tests` reference
   generator yields from a ledger and what each is called; the text it writes is not
-  pinned) and the codegen-compile gate. They check that the reference generators are correct
-  starting points; an adopter's ejected copy is theirs and is not gated. The hand-rolled
+  pinned), the codegen-compile gate and the eject contract (below). They check that the
+  reference generators are correct starting points; an adopter's ejected copy is theirs and is not gated. The hand-rolled
   reference-server lane of `api-contract-conformance/` still pins the wire contract that
   the runtimes and the client speak, which is core.
 
@@ -98,6 +98,23 @@ The matrix is corpus-shaped, so a feature whose coverage splits — across sever
 corpora, or between its *vocabulary* and its *behaviour* — never gets a row of its
 own, and its boundary ends up discoverable only from the feature doc. The split ones
 are recorded here instead.
+
+**The eject contract** ([ADR-0034](../spec/decisions/ADR-0034-codegen-scaffold-and-own.md)
+Amendment 8). A gate, not a corpus: it has no fixtures of its own, and reads
+`generator-registry-conformance/registry.json`.
+
+- *Gated in all five ports.* Each port's eject-contract test asserts that every generator it
+  ships is in the registry (census), that every registered generator ships eject source
+  unless the shared file exempts it (completeness), and that each generator ejected alone
+  compiles or loads, references nothing in the codegen packages outside the engine surface
+  and emits what the packaged generator emits (depth). TypeScript:
+  `cli/test/eject-contract.test.ts`. C#: `EjectContractTests`. Java: `EjectContractTest` in
+  `maven-plugin`. Kotlin: `EjectContractTest` in `codegen-kotlin`. Python:
+  `tests/conformance/test_eject_contract.py`.
+- *Not yet true everywhere, and the shared file says where.* `eject.pending` lists every
+  generator that still fails an assertion. A port's test fails when an unlisted gap appears
+  and when a listed one closes without its entry being removed.
+- *Not gated: an adopter's owned copy.* The contract is about what the reference hands over.
 
 **Capability requirements** ([features/requirements.md](features/requirements.md)):
 

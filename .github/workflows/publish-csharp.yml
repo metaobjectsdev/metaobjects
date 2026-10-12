@@ -41,6 +41,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A final version is not published while the eject pending list has entries
+      # (ADR-0034 Amendment 8). A release candidate passes, which is why the `version`
+      # input is read first.
+      - name: Eject release gate
+        env:
+          VERSION_INPUT: ${{ github.event.inputs.version }}
+        run: |
+          COMMITTED="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' server/csharp/Directory.Build.props | head -n 1)"
+          node scripts/eject-release-gate.mjs "${VERSION_INPUT:-$COMMITTED}"
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:

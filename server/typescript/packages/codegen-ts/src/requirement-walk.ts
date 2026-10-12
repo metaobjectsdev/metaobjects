@@ -176,6 +176,39 @@ export function assertRequirementTestGrain(grain: unknown): asserts grain is Req
   }
 }
 
+/**
+ * What a requirement-test renderer is handed for one stub. Declared here, beside the
+ * walk that fills it, because it is the contract a renderer is written against: the
+ * packaged renderer and an owned one read the same record.
+ */
+export interface RequirementTestArgs {
+  readonly view: RequirementView;
+  /** The fan-out key this stub stands for: `<type>.<subType>` under the default grain,
+   *  the reference as authored under `grain: "member"`, `*` when the requirement
+   *  resolves no target. Always equal to `unit`, which is the name the other language
+   *  ports use for it. */
+  readonly concern: string;
+  readonly statement: string;
+  readonly counterexample: string;
+  /** The claims this stub covers. Each carries its own `concern`, which stays the
+   *  target's `<type>.<subType>` in both grains. */
+  readonly targets: readonly ResolvedClaim[];
+  readonly disposition?: string | undefined;
+  readonly trackedBy?: readonly string[] | undefined;
+  // The test's identity record (`RequirementTestIdentity`) — the same six values in
+  // every language port. They are DATA for an application's renderer: the default
+  // renderer below reads none of them, so its output does not move when they do.
+  readonly package: string;
+  readonly unit: string;
+  readonly id: string;
+  readonly witnessKey: string;
+  readonly skip: "planned" | "retired" | null;
+  readonly digest: string;
+}
+
+/** Turns one stub's record into the text of its test file. */
+export type RequirementTestRenderer = (a: RequirementTestArgs) => string;
+
 /** One generated test. The same record in every language port. */
 export interface RequirementTestIdentity {
   /** The requirement's effective package. */

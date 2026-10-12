@@ -36,6 +36,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mavenVersion } from "./maven-coordinate.mjs";
+import { ejectReleaseRefusalAt } from "./eject-release-gate.mjs";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CHECK_ONLY = process.argv.includes("--check");
@@ -63,6 +64,15 @@ if (VERSION === undefined || !/^\d+\.\d+\.\d+$/.test(VERSION)) {
 // payload. Both defeat the gate. The derivation lives in ONE module because four scripts
 // had it independently and two were wrong — see scripts/maven-coordinate.mjs.
 const MAVEN_VERSION = mavenVersion(VERSION);
+
+// ── 0. the eject contract holds ────────────────────────────────────────────
+// Every final release ends here, including one where npm sat out and `release.mjs`, which
+// asks the same question before its first publish, never ran. A tag is not cut for a tree
+// whose shared manifest still lists a generator that does not hand over its emit
+// (ADR-0034 Amendment 8).
+const ejectRefusal = ejectReleaseRefusalAt(VERSION, REPO);
+if (ejectRefusal !== null) die(ejectRefusal);
+ok("eject contract: the pending list is empty");
 
 // ── 1. the working tree is the tree that will be tagged ──────────────────────
 // A tag points at a COMMIT, so anything uncommitted is silently excluded. Tagging with
