@@ -165,7 +165,6 @@ public class MetaDataEjectMojo extends AbstractMojo {
                 ? project.getGroupId() + ".codegen" : targetPackage.trim();
 
         Path codegenRoot = project.getBasedir().toPath().resolve(CODEGEN_DIR);
-        Set<EjectSupport.Port> portsTouched = new LinkedHashSet<>();
         List<String> classnameChanges = new ArrayList<>();
 
         List<EjectSupport.Entry> entries = new ArrayList<>();
@@ -183,7 +182,6 @@ public class MetaDataEjectMojo extends AbstractMojo {
         Set<String> support = new LinkedHashSet<>();
         for (EjectSupport.Resolution r : resolved) {
             EjectSupport.Entry e = r.entry;
-            portsTouched.add(e.port);
 
             String langDir = e.port == EjectSupport.Port.KOTLIN ? "kotlin" : "java";
             String ownedPkg = e.ownedPackage(pkg);
@@ -227,7 +225,7 @@ public class MetaDataEjectMojo extends AbstractMojo {
         ejectSupport(support, codegenRoot.resolve("src/main/java").resolve(pkg.replace('.', '/')), pkg);
         ejectTemplates(resolved, codegenRoot.resolve("src/main/resources"), pkg);
 
-        boolean pomWritten = writeCodegenPomIfNeeded(codegenRoot, pkg, portsTouched);
+        boolean pomWritten = writeCodegenPomIfNeeded(codegenRoot, pkg, portsIn(codegenRoot));
         reportWhatThePomLacks(codegenRoot);
 
         if (!runtime.isEmpty()) {
@@ -555,16 +553,26 @@ public class MetaDataEjectMojo extends AbstractMojo {
             + "      </plugin>\n";
     }
 
+    /** The ports the codegen module holds copies of: those with a source root in it. */
+    private static Set<EjectSupport.Port> portsIn(Path codegenRoot) {
+        Set<EjectSupport.Port> out = new LinkedHashSet<>();
+        for (EjectSupport.Port port : EjectSupport.Port.values()) {
+            if (Files.isDirectory(codegenRoot.resolve("src/main/" + port.id))) out.add(port);
+        }
+        return out;
+    }
+
     private String codegenPom(String artifactId, Set<EjectSupport.Port> ports) {
         StringBuilder deps = new StringBuilder();
-        for (EjectSupport.Port port : EjectSupport.Port.values()) {
-            if (ports.contains(port)) deps.append(dependency(port));
-        }
+        for (EjectSupport.Port port : ports) deps.append(dependency(port));
+        // A Kotlin-only module makes src/main/kotlin its source root. One that holds Java copies
+        // too keeps Maven's default root for them, and the Kotlin plugin is given its own.
+        boolean java = ports.contains(EjectSupport.Port.JAVA);
         String kotlinPlugin = ports.contains(EjectSupport.Port.KOTLIN)
             ? "  <build>\n"
-              + "    <sourceDirectory>src/main/kotlin</sourceDirectory>\n"
+              + (java ? "" : "    <sourceDirectory>src/main/kotlin</sourceDirectory>\n")
               + "    <plugins>\n"
-              + kotlinPlugin("")
+              + kotlinPlugin(java ? KOTLIN_SOURCE_DIRS : "")
               + "    </plugins>\n"
               + "  </build>\n"
             : "";
@@ -601,8 +609,8 @@ public class MetaDataEjectMojo extends AbstractMojo {
 
     /**
      * Say what {@code codegen/pom.xml} does not declare that the copies under each port's source
-     * root need. Eject writes that pom for the ports of one call and never edits it, so a port
-     * ejected into the module in another call is left out of the build, and the build passes.
+     * root need. Eject writes that pom for the ports the module holds then and never edits it, so
+     * a port ejected into the module in a later call is left out of the build, and the build passes.
      */
     private void reportWhatThePomLacks(Path codegenRoot) throws MojoExecutionException {
         Path pom = codegenRoot.resolve("pom.xml");
@@ -612,9 +620,8 @@ public class MetaDataEjectMojo extends AbstractMojo {
         } catch (IOException ex) {
             throw new MojoExecutionException("Could not read " + pom, ex);
         }
-        for (EjectSupport.Port port : EjectSupport.Port.values()) {
+        for (EjectSupport.Port port : portsIn(codegenRoot)) {
             String sourceRoot = "src/main/" + port.id;
-            if (!Files.isDirectory(codegenRoot.resolve(sourceRoot))) continue;
             List<String> changes = new ArrayList<>();
             if (!declares(content, codegenArtifact(port))) {
                 changes.add("  Add to <dependencies>:\n" + dependency(port));

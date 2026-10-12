@@ -3,11 +3,16 @@ package com.metaobjects.mojo;
 import com.metaobjects.generator.DocsGenerator;
 import com.tschuchort.compiletesting.KotlinCompilation;
 import com.tschuchort.compiletesting.SourceFile;
+import org.apache.maven.model.Dependency;
+import org.apache.maven.model.Model;
+import org.apache.maven.model.Plugin;
+import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.project.MavenProject;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.junit.rules.TemporaryFolder;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
@@ -22,6 +27,7 @@ import javax.tools.ToolProvider;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.Reader;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
@@ -38,6 +44,7 @@ import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -74,14 +81,48 @@ public class ApiDocsEjectBothPortsTest {
 
     /** Eject {@code api-docs} for one port, and return the log eject wrote to. */
     private Log eject(String port) throws Exception {
+        return eject("api-docs", port, false);
+    }
+
+    private Log eject(String names, String port, boolean force) throws Exception {
         MetaDataEjectMojo mojo = new MetaDataEjectMojo();
         mojo.project = project;
-        mojo.names = "api-docs";
+        mojo.names = names;
         mojo.port = port;
+        mojo.force = force;
         Log log = Mockito.mock(Log.class);
         mojo.setLog(log);
         mojo.execute();
         return log;
+    }
+
+    private Model codegenPom() throws Exception {
+        try (Reader in = Files.newBufferedReader(basedir.resolve("codegen/pom.xml"), StandardCharsets.UTF_8)) {
+            return new MavenXpp3Reader().read(in);
+        }
+    }
+
+    /**
+     * The pom builds both ports' copies: it depends on both codegen artifacts, leaves Maven's
+     * source root at its default ({@code src/main/java}, which javac compiles), and gives the
+     * Kotlin plugin {@code src/main/kotlin} itself. Read through Maven's own model reader.
+     *
+     * <p>The module is not built by Maven here: its dependencies are this reactor's artifacts,
+     * which no repository holds while these tests run. Both source trees are compiled, by each
+     * language's compiler, in {@link #bothPortsEjectedIntoOneModuleCompileAndDeclareNoClassTwice}.</p>
+     */
+    private void assertPomBuildsBothPorts() throws Exception {
+        Model pom = codegenPom();
+        Set<String> dependencies = pom.getDependencies().stream()
+                .map(Dependency::getArtifactId).collect(Collectors.toCollection(TreeSet::new));
+        assertEquals(Set.of("metaobjects-codegen-kotlin", "metaobjects-codegen-spring"), dependencies);
+        assertNull("a source root set here replaces Maven's default, src/main/java",
+                pom.getBuild().getSourceDirectory());
+        Plugin kotlin = pom.getBuild().getPlugins().stream()
+                .filter(p -> p.getArtifactId().equals("kotlin-maven-plugin")).findFirst().orElseThrow();
+        Xpp3Dom sourceDirs = ((Xpp3Dom) kotlin.getConfiguration()).getChild("sourceDirs");
+        assertEquals(1, sourceDirs.getChildCount());
+        assertEquals("${project.basedir}/src/main/kotlin", sourceDirs.getChild(0).getValue());
     }
 
     /** Eject {@code api-docs} for one port, and return the owned classname eject printed for it. */
@@ -161,8 +202,8 @@ public class ApiDocsEjectBothPortsTest {
         assertEquals(classname, surface, ((DocsGenerator) generator).surface());
     }
 
-    // The pom eject writes builds the ports of that call. It is never edited afterwards, so a port
-    // ejected later is left out of the build unless eject says what the pom has to gain. What each
+    // The pom eject writes builds every port the module holds then. It is never edited afterwards,
+    // so a port ejected later is left out of the build unless eject says what the pom has to gain. What each
     // port needs is fixed by Maven and by where eject writes: its codegen artifact, a compiler for
     // its language, and its directory as a source root.
 
@@ -170,6 +211,28 @@ public class ApiDocsEjectBothPortsTest {
     public void aPomWrittenForThePortBeingEjectedDrawsNoWarning() throws Exception {
         assertEquals(List.of(), warnings(eject("java")));
         assertEquals("the same port again, into the pom written for it", List.of(), warnings(eject("java")));
+    }
+
+    @Test
+    public void oneCallThatNamesBothPortsWritesAPomThatBuildsBothAndWarnsOfNothing() throws Exception {
+        // A Java-only name beside a Kotlin-only one: no -Dport, and one call holds both ports.
+        Log log = eject("html-docs,exposed-table", null, false);
+
+        assertFalse(sourcesUnder(basedir.resolve("codegen/src/main/java"), ".java").isEmpty());
+        assertFalse(sourcesUnder(basedir.resolve("codegen/src/main/kotlin"), ".kt").isEmpty());
+        assertPomBuildsBothPorts();
+        assertEquals(List.of(), warnings(log));
+    }
+
+    @Test
+    public void aForcedEjectRewritesThePomForEveryPortTheModuleHolds() throws Exception {
+        eject("java");
+        eject("kotlin");
+
+        Log log = eject("api-docs", "kotlin", true);
+
+        assertPomBuildsBothPorts();
+        assertEquals(List.of(), warnings(log));
     }
 
     @Test

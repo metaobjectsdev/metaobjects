@@ -157,11 +157,12 @@ generator catalog and the Atlas evaluation are 1.2 work.
     copies the generator, the page model, the builder, the renderer and the path math into a
     subpackage per port, `<package>.apidocs.java` or `<package>.apidocs.kotlin`: the two ports
     name those classes alike, so one `codegen/` module can hold both without a class declared
-    twice. Eject prints the class name to list. The `codegen/pom.xml` the first eject wrote
-    builds that port only, and eject never edits it: when it does not declare what a port in the
-    module needs (the `metaobjects-codegen-*` dependency, `kotlin-maven-plugin`, or
-    `src/main/java` as a source root after a Kotlin-first eject), eject now warns and prints
-    what to add. For Java the page templates come too, into
+    twice. Eject prints the class name to list. Eject writes `codegen/pom.xml` for the ports
+    the module holds at that moment and never edits it afterwards. One call that ejects for
+    both ports now gets a pom that builds both source trees; it used to leave `src/main/java`
+    out. When a later call adds a port, the pom does not declare what that port needs (the
+    `metaobjects-codegen-*` dependency, `kotlin-maven-plugin`, or `src/main/java` as a source
+    root after a Kotlin-first eject), and eject now warns and prints what to add. For Java the page templates come too, into
     `codegen/src/main/resources/<package path>/apidocs/java/templates/`, with the copied
     template provider pointed there. What the Java reference documents is still what the
     packaged generators emit for (`GeneratorApplicability.packaged()`): an owned `routes` whose
