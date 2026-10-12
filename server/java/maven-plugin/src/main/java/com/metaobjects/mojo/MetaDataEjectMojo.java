@@ -205,6 +205,9 @@ public class MetaDataEjectMojo extends AbstractMojo {
                 if (e.port == EjectSupport.Port.JAVA) {
                     support.addAll(EjectSupport.supportFor(rewritten));
                     rewritten = EjectSupport.rewriteSupportImports(rewritten, pkg);
+                    if (!e.resources.isEmpty()) {
+                        rewritten = EjectSupport.rewriteTemplatePrefix(rewritten, pkg);
+                    }
                 }
 
                 String what = generator ? "\"" + e.stableName + "\""
@@ -216,6 +219,7 @@ public class MetaDataEjectMojo extends AbstractMojo {
         }
 
         ejectSupport(support, codegenRoot.resolve("src/main/java").resolve(pkg.replace('.', '/')), pkg);
+        ejectTemplates(resolved, codegenRoot.resolve("src/main/resources"), pkg);
 
         boolean pomWritten = writeCodegenPomIfNeeded(codegenRoot, pkg, portsTouched);
 
@@ -231,6 +235,49 @@ public class MetaDataEjectMojo extends AbstractMojo {
         }
         if (!runtime.isEmpty()) {
             printRuntimeWiring(runtimeRoot, runtimePkg, requested, codegenRoot);
+        }
+    }
+
+    // ------------------------------------------------------------------------------------
+    // templates
+    // ------------------------------------------------------------------------------------
+
+    /**
+     * Write the templates the ejected generators read from the classpath into the owned module's
+     * resources, under the owned package's path. The copied template provider is pointed there
+     * ({@link EjectSupport#rewriteTemplatePrefix}), so the owned page text is what runs.
+     */
+    private void ejectTemplates(List<EjectSupport.Resolution> resolved, Path resourceRoot, String pkg)
+            throws MojoExecutionException {
+        Set<String> written = new LinkedHashSet<>();
+        Path dir = resourceRoot.resolve(EjectSupport.ownedTemplatePrefix(pkg));
+        for (EjectSupport.Resolution r : resolved) {
+            for (String ref : r.entry.resources) {
+                if (!written.add(ref)) continue;
+                String resource = GeneratorRegistry.EJECT_TEMPLATE_RESOURCE_ROOT + ref + EjectSupport.TEMPLATE_EXTENSION;
+                String content;
+                try {
+                    content = readResource(resource);
+                } catch (IOException ex) {
+                    throw new MojoExecutionException("Could not read reference template \"" + ref
+                            + "\" at classpath resource " + resource, ex);
+                }
+                Path target = dir.resolve(ref + EjectSupport.TEMPLATE_EXTENSION);
+                switch (write(target.getParent(), target, content, force)) {
+                    case CREATED:
+                        getLog().info("Copied template " + ref + " -> " + target
+                                + ". The owned " + r.entry.stableName + " reads this copy; you own it now.");
+                        break;
+                    case REPLACED:
+                        getLog().info("Copied template " + ref + " -> " + target
+                                + ", REPLACING the file that was there (-Dforce=true).");
+                        break;
+                    case PRESERVED:
+                        getLog().info(target + " already exists — " + describeOwned(target, content)
+                                + " Left untouched (-Dforce=true replaces it).");
+                        break;
+                }
+            }
         }
     }
 

@@ -1,5 +1,11 @@
 package com.metaobjects.generator.kotlin
 
+// Eject note (ADR-0034 Amendment 8): `mvn metaobjects:eject` copies this file with the generator
+// that calls it. The engine siblings stay in com.metaobjects.generator.kotlin, so each is imported
+// by name — a bare same-package reference would not resolve from the copy.
+import com.metaobjects.generator.kotlin.FindInbound
+import com.metaobjects.generator.kotlin.KotlinExtractSchemaEmitter
+
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.MapField

@@ -55,16 +55,16 @@ public class EjectSupportTest {
     }
 
     @Test
-    public void onlyTheJavaExtractorCarriesAWiringNoteAndItNamesTheOwnedClass() {
+    public void onlyTheJavaExtractorAndApiDocsCarryAWiringNoteAndItNamesTheOwnedClass() {
         for (EjectSupport.Entry e : EjectSupport.allEntries()) {
             boolean javaExtractor = e.port == EjectSupport.Port.JAVA && e.stableName.equals("extractor");
-            if (!javaExtractor) {
+            boolean javaApiDocs = e.port == EjectSupport.Port.JAVA && e.stableName.equals("api-docs");
+            if (!javaExtractor && !javaApiDocs) {
                 assertNull(e.port.id + " " + e.stableName, e.wiringNote("com.acme.codegen"));
                 continue;
             }
             String note = e.wiringNote("com.acme.codegen");
-            assertTrue(note, note.contains(
-                    "<classname>com.acme.codegen.ExtractorCodeGenerator</classname>"));
+            assertTrue(note, note.contains("<classname>com.acme.codegen." + e.simpleName() + "</classname>"));
             assertFalse(note, note.contains("{owned}"));
         }
     }
@@ -163,8 +163,8 @@ public class EjectSupportTest {
     /**
      * ADR-0034 Amendment 6: an owned generator extends and calls the classes copied with it,
      * never the packaged ones. So an import of a copied class follows the copy, and an
-     * import of anything else (here the {@code extractor} generator, which is not part of
-     * {@code entity}'s copy, and a class whose name merely starts like a copied one) stays.
+     * import of anything else (here the file writer, which is engine, and a class whose name
+     * merely starts like a copied one) stays.
      */
     @Test
     public void anImportOfAClassCopiedAlongFollowsTheCopyAndNoOtherImportMoves() {
@@ -173,14 +173,14 @@ public class EjectSupportTest {
         String src = "package com.metaobjects.generator.direct.object.javacode;\n\n"
                 + "import com.metaobjects.generator.direct.object.BaseObjectCodeWriter;\n"
                 + "import com.metaobjects.generator.direct.object.BaseObjectCodeWriterFactory;\n"
-                + "import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;\n"
+                + "import com.metaobjects.generator.util.GeneratedFileWriter;\n"
                 + "import com.metaobjects.generator.direct.GenerationContext;\n\n"
                 + "public class Foo extends BaseObjectCodeWriter {}\n";
 
         assertEquals("package com.metaobjects.generator.direct.object.javacode;\n\n"
                 + "import com.acme.codegen.BaseObjectCodeWriter;\n"
                 + "import com.metaobjects.generator.direct.object.BaseObjectCodeWriterFactory;\n"
-                + "import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;\n"
+                + "import com.metaobjects.generator.util.GeneratedFileWriter;\n"
                 + "import com.metaobjects.generator.direct.GenerationContext;\n\n"
                 + "public class Foo extends BaseObjectCodeWriter {}\n",
                 EjectSupport.rewriteCopiedImports(src, entity.sources(), "com.acme.codegen"));
@@ -281,5 +281,67 @@ public class EjectSupportTest {
                     && List.of("routes", "dto", "repository").contains(e.stableName);
             assertEquals(e.port.id + " " + e.stableName, expected, !e.runtime.isEmpty());
         }
+    }
+
+    // ------------------------------------------------------------------------------------
+    // Kotlin imports, template prefix, and the ownership comparison across copies
+    // ------------------------------------------------------------------------------------
+
+    @Test
+    public void aKotlinImportOfAClassCopiedAlongFollowsTheCopyWithoutGainingASemicolon() {
+        String src = "package com.metaobjects.generator.kotlin\n\n"
+                + "import com.metaobjects.generator.kotlin.KotlinEnumEmitter\n"
+                + "import com.metaobjects.generator.kotlin.KotlinEnumEmitterFactory\n"
+                + "import com.metaobjects.generator.kotlin.KotlinNaming\n\n"
+                + "class Foo\n";
+        assertEquals("package com.metaobjects.generator.kotlin\n\n"
+                + "import com.acme.codegen.KotlinEnumEmitter\n"
+                + "import com.metaobjects.generator.kotlin.KotlinEnumEmitterFactory\n"
+                + "import com.metaobjects.generator.kotlin.KotlinNaming\n\n"
+                + "class Foo\n",
+                EjectSupport.rewriteCopiedImports(src,
+                        List.of("com.metaobjects.generator.kotlin.KotlinEnumEmitter"), "com.acme.codegen"));
+    }
+
+    @Test
+    public void everyKotlinEntryResolvesItsCopiedClassesToKotlinSources() {
+        EjectSupport.Entry entity = EjectSupport.resolve(
+                "entity", EjectSupport.ejectableByStableName(), EjectSupport.Port.KOTLIN, null).entry;
+        assertEquals(List.of("com.metaobjects.generator.kotlin.KotlinEntityGenerator",
+                "com.metaobjects.generator.kotlin.KotlinEnumEmitter"), entity.sources());
+        assertTrue(entity.resourceOf("com.metaobjects.generator.kotlin.KotlinEnumEmitter"),
+                entity.resourceOf("com.metaobjects.generator.kotlin.KotlinEnumEmitter")
+                        .endsWith("/kotlin/KotlinEnumEmitter.kt"));
+    }
+
+    @Test
+    public void aCopiedTemplateProviderIsPointedAtTheOwnedPackagesTemplates() {
+        String src = "package com.metaobjects.generator.apidocs;\n\npublic final class P {\n"
+                + "    private static final String BASE_PREFIX = \"templates/\";\n}\n";
+        assertEquals("com/acme/codegen/templates/", EjectSupport.ownedTemplatePrefix("com.acme.codegen"));
+        String owned = EjectSupport.rewriteTemplatePrefix(src, "com.acme.codegen");
+        assertTrue(owned, owned.contains("BASE_PREFIX = \"com/acme/codegen/templates/\";"));
+        // A source with no such declaration is returned as it came.
+        assertEquals("class X {}\n", EjectSupport.rewriteTemplatePrefix("class X {}\n", "com.acme.codegen"));
+        // The rewritten line is eject's own edit, so the copy still compares identical.
+        assertEquals(EjectSupport.Verdict.IDENTICAL, EjectSupport.compare(
+                EjectSupport.rewritePackage(owned, "com.acme.codegen"), src).verdict);
+    }
+
+    @Test
+    public void aFileTwoGeneratorsCopyComparesIdenticalWhicheverOneWroteIt() {
+        // The extractor is copied with entity, which points its import of the entity's base at the
+        // owned copy, and on its own, which leaves that import on the engine. Either way it is the
+        // reference: the import is eject's own edit.
+        String ref = "package com.metaobjects.generator.direct.object.javacode;\n\n"
+                + "import com.metaobjects.generator.direct.object.BaseObjectCodeGenerator;\n"
+                + "import com.metaobjects.generator.util.GeneratorUtil;\n\npublic class E {}\n";
+        String viaEntity = ref.replace("com.metaobjects.generator.direct.object.BaseObjectCodeGenerator",
+                "com.acme.codegen.BaseObjectCodeGenerator")
+                .replace("package com.metaobjects.generator.direct.object.javacode;", "package com.acme.codegen;");
+        assertEquals(EjectSupport.Verdict.IDENTICAL, EjectSupport.compare(viaEntity, ref).verdict);
+        // An import of anything else is still compared.
+        assertEquals(EjectSupport.Verdict.DIFFERS,
+                EjectSupport.compare(viaEntity.replace("GeneratorUtil", "OtherUtil"), ref).verdict);
     }
 }

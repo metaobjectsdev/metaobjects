@@ -43,6 +43,36 @@
 
     <build>
         <plugins>
+            <!-- `mvn metaobjects:eject` ships the verbatim source of every ejectable generator
+                 inside the jar that owns it, as a classpath resource under
+                 META-INF/metaobjects/reference/java/ (see codegen-spring's pom for the same
+                 execution). "plantuml" is the generator and the writer that emits its file;
+                 eject copies both into one owned package. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>ship-eject-reference-source</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/META-INF/metaobjects/reference/java</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>src/main/java/com/metaobjects/generator/direct/plantuml</directory>
+                                    <includes>
+                                        <include>PlantUMLGenerator.java</include>
+                                        <include>PlantUMLWriter.java</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 </project>

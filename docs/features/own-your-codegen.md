@@ -805,14 +805,16 @@ always wins over one with the same name. So eject puts each copy into a separate
 `codegen/` Maven module, under your own package (`-Dpackage`, default
 `<groupId>.codegen`). Every copy compiles on its own, and none calls another generator. The
 package declaration is the only line it changes, except for a generator that is copied with
-other classes (Java `entity` and `extractor`, below) and for the support imports described
-below: there the imports those copies have of one another change too. On first use
+other classes (the emitters it writes through, below, and Java `entity` and `extractor`) and
+for the support imports and the template prefix described below: there the imports those
+copies have of one another change too. On first use
 it writes `codegen/pom.xml`, which depends on `metaobjects-codegen-spring` or
 `metaobjects-codegen-kotlin` at the plugin's version.
 
-Eject changes a copy's package declaration, and for a Java generator up to two more
-lines, both described below: its import of `SpringGeneratorSupport`, and its
-`RUNTIME_PACKAGE` constant.
+Eject changes a copy's package declaration, and for a Java generator up to three more
+lines, each described below: its import of `SpringGeneratorSupport`, its
+`RUNTIME_PACKAGE` constant, and, for `api-docs`, the classpath prefix its template
+provider reads from.
 
 Eject never edits an existing pom. It prints the three things to wire: the `<module>`
 entry for your parent pom, a plugin `<dependency>` on the codegen module for the module
@@ -838,7 +840,7 @@ Both names exist in both ports, so pass `-Dport`. Their reference source ships i
 `metaobjects-codegen-base`, not `metaobjects-codegen-spring`; your `codegen/` module
 reaches it through the same dependency.
 
-**`entity` copies seven files, and together they are the generator.**
+**`entity` copies eight files, and together they are the generator.**
 `JavaObjectCodeGenerator` does not emit a class body itself. A writer does, one per
 flavor, so the writers come with it:
 
@@ -849,19 +851,22 @@ flavor, so the writers come with it:
 | `BaseObjectCodeWriter` | The class header comment, and the per-field loop every flavor shares. |
 | `JavaCodeWriter` | The Java type of each field; accessor, parameter, class and package names; the body of the interface flavor. |
 | `PojoAwareCodeWriter`, `ValueObjectCodeWriter` | The fields, the constructor and the accessor bodies of the two concrete flavors. |
+| `ExtractorCodeGenerator` | The `<Name>Extractor` classes `entity` writes beside each concrete class, unless a separate `extractor` generator is in the run. |
 
-All seven land in one package and use one another, never the packaged classes: eject
+All eight land in one package and use one another, never the packaged classes: eject
 rewrites the package line of each and, where one imports another, that import. To change a
 field, a constructor or an accessor, edit the writer. You subclass nothing. `-Dlist` gives
-`entity` one verdict over all seven files.
+`entity` one verdict over all eight files.
 
 What stays in the package holds no emit: `MultiFileDirectGeneratorBase` (the
 one-file-per-object loop), `FileDirectWriter` (indentation and `println`) and
 `GeneratedFileWriter` (the write guard: a file with no `GENERATED` marker is left alone).
-The owned `entity` still calls the packaged `ExtractorCodeGenerator` to write the
-extractors, until you wire an `extractor` generator of your own.
+The extractors the owned `entity` writes come from the owned copy of
+`ExtractorCodeGenerator` beside it, so changing how an extractor reads is an edit in code you
+own whether or not you also wire an `extractor` generator.
 
-**`extractor` copies three files.** `ExtractorCodeGenerator.java` holds its emit.
+**`extractor` copies three files.** `ExtractorCodeGenerator.java` holds its emit. Eject it
+beside `entity`, in the same package, and they share that one copy.
 `JavaCodeWriter` and `BaseObjectCodeWriter` come with it because that is where it reads the
 package and class name of the type each extractor casts to. Eject both generators into the
 same package, which is the default, and they share the one `JavaCodeWriter`: a naming
@@ -890,6 +895,104 @@ A pom with more than one `entity` entry needs one `extractor` entry per `entity`
 each with that entry's `outputDir`, naming args and `<filters>`. A single `extractor`
 generator in the run stops every `entity` entry writing its extractors, so an `entity`
 entry left without one gets none.
+
+### Ejecting a generator hands over the emitters it writes through (Java and Kotlin)
+
+A generator that calls an emitter writes part of its output through it. If eject left the
+emitter in the package, the copy would own the orchestration and the package would still own
+the text, and a defect in that text would wait for a release. So eject copies the emitters
+too, into the generator's package, and points the imports the copies have of one another at
+the copies:
+
+| Port | Eject | Also writes |
+|---|---|---|
+| Java | `dto`, `value-object` | `Fr019SharedEnum` (the shared and provided enum files and their type references), `SpringRecordBuilder` (the `builder()` a record carries) |
+| Java | `output-parser` | `Fr019SharedEnum` |
+| Java | `output-prompt` | `OutputFormatSpecEmitter` (the `OutputFormatSpec` literal) |
+| Java | `entity` | the eight files above, `ExtractorCodeGenerator` among them |
+| Kotlin | `entity` | `KotlinEnumEmitter` (the enum class file) |
+| Kotlin | `output-parser` | `KotlinExtractSchemaEmitter` (the extraction mirror and the literal helpers) |
+| Kotlin | `output-prompt` | `KotlinOutputFormatSpecEmitter`, `KotlinExtractSchemaEmitter` |
+| Kotlin | `api-docs` | the page model, builder, renderer and path math, below |
+
+A class two generators share is written once. A later eject finds it, says it is
+`IDENTICAL` or `DIFFERS`, and leaves your edits alone; `-Dforce` replaces it with the reference,
+as it replaces the generator. Each copy is the packaged source with the same package edit
+as the generator and the same import rewrite, and the Java copies carry an explicit import of
+the packaged sibling classes they still call, so they compile from any package.
+
+**What stays in the package is the engine**, public and unchanged: the generator base and
+runner types, the naming and type-mapping tables (`SpringNaming`, `SpringTypeMapper`,
+`KotlinNaming`, `KotlinTypeMapper`), the questions a generator asks of the model
+(`FindInbound`, `TphPlan`, the M:N support, `RestSurfaceGate`), and the Kotlin
+`Fr019SharedEnum`. Anything that returns emitted text is handed over; a table or a model
+question is not. The Kotlin `Fr019SharedEnum` writes no output. It answers where a shared or
+`@provided` enum lives, and the type mapper and the generator utilities take its
+`ProvidedEnumConfig` as an argument, so it is the same kind of thing as a type-mapping table.
+The Java `Fr019SharedEnum` is different: it also writes the enum files, so it is handed over.
+
+The line is written down and checked. `EjectContractTest`, in the Maven plugin for Java and in
+`codegen-kotlin` for Kotlin, ejects each generator the registry lists alone into an empty
+project, compiles it against the published artifacts, fails on any reference to a packaged
+class outside the engine surface in `fixtures/generator-registry-conformance/registry.json`,
+and compares what the copy emits with what the packaged generator emits, byte for byte.
+
+**A copy you ejected before the emitters were handed over** keeps compiling and running, with
+the packaged emitters. To own them, raise your `codegen/` module's dependency to 1.1.0 or
+later and re-eject the generator into a scratch project, then copy the emitter files next to
+your generator:
+
+```bash
+mvn metaobjects:eject -Dnames=dto,value-object -Dport=java -Dpackage=com.acme.scratch   # in a scratch project
+cp scratch/codegen/src/main/java/com/acme/scratch/{Fr019SharedEnum,SpringRecordBuilder}.java codegen/src/main/java/com/acme/codegen/
+```
+
+Change the `package` line of each file you copy, and point your generator's imports of them at
+your package. `mvn metaobjects:eject -Dlist` then marks the copy `identical` or `DIFFERS`.
+
+### `api-docs`: the api reference as an owned generator
+
+`mvn metaobjects:docs` writes the Java and the Kotlin api reference. `mvn metaobjects:eject
+-Dnames=api-docs -Dport=java` copies the generator that writes the Java one, with the page
+model (`ApiSymbol`, `ApiUnit`, `FieldShape`, `ApiSymbolKind`, `JavaApiModel`, `UnitExample`), the
+builder that decides what to document (`JavaApiModelBuilder`, `JavaFieldShapes`), the renderer
+(`JavaApiDocsRenderer`), the path math (`DocsPaths`) and the template provider, and writes the
+page templates into `codegen/src/main/resources/<package path>/templates/api/`. Eject
+points the copied provider at that directory, so the page text is the one you own and no other
+jar on the classpath can shadow it. `-Dport=kotlin` copies `KotlinApiDocsGenerator`,
+`KotlinApiModel`, `KotlinApiModelBuilder`, `KotlinApiDocsRenderer` and `DocsPaths`; the Kotlin
+renderer writes its pages in code, so it has no templates.
+
+The generator is a `DocsGenerator`. List it in `<generators>` with `<classname>` set to your copy,
+and `metaobjects:docs` runs it for its surface in place of the packaged one. `metaobjects:generate`
+and `metaobjects:verify` skip it, because it writes pages under the docs directory and not code
+under `outputDir`, and say so in the build log. The docs goal sets `outputDir`, `projectName`,
+`apiSubDir`, `layout` and `modelBaseUrl` on it, and the pages land under
+`<outputDirectory>/<apiSubDir>`.
+
+**It describes what the packaged generators emit.** The Java reference documents a controller,
+a filter allowlist, a render helper only if the packaged generator that emits it would, which each
+answers through its static `appliesTo`. The builder asks through `GeneratorApplicability`
+(`GeneratorApplicability.packaged()`), never through a generator class, which is why the copy
+depends on nothing but the engine. That holds in a project that owns one of those generators
+too: an owned `routes` whose `appliesTo` you changed is still documented as the packaged one
+behaves. To document your own surface, change the one line of your `JavaApiDocsGenerator` copy
+that builds the `GeneratorApplicability`. The Kotlin builder asks the engine's own gates, which
+the owned Kotlin generators share, so it has nothing to inject.
+
+### The docs, diagram and schema generators (Java)
+
+`plantuml`, `html-docs`, `ai-docs` and `json-schema` were registered, and wirable by class name,
+before they were ejectable. Each is a generator and the writer that emits its file, and eject
+copies both: `PlantUMLGenerator` with `PlantUMLWriter`, `MetaDataHtmlDocumentationGenerator` with
+`MetaDataHtmlDocumentationWriter`, `MetaDataAIDocumentationGenerator` with
+`MetaDataAIDocumentationWriter`, `MetaDataFileJsonSchemaGenerator` with `MetaDataFileSchemaWriter`.
+The generator bases (`SingleFileDirectGeneratorBase`, `SingleJsonDirectGeneratorBase`,
+`SingleHtmlDirectGeneratorBase`) and the writer bases they drive (`JsonDirectWriter`,
+`HtmlDirectWriter`) stay in the package as engine. The attributes the JSON Schema and AI
+documentation generators add to the metamodel are metamodel vocabulary, registered by
+`CodeGenMetaDataProvider` and read by the loader, so they stay in the package too. The old static
+methods on the two generators forward to it.
 
 ### What eject hands over, and what stays core
 
@@ -1005,10 +1108,9 @@ have no edits of your own (`-Dlist` says `identical`), re-eject with `-Dforce`.
 
 `-Dport` is needed only when a name exists in both ports and your project's dependencies
 do not say which. Every Kotlin generator is ejectable. Every Java generator is too, except
-`template`, the deprecated `mustache`, and four that are registered and do not ship eject
-source yet (`plantuml`, `html-docs`, `ai-docs`, `json-schema`). `template` is the Mustache
-primitive: the template you supply is its emit logic, so the generator has none of its own
-to hand over. That holds in every port that ships it.
+`template` and the deprecated `mustache`. `template` is the Mustache primitive: the template you
+supply is its emit logic, so the generator has none of its own to hand over. That holds in every
+port that ships it.
 
 ## C#: `dotnet meta eject`
 

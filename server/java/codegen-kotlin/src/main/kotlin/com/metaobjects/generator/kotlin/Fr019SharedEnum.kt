@@ -19,6 +19,12 @@ import com.squareup.kotlinpoet.ClassName
  * per-port-configured namespace (ADR-0001 — never an FQN in metadata). The namespace binds to
  * the enum's declaring metadata package via a package→namespace map + a single fallback, both
  * generator args every generator that types an enum reads through [ProvidedEnumConfig.fromArgs].
+ *
+ * <p>This object writes no output. It answers "what is this enum called, and where does it live",
+ * and the type mapper, the generator utilities and the M:N support take its [ProvidedEnumConfig]
+ * as an argument, so it is the engine (ADR-0034 Amendment 8, ruling 2) and `mvn metaobjects:eject`
+ * leaves it in the package. The file an enum is written to is [KotlinEnumEmitter]'s, and that one
+ * is handed over with `entity`.</p>
  */
 object Fr019SharedEnum {
 
@@ -38,14 +44,14 @@ object Fr019SharedEnum {
     data class ProvidedEnumConfig(
         val fallbackNamespace: String?,
         val packageNamespaces: Map<String, String>,
-        internal val providedInDeclarationPackage: Boolean = false,
+        val providedInDeclarationPackage: Boolean = false,
     ) {
         companion object {
             /**
              * The config every deprecated helper form that takes none delegates with, so a
              * generator ejected before [fromArgs] existed keeps the answer it had then.
              */
-            internal val DECLARATION_PACKAGE: ProvidedEnumConfig =
+            val DECLARATION_PACKAGE: ProvidedEnumConfig =
                 ProvidedEnumConfig(null, emptyMap(), providedInDeclarationPackage = true)
 
             /**

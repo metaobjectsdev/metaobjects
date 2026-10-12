@@ -205,6 +205,50 @@
                                         <include>LlmTraceHelperGenerator.java</include>
                                         <include>SpringNamesGenerator.java</include>
                                         <include>JUnitRequirementTestsGenerator.java</include>
+                                        <!-- The emit classes a generator above calls, handed over
+                                             with it (GeneratorInfo.ejectWith()). -->
+                                        <include>Fr019SharedEnum.java</include>
+                                        <include>SpringRecordBuilder.java</include>
+                                        <include>OutputFormatSpecEmitter.java</include>
+                                    </includes>
+                                </resource>
+                                <!-- "api-docs": the generator, the page IR, the builder that fills it, the
+                                     renderer, the page paths and the template provider. -->
+                                <resource>
+                                    <directory>src/main/java/com/metaobjects/generator/apidocs</directory>
+                                    <includes>
+                                        <include>JavaApiDocsGenerator.java</include>
+                                        <include>ApiSymbol.java</include>
+                                        <include>ApiSymbolKind.java</include>
+                                        <include>ApiUnit.java</include>
+                                        <include>ClasspathTemplateProvider.java</include>
+                                        <include>DocsPaths.java</include>
+                                        <include>FieldShape.java</include>
+                                        <include>JavaApiDocsRenderer.java</include>
+                                        <include>JavaApiModel.java</include>
+                                        <include>JavaApiModelBuilder.java</include>
+                                        <include>JavaFieldShapes.java</include>
+                                        <include>UnitExample.java</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                    <!-- The page text "api-docs" reads from the classpath. Eject copies it into the
+                         adopter's resources and points the owned template provider there. -->
+                    <execution>
+                        <id>ship-eject-template-source</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/META-INF/metaobjects/reference/java/templates/api</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>src/main/resources/templates/api</directory>
+                                    <includes>
+                                        <include>*.md.mustache</include>
                                     </includes>
                                 </resource>
                             </resources>

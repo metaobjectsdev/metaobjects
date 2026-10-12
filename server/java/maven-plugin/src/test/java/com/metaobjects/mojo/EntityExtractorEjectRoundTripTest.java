@@ -255,8 +255,9 @@ public class EntityExtractorEjectRoundTripTest {
         Map<String, String> entity = generate(owned(classes, OWNED_ENTITY), POJO);
         assertTrue(entity.get("com/metaobjects/generated/GeneratedObjectClassBindingProvider.java")
                 .contains("GENERATED (owned entity copy)"));
-        // The owned entity still calls the PACKAGED extractor: it imports that class by name.
-        assertFalse(entity.get("fitness/ProgramExtractor.java").contains("owned extractor copy"));
+        // The owned entity writes its extractors through the owned extractor copy beside it, so an
+        // edit there reaches the files entity writes too, with no extractor generator in the run.
+        assertTrue(entity.get("fitness/ProgramExtractor.java").contains("owned extractor copy"));
 
         Map<String, String> extractor = generate(owned(classes, OWNED_EXTRACTOR), Map.of());
         assertTrue(extractor.get("fitness/ProgramExtractor.java").contains("GENERATED (owned extractor copy)"));
@@ -373,15 +374,18 @@ public class EntityExtractorEjectRoundTripTest {
         String edited = list(projectDir);
         assertTrue(row(edited, "extractor"),
                 row(edited, "extractor").endsWith("[owned — DIFFERS: 1 behind, 1 of your own]"));
-        assertTrue(row(edited, "entity"), row(edited, "entity").endsWith("[owned — identical]"));
+        // entity copies the extractor too, so an edit to it shows on entity's row as well.
+        assertTrue(row(edited, "entity"),
+                row(edited, "entity").endsWith("[owned — DIFFERS: 1 behind, 1 of your own]"));
 
         // A writer is part of the generator it was copied with: an edit to one only entity
-        // has shows on entity's row, and leaves the extractor's count where it was.
+        // has shows on entity's row, on top of the extractor edit it already carries, and leaves
+        // the extractor's count where it was.
         edit(ownedDir.resolve("PojoAwareCodeWriter.java"),
                 "println(true, \"super(mo);\");", "println(true, \"super(mo); // mine\");");
         String writerEdited = list(projectDir);
         assertTrue(row(writerEdited, "entity"),
-                row(writerEdited, "entity").endsWith("[owned — DIFFERS: 1 behind, 1 of your own]"));
+                row(writerEdited, "entity").endsWith("[owned — DIFFERS: 2 behind, 2 of your own]"));
         assertTrue(row(writerEdited, "extractor"),
                 row(writerEdited, "extractor").endsWith("[owned — DIFFERS: 1 behind, 1 of your own]"));
     }

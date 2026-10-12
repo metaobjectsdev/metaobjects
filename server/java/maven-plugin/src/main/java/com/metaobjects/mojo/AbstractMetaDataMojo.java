@@ -7,6 +7,7 @@ import com.metaobjects.MetaDataException;
 import com.metaobjects.agentcontext.AgentContextScaffold;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
+import com.metaobjects.generator.DocsGenerator;
 import com.metaobjects.generator.ProjectClassLoaderAware;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.generator.spring.SpringRenderHelperGenerator;
@@ -294,6 +295,24 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
     }
 
     protected abstract void executeGenerators(MetaDataLoader loader, List<Generator> generatorImpls);
+
+    /**
+     * Whether {@code g} names a {@link DocsGenerator}: a generator that writes documentation,
+     * which {@code metaobjects:docs} runs and {@code generate} and {@code verify} leave alone.
+     */
+    protected boolean isDocsGenerator(GeneratorParam g, ClassLoader projectClassLoader) {
+        try {
+            return DocsGenerator.class.isAssignableFrom(projectClassLoader.loadClass(g.getClassname()));
+        } catch (ClassNotFoundException e) {
+            throw new MetaDataException( "Error running generator ["+g.getClassname()+"]: "+e, e );
+        }
+    }
+
+    /** Say that {@code generate} / {@code verify} is skipping a docs generator, and which goal runs it. */
+    protected void logSkippedDocsGenerator(String goal, String classname) {
+        getLog().info(goal + " > Skipping docs generator " + classname
+                + ": it writes documentation, and `mvn metaobjects:docs` runs it.");
+    }
 
     protected MetaDataLoader createLoader(ClassLoader projectClassLoader) {
 

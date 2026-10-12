@@ -1,6 +1,8 @@
 package com.metaobjects.mojo;
 
+import com.metaobjects.generator.DocsGenerator;
 import com.metaobjects.generator.Generator;
+import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.loader.MetaDataLoader;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -9,12 +11,7 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -26,8 +23,9 @@ import java.util.Map;
  * <p>Extends {@link AbstractMetaDataMojo} so it inherits metadata loading from the
  * {@code <loader>} config: the base {@link AbstractMetaDataMojo#execute()} builds the
  * {@link MetaDataLoader} and then calls the {@link #executeGenerators(MetaDataLoader, List)}
- * hook. This goal needs only the loaded loader, not configured {@code <generators>}, so it
- * ignores the (empty) generator list and instead builds + renders the api-docs IR.
+ * hook. This goal needs only the loaded loader. It reads the configured {@code <generators>}
+ * for one thing: a {@link DocsGenerator} it names for a surface, which it runs in place of the
+ * packaged one. Every other configured generator is left alone.
  *
  * <p>The {@link #language} parameter selects the native SDK surface:
  * <ul>
@@ -38,9 +36,12 @@ import java.util.Map;
  * Each language's surface defaults its own {@code apiSubDir} ({@code api/<lang>}); set
  * {@link #apiSubDir} explicitly only when documenting a single language into a custom dir.
  *
- * <p>The Mojo is wiring only: every name comes from the per-language IR and every path from that
- * port's {@code DocsPaths} (byte-parity with the TS contract) — nothing is re-derived here. Output
- * paths are collision-checked (duplicate page path → build failure), mirroring the TS
+ * <p>The Mojo is wiring only: each surface is a {@link DocsGenerator} ({@code api-docs}) that
+ * writes its pages under {@link #outputDirectory}. When the project's {@code <generators>} list
+ * holds a docs generator for a surface, the goal runs that one, so a project that ejected
+ * {@code api-docs} runs its own copy. Every name comes from the per-language IR and every path
+ * from that port's {@code DocsPaths} (byte-parity with the TS contract) — nothing is re-derived
+ * here. Output paths are collision-checked (duplicate page path → build failure), mirroring the TS
  * {@code assertNoDuplicateDocPaths}.
  */
 @Mojo(name = "docs",
@@ -100,119 +101,64 @@ public class DocsMojo extends AbstractMetaDataMojo {
                             + "languages (" + language + "); omit it so each uses api/<lang>");
         }
 
-        String projectName = project != null ? project.getArtifactId() : "project";
-        boolean packageLayout = "package".equalsIgnoreCase(layout);
-
         for (String raw : langs) {
             String lang = raw.trim().toLowerCase(Locale.ROOT);
             if (lang.isEmpty()) {
                 continue;
             }
             String subDir = (apiSubDir != null && !apiSubDir.isEmpty()) ? apiSubDir : ("api/" + lang);
-            Map<String, String> emitted;
-            switch (lang) {
-                case LANG_JAVA:
-                    emitted = renderJava(loader, projectName, subDir, packageLayout);
-                    break;
-                case LANG_KOTLIN:
-                    emitted = renderKotlin(loader, projectName, subDir, packageLayout);
-                    break;
-                default:
-                    throw new IllegalStateException(
-                            "metaobjects:docs — unknown language '" + lang
-                                    + "' (supported: java, kotlin)");
+            runSurface(lang, subDir, loader, generatorImpls);
+        }
+    }
+
+    /**
+     * Run the docs generator for one surface: the one the project's {@code <generators>} list
+     * names for it, when it names one (an owned copy of {@code api-docs}), else the packaged one.
+     * The goal is wiring only: every page, name and path comes from the generator.
+     */
+    private void runSurface(String lang, String subDir, MetaDataLoader loader, List<Generator> generatorImpls) {
+        DocsGenerator docs = null;
+        Map<String, String> args = null;
+        for (int i = 0; i < generatorImpls.size(); i++) {
+            if (generatorImpls.get(i) instanceof DocsGenerator
+                    && lang.equals(((DocsGenerator) generatorImpls.get(i)).surface())) {
+                docs = (DocsGenerator) generatorImpls.get(i);
+                args = mergeAndOverwriteArgs(getGenerators().get(i));
+                break;
             }
-            writeSurface(subDir, emitted);
         }
+        boolean owned = docs != null;
+        if (!owned) {
+            docs = packaged(lang);
+            args = new HashMap<>();
+            if (getGlobals() != null) args.putAll(getGlobals());
+            docs.setFilters(List.of());
+        }
+
+        args.put(GeneratorBase.ARG_OUTPUTDIR, outputDirectory.getAbsolutePath());
+        args.put(DocsGenerator.ARG_PROJECT_NAME, project != null ? project.getArtifactId() : "project");
+        args.put(DocsGenerator.ARG_API_SUBDIR, subDir);
+        args.put(DocsGenerator.ARG_LAYOUT, "package".equalsIgnoreCase(layout) ? "package" : "flat");
+        if (modelBaseUrl != null && !modelBaseUrl.isEmpty()) {
+            args.put(DocsGenerator.ARG_MODEL_BASE_URL, modelBaseUrl);
+        }
+        docs.setArgs(args);
+        docs.execute(loader);
+        getLog().info("metaobjects:docs — ran " + (owned ? "your" : "the packaged") + " " + lang
+                + " api-docs generator " + docs.getClass().getName() + " into "
+                + outputDirectory.toPath().resolve(subDir));
     }
 
-    // ----- Java surface (codegen-spring) -------------------------------------
-
-    private Map<String, String> renderJava(MetaDataLoader loader, String projectName,
-                                           String subDir, boolean packageLayout) {
-        com.metaobjects.generator.apidocs.DocsPaths.Layout lay = packageLayout
-                ? com.metaobjects.generator.apidocs.DocsPaths.Layout.PACKAGE
-                : com.metaobjects.generator.apidocs.DocsPaths.Layout.FLAT;
-        com.metaobjects.generator.apidocs.JavaApiModel model =
-                new com.metaobjects.generator.apidocs.JavaApiModelBuilder().build(loader, projectName);
-        com.metaobjects.generator.apidocs.JavaApiDocsRenderer renderer =
-                new com.metaobjects.generator.apidocs.JavaApiDocsRenderer();
-
-        Map<String, String> emitted = new LinkedHashMap<>();
-        for (com.metaobjects.generator.apidocs.ApiUnit unit : model.units()) {
-            String pagePath = com.metaobjects.generator.apidocs.DocsPaths.docPageOutputPath(
-                    lay, unit.pkg(), unit.node());
-            String apiPagePathFromDocsRoot = subDir + "/" + pagePath;
-            String modelHref = com.metaobjects.generator.apidocs.DocsPaths.modelCrossHref(
-                    apiPagePathFromDocsRoot, pagePath, modelBaseUrl);
-            put(emitted, pagePath, renderer.renderUnitPage(unit, modelHref));
+    /** The packaged {@code api-docs} generator for a surface. */
+    private static DocsGenerator packaged(String lang) {
+        switch (lang) {
+            case LANG_JAVA:
+                return new com.metaobjects.generator.apidocs.JavaApiDocsGenerator();
+            case LANG_KOTLIN:
+                return new com.metaobjects.generator.kotlin.apidocs.KotlinApiDocsGenerator();
+            default:
+                throw new IllegalStateException(
+                        "metaobjects:docs — unknown language '" + lang + "' (supported: java, kotlin)");
         }
-        put(emitted, "README.md", renderer.renderIndex(model, lay));
-        put(emitted, "AGENT-API.md", renderer.renderAgentApi(model));
-        return emitted;
-    }
-
-    // ----- Kotlin surface (codegen-kotlin) -----------------------------------
-
-    private Map<String, String> renderKotlin(MetaDataLoader loader, String projectName,
-                                             String subDir, boolean packageLayout) {
-        com.metaobjects.generator.kotlin.apidocs.DocsPaths.Layout lay = packageLayout
-                ? com.metaobjects.generator.kotlin.apidocs.DocsPaths.Layout.PACKAGE
-                : com.metaobjects.generator.kotlin.apidocs.DocsPaths.Layout.FLAT;
-        com.metaobjects.generator.kotlin.apidocs.KotlinApiModel model =
-                new com.metaobjects.generator.kotlin.apidocs.KotlinApiModelBuilder(
-                        com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig.fromArgs(getGlobals()))
-                        .build(loader, projectName);
-        com.metaobjects.generator.kotlin.apidocs.KotlinApiDocsRenderer renderer =
-                new com.metaobjects.generator.kotlin.apidocs.KotlinApiDocsRenderer();
-
-        Map<String, String> emitted = new LinkedHashMap<>();
-        for (com.metaobjects.generator.kotlin.apidocs.ApiUnit unit : model.getUnits()) {
-            String pagePath = com.metaobjects.generator.kotlin.apidocs.DocsPaths.INSTANCE
-                    .docPageOutputPath(lay, unit.getPkg(), unit.getNode());
-            String apiPagePathFromDocsRoot = subDir + "/" + pagePath;
-            String modelHref = com.metaobjects.generator.kotlin.apidocs.DocsPaths.INSTANCE
-                    .modelCrossHref(apiPagePathFromDocsRoot, pagePath, modelBaseUrl);
-            put(emitted, pagePath, renderer.renderUnitPage(unit, modelHref));
-        }
-        put(emitted, "README.md", renderer.renderIndex(model, lay));
-        put(emitted, "AGENT-API.md", renderer.renderAgentApi(model));
-        return emitted;
-    }
-
-    // ----- write -------------------------------------------------------------
-
-    /** Write a language surface's pages under {@code outputDirectory/subDir}. */
-    private void writeSurface(String subDir, Map<String, String> emitted) {
-        Path apiRoot = outputDirectory.toPath().resolve(subDir);
-        try {
-            for (Map.Entry<String, String> e : emitted.entrySet()) {
-                Path dest = apiRoot.resolve(e.getKey());
-                // NOT routed through GeneratedFileWriter, deliberately. That guard refuses
-                // any existing file lacking the `GENERATED` marker, and these API pages are
-                // rendered from `templates/api/*.mustache` — none of which emits the token,
-                // and none of which is obliged to. Guarding them made the FIRST run write and
-                // every run after silently refuse, so the docs froze while the build stayed
-                // green and still reported "wrote N api pages".
-                //
-                // The marker floor protects output whose header WE control. Doc pages
-                // rendered from a user-editable template are not that; the guard belongs on
-                // the first-party generators, which were each verified to emit the token.
-                Files.createDirectories(dest.getParent());
-                Files.writeString(dest, e.getValue(), StandardCharsets.UTF_8);
-            }
-        } catch (IOException ex) {
-            throw new UncheckedIOException("metaobjects:docs — failed writing api pages into " + apiRoot, ex);
-        }
-        getLog().info("metaobjects:docs — wrote " + emitted.size() + " api pages into " + apiRoot);
-    }
-
-    /** Insert into the emit map, failing on a duplicate output path (collision guard). */
-    private static void put(Map<String, String> emitted, String path, String content) {
-        if (emitted.containsKey(path)) {
-            throw new IllegalStateException(
-                    "metaobjects:docs — duplicate api page output path: " + path);
-        }
-        emitted.put(path, content);
     }
 }

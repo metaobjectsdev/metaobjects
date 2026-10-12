@@ -39,7 +39,8 @@ import kotlin.test.assertTrue
  * entry that passes fails here, and so does a gap that is not listed.
  *
  * The copy is read from the shipped resource, not through the mojo: `maven-plugin` depends on
- * this module, not the reverse. The one edit eject makes to a Kotlin copy is its package line.
+ * this module, not the reverse. The two edits eject makes to a Kotlin copy are its package line and
+ * its imports of the classes copied with it, and this test makes the same two.
  */
 @OptIn(org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi::class)
 class EjectContractTest {
@@ -146,7 +147,10 @@ class EjectContractTest {
 
     @Test
     fun `completeness - the shipped reference sources are exactly the ones the registry names`() {
-        val named = GENERATOR_REGISTRY.values.mapNotNull { it.ejectResourcePath }.toSortedSet()
+        val named = GENERATOR_REGISTRY.values.flatMap { info ->
+            // The generator, and each class eject copies with it.
+            listOfNotNull(info.ejectResourcePath) + info.ejectWith.map { withResource(it) }
+        }.toSortedSet()
         assertEquals(named, shipped(EJECT_RESOURCE_ROOT))
     }
 
@@ -293,19 +297,41 @@ class EjectContractTest {
         private fun simpleName(info: GeneratorInfo): String =
             info.ejectResourcePath!!.substringAfterLast('/').substringBeforeLast('.')
 
+        /** The shipped resource of a class eject copies WITH a generator. */
+        private fun withResource(classname: String): String = EJECT_RESOURCE_ROOT + classname.substringAfterLast('.') + ".kt"
+
+        private fun readResource(resource: String, name: String): String =
+            EjectContractTest::class.java.classLoader.getResourceAsStream(resource)
+                ?.use { String(it.readAllBytes(), Charsets.UTF_8) }
+                ?: throw AssertionError("$name: $resource is not shipped")
+
+        /**
+         * One owned file as `mvn metaobjects:eject` writes it: the package line renamed, and every
+         * import of a class copied with the generator pointed at its copy.
+         */
+        private fun owned(reference: String, name: String, copied: List<String>): String {
+            val line = PACKAGE_LINE.find(reference) ?: throw AssertionError("$name has no package line")
+            var out = reference.replaceRange(line.range, "package $OWNED_PACKAGE")
+            for (classname in copied) {
+                out = out.replace(Regex("(?m)^import\\s+" + Regex.escape(classname) + "[ \\t]*$"),
+                    "import $OWNED_PACKAGE.${classname.substringAfterLast('.')}")
+            }
+            return out
+        }
+
         private val compiled = mutableMapOf<String, KotlinCompilation.Result>()
 
         /** The owned copy of one generator: the shipped reference source with its package line
          *  rewritten, compiled with nothing else beside it. Compiled once per generator. */
         private fun ownedCopy(name: String): KotlinCompilation.Result = compiled.getOrPut(name) {
             val info = GENERATOR_REGISTRY.getValue(name)
-            val reference = EjectContractTest::class.java.classLoader.getResourceAsStream(info.ejectResourcePath!!)
-                ?.use { String(it.readAllBytes(), Charsets.UTF_8) }
-                ?: throw AssertionError("$name: ${info.ejectResourcePath} is not shipped")
-            val line = PACKAGE_LINE.find(reference) ?: throw AssertionError("$name has no package line")
+            // The generator and what eject copies with it, and nothing else beside them.
+            val files = listOf(info.ejectResourcePath!!) + info.ejectWith.map { withResource(it) }
             val result = KotlinCompilation().apply {
-                sources = listOf(SourceFile.kotlin("${simpleName(info)}.kt",
-                    reference.replaceRange(line.range, "package $OWNED_PACKAGE")))
+                sources = files.map { resource ->
+                    SourceFile.kotlin(resource.substringAfterLast('/'),
+                        owned(readResource(resource, name), name, info.ejectWith))
+                }
                 inheritClassPath = true
                 messageOutputStream = java.io.OutputStream.nullOutputStream()
             }.compile()

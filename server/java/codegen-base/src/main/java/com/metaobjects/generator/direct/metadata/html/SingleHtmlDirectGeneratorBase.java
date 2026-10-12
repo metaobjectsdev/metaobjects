@@ -19,7 +19,7 @@ public abstract class SingleHtmlDirectGeneratorBase extends DirectGeneratorBase 
 
         File outf = null;
         OutputStream fos = null;
-        MetaDataHtmlDocumentationWriter writer = null;
+        HtmlDirectWriter writer = null;
 
         parseArgs();
 
@@ -54,9 +54,9 @@ public abstract class SingleHtmlDirectGeneratorBase extends DirectGeneratorBase 
     ///////////////////////////////////////////////////////////////////////////////////////
     // Implementation Methods
 
-    protected abstract MetaDataHtmlDocumentationWriter getWriter(MetaDataLoader loader, OutputStream os) throws GeneratorIOException;
+    protected abstract HtmlDirectWriter getWriter(MetaDataLoader loader, OutputStream os) throws GeneratorIOException;
 
-    protected void writeHtml(MetaDataHtmlDocumentationWriter writer) throws GeneratorIOException {
+    protected void writeHtml(HtmlDirectWriter writer) throws GeneratorIOException {
         log.info("Writing HTML file: " + writer.getFilename());
         writer.writeHtml();
     }

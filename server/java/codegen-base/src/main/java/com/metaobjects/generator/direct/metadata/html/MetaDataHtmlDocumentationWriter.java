@@ -1,6 +1,7 @@
 package com.metaobjects.generator.direct.metadata.html;
 
-import com.metaobjects.generator.GeneratorIOWriter;
+// Imported by name: this file is copied out by `mvn metaobjects:eject`, and the base stays in the package.
+import com.metaobjects.generator.direct.metadata.html.HtmlDirectWriter;
 import com.metaobjects.generator.GeneratorIOException;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.registry.MetaDataRegistry;
@@ -38,7 +39,7 @@ import java.util.stream.Collectors;
  * - Plugin and extension development
  * - Cross-team collaboration and knowledge sharing
  */
-public class MetaDataHtmlDocumentationWriter extends GeneratorIOWriter<MetaDataHtmlDocumentationWriter> {
+public class MetaDataHtmlDocumentationWriter extends HtmlDirectWriter<MetaDataHtmlDocumentationWriter> {
 
     private static final Logger log = LoggerFactory.getLogger(MetaDataHtmlDocumentationWriter.class);
 
@@ -91,6 +92,7 @@ public class MetaDataHtmlDocumentationWriter extends GeneratorIOWriter<MetaDataH
         return this;
     }
 
+    @Override
     public void writeHtml() throws GeneratorIOException {
         try {
             log.info("Generating professional HTML documentation for {} types",

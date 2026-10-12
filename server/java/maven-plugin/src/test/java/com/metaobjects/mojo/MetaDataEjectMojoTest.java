@@ -330,4 +330,30 @@ public class MetaDataEjectMojoTest {
             fail("expected MojoFailureException, got " + e);
         }
     }
+
+    // ------------------------------------------------------------------------------------
+    // api-docs: the templates its page text reads come with it
+    // ------------------------------------------------------------------------------------
+
+    @Test
+    public void ejectingTheJavaApiDocsWritesTheTemplatesAndPointsTheCopiedProviderAtThem() throws Exception {
+        mojo("api-docs", false, "java", null).execute();
+
+        Path src = codegenRoot().resolve("src/main/java/com/acme/codegen");
+        for (String file : List.of("JavaApiDocsGenerator", "JavaApiModelBuilder", "JavaApiDocsRenderer",
+                "DocsPaths", "ApiUnit", "ClasspathTemplateProvider")) {
+            assertTrue(file, Files.isRegularFile(src.resolve(file + ".java")));
+        }
+        // The page text is the adopter's, under the owned package's path so no jar can shadow it.
+        Path templates = codegenRoot().resolve("src/main/resources/com/acme/codegen/templates/api");
+        for (String name : List.of("entity-api", "index", "agent-api")) {
+            assertTrue(name, Files.isRegularFile(templates.resolve(name + ".md.mustache")));
+        }
+        String provider = Files.readString(src.resolve("ClasspathTemplateProvider.java"), StandardCharsets.UTF_8);
+        assertTrue(provider, provider.contains("BASE_PREFIX = \"com/acme/codegen/templates/\";"));
+        // The generator names the engine's applicability, never a generator class.
+        String generator = Files.readString(src.resolve("JavaApiDocsGenerator.java"), StandardCharsets.UTF_8);
+        assertFalse(generator, generator.contains("SpringDtoGenerator"));
+        assertTrue(generator, generator.contains("package com.acme.codegen;"));
+    }
 }

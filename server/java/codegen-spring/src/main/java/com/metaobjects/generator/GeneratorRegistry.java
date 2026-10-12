@@ -1,8 +1,23 @@
 package com.metaobjects.generator;
 
+import com.metaobjects.generator.apidocs.ApiSymbol;
+import com.metaobjects.generator.apidocs.ApiSymbolKind;
+import com.metaobjects.generator.apidocs.ApiUnit;
+import com.metaobjects.generator.apidocs.ClasspathTemplateProvider;
+import com.metaobjects.generator.apidocs.DocsPaths;
+import com.metaobjects.generator.apidocs.FieldShape;
+import com.metaobjects.generator.apidocs.JavaApiDocsGenerator;
+import com.metaobjects.generator.apidocs.JavaApiDocsRenderer;
+import com.metaobjects.generator.apidocs.JavaApiModel;
+import com.metaobjects.generator.apidocs.JavaApiModelBuilder;
+import com.metaobjects.generator.apidocs.JavaFieldShapes;
+import com.metaobjects.generator.apidocs.UnitExample;
 import com.metaobjects.generator.direct.metadata.ai.MetaDataAIDocumentationGenerator;
+import com.metaobjects.generator.direct.metadata.ai.MetaDataAIDocumentationWriter;
 import com.metaobjects.generator.direct.metadata.file.json.MetaDataFileJsonSchemaGenerator;
+import com.metaobjects.generator.direct.metadata.file.json.MetaDataFileSchemaWriter;
 import com.metaobjects.generator.direct.metadata.html.MetaDataHtmlDocumentationGenerator;
+import com.metaobjects.generator.direct.metadata.html.MetaDataHtmlDocumentationWriter;
 import com.metaobjects.generator.direct.object.BaseObjectCodeGenerator;
 import com.metaobjects.generator.direct.object.BaseObjectCodeWriter;
 import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;
@@ -11,14 +26,17 @@ import com.metaobjects.generator.direct.object.javacode.JavaCodeWriter;
 import com.metaobjects.generator.direct.object.javacode.JavaObjectCodeGenerator;
 import com.metaobjects.generator.direct.object.javacode.PojoAwareCodeWriter;
 import com.metaobjects.generator.direct.object.javacode.ValueObjectCodeWriter;
+import com.metaobjects.generator.spring.Fr019SharedEnum;
 import com.metaobjects.generator.spring.JUnitRequirementTestsGenerator;
 import com.metaobjects.generator.spring.LlmTraceHelperGenerator;
+import com.metaobjects.generator.spring.OutputFormatSpecEmitter;
 import com.metaobjects.generator.spring.SpringControllerGenerator;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
 import com.metaobjects.generator.spring.SpringFilterAllowlistGenerator;
 import com.metaobjects.generator.spring.SpringNamesGenerator;
 import com.metaobjects.generator.spring.SpringOutputParserGenerator;
 import com.metaobjects.generator.spring.SpringOutputPromptGenerator;
+import com.metaobjects.generator.spring.SpringRecordBuilder;
 import com.metaobjects.generator.spring.SpringRenderHelperGenerator;
 import com.metaobjects.generator.spring.SpringRepositoryGenerator;
 import com.metaobjects.generator.spring.SpringValueObjectGenerator;
@@ -104,6 +122,7 @@ public final class GeneratorRegistry {
         private final List<String> ejectRuntime;
         private final String ejectNote;
         private final List<String> ejectWith;
+        private final List<String> ejectResources;
 
         public GeneratorInfo(String stableName, String classname, String description,
                              Tier tier, Layer layer) {
@@ -152,6 +171,23 @@ public final class GeneratorRegistry {
         public GeneratorInfo(String stableName, String classname, String description,
                              Tier tier, Layer layer, String ejectResourcePath,
                              List<String> ejectRuntime, String ejectNote, List<String> ejectWith) {
+            this(stableName, classname, description, tier, layer, ejectResourcePath,
+                    ejectRuntime, ejectNote, ejectWith, List.of());
+        }
+
+        /**
+         * @param ejectResources the template references this GENERATOR's emit reads from the
+         *      classpath, each the path under {@link #TEMPLATE_RESOURCE_PREFIX} without its
+         *      {@code .md.mustache} extension (e.g. {@code api/index}). {@code mvn
+         *      metaobjects:eject} copies each into the adopter's module, under the owned
+         *      package's path, and points the owned template provider there, so the page text
+         *      is the adopter's too. Each is shipped at {@link #EJECT_TEMPLATE_RESOURCE_ROOT}.
+         */
+        public GeneratorInfo(String stableName, String classname, String description,
+                             Tier tier, Layer layer, String ejectResourcePath,
+                             List<String> ejectRuntime, String ejectNote, List<String> ejectWith,
+                             List<String> ejectResources) {
+            this.ejectResources = List.copyOf(ejectResources);
             this.stableName = stableName;
             this.classname = classname;
             this.description = description;
@@ -212,6 +248,12 @@ public final class GeneratorRegistry {
             return ejectWith;
         }
 
+        /** Template references copied with this generator into the adopter's resources (see
+         *  the constructor). */
+        public List<String> ejectResources() {
+            return ejectResources;
+        }
+
         @Override
         public String toString() {
             return "GeneratorInfo{" + stableName + " -> " + classname
@@ -235,13 +277,38 @@ public final class GeneratorRegistry {
     private static final List<String> ENTITY_EMIT = List.of(
             JavaCodeGenerator.class.getName(), BaseObjectCodeGenerator.class.getName(),
             BaseObjectCodeWriter.class.getName(), JavaCodeWriter.class.getName(),
-            PojoAwareCodeWriter.class.getName(), ValueObjectCodeWriter.class.getName());
+            PojoAwareCodeWriter.class.getName(), ValueObjectCodeWriter.class.getName(),
+            ExtractorCodeGenerator.class.getName());
+
+    /** The shared and externally-provided enum writer, and the builder a generated record
+     *  carries: emit code the DTO and value-object generators each call, so each takes a copy. */
+    private static final List<String> RECORD_EMIT = List.of(
+            Fr019SharedEnum.class.getName(), SpringRecordBuilder.class.getName());
+
+    /** The enum writer the output parser calls. */
+    private static final List<String> ENUM_EMIT = List.of(Fr019SharedEnum.class.getName());
+
+    /** The rest of {@code api-docs}: the page IR, the builder that fills it, the renderer, the page
+     *  paths and the template provider. {@code GeneratorApplicability} is the engine. */
+    private static final List<String> API_DOCS_EMIT = List.of(
+            ApiSymbol.class.getName(), ApiSymbolKind.class.getName(), ApiUnit.class.getName(),
+            ClasspathTemplateProvider.class.getName(), DocsPaths.class.getName(), FieldShape.class.getName(),
+            JavaApiDocsRenderer.class.getName(), JavaApiModel.class.getName(),
+            JavaApiModelBuilder.class.getName(), JavaFieldShapes.class.getName(), UnitExample.class.getName());
+
+    /** The page text of {@code api-docs}, read from the classpath. */
+    private static final List<String> API_DOCS_TEMPLATES = List.of("api/entity-api", "api/index", "api/agent-api");
+
+    /** The prompt-tier writer behind {@code output-prompt}: the format-spec literal. */
+    private static final List<String> PROMPT_EMIT = List.of(OutputFormatSpecEmitter.class.getName());
 
     /** The two generators that live in modules this one does not depend on
      *  ({@code codegen-plantuml}, {@code codegen-mustache}), so they are named, not
      *  referenced. {@code GeneratorRegistryConformanceTest} loads every registered class. */
     private static final String PLANTUML_GENERATOR =
             "com.metaobjects.generator.direct.plantuml.PlantUMLGenerator";
+    private static final String PLANTUML_WRITER =
+            "com.metaobjects.generator.direct.plantuml.PlantUMLWriter";
     private static final String MUSTACHE_GENERATOR =
             "com.metaobjects.generator.mustache.MustacheTemplateGenerator";
 
@@ -270,6 +337,14 @@ public final class GeneratorRegistry {
     /** The package the packaged support classes live in, and the one an ejectable generator
      *  imports them from. */
     public static final String SUPPORT_PACKAGE = "com.metaobjects.generator.spring";
+
+    /** The classpath prefix the packaged api-docs templates are read from, and an owned copy's
+     *  template provider is pointed away from (see {@link GeneratorInfo#ejectResources()}). */
+    public static final String TEMPLATE_RESOURCE_PREFIX = "templates/";
+
+    /** Classpath root the template sources are shipped under, one {@code <ref>.md.mustache} per
+     *  reference, for {@code mvn metaobjects:eject} to copy. */
+    public static final String EJECT_TEMPLATE_RESOURCE_ROOT = EJECT_RESOURCE_ROOT + "templates/";
 
     /** Classpath root the support sources are shipped under, one {@code <SimpleName>.java}
      *  per class, for {@code mvn metaobjects:eject} to copy. */
@@ -301,10 +376,10 @@ public final class GeneratorRegistry {
                     + "com.metaobjects.object.extract, so the consuming module needs a "
                     + "`metaobjects-om` dependency — without it the generated parser does not "
                     + "compile and nothing in the build says why.]", Tier.NATIVE, Layer.CAPABILITY,
-                ejectPath(SpringOutputParserGenerator.class));
+                ejectPath(SpringOutputParserGenerator.class), List.of(), null, ENUM_EMIT);
         register(m, "output-prompt", SpringOutputPromptGenerator.class.getName(),
                 "Per-template output-format prompt fragment generator.", Tier.NATIVE, Layer.CAPABILITY,
-                ejectPath(SpringOutputPromptGenerator.class));
+                ejectPath(SpringOutputPromptGenerator.class), List.of(), null, PROMPT_EMIT);
         register(m, "render-helper", SpringRenderHelperGenerator.class.getName(),
                 "Per-renderable-template render helper (typed wrappers; document/email for a template.output, the document shape for a template.prompt).", Tier.NATIVE, Layer.CAPABILITY,
                 ejectPath(SpringRenderHelperGenerator.class));
@@ -343,12 +418,12 @@ public final class GeneratorRegistry {
                 ejectPath(SpringRepositoryGenerator.class), List.of("FilterPredicate"));
         register(m, "dto", SpringDtoGenerator.class.getName(),
                 "Per-entity Spring DTO record.", Tier.NATIVE, Layer.MODEL,
-                ejectPath(SpringDtoGenerator.class), List.of("PatchValidationException"));
+                ejectPath(SpringDtoGenerator.class), List.of("PatchValidationException"), null, RECORD_EMIT);
         register(m, "value-object", SpringValueObjectGenerator.class.getName(),
                 "Per-value-object Spring record with jakarta constraints — the typed "
                     + "component the DTO/Patch bind for a field.object @storage:jsonb column, "
                     + "and a template's payload/response type.", Tier.NATIVE, Layer.MODEL,
-                ejectPath(SpringValueObjectGenerator.class));
+                ejectPath(SpringValueObjectGenerator.class), List.of(), null, RECORD_EMIT);
         register(m, "trace-helper", LlmTraceHelperGenerator.class.getName(),
                 "Per-entity typed record<Entity> LLM-trace helper (extract + buildLlmCallRow + persist; "
                     + "LlmCallBase-derived entities only).", Tier.NATIVE, Layer.CAPABILITY,
@@ -363,20 +438,34 @@ public final class GeneratorRegistry {
                     + "for a hand-written consumer to reference instead of a string literal.", Tier.NATIVE, Layer.MODEL,
                 ejectPath(SpringNamesGenerator.class));
         // The generators below were wirable by class name and in no registry, so no catalog,
-        // eject command or test saw them (ADR-0034 Amendment 8). They are registered so the
-        // eject contract covers them. None ships eject source yet; "mustache" never will: it
-        // is deprecated in favour of "template".
+        // eject command or test saw them (ADR-0034 Amendment 8). Each is a generator and the writer
+        // that emits its file; eject copies both. "mustache" never ejects: it is deprecated in
+        // favour of "template".
+        register(m, "api-docs", JavaApiDocsGenerator.class.getName(),
+                "Per-entity/template SDK API reference (generated-code API; human + agent forms).",
+                Tier.NATIVE, Layer.DOCS, ejectPath(JavaApiDocsGenerator.class), List.of(),
+                "api-docs: `mvn metaobjects:docs` runs this generator, not `metaobjects:generate`, which "
+                    + "skips it. List it in <generators> with <classname>{owned}</classname> and the "
+                    + "docs goal runs your copy for the java surface in place of the packaged one.",
+                API_DOCS_EMIT, API_DOCS_TEMPLATES);
         register(m, "plantuml", PLANTUML_GENERATOR,
-                "PlantUML class diagram of the object model.", Tier.NATIVE, Layer.DOCS);
+                "PlantUML class diagram of the object model.", Tier.NATIVE, Layer.DOCS,
+                EJECT_RESOURCE_ROOT + "PlantUMLGenerator.java", List.of(), null, List.of(PLANTUML_WRITER));
         register(m, "html-docs", MetaDataHtmlDocumentationGenerator.class.getName(),
                 "Single-page HTML reference of the registered metamodel types, read from the "
-                    + "type registry.", Tier.NATIVE, Layer.DOCS);
+                    + "type registry.", Tier.NATIVE, Layer.DOCS,
+                ejectPath(MetaDataHtmlDocumentationGenerator.class), List.of(), null,
+                List.of(MetaDataHtmlDocumentationWriter.class.getName()));
         register(m, "ai-docs", MetaDataAIDocumentationGenerator.class.getName(),
                 "JSON reference of the registered metamodel types written for an AI reader, "
-                    + "read from the type registry.", Tier.NATIVE, Layer.DOCS);
+                    + "read from the type registry.", Tier.NATIVE, Layer.DOCS,
+                ejectPath(MetaDataAIDocumentationGenerator.class), List.of(), null,
+                List.of(MetaDataAIDocumentationWriter.class.getName()));
         register(m, "json-schema", MetaDataFileJsonSchemaGenerator.class.getName(),
                 "JSON Schema that validates metadata files, read from the type registry.",
-                Tier.NATIVE, Layer.CAPABILITY);
+                Tier.NATIVE, Layer.CAPABILITY,
+                ejectPath(MetaDataFileJsonSchemaGenerator.class), List.of(), null,
+                List.of(MetaDataFileSchemaWriter.class.getName()));
         register(m, "mustache", MUSTACHE_GENERATOR,
                 "The pre-`template` Mustache generator, kept so a pom that names its class keeps "
                     + "building. Deprecated: use `template`.", Tier.NATIVE, Layer.CAPABILITY);
@@ -405,8 +494,16 @@ public final class GeneratorRegistry {
                                  String classname, String description, Tier tier, Layer layer,
                                  String ejectResourcePath, List<String> ejectRuntime,
                                  String ejectNote, List<String> ejectWith) {
+        register(m, stableName, classname, description, tier, layer, ejectResourcePath,
+                ejectRuntime, ejectNote, ejectWith, List.of());
+    }
+
+    private static void register(Map<String, GeneratorInfo> m, String stableName,
+                                 String classname, String description, Tier tier, Layer layer,
+                                 String ejectResourcePath, List<String> ejectRuntime,
+                                 String ejectNote, List<String> ejectWith, List<String> ejectResources) {
         if (m.put(stableName, new GeneratorInfo(stableName, classname, description, tier, layer,
-                ejectResourcePath, ejectRuntime, ejectNote, ejectWith)) != null) {
+                ejectResourcePath, ejectRuntime, ejectNote, ejectWith, ejectResources)) != null) {
             throw new IllegalStateException("duplicate generator stable name: " + stableName);
         }
     }

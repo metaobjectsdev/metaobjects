@@ -125,8 +125,48 @@ generator catalog and the Atlas evaluation are 1.2 work.
   pages `meta docs` writes) and `agent-docs` (the pages `meta docs --agent` writes), both
   neutral and both still run by `meta docs`; a `generators` entry naming either string is
   refused the way `"docs"` is. Java: `plantuml`, `html-docs`, `ai-docs`, `json-schema` and the
-  deprecated `mustache`, each by the class name a pom already uses. None of the seven ships
-  eject source yet; `mustache` will not.
+  deprecated `mustache`, each by the class name a pom already uses. `mustache` will not ship
+  eject source. The four Java generators that can ship it do: see **Java and Kotlin** below.
+
+- **Java and Kotlin: eject hands over the emitters a generator writes through, and
+  `api-docs`, `plantuml`, `html-docs`, `ai-docs` and `json-schema` are ejectable.** An ejected
+  Java or Kotlin generator used to be one file over packaged emitters, so a defect in the enum,
+  record-builder, extraction-mirror or prompt-format writers still waited for a release. Eject
+  now copies those emitters with the generator, into its package, and points the imports the
+  copies have of one another at the copies. Java `dto` and `value-object` take
+  `Fr019SharedEnum` and `SpringRecordBuilder`; Java `output-parser` takes `Fr019SharedEnum`;
+  Java `output-prompt` takes `OutputFormatSpecEmitter`; Kotlin `entity` takes
+  `KotlinEnumEmitter`; Kotlin `output-parser` takes `KotlinExtractSchemaEmitter`; Kotlin
+  `output-prompt` takes `KotlinOutputFormatSpecEmitter` and `KotlinExtractSchemaEmitter`. A
+  class two generators share is written once and never overwritten. The naming and type-mapping
+  tables, the model walks and the generator bases stay in the package as the engine. Kotlin
+  `Fr019SharedEnum` is engine: it writes nothing, and the type mapper takes its
+  `ProvidedEnumConfig` as an argument, so its `providedInDeclarationPackage` and
+  `DECLARATION_PACKAGE` members are now public. The owned Java `entity` writes its extractors
+  through the owned `ExtractorCodeGenerator`, where it used to construct the packaged one.
+  Packaged output is unchanged. A copy you ejected earlier keeps compiling with the packaged
+  emitters; own them with the recipe in
+  [own-your-codegen](docs/features/own-your-codegen.md#ejecting-a-generator-hands-over-the-emitters-it-writes-through-java-and-kotlin).
+  - **`api-docs` is a generator, and ejectable, in Java and Kotlin.** The api reference
+    `mvn metaobjects:docs` writes is now `JavaApiDocsGenerator` / `KotlinApiDocsGenerator`, run
+    through a new `DocsGenerator` marker (`metaobjects-codegen-base`). `metaobjects:generate` and
+    `metaobjects:verify` skip a `DocsGenerator` and say so in the build log; `metaobjects:docs`
+    runs the one your `<generators>` list names for a surface, else the packaged one. Eject
+    copies the generator, the page model, the builder, the renderer and the path math, and for
+    Java the page templates too, into `codegen/src/main/resources/<package path>/templates/`,
+    with the copied template provider pointed there. What the Java reference documents comes
+    from `GeneratorApplicability.packaged()`, so it describes the packaged generators even in a
+    project that owns a copy of one. Page output and the goal's parameters
+    (`language`, `apiSubDir`, `layout`, `modelBaseUrl`, `outputDirectory`) are unchanged.
+  - **The Java `plantuml`, `html-docs`, `ai-docs` and `json-schema` generators ship eject
+    source**, each with the writer that emits its file. `SingleHtmlDirectGeneratorBase` now
+    drives the new `HtmlDirectWriter`, as the JSON base drives `JsonDirectWriter`, so a copied
+    HTML generator pairs with the copy of its writer. A subclass of the base that overrode
+    `getWriter` or `writeHtml` with `MetaDataHtmlDocumentationWriter` in the signature needs
+    `HtmlDirectWriter` there. The attributes the JSON Schema and AI documentation generators
+    add to the metamodel moved to `CodeGenMetaDataProvider`, where the loader registers them,
+    so a copy owns emit code only; the old static methods and constants on the two generators
+    stay as deprecated forwarders.
 
 - **The Java `entity` and `extractor` generators can be ejected.**
   `mvn metaobjects:eject -Dnames=entity,extractor -Dport=java` copies each generator, with
@@ -137,14 +177,16 @@ generator catalog and the Atlas evaluation are 1.2 work.
   `identical` or `DIFFERS`, and `mvn metaobjects:verify` runs them when your pom names them.
   Every Java generator is now ejectable except `template`. Ruling and reasoning: ADR-0034
   Amendment 6.
-  - **The owned `entity` includes the class body.** Eject copies seven files into one
+  - **The owned `entity` includes the class body.** Eject copies eight files into one
     package: `JavaObjectCodeGenerator`, the two bases it extends (`JavaCodeGenerator`,
-    `BaseObjectCodeGenerator`), and the four writers that emit each class
+    `BaseObjectCodeGenerator`), the four writers that emit each class
     (`BaseObjectCodeWriter`, `JavaCodeWriter`, `PojoAwareCodeWriter`,
-    `ValueObjectCodeWriter`). The copies use one another, never the packaged classes: where
+    `ValueObjectCodeWriter`) and `ExtractorCodeGenerator`, which writes the
+    `<Name>Extractor` classes `entity` emits when no separate `extractor` is in the run. The
+    copies use one another, never the packaged classes: where
     one imports another, eject rewrites that import along with the package line. You change
     a field, a constructor or an accessor by editing the writer, with nothing to subclass.
-    `-Dlist` gives `entity` one verdict over all seven files. Details:
+    `-Dlist` gives `entity` one verdict over all eight files. Details:
     [own-your-codegen](docs/features/own-your-codegen.md#java-entity-and-extractor).
   - **`extractor` is a generator of its own (Java).** `ExtractorCodeGenerator` can be named
     in `<generators>`, with the same `outputDir`, `pkgPrefix`, `pkgSuffix`, `namePrefix`,

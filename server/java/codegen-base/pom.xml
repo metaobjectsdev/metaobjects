@@ -99,8 +99,9 @@
                  Copied at BUILD TIME from the src/main/java files the compiler just compiled,
                  so the resource IS the source: one file, one owner, nothing to drift.
 
-                 These are "entity" (JavaObjectCodeGenerator) and "extractor"
-                 (ExtractorCodeGenerator), and the rest of their emit, which eject copies
+                 These are "entity" (JavaObjectCodeGenerator), "extractor"
+                 (ExtractorCodeGenerator), "html-docs", "ai-docs" and "json-schema", and the rest
+                 of their emit, which eject copies
                  with them into the same owned package (GeneratorInfo.ejectWith(), ADR-0034
                  Amendment 6): the generator bases and the writers that emit the class body
                  for "entity", and the writer "extractor" reads its names from. "template"
@@ -135,6 +136,29 @@
                                     <includes>
                                         <include>BaseObjectCodeGenerator.java</include>
                                         <include>BaseObjectCodeWriter.java</include>
+                                    </includes>
+                                </resource>
+                                <!-- "html-docs", "ai-docs" and "json-schema": each a generator and
+                                     the writer that emits its file. -->
+                                <resource>
+                                    <directory>src/main/java/com/metaobjects/generator/direct/metadata/html</directory>
+                                    <includes>
+                                        <include>MetaDataHtmlDocumentationGenerator.java</include>
+                                        <include>MetaDataHtmlDocumentationWriter.java</include>
+                                    </includes>
+                                </resource>
+                                <resource>
+                                    <directory>src/main/java/com/metaobjects/generator/direct/metadata/ai</directory>
+                                    <includes>
+                                        <include>MetaDataAIDocumentationGenerator.java</include>
+                                        <include>MetaDataAIDocumentationWriter.java</include>
+                                    </includes>
+                                </resource>
+                                <resource>
+                                    <directory>src/main/java/com/metaobjects/generator/direct/metadata/file/json</directory>
+                                    <includes>
+                                        <include>MetaDataFileJsonSchemaGenerator.java</include>
+                                        <include>MetaDataFileSchemaWriter.java</include>
                                     </includes>
                                 </resource>
                             </resources>
