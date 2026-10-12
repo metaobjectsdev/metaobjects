@@ -38,8 +38,6 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from metaobjects.apidocs.naming import snake_case as _snake_case
-from metaobjects.codegen import fr010_field_mapping as fm
-from metaobjects.codegen import extract_delegate_emitter as rde
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
@@ -52,6 +50,8 @@ from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_data import MetaData
 
+from ..runtime import extract_delegate_emitter as rde
+from ..runtime import fr010_field_mapping as fm
 from ..runtime.shared_predicates import has_literal_default
 
 _GENERATOR_NAME = "extractor-generator"

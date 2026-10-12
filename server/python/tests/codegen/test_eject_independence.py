@@ -71,9 +71,14 @@ def test_loading_one_ejectable_generator_loads_no_other_generators_module(tmp_pa
     assert not offenders, "\n".join(offenders)
 
 
+#: The docs generator reads the router gates (`is_read_only_routed`, `emits_writable_router`) from
+#: the same module, so the reference describes the routers an owned `routes` emits.
+DOCS_READERS = {"api-docs"}
+
+
 def test_the_generators_that_share_a_predicate_hand_it_over() -> None:
     users = {n for n, e in GENERATOR_REGISTRY.items() if SHARED in e.runtime}
-    assert users == set(SHARED_USERS)
+    assert users == set(SHARED_USERS) | DOCS_READERS
 
 
 def test_each_owned_generator_ejected_alone_reads_the_owned_predicates(tmp_path, monkeypatch) -> None:

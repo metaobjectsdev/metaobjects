@@ -17,6 +17,26 @@ class EmittedFile:
     generated_by: str = ""  # set by the runner from Generator.name
 
 
+#: The docs surface the stock ``api-docs`` generator takes over: ``metaobjects docs`` runs a
+#: generator carrying this value as ``docs_surface``, and ``gen`` skips it.
+DOCS_SURFACE_API = "api"
+
+
+#: The default api-surface subdirectory (the cross-port contract's ``api/python``).
+DEFAULT_API_SUBDIR = "api/python"
+
+
+@dataclass(frozen=True)
+class DocsRunFacts:
+    """What a ``metaobjects docs`` run tells a docs generator beyond the model: the project
+    label shown in the pages, the subdirectory the pages land under, and the base URL the
+    model back-links federate to (``None`` = relative links)."""
+
+    project: str = "project"
+    api_subdir: str = DEFAULT_API_SUBDIR
+    model_base_url: str | None = None
+
+
 @dataclass
 class GenContext:
     entities: list[MetaObject]
@@ -24,6 +44,8 @@ class GenContext:
     matches: Callable[[MetaObject], bool]
     config: GenConfig
     warn: Callable[[str], None]
+    #: Set by ``metaobjects docs`` only; ``None`` in a ``gen`` run.
+    docs: DocsRunFacts | None = None
 
 
 class Generator(Protocol):

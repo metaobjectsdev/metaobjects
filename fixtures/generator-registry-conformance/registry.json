@@ -452,27 +452,6 @@
     "pending": [
       {"generator": "api-docs", "port": "java", "assertion": "census", "gap": 6},
       {"generator": "api-docs", "port": "kotlin", "assertion": "census", "gap": 6},
-      {"generator": "api-docs", "port": "python", "assertion": "census", "gap": 6},
-      {
-        "generator": "entity",
-        "port": "python",
-        "assertion": "depth",
-        "gap": 5,
-        "outside": ["metaobjects.codegen.generators.fr019_shared_enum", "metaobjects.codegen.generators.m2m_codegen"]
-      },
-      {
-        "generator": "extractor",
-        "port": "python",
-        "assertion": "depth",
-        "gap": 4,
-        "outside": ["metaobjects.codegen.extract_delegate_emitter", "metaobjects.codegen.fr010_field_mapping"]
-      },
-      {"generator": "filter-allowlist", "port": "python", "assertion": "depth", "gap": 5, "outside": ["metaobjects.codegen.generators.m2m_codegen"]},
-      {"generator": "output-parser", "port": "python", "assertion": "depth", "gap": 4, "outside": ["metaobjects.codegen.extract_delegate_emitter"]},
-      {"generator": "output-prompt", "port": "python", "assertion": "depth", "gap": 4, "outside": ["metaobjects.codegen.output_format_spec_emitter"]},
-      {"generator": "routes", "port": "python", "assertion": "depth", "gap": 4, "outside": ["metaobjects.codegen.fr010_field_mapping"]},
-      {"generator": "routes", "port": "python", "assertion": "depth", "gap": 5, "outside": ["metaobjects.codegen.generators.m2m_codegen"]},
-      {"generator": "trace-helper", "port": "python", "assertion": "depth", "gap": 4, "outside": ["metaobjects.codegen.extract_schema_emitter"]},
       {"generator": "ai-docs", "port": "java", "assertion": "completeness", "gap": 7},
       {"generator": "html-docs", "port": "java", "assertion": "completeness", "gap": 7},
       {"generator": "json-schema", "port": "java", "assertion": "completeness", "gap": 7},

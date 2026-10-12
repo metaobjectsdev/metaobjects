@@ -36,13 +36,13 @@ from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
-from metaobjects.codegen.generators.m2m_codegen import build_object_index
 from metaobjects.codegen.generators.tph_plan import tph_plan_for
 from metaobjects.codegen.instance_artifacts import is_sourceless_entity
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
 
+from ..runtime.m2m_codegen import build_object_index
 from ..runtime.shared_predicates import emits_router
 
 

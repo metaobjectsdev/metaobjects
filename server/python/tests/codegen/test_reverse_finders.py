@@ -32,7 +32,7 @@ from metaobjects.apidocs.naming import (
     reverse_finder_fn,
     reverse_finder_in_fn,
 )
-from metaobjects.codegen.generators.m2m_codegen import build_object_index
+from metaobjects.codegen.runtime.m2m_codegen import build_object_index
 from metaobjects.codegen.generators.router_generator import (
     render_router,
     reverse_fks_for,

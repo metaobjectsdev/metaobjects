@@ -24,7 +24,6 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from metaobjects.apidocs.naming import snake_case as _snake_case
-from metaobjects.codegen import output_format_spec_emitter as ofs
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
@@ -35,6 +34,8 @@ from metaobjects.codegen.generators.find_inbound import (
 from metaobjects.codegen.value_objects import pkg_of
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_data import MetaData
+
+from ..runtime import output_format_spec_emitter as ofs
 
 _GENERATOR_NAME = "output-prompt-generator"
 

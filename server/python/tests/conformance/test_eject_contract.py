@@ -269,6 +269,8 @@ root, name, corpora = Path(sys.argv[1]), sys.argv[2], json.loads(sys.argv[3])
 from metaobjects import MetaDataLoader
 from metaobjects.codegen import eject as owned
 from metaobjects.codegen.config import GenConfig
+from metaobjects.codegen.docs_run import run_docs
+from metaobjects.codegen.generator import DocsRunFacts
 from metaobjects.codegen.generator_registry import GENERATOR_REGISTRY, GeneratorBuildContext
 from metaobjects.codegen.runner import run_gen
 from metaobjects.loader.sources import FileSource
@@ -282,6 +284,12 @@ for corpus, spec in corpora.items():
     mine, err = owned.build_owned(owned.owned_token(entry), root, ctx)
     assert err is None, err
     for side, generator in (("owned", mine), ("packaged", entry.factory(ctx))):
+        if getattr(generator, "docs_surface", None) is not None:
+            # A docs generator is run by `metaobjects docs`, not by `gen`, which skips it.
+            outcome = run_docs(loaded.root, "docs", DocsRunFacts(project="model"), [generator])
+            assert outcome.error is None, outcome.error
+            out[side][corpus] = dict(outcome.files)
+            continue
         with tempfile.TemporaryDirectory() as tmp:
             run_gen(GenConfig(out_dir=tmp, emit_package_init=False), loaded.root, generators=[generator])
             out[side][corpus] = {

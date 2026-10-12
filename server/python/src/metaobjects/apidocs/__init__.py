@@ -19,7 +19,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 # Path math is leaf-level (no generator imports) — safe to expose eagerly.
-from metaobjects.apidocs.paths import (
+from metaobjects.codegen.runtime.api_docs_paths import (
     Layout,
     doc_page_output_path,
     model_cross_href,
@@ -28,7 +28,7 @@ from metaobjects.apidocs.paths import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - import-time only for type checkers
-    from metaobjects.apidocs.api_model import (
+    from metaobjects.codegen.runtime.api_docs_model import (
         ApiModel,
         ApiSymbol,
         ApiSymbolKind,
@@ -36,8 +36,8 @@ if TYPE_CHECKING:  # pragma: no cover - import-time only for type checkers
         FieldShape,
         UnitExample,
     )
-    from metaobjects.apidocs.builder import PythonApiModelBuilder, build_api_model
-    from metaobjects.apidocs.renderer import (
+    from metaobjects.codegen.runtime.api_docs_builder import PythonApiModelBuilder, build_api_model
+    from metaobjects.codegen.runtime.api_docs_renderer import (
         PythonApiDocsRenderer,
         render_agent_api,
         render_index,
@@ -46,18 +46,18 @@ if TYPE_CHECKING:  # pragma: no cover - import-time only for type checkers
 
 # Lazily-resolved exports → their defining submodule.
 _LAZY: dict[str, str] = {
-    "ApiModel": "api_model",
-    "ApiSymbol": "api_model",
-    "ApiSymbolKind": "api_model",
-    "ApiUnit": "api_model",
-    "FieldShape": "api_model",
-    "UnitExample": "api_model",
-    "PythonApiModelBuilder": "builder",
-    "build_api_model": "builder",
-    "PythonApiDocsRenderer": "renderer",
-    "render_unit_page": "renderer",
-    "render_index": "renderer",
-    "render_agent_api": "renderer",
+    "ApiModel": "api_docs_model",
+    "ApiSymbol": "api_docs_model",
+    "ApiSymbolKind": "api_docs_model",
+    "ApiUnit": "api_docs_model",
+    "FieldShape": "api_docs_model",
+    "UnitExample": "api_docs_model",
+    "PythonApiModelBuilder": "api_docs_builder",
+    "build_api_model": "api_docs_builder",
+    "PythonApiDocsRenderer": "api_docs_renderer",
+    "render_unit_page": "api_docs_renderer",
+    "render_index": "api_docs_renderer",
+    "render_agent_api": "api_docs_renderer",
 }
 
 __all__ = [
@@ -87,5 +87,5 @@ def __getattr__(name: str) -> Any:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     import importlib
 
-    mod = importlib.import_module(f"{__name__}.{submodule}")
+    mod = importlib.import_module(f"metaobjects.codegen.runtime.{submodule}")
     return getattr(mod, name)

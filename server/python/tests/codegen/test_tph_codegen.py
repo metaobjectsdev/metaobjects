@@ -19,7 +19,7 @@ import pytest
 from metaobjects import MetaDataLoader
 from metaobjects.codegen.generators.entity_model import render_entity_model
 from metaobjects.codegen.generators.filter_allowlist_generator import render_filter_allowlist
-from metaobjects.codegen.generators.m2m_codegen import build_object_index
+from metaobjects.codegen.runtime.m2m_codegen import build_object_index
 from metaobjects.codegen.generators.router_generator import render_router
 from metaobjects.codegen.generators.tph_plan import (
     is_tph_base,
