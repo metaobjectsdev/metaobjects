@@ -46,14 +46,7 @@ from metaobjects.apidocs.naming import reverse_finder_fn, reverse_finder_in_fn
 from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import GENERATED_MARKER, generated_header
 from metaobjects.codegen.format import ruff_format
-from metaobjects.codegen.fr010_field_mapping import is_required
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
-from metaobjects.codegen.generators.m2m_codegen import (
-    M2mDescriptor,
-    build_object_index,
-    pk_field_name,
-    resolve_m2m_descriptors,
-)
 from metaobjects.codegen.generators.tph_plan import TphPlan, is_tph_subtype, tph_plan_for
 from metaobjects.codegen.instance_artifacts import has_item_route
 from metaobjects.source_resolution import primary_rdb_source
@@ -81,7 +74,14 @@ from metaobjects.naming import DEFAULT_COLUMN_NAMING
 from metaobjects.shared.base_types import TYPE_IDENTITY
 from metaobjects.shared.separators import PACKAGE_SEP
 
-from ..runtime.shared_predicates import READ_ONLY_ROUTED_KINDS, emits_router
+from ..runtime.fr010_field_mapping import is_required
+from ..runtime.m2m_codegen import (
+    M2mDescriptor,
+    build_object_index,
+    pk_field_name,
+    resolve_m2m_descriptors,
+)
+from ..runtime.shared_predicates import emits_router, is_read_only_routed
 
 #: Where the emitted router imports its helper runtime (``filter_parser``,
 #: ``constraint_errors``) from. ``False`` — the packaged generator — imports the copy
@@ -410,19 +410,6 @@ def reverse_fks_for(entity: MetaObject) -> list[ReverseFk]:
             continue
         out.append(ReverseFk(fk_field=fk_field, target_entity=target))
     return out
-
-
-def is_read_only_routed(entity: MetaObject) -> bool:
-    """Whether :meth:`RouterGenerator.render_router` chooses the READ-ONLY router for
-    this object (a view / materialized-view source that is not write-through): GET list,
-    GET by id when it has an item route, and the 405 refusals, with no write surface.
-
-    THE predicate behind that choice, shared with the API-docs builder so a page can never
-    present write verbs for an object whose router refuses them."""
-    if not emits_router(entity) or entity.is_write_through():
-        return False
-    src = primary_rdb_source(entity)
-    return src is not None and src.effective_kind() in READ_ONLY_ROUTED_KINDS
 
 
 def _sort_type_and_tables_lines(sort_field_nodes: list[MetaField]) -> list[str]:

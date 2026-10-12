@@ -93,7 +93,8 @@ from metaobjects.codegen.project_config import (
     TargetConfig,
     load_project_config,
 )
-from metaobjects.codegen.generator import Generator
+from metaobjects.codegen.docs_run import resolve_docs_generators, run_docs
+from metaobjects.codegen.generator import DEFAULT_API_SUBDIR, DocsRunFacts, Generator
 from metaobjects.codegen.generators.entity_model import entity_model
 from metaobjects.codegen.generators.extractor_generator import extractor_generator
 from metaobjects.codegen.generators.filter_allowlist_generator import (
@@ -1007,33 +1008,25 @@ def _resolve_metadata_location_or_print_error(
         return None
 
 
-#: The default api-surface subdir (the cross-port contract's ``api/python``).
-_DOCS_DEFAULT_API_SUBDIR = "api/python"
-
-
 def _cmd_docs(args: argparse.Namespace) -> int:
     """``docs`` — emit the generated Python SDK api surface (the ``api/python``
     surface of the cross-port SDK-docs contract) under ``--out``.
 
-    Wiring only: every symbol name comes from the ``PythonApiModelBuilder`` (which
-    keys off the naming seam + each generator's applies-predicate) and every path
-    comes from :mod:`metaobjects.apidocs.paths` — nothing is re-derived here. Output
-    paths are collision-checked (duplicate page path → failure) BEFORE anything is
-    written, mirroring the C# ``DocsCommand`` / the Java Mojo. Layout is ``package``
-    (the cross-port contract). ``--model-base-url`` federates the model back-links
-    when set."""
-    from metaobjects.apidocs import (
-        Layout,
-        PythonApiDocsRenderer,
-        PythonApiModelBuilder,
-        doc_page_output_path,
-        model_cross_href,
-    )
-
+    Wiring only: the pages come from the ``api-docs`` generator, which builds them from
+    the naming seam plus each generator's applies-predicate and writes them under the
+    cross-port contract's ``package`` layout. A project that owns that generator
+    (``metaobjects eject api-docs``) lists it in the config's ``docs.generators`` and
+    ``docs`` runs the copy in its place. Output paths are collision-checked (duplicate
+    page path → failure) BEFORE anything is written, mirroring the C# ``DocsCommand`` /
+    the Java Mojo. ``--model-base-url`` federates the model back-links when set. The
+    positional ``metadata_dir`` form reads no config, so it always runs the packaged
+    generator."""
     providers, providers_ok = _providers_from_args(args)
     if not providers_ok:
         return 1
 
+    docs_generators: list[str] = []
+    owned_root = Path.cwd()
     if args.metadata_dir is None:
         # Mirrors `gen`'s no-positional routing (#267): rung 2 (`metadata` in
         # `metaobjects.config.yaml`, if one is found), else rungs 3-4 via
@@ -1067,6 +1060,8 @@ def _cmd_docs(args: argparse.Namespace) -> int:
                 return 1
             providers = [*providers, *config_providers]
             docs_libraries = config.libraries
+            docs_generators = config.docs_generators
+            owned_root = config.config_dir
         root, errors = _load_root_from_collection(
             collection, providers=providers, libraries=docs_libraries
         )
@@ -1081,43 +1076,28 @@ def _cmd_docs(args: argparse.Namespace) -> int:
             print(f"  {msg}", file=sys.stderr)
         return 1
 
-    api_subdir = args.api_subdir or _DOCS_DEFAULT_API_SUBDIR
+    api_subdir = args.api_subdir or DEFAULT_API_SUBDIR
     project = args.project or project_default
     model_base_url = getattr(args, "model_base_url", None)
 
-    model = PythonApiModelBuilder().build(root, project)
-    renderer = PythonApiDocsRenderer()
-    layout = Layout.PACKAGE
-
-    # Collect rel-path → content first so a duplicate page path fails BEFORE any write.
-    emitted: dict[str, str] = {}
-
-    def _put(path: str, content: str) -> None:
-        if path in emitted:
-            raise ValueError(f"docs — duplicate api page output path: {path}")
-        emitted[path] = content
-
-    try:
-        for unit in model.units:
-            page_path = doc_page_output_path(layout, unit.package, unit.node)
-            api_page_path_from_docs_root = f"{api_subdir}/{page_path}"
-            href = model_cross_href(api_page_path_from_docs_root, page_path, model_base_url)
-            _put(page_path, renderer.render_unit_page(unit, href))
-        _put("README.md", renderer.render_index(model, layout))
-        _put("AGENT-API.md", renderer.render_agent_api(model))
-    except ValueError as exc:
+    facts = DocsRunFacts(project=project, api_subdir=api_subdir, model_base_url=model_base_url)
+    generators, gen_err = resolve_docs_generators(docs_generators, owned_root)
+    if gen_err is not None:
+        print(f"error: {gen_err}", file=sys.stderr)
+        return 1
+    outcome = run_docs(root, args.out, facts, generators)
+    if outcome.error is not None:
         # A duplicate output path (e.g. two units that resolve to the same page) is a
         # clean user-facing failure, not a stack trace.
-        print(f"error: {exc}", file=sys.stderr)
+        print(f"error: {outcome.error}", file=sys.stderr)
         return 1
 
-    api_root = Path(args.out) / api_subdir
     written: list[str] = []
-    for rel, content in emitted.items():
-        dest = api_root / rel
+    for rel, content in outcome.files:
+        dest = Path(args.out) / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(content, encoding="utf-8")
-        written.append(f"{api_subdir}/{rel}")
+        written.append(rel)
 
     for path in sorted(written):
         print(path)

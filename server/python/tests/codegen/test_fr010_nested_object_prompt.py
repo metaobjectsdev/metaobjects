@@ -14,7 +14,7 @@ from __future__ import annotations
 import ast
 
 import metaobjects.core_types  # noqa: F401 — side-effect: registers attr classes
-from metaobjects.codegen import output_format_spec_emitter as ofs
+from metaobjects.codegen.runtime import output_format_spec_emitter as ofs
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject

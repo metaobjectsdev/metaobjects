@@ -53,7 +53,7 @@ from fastapi import FastAPI
 from metaobjects import MetaDataLoader
 from metaobjects.codegen.generators.entity_model import render_entity_model
 from metaobjects.codegen.generators.filter_allowlist_generator import render_filter_allowlist
-from metaobjects.codegen.generators.m2m_codegen import (
+from metaobjects.codegen.runtime.m2m_codegen import (
     M2mDescriptor,
     build_object_index,
     pk_field_name,

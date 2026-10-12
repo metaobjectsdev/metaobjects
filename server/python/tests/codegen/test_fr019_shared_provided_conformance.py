@@ -27,7 +27,7 @@ from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.generator import GenContext
 from metaobjects.codegen.generators.entity_model import EntityModelGenerator, entity_model
-from metaobjects.codegen.generators.fr019_shared_enum import (
+from metaobjects.codegen.runtime.fr019_shared_enum import (
     is_provided,
     materialized_shared_enums,
     resolve_shared_enum_decl,

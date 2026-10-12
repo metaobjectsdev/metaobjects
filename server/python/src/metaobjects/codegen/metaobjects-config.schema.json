@@ -55,6 +55,18 @@
         }
       }
     },
+    "docs": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Options of `metaobjects docs`.",
+      "properties": {
+        "generators": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[^:\\s]+:[^:\\s]+$" },
+          "description": "Owned docs generators as 'module:symbol' (`metaobjects eject api-docs` prints the entry), resolved relative to this config file's directory. `metaobjects docs` runs one in place of the packaged generator for the surface it takes over; `gen` never runs it."
+        }
+      }
+    },
     "targets": {
       "type": "object",
       "minProperties": 1,

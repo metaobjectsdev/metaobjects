@@ -42,7 +42,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from metaobjects.codegen import extract_schema_emitter as rse
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
@@ -55,6 +54,8 @@ from metaobjects.meta.template import template_constants as tc
 from metaobjects.meta.template.meta_template import MetaTemplate
 from metaobjects.shared.base_types import TYPE_TEMPLATE
 from metaobjects.library.library_sources import LIBRARY_MANIFESTS
+
+from ..runtime import extract_schema_emitter as rse
 
 _GENERATOR_NAME = "trace-helper"
 

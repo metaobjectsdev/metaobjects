@@ -133,6 +133,17 @@ def run_gen(
 
     emitted: dict[str, tuple[str, str]] = {}  # full_path -> (content, generated_by)
     for gen in generators:
+        docs_surface = getattr(gen, "docs_surface", None)
+        if docs_surface is not None:
+            # A docs generator writes pages under the docs output directory, and
+            # `metaobjects docs` runs it from `docs.generators`: here it would write them
+            # into the code tree, so it is skipped and the miswiring is named.
+            result.warnings.append(
+                f"{gen.name!r} writes the {docs_surface} reference, so gen skipped it. "
+                "List it under `docs.generators` in metaobjects.config.yaml: "
+                "`metaobjects docs` runs it from there."
+            )
+            continue
         ctx = GenContext(
             entities=safe,
             loaded_root=metadata,

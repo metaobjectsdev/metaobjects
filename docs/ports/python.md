@@ -660,6 +660,16 @@ standard-library module name (`types`, `json`) is refused there with an error na
 rename it. See
 [Own your codegen → Python](../features/own-your-codegen.md#python-metaobjects-eject).
 
+Every generator `metaobjects gen --list` shows is ejectable except `template`, the Mustache
+primitive, which has no emit logic of its own to own. An ejected generator comes with the
+emitters it writes its output through (the shared-enum and M:N writers, the prompt tier's
+field mapping, extract delegate, extract schema and format-spec writers), copied into
+`codegen/runtime/` and read from there, so the copy owns the code that writes the file and
+not a shell around the package's. The naming and type-mapping tables, the model walks and
+the generator base stay in the package as the engine. `metaobjects eject api-docs` does the
+same for the api reference `metaobjects docs` writes: the copy is wired under
+`docs.generators` in `metaobjects.config.yaml`, never in a target's `generators`.
+
 Ejecting `routes` also hands over the helper runtime the generated routers call:
 `filter_parser` and `constraint_errors` are copied into `codegen/runtime/`, and the owned
 generator emits them into the generated package as `_runtime/` and imports them from

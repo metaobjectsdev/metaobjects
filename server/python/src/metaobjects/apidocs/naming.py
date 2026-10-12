@@ -3,7 +3,7 @@ generated identifier the api-docs builder documents.
 
 This mirrors the Java ``SpringNaming`` / C# ``CSharpNaming`` pattern: the real
 generators delegate their name computation here, and the
-:class:`~metaobjects.apidocs.builder.PythonApiModelBuilder` enumerates symbols by
+:class:`~metaobjects.codegen.runtime.api_docs_builder.PythonApiModelBuilder` enumerates symbols by
 calling the SAME functions. So the documented name can never drift from the
 emitted name — they are computed once, in one place.
 

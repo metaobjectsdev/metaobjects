@@ -28,7 +28,7 @@ from metaobjects.codegen.generators.entity_model import (
     EntityModelGenerator,
     render_entity_model,
 )
-from metaobjects.codegen.generators.m2m_codegen import (
+from metaobjects.codegen.runtime.m2m_codegen import (
     M2mDescriptor,
     build_object_index,
     resolve_m2m_descriptors,
