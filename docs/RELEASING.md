@@ -10,7 +10,8 @@
 > - **Maven Central** → push a `java-v<maven-version>` tag (`publish-java.yml` signs and deploys
 >   from repo secrets), or locally `~/.m2/settings.xml` (server ids `central` +
 >   `gpg-credentials`) + the local GPG signing key and `mvn -Prelease deploy` from
->   `server/java` (autoPublish — no manual staging promotion). One route per version, never both.
+>   `server/java` (autoPublish, so no manual staging promotion; run the eject release gate
+>   first, see the Java procedure). One route per version, never both.
 > - **NuGet** → keyless OIDC via the `publish-csharp.yml` workflow: `gh workflow run
 >   publish-csharp.yml` (or push a `csharp-v<version>` tag).
 >
@@ -50,10 +51,19 @@ rather than assume. Do not skip past the list.
 
 **The eject pending list (1.1.0).** 1.1.0 does not ship while
 `fixtures/generator-registry-conformance/registry.json` has an entry in `eject.pending`
-(ADR-0034 Amendment 8). Every publish path enforces it: `scripts/release.mjs` (first check of
+(ADR-0034 Amendment 8). The scripted paths enforce it: `scripts/release.mjs` (first check of
 its preflight), `scripts/finish-release.mjs` (gate 0, before the tag) and the four publish
 workflows (the step after checkout) refuse a version with no prerelease suffix while the list
-holds an entry. A release candidate (`1.1.0-rc.3`) is allowed.
+holds an entry. A release candidate (`1.1.0-rc.3`, or `1.1.0rc3` on PyPI) is allowed.
+
+A publish you type by hand passes through none of those, so run the gate yourself as the
+command before it. This document has it before each of the four: the npm promote in step 3,
+the isolated one-package `bun publish`, the PyPI fallback `uv publish`, and the local
+`mvn -Prelease deploy`. It exits non-zero on a refusal:
+
+```
+node scripts/eject-release-gate.mjs <version>    # the version that registry is about to receive
+```
 
 To clear it for a final release: close the gaps and delete their entries. There is no other
 step. Each port's eject-contract test fails on a gap that is not listed, so an entry cannot be
@@ -599,8 +609,8 @@ CDN-cached and lags right after publish.
 ## Isolated patch (one package)
 
 If only one package changed (e.g. a `cli` bugfix), bump just that package, `rm bun.lock && bun
-install`, verify, and `bun publish` it — the others stay at their current version. Tag scoped
-(e.g. `cli-v0.5.1`).
+install`, verify, run `node scripts/eject-release-gate.mjs <version>` (it must exit 0), and
+`bun publish` it. The others stay at their current version. Tag scoped (e.g. `cli-v0.5.1`).
 
 # Releasing the C# packages to NuGet
 
@@ -762,9 +772,10 @@ Project `metaobjects` → **Settings → Publishing → Add a new GitHub publish
    python-v<version>`. **Do not ALSO publish by hand.** The `1.0.3` cut ran a local
    `uv publish` and then pushed the tag, so the workflow went red with `400 File already
    exists` on a release that had shipped — a red run that reads exactly like a failed publish.
-   The local route is the fallback only when the workflow cannot run: `UV_PUBLISH_TOKEN=<a PyPI
-   API token> uv publish dist/*` from `server/python`, and then do not push a `python-v*` tag
-   for that version.
+   The local route is the fallback only when the workflow cannot run. Run
+   `node scripts/eject-release-gate.mjs <version>` from the repository root first (it must exit
+   0; the workflow runs the same gate), then `UV_PUBLISH_TOKEN=<a PyPI API token> uv publish
+   dist/*` from `server/python`, and then do not push a `python-v*` tag for that version.
 4. **Verify:** `curl -s https://pypi.org/pypi/metaobjects/json | python3 -c "import sys,json;print(json.load(sys.stdin)['info']['version'])"`.
 
 # Releasing the Java/Kotlin modules to Maven Central
@@ -801,7 +812,9 @@ versioned on its own major line — npm major + 7, so `7.x` while npm was `0.x` 
    with `Component … already exists`): push a `java-v<maven-version>` tag, and
    `publish-java.yml` runs the deploy below in CI with the signing secrets (how `8.0.4`
    shipped; it takes no version override, so it deploys the COMMITTED version — do not fire
-   it for an uncommitted pre-release); or run `mvn -Prelease deploy` from `server/java`.
+   it for an uncommitted pre-release); or run
+   `node scripts/eject-release-gate.mjs <maven-version>` from the repository root (it must exit
+   0; the workflow runs the same gate) and then `mvn -Prelease deploy` from `server/java`.
    The `central-publishing-maven-plugin`
    (`<publishingServerId>central</publishingServerId>`, `<autoPublish>true</autoPublish>`) uploads
    the signed bundle and auto-releases — **no manual staging → release promotion**. Auth + the GPG

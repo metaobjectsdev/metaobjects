@@ -791,13 +791,13 @@ owned copy still references. The list works in both directions.
 
 **1.1.0 does not ship with a non-empty pending list.** `scripts/eject-release-gate.mjs`
 refuses a version with no prerelease suffix while the list holds an entry. A manifest that
-cannot be read is refused. A prerelease version (`1.1.0-rc.3`) is allowed, because a release
-candidate is how the remaining entries get exercised by an adopter. An empty list is a
+cannot be read is refused. A prerelease version (`1.1.0-rc.3`, or `1.1.0rc3` as PyPI spells
+it) is allowed, because a release candidate is how the remaining entries get exercised by an
+adopter. An empty list is a
 proven one: each port's test fails on a gap that is not listed, so nothing can be left out
 of the list to pass the gate.
 
-Every path that publishes or tags a release calls the gate, so the rule does not depend on
-a person remembering it:
+Every scripted path that publishes or tags a release calls the gate:
 
 - `scripts/release.mjs` calls it first in its preflight, before anything is built or
   published.
@@ -813,8 +813,12 @@ each job's steps in order to check that the gate step comes before the first pub
 step, and runs the gate step's own shell against a throwaway repository. The same test
 fails when a publish workflow is added that it does not list.
 
-One publish is typed by hand: the `bun publish` loop that promotes npm in
-`docs/RELEASING.md` step 3. That procedure runs the gate as the command before it.
+Four publishes are typed by hand, and only the procedure holds them to the rule. They are
+the `bun publish` loop that promotes npm (`docs/RELEASING.md` step 3), the `bun publish` of
+an isolated one-package patch, the `uv publish` that is the PyPI fallback when its workflow
+cannot run, and the local `mvn -Prelease deploy`. `docs/RELEASING.md` has the gate as the
+command before each. An operator who skips it is not stopped at the publish. The first
+refusal is then `scripts/finish-release.mjs`, which withholds the tag.
 
 **The gaps.** `gap` in a pending entry is a number from this list.
 

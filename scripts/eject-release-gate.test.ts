@@ -64,8 +64,9 @@ describe("eject release gate — what it lets through", () => {
     expect(ejectReleaseRefusal("1.1.0", manifest([]))).toBeNull();
   });
 
-  test("a prerelease, whatever the list says", () => {
-    for (const version of ["1.1.0-rc.1", "1.1.0-rc.3", "2.0.0-beta.1"]) {
+  // PyPI spells a prerelease without a hyphen (PEP 440): `rc3`, `a1`, `b2`.
+  test("a prerelease in any registry's spelling, whatever the list says", () => {
+    for (const version of ["1.1.0-rc.1", "1.1.0-rc.3", "2.0.0-beta.1", "1.1.0rc3", "1.1.0a1", "1.1.0b2"]) {
       expect(ejectReleaseRefusal(version, manifest([ENTRY]))).toBeNull();
       expect(ejectReleaseRefusalAt(version, repoWith(undefined))).toBeNull();
     }
@@ -83,10 +84,10 @@ describe("eject release gate — the command and its wiring", () => {
     const blocked = repoWith(JSON.stringify(manifest([ENTRY])));
     expect(run(blocked, "1.1.0").code).toBe(1);
     expect(run(blocked, "1.1.0").out).toContain("1 entry is left");
-    expect(run(blocked, "1.1.0-rc.3").code).toBe(0);
+    for (const candidate of ["1.1.0-rc.3", "1.1.0rc3", "1.1.0a1", "1.1.0b2"]) expect(run(blocked, candidate).code).toBe(0);
     expect(run(repoWith(JSON.stringify(manifest([]))), "1.1.0").code).toBe(0);
     expect(run(blocked).code).toBe(2);
-    expect(run(blocked, "latest").code).toBe(2);
+    for (const bad of ["latest", "1.1.0rc", "1.1.0.post1"]) expect(run(blocked, bad).code).toBe(2);
   });
 
   // ADR-0034 Amendment 8 makes the gate the first preflight check of `release.mjs`. The
@@ -141,7 +142,7 @@ describe("eject release gate — the publish workflows", () => {
       committed: (v) => `${JSON.stringify({ name: "@metaobjectsdev/cli", version: v }, null, 2)}\n`,
     },
     {
-      workflow: "publish-python.yml", versionFile: "server/python/pyproject.toml", final: "1.1.0", candidate: "1.1.0-rc.1",
+      workflow: "publish-python.yml", versionFile: "server/python/pyproject.toml", final: "1.1.0", candidate: "1.1.0rc1",
       committed: (v) => `[project]\nname = "metaobjects"\nversion = "${v}"\n\n[tool.other]\nversion = "9.9.9"\n`,
     },
     {
