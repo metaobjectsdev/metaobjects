@@ -1029,17 +1029,40 @@ class outside the engine surface in `fixtures/generator-registry-conformance/reg
 and compares what the copy emits with what the packaged generator emits, byte for byte.
 
 **A copy you ejected before the emitters were handed over** keeps compiling and running, with
-the packaged emitters. To own them, raise your `codegen/` module's dependency to 1.1.0 or
-later and re-eject the generator into a scratch project, then copy the emitter files next to
-your generator:
+the packaged emitters. A copy made by 1.0.13 compiled against the 1.1.0 package unchanged,
+for the Java generators ejected together (`dto`, `repository`, `value-object`) and for Kotlin
+`entity` and `output-prompt`. A Java `routes`, `dto` or `value-object` ejected alone never
+compiled; that is the 1.0.x defect, and re-ejecting it with `-Dforce=true` is the fix.
+
+To own the emitters, raise your `codegen/` module's dependency on the codegen artifact to
+1.1.0 or later, eject the same names into a scratch project under a package of its own, copy
+the emitter files next to your generators and point the generators at them. Kotlin, for
+`entity` and `output-prompt`:
 
 ```bash
-mvn metaobjects:eject -Dnames=dto,value-object -Dport=java -Dpackage=com.acme.scratch   # in a scratch project
-cp scratch/codegen/src/main/java/com/acme/scratch/{Fr019SharedEnum,SpringRecordBuilder}.java codegen/src/main/java/com/acme/codegen/
+# in a scratch project (any pom), with the 1.1.0 plugin
+mvn metaobjects:eject -Dnames=entity,output-prompt -Dport=kotlin -Dpackage=com.acme.scratch
+# in yours
+d=codegen/src/main/kotlin/com/acme/codegen
+cp scratch/codegen/src/main/kotlin/com/acme/scratch/{KotlinEnumEmitter,KotlinOutputFormatSpecEmitter,KotlinExtractSchemaEmitter}.kt $d/
+sed -i 's/com\.acme\.scratch/com.acme.codegen/g' $d/{KotlinEnumEmitter,KotlinOutputFormatSpecEmitter,KotlinExtractSchemaEmitter}.kt
+sed -i -E 's/^import com\.metaobjects\.generator\.kotlin\.(KotlinEnumEmitter|KotlinOutputFormatSpecEmitter|KotlinExtractSchemaEmitter)$/import com.acme.codegen.\1/' $d/KotlinEntityGenerator.kt $d/KotlinOutputPromptGenerator.kt
 ```
 
-Change the `package` line of each file you copy, and point your generator's imports of them at
-your package. `mvn metaobjects:eject -Dlist` then marks the copy `identical` or `DIFFERS`.
+Java, for `dto` and `value-object` (Java imports end with `;`, and the copied files need only
+their package line changed):
+
+```bash
+mvn metaobjects:eject -Dnames=dto,value-object -Dport=java -Dpackage=com.acme.scratch   # in the scratch project
+d=codegen/src/main/java/com/acme/codegen
+cp scratch/codegen/src/main/java/com/acme/scratch/{Fr019SharedEnum,SpringRecordBuilder}.java $d/
+sed -i 's/com\.acme\.scratch/com.acme.codegen/g' $d/{Fr019SharedEnum,SpringRecordBuilder}.java
+sed -i -E 's/^import com\.metaobjects\.generator\.spring\.(Fr019SharedEnum|SpringRecordBuilder);/import com.acme.codegen.\1;/' $d/SpringDtoGenerator.java $d/SpringValueObjectGenerator.java
+```
+
+Both were run against copies made by 1.0.13 and built against the 1.1.0 artifacts, and the owned module
+compiled. `mvn metaobjects:eject -Dlist` keeps reporting such a copy as `DIFFERS`, because a copy
+that old differs from the 1.1.0 reference in other lines too, not only in the emitters.
 
 ### `api-docs`: the api reference as an owned generator
 

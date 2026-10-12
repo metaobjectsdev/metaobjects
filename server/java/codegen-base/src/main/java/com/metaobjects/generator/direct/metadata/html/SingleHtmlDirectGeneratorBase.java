@@ -57,6 +57,23 @@ public abstract class SingleHtmlDirectGeneratorBase extends DirectGeneratorBase 
     protected abstract HtmlDirectWriter getWriter(MetaDataLoader loader, OutputStream os) throws GeneratorIOException;
 
     protected void writeHtml(HtmlDirectWriter writer) throws GeneratorIOException {
+        // A subclass written against the stock writer overrides the method below; keep calling it.
+        if (writer instanceof MetaDataHtmlDocumentationWriter) {
+            writeHtml((MetaDataHtmlDocumentationWriter) writer);
+            return;
+        }
+        log.info("Writing HTML file: " + writer.getFilename());
+        writer.writeHtml();
+    }
+
+    /**
+     * The hook as it was before the base drove {@link HtmlDirectWriter}: a subclass that overrides
+     * this keeps being called whenever its {@link #getWriter} returns the stock writer.
+     *
+     * @deprecated override {@link #writeHtml(HtmlDirectWriter)}
+     */
+    @Deprecated
+    protected void writeHtml(MetaDataHtmlDocumentationWriter writer) throws GeneratorIOException {
         log.info("Writing HTML file: " + writer.getFilename());
         writer.writeHtml();
     }
