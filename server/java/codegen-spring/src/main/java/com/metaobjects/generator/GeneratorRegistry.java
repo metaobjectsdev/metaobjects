@@ -443,10 +443,7 @@ public final class GeneratorRegistry {
         // favour of "template".
         register(m, "api-docs", JavaApiDocsGenerator.class.getName(),
                 "Per-entity/template SDK API reference (generated-code API; human + agent forms).",
-                Tier.NATIVE, Layer.DOCS, ejectPath(JavaApiDocsGenerator.class), List.of(),
-                "api-docs: `mvn metaobjects:docs` runs this generator, not `metaobjects:generate`, which "
-                    + "skips it. List it in <generators> with <classname>{owned}</classname> and the "
-                    + "docs goal runs your copy for the java surface in place of the packaged one.",
+                Tier.NATIVE, Layer.DOCS, ejectPath(JavaApiDocsGenerator.class), List.of(), null,
                 API_DOCS_EMIT, API_DOCS_TEMPLATES);
         register(m, "plantuml", PLANTUML_GENERATOR,
                 "PlantUML class diagram of the object model.", Tier.NATIVE, Layer.DOCS,

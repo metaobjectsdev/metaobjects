@@ -154,6 +154,15 @@
             <version>3.0.2</version>
             <scope>test</scope>
         </dependency>
+        <!-- ApiDocsEjectBothPortsTest compiles the Kotlin api-docs copy the eject mojo writes
+             beside the Java one. Same compiler harness, at the same version, as codegen-kotlin's
+             own eject tests. -->
+        <dependency>
+            <groupId>com.github.tschuchortdev</groupId>
+            <artifactId>kotlin-compile-testing</artifactId>
+            <version>1.6.0</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.apache.derby</groupId>
             <artifactId>derby</artifactId>

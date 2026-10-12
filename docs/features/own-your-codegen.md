@@ -803,7 +803,9 @@ The JVM plugin loads generator classes from your project's classpath, but only f
 classes compiled **before** `generate-sources` runs, and the plugin's own copy of a class
 always wins over one with the same name. So eject puts each copy into a separate
 `codegen/` Maven module, under your own package (`-Dpackage`, default
-`<groupId>.codegen`). Every copy compiles on its own, and none calls another generator. The
+`<groupId>.codegen`). The `api-docs` copies alone go one level below it, in a subpackage per
+port ([below](#api-docs-the-api-reference-as-an-owned-generator)). Every copy compiles on its
+own, and none calls another generator. The
 package declaration is the only line it changes, except for a generator that is copied with
 other classes (the emitters it writes through, below, and Java `entity` and `extractor`) and
 for the support imports and the template prefix described below: there the imports those
@@ -980,11 +982,22 @@ that old differs from the 1.1.0 reference in other lines too, not only in the em
 model (`ApiSymbol`, `ApiUnit`, `FieldShape`, `ApiSymbolKind`, `JavaApiModel`, `UnitExample`), the
 builder that decides what to document (`JavaApiModelBuilder`, `JavaFieldShapes`), the renderer
 (`JavaApiDocsRenderer`), the path math (`DocsPaths`) and the template provider, and writes the
-page templates into `codegen/src/main/resources/<package path>/templates/api/`. Eject
-points the copied provider at that directory, so the page text is the one you own and no other
-jar on the classpath can shadow it. `-Dport=kotlin` copies `KotlinApiDocsGenerator`,
+page templates into `codegen/src/main/resources/<package path>/apidocs/java/templates/api/`.
+Eject points the copied provider at that directory, so the page text is the one you own and no
+other jar on the classpath can shadow it. `-Dport=kotlin` copies `KotlinApiDocsGenerator`,
 `KotlinApiModel`, `KotlinApiModelBuilder`, `KotlinApiDocsRenderer` and `DocsPaths`; the Kotlin
 renderer writes its pages in code, so it has no templates.
+
+**The copies take a subpackage per port.** The Java copies are written in
+`<package>.apidocs.java` and the Kotlin ones in `<package>.apidocs.kotlin`, where `<package>` is
+`-Dpackage` (default `<groupId>.codegen`). The two ports name their page model and path classes
+alike (`ApiUnit`, `ApiSymbol`, `FieldShape`, `ApiSymbolKind`, `DocsPaths`), so a project that
+documents both surfaces can own both generators in one `codegen/` module without declaring a
+class twice. Eject prints each copy's class name, for example
+`com.acme.codegen.apidocs.java.JavaApiDocsGenerator`. No other generator's package changes. Eject
+never edits an existing pom, so the `codegen/pom.xml` the first eject wrote builds that port
+only: when you eject the other port into the same module, add its `metaobjects-codegen-*`
+dependency and its compiler to that pom yourself.
 
 The generator is a `DocsGenerator`. List it in `<generators>` with `<classname>` set to your copy,
 and `metaobjects:docs` runs it for its surface in place of the packaged one. `metaobjects:generate`

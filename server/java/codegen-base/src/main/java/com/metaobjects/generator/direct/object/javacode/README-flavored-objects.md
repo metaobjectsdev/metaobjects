@@ -65,7 +65,7 @@ This module's pom ships the sources under `META-INF/metaobjects/reference/java/`
 
 | Generator | Copied with it, into the same owned package |
 |---|---|
-| `entity` | `JavaCodeGenerator`, `BaseObjectCodeGenerator`, `BaseObjectCodeWriter`, `JavaCodeWriter`, `PojoAwareCodeWriter`, `ValueObjectCodeWriter` |
+| `entity` | `JavaCodeGenerator`, `BaseObjectCodeGenerator`, `BaseObjectCodeWriter`, `JavaCodeWriter`, `PojoAwareCodeWriter`, `ValueObjectCodeWriter`, `ExtractorCodeGenerator` |
 | `extractor` | `JavaCodeWriter`, `BaseObjectCodeWriter` |
 
 Eject rewrites each file's package line and, where one copied class imports another, that
@@ -74,14 +74,15 @@ class body by editing a writer, not by subclassing one. What a copy may still re
 this module, and so what has to keep working for it:
 
 - `MultiFileDirectGeneratorBase` and `FileDirectWriter`, which the copies extend;
-- `GenerationContext`, `GeneratorUtil`, `JavaIdentifiers` and `GeneratedFileWriter`;
-- `ExtractorCodeGenerator.emit(...)`, which an owned `entity` calls until an `extractor`
-  generator is wired beside it.
+- `GenerationContext`, `GeneratorUtil`, `JavaIdentifiers` and `GeneratedFileWriter`.
+
+An owned `entity` writes its extractors through its own copy of `ExtractorCodeGenerator`,
+until an `extractor` generator is wired beside it.
 
 Two rules keep a copy set ejectable, and `EjectedBaseGeneratorsCompileTest` fails when
 either is broken. A class in a copy set may name another class of this package by its bare
-name only if that class is in the same set; anything else (the owned `entity` naming
-`ExtractorCodeGenerator`) is imported explicitly. And a copied class calls nothing that is
+name only if that class is in the same set; anything else (the owned `extractor` naming
+`BaseObjectCodeGenerator`) is imported explicitly. And a copied class calls nothing that is
 not `public` on a class left behind. A new class the writers come to depend on is added to
 the set in three places: this module's pom, `GeneratorRegistry`, and that test.
 

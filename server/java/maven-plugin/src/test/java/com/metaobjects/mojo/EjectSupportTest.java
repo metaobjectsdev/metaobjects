@@ -55,17 +55,34 @@ public class EjectSupportTest {
     }
 
     @Test
-    public void onlyTheJavaExtractorAndApiDocsCarryAWiringNoteAndItNamesTheOwnedClass() {
+    public void theJavaExtractorAndApiDocsOnBothPortsCarryAWiringNoteAndItNamesTheOwnedClass() {
+        int noted = 0;
         for (EjectSupport.Entry e : EjectSupport.allEntries()) {
             boolean javaExtractor = e.port == EjectSupport.Port.JAVA && e.stableName.equals("extractor");
-            boolean javaApiDocs = e.port == EjectSupport.Port.JAVA && e.stableName.equals("api-docs");
-            if (!javaExtractor && !javaApiDocs) {
-                assertNull(e.port.id + " " + e.stableName, e.wiringNote("com.acme.codegen"));
+            boolean apiDocs = e.stableName.equals("api-docs");
+            String note = e.wiringNote("com.acme.codegen");
+            if (!javaExtractor && !apiDocs) {
+                assertNull(e.port.id + " " + e.stableName, note);
                 continue;
             }
-            String note = e.wiringNote("com.acme.codegen");
-            assertTrue(note, note.contains("<classname>com.acme.codegen." + e.simpleName() + "</classname>"));
+            noted++;
+            String ownedPackage = apiDocs ? "com.acme.codegen.apidocs." + e.port.id : "com.acme.codegen";
+            assertTrue(note, note.contains("<classname>" + ownedPackage + "." + e.simpleName() + "</classname>"));
             assertFalse(note, note.contains("{owned}"));
+            // No pom lists a docs generator until its owner adds it, on either port.
+            if (apiDocs) assertTrue(note, note.contains("the " + e.port.id + " surface"));
+        }
+        assertEquals("the Java extractor, and api-docs on each port", 3, noted);
+    }
+
+    @Test
+    public void onlyTheApiDocsCopiesTakeASubpackageAndEachPortHasItsOwn() {
+        // The two ports' api reference classes share simple names, and one module may own both.
+        // Every other generator keeps the package it ejected into before 1.1.
+        for (EjectSupport.Entry e : EjectSupport.allEntries()) {
+            String expected = e.stableName.equals("api-docs")
+                    ? "com.acme.codegen.apidocs." + e.port.id : "com.acme.codegen";
+            assertEquals(e.port.id + " " + e.stableName, expected, e.ownedPackage("com.acme.codegen"));
         }
     }
 

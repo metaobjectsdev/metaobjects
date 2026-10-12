@@ -1,5 +1,6 @@
 package com.metaobjects.mojo;
 
+import com.metaobjects.generator.DocsGenerator;
 import com.metaobjects.generator.GeneratorRegistry;
 import com.metaobjects.generator.kotlin.GeneratorInfo;
 import com.metaobjects.generator.kotlin.GeneratorRegistryKt;
@@ -65,6 +66,9 @@ public final class EjectSupport {
         /** Wiring the generic eject report cannot know, with {@code {owned}} standing for the
          *  owned copy's class name, or {@code null} (see {@link #wiringNote}). */
         public final String note;
+        /** Whether this generator is a {@link DocsGenerator}: {@code metaobjects:docs} runs it
+         *  and {@code metaobjects:generate} skips it. */
+        public final boolean docs;
         /** Fully-qualified names of the classes eject copies WITH this generator into the
          *  same owned package: the rest of its emit (empty for most generators). */
         public final List<String> with;
@@ -96,7 +100,8 @@ public final class EjectSupport {
             this.description = description;
             this.resourcePath = resourcePath;
             this.runtime = List.copyOf(runtime);
-            this.note = note;
+            this.docs = isDocsGenerator(classname);
+            this.note = docs ? stableName + DOCS_NOTE.replace("{surface}", port.id) : note;
             this.with = List.copyOf(with);
         }
 
@@ -121,13 +126,52 @@ public final class EjectSupport {
 
         /** {@link #note} with the owned copy's class name filled in, or {@code null} when
          *  this generator's only wiring is the {@code <classname>} change. */
-        public String wiringNote(String ownedPackage) {
-            return note == null ? null : note.replace("{owned}", ownedPackage + "." + simpleName());
+        public String wiringNote(String basePackage) {
+            return note == null ? null : note.replace("{owned}", ownedClassname(basePackage));
+        }
+
+        /**
+         * The package this generator's copies are written in, given the package eject was asked
+         * for. A {@link DocsGenerator}'s copies take a subpackage of their port: the Java and the
+         * Kotlin api reference name their page model and path classes alike ({@code ApiUnit},
+         * {@code DocsPaths}, …), and one owned module may hold both. Every other generator's
+         * copies go in {@code basePackage} itself.
+         */
+        public String ownedPackage(String basePackage) {
+            return docs ? basePackage + "." + DOCS_SUBPACKAGE + "." + port.id : basePackage;
+        }
+
+        /** The owned copy's class name: the {@code <generator><classname>} value to wire. */
+        public String ownedClassname(String basePackage) {
+            return ownedPackage(basePackage) + "." + simpleName();
         }
 
         /** The simple class name — also the filename stem the ejected copy is written as. */
         public String simpleName() {
             return simpleNameOf(classname);
+        }
+    }
+
+    /** The subpackage of the owned package a {@link DocsGenerator}'s copies are written under,
+     *  above the one named for its port (see {@link Entry#ownedPackage}). */
+    public static final String DOCS_SUBPACKAGE = "apidocs";
+
+    /** What eject prints for a {@link DocsGenerator}, on either port, after its stable name: no pom
+     *  lists one until its owner adds it. {@code {surface}} is the port it documents. */
+    private static final String DOCS_NOTE =
+            ": `mvn metaobjects:docs` runs this generator, not `metaobjects:generate`, which "
+                + "skips it. List it in <generators> with <classname>{owned}</classname> and the "
+                + "docs goal runs your copy for the {surface} surface in place of the packaged one.";
+
+    /** Whether the registered generator class {@code classname} is a {@link DocsGenerator}.
+     *  Every registered class is on this plugin's classpath. */
+    private static boolean isDocsGenerator(String classname) {
+        if (classname == null) return false;
+        try {
+            return DocsGenerator.class.isAssignableFrom(
+                    Class.forName(classname, false, EjectSupport.class.getClassLoader()));
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException("registered generator class is not on the classpath: " + classname, e);
         }
     }
 
