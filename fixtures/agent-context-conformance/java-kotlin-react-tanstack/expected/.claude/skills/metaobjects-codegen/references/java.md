@@ -4,6 +4,17 @@ The Java port targets Spring Boot consumers on Maven. Codegen runs as a build-ti
 Maven plugin goal — there is no standalone `meta` binary on the Java side (the Node
 `meta` is for schema migrations only; see the migration reference).
 
+## Contents
+- Maven coordinates
+- Plugin config in `pom.xml`
+- Run
+- Write your own generator
+- When a generator's output is wrong — own the generator
+- Docs — `mvn metaobjects:docs`
+- `codegen-spring` generators
+- Discriminator inheritance (TPH)
+- Serializing generated objects
+
 ## Maven coordinates
 
 All artifacts share `groupId` `com.metaobjects` and one version property:

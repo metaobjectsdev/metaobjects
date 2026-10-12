@@ -11,6 +11,10 @@ MongoDB 7 with the `mongodb` 7.x Node driver: create, list by an enum value and 
 and delete work; a filter on an undeclared field is refused; a create with a value outside the
 enum fails Zod validation.
 
+## Contents
+- Use it
+- The generator
+
 ## Use it
 
 1. Save the file below as `codegen/generators/mongo-repository.ts` — it is yours to edit.

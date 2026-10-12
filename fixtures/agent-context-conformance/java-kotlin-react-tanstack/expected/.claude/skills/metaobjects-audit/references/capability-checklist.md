@@ -14,6 +14,22 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
 
 ---
 
+## Contents
+- Object — `object.*`
+- Field — `field.*`
+- Source — `source.rdb`
+- Relationship — `relationship.*`
+- Identity — `identity.*`
+- Index — `index.*` (non-unique retrieval)
+- Origin — `origin.*` (derived fields — on projections AND entity read-views)
+- Validator — `validator.*`
+- View / Layout — `view.*`, `layout.*`
+- Template — `template.*` (prompt pillar)
+- Attr — `attr.*`
+- Requirement — `requirement.*` (capability ledger)
+- Common documentation attrs (any node)
+- Cross-cutting
+
 ## Object — `object.*`
 
 - **`object.entity`** (`@discriminator` / `@discriminatorValue` for STI/TPH) — hunt

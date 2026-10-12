@@ -8,6 +8,14 @@ The runtime persistence tier is **OMDB** (`metaobjects-omdb`,
 
 ---
 
+## Contents
+- Finding generated files
+- Run codegen + verify
+- Drift signatures (what to grep for)
+- Owned generators
+- Version-skew check
+- Calibration gaps (do NOT flag these)
+
 ## Finding generated files
 
 Generated sources land under:

@@ -6,6 +6,15 @@ on modernized JDBC + Spring-tx. It reads the same metadata at runtime and drives
 CRUD with no per-entity ORM boilerplate. OMDB is pure data-access (CRUD / query /
 codec / transactions); schema is owned by the Node `meta` migration tool, not OMDB.
 
+## Contents
+- Construct an `ObjectManagerDB`
+- CRUD + query
+- Serializing a row
+- Spring wiring
+- Return-type contract
+- Serving the REST contract
+- Physical names in your repository implementation
+
 ## Construct an `ObjectManagerDB`
 
 `ObjectManagerDB` has a no-arg constructor. Set its `DataSource` (and a

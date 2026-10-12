@@ -18,7 +18,7 @@ The **scaffolded** set is exactly the six skills in the SDK's `SKILL_NAMES`
 additionally holds **`metaobjects-fit-assessment`**, a *pre-adoption* tool that is
 deliberately **not** in `SKILL_NAMES` and so is never scaffolded (a not-yet-adopted
 target has no `.claude/skills/metaobjects-*` to receive it); it carries
-`scaffold: false` in its front-matter as the human marker. Its design + retro-test
+`scaffold: false` under `metadata:` in its front-matter as the human marker (no code reads it). Its design + retro-test
 validation live in `docs/superpowers/specs/2026-07-12-metaobjects-fit-assessment-design.md`.
 
 Design: `docs/superpowers/specs/2026-06-02-downstream-agent-context-design.md`.

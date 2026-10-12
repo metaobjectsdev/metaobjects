@@ -308,6 +308,14 @@ gate_migration_guides() { node scripts/check-migration-guides-vs-registry.mjs &&
 # list governs CLAIMS, not strings. Offline; no network, no build.
 gate_positioning_claims() { bun scripts/check-positioning-claims.ts && bun scripts/test-positioning-claims.ts; }
 
+# ── the hosted fit-assessment prompt must still build as ONE complete file ───
+# The skill keeps its body under 500 lines by moving the capability sheet and the JSON
+# contract into references/, but https://metaobjects.dev/assess.md is fetched as a single
+# prompt. scripts/build-assess-prompt.mjs inlines the references; a reference file it does
+# not inline, or a marker naming a missing file, fails the build here, before the hosted form
+# can quietly lose half the assessment. Offline.
+gate_assess_prompt() { node scripts/build-assess-prompt.mjs --out /dev/null && node scripts/test-build-assess-prompt.mjs; }
+
 # ── peer ranges must have a finite upper bound ────────────────────────────────
 # An open `>=` peer silently accepts a future breaking major. `@tanstack/react-table:
 # ">=8.20.0"` accepted v9 — a rewrite that deleted useReactTable/getCoreRowModel, both
@@ -851,6 +859,7 @@ if want gates; then step    "no-magic gate wired (5 ports)"    gate_no_magic_cov
 if want gates; then step    "test-file references resolve"     gate_test_references;        fi
 if want gates; then step    "metamodel-version bump"           gate_metamodel_version;      fi
 if want gates; then step    "positioning claims"               gate_positioning_claims;     fi
+if want gates; then step    "hosted assess prompt builds"      gate_assess_prompt;          fi
 if want gates; then step    "migration guides vs registry"     gate_migration_guides;       fi
 # Every gate below this line runs bun over workspace TypeScript, and on a FRESH CI
 # checkout there is no node_modules — so a bare `@metaobjectsdev/*` specifier either

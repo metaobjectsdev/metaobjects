@@ -827,6 +827,21 @@ until you regenerate.
 
   One rule is relaxed: an authored `validator.length @min: 0` on a `@required` string now
   admits the empty string, as the generated schema already did.
+- **The shipped agent skills fit the skill-authoring limits.** `metaobjects-audit` (601 lines to
+  261), `metaobjects-authoring` (804 to 479) and `metaobjects-fit-assessment` (666 to 481) moved
+  sections into `references/` files, each with a row and an "open it when" condition in the
+  skill's reference table, which now sits at the top of `metaobjects-audit`,
+  `metaobjects-prompts` and `metaobjects-runtime-ui` as well. The text moved and none was cut; `meta init`
+  and `meta init --refresh-docs` write the new files into `.claude/skills/`. Every reference
+  file over 100 lines opens with a `## Contents` list, and `metaobjects-codegen` links its five
+  TypeScript topic files and every language file from `SKILL.md`. A test in the SDK holds all
+  three rules.
+- **The hosted fit-assessment prompt is built, not copied.** The capability sheet and the JSON
+  contract left `SKILL.md`, so `node scripts/build-assess-prompt.mjs --out <file>` writes the
+  single-file form served at `metaobjects.dev/assess.md`, inlining both. The output is the old
+  prompt, apart from one dropped phrase ("in this file"). Its maintainer notes moved to
+  `docs/superpowers/specs/2026-07-12-metaobjects-fit-assessment-maintainer-notes.md`, and the
+  skill's `scaffold: false` marker is now `metadata: { scaffold: false }` (no code reads it).
 
 ### Deprecated
 

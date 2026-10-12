@@ -9,6 +9,12 @@ Run `verify` first — the project's own: `meta verify`, `metaobjects verify`,
 gate. It settles referential integrity mechanically — do not spend audit effort re-deriving
 what a green run already proves.
 
+## Contents
+- What verify has already proven (do not re-check by hand)
+- What only a human or an agent reading the code can catch
+- Scope — do NOT flag these as defects
+- Reporting
+
 ## What verify has already proven (do not re-check by hand)
 
 A run answers two different questions in two separate sections. Both are already-proven

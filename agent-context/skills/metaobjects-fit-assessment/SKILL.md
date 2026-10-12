@@ -1,7 +1,8 @@
 ---
 name: metaobjects-fit-assessment
 description: Use BEFORE adopting MetaObjects — assess how much of it a not-yet-adopted project should adopt (not worth it / contract spine between apps / partial / full), where it would pay off, what would migrate, and the drift-protection payoff; a quick pass gives a first verdict, the full assessment an evidence-cited report. Read-only, propose-only.
-scaffold: false
+metadata:
+  scaffold: false
 ---
 
 # MetaObjects Fit & Migration Assessment
@@ -9,6 +10,15 @@ scaffold: false
 _Assessment prompt v2. The § Capability sheet was last checked against the MetaObjects source
 on 2026-09-26 (the 1.0.8 / 1.0.9 line). A later release may add capabilities the sheet does not
 list yet: check anything load-bearing against the published sources named in M3._
+
+<!-- skill-form-only:start -->
+## Reference files — open only the one you need
+
+| File | Open it when |
+|---|---|
+| `references/capability-sheet.md` | You state what any port ships, or you look up a port's row. The quick pass needs it too. |
+| `references/json-contract.md` | You write `fit-assessment.json` in the full assessment. |
+<!-- skill-form-only:end -->
 
 **What this costs you.** It runs in your coding agent, on your tokens.
 
@@ -146,7 +156,7 @@ Read the code behind every grep hit before citing it; a "duplicate" validator's 
 is the finding, not the grep hit. An ambiguous archaeology hit is dropped, not stretched.
 
 **M3 — Ground every capability claim, without cloning anything.** First source: the
-§ Capability sheet in this file. For anything it does not cover, the published sources:
+§ Capability sheet. For anything it does not cover, the published sources:
 `https://metaobjects.dev/llms-full.txt` (the reference corpus), the closed vocabulary at
 `https://raw.githubusercontent.com/metaobjectsdev/metaobjects/main/fixtures/registry-conformance/expected-registry.json`,
 and the feature pages under `https://github.com/metaobjectsdev/metaobjects/tree/main/docs/features`.
@@ -444,149 +454,13 @@ gate in CI and one generated vertical. Then point at `meta init` + the adoption 
 
 ## JSON contract — `fit-assessment.json`
 
-```jsonc
-{
-  "assessed_project": "<name or remote URL — not a local path>",
-  "assessment_version": "v2",
-  "date": "YYYY-MM-DD",
-  "mode": "quick | full",
-  "verdicts": {
-    "recommended_scope": "not-worth-it | contract-spine | partial | full",
-    "partial_target": "optional — the layer or subsystem, when scope is partial",
-    "confidence": "high | medium | low",
-    "rejected_wider_scopes": [{ "scope": "full", "reason": "..." }],
-    "pillars": { "codegen": "...", "runtime": "...", "drift": "...", "prompts": "..." }
-  },
-  "seams": [
-    {
-      "id": "kebab-stable-id",
-      "shape": "what crosses the boundary",
-      "producer": "file:line",
-      "consumers": ["file:line"],
-      "existing_gate": "none | <what already checks it>",
-      "closing_gate": "the MetaObjects gate, per § Capability sheet",
-      "worth_it": true
-    }
-  ],
-  "census_reconciliation": {
-    "live_tables": 0,
-    "orm_model_classes_all_lanes": 0,
-    "predicted_object_entity": 0,
-    "predicted_object_projection": 0,
-    "predicted_object_value": 0,
-    "seam_shapes": 0,
-    "opaque_json_columns": 0,
-    "ui_surfaces_total": 0,
-    "prompt_sites": 0
-  },
-  "claims": [
-    {
-      "id": "kebab-stable-id",
-      "claim_type": "fit | scope | census | drift | migrates | stays-bespoke | leverage | benefit | vocab | limit | wedge",
-      "claim": "one-sentence prediction",
-      "pillar": "codegen | runtime | drift | prompt | n/a",
-      "surface": "entity | dto | validator | repository | route | view | ui | prompt | migration | schema | payload | contract",
-      "capability": "the registry capability or generator this maps to",
-      "locations": ["file:line", "commit-sha"],
-      "evidence": "what was read/verified",
-      "impact": "LOC / call-sites / risk",
-      "effort": "trivial | small | medium | large",
-      "confidence": "high | medium | low",
-      "checkable": true,
-      "horizon": "now | later",
-      "metadata_sketch": "optional — read-only proposal",
-      "parity_gate": "optional — the check proving behavior-equivalence"
-    }
-  ]
-}
-```
-
-Every prose prediction gets a claim. Ceiling statements carry `horizon: "later"`. Drift rows
-carry `checkable: true` with real locations. The quick pass emits no JSON unless asked.
+Read `references/json-contract.md` before you write `fit-assessment.json`, and keep it open while you fill it. <!-- inline: references/json-contract.md -->
 
 ---
 
 ## Capability sheet — what each port ships at 1.0.8 (never promise across these lines)
 
-Paths are relative to the MetaObjects repository on GitHub.
-
-**Contract-only generation (types, DTOs, validators; no ORM, no routes)** — the CONTRACT SPINE
-building block. Every generator is a reference helper an adopter selects, ejects and owns
-(`docs/features/own-your-codegen.md`); none is run unless wired.
-
-| Port | Select | Emits for a contract | Source |
-|---|---|---|---|
-| TypeScript | the `entity` reference generator in a target with `runtime: false` | Zod schemas + inferred TS types; no `drizzle-orm`, no `runtime-ts` import, for entities, value objects and projections alike | `server/typescript/packages/codegen-ts/src/metaobjects-config.ts` (`TargetConfig.runtime`), `.../src/templates/entity-file.ts` |
-| Java | `SpringDtoGenerator` (a record per concrete entity or projection, whatever its source, with jakarta validation annotations) and `SpringValueObjectGenerator` (a record per value object) | Java 21 records; your JPA/JDBC entity stays hand-written | `server/java/codegen-spring/src/main/java/com/metaobjects/generator/spring/` |
-| Kotlin | `KotlinEntityGenerator` (+ `KotlinValidatorGenerator`) | plain Jackson-compatible data classes per entity and value object | `server/java/codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/` |
-| C# | `EntityGenerator`, with the contract declared **sourceless** | a POCO with DataAnnotations and no EF mapping (a sourced entity gets `[Table]`/`[Key]`/`[Column]`) | `server/csharp/MetaObjects.Codegen/Generators/EntityGenerator.cs` |
-| Python | the `entity` generator | Pydantic models (no ORM of any kind) | `server/python/src/metaobjects/codegen/generator_registry.py` |
-
-- **A sourceless object is shape only.** Declared without a `source.rdb`, an object generates its
-  type and nothing else: no table, no migration, no routes (#248; `docs/features/libraries.md`).
-  A TypeScript model of only value objects and sourceless projections needs no `dialect`
-  (`server/typescript/packages/codegen-ts/src/db-emitting.ts`).
-- **The drift gate per port** — regenerate into a temp tree and diff: `meta verify --codegen`
-  (TS); `mvn metaobjects:verify` (Java/Kotlin; `codegen` is the default mode); `dotnet meta
-  verify --codegen` (C#; bare `verify` means `--templates` there); `metaobjects verify` (Python;
-  `--codegen` is the default). Source: `docs/features/cli.md`.
-- **Generated code compiles**: a codegen-compile gate compiles every port's emitted model tier
-  with its real compiler in CI (`docs/CONFORMANCE.md`, "Split coverage").
-- **Sharing a model** (`docs/features/metadata-dependencies.md`): in one repository, every port
-  reads the same metadata directory (`sources`), so a TS service and a Java, C# or Python
-  service can generate from one declaration today. **Across repositories**, a published model
-  with a hash-locked snapshot and `meta verify --deps` works for **TypeScript publishers and
-  TypeScript/Python consumers only**; Java, Kotlin and C# neither publish nor consume one yet
-  (Phase 2) and must share by monorepo or a vendored copy (`docs/features/metadata-sources.md`,
-  "Vendoring"), which carries no upstream hash check.
-- **Libraries** (`docs/features/libraries.md`): `iam` (preview) and `ai` (stable) ship as
-  declared designs; the core layer is sourceless and adds no tables. Mention one only when the
-  target is hand-building the same design.
-
-**Out of the box, contract-only does not** (say so when it matters, and say the fix):
-- ship a generator for a Prisma schema, TypeORM entities, SQLAlchemy/Django models or JPA
-  entities — alongside those ORMs the shipped contract is Zod/TS types, records, POCOs or
-  Pydantic models *next to* the ORM model;
-- ship an OpenAPI, AsyncAPI or JSON Schema generator;
-- reach a consumer outside the five ports (Go, Rust, Ruby, PHP, Swift…) directly.
-
-**Each of those is a generator the project writes**, and that is the primary codegen path, not
-a workaround: a generator is a function from the loaded model to files, a few dozen lines, and
-`verify --codegen` gates its output like any other. `meta generator new <name>` scaffolds one in
-TypeScript; `docs/recipes/write-your-own-generator.md` shows every port and ships JSON Schema and
-OpenAPI 3.1 example generators to copy. An OpenAPI or JSON Schema generator also reaches the
-languages outside the five ports through their own generators. Price it in the wedge (a day or
-two for a first generator), and do not report it as impossible.
-
-**Contract-only cannot** bind a shape to a queue, topic or transport as declared vocabulary
-(`api.*`, `operation.*`, `binding.*` are not shipped); a generator can still emit per-transport
-code from the shapes.
-- promise byte-identical JSON from type-only output: field-name casing on the wire follows each
-  consumer's serializer settings (the byte-identical REST wire is a property of the *generated
-  routes*, gated by `fixtures/api-contract-conformance/`). Check it in the wedge.
-
-**Full-stack caps per port:**
-- **Schema pillar** (`meta migrate`, `verify --db`): Node `meta` CLI only; Postgres, SQLite, D1
-  only. Any other database: out for that database; data access unaffected.
-- **TS**: Drizzle/Zod + Fastify or Hono routes with the filter-operator grammar, TanStack/React UI
-  codegen + runtime, migrations. The only port with UI codegen + runtime.
-- **Java/Spring**: DTO records, controllers (full filter grammar via the generated allowlist +
-  `FilterParser`), filter/sort allowlists, repository *interfaces* (the consumer implements them;
-  the existing ORM sits behind unchanged), payload records, output parsers. Entities stay
-  hand-written on this lane. `mvn metaobjects:generate` / `:verify` (no live-DB mode).
-- **Kotlin/JVM**: entity + Exposed table + Spring controller + payload + relations + filter
-  allowlist + validators + output parsers.
-- **C#**: EF Core entities + `AppDbContext` + CRUD minimal-API routes + render/payload/verify via
-  `dotnet meta`; no metadata-driven runtime tier; no migrate surface.
-- **Python**: Pydantic + router + payload/parsers + `ObjectManager` runtime; the consumer wires the
-  FastAPI router and repository; `metaobjects gen`/`verify` (no migrate).
-- **Prompt pillar** (all five ports): render + payload codegen + `verify` templates + the reply
-  parser for a responding `template.prompt` (`@responseRef`) + the output-format fragment and
-  tolerant `extract`. `template.output` emits no parser. MCP exposure of declared prompts/tools
-  is not shipped.
-- **Not shipped, never promise**: the `api.*`/`operation.*`/`binding.*` declared-API surface;
-  the cut `byte`/`short`/`class` field stubs; `index.fulltext`/`vector`/`spatial`; native PG enums
-  and int-backed enums.
+Read `references/capability-sheet.md` before you state what any port can do; every capability claim in the assessment traces to it or to a published source (M3). <!-- inline: references/capability-sheet.md -->
 
 ---
 
@@ -605,62 +479,3 @@ code from the shapes.
    ceiling paragraph labeled `horizon: "later"`; "What you will NOT get" complete; every prose
    prediction has a JSON twin.
 
-<!--
-MAINTAINER NOTES (not part of the prompt; kept at the end so a reader meets the prompt first).
-
-NOT SCAFFOLDED. This is a PRE-adoption tool, so it is deliberately absent from the
-SDK's `SKILL_NAMES` (`server/typescript/packages/sdk/src/agent-context/types.js`) and
-is never emitted by `meta init` — a target that has not adopted MetaObjects has no
-`.claude/skills/metaobjects-*` to drop it into. This directory is its single source of
-truth. Its sibling is `metaobjects-audit` (POST-adoption; scaffolded). Design +
-retro-test validation: `docs/superpowers/specs/2026-07-12-metaobjects-fit-assessment-design.md`.
-How to run it: point a high-end LLM at a target repo + this file (e.g. paste it, or
-fetch it from GitHub / metaobjects.dev) and let it produce the report below.
-
-DEFERRED, ON PURPOSE — capability requirements (`requirement.functional` /
-`requirement.architectural`). This skill deliberately says NOTHING about them, and that is a
-decision, not an omission.
-
-Why not now: (1) SPENT -- this read "not in a release yet", and it is now. `requirement.*`
-shipped in 0.22.0 and has evolved twice since (0.23.0 added `planned` / `@disposition` /
-`@trackedBy`; 0.24.0 made the vocabulary prescriptive-only). Do not repeat this reason.
-(2) The signal->feature mapping is unvalidated against this skill's own kill criterion: the
-controlled evidence (0/24 model-only revivals) measures POST-adoption model-reading, and the
-feature's premise -- that the disproof lives nowhere in the model -- cuts against pre-adoption
-detectability. If the reasoning was never written down, there is nothing for an evidence-cited
-assessment to cite. (3) Whether anyone fills the ledger in is itself untested; advertising it pre-adoption
-is the brochure failure this skill exists to avoid.
-
-TRIGGER to revisit — the release carrying `requirement.*` has shipped, AND either:
-  Arm A  a dogfooded project's retired capabilities are shown, retrospectively,
-         to have been discoverable PRE-adoption from repo evidence at file:line standard
-         (removal commit, dead flag, do-not-reintroduce comment);
-  Arm B  a team that adopted via this assessment hits a resurrection the ledger would have
-         caught, or asks why the assessment never mentioned it.
-
-ARM A HAS FIRED (dogfooded adopter estate, 2026-08-13). Three retired or reversed capability
-decisions were each citable PRE-adoption at file:line -- a removal commit, two explicit
-do-not-reintroduce comments on the very constant an agent would revive, an .env.example line
-saying the knob does not exist. The ANTI-TRIGGER did NOT fire: every one traced to committed
-prose. Bound it honestly -- n=1, and that estate is unusually disciplined about recording
-reversals in co-located prose, which is precisely the manual work `requirement.*` systematizes,
-so it is a confound rather than a clean sample. It also partly falsifies the feature's own
-premise that the disproof lives nowhere in the model.
-
-SO THE DEFERRAL NOW RESTS ON (3) ALONE, which makes it a judgement about VALUE rather than a
-fact about the release. Unprompted uptake is still unmeasured, and a later cross-estate reading
-sharpened the question: ledger value tracks whether the ledger is EXECUTABLE -- whether some
-mechanism can falsify a claim -- not when it was written. The largest ledger measured carried
-no harness and produced no defect found by any mechanism. Advertising that to a team that will
-hand-maintain it is the brochure failure this skill exists to avoid. Revisiting means deciding
-the SHAPE below is worth spending, not re-checking whether the capability exists.
-
-ANTI-TRIGGER (defer -> never): if dogfooded entries trace only to tribal knowledge with no
-repo artifact, this assessment structurally cannot speak to the feature as a finding.
-
-SHAPE, pre-committed so it is not re-litigated as new machinery: ONE P7 hunt line in the
-existing grammar (observable signal -> vocabulary + metadata_sketch), gated like every other
-P7 line by "if a hunt line has hits, it must appear" -- so a repo with no retirement scar
-tissue produces zero requirements content. NOT a fifth pillar, NOT a P4 rubric row, NOT an
-R0 verdict line: no verdict may turn on it.
--->

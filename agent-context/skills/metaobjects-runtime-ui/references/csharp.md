@@ -7,6 +7,13 @@ Core), and `RoutesGenerator` emits ASP.NET minimal-API routes that mount on your
 `WebApplication`. Unlike the other ports, C# leaves **no repository seam** — the generated
 code is what runs. Schema is TS-owned (ADR-0015); EF Core is pure data-access at runtime.
 
+## Contents
+- The generated persistence layer
+- Query + persist with EF Core
+- Return-type contract
+- Serving the REST contract
+- Physical names below LINQ
+
 ## The generated persistence layer
 
 `dotnet meta gen` emits an entity POCO per `object.entity` / projection and a single
