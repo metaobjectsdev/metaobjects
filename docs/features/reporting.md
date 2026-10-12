@@ -463,6 +463,7 @@ and the measure is a `boolean` in every port: `true` or `false` on the wire, nev
 
 ```jsonc
 { "field.boolean":      { "name": "failed" } },
+{ "field.boolean":      { "name": "succeeded" } },
 { "measure.aggregate":  { "name": "hasError",     "@agg": "any", "@of": "Call.failed" } },
 { "measure.aggregate":  { "name": "allSucceeded", "@agg": "all", "@of": "Call.succeeded", "@default": 1 } }
 ```
