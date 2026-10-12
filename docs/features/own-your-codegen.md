@@ -755,9 +755,11 @@ like the rest of the package.
   --codegen` reports the stale `_runtime/` file until you run `gen`. That is the right
   answer, because the committed package is out of date.
 - **Eject never overwrites your runtime.** An existing `codegen/runtime/<module>.py` is
-  kept, even with `--force`, and eject says so. `metaobjects gen --list` marks each
-  runtime copy `identical` or `DIFFERS: N behind, M of your own` against the installed
-  one.
+  kept, even with `--force`, and eject says so, with how the copy compares with the
+  installed one (`kept your copy — identical` or `kept your copy — DIFFERS: N behind, M of
+  your own`). When the copy is behind, the next line names the generator that may need the
+  newer one and the command that brings yours up. `metaobjects gen --list` marks each
+  runtime copy the same way.
 - **A project that has not ejected `routes` is unchanged.** The packaged generator still
   imports `metaobjects.codegen.runtime.*` and emits no `_runtime/`.
 
@@ -839,6 +841,16 @@ calls the packaged emitter exactly as before and a `DeprecationWarning` names th
 into a scratch directory (`metaobjects eject <name> --root <scratch>`), copy the `runtime/`
 files over into `codegen/runtime/`, and change your imports to the relative form the new copy
 uses (`from ..runtime import fr010_field_mapping as fm`).
+
+**An existing `shared_predicates.py` needs two new functions.** `routes` now reads
+`is_read_only_routed` from it, and `api-docs` reads that and `emits_writable_router`. A
+`codegen/runtime/shared_predicates.py` you already own does not have them, and eject keeps
+it, so `metaobjects eject api-docs` or `metaobjects eject routes --force` leaves a generator
+that fails to import (`cannot import name 'emits_writable_router'`). Eject marks the kept
+copy `DIFFERS: N behind` and prints the command that refreshes it: `cp` of the installed
+file over yours when you have not edited it, otherwise a `diff -u` against the installed
+file whose hunks you apply (the recipe under
+[The runtime your generated code imports comes with it](#the-runtime-your-generated-code-imports-comes-with-it)).
 
 ### `api-docs`: the api reference as an owned generator
 

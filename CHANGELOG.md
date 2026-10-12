@@ -259,6 +259,14 @@ generator catalog and the Atlas evaluation are 1.2 work.
     To own them, eject the same name into a scratch directory and copy the generator's
     `runtime/` files over (see
     [own-your-codegen](docs/features/own-your-codegen.md#the-emitters-a-generator-writes-through-come-with-it)).
+  - **A `codegen/runtime/shared_predicates.py` you already own needs two new functions.**
+    `routes` now reads `is_read_only_routed` from it and `api-docs` reads that and
+    `emits_writable_router`, and eject never overwrites a runtime copy. When eject keeps a
+    runtime copy it now says how the copy compares with the installed module
+    (`kept your copy — identical`, or `kept your copy — DIFFERS: N behind, M of your own`),
+    and for a copy that is behind it prints the command that refreshes it: `cp` of the
+    installed file over yours when you have not edited it, otherwise a `diff -u` against it
+    whose hunks you apply.
   - **A gate for the rule.** The engine surface is written once, in the shared manifest
     (`eject.engineSurface.python`), and `tests/conformance/test_eject_contract.py` ejects every
     ejectable generator alone into an empty project and fails on any import outside it. A

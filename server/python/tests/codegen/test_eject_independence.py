@@ -14,15 +14,20 @@ already loaded.
 """
 from __future__ import annotations
 
+import ast
 import json
 import os
+import re
 import subprocess
 import sys
 import uuid
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 import metaobjects
+import metaobjects.codegen.runtime
 from metaobjects.cli import main
 from metaobjects.codegen import eject as owned
 from metaobjects.codegen.generator_registry import GENERATOR_REGISTRY
@@ -133,7 +138,9 @@ def test_an_edit_to_the_owned_predicate_moves_owned_routes_and_owned_allowlist_t
     assert main(["eject", "routes"]) == 0
     capsys.readouterr()
     assert main(["eject", "filter-allowlist"]) == 0
-    assert f"codegen/runtime/{SHARED}.py: kept your copy" in capsys.readouterr().out
+    kept = capsys.readouterr().out
+    assert f"codegen/runtime/{SHARED}.py: kept your copy — identical" in kept
+    assert "may need the newer copy" not in kept
 
     # One owned rule, edited once: the Post object no longer gets a router.
     rule = root / "codegen" / "runtime" / f"{SHARED}.py"
@@ -154,3 +161,52 @@ def test_an_edit_to_the_owned_predicate_moves_owned_routes_and_owned_allowlist_t
     assert main(["gen", "--list"]) == 0
     assert (f"runtime codegen/runtime/{SHARED}.py [owned — DIFFERS: 0 behind, 3 of your own]"
             in capsys.readouterr().out)
+
+
+#: The predicates `routes` and `api-docs` read from the shared module that an earlier
+#: hand-over of it did not carry.
+ADDED_PREDICATES = {"is_read_only_routed", "emits_writable_router"}
+
+
+def _shared_predicates_before_the_added_ones() -> str:
+    source = owned.packaged_runtime_path(SHARED).read_text(encoding="utf-8")
+    lines = source.splitlines(keepends=True)
+    removed = set()
+    for node in reversed(ast.parse(source).body):
+        if isinstance(node, ast.FunctionDef) and node.name in ADDED_PREDICATES:
+            del lines[node.lineno - 1:node.end_lineno]
+            removed.add(node.name)
+    assert removed == ADDED_PREDICATES
+    return "".join(lines)
+
+
+@pytest.mark.parametrize("own_edit", ["", "\n# my fix\n"], ids=["unedited", "edited"])
+def test_eject_onto_an_older_shared_copy_keeps_it_and_says_how_to_refresh_it(
+    own_edit: str, tmp_path, monkeypatch, capsys,
+) -> None:
+    """A project that ejected a generator before `api-docs` existed owns a
+    `shared_predicates.py` without the predicates the api reference imports. Eject keeps
+    that copy, so it has to say the copy is behind and name the way to bring it up."""
+    older = _shared_predicates_before_the_added_ones() + own_edit
+    mine = tmp_path / "codegen" / "runtime" / f"{SHARED}.py"
+    mine.parent.mkdir(parents=True)
+    mine.write_text(older, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["eject", "api-docs"]) == 0
+    assert mine.read_text(encoding="utf-8") == older
+    lines = capsys.readouterr().out.splitlines()
+    at = next(i for i, ln in enumerate(lines) if f"{SHARED}.py: kept your copy" in ln)
+    behind, own = re.search(r"kept your copy — DIFFERS: (\d+) behind, (\d+) of your own",
+                            lines[at]).groups()
+    assert int(behind) > 0 and int(own) == (1 if own_edit else 0)
+
+    packaged = Path(metaobjects.codegen.runtime.__path__[0]) / f"{SHARED}.py"
+    hint = lines[at + 1]
+    assert "api-docs may need the newer copy" in hint
+    if own_edit:
+        assert f'diff -u codegen/runtime/{SHARED}.py "{packaged}"' in hint
+        assert "cp " not in hint
+    else:
+        assert f'cp "{packaged}" codegen/runtime/' in hint
+    assert [ln for ln in lines if "may need the newer copy" in ln] == [hint]

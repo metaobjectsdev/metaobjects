@@ -144,7 +144,9 @@ def test_eject_never_overwrites_an_owned_runtime_copy(tmp_path, monkeypatch, cap
     capsys.readouterr()
     assert main(["eject", "routes", "--force"]) == 0
     assert mine.read_text(encoding="utf-8").endswith("# my fix\n")
-    assert "filter_parser.py: kept your copy" in capsys.readouterr().out
+    kept = capsys.readouterr().out
+    assert "filter_parser.py: kept your copy — DIFFERS: 0 behind, 1 of your own" in kept
+    assert "may need the newer copy" not in kept
     assert main(["gen", "--list"]) == 0
     assert ("runtime codegen/runtime/filter_parser.py [owned — DIFFERS: 0 behind, 1 of your own]"
             in capsys.readouterr().out)

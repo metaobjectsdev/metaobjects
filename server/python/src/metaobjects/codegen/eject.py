@@ -16,7 +16,8 @@ its registry entry, and eject hands that over too: the runtime source lands in
 ``codegen/runtime/`` and the copy's ``OWNED_RUNTIME`` switch is flipped, so the owned
 generator emits that source into the generated package and its output imports the local
 copy. Core modules (loader, registry, render, extract, ``ObjectManager``) stay package
-imports. An existing runtime copy is never overwritten, even with ``--force``.
+imports. An existing runtime copy is never overwritten, even with ``--force``: eject
+reports how it compares with the packaged module, and how to refresh one that is behind.
 
 Everything a generator writes its output THROUGH is handed over the same way: the emit
 rules several generators share (``shared_predicates``), the fragment emitters behind a full
@@ -159,12 +160,23 @@ def eject(names: list[str], root: Path, *, force: bool = False) -> EjectResult:
         for module in entry.runtime:
             rt = runtime_path(root, module)
             rel = rt.relative_to(root)
+            packaged = packaged_runtime_path(module)
+            reference = packaged.read_text(encoding="utf-8")
             if rt.exists():
-                out.append(f"  runtime {rel}: kept your copy (eject never overwrites runtime)")
+                behind, own = _line_diff(rt.read_text(encoding="utf-8"), reference)
+                out.append(f"  runtime {rel}: kept your copy — {_status(behind, own)} "
+                           "(eject never overwrites runtime)")
+                if behind:
+                    refresh = (
+                        "it carries edits of your own, so apply the hunks you need from: "
+                        f'diff -u {rel} "{packaged}"'
+                        if own else f'refresh it: cp "{packaged}" {rel.parent}/'
+                    )
+                    out.append(f"    {n} may need the newer copy: yours lacks lines the "
+                               f"packaged one has; {refresh}")
                 continue
             rt.parent.mkdir(parents=True, exist_ok=True)
-            rt.write_text(packaged_runtime_path(module).read_text(encoding="utf-8"),
-                          encoding="utf-8")
+            rt.write_text(reference, encoding="utf-8")
             out.append(f"  runtime {rel}: copied — your owned generator reads this copy")
     out.append("")
     out.append(
@@ -191,14 +203,21 @@ def owned_status(root: Path, entry: GeneratorEntry) -> str | None:
     return _compare(path.read_text(encoding="utf-8"), ejected_source(entry))
 
 
-def _compare(mine_text: str, ref_text: str) -> str:
+def _line_diff(mine_text: str, ref_text: str) -> tuple[int, int]:
+    """``(behind, of your own)``: reference lines the copy lacks, copy lines the reference lacks."""
     mine = _normalised(mine_text)
     ref = _normalised(ref_text)
-    behind = sum((ref - mine).values())
-    own = sum((mine - ref).values())
+    return sum((ref - mine).values()), sum((mine - ref).values())
+
+
+def _status(behind: int, own: int) -> str:
     if behind == 0 and own == 0:
         return "identical"
     return f"DIFFERS: {behind} behind, {own} of your own"
+
+
+def _compare(mine_text: str, ref_text: str) -> str:
+    return _status(*_line_diff(mine_text, ref_text))
 
 
 def runtime_status(root: Path) -> list[tuple[Path, str]]:
