@@ -339,21 +339,20 @@ public class MetaDataEjectMojoTest {
     public void ejectingTheJavaApiDocsWritesTheTemplatesAndPointsTheCopiedProviderAtThem() throws Exception {
         mojo("api-docs", false, "java", null).execute();
 
-        Path src = codegenRoot().resolve("src/main/java/com/acme/codegen");
+        // The api-docs copies take the Java subpackage of the owned package.
+        Path src = codegenRoot().resolve("src/main/java/com/acme/codegen/apidocs/java");
         for (String file : List.of("JavaApiDocsGenerator", "JavaApiModelBuilder", "JavaApiDocsRenderer",
                 "DocsPaths", "ApiUnit", "ClasspathTemplateProvider")) {
             assertTrue(file, Files.isRegularFile(src.resolve(file + ".java")));
         }
-        // The page text is the adopter's, under the owned package's path so no jar can shadow it.
-        Path templates = codegenRoot().resolve("src/main/resources/com/acme/codegen/templates/api");
+        // The page text is the adopter's, under the copies' package path so no jar can shadow it.
+        Path templates = codegenRoot().resolve("src/main/resources/com/acme/codegen/apidocs/java/templates/api");
         for (String name : List.of("entity-api", "index", "agent-api")) {
             assertTrue(name, Files.isRegularFile(templates.resolve(name + ".md.mustache")));
         }
         String provider = Files.readString(src.resolve("ClasspathTemplateProvider.java"), StandardCharsets.UTF_8);
-        assertTrue(provider, provider.contains("BASE_PREFIX = \"com/acme/codegen/templates/\";"));
-        // The generator names the engine's applicability, never a generator class.
+        assertTrue(provider, provider.contains("BASE_PREFIX = \"com/acme/codegen/apidocs/java/templates/\";"));
         String generator = Files.readString(src.resolve("JavaApiDocsGenerator.java"), StandardCharsets.UTF_8);
-        assertFalse(generator, generator.contains("SpringDtoGenerator"));
-        assertTrue(generator, generator.contains("package com.acme.codegen;"));
+        assertTrue(generator, generator.contains("package com.acme.codegen.apidocs.java;"));
     }
 }

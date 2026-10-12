@@ -92,7 +92,9 @@ public class MetaDataEjectMojo extends AbstractMojo {
     @Parameter(property = "port")
     String port;
 
-    /** Target package for ejected copies. Defaults to {@code <project.groupId>.codegen}. */
+    /** Target package for ejected copies. Defaults to {@code <project.groupId>.codegen}. The
+     *  {@code api-docs} copies go in a subpackage of it per port (see
+     *  {@link EjectSupport.Entry#ownedPackage}). */
     @Parameter(property = "package")
     String targetPackage;
 
@@ -181,7 +183,8 @@ public class MetaDataEjectMojo extends AbstractMojo {
             portsTouched.add(e.port);
 
             String langDir = e.port == EjectSupport.Port.KOTLIN ? "kotlin" : "java";
-            Path pkgDir = codegenRoot.resolve("src/main/" + langDir).resolve(pkg.replace('.', '/'));
+            String ownedPkg = e.ownedPackage(pkg);
+            Path pkgDir = codegenRoot.resolve("src/main/" + langDir).resolve(ownedPkg.replace('.', '/'));
 
             for (String source : e.sources()) {
                 String simpleName = EjectSupport.simpleNameOf(source);
@@ -198,7 +201,7 @@ public class MetaDataEjectMojo extends AbstractMojo {
                             "Could not read reference source for \"" + e.stableName + "\" at classpath "
                                 + "resource " + resource, ex);
                 }
-                String rewritten = EjectSupport.ownedSource(e, reference, pkg);
+                String rewritten = EjectSupport.ownedSource(e, reference, ownedPkg);
                 if (generator && !e.runtime.isEmpty()) {
                     rewritten = EjectSupport.rewriteRuntimePackage(rewritten, runtimePkg);
                 }
@@ -206,7 +209,7 @@ public class MetaDataEjectMojo extends AbstractMojo {
                     support.addAll(EjectSupport.supportFor(rewritten));
                     rewritten = EjectSupport.rewriteSupportImports(rewritten, pkg);
                     if (!e.resources.isEmpty()) {
-                        rewritten = EjectSupport.rewriteTemplatePrefix(rewritten, pkg);
+                        rewritten = EjectSupport.rewriteTemplatePrefix(rewritten, ownedPkg);
                     }
                 }
 
@@ -215,7 +218,7 @@ public class MetaDataEjectMojo extends AbstractMojo {
                 reportEject(what, target, rewritten, write(pkgDir, target, rewritten, force));
             }
             classnameChanges.add("  " + e.stableName + ": " + e.classname + "  ->  "
-                    + pkg + "." + e.simpleName());
+                    + e.ownedClassname(pkg));
         }
 
         ejectSupport(support, codegenRoot.resolve("src/main/java").resolve(pkg.replace('.', '/')), pkg);
@@ -244,16 +247,18 @@ public class MetaDataEjectMojo extends AbstractMojo {
 
     /**
      * Write the templates the ejected generators read from the classpath into the owned module's
-     * resources, under the owned package's path. The copied template provider is pointed there
-     * ({@link EjectSupport#rewriteTemplatePrefix}), so the owned page text is what runs.
+     * resources, under the path of the package each generator's copies are in. The copied template
+     * provider is pointed there ({@link EjectSupport#rewriteTemplatePrefix}), so the owned page
+     * text is what runs.
      */
     private void ejectTemplates(List<EjectSupport.Resolution> resolved, Path resourceRoot, String pkg)
             throws MojoExecutionException {
-        Set<String> written = new LinkedHashSet<>();
-        Path dir = resourceRoot.resolve(EjectSupport.ownedTemplatePrefix(pkg));
+        Set<Path> written = new LinkedHashSet<>();
         for (EjectSupport.Resolution r : resolved) {
+            Path dir = resourceRoot.resolve(EjectSupport.ownedTemplatePrefix(r.entry.ownedPackage(pkg)));
             for (String ref : r.entry.resources) {
-                if (!written.add(ref)) continue;
+                Path target = dir.resolve(ref + EjectSupport.TEMPLATE_EXTENSION);
+                if (!written.add(target)) continue;
                 String resource = GeneratorRegistry.EJECT_TEMPLATE_RESOURCE_ROOT + ref + EjectSupport.TEMPLATE_EXTENSION;
                 String content;
                 try {
@@ -262,7 +267,6 @@ public class MetaDataEjectMojo extends AbstractMojo {
                     throw new MojoExecutionException("Could not read reference template \"" + ref
                             + "\" at classpath resource " + resource, ex);
                 }
-                Path target = dir.resolve(ref + EjectSupport.TEMPLATE_EXTENSION);
                 switch (write(target.getParent(), target, content, force)) {
                     case CREATED:
                         getLog().info("Copied template " + ref + " -> " + target

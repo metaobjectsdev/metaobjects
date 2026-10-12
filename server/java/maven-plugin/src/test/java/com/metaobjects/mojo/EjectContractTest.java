@@ -546,7 +546,7 @@ public class EjectContractTest {
                 for (Corpus corpus : CORPORA) {
                     String where = e.stableName + " over " + corpus.label;
                     Generator packaged = (Generator) Class.forName(e.classname).getDeclaredConstructor().newInstance();
-                    Generator owned = (Generator) Class.forName(OWNED_PACKAGE + "." + e.simpleName(), true, cl)
+                    Generator owned = (Generator) Class.forName(e.ownedClassname(OWNED_PACKAGE), true, cl)
                             .getDeclaredConstructor().newInstance();
                     Map<String, String> a = run(packaged, corpus, corpus.loader(), true);
                     Map<String, String> b = run(owned, corpus, corpus.loader(), false);

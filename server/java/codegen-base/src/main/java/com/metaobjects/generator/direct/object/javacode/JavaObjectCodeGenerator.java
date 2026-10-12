@@ -1,10 +1,10 @@
 package com.metaobjects.generator.direct.object.javacode;
 
 // Eject note (ADR-0034 Amendment 6): `mvn metaobjects:eject -Dnames=entity` copies this file
-// together with JavaCodeGenerator, BaseObjectCodeGenerator and the four writers, into one
-// package. The classes named bare below are those copies. ExtractorCodeGenerator is the
-// `extractor` generator and is NOT part of this copy, so it is imported by name: that is
-// what keeps the ejected copy compiling, and calling the packaged one.
+// together with JavaCodeGenerator, BaseObjectCodeGenerator, the four writers and
+// ExtractorCodeGenerator, into one package. The classes named bare below are those copies.
+// ExtractorCodeGenerator is the `extractor` generator too, and eject points the import below
+// at its copy, so an owned `entity` writes its extractors through owned code.
 import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;
 
 import com.metaobjects.generator.EmitsObjectExtractors;
