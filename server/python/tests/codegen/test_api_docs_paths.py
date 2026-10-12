@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from metaobjects.apidocs.paths import (
+from metaobjects.codegen.runtime.api_docs_paths import (
     Layout,
     doc_page_output_path,
     model_cross_href,

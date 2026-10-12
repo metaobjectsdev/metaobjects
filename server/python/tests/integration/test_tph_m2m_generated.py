@@ -35,7 +35,7 @@ from fastapi.testclient import TestClient
 from metaobjects import MetaDataLoader
 from metaobjects.codegen.generators.entity_model import render_entity_model
 from metaobjects.codegen.generators.filter_allowlist_generator import render_filter_allowlist
-from metaobjects.codegen.generators.m2m_codegen import build_object_index
+from metaobjects.codegen.runtime.m2m_codegen import build_object_index
 from metaobjects.codegen.generators.router_generator import render_router
 from metaobjects.codegen.generators.tph_plan import tph_plan_for
 from metaobjects.meta.core.object.meta_object import MetaObject

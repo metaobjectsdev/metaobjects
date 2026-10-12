@@ -15,7 +15,7 @@ import os
 import sys
 
 import metaobjects.core_types  # noqa: F401 — side-effect: registers attr classes
-from metaobjects.codegen import (
+from metaobjects.codegen.runtime import (
     output_format_spec_emitter as ofs,
     extract_schema_emitter as rse,
 )

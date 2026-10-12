@@ -16,12 +16,24 @@ its registry entry, and eject hands that over too: the runtime source lands in
 ``codegen/runtime/`` and the copy's ``OWNED_RUNTIME`` switch is flipped, so the owned
 generator emits that source into the generated package and its output imports the local
 copy. Core modules (loader, registry, render, extract, ``ObjectManager``) stay package
-imports. An existing runtime copy is never overwritten, even with ``--force``.
+imports. An existing runtime copy is never overwritten, even with ``--force``: eject
+reports how it compares with the packaged module, and how to refresh one that is behind.
 
-The emit rules several generators share (``shared_predicates``) are listed and copied the
-same way. A generator imports them relatively from its ``runtime`` sibling, so the verbatim
-copy in ``codegen/generators/`` reads ``codegen/runtime/shared_predicates.py`` with no
-edit, and two owned generators read the one copy.
+Everything a generator writes its output THROUGH is handed over the same way: the emit
+rules several generators share (``shared_predicates``), the fragment emitters behind a full
+generator (the shared-enum and M:N writers), the prompt-tier emitters (the extract delegate,
+the extract schema, the field mapping and the output-format spec) and, for ``api-docs``, the
+page model, builder, renderer and path math. A generator imports each relatively from its
+``runtime`` sibling, so the verbatim copy in ``codegen/generators/`` reads
+``codegen/runtime/<module>.py`` with no edit, and two owned generators read the one copy.
+Only the engine stays a package import: the generator base and file writer, the naming and
+type-mapping tables, the model walks and the loader. That surface is written in the shared
+manifest (``eject.engineSurface.python`` in ``fixtures/generator-registry-conformance/registry.json``)
+and ``tests/conformance/test_eject_contract.py`` ejects each generator alone and holds it to
+exactly that.
+
+A docs generator (``api-docs``) is not wired into ``generators``: ``metaobjects docs`` runs
+it from the config's ``docs.generators``, and ``gen`` skips one it finds under a target.
 """
 from __future__ import annotations
 
@@ -138,21 +150,34 @@ def eject(names: list[str], root: Path, *, force: bool = False) -> EjectResult:
         target = owned_path(root, n)
         target.write_text(ejected_source(entry), encoding="utf-8")
         out.append(f"ejected {n} -> {target.relative_to(root)}")
-        out.append(f"  wire it: replace \"{n}\" in `generators` with {owned_token(entry)}")
+        if entry.docs_surface is not None:
+            out.append(
+                f"  wire it: list {owned_token(entry)} under `docs.generators` in "
+                "metaobjects.config.yaml — `metaobjects docs` runs it; `gen` never does"
+            )
+        else:
+            out.append(f"  wire it: replace \"{n}\" in `generators` with {owned_token(entry)}")
         for module in entry.runtime:
             rt = runtime_path(root, module)
             rel = rt.relative_to(root)
+            packaged = packaged_runtime_path(module)
+            reference = packaged.read_text(encoding="utf-8")
             if rt.exists():
-                out.append(f"  runtime {rel}: kept your copy (eject never overwrites runtime)")
+                behind, own = _line_diff(rt.read_text(encoding="utf-8"), reference)
+                out.append(f"  runtime {rel}: kept your copy — {_status(behind, own)} "
+                           "(eject never overwrites runtime)")
+                if behind:
+                    out.append(f'    {n} may need the newer copy: diff -u "{rt}" "{packaged}"; '
+                               f'if you have not changed it: cp "{packaged}" "{rt}"')
                 continue
             rt.parent.mkdir(parents=True, exist_ok=True)
-            rt.write_text(packaged_runtime_path(module).read_text(encoding="utf-8"),
-                          encoding="utf-8")
+            rt.write_text(reference, encoding="utf-8")
             out.append(f"  runtime {rel}: copied — your owned generator reads this copy")
     out.append("")
     out.append(
         "The copies are yours: edit them freely. Keep only one of the packaged name and your "
-        "copy in `generators` — wiring both runs both, and they write the same files."
+        "copy in `generators` — wiring both runs both, and they write the same files. "
+        "A docs generator is the exception: `docs.generators` replaces the packaged one."
     )
     return EjectResult(0, out, [])
 
@@ -173,14 +198,21 @@ def owned_status(root: Path, entry: GeneratorEntry) -> str | None:
     return _compare(path.read_text(encoding="utf-8"), ejected_source(entry))
 
 
-def _compare(mine_text: str, ref_text: str) -> str:
+def _line_diff(mine_text: str, ref_text: str) -> tuple[int, int]:
+    """``(behind, of your own)``: reference lines the copy lacks, copy lines the reference lacks."""
     mine = _normalised(mine_text)
     ref = _normalised(ref_text)
-    behind = sum((ref - mine).values())
-    own = sum((mine - ref).values())
+    return sum((ref - mine).values()), sum((mine - ref).values())
+
+
+def _status(behind: int, own: int) -> str:
     if behind == 0 and own == 0:
         return "identical"
     return f"DIFFERS: {behind} behind, {own} of your own"
+
+
+def _compare(mine_text: str, ref_text: str) -> str:
+    return _status(*_line_diff(mine_text, ref_text))
 
 
 def runtime_status(root: Path) -> list[tuple[Path, str]]:

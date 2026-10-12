@@ -12,7 +12,7 @@ from pathlib import Path
 
 import metaobjects.core_types  # noqa: F401  — side-effect: registers attr classes
 from metaobjects import MetaDataLoader
-from metaobjects.codegen.generators.m2m_codegen import build_object_index
+from metaobjects.codegen.runtime.m2m_codegen import build_object_index
 from metaobjects.codegen.generators.router_generator import render_router
 from metaobjects.codegen.runtime.filter_parser import parse_filter
 from metaobjects.meta.core.field.meta_field import MetaField

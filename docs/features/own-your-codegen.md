@@ -695,9 +695,22 @@ targets:
 Eject prints the exact entry for each copy. It never overwrites an existing copy without
 `--force` and never edits your config. `metaobjects gen --list` marks each owned copy
 `identical` or `DIFFERS: N behind, M of your own` against the packaged reference, so you
-can see when an upgrade changed the generator you copied. A copy imports the same
-`metaobjects.codegen.*` modules the packaged one does, and those module paths are the
-surface an owned generator builds on.
+can see when an upgrade changed the generator you copied. Every generator `metaobjects
+gen --list` shows is ejectable except `template`, the Mustache primitive, which has no emit
+logic of its own to own.
+
+An ejected generator owns every line that writes its output. Eject copies the generator
+with the emitters it writes through (below), and the copy imports only the engine from the
+package: the generator base and file writer (`metaobjects.codegen.generator`), the
+formatter, the naming and type-mapping tables (`metaobjects.apidocs.naming`,
+`metaobjects.codegen.type_map`, `metaobjects.codegen.value_objects`), the model walks
+(`find_inbound`, `tph_plan`, `instance_artifacts`) and the loader. Those module paths are
+the surface an owned generator builds on. It is written once, in the shared manifest
+(`fixtures/generator-registry-conformance/registry.json`, `eject.engineSurface.python`), and
+`tests/conformance/test_eject_contract.py` ejects each generator alone into an empty project
+and rejects any import outside it. `tests/codegen/test_eject_alone.py` then runs each owned
+copy with the packaged emitters made unimportable and compares its output byte for byte with
+the packaged generator's.
 
 `requirement-tests` ejects the same way, to `codegen/generators/requirement_tests.py`,
 wired as `codegen.generators.requirement_tests:requirement_tests_generator`. The copy holds
@@ -742,9 +755,12 @@ like the rest of the package.
   --codegen` reports the stale `_runtime/` file until you run `gen`. That is the right
   answer, because the committed package is out of date.
 - **Eject never overwrites your runtime.** An existing `codegen/runtime/<module>.py` is
-  kept, even with `--force`, and eject says so. `metaobjects gen --list` marks each
-  runtime copy `identical` or `DIFFERS: N behind, M of your own` against the installed
-  one.
+  kept, even with `--force`, and eject says so, with how the copy compares with the
+  installed one (`kept your copy — identical` or `kept your copy — DIFFERS: N behind, M of
+  your own`). When the copy is behind, the next line names the generator that may need the
+  newer one and two commands, both written to run from the directory you ran eject in: the
+  `diff -u` of your copy against the installed file, and the `cp` to use only if you have
+  not changed yours. `metaobjects gen --list` marks each runtime copy the same way.
 - **A project that has not ejected `routes` is unchanged.** The packaged generator still
   imports `metaobjects.codegen.runtime.*` and emits no `_runtime/`.
 
@@ -764,33 +780,108 @@ codegen/runtime/`). The same recipe covers the generator itself: `metaobjects ej
 routes` into a scratch directory gives you the new reference to diff your
 `codegen/generators/routes.py` against.
 
-### The rules two generators share come with them
+### The emitters a generator writes through come with it
 
-Some emit rules are asked by more than one generator, and the answers have to match.
-`routes` and `filter-allowlist` both ask `emits_router` (which objects get a router; the
-generated router imports the allowlist module, so a mismatch is an import error at
-startup). `entity` and `extractor` both ask `has_literal_default`. These live in one
-module, `shared_predicates`, and ejecting any of those four generators copies it too:
+A generator that calls a packaged emitter is a shell around it: a defect in the emitter
+still waits for a release. So eject copies the emitters too, into `codegen/runtime/`, next
+to the generator. The set is each registry entry's `runtime` list:
+
+| Ejecting | also copies |
+|---|---|
+| `entity` | `fr019_shared_enum`, `m2m_codegen`, `shared_predicates` |
+| `routes` | `fr010_field_mapping`, `m2m_codegen`, `shared_predicates`, and the router's own runtime (above) |
+| `filter-allowlist` | `m2m_codegen`, `shared_predicates` |
+| `output-parser` | `extract_delegate_emitter`, `fr010_field_mapping` |
+| `extractor` | `extract_delegate_emitter`, `fr010_field_mapping`, `shared_predicates` |
+| `output-prompt` | `output_format_spec_emitter`, `fr010_field_mapping` |
+| `trace-helper` | `extract_schema_emitter`, `fr010_field_mapping` |
+| `api-docs` | `api_docs_model`, `api_docs_builder`, `api_docs_renderer`, `api_docs_paths`, `m2m_codegen`, `shared_predicates` |
+
+`names`, `render-helper` and `requirement-tests` call no packaged emitter. A file two
+generators share is copied once and an existing copy is never overwritten, even with
+`--force`; `metaobjects gen --list` marks each copy `identical` or `DIFFERS: N behind, M of
+your own`.
 
 ```text
 codegen/
-  generators/routes.py
-  generators/filter_allowlist.py
-  runtime/shared_predicates.py    # the shared rules, now your code
+  generators/output_parser.py
+  generators/extractor.py
+  runtime/extract_delegate_emitter.py   # the one copy both read
+  runtime/fr010_field_mapping.py
 ```
 
-Each generator imports it relatively (`from ..runtime.shared_predicates import ...`), so
-the verbatim copy in `codegen/generators/` reads `codegen/runtime/shared_predicates.py`
-and never the installed module. Two owned generators read the one copy: change
-`emits_router` there and your `routes` and your `filter-allowlist` change together. No
-generated code imports this module. It runs at `gen` time only, so nothing is emitted into
-`_runtime/` for it. The rest works as for the runtime above: an existing copy is kept, and
-`--list` marks it `identical` or `DIFFERS`.
+Each generator imports its helpers relatively (`from ..runtime import
+extract_delegate_emitter as rde`), so the verbatim copy in `codegen/generators/` reads
+`codegen/runtime/` and never the installed package. Two owned generators read the one copy:
+change it and both change. No generated code imports these modules; they run at `gen` time
+only, so nothing is emitted into `_runtime/` for them.
 
-A packaged generator keeps reading the installed rules. If you own `routes` and change
+**The rules two generators share** live in the same place. `routes` and `filter-allowlist`
+both ask `emits_router` (which objects get a router; the generated router imports the
+allowlist module, so a mismatch is an import error at startup). `entity` and `extractor`
+both ask `has_literal_default`. They are in `shared_predicates`, which each of those
+generators lists, so editing `emits_router` there moves your `routes` and your
+`filter-allowlist` together.
+
+A packaged generator keeps reading the installed copy. If you own `routes` and change
 `emits_router` but still run the packaged `filter-allowlist`, the two disagree. Eject
 `filter-allowlist` too before you change that rule; the same goes for `entity` and
 `extractor` with `has_literal_default`.
+
+**What stays in the package.** The engine: the generator base, writer and formatter, the
+naming and type-mapping tables, the model walks and the loader. A table that decides a name
+or a type is a question about the model, and the generators, the docs and the runtime must
+agree on it, so it stays one packaged, public copy.
+
+**A copy you ejected before this release** keeps running. It imports the emitters from the
+paths they had (`metaobjects.codegen.fr010_field_mapping`,
+`metaobjects.codegen.generators.m2m_codegen` and the others in the CHANGELOG), and each of
+those is now a deprecated alias of the module in `metaobjects.codegen.runtime`, so your copy
+calls the packaged emitter exactly as before and a `DeprecationWarning` names the new path.
+`metaobjects gen --list` marks it `DIFFERS: N behind`. To own the emitters, eject the same name
+into a scratch directory (`metaobjects eject <name> --root <scratch>`), copy the `runtime/`
+files over into `codegen/runtime/`, and change your imports to the relative form the new copy
+uses (`from ..runtime import fr010_field_mapping as fm`).
+
+**An existing `shared_predicates.py` needs two new functions.** `routes` now reads
+`is_read_only_routed` from it, and `api-docs` reads that and `emits_writable_router`. A
+`codegen/runtime/shared_predicates.py` you already own does not have them, and eject keeps
+it, so `metaobjects eject api-docs` or `metaobjects eject routes --force` leaves a generator
+that fails to import (`cannot import name 'emits_writable_router'`). Eject marks the kept
+copy `DIFFERS: N behind` and prints how to bring it up: first the `diff -u` of your copy
+against the installed file, whose hunks you apply, then the `cp` of the installed file over
+yours, for a copy you have not changed. Eject does not decide which applies (the recipe under
+[The runtime your generated code imports comes with it](#the-runtime-your-generated-code-imports-comes-with-it)).
+
+### `api-docs`: the api reference as an owned generator
+
+`metaobjects docs` writes the Python api reference (`api/python`). `metaobjects eject
+api-docs` copies the generator that writes it, with the page model (`api_docs_model.py`), the
+builder that decides what to document (`api_docs_builder.py`), the renderer
+(`api_docs_renderer.py`) and the page-path math (`api_docs_paths.py`). Change which nodes
+get a page, how a page reads, or where it lands, by editing them.
+
+A docs generator is not a code generator, so it is wired in its own block, never in a
+target's `generators`:
+
+```yaml
+docs:
+  generators: [codegen.generators.api_docs:api_docs_generator]
+```
+
+`metaobjects docs` runs the copy in place of the packaged generator. Without the block it
+runs the packaged one, and the positional `metaobjects docs <metadata_dir>` form reads no
+config, so it always does. An entry that is not a docs generator, or a second one for the
+`api` surface, is refused by name. `gen` and `verify --codegen` skip a docs generator
+they find under a target and say so (`'api-docs' writes the api reference, so gen skipped
+it.`), with what to do about the entry: the packaged `api-docs` name is removed, because
+`metaobjects docs` already runs it, and an owned copy moves to `docs.generators`.
+
+**It describes the code your generators emit.** The page builder asks `shared_predicates`
+which objects get a router, the same module your owned `routes` and `filter-allowlist`
+read. Eject them together and edit the predicate once: the router, the allowlist and the
+reference change together. The naming seam (`metaobjects.apidocs.naming`) is the engine,
+the one set of names every generator and every page uses.
 
 ## Java and Kotlin: `mvn metaobjects:eject`
 

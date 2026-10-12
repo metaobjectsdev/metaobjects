@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 
+from metaobjects.codegen.generators.tph_plan import is_tph_subtype
 from metaobjects.codegen.instance_artifacts import emits_instance_artifacts
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
@@ -92,4 +93,31 @@ def emits_router(entity: MetaObject) -> bool:
         entity.is_write_through()
         or kind == SOURCE_KIND_TABLE
         or kind in READ_ONLY_ROUTED_KINDS
+    )
+
+
+def is_read_only_routed(entity: MetaObject) -> bool:
+    """Whether the router generator chooses the READ-ONLY router for this object (a view /
+    materialized-view source that is not write-through): GET list, GET by id when it has an
+    item route, and the 405 refusals, with no write surface.
+
+    THE predicate behind that choice, shared with the API-docs generator so a page can never
+    present write verbs for an object whose router refuses them."""
+    if not emits_router(entity) or entity.is_write_through():
+        return False
+    src = primary_rdb_source(entity)
+    return src is not None and src.effective_kind() in READ_ONLY_ROUTED_KINDS
+
+
+def emits_writable_router(entity: MetaObject) -> bool:
+    """Whether the router generator emits the full CRUD router for this object: it gets a
+    router, that router is not the read-only one, and it is not a table-per-hierarchy subtype
+    (a subtype is folded into its base's single table, so its CRUD lives under the base).
+
+    THE predicate behind that choice, shared with the API-docs generator so a page can never
+    document write routes for an object the router does not give them."""
+    return (
+        emits_router(entity)
+        and not is_read_only_routed(entity)
+        and not is_tph_subtype(entity)
     )

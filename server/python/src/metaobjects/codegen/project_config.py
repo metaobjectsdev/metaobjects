@@ -22,7 +22,7 @@ Python-only, additive: no metamodel/vocabulary change; the existing positional
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml  # type: ignore[import-untyped]  # PyYAML ships no type stubs
@@ -38,11 +38,16 @@ DEFAULT_METADATA_DIR = "metaobjects"
 #: shipped schema has always said an unknown key is invalid; naming the set here is what
 #: lets the loader — the thing that actually runs — say the same. Kept in step with the
 #: schema by ``test_schema_and_loader_accept_EXACTLY_the_same_keys``.
-TOP_LEVEL_KEYS: tuple[str, ...] = ("metadata", "providers", "libraries", "targets", "requirementTests")
+TOP_LEVEL_KEYS: tuple[str, ...] = (
+    "metadata", "providers", "libraries", "targets", "requirementTests", "docs",
+)
 
 #: Every key a ``targets.<name>`` mapping may carry. Same contract as above.
 TARGET_KEYS: tuple[str, ...] = ("outDir", "generators", "entities")
 
+
+#: Every key the ``docs`` block may carry. Same contract as above.
+DOCS_KEYS: tuple[str, ...] = ("generators",)
 
 #: Every key the ``requirementTests`` block may carry (the ``requirement-tests`` generator's
 #: options). Same contract as above.
@@ -137,6 +142,9 @@ class ProjectConfig:
     targets: list[TargetConfig]
     #: Options of the ``requirement-tests`` generator; ``None`` => its defaults.
     requirement_tests: RequirementTestsConfig | None = None
+    #: The ``docs.generators`` block: owned docs generators (``module:symbol``) that
+    #: ``metaobjects docs`` runs in place of the packaged ones. ``[]`` => the packaged ones.
+    docs_generators: list[str] = field(default_factory=list)
 
     def metadata_dir(self) -> str:
         """The metadata dir resolved against ``config_dir`` (absolute path string)."""
@@ -227,6 +235,20 @@ def _parse_requirement_tests(raw: object, ctx: str) -> RequirementTestsConfig:
     )
 
 
+def _parse_docs(raw: object, ctx: str) -> list[str]:
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{ctx} must be a mapping.")
+    _reject_unknown_keys(raw, DOCS_KEYS, ctx)
+    generators = _require_str_list(raw.get("generators", []), f"{ctx} 'generators'")
+    bad = [g for g in generators if not re.fullmatch(MODULE_SYMBOL_PATTERN, g)]
+    if bad:
+        raise ConfigError(
+            f"{ctx}: 'generators' takes owned generators in 'module:symbol' form "
+            f"(`metaobjects eject api-docs` prints the entry), got {bad}."
+        )
+    return generators
+
+
 def load_project_config(path: Path) -> ProjectConfig:
     """Parse + validate ``metaobjects.config.yaml`` at ``path``.
 
@@ -306,6 +328,8 @@ def load_project_config(path: Path) -> ProjectConfig:
         else None
     )
 
+    docs_generators = _parse_docs(raw["docs"], f"{path}: 'docs'") if "docs" in raw else []
+
     return ProjectConfig(
         config_dir=path.parent.resolve(),
         metadata=metadata,
@@ -313,4 +337,5 @@ def load_project_config(path: Path) -> ProjectConfig:
         libraries=libraries,
         targets=targets,
         requirement_tests=requirement_tests,
+        docs_generators=docs_generators,
     )

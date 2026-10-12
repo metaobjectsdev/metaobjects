@@ -217,6 +217,69 @@ generator catalog and the Atlas evaluation are 1.2 work.
     calls one.
   The cross-port manifest lists `api-docs` for `csharp`.
 
+- **Python: an ejected generator owns the emitters it writes through, and `api-docs` can be
+  ejected.** `metaobjects eject` used to copy one file per generator, so an owned `entity`
+  still called the shared-enum and M:N writers, and an owned `output-parser`, `extractor`,
+  `output-prompt` or `trace-helper` still called the prompt tier's field mapping, extract
+  delegate, extract schema and format-spec writers. A defect in any of them waited for a
+  release. Eject now copies those emitters with the generator, into `codegen/runtime/`, and the
+  copy reads them from there: `fr019_shared_enum` and `m2m_codegen` with `entity`;
+  `m2m_codegen` with `filter-allowlist`; `fr010_field_mapping` and `m2m_codegen` with `routes`;
+  `extract_delegate_emitter` and `fr010_field_mapping` with `output-parser` and `extractor`;
+  `output_format_spec_emitter` and `fr010_field_mapping` with `output-prompt`;
+  `extract_schema_emitter` and `fr010_field_mapping` with `trace-helper`. A file two generators
+  share is copied once and never overwritten, and `metaobjects gen --list` marks each copy
+  `identical` or `DIFFERS`. What stays in the package is the engine: the generator base and
+  file writer, `metaobjects.apidocs.naming`, `type_map` and `value_objects` (the naming and
+  type-mapping tables), and the model walks (`find_inbound`, `tph_plan`,
+  `instance_artifacts`). `template` is not ejectable: it has no emit logic of its own. Packaged
+  output is unchanged and gated to be.
+  - **`api-docs` is a generator you can own.** `metaobjects eject api-docs` copies the page
+    generator with its page model, builder, renderer and path math. The api reference is now a
+    generator (`docs_surface = "api"`) that `metaobjects docs` runs: an owned copy is listed
+    under the new `docs.generators` block of `metaobjects.config.yaml` and runs in place of the
+    packaged one. `gen` and `verify --codegen` skip a docs generator they find under a target
+    and say so: the packaged `api-docs` name is to be removed (`metaobjects docs` already runs
+    it), an owned copy is to be listed under `docs.generators`. The reference asks `shared_predicates` which objects get a router (the new
+    `emits_writable_router` and the moved `is_read_only_routed`, beside `emits_router`), the
+    module your owned `routes` and `filter-allowlist` read, so one edit to the owned predicate
+    moves the router, the allowlist and the pages together. The cross-port manifest lists
+    `api-docs` for `python`.
+  - **Where things moved.** The emitters now live in `metaobjects.codegen.runtime` (a
+    module the helper-runtime copy already used): `extract_delegate_emitter`,
+    `fr010_field_mapping`, `output_format_spec_emitter`, `extract_schema_emitter`,
+    `fr019_shared_enum`, `m2m_codegen`, and the api reference as `api_docs_model`,
+    `api_docs_builder`, `api_docs_renderer` and `api_docs_paths`. `metaobjects.apidocs` keeps
+    `naming` and exports `PythonApiModelBuilder`, `PythonApiDocsRenderer` and the path
+    functions as before. New public API: `DocsRunFacts`, `GenContext.docs`, `DEFAULT_API_SUBDIR`
+    and `DOCS_SURFACE_API` in `metaobjects.codegen.generator`, `ProjectConfig.docs_generators`,
+    `GeneratorEntry.docs_surface`, and `metaobjects.codegen.docs_run`.
+  - **A copy you ejected before this release** keeps running: it imports the emitters from
+    their old paths, which are deprecated aliases (see **Deprecated**), so it calls the
+    packaged emitters as it always did. `metaobjects gen --list` marks it `DIFFERS: N behind`.
+    To own them, eject the same name into a scratch directory and copy the generator's
+    `runtime/` files over (see
+    [own-your-codegen](docs/features/own-your-codegen.md#the-emitters-a-generator-writes-through-come-with-it)).
+  - **A `codegen/runtime/shared_predicates.py` you already own needs two new functions.**
+    `routes` now reads `is_read_only_routed` from it and `api-docs` reads that and
+    `emits_writable_router`, and eject never overwrites a runtime copy. When eject keeps a
+    runtime copy it now says how the copy compares with the installed module
+    (`kept your copy — identical`, or `kept your copy — DIFFERS: N behind, M of your own`),
+    and for a copy that is behind it prints two commands that run from the working
+    directory, `--root` or not: the `diff -u` of your copy against the installed file, whose
+    hunks you apply, and the `cp` of the installed file over yours, for a copy you have not
+    changed.
+  - **A gate for the rule.** The engine surface is written once, in the shared manifest
+    (`eject.engineSurface.python`), and `tests/conformance/test_eject_contract.py` ejects every
+    ejectable generator alone into an empty project and fails on any import outside it. A
+    second test (`tests/codegen/test_eject_alone.py`) runs each owned copy with every packaged
+    emit module made unimportable and compares its output byte for byte with the packaged
+    generator's over a model that exercises each one (the router's own runtime imports are the
+    one documented difference). Another fails on a helper module no registry entry hands over,
+    or a generator module no registry entry names.
+    The nine Python entries of the shared eject contract's `eject.pending` list are closed, and the
+    contract test runs `api-docs` through `metaobjects docs`, the way it is run.
+
 - **The stock `entity`, `queries`, `routes` and `barrel` generators are importable again
   (TypeScript).** `entityFile`, `queriesFile`, `routesFile` and `barrel` are exported from
   `@metaobjectsdev/codegen-ts/generators` once more, beside `namesFile`, `routesFileHono`
@@ -871,6 +934,16 @@ until you regenerate.
 - **C#: `Fr010FieldMapping.CSharpStringLiteral(string)` is `[Obsolete]`.** It forwards to
   `CSharpNaming.CSharpStringLiteral(string)`, which every generator now calls (so an ejected
   `names` needs no emitter). Same signature and result; switch the call when you next touch it.
+- **Python: the old import paths of the emitters that moved into `metaobjects.codegen.runtime`.**
+  `metaobjects.codegen.extract_delegate_emitter`, `.fr010_field_mapping`,
+  `.output_format_spec_emitter`, `.extract_schema_emitter`, `metaobjects.codegen.generators.fr019_shared_enum`,
+  `.m2m_codegen`, and `metaobjects.apidocs.api_model`, `.builder`, `.renderer`, `.paths` are
+  each one-line modules that become the new module and warn (`DeprecationWarning`) on import.
+  Same objects, so nothing else changes; import from `metaobjects.codegen.runtime` (the api
+  reference modules are `api_docs_model`, `api_docs_builder`, `api_docs_renderer` and
+  `api_docs_paths` there). The old paths will be removed in a later release.
+  `metaobjects.codegen.generators.router_generator.is_read_only_routed` moved to
+  `metaobjects.codegen.runtime.shared_predicates`; the router module still re-exports it.
 
 ### Removed
 

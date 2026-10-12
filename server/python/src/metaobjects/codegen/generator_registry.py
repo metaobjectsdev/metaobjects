@@ -26,6 +26,7 @@ from typing import Callable
 
 from metaobjects.codegen.generator import Generator
 from metaobjects.codegen.project_config import DEFAULT_REQUIREMENT_WITNESS_MODULE
+from metaobjects.codegen.generators.api_docs_generator import api_docs_generator
 from metaobjects.codegen.generators.entity_model import entity_model
 from metaobjects.codegen.generators.extractor_generator import extractor_generator
 from metaobjects.codegen.generators.filter_allowlist_generator import (
@@ -157,6 +158,12 @@ class GeneratorEntry:
         """The factory name an owned copy exports, or ``None``."""
         return self.source.__name__ if self.source is not None else None
 
+    @property
+    def docs_surface(self) -> str | None:
+        """The docs surface this generator takes over (``metaobjects docs`` runs it, ``gen``
+        skips it), or ``None`` for a generator ``gen`` runs."""
+        return getattr(self.factory(GeneratorBuildContext()), "docs_surface", None)
+
 
 def _template_primitive(_ctx: GeneratorBuildContext) -> Generator:
     """A no-op default for the ``template`` PRIMITIVE generator.
@@ -195,7 +202,26 @@ def _render_helper_default(ctx: GeneratorBuildContext) -> Generator:
 #: agree with each other (see ``runtime/shared_predicates.py``).
 _SHARED_PREDICATES: tuple[str, ...] = ("shared_predicates",)
 
-#: Stable name -> GeneratorEntry. The 11 native generators whose manifest `ports`
+#: The emitters a generator writes its output THROUGH, handed over with it: the helper modules
+#: that return emitted text, which an owned copy therefore owns instead of calling the
+#: packaged copy. Eject copies them next to the generator (``codegen/runtime/``) and the
+#: generator imports them relatively. Naming and type-mapping tables, the model walks and the
+#: generator base stay in the package as the engine. See ``tests/conformance/test_eject_contract.py``.
+_FR010_FIELD_MAPPING = "fr010_field_mapping"
+_M2M_CODEGEN = "m2m_codegen"
+_FR019_SHARED_ENUM = "fr019_shared_enum"
+_EXTRACT_DELEGATE = "extract_delegate_emitter"
+_EXTRACT_SCHEMA = "extract_schema_emitter"
+_OUTPUT_FORMAT_SPEC = "output_format_spec_emitter"
+#: The api reference's page IR, builder, renderer and path math.
+_API_DOCS_RUNTIME: tuple[str, ...] = (
+    "api_docs_model",
+    "api_docs_builder",
+    "api_docs_renderer",
+    "api_docs_paths",
+)
+
+#: Stable name -> GeneratorEntry. The 12 native generators whose manifest `ports`
 #: include `python` (ADR-0021 D3). Set equality, tier AND layer are conformance-tested
 #: against the manifest.
 GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
@@ -211,7 +237,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         layer="model",
         factory=lambda _ctx: entity_model(),
         source=entity_model,
-        runtime=_SHARED_PREDICATES,
+        runtime=_SHARED_PREDICATES + (_FR019_SHARED_ENUM, _M2M_CODEGEN),
     ),
     "routes": GeneratorEntry(
         name="routes",
@@ -224,7 +250,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         # generated package fails at import (ModuleNotFoundError).
         requires=("entity", "filter-allowlist"),
         source=router_generator,
-        runtime=_ROUTER_RUNTIME + _SHARED_PREDICATES,
+        runtime=_ROUTER_RUNTIME + _SHARED_PREDICATES + (_FR010_FIELD_MAPPING, _M2M_CODEGEN),
     ),
     "output-parser": GeneratorEntry(
         name="output-parser",
@@ -234,6 +260,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         factory=lambda _ctx: output_parser_generator(),
         requires=("entity",),
         source=output_parser_generator,
+        runtime=(_EXTRACT_DELEGATE, _FR010_FIELD_MAPPING),
     ),
     "output-prompt": GeneratorEntry(
         name="output-prompt",
@@ -242,6 +269,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         layer="capability",
         factory=lambda _ctx: output_prompt_generator(),
         source=output_prompt_generator,
+        runtime=(_OUTPUT_FORMAT_SPEC, _FR010_FIELD_MAPPING),
     ),
     "render-helper": GeneratorEntry(
         name="render-helper",
@@ -260,7 +288,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         factory=lambda _ctx: extractor_generator(),
         requires=("entity",),
         source=extractor_generator,
-        runtime=_SHARED_PREDICATES,
+        runtime=_SHARED_PREDICATES + (_EXTRACT_DELEGATE, _FR010_FIELD_MAPPING),
     ),
     "requirement-tests": GeneratorEntry(
         name="requirement-tests",
@@ -284,7 +312,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         layer="api",
         factory=lambda _ctx: filter_allowlist_generator(),
         source=filter_allowlist_generator,
-        runtime=_SHARED_PREDICATES,
+        runtime=_SHARED_PREDICATES + (_M2M_CODEGEN,),
     ),
     "names": GeneratorEntry(
         name="names",
@@ -301,6 +329,19 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         layer="capability",
         factory=lambda _ctx: trace_helper_generator(),
         source=trace_helper_generator,
+        runtime=(_EXTRACT_SCHEMA, _FR010_FIELD_MAPPING),
+    ),
+    "api-docs": GeneratorEntry(
+        name="api-docs",
+        description=(
+            "Per-entity/template SDK API reference (generated-code API; human + agent forms). "
+            "Run by `metaobjects docs`, not `gen`."
+        ),
+        tier="native",
+        layer="docs",
+        factory=lambda _ctx: api_docs_generator(),
+        source=api_docs_generator,
+        runtime=_API_DOCS_RUNTIME + _SHARED_PREDICATES + (_M2M_CODEGEN,),
     ),
 }
 

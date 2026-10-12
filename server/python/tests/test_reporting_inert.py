@@ -26,9 +26,9 @@ from pathlib import Path
 import pytest
 
 from metaobjects import load_uris
-from metaobjects.apidocs.builder import PythonApiModelBuilder
-from metaobjects.apidocs.paths import Layout, doc_page_output_path
-from metaobjects.apidocs.renderer import render_agent_api, render_index, render_unit_page
+from metaobjects.codegen.runtime.api_docs_builder import PythonApiModelBuilder
+from metaobjects.codegen.runtime.api_docs_paths import Layout, doc_page_output_path
+from metaobjects.codegen.runtime.api_docs_renderer import render_agent_api, render_index, render_unit_page
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.generator import Generator
 from metaobjects.codegen.generator_registry import (

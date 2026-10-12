@@ -43,11 +43,6 @@ from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.type_map import field_is_array, py_type_for
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
-from metaobjects.codegen.generators import fr019_shared_enum as fr019
-from metaobjects.codegen.generators.m2m_codegen import (
-    build_object_index,
-    resolve_m2m_descriptors,
-)
 from metaobjects.codegen.generators.tph_plan import tph_subtype_binding
 from metaobjects.codegen.value_objects import (
     model_class_name,
@@ -55,6 +50,8 @@ from metaobjects.codegen.value_objects import (
     object_ref_class_name,
 )
 
+from ..runtime import fr019_shared_enum as fr019
+from ..runtime.m2m_codegen import build_object_index, resolve_m2m_descriptors
 from ..runtime.shared_predicates import has_literal_default, is_sql_expr_default
 
 

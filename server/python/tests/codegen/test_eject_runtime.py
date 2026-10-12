@@ -85,10 +85,11 @@ def _block_installed_runtime(monkeypatch) -> None:
 
 
 def test_routes_entry_lists_the_runtime_its_output_imports_and_nothing_else_does() -> None:
-    """``shared_predicates`` is handed over through the same field but no generated code
-    imports it (``test_eject_independence.py`` covers it), so it is set aside here."""
+    """The emitters and predicates a generator reads at ``gen`` time are handed over through
+    the same field, but no generated code imports them (``test_eject_independence.py`` and
+    ``test_eject_alone.py`` cover them), so only the two modules a router imports count."""
     output_runtime = {
-        n: tuple(m for m in e.runtime if m != "shared_predicates")
+        n: tuple(m for m in e.runtime if m in RUNTIME_MODULES)
         for n, e in GENERATOR_REGISTRY.items()
     }
     assert output_runtime.pop("routes") == RUNTIME_MODULES
@@ -143,7 +144,9 @@ def test_eject_never_overwrites_an_owned_runtime_copy(tmp_path, monkeypatch, cap
     capsys.readouterr()
     assert main(["eject", "routes", "--force"]) == 0
     assert mine.read_text(encoding="utf-8").endswith("# my fix\n")
-    assert "filter_parser.py: kept your copy" in capsys.readouterr().out
+    kept = capsys.readouterr().out
+    assert "filter_parser.py: kept your copy — DIFFERS: 0 behind, 1 of your own" in kept
+    assert "may need the newer copy" not in kept
     assert main(["gen", "--list"]) == 0
     assert ("runtime codegen/runtime/filter_parser.py [owned — DIFFERS: 0 behind, 1 of your own]"
             in capsys.readouterr().out)
@@ -151,7 +154,7 @@ def test_eject_never_overwrites_an_owned_runtime_copy(tmp_path, monkeypatch, cap
 
 def test_eject_of_a_generator_without_runtime_writes_no_runtime(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
-    assert main(["eject", "names", "output-prompt", "trace-helper"]) == 0
+    assert main(["eject", "names", "render-helper", "requirement-tests"]) == 0
     assert not (tmp_path / "codegen" / "runtime").exists()
 
 

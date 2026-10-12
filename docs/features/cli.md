@@ -376,6 +376,9 @@ requirementTests:                # optional; options of the `requirement-tests` 
   filter: codegen.requirement_hooks:include    # "module:symbol", resolved config-relative
   renderer: codegen.requirement_hooks:render   # "module:symbol", resolved config-relative
   warnUncovered: true            # the default
+docs:                            # optional; options of `metaobjects docs`
+  generators:                    # owned docs generators as "module:symbol", run in place of the packaged one
+    - codegen.generators.api_docs:api_docs_generator
 targets:
   api:
     outDir: src/generated/api

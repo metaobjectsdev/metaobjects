@@ -14,15 +14,22 @@ already loaded.
 """
 from __future__ import annotations
 
+import ast
 import json
 import os
+import re
+import shlex
+import shutil
 import subprocess
 import sys
 import uuid
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 import metaobjects
+import metaobjects.codegen.runtime
 from metaobjects.cli import main
 from metaobjects.codegen import eject as owned
 from metaobjects.codegen.generator_registry import GENERATOR_REGISTRY
@@ -71,9 +78,14 @@ def test_loading_one_ejectable_generator_loads_no_other_generators_module(tmp_pa
     assert not offenders, "\n".join(offenders)
 
 
+#: The docs generator reads the router gates (`is_read_only_routed`, `emits_writable_router`) from
+#: the same module, so the reference describes the routers an owned `routes` emits.
+DOCS_READERS = {"api-docs"}
+
+
 def test_the_generators_that_share_a_predicate_hand_it_over() -> None:
     users = {n for n, e in GENERATOR_REGISTRY.items() if SHARED in e.runtime}
-    assert users == set(SHARED_USERS)
+    assert users == set(SHARED_USERS) | DOCS_READERS
 
 
 def test_each_owned_generator_ejected_alone_reads_the_owned_predicates(tmp_path, monkeypatch) -> None:
@@ -128,7 +140,9 @@ def test_an_edit_to_the_owned_predicate_moves_owned_routes_and_owned_allowlist_t
     assert main(["eject", "routes"]) == 0
     capsys.readouterr()
     assert main(["eject", "filter-allowlist"]) == 0
-    assert f"codegen/runtime/{SHARED}.py: kept your copy" in capsys.readouterr().out
+    kept = capsys.readouterr().out
+    assert f"codegen/runtime/{SHARED}.py: kept your copy — identical" in kept
+    assert "may need the newer copy" not in kept
 
     # One owned rule, edited once: the Post object no longer gets a router.
     rule = root / "codegen" / "runtime" / f"{SHARED}.py"
@@ -149,3 +163,65 @@ def test_an_edit_to_the_owned_predicate_moves_owned_routes_and_owned_allowlist_t
     assert main(["gen", "--list"]) == 0
     assert (f"runtime codegen/runtime/{SHARED}.py [owned — DIFFERS: 0 behind, 3 of your own]"
             in capsys.readouterr().out)
+
+
+#: The predicates `routes` and `api-docs` read from the shared module that an earlier
+#: hand-over of it did not carry.
+ADDED_PREDICATES = {"is_read_only_routed", "emits_writable_router"}
+
+
+def _shared_predicates_before_the_added_ones() -> str:
+    source = owned.packaged_runtime_path(SHARED).read_text(encoding="utf-8")
+    lines = source.splitlines(keepends=True)
+    removed = set()
+    for node in reversed(ast.parse(source).body):
+        if isinstance(node, ast.FunctionDef) and node.name in ADDED_PREDICATES:
+            del lines[node.lineno - 1:node.end_lineno]
+            removed.add(node.name)
+    assert removed == ADDED_PREDICATES
+    return "".join(lines)
+
+
+@pytest.mark.parametrize("root_arg", [None, "services/api"], ids=["cwd", "--root"])
+def test_eject_onto_an_older_shared_copy_keeps_it_and_says_how_to_refresh_it(
+    root_arg: str | None, tmp_path, monkeypatch, capsys,
+) -> None:
+    """A project that ejected a generator before `api-docs` existed owns a
+    `shared_predicates.py` without the predicates the api reference imports. Eject keeps
+    that copy, so it has to say the copy is behind and name the way to bring it up, in
+    commands that work from the directory eject was run in."""
+    root = tmp_path / root_arg if root_arg else tmp_path
+    older = _shared_predicates_before_the_added_ones()
+    mine = root / "codegen" / "runtime" / f"{SHARED}.py"
+    mine.parent.mkdir(parents=True)
+    mine.write_text(older, encoding="utf-8")
+    # With --root, the working directory is another project with a copy of its own.
+    elsewhere = tmp_path / "codegen" / "runtime" / f"{SHARED}.py"
+    if root_arg:
+        elsewhere.parent.mkdir(parents=True)
+        elsewhere.write_text("# another project's copy\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["eject", "api-docs", *(["--root", root_arg] if root_arg else [])]) == 0
+    assert mine.read_text(encoding="utf-8") == older
+    lines = capsys.readouterr().out.splitlines()
+    at = next(i for i, ln in enumerate(lines) if f"{SHARED}.py: kept your copy" in ln)
+    behind, own = re.search(r"kept your copy — DIFFERS: (\d+) behind, (\d+) of your own",
+                            lines[at]).groups()
+    assert int(behind) > 0 and int(own) == 0
+
+    hint = lines[at + 1]
+    assert [ln for ln in lines if "may need the newer copy" in ln] == [hint]
+    assert "api-docs may need the newer copy" in hint
+    packaged = Path(metaobjects.codegen.runtime.__path__[0]) / f"{SHARED}.py"
+    diff, copy = hint.split(": ", 1)[1].split("; if you have not changed it: ")
+    assert shlex.split(diff)[:2] == ["diff", "-u"]
+    assert [Path(p).resolve() for p in shlex.split(diff)[2:]] == [mine.resolve(), packaged.resolve()]
+
+    # The copy command, run from the working directory, refreshes this project's copy.
+    command, source, target = shlex.split(copy)
+    assert command == "cp"
+    shutil.copy(source, target)
+    assert mine.read_text(encoding="utf-8") == packaged.read_text(encoding="utf-8")
+    if root_arg:
+        assert elsewhere.read_text(encoding="utf-8") == "# another project's copy\n"

@@ -828,9 +828,9 @@ refusal is then `scripts/finish-release.mjs`, which withholds the tag.
 | 1 | Java `routes`, `dto` and `value-object` did not compile when ejected alone. | Closed before this amendment |
 | 2 | TypeScript `requirementsFile` and `agentDocsFile` were in no registry. | Registered here as `requirements` and `agent-docs`; reference templates pending |
 | 3 | TypeScript reference templates that call packaged composers. | Pending |
-| 4 | Prompt-tier emitters that stay packaged in C#, Python, Java and Kotlin. | Closed in C#. Pending in Python, Java and Kotlin |
-| 5 | Fragment emitters behind otherwise whole generators (shared enums, M:N navigation, doc comments, record builders). | Closed in C#. Pending in Python, Java and Kotlin |
-| 6 | The docs command's emitter in C#, Python, Java and Kotlin is not a registered `api-docs`. | Closed in C#. Pending in Python, Java and Kotlin |
+| 4 | Prompt-tier emitters that stay packaged in C#, Python, Java and Kotlin. | Closed in C# and Python. Pending in Java and Kotlin |
+| 5 | Fragment emitters behind otherwise whole generators (shared enums, M:N navigation, doc comments, record builders). | Closed in C# and Python. Pending in Java and Kotlin |
+| 6 | The docs command's emitter in C#, Python, Java and Kotlin is not a registered `api-docs`. | Closed in C# and Python. Pending in Java and Kotlin |
 | 7 | Java generators outside the registry. | Registered here as `plantuml`, `html-docs`, `ai-docs`, `json-schema` and `mustache`; eject source pending for the first four |
 | 8 | The docs-site builders. | Exempt (ruling 3) |
 | 9 | Python generators that called another generator's packaged module. | Closed before this amendment |
@@ -909,10 +909,10 @@ is.
 
 *What changed in existing tests so the new rows could run.*
 
-- **The older registry-conformance tests in C#, Java, Kotlin and Python subtract the names
+- **The older registry-conformance tests in C#, Java and Kotlin subtract the names
   with a pending census entry.** The manifest lists `api-docs` for those ports (gap 6) and
-  the Java, Kotlin and Python registries do not hold it yet. The pending entry is the one
-  record of that difference. Deleting the entry removes the subtraction, as it has in C#.
+  the Java and Kotlin registries do not hold it yet. The pending entry is the one record of
+  that difference. Deleting the entry removes the subtraction, as it has in C# and Python.
 - **Two registry-driven Java suites pass an `outputFilename` argument** to generators that
   write one file, so the five newly registered rows run in them. It is a test argument;
   no generator changed.
