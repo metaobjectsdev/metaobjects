@@ -50,19 +50,14 @@ rather than assume. Do not skip past the list.
 
 **The eject pending list (1.1.0).** 1.1.0 does not ship while
 `fixtures/generator-registry-conformance/registry.json` has an entry in `eject.pending`
-(ADR-0034 Amendment 8). The release scripts enforce it: `scripts/release.mjs` (first check of
-its preflight) and `scripts/finish-release.mjs` (gate 0, before the tag) refuse a version with
-no prerelease suffix while the list holds an entry. A release candidate (`1.1.0-rc.3`) is
-allowed.
+(ADR-0034 Amendment 8). Every publish path enforces it: `scripts/release.mjs` (first check of
+its preflight), `scripts/finish-release.mjs` (gate 0, before the tag) and the four publish
+workflows (the step after checkout) refuse a version with no prerelease suffix while the list
+holds an entry. A release candidate (`1.1.0-rc.3`) is allowed.
 
 To clear it for a final release: close the gaps and delete their entries. There is no other
 step. Each port's eject-contract test fails on a gap that is not listed, so an entry cannot be
-deleted before its gap is closed. A registry you publish outside those two scripts does not
-pass through the gate, so run it yourself first; it exits non-zero on a refusal:
-
-```
-node scripts/eject-release-gate.mjs <version>
-```
+deleted before its gap is closed.
 
 **Why this is step 0 and not a nicety:** `0.21.1` shipped *without* a `timestampMode` fix that was
 already written and sitting on an unmerged branch. Because versions are immutable on all four
@@ -565,6 +560,7 @@ scripts/ci-local.sh --strict-toolchains        # must end "LOCAL CI PASSED"
 # bump the candidate set to the final <version>
 rm bun.lock && bun install
 # verify packed deps (rule 2); commit "chore(release): <version>"
+node scripts/eject-release-gate.mjs <version>    # must exit 0; refuses while eject.pending has entries
 ( cd <pkg-dir> && bun publish )                  # default tag = latest, tier order
 git push origin main                             # NO tag here — see golden rule 7
 ```

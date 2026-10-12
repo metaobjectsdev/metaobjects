@@ -287,44 +287,4 @@ public class EjectContractTests
         }
         Assert.True(emitted > 0, $"{stableName} emitted nothing over the corpora: nothing was compared");
     }
-
-    // ---------------------------------------------------------------------------------
-    // the shared file itself
-    // ---------------------------------------------------------------------------------
-
-    [Fact]
-    public void Every_exemption_carries_a_reason_and_a_ruling()
-    {
-        foreach (var (name, spec) in EjectContract.Generators())
-        {
-            var eject = spec.GetProperty("eject");
-            if (eject.ValueKind == System.Text.Json.JsonValueKind.String)
-            {
-                Assert.Equal("full", eject.GetString());
-                continue;
-            }
-            Assert.Equal(["exempt", "ruling"], eject.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToArray());
-            Assert.False(string.IsNullOrWhiteSpace(eject.GetProperty("exempt").GetString()), name);
-            Assert.False(string.IsNullOrWhiteSpace(eject.GetProperty("ruling").GetString()), name);
-        }
-    }
-
-    [Fact]
-    public void Every_pending_entry_is_well_formed()
-    {
-        var ports = EjectContract.Ports();
-        var generators = EjectContract.Generators();
-        foreach (var entry in EjectContract.AllPending())
-        {
-            Assert.Contains(entry.Port, ports);
-            Assert.Contains(entry.Assertion, EjectContract.Assertions);
-            Assert.True(generators.ContainsKey(entry.Generator), entry.Generator);
-            Assert.Equal(entry.Assertion == "depth", entry.Outside is not null);
-            if (entry.Outside is not null)
-            {
-                Assert.NotEmpty(entry.Outside);
-                Assert.Equal(entry.Outside.OrderBy(o => o, StringComparer.Ordinal), entry.Outside);
-            }
-        }
-    }
 }

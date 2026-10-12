@@ -548,22 +548,4 @@ public class EjectContractTest {
         }
         assertEquals("emitted nothing over the corpora, so nothing was compared", List.of(), silent);
     }
-
-    // ---------------------------------------------------------------------------------
-    // the shared file itself
-    // ---------------------------------------------------------------------------------
-
-    @Test
-    public void everyExemptionCarriesAReasonAndARuling() {
-        for (Map.Entry<String, JsonElement> g : manifest().getAsJsonObject("generators").entrySet()) {
-            JsonElement eject = g.getValue().getAsJsonObject().get("eject");
-            if (eject.isJsonPrimitive()) {
-                assertEquals(g.getKey(), "full", eject.getAsString());
-                continue;
-            }
-            assertEquals(g.getKey(), Set.of("exempt", "ruling"), eject.getAsJsonObject().keySet());
-            assertFalse(g.getKey(), eject.getAsJsonObject().get("exempt").getAsString().isBlank());
-            assertFalse(g.getKey(), eject.getAsJsonObject().get("ruling").getAsString().isBlank());
-        }
-    }
 }

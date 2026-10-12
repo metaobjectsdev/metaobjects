@@ -15,8 +15,6 @@ internal static class EjectContract
 {
     internal const string Port = "csharp";
 
-    internal static readonly string[] Assertions = ["census", "completeness", "depth"];
-
     internal sealed record PendingEntry(string Generator, string Port, string Assertion, int Gap, IReadOnlyList<string>? Outside);
 
     internal static string ManifestPath() =>
@@ -28,9 +26,6 @@ internal static class EjectContract
     private static JsonElement Root => Document.Value.RootElement;
 
     private static JsonElement Eject => Root.GetProperty("eject");
-
-    internal static IReadOnlyList<string> Ports() =>
-        Root.GetProperty("ports").EnumerateArray().Select(p => p.GetString()!).ToList();
 
     /// <summary>Every generator in the shared file, with its <c>eject</c> declaration.</summary>
     internal static IReadOnlyDictionary<string, JsonElement> Generators() =>

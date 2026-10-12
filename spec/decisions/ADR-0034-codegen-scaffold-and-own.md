@@ -789,18 +789,32 @@ owned copy still references. The list works in both directions.
   the same change. A depth entry is compared module by module, so a copy that stops
   importing one of three packaged modules fails until the entry says so.
 
-**1.1.0 does not ship with a non-empty pending list.** The release scripts are what holds
-that rule, and there is no manual step. `scripts/eject-release-gate.mjs` refuses a version
-with no prerelease suffix while the list holds an entry. A manifest that cannot be read is
-refused. `scripts/release.mjs` calls it first in its preflight, before anything is built or
-published, and `scripts/finish-release.mjs` calls it as gate 0, before the tag. A prerelease
-version (`1.1.0-rc.3`) is allowed, because a release candidate is how the remaining entries
-get exercised by an adopter. An empty list is a proven one: each port's test fails on a gap
-that is not listed, so nothing can be left out of the list to pass the gate.
+**1.1.0 does not ship with a non-empty pending list.** `scripts/eject-release-gate.mjs`
+refuses a version with no prerelease suffix while the list holds an entry. A manifest that
+cannot be read is refused. A prerelease version (`1.1.0-rc.3`) is allowed, because a release
+candidate is how the remaining entries get exercised by an adopter. An empty list is a
+proven one: each port's test fails on a gap that is not listed, so nothing can be left out
+of the list to pass the gate.
 
-A registry published outside those two scripts does not pass through the gate. The
-procedure in `docs/RELEASING.md` has the operator run the gate by hand before one:
-`node scripts/eject-release-gate.mjs <version>` exits non-zero on a refusal.
+Every path that publishes or tags a release calls the gate, so the rule does not depend on
+a person remembering it:
+
+- `scripts/release.mjs` calls it first in its preflight, before anything is built or
+  published.
+- `scripts/finish-release.mjs` calls it as gate 0, before the tag.
+- The four publish workflows (`publish-npm.yml`, `publish-python.yml`, `publish-java.yml`,
+  `publish-csharp.yml`) run it as the step after checkout, with the version that workflow
+  is about to publish: the committed one, or in `publish-csharp.yml` the `version` input
+  when one is given.
+
+A tag push cannot be exercised in the repository's own checks, so a test is what holds the
+workflows to the rule. `scripts/eject-release-gate.test.ts` parses each workflow, walks
+each job's steps in order to check that the gate step comes before the first publishing
+step, and runs the gate step's own shell against a throwaway repository. The same test
+fails when a publish workflow is added that it does not list.
+
+One publish is typed by hand: the `bun publish` loop that promotes npm in
+`docs/RELEASING.md` step 3. That procedure runs the gate as the command before it.
 
 **The gaps.** `gap` in a pending entry is a number from this list.
 

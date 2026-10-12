@@ -42,7 +42,8 @@ const MANIFEST_PATH = join(FIXTURES, "generator-registry-conformance", "registry
 const WORKSPACE_TMP = resolve(import.meta.dirname, "fixtures", "__tmp__");
 const CODEGEN_ENGINE = "@metaobjectsdev/codegen-ts";
 
-type Assertion = "census" | "completeness" | "depth";
+const ASSERTIONS = ["census", "completeness", "depth"] as const;
+type Assertion = (typeof ASSERTIONS)[number];
 interface Pending { generator: string; port: string; assertion: Assertion; gap: number; outside?: string[] }
 interface Manifest {
   ports: string[];
@@ -550,5 +551,28 @@ describe("eject contract — the shared file", () => {
 
   test("every port declares an engine surface", () => {
     expect(Object.keys(manifest.eject.engineSurface).sort()).toEqual([...manifest.ports].sort());
+  });
+
+  test("every pending entry is well formed, and listed once", () => {
+    const seen = new Set<string>();
+    for (const entry of manifest.eject.pending) {
+      const where = JSON.stringify(entry);
+      expect(Object.keys(entry).filter((key) => key !== "outside").sort(), where)
+        .toEqual(["assertion", "gap", "generator", "port"]);
+      expect(manifest.ports, where).toContain(entry.port);
+      expect(ASSERTIONS as readonly string[], where).toContain(entry.assertion);
+      expect(Object.keys(manifest.generators), where).toContain(entry.generator);
+      expect(Number.isInteger(entry.gap), where).toBe(true);
+      expect(entry.outside !== undefined, where).toBe(entry.assertion === "depth");
+      if (entry.outside !== undefined) {
+        expect(entry.outside.length, where).toBeGreaterThan(0);
+        expect(entry.outside, where).toEqual([...entry.outside].sort());
+      }
+      // One entry per generator, port and assertion; a depth entry per gap as well.
+      const identity = JSON.stringify(
+        [entry.generator, entry.port, entry.assertion, entry.outside === undefined ? null : entry.gap]);
+      expect(seen.has(identity), `duplicate pending entry: ${where}`).toBe(false);
+      seen.add(identity);
+    }
   });
 });

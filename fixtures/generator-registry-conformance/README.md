@@ -35,7 +35,7 @@ to make the choice cheap, and `layer` is the axis it is cheap along.
 | `persistence` | queries, db-context, repository, exposed-table, relations, stored-proc | app shape |
 | `api` | routes, routes-hono, filter-allowlist, validator, spring-config | app shape |
 | `client` | form, hooks, grid, grid-hook | app shape |
-| `docs` | docs, api-docs, requirements, agent-docs, plantuml, html-docs, ai-docs | on by default (`meta docs`) |
+| `docs` | docs, api-docs, requirements, agent-docs, plantuml, html-docs, ai-docs | on by default (`meta docs`); the Java `plantuml`, `html-docs` and `ai-docs` are wired in the pom |
 | `capability` | prompt-render, output-parser, output-prompt, extractor, render-helper, trace-helper, requirement-tests, cube-model, shared-model, template, callable, json-schema, mustache | `meta gen --list --probe` |
 
 Six, not ten. An earlier draft split `capability` into `trace` / `requirements` /
@@ -72,10 +72,10 @@ file is where that is declared, and each port's eject-contract test asserts it.
 
 | Key | What it is |
 |---|---|
-| `engineSurface.<port>.codegenPackages` | The namespaces that hold generators and their emit code. TypeScript: source paths under `server/typescript/packages/`. Python: module names. C#: type names. Java and Kotlin: class names. `**` matches any run of characters, `*` one segment. |
+| `engineSurface.<port>.codegenPackages` | The namespaces that hold generators and their emit code. TypeScript: source paths under `server/typescript/packages/`. Python: module names, with a package listed by its own name as well as by `name.**`, because importing the package reaches what its `__init__` re-exports. C#: type names. Java and Kotlin: class names. `**` matches any run of characters, `*` one segment. |
 | `engineSurface.<port>.engine` | The members of those namespaces an owned copy may still import: the generator base and runner, questions about the model, naming and type-mapping tables. Anything else inside `codegenPackages` writes output and is handed over with the generator. Anything outside them is core and imported freely. |
 | `exemptEmitters` | Code that writes into an adopter's repository and is not a generator, ruled out of eject with a reason. |
-| `pending` | Every place the contract does not hold yet. The release scripts refuse a final version (one with no prerelease suffix) while the list holds an entry (`scripts/eject-release-gate.mjs`). |
+| `pending` | Every place the contract does not hold yet. The release scripts and the publish workflows refuse a final version (one with no prerelease suffix) while the list holds an entry (`scripts/eject-release-gate.mjs`). |
 
 **A `pending` entry** is `{generator, port, assertion, gap}`:
 

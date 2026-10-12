@@ -297,7 +297,7 @@
     }
   },
   "eject": {
-    "$comment": "The eject contract (ADR-0034 Amendment 8), asserted in every port by its eject-contract test. `engineSurface.<port>`: `codegenPackages` are the namespaces that hold generators and their emit code; `engine` lists the members of those namespaces an owned copy may still import (the generator base and runner, model questions, naming and type-mapping tables). Anything else inside `codegenPackages` writes output and must be handed over with the generator. Everything outside `codegenPackages` (loader, metamodel, runtime, render) is core and may be imported freely. `exemptEmitters`: code that writes into an adopter's repository but is not a generator, ruled out of eject with a reason. `pending`: every place the contract does not hold yet, by generator, port, assertion (census, completeness or depth) and gap number; a depth entry lists in `outside` the modules its owned copy still imports from outside the engine surface. A port's test fails when a pending entry passes, and when a gap appears that is not listed. 1.1.0 does not ship with a non-empty pending list: the release scripts refuse a version with no prerelease suffix while eject.pending holds an entry (scripts/eject-release-gate.mjs).",
+    "$comment": "The eject contract (ADR-0034 Amendment 8), asserted in every port by its eject-contract test. `engineSurface.<port>`: `codegenPackages` are the namespaces that hold generators and their emit code; `engine` lists the members of those namespaces an owned copy may still import (the generator base and runner, model questions, naming and type-mapping tables). Anything else inside `codegenPackages` writes output and must be handed over with the generator. Everything outside `codegenPackages` (loader, metamodel, runtime, render) is core and may be imported freely. `exemptEmitters`: code that writes into an adopter's repository but is not a generator, ruled out of eject with a reason. `pending`: every place the contract does not hold yet, by generator, port, assertion (census, completeness or depth) and gap number; a depth entry lists in `outside` the modules its owned copy still imports from outside the engine surface. A port's test fails when a pending entry passes, and when a gap appears that is not listed. 1.1.0 does not ship with a non-empty pending list: the release scripts and the publish workflows refuse a version with no prerelease suffix while eject.pending holds an entry (scripts/eject-release-gate.mjs).",
     "engineSurface": {
       "typescript": {
         "codegenPackages": ["codegen-ts/src/**", "codegen-ts-react/src/**", "codegen-ts-tanstack/src/**"],
@@ -418,7 +418,7 @@
         ]
       },
       "python": {
-        "codegenPackages": ["metaobjects.codegen.**", "metaobjects.apidocs.**"],
+        "codegenPackages": ["metaobjects.codegen", "metaobjects.codegen.**", "metaobjects.apidocs", "metaobjects.apidocs.**"],
         "engine": [
           "metaobjects.apidocs.naming",
           "metaobjects.codegen.config",

@@ -117,8 +117,8 @@ generator catalog and the Atlas evaluation are 1.2 work.
   contract does not hold yet, the file's `eject.pending` list names the generator, the port
   and the packaged modules its owned copy still calls. A port's test fails on an unlisted gap
   and on a listed one that has closed. The release does not ship while the list has entries:
-  `scripts/release.mjs` and `scripts/finish-release.mjs` refuse a version with no prerelease
-  suffix until the list is empty (`scripts/eject-release-gate.mjs`); a
+  `scripts/release.mjs`, `scripts/finish-release.mjs` and the four publish workflows refuse a
+  version with no prerelease suffix until the list is empty (`scripts/eject-release-gate.mjs`); a
   release candidate is allowed. No generator emits different bytes because of this change.
 - **Seven generators that no registry listed are registered**, so `--list`, the eject
   commands and the registry-driven tests see them. TypeScript: `requirements` (the ledger

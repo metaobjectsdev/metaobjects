@@ -128,15 +128,6 @@ def test_completeness_every_registered_generator_ships_eject_source_unless_exemp
     assert not problems, "\n".join(problems)
 
 
-def test_completeness_every_exemption_carries_a_reason_and_a_ruling() -> None:
-    for name, spec in contract.manifest()["generators"].items():
-        eject = spec["eject"]
-        if eject == "full":
-            continue
-        assert set(eject) == {"exempt", "ruling"}, name
-        assert eject["exempt"].strip() and eject["ruling"].strip(), name
-
-
 # ---------------------------------------------------------------------------------------
 # depth
 # ---------------------------------------------------------------------------------------
@@ -239,7 +230,9 @@ def test_depth_the_scan_reads_string_imports_as_well_as_import_statements(tmp_pa
         "a = importlib.import_module('metaobjects.codegen.extract_delegate_emitter')\n"
         "b = import_module('metaobjects.codegen.type_map')\n"
         "c = __import__('metaobjects.codegen.fr010_field_mapping')\n"
-        "d = importlib.import_module(name)\n",
+        "d = importlib.import_module(name)\n"
+        "from metaobjects.apidocs import PythonApiDocsRenderer\n"
+        "from metaobjects.apidocs import naming\n",
         encoding="utf-8",
     )
     found = _imports(probe, "codegen.generators.probe")
@@ -247,9 +240,12 @@ def test_depth_the_scan_reads_string_imports_as_well_as_import_statements(tmp_pa
         "metaobjects.codegen.extract_delegate_emitter",
         "metaobjects.codegen.type_map",
         "metaobjects.codegen.fr010_field_mapping",
+        "metaobjects.apidocs",
+        "metaobjects.apidocs.naming",
     } <= found
     surface = contract.EngineSurface()
     assert sorted(m for m in found if surface.outside(m)) == [
+        "metaobjects.apidocs",
         "metaobjects.codegen.extract_delegate_emitter",
         "metaobjects.codegen.fr010_field_mapping",
     ]
@@ -344,25 +340,3 @@ def test_depth_an_unchanged_owned_copy_emits_what_the_packaged_generator_emits(
             expected = text.replace(PACKAGED_RUNTIME_IMPORT, OWNED_RUNTIME_IMPORT)
             assert _lines(mine[path]) == _lines(expected), (name, corpus, path)
     assert emitted > 0, f"{name} emitted nothing over {sorted(CORPORA)}: nothing was compared"
-
-
-# ---------------------------------------------------------------------------------------
-# the shared file itself
-# ---------------------------------------------------------------------------------------
-
-
-def test_every_pending_entry_is_well_formed() -> None:
-    spec = contract.manifest()
-    seen: set[tuple[object, ...]] = set()
-    for entry in spec["eject"]["pending"]:
-        assert set(entry) - {"outside"} == {"generator", "port", "assertion", "gap"}, entry
-        assert entry["port"] in spec["ports"], entry
-        assert entry["assertion"] in contract.ASSERTIONS, entry
-        assert entry["generator"] in spec["generators"], entry
-        assert isinstance(entry["gap"], int), entry
-        assert ("outside" in entry) == (entry["assertion"] == "depth"), entry
-        if "outside" in entry:
-            assert entry["outside"] and entry["outside"] == sorted(entry["outside"]), entry
-        key = (entry["generator"], entry["port"], entry["assertion"], entry.get("outside") and entry["gap"])
-        assert key not in seen, f"duplicate pending entry: {entry}"
-        seen.add(key)

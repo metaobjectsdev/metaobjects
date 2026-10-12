@@ -39,6 +39,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A final version is not published while the eject pending list has entries
+      # (ADR-0034 Amendment 8). A release candidate passes.
+      - name: Eject release gate
+        run: node scripts/eject-release-gate.mjs "$(node -p "require('./server/typescript/packages/cli/package.json').version")"
+
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
 

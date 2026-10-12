@@ -9,12 +9,14 @@
  * `fixtures/generator-registry-conformance/registry.json` lists, under `eject.pending`,
  * every place a stock generator's owned copy does not yet hold its emit. Each port's
  * eject-contract test passes with entries in that list, which is what lets work land one
- * gap at a time. It is also what would let a release go out with gaps left, so the two
- * release scripts ask here before they do anything irreversible:
+ * gap at a time. It is also what would let a release go out with gaps left, so every path
+ * that publishes or tags asks here before it does anything irreversible:
  *
  *   - `scripts/release.mjs`, in its preflight, before the version bump and the first publish.
  *   - `scripts/finish-release.mjs`, before it cuts `v<version>`. Every final release ends
  *     there, including one where npm sat out and `release.mjs` never ran.
+ *   - the four publish workflows (`.github/workflows/publish-*.yml`), as the step after
+ *     checkout, with the version that workflow is about to publish.
  *
  * A prerelease (`1.1.0-rc.3`) is allowed with entries left: a release candidate is how the
  * remaining work is tried against an adopter. A version with no prerelease suffix is refused
