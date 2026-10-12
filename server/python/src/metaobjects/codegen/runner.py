@@ -136,12 +136,17 @@ def run_gen(
         docs_surface = getattr(gen, "docs_surface", None)
         if docs_surface is not None:
             # A docs generator writes pages under the docs output directory, and
-            # `metaobjects docs` runs it from `docs.generators`: here it would write them
-            # into the code tree, so it is skipped and the miswiring is named.
+            # `metaobjects docs` runs it: the packaged one always, an owned copy from
+            # `docs.generators`. Here it would write them into the code tree, so it is
+            # skipped and the miswiring is named.
+            remedy = (
+                "`metaobjects docs` already runs it, so remove the entry."
+                if type(gen).__module__.startswith("metaobjects.")
+                else "List it under `docs.generators` in metaobjects.config.yaml: "
+                     "`metaobjects docs` runs it from there."
+            )
             result.warnings.append(
-                f"{gen.name!r} writes the {docs_surface} reference, so gen skipped it. "
-                "List it under `docs.generators` in metaobjects.config.yaml: "
-                "`metaobjects docs` runs it from there."
+                f"{gen.name!r} writes the {docs_surface} reference, so gen skipped it. {remedy}"
             )
             continue
         ctx = GenContext(

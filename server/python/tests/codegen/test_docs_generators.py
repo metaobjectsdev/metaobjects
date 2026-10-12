@@ -153,13 +153,24 @@ def test_two_owned_generators_for_the_api_surface_are_refused(tmp_path: Path, mo
 # --- gen leaves a docs generator out ----------------------------------------------------
 
 
-def test_gen_skips_a_docs_generator_under_a_target_and_says_so(tmp_path: Path, monkeypatch, capsys) -> None:
-    _project(tmp_path, generators="entity, api-docs")
+@pytest.mark.parametrize("entry, remedy, not_the_remedy", [
+    ("api-docs", "`metaobjects docs` already runs it, so remove the entry.", "docs.generators"),
+    (OWNED_DOCS, "List it under `docs.generators` in metaobjects.config.yaml", "already runs it"),
+], ids=["packaged", "owned"])
+def test_gen_skips_a_docs_generator_under_a_target_and_says_so(
+    entry: str, remedy: str, not_the_remedy: str, tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    """The packaged name cannot go under ``docs.generators`` (that block takes owned copies
+    only), so the warning sends each kind of entry where it can actually go."""
+    _project(tmp_path, generators=f"entity, {entry}")
     monkeypatch.chdir(tmp_path)
+    assert main(["eject", "api-docs"]) == 0
+    capsys.readouterr()
     assert main(["gen"]) == 0
-    out = capsys.readouterr().out
-    assert "warning: 'api-docs' writes the api reference, so gen skipped it" in out
-    assert "docs.generators" in out
+    skipped = [ln for ln in capsys.readouterr().out.splitlines() if "so gen skipped it" in ln]
+    assert len(skipped) == 1
+    assert "warning: 'api-docs' writes the api reference, so gen skipped it" in skipped[0]
+    assert remedy in skipped[0] and not_the_remedy not in skipped[0]
     written = {p.relative_to(tmp_path / "gen").as_posix() for p in (tmp_path / "gen").rglob("*")
                if p.is_file()}
     assert written and not any(w.startswith("api/") or w.endswith("AGENT-API.md") for w in written)

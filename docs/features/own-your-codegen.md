@@ -874,7 +874,8 @@ runs the packaged one, and the positional `metaobjects docs <metadata_dir>` form
 config, so it always does. An entry that is not a docs generator, or a second one for the
 `api` surface, is refused by name. `gen` and `verify --codegen` skip a docs generator
 they find under a target and say so (`'api-docs' writes the api reference, so gen skipped
-it.`).
+it.`), with what to do about the entry: the packaged `api-docs` name is removed, because
+`metaobjects docs` already runs it, and an owned copy moves to `docs.generators`.
 
 **It describes the code your generators emit.** The page builder asks `shared_predicates`
 which objects get a router, the same module your owned `routes` and `filter-allowlist`

@@ -239,7 +239,8 @@ generator catalog and the Atlas evaluation are 1.2 work.
     generator (`docs_surface = "api"`) that `metaobjects docs` runs: an owned copy is listed
     under the new `docs.generators` block of `metaobjects.config.yaml` and runs in place of the
     packaged one. `gen` and `verify --codegen` skip a docs generator they find under a target
-    and say so. The reference asks `shared_predicates` which objects get a router (the new
+    and say so: the packaged `api-docs` name is to be removed (`metaobjects docs` already runs
+    it), an owned copy is to be listed under `docs.generators`. The reference asks `shared_predicates` which objects get a router (the new
     `emits_writable_router` and the moved `is_read_only_routed`, beside `emits_router`), the
     module your owned `routes` and `filter-allowlist` read, so one edit to the owned predicate
     moves the router, the allowlist and the pages together. The cross-port manifest lists
