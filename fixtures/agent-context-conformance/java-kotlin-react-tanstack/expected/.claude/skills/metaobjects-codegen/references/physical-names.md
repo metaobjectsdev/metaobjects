@@ -9,6 +9,13 @@ free-form, so a field named `callPurpose` may map to a column named `purpose_cod
 neither the field name nor any transformation of it. A consumer deriving the column as
 `to_snake_case(<the field's name>)` gets that case wrong and never finds out.
 
+## Contents
+- Reference the generated names artifact
+- Check that it is actually wired before you reference it
+- It follows `extends`
+- Where generated code consumes it, and where it does not
+- But prefer a typed handle where one exists — this rule has a real limit
+
 Every port emits a per-object names artifact. Reference it:
 
 ```ts

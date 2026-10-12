@@ -7,6 +7,14 @@ subcommand and `dotnet meta verify --db` is rejected with exit 2.
 
 ---
 
+## Contents
+- Finding generated files
+- Run codegen + verify
+- Drift signatures (what to grep for)
+- Owned generators
+- Version-skew check
+- Calibration gaps (do NOT flag these)
+
 ## Finding generated files
 
 Generated files are named `<Entity>.g.cs` and carry an `@generated` guard comment:

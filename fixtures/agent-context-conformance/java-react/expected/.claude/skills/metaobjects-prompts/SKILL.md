@@ -12,7 +12,21 @@ snapshot-testable, cache-stable, and drift-checked at build time. The same
 machinery renders any text artifact: emails, exports, docs, `llms.txt`.
 
 This skill is port-agnostic. The exact render/parse API for *this* project's server
-language lives in a reference fragment (pointed to at the bottom).
+language lives in a reference fragment (see the table below).
+
+## Reference files — open the one for your server language
+
+Only the files for the server languages in this project's stack are installed. Read yours
+before you write or review any prompt code: it has the render and parse API, the generated
+parser and the output-format fragment for that language.
+
+| File | Open it when |
+|---|---|
+| `references/typescript.md` | the project's server language is TypeScript |
+| `references/java.md` | the project's server language is Java |
+| `references/kotlin.md` | the project's server language is Kotlin |
+| `references/csharp.md` | the project's server language is C# |
+| `references/python.md` | the project's server language is Python |
 
 ## Touching a hand-built prompt? Migrate it, don't extend it
 
@@ -307,9 +321,3 @@ names every required field — useful in a test of the renderer output itself,
 distinct from the `{{field}}`-vs-payload drift check `verify` runs on hand-authored
 template text. Check the language reference for whether this project's port ships
 the equivalent.
-
----
-
-For this project's server-language parser + output-format-fragment specifics, read
-every `references/*.md` file in this skill's directory (one per server language in
-this project's stack).

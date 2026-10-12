@@ -9,6 +9,14 @@ SQLAlchemy Core or asyncpg), or a hand-written repository implementation.
 
 ---
 
+## Contents
+- Finding generated files
+- Run codegen + verify
+- Drift signatures (what to grep for)
+- Owned generators
+- Version-skew check
+- Calibration gaps (do NOT flag these)
+
 ## Finding generated files
 
 Generated files land under the `--out` directory passed to `metaobjects gen` and

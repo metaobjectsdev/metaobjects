@@ -410,9 +410,8 @@ diff explained.
   > ([changelog](https://github.blog/changelog/2026-07-31-restricting-npm-bypass-2fa-granular-access-tokens/)).
   > The replacement is **Trusted Publishing (OIDC)** — the same mechanism `publish-csharp.yml`
   > already uses for NuGet — via `publish-npm.yml`, which exists and needs a trusted-publisher
-  > registration per package on npmjs.com. This is a dated requirement, not the "future
-  > improvement (research-backed, not yet adopted)" that `.claude/skills/releasing/SKILL.md`
-  > still files it under.
+  > registration per package on npmjs.com. This is a dated requirement. OIDC cannot drive
+  > `npm dist-tag` yet, so the RC-to-promote steps still need a token.
   >
   > The publishing path that replaces the token after the 2027 deadline is being decided and
   > is not written down yet; until it is, the local-token procedure above is the npm

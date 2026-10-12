@@ -28,7 +28,8 @@ and command for *this* project's server language live in a reference fragment
 
 ## Reference files — open only the one your task needs
 
-Your server language's file (`references/typescript.md`, `references/java.md`, …) has the
+Your server language's file (`references/typescript.md`, `references/java.md`,
+`references/kotlin.md`, `references/csharp.md` or `references/python.md`) has the
 exact config, generator names and commands for this project; read it. The other files in
 `references/` are topics — open one when its row matches what you are doing.
 
@@ -40,6 +41,11 @@ exact config, generator names and commands for this project; read it. The other 
 | `references/template-or-code.md` | choosing between a code generator and a Mustache template |
 | `references/physical-names.md` | before you write a table, column or index name as a string |
 | `references/dependencies-and-shared-models.md` | the project consumes or publishes metadata across projects |
+| `references/typescript-document-store.md` | a TypeScript project on MongoDB, or any store MetaObjects does not manage, wanting a tested repository generator |
+| `references/typescript-mysql.md` | a TypeScript project on a MySQL database |
+| `references/typescript-retargeting.md` | a TypeScript project on a framework other than Fastify, Hono or React |
+| `references/typescript-templates.md` | declarative Mustache template-codegen in a TypeScript project |
+| `references/typescript-docs.md` | `meta docs` in a TypeScript project |
 
 ## Need an output? Write the generator — this is the primary path
 

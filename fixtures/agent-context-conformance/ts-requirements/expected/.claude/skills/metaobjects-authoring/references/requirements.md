@@ -4,6 +4,24 @@ Capabilities are **metadata**, declared in `metaobjects/` beside the entities th
 describe. Read the existing requirement nodes before designing anything. Two rules matter
 more than the rest.
 
+## Contents
+- A requirement is PRESCRIPTIVE — it states what should be true, never what happened
+- Do not delete a retired capability's entry
+- When you add an entity, claim it
+- Every requirement states its counterexample
+- Four prose slots, and `statement` is the one that means "description"
+- `title` is a LABEL and is chartered here; `summary` is not
+- Never put a catalogue or ticket id in `title`
+- The `name` is an address, so write it as an identifier
+- Hierarchy is nesting, and links live at the bottom
+- Write an L5 ref as a dotted `pkg::Owner.member` path
+- L1–L3 are levels of abstraction and ownership in the problem domain
+- Architectural requirements are the other kind
+- Record gaps rather than rounding them off
+- `status: planned` locks in work you have not started
+- Which `verify` says what
+- A requirement's name and package end up in generated test names
+
 **1. A requirement is PRESCRIPTIVE — it states what should be true, never what happened.**
 `status` is `planned | live | partial | retired`, and every one of them states something
 meant to be true. `retired` is not the exception: it means **"this was built, then

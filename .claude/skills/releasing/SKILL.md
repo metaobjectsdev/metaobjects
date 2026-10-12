@@ -1,6 +1,7 @@
 ---
 name: releasing
 description: Use when cutting or publishing a release of the @metaobjectsdev npm/TypeScript packages — e.g. "do a release", "release 0.x.y", bumping the published npm version, promoting merged work to npm latest, or refreshing version references after a release.
+disable-model-invocation: true
 ---
 
 # Releasing the npm/TypeScript packages
@@ -40,6 +41,15 @@ Do not bump or publish anything until every check is green. Print each result.
 | **Target version is free** | `npm view @metaobjectsdev/cli@<version> version` (a 404 = free); `git tag -l v<version>` | the target version is NOT already published or tagged (npm versions are permanent — a taken version can never be reused) |
 | CHANGELOG ready | `sed -n '1,20p' CHANGELOG.md` | an entry exists or you will add one (see Phase 8) |
 | **`metamodelVersion` moved if the metamodel did** | `node scripts/check-metamodel-version.mjs` | exit 0. It diffs `expected-registry.json` against the last release tag and fails if the vocabulary changed without the version moving. Read its PROSE warning too — a rule can change with no machine-readable footprint (#210 changed only a `rules` string). Fix with `--set <version>`; detail with `--explain`. |
+| **You CAN publish** | `npm whoami` | prints your username (see the note under this table) |
+
+**Check that you CAN publish.** `scripts/release.mjs` runs `npm whoami` in preflight; do the same
+by hand if you are publishing manually, and use an **Automation / bypass-2FA** token. A "Publish"
+token passes `whoami`, shows `read-write`, passes `--dry-run`, and then `EOTP`s on every write,
+at which point `bun publish` falls back to a browser flow that cannot complete non-interactively
+(`--otp=` is ignored; a code must be piped on stdin). Verify BEFORE the version bump: the bump is
+committed and pushed well before the first publish, so a dead credential strands the cut with
+other registries already shipped. See `docs/RELEASING.md` → Prerequisites.
 
 If the code-review check fails (no PR, or unmerged/dirty tree): **stop** — releases
 ship reviewed, merged `main`, never a working tree.
@@ -162,12 +172,9 @@ Add the `CHANGELOG.md` entry (Keep-a-Changelog format) if not already committed.
 
 `npm deprecate <pkg>@<version>-rc.1 "superseded; use <version>"` for each package.
 
-Retire the RC's `next` tag by **repointing, not deleting**: `npm dist-tag rm` 403s for every
-token we hold (local and CI both — npm's bypass-2FA package-access rule, not a missing OTP).
-The Actions → **npm dist-tag** dispatch that repointed the whole lockstep set from the
-publish token **cannot run — GitHub Actions is disabled on this repository (2026-09-16),
-and the replacement path is being decided**. Repoint per package from your machine instead:
-`npm dist-tag add <pkg>@<version> next` (`add` is not restricted). See `docs/RELEASING.md` §4.
+Retire the RC's `next` tag by **repointing, not deleting**: `npm dist-tag rm` is refused
+for every token we hold. Repoint per package with `npm dist-tag add <pkg>@<version> next`,
+or dispatch the npm dist-tag workflow for the whole set. See `docs/RELEASING.md` §4.
 
 ## Phase 10 — Propagate versions (docs + websites)
 
@@ -211,24 +218,14 @@ version FAILS by design — skip what's done, never force.
 - About to `bun publish` to `latest` without human confirmation → stop.
 - About to push the site repo without confirming the live deploy → stop.
 
-## OIDC Trusted Publishing — now DATED, not optional
-npm removes **direct publishing from 2FA-bypass tokens around January 2027**
-([changelog](https://github.blog/changelog/2026-07-31-restricting-npm-bypass-2fa-granular-access-tokens/));
-since 2026-07-31 such tokens already cannot change package access — including
-**deleting a dist-tag**. Measured 2026-09-10: the local token and the CI `NPM_TOKEN`
-both 403 on `DELETE …/dist-tags/next` and `--otp` changes neither, so this is a grant
-boundary and no OTP session was going to clear it. Phase 9 repoints with `dist-tag add`
-instead, which is not restricted. The replacement is **OIDC Trusted Publishing** via
-`publish-npm.yml` (which exists — inoperative while GitHub Actions is disabled on this
-repository, 2026-09-16), the same mechanism `publish-csharp.yml` already
-uses for NuGet; the remaining work is a trusted-publisher registration per package
-on npmjs.com. Caveat: OIDC can't drive `npm dist-tag` yet, so RC→promote still needs
-a token.
+## npm credentials and Trusted Publishing
+The npm token type, the read-only auth preflight, and the dated plan to move publishing to
+OIDC Trusted Publishing are in `docs/RELEASING.md` → Prerequisites. Read them before the
+first publish of a cut.
 
-Separately, and still genuinely optional: **Changesets** (per-PR intent files → a
-reviewable "Version Packages" PR → automated bump + CHANGELOG). Adopting it would
-replace Phases 1/3/7's manual steps; the preflight gate, smoke test, and
-stop-and-confirm in this skill stay.
+Separately, and optional: **Changesets** (per-PR intent files → a reviewable "Version
+Packages" PR → automated bump + CHANGELOG). Adopting it would replace Phases 1/3/7's manual
+steps; the preflight gate, smoke test, and stop-and-confirm in this skill stay.
 
 ## Verify with the committed script, not ad-hoc shell
 `node scripts/release-verify.mjs [--preflight] [<version>] [--smoke]` is the one place
@@ -238,13 +235,3 @@ instead of improvising checks per release: the 0.24.0 cut was verified by a doze
 throwaway scripts, and the improvised auth check was a **write** against a published
 package that could not be undone. **Never probe credentials by mutating a published
 package.** It is read-only; extend it there when a release needs a check it lacks.
-
-## Phase 0 addendum — check that you CAN publish
-`scripts/release.mjs` now runs `npm whoami` in preflight. Do the same by hand if you
-are publishing manually, and use an **Automation / bypass-2FA** token: a "Publish"
-token passes `whoami`, shows `read-write`, passes `--dry-run`, and then `EOTP`s on
-every write, at which point `bun publish` falls back to a browser flow that cannot
-complete non-interactively (`--otp=` is ignored; a code must be piped on stdin).
-Verify BEFORE the version bump — the bump is committed and pushed well before the
-first publish, so a dead credential strands the cut with other registries already
-shipped. See `docs/RELEASING.md` → Prerequisites.

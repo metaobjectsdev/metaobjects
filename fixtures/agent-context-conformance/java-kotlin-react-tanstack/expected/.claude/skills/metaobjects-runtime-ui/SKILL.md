@@ -8,8 +8,19 @@ description: Use when wiring MetaObjects generated code into an app — runtime 
 This skill is the procedure for putting generated code to work: querying/persisting
 through the runtime tier, serving the REST contract, and consuming it from the
 universal web client. It is port-agnostic — the cross-cutting contracts are here;
-the server- and client-specific imports/types live in reference fragments (pointed
-to at the bottom).
+the server- and client-specific imports/types live in reference fragments (see
+the table below).
+
+## Reference files — open the ones for your stack
+
+Only the files for the servers and clients in this project's stack are installed. Read your
+server language's file and your client framework's file before wiring anything.
+
+| File | Open it when |
+|---|---|
+| `references/typescript.md`, `references/java.md`, `references/kotlin.md`, `references/csharp.md`, `references/python.md` | the project's server language is that one: the runtime and REST specifics |
+| `references/react.md` | the web client is React |
+| `references/tanstack.md` | the web client uses TanStack Query or Table (grids, hooks, filters) |
 
 ## The runtime return-type contract
 
@@ -211,7 +222,3 @@ sort/pagination/filter state on top of the column definitions — so pair the co
 generator with the grid-**hook** generator, which generates that state plumbing
 instead of leaving you to hand-write it. Your client's reference fragment has the
 generator names and a rendered example.
-
----
-
-For this project's runtime + web-client specifics, read every `references/*.md` file in this skill's directory (one per server language and client framework in this project's stack).

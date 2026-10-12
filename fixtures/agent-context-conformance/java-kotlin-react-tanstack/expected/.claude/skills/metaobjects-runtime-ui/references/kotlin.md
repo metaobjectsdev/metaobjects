@@ -13,6 +13,13 @@ callable from Kotlin; see the Java runtime reference. OMDB is pure data-access:
 CRUD / query / codec / transactions. Schema is owned by the Node `meta` migration
 tool, not the runtime.)
 
+## Contents
+- The generated table
+- Query + persist with Exposed
+- Physical names outside the DSL
+- Return-type contract
+- Serving the REST contract
+
 ## The generated table
 
 For an `Author` entity, `KotlinEntityGenerator` + `KotlinExposedTableGenerator`
