@@ -31,6 +31,8 @@ public class AppDbContext : DbContext
     public DbSet<PostReferral> PostReferrals { get; set; } = default!;
     public DbSet<PostTag> PostTags { get; set; } = default!;
     public DbSet<Program> Programs { get; set; } = default!;
+    public DbSet<ProgramFlagRoster> ProgramFlagRosters { get; set; } = default!;
+    public DbSet<ProgramFlags> ProgramFlags { get; set; } = default!;
     public DbSet<ProgramLongWeeks> ProgramLongWeeks { get; set; } = default!;
     public DbSet<ProgramMinutes> ProgramMinutes { get; set; } = default!;
     public DbSet<ProgramRoster> ProgramRosters { get; set; } = default!;
@@ -64,6 +66,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<MeasurementStats>().HasNoKey().ToView("v_measurement_stats");
         modelBuilder.Entity<MeasurementStatsFilled>().HasNoKey().ToView("v_measurement_stats_filled");
         modelBuilder.Entity<NodesByParent>().HasNoKey().ToView("v_nodes_by_parent");
+        modelBuilder.Entity<ProgramFlagRoster>().HasNoKey().ToView("v_program_flag_roster");
+        modelBuilder.Entity<ProgramFlags>().HasNoKey().ToView("v_program_flags");
         modelBuilder.Entity<ProgramLongWeeks>().HasNoKey().ToView("v_program_long_weeks");
         modelBuilder.Entity<ProgramMinutes>().HasNoKey().ToView("v_program_minutes");
         modelBuilder.Entity<ProgramRoster>().HasNoKey().ToView("v_program_roster");

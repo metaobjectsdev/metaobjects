@@ -46,7 +46,8 @@ let canonical: MetaRoot;
 const CANONICAL_VIEWS = [
   "v_program_minutes", "v_fitness_totals", "v_programs_by_month",
   "v_programs_by_week", "v_recent_programs", "v_asset_activity",
-  "v_program_roster", "v_program_long_weeks", "v_fitness_totals_filled",
+  "v_program_roster", "v_program_long_weeks", "v_program_flags", "v_program_flag_roster",
+  "v_fitness_totals_filled",
 ];
 
 /** The adopter's hand-written DDL (MySQL schema is not MetaObjects'). */
@@ -63,6 +64,7 @@ const DDL = [
      programId BIGINT NOT NULL,
      label VARCHAR(80),
      durationMinutes INT NOT NULL,
+     deload BOOLEAN,
      FOREIGN KEY (programId) REFERENCES programs (id)
    )`,
   `CREATE TABLE assets (
@@ -89,7 +91,7 @@ function reportViews(root: MetaRoot) {
 /**
  * `CREATE VIEW` for every report view of `root` (or only those in `only`), exactly as the recipe
  * shows. The canonical model has grown reports over tables this file's hand-written DDL does not
- * create (measurements, sessions, nodes, auths, all_types): the MySQL lane covers the nine
+ * create (measurements, sessions, nodes, auths, all_types): the MySQL lane covers the eleven
  * canonical reports it has DDL for, and the rest are gated on Postgres in every port.
  */
 async function createViews(root: MetaRoot, only?: readonly string[]): Promise<string[]> {
@@ -189,7 +191,7 @@ const RELATIVE_MODEL = JSON.stringify({ "metadata.root": { package: "acme", chil
       { "source.rdb": { "@kind": "view", "@view": "v_up_to_tomorrow" } } ] } },
 ]}});
 
-/** Every view and table this file creates: the canonical nine, the inline models' and the recipe's. */
+/** Every view and table this file creates: the canonical eleven, the inline models' and the recipe's. */
 const OWN_VIEWS = [
   ...CANONICAL_VIEWS,
   "v_events_by_grain", "v_last_twelve_hours", "v_last_two_weeks", "v_up_to_tomorrow",

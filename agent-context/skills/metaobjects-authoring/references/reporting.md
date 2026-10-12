@@ -33,6 +33,7 @@ A report declares no fields. Its columns are one per `@dimensions` item in liste
 | `avg` of `int`, `long`, `currency`, `decimal` | the measure's name | `decimal` | no |
 | `avg` of `double` / `float` | the measure's name | `double` | no |
 | `min` / `max` | the measure's name | the `@of` field's type | no |
+| `any` / `all` (boolean OR / AND, `bool_or` / `bool_and`; `@of` must be a `field.boolean`) | the measure's name | `boolean` | no |
 | `measure.ratio` | the measure's name | `decimal` | no |
 | any measure above except `count`, declaring `@default` | the measure's name | as above | yes: it reads the default instead of null |
 | in a `@spine` report, a dimension over a column of the spine entity | the dimension's name | the `@of` field's type | yes when the field is `@required` or in that entity's `identity.primary`; no for a dimension beyond the spine entity |
@@ -53,7 +54,8 @@ A filter value `{ "now": "-P30D" }` (the current time plus a signed ISO-8601 dur
 
 - A `count` is `0` over nothing, never null. It counts rows whose `@of` column is not null; a tuple with any null component is not counted.
 - A `sum` of nothing is **null**, not zero: no matching rows, or a filtered measure that matched none of a group's rows. So are `avg`, `min` and `max`.
-- A ratio is `numerator / NULLIF(denominator, 0)`: a zero denominator is **null**.
+- An `any` or `all` over no rows, or only null values, is **null**, not `false`. `"@default": 0` reads `false` and `"@default": 1` reads `true` (any other number is refused).
+- A ratio is `numerator / NULLIF(denominator, 0)`: a zero denominator is **null**. Each operand must be a numeric measure: a `count`, a `sum`, an `avg`, or a `min` or `max` of a numeric field. An `any` or `all` (a boolean), or a `min` or `max` of a date, timestamp, string, uuid or enum, is refused as `@numerator` or `@denominator`. For a share, use an `@agg: count` with a `@filter`.
 - A report with no dimensions is one row for the whole table, and still one row over an empty table (counts `0`, sums and ratios null).
 
 **Ask: is zero true here, or is null?** If "nothing to aggregate" means zero (revenue of a program nobody bought is `0`), declare `"@default": 0` on the measure (`revenue` in the example under "Rows with no facts"). If it means unknown (the average rating of a product with no ratings is not `0`), leave it null. Do not default in the client what the model can state once.

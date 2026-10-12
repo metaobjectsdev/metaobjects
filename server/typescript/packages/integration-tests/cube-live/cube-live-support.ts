@@ -68,6 +68,11 @@ export interface PlannedColumn {
    * every port's read returns it). Maps the integer, as text, to its symbol.
    */
   readonly symbols?: Readonly<Record<string, string>>;
+  /**
+   * A boolean measure (`@agg: any` / `all`). Over Postgres Cube must send a JSON boolean. Over
+   * MySQL, which has no boolean type, Cube sends the string `"1"` or `"0"`, and nothing else.
+   */
+  readonly boolean?: true;
 }
 
 export interface QueryPlan {
@@ -96,7 +101,7 @@ export function cubeQueryFor(report: MetaObject, root: MetaRoot): QueryPlan {
       if (f.measure === undefined) throw new Error(`${report.name}.${f.name}: a measure field without its measure`);
       const member = `${cube}.${f.measure.name}`;
       measures.push(member);
-      columns.push({ field: f.name, cubeKey: member, kind: "measure" });
+      columns.push({ field: f.name, cubeKey: member, kind: "measure", ...(f.subType === "boolean" ? { boolean: true as const } : {}) });
     } else {
       if (f.dimension === undefined) throw new Error(`${report.name}.${f.name}: a dimension field without its dimension`);
       const member = `${cube}.${f.dimension.name}`;
@@ -167,7 +172,10 @@ function isoInstant(s: string, where: string): string {
 
 export function normalize(kind: ColumnKind, raw: unknown, where: string): string | null {
   if (raw === null || raw === undefined) return null;
-  if (typeof raw !== "string" && typeof raw !== "number" && typeof raw !== "boolean") throw new Error(`${where}: unexpected value ${JSON.stringify(raw)}`);
+  // A boolean measure (`@agg: any` / `all`): Cube sends a JSON boolean, the view's text is `true` / `false`.
+  if (typeof raw !== "string" && typeof raw !== "number" && typeof raw !== "boolean") {
+    throw new Error(`${where}: unexpected value ${JSON.stringify(raw)}`);
+  }
   const s = String(raw);
   switch (kind) {
     case "time":
@@ -203,12 +211,20 @@ function coarsen(day: string, grain: string): string {
   }
 }
 
-export function fromCubeRow(row: Record<string, unknown>, plan: QueryPlan): NormalRow {
+export function fromCubeRow(row: Record<string, unknown>, plan: QueryPlan, dialect: "postgres" | "mysql"): NormalRow {
   const out: NormalRow = {};
   for (const c of plan.columns) {
     const key = c.derive?.fromKey ?? c.cubeKey;
     if (!(key in row)) throw new Error(`Cube's row has no '${key}': ${JSON.stringify(row)}`);
-    const value = normalize(c.kind, row[key], `Cube ${key}`);
+    const raw = row[key];
+    if (c.boolean === true && raw !== null && raw !== undefined) {
+      const wellFormed = dialect === "postgres" ? typeof raw === "boolean" : raw === "1" || raw === "0";
+      if (!wellFormed) {
+        const want = dialect === "postgres" ? "a JSON boolean" : 'the string "1" or "0"';
+        throw new Error(`Cube ${key}: a boolean measure came back as ${typeof raw} ${JSON.stringify(raw)}, not ${want}`);
+      }
+    }
+    const value = normalize(c.kind, raw, `Cube ${key}`);
     out[c.field] = c.derive === undefined || value === null ? value : coarsen(value, c.derive.grain);
   }
   return out;

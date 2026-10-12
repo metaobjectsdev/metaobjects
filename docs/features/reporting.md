@@ -63,7 +63,8 @@ Closed sets:
 
 - `@grains`: `hour, day, week, month, quarter, year`. **Weeks start on Monday (ISO-8601)**
   in every lowering.
-- `@agg`: `count, sum, avg, min, max`.
+- `@agg`: `count, sum, avg, min, max, any, all`. `any` and `all` are boolean OR and AND
+  (Postgres `bool_or` / `bool_and`) and are the names `origin.aggregate` already uses.
 
 `@spine` is a path written like a dimension's `@via`. A measure's `@default` is an integer.
 
@@ -164,9 +165,13 @@ What each piece means:
   `origin.aggregate`, whose `count` is always distinct as a join-inflation guard: a measure
   aggregates its own entity's rows and a dimension reaches only to-one paths, so no join
   inflates it. `@filter` and `@segment` scope the rows and combine by AND.
+- **`@agg: any` / `all`** are boolean OR and AND over a `field.boolean` `@of`, and the measure
+  is a `boolean`: `hasError` is `any` of `failed`. See [Boolean measures](#boolean-measures-any-and-all).
 - **`measure.ratio`** is `numerator / NULLIF(denominator, 0)`, typed decimal. A zero
   denominator yields null, unless the ratio declares `@default`. Both operands are
-  `measure.aggregate` siblings (a ratio of ratios is not supported).
+  `measure.aggregate` siblings (a ratio of ratios is not supported), and each must be a
+  numeric measure: a `count`, a `sum`, an `avg`, or a `min` or `max` of a numeric field. A
+  ratio divides numbers, so a boolean, date, timestamp or string operand is refused (rule M6).
 - **`segment.filter`** is a named, reusable `attr.filter`. Use it when the same row rule
   ("active purchase") would otherwise be repeated across measures and reports. An inline
   `@filter` on a measure stays legal.
@@ -269,6 +274,7 @@ physical column name is your naming strategy applied to the **derived field name
 | `avg` of `int`, `long`, `currency` or `decimal` | the measure's name | `decimal` | no |
 | `avg` of `double` or `float` | the measure's name | `double` | no |
 | `min` / `max` | the measure's name | the `@of` field's type | no |
+| `any` / `all` | the measure's name | `boolean` | no |
 | `measure.ratio` | the measure's name | `decimal` | no |
 | any measure above except `count`, declaring `@default` | the measure's name | as above | yes: it reads its `@default` instead of null |
 | in a `@spine` report, a dimension over a column of the spine entity | the dimension's name | the `@of` field's type | yes when the `@of` field is required (`@required` or a `validator.required` child) or one of the spine entity's `identity.primary` `@fields`; no for a dimension reached beyond the spine entity |
@@ -307,6 +313,8 @@ applied. The aggregates:
   64-bit integer on every engine (Postgres casts it to `BIGINT`, MySQL to `SIGNED`, and SQLite's
   integer `SUM` already is one).
 - **`avg`, `min`, `max`** are the engine's own.
+- **`any`, `all`** are a boolean OR and AND over a boolean column. See
+  [Boolean measures](#boolean-measures-any-and-all).
 - **`measure.ratio`** is `numerator / NULLIF(denominator, 0)`: a zero denominator is **null**
   (or the ratio's `@default`), never an error. Each operand is repeated inline with its own
   conditions and its own `@default`, so an operand need not be listed in `@measures`.
@@ -428,7 +436,8 @@ rating with no ratings is not `0`; null is the honest answer there.
 
 - **It is an integer.** Every case found is zero; a sentinel such as `-1` is legal too. Write
   a whole number with no decimal point (see [Known limits](#known-limits)).
-- **Where it is legal.** A `sum`, an `avg`, a `min` or `max` over a numeric field, and a ratio.
+- **Where it is legal.** A `sum`, an `avg`, a `min` or `max` over a numeric field, an `any` or
+  `all` (as `0` or `1`, see [Boolean measures](#boolean-measures-any-and-all)), and a ratio.
   It is refused on a `count`, which is never null, and on a `min` or `max` over a field that is
   not numeric: a made-up date would be a wrong answer.
 - **A ratio's operand carries its own `@default` into the ratio.** `revenue` declares
@@ -445,6 +454,44 @@ rows, `isNull=true` matches nothing and `isNull=false` every row. A sort on a de
 measure is the same on every engine, since the empty rows sort as their default. A measure
 without one sorts its null rows where the engine puts them: Postgres last ascending, SQLite
 and MySQL first.
+
+### Boolean measures: `any` and `all`
+
+`@agg: any` is true when at least one row in the group has a true `@of`, and `@agg: all` is
+true when every row with a value has a true `@of`. They are SQL's `bool_or` and `bool_and`,
+and the measure is a `boolean` in every port: `true` or `false` on the wire, never `0` or `1`.
+
+```jsonc
+{ "field.boolean":      { "name": "failed" } },
+{ "field.boolean":      { "name": "succeeded" } },
+{ "measure.aggregate":  { "name": "hasError",     "@agg": "any", "@of": "Call.failed" } },
+{ "measure.aggregate":  { "name": "allSucceeded", "@agg": "all", "@of": "Call.succeeded", "@default": 1 } }
+```
+
+- **Only over a `field.boolean`.** `@of` names one boolean field; anything else is refused by
+  rule M4. `min` and `max` still refuse a boolean, so `any` and `all` are the way to write it.
+  `@filter` and `@segment` scope the rows as for any measure, and `@distinct` stays a `count`
+  modifier.
+- **Null is not false.** SQL ignores a null `@of` value. A group with no rows (an empty table,
+  or a `@spine` row with no facts), no row that passes the measure's `@filter` or `@segment`,
+  or only null values reads **null**: there is nothing to judge. A group with at least one
+  value reads `true` or `false` from the values it has, so `any` of `false, null` is `false` and
+  `all` of `true, null` is `true`.
+- **`@default` is `0` or `1`.** `"@default": 0` reads `false` where the measure would be null,
+  `"@default": 1` reads `true` (rule M9 refuses any other number). The measure is then never
+  null, in the database and in every port's row type, and a filter or sort sees the default as
+  the value. Declare it only where that is true: `all` over no rows is vacuously true
+  (`@default: 1`), `any` over no rows is false (`@default: 0`).
+- **Not a ratio operand.** A `measure.ratio` divides numbers, so its `@numerator` and
+  `@denominator` must name numeric measures, and an `any` or `all` measure is a boolean (rule
+  M6). For a share, count the matching rows instead: `@agg: count` with a `@filter`.
+- **How it lowers.** Postgres writes `bool_or(x)` / `bool_and(x)`, with `FILTER (WHERE …)`
+  for a condition. SQLite and MySQL have no boolean aggregate, and a boolean there is `0` or
+  `1`, so they write `MAX(x)` for `any` and `MIN(x)` for `all` (`MAX(CASE WHEN … THEN x END)`
+  for a condition). The runtime reads the column as the boolean it is typed as. A default is
+  `COALESCE(<the aggregate>, FALSE)` on Postgres and `COALESCE(<the aggregate>, 0)` elsewhere.
+- **Cube.** The export writes a `type: boolean` measure holding the same aggregate, see
+  [cube-export.md](cube-export.md).
 
 ### What the runtime does with it
 
@@ -647,7 +694,7 @@ the anti-join by hand, and make two reports.
 
 ### What the corpus gates
 
-Nineteen shared scenarios under `fixtures/persistence-conformance/queries/report-*.yaml` read the
+Twenty-one shared scenarios under `fixtures/persistence-conformance/queries/report-*.yaml` read the
 canonical reports through every port's runtime (list and count, filter, sort, an empty table,
 the Monday boundary, an hour bucket, a relative window, a `@spine` report with a program that
 has no weeks, a `@spine` report whose segment leaves a program no facts, and defaulted measures
@@ -659,7 +706,7 @@ tests read the `@spine` and `@default` views and their column types on Postgres,
 MySQL, and on Postgres and SQLite also a fact whose reference is null, an `isNull` condition
 and a two-hop spine.
 
-The nineteen report scenarios run on more than Postgres, wherever a port's runtime has the engine:
+The twenty-one report scenarios run on more than Postgres, wherever a port's runtime has the engine:
 
 | | Postgres | SQLite | MySQL 8.4 | D1 (local runtime) |
 |---|---|---|---|---|
@@ -677,14 +724,14 @@ stay the Postgres wire ones, never loosened: the engine's own spelling (a REAL r
 a scale-keeping `DECIMAL` and a zoneless `DATETIME` on MySQL) is mapped on the actual side by
 each runner, and `report-relative-date` spells its seed per engine (`seed-data-engine`). D1
 has no separate corpus: it is SQLite behind Cloudflare's binding, so TypeScript runs the same
-scenarios and the same twenty-two REST scenarios through Miniflare's local D1 (`meta migrate
+scenarios and the same twenty-five REST scenarios through Miniflare's local D1 (`meta migrate
 --dialect d1`), with no cloud account.
 
 A port without the engine is a stated limitation, not a gap to fill by building a driver:
 Java's OMDB and Python's `ObjectManager` ship the drivers they ship, and a view-reading test
 does not justify a new one.
 
-The REST surface is gated by twenty-two scenarios under
+The REST surface is gated by twenty-five scenarios under
 [`fixtures/api-contract-conformance/report/`](../../fixtures/api-contract-conformance/report/),
 run in the **generated lane on all five ports**: list (a dimension with a segment-scoped sum
 that is null for one group), a time dimension at a grain (`YYYY-MM-DD`), a no-dimension
@@ -764,17 +811,18 @@ row, and a `SUM` over the result would double-count. A to-one hop cannot fan out
 | **M1** | An `@of` item that is not `Entity.field`, names an entity other than the owning one (or one it extends), or names a field that does not exist. A measure aggregates its own entity's rows. |
 | **M2** | More than one `@of` item without both `@agg: count` and `@distinct: true`. |
 | **M3** | `@distinct: true` with any `@agg` other than `count`. |
-| **M4** | `sum` or `avg` over a non-numeric field (numeric is `int, long, double, float, decimal, currency`); `min` or `max` over a `boolean`, `object` or `map` field. |
+| **M4** | `sum` or `avg` over a non-numeric field (numeric is `int, long, double, float, decimal, currency`); `min` or `max` over a `boolean`, `object` or `map` field; `any` or `all` over a field that is not a `boolean`. |
 | **M5** | An `@segment` that names no `segment` child of the owning entity. |
-| **M6** | A `measure.ratio` whose `@numerator` or `@denominator` names no measure of the entity, or names one that is not a `measure.aggregate`. |
+| **M6** | A `measure.ratio` whose `@numerator` or `@denominator` names no measure of the entity, names one that is not a `measure.aggregate`, or names one whose result is not numeric (not one of `int, long, double, float, decimal, currency`): an `any` or `all`, or a `min` or `max` over a field that is not numeric, such as a date, timestamp, string, uuid or enum. The result type is the measure's column type in [The columns you get](#the-columns-you-get). |
 | **M7** | A `@default` on an `@agg: count`. A count is never null, so the default could never apply. |
 | **M8** | A `@default` on an `@agg: min` or `max` over a field that is not numeric (not one of `int, long, double, float, decimal, currency`). |
+| **M9** | A `@default` on an `@agg: any` or `all` other than `0` (false) or `1` (true). |
 
 A measure that breaks several of M1 to M4 reports only the first, in that order, so one
-mistake gives one error. M7 and M8 run only when none of M1 to M4 fired.
+mistake gives one error. M7, M8 and M9 run only when none of M1 to M4 fired.
 
 **A `@default` must be a whole number** (`ERR_BAD_ATTR_VALUE`, on the measure). A fraction is
-refused in every port, and then M7 and M8 are not checked. A ratio's `@default` is checked for
+refused in every port, and then M7, M8 and M9 are not checked. A ratio's `@default` is checked for
 this only. The message and two edge cases differ by port: see [Known limits](#known-limits).
 
 ### Segments and filters (`ERR_BAD_ATTR_FILTER`)

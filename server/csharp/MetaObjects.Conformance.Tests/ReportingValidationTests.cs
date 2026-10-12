@@ -427,6 +427,58 @@ public class ReportingValidationTests
         Assert.Contains("@default cannot apply to @agg: count", msg);
     }
 
+    /// <summary><c>refundShare</c> = <c>revenue</c> / <c>purchases</c>, with <paramref name="attr"/>
+    /// renamed onto a new measure <c>operand</c>.</summary>
+    private static JsonNode RatioOver(string attr, string agg, string of)
+    {
+        var m = Positive();
+        ChildrenOf(m, "Purchase").Add(Wrap("measure.aggregate",
+            $$"""{ "name": "operand", "@agg": "{{agg}}", "@of": "{{of}}" }"""));
+        var ratio = new JsonObject { ["name"] = "refundShare", ["@numerator"] = "revenue", ["@denominator"] = "purchases" };
+        ratio[attr] = "operand";
+        ChildrenOf(m, "Purchase").Add(new JsonObject { ["measure.ratio"] = ratio });
+        return m;
+    }
+
+    private static string M6NotNumeric(string result) =>
+        $"measure 'refundShare' on entity 'acme::shop::Purchase': @numerator 'operand' is a {result} measure; a ratio " +
+        "divides numbers, so its operands must be numeric measures (a count, a sum, an avg, or a min or max of a " +
+        "numeric field).";
+
+    [Fact]
+    public void M6_a_ratio_operand_whose_result_is_a_boolean_is_refused_on_the_ratio_node()
+    {
+        var e = Assert.Single(Load(RatioOver("@numerator", "any", "Purchase.refunded")).Errors);
+        Assert.Equal(ErrorCode.ERR_INVALID_MEASURE, e.Code);
+        Assert.Equal(M6NotNumeric("boolean"), e.Message);
+        Assert.Contains("['measure.ratio']", JsonPathOf(e));
+        string msg = Single(Load(RatioOver("@denominator", "all", "Purchase.refunded")), ErrorCode.ERR_INVALID_MEASURE);
+        Assert.Contains("@denominator 'operand' is a boolean measure", msg);
+    }
+
+    [Theory]
+    [InlineData("max", "Purchase.purchasedAt", "timestamp")]
+    [InlineData("min", "Purchase.purchasedOn", "date")]
+    [InlineData("max", "Purchase.status", "string")]
+    public void M6_a_min_or_max_over_a_field_that_is_not_numeric_is_refused_as_a_ratio_operand(
+        string agg, string of, string result)
+    {
+        Assert.Equal(M6NotNumeric(result), Single(Load(RatioOver("@numerator", agg, of)), ErrorCode.ERR_INVALID_MEASURE));
+    }
+
+    [Theory]
+    [InlineData("count", "Purchase.id")]
+    [InlineData("sum", "Purchase.amountCents")]
+    [InlineData("avg", "Purchase.amountCents")]
+    [InlineData("min", "Purchase.amountCents")]
+    [InlineData("max", "Purchase.programId")]
+    public void M6_a_count_a_sum_an_avg_and_a_min_or_max_over_a_numeric_field_are_legal_ratio_operands(
+        string agg, string of)
+    {
+        Assert.Empty(Load(RatioOver("@numerator", agg, of)).Errors);
+        Assert.Empty(Load(RatioOver("@denominator", agg, of)).Errors);
+    }
+
     [Fact]
     public void M8_default_on_a_max_of_a_timestamp_is_refused()
     {

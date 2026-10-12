@@ -1,0 +1,19 @@
+name: report-list-boolean-measure
+description: >
+  GET /api/product_refunds — ProductRefunds is a @spine report whose measures are boolean
+  aggregates over Sale.refunded: `hasRefund` is @agg any (bool_or) and `hasRefundOrFalse`
+  the same with @default 0. Both are JSON booleans on the wire, never 0 / 1. Atlas has a
+  refunded sale, Beacon has sales and none refunded, and Cinder has no sale at all: its
+  `hasRefund` is null with the key present (nothing to judge), and its `hasRefundOrFalse`
+  reads the default, false.
+requests:
+  - id: r1
+    method: GET
+    path: /api/product_refunds?sort=productId:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { productId: 1, productName: "Atlas", sales: 2, hasRefund: true, hasRefundOrFalse: true }
+          - { productId: 2, productName: "Beacon", sales: 1, hasRefund: false, hasRefundOrFalse: false }
+          - { productId: 3, productName: "Cinder", sales: 0, hasRefund: null, hasRefundOrFalse: false }

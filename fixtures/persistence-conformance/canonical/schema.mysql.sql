@@ -18,6 +18,7 @@ CREATE TABLE `weeks` (
   `programId` BIGINT NOT NULL,
   `label` VARCHAR(80),
   `durationMinutes` INT NOT NULL,
+  `deload` BOOLEAN,
   FOREIGN KEY (`programId`) REFERENCES `programs` (`id`)
 );
 
@@ -162,6 +163,27 @@ CREATE VIEW `v_program_long_weeks` AS
     COALESCE(CAST(SUM(w.`durationMinutes`) AS SIGNED), 0) AS `totalMinutesOrZero`
   FROM `programs` p
   LEFT OUTER JOIN `weeks` w ON p.`id` = w.`programId` AND w.`durationMinutes` >= 60
+  GROUP BY p.`id`;
+
+CREATE VIEW `v_program_flags` AS
+  SELECT
+    w.`programId` AS `program`,
+    COUNT(w.`id`) AS `weeks`,
+    MAX(w.`deload`) AS `anyDeload`,
+    MIN(w.`deload`) AS `allDeload`,
+    MAX(CASE WHEN w.`durationMinutes` >= 60 THEN w.`deload` END) AS `anyLongDeload`
+  FROM `weeks` w
+  GROUP BY w.`programId`;
+
+CREATE VIEW `v_program_flag_roster` AS
+  SELECT
+    p.`id` AS `programKey`,
+    COUNT(w.`id`) AS `weeks`,
+    MAX(w.`deload`) AS `anyDeload`,
+    COALESCE(MAX(w.`deload`), 0) AS `anyDeloadOrFalse`,
+    COALESCE(MIN(w.`deload`), 1) AS `allDeloadOrTrue`
+  FROM `programs` p
+  LEFT OUTER JOIN `weeks` w ON p.`id` = w.`programId`
   GROUP BY p.`id`;
 
 CREATE VIEW `v_fitness_totals_filled` AS

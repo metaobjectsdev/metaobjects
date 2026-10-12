@@ -1,0 +1,40 @@
+name: report-filter-on-boolean-measure
+description: >
+  A filter on a boolean measure. r1: eq=true on the defaulted measure matches the one
+  product with a refunded sale. r2: eq=false on the plain `hasRefund` matches Beacon only,
+  because Cinder's null is neither true nor false. r3: isNull=true finds Cinder. r4: the
+  defaulted measure reads false for Cinder, so eq=false matches both Beacon and Cinder.
+requests:
+  - id: r1
+    method: GET
+    path: /api/product_refunds?filter[hasRefundOrFalse][eq]=true
+    expect:
+      status: 200
+      body:
+        equals:
+          - { productId: 1, productName: "Atlas", sales: 2, hasRefund: true, hasRefundOrFalse: true }
+  - id: r2
+    method: GET
+    path: /api/product_refunds?filter[hasRefund][eq]=false
+    expect:
+      status: 200
+      body:
+        equals:
+          - { productId: 2, productName: "Beacon", sales: 1, hasRefund: false, hasRefundOrFalse: false }
+  - id: r3
+    method: GET
+    path: /api/product_refunds?filter[hasRefund][isNull]=true
+    expect:
+      status: 200
+      body:
+        equals:
+          - { productId: 3, productName: "Cinder", sales: 0, hasRefund: null, hasRefundOrFalse: false }
+  - id: r4
+    method: GET
+    path: /api/product_refunds?filter[hasRefundOrFalse][eq]=false&sort=productId:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { productId: 2, productName: "Beacon", sales: 1, hasRefund: false, hasRefundOrFalse: false }
+          - { productId: 3, productName: "Cinder", sales: 0, hasRefund: null, hasRefundOrFalse: false }

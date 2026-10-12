@@ -212,8 +212,10 @@ function mapBooleansFromInt(entity: MetaData, row: Row): Row {
     if (child.type !== TYPE_FIELD) continue;
     if (child.subType !== FIELD_SUBTYPE_BOOLEAN) continue;
     const v = out[child.name];
-    if (v === 0) out[child.name] = false;
-    else if (v === 1) out[child.name] = true;
+    // A report's boolean measure (`@agg: any` / `all`) under a condition is a MySQL BIGINT, which
+    // the pool's `bigNumberStrings` hands back as text; a plain TINYINT(1) arrives as a number.
+    if (v === 0 || v === "0") out[child.name] = false;
+    else if (v === 1 || v === "1") out[child.name] = true;
   }
   return out;
 }

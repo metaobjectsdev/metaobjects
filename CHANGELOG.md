@@ -289,6 +289,21 @@ generator catalog and the Atlas evaluation are 1.2 work.
   three-way merge preserves hand edits. An ejected `entity` generator picks it up without a
   resync, because the owned copy calls the package's value-object composer.
 
+- **A boolean `any` / `all` aggregate for reports (`@agg: any`, `@agg: all`), in all five ports.** An
+  adopter replacing a hand-written view that served `has_error` from Postgres `bool_or` found no
+  report equivalent: a report could only count the failures and map `errorCalls > 0` back to a
+  boolean in every repository. `@agg: any` and `@agg: all` (the names `origin.aggregate` already
+  uses) are a boolean OR and AND over a `field.boolean` `@of`, and the measure is a `boolean` in
+  every port. Null values are ignored, so a group with no rows, no row in the measure's scope or
+  only null values reads null; `@default: 0` reads `false` and `@default: 1` reads `true`. New
+  rules: `any` / `all` over a field that is not a boolean is M4, and a boolean measure's
+  `@default` other than `0` or `1` is M9 (both `ERR_INVALID_MEASURE`). An `any` / `all` measure
+  is not a legal `measure.ratio` operand (rule M6, tightened under **Changed**). Postgres writes
+  `bool_or` / `bool_and`; SQLite and MySQL write `MAX` / `MIN` over `0` / `1`. The `cube-model` generator
+  writes a `type: boolean` measure, which Cube returns as a JSON boolean over Postgres and as the
+  string `"1"` or `"0"` over MySQL (MySQL has no boolean type), so a consumer of the Cube API over
+  MySQL compares it to `"1"`. See [reporting](docs/features/reporting.md#boolean-measures-any-and-all).
+  No `metamodelVersion` change: the vocabulary is part of 1.1.
 - **TypeScript: the `cube-model` reference generator (FR-044 Plan 4).** `cubeModel()` writes the
   reporting vocabulary as Cube data-model files, `model/cubes/<Cube>.yml`: a cube for each
   table-backed entity that declares dimensions, measures or segments, a join for each to-one
@@ -757,6 +772,19 @@ until you regenerate.
   skill and the always-on context no longer send an agent to eject a generator it is not
   going to change. The audit skill reports an owned copy it can prove unmodified as a
   finding, and reads an import of the four as a blocker only on a 1.0.x install.
+- **Validation tightening: a `measure.ratio` operand must be a numeric measure (rule M6), in all
+  five ports.** `@numerator` and `@denominator` must each name a `measure.aggregate` whose result
+  type is numeric (`int`, `long`, `double`, `float`, `decimal` or `currency`): a `count`, a
+  `sum`, an `avg`, or a `min` or `max` of a numeric field. M6 used to check only that the operand
+  was a `measure.aggregate`. It now also refuses an `@agg: any` or `all` operand (a boolean) and
+  a `min` or `max` over a field that is not numeric (a date, timestamp, string, boolean, uuid or
+  enum), with `ERR_INVALID_MEASURE` on the ratio. A model that already declared such a ratio now
+  fails at load. Before, it loaded and then failed at view creation on Postgres (there is no
+  cast from a boolean or a timestamp to `NUMERIC`) or returned a number with no meaning on SQLite
+  and MySQL. To fix a refused model, divide numeric measures: for a share, count the matching
+  rows with `@agg: count` and a `@filter`. Gated by three new conformance fixtures
+  (`error-ratio-boolean-operand`, `error-ratio-non-numeric-operand` and
+  `reporting-ratio-numeric-min-max`). See [reporting](docs/features/reporting.md#measures-err_invalid_measure).
 - **TypeScript: `RequirementTestArgs` and `RequirementView` gained required fields — a
   compile break for code that builds them by hand.** `RequirementTestArgs` has six new
   required fields (`package`, `unit`, `id`, `witnessKey`, `skip`, `digest`) and

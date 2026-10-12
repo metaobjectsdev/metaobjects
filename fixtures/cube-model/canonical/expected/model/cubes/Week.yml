@@ -87,6 +87,29 @@ cubes:
         type: sum
         filters:
           - sql: '({CUBE}."durationMinutes" >= 60 AND {CUBE}."label" LIKE ''W%'')'
+      - name: anyDeload
+        sql: 'bool_or({CUBE}."deload")'
+        type: boolean
+      - name: allDeload
+        sql: 'bool_and({CUBE}."deload")'
+        type: boolean
+      - name: anyDeloadOrFalseRaw
+        sql: 'bool_or({CUBE}."deload")'
+        type: boolean
+        public: false
+      - name: anyDeloadOrFalse
+        sql: 'COALESCE({anyDeloadOrFalseRaw}, FALSE)'
+        type: boolean
+      - name: allDeloadOrTrueRaw
+        sql: 'bool_and({CUBE}."deload")'
+        type: boolean
+        public: false
+      - name: allDeloadOrTrue
+        sql: 'COALESCE({allDeloadOrTrueRaw}, TRUE)'
+        type: boolean
+      - name: anyLongDeload
+        sql: 'bool_or({CUBE}."deload") FILTER (WHERE {CUBE}."durationMinutes" >= 60)'
+        type: boolean
     segments:
       - name: long
         sql: '{CUBE}."durationMinutes" >= 60'
@@ -97,6 +120,10 @@ cubes:
       - name: FitnessTotalsFilled
         type: rollup
         measures: [CUBE.weeks, CUBE.totalMinutesOrZero, CUBE.longShareOrZero]
+      - name: ProgramFlags
+        type: rollup
+        measures: [CUBE.weeks, CUBE.anyDeload, CUBE.allDeload, CUBE.anyLongDeload]
+        dimensions: [CUBE.program]
       - name: WeekShapes
         type: rollup
         measures: [CUBE.weeks, CUBE.unlabelled, CUBE.labelledMinutes, CUBE.shortWeeks, CUBE.midWeeks, CUBE.longWMinutes]

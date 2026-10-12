@@ -122,9 +122,9 @@ def test_derived_shapes_byte_match_the_committed_artifact() -> None:
     assert generate_report_shapes_json(_root()) == expected
 
 
-def test_the_canonical_model_has_twenty_one_reports() -> None:
+def test_the_canonical_model_has_twenty_three_reports() -> None:
     reports = [c for c in _root().children() if c.type == TYPE_OBJECT and c.sub_type == OBJECT_SUBTYPE_REPORT]
-    assert len(reports) == 21
+    assert len(reports) == 23
     assert all(isinstance(r, MetaObject) for r in reports)
 
 

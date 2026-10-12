@@ -162,6 +162,10 @@ public class ReportingValidationTest extends SharedRegistryTestBase {
                 "measure 'daysEngaged' on entity 'acme::shop::WorkoutEvent': @of lists 4 columns; a tuple is legal only with @agg: count and @distinct: true (a distinct count of the tuple)."});
         expect.put("error-ratio-operand-not-aggregate", new String[]{"ERR_INVALID_MEASURE",
                 "measure 'ratioOfRatio' on entity 'acme::shop::WorkoutEvent': @numerator 'avgDaysPerStarter' is a measure.ratio; a ratio's operands must be measure.aggregate (a ratio of ratios is not supported)."});
+        expect.put("error-ratio-boolean-operand", new String[]{"ERR_INVALID_MEASURE",
+                "measure 'errorShare' on entity 'acme::ops::Call': @numerator 'hasError' is a boolean measure; a ratio divides numbers, so its operands must be numeric measures (a count, a sum, an avg, or a min or max of a numeric field)."});
+        expect.put("error-ratio-non-numeric-operand", new String[]{"ERR_INVALID_MEASURE",
+                "measure 'endRate' on entity 'acme::ops::Call': @numerator 'lastEndedAt' is a timestamp measure; a ratio divides numbers, so its operands must be numeric measures (a count, a sum, an avg, or a min or max of a numeric field)."});
         expect.put("error-relative-date-bad-duration", new String[]{"ERR_BAD_ATTR_FILTER",
                 "report 'acme::shop::DailyRevenue': @filter on 'purchasedAt' has relative date '90 days', which is not an ISO-8601 duration (e.g. '-P7D', '-PT12H')."});
         expect.put("error-relative-date-non-temporal", new String[]{"ERR_BAD_ATTR_FILTER",
@@ -448,7 +452,7 @@ public class ReportingValidationTest extends SharedRegistryTestBase {
         assertEquals(List.of("ERR_BAD_ATTR_VALUE"), codes(got));
         // Byte-identical to the TS attr-schema check (attr-schema-validate.ts, Check 3).
         assertEquals("measure.aggregate 'revenue' attribute '@agg' has value 'median' which is not one of "
-                + "the allowed values: count, sum, avg, min, max", got.get(0).getMessage());
+                + "the allowed values: count, sum, avg, min, max, any, all", got.get(0).getMessage());
     }
 
     @Test
@@ -836,6 +840,62 @@ public class ReportingValidationTest extends SharedRegistryTestBase {
                 "{\"name\":\"firstDay\",\"@agg\":\"min\",\"@of\":\"WorkoutEvent.dayNumber\",\"@default\":1}"));
         member(doc, "WorkoutEvent", "measure.ratio", "avgDaysPerStarter").addProperty("@default", 0);
         assertEquals(List.of(), loadErrors(doc));
+    }
+
+    /** {@code refundShare} = {@code revenue} / {@code purchases}, with {@code attr} renamed onto a
+     *  new measure {@code operand}. */
+    private static JsonObject ratioOver(String attr, String agg, String of) throws IOException {
+        JsonObject doc = cleanModel();
+        childrenOf(doc, "Purchase").add(wrap("measure.aggregate",
+                "{\"name\":\"operand\",\"@agg\":\"" + agg + "\",\"@of\":\"" + of + "\"}"));
+        JsonObject ratio = json("{\"name\":\"refundShare\",\"@numerator\":\"revenue\",\"@denominator\":\"purchases\"}");
+        ratio.addProperty(attr, "operand");
+        JsonObject wrapped = new JsonObject();
+        wrapped.add("measure.ratio", ratio);
+        childrenOf(doc, "Purchase").add(wrapped);
+        return doc;
+    }
+
+    private static String m6NotNumeric(String attr, String result) {
+        return "measure 'refundShare' on entity 'acme::shop::Purchase': @" + attr + " 'operand' is a " + result
+                + " measure; a ratio divides numbers, so its operands must be numeric measures (a count, a sum, "
+                + "an avg, or a min or max of a numeric field).";
+    }
+
+    @Test
+    public void aRatioOperandWhoseResultIsABooleanIsRefused() throws IOException {
+        assertEquals(m6NotNumeric("numerator", "boolean"),
+                single(ratioOver("@numerator", "any", "Purchase.refunded"), "ERR_INVALID_MEASURE"));
+        assertEquals(m6NotNumeric("denominator", "boolean"),
+                single(ratioOver("@denominator", "all", "Purchase.refunded"), "ERR_INVALID_MEASURE"));
+    }
+
+    @Test
+    public void aMinOrMaxOverAFieldThatIsNotNumericIsRefusedAsARatioOperand() throws IOException {
+        String[][] cases = {
+                {"max", "Purchase.purchasedAt", "timestamp"},
+                {"min", "Purchase.purchasedOn", "date"},
+                {"max", "Purchase.status", "string"},
+        };
+        for (String[] c : cases) {
+            assertEquals(c[1], m6NotNumeric("numerator", c[2]),
+                    single(ratioOver("@numerator", c[0], c[1]), "ERR_INVALID_MEASURE"));
+        }
+    }
+
+    @Test
+    public void aCountASumAnAvgAndAMinOrMaxOverANumericFieldAreLegalRatioOperands() throws IOException {
+        String[][] cases = {
+                {"count", "Purchase.id"},
+                {"sum", "Purchase.amountCents"},
+                {"avg", "Purchase.amountCents"},
+                {"min", "Purchase.amountCents"},
+                {"max", "Purchase.programId"},
+        };
+        for (String[] c : cases) {
+            assertEquals(c[0] + " " + c[1], List.of(), loadErrors(ratioOver("@numerator", c[0], c[1])));
+            assertEquals(c[0] + " " + c[1], List.of(), loadErrors(ratioOver("@denominator", c[0], c[1])));
+        }
     }
 
     @Test

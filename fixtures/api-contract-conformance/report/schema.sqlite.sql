@@ -30,6 +30,7 @@ CREATE TABLE "sales" (
   "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   "productId" INTEGER NOT NULL,
   "amountCents" INTEGER NOT NULL,
+  "refunded" INTEGER,
   FOREIGN KEY ("productId") REFERENCES "products" ("id")
 );
 
@@ -105,3 +106,14 @@ CREATE VIEW "v_sales_by_sku" AS
   FROM "sales" s
   INNER JOIN "products" p ON p."id" = s."productId"
   GROUP BY p."sku";
+
+CREATE VIEW "v_product_refunds" AS
+  SELECT
+    p."id" AS "productId",
+    p."name" AS "productName",
+    COUNT(s."id") AS "sales",
+    MAX(s."refunded") AS "hasRefund",
+    COALESCE(MAX(s."refunded"), 0) AS "hasRefundOrFalse"
+  FROM "products" p
+  LEFT OUTER JOIN "sales" s ON p."id" = s."productId"
+  GROUP BY p."id", p."name";

@@ -26,20 +26,20 @@ describe("api-contract report corpus", () => {
     const reports = root.objects().filter((o) => o.subType === OBJECT_SUBTYPE_REPORT);
     expect(reports.map((r) => r.name)).toEqual(
       ["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes", "InvoiceDays",
-        "ProductRevenue", "SalesByCategory", "SalesBySku"]);
+        "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds"]);
     expect(reports.filter((r) => reportReadSource(r) !== undefined).map((r) => r.name)).toEqual(
       ["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
-        "ProductRevenue", "SalesByCategory", "SalesBySku"]);
+        "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds"]);
   });
 
   test("the route segments are the ones the scenarios call", async () => {
     const root = await loadMetadataFile(join(API_CONTRACT_REPORT_DIR, "meta.json"));
     const segment = (name: string): string => pluralize(toSnakeCase(name));
     expect(["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
-      "ProductRevenue", "SalesByCategory", "SalesBySku"].map(segment)).toEqual(
+      "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds"].map(segment)).toEqual(
       ["invoice_status_totals", "invoices_by_months", "invoice_totals", "invoice_calendars", "invoice_disputes",
-        "product_revenues", "sales_by_categories", "sales_by_skus"]);
-    expect(root.objects().length).toBe(13);
+        "product_revenues", "sales_by_categories", "sales_by_skus", "product_refunds"]);
+    expect(root.objects().length).toBe(14);
   });
 
   test("each seeded report row has exactly the report's derived fields", async () => {
@@ -52,7 +52,7 @@ describe("api-contract report corpus", () => {
     }
     expect(Object.keys(seedReports())).toEqual(
       ["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
-        "SalesByCategory", "SalesBySku", "ProductRevenue"]);
+        "SalesByCategory", "SalesBySku", "ProductRevenue", "ProductRefunds"]);
   });
 
   // A lane inserts every top-level key but `reports` in file order, so the order is the
@@ -76,9 +76,9 @@ describe("api-contract report corpus", () => {
     }
   });
 
-  test("every scenario parses, and there are twenty-two", () => {
+  test("every scenario parses, and there are twenty-five", () => {
     const scenarios = loadScenarios(API_CONTRACT_REPORT_SCENARIOS_DIR);
-    expect(scenarios.length).toBe(22);
+    expect(scenarios.length).toBe(25);
     for (const s of scenarios) expect(s.requests.length).toBeGreaterThan(0);
   });
 

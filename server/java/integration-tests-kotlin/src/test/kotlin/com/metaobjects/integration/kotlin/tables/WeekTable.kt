@@ -16,6 +16,8 @@ object WeekTable : Table("weeks") {
     // `field.int` → INTEGER (NOT NULL). Rolled up per Program by the v_program_stat
     // sum/avg/min/max aggregate projections (see ProgramStatView).
     val durationMinutes = integer("durationMinutes")
+    // `field.boolean` → BOOLEAN, nullable: read by the `any` / `all` measures of ProgramFlagsView.
+    val deload = bool("deload").nullable()
 
     override val primaryKey = PrimaryKey(id)
 }

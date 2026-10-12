@@ -1,0 +1,103 @@
+{
+  "metadata.root": {
+    "package": "acme::ops",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Call",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "calls"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.int": {
+                "name": "durationSeconds"
+              }
+            },
+            {
+              "field.currency": {
+                "name": "costCents"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "calls",
+                "@agg": "count",
+                "@of": [
+                  "Call.id"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "longestSeconds",
+                "@agg": "max",
+                "@of": [
+                  "Call.durationSeconds"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "shortestSeconds",
+                "@agg": "min",
+                "@of": [
+                  "Call.durationSeconds"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "highestCost",
+                "@agg": "max",
+                "@of": [
+                  "Call.costCents"
+                ]
+              }
+            },
+            {
+              "measure.ratio": {
+                "name": "durationSpread",
+                "@denominator": "shortestSeconds",
+                "@numerator": "longestSeconds"
+              }
+            },
+            {
+              "measure.ratio": {
+                "name": "highestCostPerCall",
+                "@denominator": "calls",
+                "@numerator": "highestCost"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "CallExtremes",
+          "@from": "Call",
+          "@measures": [
+            "calls",
+            "durationSpread",
+            "highestCostPerCall"
+          ]
+        }
+      }
+    ]
+  }
+}

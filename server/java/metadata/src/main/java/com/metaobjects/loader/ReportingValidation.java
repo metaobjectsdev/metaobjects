@@ -45,6 +45,7 @@ import com.metaobjects.reporting.MetaMeasure;
 import com.metaobjects.reporting.MetaSegment;
 import com.metaobjects.reporting.ReportAccessors;
 import com.metaobjects.reporting.ReportAccessors.ReportDimensionItem;
+import com.metaobjects.reporting.ReportShape;
 import com.metaobjects.reporting.ReportingConstants;
 import com.metaobjects.source.MetaSource;
 import com.metaobjects.util.MetaDataUtil;
@@ -360,7 +361,7 @@ final class ReportingValidation {
     private record MemberCtx(
             MetaRoot root,
             /* The entity whose resolving children the member was reached through. */
-            MetaData host,
+            MetaObject host,
             /* The entity that declares the member (the host, or an ancestor of it). */
             MetaData declaring,
             /* {@code <kind> '<name>' on entity '<declaring FQN>'} — every member message starts with it. */
@@ -606,6 +607,11 @@ final class ReportingValidation {
             if (ReportingConstants.AGG_COUNT.equals(agg)) {
                 err.accept("@default cannot apply to @agg: count. A count is never null (it is 0 when nothing "
                         + "matches); remove @default.");
+            } else if ((ReportingConstants.AGG_ANY.equals(agg) || ReportingConstants.AGG_ALL.equals(agg))
+                    && declaredDefault instanceof Number n && n.doubleValue() != 0 && n.doubleValue() != 1) {
+                // M9 — a boolean measure's @default is 0 (false) or 1 (true).
+                err.accept("@default '" + declaredDefault + "' on @agg '" + agg
+                        + "' must be 0 (false) or 1 (true): the measure is a boolean.");
             } else if ((ReportingConstants.AGG_MIN.equals(agg) || ReportingConstants.AGG_MAX.equals(agg))
                     && ofField != null
                     && !NUMERIC_FIELD_SUBTYPES.contains(ofField.getSubType())) {
@@ -692,10 +698,16 @@ final class ReportingValidation {
             err.accept("@agg '" + agg + "' cannot order '" + item + "', a field." + field.getSubType() + ".");
             return null;
         }
+        if ((ReportingConstants.AGG_ANY.equals(agg) || ReportingConstants.AGG_ALL.equals(agg))
+                && !BooleanField.SUBTYPE_BOOLEAN.equals(field.getSubType())) {
+            err.accept("@agg '" + agg + "' needs a field.boolean, but '" + item + "' is field."
+                    + field.getSubType() + ".");
+            return null;
+        }
         return new AggregateColumns(field);
     }
 
-    /** M6 — each operand names a measure.aggregate of the same entity. */
+    /** M6 — each operand names a measure.aggregate of the same entity whose result is a number. */
     private static void checkRatioOperands(MemberCtx ctx, MetaMeasure ratio, Consumer<String> err) {
         String[][] operands = {
                 {ReportingConstants.ATTR_NUMERATOR, ratio.getNumerator()},
@@ -711,6 +723,13 @@ final class ReportingValidation {
             } else if (!ReportingConstants.MEASURE_SUBTYPE_AGGREGATE.equals(target.getSubType())) {
                 err.accept("@" + attr + " '" + ref + "' is a measure." + target.getSubType()
                         + "; a ratio's operands must be measure.aggregate (a ratio of ratios is not supported).");
+            } else if (target instanceof MetaMeasure) {
+                String result = ReportShape.measureResultSubType((MetaMeasure) target, ctx.host(), ctx.root());
+                if (result != null && !NUMERIC_FIELD_SUBTYPES.contains(result)) {
+                    err.accept("@" + attr + " '" + ref + "' is a " + result
+                            + " measure; a ratio divides numbers, so its operands must be numeric measures "
+                            + "(a count, a sum, an avg, or a min or max of a numeric field).");
+                }
             }
         }
     }

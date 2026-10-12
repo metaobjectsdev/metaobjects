@@ -1,0 +1,75 @@
+name: report-boolean-measures
+description: |
+  ProgramFlags is an object.report over Week: one row per program, with the boolean
+  aggregates `@agg: any` (Postgres bool_or; MAX over 0/1 on SQLite and MySQL) and
+  `@agg: all` (bool_and; MIN) over Week.deload, a nullable field.boolean. Each measure
+  is a boolean on the wire (true / false), never 0 / 1.
+
+  Null values are ignored, as in SQL: a group's `any` is null only when it has no
+  non-null value to judge, and so is its `all`. No @default is declared here, so the
+  null reaches the wire.
+    Program 1 deloads: false, true, false, null  -> any true,  all false
+    Program 2 deloads: true, true                -> any true,  all true
+    Program 3 deloads: false, null               -> any false, all false
+    Program 4 deloads: null                      -> any null,  all null (nothing to judge)
+  anyLongDeload is `any` scoped by the `long` segment (durationMinutes >= 60): program 1
+  has long weeks 11 (true), 12 (false) and 13 (null), so it is true; programs 2 to 4 have
+  no long week with a value, so it is null.
+
+  A boolean measure is filterable by its value. A null row matches neither `eq: true` nor
+  `eq: false`.
+seed-data: |
+  INSERT INTO "programs" ("id","title","priceCents","status","created_ts") VALUES
+    (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00'),
+    (2, 'Strength', 2500, 'PUBLISHED', '2026-05-17T23:30:00'),
+    (3, 'Endurance', 3000, 'PUBLISHED', '2026-05-18T09:00:00'),
+    (4, 'Recovery', 1500, 'DRAFT', '2026-05-19T09:00:00');
+  INSERT INTO "weeks" ("id","programId","label","durationMinutes","deload") VALUES
+    (10, 1, 'Week 1', 30, FALSE),
+    (11, 1, 'Week 2', 60, TRUE),
+    (12, 1, 'Week 3', 90, FALSE),
+    (13, 1, NULL, 60, NULL),
+    (20, 2, 'Solo', 45, TRUE),
+    (21, 2, 'Duo', 50, TRUE),
+    (30, 3, 'Base', 30, FALSE),
+    (31, 3, 'Build', 90, NULL),
+    (40, 4, 'Rest', 30, NULL);
+queries:
+  - name: all-groups
+    op: list
+    entity: ProgramFlags
+    sort: [{ field: program, dir: asc }]
+    expect:
+      - { program: "1", weeks: "4", anyDeload: true, allDeload: false, anyLongDeload: true }
+      - { program: "2", weeks: "2", anyDeload: true, allDeload: true, anyLongDeload: null }
+      - { program: "3", weeks: "2", anyDeload: false, allDeload: false, anyLongDeload: null }
+      - { program: "4", weeks: "1", anyDeload: null, allDeload: null, anyLongDeload: null }
+  - name: filter-any-true
+    op: list
+    entity: ProgramFlags
+    filter: { anyDeload: { eq: true } }
+    sort: [{ field: program, dir: asc }]
+    expect:
+      - { program: "1", weeks: "4", anyDeload: true, allDeload: false, anyLongDeload: true }
+      - { program: "2", weeks: "2", anyDeload: true, allDeload: true, anyLongDeload: null }
+  - name: filter-all-true
+    op: list
+    entity: ProgramFlags
+    filter: { allDeload: { eq: true } }
+    expect:
+      - { program: "2", weeks: "2", anyDeload: true, allDeload: true, anyLongDeload: null }
+  - name: filter-any-false-skips-the-null-group
+    op: count
+    entity: ProgramFlags
+    filter: { anyDeload: { eq: false } }
+    expect: 1
+  - name: filter-is-null
+    op: list
+    entity: ProgramFlags
+    filter: { allDeload: { isNull: true } }
+    expect:
+      - { program: "4", weeks: "1", anyDeload: null, allDeload: null, anyLongDeload: null }
+  - name: count-groups
+    op: count
+    entity: ProgramFlags
+    expect: 4

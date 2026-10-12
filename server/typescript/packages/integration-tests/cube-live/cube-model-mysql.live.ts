@@ -60,6 +60,8 @@ const REPORTS: readonly ExpectedReport[] = [
   { report: "AssetActivity", view: "v_asset_activity", preAggregation: "dev_pre_aggregations.asset__asset_activity", rows: 2 },
   { report: "ProgramRoster", view: "v_program_roster", preAggregation: undefined, rows: 11 },
   { report: "ProgramLongWeeks", view: "v_program_long_weeks", preAggregation: undefined, rows: 11 },
+  { report: "ProgramFlags", view: "v_program_flags", preAggregation: "dev_pre_aggregations.week__program_flags", rows: 3 },
+  { report: "ProgramFlagRoster", view: "v_program_flag_roster", preAggregation: undefined, rows: 11 },
   { report: "FitnessTotalsFilled", view: "v_fitness_totals_filled", preAggregation: "dev_pre_aggregations.week__fitness_totals_filled", rows: 1 },
   { report: "MeasurementStats", view: "v_measurement_stats", preAggregation: "dev_pre_aggregations.measurement__measurement_stats", rows: 1 },
   { report: "MeasurementStatsFilled", view: "v_measurement_stats_filled", preAggregation: "dev_pre_aggregations.measurement__measurement_stats_filled", rows: 1 },
@@ -187,7 +189,7 @@ describe(`cube-model MySQL live check (${CUBE_IMAGE} over ${CUBE_MYSQL_IMAGE}, d
       const t0 = Date.now();
       const result = await load(s, plan.query);
       const used = Object.keys(result.usedPreAggregations ?? {}).sort();
-      const cubeRows = sortRows(result.data.map((row) => fromCubeRow(row, plan)), plan);
+      const cubeRows = sortRows(result.data.map((row) => fromCubeRow(row, plan, GEN_CONFIG.dialect)), plan);
       const viewRows = sortRows(selectView(s, want.view).map((row) => fromViewRow(row, plan, want.view)), plan);
       timings.push(`${want.report}: ${cubeRows.length} row(s) compared, served from ${used[0] ?? "the source table"}, load ${Date.now() - t0} ms`);
       expect(viewRows.length).toBe(want.rows);

@@ -322,9 +322,10 @@ somewhere to go: an `identity.reference` onto an entity that is not a cube makes
 | `count` with `@distinct` | `type: count_distinct`, `sql: x` |
 | `count` with `@distinct` over a tuple `x1, x2` | Postgres: `type: count_distinct`, `sql: 'ROW(x1, x2)'`, with one `filters` entry `x1 IS NOT NULL AND x2 IS NOT NULL`, so a tuple with a null component is not counted, as in the view. MySQL: the view's own `COUNT(DISTINCT x1, x2)` as a `type: number` measure (a condition `c` makes it `COUNT(DISTINCT CASE WHEN c THEN x1 END, x2)`); MySQL's multi-argument form skips a tuple with a null component and compares by the columns' collation, which a `JSON_ARRAY(x1, x2)` key does not: on mysql:8.4 under the default `utf8mb4_0900_ai_ci` it counted `'abc'` and `'ABC'` as two tuples where the view counts one |
 | `sum`, `avg`, `min`, `max` | `type: sum`, `avg`, `min`, `max`, `sql: x` |
+| `any`, `all` | `type: boolean`. Postgres: `sql: 'bool_or(x)'` / `'bool_and(x)'`, a condition `c` as `bool_or(x) FILTER (WHERE c)`. MySQL: `sql: 'MAX(x)'` / `'MIN(x)'`, a condition as `MAX(CASE WHEN c THEN x END)`. The aggregate is the view's own, written in `sql` because Postgres has no `MAX(boolean)` and the condition cannot ride in `filters`. |
 | any of the above with a condition `c` | the same, with one `filters` entry `c`. For a Postgres tuple, `c` is ANDed after the not-null terms in that one entry. |
 | `measure.ratio` | `type: number`. Postgres: `CAST({num} AS NUMERIC) / NULLIF({den}, 0)`. MySQL: `{num} / NULLIF({den}, 0)`. |
-| a `measure.aggregate` with `@default: n` | two members. `<m>Raw` is the aggregate as the rows above write it (its `type`, `sql` and `filters`), with `public: false`. `<m>` is `type: number`, `sql: 'COALESCE({<m>Raw}, n)'`, and carries the measure's `title` and `description`. |
+| a `measure.aggregate` with `@default: n` | two members. `<m>Raw` is the aggregate as the rows above write it (its `type`, `sql` and `filters`), with `public: false`. `<m>` is `type: number` (`type: boolean` for an `any` or `all`, where `n` is written `TRUE` / `FALSE` on Postgres and `1` / `0` on MySQL), `sql: 'COALESCE({<m>Raw}, n)'`, and carries the measure's `title` and `description`. |
 | a `measure.ratio` with `@default: n` | `type: number`, the quotient above inside `COALESCE(…, n)` |
 
 In a ratio, `{num}` and `{den}` are references to the two operand measures, so each operand is
@@ -339,6 +340,16 @@ condition filters out, or a ratio whose denominator is zero. Cube has no nullabi
 for a measure, so nothing else is written for it. A rollup lists `<m>`, never `<m>Raw`. As a
 `number` measure, `<m>` is served from a rollup only when the query's dimensions are the
 rollup's own, which is the query a report makes.
+
+**What Cube returns for an `any` or `all`.** Over Postgres, Cube sends a `type: boolean`
+measure as a JSON boolean, `true` or `false`. Over MySQL it sends the string `"1"` or `"0"`:
+MySQL has no boolean type, a boolean column is a `TINYINT(1)`, and Cube returns the value the
+driver gives it without converting it. This is how Cube reads any boolean-typed measure over
+MySQL, from a rollup and from the source table alike, and the exporter does not change it. A
+consumer that reads the Cube API over MySQL must compare the value to `"1"`; `"0"` is a
+non-empty string, so a truthiness test reads it as true. A measure with nothing to judge is
+`null` on both. The live check holds each form exactly: a JSON boolean on Postgres, `"1"` or
+`"0"` on MySQL, each equal to the report view's own value.
 
 No measure sets `format`: Cube's named formats are display hints and the model carries none.
 
@@ -567,8 +578,8 @@ like any other generated output: a changed model that was not regenerated, a mis
 and a stale one are drift. A hand edit to a generated file is not drift, but the gate lists it, and
 `meta verify --codegen --forbid-hand-edits` makes it fail.
 
-**The mapping corpus** is [`fixtures/cube-model/`](../../fixtures/cube-model/): 44 cases, each
-the smallest model for one rule, 34 with the exact tree the generator writes and 10 with the
+**The mapping corpus** is [`fixtures/cube-model/`](../../fixtures/cube-model/): 46 cases, each
+the smallest model for one rule, 36 with the exact tree the generator writes and 10 with the
 exact error message. Every expected file was written by hand from its rule and then compared
 with the generator, never copied from it.
 `codegen-ts/test/cube/cube-model-corpus.test.ts` runs it. The canonical golden,
@@ -634,7 +645,7 @@ the table names above are the development-mode form.
   refuses the model with `ERR_CUBE_AMBIGUOUS_PATH`, naming both. The lossless form needs a
   nested alias for each path. That is more machinery than a rare model is worth yet, so the
   exporter errors rather than guess.
-- **The two MySQL mapping cases are compiled, never executed.** The corpus pins their SQL byte
+- **The three MySQL mapping cases are compiled, never executed.** The corpus pins their SQL byte
   for byte and Cube compiles them, but no MySQL database runs them. The MySQL path runs only the
   served reports. The tuple distinct count's MySQL form was compared with the view's on mysql:8.4
   by hand when it was built.

@@ -26,7 +26,7 @@ import kotlin.io.path.isRegularFile
 import kotlin.io.path.readText
 
 /**
- * FR-044 Plan 3: host the GENERATED Kotlin Spring controllers of the four served reports
+ * FR-044 Plan 3: host the GENERATED Kotlin Spring controllers of the nine served reports
  * of the `report/` corpus over real HTTP (an embedded Tomcat). Mirrors
  * [com.metaobjects.integration.kotlin.api.projection.generated.GeneratedProjectionControllerHarness].
  *
@@ -115,7 +115,7 @@ class GeneratedReportControllerHarness(
         }
     }
 
-    /** Rebuild a fresh in-memory H2, the four stand-in tables, the seed, and Tomcat. */
+    /** Rebuild a fresh in-memory H2, the nine stand-in tables, the seed, and Tomcat. */
     fun reset() {
         val dbName = "report_invoice_${dbSeq.incrementAndGet()}"
         val db = Database.connect("jdbc:h2:mem:$dbName;DB_CLOSE_DELAY=-1;MODE=PostgreSQL", driver = "org.h2.Driver")
@@ -169,7 +169,7 @@ class GeneratedReportControllerHarness(
          */
         val SERVED = listOf(
             "InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
-            "ProductRevenue", "SalesByCategory", "SalesBySku",
+            "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds",
         )
 
         private fun snakeCase(s: String): String = buildString {

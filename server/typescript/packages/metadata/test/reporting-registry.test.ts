@@ -44,6 +44,6 @@ describe("FR-044 reporting vocabulary registration", () => {
 
   test("closed sets match the spec", () => {
     expect([...TIME_GRAINS]).toEqual(["hour", "day", "week", "month", "quarter", "year"]);
-    expect([...MEASURE_AGGS]).toEqual(["count", "sum", "avg", "min", "max"]);
+    expect([...MEASURE_AGGS]).toEqual(["count", "sum", "avg", "min", "max", "any", "all"]);
   });
 });

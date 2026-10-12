@@ -4,6 +4,7 @@
 // quotes every identifier unconditionally, so a measure named `order` is valid DDL.
 import type { JoinNode } from "./view-spec.js";
 import type { ReportAggregate, ReportColumn, ReportViewSpec } from "./report-spec.js";
+import { AGG_ALL, AGG_ANY } from "@metaobjectsdev/metadata";
 import { cond, mysqlTupleCount, q, ref } from "./report-sql.js";
 import { truncateToGrain, type ReportDialect } from "./time-sql.js";
 
@@ -30,8 +31,18 @@ function castType(cast: "bigint" | "double", d: ReportDialect): string | undefin
 /** Table D: `COALESCE(E, n)` for a measure with a `@default`; `E` unchanged without one. */
 function withDefault(sql: string, dv: ReportAggregate["defaultValue"], d: ReportDialect): string {
   if (dv === undefined) return sql;
+  // A boolean measure's @default is 0 (false) or 1 (true): a boolean literal on Postgres only.
+  if (dv.boolean === true) return `COALESCE(${sql}, ${d === "postgres" ? (dv.value === 1 ? "TRUE" : "FALSE") : String(dv.value)})`;
   // SQLite: a REAL column keeps one storage class in every row, so its default is a REAL literal.
   return `COALESCE(${sql}, ${d === "sqlite" && dv.real ? `${dv.value}.0` : String(dv.value)})`;
+}
+
+/** The SQL function of an `@agg`. A boolean any / all is `bool_or` / `bool_and` where the dialect has
+ *  them (Postgres), else MAX / MIN: a boolean is 0 / 1 there, so the maximum is the OR. */
+function aggFunction(agg: ReportAggregate["agg"], d: ReportDialect): string {
+  if (agg === AGG_ANY) return d === "postgres" ? "bool_or" : "MAX";
+  if (agg === AGG_ALL) return d === "postgres" ? "bool_and" : "MIN";
+  return agg.toUpperCase();
 }
 
 /** One aggregate (Table C): the bare aggregate, the condition by dialect, the cast, then the
@@ -39,7 +50,7 @@ function withDefault(sql: string, dv: ReportAggregate["defaultValue"], d: Report
 function aggregate(a: ReportAggregate, d: ReportDialect): string {
   const refs = a.refs.map((r) => ref(r, d));
   const c = a.filter === undefined ? undefined : cond(a.filter, d);
-  const fn = a.agg.toUpperCase();
+  const fn = aggFunction(a.agg, d);
   let sql: string;
   if (refs.length > 1) {
     // A distinct tuple count: a tuple with any NULL component is not counted, on every dialect.

@@ -37,6 +37,7 @@
           { "field.long":   { "name": "programId", "@required": true } },
           { "field.string": { "name": "label", "@maxLength": 80 } },
           { "field.int":    { "name": "durationMinutes", "@required": true } },
+          { "field.boolean": { "name": "deload" } },
           { "identity.primary":   { "name": "id", "@fields": "id", "@generation": "increment" } },
           { "identity.reference": { "name": "fkProgram", "@fields": "programId", "@references": "Program" } },
           { "segment.filter":      { "name": "long", "@filter": { "durationMinutes": { "gte": 60 } } } },
@@ -59,7 +60,12 @@
           { "measure.aggregate":   { "name": "labelledMinutes", "@agg": "sum", "@of": "Week.durationMinutes", "@filter": { "label": { "isNull": false } } } },
           { "measure.aggregate":   { "name": "shortWeeks", "@agg": "count", "@of": "Week.id", "@filter": { "durationMinutes": { "lt": 30 } } } },
           { "measure.aggregate":   { "name": "midWeeks", "@agg": "count", "@of": "Week.id", "@filter": { "durationMinutes": { "gt": 30, "lte": 60 } } } },
-          { "measure.aggregate":   { "name": "longWMinutes", "@agg": "sum", "@of": "Week.durationMinutes", "@segment": "long", "@filter": { "label": { "like": "W%" } } } }
+          { "measure.aggregate":   { "name": "longWMinutes", "@agg": "sum", "@of": "Week.durationMinutes", "@segment": "long", "@filter": { "label": { "like": "W%" } } } },
+          { "measure.aggregate":   { "name": "anyDeload", "@agg": "any", "@of": "Week.deload" } },
+          { "measure.aggregate":   { "name": "allDeload", "@agg": "all", "@of": "Week.deload" } },
+          { "measure.aggregate":   { "name": "anyDeloadOrFalse", "@agg": "any", "@of": "Week.deload", "@default": 0 } },
+          { "measure.aggregate":   { "name": "allDeloadOrTrue", "@agg": "all", "@of": "Week.deload", "@default": 1 } },
+          { "measure.aggregate":   { "name": "anyLongDeload", "@agg": "any", "@of": "Week.deload", "@segment": "long" } }
         ]
       }},
       { "object.entity": {
@@ -410,6 +416,13 @@
       { "object.report": { "name": "ProgramLongWeeks", "@from": "Week", "@spine": "Week.fkProgram",
         "@dimensions": ["programKey"], "@measures": ["weeks", "totalMinutesOrZero"], "@segment": "long",
         "children": [ { "source.rdb": { "@kind": "view", "@view": "v_program_long_weeks" } } ] } },
+      { "object.report": { "name": "ProgramFlags", "@from": "Week",
+        "@dimensions": ["program"], "@measures": ["weeks", "anyDeload", "allDeload", "anyLongDeload"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_program_flags" } } ] } },
+      { "object.report": { "name": "ProgramFlagRoster", "@from": "Week", "@spine": "Week.fkProgram",
+        "@dimensions": ["programKey"],
+        "@measures": ["weeks", "anyDeload", "anyDeloadOrFalse", "allDeloadOrTrue"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_program_flag_roster" } } ] } },
       { "object.report": { "name": "FitnessTotalsFilled", "@from": "Week",
         "@measures": ["weeks", "totalMinutesOrZero", "longShareOrZero"],
         "children": [ { "source.rdb": { "@kind": "view", "@view": "v_fitness_totals_filled" } } ] } },

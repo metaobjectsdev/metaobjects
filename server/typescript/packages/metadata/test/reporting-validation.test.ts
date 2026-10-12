@@ -482,6 +482,31 @@ describe("validateReporting — measures", () => {
     await single(m, "ERR_INVALID_MEASURE");
   });
 
+  test("M4: any / all over a field that is not a boolean is refused, naming the field", async () => {
+    const m = edit((x) => patchMember(x, "Purchase", "revenue", { "@agg": "any" }));
+    const msg = await single(m, "ERR_INVALID_MEASURE");
+    expect(msg).toBe(
+      "measure 'revenue' on entity 'acme::shop::Purchase': @agg 'any' needs a field.boolean, but " +
+        "'Purchase.amountCents' is field.currency.",
+    );
+    const all = edit((x) => patchMember(x, "Purchase", "revenue", { "@agg": "all" }));
+    expect(await single(all, "ERR_INVALID_MEASURE")).toContain("@agg 'all' needs a field.boolean");
+  });
+
+  test("any and all over a boolean field are fine, with or without @filter", async () => {
+    const m = edit((x) => {
+      setChild(x, "Purchase", "anyRefund", {
+        "measure.aggregate": { name: "anyRefund", "@agg": "any", "@of": "Purchase.refunded" },
+      });
+      setChild(x, "Purchase", "allRefunded", {
+        "measure.aggregate": {
+          name: "allRefunded", "@agg": "all", "@of": "Purchase.refunded", "@filter": { status: "active" },
+        },
+      });
+    });
+    expect(await codes(m)).toEqual([]);
+  });
+
   test("M4: avg over a currency field and min over a timestamp are fine", async () => {
     const m = edit((x) => {
       setChild(x, "Purchase", "avgRevenue", {
@@ -508,6 +533,60 @@ describe("validateReporting — measures", () => {
     );
     const msg = await single(m, "ERR_INVALID_MEASURE");
     expect(msg).toContain("'avgDaysPerStarter'");
+  });
+
+  /** `refundShare` = `revenue` / `purchases`, with `attr` renamed onto a new measure `operand`. */
+  const ratioOver = (attr: string, measure: Body, extraField?: Wrapper) =>
+    edit((x) => {
+      if (extraField !== undefined) childrenOf(x, "Purchase").push(extraField);
+      setChild(x, "Purchase", "operand", { "measure.aggregate": { name: "operand", ...measure } });
+      setChild(x, "Purchase", "refundShare", {
+        "measure.ratio": { name: "refundShare", "@numerator": "revenue", "@denominator": "purchases", [attr]: "operand" },
+      });
+    });
+
+  test("M6: a ratio operand whose result is a boolean is refused, naming the operand and its type", async () => {
+    const any = ratioOver("@numerator", { "@agg": "any", "@of": "Purchase.refunded" });
+    expect(await single(any, "ERR_INVALID_MEASURE")).toBe(
+      "measure 'refundShare' on entity 'acme::shop::Purchase': @numerator 'operand' is a boolean measure; " +
+        "a ratio divides numbers, so its operands must be numeric measures (a count, a sum, an avg, or a min " +
+        "or max of a numeric field).",
+    );
+    const all = ratioOver("@denominator", { "@agg": "all", "@of": "Purchase.refunded" });
+    expect(await single(all, "ERR_INVALID_MEASURE")).toContain("@denominator 'operand' is a boolean measure");
+  });
+
+  test("M6: a min or max over a field that is not numeric is refused as a ratio operand", async () => {
+    const cases: [agg: string, of: string, result: string, extraField?: Wrapper][] = [
+      ["max", "Purchase.purchasedAt", "timestamp"],
+      ["min", "Purchase.purchasedOn", "date"],
+      ["max", "Purchase.status", "string"],
+      ["min", "Purchase.token", "uuid", { "field.uuid": { name: "token" } }],
+      ["max", "Purchase.tier", "enum", { "field.enum": { name: "tier", "@values": ["basic", "pro"] } }],
+    ];
+    for (const [agg, of, result, extraField] of cases) {
+      const m = ratioOver("@numerator", { "@agg": agg, "@of": of }, extraField);
+      expect([of, await single(m, "ERR_INVALID_MEASURE")]).toEqual([
+        of,
+        `measure 'refundShare' on entity 'acme::shop::Purchase': @numerator 'operand' is a ${result} measure; ` +
+          "a ratio divides numbers, so its operands must be numeric measures (a count, a sum, an avg, or a min " +
+          "or max of a numeric field).",
+      ]);
+    }
+  });
+
+  test("M6: a count, a sum, an avg and a min or max over a numeric field are legal ratio operands", async () => {
+    const operands: Body[] = [
+      { "@agg": "count", "@of": "Purchase.id" },
+      { "@agg": "sum", "@of": "Purchase.amountCents" },
+      { "@agg": "avg", "@of": "Purchase.amountCents" },
+      { "@agg": "min", "@of": "Purchase.amountCents" },
+      { "@agg": "max", "@of": "Purchase.programId" },
+    ];
+    for (const operand of operands) {
+      expect([operand, await codes(ratioOver("@numerator", operand))]).toEqual([operand, []]);
+      expect([operand, await codes(ratioOver("@denominator", operand))]).toEqual([operand, []]);
+    }
   });
 
   test("M6: a ratio operand naming nothing is refused", async () => {
@@ -1395,6 +1474,22 @@ describe("validateReporting — measure @default (M7, M8)", () => {
     const msg = await single(m, "ERR_INVALID_MEASURE");
     expect(msg).toContain("measure 'daysEngaged'");
     expect(msg).toContain("@default cannot apply to @agg: count");
+  });
+
+  test("M9: a boolean measure's @default is 0 or 1; 0 and 1 are fine", async () => {
+    const withDefault = (value: number): Model =>
+      edit((x) =>
+        setChild(x, "Purchase", "anyRefund", {
+          "measure.aggregate": { name: "anyRefund", "@agg": "any", "@of": "Purchase.refunded", "@default": value },
+        }),
+      );
+    expect(await codes(withDefault(0))).toEqual([]);
+    expect(await codes(withDefault(1))).toEqual([]);
+    expect(await single(withDefault(2), "ERR_INVALID_MEASURE")).toBe(
+      "measure 'anyRefund' on entity 'acme::shop::Purchase': @default '2' on @agg 'any' must be 0 (false) " +
+        "or 1 (true): the measure is a boolean.",
+    );
+    expect(await single(withDefault(-1), "ERR_INVALID_MEASURE")).toContain("must be 0 (false) or 1 (true)");
   });
 
   test("M8: @default on a max of a timestamp is refused", async () => {

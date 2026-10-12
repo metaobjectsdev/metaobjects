@@ -34,6 +34,16 @@ describe("coerceRowOnRead — sqlite", () => {
   });
 });
 
+describe("coerceRowOnRead — mysql", () => {
+  test("a conditional boolean aggregate is a BIGINT, which the pool returns as text: '0' / '1' → boolean", () => {
+    const e = entityWithFields([{ name: "anyFailed", subType: FIELD_SUBTYPE_BOOLEAN }]);
+    expect(coerceRowOnRead(e, { anyFailed: "1" }, "mysql").anyFailed).toBe(true);
+    expect(coerceRowOnRead(e, { anyFailed: "0" }, "mysql").anyFailed).toBe(false);
+    expect(coerceRowOnRead(e, { anyFailed: 1 }, "mysql").anyFailed).toBe(true);
+    expect(coerceRowOnRead(e, { anyFailed: null }, "mysql").anyFailed).toBeNull();
+  });
+});
+
 describe("coerceRowOnRead — postgres / memory", () => {
   test("native booleans pass through unchanged", () => {
     const e = entityWithFields([{ name: "active", subType: FIELD_SUBTYPE_BOOLEAN }]);

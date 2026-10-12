@@ -19,6 +19,7 @@ from ...meta_data import MetaData
 from ...meta_root import MetaRoot
 from ..field.field_constants import (
     FIELD_ATTR_REQUIRED,
+    FIELD_SUBTYPE_BOOLEAN,
     FIELD_SUBTYPE_CURRENCY,
     FIELD_SUBTYPE_DATE,
     FIELD_SUBTYPE_DECIMAL,
@@ -56,6 +57,8 @@ from .report_accessors import (
     report_spine,
 )
 from .reporting_constants import (
+    AGG_ALL,
+    AGG_ANY,
     AGG_AVG,
     AGG_COUNT,
     AGG_SUM,
@@ -372,34 +375,54 @@ def _measure_field(item: str, report: MetaObject, from_: MetaObject, root: MetaR
     m = _declared_member(from_, TYPE_MEASURE, name, MetaMeasure)
     if not isinstance(m, MetaMeasure):
         raise _unresolved(report_name, f"measure '{item}' on '{from_.name}'")
+    derived = _derive_measure(m, from_, root)
+    if derived is None:
+        raise _unresolved(report_name, f"measure '{name}' @of")
+    sub_type, type_source = derived
     # Table C: a count is never null; any other measure is not null when it has a @default.
     required = (not m.is_ratio() and m.agg() == AGG_COUNT) or m.default_value() is not None
+    return ReportField(name, ROLE_MEASURE, sub_type, required, type_source, measure=m)
+
+
+def _derive_measure(m: MetaMeasure, from_: MetaObject, root: MetaRoot) -> tuple[str, MetaField | None] | None:
+    """Table B for one measure: its subtype, and the ``@of`` field it carries type attrs from
+    (if any). None when its ``@of`` does not resolve."""
     if m.is_ratio():
-        return ReportField(name, ROLE_MEASURE, FIELD_SUBTYPE_DECIMAL, required, measure=m)
+        return FIELD_SUBTYPE_DECIMAL, None
     agg = m.agg()
     if agg == AGG_COUNT:
-        return ReportField(name, ROLE_MEASURE, FIELD_SUBTYPE_LONG, required, measure=m)
+        return FIELD_SUBTYPE_LONG, None
+    # any / all are boolean whatever the source (the loader's M4 refuses a non-boolean @of).
+    if agg in (AGG_ANY, AGG_ALL):
+        return FIELD_SUBTYPE_BOOLEAN, None
     cols = m.of_columns()
     of = resolve_reporting_field_ref(cols[0] if cols else "", reporting_member_owner(m, from_), root, from_)
     if of is None:
-        raise _unresolved(report_name, f"measure '{name}' @of")
+        return None
     src = of.sub_type
     if agg == AGG_SUM:
         if src == FIELD_SUBTYPE_CURRENCY:
-            return ReportField(name, ROLE_MEASURE, FIELD_SUBTYPE_CURRENCY, required, of, measure=m)
-        sub_type = (
+            return FIELD_SUBTYPE_CURRENCY, of
+        return (
             FIELD_SUBTYPE_LONG
             if src in _SUM_LONG
             else FIELD_SUBTYPE_DOUBLE
             if src in _FLOATING
             else FIELD_SUBTYPE_DECIMAL
-        )
-        return ReportField(name, ROLE_MEASURE, sub_type, required, measure=m)
+        ), None
     if agg == AGG_AVG:
-        sub_type = FIELD_SUBTYPE_DOUBLE if src in _FLOATING else FIELD_SUBTYPE_DECIMAL
-        return ReportField(name, ROLE_MEASURE, sub_type, required, measure=m)
+        return (FIELD_SUBTYPE_DOUBLE if src in _FLOATING else FIELD_SUBTYPE_DECIMAL), None
     # min / max keep the source field's type.
-    return ReportField(name, ROLE_MEASURE, src, required, of, measure=m)
+    return src, of
+
+
+def measure_result_sub_type(measure: MetaMeasure, from_: MetaObject, root: MetaRoot) -> str | None:
+    """Table B's subtype for one measure of ``from_``, whether or not a report lists it (a
+    ratio's operands are measures a report need not list). The same rule ``report_shape``
+    applies to a listed measure. None when its ``@of`` does not resolve, which the loader
+    (rule M6) reads before the model is known to be valid."""
+    derived = _derive_measure(measure, from_, root)
+    return None if derived is None else derived[0]
 
 
 def report_shape(report: MetaObject, root: MetaRoot) -> ReportShape:

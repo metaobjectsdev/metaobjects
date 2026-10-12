@@ -46,6 +46,8 @@ describe("canonical report-shapes artifact (report-shapes.json)", () => {
       ["fitness::AssetActivity", "v_asset_activity"],
       ["fitness::ProgramRoster", "v_program_roster"],
       ["fitness::ProgramLongWeeks", "v_program_long_weeks"],
+      ["fitness::ProgramFlags", "v_program_flags"],
+      ["fitness::ProgramFlagRoster", "v_program_flag_roster"],
       ["fitness::FitnessTotalsFilled", "v_fitness_totals_filled"],
       ["fitness::MeasurementStats", "v_measurement_stats"],
       ["fitness::MeasurementStatsFilled", "v_measurement_stats_filled"],
@@ -76,6 +78,14 @@ describe("canonical report-shapes artifact (report-shapes.json)", () => {
       ["totalMinutesOrZero", "measure", "long", true],
       ["longShare", "measure", "decimal", false],
       ["longShareOrZero", "measure", "decimal", true],
+    ]);
+    // Table B / C for `@agg: any` / `all`: boolean whatever the source, and required only with a @default.
+    expect(fields("fitness::ProgramFlagRoster")).toEqual([
+      ["programKey", "dimension", "long", true],
+      ["weeks", "measure", "long", true],
+      ["anyDeload", "measure", "boolean", false],
+      ["anyDeloadOrFalse", "measure", "boolean", true],
+      ["allDeloadOrTrue", "measure", "boolean", true],
     ]);
     expect(fields("fitness::ProgramLongWeeks")).toEqual([
       ["programKey", "dimension", "long", true],

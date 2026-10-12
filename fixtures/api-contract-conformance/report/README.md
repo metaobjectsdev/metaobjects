@@ -62,8 +62,8 @@ object uses (`InvoicesByMonth` is `/api/invoices_by_months`).
 
 ## The model
 
-Four entities (`Invoice`; `Category`, `Product` and their child `Sale`) and nine reports,
-eight served and one sourceless on purpose.
+Four entities (`Invoice`; `Category`, `Product` and their child `Sale`) and ten reports,
+nine served and one sourceless on purpose.
 
 | Report | Route | View | Derived fields |
 |---|---|---|---|
@@ -76,6 +76,7 @@ eight served and one sourceless on purpose.
 | `InvoiceDisputes` | `/api/invoice_disputes` | `v_invoice_disputes` | a boolean dimension, `invoices`, `bigInvoices` |
 | `SalesByCategory` | `/api/sales_by_categories` | `v_sales_by_category` | `categoryName` (through `Sale.fkProduct.fkCategory`), `sales`, `revenueCents`, `maxCents`, `largeSales` |
 | `SalesBySku` | `/api/sales_by_skus` | `v_sales_by_sku` | `productSku` (a uuid, through `Sale.fkProduct`), `sales`, `revenueCents` |
+| `ProductRefunds` | `/api/product_refunds` | `v_product_refunds` | `productId`, `productName`, `sales`, `hasRefund` (a boolean `any`), `hasRefundOrFalse` (the same with `@default: 0`) |
 
 `ProductRevenue` is `@from: Sale` with `@spine: "Sale.fkProduct"`: its view reads FROM
 `products` and LEFT JOINs `sales`, so its spine key `productId` and `productName` are never
@@ -91,9 +92,9 @@ sits in the model so that a port which serves every report it finds fails this c
 ```
 report/
 ├── README.md               # this file
-├── meta.json               # Invoice, Category, Product, Sale + nine object.report nodes (eight served, one sourceless)
+├── meta.json               # Invoice, Category, Product, Sale + ten object.report nodes (nine served, one sourceless)
 ├── seed.json               # the base tables (`invoices`, `categories`, `products`, `sales`) and `reports` (what the views return)
-├── schema.postgres.sql     # TypeScript-produced: the four tables and the eight views
+├── schema.postgres.sql     # TypeScript-produced: the four tables and the nine views
 ├── schema.sqlite.sql       # the same, for SQLite and D1 (`meta migrate --dialect sqlite`)
 ├── schema.mysql.sql        # the same, for MySQL 8.4: the tables plus `buildReportViews` bodies
 └── scenarios/
@@ -118,7 +119,10 @@ report/
     ├── filter-on-string-dimension.yaml   # `like` and `eq` on a string dimension
     ├── filter-on-filtered-measure.yaml   # a filter on a measure that carries its own @filter
     ├── filter-boolean-dimension.yaml     # a boolean dimension
-    └── filter-uuid-dimension.yaml        # a uuid dimension: eq, ne, in, and its wire spelling
+    ├── filter-uuid-dimension.yaml        # a uuid dimension: eq, ne, in, and its wire spelling
+    ├── list-boolean-measure.yaml         # @agg any: true, false, null with no facts, and its @default
+    ├── filter-on-boolean-measure.yaml    # eq and isNull on a boolean measure, plain and defaulted
+    └── sort-on-boolean-measure.yaml      # a defaulted boolean measure sorts false before true
 ```
 
 ### Why `seed.json` has two halves
@@ -154,11 +158,11 @@ hand-rolled reference server would answer every scenario by construction.
 
 | Port | Generated lane | Note |
 |---|---|---|
-| TypeScript | wired | `server/typescript/packages/integration-tests/test/api-contract-report.test.ts` (22 scenarios + a seed-vs-view check). Full stack: generated Fastify routes over the real views on Testcontainers Postgres. `api-contract-report-sqlite.test.ts` runs the same 22 on SQLite, `api-contract-report-mysql.test.ts` on MySQL 8.4, and the SQLite test file also runs them through local D1 (Miniflare) |
+| TypeScript | wired | `server/typescript/packages/integration-tests/test/api-contract-report.test.ts` (25 scenarios + a seed-vs-view check). Full stack: generated Fastify routes over the real views on Testcontainers Postgres. `api-contract-report-sqlite.test.ts` runs the same 25 on SQLite, `api-contract-report-mysql.test.ts` on MySQL 8.4, and the SQLite test file also runs them through local D1 (Miniflare) |
 | C# | wired | `server/csharp/MetaObjects.IntegrationTests/Api/ApiContractReportConformanceTest.cs`. Full stack: generated routes and EF Core over `schema.postgres.sql` on Testcontainers Postgres, over `schema.sqlite.sql` on SQLite, and over `schema.mysql.sql` on MySQL 8.4 |
-| Java | wired | `server/java/integration-tests/src/test/java/com/metaobjects/integration/api/ReportGeneratedApiContractConformanceTest.java` (22 scenarios + a scenario-count check). Generated controllers behind an in-memory repository seeded from `reports` |
-| Kotlin | wired | `server/java/integration-tests-kotlin/src/test/kotlin/com/metaobjects/integration/kotlin/api/report/ReportGeneratedApiContractConformanceTest.kt` (22 scenarios, the count check, and a check that the sourceless report generated nothing). Generated controllers over the generated Exposed table objects, seeded from `reports` |
-| Python | wired | `server/python/tests/integration/test_api_contract_report.py` (22 scenarios, a check that exactly the served reports are generated, and `/api/invoice_days` is `404`). Generated routers behind in-memory repositories seeded from `reports` |
+| Java | wired | `server/java/integration-tests/src/test/java/com/metaobjects/integration/api/ReportGeneratedApiContractConformanceTest.java` (25 scenarios + a scenario-count check). Generated controllers behind an in-memory repository seeded from `reports` |
+| Kotlin | wired | `server/java/integration-tests-kotlin/src/test/kotlin/com/metaobjects/integration/kotlin/api/report/ReportGeneratedApiContractConformanceTest.kt` (25 scenarios, the count check, and a check that the sourceless report generated nothing). Generated controllers over the generated Exposed table objects, seeded from `reports` |
+| Python | wired | `server/python/tests/integration/test_api_contract_report.py` (25 scenarios, a check that exactly the served reports are generated, and `/api/invoice_days` is `404`). Generated routers behind in-memory repositories seeded from `reports` |
 
 The scenarios use only assertion keys every runner already has (`equals`,
 `length`, `envelope`, `error` with `field`, and a status with no `body`).

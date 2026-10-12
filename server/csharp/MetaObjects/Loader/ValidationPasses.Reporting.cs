@@ -501,6 +501,13 @@ public static partial class ValidationPasses
                 Err("@default cannot apply to @agg: count. A count is never null (it is 0 when nothing matches); " +
                     "remove @default.");
             }
+            else if ((agg == AGG_ANY || agg == AGG_ALL) &&
+                     declaredDefault is int or long or short or double or float or decimal &&
+                     Convert.ToDouble(declaredDefault, System.Globalization.CultureInfo.InvariantCulture) is not (0 or 1))
+            {
+                // M9 — a boolean measure's @default is 0 (false) or 1 (true).
+                Err($"@default '{declaredDefault}' on @agg '{agg}' must be 0 (false) or 1 (true): the measure is a boolean.");
+            }
             else if ((agg == AGG_MIN || agg == AGG_MAX) &&
                      ofField is not null &&
                      !ReportingNumericFieldSubtypes.Contains(ofField.SubType))
@@ -593,10 +600,15 @@ public static partial class ValidationPasses
             err($"@agg '{agg}' cannot order '{first}', a field.{single.SubType}.");
             return false;
         }
+        if ((agg == AGG_ANY || agg == AGG_ALL) && single.SubType != FIELD_SUBTYPE_BOOLEAN)
+        {
+            err($"@agg '{agg}' needs a field.boolean, but '{first}' is field.{single.SubType}.");
+            return false;
+        }
         return true;
     }
 
-    /// <summary>M6 — each operand names a measure.aggregate of the same entity.</summary>
+    /// <summary>M6 — each operand names a measure.aggregate of the same entity whose result is a number.</summary>
     private static void CheckRatioOperands(MemberCtx ctx, MetaMeasure ratio, Action<string> err)
     {
         (string Attr, string? Ref)[] operands =
@@ -616,6 +628,13 @@ public static partial class ValidationPasses
             {
                 err($"@{attr} '{@ref}' is a measure.{target.SubType}; a ratio's operands must be measure.aggregate " +
                     "(a ratio of ratios is not supported).");
+            }
+            else if (target is MetaMeasure operand && ctx.Host is MetaObject from && ctx.Root is MetaRoot root &&
+                     ReportShapes.MeasureResultSubType(operand, from, root) is { } result &&
+                     !ReportingNumericFieldSubtypes.Contains(result))
+            {
+                err($"@{attr} '{@ref}' is a {result} measure; a ratio divides numbers, so its operands must be numeric " +
+                    "measures (a count, a sum, an avg, or a min or max of a numeric field).");
             }
         }
     }

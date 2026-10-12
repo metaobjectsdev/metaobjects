@@ -24,7 +24,7 @@ import kotlin.test.assertTrue
  * `object.report`, with one column per derived field (contract Table B), and nothing for a
  * report that has no view.
  *
- * The nine canonical reports are generated from the shared persistence corpus, the same
+ * The twenty-three canonical reports are generated from the shared persistence corpus, the same
  * model the hand-written reference tables in `integration-tests-kotlin` map and the
  * persistence lane reads.
  *

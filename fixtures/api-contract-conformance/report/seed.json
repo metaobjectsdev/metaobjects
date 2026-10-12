@@ -16,9 +16,9 @@
     { "id": 3, "name": "Cinder", "sku": "33333333-3333-4333-8333-333333333333", "categoryId": null }
   ],
   "sales": [
-    { "id": 1, "productId": 1, "amountCents": 12000 },
-    { "id": 2, "productId": 1, "amountCents": 18000 },
-    { "id": 3, "productId": 2, "amountCents":  4500 }
+    { "id": 1, "productId": 1, "amountCents": 12000, "refunded": false },
+    { "id": 2, "productId": 1, "amountCents": 18000, "refunded": true },
+    { "id": 3, "productId": 2, "amountCents":  4500, "refunded": false }
   ],
   "reports": {
     "InvoiceStatusTotals": [
@@ -57,6 +57,11 @@
       { "productId": 1, "productName": "Atlas",  "sales": 2, "revenueCents": 30000, "revenueOrZero": 30000 },
       { "productId": 2, "productName": "Beacon", "sales": 1, "revenueCents": 4500,  "revenueOrZero": 4500 },
       { "productId": 3, "productName": "Cinder", "sales": 0, "revenueCents": null,  "revenueOrZero": 0 }
+    ],
+    "ProductRefunds": [
+      { "productId": 1, "productName": "Atlas",  "sales": 2, "hasRefund": true,  "hasRefundOrFalse": true },
+      { "productId": 2, "productName": "Beacon", "sales": 1, "hasRefund": false, "hasRefundOrFalse": false },
+      { "productId": 3, "productName": "Cinder", "sales": 0, "hasRefund": null,  "hasRefundOrFalse": false }
     ]
   }
 }

@@ -104,7 +104,10 @@ public static class ReportingConstants
     public const string AGG_MIN = "min";
     public const string AGG_MAX = "max";
 
-    public static readonly string[] MEASURE_AGGS = [AGG_COUNT, AGG_SUM, AGG_AVG, AGG_MIN, AGG_MAX];
+    // any / all: boolean OR / AND over a field.boolean (bool_or / bool_and); the measure is boolean.
+    // The names, and their constants, are origin.aggregate's own (OriginConstants.AGG_ANY / AGG_ALL).
+    public static readonly string[] MEASURE_AGGS =
+        [AGG_COUNT, AGG_SUM, AGG_AVG, AGG_MIN, AGG_MAX, MetaObjects.Persistence.Origin.OriginConstants.AGG_ANY, MetaObjects.Persistence.Origin.OriginConstants.AGG_ALL];
 
     /// <summary>Separator in an <c>object.report</c> <c>@dimensions</c> item: <c>name</c> or <c>name:grain</c>.</summary>
     public const string REPORT_DIMENSION_GRAIN_SEPARATOR = ":";

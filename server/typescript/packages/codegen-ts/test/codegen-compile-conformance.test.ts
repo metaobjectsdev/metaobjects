@@ -114,7 +114,7 @@ const DEFAULT_OPTIONS: ts.CompilerOptions = {
 /** The corpus's view-backed reports (FR-044). */
 const SERVED_REPORTS = [
   "ProgramMinutes", "FitnessTotals", "ProgramsByMonth", "ProgramsByWeek", "RecentPrograms", "AssetActivity",
-  "ProgramRoster", "ProgramLongWeeks", "FitnessTotalsFilled",
+  "ProgramRoster", "ProgramLongWeeks", "ProgramFlags", "ProgramFlagRoster", "FitnessTotalsFilled",
   "MeasurementStats", "MeasurementStatsFilled", "AssetDays", "AllTypesBreakdown", "ProgramsOverTime", "LiveIntroPrograms",
   "ProgramsEmptyScope", "WeekShapes", "SessionsByProgram", "ProgramSessions", "NodesByParent", "AuthsByKind",
 ] as const;

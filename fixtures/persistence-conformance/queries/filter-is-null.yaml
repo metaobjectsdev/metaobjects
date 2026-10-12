@@ -19,8 +19,8 @@ queries:
     filter: { label: { isNull: true } }
     sort: [{ field: id, dir: asc }]
     expect:
-      - { id: "2", programId: "1", label: null, durationMinutes: 45 }
-      - { id: "4", programId: "1", label: null, durationMinutes: 75 }
+      - { id: "2", programId: "1", label: null, durationMinutes: 45, deload: null }
+      - { id: "4", programId: "1", label: null, durationMinutes: 75, deload: null }
 
   - name: weeks-with-non-null-label
     op: list
@@ -28,5 +28,5 @@ queries:
     filter: { label: { isNull: false } }
     sort: [{ field: id, dir: asc }]
     expect:
-      - { id: "1", programId: "1", label: "Week 1", durationMinutes: 30 }
-      - { id: "3", programId: "1", label: "Week 3", durationMinutes: 60 }
+      - { id: "1", programId: "1", label: "Week 1", durationMinutes: 30, deload: null }
+      - { id: "3", programId: "1", label: "Week 3", durationMinutes: 60, deload: null }

@@ -76,7 +76,8 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
     CREATE TABLE "sales" (
       "id" INTEGER PRIMARY KEY AUTOINCREMENT,
       "product_id" INTEGER NOT NULL REFERENCES "products" ("id"),
-      "amount_cents" INTEGER NOT NULL
+      "amount_cents" INTEGER NOT NULL,
+      "refunded" INTEGER
     )`,
   },
 ];

@@ -21,4 +21,6 @@ public class Week
     public string? Label { get; set; }
     [Column(WeekNames.DurationMinutesColumn)]
     public int DurationMinutes { get; set; }
+    [Column(WeekNames.DeloadColumn)]
+    public bool? Deload { get; set; }
 }

@@ -1,0 +1,49 @@
+{
+  "metadata.root": {
+    "package": "acme::ops",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Call",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "calls"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "note"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "failed"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "hasNote",
+                "@agg": "any",
+                "@of": "Call.note"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

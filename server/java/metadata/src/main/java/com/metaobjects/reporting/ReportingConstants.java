@@ -106,7 +106,11 @@ public final class ReportingConstants {
     public static final String AGG_AVG = "avg";
     public static final String AGG_MIN = "min";
     public static final String AGG_MAX = "max";
-    public static final List<String> MEASURE_AGGS = List.of(AGG_COUNT, AGG_SUM, AGG_AVG, AGG_MIN, AGG_MAX);
+    /** Boolean OR / AND over a {@code field.boolean} ({@code bool_or} / {@code bool_and}); the measure is boolean. */
+    public static final String AGG_ANY = "any";
+    public static final String AGG_ALL = "all";
+    public static final List<String> MEASURE_AGGS = List.of(
+            AGG_COUNT, AGG_SUM, AGG_AVG, AGG_MIN, AGG_MAX, AGG_ANY, AGG_ALL);
 
     /** Separator in an {@code object.report} {@code @dimensions} item: {@code name} or {@code name:grain}. */
     public static final String REPORT_DIMENSION_GRAIN_SEPARATOR = ":";
