@@ -18,6 +18,19 @@ findings) + a rendered Markdown report. The audit **never edits code, never auth
 metadata** — `metadata_sketch` per finding is a read-only proposal for human review.
 Actual cutovers run through the existing skills mapped per finding tier (§ Bridge).
 
+## Reference files — open the one your task needs
+
+| File | Open it when |
+|---|---|
+| `references/calibration.md` | Before raising any finding: it lists the port gaps and non-defects that are never the adopter's fault. |
+| `references/surface-review-axes.md` | Working any axis (A–I) of Phase 1b. |
+| `references/capability-checklist.md` | On every axis: the exhaustive list of what the metamodel can express, one hunt per capability. |
+| `references/drift-signatures.md` | Hunting hand-written second sources of truth (validators, mappers, comments, views, JSON bags). |
+| `references/prompt-anti-patterns.md` | Axis D: the project builds text sent to an LLM or parses a reply. |
+| `references/vocabulary-hygiene.md` | Axis I: retired or deprecated authoring forms, custom vocabulary, vocabulary opportunities. |
+| `references/requirements.md` | Axis E2: the project declares `requirement.*` nodes. |
+| `references/typescript.md`, `java.md`, `kotlin.md`, `csharp.md`, `python.md` | The server port the project uses (only the ports in the project's stack are installed). |
+
 ## Guardrails
 
 - **Adoption direction — metadata follows the code.** This is a brownfield project: existing
@@ -35,21 +48,6 @@ Actual cutovers run through the existing skills mapped per finding tier (§ Brid
 - **Verify the DB artifact, not just the types** — the contract may claim a column the view DDL dropped.
 - **Don't let one bespoke action block generating the entity** — generate CRUD; mount the custom action alongside.
 - **Consumption ≠ a dist copy across versions** — bump + rebuild lockstep and install.
-
-## Reference files — open the one your task needs
-
-| File | Open it when |
-|---|---|
-| `references/calibration.md` | Before raising any finding: it lists the port gaps and non-defects that are never the adopter's fault. |
-| `references/surface-review-axes.md` | Working any axis (A–I) of Phase 1b. |
-| `references/capability-checklist.md` | On every axis: the exhaustive list of what the metamodel can express, one hunt per capability. |
-| `references/drift-signatures.md` | Hunting hand-written second sources of truth (validators, mappers, comments, views, JSON bags). |
-| `references/prompt-anti-patterns.md` | Axis D: the project builds text sent to an LLM or parses a reply. |
-| `references/vocabulary-hygiene.md` | Axis I: retired or deprecated authoring forms, custom vocabulary, vocabulary opportunities. |
-| `references/requirements.md` | Axis E2: the project declares `requirement.*` nodes. |
-| `references/typescript.md`, `java.md`, `kotlin.md`, `csharp.md`, `python.md` | The server port the project uses (only the ports in the project's stack are installed). |
-
----
 
 ## Phase 0 — Triage (fast, mechanical)
 
