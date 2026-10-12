@@ -11,9 +11,13 @@ package com.metaobjects.generator;
  * implementing this interface. {@code generate} and {@code verify} skip it and say so, and
  * {@code docs} runs it.</p>
  *
- * <p>One {@code <generators>} list serves all three goals. An owned {@code api-docs} copy is
- * listed beside the code generators, and each goal runs the half that is its own. When the list
- * holds a docs generator for a surface, {@code docs} runs it in place of the packaged one.</p>
+ * <p>One {@code <generators>} list serves all three goals when it sits in the plugin-level
+ * {@code <configuration>}: an owned {@code api-docs} copy is listed beside the code generators,
+ * and each goal runs the half that is its own. A list inside one execution's {@code
+ * <configuration>} is read by that execution only, so {@code docs} sees an entry in the {@code
+ * generate} execution's list only if the {@code docs} execution's own list repeats it. When the
+ * list {@code docs} reads holds a docs generator for a surface, it runs that one in place of the
+ * packaged one.</p>
  *
  * <p>The goal sets these args on the generator: {@link #ARG_PROJECT_NAME}, {@link
  * #ARG_API_SUBDIR}, {@link #ARG_LAYOUT} and {@link #ARG_MODEL_BASE_URL}, plus {@code outputDir},

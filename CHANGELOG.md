@@ -151,11 +151,17 @@ generator catalog and the Atlas evaluation are 1.2 work.
     `mvn metaobjects:docs` writes is now `JavaApiDocsGenerator` / `KotlinApiDocsGenerator`, run
     through a new `DocsGenerator` marker (`metaobjects-codegen-base`). `metaobjects:generate` and
     `metaobjects:verify` skip a `DocsGenerator` and say so in the build log; `metaobjects:docs`
-    runs the one your `<generators>` list names for a surface, else the packaged one. Eject
+    runs the one the `<generators>` list it reads names for a surface, else the packaged one.
+    That list is the plugin-level `<configuration>`'s, or the `docs` execution's own, never the
+    `generate` execution's. Eject
     copies the generator, the page model, the builder, the renderer and the path math into a
     subpackage per port, `<package>.apidocs.java` or `<package>.apidocs.kotlin`: the two ports
-    name those classes alike, and one `codegen/` module can own both. Eject prints the class
-    name to list. For Java the page templates come too, into
+    name those classes alike, so one `codegen/` module can hold both without a class declared
+    twice. Eject prints the class name to list. The `codegen/pom.xml` the first eject wrote
+    builds that port only, and eject never edits it: when it does not declare what a port in the
+    module needs (the `metaobjects-codegen-*` dependency, `kotlin-maven-plugin`, or
+    `src/main/java` as a source root after a Kotlin-first eject), eject now warns and prints
+    what to add. For Java the page templates come too, into
     `codegen/src/main/resources/<package path>/apidocs/java/templates/`, with the copied
     template provider pointed there. What the Java reference documents is still what the
     packaged generators emit for (`GeneratorApplicability.packaged()`): an owned `routes` whose

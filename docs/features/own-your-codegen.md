@@ -994,13 +994,29 @@ renderer writes its pages in code, so it has no templates.
 alike (`ApiUnit`, `ApiSymbol`, `FieldShape`, `ApiSymbolKind`, `DocsPaths`), so a project that
 documents both surfaces can own both generators in one `codegen/` module without declaring a
 class twice. Eject prints each copy's class name, for example
-`com.acme.codegen.apidocs.java.JavaApiDocsGenerator`. No other generator's package changes. Eject
-never edits an existing pom, so the `codegen/pom.xml` the first eject wrote builds that port
-only: when you eject the other port into the same module, add its `metaobjects-codegen-*`
-dependency and its compiler to that pom yourself.
+`com.acme.codegen.apidocs.java.JavaApiDocsGenerator`. No other generator's package changes.
 
-The generator is a `DocsGenerator`. List it in `<generators>` with `<classname>` set to your copy,
-and `metaobjects:docs` runs it for its surface in place of the packaged one. `metaobjects:generate`
+**The second port needs the pom changed, and eject prints the change.** Eject never edits an
+existing pom, so the `codegen/pom.xml` the first eject wrote builds that port only, and the
+module still builds green with the other port's copies left out. When the pom does not declare
+what a port in the module needs, eject warns and prints what to add, in either order:
+
+- **Java first, then Kotlin.** Add the `metaobjects-codegen-kotlin` dependency, the
+  `kotlin.compiler.jvmTarget` property, and `kotlin-maven-plugin` with `src/main/kotlin` as its
+  `<sourceDirs>`.
+- **Kotlin first, then Java.** Add the `metaobjects-codegen-spring` dependency, remove
+  `<sourceDirectory>src/main/kotlin</sourceDirectory>` so that Maven compiles `src/main/java`
+  again, and give `kotlin-maven-plugin` `src/main/kotlin` as its `<sourceDirs>`.
+
+Either way the pom ends up with both dependencies, Maven's default Java source root, and the
+Kotlin plugin pointed at its own.
+
+The generator is a `DocsGenerator`. List it, with `<classname>` set to your copy, in the
+`<generators>` the docs goal reads, and `metaobjects:docs` runs it for its surface in place of the
+packaged one. That list is the one in the plugin-level `<configuration>`, or in the `docs`
+execution's own. A `<generators>` list inside the `generate` execution's `<configuration>` is read
+by that execution only, so an entry added there leaves `metaobjects:docs` on the packaged
+generator, and its log line says which one it ran. `metaobjects:generate`
 and `metaobjects:verify` skip it, because it writes pages under the docs directory and not code
 under `outputDir`, and say so in the build log. The docs goal sets `outputDir`, `projectName`,
 `apiSubDir`, `layout` and `modelBaseUrl` on it, and the pages land under

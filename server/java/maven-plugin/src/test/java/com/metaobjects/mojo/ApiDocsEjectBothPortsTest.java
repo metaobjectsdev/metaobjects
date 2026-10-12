@@ -72,8 +72,8 @@ public class ApiDocsEjectBothPortsTest {
 
     private static final Pattern CLASSNAME_CHANGE = Pattern.compile("^\\s*api-docs: \\S+\\s+->\\s+(\\S+)$");
 
-    /** Eject {@code api-docs} for one port, and return the owned classname eject printed for it. */
-    private String ejectApiDocs(String port) throws Exception {
+    /** Eject {@code api-docs} for one port, and return the log eject wrote to. */
+    private Log eject(String port) throws Exception {
         MetaDataEjectMojo mojo = new MetaDataEjectMojo();
         mojo.project = project;
         mojo.names = "api-docs";
@@ -81,9 +81,13 @@ public class ApiDocsEjectBothPortsTest {
         Log log = Mockito.mock(Log.class);
         mojo.setLog(log);
         mojo.execute();
+        return log;
+    }
 
+    /** Eject {@code api-docs} for one port, and return the owned classname eject printed for it. */
+    private String ejectApiDocs(String port) throws Exception {
         ArgumentCaptor<CharSequence> captor = ArgumentCaptor.forClass(CharSequence.class);
-        Mockito.verify(log, Mockito.atLeastOnce()).info(captor.capture());
+        Mockito.verify(eject(port), Mockito.atLeastOnce()).info(captor.capture());
         List<String> printed = new ArrayList<>();
         for (CharSequence line : captor.getAllValues()) {
             Matcher m = CLASSNAME_CHANGE.matcher(line);
@@ -95,6 +99,13 @@ public class ApiDocsEjectBothPortsTest {
         assertTrue(port + ": no wiring note names " + owned, captor.getAllValues().stream()
                 .anyMatch(line -> line.toString().contains("<classname>" + owned + "</classname>")));
         return owned;
+    }
+
+    /** Everything eject warned about, one printed line per element. */
+    private static List<String> warnings(Log log) {
+        ArgumentCaptor<CharSequence> captor = ArgumentCaptor.forClass(CharSequence.class);
+        Mockito.verify(log, Mockito.atLeast(0)).warn(captor.capture());
+        return captor.getAllValues().stream().map(line -> line.toString().strip()).collect(Collectors.toList());
     }
 
     private static List<File> sourcesUnder(Path root, String extension) throws IOException {
@@ -148,6 +159,56 @@ public class ApiDocsEjectBothPortsTest {
         Object generator = Class.forName(classname, true, loader).getDeclaredConstructor().newInstance();
         assertTrue(classname + " is not a DocsGenerator", generator instanceof DocsGenerator);
         assertEquals(classname, surface, ((DocsGenerator) generator).surface());
+    }
+
+    // The pom eject writes builds the ports of that call. It is never edited afterwards, so a port
+    // ejected later is left out of the build unless eject says what the pom has to gain. What each
+    // port needs is fixed by Maven and by where eject writes: its codegen artifact, a compiler for
+    // its language, and its directory as a source root.
+
+    @Test
+    public void aPomWrittenForThePortBeingEjectedDrawsNoWarning() throws Exception {
+        assertEquals(List.of(), warnings(eject("java")));
+        assertEquals("the same port again, into the pom written for it", List.of(), warnings(eject("java")));
+    }
+
+    @Test
+    public void kotlinEjectedIntoAJavaModulePrintsTheDependencyAndTheCompilerItsPomLacks() throws Exception {
+        eject("java");
+        Path pom = basedir.resolve("codegen/pom.xml");
+        String before = Files.readString(pom, StandardCharsets.UTF_8);
+
+        List<String> warned = warnings(eject("kotlin"));
+
+        assertEquals("eject never edits an existing pom", before, Files.readString(pom, StandardCharsets.UTF_8));
+        assertTrue(warned.toString(), warned.contains("<artifactId>metaobjects-codegen-kotlin</artifactId>"));
+        assertTrue(warned.toString(), warned.contains("<artifactId>kotlin-maven-plugin</artifactId>"));
+        // The plugin is given the Kotlin root itself: the pom's own source root stays Java's.
+        assertTrue(warned.toString(), warned.contains("<sourceDir>${project.basedir}/src/main/kotlin</sourceDir>"));
+        assertTrue(warned.toString(), warned.contains("<kotlin.compiler.jvmTarget>21</kotlin.compiler.jvmTarget>"));
+        // The Java port's needs are met by the pom written for it.
+        assertFalse(warned.toString(), warned.contains("<artifactId>metaobjects-codegen-spring</artifactId>"));
+        assertFalse(warned.toString(), warned.stream().anyMatch(line -> line.contains("<sourceDirectory>")));
+    }
+
+    @Test
+    public void javaEjectedIntoAKotlinModulePrintsTheDependencyAndTheSourceRootItsPomLacks() throws Exception {
+        eject("kotlin");
+        Path pom = basedir.resolve("codegen/pom.xml");
+        String before = Files.readString(pom, StandardCharsets.UTF_8);
+
+        List<String> warned = warnings(eject("java"));
+
+        assertEquals("eject never edits an existing pom", before, Files.readString(pom, StandardCharsets.UTF_8));
+        assertTrue(warned.toString(), warned.contains("<artifactId>metaobjects-codegen-spring</artifactId>"));
+        // The Kotlin pom's source root is src/main/kotlin, which leaves src/main/java uncompiled.
+        assertTrue(warned.toString(), warned.stream().anyMatch(line ->
+                line.startsWith("Remove <sourceDirectory>src/main/kotlin</sourceDirectory>")
+                        && line.contains("src/main/java")));
+        assertTrue(warned.toString(), warned.contains("<sourceDir>${project.basedir}/src/main/kotlin</sourceDir>"));
+        // The Kotlin port's needs are met by the pom written for it.
+        assertFalse(warned.toString(), warned.contains("<artifactId>metaobjects-codegen-kotlin</artifactId>"));
+        assertFalse(warned.toString(), warned.contains("<artifactId>kotlin-maven-plugin</artifactId>"));
     }
 
     @Test
