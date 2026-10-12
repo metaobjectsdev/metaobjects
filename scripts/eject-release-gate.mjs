@@ -25,9 +25,9 @@
  * a release candidate is how the remaining work is tried against an adopter. A version with
  * no prerelease suffix is refused while an entry remains, and when the list cannot be read.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 /** The shared file, relative to the repository root. */
 export const EJECT_MANIFEST = "fixtures/generator-registry-conformance/registry.json";
@@ -97,7 +97,7 @@ export function ejectReleaseRefusalAt(version, root) {
 }
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
   const version = process.argv[2];
   if (version === undefined || !VERSION.test(version)) {
     console.error("usage: node scripts/eject-release-gate.mjs <version>   (e.g. 1.1.0, 1.1.0-rc.3, or PyPI's 1.1.0rc3)");

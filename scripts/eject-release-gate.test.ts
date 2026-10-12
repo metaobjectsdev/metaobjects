@@ -6,7 +6,7 @@
 // nothing.
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { EJECT_MANIFEST, ejectReleaseRefusal, ejectReleaseRefusalAt } from "./eject-release-gate.mjs";
@@ -88,6 +88,15 @@ describe("eject release gate — the command and its wiring", () => {
     expect(run(repoWith(JSON.stringify(manifest([]))), "1.1.0").code).toBe(0);
     expect(run(blocked).code).toBe(2);
     for (const bad of ["latest", "1.1.0rc", "1.1.0.post1"]) expect(run(blocked, bad).code).toBe(2);
+  });
+
+  test("refuses a final version when the script path goes through a symlink", () => {
+    const blocked = repoWith(JSON.stringify(manifest([ENTRY])));
+    const linked = join(repoWith(undefined), "linked");
+    symlinkSync(blocked, linked, "dir");
+    const refused = run(linked, "1.1.0");
+    expect(refused.code).toBe(1);
+    expect(refused.out).toContain("1 entry is left");
   });
 
   // ADR-0034 Amendment 8 makes the gate the first preflight check of `release.mjs`. The
