@@ -77,6 +77,6 @@ public static class OutputFormatSpecEmitter
     // ADR-0039: resolving — @example/@instruction may be inherited via extends.
     private static string OptStringAttr(MetaData field, string attrName) =>
         field.Attr(attrName) is string v
-            ? $"\"{Fr010FieldMapping.CSharpStringLiteral(v)}\""
+            ? $"\"{CSharpNaming.CSharpStringLiteral(v)}\""
             : "null";
 }

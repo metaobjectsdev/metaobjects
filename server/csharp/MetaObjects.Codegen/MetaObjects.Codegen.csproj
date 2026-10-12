@@ -38,6 +38,11 @@
     entries: every OTHER Native entry sets SourceFileName; `template` does not).
     ADD A NEW EJECTABLE GENERATOR: add its Include line here AND its SourceFileName in
     GeneratorRegistry.cs — the embed-set-equality test fails until both are done.
+
+    The EMITTERS an ejectable generator calls are embedded the same way, in the same group,
+    and listed on its registry entry as `Companions`: eject hands them over with the
+    generator, so an owned copy owns the code that writes its output and not a shell around
+    it. The embedded set is exactly the registry's SourceFileName and Companions files.
   -->
   <ItemGroup>
     <EmbeddedResource Include="Generators/EntityGenerator.cs" />
@@ -51,6 +56,19 @@
     <EmbeddedResource Include="Generators/NamesGenerator.cs" />
     <EmbeddedResource Include="Generators/CallableGenerator.cs" />
     <EmbeddedResource Include="Generators/RequirementTestsGenerator.cs" />
+    <EmbeddedResource Include="Generators/ApiDocsGenerator.cs" />
+    <!-- Emitters handed over with the generators above (their `Companions`). -->
+    <EmbeddedResource Include="Generators/ExtractDelegateEmitter.cs" />
+    <EmbeddedResource Include="Generators/Fr010FieldMapping.cs" />
+    <EmbeddedResource Include="Generators/Fr019SharedEnum.cs" />
+    <EmbeddedResource Include="Generators/M2MNavigation.cs" />
+    <EmbeddedResource Include="Generators/OutputFormatSpecEmitter.cs" />
+    <EmbeddedResource Include="Generators/ReverseFinders.cs" />
+    <EmbeddedResource Include="Docs/XmlDocBuilder.cs" />
+    <EmbeddedResource Include="ApiDocs/CSharpApiModel.cs" />
+    <EmbeddedResource Include="ApiDocs/CSharpApiModelBuilder.cs" />
+    <EmbeddedResource Include="ApiDocs/CSharpApiDocsRenderer.cs" />
+    <EmbeddedResource Include="ApiDocs/DocsPaths.cs" />
   </ItemGroup>
   <!--
     The HELPER RUNTIME (HelperRuntime.cs) — the Runtime/ files generated routes import.

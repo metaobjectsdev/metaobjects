@@ -238,7 +238,7 @@ public static class ExtractDelegateEmitter
             ? " ADR-0042 FQN (this payload's bare name collides with a same-short-name object elsewhere in the run)."
             : "";
         sb.AppendLine($"    /// <summary>The payload's metadata name — resolve it against a loaded <c>MetaRoot</c> to obtain the runtime <c>MetaObject</c>.{ambiguousNote}</summary>");
-        sb.AppendLine($"    public const string PAYLOAD_FQN = \"{Fr010FieldMapping.CSharpStringLiteral(bakedPayloadFqn)}\";");
+        sb.AppendLine($"    public const string PAYLOAD_FQN = \"{CSharpNaming.CSharpStringLiteral(bakedPayloadFqn)}\";");
         sb.AppendLine();
         sb.AppendLine($"    /// <summary>Tolerant best-effort extraction delegating to the runtime; fully populates nested-object and");
         sb.AppendLine($"    /// array-of-object components by reading the live metadata. Never throws.</summary>");
@@ -296,7 +296,7 @@ public static class ExtractDelegateEmitter
     /// <summary>The mirror-field initializer expression that reads <paramref name="field"/> from the assembled object.</summary>
     private static string MapperArg(MetaData field, MetaData root)
     {
-        string key = $"\"{Fr010FieldMapping.CSharpStringLiteral(field.Name)}\"";
+        string key = $"\"{CSharpNaming.CSharpStringLiteral(field.Name)}\"";
 
         // Object BEFORE array (object-before-isArray): array-of-objects maps to nested mirrors.
         if (IsObjectField(field))

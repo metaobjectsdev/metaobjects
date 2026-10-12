@@ -90,8 +90,8 @@
       "concept": "Per-entity/template SDK API reference (generated-code API; human + agent forms).",
       "tier": "native",
       "layer": "docs",
-      "note": "Run by `meta docs` as its api surface (ADR-0025), not by `meta gen`: a `meta gen` config that lists it is warned about and skipped.",
-      "ports": ["typescript"]
+      "note": "Run by `meta docs` as its api surface (ADR-0025), not by `meta gen`: a `meta gen` config that lists it is warned about and skipped. On csharp it is run by `dotnet meta docs`, and `dotnet meta gen` skips it, warning only when `--generators` names it.",
+      "ports": ["typescript", "csharp"]
     },
     "trace-helper": {
       "concept": "Per-entity typed record<Entity>/call<Entity> trace helpers (extract + buildLlmCallRow + persist; LlmCallBase-derived entities only).",

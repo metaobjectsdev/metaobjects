@@ -57,6 +57,14 @@ public static class OwnedCopy
     /// <c>"identical"</c> / <c>"DIFFERS: N behind, M of your own"</c>, or <c>null</c> when
     /// <paramref name="entry"/> is not ejectable or nothing is owned at <paramref
     /// name="root"/> yet. What <c>dotnet meta gen --list</c> appends to each entry.
+    /// <para>
+    /// The verdict covers the emitters the generator was handed with
+    /// (<see cref="MetaObjects.Codegen.GeneratorRegistryEntry.Companions"/>) too: they are owned code
+    /// the generator's output depends on. The generator's own counts come first; each companion that
+    /// differs adds a <c>"; &lt;file&gt; DIFFERS: N behind, M of your own"</c> clause and one that is
+    /// gone a <c>"; &lt;file&gt; missing"</c> one. A companion shared with another owned generator is
+    /// reported under each.
+    /// </para>
     /// </summary>
     public static string? Status(string root, MetaObjects.Codegen.GeneratorRegistryEntry entry)
     {
@@ -68,9 +76,27 @@ public static class OwnedCopy
         var reference = MetaObjects.Codegen.EjectableGenerators.RewriteForEject(
             MetaObjects.Codegen.EjectableGenerators.ReadSourceFile(file));
         var cmp = Compare(mine, reference);
-        return cmp.Verdict == Verdict.Identical
-            ? "identical"
-            : $"DIFFERS: {cmp.Behind} behind, {cmp.OfYourOwn} of your own";
+        var clauses = new List<string>();
+        if (cmp.Verdict == Verdict.Differs)
+            clauses.Add($"DIFFERS: {cmp.Behind} behind, {cmp.OfYourOwn} of your own");
+
+        foreach (var sourcePath in entry.Companions)
+        {
+            var name = sourcePath[(sourcePath.LastIndexOf('/') + 1)..];
+            var companion = Path.Combine(root, MetaObjects.Codegen.EjectableGenerators.OwnedRelativePath(sourcePath)
+                .Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(companion))
+            {
+                clauses.Add($"{name} missing");
+                continue;
+            }
+            var c = Compare(File.ReadAllText(companion),
+                MetaObjects.Codegen.EjectableGenerators.RewriteForEject(
+                    MetaObjects.Codegen.EjectableGenerators.ReadSourcePath(sourcePath)));
+            if (c.Verdict == Verdict.Differs)
+                clauses.Add($"{name} DIFFERS: {c.Behind} behind, {c.OfYourOwn} of your own");
+        }
+        return clauses.Count == 0 ? "identical" : string.Join("; ", clauses);
     }
 
     /// <summary>

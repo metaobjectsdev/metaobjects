@@ -5,6 +5,7 @@
 // unchanged. Scalar subtypes map to the natural .NET types; date/time/timestamp
 // use the modern DateOnly/TimeOnly/DateTime trio.
 
+using MetaObjects.Core.Field;
 using MetaObjects.Meta;
 using MetaObjects.Codegen.Generators;
 using MetaObjects.Persistence.Db;
@@ -1089,7 +1090,7 @@ public static class CSharpNaming
     ///   <item>Otherwise use <c>&lt;EntityPascal&gt;&lt;FieldPascal&gt;</c>.</item>
     /// </list>
     /// <para>
-    /// The predicate is <see cref="Fr019SharedEnum.ResolveSharedEnumDecl"/> — the SAME one
+    /// The predicate is <see cref="SharedEnumDeclaration.ResolveSharedEnumDeclaration"/> — the SAME one
     /// that decides whether a type is materialized — because a name and a declaration have
     /// to agree. Keying on "has a super" instead let a field that extends another ENTITY's
     /// concrete field (the ordinary way a projection restates a column it reads, e.g.
@@ -1101,7 +1102,7 @@ public static class CSharpNaming
     /// </summary>
     public static string EnumTypeName(MetaObject entity, MetaField field)
     {
-        if (Fr019SharedEnum.ResolveSharedEnumDecl(field) is { } shared)
+        if (SharedEnumDeclaration.ResolveSharedEnumDeclaration(field) is { } shared)
             return Pascal(shared.Name);
         return Pascal(entity.Name) + Pascal(field.Name);
     }
@@ -1191,5 +1192,35 @@ public static class CSharpNaming
                 ownerOfPlural[plural] = obj;
             }
         }
+    }
+
+    private static readonly char[] CSharpEscapeChars = { '\\', '"', '\t', '\n', '\r' };
+
+    /// <summary>
+    /// Escape a value for embedding inside a C# double-quoted string literal.
+    /// <para>Scans before it builds: the names generator calls this two-to-four times per
+    /// member of every entity, and virtually every value — "object", "entity", a field
+    /// name, a snake_case column — contains none of these. <c>IndexOfAny</c> is vectorized
+    /// and allocates nothing, so the common case costs no allocation at all.</para>
+    /// </summary>
+    public static string CSharpStringLiteral(string value) =>
+        value.IndexOfAny(CSharpEscapeChars) < 0 ? value : CSharpStringLiteralSlow(value);
+
+    private static string CSharpStringLiteralSlow(string value)
+    {
+        var sb = new System.Text.StringBuilder(value.Length + 4);
+        foreach (char c in value)
+        {
+            switch (c)
+            {
+                case '\\': sb.Append("\\\\"); break;
+                case '"': sb.Append("\\\""); break;
+                case '\t': sb.Append("\\t"); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                default: sb.Append(c); break;
+            }
+        }
+        return sb.ToString();
     }
 }

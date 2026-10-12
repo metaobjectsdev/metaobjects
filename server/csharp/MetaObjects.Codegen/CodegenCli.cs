@@ -200,10 +200,17 @@ public static class CodegenCli
     /// to the current directory for a caller that names no project (mirrors
     /// <c>GenConfig.ProjectRoot</c>'s own default).
     /// </param>
+    /// <param name="selection">
+    /// The <c>--generators</c> names the run was asked for, when it was asked by name. A docs
+    /// generator is never run here; one this selection names is reported as skipped
+    /// (<see cref="DocsGeneratorSkipped"/>), and one that is only in <paramref name="generators"/>
+    /// — an owned list, where the docs run looks for it — is left out without a word.
+    /// </param>
     public static GenOutcome RunGen(
         LoadResult load, string outDir, string ns, bool emitAbstractShapes,
         IReadOnlyList<IGenerator> generators, string? projectRoot = null,
-        ColumnNamingStrategy columnNaming = ColumnNamingStrategy.Literal, string baseline = "default")
+        ColumnNamingStrategy columnNaming = ColumnNamingStrategy.Literal, string baseline = "default",
+        IReadOnlyList<string>? selection = null)
     {
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
         if (loadErrors.Count > 0) return new GenOutcome(loadErrors, null);
@@ -228,6 +235,11 @@ public static class CodegenCli
             IncludeNames = generators.Any(g => g.Name == "names"),
         };
 
+        // A docs generator writes the api reference, not code: CodegenRunner leaves it out. A run
+        // asked for one by name says so; an owned list carries one for the docs run, not for this.
+        var docsSkipped = generators.OfType<IDocsGenerator>().Select(g => g.Name)
+            .Where(name => selection?.Contains(name) == true).ToList();
+
         CodegenRunner.RunResult result;
         try
         {
@@ -244,7 +256,72 @@ public static class CodegenCli
             // during the walk — a clean error, not a stack trace.
             return new GenOutcome([$"{GeneratorFailedPrefix}{ex.Message}"], null);
         }
+        if (docsSkipped.Count > 0)
+            result = result with { Warnings = [.. result.Warnings, .. docsSkipped.Select(DocsGeneratorSkipped)] };
         return new GenOutcome(loadErrors, result);
+    }
+
+    /// <summary>What a code run says about a docs generator its selection named and it did not run.</summary>
+    public static string DocsGeneratorSkipped(string name) =>
+        $"\"{name}\" writes the api reference, so `gen` skipped it. Run it with `dotnet meta docs`.";
+
+    // ------------------------------------------------------------------------
+    // The docs run. `dotnet meta docs` and an owned `codegen/Program.cs`'s `docs` command
+    // are the same pipeline, as `gen` is: this one place builds the context, runs the docs
+    // generators and writes the pages.
+    // ------------------------------------------------------------------------
+
+    /// <summary>The outcome of a docs run: pure data, no console I/O.</summary>
+    public sealed record DocsOutcome(
+        IReadOnlyList<string> LoadErrors, IReadOnlyList<string> WrittenPaths, string? CollisionError = null)
+    {
+        public bool Ok => LoadErrors.Count == 0 && CollisionError is null;
+    }
+
+    /// <summary>
+    /// Write the api reference for <paramref name="load"/>'s model under <paramref name="outDir"/>.
+    /// The docs generator is the one in <paramref name="generators"/> that implements
+    /// <see cref="IDocsGenerator"/> — a project's own copy — else the packaged
+    /// <c>api-docs</c>. What it documents is what the packaged generators emit for
+    /// (<see cref="GeneratorApplicability.Packaged"/>). A page path two units resolve to fails the run
+    /// before anything is written.
+    /// </summary>
+    public static DocsOutcome RunDocs(
+        LoadResult load, string outDir, string ns, DocsRunFacts facts, IReadOnlyList<IGenerator> generators)
+    {
+        var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
+        if (loadErrors.Count > 0) return new DocsOutcome(loadErrors, []);
+
+        var docs = generators.OfType<IDocsGenerator>().ToList();
+        if (docs.Count == 0) docs.Add(GeneratorRegistry.Get("api-docs")!.Factory(new GeneratorBuildContext()) as IDocsGenerator
+            ?? throw new InvalidOperationException("the packaged api-docs generator is not an IDocsGenerator"));
+
+        var ctx = new GenContext
+        {
+            Entities = load.Root.Objects().Where(o => !o.IsReport()).ToList(),
+            Root = load.Root,
+            Config = new GenConfig { OutDir = outDir, Namespace = ns },
+            Applicability = GeneratorApplicability.Packaged,
+            Docs = facts,
+        };
+
+        // Collect path -> content first, so a duplicate page path fails BEFORE any write: a
+        // clean, reportable diagnostic, not an uncaught throw out of the CLI.
+        var emitted = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var generator in docs)
+            foreach (var file in generator.Generate(ctx))
+                if (!emitted.TryAdd(file.Path, file.Content))
+                    return new DocsOutcome(loadErrors, [], $"dotnet meta docs — duplicate api page output path: {file.Path}");
+
+        var written = new List<string>();
+        foreach (var (path, content) in emitted)
+        {
+            var dest = Path.Combine(outDir, path.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+            File.WriteAllText(dest, content);
+            written.Add(path);
+        }
+        return new DocsOutcome(loadErrors, written);
     }
 
     // ------------------------------------------------------------------------
@@ -275,20 +352,22 @@ public static class CodegenCli
                 "           [--emit-abstract-shapes] [--column-naming literal|snake_case|kebab-case]\n" +
                 "           [--baseline default|adopt] [--template-root <dir>] [--template-spec <json>]\n" +
                 "     | verify --codegen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>]\n" +
-                "           [--column-naming literal|snake_case|kebab-case] [--template-root <dir>] [--lax]");
+                "           [--column-naming literal|snake_case|kebab-case] [--template-root <dir>] [--lax]\n" +
+                "     | docs [<metadataDir>] --out <dir> [--namespace <ns>] [--project <name>] [--model-base-url <url>]");
             return 2;
         }
         return args[0] switch
         {
             "gen" => RunGenArgs(args[1..], generators),
             "verify" => RunVerifyArgs(args[1..], generators),
+            "docs" => RunDocsArgs(args[1..], generators),
             _ => Unknown(args[0]),
         };
     }
 
     private static int Unknown(string cmd)
     {
-        Console.Error.WriteLine($"codegen (owned): unknown command \"{cmd}\" — expected \"gen\" or \"verify\".");
+        Console.Error.WriteLine($"codegen (owned): unknown command \"{cmd}\" — expected \"gen\", \"verify\" or \"docs\".");
         return 2;
     }
 
@@ -335,7 +414,7 @@ public static class CodegenCli
     /// <summary>The flags both owned commands share, parsed once.</summary>
     private sealed class OwnedArgs
     {
-        public string? MetadataDir, OutDir, TemplateRoot, TemplateSpecPath, ColumnNamingRaw, GeneratorsCsv;
+        public string? MetadataDir, OutDir, TemplateRoot, TemplateSpecPath, ColumnNamingRaw, GeneratorsCsv, Project, ModelBaseUrl;
         public string Namespace = "Generated";
         public string Baseline = "default";
         public bool NamespaceExplicit, EmitAbstractShapes, Codegen, Lax;
@@ -356,6 +435,8 @@ public static class CodegenCli
                 else if (rest[i] == "--template-root" && i + 1 < rest.Length) a.TemplateRoot = rest[++i];
                 else if (rest[i] == "--template-spec" && i + 1 < rest.Length) a.TemplateSpecPath = rest[++i];
                 else if (rest[i] == "--generators" && i + 1 < rest.Length) a.GeneratorsCsv = rest[++i];
+                else if (rest[i] == "--project" && i + 1 < rest.Length) a.Project = rest[++i];
+                else if (rest[i] == "--model-base-url" && i + 1 < rest.Length) a.ModelBaseUrl = rest[++i];
                 else if (rest[i] == "--codegen") a.Codegen = true;
                 else if (rest[i] == "--lax") a.Lax = true;
                 else if (!rest[i].StartsWith('-')) a.MetadataDir ??= rest[i];
@@ -415,7 +496,7 @@ public static class CodegenCli
         }
 
         WarnUnknownAttrs(meta);
-        var outcome = RunGen(meta.Load(), a.OutDir, a.Namespace, a.EmitAbstractShapes, suite, projectRoot, columnNaming, a.Baseline);
+        var outcome = RunGen(meta.Load(), a.OutDir, a.Namespace, a.EmitAbstractShapes, suite, projectRoot, columnNaming, a.Baseline, a.Selection);
         if (!outcome.Ok)
         {
             ReportFailure(outcome, "codegen (owned) gen");
@@ -433,6 +514,37 @@ public static class CodegenCli
                 $"codegen (owned) gen: FAILED — {refusedCount} file(s) refused (see the warnings above)");
             return 1;
         }
+        return 0;
+    }
+
+    private static int RunDocsArgs(string[] rest, IReadOnlyList<IGenerator> owned)
+    {
+        var a = OwnedArgs.Parse(rest);
+        if (a.OutDir is null)
+        {
+            Console.Error.WriteLine("usage: docs [<metadataDir>] --out <dir> [--namespace <ns>] [--project <name>] [--model-base-url <url>]");
+            return 2;
+        }
+        if (ResolveOrReport(a.MetadataDir) is not { } meta) return 2;
+
+        // The label defaults to the metadata directory's leaf name, as `dotnet meta docs` does.
+        var project = a.Project
+            ?? new DirectoryInfo(Path.TrimEndingDirectorySeparator(Path.GetFullPath(meta.Directory))).Name;
+        var outcome = RunDocs(meta.Load(), a.OutDir, a.Namespace, new DocsRunFacts(project, a.ModelBaseUrl), owned);
+        if (!outcome.Ok)
+        {
+            foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
+            if (outcome.CollisionError is not null)
+            {
+                Console.Error.WriteLine($"  {outcome.CollisionError}");
+                Console.Error.WriteLine("codegen (owned) docs: FAILED (duplicate api page output path)");
+                return 1;
+            }
+            Console.Error.WriteLine("codegen (owned) docs: FAILED (metadata did not load cleanly)");
+            return 1;
+        }
+        foreach (var p in outcome.WrittenPaths) Console.WriteLine($"  written: {p}");
+        Console.WriteLine($"codegen (owned) docs: {outcome.WrittenPaths.Count} api page(s) written");
         return 0;
     }
 

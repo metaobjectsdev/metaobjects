@@ -64,7 +64,10 @@ public static class CodegenRunner
         // read it afterwards and every project looks migrated.
         var hadManifest = config.GenStateDir is null || HashManifest.Exists(config.GenStateDir);
 
-        foreach (var generator in generators)
+        // A docs generator writes the api reference under the docs directory, not code under this
+        // one (`dotnet meta docs` runs it, CodegenCli.RunDocs), and has no place in a code run's
+        // manifest or its drift check.
+        foreach (var generator in generators.Where(g => g is not IDocsGenerator))
         {
             foreach (var file in generator.Generate(ctx))
             {

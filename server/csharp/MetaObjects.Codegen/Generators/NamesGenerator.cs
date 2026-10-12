@@ -105,7 +105,7 @@ public sealed class NamesGenerator : PerEntityGenerator
     /// identifier and may hold either character.
     /// </summary>
     private static Member Str(string name, string value, string nodePath) =>
-        new(name, $"const string {name} = \"{Fr010FieldMapping.CSharpStringLiteral(value)}\";", nodePath);
+        new(name, $"const string {name} = \"{CSharpNaming.CSharpStringLiteral(value)}\";", nodePath);
 
     /// <summary>
     /// Every constant an artifact declares, in emission order, grouped so the emitter can

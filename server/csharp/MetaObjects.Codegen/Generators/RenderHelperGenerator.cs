@@ -111,7 +111,7 @@ public class RenderHelperGenerator : IGenerator
             // object.projection (#210; same contract as the parser/prompt
             // generators). Its POCO, emitted by EntityGenerator, is the payload type.
             // ADR-0042: a bare @payloadRef resolves in the template's package.
-            var vo = ResolveValueObject(ctx.Root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl));
+            var vo = ValueObjectNames.ResolveValueObject(ctx.Root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl));
             if (vo is null) continue;
 
             // EmitHelper runs the build-time drift gate first and THROWS (fails
@@ -119,24 +119,6 @@ public class RenderHelperGenerator : IGenerator
             files.Add(EmitHelper(tmpl, vo, payloadRef, ctx));
         }
         return files;
-    }
-
-    /// <summary>The payload shape a <c>@payloadRef</c> names, or null. ADR-0042:
-    /// package-local — an FQN binds the exact package; a bare ref binds
-    /// <paramref name="referrerPkg"/> (the template's package) FIRST, else a root-level object.
-    /// #210 — a template-level payload target is an <c>object.value</c> OR a SOURCELESS
-    /// <c>object.projection</c> ("sourceless" per the #248 persistability contract: no
-    /// declared/inherited <c>source.*</c> child; nested <c>@objectRef</c> targets stay
-    /// value-only — <see cref="ResolveNestedObjectRef"/>).</summary>
-    internal static MetaData? ResolveValueObject(MetaRoot root, string payloadRef, string referrerPkg = "")
-    {
-        var obj = global::MetaObjects.NamingRefs.ResolveObjectRef(root, payloadRef, referrerPkg);
-        if (obj is null) return null;
-        if (obj.SubType == OBJECT_SUBTYPE_VALUE) return obj;
-        if (obj.SubType != OBJECT_SUBTYPE_PROJECTION) return null;
-        // ADR-0039: resolving — a source anywhere in the extends chain binds the
-        // projection to a backing store, which disqualifies it as a payload shape.
-        return obj.Children().Any(c => c.Type == TYPE_SOURCE) ? null : obj;
     }
 
     /// <summary>
@@ -154,7 +136,7 @@ public class RenderHelperGenerator : IGenerator
     /// True iff this generator emits a render helper for <paramref name="tmpl"/>: a
     /// renderable template whose <c>@payloadRef</c> resolves to a root-level
     /// <c>object.value</c> or sourceless <c>object.projection</c> (#210 — delegates to
-    /// the widened <see cref="ResolveValueObject"/>). Single source of truth shared by
+    /// the widened <see cref="ValueObjectNames.ResolveValueObject"/>). Single source of truth shared by
     /// the generator loop AND the api-docs builder (so docs never claim a suppressed
     /// symbol).
     /// </summary>
@@ -164,7 +146,7 @@ public class RenderHelperGenerator : IGenerator
         // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
         if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) return false;
         // ADR-0042: a bare @payloadRef resolves in the template's package.
-        return ResolveValueObject(root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl)) is not null;
+        return ValueObjectNames.ResolveValueObject(root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl)) is not null;
     }
 
     protected virtual EmittedFile EmitHelper(MetaData tmpl, MetaData vo, string payloadRef, GenContext ctx)

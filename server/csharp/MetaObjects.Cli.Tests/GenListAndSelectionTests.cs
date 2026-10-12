@@ -47,7 +47,7 @@ public sealed class GenListAndSelectionTests : IDisposable
     public void ListLines_prints_all_generators_with_stable_names_and_descriptions()
     {
         var lines = GenCommand.ListLines(_tmp);
-        Assert.Equal(12, lines.Count);
+        Assert.Equal(13, lines.Count);
         foreach (var name in new[]
         {
             "entity", "db-context", "routes", "output-parser", "extractor",
@@ -58,6 +58,8 @@ public sealed class GenListAndSelectionTests : IDisposable
             "names",
             // ADR-0057 — per-requirement xUnit tests calling a project-owned witness.
             "requirement-tests",
+            // ADR-0025 — the api reference `dotnet meta docs` writes.
+            "api-docs",
         })
         {
             Assert.Contains(lines, l => l.Contains($" {name} —"));
@@ -95,6 +97,21 @@ public sealed class GenListAndSelectionTests : IDisposable
         Assert.True(outcome.Ok, string.Join("; ", outcome.LoadErrors));
         Assert.Contains(outcome.Result!.Files, f => f.Status == "written");
         Assert.True(File.Exists(Path.Combine(OutDir, "Alpha.responseFormat.cs")));
+    }
+
+    [Fact]
+    public void Selecting_the_docs_generator_writes_no_pages_and_says_which_command_does()
+    {
+        // api-docs is in the catalog, so a selection can name it; its pages belong to `dotnet meta docs`.
+        var outcome = GenCommand.Run(
+            MetaDir, OutDir, "Acme.Generated",
+            emitAbstractShapes: false, generatorNames: ["entity", "api-docs"], templateRoot: null);
+
+        Assert.True(outcome.Ok, string.Join("; ", outcome.LoadErrors));
+        var warning = Assert.Single(outcome.Result!.Warnings, w => w.Contains("\"api-docs\"", StringComparison.Ordinal));
+        Assert.Contains("`dotnet meta docs`", warning);
+        Assert.NotEmpty(Directory.GetFiles(OutDir, "*.cs", SearchOption.AllDirectories));
+        Assert.Empty(Directory.GetFiles(OutDir, "*.md", SearchOption.AllDirectories));
     }
 
     [Fact]

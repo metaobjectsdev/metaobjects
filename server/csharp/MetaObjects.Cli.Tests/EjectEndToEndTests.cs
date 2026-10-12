@@ -195,6 +195,69 @@ public sealed class EjectEndToEndTests : IDisposable
     }
 
     /// <summary>
+    /// An owned api-docs generator, run for real (ADR-0025 / ADR-0034 Amendment 3): eject `routes` and
+    /// `api-docs`, add a page to the owned api-docs copy, and run the owned project's `docs` command. The
+    /// reference is written by the OWNED api-docs copy, so the added page is on disk beside the model's;
+    /// and the same owned project's `gen` skips the docs generator, saying so only when asked for it by name.
+    /// </summary>
+    [Fact]
+    public void Owned_api_docs_writes_the_reference()
+    {
+        var repoRoot = RepoRoot();
+        Directory.CreateDirectory(MetadataDir);
+        File.WriteAllText(Path.Combine(MetadataDir, "meta.acme.json"), """
+        { "metadata.root": { "package": "acme::widgets", "children": [
+          { "object.entity": { "name": "Widget", "children": [
+            { "source.rdb": { "@table": "widgets" } },
+            { "field.uuid":   { "name": "id", "@required": true } },
+            { "field.string": { "name": "label", "@required": true, "@maxLength": 80 } },
+            { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "uuid" } }
+          ]}}
+        ]}}
+        """);
+
+        var eject = EjectCommand.Run(["routes", "api-docs"], _root, force: false);
+        Assert.Equal(0, eject.ExitCode);
+        Assert.True(CodegenHandoff.HasOwnedDocs(_root));
+        PointScaffoldAtThisCheckout(repoRoot);
+
+        // The project's own edit: its reference carries a page the packaged generator does not write.
+        var apiDocsPath = Path.Combine(_root, "codegen", "generators", "ApiDocsGenerator.cs");
+        var apiDocs = File.ReadAllText(apiDocsPath);
+        const string lastPage = "yield return Page(facts, \"AGENT-API.md\", renderer.RenderAgentApi(model));";
+        Assert.Contains(lastPage, apiDocs);
+        File.WriteAllText(apiDocsPath, apiDocs.Replace(
+            lastPage,
+            lastPage + "\n        yield return Page(facts, \"OWNED.md\", \"written by the owned api-docs\");"));
+
+        var docsOut = Path.Combine(_root, "docs");
+        var (docsExit, docsOutput) = RunCodegenProject("docs", MetadataDir, "--out", docsOut, "--namespace", "Acme.Generated");
+        Assert.True(docsExit == 0, $"docs failed (exit {docsExit}):\n{docsOutput}");
+        Assert.Contains("api page(s) written", docsOutput);
+
+        var widget = File.ReadAllText(Directory.GetFiles(docsOut, "Widget.md", SearchOption.AllDirectories).Single());
+        Assert.Contains("DbSet<Widget>", widget);
+        Assert.Equal(
+            "written by the owned api-docs",
+            File.ReadAllText(Directory.GetFiles(docsOut, "OWNED.md", SearchOption.AllDirectories).Single()));
+
+        // The same owned project's gen leaves the docs generator out. With the generator only in the
+        // owned list, that is the everyday run and it has nothing to say about it.
+        var (genExit, genOutput) = RunCodegenProject("gen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated");
+        Assert.True(genExit == 0, $"gen failed (exit {genExit}):\n{genOutput}");
+        Assert.DoesNotContain("writes the api reference", genOutput);
+        Assert.NotEmpty(Directory.GetFiles(OutDir, "*.cs", SearchOption.AllDirectories));
+        Assert.Empty(Directory.GetFiles(OutDir, "*.md", SearchOption.AllDirectories));
+
+        // Asked for by name, it is still left out, and gen says why.
+        var (namedExit, namedOutput) = RunCodegenProject(
+            "gen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated", "--generators", "api-docs");
+        Assert.True(namedExit == 0, $"gen failed (exit {namedExit}):\n{namedOutput}");
+        Assert.Contains("writes the api reference, so `gen` skipped it", namedOutput);
+        Assert.Empty(Directory.GetFiles(OutDir, "*.md", SearchOption.AllDirectories));
+    }
+
+    /// <summary>
     /// The helper runtime an ejected routes generator brings with it (ADR-0034 Amendment 3):
     /// eject routes, generate through the owned project, and build + RUN a real ASP.NET Core
     /// app that compiles the generated output together with codegen/runtime/ and references

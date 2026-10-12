@@ -37,7 +37,7 @@ public class Fr015CodegenTests
     // One value-object (the proc args, two fields in declaration order), a storedProc
     // entity referencing it via @parameterRef, a tableFunction entity, and a zero-arg
     // storedProc entity (no @parameterRef).
-    private const string Model = """
+    internal const string Model = """
     { "metadata.root": { "package": "acme::analytics", "children": [
       { "object.value": { "name": "PhaseSummaryArgs", "children": [
         { "field.int":       { "name": "caseId", "@required": true } },

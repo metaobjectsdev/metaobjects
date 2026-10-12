@@ -79,6 +79,24 @@ public static class ValueObjectNames
                 root, oref, field.Parent is { } p ? global::MetaObjects.NamingRefs.EffectivePackage(p) : "") as MetaObject
             : null;
 
+    /// <summary>The payload shape a <c>@payloadRef</c> names, or null. ADR-0042:
+    /// package-local — an FQN binds the exact package; a bare ref binds
+    /// <paramref name="referrerPkg"/> (the template's package) FIRST, else a root-level object.
+    /// #210 — a template-level payload target is an <c>object.value</c> OR a SOURCELESS
+    /// <c>object.projection</c> ("sourceless" per the #248 persistability contract: no
+    /// declared/inherited <c>source.*</c> child; nested <c>@objectRef</c> targets stay
+    /// value-only — <c>RenderHelperGenerator.ResolveNestedObjectRef</c>).</summary>
+    public static MetaData? ResolveValueObject(MetaRoot root, string payloadRef, string referrerPkg = "")
+    {
+        var obj = global::MetaObjects.NamingRefs.ResolveObjectRef(root, payloadRef, referrerPkg);
+        if (obj is null) return null;
+        if (obj.SubType == OBJECT_SUBTYPE_VALUE) return obj;
+        if (obj.SubType != OBJECT_SUBTYPE_PROJECTION) return null;
+        // ADR-0039: resolving — a source anywhere in the extends chain binds the
+        // projection to a backing store, which disqualifies it as a payload shape.
+        return obj.Children().Any(c => c.Type == TYPE_SOURCE) ? null : obj;
+    }
+
     /// <summary>
     /// The value-object name map: <c>ResolutionKey()</c> → emitted C# name.
     ///

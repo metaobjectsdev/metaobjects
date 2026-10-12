@@ -38,32 +38,54 @@ public class EjectableGeneratorsTests
     [Fact]
     public void Embedded_copies_are_byte_identical_to_their_source_files()
     {
-        var dir = GeneratorsDir();
-        foreach (var entry in EjectableGenerators.Entries())
+        // The generators AND the emitters handed over with them: every path any entry hands over.
+        var packageDir = Path.Combine(CorpusPaths.RepoRoot(), "server", "csharp", "MetaObjects.Codegen");
+        foreach (var sourcePath in EjectableGenerators.AllSourcePaths())
         {
-            var embedded = EjectableGenerators.ReadSourceFile(entry.SourceFileName!);
-            var onDisk = File.ReadAllText(Path.Combine(dir, entry.SourceFileName!));
+            var embedded = EjectableGenerators.ReadSourcePath(sourcePath);
+            var onDisk = File.ReadAllText(Path.Combine(packageDir, sourcePath));
             Assert.True(
                 Normalize(embedded) == Normalize(onDisk),
-                $"embedded Generators/{entry.SourceFileName} diverges from its source file — " +
+                $"embedded {sourcePath} diverges from its source file — " +
                 "rebuild MetaObjects.Codegen after editing the generator.");
         }
     }
 
     [Fact]
-    public void Embedded_resource_set_matches_the_registry_ejectable_set_exactly()
+    public void Embedded_resource_set_matches_what_the_registry_hands_over_exactly()
     {
+        // Every source file eject hands over — each entry's SourceFileName and its Companions — is
+        // an embedded resource, and nothing else under Generators/, Docs/ or ApiDocs/ is.
         var asm = typeof(EjectableGenerators).Assembly;
-        var embeddedNames = asm.GetManifestResourceNames()
-            .Where(n => n.StartsWith(EjectableGenerators.ResourcePrefix, StringComparison.Ordinal))
-            .Select(n => n[EjectableGenerators.ResourcePrefix.Length..])
+        var embedded = asm.GetManifestResourceNames()
+            .Where(n => EjectableGenerators.SourceDirectories.Any(d =>
+                n.StartsWith($"MetaObjects.Codegen.{d}.", StringComparison.Ordinal)))
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToList();
-        var registryNames = EjectableGenerators.Entries()
-            .Select(e => e.SourceFileName!)
+        var handedOver = EjectableGenerators.AllSourcePaths()
+            .Select(EjectableGenerators.ResourceName)
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToList();
-        Assert.Equal(registryNames, embeddedNames);
+        Assert.Equal(handedOver, embedded);
+    }
+
+    [Fact]
+    public void Every_companion_is_a_file_the_package_ships_and_no_two_files_share_a_name()
+    {
+        // Owned copies are written flat, into codegen/generators/, so a name two source directories share
+        // would make eject overwrite one with the other.
+        var packageDir = Path.Combine(CorpusPaths.RepoRoot(), "server", "csharp", "MetaObjects.Codegen");
+        var all = EjectableGenerators.AllSourcePaths();
+        Assert.All(all, p => Assert.True(File.Exists(Path.Combine(packageDir, p)), $"{p} does not exist"));
+        Assert.Equal(all.Count, all.Select(p => p[(p.LastIndexOf('/') + 1)..]).Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
+    public void Ownership_is_one_flat_directory_whichever_package_directory_a_file_came_from()
+    {
+        Assert.Equal("codegen/generators/EntityGenerator.cs", EjectableGenerators.OwnedRelativePath("Generators/EntityGenerator.cs"));
+        Assert.Equal("codegen/generators/XmlDocBuilder.cs", EjectableGenerators.OwnedRelativePath("Docs/XmlDocBuilder.cs"));
+        Assert.Equal("codegen/generators/DocsPaths.cs", EjectableGenerators.OwnedRelativePath("ApiDocs/DocsPaths.cs"));
     }
 
     [Fact]
@@ -121,14 +143,34 @@ public class EjectableGeneratorsTests
     public void RewriteForEject_runs_clean_on_every_real_ejectable_source()
     {
         // Every real embedded source actually contains the line being rewritten — this
-        // would fail loudly (not silently) if a generator file's namespace declaration
-        // ever changed shape.
-        foreach (var entry in EjectableGenerators.Entries())
+        // would fail loudly (not silently) if a file's namespace declaration ever changed
+        // shape — and every one lands in the owned namespace, whichever package directory it came from.
+        foreach (var sourcePath in EjectableGenerators.AllSourcePaths())
         {
-            var source = EjectableGenerators.ReadSourceFile(entry.SourceFileName!);
-            var rewritten = EjectableGenerators.RewriteForEject(source);
+            var rewritten = EjectableGenerators.RewriteForEject(EjectableGenerators.ReadSourcePath(sourcePath));
             Assert.Contains("namespace Codegen.Generators;", rewritten);
+            Assert.DoesNotContain("namespace MetaObjects.Codegen.", rewritten);
+            Assert.DoesNotContain("using MetaObjects.Codegen.Docs;", rewritten);
+            Assert.DoesNotContain("using MetaObjects.Codegen.ApiDocs;", rewritten);
         }
+    }
+
+    [Fact]
+    public void RewriteForEject_adds_a_using_only_when_the_source_does_not_already_say_it()
+    {
+        const string src =
+            "using MetaObjects.Codegen.Generators;\n" +
+            "using MetaObjects.Codegen.ApiDocs;\n" +
+            "\n" +
+            "namespace MetaObjects.Codegen.ApiDocs;\n" +
+            "\n" +
+            "public sealed class Builder\n{\n}\n";
+
+        var rewritten = EjectableGenerators.RewriteForEject(src);
+
+        Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(rewritten, @"using MetaObjects\.Codegen\.Generators;").Count);
+        Assert.DoesNotContain("using MetaObjects.Codegen.ApiDocs;", rewritten);
+        Assert.Contains("namespace Codegen.Generators;", rewritten);
     }
 
     private static string Normalize(string s) => s.Replace("\r\n", "\n");

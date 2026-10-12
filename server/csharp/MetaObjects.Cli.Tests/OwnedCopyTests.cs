@@ -56,13 +56,28 @@ public sealed class OwnedCopyTests : IDisposable
     [Fact]
     public void Status_is_identical_for_a_freshly_ejected_unmodified_copy()
     {
+        // Ejected the way the command does it: the generator AND the emitters it was handed with.
         var entry = GeneratorRegistry.Get("entity")!;
-        var dir = Path.Combine(_tmp, "codegen", "generators");
-        Directory.CreateDirectory(dir);
-        var rewritten = EjectableGenerators.RewriteForEject(EjectableGenerators.ReadSource("entity")!);
-        File.WriteAllText(Path.Combine(dir, entry.SourceFileName!), rewritten);
+        Assert.Equal(0, EjectCommand.Run(["entity"], _tmp, force: false).ExitCode);
 
         Assert.Equal("identical", OwnedCopy.Status(_tmp, entry));
+    }
+
+    [Fact]
+    public void Status_names_an_emitter_that_was_edited_or_removed_after_eject()
+    {
+        var entry = GeneratorRegistry.Get("entity")!;
+        Assert.Equal(0, EjectCommand.Run(["entity"], _tmp, force: false).ExitCode);
+        var generators = Path.Combine(_tmp, "codegen", "generators");
+
+        File.AppendAllText(Path.Combine(generators, "Fr019SharedEnum.cs"), "// my edit\n");
+        File.Delete(Path.Combine(generators, "XmlDocBuilder.cs"));
+
+        var status = OwnedCopy.Status(_tmp, entry);
+        Assert.StartsWith("Fr019SharedEnum.cs DIFFERS: 0 behind, 1 of your own", status);
+        Assert.Contains("; XmlDocBuilder.cs missing", status);
+        // The generator copy itself is untouched, so its own clause is absent.
+        Assert.DoesNotContain("EntityGenerator", status);
     }
 
     [Fact]
