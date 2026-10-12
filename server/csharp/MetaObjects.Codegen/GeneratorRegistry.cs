@@ -262,7 +262,7 @@ public static class GeneratorRegistry
                 Tier = GeneratorTier.Native,
                 Layer = GeneratorLayer.Docs,
                 Factory = _ => new ApiDocsGenerator(),
-                Note = "Run by `dotnet meta docs` as its api surface (ADR-0025), not by `dotnet meta gen`: a `gen` run that lists it skips it with a warning.",
+                Note = "Run by `dotnet meta docs` as its api surface (ADR-0025), not by `dotnet meta gen`: `gen` skips it, and warns when `--generators` names it.",
                 SourceFileName = "ApiDocsGenerator.cs",
                 // The page IR, its builder, the renderer and the path math; and the field walk and the
                 // M:N navigation the builder documents with.
