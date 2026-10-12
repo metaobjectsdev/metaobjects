@@ -18,6 +18,8 @@ import ast
 import json
 import os
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 import uuid
@@ -180,33 +182,46 @@ def _shared_predicates_before_the_added_ones() -> str:
     return "".join(lines)
 
 
-@pytest.mark.parametrize("own_edit", ["", "\n# my fix\n"], ids=["unedited", "edited"])
+@pytest.mark.parametrize("root_arg", [None, "services/api"], ids=["cwd", "--root"])
 def test_eject_onto_an_older_shared_copy_keeps_it_and_says_how_to_refresh_it(
-    own_edit: str, tmp_path, monkeypatch, capsys,
+    root_arg: str | None, tmp_path, monkeypatch, capsys,
 ) -> None:
     """A project that ejected a generator before `api-docs` existed owns a
     `shared_predicates.py` without the predicates the api reference imports. Eject keeps
-    that copy, so it has to say the copy is behind and name the way to bring it up."""
-    older = _shared_predicates_before_the_added_ones() + own_edit
-    mine = tmp_path / "codegen" / "runtime" / f"{SHARED}.py"
+    that copy, so it has to say the copy is behind and name the way to bring it up, in
+    commands that work from the directory eject was run in."""
+    root = tmp_path / root_arg if root_arg else tmp_path
+    older = _shared_predicates_before_the_added_ones()
+    mine = root / "codegen" / "runtime" / f"{SHARED}.py"
     mine.parent.mkdir(parents=True)
     mine.write_text(older, encoding="utf-8")
+    # With --root, the working directory is another project with a copy of its own.
+    elsewhere = tmp_path / "codegen" / "runtime" / f"{SHARED}.py"
+    if root_arg:
+        elsewhere.parent.mkdir(parents=True)
+        elsewhere.write_text("# another project's copy\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
-    assert main(["eject", "api-docs"]) == 0
+    assert main(["eject", "api-docs", *(["--root", root_arg] if root_arg else [])]) == 0
     assert mine.read_text(encoding="utf-8") == older
     lines = capsys.readouterr().out.splitlines()
     at = next(i for i, ln in enumerate(lines) if f"{SHARED}.py: kept your copy" in ln)
     behind, own = re.search(r"kept your copy — DIFFERS: (\d+) behind, (\d+) of your own",
                             lines[at]).groups()
-    assert int(behind) > 0 and int(own) == (1 if own_edit else 0)
+    assert int(behind) > 0 and int(own) == 0
 
-    packaged = Path(metaobjects.codegen.runtime.__path__[0]) / f"{SHARED}.py"
     hint = lines[at + 1]
-    assert "api-docs may need the newer copy" in hint
-    if own_edit:
-        assert f'diff -u codegen/runtime/{SHARED}.py "{packaged}"' in hint
-        assert "cp " not in hint
-    else:
-        assert f'cp "{packaged}" codegen/runtime/' in hint
     assert [ln for ln in lines if "may need the newer copy" in ln] == [hint]
+    assert "api-docs may need the newer copy" in hint
+    packaged = Path(metaobjects.codegen.runtime.__path__[0]) / f"{SHARED}.py"
+    diff, copy = hint.split(": ", 1)[1].split("; if you have not changed it: ")
+    assert shlex.split(diff)[:2] == ["diff", "-u"]
+    assert [Path(p).resolve() for p in shlex.split(diff)[2:]] == [mine.resolve(), packaged.resolve()]
+
+    # The copy command, run from the working directory, refreshes this project's copy.
+    command, source, target = shlex.split(copy)
+    assert command == "cp"
+    shutil.copy(source, target)
+    assert mine.read_text(encoding="utf-8") == packaged.read_text(encoding="utf-8")
+    if root_arg:
+        assert elsewhere.read_text(encoding="utf-8") == "# another project's copy\n"

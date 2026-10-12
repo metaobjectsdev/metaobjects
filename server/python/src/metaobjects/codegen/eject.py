@@ -167,13 +167,8 @@ def eject(names: list[str], root: Path, *, force: bool = False) -> EjectResult:
                 out.append(f"  runtime {rel}: kept your copy — {_status(behind, own)} "
                            "(eject never overwrites runtime)")
                 if behind:
-                    refresh = (
-                        "it carries edits of your own, so apply the hunks you need from: "
-                        f'diff -u {rel} "{packaged}"'
-                        if own else f'refresh it: cp "{packaged}" {rel.parent}/'
-                    )
-                    out.append(f"    {n} may need the newer copy: yours lacks lines the "
-                               f"packaged one has; {refresh}")
+                    out.append(f'    {n} may need the newer copy: diff -u "{rt}" "{packaged}"; '
+                               f'if you have not changed it: cp "{packaged}" "{rt}"')
                 continue
             rt.parent.mkdir(parents=True, exist_ok=True)
             rt.write_text(reference, encoding="utf-8")

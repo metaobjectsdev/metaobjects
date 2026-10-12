@@ -264,9 +264,10 @@ generator catalog and the Atlas evaluation are 1.2 work.
     `emits_writable_router`, and eject never overwrites a runtime copy. When eject keeps a
     runtime copy it now says how the copy compares with the installed module
     (`kept your copy — identical`, or `kept your copy — DIFFERS: N behind, M of your own`),
-    and for a copy that is behind it prints the command that refreshes it: `cp` of the
-    installed file over yours when you have not edited it, otherwise a `diff -u` against it
-    whose hunks you apply.
+    and for a copy that is behind it prints two commands that run from the working
+    directory, `--root` or not: the `diff -u` of your copy against the installed file, whose
+    hunks you apply, and the `cp` of the installed file over yours, for a copy you have not
+    changed.
   - **A gate for the rule.** The engine surface is written once, in the shared manifest
     (`eject.engineSurface.python`), and `tests/conformance/test_eject_contract.py` ejects every
     ejectable generator alone into an empty project and fails on any import outside it. A

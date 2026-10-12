@@ -758,8 +758,9 @@ like the rest of the package.
   kept, even with `--force`, and eject says so, with how the copy compares with the
   installed one (`kept your copy — identical` or `kept your copy — DIFFERS: N behind, M of
   your own`). When the copy is behind, the next line names the generator that may need the
-  newer one and the command that brings yours up. `metaobjects gen --list` marks each
-  runtime copy the same way.
+  newer one and two commands, both written to run from the directory you ran eject in: the
+  `diff -u` of your copy against the installed file, and the `cp` to use only if you have
+  not changed yours. `metaobjects gen --list` marks each runtime copy the same way.
 - **A project that has not ejected `routes` is unchanged.** The packaged generator still
   imports `metaobjects.codegen.runtime.*` and emits no `_runtime/`.
 
@@ -847,9 +848,9 @@ uses (`from ..runtime import fr010_field_mapping as fm`).
 `codegen/runtime/shared_predicates.py` you already own does not have them, and eject keeps
 it, so `metaobjects eject api-docs` or `metaobjects eject routes --force` leaves a generator
 that fails to import (`cannot import name 'emits_writable_router'`). Eject marks the kept
-copy `DIFFERS: N behind` and prints the command that refreshes it: `cp` of the installed
-file over yours when you have not edited it, otherwise a `diff -u` against the installed
-file whose hunks you apply (the recipe under
+copy `DIFFERS: N behind` and prints how to bring it up: first the `diff -u` of your copy
+against the installed file, whose hunks you apply, then the `cp` of the installed file over
+yours, for a copy you have not changed. Eject does not decide which applies (the recipe under
 [The runtime your generated code imports comes with it](#the-runtime-your-generated-code-imports-comes-with-it)).
 
 ### `api-docs`: the api reference as an owned generator
