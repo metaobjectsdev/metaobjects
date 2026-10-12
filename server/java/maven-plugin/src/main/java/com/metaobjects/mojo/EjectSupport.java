@@ -160,8 +160,11 @@ public final class EjectSupport {
      *  lists one until its owner adds it. {@code {surface}} is the port it documents. */
     private static final String DOCS_NOTE =
             ": `mvn metaobjects:docs` runs this generator, not `metaobjects:generate`, which "
-                + "skips it. List it in <generators> with <classname>{owned}</classname> and the "
-                + "docs goal runs your copy for the {surface} surface in place of the packaged one.";
+                + "skips it. List it with <classname>{owned}</classname> in the <generators> the docs "
+                + "goal reads, which is the plugin-level <configuration> or the docs execution's own, "
+                + "and the docs goal runs your copy for the {surface} surface in place of the packaged "
+                + "one. A <generators> list inside another execution's <configuration>, the generate "
+                + "execution's for one, is not read by the docs goal.";
 
     /** Whether the registered generator class {@code classname} is a {@link DocsGenerator}.
      *  Every registered class is on this plugin's classpath. */

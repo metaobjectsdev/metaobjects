@@ -37,9 +37,10 @@ import java.util.Map;
  * {@link #apiSubDir} explicitly only when documenting a single language into a custom dir.
  *
  * <p>The Mojo is wiring only: each surface is a {@link DocsGenerator} ({@code api-docs}) that
- * writes its pages under {@link #outputDirectory}. When the project's {@code <generators>} list
- * holds a docs generator for a surface, the goal runs that one, so a project that ejected
- * {@code api-docs} runs its own copy. Every name comes from the per-language IR and every path
+ * writes its pages under {@link #outputDirectory}. When the {@code <generators>} list this goal
+ * reads (the plugin-level {@code <configuration>}, or the docs execution's own; never another
+ * execution's) holds a docs generator for a surface, the goal runs that one, so a project that
+ * ejected {@code api-docs} runs its own copy. Every name comes from the per-language IR and every path
  * from that port's {@code DocsPaths} (byte-parity with the TS contract) — nothing is re-derived
  * here. Output paths are collision-checked (duplicate page path → build failure), mirroring the TS
  * {@code assertNoDuplicateDocPaths}.
