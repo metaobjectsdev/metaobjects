@@ -728,7 +728,7 @@ checked further by the guard.
 | Port | Names |
 |---|---|
 | TypeScript | `requirement-walk.ts`, `relation-resolver.ts`, `render-context.ts`, `templates/find-inbound.ts`, `templates/find-templates.ts`, `render-engine/framework-provider.ts` |
-| C# | `ReportRows`, `PackageBindingResolver` |
+| C# | `ReportRows`, `PackageBindingResolver`, `GeneratorApplicability` |
 | Java | `BaseObjectCodeGenerator`, `SpringM2mSupport`, `AutoSetSupport`, `TphPlan`, `FindInbound` |
 | Kotlin | `ExposedApi`, `ExposedImports`, `KotlinGenUtil`, `KotlinM2mSupport` |
 | Python | `value_objects`, `find_inbound`, `tph_plan`, `requirement_walk` |
@@ -828,9 +828,9 @@ refusal is then `scripts/finish-release.mjs`, which withholds the tag.
 | 1 | Java `routes`, `dto` and `value-object` did not compile when ejected alone. | Closed before this amendment |
 | 2 | TypeScript `requirementsFile` and `agentDocsFile` were in no registry. | Registered here as `requirements` and `agent-docs`; reference templates pending |
 | 3 | TypeScript reference templates that call packaged composers. | Pending |
-| 4 | Prompt-tier emitters that stay packaged in C#, Python, Java and Kotlin. | Pending |
-| 5 | Fragment emitters behind otherwise whole generators (shared enums, M:N navigation, doc comments, record builders). | Pending |
-| 6 | The docs command's emitter in C#, Python, Java and Kotlin is not a registered `api-docs`. | Pending |
+| 4 | Prompt-tier emitters that stay packaged in C#, Python, Java and Kotlin. | Closed in C#. Pending in Python, Java and Kotlin |
+| 5 | Fragment emitters behind otherwise whole generators (shared enums, M:N navigation, doc comments, record builders). | Closed in C#. Pending in Python, Java and Kotlin |
+| 6 | The docs command's emitter in C#, Python, Java and Kotlin is not a registered `api-docs`. | Closed in C#. Pending in Python, Java and Kotlin |
 | 7 | Java generators outside the registry. | Registered here as `plantuml`, `html-docs`, `ai-docs`, `json-schema` and `mustache`; eject source pending for the first four |
 | 8 | The docs-site builders. | Exempt (ruling 3) |
 | 9 | Python generators that called another generator's packaged module. | Closed before this amendment |
@@ -874,8 +874,9 @@ is.
   The test reads the reference source the jar ships and rewrites its package line, which
   is the one edit eject makes to a Kotlin copy. If eject starts doing more than that, this
   test will not see it.
-- **C# compiles only the generator file.** The helper-runtime files eject writes beside it
-  are compiled by `HelperRuntimeTests`, against the web framework they need.
+- **C# compiles the generator and the emitters eject hands over with it**, which is every
+  file eject writes under `codegen/generators`. The helper-runtime files eject writes
+  elsewhere are compiled by `HelperRuntimeTests`, against the web framework they need.
 
 *What "emits what the packaged generator emits" allows.*
 
@@ -910,8 +911,8 @@ is.
 
 - **The older registry-conformance tests in C#, Java, Kotlin and Python subtract the names
   with a pending census entry.** The manifest lists `api-docs` for those ports (gap 6) and
-  their registries do not hold it yet. The pending entry is the one record of that
-  difference. Deleting the entry removes the subtraction.
+  the Java, Kotlin and Python registries do not hold it yet. The pending entry is the one
+  record of that difference. Deleting the entry removes the subtraction, as it has in C#.
 - **Two registry-driven Java suites pass an `outputFilename` argument** to generators that
   write one file, so the five newly registered rows run in them. It is a test argument;
   no generator changed.

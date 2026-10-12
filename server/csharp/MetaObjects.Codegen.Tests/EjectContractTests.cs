@@ -110,28 +110,31 @@ public class EjectContractTests
         "global using global::System.Threading;\n" +
         "global using global::System.Threading.Tasks;\n";
 
-    private sealed record OwnedCopy(CSharpCompilation Compilation, SyntaxTree Tree, Assembly Assembly);
+    private sealed record OwnedCopy(CSharpCompilation Compilation, IReadOnlyList<SyntaxTree> Trees, Assembly Assembly);
 
-    /// <summary>The owned copy of one generator, alone: what the real <c>dotnet meta eject</c>
-    /// writes into an empty project, compiled against the published assemblies only, never a
-    /// sibling generator's source.</summary>
+    /// <summary>The owned copy of one generator, alone: every file the real <c>dotnet meta
+    /// eject</c> writes under <c>codegen/generators</c> in an empty project (the generator and
+    /// the emitters handed over with it), compiled against the published assemblies only,
+    /// never a sibling generator's source.</summary>
     private static OwnedCopy CompileAlone(string stableName)
     {
         var project = Directory.CreateTempSubdirectory("eject-contract-").FullName;
-        string source;
+        var options = new CSharpParseOptions(LanguageVersion.CSharp12);
+        List<SyntaxTree> trees;
         try
         {
             var outcome = MetaObjects.Cli.EjectCommand.Run([stableName], project, force: false);
             Assert.True(outcome.ExitCode == 0, string.Join("\n", outcome.Err));
-            var written = Directory.GetFiles(Path.Combine(project, "codegen", "generators"), "*.cs");
-            source = File.ReadAllText(Assert.Single(written));
+            trees = Directory.GetFiles(Path.Combine(project, "codegen", "generators"), "*.cs")
+                .OrderBy(f => f, StringComparer.Ordinal)
+                .Select(f => CSharpSyntaxTree.ParseText(File.ReadAllText(f), options, path: Path.GetFileName(f)))
+                .ToList();
+            Assert.NotEmpty(trees);
         }
         finally
         {
             Directory.Delete(project, recursive: true);
         }
-        var options = new CSharpParseOptions(LanguageVersion.CSharp12);
-        var tree = CSharpSyntaxTree.ParseText(source, options, path: stableName + ".cs");
         var usings = CSharpSyntaxTree.ParseText(ImplicitUsings, options, path: "GlobalUsings.g.cs");
         var references = DbContextCompileTests.BuildReferences();
         references.Add(MetadataReference.CreateFromFile(typeof(IGenerator).Assembly.Location));
@@ -139,7 +142,7 @@ public class EjectContractTests
         references.Add(MetadataReference.CreateFromFile(typeof(MetaObjects.Render.FilesystemProvider).Assembly.Location));
         var compilation = CSharpCompilation.Create(
             "owned_" + stableName.Replace('-', '_') + "_" + Guid.NewGuid().ToString("N"),
-            [tree, usings], references, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            [.. trees, usings], references, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         using var ms = new MemoryStream();
         var emit = compilation.Emit(ms);
@@ -147,7 +150,7 @@ public class EjectContractTests
         Assert.True(emit.Success,
             $"\"{stableName}\", ejected alone, does not compile against the published API ({errors.Count} error(s)):\n" +
             string.Join("\n", errors));
-        return new OwnedCopy(compilation, tree, Assembly.Load(ms.ToArray()));
+        return new OwnedCopy(compilation, trees, Assembly.Load(ms.ToArray()));
     }
 
     /// <summary>Every type of the packaged codegen assembly the owned copy references, outside
@@ -156,17 +159,20 @@ public class EjectContractTests
     private static List<string> OutsideEngineSurface(OwnedCopy copy)
     {
         var codegen = typeof(IGenerator).Assembly.GetName().Name;
-        var model = copy.Compilation.GetSemanticModel(copy.Tree);
         var outside = new SortedSet<string>(StringComparer.Ordinal);
-        foreach (var name in copy.Tree.GetRoot().DescendantNodes().OfType<SimpleNameSyntax>())
+        foreach (var tree in copy.Trees)
         {
-            var info = model.GetSymbolInfo(name);
-            var symbol = info.Symbol ?? info.CandidateSymbols.FirstOrDefault();
-            var type = symbol as INamedTypeSymbol ?? symbol?.ContainingType;
-            if (type is null || type.ContainingAssembly?.Name != codegen) continue;
-            while (type.ContainingType is not null) type = type.ContainingType;
-            var fullName = type.ContainingNamespace.ToDisplayString() + "." + type.Name;
-            if (EjectContract.OutsideEngineSurface(fullName)) outside.Add(fullName);
+            var model = copy.Compilation.GetSemanticModel(tree);
+            foreach (var name in tree.GetRoot().DescendantNodes().OfType<SimpleNameSyntax>())
+            {
+                var info = model.GetSymbolInfo(name);
+                var symbol = info.Symbol ?? info.CandidateSymbols.FirstOrDefault();
+                var type = symbol as INamedTypeSymbol ?? symbol?.ContainingType;
+                if (type is null || type.ContainingAssembly?.Name != codegen) continue;
+                while (type.ContainingType is not null) type = type.ContainingType;
+                var fullName = type.ContainingNamespace.ToDisplayString() + "." + type.Name;
+                if (EjectContract.OutsideEngineSurface(fullName)) outside.Add(fullName);
+            }
         }
         return outside.ToList();
     }

@@ -107,7 +107,7 @@
       "concept": "Per-entity/template SDK API reference (generated-code API; human + agent forms).",
       "tier": "native",
       "layer": "docs",
-      "note": "Run by the port's docs command (`meta docs`, `dotnet meta docs`, `mvn metaobjects:docs`, `metaobjects docs`) as its api surface (ADR-0025), not by the gen command: a TypeScript `meta gen` config that lists it is warned about and skipped.",
+      "note": "Run by the port's docs command (`meta docs`, `dotnet meta docs`, `mvn metaobjects:docs`, `metaobjects docs`) as its api surface (ADR-0025), not by the gen command: a TypeScript `meta gen` config that lists it is warned about and skipped, and `dotnet meta gen` skips it, warning only when `--generators` names it.",
       "eject": "full",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
@@ -331,15 +331,18 @@
         "engine": [
           "MetaObjects.Codegen.CSharpNaming",
           "MetaObjects.Codegen.ColumnNamingStrategy",
+          "MetaObjects.Codegen.DocsRunFacts",
           "MetaObjects.Codegen.EmittedFile",
           "MetaObjects.Codegen.FieldNames",
           "MetaObjects.Codegen.GenConfig",
           "MetaObjects.Codegen.GenContext",
+          "MetaObjects.Codegen.GeneratorApplicability",
           "MetaObjects.Codegen.Generators.FindInbound",
           "MetaObjects.Codegen.Generators.InboundShape",
           "MetaObjects.Codegen.Generators.TphPlan",
           "MetaObjects.Codegen.Generators.TphPlanBuilder",
           "MetaObjects.Codegen.Generators.TphSubtypePlan",
+          "MetaObjects.Codegen.IDocsGenerator",
           "MetaObjects.Codegen.IGenerator",
           "MetaObjects.Codegen.IRequirementTestRenderer",
           "MetaObjects.Codegen.InstanceArtifacts",
@@ -447,7 +450,6 @@
       }
     ],
     "pending": [
-      {"generator": "api-docs", "port": "csharp", "assertion": "census", "gap": 6},
       {"generator": "api-docs", "port": "java", "assertion": "census", "gap": 6},
       {"generator": "api-docs", "port": "kotlin", "assertion": "census", "gap": 6},
       {"generator": "api-docs", "port": "python", "assertion": "census", "gap": 6},
@@ -541,62 +543,6 @@
       },
       {"generator": "relations", "port": "kotlin", "assertion": "depth", "gap": 5, "outside": ["com.metaobjects.generator.kotlin.Fr019SharedEnum"]},
       {"generator": "routes", "port": "kotlin", "assertion": "depth", "gap": 5, "outside": ["com.metaobjects.generator.kotlin.Fr019SharedEnum"]},
-      {
-        "generator": "db-context",
-        "port": "csharp",
-        "assertion": "depth",
-        "gap": 5,
-        "outside": [
-          "MetaObjects.Codegen.Docs.XmlDocBuilder",
-          "MetaObjects.Codegen.Generators.Fr019SharedEnum",
-          "MetaObjects.Codegen.Generators.M2MNavigation",
-          "MetaObjects.Codegen.Generators.M2MNavigationBuilder"
-        ]
-      },
-      {
-        "generator": "entity",
-        "port": "csharp",
-        "assertion": "depth",
-        "gap": 5,
-        "outside": [
-          "MetaObjects.Codegen.Docs.XmlDocBuilder",
-          "MetaObjects.Codegen.Generators.Fr019SharedEnum",
-          "MetaObjects.Codegen.Generators.M2MNavigation",
-          "MetaObjects.Codegen.Generators.M2MNavigationBuilder",
-          "MetaObjects.Codegen.Generators.ReverseFinderBuilder",
-          "MetaObjects.Codegen.Generators.SharedEnum"
-        ]
-      },
-      {
-        "generator": "extractor",
-        "port": "csharp",
-        "assertion": "depth",
-        "gap": 4,
-        "outside": ["MetaObjects.Codegen.Generators.ExtractDelegateEmitter", "MetaObjects.Codegen.Generators.Fr010FieldMapping"]
-      },
-      {"generator": "extractor", "port": "csharp", "assertion": "depth", "gap": 5, "outside": ["MetaObjects.Codegen.Generators.Fr019SharedEnum"]},
-      {"generator": "names", "port": "csharp", "assertion": "depth", "gap": 4, "outside": ["MetaObjects.Codegen.Generators.Fr010FieldMapping"]},
-      {
-        "generator": "output-parser",
-        "port": "csharp",
-        "assertion": "depth",
-        "gap": 4,
-        "outside": ["MetaObjects.Codegen.Generators.ExtractDelegateEmitter", "MetaObjects.Codegen.Generators.Fr010FieldMapping"]
-      },
-      {
-        "generator": "output-prompt",
-        "port": "csharp",
-        "assertion": "depth",
-        "gap": 4,
-        "outside": ["MetaObjects.Codegen.Generators.OutputFormatSpecEmitter"]
-      },
-      {
-        "generator": "routes",
-        "port": "csharp",
-        "assertion": "depth",
-        "gap": 5,
-        "outside": ["MetaObjects.Codegen.Generators.M2MNavigation", "MetaObjects.Codegen.Generators.M2MNavigationBuilder"]
-      },
       {
         "generator": "entity",
         "port": "typescript",
