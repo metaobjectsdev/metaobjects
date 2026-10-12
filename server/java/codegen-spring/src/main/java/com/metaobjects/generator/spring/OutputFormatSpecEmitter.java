@@ -1,5 +1,9 @@
 package com.metaobjects.generator.spring;
 
+// Eject note (ADR-0034 Amendment 8): `mvn metaobjects:eject` copies this file with the
+// output-prompt generator. FindInbound stays in com.metaobjects.generator.spring as engine, so it
+// is imported by name — a bare same-package reference would not resolve from the copy.
+import com.metaobjects.generator.spring.FindInbound;
 import com.metaobjects.field.BooleanField;
 import com.metaobjects.field.DoubleField;
 import com.metaobjects.field.EnumField;

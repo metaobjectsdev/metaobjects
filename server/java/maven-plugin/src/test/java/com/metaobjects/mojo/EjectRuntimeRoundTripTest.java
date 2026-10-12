@@ -140,6 +140,11 @@ public class EjectRuntimeRoundTripTest {
             Generator gen = (Generator) Class.forName(e.classname).getDeclaredConstructor().newInstance();
             Map<String, String> a = args(out);
             a.put("runtimePackage", probe);
+            // A single-file generator (the docs, diagram and schema ones) is told its file's name;
+            // a per-object one given one would merge every object into it.
+            if (!(gen instanceof com.metaobjects.generator.direct.MultiFileDirectGeneratorBase)) {
+                a.put("outputFilename", e.stableName + ".out");
+            }
             gen.setArgs(a).execute(loader);
 
             Set<String> all = imports(out);

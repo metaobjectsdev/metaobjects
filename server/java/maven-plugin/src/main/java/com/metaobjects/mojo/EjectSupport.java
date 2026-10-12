@@ -68,6 +68,9 @@ public final class EjectSupport {
         /** Fully-qualified names of the classes eject copies WITH this generator into the
          *  same owned package: the rest of its emit (empty for most generators). */
         public final List<String> with;
+        /** Template references the generator reads from the classpath, which eject copies into
+         *  the adopter's resources (empty for every generator but {@code api-docs}). */
+        public final List<String> resources;
 
         public Entry(Port port, String stableName, String classname, String description, String resourcePath) {
             this(port, stableName, classname, description, resourcePath, List.of());
@@ -80,6 +83,13 @@ public final class EjectSupport {
 
         public Entry(Port port, String stableName, String classname, String description,
                      String resourcePath, List<String> runtime, String note, List<String> with) {
+            this(port, stableName, classname, description, resourcePath, runtime, note, with, List.of());
+        }
+
+        public Entry(Port port, String stableName, String classname, String description,
+                     String resourcePath, List<String> runtime, String note, List<String> with,
+                     List<String> resources) {
+            this.resources = List.copyOf(resources);
             this.port = port;
             this.stableName = stableName;
             this.classname = classname;
@@ -102,8 +112,11 @@ public final class EjectSupport {
         /** Classpath resource holding the reference source of {@code source}, one of
          *  {@link #sources()}. */
         public String resourceOf(String source) {
-            return source.equals(classname) ? resourcePath
-                    : GeneratorRegistry.EJECT_RESOURCE_ROOT + simpleNameOf(source) + ".java";
+            if (source.equals(classname)) return resourcePath;
+            String root = port == Port.KOTLIN
+                    ? com.metaobjects.generator.kotlin.GeneratorRegistryKt.EJECT_RESOURCE_ROOT
+                    : GeneratorRegistry.EJECT_RESOURCE_ROOT;
+            return root + simpleNameOf(source) + "." + port.extension;
         }
 
         /** {@link #note} with the owned copy's class name filled in, or {@code null} when
@@ -141,29 +154,20 @@ public final class EjectSupport {
         for (GeneratorRegistry.GeneratorInfo info : GeneratorRegistry.list().values()) {
             out.add(new Entry(Port.JAVA, info.stableName(), info.classname(), info.description(),
                     info.ejectResourcePath(), info.ejectRuntime(), info.ejectNote(),
-                    info.ejectWith()));
+                    info.ejectWith(), info.ejectResources()));
         }
         for (Map.Entry<String, GeneratorInfo> e : GeneratorRegistryKt.getGENERATOR_REGISTRY().entrySet()) {
             GeneratorInfo info = e.getValue();
-            // Kotlin generator classes have no separate public "classname" string field —
-            // the registry's factory closure is what constructs them — so the FQN is
-            // derived from the package plus the stable resource filename (both ports name
-            // the ejectable resource after the class's simple name, e.g.
-            // "KotlinNamesGenerator.kt" <-> class KotlinNamesGenerator).
-            String simple = info.getEjectResourcePath() == null ? null
-                    : simpleNameFromResource(info.getEjectResourcePath());
-            String classname = simple == null ? null
-                    : "com.metaobjects.generator.kotlin." + simple;
+            // Kotlin generator classes have no separate public "classname" string field: the
+            // registry's factory closure constructs them, so the FQN is the class it builds
+            // (calling it must not throw — the registry's own contract). The ejectable resource
+            // is named after the class's simple name, e.g. "KotlinNamesGenerator.kt".
+            String classname = info.getEjectResourcePath() == null ? null
+                    : info.getFactory().invoke().getClass().getName();
             out.add(new Entry(Port.KOTLIN, info.getName(), classname, info.getDescription(),
-                    info.getEjectResourcePath()));
+                    info.getEjectResourcePath(), List.of(), null, info.getEjectWith()));
         }
         return out;
-    }
-
-    private static String simpleNameFromResource(String resourcePath) {
-        String file = resourcePath.substring(resourcePath.lastIndexOf('/') + 1);
-        int dot = file.lastIndexOf('.');
-        return dot < 0 ? file : file.substring(0, dot);
     }
 
     /** Only the ejectable entries (non-null {@link Entry#resourcePath}), grouped by stable name. */
@@ -269,13 +273,14 @@ public final class EjectSupport {
      * so a bare same-package reference between them already means the copy; an
      * {@code import} of one would still name the packaged class, and the owned generator
      * would go on extending and calling code its owner cannot edit. An import of anything
-     * else is left alone.
+     * else is left alone. Java closes an import with {@code ;} and Kotlin does not; each
+     * keeps its own punctuation.
      */
     public static String rewriteCopiedImports(String source, List<String> copied, String ownedPackage) {
         String out = source;
         for (String classname : copied) {
-            out = out.replaceAll("(?m)^import\\s+" + Pattern.quote(classname) + "\\s*;",
-                    Matcher.quoteReplacement("import " + ownedPackage + "." + simpleNameOf(classname) + ";"));
+            out = out.replaceAll("(?m)^import\\s+" + Pattern.quote(classname) + "(?=\\s*;|[ \\t]*$)",
+                    Matcher.quoteReplacement("import " + ownedPackage + "." + simpleNameOf(classname)));
         }
         return out;
     }
@@ -288,6 +293,32 @@ public final class EjectSupport {
     public static String ownedSource(Entry entry, String reference, String ownedPackage) {
         return rewriteCopiedImports(rewritePackage(reference, ownedPackage), entry.sources(), ownedPackage);
     }
+
+    // ------------------------------------------------------------------------------------
+    // templates — the page text a generator reads from the classpath, handed over with it
+    // ------------------------------------------------------------------------------------
+
+    /** The declaration a copied template provider names its classpath prefix in. */
+    private static final Pattern TEMPLATE_PREFIX_DECL = Pattern.compile(
+            "(?m)^(\\s*private static final String BASE_PREFIX = )\"[\\w/]+\";\\s*$");
+
+    /** The classpath directory the owned templates of the generators in {@code ownedPackage} are
+     *  written under: the package's own path, so no other module's templates can shadow them. */
+    public static String ownedTemplatePrefix(String ownedPackage) {
+        return ownedPackage.replace('.', '/') + "/" + GeneratorRegistry.TEMPLATE_RESOURCE_PREFIX;
+    }
+
+    /** Point a copied template provider's {@code BASE_PREFIX} at {@link #ownedTemplatePrefix}. A
+     *  source with no such declaration is returned unchanged. */
+    public static String rewriteTemplatePrefix(String source, String ownedPackage) {
+        Matcher m = TEMPLATE_PREFIX_DECL.matcher(source);
+        if (!m.find()) return source;
+        String replacement = m.group(1) + "\"" + ownedTemplatePrefix(ownedPackage) + "\";";
+        return new StringBuilder(source).replace(m.start(), m.end(), replacement).toString();
+    }
+
+    /** The extension a template reference resolves with. */
+    public static final String TEMPLATE_EXTENSION = ".md.mustache";
 
     // ------------------------------------------------------------------------------------
     // helper runtime — the source a generator's OUTPUT imports, handed over with it
@@ -439,11 +470,33 @@ public final class EjectSupport {
             if (t.isEmpty()) continue;
             if (PACKAGE_LINE.matcher(t).matches()) continue;
             if (RUNTIME_PACKAGE_DECL.matcher(t).matches()) continue;
+            if (TEMPLATE_PREFIX_DECL.matcher(t).matches()) continue;
+            if (isImportOfCopiedClass(t)) continue;
             if (SUPPORT_IMPORT.matcher(t).matches()) continue;
             if (t.startsWith(OWNED_RUNTIME_MARKER) || t.startsWith(OWNED_SUPPORT_MARKER)) continue;
             out.add(t);
         }
         return out;
+    }
+
+    private static final Pattern IMPORT_LINE = Pattern.compile("^import\\s+[\\w.]+\\.(\\w+)\\s*;?$");
+
+    /** The simple names of every class eject may copy WITH a generator, across all entries. */
+    private static final class Copied {
+        static final Set<String> SIMPLE_NAMES = allEntries().stream()
+                .flatMap(e -> e.with.stream()).map(EjectSupport::simpleNameOf)
+                .collect(Collectors.toSet());
+    }
+
+    /**
+     * An import of a class eject copies with a generator. Eject points it at the copy when the
+     * copy is written for a generator that copies the class, and a file that two generators copy
+     * (the extractor, with {@code entity} and on its own) is written by whichever came first, so
+     * its imports follow that one: the line is eject's own edit, not drift.
+     */
+    private static boolean isImportOfCopiedClass(String trimmedLine) {
+        Matcher m = IMPORT_LINE.matcher(trimmedLine);
+        return m.matches() && Copied.SIMPLE_NAMES.contains(m.group(1));
     }
 
     public static Comparison compare(String owned, String reference) {

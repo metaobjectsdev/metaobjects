@@ -1,10 +1,15 @@
 package com.metaobjects.generator.spring;
 
+// Eject note (ADR-0034 Amendment 8): `mvn metaobjects:eject` copies this file with the generators
+// that call it. The naming and type-mapping siblings stay in com.metaobjects.generator.spring, so
+// they are imported by name — a bare same-package reference would not resolve from the copy.
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.util.GeneratedFileWriter;
 import com.metaobjects.generator.util.GeneratorUtil;
+import com.metaobjects.generator.spring.SpringNaming;
+import com.metaobjects.generator.spring.SpringTypeMapper;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 

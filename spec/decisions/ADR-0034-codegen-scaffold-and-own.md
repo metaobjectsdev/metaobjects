@@ -729,8 +729,8 @@ checked further by the guard.
 |---|---|
 | TypeScript | `requirement-walk.ts`, `relation-resolver.ts`, `render-context.ts`, `templates/find-inbound.ts`, `templates/find-templates.ts`, `render-engine/framework-provider.ts` |
 | C# | `ReportRows`, `PackageBindingResolver`, `GeneratorApplicability` |
-| Java | `BaseObjectCodeGenerator`, `SpringM2mSupport`, `AutoSetSupport`, `TphPlan`, `FindInbound` |
-| Kotlin | `ExposedApi`, `ExposedImports`, `KotlinGenUtil`, `KotlinM2mSupport` |
+| Java | `BaseObjectCodeGenerator`, `SpringM2mSupport`, `AutoSetSupport`, `TphPlan`, `FindInbound`, `GeneratorApplicability`, `DocsGenerator`, `CodeGenMetaDataProvider`, the single-file generator bases and the JSON and HTML writer bases (`SingleFileDirectGeneratorBase`, `SingleJsonDirectGeneratorBase`, `SingleHtmlDirectGeneratorBase`, `JsonDirectWriter`, `HtmlDirectWriter`) |
+| Kotlin | `ExposedApi`, `ExposedImports`, `KotlinGenUtil`, `KotlinM2mSupport`, `Fr019SharedEnum`, `DocsGenerator` |
 | Python | `value_objects`, `find_inbound`, `tph_plan`, `requirement_walk` |
 
 **Exemptions.** Each is an entry in the shared manifest with its reason.
@@ -828,16 +828,16 @@ refusal is then `scripts/finish-release.mjs`, which withholds the tag.
 | 1 | Java `routes`, `dto` and `value-object` did not compile when ejected alone. | Closed before this amendment |
 | 2 | TypeScript `requirementsFile` and `agentDocsFile` were in no registry. | Registered here as `requirements` and `agent-docs`; reference templates pending |
 | 3 | TypeScript reference templates that call packaged composers. | Pending |
-| 4 | Prompt-tier emitters that stay packaged in C#, Python, Java and Kotlin. | Closed in C# and Python. Pending in Java and Kotlin |
-| 5 | Fragment emitters behind otherwise whole generators (shared enums, M:N navigation, doc comments, record builders). | Closed in C# and Python. Pending in Java and Kotlin |
-| 6 | The docs command's emitter in C#, Python, Java and Kotlin is not a registered `api-docs`. | Closed in C# and Python. Pending in Java and Kotlin |
-| 7 | Java generators outside the registry. | Registered here as `plantuml`, `html-docs`, `ai-docs`, `json-schema` and `mustache`; eject source pending for the first four |
+| 4 | Prompt-tier emitters that stay packaged in C#, Python, Java and Kotlin. | Closed in C#, Python, Java and Kotlin |
+| 5 | Fragment emitters behind otherwise whole generators (shared enums, M:N navigation, doc comments, record builders). | Closed in C#, Python, Java and Kotlin. Kotlin `Fr019SharedEnum` is engine, not handed over: it writes nothing, and the type mapper takes its `ProvidedEnumConfig` as an argument |
+| 6 | The docs command's emitter in C#, Python, Java and Kotlin is not a registered `api-docs`. | Closed in C#, Python, Java and Kotlin |
+| 7 | Java generators outside the registry. | Registered here as `plantuml`, `html-docs`, `ai-docs`, `json-schema` and `mustache`. The first four ship eject source, each with its writer; `mustache` is exempt |
 | 8 | The docs-site builders. | Exempt (ruling 3) |
 | 9 | Python generators that called another generator's packaged module. | Closed before this amendment |
 | 10 | Angular has no reference templates. | Outside the census until the package is published |
 | 11 | Tests that asserted a gap, and hand-kept lists. | Closed here |
 | 12 | Documents that claimed more than the code delivered. | Corrected here, below |
-| 13 | An owned Java `entity` constructs the packaged `extractor` generator when no extractor is in the run. Found by the guard on its first run. | Pending. It closes with the Java work on gaps 4, 5 and 7, which owns the `entity` and `extractor` copies |
+| 13 | An owned Java `entity` constructs the packaged `extractor` generator when no extractor is in the run. Found by the guard on its first run. | Closed. `entity` copies `ExtractorCodeGenerator` with it, so the owned `entity` constructs the owned one |
 
 **What the guard found on its first run**, beyond the gaps the audit listed:
 
@@ -871,9 +871,15 @@ is.
 
 - **Kotlin depth does not run the eject goal.** The goal lives in `maven-plugin`, which
   depends on `codegen-kotlin`, and the Kotlin compile test has to live in `codegen-kotlin`.
-  The test reads the reference source the jar ships and rewrites its package line, which
-  is the one edit eject makes to a Kotlin copy. If eject starts doing more than that, this
-  test will not see it.
+  The test reads the reference sources the jar ships (the generator and the classes eject
+  copies with it), rewrites each package line and the imports the copies have of one
+  another, and compiles them together. Those are the two edits eject makes to a Kotlin copy.
+  If eject starts doing more than that, this test will not see it.
+- **The Java docs generators' page templates are not in the reference scan.** `api-docs`
+  reads its page text from the classpath. Eject copies the templates into the adopter's
+  resources and points the copied provider at them, and the depth test puts those resources
+  on the owned classes' path so the copy reads them, but the scan sees classes, not text. A
+  template that called a packaged helper would not be seen.
 - **C# compiles the generator and the emitters eject hands over with it**, which is every
   file eject writes under `codegen/generators`. The helper-runtime files eject writes
   elsewhere are compiled by `HelperRuntimeTests`, against the web framework they need.

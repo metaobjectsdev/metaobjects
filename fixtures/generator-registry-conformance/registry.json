@@ -362,6 +362,8 @@
       "java": {
         "codegenPackages": ["com.metaobjects.generator.**"],
         "engine": [
+          "com.metaobjects.generator.CodeGenMetaDataProvider",
+          "com.metaobjects.generator.DocsGenerator",
           "com.metaobjects.generator.EmitsObjectExtractors",
           "com.metaobjects.generator.EmitsPhysicalNameConstants",
           "com.metaobjects.generator.FileEmittingGenerator",
@@ -372,9 +374,15 @@
           "com.metaobjects.generator.GeneratorIOWriter",
           "com.metaobjects.generator.MetaDataFilters",
           "com.metaobjects.generator.ProjectClassLoaderAware",
+          "com.metaobjects.generator.apidocs.GeneratorApplicability",
           "com.metaobjects.generator.direct.FileDirectWriter",
           "com.metaobjects.generator.direct.GenerationContext",
           "com.metaobjects.generator.direct.MultiFileDirectGeneratorBase",
+          "com.metaobjects.generator.direct.SingleFileDirectGeneratorBase",
+          "com.metaobjects.generator.direct.metadata.html.HtmlDirectWriter",
+          "com.metaobjects.generator.direct.metadata.html.SingleHtmlDirectGeneratorBase",
+          "com.metaobjects.generator.direct.metadata.json.JsonDirectWriter",
+          "com.metaobjects.generator.direct.metadata.json.SingleJsonDirectGeneratorBase",
           "com.metaobjects.generator.direct.object.BaseObjectCodeGenerator",
           "com.metaobjects.generator.requirement.RenderedTest",
           "com.metaobjects.generator.requirement.RequirementTestArgs",
@@ -394,6 +402,7 @@
       "kotlin": {
         "codegenPackages": ["com.metaobjects.generator.**"],
         "engine": [
+          "com.metaobjects.generator.DocsGenerator",
           "com.metaobjects.generator.EmitsPhysicalNameConstants",
           "com.metaobjects.generator.FileEmittingGenerator",
           "com.metaobjects.generator.Generator",
@@ -405,6 +414,7 @@
           "com.metaobjects.generator.kotlin.ExposedApi",
           "com.metaobjects.generator.kotlin.ExposedImports",
           "com.metaobjects.generator.kotlin.FindInbound",
+          "com.metaobjects.generator.kotlin.Fr019SharedEnum",
           "com.metaobjects.generator.kotlin.KotlinGenUtil",
           "com.metaobjects.generator.kotlin.KotlinM2mSupport",
           "com.metaobjects.generator.kotlin.KotlinNaming",
@@ -450,78 +460,6 @@
       }
     ],
     "pending": [
-      {"generator": "api-docs", "port": "java", "assertion": "census", "gap": 6},
-      {"generator": "api-docs", "port": "kotlin", "assertion": "census", "gap": 6},
-      {"generator": "ai-docs", "port": "java", "assertion": "completeness", "gap": 7},
-      {"generator": "html-docs", "port": "java", "assertion": "completeness", "gap": 7},
-      {"generator": "json-schema", "port": "java", "assertion": "completeness", "gap": 7},
-      {"generator": "plantuml", "port": "java", "assertion": "completeness", "gap": 7},
-      {
-        "generator": "dto",
-        "port": "java",
-        "assertion": "depth",
-        "gap": 5,
-        "outside": ["com.metaobjects.generator.spring.Fr019SharedEnum", "com.metaobjects.generator.spring.SpringRecordBuilder"]
-      },
-      {
-        "generator": "entity",
-        "port": "java",
-        "assertion": "depth",
-        "gap": 13,
-        "outside": ["com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator"]
-      },
-      {"generator": "output-parser", "port": "java", "assertion": "depth", "gap": 5, "outside": ["com.metaobjects.generator.spring.Fr019SharedEnum"]},
-      {
-        "generator": "output-prompt",
-        "port": "java",
-        "assertion": "depth",
-        "gap": 4,
-        "outside": ["com.metaobjects.generator.spring.OutputFormatSpecEmitter"]
-      },
-      {
-        "generator": "value-object",
-        "port": "java",
-        "assertion": "depth",
-        "gap": 5,
-        "outside": ["com.metaobjects.generator.spring.Fr019SharedEnum", "com.metaobjects.generator.spring.SpringRecordBuilder"]
-      },
-      {
-        "generator": "entity",
-        "port": "kotlin",
-        "assertion": "depth",
-        "gap": 5,
-        "outside": ["com.metaobjects.generator.kotlin.Fr019SharedEnum", "com.metaobjects.generator.kotlin.KotlinEnumEmitter"]
-      },
-      {
-        "generator": "exposed-table",
-        "port": "kotlin",
-        "assertion": "depth",
-        "gap": 5,
-        "outside": ["com.metaobjects.generator.kotlin.Fr019SharedEnum"]
-      },
-      {
-        "generator": "output-parser",
-        "port": "kotlin",
-        "assertion": "depth",
-        "gap": 4,
-        "outside": ["com.metaobjects.generator.kotlin.KotlinExtractSchemaEmitter"]
-      },
-      {
-        "generator": "output-parser",
-        "port": "kotlin",
-        "assertion": "depth",
-        "gap": 5,
-        "outside": ["com.metaobjects.generator.kotlin.Fr019SharedEnum"]
-      },
-      {
-        "generator": "output-prompt",
-        "port": "kotlin",
-        "assertion": "depth",
-        "gap": 4,
-        "outside": ["com.metaobjects.generator.kotlin.KotlinOutputFormatSpecEmitter"]
-      },
-      {"generator": "relations", "port": "kotlin", "assertion": "depth", "gap": 5, "outside": ["com.metaobjects.generator.kotlin.Fr019SharedEnum"]},
-      {"generator": "routes", "port": "kotlin", "assertion": "depth", "gap": 5, "outside": ["com.metaobjects.generator.kotlin.Fr019SharedEnum"]},
       {
         "generator": "entity",
         "port": "typescript",

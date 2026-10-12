@@ -70,11 +70,25 @@ public class OwnedPathNeverReachesPackagedSupportTest {
         return out;
     }
 
+    /** The classes eject copies WITH an ejectable generator of this module ({@code ejectWith}): they
+     *  are owned beside it, so reaching one is not reaching packaged code. */
+    private Set<String> copiedWithGenerators() {
+        Set<String> out = new TreeSet<>();
+        for (GeneratorInfo info : GeneratorRegistry.list().values()) {
+            if (info.ejectResourcePath() == null || !Files.exists(classFile(info.classname()))) continue;
+            for (String with : info.ejectWith()) {
+                if (Files.exists(classFile(with))) out.add(with);
+            }
+        }
+        return out;
+    }
+
     @Test
     public void noPackagedClassAnOwnedGeneratorReachesRefersBackToTheSupportClass() throws IOException {
         Set<String> support = support();
         Set<String> owned = new TreeSet<>(support);
         owned.addAll(ejectableGenerators());
+        owned.addAll(copiedWithGenerators());
 
         Deque<String> queue = new ArrayDeque<>(owned);
         Set<String> seen = new HashSet<>(owned);

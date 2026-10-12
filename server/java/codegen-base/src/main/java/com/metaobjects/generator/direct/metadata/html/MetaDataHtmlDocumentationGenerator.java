@@ -1,5 +1,9 @@
 package com.metaobjects.generator.direct.metadata.html;
 
+// Eject note (ADR-0034 Amendment 8): `mvn metaobjects:eject` copies this file with its writer. The
+// base class stays in com.metaobjects.generator.direct.metadata.html as engine, so it is imported by
+// name — a bare same-package reference would not resolve from the copy.
+import com.metaobjects.generator.direct.metadata.html.SingleHtmlDirectGeneratorBase;
 import com.metaobjects.generator.GeneratorIOException;
 import com.metaobjects.loader.MetaDataLoader;
 import org.slf4j.Logger;

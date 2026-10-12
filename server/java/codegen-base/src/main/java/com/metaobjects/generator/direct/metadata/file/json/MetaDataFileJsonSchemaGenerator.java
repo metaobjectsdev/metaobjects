@@ -1,5 +1,6 @@
 package com.metaobjects.generator.direct.metadata.file.json;
 
+import com.metaobjects.generator.CodeGenMetaDataProvider;
 import com.metaobjects.generator.GeneratorIOException;
 import com.metaobjects.generator.direct.metadata.json.SingleJsonDirectGeneratorBase;
 import com.metaobjects.generator.direct.metadata.json.JsonDirectWriter;
@@ -78,54 +79,42 @@ public class MetaDataFileJsonSchemaGenerator extends SingleJsonDirectGeneratorBa
 
     ///////////////////////////////////////////////////
     // Service Provider Pattern Registration
+    //
+    // The attributes and their registration live in CodeGenMetaDataProvider, which the loader
+    // consults, so a copy of this generator made by `mvn metaobjects:eject` owns emit code only.
+    // These names stay here for existing callers.
 
-    // JSON Schema generation attribute constants
-    public static final String JSON_SCHEMA_VERSION = "jsonSchemaVersion";
-    public static final String JSON_SCHEMA_ID = "jsonSchemaId";
-    public static final String JSON_TITLE = "jsonTitle";
-    public static final String JSON_DESCRIPTION = "jsonDescription";
-    public static final String JSON_FORMAT = "jsonFormat";
-    public static final String JSON_PATTERN = "jsonPattern";
-    public static final String JSON_ENUM = "jsonEnum";
-    public static final String JSON_MINIMUM = "jsonMinimum";
-    public static final String JSON_MAXIMUM = "jsonMaximum";
+    /** @deprecated use {@link CodeGenMetaDataProvider#JSON_SCHEMA_VERSION} */
+    @Deprecated
+    public static final String JSON_SCHEMA_VERSION = CodeGenMetaDataProvider.JSON_SCHEMA_VERSION;
+    /** @deprecated use {@link CodeGenMetaDataProvider#JSON_SCHEMA_ID} */
+    @Deprecated
+    public static final String JSON_SCHEMA_ID = CodeGenMetaDataProvider.JSON_SCHEMA_ID;
+    /** @deprecated use {@link CodeGenMetaDataProvider#JSON_TITLE} */
+    @Deprecated
+    public static final String JSON_TITLE = CodeGenMetaDataProvider.JSON_TITLE;
+    /** @deprecated use {@link CodeGenMetaDataProvider#JSON_DESCRIPTION} */
+    @Deprecated
+    public static final String JSON_DESCRIPTION = CodeGenMetaDataProvider.JSON_DESCRIPTION;
+    /** @deprecated use {@link CodeGenMetaDataProvider#JSON_FORMAT} */
+    @Deprecated
+    public static final String JSON_FORMAT = CodeGenMetaDataProvider.JSON_FORMAT;
+    /** @deprecated use {@link CodeGenMetaDataProvider#JSON_PATTERN} */
+    @Deprecated
+    public static final String JSON_PATTERN = CodeGenMetaDataProvider.JSON_PATTERN;
+    /** @deprecated use {@link CodeGenMetaDataProvider#JSON_ENUM} */
+    @Deprecated
+    public static final String JSON_ENUM = CodeGenMetaDataProvider.JSON_ENUM;
+    /** @deprecated use {@link CodeGenMetaDataProvider#JSON_MINIMUM} */
+    @Deprecated
+    public static final String JSON_MINIMUM = CodeGenMetaDataProvider.JSON_MINIMUM;
+    /** @deprecated use {@link CodeGenMetaDataProvider#JSON_MAXIMUM} */
+    @Deprecated
+    public static final String JSON_MAXIMUM = CodeGenMetaDataProvider.JSON_MAXIMUM;
 
-    /**
-     * Registers JSON Schema generation attributes for use by the service provider pattern.
-     * Called by CodeGenMetaDataProvider to extend existing MetaData types with JSON Schema-specific attributes.
-     */
+    /** @deprecated use {@link CodeGenMetaDataProvider#registerJsonSchemaAttributes} */
+    @Deprecated
     public static void registerJsonSchemaAttributes(com.metaobjects.registry.MetaDataRegistry registry) {
-        // Object-level JSON Schema attributes
-        registry.findType("object", "base")
-            .optionalAttribute(JSON_SCHEMA_VERSION, "string")
-            .optionalAttribute(JSON_SCHEMA_ID, "string")
-            .optionalAttribute(JSON_TITLE, "string")
-            .optionalAttribute(JSON_DESCRIPTION, "string")
-            // Codegen object-level flags (template conditionals). Formerly registered on
-            // object.pojo; moved to object.base so the entity/value subtypes inherit them
-            // after the pojo/proxy/map subtype registrations were retired (ADR-0005).
-            .optionalAttribute("hasAuditing", "boolean")
-            .optionalAttribute("hasJpa", "boolean")
-            .optionalAttribute("hasValidation", "boolean");
-
-        // Field-level JSON Schema attributes
-        registry.findType("field", "base")
-            .optionalAttribute(JSON_TITLE, "string")
-            .optionalAttribute(JSON_DESCRIPTION, "string")
-            .optionalAttribute(JSON_FORMAT, "string")
-            .optionalAttribute(JSON_PATTERN, "string")
-            .optionalAttribute(JSON_ENUM, "string");
-
-        registry.findType("field", "string")
-            .optionalAttribute(JSON_PATTERN, "string")
-            .optionalAttribute(JSON_FORMAT, "string");
-
-        registry.findType("field", "int")
-            .optionalAttribute(JSON_MINIMUM, "int")
-            .optionalAttribute(JSON_MAXIMUM, "int");
-
-        registry.findType("field", "long")
-            .optionalAttribute(JSON_MINIMUM, "long")
-            .optionalAttribute(JSON_MAXIMUM, "long");
+        CodeGenMetaDataProvider.registerJsonSchemaAttributes(registry);
     }
 }

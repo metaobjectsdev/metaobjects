@@ -1,5 +1,12 @@
 package com.metaobjects.generator.kotlin
 
+// Eject note (ADR-0034 Amendment 8): `mvn metaobjects:eject` copies this file with the generator
+// that calls it. The engine siblings stay in com.metaobjects.generator.kotlin, so each is imported
+// by name — a bare same-package reference would not resolve from the copy.
+import com.metaobjects.generator.kotlin.Fr019SharedEnum
+import com.metaobjects.generator.kotlin.KotlinPoetFileWriter
+import com.metaobjects.generator.kotlin.KotlinTypeMapper
+
 import com.metaobjects.field.EnumField
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.FileSpec

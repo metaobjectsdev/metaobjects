@@ -7,6 +7,8 @@ import com.google.gson.JsonParser;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorRegistry;
 import com.metaobjects.generator.ProjectClassLoaderAware;
+import com.metaobjects.generator.direct.DirectGeneratorBase;
+import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.loader.DirectorySource;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
@@ -314,6 +316,9 @@ public class EjectContractTest {
             if (e.resourcePath == null) continue;
             for (String classname : e.sources()) named.add(root + EjectSupport.simpleNameOf(classname) + ".java");
             for (String runtime : e.runtime) named.add(GeneratorRegistry.EJECT_RUNTIME_RESOURCE_ROOT + runtime + ".java");
+            for (String template : e.resources) {
+                named.add(GeneratorRegistry.EJECT_TEMPLATE_RESOURCE_ROOT + template + EjectSupport.TEMPLATE_EXTENSION);
+            }
         }
         for (String support : GeneratorRegistry.EJECT_SUPPORT) {
             named.add(GeneratorRegistry.EJECT_SUPPORT_RESOURCE_ROOT + support + ".java");
@@ -506,6 +511,11 @@ public class EjectContractTest {
         args.put("testPackage", "com.example.requirements");
         args.put("witnessClass", "com.example.Witnesses");
         args.put("warnUncovered", "false");
+        // The file the single-file generators write: the docs, diagram and schema generators. The
+        // per-object ones read this arg as the name of a file to merge into, so they must not get it.
+        if (generator instanceof DirectGeneratorBase && !(generator instanceof MultiFileDirectGeneratorBase)) {
+            args.put("outputFilename", "contract.out");
+        }
         // The one difference an owned copy's output is allowed: it imports the helper runtime
         // the adopter owns. The packaged generator is pointed at the same package to compare.
         if (packaged) args.put("runtimePackage", OWNED_RUNTIME_PACKAGE);
@@ -526,9 +536,13 @@ public class EjectContractTest {
     public void depthAnUnchangedOwnedCopyEmitsWhatThePackagedGeneratorEmits() throws Exception {
         List<String> silent = new ArrayList<>();
         for (EjectSupport.Entry e : ejectable()) {
-            Path classes = compileAlone(e.stableName, ejectAlone(e.stableName));
+            Path projectDir = ejectAlone(e.stableName);
+            Path classes = compileAlone(e.stableName, projectDir);
             int emitted = 0;
-            try (URLClassLoader cl = new URLClassLoader(new URL[]{classes.toUri().toURL()}, getClass().getClassLoader())) {
+            // The owned classes, and the resources eject wrote beside them: a generator that reads
+            // its page text from the classpath reads the owned copy, whose path no package shares.
+            URL[] ownedUrls = {classes.toUri().toURL(), projectDir.resolve("codegen/src/main/resources/").toUri().toURL()};
+            try (URLClassLoader cl = new URLClassLoader(ownedUrls, getClass().getClassLoader())) {
                 for (Corpus corpus : CORPORA) {
                     String where = e.stableName + " over " + corpus.label;
                     Generator packaged = (Generator) Class.forName(e.classname).getDeclaredConstructor().newInstance();

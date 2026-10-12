@@ -1,5 +1,6 @@
 package com.metaobjects.generator.direct.metadata.ai;
 
+import com.metaobjects.generator.CodeGenMetaDataProvider;
 import com.metaobjects.generator.direct.metadata.json.SingleJsonDirectGeneratorBase;
 import com.metaobjects.generator.direct.metadata.json.JsonDirectWriter;
 import com.metaobjects.loader.MetaDataLoader;
@@ -144,47 +145,42 @@ public class MetaDataAIDocumentationGenerator extends SingleJsonDirectGeneratorB
 
     ///////////////////////////////////////////////////
     // Service Provider Pattern Registration
+    //
+    // The attributes and their registration live in CodeGenMetaDataProvider, which the loader
+    // consults, so a copy of this generator made by `mvn metaobjects:eject` owns emit code only.
+    // These names stay here for existing callers.
 
-    // AI Documentation generation attribute constants
-    public static final String AI_VERSION = "aiVersion";
-    public static final String AI_DESCRIPTION = "aiDescription";
-    public static final String AI_BUSINESS_RULE = "aiBusinessRule";
-    public static final String AI_USAGE_CONTEXT = "aiUsageContext";
-    public static final String AI_VALIDATION_RULES = "aiValidationRules";
-    public static final String AI_EXAMPLES = "aiExamples";
-    public static final String AI_CONSTRAINTS = "aiConstraints";
-    public static final String AI_EXTENSION_GUIDANCE = "aiExtensionGuidance";
-    public static final String AI_CROSS_LANGUAGE_INFO = "aiCrossLanguageInfo";
+    /** @deprecated use {@link CodeGenMetaDataProvider#AI_VERSION} */
+    @Deprecated
+    public static final String AI_VERSION = CodeGenMetaDataProvider.AI_VERSION;
+    /** @deprecated use {@link CodeGenMetaDataProvider#AI_DESCRIPTION} */
+    @Deprecated
+    public static final String AI_DESCRIPTION = CodeGenMetaDataProvider.AI_DESCRIPTION;
+    /** @deprecated use {@link CodeGenMetaDataProvider#AI_BUSINESS_RULE} */
+    @Deprecated
+    public static final String AI_BUSINESS_RULE = CodeGenMetaDataProvider.AI_BUSINESS_RULE;
+    /** @deprecated use {@link CodeGenMetaDataProvider#AI_USAGE_CONTEXT} */
+    @Deprecated
+    public static final String AI_USAGE_CONTEXT = CodeGenMetaDataProvider.AI_USAGE_CONTEXT;
+    /** @deprecated use {@link CodeGenMetaDataProvider#AI_VALIDATION_RULES} */
+    @Deprecated
+    public static final String AI_VALIDATION_RULES = CodeGenMetaDataProvider.AI_VALIDATION_RULES;
+    /** @deprecated use {@link CodeGenMetaDataProvider#AI_EXAMPLES} */
+    @Deprecated
+    public static final String AI_EXAMPLES = CodeGenMetaDataProvider.AI_EXAMPLES;
+    /** @deprecated use {@link CodeGenMetaDataProvider#AI_CONSTRAINTS} */
+    @Deprecated
+    public static final String AI_CONSTRAINTS = CodeGenMetaDataProvider.AI_CONSTRAINTS;
+    /** @deprecated use {@link CodeGenMetaDataProvider#AI_EXTENSION_GUIDANCE} */
+    @Deprecated
+    public static final String AI_EXTENSION_GUIDANCE = CodeGenMetaDataProvider.AI_EXTENSION_GUIDANCE;
+    /** @deprecated use {@link CodeGenMetaDataProvider#AI_CROSS_LANGUAGE_INFO} */
+    @Deprecated
+    public static final String AI_CROSS_LANGUAGE_INFO = CodeGenMetaDataProvider.AI_CROSS_LANGUAGE_INFO;
 
-    /**
-     * Registers AI Documentation generation attributes for use by the service provider pattern.
-     * Called by CodeGenMetaDataProvider to extend existing MetaData types with AI documentation-specific attributes.
-     */
+    /** @deprecated use {@link CodeGenMetaDataProvider#registerAIDocAttributes} */
+    @Deprecated
     public static void registerAIDocAttributes(com.metaobjects.registry.MetaDataRegistry registry) {
-        // Object-level AI Documentation attributes
-        registry.findType("object", "base")
-            .optionalAttribute(AI_VERSION, "string")
-            .optionalAttribute(AI_DESCRIPTION, "string")
-            .optionalAttribute(AI_BUSINESS_RULE, "string")
-            .optionalAttribute(AI_USAGE_CONTEXT, "string")
-            .optionalAttribute(AI_EXTENSION_GUIDANCE, "string")
-            .optionalAttribute(AI_CROSS_LANGUAGE_INFO, "string");
-
-        // Field-level AI Documentation attributes
-        registry.findType("field", "base")
-            .optionalAttribute(AI_DESCRIPTION, "string")
-            .optionalAttribute(AI_BUSINESS_RULE, "string")
-            .optionalAttribute(AI_USAGE_CONTEXT, "string")
-            .optionalAttribute(AI_VALIDATION_RULES, "string")
-            .optionalAttribute(AI_EXAMPLES, "string")
-            .optionalAttribute(AI_CONSTRAINTS, "string");
-
-        registry.findType("field", "string")
-            .optionalAttribute(AI_EXAMPLES, "string")
-            .optionalAttribute(AI_VALIDATION_RULES, "string");
-
-        registry.findType("field", "int")
-            .optionalAttribute(AI_CONSTRAINTS, "string")
-            .optionalAttribute(AI_EXAMPLES, "string");
+        CodeGenMetaDataProvider.registerAIDocAttributes(registry);
     }
 }
