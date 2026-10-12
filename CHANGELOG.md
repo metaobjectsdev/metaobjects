@@ -161,9 +161,10 @@ generator catalog and the Atlas evaluation are 1.2 work.
   - **The Java `plantuml`, `html-docs`, `ai-docs` and `json-schema` generators ship eject
     source**, each with the writer that emits its file. `SingleHtmlDirectGeneratorBase` now
     drives the new `HtmlDirectWriter`, as the JSON base drives `JsonDirectWriter`, so a copied
-    HTML generator pairs with the copy of its writer. A subclass of the base that overrode
-    `getWriter` or `writeHtml` with `MetaDataHtmlDocumentationWriter` in the signature needs
-    `HtmlDirectWriter` there. The attributes the JSON Schema and AI documentation generators
+    HTML generator pairs with the copy of its writer. A subclass that overrode
+    `writeHtml(MetaDataHtmlDocumentationWriter)` keeps being called, through a deprecated bridge the
+    base still calls; one that returns the stock writer from `getWriter` still compiles. A subclass
+    compiled against 1.0.x needs a recompile, because the method's return type changed. The attributes the JSON Schema and AI documentation generators
     add to the metamodel moved to `CodeGenMetaDataProvider`, where the loader registers them,
     so a copy owns emit code only; the old static methods and constants on the two generators
     stay as deprecated forwarders.

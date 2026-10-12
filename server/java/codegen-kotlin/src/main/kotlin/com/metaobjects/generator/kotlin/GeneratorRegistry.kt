@@ -77,7 +77,7 @@ enum class GeneratorLayer {
  * at run time, never via the constructor), so calling it must NOT throw —
  * `--list` relies on that.
  */
-data class GeneratorInfo(
+data class GeneratorInfo @JvmOverloads constructor(
     /** Stable, cross-port-consistent id. Equals the registry map key. */
     val name: String,
     /** One-line (no newline) human description for `--list`. */
