@@ -21,10 +21,11 @@
 // customize:     which objects get a page (the `filter` option, and the two walks in
 //                `generate`), where a page lands (`docPageOutputPath`), which template a
 //                page renders (`ENTITY_PAGE_REF`, `TEMPLATE_PAGE_REF`) and the overview
-//                page (`renderIndexPage`, all of it). Stays in the package:
+//                page (`renderIndexPage`, all of it). Copied beside it, so yours too:
 //                `buildEntityDocData` and `buildTemplateDocData`, which read the model into
-//                the page payloads; `renderMermaidErBlock`, the ER diagram; and the page
-//                templates themselves, which you override by file as above.
+//                the page payloads, and `renderMermaidErBlock`, the ER diagram. The page
+//                templates (Mustache files) stay in the package; you override them by file
+//                as above.
 // composes-with: api-docs (each model page links to its api page, and back). `meta docs`
 //                tells both generators where the other's pages are, so the links agree.
 //
@@ -35,22 +36,21 @@
 // `meta docs` and `meta verify --docs` run THIS generator for the model surface in place of
 // the packaged one. Documentation has one door, so `meta gen` never runs it.
 //
-// Everything below imports ONLY from `@metaobjectsdev/codegen-ts` (the stable engine) and
-// `@metaobjectsdev/metadata` (the node types and the template type name).
+// Everything below imports the engine from `@metaobjectsdev/codegen-ts` (the generator base, the
+// model walks, the naming tables), the node types and the template type name from
+// `@metaobjectsdev/metadata`, and the code that writes the pages from `../generators/` and
+// `../templates/`. `meta eject` copies those modules into your project, under
+// `codegen/templates/`, and your copy of this file imports them from there: they are yours too.
 
 import { TYPE_TEMPLATE, type MetaObject, type MetaRoot } from "@metaobjectsdev/metadata";
 import {
   apiSurfaceHref,
   assertNoDuplicateDocPaths,
-  buildEntityDocData,
-  buildTemplateDocData,
   docPageHref,
   docPageNode,
   docPageOutputPath,
   isReport,
   projectProvider,
-  renderDocPage,
-  renderMermaidErBlock,
   servedReport,
   type DocPageNode,
   type DocPagePlacement,
@@ -59,6 +59,10 @@ import {
   type GeneratorFactory,
   type OutputLayout,
 } from "@metaobjectsdev/codegen-ts";
+import { buildEntityDocData } from "../generators/docs-data-builder.js";
+import { buildTemplateDocData } from "../generators/template-doc-builder.js";
+import { renderDocPage } from "../render-engine/doc-page.js";
+import { renderMermaidErBlock } from "../templates/mermaid-er.js";
 
 export interface DocsFileOpts {
   /** Which objects get a page. Templates are not objects and always get theirs. */

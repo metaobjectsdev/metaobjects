@@ -15,8 +15,8 @@
 // emits:         <target>/<Entity>.hooks.ts, plus the DB-free <Entity>.meta.ts descriptor
 //                the hooks module imports from. Emissions byte-identical to another UI
 //                generator's copy of the same descriptor collapse to one file (#266).
-// customize:     this generator is YOURS. `renderHooksFile` (exported from
-//                @metaobjectsdev/codegen-ts-tanstack) produces the hooks body — wrap it,
+// customize:     this generator is YOURS. `renderHooksFile` (copied beside this
+//                file, `templates/hooks-file.ts`) produces the hooks body — wrap it,
 //                prepend to it, or replace the call entirely with your own renderer.
 // composes-with: entity.ts (imports the table/schemas these hooks fetch/validate against).
 
@@ -27,17 +27,18 @@ import {
   type GeneratorFactory,
   formatTs,
   entityOutputPath,
-  entityMetaFileName,
-  renderEntityMetaFile,
   servesClientHooks,
-  isTphSubtype,
- 
   withClientDirective,
   namesRef,
   namesConstArg,
   effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
-import { renderHooksFile } from "@metaobjectsdev/codegen-ts-tanstack";
+import { renderHooksFile } from "../templates/hooks-file.js";
+import {
+  entityMetaFileName,
+  renderEntityMetaFile,
+} from "@metaobjectsdev/codegen-ts/templates/entity-meta-file";
+import { isTphSubtype } from "@metaobjectsdev/codegen-ts/templates/zod-validators";
 
 export interface TanstackQueryOpts {
   filter?: (entity: MetaObject) => boolean;

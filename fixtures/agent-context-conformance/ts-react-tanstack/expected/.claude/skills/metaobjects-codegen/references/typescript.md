@@ -126,16 +126,17 @@ name. Import by default and eject to customize: an owned copy you never change o
 behind the reference. (`entityFile` / `queriesFile` / `routesFile` / `barrel` were removed
 from that subpath at 1.0 and restored in 1.1, so on a 1.0.x install an owned copy is the
 only path for those four.) The engine primitives come from the package main entry,
-`@metaobjectsdev/codegen-ts`. Three entries cannot be ejected and are `package-only` in
-`meta gen --list`: the `template` primitive, which has no emit logic of its own, and
-`requirements` and `agent-docs`, the pages `meta docs` writes, which do not ship a
-reference template yet.
+`@metaobjectsdev/codegen-ts`. One entry cannot be ejected and is `package-only` in
+`meta gen --list`: the `template` primitive, which has no emit logic of its own. An ejected
+generator comes with the template modules that write its output (`codegen/templates/`); the
+engine stays in the package.
 
-Three ejectable entries behave differently from the rest:
+Some ejectable entries behave differently from the rest:
 
-- **`docs` and `api-docs` are run by `meta docs`, not `meta gen`.** `meta docs` writes
-  both with nothing wired; never put a docs generator, packaged or owned, in `generators`.
-  To change the pages, `meta eject docs` (or `api-docs`) and list the copy in the docs
+- **`docs`, `api-docs`, `requirements` and `agent-docs` are run by `meta docs`, not `meta gen`.**
+  `meta docs` writes all four with nothing wired; never put a docs generator in `generators`
+  (`meta gen` skips `docs` and `api-docs`, and an owned copy of any of the four). To change the pages, `meta eject docs` (or `api-docs`,
+  `requirements`, `agent-docs`) and list the copy in the docs
   block, `docs: { generators: [docsFile()] }`: it carries a `docsSurface` marker, and
   `meta docs` and `meta verify --docs` run it in place of the packaged one. To change only
   a page's wording, put your own `templates/docs/entity-page.md.mustache` in the project
@@ -143,10 +144,11 @@ Three ejectable entries behave differently from the rest:
 - **The ER diagram comes from `meta docs`** (overview page, and each entity's page). The
   standalone `mermaidErDiagram()` / `"mermaid-er"` generator was removed in 1.1; a config
   that still wires it fails with a message saying so. Remove it and run `meta docs`.
-- **`shared-model` ejects as a thin generator.** The copy owns which source files may
-  contribute and where the published version comes from. The artifact, its hash and the
-  manifest a consumer's `meta deps sync` verifies stay in the package
-  (`buildSharedModel`, `renderSharedModelFiles`); keep calling both.
+- **`shared-model` ejects with its artifact builder.** The copy decides which source files
+  may contribute and where the published version comes from. The artifact, its hash and the
+  manifest a consumer's `meta deps sync` verifies are written by `buildSharedModel` and
+  `renderSharedModelFiles`, copied beside it: change what they do and you stop agreeing with
+  every consumer.
 
 In an owned generator, read the project's own files through `ctx.inputRoot`. Under
 `meta verify --codegen` the run writes into a temporary tree and `ctx.projectRoot` is that
@@ -160,7 +162,7 @@ skipped stub. Options: `filter` (a predicate over `subType`, `level`, `status`, 
 (`"concern"`, the default, or `"member"`; anything else is refused), `warnUncovered`,
 `renderers` / `resolveRenderer`. `meta eject requirement-tests` copies the generator and
 its default stub renderer into `codegen/generators/requirement-tests.ts`; the requirement
-walk, each test's identity and the claim digest stay in the package. The requirement
+walk, each test's identity and the claim digest are engine and stay in the package. The requirement
 checks in `meta verify` are core and are not ejectable.
 
 The table below is a per-emission reference, NOT the selection surface. Select with

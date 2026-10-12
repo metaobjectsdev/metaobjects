@@ -30,8 +30,11 @@
 // is the application's decision. The filter IS the policy declaration, which is why there
 // is no opt-out vocabulary: a requirement no generator matches expects no stub.
 //
-// Everything below imports ONLY from `@metaobjectsdev/codegen-ts` (the stable engine) and
-// `@metaobjectsdev/metadata` (the named constants of the requirement vocabulary).
+// Everything below imports the engine from `@metaobjectsdev/codegen-ts` (the generator base and the
+// requirement walk), the named constants of the requirement vocabulary from
+// `@metaobjectsdev/metadata`, and the default stub renderer from `../templates/`. `meta eject`
+// copies that module into your project, under `codegen/templates/`, and your copy of this file
+// imports it from there: it is yours too.
 
 import {
   GENERATED_HEADER,

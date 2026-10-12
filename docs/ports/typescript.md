@@ -60,7 +60,12 @@ and `configKeys` on each row, and the text listing prints neither. Import the on
 want from their package: nothing is copied, and an upgrade is how their fixes arrive. To change
 what one emits, `meta eject <name>` copies its reference template into
 `codegen/generators/` (ADR-0034 scaffold-and-own — yours to edit) and prints the local
-import to swap in; `meta gen` then runs that copy, not the package's.
+import to swap in; `meta gen` then runs that copy, not the package's. The copy comes with
+the code that writes the output: the template modules the generator calls land in
+`codegen/templates/`, and what stays in the package is the engine (the generator base, the
+model walks, the naming and type-mapping tables). Every stock generator ejects this way
+except the `template` primitive, which has no emit logic of its own
+([what the copy holds](../features/own-your-codegen.md#what-the-copy-holds)).
 
 ```ts
 // metaobjects.config.ts
@@ -335,9 +340,9 @@ source, or an abstract one, generates nothing. The contract is in
 `model/cubes/<Cube>.yml` for each concrete, table-backed entity that declares dimensions,
 measures or segments (plus the join-target and alias cubes its `@via` dimensions need), with a
 rollup for each served report. It is a reference helper and opt-in: `meta eject cube-model`
-copies it into `codegen/generators/cube-model.ts`, and `meta verify --codegen` drift-checks the
-files. The mapping (`buildCubeModel`) and the YAML writer (`renderCubeYaml`) stay in the
-package. Only TypeScript has an exporter; the files are language-neutral YAML. Point the
+copies it into `codegen/generators/cube-model.ts`, with the mapping (`buildCubeModel`) and the
+YAML writer (`renderCubeYaml`) beside it in `codegen/templates/cube/`, and `meta verify --codegen`
+drift-checks the files. Only TypeScript has an exporter; the files are language-neutral YAML. Point the
 generator at the Cube project with a target, and pass `dialect` when the config's is not
 `postgres` or `mysql`:
 
@@ -734,7 +739,8 @@ if not, `npm i zod`.
 `retired` one a skipped stub. It is a reference helper and a recommended approach, not a
 contract. Run it from the package, or own it: `meta eject requirement-tests` copies the
 generator and its default stub renderer into `codegen/generators/requirement-tests.ts`. The
-requirement checks in `meta verify` are core and are not ejectable.
+requirement walk, each test's identity and the claim digest are engine, shared with the
+requirement checks in `meta verify`, which are core and are not ejectable.
 
 ```ts
 // metaobjects.config.ts

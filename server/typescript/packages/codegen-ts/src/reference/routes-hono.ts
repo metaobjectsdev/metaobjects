@@ -37,7 +37,8 @@
 //
 // The composition (`renderRoutesHono`) is the relocated body of the engine's
 // `renderRoutesFileHono` — byte-identical output to start, now YOURS to change. It imports
-// only public engine primitives.
+// the engine from the package and the renderers from `../templates/`, which `meta eject`
+// copies beside it.
 
 // ts-poet combinators come from the engine package, NOT a bare "ts-poet" import: the Code
 // fragments composed here must share ONE ts-poet instance with the engine's.
@@ -53,17 +54,13 @@ import {
   type CrudVerb,
   authSeamJsDoc,
   exposeLine,
-  isTphSubtype,
   isProjection,
   isWriteThrough,
   isReport,
   itemRouteField,
   reportDecimalColumns,
-  DEFAULT_ID_FIELD,
   servesReadApi,
   formatTs,
-  renderRoutesIndex,
-  routesIndexFileName,
   entityOutputPath,
   effectivePackage,
   entityModuleSpecifier,
@@ -73,6 +70,9 @@ import {
   GENERATED_EDIT_NOTE,
   sidecarLine,
 } from "@metaobjectsdev/codegen-ts";
+import { DEFAULT_ID_FIELD } from "../templates/queries.js";
+import { renderRoutesIndex, routesIndexFileName } from "../templates/routes-index.js";
+import { isTphSubtype } from "../templates/zod-validators.js";
 
 // --- composition (OWNED) — assembles one <Entity>.routes.hono.ts. Change this to change the output. ---
 // Dispatch: a projection or served report → mountReadOnlyCrudRoutes (GET list, + GET :id

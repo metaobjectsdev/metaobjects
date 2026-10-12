@@ -39,6 +39,7 @@ import {
   RUNTIME_ENTRIES, resolveRuntimePackage, runtimeClosure, runtimeCopyStatus, runtimeInstall,
   type RuntimeCopyRow,
 } from "./runtime-eject.js";
+import { closureOf, packagedTemplates, templateCopyStatus, type TemplateCopyRow } from "./template-eject.js";
 import { DOCS_DOOR_COMMAND, isNeutralGeneratorName, isPackagedDocsGenerator, OWNED_RUNTIME_DIR } from "@metaobjectsdev/codegen-ts";
 import { readPackageManifest, declaredDependencyNames } from "./package-manifest.js";
 import { describeError } from "./error-text.js";
@@ -95,6 +96,12 @@ export interface GeneratorCatalogRow {
      * imports no adapter, or the project owns none of it.
      */
     runtimeCopy?: RuntimeCopyRow[];
+    /**
+     * ADR-0034 Amendment 8: the template modules this generator calls, as far as the project
+     * owns a copy of them under `codegen/templates/` — each file compared to what the
+     * installed packages would write there. Absent when the project owns none of them.
+     */
+    templateCopy?: TemplateCopyRow[];
   };
   project?: {
     /** Wired in this project's `generators: [...]`. */
@@ -297,11 +304,40 @@ async function ownedRuntimeByGenerator(
   return out;
 }
 
+/**
+ * Per OWNED generator, the project's copies of the template modules it calls. Attributed by
+ * what each generator reaches and only for generators the project owns, as the adapter copy
+ * is: `queries` and `entity` share modules, and a project that ejected only one of them
+ * must not be told it owns the other's.
+ */
+async function ownedTemplatesByGenerator(
+  projectRoot: string,
+  ownedNames: ReadonlySet<string>,
+): Promise<Map<string, TemplateCopyRow[]>> {
+  const out = new Map<string, TemplateCopyRow[]>();
+  const status = await templateCopyStatus(projectRoot, packagedTemplates());
+  if (status.length === 0) return out;
+  for (const name of ownedNames) {
+    let reached: Set<string>;
+    try {
+      reached = new Set(closureOf(name).templates.map((f) => f.path));
+    } catch {
+      continue; // not a reference generator
+    }
+    const files = status.filter((r) => reached.has(r.path));
+    if (files.length > 0) out.set(name, files);
+  }
+  return out;
+}
+
 export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promise<CatalogRow[]> {
   const rows: CatalogRow[] = [];
   const runtimeCopies = opts.project === undefined
     ? new Map<string, { files: RuntimeCopyRow[]; packages: string[] }>()
     : await ownedRuntimeByGenerator(opts.project.projectRoot, opts.project.ownedNames);
+  const templateCopies = opts.project === undefined
+    ? new Map<string, TemplateCopyRow[]>()
+    : await ownedTemplatesByGenerator(opts.project.projectRoot, opts.project.ownedNames);
   const refusedNames = new Set(
     (opts.project?.config.generators ?? [])
       .filter((spec): spec is string => typeof spec === "string" && isNeutralGeneratorName(spec)),
@@ -357,6 +393,7 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
         ejectable: entry.ejectable,
         owned: opts.project === undefined ? null : opts.project.ownedNames.has(entry.name),
         ...(owned !== undefined ? { runtimeCopy: owned.files } : {}),
+        ...(templateCopies.has(entry.name) ? { templateCopy: templateCopies.get(entry.name)! } : {}),
       },
     };
 
@@ -550,6 +587,15 @@ export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
         differing === 0
           ? "owned runtime: identical to the package"
           : `owned runtime: ${differing} file(s) DIFFER from the package — meta eject --list`,
+      );
+    }
+    if (r.source.templateCopy !== undefined) {
+      // The template modules this generator calls, compared to the packages.
+      const differing = r.source.templateCopy.filter((c) => c.verdict === "differs").length;
+      marks.push(
+        differing === 0
+          ? "owned templates: identical to the package"
+          : `owned templates: ${differing} file(s) DIFFER from the package — meta eject --list`,
       );
     }
     if (probed && r.project?.wouldEmit !== null && r.project?.wouldEmit !== undefined) {

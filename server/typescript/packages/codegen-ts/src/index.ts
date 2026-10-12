@@ -72,7 +72,7 @@ export { dbEmittingObjects, missingDialectMessage } from "./db-emitting.js";
 export { apiLabel } from "./generators/api-label.js";
 
 export type { ColumnSpec, DefaultExpr } from "./column-mapper.js";
-export { mapColumnType, PG_IDENTITY_CAPABLE_FNS } from "./column-mapper.js";
+export { mapColumnType, isRequired, PG_IDENTITY_CAPABLE_FNS } from "./column-mapper.js";
 
 export type { PkInfo } from "./pk-resolver.js";
 export { buildPkMap } from "./pk-resolver.js";
@@ -193,6 +193,10 @@ export { generatableObjects, hasWritableRdbSource, hasAnyRdbSource, isReport, is
 export { dialectModule, dbTypeBlock, supportsReturning, normalizeTimestampMode, type DialectModule } from "./dialect-module.js";
 export { renderSharedEnumsFile, SHARED_ENUMS_BASENAME } from "./templates/enums-file.js";
 
+// ADR-0034 Amendment 8 — the modules of the codegen packages an owned generator keeps
+// importing from the package. `meta eject` copies every OTHER module a reference reaches.
+export { ENGINE_MODULES } from "./engine-surface.js";
+
 // ADR-0034 scaffold-and-own — reader for the copyable reference generators in
 // `src/reference/*.ts`. `meta init` uses this to copy them into the consumer's repo.
 export { resolveReferenceRoot, readReferenceTemplate, REFERENCE_GENERATOR_NAMES, makeReferenceReader } from "./reference-templates.js";
@@ -209,7 +213,7 @@ export type { ReferenceGeneratorName } from "./reference-templates.js";
 // with its own import header (duplicate `import { eq } from "drizzle-orm"`,
 // TS2300 on the adopter's first tsc). Gated by
 // cli/test/gen-split-tree-single-import.test.ts.
-export { code, imp, joinCode } from "ts-poet";
+export { code, imp, joinCode, Import } from "ts-poet";
 export type { Code } from "ts-poet";
 
 export {
@@ -259,7 +263,7 @@ export { renderQueriesFile } from "./templates/queries-file.js";
 // #348 — which CRUD verbs a generated routes file mounts. Public because an OWNED
 // routes generator (ADR-0034) composes the same render call and needs the same option.
 export { CRUD_VERBS, TPH_POLYMORPHIC_VERBS, resolveExpose, intersectExpose, exposeLine, authSeamJsDoc } from "./routes-expose.js";
-export type { CrudVerb, ExposeOption } from "./routes-expose.js";
+export type { CrudVerb, ExposeOption, RoutesExpose } from "./routes-expose.js";
 export { renderRoutesFile } from "./templates/routes-file.js";
 export { renderRoutesFileHono } from "./templates/routes-file-hono.js";
 export { renderRoutesIndex, routesIndexFileName, type RoutesIndexFlavor } from "./templates/routes-index.js";
@@ -283,6 +287,8 @@ export {
   columnExpr,
   type ObjectNames,
   type FieldNames,
+  type KeyNames,
+  type SourceNames,
   type SuperNames,
 } from "./names.js";
 export { renderProjectionDecl } from "./templates/projection-decl.js";
@@ -362,7 +368,10 @@ export { agentDocsFile } from "./generators/agent-docs-file.js";
 export type { AgentDocsFileOpts } from "./generators/agent-docs-file.js";
 export type {
   AgentSchemaInput,
+  SchemaCheckLike,
   SchemaColumnLike,
+  SchemaFkLike,
+  SchemaIndexLike,
   SchemaTableLike,
   SchemaViewLike,
 } from "./generators/agent-schema-input.js";
@@ -483,3 +492,56 @@ export type {
   CubeViewIncludeSpec,
   CubeViewSpec,
 } from "./cube/cube-model-spec.js";
+
+// ADR-0034 Amendment 8 — the ENGINE surface a handed-over template module keeps importing.
+// `meta eject` copies the template modules a reference generator calls into the project and
+// points every import of an engine module here, so each name a copy takes from the engine is
+// exported. The modules behind them are listed in `ENGINE_MODULES` (engine-surface.ts).
+//
+// Naming: the function-name tables the queries composers share.
+export {
+  findByIdFnName,
+  listFnName,
+  createFnName,
+  insertPreservingFnName,
+  updateFnName,
+  deleteByIdFnName,
+  reverseFinderFnName,
+  reverseFinderInFnName,
+  singleRowVarName,
+  variableNameFromEntity,
+} from "./naming.js";
+// Physical names and the shared / provided enum resolution.
+export { indexNameExpr, sourceSchemaExpr } from "./names.js";
+export { intValueMapOf, zodEnumExpr } from "./enum-meta.js";
+export { materializedSharedEnums, sharedEnumForField } from "./enum-shared.js";
+export type { SharedEnum } from "./enum-shared.js";
+export { providedEnumImportSpecifier, sharedEnumImportSpecifier } from "./enum-import.js";
+export { valueObjectModuleSpecifier } from "./import-path.js";
+// The descriptor the `<Entity>` const and the agent UI page both describe a field by.
+export { buildEntityUiDescriptor, buildUiFieldDescriptor } from "./templates/entity-ui-descriptor.js";
+export type { EntityUiDescriptor, UiFieldDescriptor, UiRule } from "./templates/entity-ui-descriptor.js";
+export { fieldDeclaringPackage, withExt } from "./render-context.js";
+export type { EnumIntCustomType } from "./column-mapper.js";
+export { responseFormatOf } from "./templates/find-inbound.js";
+// The projection and report lowering `meta migrate` also runs, which the Cube exporter and
+// the projection declaration walk the same way.
+export {
+  encodeIntEnumFilterValue,
+  hopReferenceIdentity,
+  joinColumnFor,
+  packageOf,
+  projectionViewName,
+  projectionViewRole,
+  projectionViewSchema,
+  shortAliasFor,
+  sourceColumnNameFor,
+  walkViaPath,
+} from "./projection/extract-view-spec.js";
+export type { Path, PathStep } from "./projection/extract-view-spec.js";
+export { dimensionOfField, ratioOperand, resolveAggregate, resolveDimensionViaPath } from "./projection/report-resolve.js";
+export { isRelativeNow } from "./projection/report-spec.js";
+export { andOf, cond, literal, mysqlTupleCount, q, ref, reportScope, resolveReportFilter } from "./projection/report-sql.js";
+export type { SqlRenderer } from "./projection/report-sql.js";
+export type { ReportDialect } from "./projection/time-sql.js";
+export type { ViewFilterClause } from "./projection/view-spec.js";

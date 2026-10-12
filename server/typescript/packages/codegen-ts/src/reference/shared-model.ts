@@ -19,28 +19,31 @@
 // customize:     which of your source files may contribute (`files`, default the run's
 //                own), where the published version comes from (`nearestPackageVersion`
 //                below reads the nearest package.json; swap it for your own source of
-//                truth) and where the files land (`target`). Stays in the package:
-//                `buildSharedModel`, which loads the files, selects by `include` /
+//                truth) and where the files land (`target`). Copied beside it, so yours
+//                too: `buildSharedModel`, which loads the files, selects by `include` /
 //                `exclude` (never `requirement.*` or `template.*`), refuses a selection
 //                that is not closed or that needs vocabulary a consumer does not ship, and
 //                serializes it; and `renderSharedModelFiles`, which names the two files,
 //                hashes the artifact and writes the manifest. Those are what a consumer's
 //                sync checks, so a copy that changed them would publish something a
-//                consumer refuses, or accepts and cannot load.
+//                consumer refuses, or accepts and cannot load: change them only if you
+//                mean to stop agreeing with every consumer.
 // composes-with: nothing. It reads your metadata files, not another generator's output.
 //
-// Everything below imports ONLY from `@metaobjectsdev/codegen-ts` (the stable engine).
+// Everything below imports the engine from `@metaobjectsdev/codegen-ts` (the generator base) and
+// the artifact builder from `../shared-model/`. `meta eject` copies that module into your
+// project, under `codegen/templates/`, and your copy of this file imports it from there: it is
+// yours too.
 
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
-  buildSharedModel,
   perModel,
-  renderSharedModelFiles,
   type EmittedFile,
   type GenContext,
   type Generator,
 } from "@metaobjectsdev/codegen-ts";
+import { buildSharedModel, renderSharedModelFiles } from "../shared-model/build-shared-model.js";
 
 export interface SharedModelFileOpts {
   /** The dependency key a consumer will `meta deps sync` under. Also the artifact's

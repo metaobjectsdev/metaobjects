@@ -111,9 +111,10 @@ export interface GenContext {
   warn: (msg: string) => void;
 }
 
-/** The `meta docs` surfaces an owned generator can take over (`Generator.docsSurface`). The
- *  `requirements` and `agent` surfaces are not generators in the catalog and stay packaged. */
-export type OwnedDocsSurface = "model" | "api";
+/** The `meta docs` surfaces an owned generator can take over (`Generator.docsSurface`): the
+ *  per-object pages (`model`), the reference of the generated API (`api`), the requirement
+ *  ledger (`requirements`) and the pages written for a coding agent (`agent`). */
+export type OwnedDocsSurface = "model" | "api" | "requirements" | "agent";
 
 export interface Generator {
   /** kebab-case identifier; surfaces in diagnostics + drift logs. */
@@ -148,13 +149,16 @@ export interface Generator {
   mountsRoutes?: { readonly expose?: ExposeOption };
   /** Marks a generator that `meta docs` runs for one of its surfaces IN PLACE OF the
    *  packaged one: `"model"` for the per-object pages and their index, `"api"` for the
-   *  reference of the generated API. It is how an owned (ejected) docs generator is reached:
+   *  reference of the generated API, `"requirements"` for the ledger and `"agent"` for the
+   *  pages an agent reads before it touches a tier. It is how an owned (ejected) docs
+   *  generator is reached:
    *  list it in `docs: { generators: [...] }` in metaobjects.config.ts, and `meta docs` and
    *  `meta verify --docs` read it there by this marker (`docsDoorGenerators`). It does not
    *  go in the top-level `generators`: `meta gen` does not run documentation (ADR-0021 D1,
    *  ADR-0025), and skips a generator carrying this marker with a warning that says where
-   *  it belongs. The packaged `docsFile()` / `apiDocsFile()` do not carry it: they are what
-   *  `meta docs` runs when nothing is listed, and need no listing. */
+   *  it belongs. The packaged `docsFile()` / `apiDocsFile()` / `requirementsFile()` /
+   *  `agentDocsFile()` do not carry it: they are what `meta docs` runs when nothing is
+   *  listed, and need no listing. */
   docsSurface?: OwnedDocsSurface;
   /** §A6 — marks the generator that emits the <Entity>Names artifact. The runner
    *  aggregates this across the suite into ResolvedGenConfig.includeNames, which the

@@ -75,6 +75,31 @@
       "bun": "./src/templates/projection-decl.ts",
       "types": "./dist/templates/projection-decl.d.ts",
       "default": "./dist/templates/projection-decl.js"
+    },
+    "./templates/entity-meta-file": {
+      "bun": "./src/templates/entity-meta-file.ts",
+      "types": "./dist/templates/entity-meta-file.d.ts",
+      "default": "./dist/templates/entity-meta-file.js"
+    },
+    "./templates/field-meta": {
+      "bun": "./src/templates/field-meta.ts",
+      "types": "./dist/templates/field-meta.d.ts",
+      "default": "./dist/templates/field-meta.js"
+    },
+    "./templates/filter-shared": {
+      "bun": "./src/templates/filter-shared.ts",
+      "types": "./dist/templates/filter-shared.d.ts",
+      "default": "./dist/templates/filter-shared.js"
+    },
+    "./templates/queries": {
+      "bun": "./src/templates/queries.ts",
+      "types": "./dist/templates/queries.d.ts",
+      "default": "./dist/templates/queries.js"
+    },
+    "./templates/tph-discriminator": {
+      "bun": "./src/templates/tph-discriminator.ts",
+      "types": "./dist/templates/tph-discriminator.d.ts",
+      "default": "./dist/templates/tph-discriminator.js"
     }
   },
   "files": [

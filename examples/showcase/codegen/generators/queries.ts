@@ -21,9 +21,10 @@
 //                each block; call your own instead to change a verb's body.
 // composes-with: entity.ts (imports the table + InsertSchema it emits).
 //
-// NOTE: the advanced TPH-base + projection variants delegate to the engine's composer
-// (`renderQueriesFile`) — they're rarely customized. To own those too, copy their branches
-// out of the package source. The vanilla path here is byte-identical to the built-in.
+// NOTE: the advanced TPH-base + projection variants delegate to `renderQueriesFile`, which
+// `meta eject` copies beside this file (`codegen/templates/queries-file.ts`) — they are rarely
+// customized, and are yours to change there. The vanilla path here is byte-identical to the
+// built-in.
 
 // ts-poet combinators come from the engine package, NOT a bare "ts-poet" import: the
 // Code sections composed here must share ONE ts-poet instance with the render*
@@ -39,6 +40,17 @@ import {
   type RenderContext,
   dbTypeBlock,
   entityModuleSpecifier,
+  isProjection,
+  isWriteThrough,
+  servesReadApi,
+  formatTs,
+  entityOutputPath,
+  GENERATED_HEADER,
+  GENERATED_EDIT_NOTE,
+  sidecarLine,
+} from "@metaobjectsdev/codegen-ts";
+import { renderQueriesFile } from "../templates/queries-file.js";
+import {
   renderFindByIdFn,
   renderListFn,
   renderCreateFn,
@@ -47,19 +59,9 @@ import {
   renderDeleteByIdFn,
   renderReverseFinderFns,
   reverseFksFor,
-  isTphDiscriminatorBase,
-  isProjection,
-  isWriteThrough,
-  isTphSubtype,
-  servesReadApi,
-  hasAutoSetFields,
-  renderQueriesFile, // engine composer — used for the delegated variants
-  formatTs,
-  entityOutputPath,
-  GENERATED_HEADER,
-  GENERATED_EDIT_NOTE,
-  sidecarLine,
-} from "@metaobjectsdev/codegen-ts";
+} from "../templates/queries.js";
+import { isTphDiscriminatorBase } from "../templates/tph-discriminator.js";
+import { isTphSubtype, hasAutoSetFields } from "../templates/zod-validators.js";
 
 // --- composition (OWNED for the common case) ---
 function renderQueries(obj: MetaObject, ctx: RenderContext): string {

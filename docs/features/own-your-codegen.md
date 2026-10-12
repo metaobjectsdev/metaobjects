@@ -50,7 +50,7 @@ Every stock generator can be used two ways:
 | | Import it | Own a copy |
 |---|---|---|
 | How | `import { entityFile } from "@metaobjectsdev/codegen-ts/generators";` | `meta eject entity`, then `import { entityFile } from "./codegen/generators/entity.js";` |
-| In your repo | the import, nothing else | `codegen/generators/entity.ts`, and for `entity`, `routes` and `routes-hono` the HTTP adapter source under `codegen/runtime/` |
+| In your repo | the import, nothing else | `codegen/generators/entity.ts`, the template modules it calls under `codegen/templates/`, and for `entity`, `routes` and `routes-hono` the HTTP adapter source under `codegen/runtime/` |
 | An upstream fix | arrives when you upgrade the package | arrives when you merge it into your copy |
 | Changing what it emits | only through its options (`filter`, `target`, `expose`, …) | edit the file |
 | After a package upgrade | output can change; `meta verify --codegen` reports it until you run `meta gen` | output changes only when your copy does |
@@ -82,6 +82,58 @@ keeps its name in the copy, so the change to your config is one import line, and
 `meta eject` prints it. Replace the package import; a second import beside it leaves
 `generators` bound to the packaged generator and your edits do nothing.
 
+### What the copy holds
+
+An owned generator owns **everything that writes its output**, not the decisions alone.
+The generator file chooses which nodes get a file, where it lands and in what order. The
+text of each file is written by template modules, and `meta eject` copies those too: the
+transitive closure of the template modules the generator calls, into `codegen/templates/`,
+the way it copies the HTTP adapter into `codegen/runtime/`.
+
+```text
+codegen/
+  generators/entity.ts          # the generator: what to emit, where, in what order
+  templates/entity-file.ts      # the code that writes each file (and what it calls):
+  templates/zod-validators.ts   #   drizzle-schema, zod-validators, filter-allowlist, …
+  templates/cube/…              # a module from another directory of the package keeps it
+  runtime/drizzle-fastify/…     # the HTTP adapter the emitted routes import
+```
+
+What stays in the package is the **engine**, which decides what there is to emit rather than
+writing it: the generator base and contexts, the model walks (which objects are projections,
+which fields are sortable, which route an entity is served on, which requirements a model
+holds), the naming tables and the type-mapping tables (`names.ts`, `naming.ts`,
+`column-mapper.ts`), and the projection and report lowering that `meta migrate` and
+`meta verify` run. An owned file imports the engine from the package's public entry,
+`@metaobjectsdev/codegen-ts`. The list is `ENGINE_MODULES`, exported from that entry; a module
+that is not on it and that a generator reaches is copied. An owned generator therefore
+imports no packaged module that returns emitted text, and a test ejects each generator alone
+into an empty project to prove it: it compiles as your `tsconfig.codegen.json` checks it and
+writes what the packaged generator writes, byte for byte.
+
+A copy differs from the packaged module in its **import lines only**. A relative import of
+an engine module becomes an import of `@metaobjectsdev/codegen-ts`, a relative import of
+another template module becomes the path to your copy of it, and `ts-poet` becomes the
+engine's own (a copy must build `Code` with the same `ts-poet` the engine uses). Nothing else
+is touched, so "what did upstream change?" is a diff of two files whose body is the same.
+
+- **Two generators that call one module share one copy.** `entity` and `queries` both call
+  `zod-validators`; ejecting the second finds the first's file and leaves it.
+- **Eject never overwrites a file you changed.** `--force` replaces the generator and its
+  template modules, and the report says what it discarded.
+- **`meta eject --list` compares each copy** against what the installed packages would write
+  today: `identical`, `same content, your formatting`, `DIFFERS: N line(s) only in the
+  package, M only in yours`, or `not in the package`, with the `diff -u` command for each
+  that differs. Take an upgrade by merging the package's change into your copy; the two
+  files differ by their import lines alone.
+- **A copy from before 1.1 gets no template modules it would never call.** It imports the
+  renderers from the package, so copying them beside it would be dead code. `meta eject
+  <name> --force` takes the new shape; to keep your changes, merge them into the new file.
+- **The install line follows.** The copies import `@metaobjectsdev/codegen-ts`,
+  `@metaobjectsdev/metadata` and, for the prompt and docs tiers, `@metaobjectsdev/render`;
+  `requirements` also imports `@toon-format/toon`. `meta eject` prints the line, with the
+  range the package declares.
+
 An imported generator is still a reference helper, not a guarantee. Its output is not
 covered by the [compatibility policy](../compatibility-policy.md) and can change in a
 MINOR, which is what receiving fixes on upgrade means. If you need generated output to
@@ -109,7 +161,8 @@ falls behind the reference. To drop one:
      (`git log -p -- codegen/generators/<name>.ts` shows no edit after the eject) or from
      the diff against the reference
      (`diff -u node_modules/@metaobjectsdev/codegen-ts/src/reference/<name>.ts codegen/generators/<name>.ts`
-     shows only upstream changes).
+     shows only upstream changes, and the import lines, which differ by design: a copy
+     imports your project's template modules where the reference imports the package's).
    - **A copy with lines of your own is a customization.** Keep it.
 
    For `entity`, `routes` and `routes-hono`, check the adapter too. Ejecting one also
@@ -126,6 +179,13 @@ falls behind the reference. To drop one:
    generator, because it is what points the generated code at your adapter (its
    `runtimeImport` option), and the packaged generator always imports
    `@metaobjectsdev/runtime-ts`. Stop here for that generator.
+
+   Check the template modules the same way. The text listing marks every file under
+   `codegen/templates/` against what the installed packages write, and a fix to what a
+   generator emits is as often made there as in the generator file. If any file the
+   generator calls is not `identical`, the copy carries a change of yours: keep it.
+   `meta gen --list --format json` carries the same comparison as `source.templateCopy[]` on
+   the generator's row, with a `verdict` per file.
 2. In `metaobjects.config.ts`, replace the local import with the package one. The factory
    name does not change:
 
@@ -134,7 +194,8 @@ falls behind the reference. To drop one:
    +import { queriesFile } from "@metaobjectsdev/codegen-ts/generators";
    ```
 
-3. Delete `codegen/generators/<name>.ts`.
+3. Delete `codegen/generators/<name>.ts`, and the `codegen/templates/` files that no other
+   owned generator calls (`meta eject --list` shows each one).
 4. Run `meta gen`, review the diff, then `meta verify --codegen`.
 
 What the diff in step 4 holds:
@@ -167,26 +228,30 @@ and `agent-docs`, the pages `meta docs` and `meta docs --agent` write, were regi
 the eject census and do not ship a reference template yet (ADR-0034 Amendment 8).
 `meta gen --list` marks all three `package-only`.
 
-Three of the ejectable ones differ from the rest in what runs them or in what the copy may
+Five of the ejectable ones differ from the rest in what runs them or in what the copy may
 change.
 
-### `docs` and `api-docs` are run by `meta docs`
+### `docs`, `api-docs`, `requirements` and `agent-docs` are run by `meta docs`
 
-`meta docs` writes the model pages and the API reference with nothing wired. Eject one of
-the two generators behind it when you want to change which nodes get a page, where a page
-lands, how the overview page is laid out, or which forms of the API reference are written:
+`meta docs` writes the model pages, the API reference, the requirement ledger and the pages
+an agent reads, with nothing wired. Eject one of the four generators behind it when you want
+to change which nodes get a page, where a page lands, how the overview page is laid out,
+which forms of the API reference are written, which files the ledger becomes, or which pages
+an agent is given:
 
 ```bash
-meta eject docs api-docs
+meta eject docs api-docs requirements agent-docs
 ```
 
 ```ts
 import { docsFile } from "./codegen/generators/docs.js";
 import { apiDocsFile } from "./codegen/generators/api-docs.js";
+import { requirementsFile } from "./codegen/generators/requirements.js";
+import { agentDocsFile } from "./codegen/generators/agent-docs.js";
 
 export default defineConfig({
   // …
-  docs: { generators: [docsFile(), apiDocsFile()] },
+  docs: { generators: [docsFile(), apiDocsFile(), requirementsFile(), agentDocsFile()] },
 });
 ```
 
@@ -194,8 +259,8 @@ The copies are listed in the `docs` block, which is `meta docs`'s own config, an
 the top-level `generators`, which is what `meta gen` runs:
 
 - **`meta docs` runs a listed copy in place of the packaged generator.** Each copy carries
-  a `docsSurface` marker (`"model"` for `docs`, `"api"` for `api-docs`) saying which surface
-  it takes over. The summary line of `meta docs` names the generator, so you can see that
+  a `docsSurface` marker (`"model"` for `docs`, `"api"` for `api-docs`, `"requirements"` for
+  `requirements`, `"agent"` for `agent-docs`) saying which surface it takes over. The summary line of `meta docs` names the generator, so you can see that
   your copy ran.
 - **`meta verify --docs` checks against it.** That gate calls `meta docs`, so an edit to
   the copy shows up as drift in the committed pages until you run `meta docs` again.
@@ -211,15 +276,22 @@ the top-level `generators`, which is what `meta gen` runs:
 - **`meta gen --list` shows it.** A copy listed in the docs block marks its row
   ``WIRED in `docs.generators` `` (`project.wiredInDocsDoor` in `--format json`).
 
-You can eject one and not the other. The two page sets link to each other, so `meta docs`
-tells both generators the same facts on `ctx.docsDoor`: the api surfaces from your `docs:`
-config, the directory of the api surface being written, and whether the model pages are
-written. A copy reads them there and takes no options for them.
+You can eject any of them and not the others. The model and api page sets link to each
+other, so `meta docs` tells both generators the same facts on `ctx.docsDoor`: the api
+surfaces from your `docs:` config, the directory of the api surface being written, and
+whether the model pages are written. The agent surface needs the physical schema, which
+`meta docs` computes from your dialect and column naming strategy (the generator package owns
+none of it) and hands over on `ctx.docsDoor.agent`; pass `schema` and `columnNamingStrategy`
+as options to state them yourself. A copy reads these and takes no options for them.
 
-| | The copy owns | Stays in the package |
+| | The generator file decides | Copied beside it, so yours too |
 |---|---|---|
-| `docs` | which objects and templates get a page, where a page lands, which page template renders, the whole overview page (`renderIndexPage`) | the page payloads (`buildEntityDocData`, `buildTemplateDocData`), the ER diagram (`renderMermaidErBlock`), the page templates |
+| `docs` | which objects and templates get a page, where a page lands, which page template renders, the whole overview page (`renderIndexPage`) | the page payloads (`buildEntityDocData`, `buildTemplateDocData`) and the ER diagram (`renderMermaidErBlock`) |
 | `api-docs` | which units get a page, where a page lands, whether the index and the agent form (`AGENT-API.md`) are written | the model of the generated API (`buildApiModelForRun`, which also reads the run: layout, `apiPrefix`, whether Hono routes are wired) and its renderers (`renderEntityApiPage`, `renderApiIndex`, `renderAgentApi`) |
+| `requirements` | which files the ledger becomes and where they land (`requirements.md`, `requirements.toon`); a project with no `requirement.*` node gets none | the two writers (`requirements-markdown`, `requirements-toon`) and the projection they read (`requirements-view`) |
+| `agent-docs` | which of the three pages are written and where; the schema page's inputs (lineage, cardinality, enums) | the three page renderers (`agent-schema-page`, `agent-ui-page`, `agent-requirements-page`) |
+
+The page templates themselves (the Mustache files `meta docs` renders) stay in the package.
 
 Two things need no eject. To change the wording of a model page, put a file of the same
 name in your project (`templates/docs/entity-page.md.mustache` or
@@ -227,8 +299,10 @@ name in your project (`templates/docs/entity-page.md.mustache` or
 and `apiDocsFile()` are never listed anywhere: `meta docs` runs them when the `docs` block
 names no generator for their surface.
 
-The `requirements` and `agent` pages of `meta docs` are not generators in the catalog and
-cannot be ejected.
+`meta gen` skips a copy of any of the four with a warning that names `docs.generators`, and
+`meta docs` keeps running the packaged generator until you move it. The packaged
+`requirementsFile()` and `agentDocsFile()` are `meta docs` surfaces too, so they are listed in
+`meta gen --list` as run by `meta docs`; they carry the same `docsSurface` as an owned copy.
 
 ### The ER diagram comes from `meta docs`
 
@@ -243,14 +317,14 @@ saying so. To upgrade, delete the import and the `mermaidErDiagram()` entry (or 
 `"mermaid-er"` name) from `generators`, delete the `docs/model.md` it wrote, and run
 `meta docs`.
 
-### `shared-model`: you own the inputs, the package owns the artifact
+### `shared-model`: you own the inputs and the artifact builder
 
 `sharedModelFile()` publishes part of your model as an artifact and a manifest that another
 project's `meta deps sync` copies and verifies
 ([metadata dependencies](metadata-dependencies.md)). Its output is a contract with that
-other project, so the copy is split the way `cube-model`'s is:
+other project, so the copy comes with a warning on the parts a consumer checks:
 
-| The copy owns | Stays in the package |
+| The generator file decides | Copied beside it, so yours too |
 |---|---|
 | which of your source files may contribute (`files`, default the run's own) | `buildSharedModel`: the load, the `include` / `exclude` selection, the closure check, the serialized document, the re-load with core vocabulary |
 | where the published version comes from (`nearestPackageVersion` reads the nearest `package.json`; replace it with your own source of truth) | `renderSharedModelFiles`: the two file names, the artifact's hash, the manifest |
@@ -265,10 +339,11 @@ import { sharedModelFile } from "./codegen/generators/shared-model.js";
 generators: [sharedModelFile({ name: "acme-common", include: ["acme::common::**"] })],
 ```
 
-A copy that calls those two functions publishes exactly what the packaged generator
-publishes, and a consumer's sync accepts it. Nothing a consumer checks is in the copy, so
-you cannot change it there by accident; to change it you would have to replace the calls,
-and then you have stopped agreeing with every consumer of the artifact. Read the project's
+An unchanged copy publishes exactly what the packaged generator publishes, and a consumer's
+sync accepts it. The two functions are in your project now, so they are yours to change, and
+a consumer is the one that checks them: the selection, the closure, the bytes, the hash and
+the manifest. Change what they do and you have stopped agreeing with every consumer of the
+artifact. Read the project's
 own files through `ctx.inputRoot`, as the copy does for the version: under
 `meta verify --codegen` the run writes into a temporary tree and `ctx.projectRoot` is that
 tree. An owned `docs` or `api-docs` copy reads through it too: under `meta docs` it is the
@@ -305,6 +380,10 @@ the reply parser (`extractObject`), and the metadata-driven `ObjectManager`. The
 `./fastify` entry — the `ObjectManager`-backed mount — is helper-tier but no generator
 calls it, so eject does not copy it.
 
+The same rule applies to the code that writes the output: ejecting a generator also copies
+the template modules it calls, into `codegen/templates/`, and what stays in the package is
+the engine ([what the copy holds](#what-the-copy-holds)).
+
 Each ejected generator takes `runtimeImport` to move the copy (relative to the output root,
 like `dbImport`, or a path alias) or, with `runtimeImport: "@metaobjectsdev/runtime-ts"`,
 to go back to the package. `meta verify --codegen` never reports the copy as drift: it
@@ -329,6 +408,15 @@ with `meta eject routes --force`, which rewrites the generator and every adapter
 commit first and check `git diff`. A file you did edit is merged the same way as an owned
 generator: `git merge-file --diff3 <your copy> <the version you copied from> <the new version>`,
 where the version you copied from is the one in your git history.
+
+The template modules under `codegen/templates/` are compared the same way, against what the
+installed packages would write there today, and differ from the package by their import
+lines alone:
+
+```bash
+diff -u node_modules/@metaobjectsdev/codegen-ts/src/templates/zod-validators.ts \
+        codegen/templates/zod-validators.ts
+```
 
 Whatever you own, hand-edits inside a generated file survive regeneration — but *how* they
 survive depends on what the toolchain can see, and it is worth knowing which case you
@@ -543,7 +631,7 @@ generator code. The 20-line programmatic shape for each port is in
 
 | Port | Invocation | Programmatic — write a `Generator` | Declarative — template + scope |
 |---|---|---|---|
-| **TypeScript** | `meta init` → `meta gen --list --probe` → `meta eject <names...>` → `meta gen` (Bun/Node CLI) | **Yes.** `meta generator new <name>` writes a working generator of your own into `codegen/generators/` and wires it — the first move for an output nothing ships. To use a stock generator as shipped, import its factory from its package (`meta gen --list` prints the line) and wire it. To change one: `meta init` scaffolds the LAYOUT and an empty selection (ADR-0034 Amendment 2); `meta eject <name>...` copies each generator you choose into `codegen/generators/*.ts` and prints the import to put in `metaobjects.config.ts`. Edit them freely. The prompt tier (`prompt-render`, `output-parser`, `extractor`, `output-prompt`, `render-helper`) ejects like the rest: you own which templates get a module and where it lands, while the render and extract engines those modules call stay in the package. `requirement-tests` ejects as one file holding the generator and its default stub renderer, so the stub text is yours to change; the requirement walk, each test's identity and the claim digest stay in the package. `cube-model` (the Cube data-model exporter, [cube-export.md](cube-export.md)) ejects as one file as well: which entities get a cube, where the files land and the YAML call are yours, while the mapping (`buildCubeModel`, which raises every refusal) and the YAML writer (`renderCubeYaml`) stay in the package. `callable` and `trace-helper` eject the same way as the prompt tier: the copy decides which objects get a module and where it lands, and the module body comes from `renderCallableFile` / `renderTraceHelper` in the package. `shared-model` (FR-023's publisher generator) ejects as a thin generator: the copy owns which source files contribute and where the version comes from, and the artifact a consumer verifies comes from `buildSharedModel` / `renderSharedModelFiles` in the package. `docs` and `api-docs` eject too, and `meta docs` runs the copy from `docs: { generators: [...] }`, never from the top-level `generators` ([details](#the-docs-generators-and-shared-model-typescript)). Every stock generator can be ejected except the `template` primitive, which has no emit logic of its own to own (the same ruling in every port): `meta gen --list` marks it **package-only** and `meta eject` names it as such. | **Yes** — `templateGenerator({ template, scope, outputPattern })` in the config's `generators: [...]`. No CLI flag: the config already takes generator values. |
+| **TypeScript** | `meta init` → `meta gen --list --probe` → `meta eject <names...>` → `meta gen` (Bun/Node CLI) | **Yes.** `meta generator new <name>` writes a working generator of your own into `codegen/generators/` and wires it — the first move for an output nothing ships. To use a stock generator as shipped, import its factory from its package (`meta gen --list` prints the line) and wire it. To change one: `meta init` scaffolds the LAYOUT and an empty selection (ADR-0034 Amendment 2); `meta eject <name>...` copies each generator you choose into `codegen/generators/*.ts` and prints the import to put in `metaobjects.config.ts`. Edit them freely. Every stock generator can be ejected except the `template` primitive, which has no emit logic of its own to own (the same ruling in every port): `meta gen --list` marks it **package-only** and `meta eject` names it as such. An ejected generator comes with the code that writes its output: the template modules it calls are copied into `codegen/templates/` ([what the copy holds](#what-the-copy-holds)), so the prompt tier, `callable`, `trace-helper`, `cube-model`, `shared-model`, the UI tier and the docs tier are as ownable as `entity` and `routes`. What stays in the package is the engine: the generator base, the model walks (including the requirement walk, each test's identity and the claim digest), the naming and type-mapping tables, and the render and extract engines of `@metaobjectsdev/render`. `requirement-tests` is one file holding the generator and its default stub renderer. `docs`, `api-docs`, `requirements` and `agent-docs` are run by `meta docs`, which runs a copy listed in `docs: { generators: [...] }` ([details](#the-docs-generators-and-shared-model-typescript)). | **Yes** — `templateGenerator({ template, scope, outputPattern })` in the config's `generators: [...]`. No CLI flag: the config already takes generator values. |
 | **Java / Kotlin** | `mvn metaobjects:generate` / `mvn metaobjects:verify` (`metaobjects-maven-plugin`) | **Yes.** Extend `FileEmittingGenerator` and read the model through `ModelWalk` (both in `metaobjects-codegen-base`) for one of your own. Every generator — built-in or your own — is named in `<generator><classname>` and loaded from the project classpath: one seam, not two. There is no default suite, so `<generators>` is the complete list. Kotlin runs through the same goal. | **Yes** — `TemplateScopeGenerator` wired as an ordinary `<generator>`. No CLI flag: `<generator>` is already the seam. |
 | **C#** | `dotnet meta gen` / `dotnet meta verify` (.NET tool) | **Yes.** Implement `IGenerator` in the owned console project `codegen/` and list it in `codegen/Program.cs`; `dotnet meta gen` / `verify --codegen` hand off to that project whenever `codegen/Codegen.csproj` exists. `dotnet meta eject <name>` scaffolds the project, or write its two files by hand. An owned generator the `--generators` selection does not name still runs. | **Yes** — `dotnet meta gen --template-spec <json> --template-root <dir>`. |
 | **Python** | `metaobjects gen` / `metaobjects verify` (console-script) | **Yes.** Name your generator as `module:symbol` in `--generators` or a target's `generators` in `metaobjects.config.yaml`; the symbol is an instance or a function returning one. Read the model through `metaobjects.codegen.model_walk`. (`--provider module:symbol` registers **metamodel vocabulary**, not a generator.) | **Yes** — `metaobjects gen --template-spec <json> --templates <dir>`. |
@@ -560,8 +648,9 @@ defect in the generator that emitted it. Once you run that generator in your bui
 yours. Fix it in your build, in the same change, and keep going:
 
 - **TypeScript:** edit your ejected copy (`meta eject <name>` first if you never ejected
-  it) — or, when the defect is in how a route behaves at request time (a filter, an error
-  body, pagination), the adapter copy eject placed beside it in `codegen/runtime/`.
+  it) — in the generator file, or in the template module that writes the text (the copy eject
+  placed beside it in `codegen/templates/`), or, when the defect is in how a route behaves at
+  request time (a filter, an error body, pagination), the adapter copy in `codegen/runtime/`.
 - **Java / Kotlin:** subclass the reference generator, or copy its source (Apache-2.0,
   in the `-sources` jar) into a codegen module the generating module depends on. Point
   `<classname>` at your class. The plugin loads it from that module's compile classpath.

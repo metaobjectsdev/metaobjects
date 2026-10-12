@@ -17,6 +17,14 @@
 const PACKAGED_DOCS_FACTORY_CALLS: ReadonlyMap<string, string> = new Map([
   ["docs-file", "docsFile()"],
   ["api-docs", "apiDocsFile()"],
+  // The other two surfaces `meta docs` runs (ADR-0034 Amendment 8). They were in no registry,
+  // so nothing said that `meta gen` is not their door: a wired `requirementsFile()` or
+  // `agentDocsFile()` wrote the same pages into the generated-code directory that
+  // `meta docs` writes into the docs directory, which is the two-doors defect ADR-0025 closed
+  // for the first two. An owned copy of either can now be listed in `docs.generators`, so the
+  // packaged ones answer the way the first two do.
+  ["requirements-file", "requirementsFile()"],
+  ["agent-docs", "agentDocsFile()"],
 ]);
 
 /** The command that produces what these generators emit. */

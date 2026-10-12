@@ -13,12 +13,15 @@
 // emits:         <target>/<Prompt>.responseFormat.ts per responding template.prompt whose
 //                @responseRef resolves, exporting render<Prompt>Format(overrides?).
 // customize:     which prompts get a fragment, the output directory (`outDir`), the file
-//                name. The module BODY comes from `renderOutputPrompt`; to change the emitted
-//                code itself, copy `renderOutputPrompt`'s source out of the package and call
-//                your copy here instead.
+//                name. The module BODY comes from `renderOutputPrompt`, which `meta eject`
+//                copies beside this file (`codegen/templates/output-prompt.ts`): change the
+//                emitted code there.
 // composes-with: output-parser.ts (the fragment describes the shape that parser accepts).
 //
-// Everything below imports ONLY from `@metaobjectsdev/codegen-ts` (the stable engine).
+// Everything below imports the engine from `@metaobjectsdev/codegen-ts` (the generator base, the
+// model walks, the naming and type-mapping tables) and the code that writes the output from
+// `../templates/`. `meta eject` copies those template modules into your project, under
+// `codegen/templates/`, and your copy of this file imports them from there: they are yours too.
 
 import {
   oncePerRun,
@@ -27,8 +30,8 @@ import {
   type GeneratorFactory,
   inboundTemplates,
   responseShape,
-  renderOutputPrompt,
 } from "@metaobjectsdev/codegen-ts";
+import { renderOutputPrompt } from "../templates/output-prompt.js";
 
 export interface OutputPromptOpts {
   /** Output directory prefix relative to the target's outDir. Default: "" (root). */

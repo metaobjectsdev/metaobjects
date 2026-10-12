@@ -50,6 +50,13 @@ import { docsFile as builtinDocs } from "../src/generators/docs-file.js";
 import { docsFile as refDocs } from "../src/reference/docs.js";
 import { apiDocsFile as builtinApiDocs } from "../src/generators/api-docs-file.js";
 import { apiDocsFile as refApiDocs } from "../src/reference/api-docs.js";
+import { requirementsFile as builtinRequirements } from "../src/generators/requirements-file.js";
+import { agentDocsFile as builtinAgentDocs } from "../src/generators/agent-docs-file.js";
+import { requirementsFile as refRequirements } from "../src/reference/requirements.js";
+import { agentDocsFile as refAgentDocs } from "../src/reference/agent-docs.js";
+import { buildExpectedSchemaWithProvenance, columnTypeSql, qualifiedDbName } from "@metaobjectsdev/migrate-ts";
+import { buildProjectionViews } from "../src/index.js";
+import type { AgentSchemaInput, SchemaColumnLike } from "../src/index.js";
 import { librarySources } from "@metaobjectsdev/metadata/library";
 import {
   CANONICAL_CONFIG,
@@ -177,6 +184,12 @@ const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () 
   // of this file runs each pair the way that door does.
   docs: { builtin: builtinDocs, ref: refDocs },
   "api-docs": { builtin: builtinApiDocs, ref: refApiDocs },
+  // The other two `meta docs` surfaces (ADR-0034 Amendment 8). Over the fixtures above both
+  // emit nothing — none declares a requirement, and an agent page needs a ledger, a UI tier
+  // or a physical schema the run does not give it; the describe at the end of this file
+  // runs each pair the way the docs door does, over models that carry them.
+  requirements: { builtin: builtinRequirements, ref: refRequirements },
+  "agent-docs": { builtin: builtinAgentDocs, ref: refAgentDocs },
 };
 
 // The prompt tier emits nothing for the entity-shaped fixtures above — none declares a
@@ -1379,5 +1392,141 @@ describe("ADR-0034 Amendment 7 — the docs and api-docs references write the sa
     expect(() => docsDoorGenerators([model, builtinEntity()])).toThrow(
       /lists "entity-file", which carries no `docsSurface`/,
     );
+  });
+});
+
+// `requirements` and `agent-docs` are the other two generators `meta docs` runs. Like `docs`
+// and `api-docs` they are compared the way that door runs one: `.generate(ctx)` with the
+// door's facts on `ctx.docsDoor`. For `agent-docs` those facts carry the physical schema,
+// which `meta docs` computes (codegen-ts owns none of it), so the corpus is also run with a
+// real one built by the same migrate-ts calls the command makes.
+describe("ADR-0034 Amendment 8 — the requirements and agent-docs references write the same pages under the docs door", () => {
+  const REQUIREMENT_CORPORA: Array<{ label: string; files: string[]; ledger: boolean }> = [
+    {
+      label: "requirement-test-identity worked example (a ledger)",
+      ledger: true,
+      files: readdirSync(join(REPO_FIXTURES, "requirement-test-identity-conformance", "worked-example", "input"))
+        .sort()
+        .map((f) => join(REPO_FIXTURES, "requirement-test-identity-conformance", "worked-example", "input", f)),
+    },
+    {
+      label: "persistence-conformance fitness corpus (reports, projections, a UI-less model)",
+      ledger: false,
+      files: [join(REPO_FIXTURES, "persistence-conformance", "canonical", "meta.fitness.json")],
+    },
+    { label: "trainer-website-shape (no ledger)", ledger: false, files: [join(FIXTURE_DIR, "trainer-website-shape.json")] },
+  ];
+
+  /** The agent surface's input, built as `meta docs` builds it (cli/src/commands/docs.ts). */
+  function schemaFor(root: Awaited<ReturnType<typeof loadFiles>>): AgentSchemaInput {
+    const dialect = "postgres" as const;
+    const built = buildExpectedSchemaWithProvenance(root, {
+      dialect,
+      columnNamingStrategy: "snake_case",
+      views: buildProjectionViews(root, { dialect, columnNamingStrategy: "snake_case" }),
+    });
+    return {
+      dialect,
+      tables: built.snapshot.tables,
+      views: built.snapshot.views,
+      provenance: built.provenance,
+      columnType: (c: SchemaColumnLike) => columnTypeSql(c as never, dialect),
+      qualify: qualifiedDbName,
+    };
+  }
+
+  function ctxFor(
+    root: Awaited<ReturnType<typeof loadFiles>>,
+    generator: Generator,
+    door: DocsDoorFacts | undefined,
+    includeUiTier: boolean,
+  ): GenContext {
+    return {
+      entities: root.objects(),
+      loadedRoot: root,
+      matches: generator.filter ?? (() => true),
+      config: { outDir: "/docs-out", extStyle: "none", dbImport: "", dialect: "postgres", includeUiTier } as never,
+      ...(door !== undefined ? { docsDoor: door } : {}),
+      renderContext: makeRenderContext({
+        dialect: "postgres",
+        loadedRoot: root,
+        outDir: "/docs-out",
+        dbImport: "",
+        apiPrefix: "/api",
+        pkMap: buildPkMap(root),
+        relationMap: buildRelationMap(root),
+      }),
+      warn: () => {},
+    };
+  }
+
+  const run = (root: Awaited<ReturnType<typeof loadFiles>>, g: Generator, door?: DocsDoorFacts, ui = true) =>
+    outcomeOf(async () =>
+      (await g.generate(ctxFor(root, g, door, ui))).map((f): [string, string] => [f.path, f.content]));
+
+  for (const corpus of REQUIREMENT_CORPORA) {
+    test(`requirements — ${corpus.label}`, async () => {
+      const root = await loadFiles(corpus.files);
+      const a = await run(root, builtinRequirements());
+      const b = await run(root, refRequirements());
+      expect(b).toEqual(a);
+      // A ledger writes both forms; no ledger writes none — and the copy keeps that.
+      expect(paths(a)).toEqual(corpus.ledger ? ["requirements.md", "requirements.toon"] : []);
+      // The options an owned copy keeps: a directory and a target.
+      expect(await run(root, refRequirements({ outDir: "ledger/" }))).toEqual(
+        await run(root, builtinRequirements({ outDir: "ledger/" })),
+      );
+    });
+
+    test(`agent-docs — ${corpus.label}`, async () => {
+      const root = await loadFiles(corpus.files);
+      const schema = schemaFor(root);
+      const strategy = "snake_case" as const;
+      for (const ui of [true, false]) {
+        // Through the door's facts, through the factory's options, and with no schema at all.
+        const door: DocsDoorFacts = { agent: { schema, columnNamingStrategy: strategy } };
+        const viaDoor = await run(root, builtinAgentDocs(), door, ui);
+        expect(await run(root, refAgentDocs(), door, ui)).toEqual(viaDoor);
+        const viaOptions = await run(root, builtinAgentDocs({ schema, columnNamingStrategy: strategy }), undefined, ui);
+        expect(viaDoor).toEqual(viaOptions);
+        expect(await run(root, refAgentDocs({ schema, columnNamingStrategy: strategy }), undefined, ui)).toEqual(viaOptions);
+        expect(await run(root, refAgentDocs(), undefined, ui)).toEqual(await run(root, builtinAgentDocs(), undefined, ui));
+        // The options win over the door's facts in both: a direct caller states what it means.
+        expect(await run(root, refAgentDocs({ subDir: "for-agents" }), door, ui)).toEqual(
+          await run(root, builtinAgentDocs({ subDir: "for-agents" }), door, ui),
+        );
+      }
+      // Vacuity: the schema page is written when a schema is given, the requirements page
+      // when there is a ledger, the UI page when the run emits a UI tier.
+      const full = await run(root, refAgentDocs(), { agent: { schema, columnNamingStrategy: strategy } }, true);
+      const written = paths(full);
+      if (corpus.label.includes("fitness")) expect(written).toContain("agent/schema.md");
+      expect(written.includes("agent/requirements.md")).toBe(corpus.ledger);
+    });
+  }
+
+  test("the marker `meta docs` reads: on the references, declared by the registry, absent from the built-ins", () => {
+    expect(refRequirements().docsSurface).toBe("requirements");
+    expect(refAgentDocs().docsSurface).toBe("agent");
+    expect(builtinRequirements().docsSurface).toBeUndefined();
+    expect(builtinAgentDocs().docsSurface).toBeUndefined();
+    expect(generatorRegistry.requirements?.docsSurface).toBe("requirements");
+    expect(generatorRegistry["agent-docs"]?.docsSurface).toBe("agent");
+    // The names are the built-ins', so a diagnostic names the same generator either way.
+    expect(refRequirements().name).toBe(builtinRequirements().name);
+    expect(refAgentDocs().name).toBe(builtinAgentDocs().name);
+  });
+
+  test("docsDoorGenerators: all four surfaces, one generator each", () => {
+    const model = refDocs();
+    const api = refApiDocs();
+    const requirements = refRequirements();
+    const agent = refAgentDocs();
+    expect(docsDoorGenerators([model, api, requirements, agent])).toEqual({ model, api, requirements, agent });
+    expect(docsDoorGenerators([agent])).toEqual({ agent });
+    expect(() => docsDoorGenerators([requirements, refRequirements()])).toThrow(
+      /lists two generators for the requirements surface \("requirements-file" and "requirements-file"\)/,
+    );
+    expect(() => docsDoorGenerators([builtinAgentDocs()])).toThrow(/lists "agent-docs", which carries no `docsSurface`/);
   });
 });

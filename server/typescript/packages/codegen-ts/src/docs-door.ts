@@ -14,6 +14,8 @@
 //     the time the door sees it. They are the facts the two page sets must agree on (where
 //     the api pages are, whether the model pages exist), so the door states them once and
 //     both generators read the same answer.
+import type { ColumnNamingStrategy } from "@metaobjectsdev/metadata";
+import type { AgentSchemaInput } from "./generators/agent-schema-input.js";
 import type { Generator, OwnedDocsSurface } from "./generator.js";
 
 /**
@@ -30,6 +32,10 @@ export interface DocsDoorFacts {
   /** For the API surface: whether the model surface is emitted alongside it, so each api
    *  page can link back to its model page. */
   readonly modelSurface?: boolean;
+  /** For the AGENT surface: what `meta docs` computes for it and codegen-ts deliberately does
+   *  not — the physical schema, resolved with the project's dialect, and the project's column
+   *  naming strategy. Absent: the schema page is not written. */
+  readonly agent?: { readonly schema?: AgentSchemaInput; readonly columnNamingStrategy?: ColumnNamingStrategy };
 }
 
 /**
@@ -53,9 +59,10 @@ export function docsDoorGenerators(
     if (surface === undefined) {
       throw new Error(
         `\`docs.generators\` lists "${generator.name}", which carries no \`docsSurface\`: ` +
-          "`meta docs` runs one generator per surface (model, api) and cannot tell which one " +
-          "this replaces. An owned copy from `meta eject docs` or `meta eject api-docs` " +
-          "carries it. The packaged docs generators need no listing, and a generator " +
+          "`meta docs` runs one generator per surface (model, api, requirements, agent) and cannot " +
+          "tell which one this replaces. An owned copy from `meta eject docs`, `api-docs`, " +
+          "`requirements` or `agent-docs` carries it. The packaged docs generators need no " +
+          "listing, and a generator " +
           "`meta gen` runs belongs in the top-level `generators`.",
       );
     }

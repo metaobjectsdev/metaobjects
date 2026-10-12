@@ -19,23 +19,23 @@
 //                names both value objects; nothing for an entity that does not.
 // customize:     which entities get a helper (the two gates below), the output directory
 //                (`outDir`) and the file name. The module BODY comes from
-//                `renderTraceHelper`; to change the emitted code itself, copy
-//                `renderTraceHelper`'s source out of the package and call your copy here
-//                instead.
+//                `renderTraceHelper`, which `meta eject` copies beside this file
+//                (`codegen/templates/trace-helper.ts`): change the emitted code there.
 // composes-with: entity.ts (the helper is typed by the request and response value
 //                objects' own interfaces, imported from the modules entity.ts emits).
 //
-// Everything below imports ONLY from `@metaobjectsdev/codegen-ts` (the stable engine).
+// Everything below imports the engine from `@metaobjectsdev/codegen-ts` (the generator base, the
+// model walks, the naming and type-mapping tables) and the code that writes the output from
+// `../templates/`. `meta eject` copies those template modules into your project, under
+// `codegen/templates/`, and your copy of this file imports them from there: they are yours too.
 
 import type { MetaData } from "@metaobjectsdev/metadata";
+import { perEntity, type Generator, type GeneratorFactory } from "@metaobjectsdev/codegen-ts";
 import {
-  perEntity,
-  type Generator,
-  type GeneratorFactory,
   extendsTraceAnchor,
   renderTraceHelper,
   traceAnchorNodes,
-} from "@metaobjectsdev/codegen-ts";
+} from "../templates/trace-helper.js";
 
 export interface TraceHelperOpts {
   /** Output directory prefix relative to the target's outDir. Default: "" (root). */

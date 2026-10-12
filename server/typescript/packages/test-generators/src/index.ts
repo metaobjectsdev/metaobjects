@@ -21,12 +21,12 @@
 //
 // This package is `private: true` and is never published.
 import { HTTP_RUNTIME_PACKAGE, type Generator } from "@metaobjectsdev/codegen-ts";
-import { entityFile as ownedEntityFile, type EntityFileOpts } from "./entity.js";
-import { routesFile as ownedRoutesFile, type RoutesFileOpts } from "./routes.js";
+import { entityFile as ownedEntityFile, type EntityFileOpts } from "./generators/entity.js";
+import { routesFile as ownedRoutesFile, type RoutesFileOpts } from "./generators/routes.js";
 
 export type { EntityFileOpts, RoutesFileOpts };
-export { queriesFile, type QueriesFileOpts } from "./queries.js";
-export { barrel, type BarrelOpts } from "./barrel.js";
+export { queriesFile, type QueriesFileOpts } from "./generators/queries.js";
+export { barrel, type BarrelOpts } from "./generators/barrel.js";
 
 /** The owned entity generator, with its allowlist types imported from the package. */
 export function entityFile(opts?: EntityFileOpts): Generator {

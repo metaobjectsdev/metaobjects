@@ -41,6 +41,16 @@ import {
   ZOD_TIMESTAMP_EXPR,
   ZOD_TIMESTAMP_UTC_EXPR,
 } from "./date-time-regex.js";
+import { renderDocsFor } from "./jsdoc.js";
+import { sharedEnumForField } from "../enum-shared.js";
+import { sharedEnumImportSpecifier } from "../enum-import.js";
+import { sharedEnumZodConstName } from "./enums-file.js";
+import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
+import { valueObjectModuleSpecifier } from "../import-path.js";
+// FR-035: the SAME required-predicate that drives the Drizzle column's .notNull()
+// drives the UpdateSchema's .nullable() exclusion — shared so they cannot drift.
+import { isRequired } from "../column-mapper.js";
+import { effectivePackage } from "../docs-paths.js";
 
 // Counts emissions of ZOD_TIMESTAMP_UTC_EXPR. A schema emitter compares it before and after
 // building its field lines to learn whether its module needs the local normalizer —
@@ -52,16 +62,6 @@ let utcTimestampUses = 0;
 function utcTimestampHelperSince(since: number): string {
   return utcTimestampUses > since ? `${UTC_TIMESTAMP_HELPER_DECL}\n\n` : "";
 }
-import { renderDocsFor } from "./jsdoc.js";
-import { sharedEnumForField } from "../enum-shared.js";
-import { sharedEnumImportSpecifier } from "../enum-import.js";
-import { sharedEnumZodConstName } from "./enums-file.js";
-import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
-import { valueObjectModuleSpecifier } from "../import-path.js";
-// FR-035: the SAME required-predicate that drives the Drizzle column's .notNull()
-// drives the UpdateSchema's .nullable() exclusion — shared so they cannot drift.
-import { isRequired } from "../column-mapper.js";
-import { effectivePackage } from "../docs-paths.js";
 
 /**
  * FR-017 Tier 1 — when this object is a TPH subtype (@discriminatorValue set

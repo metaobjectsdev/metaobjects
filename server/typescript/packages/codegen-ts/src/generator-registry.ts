@@ -311,7 +311,6 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     docsSurface: "model",
     note: "neutral artifact — use `meta docs` (the single docs door, ADR-0021 D1); not part of the recommended `meta gen` native suite.",
   },
-
   requirements: {
     name: "requirements",
     kind: "generator",
@@ -322,6 +321,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     factoryExport: "requirementsFile",
     options: "outDir?, target?",
     ejectable: ejectable("requirements"),
+    docsSurface: "requirements",
     note: "neutral artifact — `meta docs` writes it as its requirements surface; a project that declares no requirement.* node gets no file.",
   },
   "agent-docs": {
@@ -334,6 +334,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     factoryExport: "agentDocsFile",
     options: "subDir?, schema?, columnNamingStrategy?, target?",
     ejectable: ejectable("agent-docs"),
+    docsSurface: "agent",
     note: "neutral artifact — `meta docs --agent` writes it; not part of the recommended `meta gen` native suite.",
   },
 

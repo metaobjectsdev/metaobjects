@@ -305,25 +305,40 @@
           "codegen-ts-tanstack/src/data-grid-gate.ts",
           "codegen-ts/src/api-surface.ts",
           "codegen-ts/src/client-directive.ts",
+          "codegen-ts/src/column-mapper.ts",
           "codegen-ts/src/constants.ts",
           "codegen-ts/src/dialect-module.ts",
           "codegen-ts/src/docs-paths.ts",
+          "codegen-ts/src/enum-import.ts",
+          "codegen-ts/src/enum-meta.ts",
+          "codegen-ts/src/enum-shared.ts",
           "codegen-ts/src/format.ts",
           "codegen-ts/src/generator.ts",
+          "codegen-ts/src/generators/agent-schema-input.ts",
           "codegen-ts/src/import-path.ts",
           "codegen-ts/src/instance-artifacts.ts",
+          "codegen-ts/src/metaobjects-config.ts",
           "codegen-ts/src/names.ts",
           "codegen-ts/src/naming.ts",
           "codegen-ts/src/owned-runtime.ts",
+          "codegen-ts/src/pk-resolver.ts",
+          "codegen-ts/src/projection/extract-view-spec.ts",
           "codegen-ts/src/projection/projection-detector.ts",
+          "codegen-ts/src/projection/report-resolve.ts",
+          "codegen-ts/src/projection/report-spec.ts",
+          "codegen-ts/src/projection/report-sql.ts",
+          "codegen-ts/src/projection/time-sql.ts",
+          "codegen-ts/src/projection/view-spec.ts",
           "codegen-ts/src/relation-resolver.ts",
           "codegen-ts/src/render-context.ts",
           "codegen-ts/src/render-engine/framework-provider.ts",
           "codegen-ts/src/requirement-walk.ts",
           "codegen-ts/src/routes-expose.ts",
           "codegen-ts/src/source-detect.ts",
+          "codegen-ts/src/templates/entity-ui-descriptor.ts",
           "codegen-ts/src/templates/find-inbound.ts",
-          "codegen-ts/src/templates/find-templates.ts"
+          "codegen-ts/src/templates/find-templates.ts",
+          "codegen-ts/src/view-context.ts"
         ]
       },
       "csharp": {
@@ -456,141 +471,6 @@
         "ruling": "ADR-0034 Amendment 8, ruling 3"
       }
     ],
-    "pending": [
-      {
-        "generator": "entity",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": [
-          "codegen-ts/src/templates/drizzle-schema.ts",
-          "codegen-ts/src/templates/entity-constants.ts",
-          "codegen-ts/src/templates/entity-file.ts",
-          "codegen-ts/src/templates/enums-file.ts",
-          "codegen-ts/src/templates/filter-allowlist.ts",
-          "codegen-ts/src/templates/filter-type.ts",
-          "codegen-ts/src/templates/inferred-types.ts",
-          "codegen-ts/src/templates/projection-decl.ts",
-          "codegen-ts/src/templates/tph-discriminator.ts",
-          "codegen-ts/src/templates/value-object-file.ts",
-          "codegen-ts/src/templates/zod-validators.ts"
-        ]
-      },
-      {"generator": "names", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/names-decl.ts"]},
-      {
-        "generator": "queries",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": [
-          "codegen-ts/src/templates/queries-file.ts",
-          "codegen-ts/src/templates/queries.ts",
-          "codegen-ts/src/templates/tph-discriminator.ts",
-          "codegen-ts/src/templates/zod-validators.ts"
-        ]
-      },
-      {
-        "generator": "routes",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": [
-          "codegen-ts/src/templates/queries.ts",
-          "codegen-ts/src/templates/routes-index.ts",
-          "codegen-ts/src/templates/tph-discriminator.ts",
-          "codegen-ts/src/templates/zod-validators.ts"
-        ]
-      },
-      {
-        "generator": "routes-hono",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": ["codegen-ts/src/templates/queries.ts", "codegen-ts/src/templates/routes-index.ts", "codegen-ts/src/templates/zod-validators.ts"]
-      },
-      {"generator": "form", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts-react/src/templates/form-file.ts"]},
-      {
-        "generator": "grid",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": ["codegen-ts-tanstack/src/templates/columns-file.ts", "codegen-ts/src/templates/zod-validators.ts"]
-      },
-      {
-        "generator": "grid-hook",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": [
-          "codegen-ts-tanstack/src/templates/grid-hook-file.ts",
-          "codegen-ts/src/templates/entity-meta-file.ts",
-          "codegen-ts/src/templates/zod-validators.ts"
-        ]
-      },
-      {
-        "generator": "hooks",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": [
-          "codegen-ts-tanstack/src/templates/hooks-file.ts",
-          "codegen-ts/src/templates/entity-meta-file.ts",
-          "codegen-ts/src/templates/zod-validators.ts"
-        ]
-      },
-      {"generator": "callable", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/callable-file.ts"]},
-      {
-        "generator": "cube-model",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": [
-          "codegen-ts/src/cube/build-cube-model.ts",
-          "codegen-ts/src/cube/cube-errors.ts",
-          "codegen-ts/src/cube/cube-model-spec.ts",
-          "codegen-ts/src/cube/cube-yaml.ts"
-        ]
-      },
-      {"generator": "extractor", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/extractor.ts"]},
-      {"generator": "output-parser", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/output-parser.ts"]},
-      {"generator": "output-prompt", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/output-prompt.ts"]},
-      {
-        "generator": "prompt-render",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": ["codegen-ts/src/templates/value-object-import.ts"]
-      },
-      {"generator": "render-helper", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/render-helper.ts"]},
-      {"generator": "trace-helper", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/trace-helper.ts"]},
-      {
-        "generator": "api-docs",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": ["codegen-ts/src/generators/api-doc-render.ts", "codegen-ts/src/generators/api-model.ts"]
-      },
-      {
-        "generator": "docs",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": [
-          "codegen-ts/src/generators/docs-data-builder.ts",
-          "codegen-ts/src/generators/template-doc-builder.ts",
-          "codegen-ts/src/render-engine/doc-page.ts",
-          "codegen-ts/src/templates/mermaid-er.ts"
-        ]
-      },
-      {
-        "generator": "shared-model",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": ["codegen-ts/src/shared-model/build-shared-model.ts"]
-      },
-      {"generator": "agent-docs", "port": "typescript", "assertion": "completeness", "gap": 2},
-      {"generator": "requirements", "port": "typescript", "assertion": "completeness", "gap": 2}
-    ]
+    "pending": []
   }
 }

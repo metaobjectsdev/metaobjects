@@ -94,10 +94,11 @@ describe("meta eject takes many names", () => {
     }
   });
 
-  test("shared-model ejects — a thin generator, and its entry carries the options it needs", async () => {
-    // It used to answer `package-only`. The owned part is which source files may
-    // contribute and which version is published; the artifact, its hash and the manifest
-    // stay in the package (`buildSharedModel`, `renderSharedModelFiles`).
+  test("shared-model ejects with the builder of its artifact, and its entry carries the options it needs", async () => {
+    // It used to answer `package-only`, then ejected as a thin generator over
+    // `buildSharedModel`. The artifact builder is handed over now (ADR-0034 Amendment 8): the
+    // selection, the closure, the bytes, the hash and the manifest are in the project, and
+    // what stays in the package is the engine.
     const dir = tmp();
     try {
       expect(await ejectCommand(["shared-model"], dir, "json")).toBe(0);
@@ -111,10 +112,14 @@ describe("meta eject takes many names", () => {
       );
       // An ordinary `meta gen` generator: the entry goes in the top-level `generators`.
       expect(row?.wire.into).toBeUndefined();
-      // The two emitted files import nothing, and the copy imports only the engine.
+      // The two emitted files import nothing. The copy imports the engine, and the metamodel
+      // the builder it carries reads the source files with.
       const { install } = payload();
       expect(install.runtime).toEqual([]);
-      expect(install.dev).toEqual([`@metaobjectsdev/codegen-ts@^${cliVersion()}`]);
+      expect(install.dev).toEqual([
+        `@metaobjectsdev/codegen-ts@^${cliVersion()}`,
+        `@metaobjectsdev/metadata@^${cliVersion()}`,
+      ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -200,7 +205,7 @@ describe("meta eject takes many names", () => {
 
   test("cube-model ejects — it ships a reference template, and its YAML needs nothing installed", async () => {
     // FR-044 Plan 4: the owned part is which entities get a cube, the file layout and the YAML
-    // call; buildCubeModel and renderCubeYaml stay in the package.
+    // call, with buildCubeModel and renderCubeYaml copied beside it (Amendment 8).
     const dir = tmp();
     try {
       expect(await ejectCommand(["cube-model"], dir, "json")).toBe(0);

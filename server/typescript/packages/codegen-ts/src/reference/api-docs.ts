@@ -22,9 +22,9 @@
 //                their package path.
 // customize:     which units get a page (`model.units` in `generate`), where a page lands
 //                (`docPageOutputPath` under `apiDir`) and which forms are written (the
-//                index and the agent form are the two `unshift`ed files). Stays in the
-//                package: `buildApiModelForRun`, which reads the model and the run into
-//                the description of the generated API, and `renderEntityApiPage` /
+//                index and the agent form are the two `unshift`ed files). Copied beside
+//                it, so yours too: `buildApiModelForRun`, which reads the model and the run
+//                into the description of the generated API, and `renderEntityApiPage` /
 //                `renderApiIndex` / `renderAgentApi`, which write it. The always-on agent context names
 //                `api/AGENT-API.md`; if you move or drop that file, the pointer is the
 //                other half.
@@ -39,22 +39,27 @@
 // `meta docs` and `meta verify --docs` run THIS generator for the api surface in place of
 // the packaged one. Documentation has one door, so `meta gen` never runs it.
 //
-// Everything below imports ONLY from `@metaobjectsdev/codegen-ts` (the stable engine).
+// Everything below imports the engine from `@metaobjectsdev/codegen-ts` (the generator base, the
+// model walks, the naming tables) and the code that writes the pages from `../generators/`.
+// `meta eject` copies those modules into your project, under `codegen/templates/`, and your
+// copy of this file imports them from there: they are yours too.
 
 import {
   assertNoDuplicateDocPaths,
-  buildApiModelForRun,
   docPageOutputPath,
   projectProvider,
-  renderAgentApi,
-  renderApiIndex,
-  renderEntityApiPage,
   surfaceCrossHref,
   type DocPageNode,
   type DocPagePlacement,
   type EmittedFile,
   type Generator,
 } from "@metaobjectsdev/codegen-ts";
+import {
+  renderAgentApi,
+  renderApiIndex,
+  renderEntityApiPage,
+} from "../generators/api-doc-render.js";
+import { buildApiModelForRun } from "../generators/api-model.js";
 
 // Where the pages go when nothing says otherwise. `meta docs` always says: it passes the
 // directory of the api surface it is writing (`docs.apiSurfaces[].subDir`, default `api`).

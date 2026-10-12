@@ -126,7 +126,8 @@ generator catalog and the Atlas evaluation are 1.2 work.
   neutral and both still run by `meta docs`; a `generators` entry naming either string is
   refused the way `"docs"` is. Java: `plantuml`, `html-docs`, `ai-docs`, `json-schema` and the
   deprecated `mustache`, each by the class name a pom already uses. `mustache` will not ship
-  eject source. The four Java generators that can ship it do: see **Java and Kotlin** below.
+  eject source. The two TypeScript generators are ejectable (see the TypeScript entry below),
+  and the four Java generators that can ship it do: see **Java and Kotlin** below.
 
 - **Java and Kotlin: eject hands over the emitters a generator writes through, and
   `api-docs`, `plantuml`, `html-docs`, `ai-docs` and `json-schema` are ejectable.** An ejected
@@ -176,6 +177,57 @@ generator catalog and the Atlas evaluation are 1.2 work.
     so a copy owns emit code only; the old static methods and constants on the two generators
     stay as deprecated forwarders.
 
+- **A TypeScript generator is ejected whole: the code that writes its output comes with it.**
+  `meta eject <name>` used to copy a thin generator that decided what to emit and called the
+  package to write it: an owned `entity` was 223 lines over about 3,500 packaged ones. It now
+  also copies the transitive closure of the template modules the generator calls into
+  `codegen/templates/`, the way it already copies the HTTP adapter into `codegen/runtime/`,
+  and the owned generator imports them from there. This covers every stock generator except
+  `template`, the Mustache primitive, which has no emit logic of its own (the ruling every
+  port shares). Ruling and reasoning: ADR-0034 Amendment 8; how it works:
+  [own-your-codegen](docs/features/own-your-codegen.md#what-the-copy-holds).
+  - **What stays in the package is the engine.** The generator base, the model walks, the
+    naming and type-mapping tables (`names`, `naming`, `column-mapper`) and the projection and
+    report lowering `meta migrate` also runs. The list is `ENGINE_MODULES`, exported from
+    `@metaobjectsdev/codegen-ts`, and every name an owned file takes from the engine is
+    exported from that entry too (66 names were added to it; none was removed or
+    changed). A module a generator reaches that is not on the list is copied.
+  - **A copy differs from the package in its import lines only.** A relative import of an
+    engine module becomes an import of `@metaobjectsdev/codegen-ts`, a relative import of
+    another template module becomes the path to your copy, and `ts-poet` becomes the engine's
+    own, so a copy cannot split the `Code` class identity. `meta eject --list` compares every
+    file under `codegen/templates/` as it compares the generators, and prints the `diff`
+    command for each that differs. `--format json` gains `templates[]` on each ejected row.
+    The install line names what the copies import, with the range the package declares
+    (`@toon-format/toon` for `requirements`).
+  - **Eject alone, from an empty project, and it works.** A test derived from the catalog
+    ejects each of the 24 generators by itself, then checks that nothing it holds imports a
+    packaged module that writes output, that every file typechecks the way an adopter's
+    `tsconfig.codegen.json` checks it, and that it writes what the packaged generator writes,
+    byte for byte, over six models that make every generator emit.
+  - **`requirements` and `agent-docs` are in the catalog and ejectable.** They are the
+    generators behind `meta docs --requirements` and `meta docs --agent`. They had no registry
+    row, so no listing, no eject and no gate saw them; they are registered, and now they eject
+    with their template modules like the rest. List an owned copy in
+    `docs: { generators: [...] }` and `meta docs` runs it in place of the packaged one, as it
+    does for `docs` and `api-docs`; `docsSurface` now takes `"requirements"` and `"agent"`.
+    `meta gen` also skips a packaged `requirementsFile()` or `agentDocsFile()` wired in
+    `generators`, with the warning it gives for `docsFile()`: `meta docs` is their one door,
+    and a wired one wrote the same pages into the generated-code directory as well. Remove it
+    from `generators`.
+    `meta docs` hands the agent surface the physical schema it computes on
+    `ctx.docsDoor.agent`; the packaged `agentDocsFile()` reads it there when its options give
+    none, so its output is unchanged.
+  - **Copies made before 1.1.0 keep working and gain nothing.** They import their renderers
+    from the package entry, which still exports them. `meta eject <name>` over one leaves it
+    alone and copies no template module it would never call; `meta eject <name> --force`
+    takes the new shape, so merge your own edits into the new file first.
+  - **The reference templates changed their imports, not their output.** Each imports the
+    template modules it calls by path (`../templates/…`) and the engine from the package
+    entry. Five template modules gained a package subpath so another codegen package can reach
+    them by path: `@metaobjectsdev/codegen-ts/templates/{entity-meta-file,field-meta,filter-shared,queries,tph-discriminator}`.
+    This repository's own owned copies (the `test-generators` package and the two examples)
+    carry their template modules too; `scripts/sync-owned-template-copies.ts` writes them.
 - **The Java `entity` and `extractor` generators can be ejected.**
   `mvn metaobjects:eject -Dnames=entity,extractor -Dport=java` copies each generator, with
   the rest of its emit, into your `codegen/` module. They were the two Java generators that

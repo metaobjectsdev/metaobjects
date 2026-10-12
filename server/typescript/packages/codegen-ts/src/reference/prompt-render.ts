@@ -21,8 +21,11 @@
 //                guarantees, stay in the package.
 // composes-with: entity.ts (emits each payload value object's interface this file imports).
 //
-// Everything below imports ONLY from `@metaobjectsdev/codegen-ts` (the stable engine) and
-// `@metaobjectsdev/metadata`. The handle composition is inlined here so you own it.
+// Everything below imports the engine from `@metaobjectsdev/codegen-ts` (the generator base, the
+// model walks, the naming tables), the node types from `@metaobjectsdev/metadata`, and the
+// payload import lines from `../templates/`. `meta eject` copies that module into your project,
+// under `codegen/templates/`, and your copy of this file imports it from there. The handle
+// composition is inlined here so you own it.
 
 import {
   TEMPLATE_SUBTYPE_PROMPT,
@@ -38,12 +41,14 @@ import {
   type GeneratorFactory,
   findTemplates,
   templateSymbolBase,
-  valueObjectImport,
-  valueObjectImportLines,
-  type ValueObjectImport,
   GENERATED_HEADER,
   GENERATED_EDIT_NOTE,
 } from "@metaobjectsdev/codegen-ts";
+import {
+  valueObjectImport,
+  valueObjectImportLines,
+  type ValueObjectImport,
+} from "../templates/value-object-import.js";
 
 export interface PromptRenderOpts {
   /** Output file path relative to the target's outDir. Default: "prompts.ts". */

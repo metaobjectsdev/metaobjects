@@ -14,15 +14,19 @@ import {
   GENERATED_HEADER,
   GENERATED_EDIT_NOTE,
   entityModuleSpecifier,
-  isTphDiscriminatorBase,
-  collectTphSubtypeFields,
-  isSortableField,
   viewForContext,
   VIEW_CONTEXT_GRID,
   effectivePackage,
+} from "@metaobjectsdev/codegen-ts";
+import {
+  isSortableField,
   resolveGridDefaultSort,
   type GridDefaultSort,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/templates/filter-shared";
+import {
+  isTphDiscriminatorBase,
+  collectTphSubtypeFields,
+} from "@metaobjectsdev/codegen-ts/templates/tph-discriminator";
 
 /** FR-017 TPH grid context, threaded into extractGrids when the entity is a
  *  discriminator base: the discriminator field name (badged in the polymorphic

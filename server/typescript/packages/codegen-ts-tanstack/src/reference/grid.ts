@@ -14,8 +14,8 @@
 //                `layout.dataGrid` child.
 // emits:         <target>/<Entity>.columns.tsx — one column set per declared dataGrid
 //                layout; a TPH discriminator base's grid folds in its subtypes' fields.
-// customize:     this generator is YOURS. `renderColumnsFile` (exported from
-//                @metaobjectsdev/codegen-ts-tanstack) produces the column definitions —
+// customize:     this generator is YOURS. `renderColumnsFile` (copied beside this
+//                file, `templates/columns-file.ts`) produces the column definitions —
 //                wrap it, prepend to it, or replace the call entirely with your own
 //                renderer.
 // composes-with: entity.ts (imports the Row type the columns are typed against),
@@ -30,15 +30,12 @@ import {
   formatTs,
   entityOutputPath,
   servesClientTier,
-  isTphSubtype,
   withClientDirective,
   effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
-import {
-  renderColumnsFile,
-  hasDataGridLayout,
-  warnMissingDataGridLayout,
-} from "@metaobjectsdev/codegen-ts-tanstack";
+import { hasDataGridLayout, warnMissingDataGridLayout } from "@metaobjectsdev/codegen-ts-tanstack";
+import { renderColumnsFile } from "../templates/columns-file.js";
+import { isTphSubtype } from "@metaobjectsdev/codegen-ts/templates/zod-validators";
 
 export interface TanstackGridOpts {
   filter?: (entity: MetaObject) => boolean;

@@ -36,7 +36,8 @@ import { describe, test, expect } from "bun:test";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
-import { readReferenceTemplate, REFERENCE_GENERATOR_NAMES } from "@metaobjectsdev/codegen-ts";
+import { REFERENCE_GENERATOR_NAMES } from "@metaobjectsdev/codegen-ts";
+import { writeOwned } from "./support/write-owned.js";
 import { META_BIN, ensureFreshDist } from "./integration/support/built-cli.js";
 
 // `META_BIN` + the stale-dist check come from the shared harness: which dists a
@@ -110,19 +111,17 @@ function tsPoetCopySources(): Array<{ pkg: string; dir: string }> {
 function scaffoldProject(dir: string, opts: { legacyBareTsPoetImports: boolean }): void {
   mkdirSync(join(dir, "metaobjects"), { recursive: true });
   writeFileSync(join(dir, "metaobjects", "meta.blog.json"), META);
-  mkdirSync(join(dir, "codegen", "generators"), { recursive: true });
   for (const name of REFERENCE_GENERATOR_NAMES) {
-    let src = readReferenceTemplate(name);
-    if (opts.legacyBareTsPoetImports) {
-      // Recreate the pre-fix scaffold shape still present in EXISTING adopter repos:
-      // ts-poet combinators imported bare instead of via @metaobjectsdev/codegen-ts.
-      // Only the loader's ts-poet alias protects this lane.
-      src = src.replace(
-        /^import \{ ((?:code, )?joinCode, type Code) \} from "@metaobjectsdev\/codegen-ts";$/m,
-        `import { $1 } from "ts-poet";`,
-      );
-    }
-    writeFileSync(join(dir, "codegen", "generators", `${name}.ts`), src);
+    writeOwned(dir, name, (src) =>
+      opts.legacyBareTsPoetImports
+        // Recreate the pre-fix scaffold shape still present in EXISTING adopter repos:
+        // ts-poet combinators imported bare instead of via @metaobjectsdev/codegen-ts.
+        // Only the loader's ts-poet alias protects this lane.
+        ? src.replace(
+            /^import \{ ((?:code, )?joinCode, type Code) \} from "@metaobjectsdev\/codegen-ts";$/m,
+            `import { $1 } from "ts-poet";`,
+          )
+        : src);
   }
   writeFileSync(join(dir, "metaobjects.config.ts"), CONFIG);
   for (const { pkg, dir: srcDir } of tsPoetCopySources()) {

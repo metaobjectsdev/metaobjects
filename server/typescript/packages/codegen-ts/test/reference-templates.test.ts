@@ -16,7 +16,7 @@ describe("reference-templates reader", () => {
       "entity", "queries", "routes", "routes-hono", "barrel", "names",
       "prompt-render", "output-parser", "extractor", "output-prompt", "render-helper",
       "requirement-tests", "cube-model", "callable", "trace-helper",
-      "shared-model", "docs", "api-docs",
+      "shared-model", "docs", "api-docs", "requirements", "agent-docs",
     ]);
   });
 

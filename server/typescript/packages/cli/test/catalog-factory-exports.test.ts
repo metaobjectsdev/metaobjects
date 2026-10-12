@@ -109,8 +109,9 @@ describe("meta gen --list — how to wire a generator as shipped", () => {
       expect(row.wire?.import).toMatch(/^import \{ \w+ \} from "@metaobjectsdev\/codegen-ts[\w/-]*";$/);
       expect({ name: row.name, keys: Object.keys(row.wire ?? {}) }).toEqual({ name: row.name, keys: ["import"] });
     }
-    // The rows with a door are exactly the two `meta docs` runs.
-    expect(rows.filter((r) => r.door !== undefined).map((r) => r.name).sort()).toEqual(["api-docs", "docs"]);
+    // The rows with a door are exactly the four `meta docs` runs.
+    expect(rows.filter((r) => r.door !== undefined).map((r) => r.name).sort())
+      .toEqual(["agent-docs", "api-docs", "docs", "requirements"]);
   });
 
   // The import line is withheld because `meta docs` runs the generator (its `docsSurface`

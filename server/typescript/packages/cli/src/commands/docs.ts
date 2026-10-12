@@ -610,8 +610,15 @@ export async function docsCommand(
   // entry with no marker, or two for one surface, is refused by name.
   let ownedModel: Generator | undefined;
   let ownedApi: Generator | undefined;
+  let ownedRequirements: Generator | undefined;
+  let ownedAgent: Generator | undefined;
   try {
-    ({ model: ownedModel, api: ownedApi } = docsDoorGenerators(loadedConfig?.docs?.generators ?? []));
+    ({
+      model: ownedModel,
+      api: ownedApi,
+      requirements: ownedRequirements,
+      agent: ownedAgent,
+    } = docsDoorGenerators(loadedConfig?.docs?.generators ?? []));
   } catch (err) {
     log.error(`docs: ${describeError(err)}`);
     return 2;
@@ -687,7 +694,13 @@ export async function docsCommand(
   // Emits ZERO files when the project declares no `requirement.*` node, which is what
   // makes this surface safe to default ON — a project without a ledger sees no change.
   if (docsCfg.surfaces.includes("requirements")) {
-    emit.push(...(await requirementsFile().generate(ctx)));
+    const requirementsGenerator = ownedRequirements ?? requirementsFile();
+    try {
+      emit.push(...(await requirementsGenerator.generate(doorCtx(requirementsGenerator, {}))));
+    } catch (err) {
+      log.error(`docs: ${describeError(err)}`);
+      return 1;
+    }
   }
 
   // API surface — the SDK reference for the GENERATED REST surface, side by side
@@ -748,12 +761,21 @@ export async function docsCommand(
     if (loadedConfig !== undefined) {
       const strategy = loadedConfig.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY;
       const schema = buildAgentSchemaInput(root, loadedConfig.dialect, strategy);
-      emit.push(
-        ...(await agentDocsFile({
-          ...(schema !== undefined && { schema }),
-          columnNamingStrategy: strategy,
-        }).generate(ctx)),
-      );
+      // The schema is this command's to compute (codegen-ts owns none of it), so it rides on
+      // the door's facts for the packaged generator and an owned copy alike.
+      const agentGenerator = ownedAgent ?? agentDocsFile();
+      try {
+        emit.push(
+          ...(await agentGenerator.generate(
+            doorCtx(agentGenerator, {
+              agent: { ...(schema !== undefined && { schema }), columnNamingStrategy: strategy },
+            }),
+          )),
+        );
+      } catch (err) {
+        log.error(`docs: ${describeError(err)}`);
+        return 1;
+      }
     } else {
       info(
         "meta docs: agent surface skipped — no metaobjects.config.ts (the physical schema " +
@@ -805,7 +827,7 @@ export async function docsCommand(
   // requirements file, and saying "0 requirement pages" would advertise a surface that
   // did not run — the opposite of the silence the empty-ledger guard exists to produce.
   const requirementFiles = emit.filter((f) => f.path.startsWith("requirements.")).length;
-  const reqSummary = requirementFiles > 0 ? `; ${requirementFiles} requirement file(s)` : "";
+  const reqSummary = requirementFiles > 0 ? `; ${requirementFiles} requirement file(s)${ownedBy(ownedRequirements)}` : "";
   // Same rule as the requirements line: NAMED rather than counted, and only when written.
   // Each agent page is skipped when its tier has nothing to describe, so "3 agent pages"
   // would leave a reader unable to tell which three — and the pages are the thing the
@@ -813,7 +835,9 @@ export async function docsCommand(
   const agentPages = emit
     .filter((f) => f.path.startsWith("agent/"))
     .map((f) => basename(f.path));
-  const agentSummary = agentPages.length > 0 ? `; agent/${agentPages.sort().join(" + agent/")}` : "";
+  const agentSummary = agentPages.length > 0
+    ? `; agent/${agentPages.sort().join(" + agent/")}${ownedBy(ownedAgent)}`
+    : "";
   info(`meta docs — wrote ${modelSummary}; ${apiSummary}${reqSummary}${agentSummary} → ${outDir}`);
   return 0;
 }

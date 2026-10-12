@@ -15,25 +15,27 @@
 //                args from the source's `@parameterRef` value object (none for a
 //                zero-argument proc) and rows parsed by the entity module's Zod schema.
 // customize:     which objects get a wrapper (the filter below), the file name and where
-//                it lands. The module BODY comes from `renderCallableFile`; to change the
-//                emitted code itself, copy `renderCallableFile`'s source out of the package
-//                and call your copy here instead.
+//                it lands. The module BODY comes from `renderCallableFile`, which `meta eject`
+//                copies beside this file (`codegen/templates/callable-file.ts`): change the
+//                emitted code there.
 // composes-with: entity.ts (the wrapper imports the row schema and type it emits, and the
 //                `@parameterRef` value object's interface).
 //
-// Everything below imports ONLY from `@metaobjectsdev/codegen-ts` (the stable engine).
+// Everything below imports the engine from `@metaobjectsdev/codegen-ts` (the generator base, the
+// model walks, the naming and type-mapping tables) and the code that writes the output from
+// `../templates/`. `meta eject` copies those template modules into your project, under
+// `codegen/templates/`, and your copy of this file imports them from there: they are yours too.
 
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   perEntity,
   type Generator,
   type GeneratorFactory,
-  isCallableEntity,
-  renderCallableFile,
   formatTs,
   entityOutputPath,
   effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
+import { isCallableEntity, renderCallableFile } from "../templates/callable-file.js";
 
 export interface CallableFileOpts {
   filter?: (entity: MetaObject) => boolean;

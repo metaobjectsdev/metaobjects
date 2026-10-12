@@ -213,10 +213,15 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
     generate(ctx) {
       const objects = ctx.loadedRoot.objects();
       const files: EmittedFile[] = [];
+      // What the docs door computes for this surface and hands over on the context, for a
+      // generator `meta docs` runs as listed (an owned copy is already constructed by then).
+      // Options win: they are what a direct caller of the factory states.
+      const schemaInput = opts?.schema ?? ctx.docsDoor?.agent?.schema;
+      const columnNamingStrategy = opts?.columnNamingStrategy ?? ctx.docsDoor?.agent?.columnNamingStrategy;
 
       // ---- schema.md
-      if (opts?.schema !== undefined) {
-        const schema = opts.schema;
+      if (schemaInput !== undefined) {
+        const schema = schemaInput;
         // The qualified names the snapshot actually holds. An object whose physical name
         // is not one of these contributes nothing to the physical schema (an abstract
         // base, a sourceless value, an `@unmanaged` object) and must not appear on a page
@@ -236,7 +241,7 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
         // model with no report, so the page is byte-identical to what it was before reports.
         const reportViews = new Set<string>();
         for (const obj of objects) {
-          const names = resolveObjectNames(obj, opts.columnNamingStrategy);
+          const names = resolveObjectNames(obj, columnNamingStrategy);
           // The PRIMARY source's physical name and schema — `names.name` is the object's
           // metamodel name since 0.25.0, which would match nothing in the snapshot.
           const primary = names?.sources[SOURCE_ROLE_PRIMARY];
@@ -261,7 +266,7 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
           }
           const lineage: string[] = [];
           for (const field of obj.fields()) {
-            const column = resolveColumnName(field, opts.columnNamingStrategy);
+            const column = resolveColumnName(field, columnNamingStrategy);
             // A TPH base and its subtypes share one table: first writer wins, so the
             // base's own column keeps its label rather than being relabelled by whichever
             // subtype was walked last.

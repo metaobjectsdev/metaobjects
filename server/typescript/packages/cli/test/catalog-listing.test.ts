@@ -378,6 +378,48 @@ describe("--list marks wired and owned correctly for owned copies", () => {
   });
 });
 
+describe("meta gen --list — the template modules an owned generator calls", () => {
+  // ADR-0034 Amendment 8: an owned generator comes with the template modules it calls, so the
+  // row says whether those still match the package — attributed by what each generator calls,
+  // and only to a generator the project owns.
+  test("an owned generator's row carries its template copies, compared to the packages", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "catalog-owned-templates-"));
+    try {
+      writeFileSync(join(tmp, "package.json"), PROJECT_PACKAGE_JSON);
+      await ejectGenerator({ cwd: tmp, name: "names" });
+      const config: MetaobjectsGenConfig = { ...baseConfig, generators: [composeCatalog()["names"]!.factory()] };
+      const list = async (): Promise<GeneratorCatalogRow[]> =>
+        (await buildCatalogListing({
+          project: {
+            projectRoot: tmp,
+            config,
+            wiredNames: wiredGeneratorNames(config),
+            ownedNames: ownedGeneratorNames(tmp),
+            declaredDeps: undefined,
+          },
+        })).filter((r): r is GeneratorCatalogRow => r.kind === "generator");
+
+      let rows = await list();
+      const names = rows.find((r) => r.name === "names")!;
+      expect(names.source.templateCopy?.map((c) => [c.path, c.verdict])).toEqual([
+        ["codegen/templates/names-decl.ts", "identical"],
+      ]);
+      expect(renderCatalogText(rows, false).split("\n").find((l) => l.trimStart().startsWith("names "))!)
+        .toContain("owned templates: identical to the package");
+      // Not owned, so not attributed: `entity` shares no module with the one ejected.
+      expect(rows.find((r) => r.name === "entity")!.source.templateCopy).toBeUndefined();
+
+      writeFileSync(join(tmp, "codegen/templates/names-decl.ts"), "// MINE\nexport const x = 1;\n");
+      rows = await list();
+      expect(rows.find((r) => r.name === "names")!.source.templateCopy?.[0]?.verdict).toBe("differs");
+      expect(renderCatalogText(rows, false).split("\n").find((l) => l.trimStart().startsWith("names "))!)
+        .toContain("owned templates: 1 file(s) DIFFER from the package");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // FR-043 §4 — the library rows
 // ---------------------------------------------------------------------------

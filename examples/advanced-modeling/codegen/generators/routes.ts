@@ -42,8 +42,8 @@
 // composes-with: entity.ts (imports the table/schemas/allowlists), queries.ts.
 //
 // The composition (`renderRoutes`) is the relocated body of the engine's `renderRoutesFile`
-// — byte-identical output to start, now YOURS to change. It imports only public engine
-// primitives.
+// — byte-identical output to start, now YOURS to change. It imports the engine from the
+// package and the renderers from `../templates/`, which `meta eject` copies beside it.
 
 // ts-poet combinators come from the engine package, NOT a bare "ts-poet" import: the Code
 // fragments composed here must share ONE ts-poet instance with the engine's, or (with a
@@ -64,21 +64,13 @@ import {
   exposeLine,
   intersectExpose,
   TPH_POLYMORPHIC_VERBS,
-  isTphSubtype,
-  isTphDiscriminatorBase,
-  tphPlan,
-  tphDiscriminatorPin,
-  tphStorageObject,
   isProjection,
   isWriteThrough,
   isReport,
   itemRouteField,
   reportDecimalColumns,
-  DEFAULT_ID_FIELD,
   servesReadApi,
   formatTs,
-  renderRoutesIndex,
-  routesIndexFileName,
   entityOutputPath,
   effectivePackage,
   crossEntitySpecifier,
@@ -93,6 +85,14 @@ import {
   GENERATED_EDIT_NOTE,
   sidecarLine,
 } from "@metaobjectsdev/codegen-ts";
+import { DEFAULT_ID_FIELD } from "../templates/queries.js";
+import { renderRoutesIndex, routesIndexFileName } from "../templates/routes-index.js";
+import { isTphDiscriminatorBase, tphPlan } from "../templates/tph-discriminator.js";
+import {
+  isTphSubtype,
+  tphDiscriminatorPin,
+  tphStorageObject,
+} from "../templates/zod-validators.js";
 
 // --- composition (OWNED) — assembles one <Entity>.routes.ts. Change this to change the output. ---
 // Dispatch: a TPH discriminator base → polymorphic list/get + a per-subtype CRUD set; a

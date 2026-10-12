@@ -63,13 +63,12 @@ import {
   GENERATED_HEADER,
   GENERATED_EDIT_NOTE,
   sidecarLine,
-  humanize,
-  tphDiscriminatorPin,
-  valueObjectFor,
   viewForContext,
   VIEW_CONTEXT_FORM,
   effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
+import { humanize, valueObjectFor } from "@metaobjectsdev/codegen-ts/templates/field-meta";
+import { tphDiscriminatorPin } from "@metaobjectsdev/codegen-ts/templates/zod-validators";
 
 function primaryFieldNames(entity: MetaObject): Set<string> {
   const set = new Set<string>();
