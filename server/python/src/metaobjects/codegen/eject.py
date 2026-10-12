@@ -26,8 +26,10 @@ page model, builder, renderer and path math. A generator imports each relatively
 ``runtime`` sibling, so the verbatim copy in ``codegen/generators/`` reads
 ``codegen/runtime/<module>.py`` with no edit, and two owned generators read the one copy.
 Only the engine stays a package import: the generator base and file writer, the naming and
-type-mapping tables, the model walks and the loader. ``tests/codegen/test_eject_alone.py``
-ejects each generator alone and holds it to exactly that.
+type-mapping tables, the model walks and the loader. That surface is written in the shared
+manifest (``eject.engineSurface.python`` in ``fixtures/generator-registry-conformance/registry.json``)
+and ``tests/conformance/test_eject_contract.py`` ejects each generator alone and holds it to
+exactly that.
 
 A docs generator (``api-docs``) is not wired into ``generators``: ``metaobjects docs`` runs
 it from the config's ``docs.generators``, and ``gen`` skips one it finds under a target.

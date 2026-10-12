@@ -705,10 +705,12 @@ package: the generator base and file writer (`metaobjects.codegen.generator`), t
 formatter, the naming and type-mapping tables (`metaobjects.apidocs.naming`,
 `metaobjects.codegen.type_map`, `metaobjects.codegen.value_objects`), the model walks
 (`find_inbound`, `tph_plan`, `instance_artifacts`) and the loader. Those module paths are
-the surface an owned generator builds on. `tests/codegen/test_eject_alone.py` ejects each
-generator alone into an empty project, rejects any import outside that surface, runs it with
-the packaged emitters made unimportable, and compares its output byte for byte with the
-packaged generator's.
+the surface an owned generator builds on. It is written once, in the shared manifest
+(`fixtures/generator-registry-conformance/registry.json`, `eject.engineSurface.python`), and
+`tests/conformance/test_eject_contract.py` ejects each generator alone into an empty project
+and rejects any import outside it. `tests/codegen/test_eject_alone.py` then runs each owned
+copy with the packaged emitters made unimportable and compares its output byte for byte with
+the packaged generator's.
 
 `requirement-tests` ejects the same way, to `codegen/generators/requirement_tests.py`,
 wired as `codegen.generators.requirement_tests:requirement_tests_generator`. The copy holds

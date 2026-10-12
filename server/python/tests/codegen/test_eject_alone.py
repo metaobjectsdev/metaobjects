@@ -5,11 +5,13 @@ that code is a helper. So for every generator the registry makes ejectable, deri
 registry and not from a list kept beside it, an empty project that ejects only that generator
 must get a copy that
 
-* imports no packaged emit module: the copy and the helper source eject placed beside it
-  import only the engine surface written below (the generator base, the file writer and
-  formatter, the naming and type-mapping tables, the model walks and the loader);
+* is the generator and the helper modules its registry entry lists, and nothing else;
 * loads and runs with every packaged emit module made unimportable; and
 * writes output byte-identical to the packaged generator over the same model.
+
+What an owned copy may still import from the package (the engine surface) is defined once, in
+``fixtures/generator-registry-conformance/registry.json`` (``eject.engineSurface.python``), and
+asserted by ``tests/conformance/test_eject_contract.py``.
 
 The one documented difference is the router: an owned ``routes`` emits its runtime into the
 generated package and imports it from there, so its router modules differ from the packaged
@@ -20,12 +22,13 @@ or a generator module no registry entry names, fails here instead of staying pac
 """
 from __future__ import annotations
 
-import ast
+import importlib
 import json
 import os
 import shutil
 import subprocess
 import sys
+import warnings
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -35,124 +38,22 @@ import pytest
 import metaobjects
 from metaobjects.codegen import eject as owned
 from metaobjects.codegen.generator_registry import GENERATOR_REGISTRY
+from tests.conformance import eject_contract as contract
 
 REPO = Path(__file__).parents[4]
 FIXTURES = REPO / "fixtures"
 CODEGEN = Path(metaobjects.__file__).parent / "codegen"
 
-#: The packaged ``metaobjects.codegen`` modules an owned copy may import: the engine. Everything
-#: that returns emitted text is handed over instead, and everything outside ``metaobjects.codegen``
-#: (the loader, the metamodel, naming, render, extract, the runtime) is core by ruling.
-ENGINE_CODEGEN = frozenset({
-    "metaobjects.codegen.config",               # GenConfig
-    "metaobjects.codegen.constants",            # the @generated marker and header
-    "metaobjects.codegen.format",               # the formatter
-    "metaobjects.codegen.generator",            # the generator base, EmittedFile, GenContext
-    "metaobjects.codegen.instance_artifacts",   # model questions: what an object emits
-    "metaobjects.codegen.model_walk",
-    "metaobjects.codegen.project_config",       # the requirementTests options
-    "metaobjects.codegen.requirement_hooks",
-    "metaobjects.codegen.requirement_walk",     # shared with `verify`
-    "metaobjects.codegen.type_map",             # the type-mapping table
-    "metaobjects.codegen.value_objects",        # naming and value-object resolution
-    "metaobjects.codegen.generators.find_inbound",   # model walk: the inbound tier
-    "metaobjects.codegen.generators.tph_plan",       # model walk: table-per-hierarchy
-})
-#: Of ``metaobjects.apidocs``, only the naming seam: the names the generators emit under.
-ENGINE_APIDOCS = frozenset({"metaobjects.apidocs.naming"})
-
 EJECTABLE = sorted(e.name for e in owned.ejectable())
 
 
-def _runtime_imports(node: ast.AST) -> list[ast.stmt]:
-    """The import statements under *node* that run: an ``if TYPE_CHECKING:`` block is only an
-    annotation for a type checker, so it is not walked."""
-    found: list[ast.stmt] = []
-    for child in ast.iter_child_nodes(node):
-        if isinstance(child, ast.If) and isinstance(child.test, ast.Name) \
-                and child.test.id == "TYPE_CHECKING":
-            found.extend(_runtime_imports_of(child.orelse))
-        elif isinstance(child, (ast.Import, ast.ImportFrom)):
-            found.append(child)
-        else:
-            found.extend(_runtime_imports(child))
-    return found
-
-
-def _runtime_imports_of(body: list[ast.stmt]) -> list[ast.stmt]:
-    found: list[ast.stmt] = []
-    for stmt in body:
-        if isinstance(stmt, (ast.Import, ast.ImportFrom)):
-            found.append(stmt)
-        else:
-            found.extend(_runtime_imports(stmt))
-    return found
-
-
-def _imports(source: str) -> list[tuple[int, str | None, list[str]]]:
-    """``(level, module, imported names)`` for each import statement in *source* that runs."""
-    out: list[tuple[int, str | None, list[str]]] = []
-    for node in _runtime_imports(ast.parse(source)):
-        if isinstance(node, ast.ImportFrom):
-            out.append((node.level, node.module, [a.name for a in node.names]))
-        elif isinstance(node, ast.Import):
-            out.extend((0, a.name, []) for a in node.names)
-    return out
-
-
-def _outside_the_engine(source: str, handed_over: set[str]) -> list[str]:
-    """What *source* imports that is neither the engine surface nor a helper handed over."""
-    offenders: list[str] = []
-    for level, module, names in _imports(source):
-        if level:
-            # A relative import is the handed-over helper: `..runtime.<m>` from a generator,
-            # `.<m>` or `from . import <m>` from a helper.
-            if module is None:
-                targets = names
-            elif module.startswith("runtime."):
-                targets = [module.split(".", 1)[1]]
-            elif module == "runtime":
-                targets = names
-            else:
-                targets = [module]
-            offenders.extend(
-                f"relative import of {t!r}, which eject does not hand over"
-                for t in targets if t not in handed_over
-            )
-            continue
-        if module is None or not module.startswith("metaobjects."):
-            continue
-        # `from metaobjects.codegen import type_map` names a module through the package.
-        packages = ("metaobjects.codegen", "metaobjects.codegen.generators",
-                    "metaobjects.codegen.runtime", "metaobjects.apidocs")
-        candidates = [f"{module}.{n}" for n in names] if module in packages else [module]
-        for c in candidates:
-            if c.startswith("metaobjects.codegen"):
-                if c not in ENGINE_CODEGEN:
-                    offenders.append(c)
-            elif c.startswith("metaobjects.apidocs"):
-                if c not in ENGINE_APIDOCS:
-                    offenders.append(c)
-    return offenders
-
-
 @pytest.mark.parametrize("name", EJECTABLE)
-def test_an_ejected_generator_imports_only_the_engine(name: str, tmp_path: Path) -> None:
+def test_eject_writes_the_generator_and_the_helpers_its_entry_lists(name: str, tmp_path: Path) -> None:
     entry = GENERATOR_REGISTRY[name]
     assert owned.eject([name], tmp_path).code == 0
-    handed_over = set(entry.runtime)
     copied = [owned.owned_path(tmp_path, name)] + [
         owned.runtime_path(tmp_path, m) for m in entry.runtime
     ]
-    offenders: list[str] = []
-    for path in copied:
-        assert path.is_file(), f"eject did not write {path.relative_to(tmp_path)}"
-        offenders += [
-            f"{path.relative_to(tmp_path)}: {o}"
-            for o in _outside_the_engine(path.read_text(encoding="utf-8"), handed_over)
-        ]
-    assert not offenders, "\n".join(offenders)
-    # Nothing else was written: the copy is the generator and its helpers.
     written = {p.relative_to(tmp_path).as_posix() for p in (tmp_path / "codegen").rglob("*.py")
                if p.name != "__init__.py"}
     assert written == {p.relative_to(tmp_path).as_posix() for p in copied}
@@ -305,19 +206,22 @@ def test_every_helper_module_is_handed_over_by_some_generator() -> None:
     assert on_disk == listed
 
 
+def _is_deprecated_alias(module: str) -> bool:
+    """A module that moved into ``runtime/`` leaves an alias at its old path: importing the
+    old name returns the module at the new one."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        return importlib.import_module(module).__name__ != module
+
+
 def test_every_generator_module_is_a_registry_entry_or_a_model_walk() -> None:
     """The census for Python: every module in ``codegen/generators/`` is a registered
-    generator or one of the two model walks the engine surface names."""
-    registered = {Path(e.source_module.replace(".", "/")).name
-                  for e in GENERATOR_REGISTRY.values() if e.source_module}
-    registered |= {"template_generator"}  # the primitive: exempt, it has no emit logic of its own
-    walks = {Path(m.replace(".", "/")).name for m in ENGINE_CODEGEN
-             if m.startswith("metaobjects.codegen.generators.")}
-    # A module that moved into `runtime/` leaves a deprecated alias at its old path.
-    on_disk = {p.stem for p in (CODEGEN / "generators").glob("*.py")
-               if p.stem != "__init__" and "codegen._moved" not in p.read_text(encoding="utf-8")}
-    assert on_disk == registered | walks
-
-
-def test_template_is_the_only_registered_generator_without_an_eject_source() -> None:
-    assert {e.name for e in GENERATOR_REGISTRY.values() if e.source is None} == {"template"}
+    generator or one of the model walks the shared engine surface names."""
+    package = "metaobjects.codegen.generators"
+    registered = {e.source_module for e in GENERATOR_REGISTRY.values() if e.source_module}
+    # The primitive: exempt, it has no emit logic of its own.
+    registered |= {f"{package}.template_generator"}
+    walks = {m for m in contract.EngineSurface().engine if m.startswith(f"{package}.")}
+    on_disk = {f"{package}.{p.stem}" for p in (CODEGEN / "generators").glob("*.py")
+               if p.stem != "__init__"}
+    assert {m for m in on_disk if not _is_deprecated_alias(m)} == registered | walks

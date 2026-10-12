@@ -259,12 +259,14 @@ generator catalog and the Atlas evaluation are 1.2 work.
     To own them, eject the same name into a scratch directory and copy the generator's
     `runtime/` files over (see
     [own-your-codegen](docs/features/own-your-codegen.md#the-emitters-a-generator-writes-through-come-with-it)).
-  - **A gate for the rule.** For every ejectable generator the registry lists, a test ejects it
-    alone into an empty project, fails on any import outside a written engine surface, runs it
-    with every packaged emit module made unimportable, and compares its output byte for byte
-    with the packaged generator's over a model that exercises each one (the router's own
-    runtime imports are the one documented difference). Another fails on a helper module no
-    registry entry hands over, or a generator module no registry entry names.
+  - **A gate for the rule.** The engine surface is written once, in the shared manifest
+    (`eject.engineSurface.python`), and `tests/conformance/test_eject_contract.py` ejects every
+    ejectable generator alone into an empty project and fails on any import outside it. A
+    second test (`tests/codegen/test_eject_alone.py`) runs each owned copy with every packaged
+    emit module made unimportable and compares its output byte for byte with the packaged
+    generator's over a model that exercises each one (the router's own runtime imports are the
+    one documented difference). Another fails on a helper module no registry entry hands over,
+    or a generator module no registry entry names.
     The nine Python entries of the shared eject contract's `eject.pending` list are closed, and the
     contract test runs `api-docs` through `metaobjects docs`, the way it is run.
 

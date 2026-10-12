@@ -10,6 +10,7 @@ from metaobjects.codegen.project_config import (
     CONFIG_FILENAME,
     DEFAULT_METADATA_DIR,
     DEFAULT_REQUIREMENT_WITNESS_MODULE,
+    DOCS_KEYS,
     DOTTED_MODULE_PATTERN,
     MODULE_SYMBOL_PATTERN,
     REQUIREMENT_TESTS_KEYS,
@@ -215,6 +216,10 @@ def test_schema_and_loader_accept_EXACTLY_the_same_keys(tmp_path: Path) -> None:
     assert set(block["properties"]) == set(REQUIREMENT_TESTS_KEYS)
     assert block["additionalProperties"] is False
     assert block["properties"]["grain"]["enum"] == list(REQUIREMENT_TEST_GRAIN_VALUES)
+    # So is the `docs` block.
+    docs = schema["properties"]["docs"]
+    assert set(docs["properties"]) == set(DOCS_KEYS)
+    assert docs["additionalProperties"] is False
     # Both levels must keep saying unknown keys are invalid — that claim is what the
     # loader now enforces.
     assert schema["additionalProperties"] is False

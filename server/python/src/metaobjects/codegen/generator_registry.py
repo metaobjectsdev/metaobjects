@@ -206,7 +206,7 @@ _SHARED_PREDICATES: tuple[str, ...] = ("shared_predicates",)
 #: that return emitted text, which an owned copy therefore owns instead of calling the
 #: packaged copy. Eject copies them next to the generator (``codegen/runtime/``) and the
 #: generator imports them relatively. Naming and type-mapping tables, the model walks and the
-#: generator base stay in the package as the engine. See ``tests/codegen/test_eject_alone.py``.
+#: generator base stay in the package as the engine. See ``tests/conformance/test_eject_contract.py``.
 _FR010_FIELD_MAPPING = "fr010_field_mapping"
 _M2M_CODEGEN = "m2m_codegen"
 _FR019_SHARED_ENUM = "fr019_shared_enum"
