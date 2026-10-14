@@ -344,8 +344,9 @@ generator catalog and the Atlas evaluation are 1.2 work.
     is gone), with its options in the new top-level `apiDocs` block of
     `metaobjects.config.yaml` (`apiSubDir`, `projectName`, `modelBaseUrl`); `metaobjects gen`
     writes the pages into that target's `outDir` and `verify --codegen` checks them. An owned
-    copy is listed in place of `api-docs`. The reference asks `shared_predicates` which objects get a router (the new
-    `emits_writable_router` and the moved `is_read_only_routed`, beside `emits_router`), the
+    copy is listed in place of `api-docs`. The reference reads `shared_predicates` to decide
+    which objects get a router (the new `emits_writable_router` and the moved
+    `is_read_only_routed`, beside `emits_router`), the
     module your owned `routes` and `filter-allowlist` read, so one edit to the owned predicate
     moves the router, the allowlist and the pages together. The cross-port manifest lists
     `api-docs` for `python`.

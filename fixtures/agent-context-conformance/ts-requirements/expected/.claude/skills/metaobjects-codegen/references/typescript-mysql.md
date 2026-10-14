@@ -7,8 +7,8 @@ MySQL is a **code generation and runtime** dialect. `meta gen` generates Drizzle
 `mysqlTable` entities, Zod schemas, queries and Fastify/Hono routes for it, and the
 `ObjectManager` reads and writes it. **`meta migrate` does not own a MySQL schema** — it
 refuses `--dialect mysql` — so you write and evolve the DDL yourself, and `meta verify --db`,
-`--replay` and the `agent/schema.md` docs page do not apply. `meta verify --codegen`,
-`--templates` and `--docs` work as on any dialect.
+`--replay` and the `agent/schema.md` docs page do not apply. `meta verify --codegen`
+and `--templates` work as on any dialect.
 
 ## Contents
 - TypeScript setup

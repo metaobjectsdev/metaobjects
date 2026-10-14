@@ -18,7 +18,7 @@ MySQL is a **code generation and runtime** target. It is not a schema target:
 | Generated code | `dialect: "mysql"`: Drizzle `mysqlTable` entities, Zod schemas, queries, Fastify/Hono routes | DTOs, controllers and repository interfaces are dialect-neutral |
 | Runtime | the generated routes (`runtime-ts`); `ObjectManager` over `kyselyDriver` (Kysely `MysqlDialect`) or `drizzleDriver` (`drizzle-orm/mysql2`) | OMDB `MySQLDriver` |
 | Schema | you own it: no `meta migrate`, `meta verify --db` or `--replay`, and no `agent/schema.md` page | you own it |
-| Drift gates | `meta verify --codegen`, `--templates`, `--docs` work as on any dialect | `mvn metaobjects:verify` (codegen drift) |
+| Drift gates | `meta verify --codegen` and `--templates` work as on any dialect | `mvn metaobjects:verify` (codegen drift) |
 
 These tests exercise the whole list against a real MySQL 8.4 server:
 
