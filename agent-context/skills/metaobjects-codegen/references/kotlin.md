@@ -136,16 +136,23 @@ repository.
 When a later MetaObjects release changes the reference generator, diff it against your
 copy and take what you want. Nothing in your build changes until you do.
 
-## Docs — `mvn metaobjects:docs -Dmetaobjects.docs.language=kotlin`
+## Docs — the `api-docs` generator
 
-The shared `docs` goal (`DocsMojo`) renders the Kotlin SDK api surface via
-`KotlinApiDocsRenderer` when pointed at the Kotlin language (default `target/docs/api/kotlin`),
-including `AGENT-API.md` — the exact imports, signatures, and payload field shapes for the
-generated code.
+The Kotlin SDK api reference is a `<generator>` entry like any other, run by
+`mvn metaobjects:generate`. It writes `AGENT-API.md` — the exact imports, signatures, and
+payload field shapes for the generated code — plus a page per entity, under
+`<outputDir>/api/kotlin`. Nothing writes it unless the pom lists it; there is no docs goal
+(removed in 8.1.0).
 
-```bash
-mvn metaobjects:docs -Dmetaobjects.docs.language=kotlin   # → target/docs/api/kotlin (AGENT-API.md + per-entity pages)
+```xml
+<generator>
+  <classname>com.metaobjects.generator.kotlin.apidocs.KotlinApiDocsGenerator</classname>
+  <args><outputDir>${project.build.directory}/docs</outputDir></args>
+</generator>
 ```
+
+Optional `<args>`: `apiSubDir` (default `api/kotlin`), `layout` (`flat` or `package`),
+`projectName`, `modelBaseUrl`. Give it an `outputDir` of generated files only.
 
 **Before calling any generated code, read `api/kotlin/AGENT-API.md`.**
 

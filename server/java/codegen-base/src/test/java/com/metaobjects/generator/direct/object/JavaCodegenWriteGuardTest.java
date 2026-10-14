@@ -37,7 +37,7 @@ import static org.junit.Assert.assertTrue;
  *
  * <p>Deliberately NOT covered here, because they cannot carry a marker and guarding them
  * would freeze them after the first run: the {@code META-INF/services} registration (its
- * whole content is a provider FQN), {@code TemplateScopeGenerator}, {@code DocsMojo}, and
+ * whole content is a provider FQN), {@code TemplateScopeGenerator}, the {@code api-docs} generators, and
  * {@code MustacheTemplateGenerator}. See {@code GeneratedFileWriter}'s class javadoc.
  */
 public class JavaCodegenWriteGuardTest {

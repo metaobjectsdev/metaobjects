@@ -44,7 +44,7 @@ import static org.junit.Assert.assertTrue;
  * <p>Since Plan 3 a report that declares a read-only {@code source.rdb @kind: view} is
  * SERVED: the REST-surface generators emit its read-only files and nothing else changes.
  * {@code StoreTotals} is that report, so {@code with/} differs from {@code without/} in
- * exactly {@link #SERVED_REPORT_FILES} (one file per generator) and one api-docs unit.
+ * exactly {@link #SERVED_REPORT_FILES} (one file per generator, the api-docs page among them).
  * {@code DailyRevenue}, {@code ProgramEngagement} and {@code ProgramCatalogue} (which declares
  * {@code @spine} and lists a dimension reached by {@code @via}) declare no source and stay
  * inert, as does a measure {@code @default} ({@code avgDaysPerStarter}).
@@ -72,7 +72,17 @@ public class ReportingInertTest extends SharedRegistryTestBase {
         "dto", "acme/shop/StoreTotalsDto.java",
         "repository", "acme/shop/StoreTotalsRepository.java",
         "filter-allowlist", "acme/shop/StoreTotalsFilterAllowlist.java",
-        "routes", "acme/shop/StoreTotalsController.java");
+        "routes", "acme/shop/StoreTotalsController.java",
+        // The api reference documents the served report as one more unit.
+        "api-docs", "api/java/StoreTotals.md");
+
+    /**
+     * The files that LIST every unit rather than describe one, by generator stable name: the api
+     * reference's index and agent page. They differ between the two models by the served report's
+     * entry, so each is checked to name it and then left out of the byte comparison.
+     */
+    private static final Map<String, List<String>> UNIT_LISTINGS = Map.of(
+        "api-docs", List.of("api/java/README.md", "api/java/AGENT-API.md"));
 
     private static Path model(String variant) {
         return SpringTestFixtures.findCorpusRoot().getParent()
@@ -178,8 +188,17 @@ public class ReportingInertTest extends SharedRegistryTestBase {
             String extra = SERVED_REPORT_FILES.get(info.stableName());
             if (extra != null) seen.add(info.stableName());
             try {
-                assertSameBut(info.stableName(), emit("without", List.of(info)), emit("with", List.of(info)),
-                    extra == null ? List.of() : List.of(extra));
+                Map<String, String> without = emit("without", List.of(info));
+                Map<String, String> with = emit("with", List.of(info));
+                for (String listing : UNIT_LISTINGS.getOrDefault(info.stableName(), List.of())) {
+                    assertTrue(info.stableName() + ": " + listing + " does not name the served report",
+                        with.getOrDefault(listing, "").contains("StoreTotals"));
+                    assertFalse(info.stableName() + ": " + listing + " names the report without it",
+                        without.getOrDefault(listing, "").contains("StoreTotals"));
+                    without.remove(listing);
+                    with.remove(listing);
+                }
+                assertSameBut(info.stableName(), without, with, extra == null ? List.of() : List.of(extra));
             } catch (AssertionError e) {
                 leaks.add(e.getMessage());
             }
@@ -238,7 +257,7 @@ public class ReportingInertTest extends SharedRegistryTestBase {
     }
 
     /**
-     * The api docs surface ({@code mvn metaobjects:docs}): every unit page, the index and the
+     * The api docs surface (the {@code api-docs} generator): every unit page, the index and the
      * agent page.
      */
     private Map<String, String> apiDocs(String variant) throws Exception {

@@ -75,9 +75,9 @@
             <artifactId>metaobjects-codegen-plantuml</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- api-docs IR/builder/renderer/DocsPaths for the metaobjects:docs goal: the Java
-             surface (codegen-spring) + the Kotlin surface (codegen-kotlin). The Kotlin api-docs
-             builder/renderer/DocsPaths drive the goal's language=kotlin emit. -->
+        <!-- The Java (codegen-spring) and Kotlin (codegen-kotlin) generators, the api-docs
+             generators among them, which a pom lists in <generators> and
+             metaobjects:generate runs. -->
         <dependency>
             <groupId>com.metaobjects</groupId>
             <artifactId>metaobjects-codegen-spring</artifactId>
@@ -152,6 +152,15 @@
             <groupId>jakarta.validation</groupId>
             <artifactId>jakarta.validation-api</artifactId>
             <version>3.0.2</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- ApiDocsEjectBothPortsTest compiles the Kotlin api-docs copy the eject mojo writes
+             beside the Java one. Same compiler harness, at the same version, as codegen-kotlin's
+             own eject tests. -->
+        <dependency>
+            <groupId>com.github.tschuchortdev</groupId>
+            <artifactId>kotlin-compile-testing</artifactId>
+            <version>1.6.0</version>
             <scope>test</scope>
         </dependency>
         <dependency>

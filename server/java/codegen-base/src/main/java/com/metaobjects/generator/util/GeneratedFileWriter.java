@@ -46,7 +46,7 @@ import java.util.regex.Pattern;
  * break them silently rather than loudly:
  *
  * <ul>
- *   <li>{@code DocsMojo}'s API pages — rendered from {@code templates/api/*.mustache},
+ *   <li>The {@code api-docs} generators' pages — rendered from {@code templates/api/*.mustache},
  *       which emit no marker and are under no obligation to.</li>
  *   <li>{@code TemplateScopeGenerator} — emits whatever a user's {@code --template-spec}
  *       renders (SQL, markdown, CSV); the content is not ours to require a marker of.</li>

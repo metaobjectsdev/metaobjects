@@ -3,5 +3,7 @@
   "install": "npm install -D @metaobjectsdev/cli @metaobjectsdev/codegen-ts",
   "codegenCommand": "npx meta gen",
   "docsCommand": "npx meta docs",
+  "docsCondition": "",
+  "docsMissing": "",
   "apiSubDir": "api"
 }

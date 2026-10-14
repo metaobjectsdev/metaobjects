@@ -111,6 +111,13 @@ class ReportingInertTest {
         return if (differing.isEmpty()) null else "$label: $differing differ once reporting nodes are declared"
     }
 
+    /**
+     * Every generator that writes code. `api-docs` writes the api reference, not code, and is
+     * held to the same inertness by [api docs gain exactly the view-backed report's page], which
+     * compares its pages unit by unit.
+     */
+    private val codeGenerators get() = GENERATOR_REGISTRY.values.filter { it.name != "api-docs" }
+
     /** What a generator may add for the with-model: one file of the view-backed report, from five generators. */
     private fun allowedFor(info: GeneratorInfo): Set<String> = setOfNotNull(STORE_TOTALS_FILES[info.name])
 
@@ -129,7 +136,7 @@ class ReportingInertTest {
     fun `only five generators emit for a report, each one file, for the view-backed one`() {
         // Every generator is compared before anything is asserted, so one red run names
         // every leak rather than the first.
-        val leaks = GENERATOR_REGISTRY.values.mapNotNull { info ->
+        val leaks = codeGenerators.mapNotNull { info ->
             sameOrLeak(info.name, emit("without", listOf(info)), emit("with", listOf(info)), allowedFor(info))
         }
         assertTrue(leaks.isEmpty(), leaks.joinToString("\n"))
@@ -155,7 +162,7 @@ class ReportingInertTest {
 
     @Test
     fun `a sourceless report appears in no generated file`() {
-        val files = emit("with", GENERATOR_REGISTRY.values.toList())
+        val files = emit("with", codeGenerators.toList())
         assertFalse(THREW in files, "the combined suite threw: ${files[THREW]}")
         for (report in SOURCELESS_REPORTS) {
             val hits = files.filter { (path, text) -> report in path || report in text }.keys
@@ -171,13 +178,13 @@ class ReportingInertTest {
         // Each is compared above on its error message alone, which proves nothing about its
         // output. Pinned by name so a generator that starts throwing cannot drop out
         // silently; the list may only shrink.
-        val threw = GENERATOR_REGISTRY.values.filter { THREW in emit("without", listOf(it)) }.map { it.name }.sorted()
+        val threw = codeGenerators.filter { THREW in emit("without", listOf(it)) }.map { it.name }.sorted()
         assertEquals(emptyList(), threw)
     }
 
     @Test
     fun `every runnable generator in one run emits the same files`() {
-        val runnable = GENERATOR_REGISTRY.values.filter { THREW !in emit("without", listOf(it)) }
+        val runnable = codeGenerators.filter { THREW !in emit("without", listOf(it)) }
         val expected = emit("without", runnable)
         assertFalse(THREW in expected, "the combined suite threw: ${expected[THREW]}")
         assertTrue(expected.size > 10, "only ${expected.size} files — the suite barely ran")
@@ -191,16 +198,21 @@ class ReportingInertTest {
      * sourceless one has none.
      */
     private fun apiDocs(variant: String): Map<String, String> {
-        val model = KotlinApiModelBuilder(com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig.fromArgs(null)).build(load(variant), "shop")
-        val renderer = KotlinApiDocsRenderer()
-        val pages = TreeMap<String, String>()
-        for (unit in model.units) {
-            pages[DocsPaths.docPageOutputPath(DocsPaths.Layout.PACKAGE, unit.pkg, unit.node)] =
-                renderer.renderUnitPage(unit, null)
+        val out = Files.createTempDirectory("reporting-inert-docs-")
+        try {
+            val docs = GENERATOR_REGISTRY.getValue("api-docs").factory()
+            docs.setArgs(mapOf("outputDir" to out.toString(), "projectName" to "shop", "layout" to "package"))
+            docs.execute(load(variant))
+            val pages = TreeMap<String, String>()
+            Files.walk(out).use { s ->
+                s.filter { it.isRegularFile() }.forEach {
+                    pages[out.resolve("api/kotlin").relativize(it).toString()] = it.readText()
+                }
+            }
+            return pages
+        } finally {
+            out.toFile().deleteRecursively()
         }
-        pages["README.md"] = renderer.renderIndex(model, DocsPaths.Layout.PACKAGE)
-        pages["AGENT-API.md"] = renderer.renderAgentApi(model)
-        return pages
     }
 
     @Test

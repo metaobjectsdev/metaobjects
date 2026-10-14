@@ -1,15 +1,11 @@
 package com.metaobjects.generator.apidocs;
 
+// Eject note (ADR-0034 Amendment 8): `mvn metaobjects:eject` copies this file with the rest of the
+// api reference. The siblings below stay in their packages as engine, so each is imported by name.
+import com.metaobjects.generator.apidocs.GeneratorApplicability;
 import com.metaobjects.generator.spring.FindInbound;
-import com.metaobjects.generator.spring.LlmTraceHelperGenerator;
-import com.metaobjects.generator.spring.SpringControllerGenerator;
-import com.metaobjects.generator.spring.SpringDtoGenerator;
-import com.metaobjects.generator.spring.SpringFilterAllowlistGenerator;
 import com.metaobjects.generator.spring.SpringM2mSupport;
 import com.metaobjects.generator.spring.SpringNaming;
-import com.metaobjects.generator.spring.SpringOutputParserGenerator;
-import com.metaobjects.generator.spring.SpringOutputPromptGenerator;
-import com.metaobjects.generator.spring.SpringRenderHelperGenerator;
 import com.metaobjects.generator.spring.SpringGeneratorSupport;
 import com.metaobjects.io.util.IOUtil;
 import com.metaobjects.generator.util.GeneratorUtil;
@@ -82,6 +78,18 @@ import java.util.List;
  */
 public final class JavaApiModelBuilder {
 
+    private final GeneratorApplicability applies;
+
+    /** A builder that documents what the packaged generators emit for. */
+    public JavaApiModelBuilder() {
+        this(GeneratorApplicability.packaged());
+    }
+
+    /** @param applies what each documented generator emits for; see {@link GeneratorApplicability}. */
+    public JavaApiModelBuilder(GeneratorApplicability applies) {
+        this.applies = applies;
+    }
+
     /** Build the SDK-surface model for {@code project} from the loaded {@code loader}. */
     public JavaApiModel build(MetaDataLoader loader, String project) {
         List<ApiUnit> units = new ArrayList<>();
@@ -140,7 +148,7 @@ public final class JavaApiModelBuilder {
         // DTO — the wire shape. Emitted for any concrete object.entity OR concrete
         // object.projection (a projection is a read-only wire model). The inclusion
         // decision is delegated to the generator's appliesTo so documented == generated.
-        if (SpringDtoGenerator.appliesTo(obj)) {
+        if (applies.dto().test(obj)) {
             String dto = SpringNaming.dtoName(shortName);
             List<FieldShape> dtoFields = JavaFieldShapes.dtoFields(obj);
             symbols.add(symbolWithFields(
@@ -183,12 +191,12 @@ public final class JavaApiModelBuilder {
         }
 
         // REST — one symbol per verb+path the controller registers.
-        if (SpringControllerGenerator.appliesTo(obj)) {
+        if (applies.routes().test(obj)) {
             addRestSymbols(symbols, obj, javaPkg, shortName, loader);
         }
 
         // FILTER — the per-entity sort/filter allowlist.
-        if (SpringFilterAllowlistGenerator.appliesTo(obj)) {
+        if (applies.filterAllowlist().test(obj)) {
             String filter = SpringNaming.filterAllowlistName(shortName);
             symbols.add(symbol(
                 filter, ApiSymbolKind.FILTER, fqn(javaPkg, filter),
@@ -198,7 +206,7 @@ public final class JavaApiModelBuilder {
 
         // TRACE — the LLM-trace persistence helper (only when a prompt with
         // @responseRef is present, per the generator's appliesTo).
-        if (LlmTraceHelperGenerator.appliesTo(obj)) {
+        if (applies.traceHelper().test(obj)) {
             String trace = SpringNaming.traceHelperName(shortName);
             symbols.add(symbol(
                 trace, ApiSymbolKind.TRACE, fqn(javaPkg, trace),
@@ -306,7 +314,7 @@ public final class JavaApiModelBuilder {
                 "the typed payload value object the template renders",
                 JavaFieldShapes.payloadFieldsOf(payloadVo, loader)));
         }
-        if (SpringRenderHelperGenerator.appliesTo(tmpl, loader)) {
+        if (applies.renderHelper().test(tmpl, loader)) {
             String render = SpringNaming.renderHelperName(shortName);
             // The render helper's return type keys off @kind: email → EmailDocument,
             // document (the default) → String. Read the own attr the same way the
@@ -319,14 +327,14 @@ public final class JavaApiModelBuilder {
                 renderReturns));
         }
         // ADR-0052: the inbound symbols belong to the RESPONDING PROMPT, never to an output.
-        if (SpringOutputPromptGenerator.appliesTo(tmpl, loader)) {
+        if (applies.outputPrompt().test(tmpl, loader)) {
             String prompt = SpringNaming.responseFormatName(shortName);
             symbols.add(symbol(
                 prompt, ApiSymbolKind.PROMPT, fqn(promptsPkg, prompt),
                 "final class " + prompt,
                 "builds the response-format prompt fragment"));
         }
-        if (SpringOutputParserGenerator.appliesTo(tmpl, loader)) {
+        if (applies.outputParser().test(tmpl, loader)) {
             String parser = SpringNaming.parserName(shortName);
             symbols.add(symbol(
                 parser, ApiSymbolKind.OUTPUT_PARSER, fqn(promptsPkg, parser),

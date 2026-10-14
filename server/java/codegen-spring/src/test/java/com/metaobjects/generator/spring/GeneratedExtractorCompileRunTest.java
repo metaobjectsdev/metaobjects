@@ -1,5 +1,6 @@
 package com.metaobjects.generator.spring;
 
+import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;
 import com.metaobjects.generator.direct.object.javacode.JavaObjectCodeGenerator;
 import com.metaobjects.loader.InMemoryStringSource;
 import com.metaobjects.loader.LoaderOptions;
@@ -136,7 +137,8 @@ public class GeneratedExtractorCompileRunTest {
         MetaObject answerMo = loader.getMetaObjectByName(ANSWER_FQN);
         assertNotNull("Answer MetaObject must load", answerMo);
 
-        // 1. Generate flavored classes + provider + Extractor.
+        // 1. Generate flavored classes + provider (`entity`) and the Extractor (`extractor`),
+        //    the two <generator> entries a pom lists, over one output directory.
         Path gen = tmp.newFolder("gen-" + flavor).toPath();
         Map<String, String> args = new HashMap<>();
         args.put("outputDir", gen.toString());
@@ -146,6 +148,10 @@ public class GeneratedExtractorCompileRunTest {
         JavaObjectCodeGenerator generator = new JavaObjectCodeGenerator();
         generator.setArgs(args);
         generator.execute(loader);
+
+        ExtractorCodeGenerator extractorGenerator = new ExtractorCodeGenerator();
+        extractorGenerator.setArgs(Map.of("outputDir", gen.toString()));
+        extractorGenerator.execute(loader);
 
         // The Extractor must have been emitted alongside the flavored class.
         File extractorSrc = gen.resolve("acme/payload/AnswerExtractor.java").toFile();

@@ -25,7 +25,7 @@
 //      default moved to `./docs/generated` for exactly that reason: defaulting into the
 //      most-owned directory name in the ecosystem contradicted this paragraph.) Its
 //      `api/` subtree is not ours either: on a multi-port project those pages are written
-//      by the OTHER port's docs command (`mvn metaobjects:docs`, `metaobjects docs`,
+//      by the OTHER port's docs writer (`mvn metaobjects:generate`, `metaobjects docs`,
 //      `dotnet meta docs`), which this gate never runs, so a fresh run here legitimately
 //      emits none of them. `--codegen` can convict a committed-but-not-regenerated file
 //      because `.gen-state` proves the generator wrote it; over the docs root there is no

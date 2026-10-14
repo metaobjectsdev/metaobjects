@@ -27,8 +27,11 @@ import kotlin.test.assertTrue
 class EjectedGeneratorsCompileTest {
 
     /** Every reference this module ships, read off the registry so the list cannot fall behind it. */
-    private val ejectableSimpleNames = GENERATOR_REGISTRY.values.mapNotNull { it.ejectResourcePath }
-        .map { it.substringAfterLast('/').substringBeforeLast('.') }
+    private val ejectableSimpleNames = GENERATOR_REGISTRY.values.flatMap { info ->
+        // The generator, and the classes eject copies with it (an emitter, a page model).
+        listOfNotNull(info.ejectResourcePath).map { it.substringAfterLast('/').substringBeforeLast('.') } +
+            info.ejectWith.map { it.substringAfterLast('.') }
+    }.distinct()
 
     private val packageLine = Regex("(?m)^package\\s+[\\w.]+\\s*$")
 
@@ -43,9 +46,14 @@ class EjectedGeneratorsCompileTest {
         val srcDir = Path.of("src/main/kotlin/com/metaobjects/generator/kotlin")
         assertTrue(Files.isDirectory(srcDir), "expected ${srcDir.toAbsolutePath()} to exist")
 
+        // A generator may sit in a subpackage's directory (api-docs does); eject ships them all flat.
+        val byName = Files.walk(srcDir).use { walk -> walk.filter { it.toString().endsWith(".kt") }.toList() }
+            .associateBy { it.fileName.toString().removeSuffix(".kt") }
+
         val sources = ejectableSimpleNames.map { simpleName ->
-            val original = srcDir.resolve("$simpleName.kt")
-            assertTrue(Files.exists(original), "expected $original to exist")
+            val original = byName[simpleName]
+            assertTrue(original != null && Files.exists(original), "expected $simpleName.kt under $srcDir")
+            original!!
             val rewritten = rewritePackage(Files.readString(original), "com.acme.owned")
             SourceFile.kotlin("$simpleName.kt", rewritten)
         }

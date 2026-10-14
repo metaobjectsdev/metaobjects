@@ -12,7 +12,7 @@
     </dependencies>
 
     <build>
-        <directory>target/docs-mojo-test</directory>
+        <directory>target/api-docs-test</directory>
         <plugins>
             <plugin>
                 <groupId>com.metaobjects</groupId>
@@ -24,20 +24,38 @@
                     <lax>true</lax>
                     <loader>
                         <classname>com.metaobjects.loader.MetaDataLoader</classname>
-                        <name>docs-mojo-test-pom</name>
+                        <name>api-docs-test-pom</name>
                         <sourceDir>./src/test/resources</sourceDir>
                         <sources>
                             <source>mojo/mojo-test-metadata.json</source>
                         </sources>
                     </loader>
-                    <outputDirectory>target/docs-mojo-test/docs</outputDirectory>
-                    <apiSubDir>api/java</apiSubDir>
-                    <layout>package</layout>
+                    <!-- The api reference is a <generator> entry like any other (ADR-0034
+                         Amendment 9): one per language, each with its options in <args>. The Java
+                         entry sets every option; the Kotlin entry takes every default. -->
+                    <generators>
+                        <generator>
+                            <classname>com.metaobjects.generator.apidocs.JavaApiDocsGenerator</classname>
+                            <args>
+                                <outputDir>target/api-docs-test/docs</outputDir>
+                                <apiSubDir>reference/java</apiSubDir>
+                                <layout>package</layout>
+                                <projectName>fruit-shop</projectName>
+                                <modelBaseUrl>https://docs.example.test/model</modelBaseUrl>
+                            </args>
+                        </generator>
+                        <generator>
+                            <classname>com.metaobjects.generator.kotlin.apidocs.KotlinApiDocsGenerator</classname>
+                            <args>
+                                <outputDir>target/api-docs-test/docs</outputDir>
+                            </args>
+                        </generator>
+                    </generators>
                 </configuration>
                 <executions>
                     <execution>
                         <goals>
-                            <goal>docs</goal>
+                            <goal>generate</goal>
                         </goals>
                     </execution>
                 </executions>

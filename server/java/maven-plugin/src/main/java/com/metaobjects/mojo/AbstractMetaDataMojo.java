@@ -14,7 +14,6 @@ import com.metaobjects.generator.template.TemplateScopeGenerator;
 import com.metaobjects.loader.LoaderConfigurable;
 import com.metaobjects.loader.LoaderConfigurationConstants;
 import com.metaobjects.loader.LoaderOptions;
-import com.metaobjects.generator.EmitsObjectExtractors;
 import com.metaobjects.generator.EmitsPhysicalNameConstants;
 import com.metaobjects.loader.MetaDataLoader;
 import org.apache.maven.plugin.AbstractMojo;
@@ -109,12 +108,47 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         this.lax = lax;
     }
 
+    // The parameters of the `docs` goal removed in 8.1.0 (ADR-0034 Amendment 9), which nothing
+    // reads. They are declared so that a pom still setting one is refused by name: Maven drops
+    // an element no goal declares without a word, and the build would then write no
+    // documentation and say nothing. (The goal's fifth parameter, <outputDirectory>, is this
+    // class's own build directory and cannot be told apart.)
+    @Parameter(property = "metaobjects.docs.language")
+    private String language;
+    @Parameter(property = "metaobjects.docs.apiSubDir")
+    private String apiSubDir;
+    @Parameter(property = "metaobjects.docs.layout")
+    private String layout;
+    @Parameter(property = "metaobjects.docs.modelBaseUrl")
+    private String modelBaseUrl;
+
+    /**
+     * Refuse a pom that still carries the removed {@code docs} goal's configuration. ADR-0034
+     * Amendment 9 fixes the sentence for every port.
+     *
+     * @param goal the goal refusing, as the adopter typed it ({@code generate}, {@code verify})
+     */
+    protected void refuseRemovedDocsConfiguration(String goal) throws MojoFailureException {
+        List<String> set = new ArrayList<>();
+        if (language != null) set.add("<language>");
+        if (apiSubDir != null) set.add("<apiSubDir>");
+        if (layout != null) set.add("<layout>");
+        if (modelBaseUrl != null) set.add("<modelBaseUrl>");
+        if (set.isEmpty()) return;
+        throw new MojoFailureException(
+                "metaobjects:" + goal + ": found 1.0 docs configuration (" + String.join(", ", set)
+                    + " in the plugin's <configuration>). Nothing reads it any more, so this run would "
+                    + "write no documentation. Declare each docs generator as a <generator> entry in the "
+                    + "plugin's <generators>. See " + DocsMojo.MIGRATION + ".");
+    }
+
     public void execute() throws MojoExecutionException, MojoFailureException
     {
         // #233: warm the global registry singletons before this reactor module's load
         // can race a sibling module's first-init under `mvn -T`. Must precede
         // createLoader(), which triggers MavenLoaderConfiguration's eager
         // getTypeRegistry().getRegisteredTypes() first-touch on this thread.
+        refuseRemovedDocsConfiguration( execution != null ? execution.getGoal() : "generate" );
         com.metaobjects.registry.RegistryBootstrap.warmUpDefaults();
         if ( getLoader() == null ) {
             throw new MojoExecutionException( "No <loader> element was defined");
@@ -200,16 +234,9 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         // aggregation point that makes it safe to default from the run instead: the same
         // decision TypeScript makes from its `emitsNames` generator marker and C# from
         // GeneratorRegistry.IncludesNames. An explicit `<useNames>` in the pom still wins.
-        //
-        // The same aggregation answers a second question for the Java `entity` generator: is
-        // a separate `extractor` generator in this run? `entity` writes the <Name>Extractor
-        // classes itself unless one is, so a run holding both has one emitter per file
-        // rather than two that agree until the owned one is edited.
         for ( int i = 0; i < generatorImpls.size(); i++ ) {
-            Map<String, String> derived =
-                EmitsPhysicalNameConstants.deriveUseNames( argsByGenerator.get(i), generatorImpls );
             generatorImpls.get(i).setArgs(
-                EmitsObjectExtractors.deriveEmitExtractors( derived, generatorImpls ) );
+                EmitsPhysicalNameConstants.deriveUseNames( argsByGenerator.get(i), generatorImpls ) );
         }
 
         return generatorImpls;

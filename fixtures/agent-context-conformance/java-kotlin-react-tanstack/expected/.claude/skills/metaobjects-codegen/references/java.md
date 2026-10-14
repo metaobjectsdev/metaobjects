@@ -10,7 +10,7 @@ Maven plugin goal — there is no standalone `meta` binary on the Java side (the
 - Run
 - Write your own generator
 - When a generator's output is wrong — own the generator
-- Docs — `mvn metaobjects:docs`
+- Docs — the `api-docs` generator
 - `codegen-spring` generators
 - Discriminator inheritance (TPH)
 - Serializing generated objects
@@ -138,15 +138,23 @@ repository.
 When a later MetaObjects release changes the reference generator, diff it against your
 copy and take what you want. Nothing in your build changes until you do.
 
-## Docs — `mvn metaobjects:docs`
+## Docs — the `api-docs` generator
 
-A separate `docs` goal (`DocsMojo` — NOT a `<generator>`) emits this project's SDK api
-surface (default `target/docs/api/java`), including `AGENT-API.md` — the exact imports,
-signatures, and payload field shapes for the generated code.
+The SDK api reference is a `<generator>` entry like any other, run by
+`mvn metaobjects:generate`. It writes `AGENT-API.md` — the exact imports, signatures, and
+payload field shapes for the generated code — plus a page per entity, under
+`<outputDir>/api/java`. Nothing writes it unless the pom lists it; there is no docs goal
+(removed in 8.1.0).
 
-```bash
-mvn metaobjects:docs   # → target/docs/api/java (AGENT-API.md + per-entity pages)
+```xml
+<generator>
+  <classname>com.metaobjects.generator.apidocs.JavaApiDocsGenerator</classname>
+  <args><outputDir>${project.build.directory}/docs</outputDir></args>
+</generator>
 ```
+
+Optional `<args>`: `apiSubDir` (default `api/java`), `layout` (`flat` or `package`),
+`projectName`, `modelBaseUrl`. Give it an `outputDir` of generated files only.
 
 **Before calling any generated code, read `api/java/AGENT-API.md`** — it carries the
 concrete imports and signatures so you don't have to guess them.
@@ -170,8 +178,8 @@ separate `metaobjects-codegen-base` module instead.)
 | `LlmTraceHelperGenerator` | `<Entity>TraceHelper.java` per concrete entity — the LLM-trace helper |
 | `SpringFilterAllowlistGenerator` | per-entity filter allowlist |
 | `SpringNamesGenerator` | `<Entity>Names.java` — `public abstract class` of `static final String` names that MIRRORS THE METADATA TREE. Every node carries its own `TYPE`/`SUB_TYPE`/`NAME`, so `AuthorNames.NAME` is the OBJECT's name (`"Author"`), **not** a table name, and a physical name sits under the member that says what it is: `SOURCE_<ROLE>_TABLE` / `_VIEW` / `_MATERIALIZED_VIEW` / `_PROC` / `_FUNCTION`, from the metamodel's own `@kind`-to-alias map, with `<ROLE>` being `PRIMARY` or `REPLICA` (a write-through entity has a member for each). Plus a `<FIELD>_FIELD`/`<FIELD>_COLUMN` pair per field and a complete `COLUMNS_BY_FIELD`; an `identity.secondary` or `index.lookup` also carries `IDENTITY_<NAME>_INDEX` / `INDEX_<NAME>_INDEX`, while `identity.primary` deliberately carries no index member (migrate names a PK by a dialect-conditional formula this artifact must not restate). **There is no `READ_ONLY`** — it was a derivation over `@kind`, never metadata, so ask `SOURCE_<ROLE>_KIND`. Emitted for every object with a declared or inherited primary source, PLUS a fragment for any abstract base such an object extends (columns only, no source). A class whose object extends another one **extends** it (`class CopayAuthNames extends AuthNames`) rather than restating its constants — Java inherits static members, so `CopayAuthNames.SOURCE_PRIMARY_TABLE` and `CopayAuthNames.ID_COLUMN` both resolve through the base. **This port generates no SQL** (the repository is an interface you implement), so nothing generated consumes these — they exist for your implementation. |
-| `JavaObjectCodeGenerator` | module `metaobjects-codegen-base` (`com.metaobjects.generator.direct.object.javacode`), a separate module from the Spring generators above. Flavor-selected via the `flavor` generator arg. `flavor=pojoAware` → `class <Name> extends PojoObject` (a concrete `MetaObjectAware` class with a `(MetaObject)` constructor) — its inherited `getMetaData()` back-reference is what breaks a default Jackson/Gson mapper, see "Serializing generated objects" below. `flavor=valueObject` → `class <Name> extends ValueObject` (map-backed; less hostile to a default mapper, but still not the sanctioned serialization path). Either concrete flavor also emits a self-registering `ObjectClassBindingProvider`, and a `<Name>Extractor` per concrete class unless `ExtractorCodeGenerator` is wired too. For a plain default-Jackson-friendly type, use the `codegen-spring` record surface instead — never `pojoAware`. |
-| `ExtractorCodeGenerator` | also in `metaobjects-codegen-base`. One `<Name>Extractor` per concrete object, the same files `JavaObjectCodeGenerator` writes when this is not wired. Wire it as its own `<generator>` only to own it or to give it different args: same `outputDir`, `pkgPrefix` / `pkgSuffix` / `namePrefix` / `nameSuffix` and `<filters>` as the entity generator, which must run a concrete flavor in the same `<generators>` (an extractor for an object the entity generator wrote no class for does not compile). The plugin then stops the entity generator writing them. A pom with more than one entity generator entry needs one `ExtractorCodeGenerator` entry per entity entry, each with that entry's `outputDir`, naming args and `<filters>`: a single extractor generator in the run stops every entity entry writing its extractors. |
+| `JavaObjectCodeGenerator` | module `metaobjects-codegen-base` (`com.metaobjects.generator.direct.object.javacode`), a separate module from the Spring generators above. Flavor-selected via the `flavor` generator arg. `flavor=pojoAware` → `class <Name> extends PojoObject` (a concrete `MetaObjectAware` class with a `(MetaObject)` constructor) — its inherited `getMetaData()` back-reference is what breaks a default Jackson/Gson mapper, see "Serializing generated objects" below. `flavor=valueObject` → `class <Name> extends ValueObject` (map-backed; less hostile to a default mapper, but still not the sanctioned serialization path). Either concrete flavor also emits a self-registering `ObjectClassBindingProvider`; it writes no extractors. For a plain default-Jackson-friendly type, use the `codegen-spring` record surface instead — never `pojoAware`. |
+| `ExtractorCodeGenerator` | also in `metaobjects-codegen-base`. One `<Name>Extractor` per concrete object, and the only generator that writes them: list it or get none. Give it the same `outputDir`, `pkgPrefix` / `pkgSuffix` / `namePrefix` / `nameSuffix` and `<filters>` as the entity generator, which must run a concrete flavor in the same `<generators>` (an extractor for an object the entity generator wrote no class for does not compile). A pom with more than one entity generator entry needs one `ExtractorCodeGenerator` entry per entity entry, each with that entry's `outputDir`, naming args and `<filters>`. |
 
 **Owning one of these two.** `mvn metaobjects:eject -Dnames=entity,extractor -Dport=java`
 copies each generator into the `codegen/` module with the rest of its emit (`-Dport` is

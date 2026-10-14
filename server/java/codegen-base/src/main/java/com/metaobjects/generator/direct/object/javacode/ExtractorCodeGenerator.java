@@ -3,7 +3,6 @@ package com.metaobjects.generator.direct.object.javacode;
 // Eject note (ADR-0034 Amendment 6): `mvn metaobjects:eject -Dnames=extractor` copies this
 // file together with JavaCodeWriter and BaseObjectCodeWriter, into one package. JavaCodeWriter,
 // named bare below, is that copy: the names an owned extractor writes come from owned code.
-import com.metaobjects.generator.EmitsObjectExtractors;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.direct.object.BaseObjectCodeGenerator;
@@ -46,13 +45,12 @@ import java.io.StringWriter;
  * flavored type. The {@code extractLenient(...)} overload widens through {@code ExtractionResult<?>}
  * to expose the typed {@code ExtractionResult<<Type>>}.</p>
  *
- * <p><b>Two ways to run it.</b> Wired on its own as a {@code <generator>}, {@link #execute}
- * writes one Extractor per concrete object, named by the same {@code pkgPrefix} /
- * {@code pkgSuffix} / {@code namePrefix} / {@code nameSuffix} args the {@code entity}
- * generator takes, so give both the same values. Left out of the run, the {@code entity}
- * generator ({@link JavaObjectCodeGenerator}) calls {@link #emit} itself for each concrete
- * flavored class, which is what it has always done. A run that holds both writes each file
- * once: {@link EmitsObjectExtractors} is how {@code entity} knows to leave them to this.</p>
+ * <p><b>One way to run it.</b> Wired as a {@code <generator>}, {@link #execute} writes one
+ * Extractor per concrete object, named by the same {@code pkgPrefix} / {@code pkgSuffix} /
+ * {@code namePrefix} / {@code nameSuffix} args the {@code entity} generator takes, so give
+ * both the same values. Nothing else writes them: through 8.0 the {@code entity} generator
+ * ({@link JavaObjectCodeGenerator}) wrote one beside each concrete class for a pom that did
+ * not list this generator, and ADR-0034 Amendment 9 removed that.</p>
  *
  * <p>An Extractor casts to the generated flavored class, so it needs the {@code entity}
  * generator with a concrete {@code flavor} in the same run, selecting the same objects: give
@@ -63,7 +61,7 @@ import java.io.StringWriter;
  * {@code protected} so a subclass can override one (e.g. {@link #writeExtractMethod})
  * without reimplementing the whole class.</p>
  */
-public class ExtractorCodeGenerator extends GeneratorBase implements EmitsObjectExtractors {
+public class ExtractorCodeGenerator extends GeneratorBase {
 
     /** Fully-qualified name of the runtime extract entry point (emitted as a source FQN string). */
     public static final String META_OBJECT_EXTRACT_FQN =

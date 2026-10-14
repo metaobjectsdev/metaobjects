@@ -125,8 +125,56 @@ generator catalog and the Atlas evaluation are 1.2 work.
   pages `meta docs` writes) and `agent-docs` (the pages `meta docs --agent` writes), both
   neutral and both still run by `meta docs`; a `generators` entry naming either string is
   refused the way `"docs"` is. Java: `plantuml`, `html-docs`, `ai-docs`, `json-schema` and the
-  deprecated `mustache`, each by the class name a pom already uses. None of the seven ships
-  eject source yet; `mustache` will not.
+  deprecated `mustache`, each by the class name a pom already uses. `mustache` will not ship
+  eject source. The four Java generators that can ship it do: see **Java and Kotlin** below.
+
+- **Java and Kotlin: eject hands over the emitters a generator writes through, and
+  `api-docs`, `plantuml`, `html-docs`, `ai-docs` and `json-schema` are ejectable.** An ejected
+  Java or Kotlin generator used to be one file over packaged emitters, so a defect in the enum,
+  record-builder, extraction-mirror or prompt-format writers still waited for a release. Eject
+  now copies those emitters with the generator, into its package, and points the imports the
+  copies have of one another at the copies. Java `dto` and `value-object` take
+  `Fr019SharedEnum` and `SpringRecordBuilder`; Java `output-parser` takes `Fr019SharedEnum`;
+  Java `output-prompt` takes `OutputFormatSpecEmitter`; Kotlin `entity` takes
+  `KotlinEnumEmitter`; Kotlin `output-parser` takes `KotlinExtractSchemaEmitter`; Kotlin
+  `output-prompt` takes `KotlinOutputFormatSpecEmitter` and `KotlinExtractSchemaEmitter`. A
+  class two generators share is written once and never overwritten. The naming and type-mapping
+  tables, the model walks and the generator bases stay in the package as the engine. Kotlin
+  `Fr019SharedEnum` is engine: it writes nothing, and the type mapper takes its
+  `ProvidedEnumConfig` as an argument, so its `providedInDeclarationPackage` and
+  `DECLARATION_PACKAGE` members are now public. Packaged output is unchanged. A copy you ejected earlier keeps compiling with the packaged
+  emitters; own them with the recipe in
+  [own-your-codegen](docs/features/own-your-codegen.md#ejecting-a-generator-hands-over-the-emitters-it-writes-through-java-and-kotlin).
+  - **`api-docs` is a generator, and ejectable, in Java and Kotlin.** The api reference is
+    `JavaApiDocsGenerator` / `KotlinApiDocsGenerator`, a `<generator>` entry like any other:
+    `metaobjects:generate` runs it and `metaobjects:verify` checks it, with `outputDir`,
+    `apiSubDir`, `layout`, `projectName` and `modelBaseUrl` in its `<args>`. It replaces the
+    `metaobjects:docs` goal (see **Removed**). Eject
+    copies the generator, the page model, the builder, the renderer and the path math into a
+    subpackage per port, `<package>.apidocs.java` or `<package>.apidocs.kotlin`: the two ports
+    name those classes alike, so one `codegen/` module can hold both without a class declared
+    twice. Eject prints the class name to list. Eject writes `codegen/pom.xml` for the ports
+    the module holds at that moment and never edits it afterwards. One call that ejects for
+    both ports now gets a pom that builds both source trees; it used to leave `src/main/java`
+    out. When a later call adds a port, the pom does not declare what that port needs (the
+    `metaobjects-codegen-*` dependency, `kotlin-maven-plugin`, or `src/main/java` as a source
+    root after a Kotlin-first eject), and eject now warns and prints what to add. For Java the page templates come too, into
+    `codegen/src/main/resources/<package path>/apidocs/java/templates/`, with the copied
+    template provider pointed there. What the Java reference documents is still what the
+    packaged generators emit for (`GeneratorApplicability.packaged()`): an owned `routes` whose
+    `appliesTo` you changed is documented as the packaged one behaves, unless you change the
+    line of your `JavaApiDocsGenerator` copy that builds it. The pages are the ones 8.0's
+    docs goal wrote, given the same options.
+  - **The Java `plantuml`, `html-docs`, `ai-docs` and `json-schema` generators ship eject
+    source**, each with the writer that emits its file. `SingleHtmlDirectGeneratorBase` now
+    drives the new `HtmlDirectWriter`, as the JSON base drives `JsonDirectWriter`, so a copied
+    HTML generator pairs with the copy of its writer. A subclass that overrode
+    `writeHtml(MetaDataHtmlDocumentationWriter)` keeps being called, through a deprecated bridge the
+    base still calls; one that returns the stock writer from `getWriter` still compiles. A subclass
+    compiled against 1.0.x needs a recompile, because the method's return type changed. The attributes the JSON Schema and AI documentation generators
+    add to the metamodel moved to `CodeGenMetaDataProvider`, where the loader registers them,
+    so a copy owns emit code only; the old static methods and constants on the two generators
+    stay as deprecated forwarders.
 
 - **The Java `entity` and `extractor` generators can be ejected.**
   `mvn metaobjects:eject -Dnames=entity,extractor -Dport=java` copies each generator, with
@@ -139,25 +187,21 @@ generator catalog and the Atlas evaluation are 1.2 work.
   Amendment 6.
   - **The owned `entity` includes the class body.** Eject copies seven files into one
     package: `JavaObjectCodeGenerator`, the two bases it extends (`JavaCodeGenerator`,
-    `BaseObjectCodeGenerator`), and the four writers that emit each class
+    `BaseObjectCodeGenerator`) and the four writers that emit each class
     (`BaseObjectCodeWriter`, `JavaCodeWriter`, `PojoAwareCodeWriter`,
     `ValueObjectCodeWriter`). The copies use one another, never the packaged classes: where
     one imports another, eject rewrites that import along with the package line. You change
     a field, a constructor or an accessor by editing the writer, with nothing to subclass.
     `-Dlist` gives `entity` one verdict over all seven files. Details:
     [own-your-codegen](docs/features/own-your-codegen.md#java-entity-and-extractor).
-  - **`extractor` is a generator of its own (Java).** `ExtractorCodeGenerator` can be named
+  - **`extractor` is a generator of its own (Java).** `ExtractorCodeGenerator` is named
     in `<generators>`, with the same `outputDir`, `pkgPrefix`, `pkgSuffix`, `namePrefix`,
-    `nameSuffix` and `<filters>` as your `entity` generator. When it is, the plugin sets
-    `emitExtractors=false` on `entity`, so each `<Name>Extractor` has one emitter; an
-    `emitExtractors=true` in the pom does not override that. Outside Maven, set the arg
-    yourself. Ejecting it also copies `JavaCodeWriter` and `BaseObjectCodeWriter`, where it
-    reads class names from. In the same package as an owned `entity`, the two share that
-    one copy.
-  - **A pom that wires only `entity` still writes the extractors.** Its class files change
-    once, in the header comment only: see **Changed** below.
-  - New public API: in `metaobjects-codegen-base`, the `EmitsObjectExtractors` marker, whose
-    `ARG_EMIT_EXTRACTORS` names the `emitExtractors` arg; in `metaobjects-codegen-spring`,
+    `nameSuffix` and `<filters>` as your `entity` generator, and it is the one generator that
+    writes `<Name>Extractor` classes (see **Removed**). Ejecting it also copies `JavaCodeWriter` and `BaseObjectCodeWriter`, where it
+    reads class names from. In the same package as an owned `entity`, the two share those
+    writers.
+  - **`entity`'s class files change once**, in the header comment only: see **Changed** below.
+  - New public API: in `metaobjects-codegen-spring`,
     `GeneratorRegistry.GeneratorInfo.ejectWith()`, the classes eject copies with a
     generator.
 
@@ -947,6 +991,29 @@ until you regenerate.
 
 ### Removed
 
+- **Java and Kotlin: the `metaobjects:docs` goal.** Documentation is generated the way code
+  is: the api reference is a `JavaApiDocsGenerator` or `KotlinApiDocsGenerator` `<generator>`
+  entry in the list `metaobjects:generate` runs, with its options in `<args>` (see
+  **Added**), and nothing is written that `<generators>` does not declare. A pom that still
+  binds the goal fails with a line naming `mvn metaobjects:generate` and the migration
+  section. `generate` and `verify` refuse a pom that still sets the goal's parameters
+  (`<language>`, `<apiSubDir>`, `<layout>`, `<modelBaseUrl>`) instead of running and writing
+  no documentation. Ruling: ADR-0034 Amendment 9, which makes this the rule in all five ports
+  and numbers the release 1.1.0 (Maven 8.1.0) by the maintainer's explicit decision.
+  - **To upgrade**, replace the `docs` execution with one `<generator>` entry per language;
+    before and after `pom.xml`, and each parameter's new name, are in
+    [docs-are-generators.md, "Java and Kotlin"](docs/features/migrations/docs-are-generators.md#java-and-kotlin).
+    The page header's project label was the module's `artifactId`; set
+    `<projectName>${project.artifactId}</projectName>` to keep the pages byte for byte.
+- **Java: `entity` no longer writes `<Name>Extractor` classes.** Through 8.0,
+  `JavaObjectCodeGenerator` wrote one beside each concrete class when the pom listed no
+  `extractor`: output no `<generator>` entry declared. Only `ExtractorCodeGenerator` writes
+  them now.
+  - **To upgrade**, if your code calls `<Name>Extractor` and your pom lists `entity` without
+    `extractor`: add an `ExtractorCodeGenerator` entry with the `entity` entry's `outputDir`,
+    naming args and `<filters>`
+    ([migration](docs/features/migrations/docs-are-generators.md#java-and-kotlin)).
+
 - **The standalone `mermaid-er` generator (TypeScript).** `mermaidErDiagram()`, its
   `MermaidErOptions` type and the stable name `"mermaid-er"` are gone from
   `@metaobjectsdev/codegen-ts/generators`, the generator catalog and the cross-port
@@ -1109,13 +1176,13 @@ until you regenerate.
 
   - Every Kotlin generator that types an enum now takes `providedEnumNamespace` /
     `providedEnumPackages`: the entity, Exposed table, Spring controller, relations and
-    output-parser generators, and the API pages `mvn metaobjects:docs` writes. Only the entity
+    output-parser generators, and `KotlinApiDocsGenerator`. Only the entity
     generator read them before, so for a `@provided` enum the data class named your class while
     the Exposed table and the controller named a class in the declaration's package that nothing
     generates, and the output did not compile. They now all resolve it through one function. A
     generator configured without the args fails at generate time for a model with a `@provided`
     enum, naming the enum, its package and both args. Set them once in the plugin's `<globals>`
-    and every generator, and the docs goal, reads the same values.
+    and every generator reads the same values.
   - **Upgrading an owned Kotlin generator.** A copy ejected before this release keeps compiling
     unchanged. The helper signatures it calls remain as deprecated forms:
     `KotlinTypeMapper.enumTypeName(field, entity)`, `KotlinEnumEmitter.emitEnumFile` without a

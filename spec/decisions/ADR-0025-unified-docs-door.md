@@ -1,6 +1,6 @@
 # ADR-0025: Unified docs door — one command, two surfaces, one config
 
-**Status:** Accepted
+**Status:** Accepted; superseded in part by ADR-0034 Amendment 9 (2026-10-12). D1, D2's defaults, D4 and the per-port commands of D5 no longer hold: there is no docs command in any port, and each surface is a generator the project declares in its generator list. The output tree and the cross-link contract of D2, D3 and D5 stand.
 **Date:** 2026-06-06
 **Extended by:** ADR-0027 (polyglot docs composition — the single api surface generalizes to a per-language `apiSurfaces[]` list)
 **Extends:** ADR-0021 D1 (single docs door — now covers ALL docs, not just neutral)

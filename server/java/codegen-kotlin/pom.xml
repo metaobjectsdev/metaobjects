@@ -244,6 +244,24 @@
                     <include>KotlinStoredProcGenerator.kt</include>
                     <include>KotlinValidatorGenerator.kt</include>
                     <include>KotlinRequirementTestsGenerator.kt</include>
+                    <!-- The emitters a generator above writes through, handed over with it
+                         (GeneratorInfo.ejectWith). -->
+                    <include>KotlinEnumEmitter.kt</include>
+                    <include>KotlinExtractSchemaEmitter.kt</include>
+                    <include>KotlinOutputFormatSpecEmitter.kt</include>
+                  </includes>
+                </resource>
+                <!-- "api-docs": the generator, the page IR, the builder that fills it, the renderer and
+                     the page paths. They sit in the apidocs subpackage; the owned copy lands in one
+                     package, so they ship flat beside the other sources. -->
+                <resource>
+                  <directory>src/main/kotlin/com/metaobjects/generator/kotlin/apidocs</directory>
+                  <includes>
+                    <include>KotlinApiDocsGenerator.kt</include>
+                    <include>KotlinApiModel.kt</include>
+                    <include>KotlinApiModelBuilder.kt</include>
+                    <include>KotlinApiDocsRenderer.kt</include>
+                    <include>DocsPaths.kt</include>
                   </includes>
                 </resource>
               </resources>

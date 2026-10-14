@@ -32,7 +32,7 @@ import static org.junit.Assert.assertTrue;
  * <p>This test is the JAVA half. It loads the SAME input metadata
  * ({@code fixtures/conformance/api-docs-cross-port/input/meta.json}) the TS side loads,
  * builds the {@link JavaApiModel}, and for each manifest unit asserts — using the EXACT
- * path/href math the {@code metaobjects:docs} goal ({@code DocsMojo}) uses, computed via
+ * path/href math the {@code api-docs} generator ({@code JavaApiDocsGenerator}) uses, computed via
  * {@link DocsPaths}, never re-derived here — that:
  * <ul>
  *   <li>{@code apiSubDir + "/" + docPageOutputPath(PACKAGE, pkg, node)} equals the
@@ -118,7 +118,7 @@ public class ApiDocsCrossPortConformanceTest extends SharedRegistryTestBase {
             manifestNodes, javaNodes);
 
         // ---- per-unit: api/java path + model back-href match the manifest EXACTLY ----
-        // Path/href math mirrors DocsMojo with layout=package, apiSubDir="api/java",
+        // Path/href math mirrors JavaApiDocsGenerator with layout=package, apiSubDir="api/java",
         // modelBaseUrl=null — every value from DocsPaths, nothing re-derived here.
         JavaApiDocsRenderer renderer = new JavaApiDocsRenderer();
         List<String> checked = new ArrayList<>();

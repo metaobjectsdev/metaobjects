@@ -21,6 +21,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -65,7 +67,8 @@ import java.util.stream.Collectors;
  * <p><b>What it never does.</b> It never edits the calling project's own {@code pom.xml} —
  * it PRINTS the {@code <module>}, the plugin {@code <dependency>}, and the {@code
  * <generator><classname>} change instead, the same reporting-not-editing stance ADR-0034 §3(c)
- * already rules for the TypeScript command. It never overwrites a file that exists unless
+ * already rules for the TypeScript command. An existing {@code codegen/pom.xml} is the adopter's
+ * too: when it lacks what a port ejected into the module needs, eject prints what to add. It never overwrites a file that exists unless
  * {@code -Dforce=true}. It validates every requested name BEFORE writing anything, so a bad
  * name in a multi-name call ejects nothing rather than half the batch.
  */
@@ -92,7 +95,9 @@ public class MetaDataEjectMojo extends AbstractMojo {
     @Parameter(property = "port")
     String port;
 
-    /** Target package for ejected copies. Defaults to {@code <project.groupId>.codegen}. */
+    /** Target package for ejected copies. Defaults to {@code <project.groupId>.codegen}. The
+     *  {@code api-docs} copies go in a subpackage of it per port (see
+     *  {@link EjectSupport.Entry#ownedPackage}). */
     @Parameter(property = "package")
     String targetPackage;
 
@@ -160,7 +165,6 @@ public class MetaDataEjectMojo extends AbstractMojo {
                 ? project.getGroupId() + ".codegen" : targetPackage.trim();
 
         Path codegenRoot = project.getBasedir().toPath().resolve(CODEGEN_DIR);
-        Set<EjectSupport.Port> portsTouched = new LinkedHashSet<>();
         List<String> classnameChanges = new ArrayList<>();
 
         List<EjectSupport.Entry> entries = new ArrayList<>();
@@ -178,10 +182,10 @@ public class MetaDataEjectMojo extends AbstractMojo {
         Set<String> support = new LinkedHashSet<>();
         for (EjectSupport.Resolution r : resolved) {
             EjectSupport.Entry e = r.entry;
-            portsTouched.add(e.port);
 
             String langDir = e.port == EjectSupport.Port.KOTLIN ? "kotlin" : "java";
-            Path pkgDir = codegenRoot.resolve("src/main/" + langDir).resolve(pkg.replace('.', '/'));
+            String ownedPkg = e.ownedPackage(pkg);
+            Path pkgDir = codegenRoot.resolve("src/main/" + langDir).resolve(ownedPkg.replace('.', '/'));
 
             for (String source : e.sources()) {
                 String simpleName = EjectSupport.simpleNameOf(source);
@@ -198,13 +202,16 @@ public class MetaDataEjectMojo extends AbstractMojo {
                             "Could not read reference source for \"" + e.stableName + "\" at classpath "
                                 + "resource " + resource, ex);
                 }
-                String rewritten = EjectSupport.ownedSource(e, reference, pkg);
+                String rewritten = EjectSupport.ownedSource(e, reference, ownedPkg);
                 if (generator && !e.runtime.isEmpty()) {
                     rewritten = EjectSupport.rewriteRuntimePackage(rewritten, runtimePkg);
                 }
                 if (e.port == EjectSupport.Port.JAVA) {
                     support.addAll(EjectSupport.supportFor(rewritten));
                     rewritten = EjectSupport.rewriteSupportImports(rewritten, pkg);
+                    if (!e.resources.isEmpty()) {
+                        rewritten = EjectSupport.rewriteTemplatePrefix(rewritten, ownedPkg);
+                    }
                 }
 
                 String what = generator ? "\"" + e.stableName + "\""
@@ -212,12 +219,14 @@ public class MetaDataEjectMojo extends AbstractMojo {
                 reportEject(what, target, rewritten, write(pkgDir, target, rewritten, force));
             }
             classnameChanges.add("  " + e.stableName + ": " + e.classname + "  ->  "
-                    + pkg + "." + e.simpleName());
+                    + e.ownedClassname(pkg));
         }
 
         ejectSupport(support, codegenRoot.resolve("src/main/java").resolve(pkg.replace('.', '/')), pkg);
+        ejectTemplates(resolved, codegenRoot.resolve("src/main/resources"), pkg);
 
-        boolean pomWritten = writeCodegenPomIfNeeded(codegenRoot, pkg, portsTouched);
+        boolean pomWritten = writeCodegenPomIfNeeded(codegenRoot, pkg, portsIn(codegenRoot));
+        reportWhatThePomLacks(codegenRoot);
 
         if (!runtime.isEmpty()) {
             ejectRuntime(runtime, runtimeRoot, runtimePkg);
@@ -231,6 +240,50 @@ public class MetaDataEjectMojo extends AbstractMojo {
         }
         if (!runtime.isEmpty()) {
             printRuntimeWiring(runtimeRoot, runtimePkg, requested, codegenRoot);
+        }
+    }
+
+    // ------------------------------------------------------------------------------------
+    // templates
+    // ------------------------------------------------------------------------------------
+
+    /**
+     * Write the templates the ejected generators read from the classpath into the owned module's
+     * resources, under the path of the package each generator's copies are in. The copied template
+     * provider is pointed there ({@link EjectSupport#rewriteTemplatePrefix}), so the owned page
+     * text is what runs.
+     */
+    private void ejectTemplates(List<EjectSupport.Resolution> resolved, Path resourceRoot, String pkg)
+            throws MojoExecutionException {
+        Set<Path> written = new LinkedHashSet<>();
+        for (EjectSupport.Resolution r : resolved) {
+            Path dir = resourceRoot.resolve(EjectSupport.ownedTemplatePrefix(r.entry.ownedPackage(pkg)));
+            for (String ref : r.entry.resources) {
+                Path target = dir.resolve(ref + EjectSupport.TEMPLATE_EXTENSION);
+                if (!written.add(target)) continue;
+                String resource = GeneratorRegistry.EJECT_TEMPLATE_RESOURCE_ROOT + ref + EjectSupport.TEMPLATE_EXTENSION;
+                String content;
+                try {
+                    content = readResource(resource);
+                } catch (IOException ex) {
+                    throw new MojoExecutionException("Could not read reference template \"" + ref
+                            + "\" at classpath resource " + resource, ex);
+                }
+                switch (write(target.getParent(), target, content, force)) {
+                    case CREATED:
+                        getLog().info("Copied template " + ref + " -> " + target
+                                + ". The owned " + r.entry.stableName + " reads this copy; you own it now.");
+                        break;
+                    case REPLACED:
+                        getLog().info("Copied template " + ref + " -> " + target
+                                + ", REPLACING the file that was there (-Dforce=true).");
+                        break;
+                    case PRESERVED:
+                        getLog().info(target + " already exists — " + describeOwned(target, content)
+                                + " Left untouched (-Dforce=true replaces it).");
+                        break;
+                }
+            }
         }
     }
 
@@ -457,39 +510,69 @@ public class MetaDataEjectMojo extends AbstractMojo {
      *  {@code java.version}); an ejected copy compiles against them. */
     static final String JAVA_RELEASE = "21";
 
+    /** The artifact each port's copies compile against. */
+    private static String codegenArtifact(EjectSupport.Port port) {
+        return port == EjectSupport.Port.KOTLIN ? "metaobjects-codegen-kotlin" : "metaobjects-codegen-spring";
+    }
+
+    private static final String KOTLIN_PLUGIN = "kotlin-maven-plugin";
+
+    private static final String KOTLIN_JVM_TARGET =
+            "    <kotlin.compiler.jvmTarget>" + JAVA_RELEASE + "</kotlin.compiler.jvmTarget>\n";
+
+    /** The Kotlin plugin's own source root, for a pom whose {@code <sourceDirectory>} is Java's. */
+    private static final String KOTLIN_SOURCE_DIRS =
+            "        <configuration>\n"
+            + "          <sourceDirs>\n"
+            + "            <sourceDir>${project.basedir}/src/main/kotlin</sourceDir>\n"
+            + "          </sourceDirs>\n"
+            + "        </configuration>\n";
+
+    private String dependency(EjectSupport.Port port) {
+        return "    <dependency>\n"
+            + "      <groupId>com.metaobjects</groupId>\n"
+            + "      <artifactId>" + codegenArtifact(port) + "</artifactId>\n"
+            + "      <version>" + pluginVersion() + "</version>\n"
+            + "    </dependency>\n";
+    }
+
+    /** The Kotlin compiler plugin, with {@code configuration} (possibly empty) inside it. */
+    private static String kotlinPlugin(String configuration) {
+        return "      <plugin>\n"
+            + "        <groupId>org.jetbrains.kotlin</groupId>\n"
+            + "        <artifactId>" + KOTLIN_PLUGIN + "</artifactId>\n"
+            + "        <version>" + kotlin.KotlinVersion.CURRENT + "</version>\n"
+            + configuration
+            + "        <executions>\n"
+            + "          <execution>\n"
+            + "            <id>compile</id>\n"
+            + "            <phase>compile</phase>\n"
+            + "            <goals><goal>compile</goal></goals>\n"
+            + "          </execution>\n"
+            + "        </executions>\n"
+            + "      </plugin>\n";
+    }
+
+    /** The ports the codegen module holds copies of: those with a source root in it. */
+    private static Set<EjectSupport.Port> portsIn(Path codegenRoot) {
+        Set<EjectSupport.Port> out = new LinkedHashSet<>();
+        for (EjectSupport.Port port : EjectSupport.Port.values()) {
+            if (Files.isDirectory(codegenRoot.resolve("src/main/" + port.id))) out.add(port);
+        }
+        return out;
+    }
+
     private String codegenPom(String artifactId, Set<EjectSupport.Port> ports) {
-        String version = pluginVersion();
         StringBuilder deps = new StringBuilder();
-        if (ports.contains(EjectSupport.Port.JAVA)) {
-            deps.append("    <dependency>\n")
-                .append("      <groupId>com.metaobjects</groupId>\n")
-                .append("      <artifactId>metaobjects-codegen-spring</artifactId>\n")
-                .append("      <version>").append(version).append("</version>\n")
-                .append("    </dependency>\n");
-        }
-        if (ports.contains(EjectSupport.Port.KOTLIN)) {
-            deps.append("    <dependency>\n")
-                .append("      <groupId>com.metaobjects</groupId>\n")
-                .append("      <artifactId>metaobjects-codegen-kotlin</artifactId>\n")
-                .append("      <version>").append(version).append("</version>\n")
-                .append("    </dependency>\n");
-        }
+        for (EjectSupport.Port port : ports) deps.append(dependency(port));
+        // A Kotlin-only module makes src/main/kotlin its source root. One that holds Java copies
+        // too keeps Maven's default root for them, and the Kotlin plugin is given its own.
+        boolean java = ports.contains(EjectSupport.Port.JAVA);
         String kotlinPlugin = ports.contains(EjectSupport.Port.KOTLIN)
             ? "  <build>\n"
-              + "    <sourceDirectory>src/main/kotlin</sourceDirectory>\n"
+              + (java ? "" : "    <sourceDirectory>src/main/kotlin</sourceDirectory>\n")
               + "    <plugins>\n"
-              + "      <plugin>\n"
-              + "        <groupId>org.jetbrains.kotlin</groupId>\n"
-              + "        <artifactId>kotlin-maven-plugin</artifactId>\n"
-              + "        <version>" + kotlin.KotlinVersion.CURRENT + "</version>\n"
-              + "        <executions>\n"
-              + "          <execution>\n"
-              + "            <id>compile</id>\n"
-              + "            <phase>compile</phase>\n"
-              + "            <goals><goal>compile</goal></goals>\n"
-              + "          </execution>\n"
-              + "        </executions>\n"
-              + "      </plugin>\n"
+              + kotlinPlugin(java ? KOTLIN_SOURCE_DIRS : "")
               + "    </plugins>\n"
               + "  </build>\n"
             : "";
@@ -508,15 +591,60 @@ public class MetaDataEjectMojo extends AbstractMojo {
             // default is -source 8, and Kotlin's default JVM target is older still.
             + "  <properties>\n"
             + "    <maven.compiler.release>" + JAVA_RELEASE + "</maven.compiler.release>\n"
-            + (ports.contains(EjectSupport.Port.KOTLIN)
-                ? "    <kotlin.compiler.jvmTarget>" + JAVA_RELEASE + "</kotlin.compiler.jvmTarget>\n"
-                : "")
+            + (ports.contains(EjectSupport.Port.KOTLIN) ? KOTLIN_JVM_TARGET : "")
             + "  </properties>\n"
             + "  <dependencies>\n"
             + deps
             + "  </dependencies>\n"
             + kotlinPlugin
             + "</project>\n";
+    }
+
+    private static final Pattern SOURCE_DIRECTORY =
+            Pattern.compile("<sourceDirectory>\\s*([^<]*?)\\s*</sourceDirectory>");
+
+    private static boolean declares(String pom, String artifactId) {
+        return pom.contains("<artifactId>" + artifactId + "</artifactId>");
+    }
+
+    /**
+     * Say what {@code codegen/pom.xml} does not declare that the copies under each port's source
+     * root need. Eject writes that pom for the ports the module holds then and never edits it, so
+     * a port ejected into the module in a later call is left out of the build, and the build passes.
+     */
+    private void reportWhatThePomLacks(Path codegenRoot) throws MojoExecutionException {
+        Path pom = codegenRoot.resolve("pom.xml");
+        String content;
+        try {
+            content = Files.readString(pom, StandardCharsets.UTF_8);
+        } catch (IOException ex) {
+            throw new MojoExecutionException("Could not read " + pom, ex);
+        }
+        for (EjectSupport.Port port : portsIn(codegenRoot)) {
+            String sourceRoot = "src/main/" + port.id;
+            List<String> changes = new ArrayList<>();
+            if (!declares(content, codegenArtifact(port))) {
+                changes.add("  Add to <dependencies>:\n" + dependency(port));
+            }
+            if (port == EjectSupport.Port.KOTLIN && !declares(content, KOTLIN_PLUGIN)) {
+                changes.add("  Add to <properties>:\n" + KOTLIN_JVM_TARGET);
+                changes.add("  Add to <build><plugins>:\n" + kotlinPlugin(KOTLIN_SOURCE_DIRS));
+            }
+            if (port == EjectSupport.Port.JAVA) {
+                Matcher sourceDirectory = SOURCE_DIRECTORY.matcher(content);
+                if (sourceDirectory.find() && !sourceDirectory.group(1).endsWith(sourceRoot)) {
+                    changes.add("  Remove " + sourceDirectory.group() + " from <build>, so that Maven compiles "
+                            + sourceRoot + ", and add to the <plugin> of " + KOTLIN_PLUGIN + ":\n"
+                            + KOTLIN_SOURCE_DIRS);
+                }
+            }
+            if (changes.isEmpty()) continue;
+            getLog().warn(pom + " does not declare what the " + port.id + " copies under " + sourceRoot
+                    + " need to build. It is yours, so eject does not edit it:");
+            for (String change : changes) {
+                for (String line : change.split("\n")) getLog().warn(line);
+            }
+        }
     }
 
     private static String escape(String s) {

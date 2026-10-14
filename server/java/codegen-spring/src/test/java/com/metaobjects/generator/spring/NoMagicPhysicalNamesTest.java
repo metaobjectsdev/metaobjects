@@ -1,6 +1,5 @@
 package com.metaobjects.generator.spring;
 
-import com.metaobjects.generator.EmitsObjectExtractors;
 import com.metaobjects.generator.EmitsPhysicalNameConstants;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorRegistry;
@@ -461,10 +460,8 @@ public class NoMagicPhysicalNamesTest {
             new TreeSet<>(GeneratorRegistryConformanceTest.NOT_WIRABLE), notGenerators);
         // Derive `useNames` from the suite through the SHIPPED helper — the identical call
         // AbstractMetaDataMojo.buildGenerators makes. Re-implementing it here would leave
-        // the gate measuring the test's own logic. The same goes for who writes the
-        // extractors: the registry holds both `entity` and `extractor`, as a pom may.
-        Map<String, String> runArgs = EmitsObjectExtractors.deriveEmitExtractors(
-            EmitsPhysicalNameConstants.deriveUseNames(args, suite), suite);
+        // the gate measuring the test's own logic.
+        Map<String, String> runArgs = EmitsPhysicalNameConstants.deriveUseNames(args, suite);
         for (Generator g : suite) {
             Map<String, String> own = new HashMap<>(runArgs);
             // A generator that writes ONE file is told its name; a per-object generator

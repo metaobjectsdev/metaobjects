@@ -9,7 +9,7 @@ wiring) via KotlinPoet.
 
 Two modules:
 
-- **`metaobjects-codegen-kotlin`** — 15 KotlinPoet-based generators.
+- **`metaobjects-codegen-kotlin`** — 16 KotlinPoet-based generators.
 - **`metaobjects-metadata-ktx`** — thin Kotlin facade over the Java loader + render
   engine for idiomatic Kotlin runtime use.
 
@@ -88,7 +88,7 @@ Two modules:
 
 ## Configure
 
-The 15 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
+The 16 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 
 | Generator | Output | Per |
 |---|---|---|
@@ -107,6 +107,7 @@ The 15 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 | `KotlinStoredProcGenerator` | Stored-procedure call wrappers | entities with `source.rdb @kind="storedProc"` |
 | `KotlinSpringControllerGenerator` | `<Entity>Controller.kt` — Spring `@RestController` (5 CRUD endpoints; cross-port API contract). **Select `KotlinRelationsGenerator` with it** when the model has a M:N relationship: the traversal routes call the `<rel>Query` helpers only that generator emits, and without it the controller does not compile | entities with `source.rdb @kind="table"` |
 | `KotlinRequirementTestsGenerator` | Per metamodel package that holds a tested requirement, two files in `testPackage`: `Requirements_<pkgKey>_Witnesses.kt` (an interface whose default members fail with `unimplemented requirement: ...`) and `Requirements_<pkgKey>_Test.kt` (one JUnit Jupiter `@Test` per requirement, calling a project-owned witness). See "Requirement tests" below | every tested `requirement.*` (functional, level 4 or above by default) |
+| `KotlinApiDocsGenerator` | The Kotlin SDK api reference, under `<outputDir>/<apiSubDir>`: `<Unit>.md` per entity, value object, projection, served report and template, a `README.md` index and `AGENT-API.md`. A `<generator>` entry like any other, run by `metaobjects:generate` and checked by `metaobjects:verify`. Args: `outputDir` (required, generated files only), `apiSubDir` (default `api/kotlin`), `layout` (`flat` or `package`), `projectName` and `modelBaseUrl`, as for the Java `api-docs`. The `metaobjects:docs` goal was removed in 8.1.0 ([migration](../features/migrations/docs-are-generators.md#java-and-kotlin)). Ejectable, with the page model, builder, renderer and path math | the whole model, once |
 
 Maven wiring:
 
@@ -177,11 +178,13 @@ A requirement that becomes live adds a failing member (a red test, no compile br
 
 **Own a generator.** `mvn metaobjects:eject -Dnames=<name,...>` copies a reference generator into a `codegen/` Maven module under your own package, and prints the module, dependency and `<classname>` to wire. See [Own your codegen → Java and Kotlin](../features/own-your-codegen.md#java-and-kotlin-mvn-metaobjectseject).
 
+**Ejecting hands over the emitters a generator writes through.** `entity` takes `KotlinEnumEmitter` with it, `output-parser` takes `KotlinExtractSchemaEmitter`, and `output-prompt` takes `KotlinOutputFormatSpecEmitter` and `KotlinExtractSchemaEmitter`, into the same package, with the imports the copies have of one another pointed at the copies. `Fr019SharedEnum` stays in the package: it writes nothing and the type mapper takes its `ProvidedEnumConfig` as an argument. See [Own your codegen → emitters](../features/own-your-codegen.md#ejecting-a-generator-hands-over-the-emitters-it-writes-through-java-and-kotlin).
+
 **Nothing else to hand over.** Unlike the Java `routes`/`dto`/`repository` output, no Kotlin generator's output imports helper runtime. The generated controller declares its filter parser, constraint mapping and patch handling inline, per file, and the rest imports only core: render and extract, the loader, and `metadata-ktx`. So an ejected Kotlin generator's output depends on nothing you do not own beyond the core. `EjectRuntimeRoundTripTest` in the Maven plugin checks this against every Kotlin generator's real output. `com.metaobjects.generator.kotlin.runtime.M2mJoinResolver` is a helper you may call from hand-written traversal code. No generated file imports it, so eject does not copy it; copy it yourself if you use it and want to own it.
 
 ### Declarative template-codegen (`TemplateScopeGenerator`)
 
-The 15 generators above are a starting point, not the ceiling. When you need a shape
+The 16 generators above are a starting point, not the ceiling. When you need a shape
 none of them emits, Kotlin has **both** authoring paths — and which to reach for is a
 real decision (tradeoff table: [`codegen-concepts.md` §3](../features/codegen-concepts.md)).
 
@@ -260,7 +263,7 @@ A `field.enum` declared `@provided` is your own enum class: MetaObjects never ge
 and every generated reference points at the namespace you configure. Every Kotlin generator
 that types an enum reads the same two args: `KotlinEntityGenerator`,
 `KotlinExposedTableGenerator`, `KotlinSpringControllerGenerator`, `KotlinRelationsGenerator`,
-`KotlinOutputParserGenerator`, and the API pages `mvn metaobjects:docs` writes. Set them once,
+`KotlinOutputParserGenerator`, and `KotlinApiDocsGenerator`. Set them once,
 in the plugin's `<globals>`, so no generator can be left out:
 
 ```xml

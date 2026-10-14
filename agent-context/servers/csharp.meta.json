@@ -3,5 +3,7 @@
   "install": "install the MetaObjects .NET tool (dotnet tool install) + add the MetaObjects.Codegen package",
   "codegenCommand": "dotnet meta gen",
   "docsCommand": "dotnet meta docs",
+  "docsCondition": "",
+  "docsMissing": "",
   "apiSubDir": "api/csharp"
 }

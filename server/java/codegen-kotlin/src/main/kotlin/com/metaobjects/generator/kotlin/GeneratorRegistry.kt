@@ -21,6 +21,11 @@ package com.metaobjects.generator.kotlin
 
 import com.metaobjects.generator.Generator
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
+import com.metaobjects.generator.kotlin.apidocs.DocsPaths
+import com.metaobjects.generator.kotlin.apidocs.KotlinApiDocsGenerator
+import com.metaobjects.generator.kotlin.apidocs.KotlinApiDocsRenderer
+import com.metaobjects.generator.kotlin.apidocs.KotlinApiModel
+import com.metaobjects.generator.kotlin.apidocs.KotlinApiModelBuilder
 
 /** Tier of a registered generator (ADR-0020 / ADR-0021 D1). */
 enum class GeneratorTier {
@@ -72,7 +77,7 @@ enum class GeneratorLayer {
  * at run time, never via the constructor), so calling it must NOT throw —
  * `--list` relies on that.
  */
-data class GeneratorInfo(
+data class GeneratorInfo @JvmOverloads constructor(
     /** Stable, cross-port-consistent id. Equals the registry map key. */
     val name: String,
     /** One-line (no newline) human description for `--list`. */
@@ -94,6 +99,14 @@ data class GeneratorInfo(
      * `docs/superpowers/specs/2026-09-22-eject-in-every-port-design.md` (JVM section).
      */
     val ejectResourcePath: String? = null,
+    /**
+     * Fully-qualified names of the classes that hold the rest of this generator's emit, copied
+     * by `mvn metaobjects:eject` into the same owned package as the generator: the emitters it
+     * writes through. Each is shipped as `<EJECT_RESOURCE_ROOT><SimpleName>.kt`. A class two
+     * generators share is copied once. The engine (naming, type mapping, model walks, the
+     * generator base) is not listed: it stays in the package (ADR-0034 Amendment 8).
+     */
+    val ejectWith: List<String> = emptyList(),
 )
 
 /** Classpath root every ejectable Kotlin generator's reference source is shipped under. */
@@ -101,6 +114,22 @@ const val EJECT_RESOURCE_ROOT: String = "META-INF/metaobjects/reference/kotlin/"
 
 /** `<EJECT_RESOURCE_ROOT>/<simple class name>.kt` for an ejectable generator. */
 private fun ejectPath(simpleClassName: String): String = EJECT_RESOURCE_ROOT + simpleClassName + ".kt"
+
+/** The enum file writer `entity` calls. */
+private val ENUM_EMIT: List<String> = listOf(KotlinEnumEmitter::class.java.name)
+
+/** The rest of `api-docs`: the page IR (one file, `KotlinApiModel.kt`, which also holds the unit, symbol, field
+ *  and kind types), the builder that fills it, the renderer and the page paths. */
+private val API_DOCS_EMIT: List<String> = listOf(
+    KotlinApiModel::class.java.name, KotlinApiModelBuilder::class.java.name,
+    KotlinApiDocsRenderer::class.java.name, DocsPaths::class.java.name,
+)
+
+/** The extraction-mirror writer `output-parser` calls, and the prompt-format-spec writer `output-prompt`
+ *  calls (which delegates its literals to the mirror writer). */
+private val PARSER_EMIT: List<String> = listOf(KotlinExtractSchemaEmitter::class.java.name)
+private val PROMPT_EMIT: List<String> =
+    listOf(KotlinOutputFormatSpecEmitter::class.java.name, KotlinExtractSchemaEmitter::class.java.name)
 
 /**
  * The stable-name generator registry. Registers every Kotlin generator that
@@ -119,6 +148,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.MODEL,
         factory = ::KotlinEntityGenerator,
         ejectResourcePath = ejectPath("KotlinEntityGenerator"),
+        ejectWith = ENUM_EMIT,
     ),
     "routes" to GeneratorInfo(
         name = "routes",
@@ -147,6 +177,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.CAPABILITY,
         factory = ::KotlinOutputParserGenerator,
         ejectResourcePath = ejectPath("KotlinOutputParserGenerator"),
+        ejectWith = PARSER_EMIT,
     ),
     "output-prompt" to GeneratorInfo(
         name = "output-prompt",
@@ -155,6 +186,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.CAPABILITY,
         factory = ::KotlinOutputPromptGenerator,
         ejectResourcePath = ejectPath("KotlinOutputPromptGenerator"),
+        ejectWith = PROMPT_EMIT,
     ),
     "render-helper" to GeneratorInfo(
         name = "render-helper",
@@ -228,6 +260,15 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.API,
         factory = ::KotlinValidatorGenerator,
         ejectResourcePath = ejectPath("KotlinValidatorGenerator"),
+    ),
+    "api-docs" to GeneratorInfo(
+        name = "api-docs",
+        description = "Per-entity/template SDK API reference (generated-code API; human + agent forms).",
+        tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.DOCS,
+        factory = ::KotlinApiDocsGenerator,
+        ejectResourcePath = ejectPath("KotlinApiDocsGenerator"),
+        ejectWith = API_DOCS_EMIT,
     ),
     "requirement-tests" to GeneratorInfo(
         name = "requirement-tests",

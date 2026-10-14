@@ -1,6 +1,5 @@
 package com.metaobjects.generator.spring;
 
-import com.metaobjects.generator.EmitsObjectExtractors;
 import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;
 import com.metaobjects.generator.direct.object.javacode.JavaObjectCodeGenerator;
 import com.metaobjects.generator.Generator;
@@ -184,17 +183,14 @@ public class CodegenCompileConformanceTest extends SharedRegistryTestBase {
     }
 
     /**
-     * The same model tier with the extractors written by the {@code extractor} generator
-     * instead of by {@code entity}. One emitter per file is what a pom holding both gets
-     * (the Maven plugin derives the arg), so it is what is compiled here: a standalone
-     * extractor that named a class {@code entity} did not emit would fail this compile.
+     * The same model tier with the {@code extractor} generator listed beside {@code entity},
+     * which is the only way the extractors are written: an extractor that named a class
+     * {@code entity} did not emit would fail this compile.
      */
     @Test
-    public void theJavaModelTierCompilesWithTheExtractorsFromTheirOwnGenerator() throws Exception {
-        Map<String, String> entityOnly = new LinkedHashMap<>(AS_CLASS);
-        entityOnly.put(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS, "false");
+    public void theJavaModelTierCompilesWithTheExtractorGeneratorBesideIt() throws Exception {
         Map<String, Map<String, String>> selection = new LinkedHashMap<>();
-        selection.put("entity", entityOnly);
+        selection.put("entity", AS_CLASS);
         selection.put("extractor", PLAIN);
         selection.put("names", PLAIN);
         generateAndCompile("model-split", selection, 17, "ProgramExtractor");

@@ -1,6 +1,5 @@
 package com.metaobjects.mojo;
 
-import com.metaobjects.generator.EmitsObjectExtractors;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;
 import com.metaobjects.generator.direct.object.javacode.JavaObjectCodeGenerator;
@@ -38,6 +37,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -225,7 +225,7 @@ public class EntityExtractorEjectRoundTripTest {
     }
 
     @Test
-    public void anUnchangedEjectedExtractorWritesWhatThePackagedOneAndEntityWrite() throws Exception {
+    public void anUnchangedEjectedExtractorWritesWhatThePackagedOneWritesAndEntityWritesNone() throws Exception {
         ClassLoader classes = compileOwned(ejectBoth(tempFolder.newFolder("adopter").toPath()));
 
         Map<String, String> packaged = generate(new ExtractorCodeGenerator(), Map.of());
@@ -233,10 +233,13 @@ public class EntityExtractorEjectRoundTripTest {
         assertTrue("the corpus generated only " + packaged.size() + " extractors", packaged.size() >= 17);
         assertSameTree("extractor", packaged, copy);
 
-        // And they are the files entity writes when no separate extractor is in the run.
-        Map<String, String> fromEntity = new TreeMap<>(generate(new JavaObjectCodeGenerator(), POJO));
-        fromEntity.keySet().removeIf(path -> !path.endsWith("Extractor.java"));
-        assertSameTree("extractor, against entity's own", fromEntity, copy);
+        // Only the extractor generator writes them: entity, packaged or owned, writes none.
+        for (Generator entity : List.of(new JavaObjectCodeGenerator(), owned(classes, OWNED_ENTITY))) {
+            Map<String, String> fromEntity = new TreeMap<>(generate(entity, POJO));
+            fromEntity.keySet().removeIf(path -> !path.endsWith("Extractor.java"));
+            assertEquals(entity.getClass().getName() + " wrote extractors no entry declared",
+                    Set.of(), fromEntity.keySet());
+        }
     }
 
     // ------------------------------------------------------------------------------------
@@ -255,8 +258,7 @@ public class EntityExtractorEjectRoundTripTest {
         Map<String, String> entity = generate(owned(classes, OWNED_ENTITY), POJO);
         assertTrue(entity.get("com/metaobjects/generated/GeneratedObjectClassBindingProvider.java")
                 .contains("GENERATED (owned entity copy)"));
-        // The owned entity still calls the PACKAGED extractor: it imports that class by name.
-        assertFalse(entity.get("fitness/ProgramExtractor.java").contains("owned extractor copy"));
+        assertFalse("entity writes no extractor", entity.containsKey("fitness/ProgramExtractor.java"));
 
         Map<String, String> extractor = generate(owned(classes, OWNED_EXTRACTOR), Map.of());
         assertTrue(extractor.get("fitness/ProgramExtractor.java").contains("GENERATED (owned extractor copy)"));
@@ -310,9 +312,7 @@ public class EntityExtractorEjectRoundTripTest {
                 "return GeneratorUtil.toCamelCase(name, true) + \"Row\";\n    }\n\n    @Override\n    protected void writeGetter");
         ClassLoader classes = compileOwned(ownedDir);
 
-        Map<String, String> entity = new HashMap<>(POJO);
-        entity.put(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS, "false");
-        String program = generate(owned(classes, OWNED_ENTITY), entity).get("fitness/Program.java");
+        String program = generate(owned(classes, OWNED_ENTITY), POJO).get("fitness/Program.java");
         assertTrue(program, program.contains("public class ProgramRow extends "));
 
         Map<String, String> extractors = generate(owned(classes, OWNED_EXTRACTOR), Map.of());
@@ -373,10 +373,11 @@ public class EntityExtractorEjectRoundTripTest {
         String edited = list(projectDir);
         assertTrue(row(edited, "extractor"),
                 row(edited, "extractor").endsWith("[owned — DIFFERS: 1 behind, 1 of your own]"));
+        // entity copies no extractor, so its row does not move.
         assertTrue(row(edited, "entity"), row(edited, "entity").endsWith("[owned — identical]"));
 
         // A writer is part of the generator it was copied with: an edit to one only entity
-        // has shows on entity's row, and leaves the extractor's count where it was.
+        // has shows on entity's row and leaves the extractor's count where it was.
         edit(ownedDir.resolve("PojoAwareCodeWriter.java"),
                 "println(true, \"super(mo);\");", "println(true, \"super(mo); // mine\");");
         String writerEdited = list(projectDir);
@@ -397,7 +398,7 @@ public class EntityExtractorEjectRoundTripTest {
 
         String out = logged(log);
         assertTrue(out, out.contains("<generator><classname>" + OWNED_EXTRACTOR + "</classname></generator>"));
-        assertTrue(out, out.contains("`entity` then leaves those files to it"));
+        assertTrue(out, out.contains("only this generator writes the <Name>Extractor classes"));
     }
 
     @Test
@@ -463,7 +464,7 @@ public class EntityExtractorEjectRoundTripTest {
 
         Path committed = generatedInSync(classes);
 
-        // One emitter per file: with the extractor in <generators>, entity left them to it.
+        // The extractors come from the extractor entry, the provider from the entity entry.
         assertTrue(Files.readString(committed.resolve("fitness/ProgramExtractor.java"))
                 .contains("GENERATED (owned extractor copy)"));
         assertTrue(Files.readString(committed.resolve(
