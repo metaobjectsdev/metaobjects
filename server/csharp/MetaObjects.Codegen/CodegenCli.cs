@@ -15,6 +15,7 @@ using MetaObjects.Codegen.TemplateCodegen;
 using MetaObjects.Config;
 using MetaObjects.Source;
 using MetaObjects.Loader;
+using MetaObjects.Meta;
 using MetaObjects.Render;
 
 namespace MetaObjects.Codegen;
@@ -264,7 +265,7 @@ public static class CodegenCli
     /// <summary>What <c>dotnet meta docs</c> prints, exit 2: the command was removed.</summary>
     public const string DocsCommandRemoved =
         "dotnet meta docs was removed in 1.1.0. `dotnet meta gen` writes documentation now: declare each docs " +
-        "generator in codegen/Generators.cs. See docs/features/migrations/docs-are-generators.md, section \"C#\".";
+        "generator in codegen/Generators.cs. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\".";
 
     /// <summary>The flags a 1.0 project passed to <c>gen</c> for documentation. Nothing reads them in 1.1.0;
     /// they are <see cref="Generators.ApiDocsGenerator"/>'s init properties now.</summary>
@@ -276,13 +277,13 @@ public static class CodegenCli
     public static string LegacyDocsConfiguration(string command, IEnumerable<string> flags) =>
         $"{command}: found 1.0 docs configuration ({string.Join(", ", flags)}). Nothing reads it any more, so this " +
         "run would write no documentation. Declare each docs generator in codegen/Generators.cs. See " +
-        "docs/features/migrations/docs-are-generators.md, section \"C#\".";
+        "https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\".";
 
     /// <summary>What a gen run in a project with no <c>codegen/Generators.cs</c> prints, exit 2.</summary>
     /// <param name="command">The command's own name: <c>dotnet meta gen</c> or <c>dotnet meta verify --codegen</c>.</param>
     public static string NoGeneratorList(string command) =>
         $"{command}: no codegen/Generators.cs. The generator list lives there in 1.1.0, documentation included; " +
-        "`dotnet meta init` writes it. See docs/features/migrations/docs-are-generators.md, section \"C#\".";
+        "`dotnet meta init` writes it. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\".";
 
     /// <summary>What a gen or <c>verify --codegen</c> run prints, exit 2, when <c>codegen/Program.cs</c> does not
     /// run <c>Generators.All</c>: a 1.0 entry point declares its generators inline and would ignore the list.</summary>
@@ -290,7 +291,7 @@ public static class CodegenCli
     public static string LegacyProgram(string command) =>
         $"{command}: codegen/Program.cs does not run Generators.All, so it would ignore the generator list in " +
         "codegen/Generators.cs. Replace it with the two-line entry `using MetaObjects.Codegen;` and " +
-        "`return CodegenCli.Run(args, Generators.All);`. See docs/features/migrations/docs-are-generators.md, section \"C#\".";
+        "`return CodegenCli.Run(args, Generators.All);`. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\".";
 
     /// <summary>What a gen run prints, exit 2, when it finds 1.0 template-spec configuration: a
     /// project-root <c>template-spec.json</c> no entry declares, or <c>--template-spec</c>. Through
@@ -302,7 +303,7 @@ public static class CodegenCli
         $"{command}: found 1.0 template-spec configuration ({what}). Nothing reads it any more, so this run " +
         "would not render its templates. Declare it in codegen/Generators.cs as " +
         "`new MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator { Spec = \"template-spec.json\" }`. " +
-        "See docs/features/migrations/docs-are-generators.md, section \"C#\".";
+        "See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\".";
 
     /// <summary>
     /// The 1.0 template-spec configuration a run would have read and no longer does, or <c>null</c>:
@@ -455,6 +456,62 @@ public static class CodegenCli
         }
     }
 
+    /// <summary>The <c>--column-naming</c> spelling of <paramref name="strategy"/>.</summary>
+    public static string ColumnNamingFlag(ColumnNamingStrategy strategy) => strategy switch
+    {
+        ColumnNamingStrategy.SnakeCase => "snake_case",
+        ColumnNamingStrategy.KebabCase => "kebab-case",
+        _ => "literal",
+    };
+
+    /// <summary>Where a run's column naming came from, so the messages that name it can say so.</summary>
+    private enum NamingSource { Default, Flag, List }
+
+    private static string Describe(ColumnNamingStrategy strategy, NamingSource source) => source switch
+    {
+        NamingSource.List => $"{ColumnNamingFlag(strategy)} (ColumnNaming in {GeneratorListPath})",
+        NamingSource.Flag => $"{ColumnNamingFlag(strategy)} (--column-naming)",
+        _ => $"{ColumnNamingFlag(strategy)} (the default)",
+    };
+
+    /// <summary>
+    /// The run's column naming: <see cref="GeneratorList.ColumnNaming"/> when the list declares
+    /// it, else <c>--column-naming</c>, else <see cref="ColumnNamingStrategy.Literal"/>. Returns
+    /// the refusal to print (exit 2) for an unknown flag value, or for a flag that contradicts
+    /// the list: one declaration, never two that silently disagree.
+    /// </summary>
+    private static string? ResolveColumnNaming(
+        IReadOnlyList<IGenerator> declared, string? raw, out ColumnNamingStrategy strategy, out NamingSource source)
+    {
+        strategy = ColumnNamingStrategy.Literal;
+        source = NamingSource.Default;
+        ColumnNamingStrategy? flag = null;
+        if (raw is not null)
+        {
+            // An unknown value is a usage error, never a silent fallback to the default — a
+            // typo'd strategy would otherwise generate a whole entity tree bound to the wrong columns.
+            if (!TryParseColumnNaming(raw, out var parsed))
+                return $"error: unknown --column-naming \"{raw}\"; expected one of: literal, snake_case, kebab-case";
+            flag = parsed;
+        }
+        if (declared is GeneratorList { ColumnNaming: { } listed })
+        {
+            if (flag is { } given && given != listed)
+                return $"error: --column-naming {ColumnNamingFlag(given)} contradicts ColumnNaming = " +
+                       $"ColumnNamingStrategy.{listed} in {GeneratorListPath}. The list declares it once; " +
+                       "drop the flag, or change the list.";
+            strategy = listed;
+            source = NamingSource.List;
+            return null;
+        }
+        if (flag is { } only)
+        {
+            strategy = only;
+            source = NamingSource.Flag;
+        }
+        return null;
+    }
+
     /// <summary>
     /// The 1.0 composition of an owned list with a <c>--generators</c> selection, which ADDED
     /// packaged generators the list did not name.
@@ -591,15 +648,10 @@ public static class CodegenCli
             return 2;
         }
 
-        // How a field with NO explicit `@column` becomes a physical column name. An unknown
-        // value is a usage error, never a silent fallback to the default — a typo'd strategy
-        // would otherwise generate a whole entity tree bound to the wrong columns.
-        var columnNaming = ColumnNamingStrategy.Literal;
-        if (a.ColumnNamingRaw is not null && !TryParseColumnNaming(a.ColumnNamingRaw, out columnNaming))
+        // How a field with NO explicit `@column` becomes a physical column name.
+        if (ResolveColumnNaming(declared, a.ColumnNamingRaw, out var columnNaming, out _) is { } namingError)
         {
-            Console.Error.WriteLine(
-                $"error: unknown --column-naming \"{a.ColumnNamingRaw}\"; expected one of: " +
-                "literal, snake_case, kebab-case");
+            Console.Error.WriteLine(namingError);
             return 2;
         }
         // Same rule. `fresh` is deliberately NOT accepted — TypeScript implements it and this
@@ -683,6 +735,26 @@ public static class CodegenCli
         return 0;
     }
 
+    /// <summary>The other column naming that reproduces the committed output exactly, or <c>null</c>.</summary>
+    private static ColumnNamingStrategy? MatchingColumnNaming(
+        GenConfig config, MetaRoot root, IReadOnlyList<IGenerator> suite, bool narrowed, ColumnNamingStrategy used)
+    {
+        foreach (var other in Enum.GetValues<ColumnNamingStrategy>().Where(s => s != used))
+        {
+            var probe = CodegenDrift.Compute(config with { ColumnNamingStrategy = other }, root, suite, narrowed);
+            if (probe.Error is null && probe.Clean) return other;
+        }
+        return null;
+    }
+
+    /// <summary>What <c>verify --codegen</c> says, in place of "regenerate", when the committed output was
+    /// generated with <paramref name="committed"/> and this run used <paramref name="used"/>.</summary>
+    private static string ColumnNamingDiffers(ColumnNamingStrategy committed, ColumnNamingStrategy used, NamingSource source) =>
+        $"The committed output was generated with column naming {ColumnNamingFlag(committed)}; this run used " +
+        $"{Describe(used, source)}. Do not regenerate: that rewrites every column name the database does not " +
+        $"have. Declare the naming once, as ColumnNaming = ColumnNamingStrategy.{committed} on the GeneratorList " +
+        $"in {GeneratorListPath}, and gen and verify --codegen both read it.";
+
     private static int RunVerifyArgs(string[] rest, IReadOnlyList<IGenerator> declared)
     {
         var a = OwnedArgs.Parse(rest, VerifyCommandName, VerifyValueFlags, VerifyBoolFlags);
@@ -699,10 +771,9 @@ public static class CodegenCli
             return 2;
         }
 
-        var columnNaming = ColumnNamingStrategy.Literal;
-        if (a.ColumnNamingRaw is not null && !TryParseColumnNaming(a.ColumnNamingRaw, out columnNaming))
+        if (ResolveColumnNaming(declared, a.ColumnNamingRaw, out var columnNaming, out var namingSource) is { } namingError)
         {
-            Console.Error.WriteLine($"error: unknown --column-naming \"{a.ColumnNamingRaw}\"");
+            Console.Error.WriteLine(namingError);
             return 2;
         }
         if (a.OutDir is null)
@@ -773,6 +844,14 @@ public static class CodegenCli
         }
         Console.Error.WriteLine($"{VerifyCommandName}: drift ({result.DriftedFiles.Count} file(s) differ from a fresh regen):");
         foreach (var line in result.Lines) Console.Error.WriteLine($"  {line}");
+        // The committed output may be right and this run's column naming wrong: the naming
+        // reaches every column name, so regenerating would commit the wrong names. When another
+        // naming reproduces the committed tree exactly, say that instead of "regenerate".
+        if (MatchingColumnNaming(config, load.Root, suite, a.Selection is { Count: > 0 }, columnNaming) is { } committed)
+        {
+            Console.Error.WriteLine(ColumnNamingDiffers(committed, columnNaming, namingSource));
+            return 1;
+        }
         Console.Error.WriteLine("Run 'dotnet meta gen' to regenerate, then commit the result.");
         return 1;
     }

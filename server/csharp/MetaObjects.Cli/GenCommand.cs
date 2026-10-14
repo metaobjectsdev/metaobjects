@@ -185,7 +185,8 @@ public static class GenCommand
 
     /// <summary>
     /// The lines `dotnet meta gen --list` prints: one `&lt;stable-name&gt; — &lt;description&gt;`
-    /// per registered generator, native first, marked `[owned — identical]` / `[owned —
+    /// per registered generator, native first, each followed by the expression that lists it
+    /// in codegen/Generators.cs (<see cref="GeneratorRegistry.ListEntry"/>) and its options, marked `[owned — identical]` / `[owned —
     /// DIFFERS: N behind, M of your own]` when <paramref name="cwd"/> already has an
     /// ejected copy (<see cref="OwnedCopy.Status"/>), plus one line for an owned helper
     /// runtime copy (<see cref="OwnedCopy.RuntimeStatus"/>) when there is one. Pure (no
@@ -199,7 +200,9 @@ public static class GenCommand
                 var owned = OwnedCopy.Status(cwd, e);
                 var ownedMark = owned is not null ? $" [owned — {owned}]" : "";
                 var requires = e.Requires.Count > 0 ? $" (requires: {string.Join(", ", e.Requires)})" : "";
-                return $"  {e.Name} — {e.Description}" + requires + (e.Note is not null ? $" [{e.Note}]" : "") + ownedMark;
+                var options = e.Options is not null ? $"\n      options: {e.Options}" : "";
+                return $"  {e.Name} — {e.Description}" + requires + (e.Note is not null ? $" [{e.Note}]" : "") + ownedMark +
+                       $"\n      in codegen/Generators.cs: {GeneratorRegistry.ListEntry(e)}" + options;
             })
             .ToList();
         // The helper runtime an ejected routes generator brought with it is owned code too,

@@ -1,3 +1,4 @@
+using MetaObjects.Codegen;
 using Xunit;
 
 namespace MetaObjects.Cli.Tests;
@@ -108,5 +109,87 @@ public sealed class ColumnNamingFlagTests : IDisposable
             _tmp, ["entity", "names"], "gen", MetaDir, "--out", outDir, "--column-naming", "PascalCase");
         Assert.Equal(2, exit);
         Assert.Contains("snake_case", stdout + stderr);
+    }
+
+    // ---- ColumnNaming declared on the list (ADR-0034 Amendment 9: inputs live in the list) ----
+
+    private GeneratorList ListWith(ColumnNamingStrategy? naming) => new()
+    {
+        ColumnNaming = naming,
+        Entries = OwnedRunner.Declared(_tmp, "entity", "names"),
+    };
+
+    private (int Exit, string Out) Gen(IReadOnlyList<IGenerator> list, string outDir, params string[] extra)
+    {
+        var (exit, stdout, stderr) = OwnedRunner.Run(
+            _tmp, list, ["gen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated", .. extra]);
+        return (exit, stdout + stderr);
+    }
+
+    private (int Exit, string Out) Verify(IReadOnlyList<IGenerator> list, string outDir, params string[] extra)
+    {
+        var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, list, ["verify", "--codegen", MetaDir, "--out", outDir, .. extra]);
+        return (exit, stdout + stderr);
+    }
+
+    [Fact]
+    public void A_list_that_declares_snake_case_generates_snake_case_with_no_flag_and_verify_agrees()
+    {
+        var outDir = Path.Combine(_tmp, "generated-list");
+        var list = ListWith(ColumnNamingStrategy.SnakeCase);
+        var (exit, output) = Gen(list, outDir);
+        Assert.True(exit == 0, output);
+        Assert.Contains("public const string CreatedAtColumn = \"created_at\";",
+            File.ReadAllText(Path.Combine(outDir, "SubscriberNames.g.cs")));
+
+        var (verifyExit, verifyOut) = Verify(list, outDir);
+        Assert.True(verifyExit == 0, verifyOut);
+        Assert.Contains("OK (generated output is in sync)", verifyOut);
+    }
+
+    [Fact]
+    public void A_flag_that_agrees_with_the_list_is_accepted_and_one_that_contradicts_it_is_refused()
+    {
+        var list = ListWith(ColumnNamingStrategy.SnakeCase);
+        Assert.Equal(0, Gen(list, Path.Combine(_tmp, "agree"), "--column-naming", "snake_case").Exit);
+
+        var outDir = Path.Combine(_tmp, "contradict");
+        var (exit, output) = Gen(list, outDir, "--column-naming", "literal");
+        Assert.Equal(2, exit);
+        Assert.Contains(
+            "--column-naming literal contradicts ColumnNaming = ColumnNamingStrategy.SnakeCase in codegen/Generators.cs",
+            output);
+        Assert.False(Directory.Exists(outDir));
+        Assert.Equal(2, Verify(list, Path.Combine(_tmp, "agree"), "--column-naming", "literal").Exit);
+    }
+
+    [Fact]
+    public void Verify_with_the_wrong_naming_says_the_naming_differs_instead_of_regenerate()
+    {
+        // Committed with snake_case; the plain verify runs the default, literal.
+        var outDir = Path.Combine(_tmp, "generated-snake");
+        Assert.Equal(0, Gen(ListWith(null), outDir, "--column-naming", "snake_case").Exit);
+
+        var (exit, output) = Verify(ListWith(null), outDir);
+        Assert.Equal(1, exit);
+        Assert.Contains(
+            "The committed output was generated with column naming snake_case; this run used literal (the default). " +
+            "Do not regenerate",
+            output);
+        Assert.Contains("ColumnNaming = ColumnNamingStrategy.SnakeCase on the GeneratorList in codegen/Generators.cs", output);
+        Assert.DoesNotContain("Run 'dotnet meta gen' to regenerate", output);
+    }
+
+    [Fact]
+    public void Real_drift_still_says_regenerate()
+    {
+        var outDir = Path.Combine(_tmp, "generated-edited");
+        Assert.Equal(0, Gen(ListWith(ColumnNamingStrategy.SnakeCase), outDir).Exit);
+        File.AppendAllText(Path.Combine(outDir, "SubscriberNames.g.cs"), "// edited\n");
+
+        var (exit, output) = Verify(ListWith(ColumnNamingStrategy.SnakeCase), outDir);
+        Assert.Equal(1, exit);
+        Assert.Contains("Run 'dotnet meta gen' to regenerate", output);
+        Assert.DoesNotContain("column naming", output);
     }
 }

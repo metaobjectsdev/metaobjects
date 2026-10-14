@@ -273,6 +273,19 @@ public sealed class EjectCommandTests : IDisposable
         Assert.Equal(expected, File.ReadAllText(copyPath));
     }
 
+    // `--list` gave stable names only, while codegen/Generators.cs holds constructed generators:
+    // an adopter guessed class names and learned RenderHelperGenerator's argument from CS7036.
+    [Fact]
+    public void GenListLines_print_the_entry_to_put_in_the_list_and_its_options()
+    {
+        var lines = GenCommand.ListLines(_root);
+        Assert.Contains(lines, l => l.Contains(" entity —")
+            && l.Contains("\n      in codegen/Generators.cs: new MetaObjects.Codegen.Generators.EntityGenerator()"));
+        var renderHelper = Assert.Single(lines, l => l.Contains(" render-helper —"));
+        Assert.Contains("in codegen/Generators.cs: new MetaObjects.Codegen.Generators.RenderHelperGenerator(\"prompts\")", renderHelper);
+        Assert.Contains("options: templateRoot", renderHelper);
+    }
+
     [Fact]
     public void GenListLines_marks_an_unmodified_ejected_copy_identical()
     {

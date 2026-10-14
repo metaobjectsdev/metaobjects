@@ -9,9 +9,11 @@
 //   bun run prerelease:publish --iter 5              # pin the iteration number
 //   bun run prerelease:publish --base 0.25.0         # override the in-development version
 //
-// The base version is read from CHANGELOG.md's topmost `## [x.y.z]` header — the
-// repository's own declaration of what is being worked on — falling back to minor+1 when
-// that entry is already released. `--base` overrides both.
+// The base version is the lowest CHANGELOG.md `## [x.y.z]` section that is not released yet —
+// the repository's own declaration of what is being worked on — falling back to minor+1 when
+// every section is released. "Released" is read from public npm and the release tags, never
+// from package.json (release prep bumps that first). `--base` may override, but never to skip
+// an unpublished section.
 //   bun run prerelease:publish --dry-run             # build + normalize + gate, publish nothing
 //
 // Registry address and token come from tools/prerelease/registry.env (gitignored) or the
@@ -59,6 +61,9 @@ import { execSync, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { mavenVersion } from "./maven-coordinate.mjs";
+import {
+  changelogVersions, collectPages, decideBase, installRestoreHandlers, releasedVersion,
+} from "./prerelease-version.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (n, d) => { const i = argv.indexOf(`--${n}`); return i === -1 ? d : argv[i + 1]; };
@@ -122,56 +127,58 @@ const NUGET_SRC = assertTarget(`${BASE}/api/packages/${OWNER}/nuget/index.json`,
 const MAVEN_URL = assertTarget(`${BASE}/api/packages/${OWNER}/maven`, "maven");
 
 // ── version scheme ────────────────────────────────────────────────────────────────────
+// What the repository says it is: the lockstep set is every package carrying this version.
 const cliPkg = JSON.parse(readFileSync(join(ROOT, "server/typescript/packages/cli/package.json"), "utf8"));
-const RELEASED = cliPkg.version;
+const COMMITTED = cliPkg.version;
 
-const cmpVer = (a, b) => {
-  const [x, y] = [a, b].map((v) => v.split(".").map(Number));
-  return x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
+/** Public npm's `latest` for the CLI, or null when it cannot be read. */
+const npmLatest = async () => {
+  try {
+    const r = await fetch("https://registry.npmjs.org/@metaobjectsdev%2fcli",
+      { headers: { accept: "application/vnd.npm.install-v1+json" }, signal: AbortSignal.timeout(10_000) });
+    return r.ok ? ((await r.json())["dist-tags"] || {}).latest ?? null : null;
+  } catch { return null; }
 };
 
 /**
- * The version this cut is FOR, read from the repository's own declaration of it.
- *
- * `package.json` still carries the last RELEASED version — versions bump at release time —
- * so it cannot answer "what is being worked on". CHANGELOG.md can: its topmost `## [x.y.z]`
- * header is written when the work lands, ahead of the bump. Guessing minor+1 instead had a
- * standing cost, because a PATCH line is a normal outcome (0.23.3 after 0.23.2): the tool
- * derived 0.24.0 while the changelog said 0.23.3, and every single invocation needed
- * `--base` to talk it out of the wrong answer. One forgotten flag burns a version number on
- * the registry, permanently.
- *
- * Falls back to minor+1 when the changelog's top entry is already released — i.e. nobody
- * has declared the next version yet, which is exactly the case the old guess was written
- * for. `--base` still overrides both.
+ * What is RELEASED, read from where a release leaves its mark: public npm and the `v<x.y.z>`
+ * tags. Through 1.1.0's release candidates this was `package.json`, which release preparation
+ * bumps BEFORE anything is published, so the CHANGELOG's `[1.1.0]` looked shipped and every rc
+ * was cut as 1.2.0 unless `--base` was passed. See scripts/prerelease-version.mjs.
  */
-const declaredBase = (() => {
-  const m = readFileSync(join(ROOT, "CHANGELOG.md"), "utf8").match(/^## \[(\d+\.\d+\.\d+)\]/m);
-  return m && cmpVer(m[1], RELEASED) > 0 ? m[1] : null;
-})();
-const BASE_SOURCE = flag("base", null) !== null ? "--base"
-  : declaredBase !== null ? "CHANGELOG.md"
-  : `guessed from released ${RELEASED}`;
-const BASEVER = flag("base", declaredBase ?? (() => {
-  const [maj, min] = RELEASED.split(".").map(Number);
-  return `${maj}.${min + 1}.0`;
-})());
-if (!/^\d+\.\d+\.\d+$/.test(BASEVER)) die(`--base must be a plain x.y.z, got ${BASEVER}`);
+const RELEASED = releasedVersion({
+  npmLatest: await npmLatest(),
+  tags: sh("git tag --list 'v*'").split("\n"),
+  major: Number(COMMITTED.split(".")[0]),
+});
+
+let decided;
+try {
+  decided = decideBase({
+    released: RELEASED,
+    changelog: changelogVersions(readFileSync(join(ROOT, "CHANGELOG.md"), "utf8")),
+    explicit: flag("base", null),
+  });
+} catch (e) { die(e.message); }
+const BASEVER = decided.base;
+const BASE_SOURCE = decided.source;
 
 // The lockstep package names, needed before the iteration number is chosen.
 const LOCKSTEP = sh("ls -d server/typescript/packages/*/ client/web/packages/*/").trim().split("\n")
   .map((d) => d.replace(/\/$/, ""))
   .map((dir) => ({ dir, pkg: JSON.parse(readFileSync(join(ROOT, dir, "package.json"), "utf8")) }))
-  .filter(({ pkg }) => !pkg.private && pkg.version === RELEASED);
+  .filter(({ pkg }) => !pkg.private && pkg.version === COMMITTED);
 
 const ITER_RE = new RegExp(`^\\d+\\.${BASEVER.split(".").slice(1).join("\\.")}(?:-rc\\.|rc)(\\d+)$`);
 
 // Iteration: explicit, else 1 + the highest already taken — across ALL FOUR ecosystems on
 // the pre-release registry, so `--only npm` today and `--only csharp` tomorrow cannot
-// collide (a used number is a hard 409 on every one of them).
-const usedIters = () => {
+// collide (a used number is a hard 409 on every one of them). Every page: the registry serves
+// 50 per page whatever `limit` asks, and a used number past the first page was invisible.
+const usedIters = async () => {
   try {
-    const list = JSON.parse(sh(`curl -fsS --max-time 10 -u "${OWNER}:${TOKEN}" "${BASE}/api/v1/packages/${OWNER}?limit=1000"`));
+    const list = await collectPages((page, limit) =>
+      JSON.parse(sh(`curl -fsS --max-time 10 -u "${OWNER}:${TOKEN}" "${BASE}/api/v1/packages/${OWNER}?page=${page}&limit=${limit}"`)));
     return list.map((p) => (p.version.match(ITER_RE) || [])[1]).filter(Boolean).map(Number);
   } catch { return []; }
 };
@@ -198,8 +205,8 @@ const burnedPublicIters = async () => {
 
 const explicitIter = flag("iter", null);
 const burned = await burnedPublicIters();
-const ITER = Number(explicitIter ?? (() => {
-  const taken = [...usedIters(), ...burned];
+const ITER = Number(explicitIter ?? await (async () => {
+  const taken = [...await usedIters(), ...burned];
   return taken.length ? Math.max(...taken) + 1 : 1;
 })());
 if (!Number.isInteger(ITER) || ITER < 1) die(`--iter must be a positive integer, got ${ITER}`);
@@ -232,7 +239,7 @@ const wants = (p) => ONLY.includes(p);
 console.log(`\n── pre-release ${CANON}${DRY ? "  (DRY RUN)" : ""} → ${expectedHost} ──\n`);
 // Name where the base came from. A version number is spent permanently the moment it is
 // published, so the one value worth reading before the run is the one that was inferred.
-info(`released: ${RELEASED}   base: ${BASEVER} (from ${BASE_SOURCE})   iteration: ${ITER}`);
+info(`released: ${RELEASED ?? "unknown"}   committed: ${COMMITTED}   base: ${BASEVER} (from ${BASE_SOURCE})   iteration: ${ITER}`);
 info(`npm ${V.npm}  ·  pypi ${V.pypi}  ·  nuget ${V.nuget}  ·  maven ${V.maven}`);
 info(`ports: ${ONLY.join(", ")}\n`);
 ok(`publish target verified: ${expectedHost} (configured registry; not a public one)`);
@@ -272,8 +279,7 @@ const restore = () => {
   if (!touched.length) return;
   try { sh(`git checkout -- ${touched.map((f) => `'${f}'`).join(" ")}`); } catch {}
 };
-process.on("exit", restore);
-process.on("SIGINT", () => { restore(); process.exit(130); });
+installRestoreHandlers(restore);
 
 const scratch = (name) => { const d = join(SCRATCH, name); rmSync(d, { recursive: true, force: true }); mkdirSync(d, { recursive: true }); return d; };
 // Kept between runs (so Maven does not re-download the world every time) and deliberately

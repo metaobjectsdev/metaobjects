@@ -25,20 +25,20 @@ before writing anything, so a build never passes while silently writing no docum
 **What you see.** `meta docs` fails (exit 2) with:
 
 ```
-`meta docs` was removed in 1.1.0. `meta gen` writes documentation now: declare each docs generator in `generators` in metaobjects.config.ts. See docs/features/migrations/docs-are-generators.md, section "TypeScript".
+`meta docs` was removed in 1.1.0. `meta gen` writes documentation now: declare each docs generator in `generators` in metaobjects.config.ts. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "TypeScript".
 ```
 
 `meta verify --docs` fails (exit 2) with:
 
 ```
-`meta verify --docs` was removed in 1.1.0. `meta verify --codegen` checks documentation now, with everything else `generators` declares. See docs/features/migrations/docs-are-generators.md, section "TypeScript".
+`meta verify --docs` was removed in 1.1.0. `meta verify --codegen` checks documentation now, with everything else `generators` declares. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "TypeScript".
 ```
 
 A config that still has a `docs` block fails `meta gen` and `meta verify --codegen` before
 anything is written:
 
 ```
-meta gen: found 1.0 docs configuration (the docs block in metaobjects.config.ts). Nothing reads it any more, so this run would write no documentation. Declare each docs generator in `generators` in metaobjects.config.ts. See docs/features/migrations/docs-are-generators.md, section "TypeScript".
+meta gen: found 1.0 docs configuration (the docs block in metaobjects.config.ts). Nothing reads it any more, so this run would write no documentation. Declare each docs generator in `generators` in metaobjects.config.ts. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "TypeScript".
 ```
 
 **Before (1.0).** `meta docs` wrote four sets of pages nobody listed (the model pages, the
@@ -168,6 +168,10 @@ them only if you ran those flags.
 - `meta verify --codegen` now checks the pages as it checks code. A page a fresh run no
   longer writes (the page of an object you removed) is drift until you delete it; `meta gen`
   does not delete it for you. A hand-written file in the docs directory is left alone.
+- In a repository with more than one port, give each port's documentation a directory of
+  its own (`docs/generated` for TypeScript, `docs/csharp`, `docs/python`): another port's
+  generated pages count as foreign files, so in a shared directory each port's
+  `verify --codegen` reports the other ports' pages as drift.
 - The site loads the same metadata `meta gen` loads, from the project's declared sources.
 
 **Scripts and CI.** Replace `meta docs` with `meta gen`, and `meta verify --docs` with
@@ -202,7 +206,7 @@ all and wrote the model pages and the requirement ledger. In 1.1.0 nothing is ge
 until a config declares it, and `meta gen` with no config fails with:
 
 ```
-meta gen: no metaobjects.config.ts. Nothing is generated until a config declares it, documentation included; `meta init` writes one. A 1.0 project that ran `meta docs` with no config: see docs/features/migrations/docs-are-generators.md, section "TypeScript".
+meta gen: no metaobjects.config.ts. Nothing is generated until a config declares it, documentation included; `meta init` writes one. A 1.0 project that ran `meta docs` with no config: see https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "TypeScript".
 ```
 
 Write a `metaobjects.config.ts` at the project root with a `docs` target and `docsFile()`
@@ -229,14 +233,14 @@ node, so drop it if yours declares none. Then run `meta gen`.
 **What you see.** `dotnet meta docs` prints this line and exits 2:
 
 ```
-dotnet meta docs was removed in 1.1.0. `dotnet meta gen` writes documentation now: declare each docs generator in codegen/Generators.cs. See docs/features/migrations/docs-are-generators.md, section "C#".
+dotnet meta docs was removed in 1.1.0. `dotnet meta gen` writes documentation now: declare each docs generator in codegen/Generators.cs. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "C#".
 ```
 
 `dotnet meta gen` (and `dotnet meta verify --codegen`) in a project with no
 `codegen/Generators.cs` prints this and exits 2, writing nothing:
 
 ```
-dotnet meta gen: no codegen/Generators.cs. The generator list lives there in 1.1.0, documentation included; `dotnet meta init` writes it. See docs/features/migrations/docs-are-generators.md, section "C#".
+dotnet meta gen: no codegen/Generators.cs. The generator list lives there in 1.1.0, documentation included; `dotnet meta init` writes it. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "C#".
 ```
 
 `dotnet meta gen` given `--project` or `--model-base-url` fails before writing anything,
@@ -248,7 +252,7 @@ written by a second command:
 
 ```
 dotnet meta gen ./metaobjects --out ./Generated --generators entity,db-context
-dotnet meta docs ./metaobjects --out ./docs/generated --project shop --model-base-url https://docs.example.com/model
+dotnet meta docs ./metaobjects --out ./docs/csharp --project shop --model-base-url https://docs.example.com/model
 ```
 
 A project that had ejected a generator also had `codegen/Program.cs`, with the list inline:
@@ -285,7 +289,7 @@ public static class Generators
         new MetaObjects.Codegen.Generators.DbContextGenerator(),
         new MetaObjects.Codegen.Generators.ApiDocsGenerator
         {
-            OutDir = "docs/generated",
+            OutDir = "docs/csharp",
             ProjectName = "shop",
             ModelBaseUrl = "https://docs.example.com/model",
         },
@@ -312,7 +316,7 @@ and replace `Program.cs` with the two lines above. `dotnet meta init` writes
 (`dotnet meta verify --codegen` in place of `dotnet meta gen` for the gate):
 
 ```
-dotnet meta gen: codegen/Program.cs does not run Generators.All, so it would ignore the generator list in codegen/Generators.cs. Replace it with the two-line entry `using MetaObjects.Codegen;` and `return CodegenCli.Run(args, Generators.All);`. See docs/features/migrations/docs-are-generators.md, section "C#".
+dotnet meta gen: codegen/Program.cs does not run Generators.All, so it would ignore the generator list in codegen/Generators.cs. Replace it with the two-line entry `using MetaObjects.Codegen;` and `return CodegenCli.Run(args, Generators.All);`. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "C#".
 ```
 
 `init` and `eject` say the same, and warn when `codegen/Codegen.csproj` still pins an older
@@ -325,7 +329,7 @@ Neither is read in 1.1.0. A run that finds either, with no spec entry in the lis
 before writing anything:
 
 ```
-dotnet meta gen: found 1.0 template-spec configuration (template-spec.json). Nothing reads it any more, so this run would not render its templates. Declare it in codegen/Generators.cs as `new MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator { Spec = "template-spec.json" }`. See docs/features/migrations/docs-are-generators.md, section "C#".
+dotnet meta gen: found 1.0 template-spec configuration (template-spec.json). Nothing reads it any more, so this run would not render its templates. Declare it in codegen/Generators.cs as `new MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator { Spec = "template-spec.json" }`. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "C#".
 ```
 
 (`--template-spec` in place of `template-spec.json` when the flag was given;
@@ -371,7 +375,8 @@ exists, else `templates/`.
 | `dotnet meta docs --model-base-url <url>` | `ModelBaseUrl` |
 | the `api/csharp` subdirectory under `--out` | `ApiSubDir`, same default |
 | `dotnet meta gen --template-spec <json>`, or a project-root `template-spec.json` | a `TemplateSpecGenerator { Spec = "<json>" }` entry |
-| `dotnet meta gen --template-root <dir>` | `TemplateRoot` on the spec entry, and the template root `render-helper` is constructed with in the list |
+| `dotnet meta gen --template-root <dir>` | `TemplateRoot` on the spec entry, and the constructor argument of the `render-helper` entry: `new MetaObjects.Codegen.Generators.RenderHelperGenerator("prompts")` |
+| `dotnet meta gen --column-naming <strategy>` (and the same flag on `verify --codegen`) | `ColumnNaming` on the list: `All { get; } = new GeneratorList { ColumnNaming = ColumnNamingStrategy.SnakeCase, Entries = [ ... ] };`. Gen and `verify --codegen` both read it; a flag that contradicts it is refused |
 | `dotnet meta docs --namespace <ns>` | the gen run's `--namespace`, as before |
 | whether you ran `dotnet meta docs` | whether `ApiDocsGenerator` is listed |
 | an owned api-docs copy, run by `dotnet meta docs` (1.1.0 release candidates only) | `new Codegen.Generators.ApiDocsGenerator { ... }` in the list, in place of the packaged one |
@@ -379,6 +384,10 @@ exists, else `templates/`.
 **Give the api-docs entry an `OutDir` that holds generated files only.**
 `dotnet meta verify --codegen` now checks the pages, as it checks code: it regenerates each
 entry's `OutDir` and compares the whole tree, so a hand-written file there reads as stale.
+In a repository with more than one port, give each port's documentation a directory of
+its own (`docs/generated` for TypeScript, `docs/csharp`, `docs/python`): another port's
+generated pages count as foreign files, so in a shared directory each port's
+`verify --codegen` reports the other ports' pages as drift.
 
 **Scripts and CI.** Replace `dotnet meta docs ...` with `dotnet meta gen`. To write only the
 documentation, name the docs entry:
@@ -388,14 +397,17 @@ dotnet meta gen ./metaobjects --out ./Generated --generators api-docs
 ```
 
 Drop `--generators` from a `dotnet meta gen` or `verify --codegen` line that used it to choose
-the generators: the list chooses them now.
+the generators: the list chooses them now. Move `--column-naming` into the list as
+`ColumnNaming` (above) before you shorten a script's command line: a run with neither
+uses `literal`, and on a database with `snake_case` columns it rebinds every entity to
+columns that do not exist.
 
 ## Python
 
 **What you see.** `metaobjects docs` prints this line and exits 2:
 
 ```
-metaobjects docs was removed in 1.1.0. `metaobjects gen` writes documentation now: declare each docs generator in a target's `generators` in metaobjects.config.yaml. See docs/features/migrations/docs-are-generators.md, section "Python".
+metaobjects docs was removed in 1.1.0. `metaobjects gen` writes documentation now: declare each docs generator in a target's `generators` in metaobjects.config.yaml. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "Python".
 ```
 
 `metaobjects gen` (and `metaobjects verify --codegen`) with no `metaobjects.config.yaml`
@@ -403,20 +415,20 @@ prints this and exits 2, writing nothing. That includes the 1.0 form
 `metaobjects gen <metadata_dir> --out <dir> --generators <names>`:
 
 ```
-metaobjects gen: no metaobjects.config.yaml. The generator list lives there in 1.1.0, documentation included. See docs/features/migrations/docs-are-generators.md, section "Python".
+metaobjects gen: no metaobjects.config.yaml. The generator list lives there in 1.1.0, documentation included. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "Python".
 ```
 
 A config that still has a top-level `docs` block fails `gen` before it writes anything:
 
 ```
-metaobjects gen: found 1.0 docs configuration (the docs block in metaobjects.config.yaml). Nothing reads it any more, so this run would write no documentation. Declare each docs generator in a target's `generators` in metaobjects.config.yaml. See docs/features/migrations/docs-are-generators.md, section "Python".
+metaobjects gen: found 1.0 docs configuration (the docs block in metaobjects.config.yaml). Nothing reads it any more, so this run would write no documentation. Declare each docs generator in a target's `generators` in metaobjects.config.yaml. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "Python".
 ```
 
 A target with no `generators` key fails `gen` (exit 2) before anything is written; list its
 generators, or write `generators: []` for a target that writes nothing:
 
 ```
-metaobjects gen: target(s) 'api' declare no `generators` key. In 1.1.0 a target runs only the generators it lists: list them, or write `generators: []` for a target that writes nothing. See docs/features/migrations/docs-are-generators.md, section "Python".
+metaobjects gen: target(s) 'api' declare no `generators` key. In 1.1.0 a target runs only the generators it lists: list them, or write `generators: []` for a target that writes nothing. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "Python".
 ```
 
 **Before (1.0).** Code from a config file, or from flags with no config, and the api
@@ -432,7 +444,7 @@ targets:
 
 ```
 metaobjects gen
-metaobjects docs --out docs/generated --project shop --model-base-url https://docs.example.com/model
+metaobjects docs --out docs/python --project shop --model-base-url https://docs.example.com/model
 ```
 
 or, with no config:
@@ -453,7 +465,7 @@ targets:
     outDir: src/generated
     generators: [entity, filter-allowlist, routes]
   docs:
-    outDir: docs/generated
+    outDir: docs/python
     generators: [api-docs]   # an owned copy: "codegen.generators.api_docs:api_docs_generator"
 apiDocs:
   projectName: shop
@@ -480,14 +492,24 @@ metaobjects gen
 | `gen --generators a,b,c` (the selection) | the target's `generators`; `--generators` now only narrows a run to declared entries, and naming one no target declares is refused |
 | `gen --template-spec <json>`, or the `template-spec.json` beside `<metadata_dir>` that 1.0 found on its own | `templateSpec: <json>` on the target its output belongs in; a leftover `template-spec.json` that no target declares fails the run with a line that starts `metaobjects gen: found 1.0 template-spec configuration (` |
 | `gen --entities a,b` | the target's `entities` (`--entities` still narrows a run) |
+| `gen --column-naming <strategy>` (and `verify --codegen --column-naming`) | top-level `columnNaming`, which `gen` and `verify --codegen` both read; a flag that contradicts it is refused |
+| `gen --templates <dir>` (and `verify --prompts <dir>`) | top-level `templates`, relative to the config file; `verify --templates` reads it, and `metadata`, from the config too |
 
 **Give the docs target an `outDir` that holds generated files only.**
 `metaobjects verify --codegen` now checks the pages, as it checks code: it regenerates each
 target's `outDir` and compares the files it would write.
+In a repository with more than one port, give each port's documentation a directory of
+its own (`docs/generated` for TypeScript, `docs/csharp`, `docs/python`): another port's
+generated pages count as foreign files, so in a shared directory each port's
+`verify --codegen` reports the other ports' pages as drift.
 
 **Scripts and CI.** Replace `metaobjects docs ...` with `metaobjects gen`, and
 `metaobjects gen <metadata_dir> --out <dir> ...` with `metaobjects gen` once the config
-declares the list. To write only the documentation, name the docs entry (or its target):
+declares the list **and every setting the old line passed**: `--column-naming` becomes
+`columnNaming`, `--templates` becomes `templates`. A plain `metaobjects gen` with neither
+uses `literal` naming, and on a database with `snake_case` columns it rewrites every
+`*_names.py` with column names that do not exist. To write only the documentation, name the
+docs entry (or its target):
 
 ```
 metaobjects gen --generators api-docs
@@ -499,7 +521,7 @@ metaobjects gen --target docs
 **What you see.** A pom that binds the `docs` goal fails with:
 
 ```
-metaobjects:docs was removed in 8.1.0. `mvn metaobjects:generate` writes documentation now: declare each docs generator as a <generator> entry in the plugin's <generators>. See docs/features/migrations/docs-are-generators.md, section "Java and Kotlin".
+metaobjects:docs was removed in 8.1.0. `mvn metaobjects:generate` writes documentation now: declare each docs generator as a <generator> entry in the plugin's <generators>. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "Java and Kotlin".
 ```
 
 A pom that still sets the goal's parameters fails in `generate` and `verify` with a line
@@ -596,6 +618,10 @@ to the same paths as the 8.0 pom above:
 **Give each api-docs entry an `outputDir` that holds generated files only.**
 `metaobjects:verify` now checks the pages, as it checks code: it regenerates each entry's
 `outputDir` and compares the whole tree, so a hand-written file there reads as stale.
+In a repository with more than one port, give each port's documentation a directory of
+its own (the examples here write to `${project.build.directory}/docs`, which is already per module): another port's
+generated pages count as foreign files, so in a shared directory each port's
+`verify --codegen` reports the other ports' pages as drift.
 
 **Scripts and CI.** Replace `mvn metaobjects:docs` with `mvn metaobjects:generate`. To write
 only the documentation, give it an execution of its own and run that one:

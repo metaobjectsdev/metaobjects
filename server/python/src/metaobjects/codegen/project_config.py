@@ -41,7 +41,14 @@ DEFAULT_METADATA_DIR = "metaobjects"
 #: schema by ``test_schema_and_loader_accept_EXACTLY_the_same_keys``.
 TOP_LEVEL_KEYS: tuple[str, ...] = (
     "metadata", "providers", "libraries", "targets", "requirementTests", "apiDocs",
+    "columnNaming", "templates",
 )
+
+#: The strategies ``columnNaming`` accepts: how a field with no ``@column`` becomes a column
+#: name, for every generator in the run. Spelled here, in the loader that validates them,
+#: rather than imported from ``metaobjects.naming``, for the reason the grain values below
+#: give; ``test_column_naming_values_match_the_cli`` keeps the two in step.
+COLUMN_NAMING_VALUES: tuple[str, ...] = ("snake_case", "literal", "kebab-case")
 
 #: The 1.0 docs block. Not a key this loader reads: it is recorded (``legacy_docs``) so
 #: ``gen`` and ``verify --codegen`` can refuse it with the line that says where it went,
@@ -169,6 +176,14 @@ class ProjectConfig:
     api_docs: ApiDocsConfig | None = None
     #: True when the file still carries the 1.0 ``docs`` block, which nothing reads.
     legacy_docs: bool = False
+    #: ``columnNaming``: how a field with no ``@column`` becomes a column name, for the whole
+    #: run (``gen`` and ``verify --codegen`` both read it). ``None`` => ``--column-naming``,
+    #: else the port default (``literal``).
+    column_naming: str | None = None
+    #: ``templates``: the directory template refs resolve from (relative to ``config_dir`` or
+    #: absolute). ``None`` => ``--templates`` / ``--prompts``, else ``prompts/`` when it exists,
+    #: else ``templates/``.
+    templates: str | None = None
 
     def metadata_dir(self) -> str:
         """The metadata dir resolved against ``config_dir`` (absolute path string)."""
@@ -180,6 +195,10 @@ class ProjectConfig:
     def out_dir_for(self, target: TargetConfig) -> str:
         """``target.out_dir`` resolved against ``config_dir`` (absolute path string)."""
         return _resolve_under(self.config_dir, target.out_dir)
+
+    def templates_dir(self) -> str | None:
+        """``templates`` resolved against ``config_dir``, or ``None`` when not declared."""
+        return None if self.templates is None else _resolve_under(self.config_dir, self.templates)
 
     def template_spec_for(self, target: TargetConfig) -> str | None:
         """``target.template_spec`` resolved against ``config_dir``, or ``None``."""
@@ -381,6 +400,15 @@ def load_project_config(path: Path) -> ProjectConfig:
         _parse_api_docs(raw["apiDocs"], f"{path}: 'apiDocs'") if "apiDocs" in raw else None
     )
 
+    column_naming = raw.get("columnNaming")
+    if column_naming is not None and column_naming not in COLUMN_NAMING_VALUES:
+        raise ConfigError(
+            f"{path}: 'columnNaming' must be one of {list(COLUMN_NAMING_VALUES)}, got {column_naming!r}."
+        )
+    templates = raw.get("templates")
+    if templates is not None and (not isinstance(templates, str) or not templates):
+        raise ConfigError(f"{path}: 'templates' must be a non-empty string (a directory path).")
+
     return ProjectConfig(
         config_dir=path.parent.resolve(),
         metadata=metadata,
@@ -391,4 +419,6 @@ def load_project_config(path: Path) -> ProjectConfig:
         metadata_declared="metadata" in raw,
         api_docs=api_docs,
         legacy_docs=legacy_docs,
+        column_naming=column_naming,
+        templates=templates,
     )

@@ -113,9 +113,46 @@ has_py()    { [ -n "$(project_find \( -name pyproject.toml -o -name 'requirement
 has_nuget() {
   # `project_find` supplies the -print, so this takes the first line rather than -quit.
   [ -n "$(project_find \( -name '*.csproj' -o -name '*.fsproj' -o -name '*.vbproj' -o -name '*.sln' \) \
-             -not -path '*/obj/*' -not -path '*/bin/*' | head -1)" ]
+             -not -path '*/obj/*' -not -path '*/bin/*' | head -1)" ] || [ -n "$(dotnet_tool_manifests | head -1)" ]
 }
-has_mvn()   { [ -f "$PROJECT/pom.xml" ]; }
+has_mvn()   { [ -n "$(mvn_roots | head -1)" ]; }
+
+# Every independent Maven build: a pom.xml with no pom.xml above it inside the project. A repo
+# whose ports each have their own build (`ports/java/pom.xml`, `ports/kotlin/pom.xml`, no root
+# pom) used to be skipped whole — `has_mvn` tested the root only — and each needed its own
+# `link --project` run. A multi-module build is one root: its modules inherit the
+# repositories, so only the root pom gets the managed block.
+mvn_roots() {
+  local f d up nested
+  while IFS= read -r f; do
+    d="$(dirname "$f")"; up="$d"; nested=0
+    while [ "$up" != "$PROJECT" ] && [ "$up" != "/" ]; do
+      up="$(dirname "$up")"
+      [ -f "$up/pom.xml" ] && { nested=1; break; }
+    done
+    [ "$nested" -eq 0 ] && echo "$d"
+  done < <(project_find -name pom.xml -not -path '*/target/*')
+}
+
+# Every Maven pom in the project, modules included: each may pin a com.metaobjects version.
+mvn_poms() { project_find -name pom.xml -not -path '*/target/*'; }
+
+# Every Python project: a directory holding a pyproject.toml, at any depth (virtualenvs and
+# installed packages excluded). The root-only version left a `ports/python/` project on the
+# public index while `link` reported success.
+py_roots() {
+  project_find -name pyproject.toml -not -path '*/.venv/*' -not -path '*/venv/*' \
+      -not -path '*/site-packages/*' -not -path '*/target/*' \
+    | while IFS= read -r f; do dirname "$f"; done | sort -u
+}
+
+# .NET local tool manifests (`.config/dotnet-tools.json`, or `dotnet-tools.json` at a root)
+# that install MetaObjects.Cli. The C# CLI is a tool, not a PackageReference, so repinning the
+# packages left `dotnet meta` on the previous release.
+dotnet_tool_manifests() {
+  project_find -name dotnet-tools.json -not -path '*/obj/*' -not -path '*/bin/*' \
+    | while IFS= read -r f; do grep -qi '"metaobjects\.cli"' "$f" && echo "$f"; done
+}
 
 detected() {
   local d=()
@@ -264,10 +301,12 @@ repin_npm() {  # repin_npm <version|"">
 
 repin_py() {  # repin_py <version|"">
   local v="$1"; [ -n "$v" ] || return 0
-  local pv; pv="$(py_version "$v")"
-  for f in "$PROJECT/pyproject.toml" "$PROJECT"/requirements*.txt "$PROJECT"/constraints*.txt; do
-    [ -f "$f" ] || continue
-    sed -i -E "s/(${PY_DIST}[[:space:]]*)(==|>=|~=)[[:space:]]*[0-9][^\"',[:space:]]*/\\1==${pv}/g" "$f"
+  local pv root; pv="$(py_version "$v")"
+  for root in $( { echo "$PROJECT"; py_roots; } | sort -u); do
+    for f in "$root/pyproject.toml" "$root"/requirements*.txt "$root"/constraints*.txt; do
+      [ -f "$f" ] || continue
+      sed -i -E "s/(${PY_DIST}[[:space:]]*)(==|>=|~=)[[:space:]]*[0-9][^\"',[:space:]]*/\\1==${pv}/g" "$f"
+    done
   done
   say "repinned $PY_DIST to $pv"
 }
@@ -279,32 +318,49 @@ repin_nuget() {  # repin_nuget <version|"">
   done < <(project_find \( -name '*.csproj' -o -name '*.fsproj' -o -name 'Directory.Packages.props' \) \
              -not -path '*/obj/*' -not -path '*/bin/*')
   say "repinned ${NUGET_PREFIX}* package references to $v"
+  # The tool's version, textually, in its own entry only: the rest of the manifest is untouched.
+  local m
+  while IFS= read -r m; do
+    node -e '
+      const fs=require("fs"), f=process.argv[1], v=process.argv[2];
+      const raw=fs.readFileSync(f,"utf8");
+      const out=raw.replace(/("metaobjects\.cli"\s*:\s*\{[^{}]*?"version"\s*:\s*")[^"]*(")/gi, (_m,a,b) => a + v + b);
+      if (out !== raw) fs.writeFileSync(f, out);
+    ' "$m" "$v"
+    say "repinned MetaObjects.Cli to $v in ${m#"$PROJECT"/}"
+  done < <(dotnet_tool_manifests)
 }
 
 repin_mvn() {  # repin_mvn <version|"">
   local v="$1"; [ -n "$v" ] || return 0
-  local mv; mv="$(maven_version "$v")"
+  local mv pom; mv="$(maven_version "$v")"
+  while IFS= read -r pom; do repin_pom "$pom" "$mv"; done < <(mvn_poms)
+}
+
+repin_pom() {  # repin_pom <pom.xml> <maven version>
+  local pom="$1" mv="$2" rel="${1#"$PROJECT"/}"
   # A version property is the idiomatic single point of control. When the project has one,
   # rewrite ONLY that: expanding ${metaobjects.version} into a literal would silently
   # destroy the indirection the project chose, and unlink would never put it back.
-  if grep -q '<metaobjects\.version>' "$PROJECT/pom.xml"; then
-    sed -i -E "s|(<metaobjects\\.version>)[^<]*(</metaobjects\\.version>)|\\1${mv}\\2|g" "$PROJECT/pom.xml"
-    say "repinned $MVN_GROUP dependencies to $mv (via <metaobjects.version>)"
+  if grep -q '<metaobjects\.version>' "$pom"; then
+    sed -i -E "s|(<metaobjects\\.version>)[^<]*(</metaobjects\\.version>)|\\1${mv}\\2|g" "$pom"
+    say "repinned $MVN_GROUP dependencies to $mv in $rel (via <metaobjects.version>)"
     return 0
   fi
-  # No property: rewrite the <version> inside each com.metaobjects <dependency> block.
+  grep -q "$MVN_GROUP" "$pom" || return 0
+  # No property: rewrite the <version> inside each com.metaobjects <dependency> or <plugin> block.
   awk -v grp="$MVN_GROUP" -v ver="$mv" '
-    /<dependency>/ { dep=1; buf=""; n=0 }
+    /<dependency>|<plugin>/ { dep=1; buf=""; n=0 }
     dep { buf = buf $0 "\n"; n++
           if ($0 ~ "<groupId>[[:space:]]*" grp "[[:space:]]*</groupId>") ours=1
-          if ($0 ~ /<\/dependency>/) {
+          if ($0 ~ /<\/dependency>|<\/plugin>|<executions>|<configuration>|<dependencies>/) {
             if (ours) gsub(/<version>[^<]*<\/version>/, "<version>" ver "</version>", buf)
             printf "%s", buf; dep=0; ours=0; next
           }
           next }
     { print }
-  ' "$PROJECT/pom.xml" > "$PROJECT/pom.xml.tmp" && mv "$PROJECT/pom.xml.tmp" "$PROJECT/pom.xml"
-  say "repinned $MVN_GROUP dependencies to $mv"
+  ' "$pom" > "$pom.tmp" && mv "$pom.tmp" "$pom"
+  say "repinned $MVN_GROUP dependencies to $mv in $rel"
 }
 
 # Which package manager owns a root, from the lockfile it keeps. Decides the command we
@@ -501,21 +557,25 @@ link_npm() {
 }
 
 link_py() {
-  local f="$PROJECT/pyproject.toml"
-  [ -f "$f" ] || { warn "no pyproject.toml — configure pip manually, or add one"; return 0; }
-  strip_block "$f" "$BEGIN" "$END"
-  # `explicit = true` + [tool.uv.sources] is per-package index pinning: nothing resolves
-  # from this index unless a source names it, so the rest of PyPI is untouched. pip's
-  # --extra-index-url has no equivalent, which is why uv is the documented path.
-  { cat "$f"; echo; echo "$BEGIN"
-    echo '[[tool.uv.index]]'
-    echo 'name = "metaobjects-prerelease"'
-    echo "url = \"$BASE/api/packages/$OWNER/pypi/simple\""
-    echo 'explicit = true'
-    echo
-    echo '[tool.uv.sources]'
-    echo "$PY_DIST = { index = \"metaobjects-prerelease\" }"
-    echo "$END"; } > "$f.tmp" && mv "$f.tmp" "$f"
+  local root f n=0
+  while IFS= read -r root; do
+    f="$root/pyproject.toml"; n=$((n + 1))
+    strip_block "$f" "$BEGIN" "$END"
+    # `explicit = true` + [tool.uv.sources] is per-package index pinning: nothing resolves
+    # from this index unless a source names it, so the rest of PyPI is untouched. pip's
+    # --extra-index-url has no equivalent, which is why uv is the documented path.
+    { cat "$f"; echo; echo "$BEGIN"
+      echo '[[tool.uv.index]]'
+      echo 'name = "metaobjects-prerelease"'
+      echo "url = \"$BASE/api/packages/$OWNER/pypi/simple\""
+      echo 'explicit = true'
+      echo
+      echo '[tool.uv.sources]'
+      echo "$PY_DIST = { index = \"metaobjects-prerelease\" }"
+      echo "$END"; } > "$f.tmp" && mv "$f.tmp" "$f"
+    say "linked ${f#"$PROJECT"/}"
+  done < <(py_roots)
+  if [ "$n" -eq 0 ]; then warn "no pyproject.toml — configure pip manually, or add one"; return 0; fi
   warn "pyproject.toml is tracked by definition — the managed block is committable; 'unlink' removes it"
   repin_py "$VERSION"
 }
@@ -553,8 +613,8 @@ XML
   repin_nuget "$VERSION"
 }
 
-link_mvn() {
-  local f="$PROJECT/pom.xml"
+link_mvn_root() {  # link_mvn_root <dir holding an independent pom.xml>
+  local dir="$1" f="$1/pom.xml"
   strip_block "$f" "$XBEGIN" "$XEND"
   awk -v b="$XBEGIN" -v e="$XEND" -v url="$BASE/api/packages/$OWNER/maven" '
     /<\/project>/ && !done {
@@ -584,7 +644,7 @@ link_mvn() {
     }
     { print }
   ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-  warn "pom.xml is tracked by definition — the managed block is committable; 'unlink' removes it"
+  say "linked ${f#"$PROJECT"/}"
 
   # Maven 3.8.1+ ships a built-in `maven-default-http-blocker` mirror that refuses EVERY
   # plain-http repository, so an http:// registry fails with "Blocked mirror for
@@ -594,13 +654,13 @@ link_mvn() {
   # of replacing them (`-s` would replace, silently dropping the user's credentials).
   case "$BASE" in
     http://*)
-      if [ -e "$PROJECT/.mvn/maven.config" ] || [ -e "$PROJECT/.mvn/settings.xml" ]; then
+      if [ -e "$dir/.mvn/maven.config" ] || [ -e "$dir/.mvn/settings.xml" ]; then
         warn ".mvn/ already exists — add by hand so Maven will talk to an http registry:"
         warn "  .mvn/settings.xml   a <mirror> with id maven-default-http-blocker and <blocked>false</blocked>"
         warn "  .mvn/maven.config   the two lines: -gs  and  .mvn/settings.xml"
       else
-        mkdir -p "$PROJECT/.mvn"
-        cat > "$PROJECT/.mvn/settings.xml" <<XML
+        mkdir -p "$dir/.mvn"
+        cat > "$dir/.mvn/settings.xml" <<XML
 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">
   $XBEGIN
   <mirrors>
@@ -618,12 +678,19 @@ link_mvn() {
   $XEND
 </settings>
 XML
-        printf -- '-gs\n.mvn/settings.xml\n' > "$PROJECT/.mvn/maven.config"
-        local_exclude ".mvn/settings.xml"; local_exclude ".mvn/maven.config"
+        printf -- '-gs\n.mvn/settings.xml\n' > "$dir/.mvn/maven.config"
+        local rel="${dir#"$PROJECT"}"; rel="${rel#/}"; rel="${rel:+$rel/}"
+        local_exclude "${rel}.mvn/settings.xml"; local_exclude "${rel}.mvn/maven.config"
         say "wrote .mvn/settings.xml + .mvn/maven.config (http repositories are blocked by default since Maven 3.8.1)"
       fi
       warn "the registry is plain http — serve it over https and this workaround goes away" ;;
   esac
+}
+
+link_mvn() {
+  local root
+  while IFS= read -r root; do link_mvn_root "$root"; done < <(mvn_roots)
+  warn "pom.xml is tracked by definition — the managed block is committable; 'unlink' removes it"
   repin_mvn "$VERSION"
 }
 
@@ -645,22 +712,25 @@ run_detector() {
 unlink_all() {
   # Every root `link` could have written to, or a sub-project keeps a managed block
   # pointing at a registry that will not serve it once the pre-release is gone.
+  local root
   while IFS= read -r root; do strip_block "$root/.npmrc" "$BEGIN" "$END"; done < <(npm_install_roots)
-  strip_block "$PROJECT/pyproject.toml" "$BEGIN" "$END"
+  while IFS= read -r root; do strip_block "$root/pyproject.toml" "$BEGIN" "$END"; done < <(py_roots)
   strip_block "$PROJECT/NuGet.config"  "$XBEGIN" "$XEND"
-  strip_block "$PROJECT/pom.xml"       "$XBEGIN" "$XEND"
-  # The http-blocker workaround is a whole file we authored, not a block inside someone
-  # else's — so it is removed by identity (does it carry our marker?), not by stripping.
-  # Leaving it behind would keep Maven's plain-http blocker disabled for this project
-  # forever, which is a security default we only ever meant to suspend.
-  if [ -f "$PROJECT/.mvn/settings.xml" ] && grep -qF "$XBEGIN" "$PROJECT/.mvn/settings.xml"; then
-    rm -f "$PROJECT/.mvn/settings.xml"
-    if [ -f "$PROJECT/.mvn/maven.config" ] && grep -qx -- '-gs' "$PROJECT/.mvn/maven.config"; then
-      rm -f "$PROJECT/.mvn/maven.config"
+  while IFS= read -r root; do
+    strip_block "$root/pom.xml" "$XBEGIN" "$XEND"
+    # The http-blocker workaround is a whole file we authored, not a block inside someone
+    # else's — so it is removed by identity (does it carry our marker?), not by stripping.
+    # Leaving it behind would keep Maven's plain-http blocker disabled for this project
+    # forever, which is a security default we only ever meant to suspend.
+    if [ -f "$root/.mvn/settings.xml" ] && grep -qF "$XBEGIN" "$root/.mvn/settings.xml"; then
+      rm -f "$root/.mvn/settings.xml"
+      if [ -f "$root/.mvn/maven.config" ] && grep -qx -- '-gs' "$root/.mvn/maven.config"; then
+        rm -f "$root/.mvn/maven.config"
+      fi
+      rmdir "$root/.mvn" 2>/dev/null || true
+      say "removed the .mvn http-blocker workaround in ${root#"$PROJECT"}"
     fi
-    rmdir "$PROJECT/.mvn" 2>/dev/null || true
-    say "removed the .mvn http-blocker workaround"
-  fi
+  done < <(mvn_roots)
   say "removed managed registry config"
 }
 

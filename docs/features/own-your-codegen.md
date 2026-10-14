@@ -957,7 +957,7 @@ one:
 ```yaml
 targets:
   docs:
-    outDir: docs/generated
+    outDir: docs/python
     generators: [codegen.generators.api_docs:api_docs_generator]
 apiDocs:
   projectName: shop
@@ -1440,7 +1440,7 @@ page model (`CSharpApiModel.cs`), the builder that decides what to document
 editing them, and list the copy in place of the packaged entry:
 
 ```csharp
-new Codegen.Generators.ApiDocsGenerator { OutDir = "docs/generated", ProjectName = "shop" },
+new Codegen.Generators.ApiDocsGenerator { OutDir = "docs/csharp", ProjectName = "shop" },
 ```
 
 **It describes what the packaged generators emit.** The reference documents a route, an

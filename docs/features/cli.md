@@ -352,6 +352,8 @@ requirementTests:                # optional; options of the `requirement-tests` 
   filter: codegen.requirement_hooks:include    # "module:symbol", resolved config-relative
   renderer: codegen.requirement_hooks:render   # "module:symbol", resolved config-relative
   warnUncovered: true            # the default
+columnNaming: snake_case         # optional; the database's column naming: literal (default) | snake_case | kebab-case
+templates: prompts               # optional; where template refs resolve from (default prompts/, else templates/)
 apiDocs:                         # optional; options of the `api-docs` generator, every key optional
   apiSubDir: api/python          # the default
   projectName: shop              # default "project"
@@ -366,7 +368,7 @@ targets:
     generators: [entity]
     entities: [Author, Book]     # optional allowlist; omit = every entity
   docs:
-    outDir: docs/generated
+    outDir: docs/python          # a directory of its own: another port's pages here read as drift
     generators: [api-docs]       # the api reference is an entry like any other
     templateSpec: template-spec.json   # optional; a declarative template-spec, relative to this file
 ```

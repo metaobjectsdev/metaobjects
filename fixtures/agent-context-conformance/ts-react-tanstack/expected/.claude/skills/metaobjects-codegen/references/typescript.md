@@ -37,6 +37,11 @@ generator exporting `<camelName>Generator()` — and adds its import and entry t
 prints the two lines to add). It refuses a reference generator's name (eject that one
 instead) and never overwrites your file without `--force`. Then edit the emit.
 
+In a repository that also has a C# port, `dotnet meta init` writes its codegen project into
+this same `codegen/` (`Generators.cs`, `Program.cs`, `Codegen.csproj`, and C# ejects in
+`codegen/generators/`). The two coexist: `tsconfig.codegen.json` includes only
+`codegen/**/*.ts`, and the C# project compiles only `*.cs`.
+
 Everything a generator reads comes from `@metaobjectsdev/codegen-ts`: `perEntity` /
 `perPackage` / `perModel`, `isAbstract`, `hasAnyRdbSource`, `isProjection`,
 `servesReadApi` / `servesWriteApi`, `objectRefTarget`, `enumValues`, `effectivePackage`,

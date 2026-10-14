@@ -107,6 +107,13 @@ data class GeneratorInfo @JvmOverloads constructor(
      * generator base) is not listed: it stays in the package (ADR-0034 Amendment 8).
      */
     val ejectWith: List<String> = emptyList(),
+    /**
+     * Stable names of the Kotlin generators whose output this one's output references: without
+     * them in the same `<generators>`, the generated code does not compile, and
+     * `mvn metaobjects:generate` refuses the list. `GeneratorRequiresCompileTest` (in
+     * `integration-tests-kotlin`) proves each closure compiles over the shared fitness corpus.
+     */
+    val requires: List<String> = emptyList(),
 )
 
 /** Classpath root every ejectable Kotlin generator's reference source is shipped under. */
@@ -157,6 +164,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.API,
         factory = ::KotlinSpringControllerGenerator,
         ejectResourcePath = ejectPath("KotlinSpringControllerGenerator"),
+        requires = listOf("entity", "exposed-table", "filter-allowlist", "relations"),
     ),
     "repository" to GeneratorInfo(
         name = "repository",
@@ -165,6 +173,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.PERSISTENCE,
         factory = ::KotlinRepositoryGenerator,
         ejectResourcePath = ejectPath("KotlinRepositoryGenerator"),
+        requires = listOf("entity", "exposed-table"),
     ),
     "output-parser" to GeneratorInfo(
         name = "output-parser",
@@ -178,6 +187,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         factory = ::KotlinOutputParserGenerator,
         ejectResourcePath = ejectPath("KotlinOutputParserGenerator"),
         ejectWith = PARSER_EMIT,
+        requires = listOf("entity"),
     ),
     "output-prompt" to GeneratorInfo(
         name = "output-prompt",
@@ -195,6 +205,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.CAPABILITY,
         factory = ::KotlinRenderHelperGenerator,
         ejectResourcePath = ejectPath("KotlinRenderHelperGenerator"),
+        requires = listOf("entity"),
     ),
     "extractor" to GeneratorInfo(
         name = "extractor",
@@ -204,6 +215,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.CAPABILITY,
         factory = ::KotlinExtractorGenerator,
         ejectResourcePath = ejectPath("KotlinExtractorGenerator"),
+        requires = listOf("entity", "output-parser"),
     ),
     "filter-allowlist" to GeneratorInfo(
         name = "filter-allowlist",
@@ -228,6 +240,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.PERSISTENCE,
         factory = ::KotlinExposedTableGenerator,
         ejectResourcePath = ejectPath("KotlinExposedTableGenerator"),
+        requires = listOf("entity"),
     ),
     "relations" to GeneratorInfo(
         name = "relations",
@@ -236,6 +249,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.PERSISTENCE,
         factory = ::KotlinRelationsGenerator,
         ejectResourcePath = ejectPath("KotlinRelationsGenerator"),
+        requires = listOf("entity", "exposed-table"),
     ),
     "spring-config" to GeneratorInfo(
         name = "spring-config",
@@ -244,6 +258,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.API,
         factory = ::KotlinSpringConfigGenerator,
         ejectResourcePath = ejectPath("KotlinSpringConfigGenerator"),
+        requires = listOf("validator"),
     ),
     "stored-proc" to GeneratorInfo(
         name = "stored-proc",
@@ -260,6 +275,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.API,
         factory = ::KotlinValidatorGenerator,
         ejectResourcePath = ejectPath("KotlinValidatorGenerator"),
+        requires = listOf("exposed-table"),
     ),
     "api-docs" to GeneratorInfo(
         name = "api-docs",

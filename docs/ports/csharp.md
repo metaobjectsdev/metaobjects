@@ -281,9 +281,13 @@ complete on every class, inherited entries included.
 The default column-naming strategy is `literal` here (unlike TypeScript's
 `snake_case`) — see the "Column naming" section of
 [`features/field-types.md`](../features/field-types.md) for why the defaults
-disagree across ports and what to do about it. Both `dotnet meta gen` and
-`dotnet meta verify` take the same `--column-naming` flag, so a
-`verify --codegen` regen resolves the identical column strings `gen` did.
+disagree across ports and what to do about it. Declare it once on the list,
+`All { get; } = new GeneratorList { ColumnNaming = ColumnNamingStrategy.SnakeCase, Entries = [ ... ] };`
+in `codegen/Generators.cs`: `dotnet meta gen` and `dotnet meta verify --codegen` both read it,
+so a plain run and the drift gate resolve the identical column strings. `--column-naming`
+still works for a list that declares no naming, and is refused when it contradicts one;
+`verify --codegen` says so when the committed output was generated with another naming,
+rather than telling you to regenerate.
 
 ## Use
 

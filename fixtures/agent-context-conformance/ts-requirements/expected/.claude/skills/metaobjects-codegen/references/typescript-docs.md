@@ -46,13 +46,15 @@ npx meta gen --generators docs,api-docs,requirements,agent-docs  # documentation
 **Give docs factories a `docs` target.** Each defaults to the target named `docs`
 (`targets.docs.outDir`) unless you pass `target`; a run that lists one while `targets` has
 no `docs` entry is refused, naming the generator — documentation is never written into the
-code's output directory by default.
+code's output directory by default. In a repository with more than one port, give each port's documentation its own
+directory (`./docs/generated` here, `docs/csharp` and `docs/python` for those ports): another port's generated pages count as foreign files, and in a shared
+directory each port's `verify --codegen` reports the other ports' pages as drift.
 
 `--generators <names>` narrows a run to entries `generators` already declares, by registry
 name (`meta gen --list` prints them); it never adds one, and naming an entry the config
 does not declare is refused. A config still carrying a 1.0 `docs: { ... }` block fails
 `meta gen` and `meta verify --codegen` before writing anything, naming the block. Full
-before/after and the flag-to-option table: `docs/features/migrations/docs-are-generators.md`,
+before/after and the flag-to-option table: <https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md>,
 section "TypeScript".
 
 **An owned docs generator goes in `generators`, like any other owned copy.** `meta eject

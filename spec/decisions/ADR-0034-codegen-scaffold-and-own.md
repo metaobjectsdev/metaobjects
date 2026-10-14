@@ -1073,7 +1073,7 @@ line. `<section>` is `TypeScript`, `C#`, `Python` or `Java and Kotlin`.
 A removed docs command or goal prints:
 
 ```
-<removed> was removed in <version>. `<gen>` writes documentation now: declare each docs generator <where>. See docs/features/migrations/docs-are-generators.md, section "<section>".
+<removed> was removed in <version>. `<gen>` writes documentation now: declare each docs generator <where>. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "<section>".
 ```
 
 | Port | `<removed>` | `<version>` | `<gen>` | `<where>` |
@@ -1086,20 +1086,20 @@ A removed docs command or goal prints:
 The Java and Kotlin line, exactly, as `DocsMojo` prints it:
 
 ```
-metaobjects:docs was removed in 8.1.0. `mvn metaobjects:generate` writes documentation now: declare each docs generator as a <generator> entry in the plugin's <generators>. See docs/features/migrations/docs-are-generators.md, section "Java and Kotlin".
+metaobjects:docs was removed in 8.1.0. `mvn metaobjects:generate` writes documentation now: declare each docs generator as a <generator> entry in the plugin's <generators>. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "Java and Kotlin".
 ```
 
 TypeScript `meta verify --docs` prints:
 
 ```
-`meta verify --docs` was removed in 1.1.0. `meta verify --codegen` checks documentation now, with everything else `generators` declares. See docs/features/migrations/docs-are-generators.md, section "TypeScript".
+`meta verify --docs` was removed in 1.1.0. `meta verify --codegen` checks documentation now, with everything else `generators` declares. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "TypeScript".
 ```
 
 A gen command given a 1.0-shape config fails before it writes anything. It never runs and
 writes nothing silently. It prints:
 
 ```
-<gen>: found 1.0 docs configuration (<what>). Nothing reads it any more, so this run would write no documentation. Declare each docs generator <where>. See docs/features/migrations/docs-are-generators.md, section "<section>".
+<gen>: found 1.0 docs configuration (<what>). Nothing reads it any more, so this run would write no documentation. Declare each docs generator <where>. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "<section>".
 ```
 
 `<gen>` here is the command's own name (`meta gen`, `meta verify` for its `--codegen` gate,
@@ -1116,12 +1116,17 @@ A gen command with no list at all fails too, for the same reason:
 
 | Port | Case | Message |
 |---|---|---|
-| TypeScript | no `metaobjects.config.ts` | `meta gen: no metaobjects.config.ts. Nothing is generated until a config declares it, documentation included; \`meta init\` writes one. A 1.0 project that ran \`meta docs\` with no config: see docs/features/migrations/docs-are-generators.md, section "TypeScript".` |
-| C# | no `codegen/Generators.cs` | `dotnet meta gen: no codegen/Generators.cs. The generator list lives there in 1.1.0, documentation included; \`dotnet meta init\` writes it. See docs/features/migrations/docs-are-generators.md, section "C#".` |
-| Python | no `metaobjects.config.yaml` | `metaobjects gen: no metaobjects.config.yaml. The generator list lives there in 1.1.0, documentation included. See docs/features/migrations/docs-are-generators.md, section "Python".` |
+| TypeScript | no `metaobjects.config.ts` | `meta gen: no metaobjects.config.ts. Nothing is generated until a config declares it, documentation included; \`meta init\` writes one. A 1.0 project that ran \`meta docs\` with no config: see https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "TypeScript".` |
+| C# | no `codegen/Generators.cs` | `dotnet meta gen: no codegen/Generators.cs. The generator list lives there in 1.1.0, documentation included; \`dotnet meta init\` writes it. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "C#".` |
+| Python | no `metaobjects.config.yaml` | `metaobjects gen: no metaobjects.config.yaml. The generator list lives there in 1.1.0, documentation included. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "Python".` |
 | Java, Kotlin | no `<generators>` | unchanged: the goal runs nothing, as in 1.0, because a pom that binds the goal and lists nothing is a declaration Maven reads literally |
 
 A list that is present and empty is not an error. It writes nothing and says so, as today.
+
+*Correction (2026-10-14, before 1.1.0 shipped).* The first text of these lines named the guide
+by its repository path, `docs/features/migrations/docs-are-generators.md`. No installed package
+ships that file and an adopter's repository does not have it, so the pointer led nowhere. Every
+line names it by its full public URL instead, as above, and the skills do the same.
 
 **The migration section.** `docs/features/migrations/docs-are-generators.md` has one
 section per port, headed exactly `TypeScript`, `C#`, `Python`, `Java and Kotlin`. Each

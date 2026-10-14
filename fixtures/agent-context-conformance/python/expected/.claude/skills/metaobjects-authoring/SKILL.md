@@ -10,7 +10,9 @@ that drive code generation, runtime behavior, and drift detection. You author it
 the loader reads it, the codegen emits idiomatic per-language code from it. This
 skill is the procedure for writing it correctly.
 
-Metadata lives in files under `metaobjects/` at project root, one file per domain
+Metadata lives in files under the project's metadata directory (`metaobjects/` unless
+the project's configuration names another: `sources` in `.metaobjects/config.json`, or the
+port's own setting), one file per domain
 concept (`meta.commerce.json`, `meta.users.yaml`, …). Each file declares a
 `package` on its root node. Files in the same `package` with the same object
 `name` are merged by the loader.
@@ -450,7 +452,7 @@ immutable. Supported in all five ports; the worked example is in `references/inh
 
 ## Requirements — capability ledger (opt-in)
 
-**This capability exists whether or not the project uses it yet.** `requirement.functional` and `requirement.architectural` are registered metadata types, declared in `metaobjects/` beside the entities they describe and loaded by the same loader — no side file, no bespoke parser. They record *why* each part of the model exists, so a field with no reason to exist becomes visible as one.
+**This capability exists whether or not the project uses it yet.** `requirement.functional` and `requirement.architectural` are registered metadata types, declared in the metadata directory beside the entities they describe and loaded by the same loader — no side file, no bespoke parser. They record *why* each part of the model exists, so a field with no reason to exist becomes visible as one.
 
 Reach for it when the project needs to answer any of:
 

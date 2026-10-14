@@ -4,7 +4,7 @@
 // words, pointing at the migration section an agent can apply by hand.
 
 /** The migration guide every message below points at, and the section for this port. */
-export const DOCS_MIGRATION_GUIDE = "docs/features/migrations/docs-are-generators.md";
+export const DOCS_MIGRATION_GUIDE = "https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md";
 const SECTION = `section "TypeScript"`;
 /** Where a TypeScript project declares a docs generator. */
 const WHERE = "in `generators` in metaobjects.config.ts";

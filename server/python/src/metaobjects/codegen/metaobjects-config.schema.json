@@ -17,6 +17,15 @@
       "items": { "type": "string", "pattern": "^[^:]+:[^:]+$" },
       "description": "Consumer provider refs as 'module:symbol', resolved relative to this config file's directory (no PYTHONPATH needed)."
     },
+    "columnNaming": {
+      "enum": ["snake_case", "literal", "kebab-case"],
+      "description": "How a field with no @column becomes a column name, for every generator in the run. Set it to the naming the database uses: `metaobjects gen` and `verify --codegen` both read it. Default (when neither this nor --column-naming is given): literal. A --column-naming that names another strategy is refused."
+    },
+    "templates": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The directory template refs resolve from, relative to this config file (gen's --templates, verify's --prompts). Default: prompts/ when it exists, else templates/. A flag that names another directory is refused."
+    },
     "libraries": {
       "type": "array",
       "items": { "type": "string" },

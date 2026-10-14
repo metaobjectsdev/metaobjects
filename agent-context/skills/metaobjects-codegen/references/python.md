@@ -37,11 +37,21 @@ generated that the config does not declare.
 ```yaml
 # metaobjects.config.yaml
 metadata: metadata
+columnNaming: snake_case   # the naming your database's columns use: literal (default) | snake_case | kebab-case
+templates: prompts         # where template refs resolve from (default: prompts/, else templates/)
 targets:
   app:
     outDir: generated
     generators: [entity, filter-allowlist, routes]
 ```
+
+**Declare `columnNaming` in the config, never only on a command line.** It decides every
+column name the `names` constants and the generated queries use. A plain `metaobjects gen`
+reads it from the config; a script that passed `--column-naming snake_case` and is replaced
+by a plain `gen` would otherwise fall back to `literal` and rewrite every `*_names.py` with
+camelCase names the database does not have. A `--column-naming` or `--templates` that
+contradicts the config is refused, and `verify --codegen` names a naming mismatch as one
+rather than telling you to regenerate.
 
 ```bash
 metaobjects gen                               # runs every target's generators into its outDir
@@ -51,8 +61,11 @@ metaobjects verify --codegen                  # regenerate the same list into a 
 
 With no `metaobjects.config.yaml`, `gen` and `verify --codegen` exit 2 and write nothing.
 The 1.0 form `metaobjects gen <metadata_dir> --out <dir> --generators <names>` is not read;
-`--target`, `--entities`, `--column-naming`, `--provider`, `--templates` and `--baseline`
-still apply to the list. `metaobjects verify` defaults to `--codegen` (it shares the exact
+`--target`, `--entities`, `--provider` and `--baseline` still apply to the list;
+`--column-naming` and `--templates` only where the config declares no `columnNaming` /
+`templates` (a flag that disagrees with the config is refused). `verify --templates` reads
+`metadata` and `templates` from the same config (`--prompts` overrides only when the config
+names no `templates`). `metaobjects verify` defaults to `--codegen` (it shares the exact
 `gen` code path so the two can't diverge). `--templates` is the prompt/template drift gate
 (see the prompts reference). Schema migration + live-DB drift are **not** `metaobjects` —
 they run through the Node `meta` tool (see the migration reference).
@@ -66,7 +79,7 @@ target whose `outDir` holds generated files only:
 ```yaml
 targets:
   docs:
-    outDir: docs                 # → docs/api/python
+    outDir: docs/python          # → docs/python/api/python
     generators: [api-docs]
 apiDocs:                         # optional: apiSubDir (default api/python), projectName, modelBaseUrl
   projectName: acme
@@ -76,8 +89,10 @@ apiDocs:                         # optional: apiSubDir (default api/python), pro
 the config declares, and `verify --codegen` checks the pages like code. `AGENT-API.md` has
 the exact imports, signatures, and payload field shapes for the generated code. **Before
 calling any generated code, read `api/python/AGENT-API.md`.** To write only the
-documentation, `metaobjects gen --generators api-docs`. Migrating a project that ran
-`metaobjects docs`: `docs/features/migrations/docs-are-generators.md`, section "Python".
+documentation, `metaobjects gen --generators api-docs`. In a repository with more than one port, give each port's documentation its own
+directory: another port's generated pages count as foreign files, and in a shared
+directory each port's `verify --codegen` reports the other ports' pages as drift. Migrating a project that ran
+`metaobjects docs`: <https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md>, section "Python".
 
 **The neutral model pages are a Node `meta gen` generator, not something this port emits.**
 `meta docs`'s language-neutral model surface was retired along with the rest of

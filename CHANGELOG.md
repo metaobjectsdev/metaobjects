@@ -10,7 +10,54 @@ here.**
 
 ## [Unreleased]
 
+### Added
+
+- **Python: `columnNaming` and `templates` in `metaobjects.config.yaml`.** The column naming
+  and the template directory were flags only, so replacing a script's
+  `metaobjects gen <dir> --out ... --column-naming snake_case` with a plain `metaobjects gen`,
+  as the 1.1.0 migration guide said to, rewrote every `*_names.py` with camelCase column
+  names the database does not have. `gen`, `verify --codegen` and `verify --templates` read
+  both keys; a `--column-naming` or `--templates` that contradicts the config is refused.
+- **C#: `ColumnNaming` on the generator list.** `codegen/Generators.cs` may declare
+  `All { get; } = new GeneratorList { ColumnNaming = ColumnNamingStrategy.SnakeCase, Entries = [ ... ] };`.
+  `dotnet meta gen` and `verify --codegen` read it; a contradicting `--column-naming` is
+  refused. A plain collection keeps working. `dotnet meta init` scaffolds the new form.
+- **Maven: `requires` is checked.** `mvn metaobjects:generate` fails, naming the missing
+  companion and its class, when a listed generator's output references what an unlisted one
+  writes (a Spring controller without the DTO, repository and filter allowlist; a Kotlin
+  controller without the Exposed tables, filter allowlists and relation queries), where it
+  used to exit 0 and leave the build to fail in `javac` or `kotlinc`.
+  `<allowUnmetRequires>true</allowUnmetRequires>` runs such a list when the files are
+  supplied another way. Every Java and Kotlin `requires` closure, and the skills' pom
+  examples, are compiled over the fitness corpus in a test.
+
 ### Fixed
+- `verify --codegen` (Python, C#) says when the committed output was generated with another
+  column naming, and how to declare it, instead of advising a regeneration that would commit
+  the wrong column names.
+- Every "removed in 1.1.0" message and skill reference names the migration guide by its full
+  public URL; the repository path they printed exists in no installed package.
+- The Java and Kotlin skills' only `pom.xml` examples generated code that did not compile;
+  each now lists the whole REST tier, and the Kotlin skill lists the runtime dependencies the
+  generated code needs and that the controller needs `KotlinRelationsGenerator`.
+- The migration guide and the skills give each port's documentation its own directory: in a
+  shared one, every port's `verify --codegen` reported the other ports' pages as drift.
+- `dotnet meta gen --list` prints the expression that lists each generator in
+  `codegen/Generators.cs` (`new MetaObjects.Codegen.Generators.RenderHelperGenerator("prompts")`)
+  and its options.
+- The C# "agent context is stale" notice no longer fires on build metadata alone
+  (`1.1.0-rc.3` against `1.1.0-rc.3+<sha>`).
+- `meta verify --docs` prints its removal line once, as plain text.
+- `metaobjects verify --templates` reads `metadata` and `templates` from
+  `metaobjects.config.yaml` instead of refusing the config.
+- The skills no longer say metadata lives under `metaobjects/` (it is the default only), and
+  name C#'s positional `<metadataDir>` (there is no `--metadata-dir`).
+- Pre-release tooling: `prerelease:publish` reads what is released from public npm and the
+  release tags, not `package.json`, so a cut during release preparation is not numbered one
+  minor too high, and it refuses a `--base` that skips an unpublished CHANGELOG section; the
+  iteration counter reads every page of the registry listing; a SIGTERM restores the version
+  files. `prerelease-link.sh` links and repins every Maven and Python project at any depth and
+  repins the .NET local tool manifest.
 
 - A generated documentation page that no current object produces (for example the
   `<Object>.md` page of an object that was removed) is reported as drift. 1.0's
@@ -1187,7 +1234,8 @@ until you regenerate.
   ADR-0034 Amendment 9.
   - `meta docs` prints `` `meta docs` was removed in 1.1.0. `meta gen` writes documentation
     now: declare each docs generator in `generators` in metaobjects.config.ts. See
-    docs/features/migrations/docs-are-generators.md, section "TypeScript". `` and exits 2.
+    https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md,
+    section "TypeScript". `` and exits 2.
     `meta verify --docs` prints the same shape, naming `meta verify --codegen`, and exits 2.
   - A config with a `docs` key fails `meta gen` and `meta verify --codegen` before anything
     is written, naming the block and the migration section. A project with no

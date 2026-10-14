@@ -182,10 +182,11 @@ export async function verifyCommand(
     return 2;
   }
   // ADR-0034 Amendment 9: documentation is checked by `--codegen` with everything else the
-  // generator list declares. The old flag still parses, so it can say where it went.
+  // generator list declares. The old flag still parses, so it can say where it went. It says
+  // so once, as plain text on stderr, like every other removed command: a structured copy on
+  // stdout printed the same sentence a second time, escaped (`error: "\`meta verify ...`).
   if (flags.docs) {
     log.error(REMOVED_VERIFY_DOCS);
-    emitStructured({ error: REMOVED_VERIFY_DOCS }, fmt);
     return 2;
   }
   const migrateFlags: MigrateFlags = { ...EMPTY_MIGRATE_FLAGS, format: flags.migrationFormat };

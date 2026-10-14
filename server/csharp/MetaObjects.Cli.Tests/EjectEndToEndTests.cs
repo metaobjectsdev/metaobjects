@@ -143,10 +143,10 @@ public sealed class EjectEndToEndTests : IDisposable
         // Amendment 9): ejecting one generator must not drop the others the project runs.
         var listPath = Path.Combine(_root, "codegen", "Generators.cs");
         var list = File.ReadAllText(listPath);
-        const string ownedEntry = "        new Codegen.Generators.EntityGenerator(),\n";
+        const string ownedEntry = "            new Codegen.Generators.EntityGenerator(),\n";
         Assert.Contains(ownedEntry, list);
         File.WriteAllText(listPath, list.Replace(
-            ownedEntry, ownedEntry + "        new MetaObjects.Codegen.Generators.NamesGenerator(),\n"));
+            ownedEntry, ownedEntry + "            new MetaObjects.Codegen.Generators.NamesGenerator(),\n"));
 
         // 2. Substitute PackageReference -> ProjectReference (see header comment).
         var codegenProjPath = Path.Combine(repoRoot, "server", "csharp", "MetaObjects.Codegen", "MetaObjects.Codegen.csproj");

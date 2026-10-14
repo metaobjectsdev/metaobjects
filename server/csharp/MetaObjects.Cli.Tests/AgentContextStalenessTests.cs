@@ -66,6 +66,16 @@ public sealed class AgentContextStalenessTests
         Assert.NotNull(AgentContextScaffold.AgentContextStaleness(m, "1.2.3-rc.1"));
     }
 
+    // Build metadata is not part of the version. The .NET SDK stamps the source revision into
+    // this tool's informational version; the manifest the Node side writes carries none.
+    [Fact]
+    public void Build_metadata_alone_is_in_sync()
+    {
+        Assert.Null(AgentContextScaffold.AgentContextStaleness(ManifestWith("1.1.0-rc.3"), "1.1.0-rc.3+0affc6adf1234"));
+        Assert.Null(AgentContextScaffold.AgentContextStaleness(ManifestWith("1.1.0+abc"), "1.1.0+def"));
+        Assert.NotNull(AgentContextScaffold.AgentContextStaleness(ManifestWith("1.1.0-rc.2"), "1.1.0-rc.3+0affc6adf1234"));
+    }
+
     // ---- 2. version source --------------------------------------------------
 
     [Fact]

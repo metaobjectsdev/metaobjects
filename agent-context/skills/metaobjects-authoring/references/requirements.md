@@ -1,6 +1,6 @@
 # Requirements — `requirement.functional` / `requirement.architectural`
 
-Capabilities are **metadata**, declared in `metaobjects/` beside the entities they
+Capabilities are **metadata**, declared in the metadata directory beside the entities they
 describe. Read the existing requirement nodes before designing anything. Two rules matter
 more than the rest.
 

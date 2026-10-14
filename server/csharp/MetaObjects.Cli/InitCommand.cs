@@ -54,7 +54,7 @@ public static class CodegenScaffold
         "codegen/Program.cs does not run Generators.All, so `dotnet meta gen` and `dotnet meta verify --codegen` " +
         "refuse until it does. It is yours, so init and eject never edit it: replace it with the two-line entry",
         .. ProgramCs.TrimEnd('\n').Split('\n').Select(l => "  " + l),
-        "See docs/features/migrations/docs-are-generators.md, section \"C#\".",
+        "See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\".",
     ];
 
     /// <summary>
@@ -64,7 +64,7 @@ public static class CodegenScaffold
     /// </summary>
     public static string GeneratorsCs(IEnumerable<string> entries)
     {
-        var lines = string.Concat(entries.Select(e => $"        {e},\n"));
+        var lines = string.Concat(entries.Select(e => $"            {e},\n"));
         return
             "// The generator list (ADR-0034 Amendment 9). `dotnet meta gen` runs exactly these entries and\n" +
             "// `dotnet meta verify --codegen` regenerates them and compares; nothing else is generated,\n" +
@@ -72,19 +72,27 @@ public static class CodegenScaffold
             "// `dotnet meta gen --list` is the catalog. `dotnet meta eject <name>` copies a generator into\n" +
             "// codegen/generators/ to own; list the copy (Codegen.Generators.<Name>) in place of the\n" +
             "// packaged one. `dotnet meta gen --generators <names>` narrows a run to the entries named.\n" +
+            "// ColumnNaming applies to the whole run: set it to the naming your database uses, and gen and\n" +
+            "// verify --codegen both read it here, so no command line has to carry --column-naming.\n" +
             "//\n" +
             "// For example:\n" +
             "//   new MetaObjects.Codegen.Generators.EntityGenerator(),\n" +
             "//   new MetaObjects.Codegen.Generators.DbContextGenerator(),\n" +
-            "//   new MetaObjects.Codegen.Generators.ApiDocsGenerator { OutDir = \"docs/generated\", ProjectName = \"shop\" },\n" +
+            "//   new MetaObjects.Codegen.Generators.RenderHelperGenerator(\"prompts\"),   // the template root\n" +
+            "//   new MetaObjects.Codegen.Generators.ApiDocsGenerator { OutDir = \"docs/csharp\", ProjectName = \"shop\" },\n" +
             "using MetaObjects.Codegen;\n" +
             "\n" +
             "public static class Generators\n" +
             "{\n" +
-            "    public static IReadOnlyList<IGenerator> All { get; } =\n" +
-            "    [\n" +
+            "    public static IReadOnlyList<IGenerator> All { get; } = new GeneratorList\n" +
+            "    {\n" +
+            "        // How a field with no @column becomes a column name: Literal (the default), SnakeCase or KebabCase.\n" +
+            "        // ColumnNaming = ColumnNamingStrategy.SnakeCase,\n" +
+            "        Entries =\n" +
+            "        [\n" +
             lines +
-            "    ];\n" +
+            "        ],\n" +
+            "    };\n" +
             "}\n";
     }
 

@@ -89,6 +89,13 @@ public sealed record GeneratorRegistryEntry
     public required Func<GeneratorBuildContext, IGenerator> Factory { get; init; }
     /// <summary>Optional one-line options summary for <c>--list</c>.</summary>
     public string? Options { get; init; }
+    /// <summary>
+    /// The C# expression that lists this generator in <c>codegen/Generators.cs</c>, when the
+    /// class name and a parameterless constructor are not the whole story (a constructor
+    /// argument, or a factory method). <c>null</c> derives it: <c>new &lt;full class name&gt;()</c>.
+    /// Read it through <see cref="GeneratorRegistry.ListEntry"/>.
+    /// </summary>
+    public string? Entry { get; init; }
     /// <summary>Optional note — e.g. pointing neutral entries at their door.</summary>
     public string? Note { get; init; }
     /// <summary>
@@ -229,7 +236,8 @@ public static class GeneratorRegistry
                 Tier = GeneratorTier.Native,
                 Layer = GeneratorLayer.Capability,
                 Factory = RenderHelper,
-                Options = "template-root (required when selected)",
+                Options = "templateRoot: the directory its template refs resolve from (a constructor argument)",
+                Entry = "new MetaObjects.Codegen.Generators.RenderHelperGenerator(\"prompts\")",
                 Note = "Needs `entity` in the same run: it references each value object's own POCO (ADR-0056).",
                 SourceFileName = "RenderHelperGenerator.cs",
                 // ADR-0056: the value object's own POCO, which EntityGenerator emits.
@@ -280,6 +288,7 @@ public static class GeneratorRegistry
                 Layer = GeneratorLayer.Capability,
                 Factory = TemplatePrimitive,
                 Options = "name, walk, template, format? (config-only)",
+                Entry = "MetaObjects.Codegen.Generators.TemplateGenerator.Create(name, template, walk, provider)",
             },
             // FR-015 — per-entity typed EF Core calling method for a callable source
             // (storedProc / tableFunction). Same stable name as the TS callable
@@ -320,6 +329,25 @@ public static class GeneratorRegistry
             .. all.Where(e => e.Tier == GeneratorTier.Native).OrderBy(e => e.Name, StringComparer.Ordinal),
             .. all.Where(e => e.Tier == GeneratorTier.Neutral).OrderBy(e => e.Name, StringComparer.Ordinal),
         ];
+    }
+
+    /// <summary>
+    /// The C# expression that lists <paramref name="entry"/> in <c>codegen/Generators.cs</c>:
+    /// its own <see cref="GeneratorRegistryEntry.Entry"/>, else <c>new &lt;full class name&gt;()</c>
+    /// of the class its factory builds. <c>--list</c> prints it, because the list holds
+    /// constructed generators and the stable name alone does not say which class to construct
+    /// or what its constructor needs. A class with no parameterless constructor must carry an
+    /// explicit <see cref="GeneratorRegistryEntry.Entry"/>; this throws for one that does not,
+    /// and a test constructs every entry through this method so that cannot ship.
+    /// </summary>
+    public static string ListEntry(GeneratorRegistryEntry entry)
+    {
+        if (entry.Entry is not null) return entry.Entry;
+        var type = entry.Factory(new GeneratorBuildContext()).GetType();
+        if (type.GetConstructor(Type.EmptyTypes) is null)
+            throw new InvalidOperationException(
+                $"generator \"{entry.Name}\" ({type.FullName}) has no parameterless constructor; give its registry entry an Entry.");
+        return $"new {type.FullName}()";
     }
 
     /// <summary>Resolve an entry by stable id, or null if unknown.</summary>
