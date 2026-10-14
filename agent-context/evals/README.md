@@ -20,9 +20,7 @@ agent-context/evals/run-skill-triggers.sh <out-dir>
 
 It starts real Claude sessions on your own login (25 cases x 3 runs = 75 sessions, a few
 minutes with `-j 4`) and writes `<out-dir>/result.json`. Use `--case '<glob>'` to run a
-subset. It is not part of CI because model behaviour is not deterministic; CI only checks
-that the cases parse and name existing skills
-(`server/typescript/packages/sdk/test/agent-context/skill-trigger-evals.test.ts`).
+subset. It is manual-only and not part of CI, because model behaviour is not deterministic.
 
 Re-run it after editing either description. A `Reached maximum number of turns` note on a
 case is expected: the runs are capped at 3 turns because only the first tool call matters.
