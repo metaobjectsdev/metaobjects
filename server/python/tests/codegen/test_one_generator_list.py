@@ -259,6 +259,54 @@ def test_verify_codegen_checks_api_docs_pages(tmp_path: Path, monkeypatch, capsy
     assert "drifted: api/python/AGENT-API.md" in capsys.readouterr().err
 
 
+# --- i. a narrowed verify --codegen run never reports another entry's files as drift ------
+
+
+def test_verify_generators_narrowed_run_is_in_sync_after_a_full_gen(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """``--generators api-docs`` regenerates nothing into the `main` target's outDir — that
+    is not drift, just an outDir this narrowed run never touched."""
+    _metadata(tmp_path)
+    _config(
+        tmp_path,
+        "targets:\n  main:\n    outDir: gen\n    generators: [entity, routes]\n"
+        "  docs:\n    outDir: docs\n    generators: [api-docs]\n",
+    )
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) == 0
+    assert main(["verify", "--codegen", "--generators", "api-docs"]) == 0
+
+
+def test_verify_entities_narrowed_run_is_in_sync_after_a_full_gen(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """``--entities Program`` regenerates only Program's file; Week's committed file, also
+    written by the same target's same generator, is not drift either."""
+    _metadata(tmp_path)
+    _config(tmp_path, "targets:\n  main:\n    outDir: gen\n    generators: [entity]\n")
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) == 0
+    assert "Week.py" in _files(tmp_path / "gen")
+    assert main(["verify", "--codegen", "--entities", "Program"]) == 0
+
+
+def test_verify_entities_narrowed_run_still_catches_a_real_edit(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    """Suppressing the false ``extra`` must not suppress real drift in what the narrowed run
+    DID regenerate."""
+    _metadata(tmp_path)
+    _config(tmp_path, "targets:\n  main:\n    outDir: gen\n    generators: [entity]\n")
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) == 0
+    program = tmp_path / "gen" / "Program.py"
+    program.write_text(program.read_text(encoding="utf-8") + "\n# hand edit\n", encoding="utf-8")
+    capsys.readouterr()
+    assert main(["verify", "--codegen", "--entities", "Program"]) == 1
+    assert "drifted: Program.py" in capsys.readouterr().err
+
+
 # --- a model with no objects still gets its api reference ---------------------------------
 
 

@@ -137,7 +137,8 @@ static int RunGen(string[] rest)
 }
 
 // The one refusal for a gen or `verify --codegen` run in a project with no generator list.
-// Null when the project has its list and the codegen project that compiles it.
+// Null when the project has its list, the codegen project that compiles it, and a Program.cs
+// that runs it.
 static int? RequireGeneratorList(string projectRoot, string command)
 {
     if (!CodegenHandoff.HasGeneratorList(projectRoot))
@@ -150,6 +151,11 @@ static int? RequireGeneratorList(string projectRoot, string command)
         Console.Error.WriteLine(
             $"{command}: codegen/Generators.cs has no codegen/Codegen.csproj to compile it. " +
             "`dotnet meta init` writes the missing files and keeps the ones you have.");
+        return 2;
+    }
+    if (CodegenHandoff.ProgramIgnoresList(projectRoot))
+    {
+        Console.Error.WriteLine(CodegenCli.LegacyProgram(command));
         return 2;
     }
     return null;

@@ -47,6 +47,16 @@ public static class CodegenScaffold
         "using MetaObjects.Codegen;\n" +
         "return CodegenCli.Run(args, Generators.All);\n";
 
+    /// <summary>What init and eject say in place of "gen runs the list" when the project's own
+    /// codegen/Program.cs does not run it (<see cref="CodegenHandoff.ProgramIgnoresList"/>).</summary>
+    public static IReadOnlyList<string> ReplaceProgram() =>
+    [
+        "codegen/Program.cs does not run Generators.All, so `dotnet meta gen` and `dotnet meta verify --codegen` " +
+        "refuse until it does. It is yours, so init and eject never edit it: replace it with the two-line entry",
+        .. ProgramCs.TrimEnd('\n').Split('\n').Select(l => "  " + l),
+        "See docs/features/migrations/docs-are-generators.md, section \"C#\".",
+    ];
+
     /// <summary>
     /// codegen/Generators.cs, the project's generator list, holding <paramref name="entries"/>:
     /// each a C# expression that constructs a generator, such as
@@ -108,14 +118,20 @@ public static class InitCommand
 {
     public static IReadOnlyList<string> Run(string root)
     {
+        var csprojPath = Path.Combine(root, "codegen", "Codegen.csproj");
+        var csprojExisted = File.Exists(csprojPath);
         var written = CodegenScaffold.WriteMissing(root, []);
         var lines = new List<string>();
         foreach (var rel in CodegenScaffold.Files)
             lines.Add(written.Contains(rel) ? $"  wrote {rel}" : $"  kept {rel} (already yours)");
         lines.Add("");
-        lines.Add(
-            "codegen/Generators.cs is the generator list `dotnet meta gen` runs. It declares nothing yet, " +
-            "so gen writes nothing until you add entries: `dotnet meta gen --list` is the catalog.");
+        if (CodegenHandoff.ProgramIgnoresList(root))
+            lines.AddRange(CodegenScaffold.ReplaceProgram());
+        else
+            lines.Add(
+                "codegen/Generators.cs is the generator list `dotnet meta gen` runs. It declares nothing yet, " +
+                "so gen writes nothing until you add entries: `dotnet meta gen --list` is the catalog.");
+        if (csprojExisted) lines.AddRange(EjectCommand.OlderPinWarning(csprojPath, "init"));
         return lines;
     }
 }

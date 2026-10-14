@@ -1638,6 +1638,10 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
     ``--target`` widens to the outDir-sharing closure (an outDir is verified as a
     unit). Strict-by-default (ADR-0023) unless ``--lax``.
     No ``metaobjects.config.yaml`` is an error: the list lives there.
+    A ``--generators``/``--entities``-narrowed run only regenerates part of the declared
+    list, so it reports ``missing``/``drifted`` for what it DID regenerate but never
+    ``extra`` — a committed file outside a narrowed run's own output is some other
+    entry's file, not drift — and skips an outDir no selected entry wrote into at all.
     """
     config, code = _load_generator_list(args, "metaobjects verify --codegen")
     if config is None:
@@ -1722,40 +1726,55 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
         # build_ctx from the SAME resolver `gen` uses — a verify that resolved the
         # template root differently would regenerate render-helper against another
         # directory and convict the committed output of being stale.
+        selection = _selection_from_args(args)
         _written, errors = _run_gen_targets(
             config, remapped, root, select=collection.in_scope,
             build_ctx=GeneratorBuildContext(_template_root_for(args)),
             # R31: the `names` generator's constants are strategy-dependent, so the regen
             # must use the strategy `gen` wrote with, or every constant reads as drift.
             column_naming=getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING,
-            selection=_selection_from_args(args))
+            selection=selection)
         if errors:
             for msg in errors:
                 print(f"error: {msg}", file=sys.stderr)
             return 1
 
+        # A narrowed run (--generators and/or --entities) regenerates less than the full
+        # declared list, so a committed file it did not produce is not drift — it is a
+        # file some OTHER entry/entity owns. Skip an outDir no selected entry wrote into
+        # at all, and never convict a narrowed run's own outDir of `extra`: missing/changed
+        # still apply to whatever the narrowed run DID produce.
+        narrowed = selection is not None or _parse_entities(
+            getattr(args, "entities", None)
+        ) is not None
         exit_code = 0
         for real_outdir in sorted(temp_for):
             tmp_slot = temp_for[real_outdir]
             expected = _relative_set(Path(tmp_slot))
             committed = _relative_set(Path(real_outdir))
 
+            if narrowed and not expected:
+                continue
+
             changed = sorted(
                 k for k in expected if k in committed and expected[k] != committed[k]
             )
             missing = sorted(k for k in expected if k not in committed)
-            # Same jurisdiction rule as _diff_report — this rung inlines its diff to
-            # report per-target, so the guard has to be inlined with it. Without it,
-            # broadening the comparison past *.py convicts every stranger's file.
-            #
-            # PER-TARGET prefix, because that is the whole point on this rung: two
-            # targets with different outDirs share one manifest, and the key that tells
-            # their identically-named files apart is the one anchored on the project.
-            is_ours = _is_ours_for(
-                gen_state_dir_for(config.metadata_dir()),
-                _out_prefix(real_outdir, project_root_for(config.metadata_dir())),
-            )
-            extra = sorted(k for k in committed if k not in expected and is_ours(k))
+            if narrowed:
+                extra: list[str] = []
+            else:
+                # Same jurisdiction rule as _diff_report — this rung inlines its diff to
+                # report per-target, so the guard has to be inlined with it. Without it,
+                # broadening the comparison past *.py convicts every stranger's file.
+                #
+                # PER-TARGET prefix, because that is the whole point on this rung: two
+                # targets with different outDirs share one manifest, and the key that tells
+                # their identically-named files apart is the one anchored on the project.
+                is_ours = _is_ours_for(
+                    gen_state_dir_for(config.metadata_dir()),
+                    _out_prefix(real_outdir, project_root_for(config.metadata_dir())),
+                )
+                extra = sorted(k for k in committed if k not in expected and is_ours(k))
 
             names = "+".join(
                 t.name for t in closure if config.out_dir_for(t) == real_outdir
@@ -2323,8 +2342,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--templates",
         default=None,
         help=(
-            "on-disk root that template refs resolve under — used by "
-            "--template-spec AND by the render-helper generator's drift gate "
+            "on-disk root that template refs resolve under — used by a target's "
+            "declared templateSpec AND by the render-helper generator's drift gate "
             "(default: prompts/ when it exists, else templates/)"
         ),
     )
@@ -2379,8 +2398,9 @@ def _build_parser() -> argparse.ArgumentParser:
         nargs="?",
         default=None,
         help=(
-            "directory of metadata JSON/YAML files. Omit to use a "
-            "metaobjects.config.yaml (--codegen config mode, #267)."
+            "directory of metadata JSON/YAML files, required by --templates. Not read "
+            "since 1.1.0 by --codegen, which always runs config mode: set `metadata` "
+            "in metaobjects.config.yaml instead."
         ),
     )
     verify.add_argument(
@@ -2418,7 +2438,7 @@ def _build_parser() -> argparse.ArgumentParser:
     verify.add_argument(
         "--out",
         default=None,
-        help="committed output directory to diff against (for --codegen)",
+        help="not read since 1.1.0: each target's `outDir` in metaobjects.config.yaml",
     )
     # F101 — the prompt directory is spelled three ways across the ports: `--prompts <dir>`
     # (Node `meta`, the reference), `--templates <root>` (dotnet meta, inline on the subverb)
@@ -2479,9 +2499,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "--config",
         default=None,
         help=(
-            "path to a metaobjects.config.yaml. Config mode runs when no "
-            "<metadata_dir> is given; default ./metaobjects.config.yaml in cwd. "
-            "Drives --codegen per-target regen+diff."
+            "path to the metaobjects.config.yaml that declares the generator list "
+            "(default: ./metaobjects.config.yaml in cwd). Drives --codegen's "
+            "per-target regen+diff."
         ),
     )
     verify.add_argument(
@@ -2493,9 +2513,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--generators",
         default=None,
         help=(
-            "comma-separated STABLE generator names — must MATCH the `gen` that "
-            "produced --out. `verify --codegen` re-runs the selection and diffs; with "
-            "none named there is nothing to check and it says so."
+            "narrow --codegen to these declared entries (comma-separated stable names, "
+            "or an owned entry as written in the config), matching `gen --generators`. "
+            "Never adds a generator the config does not declare; naming one is refused. "
+            "With none named, the whole declared list is checked."
         ),
     )
     verify.set_defaults(func=_cmd_verify)

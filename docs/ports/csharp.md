@@ -450,20 +450,17 @@ are core and are not ejectable.
 dotnet meta verify ./metadata --templates ./prompts
 dotnet meta verify ./metadata --templates ./prompts --require-implementers
 
-# The tests: their own run, into a test project that references xunit.
-# --generators narrows the run to the requirement-tests entry codegen/Generators.cs declares.
-dotnet meta gen ./metadata --out ./tests/Acme.Shop.Tests/Generated \
-  --namespace Acme.Shop --generators requirement-tests
-dotnet meta verify ./metadata --codegen --out ./tests/Acme.Shop.Tests/Generated \
-  --namespace Acme.Shop --generators requirement-tests
+# The tests: the same run as everything else codegen/Generators.cs declares. The entry's
+# OutDir puts them in the test project, which references xunit; the app's --out does not.
+dotnet meta gen ./metadata --out ./Generated
+dotnet meta verify ./metadata --codegen --out ./Generated
 ```
 
-A `gen` run has one `--out`, so give this generator a run of its own, narrowed with
-`--generators requirement-tests`, rather than letting it write into the run that writes
-your entities; the code run names its own entries the same way. Pass `--namespace` to `verify --codegen` as well:
-without it the namespace is inferred from the first generated file in `--out`, and in a
-directory that holds only these tests that is the tests' own namespace, which regenerates
-one level too deep and reports drift.
+Give the entry an `OutDir` in `codegen/Generators.cs` (below): the tests need xunit, which
+the project compiling `--out` does not reference, so they go into the test project. `gen`
+writes them there and `verify --codegen` compares them there, in the same run that writes
+and checks your entities. Point `OutDir` at a directory that holds generated files only:
+`verify --codegen` compares the whole tree.
 
 Per metamodel package the generator writes `Requirements_<pkgKey>_Witnesses.g.cs`, an
 interface with one default member per test that is not skipped, and
@@ -497,7 +494,7 @@ it goes stale silently. If a test reports `unimplemented requirement` for a witn
 believe you wrote, the method is not implementing the member: in the implicit form it must
 be `public`, non-static, parameterless and named exactly as the interface names it.
 
-The six options are init properties on the generator, set on its entry in
+The seven options are init properties on the generator, set on its entry in
 `codegen/Generators.cs`:
 
 ```csharp
@@ -511,6 +508,7 @@ public static class Generators
     [
         new MetaObjects.Codegen.Generators.RequirementTestsGenerator
         {
+            OutDir = "tests/Acme.Shop.Tests/Generated",
             WitnessClass = "Acme.Shop.Tests.Witnesses",
             Grain = RequirementTestGrain.Member,
             WarnUncovered = false,
@@ -527,6 +525,7 @@ qualified, as above: an owned copy and the packaged class share a simple name, s
 
 | Property | Meaning |
 |---|---|
+| `OutDir` | Where the tests are written, relative to the directory the run starts in. Default: the run's `--out`. Set it to the test project's directory. |
 | `TestNamespace` | Namespace of the generated tests. Default `<namespace>.Requirements`. |
 | `WitnessClass` | Full name of your witness class. Default `<namespace>.RequirementWitnesses`. |
 | `Grain` | `RequirementTestGrain.Concern` (default): one test per distinct `<type>.<subType>` a requirement claims. `Member`: one per distinct `implementedBy` reference that resolves. |

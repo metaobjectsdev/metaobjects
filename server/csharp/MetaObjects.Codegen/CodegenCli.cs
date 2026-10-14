@@ -277,6 +277,14 @@ public static class CodegenCli
         $"{command}: no codegen/Generators.cs. The generator list lives there in 1.1.0, documentation included; " +
         "`dotnet meta init` writes it. See docs/features/migrations/docs-are-generators.md, section \"C#\".";
 
+    /// <summary>What a gen or <c>verify --codegen</c> run prints, exit 2, when <c>codegen/Program.cs</c> does not
+    /// run <c>Generators.All</c>: a 1.0 entry point declares its generators inline and would ignore the list.</summary>
+    /// <param name="command">The command's own name: <c>dotnet meta gen</c> or <c>dotnet meta verify --codegen</c>.</param>
+    public static string LegacyProgram(string command) =>
+        $"{command}: codegen/Program.cs does not run Generators.All, so it would ignore the generator list in " +
+        "codegen/Generators.cs. Replace it with the two-line entry `using MetaObjects.Codegen;` and " +
+        "`return CodegenCli.Run(args, Generators.All);`. See docs/features/migrations/docs-are-generators.md, section \"C#\".";
+
     /// <summary>What a gen run prints, exit 2, when it finds 1.0 template-spec configuration: a
     /// project-root <c>template-spec.json</c> no entry declares, or <c>--template-spec</c>. Through
     /// 1.0 the gen command read either; a spec now runs only as a <see cref="TemplateSpecGenerator"/>
@@ -728,7 +736,7 @@ public static class CodegenCli
             ColumnNamingStrategy = columnNaming,
             IncludeNames = suite.Any(g => g.Name == "names"),
         };
-        var result = CodegenDrift.Compute(config, load.Root, suite);
+        var result = CodegenDrift.Compute(config, load.Root, suite, narrowed: a.Selection is { Count: > 0 });
         if (result.Error is not null)
         {
             Console.Error.WriteLine($"  {result.Error}");

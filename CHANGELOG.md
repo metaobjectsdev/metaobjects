@@ -1101,8 +1101,15 @@ until you regenerate.
     the copies it ejected already listed. `--generators` now narrows a run to declared entries
     and refuses a name the list does not declare. Each entry may name its own output directory
     (`IGenerator.OutDir`, a default interface member returning `null`, which writes under
-    `--out`), and `verify --codegen` compares each entry's directory. The owned runner now also
-    refuses an unknown flag and an unknown `--baseline` value, as `dotnet meta gen` did.
+    `--out`), and `verify --codegen` compares each entry's directory; `RequirementTestsGenerator`
+    takes one (`OutDir`), so the xUnit tests go to the test project in the same run. A
+    `verify --codegen --generators` narrowing compares only what the named entries write. The
+    owned runner now also refuses an unknown flag and an unknown `--baseline` value, as
+    `dotnet meta gen` did.
+  - **A 1.0 `codegen/Program.cs` is refused.** One that does not run `Generators.All` would
+    ignore the list, so `dotnet meta gen` and `verify --codegen` exit 2 with
+    `codegen/Program.cs does not run Generators.All` and write nothing; `init` and `eject` say
+    to replace it, and warn when `codegen/Codegen.csproj` pins an older `MetaObjects.Codegen`.
   - **A template spec is an entry too.** `MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator`
     (`Spec`, `TemplateRoot`, `OutDir`) declares one in `codegen/Generators.cs`. `gen` and
     `verify --codegen` no longer read `--template-spec` or discover a project-root

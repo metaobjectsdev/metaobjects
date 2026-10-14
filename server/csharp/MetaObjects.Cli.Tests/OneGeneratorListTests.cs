@@ -283,6 +283,173 @@ public sealed class OneGeneratorListTests : IDisposable
         Assert.Equal(CodegenScaffold.ProgramCs, File.ReadAllText(Path.Combine(_tmp, "codegen", "Program.cs")));
     }
 
+    // ---- a 1.0 Program.cs, which never runs Generators.All, is refused --------------------------
+
+    private const string LegacyProgramCs =
+        "using MetaObjects.Codegen;\n" +
+        "IReadOnlyList<IGenerator> generators = [new MetaObjects.Codegen.Generators.EntityGenerator()];\n" +
+        "return CodegenCli.Run(args, generators);\n";
+
+    /// <summary>A 1.0 codegen project upgraded half way: a Generators.cs beside the inline-list Program.cs.</summary>
+    private void WriteLegacyCodegenProject(bool withGeneratorList)
+    {
+        Directory.CreateDirectory(Path.Combine(_tmp, "codegen"));
+        File.WriteAllText(Path.Combine(_tmp, "codegen", "Program.cs"), LegacyProgramCs);
+        File.WriteAllText(Path.Combine(_tmp, "codegen", "Codegen.csproj"), CodegenScaffold.Csproj());
+        if (withGeneratorList)
+            File.WriteAllText(Path.Combine(_tmp, "codegen", "Generators.cs"), CodegenScaffold.GeneratorsCs([]));
+    }
+
+    private static string LegacyProgramLine(string command) =>
+        $"{command}: codegen/Program.cs does not run Generators.All, so it would ignore the generator list in " +
+        "codegen/Generators.cs. Replace it with the two-line entry `using MetaObjects.Codegen;` and " +
+        "`return CodegenCli.Run(args, Generators.All);`. See docs/features/migrations/docs-are-generators.md, section \"C#\".";
+
+    [Fact]
+    public void Gen_with_a_1_0_program_refuses_with_the_migration_line_and_writes_nothing()
+    {
+        WriteLegacyCodegenProject(withGeneratorList: true);
+
+        var (exit, _, stderr) = CliProcess.Run(_tmp, "gen", MetaDir, "--out", OutDir);
+
+        Assert.Equal(2, exit);
+        Assert.Equal(LegacyProgramLine("dotnet meta gen"), stderr.Trim());
+        Assert.Equal(CodegenCli.LegacyProgram("dotnet meta gen"), stderr.Trim());
+        Assert.Empty(FilesUnder(OutDir));
+    }
+
+    [Fact]
+    public void Verify_codegen_with_a_1_0_program_refuses_with_the_migration_line()
+    {
+        WriteLegacyCodegenProject(withGeneratorList: true);
+
+        var (exit, _, stderr) = CliProcess.Run(_tmp, "verify", MetaDir, "--codegen", "--out", OutDir);
+
+        Assert.Equal(2, exit);
+        Assert.Contains(LegacyProgramLine("dotnet meta verify --codegen"), stderr);
+    }
+
+    [Fact]
+    public void Init_beside_a_1_0_program_says_to_replace_it_instead_of_claiming_gen_runs_the_list()
+    {
+        WriteLegacyCodegenProject(withGeneratorList: false);
+
+        var lines = InitCommand.Run(_tmp);
+
+        Assert.Contains("  wrote codegen/Generators.cs", lines);
+        Assert.Contains("  kept codegen/Program.cs (already yours)", lines);
+        Assert.DoesNotContain(lines, l => l.Contains("is the generator list `dotnet meta gen` runs", StringComparison.Ordinal));
+        Assert.Contains(lines, l => l.StartsWith("codegen/Program.cs does not run Generators.All", StringComparison.Ordinal));
+        Assert.Contains("  return CodegenCli.Run(args, Generators.All);", lines);
+        Assert.Contains("See docs/features/migrations/docs-are-generators.md, section \"C#\".", lines);
+        Assert.Equal(LegacyProgramCs, File.ReadAllText(Path.Combine(_tmp, "codegen", "Program.cs")));
+    }
+
+    [Fact]
+    public void Eject_beside_a_1_0_program_says_to_replace_it_instead_of_claiming_gen_runs_the_list()
+    {
+        WriteLegacyCodegenProject(withGeneratorList: false);
+
+        var outcome = EjectCommand.Run(["entity"], _tmp, force: false);
+
+        Assert.Equal(0, outcome.ExitCode);
+        Assert.Contains(outcome.Out, l => l.StartsWith("codegen/Generators.cs lists the generator(s) you just ejected", StringComparison.Ordinal));
+        Assert.DoesNotContain(outcome.Out, l => l.Contains("run that list", StringComparison.Ordinal));
+        Assert.Contains(outcome.Out, l => l.StartsWith("codegen/Program.cs does not run Generators.All", StringComparison.Ordinal));
+        Assert.Contains("  return CodegenCli.Run(args, Generators.All);", outcome.Out);
+        Assert.Contains("See docs/features/migrations/docs-are-generators.md, section \"C#\".", outcome.Out);
+        Assert.Equal(LegacyProgramCs, File.ReadAllText(Path.Combine(_tmp, "codegen", "Program.cs")));
+    }
+
+    [Fact]
+    public void Init_in_a_project_pinned_to_an_older_package_warns_and_names_the_line_to_change()
+    {
+        WriteLegacyCodegenProject(withGeneratorList: false);
+        var csprojPath = Path.Combine(_tmp, "codegen", "Codegen.csproj");
+        var csproj = File.ReadAllText(csprojPath).Replace($"Version=\"{EjectCommand.ToolVersion()}\"", "Version=\"1.0.13\"");
+        File.WriteAllText(csprojPath, csproj);
+        var pinLine = Array.FindIndex(csproj.Split('\n'), l => l.Contains("PackageReference", StringComparison.Ordinal)) + 1;
+
+        var lines = InitCommand.Run(_tmp);
+
+        var warning = Assert.Single(lines, l => l.StartsWith("warning:", StringComparison.Ordinal));
+        Assert.Contains("MetaObjects.Codegen 1.0.13", warning);
+        Assert.Contains($"set the version on line {pinLine} of codegen/Codegen.csproj to {EjectCommand.ToolVersion()}", warning);
+        Assert.Equal(csproj, File.ReadAllText(csprojPath));
+    }
+
+    [Fact]
+    public void Init_in_a_project_pinned_to_this_version_does_not_warn()
+    {
+        WriteLegacyCodegenProject(withGeneratorList: false);
+
+        Assert.DoesNotContain(InitCommand.Run(_tmp), l => l.StartsWith("warning:", StringComparison.Ordinal));
+    }
+
+    // ---- requirement tests go to their own directory, in the one run ---------------------------
+
+    private const string Requirements =
+        "metadata:\n  package: acme\n  children:\n" +
+        "    - requirement.functional:\n        name: Subscribes\n        level: 4\n        status: live\n" +
+        "        statement: A subscriber can be recorded.\n        counterexample: No subscriber is stored.\n" +
+        "        implementedBy: [Subscriber]\n";
+
+    [Fact]
+    public void A_requirement_tests_entry_with_its_own_directory_is_written_and_checked_there_by_the_plain_commands()
+    {
+        File.WriteAllText(Path.Combine(MetaDir, "meta.requirements.yaml"), Requirements);
+        var testsDir = Path.Combine(_tmp, "tests", "Acme.Shop.Tests", "Generated");
+        IReadOnlyList<IGenerator> declared =
+            [new EntityGenerator(), new RequirementTestsGenerator { OutDir = testsDir, WarnUncovered = false }];
+
+        var gen = OwnedRunner.Run(_tmp, declared, "gen", MetaDir, "--out", OutDir);
+
+        Assert.True(gen.ExitCode == 0, $"exit={gen.ExitCode}\nstdout={gen.Stdout}\nstderr={gen.Stderr}");
+        Assert.Equal(["Subscriber.g.cs"], FilesUnder(OutDir));
+        Assert.Equal(["Requirements_acme_Tests.g.cs", "Requirements_acme_Witnesses.g.cs"], FilesUnder(testsDir));
+
+        var clean = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--out", OutDir);
+        Assert.True(clean.ExitCode == 0, $"exit={clean.ExitCode}\nstdout={clean.Stdout}\nstderr={clean.Stderr}");
+
+        File.AppendAllText(Path.Combine(testsDir, "Requirements_acme_Tests.g.cs"), "// edited\n");
+        var drift = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--out", OutDir);
+        Assert.Equal(1, drift.ExitCode);
+        Assert.Contains("Requirements_acme_Tests.g.cs", drift.Stderr);
+    }
+
+    // ---- a narrowed verify checks only what the narrowed run produces ---------------------------
+
+    [Fact]
+    public void Verify_narrowed_to_an_entry_with_its_own_directory_does_not_convict_the_rest_of_the_list()
+    {
+        IReadOnlyList<IGenerator> declared = [new EntityGenerator(), new ApiDocsGenerator { OutDir = DocsDir }];
+        Assert.Equal(0, OwnedRunner.Run(_tmp, declared, "gen", MetaDir, "--out", OutDir).ExitCode);
+
+        var docsOnly = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--out", OutDir, "--generators", "api-docs");
+        Assert.True(docsOnly.ExitCode == 0, $"exit={docsOnly.ExitCode}\nstdout={docsOnly.Stdout}\nstderr={docsOnly.Stderr}");
+
+        var codeOnly = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--out", OutDir, "--generators", "entity");
+        Assert.True(codeOnly.ExitCode == 0, $"exit={codeOnly.ExitCode}\nstdout={codeOnly.Stdout}\nstderr={codeOnly.Stderr}");
+
+        // What the narrowed run does produce is still checked.
+        File.AppendAllText(Path.Combine(DocsDir, "api", "csharp", "README.md"), "edited\n");
+        var drift = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--out", OutDir, "--generators", "api-docs");
+        Assert.Equal(1, drift.ExitCode);
+        Assert.Contains("api/csharp/README.md", drift.Stderr);
+    }
+
+    [Fact]
+    public void An_entry_directory_nested_in_out_is_compared_once_as_its_own()
+    {
+        var nestedDocs = Path.Combine(OutDir, "docs");
+        IReadOnlyList<IGenerator> declared = [new EntityGenerator(), new ApiDocsGenerator { OutDir = nestedDocs }];
+        Assert.Equal(0, OwnedRunner.Run(_tmp, declared, "gen", MetaDir, "--out", OutDir).ExitCode);
+
+        var verify = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--out", OutDir);
+
+        Assert.True(verify.ExitCode == 0, $"exit={verify.ExitCode}\nstdout={verify.Stdout}\nstderr={verify.Stderr}");
+    }
+
     // ---- a template spec is declared in the list, nowhere else ---------------------------------
 
     private string WriteSpec(string fileName = CodegenCli.TemplateSpecFileName)

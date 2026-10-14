@@ -74,14 +74,19 @@ public static class CodegenDrift
     /// <param name="root">the loaded model (same object `gen` would use).</param>
     /// <param name="generators">the generator suite — always a --generators selection;
     /// this port has no default set (see GenCommand.NoGeneratorsSelected).</param>
-    public static Result Compute(GenConfig config, MetaRoot root, IReadOnlyList<IGenerator> generators)
+    /// <param name="narrowed">the suite is a <c>--generators</c> narrowing of the declared list. Only
+    /// the directories a selected entry writes to are compared, and a committed file the regen does
+    /// not emit is not drift: it may belong to an entry the narrowing left out.</param>
+    public static Result Compute(GenConfig config, MetaRoot root, IReadOnlyList<IGenerator> generators, bool narrowed = false)
     {
         // Every directory the list writes into: the run's --out, then each entry's own
         // OutDir (ADR-0034 Amendment 9 — the api reference has one), each compared whole.
         // `label` is how a drifted file is reported: --out-relative for the run's own
         // directory, prefixed with the entry's OutDir as written for the others.
         var realRootFor = CodegenRunner.OutRootFor(config);
-        var roots = new List<(string Committed, string Label)> { (Path.GetFullPath(config.OutDir), "") };
+        var roots = new List<(string Committed, string Label)>();
+        if (!narrowed || generators.Any(g => g.OutDir is not { Length: > 0 }))
+            roots.Add((Path.GetFullPath(config.OutDir), ""));
         foreach (var g in generators)
         {
             var dir = Path.GetFullPath(realRootFor(g));
@@ -120,7 +125,12 @@ public static class CodegenDrift
             var drifted = new SortedSet<string>(StringComparer.Ordinal);
             var lines = new List<string>();
             for (var i = 0; i < roots.Count; i++)
-                Diff(roots[i].Committed, temps[i], roots[i].Label, drifted, lines);
+            {
+                // A directory nested in this one is another entry's, and is compared as its own.
+                var nested = roots.Where((r, j) => j != i && IsUnder(r.Committed, roots[i].Committed))
+                    .Select(r => r.Committed).ToList();
+                Diff(roots[i].Committed, nested, temps[i], roots[i].Label, !narrowed, drifted, lines);
+            }
 
             return new Result
             {
@@ -136,10 +146,15 @@ public static class CodegenDrift
         }
     }
 
-    /// <summary>Compare one committed directory with its fresh regen, adding each difference.</summary>
-    private static void Diff(string committed, string fresh, string label, SortedSet<string> drifted, List<string> lines)
+    /// <summary>Compare one committed directory, less the <paramref name="nested"/> directories, with its
+    /// fresh regen, adding each difference. A committed file the regen does not emit is reported only when
+    /// <paramref name="reportExtra"/>.</summary>
+    private static void Diff(
+        string committed, IReadOnlyList<string> nested, string fresh, string label, bool reportExtra,
+        SortedSet<string> drifted, List<string> lines)
     {
         var committedFiles = ListFiles(committed);
+        committedFiles.RemoveWhere(rel => nested.Any(n => IsUnder(Path.Combine(committed, rel), n)));
         var freshFiles = ListFiles(fresh);
         foreach (var rel in committedFiles.Union(freshFiles).OrderBy(s => s, StringComparer.Ordinal))
         {
@@ -148,6 +163,7 @@ public static class CodegenDrift
             var inFresh = freshFiles.Contains(rel);
             if (inCommitted && !inFresh)
             {
+                if (!reportExtra) continue;
                 drifted.Add(shown);
                 lines.Add($"- {shown} (committed but a fresh regen would not emit it)");
             }
@@ -168,6 +184,12 @@ public static class CodegenDrift
             }
         }
     }
+
+    /// <summary>True when <paramref name="path"/> lies inside the directory <paramref name="dir"/>.</summary>
+    private static bool IsUnder(string path, string dir) =>
+        Path.GetFullPath(path).StartsWith(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(dir)) + Path.DirectorySeparatorChar,
+            StringComparison.Ordinal);
 
     /// <summary>List files under <paramref name="dir"/> as dir-relative, forward-slash paths.</summary>
     private static HashSet<string> ListFiles(string dir)

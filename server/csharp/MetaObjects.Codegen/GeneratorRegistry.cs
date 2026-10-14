@@ -305,7 +305,7 @@ public static class GeneratorRegistry
                 Tier = GeneratorTier.Native,
                 Layer = GeneratorLayer.Capability,
                 Factory = _ => new RequirementTestsGenerator(),
-                Options = "TestNamespace, WitnessClass, Grain, Filter, Renderer, WarnUncovered (properties on the generator, set in an owned codegen/Program.cs; none needed)",
+                Options = "OutDir, TestNamespace, WitnessClass, Grain, Filter, Renderer, WarnUncovered (init properties on the entry in codegen/Generators.cs; OutDir points the tests at the test project)",
                 Note = "Writes nothing for a model with no requirement. The project class named by WitnessClass must exist for the tests to compile.",
                 SourceFileName = "RequirementTestsGenerator.cs",
             },

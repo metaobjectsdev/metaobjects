@@ -142,11 +142,13 @@ on every run, so never edit them: the project's code goes in one witness class
 (`<namespace>.RequirementWitnesses` by default) that implements every generated interface.
 Implement each member EXPLICITLY (`void Requirements_<pkgKey>_Witnesses.req_…() { … }`): a
 witness whose requirement is retired or deleted then stops compiling (CS0539), where an
-implicit `public void req_…()` goes stale silently. List it in `codegen/Generators.cs` and
-give it its own `dotnet meta gen … --out <test project dir> --generators requirement-tests`
-run (a run has one `--out`, and the test project needs xunit), and pass `--namespace` to
-`verify --codegen` for that directory. Options (`TestNamespace`, `WitnessClass`, `Grain`,
-`Filter`, `Renderer`, `WarnUncovered`) are init properties set on the entry in an owned
+implicit `public void req_…()` goes stale silently. List it in `codegen/Generators.cs` with
+its own `OutDir`, the test project's directory, since the tests need xunit:
+`new MetaObjects.Codegen.Generators.RequirementTestsGenerator { OutDir = "tests/Acme.Shop.Tests/Generated" }`.
+The plain `dotnet meta gen ./metadata --out ./Generated` then writes them there and
+`dotnet meta verify --codegen` checks them there, in the same run as everything else.
+Options (`OutDir`, `TestNamespace`, `WitnessClass`, `Grain`, `Filter`, `Renderer`,
+`WarnUncovered`) are init properties set on the entry in an owned
 `codegen/Generators.cs`; `Grain` needs `using MetaObjects.Core.Requirement;`. A filter
 REPLACES the default of functional L4/L5. `dotnet meta eject requirement-tests` copies the
 generator with its default rendering. The requirement checks in `dotnet meta verify` are

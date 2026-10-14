@@ -24,14 +24,13 @@
 // (ADR-0034 Amendment 3): `dotnet meta eject requirement-tests` copies this one file into your project,
 // and the default rendering is in it, so an owned copy changes the output freely.
 //
-// OPTIONS are public init properties, because this port has no per-generator option channel: the packaged
-// `dotnet meta gen --generators requirement-tests` builds the generator with none set, and a project that
-// wants any sets them where it constructs the generator, in its owned codegen/Program.cs:
+// OPTIONS are public init properties: a project sets them where it declares the generator, in its
+// generator list, codegen/Generators.cs (ADR-0034 Amendment 9):
 //
-//     new RequirementTestsGenerator { WitnessClass = "MyApp.Tests.Witnesses", Grain = RequirementTestGrain.Member }
+//     new RequirementTestsGenerator { OutDir = "tests/MyApp.Tests/Generated", WitnessClass = "MyApp.Tests.Witnesses" }
 //
-// The generated tests are xUnit; the project that compiles them needs a reference to xunit. They import
-// nothing from MetaObjects.
+// The generated tests are xUnit; the project that compiles them needs a reference to xunit, which is why
+// OutDir points them at the test project rather than the app's --out. They import nothing from MetaObjects.
 
 using System.Globalization;
 using System.Text;
@@ -54,6 +53,11 @@ public class RequirementTestsGenerator : IGenerator
     private const string SkipRetired = "retired - the capability was deliberately removed; assert it stays removed";
 
     public string Name => "requirement-tests";
+
+    /// <summary>The directory the tests are written under, normally the test project's: they need xunit,
+    /// which the app compiling <c>--out</c> does not reference. Give it a directory that holds generated files
+    /// only: <c>verify --codegen</c> compares the whole tree. <c>null</c> writes under the run's <c>--out</c>.</summary>
+    public string? OutDir { get; init; }
 
     /// <summary>
     /// The namespace the generated tests are written into: a dotted C# name, without <c>global::</c>. A keyword

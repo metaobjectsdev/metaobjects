@@ -647,7 +647,8 @@ Where they are set: in TypeScript, the options of `requirementTests({ … })` in
 `metaobjects.config.ts`. In Python, the `requirementTests` block of
 `metaobjects.config.yaml` (with no block, the generator runs with its defaults). In Java and
 Kotlin, the `<args>` of the `<generator>` entry. In C#, init properties on its entry in
-`codegen/Generators.cs`, the generator list `dotnet meta gen` runs. The per-port pages have a worked configuration each:
+`codegen/Generators.cs`, the generator list `dotnet meta gen` runs; its `OutDir` puts the
+xUnit tests in the test project in that same run. The per-port pages have a worked configuration each:
 [TypeScript](../ports/typescript.md#requirement-tests),
 [Python](../ports/python.md#requirement-tests),
 [Java](../ports/java.md#requirement-tests--junitrequirementtestsgenerator),

@@ -136,16 +136,18 @@ public static class EjectCommand
         };
     }
 
-    /// <summary>What eject says when the owned project pins a package older than the sources it was
-    /// just handed: empty when the pin is this tool's version or newer, or cannot be read.</summary>
-    private static IReadOnlyList<string> OlderPinWarning(string csprojPath)
+    /// <summary>What eject and init say when the owned project pins a package older than the codegen/
+    /// files they write: empty when the pin is this tool's version or newer, or cannot be read.</summary>
+    /// <param name="command">The command reporting: <c>eject</c> or <c>init</c>.</param>
+    internal static IReadOnlyList<string> OlderPinWarning(string csprojPath, string command)
     {
         var tool = ToolVersion();
         if (PinnedCodegenVersion(csprojPath) is not { } pin || !IsOlderVersion(pin.Version, tool)) return [];
         var warning =
             $"warning: codegen/Codegen.csproj pins {PinnedPackage} {pin.Version}, older than the {tool} this " +
-            $"eject wrote its sources from. Those sources are written against the {tool} package API, so the " +
-            $"owned project will not compile until the pin is {tool} or later. Eject never edits that file: " +
+            $"{command} writes codegen/ from. Those files are written against the {tool} package API, so the " +
+            $"owned project will not compile, or will run the {pin.Version} codegen, until the pin is {tool} or " +
+            $"later. {char.ToUpperInvariant(command[0])}{command[1..]} never edits that file: " +
             $"set the version on line {pin.Line} of codegen/Codegen.csproj to {tool}";
         return pin.Scaffolded
             ? ["", warning + ", so the line reads", $"  <PackageReference Include=\"{PinnedPackage}\" Version=\"{tool}\" />"]
@@ -228,11 +230,12 @@ public static class EjectCommand
             outLines.Add("");
             outLines.Add($"Also wrote {string.Join(", ", scaffolded)}.");
         }
+        var programIgnoresList = CodegenHandoff.ProgramIgnoresList(root);
         if (scaffolded.Contains("codegen/Generators.cs"))
         {
             outLines.Add(
-                $"codegen/Generators.cs lists the generator(s) you just ejected ({string.Join(", ", entries)}). " +
-                "`dotnet meta gen` and `dotnet meta verify --codegen` run that list.");
+                $"codegen/Generators.cs lists the generator(s) you just ejected ({string.Join(", ", entries)})." +
+                (programIgnoresList ? "" : " `dotnet meta gen` and `dotnet meta verify --codegen` run that list."));
         }
         else
         {
@@ -243,7 +246,12 @@ public static class EjectCommand
             outLines.Add("to the list there, in place of the packaged entry if it lists one " +
                           "(MetaObjects.Codegen.Generators.<Name>).");
         }
-        if (csprojExisted) outLines.AddRange(OlderPinWarning(csprojPath));
+        if (programIgnoresList)
+        {
+            outLines.Add("");
+            outLines.AddRange(CodegenScaffold.ReplaceProgram());
+        }
+        if (csprojExisted) outLines.AddRange(OlderPinWarning(csprojPath, "eject"));
 
         return new Outcome(0, outLines, []);
     }
