@@ -91,8 +91,8 @@ final class RequiresCheck {
             if (!missing.isEmpty()) {
                 lines.add(d.getKey() + " (\"" + k.stableName() + "\") needs " + String.join(", ", missing)
                         + " in the same <generators>: its output references what "
-                        + (missing.size() == 1 ? "that generator writes" : "those generators write")
-                        + ", so without it the generated code does not compile.");
+                        + (missing.size() == 1 ? "that generator writes, so without it" : "those generators write, so without them")
+                        + " the generated code does not compile.");
             }
         }
         return lines;
