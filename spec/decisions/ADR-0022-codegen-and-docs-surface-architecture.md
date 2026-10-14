@@ -4,6 +4,7 @@
 **Date:** 2026-06-04
 **Supersedes:** ADR-0020 (codegen tiering), ADR-0021 (codegen surface coherence)
 **Revised by ADR-0025 (docs surface):** Part 3's `api-docs` is the *api surface* of the unified docs door (`meta docs`), not a standalone `meta gen` generator — see [ADR-0025](ADR-0025-unified-docs-door.md).
+**Part 2 D1 superseded by ADR-0034 Amendment 9 (2026-10-12):** every generator, documentation included, is an entry in the project's generator list and runs through the gen command; the docs commands are removed. Part 3's dividing test stands as a description of two generators.
 **Relates to:** ADR-0015 (single shared migrate engine)
 
 > This ADR consolidates ADR-0020 + ADR-0021 and adds the documentation-surface

@@ -2,6 +2,6 @@
   "displayName": "Java",
   "install": "add com.metaobjects:metaobjects-metadata + metaobjects-codegen-spring + metaobjects-maven-plugin to your pom.xml",
   "codegenCommand": "mvn metaobjects:generate",
-  "docsCommand": "mvn metaobjects:docs",
+  "docsCommand": "mvn metaobjects:generate",
   "apiSubDir": "api/java"
 }

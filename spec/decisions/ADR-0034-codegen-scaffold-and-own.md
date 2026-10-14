@@ -533,6 +533,10 @@ between the two generators.
 
 ### Amendment 7 (2026-10-11) — `shared-model`, `docs` and `api-docs` are ejectable; `mermaid-er` is removed; `template` is the one that is not
 
+> **Superseded in part by Amendment 9.** The docs door's seam below (`docs.generators`, the
+> `docsSurface` marker, the skip in `meta gen`) is gone: an owned docs copy is an entry in
+> `generators` like any other. The rulings on `shared-model`, `mermaid-er` and `template` stand.
+
 **Ruling (maintainer).** Amendment 5 recorded the rule, *"everything should be ejectable"*,
 and listed what still was not. An audit of every stock generator in all five ports then
 found eight that could not be ejected and recommended making all of them ejectable in 1.1.0
@@ -729,8 +733,8 @@ checked further by the guard.
 |---|---|
 | TypeScript | `requirement-walk.ts`, `relation-resolver.ts`, `render-context.ts`, `templates/find-inbound.ts`, `templates/find-templates.ts`, `render-engine/framework-provider.ts` |
 | C# | `ReportRows`, `PackageBindingResolver`, `GeneratorApplicability` |
-| Java | `BaseObjectCodeGenerator`, `SpringM2mSupport`, `AutoSetSupport`, `TphPlan`, `FindInbound`, `GeneratorApplicability`, `DocsGenerator`, `CodeGenMetaDataProvider`, the single-file generator bases and the JSON and HTML writer bases (`SingleFileDirectGeneratorBase`, `SingleJsonDirectGeneratorBase`, `SingleHtmlDirectGeneratorBase`, `JsonDirectWriter`, `HtmlDirectWriter`) |
-| Kotlin | `ExposedApi`, `ExposedImports`, `KotlinGenUtil`, `KotlinM2mSupport`, `Fr019SharedEnum`, `DocsGenerator` |
+| Java | `BaseObjectCodeGenerator`, `SpringM2mSupport`, `AutoSetSupport`, `TphPlan`, `FindInbound`, `GeneratorApplicability`, `CodeGenMetaDataProvider`, the single-file generator bases and the JSON and HTML writer bases (`SingleFileDirectGeneratorBase`, `SingleJsonDirectGeneratorBase`, `SingleHtmlDirectGeneratorBase`, `JsonDirectWriter`, `HtmlDirectWriter`) |
+| Kotlin | `ExposedApi`, `ExposedImports`, `KotlinGenUtil`, `KotlinM2mSupport`, `Fr019SharedEnum` |
 | Python | `value_objects`, `find_inbound`, `tph_plan`, `requirement_walk` |
 
 **Exemptions.** Each is an entry in the shared manifest with its reason.
@@ -837,7 +841,7 @@ refusal is then `scripts/finish-release.mjs`, which withholds the tag.
 | 10 | Angular has no reference templates. | Outside the census until the package is published |
 | 11 | Tests that asserted a gap, and hand-kept lists. | Closed here |
 | 12 | Documents that claimed more than the code delivered. | Corrected here, below |
-| 13 | An owned Java `entity` constructs the packaged `extractor` generator when no extractor is in the run. Found by the guard on its first run. | Closed. `entity` copies `ExtractorCodeGenerator` with it, so the owned `entity` constructs the owned one |
+| 13 | An owned Java `entity` constructs the packaged `extractor` generator when no extractor is in the run. Found by the guard on its first run. | Closed. `entity` writes no extractors and constructs no extractor generator; `extractor` is the one entry that writes them (Amendment 9) |
 
 **What the guard found on its first run**, beyond the gaps the audit listed:
 
@@ -948,3 +952,224 @@ is.
   calling the package where it did; re-ejecting takes the whole emit.
 - **Packaged output.** This amendment adds registry rows and tests. No generator emits
   different bytes because of it.
+
+### Amendment 9 (2026-10-12) — one way to generate: every generator, docs included, is an entry in the project's generator list; the docs commands are removed
+
+**Ruling (maintainer).** Amendment 7 gave the docs door a list of its own, a marker on the
+generators it runs, and a skip in the gen command for anything carrying the marker. The ports
+that followed copied that shape. The maintainer then ruled it out:
+
+> *"Meta gen should never auto generate anything. There should be a config file (native
+> options can differ such as using maven) that says what is or isn't generated and what
+> inputs to pass in."*
+>
+> *"The java version using maven is not automatic. You only add it there if you want codgen.
+> Thats how it should fucking work. So java should do all codegen one way. All languages
+> should do it one way."*
+>
+> *"Get rid of it, as I don't see a benefit of having two approaches."* ("It" is the
+> separate docs command and the Maven docs goal.)
+>
+> *"Do A and call it 1.1.0."* (A is the whole redesign in one release.)
+>
+> *"You can also just have the LLM fix the fucking config files. We don't have to write
+> super complicated upgrade scripts all the time."*
+
+A survey of nine code generators (Prisma, GraphQL Code Generator, OpenAPI Generator, buf,
+jOOQ, sqlc, Smithy, TypeSpec, NSwag) found the same shape in each: one file lists the
+generators, each entry carries its own output location and options, documentation is one
+more entry in that list, and one command runs the list. None has a separate docs command.
+
+**The rule, for all five ports.**
+
+1. Every generator is an entry in the project's native generator list, with its inputs in
+   the entry. That includes the api reference, the model pages and every other page of
+   documentation.
+2. One command runs the list: `meta gen` (TypeScript), `dotnet meta gen` (C#), `metaobjects
+   gen` (Python), `mvn metaobjects:generate` (Java and Kotlin). `verify --codegen` (Maven:
+   `metaobjects:verify`) regenerates the same list and diffs it.
+3. Nothing is generated that the list does not declare. There is no default set of
+   generators, documentation included.
+4. There is no docs command, no docs goal, no docs marker on a generator, no logic in a gen
+   command that skips documentation, and no second list.
+5. A gen command's `--generators <names>` flag (TypeScript, C#, Python) narrows a run to
+   declared entries, by registry name. It never adds a generator the list does not declare;
+   naming one is refused. This is how a project writes its documentation without its code.
+   Maven does the same natively: a second `<execution>` of `generate` with its own
+   `<generators>`, run as `mvn metaobjects:generate@<execution-id>`.
+
+**Where the list is, per port.**
+
+| Port | The list | Scaffolded by |
+|---|---|---|
+| TypeScript | `generators` in `metaobjects.config.ts`; output locations are `targets` | `meta init` |
+| C# | `codegen/Generators.cs`: a static list of constructed generators with their options as init properties. `codegen/Program.cs` is a two-line entry point that passes that list to `CodegenCli.Run` | `dotnet meta init` (new in 1.1.0); `dotnet meta eject` writes the three files when missing |
+| Python | `targets.<name>.generators` in `metaobjects.config.yaml`, each target with its `outDir`; a generator's options are a top-level block named for it (the `requirementTests` precedent) | the adopter; the port has no `init`, and the migration section shows the file |
+| Java, Kotlin | `<generators>` in the `metaobjects-maven-plugin` `<configuration>`, one `<generator>` per entry with its options in `<args>` | the adopter's pom; unchanged from 1.0 |
+
+**Inputs that were docs flags, per port.** Each row is an option of a list entry now.
+
+| Former input | TypeScript | C# (`ApiDocsGenerator` init property) | Python | Java, Kotlin (`<args>` of the api-docs entry) |
+|---|---|---|---|---|
+| Output directory (`--out`, `docs.outDir`, `<outputDirectory>`) | `targets.docs.outDir` | `OutDir` | `targets.<name>.outDir` of the target that lists `api-docs` | `outputDir` |
+| Page layout (`--layout`, `docs.layout`, `<layout>`) | `targets.docs.outputLayout` | none: C# writes `package` | none: Python writes `package` | `layout` (`flat` or `package`, default `flat`) |
+| API sub-directory (`--api-subdir`, `<apiSubDir>`) | `apiDocsFile({ subDir })` | `ApiSubDir` | `apiDocs.apiSubDir` | `apiSubDir` (default `api/java`, Kotlin `api/kotlin`) |
+| Project label (`--project`, `<projectName>`) | `apiDocsFile({ projectName })` | `ProjectName` | `apiDocs.projectName` | `projectName` |
+| Model back-link base (`--model-base-url`, `--base-url`, `docs.baseUrl`, `<modelBaseUrl>`) | `modelBaseUrl` on `docsFile()` and `apiDocsFile()` | `ModelBaseUrl` | `apiDocs.modelBaseUrl` | `modelBaseUrl` |
+| Which surfaces (`--model`, `--api`, `--requirements`, `--agent`, `docs.surfaces`, `<language>`) | which factories are listed: `docsFile()`, `apiDocsFile()`, `requirementsFile()`, `agentDocsFile()` | whether `ApiDocsGenerator` is listed | whether `api-docs` is listed | which class is listed: `JavaApiDocsGenerator`, `KotlinApiDocsGenerator`, or both |
+| Other ports' api pages to link (`docs.apiSurfaces`) | `docsFile({ apiSurfaces })` | n/a | n/a | n/a |
+| Template overrides (`--templates`) | `docsFile({ templates })` | n/a | n/a | n/a |
+| Owned docs generators (`docs.generators`) | the owned copy in `generators`, like any other | the owned copy in `Generators.cs` | the owned module in a target's `generators` | the owned class in `<generators>` |
+| Metadata providers (`--provider`) | n/a | n/a | top-level `providers` (already there) | n/a |
+
+The C# namespace the api pages cite stays the gen run's `--namespace`, as today.
+
+**TypeScript work that had no generator.** `meta docs` did two things that were not
+generators, and both become one:
+
+- `--metamodel` (the reference of the built-in vocabulary) becomes `metamodelDocsFile()`,
+  registry name `metamodel-docs`, ejectable like the rest.
+- `--site` (the HTML site) becomes `docsSiteFile({ prompts })`, registry name `docs-site`.
+  Its builder stays packaged under Amendment 8 ruling 3, and its manifest exemption now
+  reads: the builder is engine; what an adopter changes is the site's templates and
+  assets. `--scaffold-site`, which copied those, becomes `meta eject docs-site`, which
+  copies the same files to the same place (`codegen/docs-site/`).
+
+Docs factories default to `target: "docs"`. A run that lists one while `targets` has no
+`docs` entry is refused, naming the generator and the missing target: documentation is
+never written into the code's output directory by default. The cross-link facts the docs
+door used to build (`ctx.docsDoor`) are built by the runner from the declared entries,
+so the model and api pages still agree on where each other is.
+
+`meta agent-docs`, `meta init --refresh-docs` and their C# and Python counterparts are not
+documentation of the model. They install the agent-context files and are unchanged.
+
+**Messages.** The text is fixed. Each removed command exits non-zero (2) after printing its
+line. `<section>` is `TypeScript`, `C#`, `Python` or `Java and Kotlin`.
+
+A removed docs command or goal prints:
+
+```
+<removed> was removed in <version>. `<gen>` writes documentation now: declare each docs generator <where>. See docs/features/migrations/docs-are-generators.md, section "<section>".
+```
+
+| Port | `<removed>` | `<version>` | `<gen>` | `<where>` |
+|---|---|---|---|---|
+| TypeScript | `meta docs` | 1.1.0 | `meta gen` | in `generators` in metaobjects.config.ts |
+| C# | `dotnet meta docs` | 1.1.0 | `dotnet meta gen` | in codegen/Generators.cs |
+| Python | `metaobjects docs` | 1.1.0 | `metaobjects gen` | in a target's `generators` in metaobjects.config.yaml |
+| Java, Kotlin | `metaobjects:docs` | 8.1.0 | `mvn metaobjects:generate` | as a <generator> entry in the plugin's <generators> |
+
+The Java and Kotlin line, exactly, as `DocsMojo` prints it:
+
+```
+metaobjects:docs was removed in 8.1.0. `mvn metaobjects:generate` writes documentation now: declare each docs generator as a <generator> entry in the plugin's <generators>. See docs/features/migrations/docs-are-generators.md, section "Java and Kotlin".
+```
+
+TypeScript `meta verify --docs` prints:
+
+```
+`meta verify --docs` was removed in 1.1.0. `meta verify --codegen` checks documentation now, with everything else `generators` declares. See docs/features/migrations/docs-are-generators.md, section "TypeScript".
+```
+
+A gen command given a 1.0-shape config fails before it writes anything. It never runs and
+writes nothing silently. It prints:
+
+```
+<gen>: found 1.0 docs configuration (<what>). Nothing reads it any more, so this run would write no documentation. Declare each docs generator <where>. See docs/features/migrations/docs-are-generators.md, section "<section>".
+```
+
+`<gen>` here is the command's own name (`meta gen`, `dotnet meta gen`, `metaobjects gen`,
+`metaobjects:generate` or `metaobjects:verify`). What counts as 1.0 shape, and `<what>`:
+
+| Port | 1.0 shape | `<what>` |
+|---|---|---|
+| TypeScript | a `docs` key in the config | `the docs block in metaobjects.config.ts` |
+| C# | `--project` or `--model-base-url` passed to `gen` | the flags given, e.g. `--project` |
+| Python | a top-level `docs` key in the config | `the docs block in metaobjects.config.yaml` |
+| Java, Kotlin | `<language>`, `<apiSubDir>`, `<layout>` or `<modelBaseUrl>` in the plugin's `<configuration>` | the elements found, then ` in the plugin's <configuration>` |
+
+A gen command with no list at all fails too, for the same reason:
+
+| Port | Case | Message |
+|---|---|---|
+| TypeScript | no `metaobjects.config.ts` | `meta gen: no metaobjects.config.ts. Nothing is generated until a config declares it, documentation included; \`meta init\` writes one. A 1.0 project that ran \`meta docs\` with no config: see docs/features/migrations/docs-are-generators.md, section "TypeScript".` |
+| C# | no `codegen/Generators.cs` | `dotnet meta gen: no codegen/Generators.cs. The generator list lives there in 1.1.0, documentation included; \`dotnet meta init\` writes it. See docs/features/migrations/docs-are-generators.md, section "C#".` |
+| Python | no `metaobjects.config.yaml` | `metaobjects gen: no metaobjects.config.yaml. The generator list lives there in 1.1.0, documentation included. See docs/features/migrations/docs-are-generators.md, section "Python".` |
+| Java, Kotlin | no `<generators>` | unchanged: the goal runs nothing, as in 1.0, because a pom that binds the goal and lists nothing is a declaration Maven reads literally |
+
+A list that is present and empty is not an error. It writes nothing and says so, as today.
+
+**The migration section.** `docs/features/migrations/docs-are-generators.md` has one
+section per port, headed exactly `TypeScript`, `C#`, `Python`, `Java and Kotlin`. Each
+section is written for a coding agent to apply by hand to an adopter's config, with no tool:
+
+1. What the 1.0 project has: the command or goal it runs, and its config, as a literal
+   before block.
+2. The same project in 1.1.0, as a literal after block that writes the same pages to the
+   same paths.
+3. A table from each 1.0 flag, key or element to its new option (the table above, for that
+   port).
+4. What to change in scripts and CI: the docs command becomes the gen command, and a run
+   meant to write only documentation passes `--generators` with the docs entries' names
+   (Maven: a second execution).
+5. TypeScript only: the no-config case. A project that ran `meta docs` with no
+   `metaobjects.config.ts` writes one, with a `docs` target and `docsFile()`, and nothing
+   else.
+
+No upgrade script exists and none is to be built. `meta upgrade --apply` does not rewrite
+generator configs.
+
+**Java and Kotlin: what this change does.** `DocsGenerator` (the marker), the skips in
+`metaobjects:generate` and `metaobjects:verify`, and the docs goal's body are deleted.
+`JavaApiDocsGenerator` and `KotlinApiDocsGenerator` are ordinary generators that read
+`outputDir`, `apiSubDir`, `layout`, `projectName` and `modelBaseUrl` from `<args>`. The
+`docs` goal is kept only to print the line above, because Maven's own error for a missing
+goal names neither the replacement nor the migration section. `metaobjects:verify`
+regenerates an api-docs entry's `outputDir` like any other; give it a directory that holds
+generated files only.
+
+**Java `entity` writes no `<Name>Extractor`.** In 1.0 the `entity` generator also wrote an
+extractor class per object unless the pom listed `extractor`: output the pom did not
+declare. The `extractor` generator is now the one entry that writes extractors. A pom that
+listed only `entity` and used the extractors adds:
+
+```xml
+<generator>
+  <classname>com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator</classname>
+  <args><outputDir>(the entity entry's outputDir)</outputDir></args>
+</generator>
+```
+
+with the same naming args and `<filters>` as the `entity` entry, so each extractor lands
+beside its class. `EmitsObjectExtractors` and the plugin's derivation of it are removed;
+neither was something a pom could name.
+
+**A config that declares nothing writes nothing**, and each port has a test that says so:
+an empty list, run through the port's gen command or goal, writes zero files. Java and
+Kotlin have it in this change (`DeclaresNothingWritesNothingTest`); the other ports add it
+with their change.
+
+**Supersedes.**
+
+- **Amendment 7**, the docs door's seam: the `docs.generators` list, the `docsSurface`
+  marker, the skip in `meta gen`, `ctx.docsDoor` as a door's context, and `meta eject`
+  printing `docs: { generators: [...] }`. An owned docs copy is wired into `generators`
+  like every other owned copy, and `meta eject` prints that entry. Amendment 7's rulings on
+  `shared-model`, `mermaid-er` and `template` stand.
+- **ADR-0021 D1** and **ADR-0022 Part 2 D1**: documentation is reached through the gen
+  command, not kept out of it. Part 3's dividing test (neutral model pages against the
+  per-port api reference) stands as a description of two generators.
+- **ADR-0025 D1, D2's defaults, D4 and the per-port commands of D5**: there is no docs
+  door. The output tree and the cross-link contract of D2, D3 and D5 stand; they are now
+  produced by the declared entries.
+- **Amendment 8, the `DocsGenerator` names in the Java and Kotlin engine lists** (the class
+  is gone), and **ruling 3's "not a generator"** for the TypeScript site (it is the
+  `docs-site` entry above).
+
+**Version.** This ships in 1.1.0 (Maven 8.1.0). Removing a published command is a major by
+`docs/compatibility-policy.md`; the number is the maintainer's explicit override of that
+policy for this release, recorded here so the CHANGELOG's breaking notice can cite it.
+
+**Open.** Nothing. The C# file name was ruled 2026-10-14: the list lives in
+`codegen/Generators.cs`, and `codegen/Program.cs` is a two-line entry point.

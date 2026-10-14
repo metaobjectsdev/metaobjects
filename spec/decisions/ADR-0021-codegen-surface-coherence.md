@@ -5,6 +5,7 @@
 > historical record; ADR-0022 is the current canonical statement.
 
 **Status:** Superseded by ADR-0022
+**D1 superseded by ADR-0034 Amendment 9 (2026-10-12):** documentation is an ordinary entry in the project's generator list, run by the gen command; there is no docs door.
 **Extended by ADR-0025:** D1 (the single docs door) now covers ALL documentation, via two cross-linked surfaces (`model` / `api`) — see [ADR-0025](ADR-0025-unified-docs-door.md).
 **Date:** 2026-06-02
 **Relates to:** ADR-0020 (codegen tiering), ADR-0015/0016 (migrate engine)

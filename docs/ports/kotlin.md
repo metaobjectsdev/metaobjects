@@ -107,7 +107,7 @@ The 16 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 | `KotlinStoredProcGenerator` | Stored-procedure call wrappers | entities with `source.rdb @kind="storedProc"` |
 | `KotlinSpringControllerGenerator` | `<Entity>Controller.kt` — Spring `@RestController` (5 CRUD endpoints; cross-port API contract). **Select `KotlinRelationsGenerator` with it** when the model has a M:N relationship: the traversal routes call the `<rel>Query` helpers only that generator emits, and without it the controller does not compile | entities with `source.rdb @kind="table"` |
 | `KotlinRequirementTestsGenerator` | Per metamodel package that holds a tested requirement, two files in `testPackage`: `Requirements_<pkgKey>_Witnesses.kt` (an interface whose default members fail with `unimplemented requirement: ...`) and `Requirements_<pkgKey>_Test.kt` (one JUnit Jupiter `@Test` per requirement, calling a project-owned witness). See "Requirement tests" below | every tested `requirement.*` (functional, level 4 or above by default) |
-| `KotlinApiDocsGenerator` | The Kotlin SDK api reference `mvn metaobjects:docs` writes under `<outputDirectory>/api/kotlin`: `<Unit>.md` per entity, value object, projection, served report and template, a `README.md` index and `AGENT-API.md`. A `DocsGenerator`: `metaobjects:generate` and `metaobjects:verify` skip it, and `metaobjects:docs` runs your copy in place of the packaged one when the `<generators>` it reads names it (the plugin-level `<configuration>`, or the `docs` execution's own, not the `generate` execution's). Ejectable, with the page model, builder, renderer and path math | the whole model, once |
+| `KotlinApiDocsGenerator` | The Kotlin SDK api reference, under `<outputDir>/<apiSubDir>`: `<Unit>.md` per entity, value object, projection, served report and template, a `README.md` index and `AGENT-API.md`. A `<generator>` entry like any other, run by `metaobjects:generate` and checked by `metaobjects:verify`. Args: `outputDir` (required, generated files only), `apiSubDir` (default `api/kotlin`), `layout` (`flat` or `package`), `projectName` and `modelBaseUrl`, as for the Java `api-docs`. The `metaobjects:docs` goal was removed in 8.1.0 ([migration](../features/migrations/docs-are-generators.md#java-and-kotlin)). Ejectable, with the page model, builder, renderer and path math | the whole model, once |
 
 Maven wiring:
 
@@ -263,7 +263,7 @@ A `field.enum` declared `@provided` is your own enum class: MetaObjects never ge
 and every generated reference points at the namespace you configure. Every Kotlin generator
 that types an enum reads the same two args: `KotlinEntityGenerator`,
 `KotlinExposedTableGenerator`, `KotlinSpringControllerGenerator`, `KotlinRelationsGenerator`,
-`KotlinOutputParserGenerator`, and the API pages `mvn metaobjects:docs` writes. Set them once,
+`KotlinOutputParserGenerator`, and `KotlinApiDocsGenerator`. Set them once,
 in the plugin's `<globals>`, so no generator can be left out:
 
 ```xml

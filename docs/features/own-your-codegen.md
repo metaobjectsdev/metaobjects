@@ -406,7 +406,7 @@ is **no three-way merge** (TypeScript-only) and **no hash manifest**, so nothing
 notice an edit to a file that still *has* its marker — such a file is overwritten.
 
 **Four write paths bypass the guard on purpose**, and they are not oversights: user-supplied
-templates (`TemplateScopeGenerator`, `MustacheTemplateGenerator`), the Maven docs goal's API
+templates (`TemplateScopeGenerator`, `MustacheTemplateGenerator`), the `api-docs` generators'
 pages, and the `META-INF/services` registration whose entire content is a bare
 fully-qualified name. None of them emits content MetaObjects authors, so none can be
 required to carry a marker — guard one and run 1 writes it while every run after refuses
@@ -934,33 +934,29 @@ Both names exist in both ports, so pass `-Dport`. Their reference source ships i
 `metaobjects-codegen-base`, not `metaobjects-codegen-spring`; your `codegen/` module
 reaches it through the same dependency.
 
-**`entity` copies eight files, and together they are the generator.**
+**`entity` copies seven files, and together they are the generator.**
 `JavaObjectCodeGenerator` does not emit a class body itself. A writer does, one per
 flavor, so the writers come with it:
 
 | Copied file | What it holds |
 |---|---|
-| `JavaObjectCodeGenerator` | Which flavors exist and which writer each one gets (`createWriter`); the `ObjectClassBindingProvider` source and its `META-INF/services` registration; whether the `<Name>Extractor` classes are written here. |
+| `JavaObjectCodeGenerator` | Which flavors exist and which writer each one gets (`createWriter`); the `ObjectClassBindingProvider` source and its `META-INF/services` registration. |
 | `JavaCodeGenerator`, `BaseObjectCodeGenerator` | The generator's arguments, and the directory and file name each class lands in. |
 | `BaseObjectCodeWriter` | The class header comment, and the per-field loop every flavor shares. |
 | `JavaCodeWriter` | The Java type of each field; accessor, parameter, class and package names; the body of the interface flavor. |
 | `PojoAwareCodeWriter`, `ValueObjectCodeWriter` | The fields, the constructor and the accessor bodies of the two concrete flavors. |
-| `ExtractorCodeGenerator` | The `<Name>Extractor` classes `entity` writes beside each concrete class, unless a separate `extractor` generator is in the run. |
 
-All eight land in one package and use one another, never the packaged classes: eject
+All seven land in one package and use one another, never the packaged classes: eject
 rewrites the package line of each and, where one imports another, that import. To change a
 field, a constructor or an accessor, edit the writer. You subclass nothing. `-Dlist` gives
-`entity` one verdict over all eight files.
+`entity` one verdict over all seven files.
 
 What stays in the package holds no emit: `MultiFileDirectGeneratorBase` (the
 one-file-per-object loop), `FileDirectWriter` (indentation and `println`) and
 `GeneratedFileWriter` (the write guard: a file with no `GENERATED` marker is left alone).
-The extractors the owned `entity` writes come from the owned copy of
-`ExtractorCodeGenerator` beside it, so changing how an extractor reads is an edit in code you
-own whether or not you also wire an `extractor` generator.
+`entity` writes no extractors; those are the `extractor` generator's, below.
 
-**`extractor` copies three files.** `ExtractorCodeGenerator.java` holds its emit. Eject it
-beside `entity`, in the same package, and they share that one copy.
+**`extractor` copies three files.** `ExtractorCodeGenerator.java` holds its emit.
 `JavaCodeWriter` and `BaseObjectCodeWriter` come with it because that is where it reads the
 package and class name of the type each extractor casts to. Eject both generators into the
 same package, which is the default, and they share the one `JavaCodeWriter`: a naming
@@ -979,16 +975,10 @@ objects: an extractor for an object `entity` wrote no class for does not compile
 </generator>
 ```
 
-`entity` still writes the extractors itself when no separate `extractor` generator is in
-the run, so a pom that wires only `entity` emits what it always did. When one is in
-`<generators>`, the plugin tells `entity` to leave those files to it: it sets
-`emitExtractors` to `false`, whatever the pom says, so each file has one emitter. Outside
-Maven, set `emitExtractors=false` on `entity` yourself.
-
-A pom with more than one `entity` entry needs one `extractor` entry per `entity` entry,
-each with that entry's `outputDir`, naming args and `<filters>`. A single `extractor`
-generator in the run stops every `entity` entry writing its extractors, so an `entity`
-entry left without one gets none.
+`entity` writes no extractors. Through 8.0 it wrote them when no `extractor` was listed,
+which was output no `<generator>` entry declared; 8.1.0 removed that (ADR-0034 Amendment 9).
+A pom with more than one `entity` entry lists one `extractor` entry per `entity` entry, each
+with that entry's `outputDir`, naming args and `<filters>`.
 
 ### Ejecting a generator hands over the emitters it writes through (Java and Kotlin)
 
@@ -1069,7 +1059,7 @@ that old differs from the 1.1.0 reference in other lines too, not only in the em
 
 ### `api-docs`: the api reference as an owned generator
 
-`mvn metaobjects:docs` writes the Java and the Kotlin api reference. `mvn metaobjects:eject
+The `api-docs` generators write the Java and the Kotlin api reference. `mvn metaobjects:eject
 -Dnames=api-docs -Dport=java` copies the generator that writes the Java one, with the page
 model (`ApiSymbol`, `ApiUnit`, `FieldShape`, `ApiSymbolKind`, `JavaApiModel`, `UnitExample`), the
 builder that decides what to document (`JavaApiModelBuilder`, `JavaFieldShapes`), the renderer
@@ -1106,16 +1096,10 @@ so eject warns and prints what to add. All three orders end with the same pom: b
 dependencies, Maven's default Java source root, and the Kotlin plugin pointed at its own.
 `-Dforce` rewrites the pom for every port the module holds.
 
-The generator is a `DocsGenerator`. List it, with `<classname>` set to your copy, in the
-`<generators>` the docs goal reads, and `metaobjects:docs` runs it for its surface in place of the
-packaged one. That list is the one in the plugin-level `<configuration>`, or in the `docs`
-execution's own. A `<generators>` list inside the `generate` execution's `<configuration>` is read
-by that execution only, so an entry added there leaves `metaobjects:docs` on the packaged
-generator, and its log line says which one it ran. `metaobjects:generate`
-and `metaobjects:verify` skip it, because it writes pages under the docs directory and not code
-under `outputDir`, and say so in the build log. The docs goal sets `outputDir`, `projectName`,
-`apiSubDir`, `layout` and `modelBaseUrl` on it, and the pages land under
-`<outputDirectory>/<apiSubDir>`.
+List the copy in `<generators>`, with `<classname>` set to your copy, in place of the packaged
+entry, and `metaobjects:generate` runs it like any other generator (ADR-0034 Amendment 9).
+`outputDir`, `apiSubDir`, `layout`, `projectName` and `modelBaseUrl` are its `<args>`, and the
+pages land under `<outputDir>/<apiSubDir>`. `metaobjects:verify` checks them like code.
 
 **It describes what the packaged generators emit.** The Java reference documents a controller,
 a filter allowlist, a render helper only if the packaged generator that emits it would, which each
