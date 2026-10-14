@@ -10,6 +10,7 @@ namespace MetaObjects.Cli.Tests;
 /// pass `gen` without a word while `verify` rejected the same file with ERR_UNKNOWN_ATTR.
 /// `gen` now names each finding (attribute, node, file) as a warning and keeps its exit code.
 /// </summary>
+[Collection(OwnedRunnerCollection.Name)]
 public sealed class GenUnknownAttrWarningTests : IDisposable
 {
     private readonly string _tmp = Path.Combine(Path.GetTempPath(), "meta-gen-unknown-attr-" + Guid.NewGuid().ToString("N"));
@@ -37,7 +38,7 @@ public sealed class GenUnknownAttrWarningTests : IDisposable
     public void Gen_warns_about_each_unknown_attribute_and_keeps_its_exit_code()
     {
         File.WriteAllText(Path.Combine(MetaDir, "meta.acme.json"), Typos);
-        var run = CliProcess.Run(_tmp, "gen", MetaDir, "--out", OutDir, "--namespace", "Acme", "--generators", "entity");
+        var run = OwnedRunner.Run(_tmp, ["entity"], "gen", MetaDir, "--out", OutDir, "--namespace", "Acme");
         Assert.Equal(0, run.ExitCode);
         Assert.Contains("ERR_UNKNOWN_ATTR", run.Stderr);
         Assert.Contains("isAbstrakt", run.Stderr);

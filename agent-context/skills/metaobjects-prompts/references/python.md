@@ -21,12 +21,16 @@ silently drift.
 
 ## Wire the generators
 
-Select `output-parser` with `entity`, which emits the `@responseRef` value object's
+List `output-parser` with `entity`, which emits the `@responseRef` value object's
 Pydantic model it parses into (ADR-0056 — the template tier declares no copy; `--list`
-marks the parser `(requires: entity)` and a run without `entity` warns):
+marks the parser `(requires: entity)` and a run without `entity` warns), in a target of
+`metaobjects.config.yaml`, the generator list `metaobjects gen` runs:
 
-```bash
-metaobjects gen ./metadata --out ./generated --generators entity,output-parser
+```yaml
+targets:
+  app:
+    outDir: generated
+    generators: [entity, output-parser]
 ```
 
 `metaobjects gen --list` shows every generator name; the programmatic
@@ -72,8 +76,8 @@ For every responding `template.prompt`, the `output-prompt` generator (run via
 `render_output_format()` — the "produce your answer like this" fragment for the
 model:
 
-```bash
-metaobjects gen ./metadata --out ./generated --generators output-prompt
+```yaml
+    generators: [entity, output-parser, output-prompt]   # the same target
 ```
 
 `@promptStyle` on the `template.prompt` (`guide` default / `inline` / `exampleOnly`)

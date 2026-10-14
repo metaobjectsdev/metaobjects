@@ -2,9 +2,10 @@
 SDK-docs contract): one page per entity, value object, projection, served report and
 template, an index, and the agent-facing ``AGENT-API.md`` page.
 
-Run by ``metaobjects docs``, not by ``metaobjects gen``: it carries ``docs_surface``, which
-``gen`` skips. Its files land under the docs output directory, prefixed with the api
-subdirectory the run names (``ctx.docs``).
+An ordinary entry in a target's ``generators`` in ``metaobjects.config.yaml``, run by
+``metaobjects gen`` (ADR-0034 Amendment 9). Its pages land under that target's ``outDir``,
+prefixed with the api subdirectory. Its options are the top-level ``apiDocs`` block
+(``apiSubDir``, ``projectName``, ``modelBaseUrl``), which reaches it through the build context.
 
 The page IR, the builder that decides which units and symbols get a page, the renderer and
 the page-path math live beside this module in ``codegen/runtime/`` and are handed over with
@@ -18,13 +19,9 @@ generators emit under.
 """
 from __future__ import annotations
 
-from metaobjects.codegen.generator import (
-    DOCS_SURFACE_API,
-    DocsRunFacts,
-    EmittedFile,
-    GenContext,
-    Generator,
-)
+from typing import Any
+
+from metaobjects.codegen.generator import DEFAULT_API_SUBDIR, EmittedFile, GenContext, Generator
 
 from ..runtime.api_docs_builder import PythonApiModelBuilder
 from ..runtime.api_docs_paths import Layout, doc_page_output_path, model_cross_href
@@ -35,27 +32,35 @@ class ApiDocsGenerator:
     """Writes the api reference pages for the run's loaded model."""
 
     name = "api-docs"
-    #: Which docs surface this generator takes over (see ``metaobjects docs``).
-    docs_surface = DOCS_SURFACE_API
+
+    def __init__(
+        self,
+        api_subdir: str = DEFAULT_API_SUBDIR,
+        project_name: str = "project",
+        model_base_url: str | None = None,
+    ) -> None:
+        #: Where under the target's ``outDir`` the pages land.
+        self.api_subdir = api_subdir
+        #: The label the pages carry in their header.
+        self.project_name = project_name
+        #: When set, the base URL the model back-links federate to (``None`` = relative links).
+        self.model_base_url = model_base_url
 
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         if ctx.loaded_root is None:
             return []
-        # A docs run supplies the facts. A caller that runs this generator directly, as a
-        # registry-wide probe does, gets the defaults and a neutral project label.
-        facts = ctx.docs or DocsRunFacts()
-        model = PythonApiModelBuilder().build(ctx.loaded_root, facts.project)
+        model = PythonApiModelBuilder().build(ctx.loaded_root, self.project_name)
         renderer = PythonApiDocsRenderer()
         layout = Layout.PACKAGE
 
         def page(path: str, content: str) -> EmittedFile:
-            return EmittedFile(path=f"{facts.api_subdir}/{path}", content=content)
+            return EmittedFile(path=f"{self.api_subdir}/{path}", content=content)
 
         files: list[EmittedFile] = []
         for unit in model.units:
             page_path = doc_page_output_path(layout, unit.package, unit.node)
             href = model_cross_href(
-                f"{facts.api_subdir}/{page_path}", page_path, facts.model_base_url
+                f"{self.api_subdir}/{page_path}", page_path, self.model_base_url
             )
             files.append(page(page_path, renderer.render_unit_page(unit, href)))
         files.append(page("README.md", renderer.render_index(model, layout)))
@@ -63,6 +68,18 @@ class ApiDocsGenerator:
         return files
 
 
-def api_docs_generator() -> Generator:
-    """Generator factory: the api reference ``metaobjects docs`` writes."""
-    return ApiDocsGenerator()
+def api_docs_generator(ctx: Any) -> Generator:
+    """The registry's ``source=``, and so the symbol an ejected copy is wired by.
+
+    It takes the build context (one required positional parameter, which is what
+    ``eject.build_owned`` passes the context to) and reads the ``apiDocs`` config block the
+    context carries. With no block the defaults apply.
+    """
+    options = getattr(ctx, "api_docs", None)
+    if options is None:
+        return ApiDocsGenerator()
+    return ApiDocsGenerator(
+        api_subdir=options.api_subdir,
+        project_name=options.project_name,
+        model_base_url=options.model_base_url,
+    )

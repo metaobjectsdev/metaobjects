@@ -110,27 +110,38 @@ for a worked example.
 
 The `metaobjects` console-script (installed by `pip install metaobjects`) runs
 codegen and the drift gate — there is no `python -m metaobjects.codegen`
-module entry point:
+module entry point. What it generates is the list in `metaobjects.config.yaml`
+(ADR-0034 Amendment 9): each target names its `outDir` and the generators that write
+into it, documentation included, and nothing else is generated.
 
-```bash
-metaobjects gen ./metaobjects --out ./generated \
-  --generators entity,names,filter-allowlist,routes       # codegen → write
-metaobjects verify ./metaobjects --out ./generated \
-  --generators entity,names,filter-allowlist,routes       # drift gate; bare verify means --codegen
+```yaml
+# metaobjects.config.yaml
+metadata: metaobjects
+targets:
+  app:
+    outDir: generated
+    generators: [entity, names, filter-allowlist, routes]
 ```
 
-Codegen is opt-in, so both commands name the generators. `verify` regenerates exactly
-the suite you name and compares, so pass it the same list `gen` ran. With no
-`--generators`, `gen` writes nothing and `verify` reports that there is nothing to
-check and exits 0: in CI that is a gate that checks nothing. `routes` needs `entity`
-and `filter-allowlist` beside it (the router imports both), and `metaobjects gen`
-warns when one is missing.
+```bash
+metaobjects gen       # runs every target's generators into its outDir
+metaobjects verify    # drift gate; bare verify means --codegen, which regenerates the same list
+```
 
-For multi-target projects (several `outDir`s, per-target generator/entity
-selection, config-relative provider resolution), `metaobjects gen`/`verify` also
-read a declarative [`metaobjects.config.yaml`](../features/cli.md) (#267) — run
-either with no positional `<metadata_dir>` to use it; the flag path above stays
-byte-identical.
+`verify --codegen` regenerates exactly the list `gen` runs and compares, so the two can
+never disagree about what was generated. A target whose `generators` is empty writes
+nothing and says so. With no `metaobjects.config.yaml` at all, `gen` and `verify --codegen`
+fail with exit 2 and write nothing: there is no list to run. `routes` needs `entity` and
+`filter-allowlist` beside it (the router imports both), and `metaobjects gen` warns when one
+is missing.
+
+The 1.0 form `metaobjects gen <metadata_dir> --out <dir> --generators <names>` is not read:
+the metadata directory is `metadata` and each output directory is a target's `outDir`.
+`--generators <names>` now narrows a run to the declared entries named and never adds one
+(naming one no target declares is refused); `--target <name>` runs one target;
+`--entities`, `--column-naming`, `--provider`, `--templates`, `--baseline` and `--config`
+work as before. See [the migration section](../features/migrations/docs-are-generators.md#python)
+and the [config reference](../features/cli.md).
 
 ### Reports
 
@@ -149,15 +160,18 @@ report with no view source, or an abstract one, generates nothing. The contract 
 
 ### Taking one tier and not the rest
 
-`--generators <csv>` selects exactly the named generators from the available
-catalog (`--list` names all of them). This is the answer for a project that wants
+A target lists exactly the generators it runs, from the catalog (`--list` names all of
+them). This is the answer for a project that wants
 one tier without adopting the others — most often a **schema-only adopter** whose
 tables come from `meta migrate` and whose application code is not generated at all,
 but which still has physical table and column names hard-coded across its data
 layer:
 
-```bash
-metaobjects gen ./metaobjects --out ./generated --generators names
+```yaml
+targets:
+  names:
+    outDir: generated
+    generators: [names]
 ```
 
 It emits one `<entity>_names.py` per object and nothing else. Each carries
@@ -249,11 +263,11 @@ out. Serve the app with `uvicorn my_app.main:app --reload` (`pip install uvicorn
 
 ### `<entity>_names.py` — the physical names, as constants
 
-The `names` generator is opt-in — select it with `--generators names` on
-`metaobjects gen` (`--list` names the whole catalog). Selecting a generator is not
+The `names` generator is opt-in — list `names` in a target's `generators` in
+`metaobjects.config.yaml` (`metaobjects gen --list` names the whole catalog). Listing a generator is not
 owning it: to change what `names` emits, `metaobjects eject names` copies its source
 into `codegen/generators/` ([Own your codegen → Python](../features/own-your-codegen.md#python-metaobjects-eject)).
-When selected, a project gets `<entity>_names.py`. The module
+When listed, a project gets `<entity>_names.py`. The module
 mirrors the metadata that declared it: every node it describes — the object,
 each `source.rdb` child, each `identity.*` and `index.*` child — carries its
 own `_TYPE`, `_SUB_TYPE` and `_NAME`, and a source's physical name sits under
@@ -395,8 +409,8 @@ live requirement, a link above the floor, a live policy applied to nothing) exit
 `--require-implementers` (or `META_REQUIRE_IMPLEMENTERS=1`) also fails the run on a live
 functional requirement that nothing implements. Those checks are core and are not
 ejectable. A model with no requirement sees no change. Metadata that does not load is not
-that: `verify` prints the load errors and exits non-zero, also when no generators are
-selected and so no drift gate loaded it.
+that: `verify` prints the load errors and exits non-zero, also when no drift gate ran and so
+none loaded it.
 
 The `requirement-tests` generator is the other half. It is a reference helper and a
 recommended approach, not a contract: `metaobjects eject requirement-tests` copies it, with
@@ -442,9 +456,7 @@ or deleted is simply never called again: nothing reports it, and you delete it b
 | `renderer` | A function taking a `RequirementTestArgs` and returning a `RenderedTest(imports, source)` to replace the text of one test, or `None` to keep the default. Import both types from `metaobjects.codegen.requirement_hooks`, never from an ejected copy of the generator. |
 | `warnUncovered` | `true` (default): one warning naming up to five requirements the filter left out. |
 
-The block is read in config mode. The flag-only form
-(`metaobjects gen ./metaobjects --out ./tests/generated --generators requirement-tests`)
-runs the generator with its defaults. A `filter` or `renderer` whose module raises on
+With no `requirementTests` block the generator runs with its defaults. A `filter` or `renderer` whose module raises on
 import is reported with the real cause. Both hooks, like a `providers` entry, are found
 relative to the config file's directory, with no `PYTHONPATH=`. They differ in how they are
 imported: a provider is imported with plain `importlib`, and a hook goes through the resolver
@@ -456,18 +468,22 @@ package that loses its last requirement leaves its file behind: `gen` does not r
 `verify` lists it as `extra:`, and you delete it. The model and the other ports' spelling are in
 [Generated requirement tests and witnesses](../features/requirements.md#generated-requirement-tests-and-witnesses).
 
-### Declarative template-codegen (`--template-spec`)
+### Declarative template-codegen (`templateSpec`)
 
-Beyond the built-in Pydantic/FastAPI suite, the `metaobjects gen` console-script
-runs **declarative Mustache template generators** from a JSON template-spec — the
-cross-port contract shared with the C# port (see
+Beyond the built-in Pydantic/FastAPI suite, `metaobjects gen` runs **declarative Mustache
+template generators** from a JSON template-spec — the cross-port contract shared with the
+C# port (see
 [`docs/features/codegen-concepts.md`](../features/codegen-concepts.md#declarative-template-scopes)
 and the neutral data dict in
-[`docs/features/codegen-data-shapes.md`](../features/codegen-data-shapes.md)):
+[`docs/features/codegen-data-shapes.md`](../features/codegen-data-shapes.md)). The spec is
+declared on the target its output belongs in, like any other entry:
 
-```bash
-metaobjects gen ./metaobjects --out ./generated \
-  --template-spec ./template-spec.json --templates ./templates
+```yaml
+# metaobjects.config.yaml
+targets:
+  docs:
+    outDir: generated
+    templateSpec: template-spec.json     # relative to this file
 ```
 
 ```jsonc
@@ -481,38 +497,28 @@ metaobjects gen ./metaobjects --out ./generated \
 ]}
 ```
 
-**The spec is auto-discovered.** Omit `--template-spec` and the CLI reads
-`<projectRoot>/template-spec.json`, where projectRoot is the metadata dir's **parent** —
-the same anchor `.metaobjects/` uses. The flag overrides it.
-
-Prefer the conventional path over the flag, because **`verify --codegen` accepts no
-`--template-spec`**: discovery is how the drift gate learns your template generators exist.
-A spec reachable only by flag leaves `verify` regenerating a different generator list from
-`gen` and reporting your committed template output as stale.
-
 ```bash
-metaobjects gen ./metaobjects --out ./generated --templates ./templates
-metaobjects verify --codegen ./metaobjects --out ./generated --templates-root ./templates
-#   ^ both resolve <projectRoot>/template-spec.json — the gate agrees with the generator
+metaobjects gen --templates ./templates
+metaobjects verify --codegen --prompts ./templates
+#   ^ both read the target's templateSpec — the gate regenerates what gen wrote
 ```
 
 (`gen` spells the templates dir `--templates`; on `verify` that name is the *subverb*, so
-the directory flag there is `--templates-root`.)
+the directory flag there is `--prompts`, with `--templates-root` its deprecated alias.)
 
-`--template-spec` is **refused in declarative-config mode** (`metaobjects.config.yaml`,
-no positional metadata dir) rather than silently ignored: a spec entry names no `target`
-while config mode writes per target, so there is no outDir to render into. A *discovered*
-spec is ignored there rather than refused.
+The `--template-spec` flag and the 1.0 discovery of `<projectRoot>/template-spec.json` are
+not read: a spec is part of the list only where a target declares it, so `gen` and
+`verify --codegen` always agree about it.
 
 Each spec entry derives the neutral template data dict for its scope and names
 each file via the `outputPattern` placeholders (`{name}`, `{Name}`, `{package}`).
-The named generators are **appended** to the `--generators` selection (there is no
-default suite) and gated byte-identical
-against the shared `fixtures/template-codegen-conformance/` corpus. Output is
-format-agnostic (text/markdown/csv/json/xml/html), so the template-spec pass emits
-no `__init__.py` into its tree. A `target` field is rejected (the Python port has
-no output-target concept); for output to be regenerable, the **template** must emit
-the `@generated` header itself (the write path refuses to overwrite files lacking
+The named generators run after the target's `generators`, into the same `outDir`, and
+`--generators <name>` narrows to them by their spec `name` like any declared entry. They
+are gated byte-identical against the shared `fixtures/template-codegen-conformance/`
+corpus. Output is format-agnostic (text/markdown/csv/json/xml/html), so the template-spec
+pass emits no `__init__.py` into its tree. A `target` field inside the spec is rejected (the
+spec's target is the one that declares it); for output to be regenerable, the **template**
+must emit the `@generated` header itself (the write path refuses to overwrite files lacking
 it).
 
 ### Universal browser-client hookup (React / Angular 18)
@@ -667,8 +673,8 @@ field mapping, extract delegate, extract schema and format-spec writers), copied
 `codegen/runtime/` and read from there, so the copy owns the code that writes the file and
 not a shell around the package's. The naming and type-mapping tables, the model walks and
 the generator base stay in the package as the engine. `metaobjects eject api-docs` does the
-same for the api reference `metaobjects docs` writes: the copy is wired under
-`docs.generators` in `metaobjects.config.yaml`, never in a target's `generators`.
+same for the api reference: the copy replaces `api-docs` in the `generators` of the target
+that writes the docs, like any other owned copy.
 
 Ejecting `routes` also hands over the helper runtime the generated routers call:
 `filter_parser` and `constraint_errors` are copied into `codegen/runtime/`, and the owned
@@ -684,15 +690,22 @@ and `ObjectManager`. A project that has not ejected `routes` keeps importing
 
 Every template-tier generator that imports a model (`output-parser`, `extractor`,
 `render-helper`) needs `entity` in the same run: `metaobjects gen --list` marks them
-`(requires: entity)`, and `--generators` warns when `entity` is missing.
+`(requires: entity)`, and `gen` warns when a target lists one without `entity`.
 
 `render-helper` additionally needs an on-disk template root for its build-time drift
-gate, and takes it from **`--templates <dir>`** — the same flag the `--template-spec`
-pass uses. Pass it whenever `render-helper` is in the selection:
+gate, and takes it from **`--templates <dir>`** — the same flag a target's `templateSpec`
+resolves its template refs under. Pass it whenever a target lists `render-helper`:
+
+```yaml
+# metaobjects.config.yaml
+targets:
+  app:
+    outDir: src/app/generated
+    generators: [entity, render-helper]
+```
 
 ```
-metaobjects gen metaobjects/ --out src/app/generated \
-  --generators entity,render-helper --templates prompts
+metaobjects gen --templates prompts
 ```
 
 Omit it and the root is `prompts/` when that directory exists, else `templates/` — the
@@ -806,9 +819,10 @@ import lines are stable.
 | Templates + render (FR-004) | Yes (`metaobjects.render`) |
 | Payload-VO codegen | Yes — the `entity` generator's model for each value object IS the payload type (ADR-0056); no separate payload generator |
 | Output parser codegen (FR-006) | Yes (`output_parser_generator` — Pydantic throw-only; imports the `@responseRef` value object's model) |
-| Declarative template-codegen | Yes — `metaobjects gen --template-spec` (scope perEntity/perPackage/perModel + outputPattern; the cross-port JSON contract shared with C#) |
+| Declarative template-codegen | Yes — a target's `templateSpec` in `metaobjects.config.yaml` (scope perEntity/perPackage/perModel + outputPattern; the cross-port JSON contract shared with C#) |
 | Migrations | TS-only by design (ADR-0015) — no Python `migrate` command; consume the canonical `schema.postgres.sql` |
-| Drift verify | Yes — template / payload drift (`metaobjects.render.verify`) |
+| Drift verify | Yes — template / payload drift (`metaobjects.render.verify`); `verify --codegen` regenerates the config's list and diffs each target's `outDir` |
+| API reference docs | Yes — `api-docs` in a target's `generators`, options in the top-level `apiDocs` block (`apiSubDir`, `projectName`, `modelBaseUrl`); `metaobjects docs` was removed in 1.1.0 ([migration](../features/migrations/docs-are-generators.md#python)) |
 | Requirement gate + requirement tests | Yes (`metaobjects verify`, on every run; `requirement-tests` emits pytest and is ejectable) |
 | Runtime metadata | Yes (`metaobjects.runtime.ObjectManager` — DB-API 2 driver, pg8000/psycopg) + loader API + render engine |
 

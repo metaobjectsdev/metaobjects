@@ -115,7 +115,16 @@ public class ReportingInertTests
         (EntityGeneratorName, RowFile),
         (FilterAllowlistGeneratorName, AllowlistFile),
         (RoutesGeneratorName, RoutesFile),
+        // api-docs is an entry `gen` runs (ADR-0034 Amendment 9), so the served report's one api
+        // page arrives through the runner too; Api_docs_add_one_page_for_the_served_report_and_change_nothing_else
+        // pins its content.
+        (ApiDocsGeneratorName, ApiDocsReportPage),
     ];
+
+    private const string ApiDocsGeneratorName = "api-docs";
+    private const string ApiDocsReportPage = "api/csharp/acme/shop/StoreTotals.md";
+    /// <summary>The index and the agent page, which gain lines for a served report and lose none.</summary>
+    private static readonly string[] ApiDocsSharedPages = ["api/csharp/README.md", "api/csharp/AGENT-API.md"];
 
     // Every derived field is filterable: a count and a sum of a currency take the ordered band.
     private const string ExpectedAllowlist =
@@ -241,6 +250,13 @@ public class ReportingInertTests
                 Assert.Equal(ExpectedDbContextLines, AddedLines(content, actual[path]));
                 continue;
             }
+            if (ApiDocsSharedPages.Contains(path) && selection.Contains(ApiDocsGeneratorName))
+            {
+                var added = AddedLines(content, actual[path]);
+                Assert.NotEmpty(added);
+                Assert.DoesNotContain(added, l => SourcelessReports.Any(r => l.Contains(r, StringComparison.Ordinal)));
+                continue;
+            }
             Assert.True(content == actual[path], $"{path} differs once reporting nodes are declared");
         }
     }
@@ -295,7 +311,7 @@ public class ReportingInertTests
         // The view-backed report: its row, its allowlist and its routes file; nothing in the
         // names tier.
         Assert.Equal(
-            [RowFile, AllowlistFile, RoutesFile],
+            [RowFile, AllowlistFile, RoutesFile, ApiDocsReportPage],
             files.Keys.Where(k => k.Contains("StoreTotals", StringComparison.Ordinal)).ToList());
         // A sourceless report: no file at all, and no mention in any file.
         foreach (var sourceless in SourcelessReports)
@@ -303,15 +319,18 @@ public class ReportingInertTests
             Assert.DoesNotContain(files.Keys, k => k.Contains(sourceless, StringComparison.Ordinal));
             Assert.DoesNotContain(files.Values, c => c.Contains(sourceless, StringComparison.Ordinal));
         }
-        // Outside those three and the DbContext, no generated file mentions the report.
+        // Outside those three, the DbContext and the api reference, no generated file mentions the report.
         var mentions = files.Where(f => f.Value.Contains("StoreTotals", StringComparison.Ordinal))
             .Select(f => f.Key).OrderBy(k => k, StringComparer.Ordinal).ToList();
-        Assert.Equal([DbContextFile, RowFile, AllowlistFile, RoutesFile], mentions);
+        Assert.Equal(
+            ((string[])[DbContextFile, RowFile, AllowlistFile, RoutesFile, ApiDocsReportPage, .. ApiDocsSharedPages])
+                .OrderBy(k => k, StringComparer.Ordinal).ToList(),
+            mentions);
     }
 
     /// <summary>
-    /// The api docs surface (`dotnet meta docs`): every unit page, the index and the agent
-    /// page, rendered exactly as DocsCommand renders them. A served report is one unit; a
+    /// The api docs surface (the `api-docs` entry): every unit page, the index and the agent
+    /// page, rendered exactly as ApiDocsGenerator renders them. A served report is one unit; a
     /// sourceless report has no generated API to document and gets none.
     /// </summary>
     private static SortedDictionary<string, string> ApiDocs(MetaRoot root)

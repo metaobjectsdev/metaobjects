@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from metaobjects.cli import main
+from tests.codegen.config_helpers import as_config
 
 TYPO_YAML = """
 metadata:
@@ -42,7 +43,7 @@ def _meta(tmp_path: Path, text: str) -> str:
 
 def test_gen_warns_on_each_unknown_attribute_and_keeps_exit_code(tmp_path: Path, capsys) -> None:
     meta_dir = _meta(tmp_path, TYPO_YAML)
-    rc = main(["gen", "--generators", "entity", meta_dir, "--out", str(tmp_path / "out")])
+    rc = main(as_config(["gen", "--generators", "entity", meta_dir, "--out", str(tmp_path / "out")]))
     assert rc == 0
     err = capsys.readouterr().err
     assert "ERR_UNKNOWN_ATTR" in err
@@ -65,6 +66,6 @@ def test_gen_config_mode_warns_too(tmp_path: Path, capsys) -> None:
 
 def test_gen_clean_model_prints_no_unknown_attr_warning(tmp_path: Path, capsys) -> None:
     meta_dir = _meta(tmp_path, CLEAN_YAML)
-    rc = main(["gen", "--generators", "entity", meta_dir, "--out", str(tmp_path / "out")])
+    rc = main(as_config(["gen", "--generators", "entity", meta_dir, "--out", str(tmp_path / "out")]))
     assert rc == 0
     assert "ERR_UNKNOWN_ATTR" not in capsys.readouterr().err

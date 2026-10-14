@@ -76,17 +76,30 @@ public static class CodegenDrift
     /// this port has no default set (see GenCommand.NoGeneratorsSelected).</param>
     public static Result Compute(GenConfig config, MetaRoot root, IReadOnlyList<IGenerator> generators)
     {
-        var committed = Path.GetFullPath(config.OutDir);
+        // Every directory the list writes into: the run's --out, then each entry's own
+        // OutDir (ADR-0034 Amendment 9 — the api reference has one), each compared whole.
+        // `label` is how a drifted file is reported: --out-relative for the run's own
+        // directory, prefixed with the entry's OutDir as written for the others.
+        var realRootFor = CodegenRunner.OutRootFor(config);
+        var roots = new List<(string Committed, string Label)> { (Path.GetFullPath(config.OutDir), "") };
+        foreach (var g in generators)
+        {
+            var dir = Path.GetFullPath(realRootFor(g));
+            if (roots.All(r => r.Committed != dir))
+                roots.Add((dir, g.OutDir!.TrimEnd('/', '\\') + "/"));
+        }
 
         // Nothing to diff against → a usage/configuration problem (exit 2 at the
         // CLI), not a drift result. Mirrors the TS "no outDir configured" branch.
-        if (!Directory.Exists(committed))
+        foreach (var (committed, label) in roots)
         {
+            if (Directory.Exists(committed)) continue;
+            var shown = label.Length > 0 ? label.TrimEnd('/') : config.OutDir;
             return new Result
             {
                 Clean = false,
                 Error =
-                    $"verify --codegen: no committed generated output at \"{config.OutDir}\" — " +
+                    $"verify --codegen: no committed generated output at \"{shown}\" — " +
                     "cannot locate the output to diff against. Run 'dotnet meta gen' first " +
                     "(or run without --codegen).",
             };
@@ -95,43 +108,19 @@ public static class CodegenDrift
         var tempRoot = Path.Combine(Path.GetTempPath(), "meta-verify-codegen-" + Guid.NewGuid().ToString("N"));
         try
         {
-            // Regenerate the SAME suite into the temp tree. A fresh temp dir means
-            // every file is written (no @generated-marker skip), so the temp tree is
-            // the canonical "what gen would produce right now".
-            var tempConfig = config with { OutDir = tempRoot };
-            CodegenRunner.Run(tempConfig, root, generators);
-
-            var committedFiles = ListFiles(committed);
-            var freshFiles = ListFiles(tempRoot);
+            // Regenerate the SAME suite into the temp tree, each directory into a temp
+            // directory of its own. A fresh temp dir means every file is written (no
+            // @generated-marker skip), so the temp tree is the canonical "what gen would
+            // produce right now".
+            var temps = roots.Select((_, i) => Path.Combine(tempRoot, i.ToString())).ToList();
+            var tempConfig = config with { OutDir = temps[0] };
+            CodegenRunner.Run(tempConfig, root, generators,
+                g => temps[roots.FindIndex(r => r.Committed == Path.GetFullPath(realRootFor(g)))]);
 
             var drifted = new SortedSet<string>(StringComparer.Ordinal);
             var lines = new List<string>();
-
-            foreach (var rel in committedFiles.Union(freshFiles).OrderBy(s => s, StringComparer.Ordinal))
-            {
-                var inCommitted = committedFiles.Contains(rel);
-                var inFresh = freshFiles.Contains(rel);
-                if (inCommitted && !inFresh)
-                {
-                    drifted.Add(rel);
-                    lines.Add($"- {rel} (committed but a fresh regen would not emit it)");
-                }
-                else if (!inCommitted && inFresh)
-                {
-                    drifted.Add(rel);
-                    lines.Add($"+ {rel} (a fresh regen would emit it; not committed — run 'dotnet meta gen')");
-                }
-                else
-                {
-                    var a = File.ReadAllText(Path.Combine(committed, rel));
-                    var b = File.ReadAllText(Path.Combine(tempRoot, rel));
-                    if (!string.Equals(a, b, StringComparison.Ordinal))
-                    {
-                        drifted.Add(rel);
-                        lines.Add($"~ {rel} (committed content differs from a fresh regen)");
-                    }
-                }
-            }
+            for (var i = 0; i < roots.Count; i++)
+                Diff(roots[i].Committed, temps[i], roots[i].Label, drifted, lines);
 
             return new Result
             {
@@ -144,6 +133,39 @@ public static class CodegenDrift
         {
             try { if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true); }
             catch { /* best effort */ }
+        }
+    }
+
+    /// <summary>Compare one committed directory with its fresh regen, adding each difference.</summary>
+    private static void Diff(string committed, string fresh, string label, SortedSet<string> drifted, List<string> lines)
+    {
+        var committedFiles = ListFiles(committed);
+        var freshFiles = ListFiles(fresh);
+        foreach (var rel in committedFiles.Union(freshFiles).OrderBy(s => s, StringComparer.Ordinal))
+        {
+            var shown = label + rel;
+            var inCommitted = committedFiles.Contains(rel);
+            var inFresh = freshFiles.Contains(rel);
+            if (inCommitted && !inFresh)
+            {
+                drifted.Add(shown);
+                lines.Add($"- {shown} (committed but a fresh regen would not emit it)");
+            }
+            else if (!inCommitted && inFresh)
+            {
+                drifted.Add(shown);
+                lines.Add($"+ {shown} (a fresh regen would emit it; not committed — run 'dotnet meta gen')");
+            }
+            else
+            {
+                var a = File.ReadAllText(Path.Combine(committed, rel));
+                var b = File.ReadAllText(Path.Combine(fresh, rel));
+                if (!string.Equals(a, b, StringComparison.Ordinal))
+                {
+                    drifted.Add(shown);
+                    lines.Add($"~ {shown} (committed content differs from a fresh regen)");
+                }
+            }
         }
     }
 

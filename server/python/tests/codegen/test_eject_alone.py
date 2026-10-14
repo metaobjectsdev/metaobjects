@@ -29,7 +29,6 @@ import shutil
 import subprocess
 import sys
 import warnings
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -91,9 +90,9 @@ _PROMPTS = {
 }
 
 
-def _model_project(root: Path, generators: str, docs: str = "") -> Path:
+def _model_project(root: Path, generators: str) -> Path:
     """A project over every metadata shape the ejectable generators read, with one target
-    that runs *generators* (and, when given, a ``docs.generators`` block)."""
+    that runs *generators*."""
     meta = root / "metaobjects"
     meta.mkdir(parents=True)
     canonical = FIXTURES / "persistence-conformance" / "canonical" / "meta.fitness.json"
@@ -109,8 +108,6 @@ def _model_project(root: Path, generators: str, docs: str = "") -> Path:
     for doc in shop.iterdir():
         (meta / doc.name).write_text(doc.read_text(encoding="utf-8"), encoding="utf-8")
     config = f"libraries: [ai]\ntargets:\n  main:\n    outDir: gen\n    generators: [{generators}]\n"
-    if docs:
-        config += f"docs:\n  generators: [{docs}]\n"
     (root / "metaobjects.config.yaml").write_text(config, encoding="utf-8")
     return root
 
@@ -155,27 +152,29 @@ def _packaged_modules() -> list[str]:
                   | {e.source_module for e in owned.ejectable() if e.source_module})
 
 
-def _lines(text: str) -> Counter[str]:
-    return Counter(ln for ln in text.splitlines() if ln.strip())
+def _import_line(line: str) -> bool:
+    return line.startswith(("import ", "from "))
+
+
+def _shape(text: str) -> tuple[list[str], list[str]]:
+    """A module as (its import lines, sorted; every other line, IN ORDER). Import sorting moves
+    the now-relative imports of an owned router, so only their set is compared; everything
+    else must match line for line, so a reordered body still fails."""
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    return sorted(ln for ln in lines if _import_line(ln)), [ln for ln in lines if not _import_line(ln)]
 
 
 @pytest.mark.parametrize("name", EJECTABLE)
 def test_an_ejected_generator_writes_what_the_packaged_one_writes(name: str, tmp_path: Path) -> None:
     entry = GENERATOR_REGISTRY[name]
-    docs = entry.docs_surface is not None
-    # The docs label defaults to the directory's name, which differs between the two projects.
-    argv = ["docs", "--out", "docs", "--project", "model"] if docs else ["gen"]
-    out = "docs" if docs else "gen"
+    argv = ["gen"]
+    out = "gen"
 
-    packaged_root = _model_project(tmp_path / "packaged", "" if docs else name)
+    packaged_root = _model_project(tmp_path / "packaged", name)
     packaged = _run(packaged_root, argv, out, block=[])
     assert packaged, f"{name} wrote nothing over the test model, so it proves nothing"
 
-    owned_root = _model_project(
-        tmp_path / "owned",
-        "" if docs else owned.owned_token(entry),
-        owned.owned_token(entry) if docs else "",
-    )
+    owned_root = _model_project(tmp_path / "owned", owned.owned_token(entry))
     assert owned.eject([name], owned_root).code == 0
     mine = _run(owned_root, argv, out, block=_packaged_modules())
 
@@ -189,8 +188,7 @@ def test_an_ejected_generator_writes_what_the_packaged_one_writes(name: str, tmp
         packaged = {k: v.replace("metaobjects.codegen.runtime.", "._runtime.")
                     for k, v in packaged.items()}
         assert set(mine) == set(packaged)
-        # Import sorting moves the now-relative imports, so compare lines, not positions.
-        assert {k: _lines(v) for k, v in mine.items()} == {k: _lines(v) for k, v in packaged.items()}
+        assert {k: _shape(v) for k, v in mine.items()} == {k: _shape(v) for k, v in packaged.items()}
     else:
         assert mine == packaged
 
@@ -210,7 +208,7 @@ def _is_deprecated_alias(module: str) -> bool:
     """A module that moved into ``runtime/`` leaves an alias at its old path: importing the
     old name returns the module at the new one."""
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
+        warnings.simplefilter("ignore", FutureWarning)
         return importlib.import_module(module).__name__ != module
 
 

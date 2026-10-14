@@ -1,10 +1,12 @@
-"""`api-docs` is a generator `metaobjects docs` runs, and a project can own it.
+"""`api-docs` is an ordinary entry in the generator list, and a project can own it.
 
-An owned copy is listed under ``docs.generators`` in ``metaobjects.config.yaml`` and ``docs``
-runs it in place of the packaged one. ``gen`` never runs a docs generator: it skips one found
-under a target and says so. What the reference documents comes from the same
-``shared_predicates`` module the owned ``routes`` and ``filter-allowlist`` read, so an edit
-to the owned predicate moves the router, the allowlist and the reference together.
+Since 1.1.0 (ADR-0034 Amendment 9) ``metaobjects gen`` runs ``api-docs`` like every other
+entry: it is listed in a target's ``generators``, its pages land under that target's ``outDir``,
+and its options are the top-level ``apiDocs`` block. An owned copy is listed in its place, as
+any owned generator is. There is no ``docs`` command and no ``docs.generators`` block. What
+the reference documents comes from the same ``shared_predicates`` module the owned ``routes``
+and ``filter-allowlist`` read, so an edit to the owned predicate moves the router, the
+allowlist and the reference together.
 """
 from __future__ import annotations
 
@@ -13,20 +15,28 @@ from pathlib import Path
 
 import pytest
 
-from metaobjects.cli import main
+from metaobjects.cli import DOCS_COMMAND_REMOVED, legacy_docs_message, main
 from metaobjects.codegen.project_config import ConfigError, load_project_config
 
 REPO = Path(__file__).parents[4]
 FITNESS = REPO / "fixtures" / "persistence-conformance" / "canonical" / "meta.fitness.json"
 OWNED_DOCS = "codegen.generators.api_docs:api_docs_generator"
 
+#: The ``apiDocs`` block every project here carries: the 1.0 runs passed ``--project model``.
+API_DOCS = "apiDocs:\n  projectName: model\n"
 
-def _project(root: Path, extra: str = "", generators: str = "entity") -> Path:
+
+def _project(
+    root: Path, extra: str = API_DOCS, generators: str = "entity", docs: str | None = "api-docs",
+) -> Path:
+    """A project with a ``main`` code target and, when *docs* is given, a ``docs`` target
+    whose ``outDir`` is ``docs`` and whose one entry is *docs*."""
     (root / "metaobjects").mkdir(parents=True, exist_ok=True)
     (root / "metaobjects" / FITNESS.name).write_text(FITNESS.read_text(encoding="utf-8"))
     cfg = root / "metaobjects.config.yaml"
+    docs_target = f"  docs:\n    outDir: docs\n    generators: [{docs}]\n" if docs else ""
     cfg.write_text(
-        f"targets:\n  main:\n    outDir: gen\n    generators: [{generators}]\n{extra}",
+        f"{extra}targets:\n  main:\n    outDir: gen\n    generators: [{generators}]\n{docs_target}",
         encoding="utf-8",
     )
     return cfg
@@ -47,9 +57,10 @@ def _forget_owned() -> None:
 
 
 def _docs(root: Path, monkeypatch, *args: str) -> int:
+    """Write only the documentation: ``gen`` narrowed to the ``docs`` target."""
     _forget_owned()
     monkeypatch.chdir(root)
-    return main(["docs", "--out", "docs", "--project", "model", *args])
+    return main(["gen", "--target", "docs", *args])
 
 
 def _pages(root: Path) -> dict[str, str]:
@@ -61,32 +72,35 @@ def _pages(root: Path) -> dict[str, str]:
 # --- config -----------------------------------------------------------------------------
 
 
-def test_the_docs_block_is_read(tmp_path: Path) -> None:
-    cfg = _project(tmp_path, f"docs:\n  generators: [{OWNED_DOCS}]\n")
-    assert load_project_config(cfg).docs_generators == [OWNED_DOCS]
-    assert load_project_config(_project(tmp_path / "plain")).docs_generators == []
+def test_the_api_docs_block_is_read(tmp_path: Path) -> None:
+    cfg = _project(tmp_path, "apiDocs:\n  projectName: model\n  apiSubDir: ref/py\n")
+    api_docs = load_project_config(cfg).api_docs
+    assert api_docs is not None and (api_docs.project_name, api_docs.api_subdir) == ("model", "ref/py")
+    assert load_project_config(_project(tmp_path / "plain", extra="")).api_docs is None
 
 
 @pytest.mark.parametrize("block, message", [
-    ("docs:\n  generators: [api-docs]\n", "module:symbol"),
-    ("docs:\n  generators: nope\n", "list of strings"),
-    ("docs:\n  generator: [a:b]\n", "unknown key"),
-    ("docs: []\n", "must be a mapping"),
+    ("apiDocs:\n  projectName: ''\n", "non-empty string"),
+    ("apiDocs:\n  layout: flat\n", "unknown key"),
+    ("apiDocs: []\n", "must be a mapping"),
 ])
-def test_a_bad_docs_block_is_refused_by_name(tmp_path: Path, block: str, message: str) -> None:
+def test_a_bad_api_docs_block_is_refused_by_name(tmp_path: Path, block: str, message: str) -> None:
     with pytest.raises(ConfigError, match=message):
         load_project_config(_project(tmp_path, block))
 
 
-# --- docs runs the owned copy -----------------------------------------------------------
+# --- gen runs the owned copy ------------------------------------------------------------
 
 
-def test_docs_runs_an_owned_api_docs_in_place_of_the_packaged_one(tmp_path: Path, monkeypatch, capsys) -> None:
-    _project(tmp_path, f"docs:\n  generators: [{OWNED_DOCS}]\n")
+def test_gen_runs_an_owned_api_docs_listed_in_place_of_the_packaged_one(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    _project(tmp_path, docs=OWNED_DOCS)
     monkeypatch.chdir(tmp_path)
     assert main(["eject", "api-docs"]) == 0
     out = capsys.readouterr().out
-    assert "docs.generators" in out and OWNED_DOCS in out and "`gen` never does" in out
+    assert f'replace "api-docs" in `generators` with {OWNED_DOCS}' in out
+    assert "docs.generators" not in out
     assert _docs(tmp_path, monkeypatch) == 0
     owned_pages = _pages(tmp_path)
 
@@ -106,9 +120,10 @@ def test_docs_runs_an_owned_api_docs_in_place_of_the_packaged_one(tmp_path: Path
     assert _pages(tmp_path)["api/python/AGENT-API.md"].startswith("# Owned Agent API Reference")
 
 
-def test_docs_without_a_docs_block_runs_the_packaged_generator_even_when_one_is_owned(
+def test_the_packaged_name_runs_the_packaged_generator_even_when_one_is_owned(
     tmp_path: Path, monkeypatch,
 ) -> None:
+    """What runs is what the list names: ejecting a copy changes nothing until it is listed."""
     _project(tmp_path)
     monkeypatch.chdir(tmp_path)
     assert main(["eject", "api-docs"]) == 0
@@ -119,62 +134,57 @@ def test_docs_without_a_docs_block_runs_the_packaged_generator_even_when_one_is_
     assert _pages(tmp_path)["api/python/AGENT-API.md"].startswith("# Agent API Reference")
 
 
-def test_the_positional_docs_form_reads_no_config(tmp_path: Path, monkeypatch) -> None:
-    _project(tmp_path, f"docs:\n  generators: [{OWNED_DOCS}]\n")
+def test_the_positional_docs_form_is_removed(tmp_path: Path, monkeypatch, capsys) -> None:
+    _project(tmp_path)
     monkeypatch.chdir(tmp_path)
-    assert main(["eject", "api-docs"]) == 0
-    renderer = tmp_path / "codegen" / "runtime" / "api_docs_renderer.py"
-    renderer.write_text(renderer.read_text(encoding="utf-8").replace(
-        "# Agent API Reference", "# Owned Agent API Reference"), encoding="utf-8")
-    assert _docs(tmp_path, monkeypatch, "metaobjects") == 0
-    assert _pages(tmp_path)["api/python/AGENT-API.md"].startswith("# Agent API Reference")
-
-
-def test_a_docs_entry_that_is_not_a_docs_generator_is_refused_by_name(
-    tmp_path: Path, monkeypatch, capsys,
-) -> None:
-    _project(tmp_path, "docs:\n  generators: [codegen.generators.entity:entity_model]\n")
-    monkeypatch.chdir(tmp_path)
-    assert main(["eject", "entity"]) == 0
-    assert _docs(tmp_path, monkeypatch) == 1
-    err = capsys.readouterr().err
-    assert "codegen.generators.entity:entity_model" in err and "not a docs generator" in err
+    assert main(["docs", "metaobjects", "--out", "docs", "--project", "model"]) == 2
+    assert capsys.readouterr().err.strip() == DOCS_COMMAND_REMOVED
     assert not (tmp_path / "docs").exists()
 
 
-def test_two_owned_generators_for_the_api_surface_are_refused(tmp_path: Path, monkeypatch, capsys) -> None:
-    _project(tmp_path, f"docs:\n  generators: [{OWNED_DOCS}, {OWNED_DOCS}]\n")
+def test_a_1_0_docs_generators_block_is_refused_before_anything_is_written(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    """The 1.0 home of an owned api-docs. Nothing reads it in 1.1.0, so a run that kept it
+    would pass while writing no documentation; gen refuses it instead, by its new home."""
+    _project(tmp_path, f"docs:\n  generators: [{OWNED_DOCS}]\n", docs=None)
+    monkeypatch.chdir(tmp_path)
+    assert main(["eject", "api-docs"]) == 0
+    capsys.readouterr()
+    assert main(["gen"]) == 2
+    assert capsys.readouterr().err.strip() == legacy_docs_message("metaobjects gen")
+    assert not (tmp_path / "gen").exists() and not (tmp_path / "docs").exists()
+
+
+def test_two_api_docs_entries_in_one_target_are_refused(tmp_path: Path, monkeypatch, capsys) -> None:
+    """Two entries writing the same pages into one outDir collide, owned or packaged."""
+    _project(tmp_path, docs=f"api-docs, {OWNED_DOCS}")
     monkeypatch.chdir(tmp_path)
     assert main(["eject", "api-docs"]) == 0
     assert _docs(tmp_path, monkeypatch) == 1
-    assert "two generators for the 'api' surface" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "target 'docs'" in err and "collision" in err
 
 
-# --- gen leaves a docs generator out ----------------------------------------------------
+# --- gen runs a docs entry like any other -----------------------------------------------
 
 
-@pytest.mark.parametrize("entry, remedy, not_the_remedy", [
-    ("api-docs", "`metaobjects docs` already runs it, so remove the entry.", "docs.generators"),
-    (OWNED_DOCS, "List it under `docs.generators` in metaobjects.config.yaml", "already runs it"),
-], ids=["packaged", "owned"])
-def test_gen_skips_a_docs_generator_under_a_target_and_says_so(
-    entry: str, remedy: str, not_the_remedy: str, tmp_path: Path, monkeypatch, capsys,
+@pytest.mark.parametrize("entry", ["api-docs", OWNED_DOCS], ids=["packaged", "owned"])
+def test_gen_runs_a_docs_entry_under_a_target_like_any_other(
+    entry: str, tmp_path: Path, monkeypatch, capsys,
 ) -> None:
-    """The packaged name cannot go under ``docs.generators`` (that block takes owned copies
-    only), so the warning sends each kind of entry where it can actually go."""
-    _project(tmp_path, generators=f"entity, {entry}")
+    """Through 1.0 ``gen`` skipped a docs generator under a target. It is an entry now: its
+    pages land under that target's outDir, beside the code, and nothing is skipped."""
+    _project(tmp_path, generators=f"entity, {entry}", docs=None)
     monkeypatch.chdir(tmp_path)
     assert main(["eject", "api-docs"]) == 0
     capsys.readouterr()
     assert main(["gen"]) == 0
-    skipped = [ln for ln in capsys.readouterr().out.splitlines() if "so gen skipped it" in ln]
-    assert len(skipped) == 1
-    assert "warning: 'api-docs' writes the api reference, so gen skipped it" in skipped[0]
-    assert remedy in skipped[0] and not_the_remedy not in skipped[0]
+    assert "skipped" not in capsys.readouterr().out
     written = {p.relative_to(tmp_path / "gen").as_posix() for p in (tmp_path / "gen").rglob("*")
                if p.is_file()}
-    assert written and not any(w.startswith("api/") or w.endswith("AGENT-API.md") for w in written)
-    assert not (tmp_path / "gen" / "api").exists()
+    assert "api/python/AGENT-API.md" in written and "api/python/README.md" in written
+    assert "Program.py" in written
 
 
 # --- the reference describes the code the owned generators emit --------------------------
@@ -184,13 +194,13 @@ def test_one_owned_predicate_moves_the_router_the_allowlist_and_the_reference(
     tmp_path: Path, monkeypatch,
 ) -> None:
     owned = tmp_path / "owned"
-    _project(owned, f"docs:\n  generators: [{OWNED_DOCS}]\n",
+    _project(owned,
              generators="entity, codegen.generators.filter_allowlist:filter_allowlist_generator, "
-                        "codegen.generators.routes:router_generator")
+                        "codegen.generators.routes:router_generator",
+             docs=OWNED_DOCS)
     monkeypatch.chdir(owned)
     assert main(["eject", "api-docs", "filter-allowlist", "routes"]) == 0
     assert main(["gen"]) == 0
-    assert _docs(owned, monkeypatch) == 0
     before = _pages(owned)
     assert any(f.name == "post_router.py" for f in (owned / "gen").glob("*_router.py"))
     assert any("GET /api/posts" in page for page in before.values())
@@ -203,12 +213,11 @@ def test_one_owned_predicate_moves_the_router_the_allowlist_and_the_reference(
         "    return entity.name != 'Post' and _reference_emits_router(entity)\n",
         encoding="utf-8",
     )
-    for stale in (owned / "gen").glob("*"):
+    for stale in [*(owned / "gen").glob("*"), *(owned / "docs").rglob("*")]:
         if stale.is_file():
             stale.unlink()
     _forget_owned()
     assert main(["gen"]) == 0
-    assert _docs(owned, monkeypatch) == 0
     after = _pages(owned)
     assert not any(f.name == "post_router.py" for f in (owned / "gen").glob("*_router.py"))
     assert not any(f.name == "post_filter_allowlist.py" for f in (owned / "gen").glob("*.py"))

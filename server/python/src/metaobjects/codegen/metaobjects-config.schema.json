@@ -55,16 +55,14 @@
         }
       }
     },
-    "docs": {
+    "apiDocs": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Options of `metaobjects docs`.",
+      "description": "Options of the `api-docs` generator. Its pages land under the `outDir` of the target whose `generators` lists it.",
       "properties": {
-        "generators": {
-          "type": "array",
-          "items": { "type": "string", "pattern": "^[^:\\s]+:[^:\\s]+$" },
-          "description": "Owned docs generators as 'module:symbol' (`metaobjects eject api-docs` prints the entry), resolved relative to this config file's directory. `metaobjects docs` runs one in place of the packaged generator for the surface it takes over; `gen` never runs it."
-        }
+        "apiSubDir": { "type": "string", "minLength": 1, "default": "api/python", "description": "Where under the target's outDir the api reference lands." },
+        "projectName": { "type": "string", "minLength": 1, "default": "project", "description": "The label the pages carry in their header." },
+        "modelBaseUrl": { "type": "string", "minLength": 1, "description": "When set, the base URL the model pages' back-links federate to; relative links otherwise." }
       }
     },
     "targets": {
@@ -89,6 +87,11 @@
             "type": "array",
             "items": { "type": "string" },
             "description": "Entity-name allowlist. Omit to emit every entity."
+          },
+          "templateSpec": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A declarative template-spec JSON file (SP-1), relative to this config file. Its generators write into this target's outDir; template refs resolve under `--templates`."
           }
         }
       }

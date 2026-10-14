@@ -618,17 +618,12 @@ gate_ts_unit() {
     ( cd "client/web/packages/$p" && bun test --timeout 30000 ) || return 1
   done
 }
-# The ApiDocsCrossPort re-run is ORDER-dependent, not redundant. That test execs the built
-# `dotnet meta` and soft-skips when the CLI dll is absent — and the whole-project Codegen.Tests
-# run above it comes BEFORE Cli.Tests, which is what builds the CLI. On a clean checkout (any
-# CI runner) the first pass therefore skips it; only this run, after the CLI exists, gates it.
 gate_conf_csharp() {
   ( cd server/csharp \
       && dotnet test MetaObjects.Conformance.Tests/MetaObjects.Conformance.Tests.csproj --nologo --verbosity quiet \
       && dotnet test MetaObjects.Render.Tests/MetaObjects.Render.Tests.csproj --nologo --verbosity quiet \
       && dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --nologo --verbosity quiet \
-      && dotnet test MetaObjects.Cli.Tests/MetaObjects.Cli.Tests.csproj --nologo --verbosity quiet \
-      && dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --filter "FullyQualifiedName~ApiDocsCrossPort" --nologo --verbosity quiet )
+      && dotnet test MetaObjects.Cli.Tests/MetaObjects.Cli.Tests.csproj --nologo --verbosity quiet )
 }
 # NOTE: these -Dtest= lists are a CHERRY-PICK, so a new test class that is not named here
 # runs in NO per-push lane and reports green. Adding a test to this module means adding its

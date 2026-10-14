@@ -1,8 +1,8 @@
 // `dotnet meta eject <name>...` — ADR-0034 Amendment 3 / the eject design doc's C#
 // section. Copies a reference generator's embedded source into the adopter's own
-// codegen/generators/ to own, and — on first use — scaffolds the codegen/ console
-// project (Codegen.csproj + Program.cs) that `dotnet meta gen` / `dotnet meta verify
-// --codegen` hand off to (see Program.cs's RunGen/RunVerify). Mirrors the TypeScript
+// codegen/generators/ to own, and — when missing — scaffolds the codegen/ console
+// project (Codegen.csproj + Program.cs + the generator list, Generators.cs) that `dotnet
+// meta gen` / `dotnet meta verify --codegen` run (see Program.cs's RunGen/RunVerify). Mirrors the TypeScript
 // `meta eject` / Python `metaobjects eject` contract:
 //   - the copy is verbatim, modulo the namespace edits RewriteForEject makes (the rename
 //     forced by ejecting into a COMPILED adopter assembly — see its doc comment);
@@ -17,10 +17,10 @@
 //   - an existing copy is NEVER overwritten without --force;
 //   - every name is validated BEFORE anything is written (a partial eject — some names
 //     copied, one refused — is worse than refusing the whole call);
-//   - the scaffold (Codegen.csproj / Program.cs) is written ONLY when missing, and is
-//     NEVER touched again by a later eject, --force included: once it exists it is the
-//     adopter's owned config, exactly like metaobjects.config.ts on the TS side, and
-//     eject REPORTS what to wire rather than editing it;
+//   - the scaffold (Codegen.csproj / Program.cs / Generators.cs, see CodegenScaffold) is
+//     written file by file, ONLY when missing, and is NEVER touched again by a later eject,
+//     --force included: once it exists it is the adopter's owned config, exactly like
+//     metaobjects.config.ts on the TS side, and eject REPORTS what to wire rather than editing it;
 //   - the sources eject writes are the TOOL's version's, and an existing Codegen.csproj may pin
 //     an older MetaObjects.Codegen they do not compile against, so eject WARNS when the pin is
 //     older than the tool and names the line to change (it still never edits the file).
@@ -44,27 +44,6 @@ public static class EjectCommand
     /// <summary>Every ejectable stable name, in registry order.</summary>
     public static IReadOnlyList<string> EjectableNames() =>
         EjectableGenerators.Entries().Select(e => e.Name).ToList();
-
-    private const string CsprojContent =
-        """
-        <Project Sdk="Microsoft.NET.Sdk">
-          <PropertyGroup>
-            <OutputType>Exe</OutputType>
-            <TargetFramework>net8.0</TargetFramework>
-            <ImplicitUsings>enable</ImplicitUsings>
-            <Nullable>enable</Nullable>
-          </PropertyGroup>
-          <ItemGroup>
-            <PackageReference Include="MetaObjects.Codegen" Version="{VERSION}" />
-          </ItemGroup>
-          <!-- runtime/ is the helper runtime your GENERATED code compiles with (your app
-               project includes it); it is not part of this codegen tool. -->
-          <ItemGroup>
-            <Compile Remove="runtime/**" />
-          </ItemGroup>
-        </Project>
-
-        """;
 
     /// <summary>The MetaObjects.Cli tool's own version — the version `dotnet meta eject`
     /// pins the scaffolded Codegen.csproj's <c>MetaObjects.Codegen</c> PackageReference
@@ -173,33 +152,6 @@ public static class EjectCommand
             : ["", warning + "."];
     }
 
-    private static string ProgramCsContent(IEnumerable<string> classNames)
-    {
-        var news = string.Join("\n", classNames.Select(c => $"    new {c}(),"));
-        return
-            "// Your owned codegen entry point (ADR-0034 scaffold-and-own). `dotnet meta " +
-            "eject` created\n" +
-            "// this file once; nothing regenerates it. `dotnet meta gen` / `dotnet meta " +
-            "verify --codegen`\n" +
-            "// hand off here automatically because codegen/Codegen.csproj exists — see " +
-            "MetaObjects.Codegen.\n" +
-            "// CodegenCli.Run for what it does with the forwarded arguments.\n" +
-            "//\n" +
-            "// Add a `new <Name>Generator()` for every generator you eject (`dotnet meta " +
-            "eject <name>`);\n" +
-            "// remove one to stop running it. This list is yours to edit — eject never " +
-            "touches it again.\n" +
-            "using Codegen.Generators;\n" +
-            "using MetaObjects.Codegen;\n" +
-            "\n" +
-            "IReadOnlyList<IGenerator> generators =\n" +
-            "[\n" +
-            news + "\n" +
-            "];\n" +
-            "\n" +
-            "return CodegenCli.Run(args, generators);\n";
-    }
-
     /// <summary>The C# class name a stable registry name's ejected file declares —
     /// derived from its SourceFileName (<c>EntityGenerator.cs</c> → <c>EntityGenerator</c>),
     /// never re-derived from the stable name (which would drift from the real class the
@@ -265,31 +217,33 @@ public static class EjectCommand
             "The copies are yours: edit them freely. `dotnet meta gen --list` reports how far " +
             "an owned copy has drifted from the reference.");
 
-        var codegenDir = Path.Combine(root, "codegen");
-        var csprojPath = Path.Combine(codegenDir, "Codegen.csproj");
-        var programPath = Path.Combine(codegenDir, "Program.cs");
-        if (!File.Exists(csprojPath) && !File.Exists(programPath))
+        // The codegen project (ADR-0034 Amendment 9): each of its three files is written only when
+        // missing, the list with the generators just ejected. An existing file is the project's own.
+        var csprojPath = Path.Combine(root, "codegen", "Codegen.csproj");
+        var csprojExisted = File.Exists(csprojPath);
+        var entries = names.Select(n => $"new Codegen.Generators.{ClassNameFor(known[n])}()").ToList();
+        var scaffolded = CodegenScaffold.WriteMissing(root, entries);
+        if (scaffolded.Count > 0)
         {
-            File.WriteAllText(csprojPath, CsprojContent.Replace("{VERSION}", ToolVersion()));
-            File.WriteAllText(programPath, ProgramCsContent(names.Select(n => ClassNameFor(known[n]))));
             outLines.Add("");
+            outLines.Add($"Also wrote {string.Join(", ", scaffolded)}.");
+        }
+        if (scaffolded.Contains("codegen/Generators.cs"))
+        {
             outLines.Add(
-                "First use — also wrote codegen/Codegen.csproj and codegen/Program.cs, wiring the " +
-                $"generator(s) you just ejected ({string.Join(", ", names.Select(n => $"new {ClassNameFor(known[n])}()"))}). " +
-                "From here, `dotnet meta gen` and `dotnet meta verify --codegen` hand off to " +
-                "`dotnet run --project codegen` automatically.");
+                $"codegen/Generators.cs lists the generator(s) you just ejected ({string.Join(", ", entries)}). " +
+                "`dotnet meta gen` and `dotnet meta verify --codegen` run that list.");
         }
         else
         {
             outLines.Add("");
-            outLines.Add(
-                "codegen/Program.cs already exists and is yours — eject never edits it. Add:");
-            foreach (var name in names)
-                outLines.Add($"  new {ClassNameFor(known[name])}(),");
-            outLines.Add("to the `generators` list there (and remove the packaged import if this " +
-                          "replaces a generator you ran unejected before).");
-            if (File.Exists(csprojPath)) outLines.AddRange(OlderPinWarning(csprojPath));
+            outLines.Add("codegen/Generators.cs already exists and is yours — eject never edits it. Add:");
+            foreach (var entry in entries)
+                outLines.Add($"  {entry},");
+            outLines.Add("to the list there, in place of the packaged entry if it lists one " +
+                          "(MetaObjects.Codegen.Generators.<Name>).");
         }
+        if (csprojExisted) outLines.AddRange(OlderPinWarning(csprojPath));
 
         return new Outcome(0, outLines, []);
     }

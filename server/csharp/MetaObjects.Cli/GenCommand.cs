@@ -1,8 +1,7 @@
-// `dotnet meta gen` — generate idiomatic C# (EF Core) code from metadata.
-//
-// Loads metadata from a directory and runs the codegen generator set, writing
-// files under the @generated-header guard. Generated today: EF Core entity
-// classes + a DbContext. Routes / projections / migrations layer on next.
+// Generate C# from metadata by registry name — a programmatic API. Since ADR-0034
+// Amendment 9 the `dotnet meta gen` command does not come here: it runs the project's own
+// list in codegen/Generators.cs (MetaObjects.Codegen.CodegenCli.Run). This class keeps the
+// name-resolved run for callers that build a selection in code, and the `--list` catalog.
 
 using System.IO;
 using System.Text.Json;
@@ -21,8 +20,8 @@ public static class GenCommand
 
     /// <summary>
     /// The default C# namespace generated code lands in when <c>--namespace</c> is omitted.
-    /// Shared by <c>dotnet meta gen</c> and <c>dotnet meta docs</c> so the documented
-    /// <c>using &lt;ns&gt;;</c> import lines match what an adopter writes against generated code.
+    /// The api reference documents the same namespace, so its <c>using &lt;ns&gt;;</c> import
+    /// lines match what an adopter writes against generated code.
     /// </summary>
     public const string DefaultNamespace = "Generated";
 
@@ -169,7 +168,7 @@ public static class GenCommand
         // `codegen/Program.cs` calls too, with its owned generators composed into the same
         // selection (CodegenCli.ComposeGenerators) — one implementation, not two.
         var apiOutcome = MetaObjects.Codegen.CodegenCli.RunGen(
-            load, outDir, ns, emitAbstractShapes, generators, projectRoot, columnNaming, baseline, names);
+            load, outDir, ns, emitAbstractShapes, generators, projectRoot, columnNaming, baseline);
         return new Outcome(apiOutcome.LoadErrors, apiOutcome.Result);
     }
 
@@ -182,7 +181,7 @@ public static class GenCommand
         "Reference generators — each is a helper, not a guarantee: `dotnet meta eject <name>`\n" +
         "copies it into codegen/generators/ and the copy is yours to change. What MetaObjects\n" +
         "guarantees (verify, render) is not a generator and is not listed.\n" +
-        "Select with --generators <name,...>:";
+        "Declare each one you run in codegen/Generators.cs (`dotnet meta init` writes it):";
 
     /// <summary>
     /// The lines `dotnet meta gen --list` prints: one `&lt;stable-name&gt; — &lt;description&gt;`

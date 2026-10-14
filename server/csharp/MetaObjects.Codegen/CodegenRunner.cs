@@ -25,6 +25,20 @@ public static class CodegenRunner
     public sealed record RunResult(IReadOnlyList<WriteResult> Files, IReadOnlyList<string> Warnings);
 
     public static RunResult Run(GenConfig config, MetaRoot root, IReadOnlyList<IGenerator> generators)
+        => Run(config, root, generators, OutRootFor(config));
+
+    /// <summary>
+    /// The directory a generator's files are written under: its own <see cref="IGenerator.OutDir"/>
+    /// when it names one (ADR-0034 Amendment 9), else the run's <see cref="GenConfig.OutDir"/>.
+    /// </summary>
+    internal static Func<IGenerator, string> OutRootFor(GenConfig config) =>
+        g => g.OutDir is { Length: > 0 } own ? Path.GetFullPath(own) : config.OutDir;
+
+    /// <summary><see cref="Run(GenConfig, MetaRoot, IReadOnlyList{IGenerator})"/> with the output
+    /// directory of each generator chosen by <paramref name="outRoot"/>: the drift gate points
+    /// every entry at a temporary tree of its own.</summary>
+    internal static RunResult Run(
+        GenConfig config, MetaRoot root, IReadOnlyList<IGenerator> generators, Func<IGenerator, string> outRoot)
     {
         var warnings = new List<string>();
         var ctx = new GenContext
@@ -64,14 +78,15 @@ public static class CodegenRunner
         // read it afterwards and every project looks migrated.
         var hadManifest = config.GenStateDir is null || HashManifest.Exists(config.GenStateDir);
 
-        // A docs generator writes the api reference under the docs directory, not code under this
-        // one (`dotnet meta docs` runs it, CodegenCli.RunDocs), and has no place in a code run's
-        // manifest or its drift check.
-        foreach (var generator in generators.Where(g => g is not IDocsGenerator))
+        foreach (var generator in generators)
         {
+            var genRoot = outRoot(generator);
+            // An entry with its own directory reports its files by that directory, so a reader
+            // can tell the api reference's README.md from one under --out.
+            var shown = generator.OutDir is { Length: > 0 } own ? own.TrimEnd('/', '\\') + "/" : "";
             foreach (var file in generator.Generate(ctx))
             {
-                var full = Path.GetFullPath(Path.Combine(config.OutDir, file.Path));
+                var full = Path.GetFullPath(Path.Combine(genRoot, file.Path));
                 if (!emitted.TryAdd(full, generator.Name))
                     throw new InvalidOperationException(
                         $"duplicate generated output path \"{file.Path}\" — emitted by both " +
@@ -101,9 +116,10 @@ public static class CodegenRunner
                 var status = WriteOne(
                     outside ? config with { GenStateDir = null } : config,
                     full, file.Path, key, file.Content, warnings);
-                results.Add(new WriteResult(file.Path, status));
-                if (status == "refused") refused.Add(file.Path);
-                else if (status == "adopted") adopted.Add(file.Path);
+                var reported = shown + file.Path;
+                results.Add(new WriteResult(reported, status));
+                if (status == "refused") refused.Add(reported);
+                else if (status == "adopted") adopted.Add(reported);
             }
         }
 

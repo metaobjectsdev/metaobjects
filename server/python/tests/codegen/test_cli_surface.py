@@ -17,7 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from metaobjects.cli import main
+from metaobjects.cli import DOCS_COMMAND_REMOVED, main
+from tests.codegen.config_helpers import as_config
 
 
 @pytest.mark.parametrize("flag", ["--version", "-v", "-V"])
@@ -34,7 +35,6 @@ def test_a_version_flag_prints_the_bare_version(flag: str, capsys: pytest.Captur
         (["gen"], "gen", "--out"),
         (["verify"], "verify", "--codegen"),
         (["fmt"], "fmt", "--check"),
-        (["docs", "--out", "o"], "docs", "--api-subdir"),
         (["eject", "entity"], "eject", "--force"),
     ],
 )
@@ -46,6 +46,15 @@ def test_an_unknown_flag_names_the_subcommand_and_its_valid_flags(
     assert f"unknown flag --bogus for `metaobjects {command}`. Valid flags: " in err
     assert a_valid_flag in err
     assert "unrecognized arguments" not in err
+
+
+def test_the_removed_docs_command_answers_any_flag_with_its_removal_line(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``docs`` was removed in 1.1.0: whatever flags follow it, the answer is the one line
+    that names the gen command and the migration section, never an unknown-flag refusal."""
+    assert main(["docs", "--out", "o", "--bogus"]) == 2
+    assert capsys.readouterr().err.strip() == DOCS_COMMAND_REMOVED
 
 
 @pytest.mark.parametrize(
@@ -63,4 +72,5 @@ def test_metadata_that_does_not_load_exits_1(argv: list[str], tmp_path: Path) ->
     out = tmp_path / "out"
     out.mkdir()
     args = [a.replace("OUT", str(out)) for a in argv]
-    assert main([args[0], str(meta), *args[1:]]) == 1
+    argv = [args[0], str(meta), *args[1:]]
+    assert main(argv if args[0] == "fmt" else as_config(argv)) == 1

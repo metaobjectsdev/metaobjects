@@ -2,41 +2,53 @@
 // contract): one page per entity, value object, projection, served report and template, an
 // index, and the agent-facing AGENT-API page.
 //
-// Run by `dotnet meta docs`, not by `dotnet meta gen` (it implements IDocsGenerator): its files
-// land under the docs output directory, relative to it. The project label, the model back-link
-// base and the api subdirectory come from the docs run (`ctx.Docs`), and what each documented
-// generator emits for comes from `ctx.Applicability`, so an owned copy of this generator
-// names no emitting generator. The page IR, the renderer and the page paths live beside it
-// (ApiDocs/), and eject hands them over with it.
+// An ordinary entry in codegen/Generators.cs, run by `dotnet meta gen` like every other
+// (ADR-0034 Amendment 9). Its options are init properties: the output directory, the api
+// subdirectory under it, the project label and the model back-link base. What each documented
+// generator emits for comes from `ctx.Applicability`, so an owned copy of this generator names no
+// emitting generator. The page IR, the renderer and the page paths live beside it (ApiDocs/),
+// and eject hands them over with it.
 
 using MetaObjects.Codegen.ApiDocs;
 
 namespace MetaObjects.Codegen.Generators;
 
-public sealed class ApiDocsGenerator : IDocsGenerator
+public sealed class ApiDocsGenerator : IGenerator
 {
+    /// <summary>The api-surface subdirectory of the cross-port docs contract.</summary>
+    public const string DefaultApiSubDir = "api/csharp";
+
     public string Name => "api-docs";
+
+    /// <summary>The docs output root the pages are written under. Give it a directory that holds
+    /// generated files only: <c>verify --codegen</c> compares the whole tree. <c>null</c> writes
+    /// under the run's <c>--out</c>.</summary>
+    public string? OutDir { get; init; }
+
+    /// <summary>Where under <see cref="OutDir"/> the api reference lands.</summary>
+    public string ApiSubDir { get; init; } = DefaultApiSubDir;
+
+    /// <summary>The label the agent page carries in its header.</summary>
+    public string ProjectName { get; init; } = "project";
+
+    /// <summary>When set, the base URL the model pages' back-links federate to.</summary>
+    public string? ModelBaseUrl { get; init; }
 
     public IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
-        // A docs run supplies the facts. A caller that runs this generator directly, as a registry-wide
-        // probe does, gets the packaged defaults and a neutral project label.
-        var facts = ctx.Docs ?? new DocsRunFacts("project");
-
-        var model = new CSharpApiModelBuilder(ctx.Config, ctx.Applicability).Build(ctx.Root, facts.Project);
+        var model = new CSharpApiModelBuilder(ctx.Config, ctx.Applicability).Build(ctx.Root, ProjectName);
         var renderer = new CSharpApiDocsRenderer();
         const DocsPaths.Layout layout = DocsPaths.Layout.Package;
 
         foreach (var unit in model.Units)
         {
             var pagePath = DocsPaths.DocPageOutputPath(layout, unit.Package, unit.Node);
-            var modelHref = DocsPaths.ModelCrossHref(facts.ApiSubDir + "/" + pagePath, pagePath, facts.ModelBaseUrl);
-            yield return Page(facts, pagePath, renderer.RenderUnitPage(unit, modelHref));
+            var modelHref = DocsPaths.ModelCrossHref(ApiSubDir + "/" + pagePath, pagePath, ModelBaseUrl);
+            yield return Page(pagePath, renderer.RenderUnitPage(unit, modelHref));
         }
-        yield return Page(facts, "README.md", renderer.RenderIndex(model, layout));
-        yield return Page(facts, "AGENT-API.md", renderer.RenderAgentApi(model));
+        yield return Page("README.md", renderer.RenderIndex(model, layout));
+        yield return Page("AGENT-API.md", renderer.RenderAgentApi(model));
     }
 
-    private static EmittedFile Page(DocsRunFacts facts, string pagePath, string content) =>
-        new(facts.ApiSubDir + "/" + pagePath, content);
+    private EmittedFile Page(string pagePath, string content) => new(ApiSubDir + "/" + pagePath, content);
 }

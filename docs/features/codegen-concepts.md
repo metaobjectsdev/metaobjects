@@ -271,11 +271,13 @@ The **CLI-port surface** (Python and C#) exposes the same declarative
 walk through a JSON **template-spec** instead of code/XML wiring — the cross-port
 contract shape (`{"generators": [{ name, template, scope, outputPattern, format? }]}`,
 JSON-schema'd beside the TS port at
-`codegen-ts/src/template-codegen/template-spec.schema.json`). Pass it on `gen`:
-`metaobjects gen <metadataDir> --out <dir> --template-spec spec.json --templates <dir>`
-(Python), or `dotnet meta gen <metadataDir> --out <dir> --template-spec spec.json --template-root <dir>` (C#).
-The named generators are appended to the SELECTION (there is no default suite —
-ADR-0034 Amendment 2), resolving template refs
+`codegen-ts/src/template-codegen/template-spec.schema.json`). In Python it is declared on
+the target its output belongs in (`templateSpec: spec.json` in `metaobjects.config.yaml`,
+run with `metaobjects gen --templates <dir>`); in C# it is passed on `gen`
+(`dotnet meta gen <metadataDir> --out <dir> --template-spec spec.json --template-root <dir>`)
+or discovered at `<projectRoot>/template-spec.json`.
+The named generators are appended to the declared generator list (ADR-0034 Amendment 9),
+resolving template refs
 under the templates root (`--templates` in Python, `--template-root` in C#; default
 `templates`). `scope` must be one of
 `perEntity`/`perPackage`/`perModel` and `format` (when present) one of the

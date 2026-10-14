@@ -81,10 +81,14 @@ public sealed class EjectCommandTests : IDisposable
 
         Assert.True(File.Exists(Path.Combine(CodegenDir, "Codegen.csproj")));
         Assert.True(File.Exists(Path.Combine(CodegenDir, "Program.cs")));
+        Assert.True(File.Exists(Path.Combine(CodegenDir, "Generators.cs")));
         var csproj = File.ReadAllText(Path.Combine(CodegenDir, "Codegen.csproj"));
         Assert.Contains("MetaObjects.Codegen", csproj);
-        var program = File.ReadAllText(Path.Combine(CodegenDir, "Program.cs"));
-        Assert.Contains("new EntityGenerator()", program);
+        // ADR-0034 Amendment 9: the list is Generators.cs; Program.cs is the two-line entry that runs it.
+        Assert.Equal(CodegenScaffold.ProgramCs, File.ReadAllText(Path.Combine(CodegenDir, "Program.cs")));
+        var list = File.ReadAllText(Path.Combine(CodegenDir, "Generators.cs"));
+        Assert.Contains("        new Codegen.Generators.EntityGenerator(),\n", list);
+        Assert.Equal(CodegenScaffold.GeneratorsCs(["new Codegen.Generators.EntityGenerator()"]), list);
     }
 
     [Fact]
@@ -118,15 +122,35 @@ public sealed class EjectCommandTests : IDisposable
     public void A_second_eject_of_a_different_generator_does_not_touch_the_existing_scaffold()
     {
         EjectCommand.Run(["entity"], _root, force: false);
-        var programBefore = File.ReadAllText(Path.Combine(CodegenDir, "Program.cs"));
-        // Hand-edit Program.cs the way an adopter would — eject must never clobber it.
-        File.WriteAllText(Path.Combine(CodegenDir, "Program.cs"), programBefore + "\n// adopter's own edit\n");
+        // Hand-edit Program.cs and the list the way an adopter would — eject must never clobber either.
+        foreach (var file in new[] { "Program.cs", "Generators.cs" })
+            File.AppendAllText(Path.Combine(CodegenDir, file), "\n// adopter's own edit\n");
 
         var result = EjectCommand.Run(["routes"], _root, force: false);
 
         Assert.Equal(0, result.ExitCode);
         Assert.True(File.Exists(Path.Combine(GeneratorsDir, "RoutesGenerator.cs")));
         Assert.Contains("adopter's own edit", File.ReadAllText(Path.Combine(CodegenDir, "Program.cs")));
+        Assert.Contains("adopter's own edit", File.ReadAllText(Path.Combine(CodegenDir, "Generators.cs")));
+        Assert.DoesNotContain("RoutesGenerator", File.ReadAllText(Path.Combine(CodegenDir, "Generators.cs")));
+        // It prints the entry to add instead.
+        Assert.Contains("  new Codegen.Generators.RoutesGenerator(),", result.Out);
+    }
+
+    [Fact]
+    public void Eject_writes_each_missing_scaffold_file_and_keeps_the_ones_that_exist()
+    {
+        // A 1.0 project: an owned Program.cs and Codegen.csproj, no Generators.cs.
+        Directory.CreateDirectory(CodegenDir);
+        File.WriteAllText(Path.Combine(CodegenDir, "Program.cs"), "// 1.0 program\n");
+        File.WriteAllText(Path.Combine(CodegenDir, "Codegen.csproj"), "<Project />\n");
+
+        var result = EjectCommand.Run(["entity"], _root, force: false);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("// 1.0 program\n", File.ReadAllText(Path.Combine(CodegenDir, "Program.cs")));
+        Assert.Equal("<Project />\n", File.ReadAllText(Path.Combine(CodegenDir, "Codegen.csproj")));
+        Assert.Contains("new Codegen.Generators.EntityGenerator(),", File.ReadAllText(Path.Combine(CodegenDir, "Generators.cs")));
     }
 
     private string CsprojPath => Path.Combine(CodegenDir, "Codegen.csproj");

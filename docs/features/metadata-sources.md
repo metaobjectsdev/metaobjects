@@ -70,7 +70,7 @@ than one entry, or a single entry that resolves to a FILE rather than a
 directory, is refused with a clear diagnostic naming the limit — rather than
 silently loading a subset of the declared sources, or (for the single-file case)
 failing deep inside the loader with an opaque, uncoded error. Declare exactly one
-directory `path` to use `dotnet meta gen`/`verify`/`docs`, or route around the
+directory `path` to use `dotnet meta gen`/`verify`, or route around the
 limit with an explicit `<metadataDir>` CLI argument.
 `MetaDataLoader.Load(IReadOnlyList<IMetaDataSource>)` (`MetaDataLoader.cs`) is the
 documented follow-up that would lift both restrictions. The other three CLI

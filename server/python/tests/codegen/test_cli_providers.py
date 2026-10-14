@@ -15,6 +15,7 @@ from pathlib import Path
 from metaobjects.cli import main
 
 from tests.codegen.gen_suite import GEN_SUITE
+from tests.codegen.config_helpers import as_config
 
 # A provider module the test writes to disk + imports. Registers the custom
 # ``validator.geocheck`` subtype (a validator, so it exercises provider-threading
@@ -80,7 +81,7 @@ def _install_provider_module(tmp_path: Path, name: str) -> None:
 
 def test_gen_without_provider_fails_on_custom_subtype(tmp_path: Path) -> None:
     """Baseline: the custom subtype is unknown without the provider."""
-    rc = main(["gen", "--generators", GEN_SUITE, _project(tmp_path), "--out", str(tmp_path / "out")])
+    rc = main(as_config(["gen", "--generators", GEN_SUITE, _project(tmp_path), "--out", str(tmp_path / "out")]))
     assert rc != 0
 
 
@@ -90,14 +91,14 @@ def test_gen_with_provider_loads_custom_subtype(tmp_path: Path) -> None:
     _install_provider_module(tmp_path, "geo_prov_gen")
     try:
         rc = main(
-            [
+            as_config([
                 "gen", "--generators", GEN_SUITE,
                 meta_dir,
                 "--out",
                 str(tmp_path / "out"),
                 "--provider",
                 "geo_prov_gen:geo_provider",
-            ]
+            ])
         )
     finally:
         sys.path.remove(str(tmp_path))
@@ -113,11 +114,11 @@ def test_verify_with_provider_loads_custom_subtype(tmp_path: Path) -> None:
     try:
         # generate committed output first (with the provider), then verify no drift.
         gen_rc = main(
-            ["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--provider", "geo_prov_ver:geo_provider"]
+            as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--provider", "geo_prov_ver:geo_provider"])
         )
         assert gen_rc == 0
         rc = main(
-            [
+            as_config([
                 "verify",
                 meta_dir,
                 "--codegen", "--generators", GEN_SUITE,
@@ -125,7 +126,7 @@ def test_verify_with_provider_loads_custom_subtype(tmp_path: Path) -> None:
                 str(out),
                 "--provider",
                 "geo_prov_ver:geo_provider",
-            ]
+            ])
         )
     finally:
         sys.path.remove(str(tmp_path))
@@ -136,13 +137,13 @@ def test_verify_with_provider_loads_custom_subtype(tmp_path: Path) -> None:
 def test_bad_provider_spec_reports_error(tmp_path: Path) -> None:
     """A malformed --provider spec fails cleanly (not 'module:symbol')."""
     rc = main(
-        [
+        as_config([
             "gen", "--generators", GEN_SUITE,
             _project(tmp_path),
             "--out",
             str(tmp_path / "out"),
             "--provider",
             "not-a-valid-spec",
-        ]
+        ])
     )
     assert rc == 1

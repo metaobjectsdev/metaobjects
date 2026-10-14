@@ -52,7 +52,7 @@
 import { spawnSync } from "node:child_process";
 import {
   cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync,
-  rmSync, statSync,
+  rmSync, statSync, writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
@@ -120,34 +120,49 @@ const PORTS: Port[] = [
     generate: (project) => run(["bun", META_CLI, "gen", "--cwd", project]),
   },
   {
-    // Python and C# are flag-only: metadata dir in, --out dir out. Neither needs
-    // project scaffolding, so neither gets any.
+    // Python and C# run a declared generator list (ADR-0034 Amendment 9), as an adopter's
+    // project does. The showcase is one project shared by every port, so their lists are
+    // written into a scratch directory rather than committed beside the TypeScript config:
+    // see `pythonConfig` and `csharpCodegenProject` below.
     name: "python",
     dirs: ["python"],
     tool: "uv",
-    generate: (project) =>
-      run([
-        "uv", "run", "--project", resolve(REPO, "server/python"),
-        "metaobjects", "gen", join(project, "metaobjects"),
-        "--out", join(project, "generated", "python"),
-        "--generators", PYTHON_SUITE,
-      ]),
+    generate: (project) => {
+      const scratch = mkdtempSync(join(tmpdir(), "showcase-python-"));
+      try {
+        const config = join(scratch, "metaobjects.config.yaml");
+        writeFileSync(config, pythonConfig(project));
+        run([
+          "uv", "run", "--project", resolve(REPO, "server/python"),
+          "metaobjects", "gen", "--config", config,
+        ]);
+      } finally {
+        rmSync(scratch, { recursive: true, force: true });
+      }
+    },
   },
   {
-    // `dotnet run --project` rather than the installed `dotnet meta` tool: the
-    // tool would have to be packed and installed at the current version first,
-    // and this generates from the working tree, which is what a gate wants.
+    // `dotnet meta gen` runs the project's codegen/ console project; this builds the same
+    // project in a scratch directory, compiled against the working tree's
+    // MetaObjects.Codegen (a ProjectReference) rather than the published package, which a
+    // release preflight runs before it exists. The arguments are the ones `dotnet meta gen`
+    // forwards to it.
     name: "csharp",
     dirs: ["csharp"],
     tool: "dotnet",
-    generate: (project) =>
-      run([
-        "dotnet", "run", "--project", resolve(REPO, "server/csharp/MetaObjects.Cli"),
-        "-v", "q", "--",
-        "gen", join(project, "metaobjects"),
-        "--out", join(project, "generated", "csharp"),
-        "--generators", CSHARP_SUITE,
-      ]),
+    generate: (project) => {
+      const scratch = mkdtempSync(join(tmpdir(), "showcase-csharp-"));
+      try {
+        const codegen = csharpCodegenProject(scratch);
+        run([
+          "dotnet", "run", "--project", codegen, "-v", "q", "--",
+          "gen", join(project, "metaobjects"),
+          "--out", join(project, "generated", "csharp"),
+        ]);
+      } finally {
+        rmSync(scratch, { recursive: true, force: true });
+      }
+    },
   },
   {
     // Schema is Node-only (ADR-0015), so SQL is the migrate engine, not a port
@@ -204,23 +219,74 @@ const PORTS: Port[] = [
 /**
  * The generators whose output is COMMITTED under `examples/showcase/generated/<port>/`.
  *
- * Spelled out because ADR-0034 Amendment 2 removed the default suite: `--generators` is
- * required on the C# and Python CLIs, and a run that names none generates nothing and
- * exits 2. This script is the only caller of those two CLIs outside their own tests, and
- * it runs ONLY at a release cut (`regen-showcase --check`), which is why the omission
- * reached a cut rather than a lane — it surfaced as `gen: no generators selected` in the
- * 1.0.4 dry run.
+ * Spelled out because no port has a default suite (ADR-0034 Amendment 2) and the C# and
+ * Python gen commands run only a declared list (Amendment 9): a run with none generates
+ * nothing. This script runs ONLY at a release cut (`regen-showcase --check`), which is why
+ * an omission here reaches a cut rather than a lane — it surfaced as
+ * `gen: no generators selected` in the 1.0.4 dry run.
  *
- * These sets are not a default by the back door. They are exactly the generators that
+ * These lists are not a default by the back door. They are exactly the generators that
  * produce the files committed here, so changing one means the committed tree changes too
- * — which is the diff this gate exists to show. The ports' own test suites spell the same
- * lists for the same reason (`server/python/tests/codegen/gen_suite.py`,
- * `server/csharp/MetaObjects.Cli.Tests/GenSuiteForTests.cs`).
+ * — which is the diff this gate exists to show.
  */
 // ADR-0056 removed `payload` from both: a template's payload and response types are the value
 // objects' own models, which `entity` already emits.
-const PYTHON_SUITE = "entity,routes,filter-allowlist,names,output-parser,output-prompt,extractor";
-const CSHARP_SUITE = "entity,names,db-context,routes,filter-allowlist,output-parser,output-prompt,extractor";
+const PYTHON_SUITE = ["entity", "routes", "filter-allowlist", "names", "output-parser", "output-prompt", "extractor"];
+const CSHARP_SUITE = [
+  "EntityGenerator", "NamesGenerator", "DbContextGenerator", "RoutesGenerator",
+  "FilterAllowlistGenerator", "OutputParserGenerator", "OutputPromptGenerator", "ExtractorGenerator",
+];
+
+/** The Python generator list for `project`: one target writing `generated/python`. Paths are
+ *  absolute because the file lives in a scratch directory, not beside the metadata. */
+function pythonConfig(project: string): string {
+  return [
+    `metadata: ${JSON.stringify(join(project, "metaobjects"))}`,
+    "targets:",
+    "  python:",
+    `    outDir: ${JSON.stringify(join(project, "generated", "python"))}`,
+    `    generators: [${PYTHON_SUITE.join(", ")}]`,
+    "",
+  ].join("\n");
+}
+
+/** Write the C# codegen project — `Generators.cs`, the two-line `Program.cs` and a
+ *  `Codegen.csproj` referencing the working tree's MetaObjects.Codegen — under `scratch`, and
+ *  return its directory. */
+function csharpCodegenProject(scratch: string): string {
+  const dir = join(scratch, "codegen");
+  mkdirSync(dir, { recursive: true });
+  const codegenProject = resolve(REPO, "server/csharp/MetaObjects.Codegen/MetaObjects.Codegen.csproj");
+  writeFileSync(join(dir, "Codegen.csproj"), [
+    `<Project Sdk="Microsoft.NET.Sdk">`,
+    `  <PropertyGroup>`,
+    `    <OutputType>Exe</OutputType>`,
+    `    <TargetFramework>net8.0</TargetFramework>`,
+    `    <ImplicitUsings>enable</ImplicitUsings>`,
+    `    <Nullable>enable</Nullable>`,
+    `  </PropertyGroup>`,
+    `  <ItemGroup>`,
+    `    <ProjectReference Include="${codegenProject}" />`,
+    `  </ItemGroup>`,
+    `</Project>`,
+    ``,
+  ].join("\n"));
+  writeFileSync(join(dir, "Program.cs"),
+    "using MetaObjects.Codegen;\nreturn CodegenCli.Run(args, Generators.All);\n");
+  writeFileSync(join(dir, "Generators.cs"), [
+    "using MetaObjects.Codegen;",
+    "",
+    "public static class Generators",
+    "{",
+    "    public static IReadOnlyList<IGenerator> All { get; } =",
+    "    [",
+    ...CSHARP_SUITE.map((c) => `        new MetaObjects.Codegen.Generators.${c}(),`),
+    "    ];",
+    "}",
+    "",
+  ].join("\n"));
+  return dir;
+}
 
 function selectPorts(): Port[] {
   if (BUN_ONLY) {

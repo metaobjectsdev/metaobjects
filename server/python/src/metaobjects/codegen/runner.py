@@ -85,20 +85,25 @@ def run_gen(
         raise ValueError("run_gen: metadata must be a loaded MetaRoot.")
 
     objs = _objects(metadata)
+    model_has_objects = bool(objs)
     if entity_filter is not None:
         objs = [o for o in objs if o.name in entity_filter]
     if select is not None:
         objs = [o for o in objs if select(o.resolution_key())]
 
     if not objs:
-        if entity_filter is not None:
+        if not model_has_objects:
+            reason = "root has no object children"
+        elif entity_filter is not None:
             reason = "no object children match the provided entity_filter"
         elif select is not None:
             reason = "no object children survived the collection's scope"
-        else:
-            reason = "root has no object children"
         result.warnings.append(f"No entities to generate — {reason}.")
-        return result
+        # A model with no objects at all still has something for a generator that documents
+        # the whole model (api-docs writes its index pages), so that run goes on; a selection
+        # that matched nothing stops here, as before.
+        if model_has_objects:
+            return result
 
     # FR-044: a served report (Table A) is generated from its read model, which the
     # read-only generators emit as a keyless object. Every other report generates nothing:
@@ -109,7 +114,7 @@ def run_gen(
         for o in objs
         if o.sub_type != OBJECT_SUBTYPE_REPORT or is_served_report(o)
     ]
-    if not objs:
+    if not objs and not result.warnings:
         result.warnings.append(
             "No entities to generate — every selected object is an object.report with no "
             "view source, which has no generated output (FR-044)."
@@ -124,7 +129,7 @@ def run_gen(
             )
             continue
         safe.append(o)
-    if not safe:
+    if not safe and objs:
         return result
 
     # Refuse before any generator runs — the one choke point that sees the WHOLE
@@ -133,22 +138,6 @@ def run_gen(
 
     emitted: dict[str, tuple[str, str]] = {}  # full_path -> (content, generated_by)
     for gen in generators:
-        docs_surface = getattr(gen, "docs_surface", None)
-        if docs_surface is not None:
-            # A docs generator writes pages under the docs output directory, and
-            # `metaobjects docs` runs it: the packaged one always, an owned copy from
-            # `docs.generators`. Here it would write them into the code tree, so it is
-            # skipped and the miswiring is named.
-            remedy = (
-                "`metaobjects docs` already runs it, so remove the entry."
-                if type(gen).__module__.startswith("metaobjects.")
-                else "List it under `docs.generators` in metaobjects.config.yaml: "
-                     "`metaobjects docs` runs it from there."
-            )
-            result.warnings.append(
-                f"{gen.name!r} writes the {docs_surface} reference, so gen skipped it. {remedy}"
-            )
-            continue
         ctx = GenContext(
             entities=safe,
             loaded_root=metadata,

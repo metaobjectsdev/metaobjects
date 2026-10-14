@@ -25,6 +25,7 @@ from pathlib import Path
 import pytest
 
 from metaobjects.cli import main
+from tests.codegen.config_helpers import as_config
 
 FIXTURE = (
     Path(__file__).parents[4]
@@ -58,11 +59,11 @@ def test_render_helper_resolves_templates_under_the_dir_that_was_passed(
     tmp_path: Path,
 ) -> None:
     meta_dir, templates_dir, out = _project(tmp_path, "prompts")
-    rc = main([
+    rc = main(as_config([
         "gen", meta_dir, "--out", str(out),
         "--generators", "entity,render-helper",
         "--templates", templates_dir,
-    ])
+    ]))
     assert rc == 0, "gen failed with the template root it was given"
     helpers = list(out.rglob("*render*.py"))
     assert helpers, f"render-helper emitted nothing into {out}"
@@ -80,11 +81,11 @@ def test_a_template_root_without_the_body_fails_rather_than_silently_emitting(
     meta_dir, _templates_dir, out = _project(tmp_path, "prompts")
     empty = tmp_path / "no-templates"
     empty.mkdir()
-    rc = main([
+    rc = main(as_config([
         "gen", meta_dir, "--out", str(out),
         "--generators", "entity,render-helper",
         "--templates", str(empty),
-    ])
+    ]))
     assert rc != 0, (
         "gen succeeded with a template root holding no body — the drift gate did not "
         f"look, so the flag is not reaching the generator. stdout: {capsys.readouterr().out}"
@@ -106,11 +107,11 @@ def test_the_old_hardcoded_default_is_not_what_gets_read(tmp_path: Path) -> None
 
     (Path(flagged) / "fitness" / "coach-note.mustache").unlink()
 
-    rc = main([
+    rc = main(as_config([
         "gen", meta_dir, "--out", str(out),
         "--generators", "entity,render-helper",
         "--templates", flagged,
-    ])
+    ]))
     assert rc != 0, "the run read templates/ instead of the --templates dir"
 
 
@@ -132,10 +133,10 @@ def test_the_default_prefers_prompts_when_it_exists(
     (decoy / "coach-note.mustache").write_text("Program: {{nope}}\n")  # would FAIL the gate
 
     monkeypatch.chdir(tmp_path)
-    rc = main([
+    rc = main(as_config([
         "gen", meta_dir, "--out", str(out),
         "--generators", "entity,render-helper",
-    ])
+    ]))
     assert rc == 0, "the default did not resolve prompts/ (or read templates/ instead)"
 
 
@@ -151,10 +152,10 @@ def test_the_default_still_falls_back_to_templates(
     assert not (tmp_path / "prompts").exists()
 
     monkeypatch.chdir(tmp_path)
-    rc = main([
+    rc = main(as_config([
         "gen", meta_dir, "--out", str(out),
         "--generators", "entity,render-helper",
-    ])
+    ]))
     assert rc == 0, "the fallback to templates/ broke a project that had only that"
 
 
@@ -170,11 +171,11 @@ def test_an_explicit_flag_still_wins_over_both(
     (tmp_path / "prompts" / "fitness" / "coach-note.mustache").unlink()
 
     monkeypatch.chdir(tmp_path)
-    rc = main([
+    rc = main(as_config([
         "gen", meta_dir, "--out", str(out),
         "--generators", "entity,render-helper",
         "--templates", str(tmp_path / "bodies"),
-    ])
+    ]))
     assert rc == 0, "an explicit --templates lost to the prompts/ probe"
 
 
@@ -194,18 +195,18 @@ def test_verify_codegen_regenerates_render_helper_against_the_same_root(
     meta_dir, prompts, out = _project(tmp_path, "prompts")
     monkeypatch.chdir(tmp_path)
 
-    assert main([
+    assert main(as_config([
         "gen", meta_dir, "--out", str(out),
         "--generators", "entity,render-helper", "--templates", prompts,
-    ]) == 0
+    ])) == 0
     # Not vacuous: there has to BE a committed helper for verify to call stale.
     assert list(out.rglob("*render*.py")), "gen emitted no render helper to check"
 
     # `verify` spells the directory --prompts (F101); --templates is its gate subverb.
-    assert main([
+    assert main(as_config([
         "verify", "--codegen", meta_dir, "--out", str(out),
         "--generators", "entity,render-helper", "--prompts", prompts,
-    ]) == 0, "verify --codegen called the freshly generated helpers stale"
+    ])) == 0, "verify --codegen called the freshly generated helpers stale"
 
 
 def test_verify_codegen_agrees_with_gen_on_the_DEFAULT_root_too(
@@ -220,9 +221,9 @@ def test_verify_codegen_agrees_with_gen_on_the_DEFAULT_root_too(
     meta_dir, _prompts, out = _project(tmp_path, "prompts")
     monkeypatch.chdir(tmp_path)
 
-    assert main(["gen", meta_dir, "--out", str(out),
-                 "--generators", "entity,render-helper"]) == 0
+    assert main(as_config(["gen", meta_dir, "--out", str(out),
+                 "--generators", "entity,render-helper"])) == 0
     assert list(out.rglob("*render*.py")), "gen emitted no render helper to check"
-    assert main(["verify", "--codegen", meta_dir, "--out", str(out),
-                 "--generators", "entity,render-helper"]) == 0, (
+    assert main(as_config(["verify", "--codegen", meta_dir, "--out", str(out),
+                 "--generators", "entity,render-helper"])) == 0, (
         "gen and verify --codegen resolved different default roots")

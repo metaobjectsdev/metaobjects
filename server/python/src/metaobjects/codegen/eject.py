@@ -150,13 +150,7 @@ def eject(names: list[str], root: Path, *, force: bool = False) -> EjectResult:
         target = owned_path(root, n)
         target.write_text(ejected_source(entry), encoding="utf-8")
         out.append(f"ejected {n} -> {target.relative_to(root)}")
-        if entry.docs_surface is not None:
-            out.append(
-                f"  wire it: list {owned_token(entry)} under `docs.generators` in "
-                "metaobjects.config.yaml — `metaobjects docs` runs it; `gen` never does"
-            )
-        else:
-            out.append(f"  wire it: replace \"{n}\" in `generators` with {owned_token(entry)}")
+        out.append(f"  wire it: replace \"{n}\" in `generators` with {owned_token(entry)}")
         for module in entry.runtime:
             rt = runtime_path(root, module)
             rel = rt.relative_to(root)
@@ -176,8 +170,7 @@ def eject(names: list[str], root: Path, *, force: bool = False) -> EjectResult:
     out.append("")
     out.append(
         "The copies are yours: edit them freely. Keep only one of the packaged name and your "
-        "copy in `generators` — wiring both runs both, and they write the same files. "
-        "A docs generator is the exception: `docs.generators` replaces the packaged one."
+        "copy in `generators` — wiring both runs both, and they write the same files."
     )
     return EjectResult(0, out, [])
 

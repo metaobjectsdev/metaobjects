@@ -399,8 +399,8 @@ every one. The structured `--format json|toon` payload is TypeScript-only.
 
 **Metadata that does not load** is not a model with no requirement: `verify` fails on it in
 every port. The load errors are printed once. Where the drift gate that ran loaded the model,
-that gate prints them; where none did (`metaobjects verify` with no generators selected,
-`dotnet meta verify --codegen` handed off to an owned `codegen/` project), the requirement
+that gate prints them; where none did (`metaobjects verify --templates` alone,
+`dotnet meta verify --codegen` run by the project's `codegen/` project), the requirement
 gate prints them itself. Its load is strict unless `--lax`, as the drift gates' is.
 
 ### Known differences between ports
@@ -645,11 +645,9 @@ Every port offers the same seams. Only the spelling differs.
 
 Where they are set: in TypeScript, the options of `requirementTests({ … })` in
 `metaobjects.config.ts`. In Python, the `requirementTests` block of
-`metaobjects.config.yaml` (the flag-only `metaobjects gen <dir> --out <dir>` mode runs the
-generator with its defaults). In Java and Kotlin, the `<args>` of the `<generator>` entry.
-In C#, public properties set where the generator is constructed, in the owned
-`codegen/Program.cs`; the packaged `dotnet meta gen --generators requirement-tests` runs
-with the defaults. The per-port pages have a worked configuration each:
+`metaobjects.config.yaml` (with no block, the generator runs with its defaults). In Java and
+Kotlin, the `<args>` of the `<generator>` entry. In C#, init properties on its entry in
+`codegen/Generators.cs`, the generator list `dotnet meta gen` runs. The per-port pages have a worked configuration each:
 [TypeScript](../ports/typescript.md#requirement-tests),
 [Python](../ports/python.md#requirement-tests),
 [Java](../ports/java.md#requirement-tests--junitrequirementtestsgenerator),

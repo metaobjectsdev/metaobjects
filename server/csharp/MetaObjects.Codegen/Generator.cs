@@ -274,9 +274,6 @@ public sealed class GenContext
     /// <see cref="GeneratorApplicability"/>): the packaged generators' answers.
     /// </summary>
     public GeneratorApplicability Applicability { get; init; } = GeneratorApplicability.Packaged;
-
-    /// <summary>The facts of a docs run, or <c>null</c> in a code run.</summary>
-    public DocsRunFacts? Docs { get; init; }
 }
 
 /// <summary>A codegen unit. Kebab-case <see cref="Name"/> surfaces in diagnostics.</summary>
@@ -284,6 +281,15 @@ public interface IGenerator
 {
     string Name { get; }
     IEnumerable<EmittedFile> Generate(GenContext ctx);
+
+    /// <summary>
+    /// Where this entry's files are written, when not under the run's <c>--out</c>
+    /// (ADR-0034 Amendment 9: each entry in <c>codegen/Generators.cs</c> may carry its own
+    /// output directory, as the api reference does). A relative path is taken from the
+    /// directory the run starts in, as <c>--out</c> is. <c>null</c>, the default, writes
+    /// under <c>--out</c>.
+    /// </summary>
+    string? OutDir => null;
 }
 
 /// <summary>One-file-per-entity convenience base (entity / queries / routes generators).</summary>

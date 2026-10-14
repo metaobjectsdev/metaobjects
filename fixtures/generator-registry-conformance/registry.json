@@ -368,7 +368,6 @@
         "engine": [
           "MetaObjects.Codegen.CSharpNaming",
           "MetaObjects.Codegen.ColumnNamingStrategy",
-          "MetaObjects.Codegen.DocsRunFacts",
           "MetaObjects.Codegen.EmittedFile",
           "MetaObjects.Codegen.FieldNames",
           "MetaObjects.Codegen.GenConfig",
@@ -379,7 +378,6 @@
           "MetaObjects.Codegen.Generators.TphPlan",
           "MetaObjects.Codegen.Generators.TphPlanBuilder",
           "MetaObjects.Codegen.Generators.TphSubtypePlan",
-          "MetaObjects.Codegen.IDocsGenerator",
           "MetaObjects.Codegen.IGenerator",
           "MetaObjects.Codegen.IRequirementTestRenderer",
           "MetaObjects.Codegen.InstanceArtifacts",

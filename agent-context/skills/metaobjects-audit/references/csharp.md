@@ -26,9 +26,9 @@ Generated files are named `<Entity>.g.cs` and carry an `@generated` guard commen
 The metadata source directory is the first positional arg (`<metadataDir>`); `--out`
 is required (errors if absent, no default). The runner overwrites only files bearing
 this header; it refuses to touch files without it. Locate the output directory from
-`codegen/Generators.cs` (the project's generator list, each entry's `OutDir` init
-property — scaffolded by `dotnet meta init`, new in 1.1.0) or, for a project that predates
-it, from how the team invokes `dotnet meta gen` (or a CI script).
+how the team invokes `dotnet meta gen` (or a CI script) — the arg is explicit. What is
+generated is the list in `codegen/Generators.cs`; an entry with its own `OutDir` (the
+`ApiDocsGenerator`) writes there instead of under `--out`.
 
 ---
 
@@ -38,7 +38,7 @@ it, from how the team invokes `dotnet meta gen` (or a CI script).
 dotnet meta gen metaobjects --out Generated --namespace Acme.Generated
 
 dotnet meta gen --list                                     # list all registered generators
-dotnet meta gen --generators entity,db-context,routes      # select a subset
+dotnet meta gen metaobjects --out Generated --generators entity   # narrow to declared entries
 
 dotnet meta verify --codegen    # regenerate to temp, diff vs committed output
 dotnet meta verify --templates  # check {{field}} refs vs payload VO (bare default)
@@ -60,21 +60,22 @@ rejected (exit 2).
 | `FromSqlInterpolated(` outside `.g.cs` | stored-proc call — candidate for the `callable` generator |
 | `// keep in sync with` / `// mirrors the` | second-source-of-truth comment — always a finding |
 | `HasPrecision(` hand-coded | `field.decimal` with `@precision`/`@scale` drives this from the `entity` generator |
-| a table/column string in raw-SQL EF calls, or `nameof(Entity.Prop)` standing in for a column | second spelling of a declared physical name — reference `<Entity>Names.g.cs` (`AuthorNames.SourcePrimaryTable` / `<Field>Column`, emitted when `names` is named in `--generators` — `Names.Name` is the OBJECT's name, not the table); an EF property inside LINQ is the typed handle — correct |
+| a table/column string in raw-SQL EF calls, or `nameof(Entity.Prop)` standing in for a column | second spelling of a declared physical name — reference `<Entity>Names.g.cs` (`AuthorNames.SourcePrimaryTable` / `<Field>Column`, emitted when `codegen/Generators.cs` lists `names` — `Names.Name` is the OBJECT's name, not the table); an EF property inside LINQ is the typed handle — correct |
 
 ---
 
 ## Owned generators
 
-`dotnet meta eject <name>...` copies a reference generator into `codegen/generators/`
-and scaffolds an owned `codegen/` console project; once `codegen/Codegen.csproj` exists,
-`dotnet meta gen` and `dotnet meta verify --codegen` hand off to it. Ejecting `routes` also
+`dotnet meta eject <name>...` copies a reference generator into `codegen/generators/`;
+the copy is listed in `codegen/Generators.cs`, the generator list `dotnet meta gen` and
+`dotnet meta verify --codegen` run through the `codegen/` console project. Ejecting `routes` also
 copies the helper runtime the generated routes call (`FilterParser`, `EfCoreFilterDispatch`,
 `ValueObjectValidator`, `ConstraintErrors`, `Iso8601TimestampConverter`) into
 `codegen/runtime/` under the namespace `Codegen.Runtime`. That folder is owned code, not a
 hand-rolled filter parser: do not flag it. `dotnet meta gen --list` marks each owned copy
 `identical` or `DIFFERS`. A generator the project WRITES is an `IGenerator` listed in
-`codegen/Generators.cs` the same way.
+`codegen/Generators.cs` the same way. With no `codegen/Generators.cs`, `dotnet meta gen`
+exits 2 and generates nothing.
 
 **A finding of the form "the built-ins do not emit the shape this project needs", or a
 hand-written layer the model fully describes, resolves to a generator the project writes**
@@ -124,6 +125,6 @@ version across these packages is an intra-port skew finding.
   (`?search=`, `filter[or][N]` / `filter[and][N]` combinators, leading-wildcard gating) is
   TS-only — do NOT flag its absence in C#.
 - **Output-parser codegen ships in C#.** `output-parser` / `extractor` / `render-helper`
-  generators are available (`dotnet meta gen --generators output-parser`). Absence of
+  generators are available (list `OutputParserGenerator` in `codegen/Generators.cs`). Absence of
   wired output parsers where a **responding `template.prompt`** (`@responseRef`) exists IS a
   finding. ADR-0052: a `template.output` is outbound only and generates no parser.

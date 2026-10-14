@@ -30,41 +30,54 @@ pip install "pydantic[email]>=2" fastapi
 
 ## Run
 
-```bash
-metaobjects gen ./metadata --out ./generated [--package <pkg>]
-metaobjects gen ./metadata --out ./generated --generators entity,routes,filter-allowlist
-metaobjects verify ./metadata --codegen        # codegen-drift gate (regenerate into a
-                                               # temp dir + diff vs the committed --out tree)
+The generator list is `metaobjects.config.yaml` (ADR-0034 Amendment 9): each target names
+its `outDir` and the generators that write into it, documentation included. Nothing is
+generated that the config does not declare.
+
+```yaml
+# metaobjects.config.yaml
+metadata: metadata
+targets:
+  app:
+    outDir: generated
+    generators: [entity, filter-allowlist, routes]
 ```
 
-`metaobjects verify` defaults to `--codegen` (the codegen-output drift gate; it shares
-the exact `gen` code path so the two can't diverge). `--templates` is the prompt/template
-drift gate (see the prompts reference). Schema migration + live-DB drift are **not**
-`metaobjects` — they run through the Node `meta` tool (see the migration reference).
+```bash
+metaobjects gen                               # runs every target's generators into its outDir
+metaobjects gen --generators entity           # narrow to declared entries (never adds one)
+metaobjects verify --codegen                  # regenerate the same list into a temp dir + diff
+```
+
+With no `metaobjects.config.yaml`, `gen` and `verify --codegen` exit 2 and write nothing.
+The 1.0 form `metaobjects gen <metadata_dir> --out <dir> --generators <names>` is not read;
+`--target`, `--entities`, `--column-naming`, `--provider`, `--templates` and `--baseline`
+still apply to the list. `metaobjects verify` defaults to `--codegen` (it shares the exact
+`gen` code path so the two can't diverge). `--templates` is the prompt/template drift gate
+(see the prompts reference). Schema migration + live-DB drift are **not** `metaobjects` —
+they run through the Node `meta` tool (see the migration reference).
 
 ## Docs — one more entry in a target's `generators`
 
 There is no `metaobjects docs` command (removed in 1.1.0, ADR-0034 Amendment 9): the api
-reference is the `api-docs` generator, named in a target's `generators` in
-`metaobjects.config.yaml` like any other:
+reference is the `api-docs` generator, named in a target's `generators` like any other, in a
+target whose `outDir` holds generated files only:
 
 ```yaml
 targets:
   docs:
-    outDir: ./docs
+    outDir: docs                 # → docs/api/python
     generators: [api-docs]
-apiDocs:
-  apiSubDir: api/python       # default
+apiDocs:                         # optional: apiSubDir (default api/python), projectName, modelBaseUrl
+  projectName: acme
 ```
 
-`metaobjects gen` writes it (→ `./docs/api/python`: `AGENT-API.md` + per-entity pages),
-alongside everything else that target's `generators` declares. `AGENT-API.md` has the
-exact imports, signatures, and payload field shapes for the generated code. **Before
-calling any generated code, read `api/python/AGENT-API.md`.** Options live in the
-top-level `apiDocs` block: `apiSubDir` (default `api/python`), `projectName`,
-`modelBaseUrl`. To write only the documentation, `metaobjects gen --generators api-docs`.
-Migrating a project that ran `metaobjects docs`:
-`docs/features/migrations/docs-are-generators.md`, section "Python".
+`metaobjects gen` writes it (`AGENT-API.md` + per-entity pages), alongside everything else
+the config declares, and `verify --codegen` checks the pages like code. `AGENT-API.md` has
+the exact imports, signatures, and payload field shapes for the generated code. **Before
+calling any generated code, read `api/python/AGENT-API.md`.** To write only the
+documentation, `metaobjects gen --generators api-docs`. Migrating a project that ran
+`metaobjects docs`: `docs/features/migrations/docs-are-generators.md`, section "Python".
 
 **The neutral model pages are a Node `meta gen` generator, not something this port emits.**
 `meta docs`'s language-neutral model surface was retired along with the rest of
@@ -102,9 +115,8 @@ def field_list():  # the module:symbol target: an instance, or a function return
     return FieldList()
 ```
 
-Wire it as `codegen.generators.field_list:field_list` in `--generators` (beside any stable
-names) or in a target's `generators` in `metaobjects.config.yaml`; `metaobjects verify
---codegen` with the same selection gates it. Read the model through
+Wire it as `codegen.generators.field_list:field_list` in a target's `generators` in
+`metaobjects.config.yaml`, beside any stable names; `metaobjects verify --codegen` gates it. Read the model through
 `metaobjects.codegen.model_walk` (`is_required`, `max_length`, `field_is_array`,
 `enum_values`, `object_ref_target`, `description`, `primary_key_fields`, `package_of`,
 `route_path`, `per_entity` / `per_package` / `per_model`) — never through a field's `attr(n)`,
@@ -113,12 +125,10 @@ which is OWN-ONLY in Python and drops what a field inherits. Output can be any f
 
 ## Generators
 
-Wire generators by their stable name — **`--generators <names>` is REQUIRED**. There is
-no default set: a run that names none is a usage error and writes nothing (ADR-0034
-Amendment 2). `metaobjects gen --list` is the catalog. `verify --codegen` re-runs the
-SELECTION and diffs, so it takes the same `--generators`; with none named it reports that
-there is nothing to check.
-Output lands under `--out` (with the `@generated` guard header). Metadata is the same
+List generators by their stable name in a target's `generators`. There is no default set
+(ADR-0034 Amendment 2): a target whose list is empty writes nothing and says so.
+`metaobjects gen --list` is the catalog. `verify --codegen` regenerates the same list and diffs.
+Output lands under the target's `outDir` (with the `@generated` guard header). Metadata is the same
 canonical JSON every port reads (fused-key form, `source.rdb` + `@table`, `@column` for
 a renamed physical column).
 

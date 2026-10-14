@@ -1,17 +1,20 @@
 using MetaObjects.Cli;
+using MetaObjects.Codegen;
+using MetaObjects.Codegen.Generators;
+using MetaObjects.Loader;
 using Xunit;
 
 namespace MetaObjects.Cli.Tests;
 
 /// <summary>
-/// `dotnet meta docs` pure-logic tests (the adversarial-review fixes):
+/// The api reference's code blocks, written by the <c>api-docs</c> entry of a gen run
+/// (ADR-0034 Amendment 9; these were `dotnet meta docs` tests before the command was removed):
 ///   • BUG A — the per-symbol code block is a valid C# import (<c>using &lt;ns&gt;;</c>),
-///     never the bare namespace string; and the documented namespace defaults to the
-///     SAME default <c>dotnet meta gen</c> uses (so docs + gen agree).
-///   • BUG D — a duplicate page-path collision surfaces as a clean, reportable diagnostic
-///     (a non-Ok Outcome with a CollisionError), not an uncaught exception.
+///     never the bare namespace string; and the documented namespace is the one
+///     <c>dotnet meta gen</c> generates under (so docs + gen agree).
+/// The duplicate page-path collision (BUG D) is covered by ApiDocsRunTests.
 /// </summary>
-public sealed class DocsCommandTests : IDisposable
+public sealed class ApiDocsNamespaceTests : IDisposable
 {
     private readonly string _tmp = Path.Combine(Path.GetTempPath(), "meta-docs-" + Guid.NewGuid().ToString("N"));
     private string MetaDir => Path.Combine(_tmp, "metaobjects");
@@ -37,7 +40,7 @@ public sealed class DocsCommandTests : IDisposable
     ]}}
     """;
 
-    public DocsCommandTests()
+    public ApiDocsNamespaceTests()
     {
         Directory.CreateDirectory(MetaDir);
         File.WriteAllText(Path.Combine(MetaDir, "meta.shop.json"), Metadata);
@@ -45,11 +48,16 @@ public sealed class DocsCommandTests : IDisposable
 
     public void Dispose() { try { Directory.Delete(_tmp, recursive: true); } catch { } }
 
+    /// <summary>Gen with only the api-docs entry, its pages under <see cref="OutDir"/>.</summary>
+    private CodegenCli.GenOutcome RunDocs(string ns) =>
+        CodegenCli.RunGen(MetaDataLoader.FromDirectory(MetaDir), Path.Combine(_tmp, "code"), ns, false,
+            [new ApiDocsGenerator { OutDir = OutDir, ProjectName = "shop" }], _tmp);
+
     [Fact]
     public void Code_blocks_are_using_directives_never_the_bare_namespace_placeholder()
     {
-        // Default namespace = gen's default (NOT the old hardcoded "Generated" literal in docs).
-        var outcome = DocsCommand.Run(MetaDir, OutDir, "shop", GenCommand.DefaultNamespace);
+        // Default namespace = gen's default.
+        var outcome = RunDocs(GenCommand.DefaultNamespace);
         Assert.True(outcome.Ok, string.Join("; ", outcome.LoadErrors));
 
         var pages = Directory.EnumerateFiles(OutDir, "*.md", SearchOption.AllDirectories)
@@ -79,7 +87,7 @@ public sealed class DocsCommandTests : IDisposable
     [Fact]
     public void Documented_namespace_defaults_to_the_gen_default_and_appears_in_blocks()
     {
-        var outcome = DocsCommand.Run(MetaDir, OutDir, "shop", GenCommand.DefaultNamespace);
+        var outcome = RunDocs(GenCommand.DefaultNamespace);
         Assert.True(outcome.Ok);
 
         // acme::shop binds to the default namespace + package → "<DefaultNs>.Acme.Shop"-style.
@@ -94,7 +102,7 @@ public sealed class DocsCommandTests : IDisposable
     [Fact]
     public void Custom_namespace_flows_into_the_import_blocks()
     {
-        var outcome = DocsCommand.Run(MetaDir, OutDir, "shop", "Acme.Custom");
+        var outcome = RunDocs("Acme.Custom");
         Assert.True(outcome.Ok);
 
         var orderPage = Directory.EnumerateFiles(OutDir, "Order.md", SearchOption.AllDirectories).Single();

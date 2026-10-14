@@ -5,18 +5,20 @@ namespace MetaObjects.Cli.Tests;
 /// <summary>
 /// FR-043 — the C# CLI has no <c>--libraries</c> flag (the Node CLI has none either;
 /// <c>.metaobjects/config.json</c>'s <c>libraries</c> key is the interface), so
-/// <c>dotnet meta gen</c>/<c>verify</c>/<c>docs</c> must read it from the config the
+/// <c>dotnet meta gen</c>/<c>verify</c> must read it from the config the
 /// same way the other ports do. Before this, the C# CLI had NO library support at
 /// all — an adopter who opted into any library could not generate C# at all: their
 /// own metadata `extends`-referenced a shipped library base
 /// (<c>metaobjects::ai::LlmCallBase</c>), and with the library not loaded that
 /// reference failed to resolve.
 ///
-/// <para>Drives the BUILT CLI assembly as a subprocess (<see cref="CliProcess"/>), like
-/// <see cref="MetadataDirFallbackTests"/>, so this proves the WIRING, not just the
+/// <para>Drives the real entry points — gen through the codegen project's
+/// <c>CodegenCli.Run</c> (<see cref="OwnedRunner"/>), verify through the BUILT CLI assembly
+/// (<see cref="CliProcess"/>) — so this proves the WIRING, not just the
 /// already-tested loader API (<c>MetaObjects.Conformance.Tests.LibraryLoadTests</c>
 /// covers <c>MetaDataLoader.FromDirectory(dir, libraries)</c> directly).</para>
 /// </summary>
+[Collection(OwnedRunnerCollection.Name)]
 public sealed class LibrariesConfigTests : IDisposable
 {
     private readonly string _tmp = Path.Combine(Path.GetTempPath(), "meta-cli-libraries-" + Guid.NewGuid().ToString("N"));
@@ -47,7 +49,7 @@ public sealed class LibrariesConfigTests : IDisposable
             """{ "schema_version": 1, "sources": [ { "path": "model" } ], "libraries": ["ai"] }""");
 
         var outDir = Path.Combine(_tmp, "generated");
-        var (exitCode, stdout, stderr) = CliProcess.Run(_tmp, "gen", "--generators", "entity", "--out", outDir, "--namespace", "Acme.Generated");
+        var (exitCode, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity"], "gen", "--out", outDir, "--namespace", "Acme.Generated");
 
         Assert.True(exitCode == 0, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
         Assert.True(File.Exists(Path.Combine(outDir, "AgentCall.g.cs")), stdout + stderr);
@@ -77,7 +79,7 @@ public sealed class LibrariesConfigTests : IDisposable
             """{ "schema_version": 1, "libraries": ["ai"] }""");
 
         var outDir = Path.Combine(_tmp, "generated");
-        var (exitCode, stdout, stderr) = CliProcess.Run(_tmp, "gen", "--generators", "entity", modelDir, "--out", outDir, "--namespace", "Acme.Generated");
+        var (exitCode, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity"], "gen", modelDir, "--out", outDir, "--namespace", "Acme.Generated");
 
         Assert.True(exitCode == 0, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
         Assert.True(File.Exists(Path.Combine(outDir, "AgentCall.g.cs")), stdout + stderr);
@@ -96,7 +98,7 @@ public sealed class LibrariesConfigTests : IDisposable
         File.WriteAllText(Path.Combine(modelDir, "meta.acme.json"), Model);
 
         var outDir = Path.Combine(_tmp, "generated");
-        var (exitCode, _, stderr) = CliProcess.Run(_tmp, "gen", "--generators", "entity", modelDir, "--out", outDir, "--namespace", "Acme.Generated");
+        var (exitCode, _, stderr) = OwnedRunner.Run(_tmp, ["entity"], "gen", modelDir, "--out", outDir, "--namespace", "Acme.Generated");
 
         Assert.Equal(1, exitCode);
         Assert.Contains("load error:", stderr);
@@ -104,11 +106,11 @@ public sealed class LibrariesConfigTests : IDisposable
     }
 
     [Fact]
-    public void Docs_with_an_explicit_positional_metadataDir_also_resolves_libraries()
+    public void The_api_reference_with_an_explicit_positional_metadataDir_also_resolves_libraries()
     {
-        // The task requires EVERY metadata-loading command (gen, verify, docs) to
-        // read `libraries` regardless of ladder vs. explicit <metadataDir> — this
-        // covers `docs` on the explicit-dir path.
+        // EVERY metadata-loading run reads `libraries` regardless of ladder vs. explicit
+        // <metadataDir> — this covers the api reference (the `api-docs` entry of the list,
+        // ADR-0034 Amendment 9) on the explicit-dir path.
         var modelDir = Path.Combine(_tmp, "model");
         Directory.CreateDirectory(modelDir);
         File.WriteAllText(Path.Combine(modelDir, "meta.acme.json"), Model);
@@ -119,9 +121,12 @@ public sealed class LibrariesConfigTests : IDisposable
             """{ "schema_version": 1, "libraries": ["ai"] }""");
 
         var outDir = Path.Combine(_tmp, "apidocs");
-        var (exitCode, stdout, stderr) = CliProcess.Run(_tmp, "docs", modelDir, "--out", outDir);
+        var (exitCode, stdout, stderr) = OwnedRunner.Run(
+            _tmp, [new MetaObjects.Codegen.Generators.ApiDocsGenerator { OutDir = outDir }],
+            "gen", modelDir, "--out", Path.Combine(_tmp, "generated"));
 
         Assert.True(exitCode == 0, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
+        Assert.NotEmpty(Directory.GetFiles(outDir, "AgentCall.md", SearchOption.AllDirectories));
     }
 
     [Fact]
@@ -161,7 +166,7 @@ public sealed class LibrariesConfigTests : IDisposable
             Path.Combine(cfgDir, "config.json"),
             """{ "schema_version": 1, "libraries": ["not-a-real-library"] }""");
 
-        var (exitCode, _, stderr) = CliProcess.Run(_tmp, "gen", "--generators", "entity", modelDir, "--out", Path.Combine(_tmp, "generated"), "--namespace", "X");
+        var (exitCode, _, stderr) = OwnedRunner.Run(_tmp, ["entity"], "gen", modelDir, "--out", Path.Combine(_tmp, "generated"), "--namespace", "X");
 
         Assert.Equal(2, exitCode);
         Assert.Contains("ERR_UNKNOWN_LIBRARY", stderr);

@@ -12,6 +12,7 @@ from pathlib import Path
 
 from metaobjects.cli import main
 from tests.codegen.gen_suite import GEN_SUITE
+from tests.codegen.config_helpers import as_config
 
 # Shared cross-port fixture (also asserted by the TS CLI verify-strict test):
 # a registered field.string carrying one undeclared own @attr.
@@ -61,7 +62,7 @@ def test_verify_codegen_fails_on_undeclared_attr_by_default(
 ) -> None:
     meta_dir = _meta_dir(tmp_path, _MADE_UP)
     out = tmp_path / "out"
-    rc = main(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])
+    rc = main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]))
     assert rc != 0
     err = capsys.readouterr().err
     assert "ERR_UNKNOWN_ATTR" in err
@@ -76,8 +77,8 @@ def test_verify_codegen_passes_with_lax(tmp_path: Path) -> None:
     # Lax load tolerates the undeclared attr; gen-to-temp + diff (vs --out) is
     # the codegen drift result, NOT a load failure. First gen (already lax),
     # then verify --lax against the committed output.
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
-    assert main(["verify", "--lax", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
+    assert main(as_config(["verify", "--lax", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
 
 
 # --- verify --templates ----------------------------------------------------
@@ -130,11 +131,11 @@ def test_gen_stays_lax_by_default(tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path, _MADE_UP)
     out = tmp_path / "out"
     # gen tolerates the undeclared attr (no strict default for gen).
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
 
 
 def test_verify_clean_metadata_passes_under_strict(tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path, _CLEAN)
     out = tmp_path / "out"
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
-    assert main(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
+    assert main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0

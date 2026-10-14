@@ -89,8 +89,8 @@ what it emits.
 | Port | Registration | Model helpers |
 |---|---|---|
 | TypeScript | import it in `metaobjects.config.ts`, add it to `generators: [...]` (the scaffold does both) | `@metaobjectsdev/codegen-ts`: `objectRefTarget`, `enumValues`, `effectivePackage`, `packageToPath`, `servedPath`, `toCamelCase`/`toPascalCase`/`toSnakeCase`/`pluralize`, `isAbstract`, `hasAnyRdbSource`, `servesReadApi`/`servesWriteApi` |
-| Python | a `module:symbol` entry in `--generators` or a target's `generators` in `metaobjects.config.yaml`; the symbol is an instance or a function returning one, never the class | `metaobjects.codegen.model_walk` |
-| C# | `new YourGenerator()` in the owned `codegen/Generators.cs` list, which `codegen/Program.cs` passes to `CodegenCli.Run`; `dotnet meta gen` / `verify --codegen` hand off to `codegen/` whenever `codegen/Codegen.csproj` exists | node accessors, `ValueObjectNames.ResolveFieldRef`, `CSharpNaming.RoutePath` |
+| Python | a `module:symbol` entry in a target's `generators` in `metaobjects.config.yaml`; the symbol is an instance or a function returning one, never the class | `metaobjects.codegen.model_walk` |
+| C# | `new Codegen.Generators.YourGenerator()` in `codegen/Generators.cs` (`dotnet meta init` writes it); `dotnet meta gen` / `verify --codegen` run that list | node accessors, `ValueObjectNames.ResolveFieldRef`, `CSharpNaming.RoutePath` |
 | Java / Kotlin | `<generator><classname>` plus `<args><outputDir>`, from a module on the plugin's classpath; extend `FileEmittingGenerator` | `com.metaobjects.generator.ModelWalk` |
 
 **Verify it** — nothing to register. `verify --codegen` (`mvn metaobjects:verify` on the

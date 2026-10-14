@@ -34,6 +34,7 @@ from metaobjects.codegen.overwrite_policy import (
     read_generated_hash,
 )
 from tests.codegen.gen_suite import GEN_SUITE
+from tests.codegen.config_helpers import as_config
 
 
 def _manifest(gen_state: Path) -> dict[str, str]:
@@ -168,7 +169,7 @@ def test_a_project_reached_through_a_symlink_keeps_its_jurisdiction(
     from metaobjects.cli import main
 
     monkeypatch.chdir(tmp_path)
-    assert main(["gen", "--generators", GEN_SUITE, str(link / "metaobjects"), "--out", str(link / "gen")]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, str(link / "metaobjects"), "--out", str(link / "gen")])) == 0
 
     manifest = json.loads(
         (real / ".metaobjects" / ".gen-state" / ".hashes.json").read_text(encoding="utf-8")
@@ -180,7 +181,7 @@ def test_a_project_reached_through_a_symlink_keeps_its_jurisdiction(
 
     # And the gate still convicts stale output reached through the link.
     meta_file.write_text('{"metadata.root": {"package": "fitness", "children": []}}')
-    assert main(["verify", "--codegen", "--generators", GEN_SUITE, str(link / "metaobjects"), "--out", str(link / "gen")]) == 1
+    assert main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, str(link / "metaobjects"), "--out", str(link / "gen")])) == 1
 
 
 def test_output_outside_the_project_is_not_recorded_in_its_manifest(
@@ -208,7 +209,7 @@ def test_output_outside_the_project_is_not_recorded_in_its_manifest(
     from metaobjects.cli import main
 
     monkeypatch.chdir(proj)
-    assert main(["gen", "--generators", GEN_SUITE, str(proj / "metaobjects"), "--out", str(elsewhere)]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, str(proj / "metaobjects"), "--out", str(elsewhere)])) == 0
     assert any(elsewhere.iterdir())
 
     hashes = proj / ".metaobjects" / ".gen-state" / ".hashes.json"

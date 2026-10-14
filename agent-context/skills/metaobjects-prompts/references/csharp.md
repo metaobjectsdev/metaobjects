@@ -22,10 +22,16 @@ naming convention, and the parser and the record can't silently drift.
 
 `OutputParserGenerator` (stable name `output-parser`) runs as part of
 `dotnet meta gen`, alongside `entity`, which emits the `@responseRef` value object's POCO
-it parses into (ADR-0056 — the template tier declares no copy):
+it parses into (ADR-0056 — the template tier declares no copy). List both in
+`codegen/Generators.cs`, the generator list `dotnet meta gen` runs:
+
+```csharp
+new MetaObjects.Codegen.Generators.EntityGenerator(),
+new MetaObjects.Codegen.Generators.OutputParserGenerator(),
+```
 
 ```bash
-dotnet meta gen ./metadata --out ./Generated --namespace Acme.Blog --generators entity,output-parser
+dotnet meta gen ./metadata --out ./Generated --namespace Acme.Blog
 ```
 
 ## What it emits
@@ -67,10 +73,10 @@ For every responding `template.prompt`, `MetaObjects.Codegen`'s `OutputPromptGen
 declaring a static `<PromptName>ResponseFormat` class with a `RenderFormat()` /
 `RenderFormat(PromptOverrides)` pair, backed by the render engine's
 `OutputFormatRenderer` — the "produce your answer like this" fragment for the model. It runs as part of the same `dotnet meta gen` invocation as the entity
-and parser generators:
+and parser generators, once `codegen/Generators.cs` lists it too:
 
-```bash
-dotnet meta gen ./metadata --out ./Generated --namespace Acme.Blog --generators entity,output-parser,output-prompt
+```csharp
+new MetaObjects.Codegen.Generators.OutputPromptGenerator(),
 ```
 
 `@promptStyle` on the `template.prompt` (`guide` default / `inline` / `exampleOnly`)
