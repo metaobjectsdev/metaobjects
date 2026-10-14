@@ -425,7 +425,9 @@ generator catalog and the Atlas evaluation are 1.2 work.
   own: which objects get a module and where it lands. The module body stays in the package
   (`renderCallableFile`, `renderTraceHelper`, now exported from `@metaobjectsdev/codegen-ts`),
   the same split the prompt tier uses. The rule is that every stock generator can be
-  ejected except the `template` primitive, which has no emit logic of its own to own.
+  ejected except the `template` primitive, which has no emit logic of its own to own, and
+  the TypeScript `docs-site`, whose builder stays packaged while `meta eject docs-site`
+  copies its templates and assets.
   `shared-model`, `docs` and `api-docs` follow in their own entry below (ADR-0034
   Amendment 7), and the Java `entity` and `extractor` generators became ejectable in
   ADR-0034 Amendment 6.
@@ -787,6 +789,8 @@ generator catalog and the Atlas evaluation are 1.2 work.
   three, every stock TypeScript generator can be ejected except `template`, the Mustache
   primitive: you already supply its template and it has no emit logic of its own to own,
   so it stays `package-only` (the C#, Java and Python ports rule the same way). The
+  `docs-site` generator, new in this release, is the other `package-only` entry: its builder
+  stays packaged, and `meta eject docs-site` copies the site's templates and assets. The
   standalone `mermaid-er` generator is not among them: it is removed (see **Removed**
   below). Ruling and reasoning: ADR-0034 Amendment 7. Nothing changes for a project that
   ejects none of them: packaged output is byte-identical, and gated to be.

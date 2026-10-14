@@ -125,11 +125,12 @@ repo, imported from `./codegen/generators/*` instead (ADR-0034); the factory kee
 name. Import by default and eject to customize: an owned copy you never change only falls
 behind the reference. (`entityFile` / `queriesFile` / `routesFile` / `barrel` were removed
 from that subpath at 1.0 and restored in 1.1, so on a 1.0.x install an owned copy is the
-only path for those four.) The engine primitives come from the package main entry,
-`@metaobjectsdev/codegen-ts`. One entry cannot be ejected and is `package-only` in
-`meta gen --list`: the `template` primitive, which has no emit logic of its own. An ejected
-generator comes with the template modules that write its output (`codegen/templates/`); the
-engine stays in the package.
+only path for those four.) Two entries cannot be ejected and are `package-only` in
+`meta gen --list`: the `template` primitive, which has no emit logic of its own, and
+`docs-site`, whose builder stays in the package (`meta eject docs-site` copies the site's
+templates and assets into `codegen/docs-site/`). An ejected generator comes with the
+template modules that write its output (`codegen/templates/`); the engine stays in the
+package, and an owned copy imports it from `@metaobjectsdev/codegen-ts/engine`.
 
 Some ejectable entries behave differently from the rest:
 
