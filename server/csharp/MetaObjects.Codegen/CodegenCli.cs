@@ -22,11 +22,11 @@ namespace MetaObjects.Codegen;
 public static class CodegenCli
 {
     // ------------------------------------------------------------------------
-    // SP-1 declarative template-spec resolution — moved here from
-    // MetaObjects.Cli.GenCommand (which now forwards to these) for the same "one
-    // implementation" reason as RunGen: an ejected codegen/Program.cs needs to discover
-    // a project's template-spec.json exactly as `dotnet meta gen` does, and
-    // MetaObjects.Codegen cannot depend on MetaObjects.Cli.
+    // SP-1 declarative template-spec resolution for the programmatic, name-resolved path
+    // (MetaObjects.Cli.GenCommand forwards to these). The gen command no longer uses it:
+    // since ADR-0034 Amendment 9 a spec runs only as a TemplateSpecGenerator entry in
+    // codegen/Generators.cs, and a conventional template-spec.json nothing declares is refused
+    // (LegacyTemplateSpec).
     // ------------------------------------------------------------------------
 
     /// <summary>The conventional declarative-template-spec file name (SP-1 §4).</summary>
@@ -277,6 +277,46 @@ public static class CodegenCli
         $"{command}: no codegen/Generators.cs. The generator list lives there in 1.1.0, documentation included; " +
         "`dotnet meta init` writes it. See docs/features/migrations/docs-are-generators.md, section \"C#\".";
 
+    /// <summary>What a gen run prints, exit 2, when it finds 1.0 template-spec configuration: a
+    /// project-root <c>template-spec.json</c> no entry declares, or <c>--template-spec</c>. Through
+    /// 1.0 the gen command read either; a spec now runs only as a <see cref="TemplateSpecGenerator"/>
+    /// entry in the list.</summary>
+    /// <param name="command">The command's own name.</param>
+    /// <param name="what">What was found: <c>template-spec.json</c> or <c>--template-spec</c>.</param>
+    public static string LegacyTemplateSpec(string command, string what) =>
+        $"{command}: found 1.0 template-spec configuration ({what}). Nothing reads it any more, so this run " +
+        "would not render its templates. Declare it in codegen/Generators.cs as " +
+        "`new MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator { Spec = \"template-spec.json\" }`. " +
+        "See docs/features/migrations/docs-are-generators.md, section \"C#\".";
+
+    /// <summary>
+    /// The 1.0 template-spec configuration a run would have read and no longer does, or <c>null</c>:
+    /// <c>--template-spec</c> when given, else a <c>template-spec.json</c> at
+    /// <paramref name="projectRoot"/> when no entry of <paramref name="declared"/> declares a spec.
+    /// </summary>
+    private static string? LegacyTemplateSpecFound(
+        IReadOnlyList<IGenerator> declared, string? templateSpecFlag, string projectRoot)
+    {
+        if (templateSpecFlag is not null) return "--template-spec";
+        if (declared.Any(g => g is TemplateSpecGenerator)) return null;
+        return File.Exists(Path.Combine(projectRoot, TemplateSpecFileName)) ? TemplateSpecFileName : null;
+    }
+
+    /// <summary>Read every declared template spec once, so a missing or malformed file is a clean
+    /// error before anything is written. <c>null</c> when they all read.</summary>
+    private static string? CheckTemplateSpecs(IReadOnlyList<IGenerator> suite)
+    {
+        foreach (var spec in suite.OfType<TemplateSpecGenerator>())
+        {
+            try { _ = spec.Generators(); }
+            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or JsonException)
+            {
+                return $"template spec {spec.Spec}: {ex.Message}";
+            }
+        }
+        return null;
+    }
+
     /// <summary>
     /// The entries of <paramref name="declared"/> a <c>--generators</c> selection names, in their
     /// declared order (ADR-0034 Amendment 9, rule 5). A selection never adds a generator the list
@@ -351,7 +391,7 @@ public static class CodegenCli
             Console.Error.WriteLine(
                 "usage: gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>]\n" +
                 "           [--emit-abstract-shapes] [--column-naming literal|snake_case|kebab-case]\n" +
-                "           [--baseline default|adopt] [--template-root <dir>] [--template-spec <json>]\n" +
+                "           [--baseline default|adopt] [--template-root <dir>]\n" +
                 "     | verify --codegen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>]\n" +
                 "           [--column-naming literal|snake_case|kebab-case] [--template-root <dir>] [--lax]");
             return 2;
@@ -557,6 +597,11 @@ public static class CodegenCli
         if (ResolveOrReport(a.MetadataDir) is not { } meta) return 2;
 
         var projectRoot = a.MetadataDir is not null ? ProjectRootFor(a.MetadataDir) : Directory.GetCurrentDirectory();
+        if (LegacyTemplateSpecFound(declared, a.TemplateSpecPath, projectRoot) is { } legacySpec)
+        {
+            Console.Error.WriteLine(LegacyTemplateSpec(GenCommandName, legacySpec));
+            return 2;
+        }
         var templateRoot = a.TemplateRoot ?? DefaultTemplateRoot();
         var selected = SelectDeclared(declared, a.Selection, templateRoot, out var selectError);
         if (selectError is not null)
@@ -565,13 +610,9 @@ public static class CodegenCli
             return 2;
         }
         List<IGenerator> suite = [.. selected];
-        try
+        if (CheckTemplateSpecs(suite) is { } specError)
         {
-            suite.AddRange(TemplateSpecGenerators(projectRoot, a.TemplateSpecPath, a.TemplateRoot));
-        }
-        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or JsonException)
-        {
-            Console.Error.WriteLine($"  error: {ex.Message}");
+            Console.Error.WriteLine($"  error: {specError}");
             Console.Error.WriteLine($"{GenCommandName}: FAILED");
             return 1;
         }
@@ -654,9 +695,14 @@ public static class CodegenCli
             return 1;
         }
 
-        // The same suite `gen` builds, template-spec generators included: verify must
-        // regenerate what gen wrote, or it convicts gen's own output as drift.
+        // The same suite `gen` builds: verify must regenerate what gen wrote, or it convicts
+        // gen's own output as drift.
         var projectRoot = a.MetadataDir is not null ? ProjectRootFor(a.MetadataDir) : Directory.GetCurrentDirectory();
+        if (LegacyTemplateSpecFound(declared, null, projectRoot) is { } legacySpec)
+        {
+            Console.Error.WriteLine(LegacyTemplateSpec(VerifyCommandName, legacySpec));
+            return 2;
+        }
         var templateRoot = a.TemplateRoot ?? DefaultTemplateRoot();
         var selected = SelectDeclared(declared, a.Selection, templateRoot, out var selectError);
         if (selectError is not null)
@@ -665,13 +711,9 @@ public static class CodegenCli
             return 2;
         }
         List<IGenerator> suite = [.. selected];
-        try
+        if (CheckTemplateSpecs(suite) is { } specError)
         {
-            suite.AddRange(TemplateSpecGenerators(projectRoot, null, templateRoot));
-        }
-        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or JsonException)
-        {
-            Console.Error.WriteLine($"  error: {ex.Message}");
+            Console.Error.WriteLine($"  error: {specError}");
             return 2;
         }
 

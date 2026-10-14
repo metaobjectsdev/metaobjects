@@ -142,9 +142,8 @@ prints a warning naming the line to change. See
 Schema migrations are owned by the Node `meta` CLI (ADR-0015) — the C# CLI is
 `gen` + `verify` only.
 
-`gen` also accepts `--template-spec <json>` (+ `--template-root <dir>`, default
-`templates`) — the declarative Mustache template-codegen surface; see
-[Declarative template-codegen](#declarative-template-codegen---template-spec) below.
+A declarative Mustache template-spec is one more entry in `codegen/Generators.cs`; see
+[Declarative template-codegen](#declarative-template-codegen-templatespecgenerator) below.
 
 The codegen emits:
 
@@ -542,18 +541,22 @@ two files behind: `gen` does not remove them, `dotnet meta verify --codegen` rep
 other ports' spelling are in
 [Generated requirement tests and witnesses](../features/requirements.md#generated-requirement-tests-and-witnesses).
 
-## Declarative template-codegen (`--template-spec`)
+## Declarative template-codegen (`TemplateSpecGenerator`)
 
 Beyond the built-in EF Core / routes suite, `dotnet meta gen` runs **declarative
 Mustache template generators** from a JSON template-spec — the cross-port contract
 shared with the Python port (see
 [`docs/features/codegen-concepts.md`](../features/codegen-concepts.md#declarative-template-scopes)
 and the neutral data dict in
-[`docs/features/codegen-data-shapes.md`](../features/codegen-data-shapes.md)):
+[`docs/features/codegen-data-shapes.md`](../features/codegen-data-shapes.md)). The spec is
+declared where every generator is, as an entry in `codegen/Generators.cs`:
 
-```bash
-dotnet meta gen ./metadata --out ./Generated \
-  --template-spec ./template-spec.json --template-root ./templates
+```csharp
+new MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator
+{
+    Spec = "template-spec.json",   // from the directory gen runs in, as --out is
+    TemplateRoot = "templates",    // optional; default prompts/ when it exists, else templates/
+},
 ```
 
 ```jsonc
@@ -562,37 +565,26 @@ dotnet meta gen ./metadata --out ./Generated \
     { "name": "entity-doc",
       "scope": "perEntity",            // perEntity | perPackage | perModel
       "outputPattern": "{package}/{Name}.md",
-      "template": "entity-doc",          // resolved under --template-root
+      "template": "entity-doc",          // resolved under TemplateRoot
       "format": "markdown" }            // optional; a registered escaper format
 ]}
 ```
 
-**The spec is auto-discovered.** Omit `--template-spec` and the CLI reads
-`<projectRoot>/template-spec.json`, where projectRoot is the metadata dir's **parent** —
-the same anchor `.metaobjects/` uses (`GenCommand.ProjectRootFor`). The flag overrides it.
-
-Prefer the conventional path over the flag, because **`dotnet meta verify --codegen`
-accepts no `--template-spec`**: discovery is how the drift gate learns your template
-generators exist. A spec reachable only by flag leaves `verify` regenerating a different
-generator list from `gen` and convicting your committed template output as
-"committed but a fresh regen would not emit it".
-
-```bash
-dotnet meta gen ./metadata --out ./Generated --template-root ./templates
-dotnet meta verify --codegen ./metadata --out ./Generated --template-root ./templates
-#   ^ both resolve <projectRoot>/template-spec.json — the gate agrees with the generator
-```
+`dotnet meta verify --codegen` regenerates the same entry, so the gate and the generator
+agree. Through 1.0 the CLI also read `--template-spec` or a project-root `template-spec.json`
+on its own; neither is read now, and a run that finds either with no `TemplateSpecGenerator`
+entry fails before writing anything, with a line that starts
+`dotnet meta gen: found 1.0 template-spec configuration (`. See
+[the migration section](../features/migrations/docs-are-generators.md#c).
 
 Each spec entry derives the neutral template data dict for its scope
 (`MetaObjects.Codegen.TemplateCodegen.TemplateData`) and names each file via the
-`outputPattern` placeholders (`{name}`, `{Name}`, `{package}`). The named generators
-are **appended** to the list in `codegen/Generators.cs` (so that file must exist, even
-with an empty list, for a spec-only project) and gated
-byte-identical against the shared
-`fixtures/template-codegen-conformance/` corpus. A `target` field is rejected (C# has
-no output-target concept); a bad template ref or wrong `--template-root` surfaces as a
-clean error, not a stack trace. For output to be regenerable, the **template** must emit
-the `@generated` header itself (the write path refuses to overwrite files lacking it).
+`outputPattern` placeholders (`{name}`, `{Name}`, `{package}`). The entry's files land under
+`--out`, or under its own `OutDir` when it sets one, and are gated byte-identical against the
+shared `fixtures/template-codegen-conformance/` corpus. A `target` field is rejected (C# has no
+output-target concept); a missing spec file, a bad template ref or a wrong `TemplateRoot`
+surfaces as a clean error, not a stack trace. For output to be regenerable, the **template**
+must emit the `@generated` header itself (the write path refuses to overwrite files lacking it).
 
 ## Angular 18 frontend
 
@@ -631,7 +623,7 @@ on their list route, against an allowlist of their own fields. Remaining gaps ar
 | Templates + render (FR-004) | Yes (`MetaObjects.Render`) |
 | Output parser codegen (FR-006) | Yes (`OutputParserGenerator` — `Parse`/`TryParse` BCL pattern) |
 | Payload-VO codegen | Yes — the payload IS the value object's own POCO from `EntityGenerator` (ADR-0056); no separate payload generator |
-| Declarative template-codegen | Yes — `dotnet meta gen --template-spec` (scope perEntity/perPackage/perModel + outputPattern; the cross-port JSON contract shared with Python) |
+| Declarative template-codegen | Yes — a `TemplateSpecGenerator` entry in `codegen/Generators.cs` (scope perEntity/perPackage/perModel + outputPattern; the cross-port JSON contract shared with Python) |
 | Migrations | Owned by the Node `meta` CLI (ADR-0015) — no C# migrate surface |
 | Drift verify | `dotnet meta verify` (template drift, FR-004; `--codegen` regenerates the list in `codegen/Generators.cs` and diffs it) |
 | API reference docs | Yes — the `ApiDocsGenerator` entry in `codegen/Generators.cs` (`OutDir`, `ApiSubDir`, `ProjectName`, `ModelBaseUrl`); `dotnet meta docs` was removed in 1.1.0 ([migration](../features/migrations/docs-are-generators.md#c)) |

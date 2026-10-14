@@ -186,6 +186,18 @@ def legacy_docs_message(command: str) -> str:
     )
 
 
+def legacy_template_spec_message(command: str) -> str:
+    """What *command* prints, exit 2, when the project still has the conventional
+    ``template-spec.json`` and no target declares a ``templateSpec``: through 1.0 the flag form
+    discovered that file, and nothing reads it now."""
+    return (
+        f"{command}: found 1.0 template-spec configuration ({TEMPLATE_SPEC_FILENAME}). Nothing "
+        "reads it any more, so this run would not render its templates. Declare it on the target "
+        f"it writes into, as `templateSpec: {TEMPLATE_SPEC_FILENAME}` in metaobjects.config.yaml. "
+        + _MIGRATION_SECTION
+    )
+
+
 #: What a gen or ``verify --codegen`` run given the 1.0 ``<metadata_dir> --out`` form prints,
 #: exit 2, in a project that has its config: the config's ``metadata`` and each target's
 #: ``outDir`` say where, and a flag that disagreed with them would be a second list.
@@ -1215,6 +1227,10 @@ def _load_generator_list(
         return None, 1
     if config.legacy_docs:
         print(legacy_docs_message(command), file=sys.stderr)
+        return None, 2
+    conventional = project_root_for(config.metadata_dir()) / TEMPLATE_SPEC_FILENAME
+    if conventional.is_file() and not any(t.template_spec for t in config.targets):
+        print(legacy_template_spec_message(command), file=sys.stderr)
         return None, 2
     return config, 0
 

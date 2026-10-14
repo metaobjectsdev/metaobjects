@@ -10,6 +10,7 @@
 using MetaObjects.Cli;
 using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
+using MetaObjects.Codegen.TemplateCodegen;
 using Xunit;
 
 namespace MetaObjects.Cli.Tests;
@@ -280,5 +281,81 @@ public sealed class OneGeneratorListTests : IDisposable
             CodegenScaffold.GeneratorsCs(["new Codegen.Generators.EntityGenerator()"]),
             File.ReadAllText(Path.Combine(_tmp, "codegen", "Generators.cs")));
         Assert.Equal(CodegenScaffold.ProgramCs, File.ReadAllText(Path.Combine(_tmp, "codegen", "Program.cs")));
+    }
+
+    // ---- a template spec is declared in the list, nowhere else ---------------------------------
+
+    private string WriteSpec(string fileName = CodegenCli.TemplateSpecFileName)
+    {
+        var templates = Path.Combine(_tmp, "templates");
+        Directory.CreateDirectory(templates);
+        File.WriteAllText(Path.Combine(templates, "summary.mustache"), "name={{name}}\n");
+        var spec = Path.Combine(_tmp, fileName);
+        File.WriteAllText(spec, """
+        { "generators": [
+          { "name": "summary", "template": "summary", "scope": "perEntity", "outputPattern": "{name}.summary.txt" }
+        ] }
+        """);
+        return spec;
+    }
+
+    [Fact]
+    public void A_conventional_template_spec_no_entry_declares_is_refused_and_nothing_is_written()
+    {
+        WriteSpec();
+        var before = ProjectFiles();
+
+        var (exit, _, stderr) = OwnedRunner.Run(_tmp, ["entity"], "gen", MetaDir, "--out", OutDir);
+        Assert.Equal(2, exit);
+        Assert.Equal(CodegenCli.LegacyTemplateSpec("dotnet meta gen", "template-spec.json"), stderr.Trim());
+        Assert.Equal(before, ProjectFiles());
+
+        var (verifyExit, _, verifyErr) = OwnedRunner.Run(_tmp, ["entity"], "verify", "--codegen", MetaDir, "--out", OutDir);
+        Assert.Equal(2, verifyExit);
+        Assert.Equal(CodegenCli.LegacyTemplateSpec("dotnet meta verify --codegen", "template-spec.json"), verifyErr.Trim());
+    }
+
+    [Fact]
+    public void The_template_spec_flag_is_refused_with_the_line_that_says_where_it_went()
+    {
+        var spec = WriteSpec("other-spec.json");
+        var before = ProjectFiles();
+
+        var (exit, _, stderr) = OwnedRunner.Run(_tmp, ["entity"], "gen", MetaDir, "--out", OutDir, "--template-spec", spec);
+
+        Assert.Equal(2, exit);
+        Assert.Equal(CodegenCli.LegacyTemplateSpec("dotnet meta gen", "--template-spec"), stderr.Trim());
+        Assert.Equal(before, ProjectFiles());
+    }
+
+    [Fact]
+    public void A_declared_template_spec_entry_renders_its_templates_and_verifies_clean()
+    {
+        var spec = WriteSpec();
+        IReadOnlyList<IGenerator> declared =
+            [new TemplateSpecGenerator { Spec = spec, TemplateRoot = Path.Combine(_tmp, "templates") }];
+
+        var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, declared, "gen", MetaDir, "--out", OutDir);
+        Assert.True(exit == 0, $"exit={exit}\nstdout={stdout}\nstderr={stderr}");
+        Assert.Equal(["Subscriber.summary.txt"], FilesUnder(OutDir));
+        Assert.Equal("name=Subscriber\n", File.ReadAllText(Path.Combine(OutDir, "Subscriber.summary.txt")));
+
+        var (verifyExit, verifyOut, verifyErr) = OwnedRunner.Run(_tmp, declared, "verify", "--codegen", MetaDir, "--out", OutDir);
+        Assert.True(verifyExit == 0, $"exit={verifyExit}\nstdout={verifyOut}\nstderr={verifyErr}");
+        Assert.Contains("OK (generated output is in sync)", verifyOut);
+    }
+
+    [Fact]
+    public void A_declared_template_spec_that_cannot_be_read_fails_cleanly_before_writing()
+    {
+        IReadOnlyList<IGenerator> declared =
+            [new EntityGenerator(), new TemplateSpecGenerator { Spec = Path.Combine(_tmp, "missing.json") }];
+
+        var (exit, _, stderr) = OwnedRunner.Run(_tmp, declared, "gen", MetaDir, "--out", OutDir);
+
+        Assert.Equal(1, exit);
+        Assert.Contains("template spec", stderr);
+        Assert.Contains("missing.json", stderr);
+        Assert.Empty(FilesUnder(OutDir));
     }
 }

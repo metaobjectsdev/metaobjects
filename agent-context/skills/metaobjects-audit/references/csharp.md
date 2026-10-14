@@ -79,8 +79,9 @@ exits 2 and generates nothing.
 
 **A finding of the form "the built-ins do not emit the shape this project needs", or a
 hand-written layer the model fully describes, resolves to a generator the project writes**
-(ADR-0034 Amendment 4), or to a declarative template (`dotnet meta gen --template-spec
-<json> --template-root <dir>`) where the shape is what matters. Recommend it; it is the
+(ADR-0034 Amendment 4), or to a declarative template (a `TemplateSpecGenerator { Spec =
+"<json>", TemplateRoot = "<dir>" }` entry in `codegen/Generators.cs`) where the shape is what
+matters. Recommend it; it is the
 primary path. Worked template example: `docs/ports/csharp.md`.
 
 To re-scaffold the agent-context into a C# project, use the Node `meta` CLI (the

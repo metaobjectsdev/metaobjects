@@ -309,6 +309,48 @@ A project that already has `codegen/Program.cs` with an inline list: move each e
 and replace `Program.cs` with the two lines above. `dotnet meta init` writes
 `Generators.cs` beside an existing `Program.cs` and leaves `Program.cs` alone.
 
+**A template spec.** Through 1.0, `dotnet meta gen` and `verify --codegen` also read a
+declarative template-spec on their own: `--template-spec <json>` on `gen`, or
+`template-spec.json` at the project root (the metadata directory's parent) with no flag.
+Neither is read in 1.1.0. A run that finds either, with no spec entry in the list, fails
+before writing anything:
+
+```
+dotnet meta gen: found 1.0 template-spec configuration (template-spec.json). Nothing reads it any more, so this run would not render its templates. Declare it in codegen/Generators.cs as `new MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator { Spec = "template-spec.json" }`. See docs/features/migrations/docs-are-generators.md, section "C#".
+```
+
+(`--template-spec` in place of `template-spec.json` when the flag was given;
+`dotnet meta verify --codegen` in place of `dotnet meta gen` for the gate.)
+
+Before (1.0):
+
+```
+dotnet meta gen ./metaobjects --out ./Generated --generators entity --template-root ./templates
+# with ./template-spec.json beside ./metaobjects, or: --template-spec ./template-spec.json
+```
+
+After (1.1.0), the spec as one more entry; it writes the same files to the same paths:
+
+```csharp
+// codegen/Generators.cs
+public static IReadOnlyList<IGenerator> All { get; } =
+[
+    new MetaObjects.Codegen.Generators.EntityGenerator(),
+    new MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator
+    {
+        Spec = "template-spec.json",
+        TemplateRoot = "templates",
+    },
+];
+```
+
+```
+dotnet meta gen ./metaobjects --out ./Generated
+```
+
+`Spec` and `TemplateRoot` are taken from the directory gen runs in, as `--out` is. Omit
+`TemplateRoot` to keep the 1.0 default: `prompts/` when it exists, else `templates/`.
+
 **Each 1.0 flag, and where it goes.**
 
 | 1.0 | 1.1.0 |
@@ -318,6 +360,8 @@ and replace `Program.cs` with the two lines above. `dotnet meta init` writes
 | `dotnet meta docs --project <name>` (default: the metadata directory's name) | `ProjectName`, default `project`; set the metadata directory's name to keep 1.0's pages byte for byte |
 | `dotnet meta docs --model-base-url <url>` | `ModelBaseUrl` |
 | the `api/csharp` subdirectory under `--out` | `ApiSubDir`, same default |
+| `dotnet meta gen --template-spec <json>`, or a project-root `template-spec.json` | a `TemplateSpecGenerator { Spec = "<json>" }` entry |
+| `dotnet meta gen --template-root <dir>` | `TemplateRoot` on the spec entry, and the template root `render-helper` is constructed with in the list |
 | `dotnet meta docs --namespace <ns>` | the gen run's `--namespace`, as before |
 | whether you ran `dotnet meta docs` | whether `ApiDocsGenerator` is listed |
 | an owned api-docs copy, run by `dotnet meta docs` (1.1.0 release candidates only) | `new Codegen.Generators.ApiDocsGenerator { ... }` in the list, in place of the packaged one |
@@ -417,7 +461,7 @@ metaobjects gen
 | `gen <metadata_dir>` | top-level `metadata` |
 | `gen --out <dir>` | the target's `outDir` |
 | `gen --generators a,b,c` (the selection) | the target's `generators`; `--generators` now only narrows a run to declared entries, and naming one no target declares is refused |
-| `gen --template-spec <json>` | `templateSpec: <json>` on the target its output belongs in |
+| `gen --template-spec <json>`, or the `template-spec.json` beside `<metadata_dir>` that 1.0 found on its own | `templateSpec: <json>` on the target its output belongs in; a leftover `template-spec.json` that no target declares fails the run with a line that starts `metaobjects gen: found 1.0 template-spec configuration (` |
 | `gen --entities a,b` | the target's `entities` (`--entities` still narrows a run) |
 
 **Give the docs target an `outDir` that holds generated files only.**

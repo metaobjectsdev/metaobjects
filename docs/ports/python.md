@@ -508,7 +508,9 @@ the directory flag there is `--prompts`, with `--templates-root` its deprecated 
 
 The `--template-spec` flag and the 1.0 discovery of `<projectRoot>/template-spec.json` are
 not read: a spec is part of the list only where a target declares it, so `gen` and
-`verify --codegen` always agree about it.
+`verify --codegen` always agree about it. A project-root `template-spec.json` that no target
+declares fails both before anything is written, with a line that starts
+`metaobjects gen: found 1.0 template-spec configuration (`.
 
 Each spec entry derives the neutral template data dict for its scope and names
 each file via the `outputPattern` placeholders (`{name}`, `{Name}`, `{package}`).

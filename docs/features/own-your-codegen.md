@@ -549,7 +549,7 @@ Restore the file to generated output and the collision is raised again on the ne
 Two write paths deliberately **bypass** the guard, and the reason is the same in both:
 the guard is sound only where our own emitter always writes the marker. `DocsMojo`'s API
 pages render from `templates/api/*.mustache`, and `TemplateScopeGenerator` emits whatever
-a user's `--template-spec` renders (SQL, markdown, CSV) — neither content is ours to
+a user's template-spec renders (SQL, markdown, CSV) — neither content is ours to
 require a marker of, and guarding them would make the first run write and every run after
 refuse, freezing the artifact while the build stayed green.
 
@@ -638,7 +638,7 @@ generator code. The 20-line programmatic shape for each port is in
 |---|---|---|---|
 | **TypeScript** | `meta init` → `meta gen --list --probe` → `meta eject <names...>` → `meta gen` (Bun/Node CLI) | **Yes.** `meta generator new <name>` writes a working generator of your own into `codegen/generators/` and wires it — the first move for an output nothing ships. To use a stock generator as shipped, import its factory from its package (`meta gen --list` prints the line) and wire it. To change one: `meta init` scaffolds the LAYOUT and an empty selection (ADR-0034 Amendment 2); `meta eject <name>...` copies each generator you choose into `codegen/generators/*.ts` and prints the import to put in `metaobjects.config.ts`. Edit them freely. Every stock generator can be ejected except two: the `template` primitive, which has no emit logic of its own to own (the same ruling in every port), and `docs-site`, whose builder stays in the package while `meta eject docs-site` copies the site's templates and assets into `codegen/docs-site/`. `meta gen --list` marks both **package-only** and `meta eject` names them as such. An ejected generator comes with the code that writes its output: the template modules it calls are copied into `codegen/templates/` ([what the copy holds](#what-the-copy-holds)), so the prompt tier, `callable`, `trace-helper`, `cube-model`, `shared-model`, the UI tier and the docs tier are as ownable as `entity` and `routes`. What stays in the package is the engine: the generator base, the model walks (including the requirement walk, each test's identity and the claim digest), the naming and type-mapping tables, and the render and extract engines of `@metaobjectsdev/render`. `requirement-tests` is one file holding the generator and its default stub renderer. The documentation generators (`docs`, `api-docs`, `requirements`, `agent-docs`, `metamodel-docs` and `docs-site`) are entries in `generators` that write to the `docs` target, and `meta gen` runs them ([details](#the-docs-generators-and-shared-model-typescript)). | **Yes** — `templateGenerator({ template, scope, outputPattern })` in the config's `generators: [...]`. No CLI flag: the config already takes generator values. |
 | **Java / Kotlin** | `mvn metaobjects:generate` / `mvn metaobjects:verify` (`metaobjects-maven-plugin`) | **Yes.** Extend `FileEmittingGenerator` and read the model through `ModelWalk` (both in `metaobjects-codegen-base`) for one of your own. Every generator — built-in or your own — is named in `<generator><classname>` and loaded from the project classpath: one seam, not two. There is no default suite, so `<generators>` is the complete list. Kotlin runs through the same goal. | **Yes** — `TemplateScopeGenerator` wired as an ordinary `<generator>`. No CLI flag: `<generator>` is already the seam. |
-| **C#** | `dotnet meta init` → `dotnet meta gen` / `dotnet meta verify` (.NET tool) | **Yes.** Implement `IGenerator` in the console project `codegen/` and list it in `codegen/Generators.cs`, the generator list `dotnet meta gen` / `verify --codegen` run through `dotnet run --project codegen`. `dotnet meta init` (or a first `dotnet meta eject <name>`) writes the project. `--generators` only narrows the list. | **Yes** — `dotnet meta gen --template-spec <json> --template-root <dir>`, or `template-spec.json` at the project root. |
+| **C#** | `dotnet meta init` → `dotnet meta gen` / `dotnet meta verify` (.NET tool) | **Yes.** Implement `IGenerator` in the console project `codegen/` and list it in `codegen/Generators.cs`, the generator list `dotnet meta gen` / `verify --codegen` run through `dotnet run --project codegen`. `dotnet meta init` (or a first `dotnet meta eject <name>`) writes the project. `--generators` only narrows the list. | **Yes** — a `TemplateSpecGenerator { Spec = "<json>", TemplateRoot = "<dir>" }` entry in `codegen/Generators.cs`. |
 | **Python** | `metaobjects gen` / `metaobjects verify` (console-script) | **Yes.** Name your generator as `module:symbol` in a target's `generators` in `metaobjects.config.yaml`, the generator list `gen` runs; the symbol is an instance or a function returning one. Read the model through `metaobjects.codegen.model_walk`. (`--provider module:symbol` registers **metamodel vocabulary**, not a generator.) | **Yes** — `templateSpec: <json>` on a target, with `metaobjects gen --templates <dir>`. |
 
 So "I need a shape the built-ins do not emit" has an answer on **every** port, in code or
@@ -680,19 +680,13 @@ output *shape* is what you are iterating on, or when you want the same output ac
 languages; reach for a generator when the logic is gnarly or the run is hot. Full
 tradeoff table: [`codegen-concepts.md` §3](codegen-concepts.md).
 
-**The spec file is discovered, not just flagged.** With no `--template-spec`, both ports
-look for **`<projectRoot>/template-spec.json`** — projectRoot being the metadata dir's
-parent, the same anchor `.metaobjects/` already uses. The flag overrides it.
-
-That matters for more than typing: `verify --codegen` takes **no** `--template-spec` flag,
-so discovery is how the drift gate learns about your template generators. Before it existed,
-`gen` honoured the flag and `verify` never looked — so verify regenerated without them and
-convicted their committed output, with a remedy that loops. Keep the spec at the
-conventional path and both verbs resolve the same one.
-
-Passing `--template-spec` explicitly still works and still wins; just make sure any CI that
-runs `verify --codegen` can find the spec, which the conventional path guarantees and a
-flag-only setup does not.
+**The spec is declared in the generator list.** In Python it is a target's `templateSpec`
+in `metaobjects.config.yaml`; in C# it is a `TemplateSpecGenerator { Spec = "...",
+TemplateRoot = "..." }` entry in `codegen/Generators.cs`. Because `verify --codegen`
+regenerates the same list, the drift gate always knows about your template generators.
+Through 1.0 both ports also discovered a project-root `template-spec.json` (and C# read a
+`--template-spec` flag); neither is read now, and a run that finds the conventional file with
+nothing declaring a spec fails and names the migration section.
 
 *(Full command/flag matrix and rationale: [`docs/features/cli.md`](cli.md), locked per
 ADR-0015. Schema migrations are TypeScript-owned across all ports.)*

@@ -60,12 +60,11 @@ a `module:symbol` entry in a target's `generators` in `metaobjects.config.yaml`.
 `--provider module:symbol` registers **metamodel vocabulary**, not a generator.)
 Declarative: a JSON template-spec. On Python it is declared on a target
 (`templateSpec: <json>`, refs resolved under `--templates <dir>`) and runs into that target's
-`outDir`. On C# it is `--template-spec <json>` (plus `--template-root <dir>`) or, with no flag,
-`<projectRoot>/template-spec.json` — projectRoot being the metadata dir's parent; keep it
-there, because `verify --codegen` accepts no `--template-spec` flag, so the conventional path
-is how the drift gate learns your template generators exist. Either way the entries are
-appended to the declared list. Worked examples with the full JSON: `docs/ports/python.md`
-and `docs/ports/csharp.md`.
+`outDir`. On C# it is an entry in `codegen/Generators.cs`:
+`new MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator { Spec = "template-spec.json",
+TemplateRoot = "templates" }`. Neither port reads a spec it was not given there: a leftover
+project-root `template-spec.json` with nothing declaring a spec fails the run. Worked examples
+with the full JSON: `docs/ports/python.md` and `docs/ports/csharp.md`.
 
 So on every port, "I need a shape the built-ins do not emit" is answered by a generator of
 your own or a template. Do not conclude the port cannot be customized.

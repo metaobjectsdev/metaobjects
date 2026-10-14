@@ -603,7 +603,7 @@ partial class Program
     /// <summary>Each command's usage, printed by <c>dotnet meta &lt;command&gt; --help</c>.</summary>
     static readonly Dictionary<string, string> CommandUsage = new()
     {
-        ["gen"] = "usage: dotnet meta gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--template-spec <json>] [--emit-abstract-shapes] [--column-naming literal|snake_case|kebab-case] [--baseline default|adopt]\n" +
+        ["gen"] = "usage: dotnet meta gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--emit-abstract-shapes] [--column-naming literal|snake_case|kebab-case] [--baseline default|adopt]\n" +
                   "       dotnet meta gen --list\n" +
                   "  runs the generator list in codegen/Generators.cs (`dotnet meta init` writes it);\n" +
                   "  --generators narrows that list to the entries named, and never adds one",

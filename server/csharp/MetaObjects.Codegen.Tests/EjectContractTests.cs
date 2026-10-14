@@ -48,6 +48,10 @@ public class EjectContractTests
         var registered = GeneratorRegistry.List()
             .Select(e => e.Factory(new GeneratorBuildContext()).GetType())
             .ToHashSet();
+        // TemplateSpecGenerator is how a template spec is declared in codegen/Generators.cs
+        // (ADR-0034 Amendment 9). It writes nothing of its own: it runs the spec's `template`
+        // generators, which the registry's `template` entry builds.
+        registered.Add(typeof(MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator));
         var shipped = ShippedGeneratorTypes();
         Assert.NotEmpty(shipped);
         var unregistered = shipped.Where(t => !registered.Contains(t)).Select(t => t.FullName).OrderBy(n => n).ToList();

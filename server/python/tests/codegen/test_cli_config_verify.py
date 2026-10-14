@@ -282,16 +282,21 @@ def test_config_mode_refuses_template_spec_instead_of_ignoring_it(
     assert "templateSpec: <path>" in err
 
 
-def test_config_mode_ignores_a_discovered_spec(tmp_path: Path) -> None:
-    """A DISCOVERED spec must not hard-fail config mode — discovery is a convention,
-    not a request. gen and verify both ignore it here, so they still agree."""
+def test_config_mode_refuses_a_spec_nothing_declares(tmp_path: Path, capsys) -> None:
+    """A project-root spec no target declares is 1.0 configuration that nothing reads any more:
+    gen and verify both refuse it, rather than both quietly skipping its templates (ADR-0034
+    Amendment 9). They still agree, now by failing the same way."""
+    from metaobjects.cli import legacy_template_spec_message
+
     cfg = _project(tmp_path)
     (tmp_path / "template-spec.json").write_text(
         '{"generators": [{"name": "s", "template": "entity", '
         '"scope": "perEntity", "outputPattern": "{name}.txt"}]}'
     )
-    assert main(["gen", "--config", str(cfg)]) == 0
-    assert main(["verify", "--codegen", "--config", str(cfg)]) == 0
+    assert main(["gen", "--config", str(cfg)]) == 2
+    assert legacy_template_spec_message("metaobjects gen") in capsys.readouterr().err
+    assert main(["verify", "--codegen", "--config", str(cfg)]) == 2
+    assert legacy_template_spec_message("metaobjects verify --codegen") in capsys.readouterr().err
 
 
 # --- the `extra` verdict at the two rungs the flag-mode test cannot reach ------------

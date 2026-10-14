@@ -1103,6 +1103,11 @@ until you regenerate.
     (`IGenerator.OutDir`, a default interface member returning `null`, which writes under
     `--out`), and `verify --codegen` compares each entry's directory. The owned runner now also
     refuses an unknown flag and an unknown `--baseline` value, as `dotnet meta gen` did.
+  - **A template spec is an entry too.** `MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator`
+    (`Spec`, `TemplateRoot`, `OutDir`) declares one in `codegen/Generators.cs`. `gen` and
+    `verify --codegen` no longer read `--template-spec` or discover a project-root
+    `template-spec.json`; a run that finds either with no such entry fails with
+    `found 1.0 template-spec configuration` before writing anything.
   - Removed public API, all added after 1.0.13 and never released: `IDocsGenerator`,
     `DocsRunFacts`, `GenContext.Docs`, `CodegenCli.RunDocs`, `CodegenCli.DocsOutcome`,
     `CodegenCli.DocsGeneratorSkipped`, `CodegenHandoff.HasOwnedDocs`. `MetaObjects.Cli.DocsCommand`
@@ -1125,7 +1130,9 @@ until you regenerate.
   - **New:** the top-level `apiDocs` block (`apiSubDir`, `projectName`, `modelBaseUrl`) carries
     the api reference's options, and a target's `templateSpec: <path>` declares a template-spec
     whose generators write into that target, replacing the `--template-spec` flag, which is now
-    refused. `--generators` narrows a run to declared entries and refuses a name no target
+    refused. A project-root `template-spec.json` that no target declares, which the 1.0 flag form
+    found on its own, fails `gen` and `verify --codegen` with
+    `found 1.0 template-spec configuration`. `--generators` narrows a run to declared entries and refuses a name no target
     declares; `--column-naming`, `--entities`, `--provider`, `--templates` and `--baseline` now
     apply to the config's list.
   - Removed public API, all added after 1.0.13 and never released: `DocsRunFacts`,

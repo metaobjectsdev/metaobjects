@@ -277,3 +277,25 @@ def test_api_docs_writes_the_reference_for_a_model_with_no_objects(
     monkeypatch.chdir(tmp_path)
     assert main(["gen"]) == 0
     assert _files(tmp_path / "docs") == {"api/python/README.md", "api/python/AGENT-API.md"}
+
+
+# --- a conventional template-spec.json nothing declares is refused ------------------------
+
+
+@pytest.mark.parametrize("argv, command", [
+    (["gen"], "metaobjects gen"),
+    (["verify", "--codegen"], "metaobjects verify --codegen"),
+])
+def test_a_conventional_template_spec_no_target_declares_is_refused(
+    tmp_path: Path, monkeypatch, capsys, argv: list[str], command: str,
+) -> None:
+    from metaobjects.cli import legacy_template_spec_message
+
+    _metadata(tmp_path)
+    (tmp_path / "template-spec.json").write_text('{"generators": []}', encoding="utf-8")
+    _config(tmp_path, "targets:\n  main:\n    outDir: gen\n    generators: [entity]\n")
+    before = _files(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    assert main(argv) == 2
+    assert capsys.readouterr().err.strip() == legacy_template_spec_message(command)
+    assert _files(tmp_path) == before

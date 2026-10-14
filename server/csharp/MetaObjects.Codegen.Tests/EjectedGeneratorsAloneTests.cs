@@ -404,6 +404,8 @@ public class EjectedGeneratorsAloneTests
         var registered = GeneratorRegistry.List()
             .Select(e => e.Factory(new GeneratorBuildContext()).GetType())
             .ToHashSet();
+        // The declaration form of a template spec: it runs the registry's `template` generators.
+        registered.Add(typeof(MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator));
         var shipped = typeof(IGenerator).Assembly.GetExportedTypes()
             .Where(t => t is { IsClass: true, IsAbstract: false } && typeof(IGenerator).IsAssignableFrom(t))
             .Where(t => !registered.Contains(t))
