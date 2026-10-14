@@ -27,8 +27,8 @@ The metadata source directory is the first positional arg (`<metadataDir>`); `--
 is required (errors if absent, no default). The runner overwrites only files bearing
 this header; it refuses to touch files without it. Locate the output directory from
 how the team invokes `dotnet meta gen` (or a CI script) — the arg is explicit. What is
-generated is the list in `codegen/Generators.cs`; an entry with its own `OutDir` (the
-`ApiDocsGenerator`) writes there instead of under `--out`.
+generated is the list in `codegen/Generators.cs`; an entry with its own `OutDir`
+(`ApiDocsGenerator`, `RequirementTestsGenerator`) writes there instead of under `--out`.
 
 ---
 

@@ -554,7 +554,7 @@ declared where every generator is, as an entry in `codegen/Generators.cs`:
 new MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator
 {
     Spec = "template-spec.json",   // from the directory gen runs in, as --out is
-    TemplateRoot = "templates",    // optional; default prompts/ when it exists, else templates/
+    TemplateRoot = "templates",    // optional; default the run's --template-root, else prompts/ when it exists, else templates/
 },
 ```
 

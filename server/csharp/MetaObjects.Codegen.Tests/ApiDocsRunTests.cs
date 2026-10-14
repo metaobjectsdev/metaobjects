@@ -158,7 +158,7 @@ public sealed class ApiDocsRunTests : IDisposable
     }
 
     [Fact]
-    public void The_drift_check_refuses_when_the_entry_directory_was_never_generated()
+    public void The_drift_check_reports_each_page_of_an_entry_directory_that_was_never_generated()
     {
         var load = Load();
         var config = new GenConfig { OutDir = Out, Namespace = "Acme.Generated" };
@@ -166,7 +166,9 @@ public sealed class ApiDocsRunTests : IDisposable
 
         var drift = CodegenDrift.Compute(config, load.Root, [new EntityGenerator(), new ApiDocsGenerator { OutDir = Docs }]);
 
-        Assert.NotNull(drift.Error);
-        Assert.Contains(Docs.TrimEnd('/'), drift.Error);
+        Assert.Null(drift.Error);
+        Assert.False(drift.Clean);
+        Assert.Contains(drift.Lines, l => l.StartsWith("+ ", StringComparison.Ordinal) && l.Contains("api/csharp/README.md"));
+        Assert.All(drift.Lines, l => Assert.StartsWith("+ ", l));
     }
 }

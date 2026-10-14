@@ -307,6 +307,106 @@ def test_verify_entities_narrowed_run_still_catches_a_real_edit(
     assert "drifted: Program.py" in capsys.readouterr().err
 
 
+def test_verify_entities_narrowed_run_checks_a_shared_aggregate_against_the_whole_list(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    """``enums.py`` holds every entity's shared enums, so ``--entities Shirt`` must compare it
+    with what the whole list writes, not with a module built from Shirt alone."""
+    meta = tmp_path / "metaobjects"
+    meta.mkdir()
+    (meta / "meta.shop.json").write_text(json.dumps({"metadata.root": {"package": "shop", "children": [
+        {"field.enum": {"name": "Color", "abstract": True, "@values": ["RED", "BLUE"]}},
+        {"field.enum": {"name": "Size", "abstract": True, "@values": ["S", "L"]}},
+        {"object.entity": {"name": "Shirt", "children": [
+            {"field.long": {"name": "id"}},
+            {"field.enum": {"name": "color", "extends": "Color"}},
+            {"source.rdb": {"@table": "shirts"}},
+            {"identity.primary": {"name": "pk", "@fields": ["id"]}},
+        ]}},
+        {"object.entity": {"name": "Shoe", "children": [
+            {"field.long": {"name": "id"}},
+            {"field.enum": {"name": "size", "extends": "Size"}},
+            {"source.rdb": {"@table": "shoes"}},
+            {"identity.primary": {"name": "pk", "@fields": ["id"]}},
+        ]}},
+    ]}}), encoding="utf-8")
+    _config(tmp_path, "targets:\n  main:\n    outDir: gen\n    generators: [entity]\n")
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) == 0
+    enums = (tmp_path / "gen" / "enums.py").read_text(encoding="utf-8")
+    assert "class Color" in enums and "class Size" in enums
+    capsys.readouterr()
+    assert main(["verify", "--codegen", "--entities", "Shirt"]) == 0, capsys.readouterr().err
+
+    (tmp_path / "gen" / "enums.py").write_text(enums + "\n# hand edit\n", encoding="utf-8")
+    assert main(["verify", "--codegen", "--entities", "Shirt"]) == 1
+    assert "drifted: enums.py" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("command", [["gen"], ["verify", "--codegen"]])
+def test_an_entities_name_that_matches_no_object_is_refused(
+    tmp_path: Path, monkeypatch, capsys, command: list[str],
+) -> None:
+    """A typo'd ``--entities`` would generate, and so check, nothing: a hand-edited file
+    must not pass a narrowed verify because the name matched no object."""
+    _metadata(tmp_path)
+    _config(tmp_path, "targets:\n  main:\n    outDir: gen\n    generators: [entity]\n")
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) == 0
+    program = tmp_path / "gen" / "Program.py"
+    program.write_text(program.read_text(encoding="utf-8") + "\n# hand edit\n", encoding="utf-8")
+    before = _files(tmp_path / "gen")
+    capsys.readouterr()
+    assert main([*command, "--entities", "Prgram"]) == 2
+    assert "--entities names 'Prgram', which matches no object in the metadata." in capsys.readouterr().err
+    assert _files(tmp_path / "gen") == before
+
+
+@pytest.mark.parametrize("command", [["gen"], ["verify", "--codegen"]])
+def test_a_blank_generators_selection_is_refused(
+    tmp_path: Path, monkeypatch, capsys, command: list[str],
+) -> None:
+    """An unset shell variable gives ``--generators ""``: a narrowing to nothing, never the
+    whole list."""
+    _metadata(tmp_path)
+    _config(tmp_path, "targets:\n  main:\n    outDir: gen\n    generators: [entity]\n")
+    monkeypatch.chdir(tmp_path)
+    assert main([*command, "--generators", ""]) == 2
+    assert "--generators names no generator." in capsys.readouterr().err
+    assert not (tmp_path / "gen").exists()
+
+
+# --- j. a 1.0-shape target ----------------------------------------------------------------
+
+
+@pytest.mark.parametrize("command", [["gen"], ["verify", "--codegen"]])
+def test_a_target_with_no_generators_key_is_refused_with_the_migration_line(
+    tmp_path: Path, monkeypatch, capsys, command: list[str],
+) -> None:
+    _metadata(tmp_path)
+    _config(tmp_path, "targets:\n  api:\n    outDir: gen\n")
+    monkeypatch.chdir(tmp_path)
+    assert main(command) == 2
+    name = " ".join(["metaobjects", *command])
+    assert capsys.readouterr().err.strip() == (
+        f"{name}: target(s) 'api' declare no `generators` key. In 1.1.0 a target runs only the "
+        "generators it lists: list them, or write `generators: []` for a target that writes "
+        'nothing. See docs/features/migrations/docs-are-generators.md, section "Python".'
+    )
+    assert not (tmp_path / "gen").exists()
+
+
+def test_a_comma_inside_one_generators_entry_is_refused(tmp_path: Path, monkeypatch, capsys) -> None:
+    """``["entity, routes"]`` is one entry naming two generators; resolving it as one would
+    run ``entity`` and drop ``routes`` without a word."""
+    _metadata(tmp_path)
+    _config(tmp_path, 'targets:\n  main:\n    outDir: gen\n    generators: ["entity, routes"]\n')
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) != 0
+    assert "generators entry 'entity, routes' holds a comma" in capsys.readouterr().err
+    assert not _files(tmp_path / "gen")
+
+
 # --- a model with no objects still gets its api reference ---------------------------------
 
 

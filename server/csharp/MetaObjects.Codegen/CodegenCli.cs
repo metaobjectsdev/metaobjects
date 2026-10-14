@@ -338,7 +338,12 @@ public static class CodegenCli
         IReadOnlyList<IGenerator> declared, IReadOnlyList<string>? selection, string templateRoot, out string? error)
     {
         error = null;
-        if (selection is not { Count: > 0 }) return declared;
+        if (selection is null) return declared;
+        if (selection.Count == 0)
+        {
+            error = "--generators names no generator.";
+            return [];
+        }
         var ctx = new GeneratorBuildContext(templateRoot);
         var picked = new HashSet<IGenerator>(ReferenceEqualityComparer.Instance);
         var undeclared = new List<string>();
@@ -359,6 +364,13 @@ public static class CodegenCli
         }
         return [.. declared.Where(picked.Contains)];
     }
+
+    /// <summary><paramref name="selected"/>, with the run's <paramref name="templateRoot"/> given to each
+    /// template-spec entry that names none of its own.</summary>
+    private static List<IGenerator> WithTemplateRoot(IReadOnlyList<IGenerator> selected, string templateRoot) =>
+        [.. selected.Select(g => g is TemplateSpecGenerator { TemplateRoot: null } spec
+            ? new TemplateSpecGenerator { Spec = spec.Spec, TemplateRoot = templateRoot, OutDir = spec.OutDir }
+            : g)];
 
     /// <summary>The registry names of the entries in <paramref name="generators"/> that a registry
     /// generator builds, for the advisory requires check.</summary>
@@ -617,7 +629,7 @@ public static class CodegenCli
             Console.Error.WriteLine($"error: {selectError}");
             return 2;
         }
-        List<IGenerator> suite = [.. selected];
+        var suite = WithTemplateRoot(selected, templateRoot);
         if (CheckTemplateSpecs(suite) is { } specError)
         {
             Console.Error.WriteLine($"  error: {specError}");
@@ -718,11 +730,17 @@ public static class CodegenCli
             Console.Error.WriteLine($"error: {selectError}");
             return 2;
         }
-        List<IGenerator> suite = [.. selected];
+        var suite = WithTemplateRoot(selected, templateRoot);
         if (CheckTemplateSpecs(suite) is { } specError)
         {
             Console.Error.WriteLine($"  error: {specError}");
             return 2;
+        }
+        // An empty list writes nothing, so there is nothing to compare: gen made no directory.
+        if (suite.Count == 0)
+        {
+            Console.WriteLine($"{VerifyCommandName}: {GeneratorListPath} declares no generators; nothing to check");
+            return 0;
         }
 
         // Same inference rule `dotnet meta verify --codegen` has always used: an explicit

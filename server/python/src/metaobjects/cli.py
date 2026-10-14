@@ -1228,6 +1228,15 @@ def _load_generator_list(
     if config.legacy_docs:
         print(legacy_docs_message(command), file=sys.stderr)
         return None, 2
+    unlisted = [t.name for t in config.targets if t.generators is None]
+    if unlisted:
+        print(
+            f"{command}: target(s) {', '.join(repr(n) for n in unlisted)} declare no `generators` "
+            "key. In 1.1.0 a target runs only the generators it lists: list them, or write "
+            "`generators: []` for a target that writes nothing. " + _MIGRATION_SECTION,
+            file=sys.stderr,
+        )
+        return None, 2
     conventional = project_root_for(config.metadata_dir()) / TEMPLATE_SPEC_FILENAME
     if conventional.is_file() and not any(t.template_spec for t in config.targets):
         print(legacy_template_spec_message(command), file=sys.stderr)
@@ -1236,11 +1245,39 @@ def _load_generator_list(
 
 
 def _selection_from_args(args: argparse.Namespace) -> list[str] | None:
-    """The ``--generators`` names, or ``None`` for the whole list."""
+    """The ``--generators`` names, or ``None`` for the whole list. A blank ``--generators``
+    gives ``[]``, which :func:`_refuse_narrowing` refuses."""
     raw = getattr(args, "generators", None)
-    if not raw:
+    if raw is None:
         return None
-    return [n.strip() for n in raw.split(",") if n.strip()] or None
+    return [n.strip() for n in raw.split(",") if n.strip()]
+
+
+def _refuse_narrowing(
+    args: argparse.Namespace, selection: list[str] | None, root: MetaData, command: str
+) -> bool:
+    """A narrowing that names nothing: a blank ``--generators`` (an unset shell variable)
+    would run the whole list, and an ``--entities`` name that matches no object would
+    generate, and so check, nothing. Refused, exit 2."""
+    if selection == []:
+        print(f"error: {command}: --generators names no generator.", file=sys.stderr)
+        return True
+    names = _parse_entities(getattr(args, "entities", None))
+    if names is None and getattr(args, "entities", None) is not None:
+        print(f"error: {command}: --entities names no object.", file=sys.stderr)
+        return True
+    # ADR-0039 sanctioned own: top-level object scan on the loader ROOT (metadata.root is
+    # never extended, so own == effective), as in `_refuse_imported_entities`.
+    known = {c.name for c in root.own_children() if c.type == TYPE_OBJECT}
+    unknown = [n for n in names or [] if n not in known]
+    if unknown:
+        print(
+            f"error: {command}: --entities names {', '.join(repr(n) for n in unknown)}, "
+            "which matches no object in the metadata.",
+            file=sys.stderr,
+        )
+        return True
+    return False
 
 
 def _narrow_entities(
@@ -1285,6 +1322,7 @@ def _run_gen_targets(
     build_ctx: GeneratorBuildContext | None = None,
     column_naming: str = DEFAULT_COLUMN_NAMING,
     selection: list[str] | None = None,
+    targeted_out: set[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Run each target's declared generators into its ``outDir``. Returns (all_written, errors).
 
@@ -1309,6 +1347,9 @@ def _run_gen_targets(
 
     ``select`` (FR-023 §11.1 item 2) — see :func:`_run_suite`; the SAME predicate
     applies to every target, since a `Collection`'s scope is project-wide.
+
+    ``targeted_out`` collects the ``outDir`` of every target with a declared entry left to
+    run after ``selection``: decided from the config, whatever the entries then emit.
     """
     all_written: list[str] = []
     seen: dict[str, str] = {}  # full path -> target name
@@ -1346,6 +1387,13 @@ def _run_gen_targets(
     plan: list[tuple[TargetConfig, list[Generator], list[Generator]]] = []
     for t in targets:
         gens: list[Generator] = []
+        commas = [tok for tok in t.generators or [] if "," in tok]
+        if commas:
+            errors.extend(
+                f"target '{t.name}': generators entry {tok!r} holds a comma; list each "
+                "generator as an entry of its own." for tok in commas
+            )
+            continue
         if t.generators:
             gens, gen_errors = _resolve_generators(
                 ",".join(t.generators), ctx, owned_root=config.config_dir)
@@ -1381,6 +1429,8 @@ def _run_gen_targets(
             print(f"target '{t.name}' declares no generators; nothing written")
             continue
         out_dir = config.out_dir_for(t)
+        if targeted_out is not None:
+            targeted_out.add(out_dir)
         written: list[str] = []
         try:
             if gens:
@@ -1472,6 +1522,9 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
         return 1
     _print_unknown_attr_warnings(unknown_attrs)
 
+    selection = _selection_from_args(args)
+    if _refuse_narrowing(args, selection, root, "metaobjects gen"):
+        return 2
     for t in targets:
         imported_refusal = _refuse_imported_entities(t.entities, root, collection)
         if imported_refusal is not None:
@@ -1488,7 +1541,7 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
         select=collection.in_scope,
         build_ctx=GeneratorBuildContext(_template_root_for(args)),
         column_naming=getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING,
-        selection=_selection_from_args(args),
+        selection=selection,
     )
     if errors:
         for msg in errors:
@@ -1638,10 +1691,11 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
     ``--target`` widens to the outDir-sharing closure (an outDir is verified as a
     unit). Strict-by-default (ADR-0023) unless ``--lax``.
     No ``metaobjects.config.yaml`` is an error: the list lives there.
-    A ``--generators``/``--entities``-narrowed run only regenerates part of the declared
-    list, so it reports ``missing``/``drifted`` for what it DID regenerate but never
-    ``extra`` — a committed file outside a narrowed run's own output is some other
-    entry's file, not drift — and skips an outDir no selected entry wrote into at all.
+    A ``--generators``/``--entities``-narrowed run checks only the paths the narrowed run
+    emits, each against the content the whole declared list gives it (an aggregate such as
+    ``enums.py`` is built from every entity), never reports ``extra`` (a committed file the
+    narrowed run does not emit is some other entry's), and skips an outDir no selected
+    entry writes into.
     """
     config, code = _load_generator_list(args, "metaobjects verify --codegen")
     if config is None:
@@ -1701,13 +1755,17 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
             print(_strict_load_hint(), file=sys.stderr)
         return 1
 
+    selection = _selection_from_args(args)
+    if _refuse_narrowing(args, selection, root, "metaobjects verify --codegen"):
+        return 2
     for t in closure:
         imported_refusal = _refuse_imported_entities(t.entities, root, collection)
         if imported_refusal is not None:
             print(imported_refusal, file=sys.stderr)
             return 2
+    narrowed = selection is not None or _parse_entities(getattr(args, "entities", None)) is not None
 
-    with tempfile.TemporaryDirectory() as temp_root:
+    with tempfile.TemporaryDirectory() as temp_root, tempfile.TemporaryDirectory() as declared_root:
         # Map each unique real outDir to ONE temp slot (shared real dir => shared slot).
         temp_for: dict[str, str] = {}
         for t in closure:
@@ -1726,35 +1784,43 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
         # build_ctx from the SAME resolver `gen` uses — a verify that resolved the
         # template root differently would regenerate render-helper against another
         # directory and convict the committed output of being stale.
-        selection = _selection_from_args(args)
-        _written, errors = _run_gen_targets(
-            config, remapped, root, select=collection.in_scope,
+        targeted: set[str] = set()
+        regen = dict(
+            select=collection.in_scope,
             build_ctx=GeneratorBuildContext(_template_root_for(args)),
             # R31: the `names` generator's constants are strategy-dependent, so the regen
             # must use the strategy `gen` wrote with, or every constant reads as drift.
             column_naming=getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING,
-            selection=selection)
+        )
+        _written, errors = _run_gen_targets(
+            config, remapped, root, selection=selection, targeted_out=targeted, **regen)
+        # A narrowed run's paths get the content the whole declared list writes, which is
+        # what `gen` committed: a second regen of the un-narrowed closure supplies it.
+        declared_for: dict[str, str] = {}
+        if narrowed and not errors:
+            unnarrowed = [t for t in config.targets if config.out_dir_for(t) in temp_for]
+            for real in temp_for:
+                declared_for[real] = _temp_slot_for(Path(declared_root), real, config.config_dir)
+            _written, errors = _run_gen_targets(
+                config,
+                [dataclasses.replace(t, out_dir=declared_for[config.out_dir_for(t)])
+                 for t in unnarrowed],
+                root, **regen)
         if errors:
             for msg in errors:
                 print(f"error: {msg}", file=sys.stderr)
             return 1
 
-        # A narrowed run (--generators and/or --entities) regenerates less than the full
-        # declared list, so a committed file it did not produce is not drift — it is a
-        # file some OTHER entry/entity owns. Skip an outDir no selected entry wrote into
-        # at all, and never convict a narrowed run's own outDir of `extra`: missing/changed
-        # still apply to whatever the narrowed run DID produce.
-        narrowed = selection is not None or _parse_entities(
-            getattr(args, "entities", None)
-        ) is not None
         exit_code = 0
         for real_outdir in sorted(temp_for):
             tmp_slot = temp_for[real_outdir]
+            if narrowed and tmp_slot not in targeted:
+                continue
             expected = _relative_set(Path(tmp_slot))
             committed = _relative_set(Path(real_outdir))
-
-            if narrowed and not expected:
-                continue
+            if narrowed:
+                declared = _relative_set(Path(declared_for[real_outdir]))
+                expected = {k: declared[k] for k in expected if k in declared}
 
             changed = sorted(
                 k for k in expected if k in committed and expected[k] != committed[k]

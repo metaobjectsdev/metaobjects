@@ -525,4 +525,65 @@ public sealed class OneGeneratorListTests : IDisposable
         Assert.Contains("missing.json", stderr);
         Assert.Empty(FilesUnder(OutDir));
     }
+
+    [Fact]
+    public void The_runs_template_root_reaches_a_declared_spec_that_names_none()
+    {
+        var spec = WriteSpec();
+        Directory.CreateDirectory(Path.Combine(_tmp, "prompts"));
+        File.WriteAllText(Path.Combine(_tmp, "prompts", "summary.mustache"), "prompt={{name}}\n");
+        IReadOnlyList<IGenerator> declared = [new TemplateSpecGenerator { Spec = spec }];
+
+        var (exit, stdout, stderr) = OwnedRunner.Run(
+            _tmp, declared, "gen", MetaDir, "--out", OutDir, "--template-root", "templates");
+
+        Assert.True(exit == 0, $"exit={exit}\nstdout={stdout}\nstderr={stderr}");
+        Assert.Equal("name=Subscriber\n", File.ReadAllText(Path.Combine(OutDir, "Subscriber.summary.txt")));
+        var verify = OwnedRunner.Run(_tmp, declared, "verify", "--codegen", MetaDir, "--out", OutDir, "--template-root", "templates");
+        Assert.True(verify.ExitCode == 0, $"exit={verify.ExitCode}\nstdout={verify.Stdout}\nstderr={verify.Stderr}");
+        Assert.Equal(1, OwnedRunner.Run(_tmp, declared, "verify", "--codegen", MetaDir, "--out", OutDir).ExitCode);
+    }
+
+    // ---- a directory gen never had to create is an empty tree, not a missing one ---------------
+
+    [Fact]
+    public void An_entry_directory_that_got_no_files_verifies_clean()
+    {
+        var testsDir = Path.Combine(_tmp, "tests", "Generated");
+        IReadOnlyList<IGenerator> declared =
+            [new EntityGenerator(), new RequirementTestsGenerator { OutDir = testsDir, WarnUncovered = false }];
+
+        Assert.Equal(0, OwnedRunner.Run(_tmp, declared, "gen", MetaDir, "--out", OutDir).ExitCode);
+        Assert.False(Directory.Exists(testsDir));
+
+        var verify = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--out", OutDir);
+        Assert.True(verify.ExitCode == 0, $"exit={verify.ExitCode}\nstdout={verify.Stdout}\nstderr={verify.Stderr}");
+    }
+
+    [Fact]
+    public void Verify_codegen_of_a_list_that_declares_nothing_is_clean()
+    {
+        Assert.Equal(0, OwnedRunner.Run(_tmp, Array.Empty<IGenerator>(), "gen", MetaDir, "--out", OutDir).ExitCode);
+
+        var verify = OwnedRunner.Run(_tmp, Array.Empty<IGenerator>(), "verify", MetaDir, "--codegen", "--out", OutDir);
+
+        Assert.True(verify.ExitCode == 0, $"exit={verify.ExitCode}\nstdout={verify.Stdout}\nstderr={verify.Stderr}");
+        Assert.Contains("codegen/Generators.cs declares no generators; nothing to check", verify.Stdout);
+    }
+
+    [Theory]
+    [InlineData("gen")]
+    [InlineData("verify")]
+    public void A_blank_generators_selection_is_refused(string command)
+    {
+        string[] args = command == "gen"
+            ? ["gen", MetaDir, "--out", OutDir, "--generators", ""]
+            : ["verify", MetaDir, "--codegen", "--out", OutDir, "--generators", ""];
+
+        var (exit, _, stderr) = OwnedRunner.Run(_tmp, ["entity"], args);
+
+        Assert.Equal(2, exit);
+        Assert.Contains("--generators names no generator.", stderr);
+        Assert.Empty(FilesUnder(OutDir));
+    }
 }

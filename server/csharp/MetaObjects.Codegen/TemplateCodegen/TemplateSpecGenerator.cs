@@ -16,8 +16,8 @@ public sealed class TemplateSpecGenerator : IGenerator
     /// <summary>The template-spec JSON file, taken from the directory the run starts in.</summary>
     public required string Spec { get; init; }
 
-    /// <summary>The directory template refs resolve under. <c>null</c> takes
-    /// <see cref="CodegenCli.DefaultTemplateRoot"/>: <c>prompts</c> when it exists, else <c>templates</c>.</summary>
+    /// <summary>The directory template refs resolve under. <c>null</c> takes the run's <c>--template-root</c>,
+    /// else <see cref="CodegenCli.DefaultTemplateRoot"/>: <c>prompts</c> when it exists, else <c>templates</c>.</summary>
     public string? TemplateRoot { get; init; }
 
     /// <inheritdoc />

@@ -358,7 +358,8 @@ dotnet meta gen ./metaobjects --out ./Generated
 ```
 
 `Spec` and `TemplateRoot` are taken from the directory gen runs in, as `--out` is. Omit
-`TemplateRoot` to keep the 1.0 default: `prompts/` when it exists, else `templates/`.
+`TemplateRoot` to take the run's `--template-root`, else the 1.0 default: `prompts/` when it
+exists, else `templates/`.
 
 **Each 1.0 flag, and where it goes.**
 
@@ -409,6 +410,13 @@ A config that still has a top-level `docs` block fails `gen` before it writes an
 
 ```
 metaobjects gen: found 1.0 docs configuration (the docs block in metaobjects.config.yaml). Nothing reads it any more, so this run would write no documentation. Declare each docs generator in a target's `generators` in metaobjects.config.yaml. See docs/features/migrations/docs-are-generators.md, section "Python".
+```
+
+A target with no `generators` key fails `gen` (exit 2) before anything is written; list its
+generators, or write `generators: []` for a target that writes nothing:
+
+```
+metaobjects gen: target(s) 'api' declare no `generators` key. In 1.1.0 a target runs only the generators it lists: list them, or write `generators: []` for a target that writes nothing. See docs/features/migrations/docs-are-generators.md, section "Python".
 ```
 
 **Before (1.0).** Code from a config file, or from flags with no config, and the api

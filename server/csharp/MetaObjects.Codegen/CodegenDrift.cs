@@ -94,17 +94,18 @@ public static class CodegenDrift
                 roots.Add((dir, g.OutDir!.TrimEnd('/', '\\') + "/"));
         }
 
-        // Nothing to diff against → a usage/configuration problem (exit 2 at the
-        // CLI), not a drift result. Mirrors the TS "no outDir configured" branch.
-        foreach (var (committed, label) in roots)
+        // No --out to diff against → a usage/configuration problem (exit 2 at the CLI), not
+        // a drift result. Mirrors the TS "no outDir configured" branch. An entry's own
+        // directory is created only when it writes a file, and git keeps no empty one, so a
+        // missing entry directory is an empty committed tree.
+        var outRoot = Path.GetFullPath(config.OutDir);
+        if (roots.Any(r => r.Label.Length == 0) && !Directory.Exists(outRoot))
         {
-            if (Directory.Exists(committed)) continue;
-            var shown = label.Length > 0 ? label.TrimEnd('/') : config.OutDir;
             return new Result
             {
                 Clean = false,
                 Error =
-                    $"verify --codegen: no committed generated output at \"{shown}\" — " +
+                    $"verify --codegen: no committed generated output at \"{config.OutDir}\" — " +
                     "cannot locate the output to diff against. Run 'dotnet meta gen' first " +
                     "(or run without --codegen).",
             };
