@@ -348,17 +348,32 @@ repin_pom() {  # repin_pom <pom.xml> <maven version>
     return 0
   fi
   grep -q "$MVN_GROUP" "$pom" || return 0
-  # No property: rewrite the <version> inside each com.metaobjects <dependency> or <plugin> block.
+  # No property: rewrite the <version> of each com.metaobjects <dependency> or <plugin>, at any
+  # depth (a plugin's own <dependencies> included). Only an element's OWN version counts: one
+  # inside its <configuration>, <executions>, <dependencies> or <exclusions> belongs to something
+  # else, and Maven does not fix where among its children an element puts <version>, so the
+  # whole element is read before deciding.
   awk -v grp="$MVN_GROUP" -v ver="$mv" '
-    /<dependency>|<plugin>/ { dep=1; buf=""; n=0 }
-    dep { buf = buf $0 "\n"; n++
-          if ($0 ~ "<groupId>[[:space:]]*" grp "[[:space:]]*</groupId>") ours=1
-          if ($0 ~ /<\/dependency>|<\/plugin>|<executions>|<configuration>|<dependencies>/) {
-            if (ours) gsub(/<version>[^<]*<\/version>/, "<version>" ver "</version>", buf)
-            printf "%s", buf; dep=0; ours=0; next
-          }
-          next }
-    { print }
+    { L[NR] = $0 }
+    END {
+      sp = 0
+      for (i = 1; i <= NR; i++) {
+        s = L[i]
+        if (s ~ /<(dependency|plugin)>/) { sp++; ours[sp] = 0; nest[sp] = 0; vline[sp] = 0; continue }
+        if (sp == 0) continue
+        if (s ~ /<\/(dependency|plugin)>/) {
+          if (ours[sp] && vline[sp]) gsub(/<version>[^<]*<\/version>/, "<version>" ver "</version>", L[vline[sp]])
+          sp--; continue
+        }
+        if (nest[sp] == 0) {
+          if (s ~ "<groupId>[[:space:]]*" grp "[[:space:]]*</groupId>") ours[sp] = 1
+          if (s ~ /<version>/) vline[sp] = i
+        }
+        if (s ~ /<(dependencies|configuration|executions|exclusions)>/) nest[sp]++
+        if (s ~ /<\/(dependencies|configuration|executions|exclusions)>/) nest[sp]--
+      }
+      for (i = 1; i <= NR; i++) print L[i]
+    }
   ' "$pom" > "$pom.tmp" && mv "$pom.tmp" "$pom"
   say "repinned $MVN_GROUP dependencies to $mv in $rel"
 }

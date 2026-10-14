@@ -147,6 +147,32 @@ cat > "$poly/ports/kotlin/pom.xml" <<'XML'
       <version>0.61.0</version>
     </dependency>
   </dependencies>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>com.metaobjects</groupId>
+        <artifactId>metaobjects-maven-plugin</artifactId>
+        <configuration>
+          <generators>
+            <generator><classname>x</classname></generator>
+          </generators>
+        </configuration>
+        <dependencies>
+          <dependency>
+            <groupId>com.metaobjects</groupId>
+            <artifactId>metaobjects-codegen-kotlin</artifactId>
+            <version>8.0.9</version>
+          </dependency>
+          <dependency>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-stdlib</artifactId>
+            <version>2.0.21</version>
+          </dependency>
+        </dependencies>
+        <version>8.0.9</version>
+      </plugin>
+    </plugins>
+  </build>
 </project>
 XML
 cat > "$poly/ports/csharp/App.csproj" <<'XML'
@@ -173,7 +199,8 @@ check "a module pom inherits rather than gets a block" '! grep -q "<pluginReposi
 check "the version property is repinned" 'grep -q "<metaobjects.version>8.1.0-rc.9</metaobjects.version>" "$poly/ports/java/pom.xml"'
 check "a module dependency is repinned" 'grep -q "<version>8.1.0-rc.9</version>" "$poly/ports/java/module/pom.xml"'
 check "a literal dependency version is repinned" 'grep -q "<version>8.1.0-rc.9</version>" "$poly/ports/kotlin/pom.xml"'
-check "another group's version is left alone" 'grep -q "<version>0.61.0</version>" "$poly/ports/kotlin/pom.xml"'
+check "another group's version is left alone" 'grep -q "<version>0.61.0</version>" "$poly/ports/kotlin/pom.xml" && grep -q "<version>2.0.21</version>" "$poly/ports/kotlin/pom.xml"'
+check "every metaobjects version in the pom is repinned, a plugin's after its configuration included" '[ "$(grep -c "<version>8.1.0-rc.9</version>" "$poly/ports/kotlin/pom.xml")" = 3 ] && ! grep -q "8.0.9" "$poly/ports/kotlin/pom.xml"'
 check "the package reference is repinned" 'grep -q "Version=\"1.1.0-rc.9\"" "$poly/ports/csharp/App.csproj"'
 check "the local tool manifest is repinned" 'grep -q "\"metaobjects.cli\": { \"version\": \"1.1.0-rc.9\"" "$poly/.config/dotnet-tools.json"'
 check "another tool in the manifest is left alone" 'grep -q "\"dotnet-ef\": { \"version\": \"8.0.0\"" "$poly/.config/dotnet-tools.json"'
@@ -182,7 +209,7 @@ MO_REGISTRY_BASE="http://127.0.0.1:$PORT" MO_REGISTRY_OWNER=owner MO_REGISTRY_TO
   bash "$LINK" unlink --project "$poly" --to 1.0.13 >"$WORK/out" 2>&1 || true
 check "unlink removes every managed block" '! grep -rq "metaobjects prerelease (managed)" "$poly/ports"'
 check "unlink repins the nested python project" 'grep -q "metaobjects==1.0.13" "$poly/ports/python/pyproject.toml"'
-check "unlink repins every pom" 'grep -q "8.0.13" "$poly/ports/java/pom.xml" && grep -q "8.0.13" "$poly/ports/java/module/pom.xml" && grep -q "8.0.13" "$poly/ports/kotlin/pom.xml"'
+check "unlink repins every pom" 'grep -q "8.0.13" "$poly/ports/java/pom.xml" && grep -q "8.0.13" "$poly/ports/java/module/pom.xml" && [ "$(grep -c "<version>8.0.13</version>" "$poly/ports/kotlin/pom.xml")" = 3 ]'
 check "unlink repins the local tool" 'grep -q "\"metaobjects.cli\": { \"version\": \"1.0.13\"" "$poly/.config/dotnet-tools.json"'
 check "unlink removes every .mvn workaround" '[ ! -e "$poly/ports/java/.mvn" ] && [ ! -e "$poly/ports/kotlin/.mvn" ]'
 
