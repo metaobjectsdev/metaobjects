@@ -32,8 +32,8 @@ manifest (``eject.engineSurface.python`` in ``fixtures/generator-registry-confor
 and ``tests/conformance/test_eject_contract.py`` ejects each generator alone and holds it to
 exactly that.
 
-A docs generator (``api-docs``) is not wired into ``generators``: ``metaobjects docs`` runs
-it from the config's ``docs.generators``, and ``gen`` skips one it finds under a target.
+An owned ``api-docs`` is wired like every other owned copy: its ``module:symbol`` replaces
+``api-docs`` in a target's ``generators`` (ADR-0034 Amendment 9).
 """
 from __future__ import annotations
 

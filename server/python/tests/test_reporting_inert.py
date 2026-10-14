@@ -150,7 +150,7 @@ def test_every_runnable_generator_in_one_run_emits_the_same_files(tmp_path: Path
 
 
 def _api_docs(variant: str) -> dict[str, str]:
-    """The api docs surface (``metaobjects docs``): every unit page, the index and the
+    """The api docs surface (the ``api-docs`` generator): every unit page, the index and the
     agent page. A served report is documented; every other report has no generated API."""
     model = PythonApiModelBuilder().build(_load(variant), "shop")
     pages = {
