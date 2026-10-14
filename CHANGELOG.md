@@ -215,7 +215,7 @@ generator catalog and the Atlas evaluation are 1.2 work.
     The install line names what the copies import, with the range the package declares
     (`@toon-format/toon` for `requirements`).
   - **Eject alone, from an empty project, and it works.** A test derived from the catalog
-    ejects each of the 24 generators by itself, then checks that nothing it holds imports a
+    ejects each of the 25 generators by itself, then checks that nothing it holds imports a
     packaged module that writes output, that every file typechecks the way an adopter's
     `tsconfig.codegen.json` checks it, and that it writes what the packaged generator writes,
     byte for byte, over six models that make every generator emit.

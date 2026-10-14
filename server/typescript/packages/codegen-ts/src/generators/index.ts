@@ -14,11 +14,11 @@
 //
 // Which entries have a reference copy is declared once, in `REFERENCE_GENERATOR_NAMES`
 // (reference-templates.ts); `meta gen --list` marks every other entry `package-only` —
-// today that is `template` alone, the Mustache primitive, which has no emit logic of its
-// own. The documentation generators are exported here like the rest and listed like the
-// rest: `meta gen` writes the pages the project's `generators` declare, into the `docs`
-// target unless a factory says otherwise, and nothing else (Amendment 9). `docsSiteFile`'s
-// builder stays packaged; `meta eject docs-site` copies the site's templates and assets.
+// today `template`, the Mustache primitive, which has no emit logic of its own, and
+// `docs-site`, whose builder stays packaged while `meta eject docs-site` copies the site's
+// templates and assets. The documentation generators are exported here like the rest and
+// listed like the rest: `meta gen` writes the pages the project's `generators` declare, into
+// the `docs` target unless a factory says otherwise, and nothing else (Amendment 9).
 // See spec/decisions/ADR-0034-codegen-scaffold-and-own.md.
 
 export { entityFile, type EntityFileOpts } from "./entity-file.js";
