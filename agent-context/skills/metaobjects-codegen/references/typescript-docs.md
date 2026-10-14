@@ -7,7 +7,7 @@
 - Give them a `docs` target
 - An owned docs generator goes in `generators`, like any other owned copy
 - There is no `mermaidErDiagram()` generator
-- Before calling any generated code, read `./docs/api/AGENT-API.md`
+- Before calling any generated code, read `<targets.docs.outDir>/api/AGENT-API.md`
 - Ejecting routes hands over the adapter too
 - Wire a generator only for output you consume, and narrow it with its `filter`
 
@@ -65,9 +65,10 @@ overview page and on each entity's page with nothing else wired. A config that s
 imports it, or names `"mermaid-er"`, fails with a message that says so; delete the entry
 and run `meta gen`.
 
-**Before calling any generated code, read `./docs/api/AGENT-API.md`** — it has the
-exact imports, signatures, payload field shapes, and runnable examples for this
-project's generated API, so you don't have to guess them.
+**Before calling any generated code, read `<targets.docs.outDir>/api/AGENT-API.md`**
+(`./docs/generated/api/AGENT-API.md` with the config above) — it has the exact imports,
+signatures, payload field shapes, and runnable examples for this project's generated API,
+so you don't have to guess them.
 
 From `@metaobjectsdev/codegen-ts-react`: `formFile()` → `<Entity>.form.tsx`.
 From `@metaobjectsdev/codegen-ts-tanstack`: `tanstackQuery()` → `<Entity>.hooks.ts`
