@@ -165,6 +165,12 @@ const NOT_A_DIR_BEFORE = /[A-Za-z0-9_.@]/;
  *  indistinguishable, lexically, from prose about the product. */
 const PATH_SEGMENT_AFTER = /[/"'`]/;
 
+/** What precedes the word when it is the REPOSITORY's name in its public URL
+ *  (`github.com/metaobjectsdev/metaobjects/blob/main/...`): the owner segment. A removal
+ *  message names the migration guide by that URL, since no installed package ships the
+ *  file, and the repository's name is not the metadata directory. */
+const REPOSITORY_OWNER = `${DEFAULT_METADATA_DIR}dev/`;
+
 /** Every line of `code` naming the default directory, as a path literal or via
  *  the constant. `code` must already have its comments stripped. */
 function violationLines(code: string): number[] {
@@ -178,6 +184,7 @@ function violationLines(code: string): number[] {
     const after = code[m.index + DEFAULT_METADATA_DIR.length] ?? "";
     if (NOT_A_DIR_BEFORE.test(before)) continue;
     if (!PATH_SEGMENT_AFTER.test(after)) continue;
+    if (code.slice(Math.max(0, m.index - REPOSITORY_OWNER.length), m.index) === REPOSITORY_OWNER) continue;
     hits.add(lineOf(m.index));
   }
   return [...hits].sort((a, b) => a - b);
@@ -247,6 +254,8 @@ describe("`metaobjects/` is a config default and nothing else", () => {
       [`const msg = "no ${DEFAULT_METADATA_DIR}/ here";`, true],
       // A `//` inside a string is not a comment: the literal must survive.
       [`const u = "https://x/${DEFAULT_METADATA_DIR}/y";`, true],
+      // The repository's own name in its public URL is not the directory.
+      [`const u = "https://github.com/${DEFAULT_METADATA_DIR}dev/${DEFAULT_METADATA_DIR}/blob/main/x.md";`, false],
       // Longer tokens that merely contain the word are never violations.
       [`import x from "@${DEFAULT_METADATA_DIR}dev/sdk";`, false],
       [`const f = "${DEFAULT_METADATA_DIR}.config.ts";`, false],
