@@ -483,6 +483,7 @@ declared on the target its output belongs in, like any other entry:
 targets:
   docs:
     outDir: generated
+    generators: []                       # the spec's generators run after these
     templateSpec: template-spec.json     # relative to this file
 ```
 
