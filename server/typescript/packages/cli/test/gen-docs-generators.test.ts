@@ -334,6 +334,92 @@ describe("an owned docs generator is wired like any other", () => {
   });
 });
 
+describe("upgrading from 1.0: pages `meta docs` wrote without recording them", () => {
+  test("the first `meta gen` refuses them; the migration guide's fresh-baseline run takes them over, and code stays protected", async () => {
+    const root = project({ config: base(`["entity", docsFile()]`) });
+    expect(await run(["gen", "--cwd", root])).toBe(0);
+    const docsDir = join(root, "docs", "generated");
+    const fresh = Object.fromEntries(filesUnder(docsDir).map((f) => [f, readFileSync(join(docsDir, f), "utf8")]));
+    const codeFile = join(root, "generated", filesUnder(join(root, "generated")).find((f) => f.endsWith(".ts"))!);
+
+    // The 1.0 state: pages whose bytes differ from 1.1's, no record of writing any of them,
+    // and a generated code file somebody edited.
+    rmSync(join(root, ".metaobjects", ".gen-state"), { recursive: true, force: true });
+    for (const f of Object.keys(fresh)) writeFileSync(join(docsDir, f), `1.0 page ${f}\n`, "utf8");
+    const editedCode = `${readFileSync(codeFile, "utf8")}// my edit\n`;
+    writeFileSync(codeFile, editedCode, "utf8");
+
+    await run(["gen", "--cwd", root]);
+    expect(readFileSync(join(docsDir, "README.md"), "utf8")).toBe("1.0 page README.md\n");
+
+    // docs/features/migrations/docs-are-generators.md, "The first run after the upgrade".
+    expect(await run(["gen", "--generators", "docs", "--baseline=fresh", "--cwd", root])).toBe(0);
+    for (const [f, content] of Object.entries(fresh)) expect(readFileSync(join(docsDir, f), "utf8")).toBe(content);
+    expect(readFileSync(codeFile, "utf8")).toBe(editedCode);
+
+    // The pages are recorded now: an ordinary run over them refuses nothing.
+    err = [];
+    expect(await run(["gen", "--generators", "docs", "--cwd", root])).toBe(0);
+    expect(stderr()).not.toContain("Refused");
+  });
+});
+
+describe("a 1.0 owned docs copy, which sets no target", () => {
+  // The shape of a 1.0 `meta eject docs` copy: the packaged implementation name, no `target`,
+  // and the retired `docsSurface` marker.
+  const extra = `
+const oldDocs = () => ({
+  name: "docs-file",
+  docsSurface: "model",
+  generate: () => [{ path: "README.md", content: "# model\\n" }],
+});`;
+
+  test("writes to the docs target, not into the code's output directory", async () => {
+    const root = project({ config: base(`["entity", oldDocs()]`), extra });
+    expect(await run(["gen", "--cwd", root])).toBe(0);
+    expect(existsSync(join(root, "docs", "generated", "README.md"))).toBe(true);
+    expect(existsSync(join(root, "generated", "README.md"))).toBe(false);
+  });
+
+  test("is refused, naming it, when targets declares no docs entry", async () => {
+    const root = project({
+      config: `
+  outDir: "generated",
+  dialect: "sqlite",
+  dbImport: "../db",
+  generators: ["entity", oldDocs()],`,
+      extra,
+    });
+    expect(await run(["gen", "--cwd", root])).not.toBe(0);
+    expect(stderr()).toContain('"docs-file" writes documentation to the "docs" target');
+    expect(existsSync(join(root, "generated"))).toBe(false);
+  });
+});
+
+describe("meta gen --list --probe counts the documentation generators as meta gen runs them", () => {
+  test("docs-site and agent-docs: the probe's count is the number of files meta gen writes", async () => {
+    const probed = project({ config: base("[]") });
+    expect(await run(["gen", "--list", "--probe", "--format", "json", "--cwd", probed])).toBe(0);
+    const rows = JSON.parse(out.join("\n")) as Array<{
+      name: string; project?: { wouldEmit: number | null; probeError?: string };
+    }>;
+    const row = (name: string) => rows.find((r) => r.name === name)?.project;
+
+    const generated = project({ config: base("[agentDocsFile(), docsSiteFile()]") });
+    expect(await run(["gen", "--cwd", generated])).toBe(0);
+    const docsDir = join(generated, "docs", "generated");
+    const agentFiles = filesUnder(join(docsDir, "agent"));
+    const siteFiles = filesUnder(join(docsDir, "site"));
+    expect(agentFiles).toContain("schema.md");
+    expect(filesUnder(docsDir).length).toBe(agentFiles.length + siteFiles.length);
+
+    expect(row("docs-site")?.probeError).toBeUndefined();
+    expect(row("docs-site")?.wouldEmit).toBe(siteFiles.length);
+    expect(row("agent-docs")?.probeError).toBeUndefined();
+    expect(row("agent-docs")?.wouldEmit).toBe(agentFiles.length);
+  });
+});
+
 describe("meta gen — the structured result carries every warning the run printed", () => {
   test("a generator's own ctx.warn reaches the document", async () => {
     const root = project({

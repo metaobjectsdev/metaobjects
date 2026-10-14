@@ -73,7 +73,8 @@ meta docs --metamodel
 ```
 
 **After (1.1.0).** Each set of pages is a generator in `generators`, writing to a target
-named `docs`. These entries write the same pages to the same paths as the 1.0 project above:
+named `docs`. These entries write the 1.0 project's pages to the same paths (the site footer
+and the metamodel page headers changed in 1.1.0, see below):
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
@@ -115,6 +116,20 @@ export default defineConfig({
 });
 ```
 
+**The first run after the upgrade.** 1.0 wrote its pages without recording them in
+`.metaobjects/.gen-state/.hashes.json`, so `meta gen` cannot tell them from pages somebody
+edited, and refuses each one whose content changed. Run the docs entries once with a fresh
+baseline, naming only the docs entries your config declares (this example declares all six):
+
+```
+meta gen --generators docs,api-docs,requirements,agent-docs,docs-site,metamodel-docs --baseline=fresh
+```
+
+This writes fresh pages over the 1.0 ones and records them. 1.0 overwrote these pages on every
+`meta docs`, so nothing of yours is in them to lose. `--generators` keeps the fresh baseline
+off your code: a generated code file you edited is still refused, not overwritten. Commit
+`.metaobjects/.gen-state/.hashes.json` with the pages. From then on, run `meta gen`:
+
 ```
 meta gen
 ```
@@ -139,7 +154,7 @@ them only if you ran those flags.
 | `--prompts <dir>` (with `--site`) | `docsSiteFile({ prompts: "<dir>" })` |
 | `--scaffold-site` | `meta eject docs-site`, which copies the same files to the same place (`codegen/docs-site/`) |
 | `--metamodel` | `metamodelDocsFile()`, writing to `metamodel/` under the target |
-| `docs.generators` (owned docs generators) | the owned copy, in `generators`, like any other owned copy |
+| `docs.generators` (owned docs generators) | a fresh copy from `meta eject <name> --force`, in `generators` (see "A generator you own") |
 | `<project-root>` positional | run `meta gen` from that project, or with `--cwd <project-root>` |
 
 **Things that are different in 1.1.0.**
@@ -169,6 +184,14 @@ generator.
 **A generator you own.** A copy from `meta eject docs` (or `api-docs`, `requirements`,
 `agent-docs`, `metamodel-docs`) goes in `generators`, in place of the packaged factory, like
 any other owned copy. 1.0 listed it in `docs.generators`; that key is gone with the block.
+
+Do not move a 1.0 copy across as it is. It reads `ctx.docsDoor`, which 1.1.0 removed, so its
+model pages and api pages no longer link to each other. Re-eject it with
+`meta eject <name> --force` and make your edits again in the new copy. What changed in the
+copy: `docsSurface` is gone, the link facts are on `ctx.docs`, the copy declares
+`emitsModelDocs` or `emitsApiDocs` so the other generator can link to it, and it takes a
+`target` option. A 1.0 copy left as it is still writes to the `docs` target, not into the
+code's output directory, and is refused when `targets` has no `docs` entry.
 
 **A project with no `metaobjects.config.ts`.** In 1.0, `meta docs` ran with no config at
 all and wrote the model pages and the requirement ledger. In 1.1.0 nothing is generated

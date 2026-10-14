@@ -25,6 +25,7 @@ import {
   type GeneratorRegistryEntry,
   type Layer,
   type MetaobjectsGenConfig,
+  type RunGenOpts,
 } from "@metaobjectsdev/codegen-ts";
 import * as coreTpl from "@metaobjectsdev/codegen-ts";
 import * as reactTpl from "@metaobjectsdev/codegen-ts-react";
@@ -205,6 +206,10 @@ export interface CatalogListingOpts {
      * "probe failed" on every fresh project, for a generator that would in fact run.
      */
     sourceFiles?: readonly string[];
+    /** The metadata source directories, as `meta gen` supplies them: the docs site loads them. */
+    sourceRoots?: readonly string[];
+    /** The physical schema `agent/schema.md` describes, as `meta gen` supplies it. */
+    agentSchema?: RunGenOpts["agentSchema"];
   };
 }
 
@@ -219,10 +224,9 @@ export interface CatalogListingOpts {
 async function probeOne(
   entry: GeneratorRegistryEntry,
   project: CatalogProject,
-  metadata: MetaData,
-  scope: ((fqn: string) => boolean) | undefined,
-  sourceFiles: readonly string[] | undefined,
+  probe: NonNullable<CatalogListingOpts["probe"]>,
 ): Promise<{ count: number; needsConfig?: string[] } | { error: string }> {
+  const { metadata, scope, sourceFiles, sourceRoots, agentSchema } = probe;
   const count = async (config: MetaobjectsGenConfig): Promise<number> => {
     const result = await runGen({
       config: { ...config, generators: [entry.factory()] },
@@ -231,6 +235,8 @@ async function probeOne(
       dryRun: true,
       ...(scope !== undefined ? { scope } : {}),
       ...(sourceFiles !== undefined ? { sourceFiles } : {}),
+      ...(sourceRoots !== undefined ? { sourceRoots } : {}),
+      ...(agentSchema !== undefined ? { agentSchema } : {}),
     });
     return result.files.length;
   };
@@ -389,13 +395,7 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
       let probeError: string | undefined;
       let needsConfig: string[] | undefined;
       if (opts.probe !== undefined) {
-        const outcome = await probeOne(
-          entry,
-          project,
-          opts.probe.metadata,
-          opts.probe.scope,
-          opts.probe.sourceFiles,
-        );
+        const outcome = await probeOne(entry, project, opts.probe);
         if ("count" in outcome) {
           wouldEmit = outcome.count;
           needsConfig = outcome.needsConfig;

@@ -505,9 +505,22 @@ async function listCatalogCommand(
         // codegen config it was moved out of.
         libraries: genCollection.libraries,
       },
-      // The collection's own files, exactly as `meta gen` supplies them below —
-      // `shared-model` cannot be counted without them.
-      probe: { metadata, scope: genCollection.inScope, sourceFiles: genCollection.ownFiles },
+      // The run inputs `meta gen` supplies below: `shared-model` cannot be counted without the
+      // collection's own files, `docs-site` without its source directories, and `agent-docs`
+      // leaves out its schema page without the schema. The schema's skip reasons are not
+      // printed: a count is what the probe reports.
+      probe: {
+        metadata,
+        scope: genCollection.inScope,
+        sourceFiles: genCollection.ownFiles,
+        sourceRoots: sourceRootsOf(genCollection),
+        agentSchema: () => buildAgentSchemaInput(
+          metadata,
+          forgeConfig.dialect,
+          forgeConfig.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY,
+          () => {},
+        ),
+      },
     };
   } else {
     // No probe: still report `wired` / `owned` when a project happens to be here, since

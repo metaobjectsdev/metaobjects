@@ -6,8 +6,10 @@
 // Taking the OWNED copies means this repo's suites run the artifact an adopter who ejects
 // actually runs.
 //
-// The copies are byte-gated against `readReferenceTemplate()` by `test/owned-copies-current.test.ts`,
-// so they cannot drift from the templates `meta init` ships. Refresh with:
+// The copies, with the template modules beside them in `src/templates/`, are byte-gated against
+// what `meta eject` writes (the generator and its template closure) by
+// `server/typescript/packages/cli/test/owned-copies-current.test.ts`, so they cannot drift from
+// what an adopter is handed. Refresh with:
 //   bun scripts/sync-owned-template-copies.ts
 //
 // ONE deliberate difference from an adopter's wiring, made here and not in the copies: an

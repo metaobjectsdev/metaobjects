@@ -42,6 +42,7 @@ import { join, relative, resolve, isAbsolute } from "node:path";
 import {
   runGen,
   contentHash,
+  DOCS_TARGET_NAME,
   readGeneratedHash,
   listGeneratedPaths,
   NAMES_FILE_SUFFIX,
@@ -107,7 +108,7 @@ function docsOutDirs(config: MetaobjectsGenConfig, projectRoot: string): Set<str
   const dirs = new Set<string>();
   for (const g of normalizeConfig(config).generators) {
     if (generatorRegistry[stableGeneratorName(g, generatorRegistry)]?.layer !== "docs") continue;
-    const target = g.target ?? DEFAULT_TARGET_NAME;
+    const target = g.target ?? DOCS_TARGET_NAME;
     const outDir = target === DEFAULT_TARGET_NAME ? config.outDir : config.targets?.[target]?.outDir;
     if (outDir !== undefined && outDir.length > 0) dirs.add(resolve(projectRoot, outDir));
   }

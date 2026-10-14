@@ -39,7 +39,7 @@ import {
   type DecideAndWriteOpts,
 } from "./overwrite-policy.js";
 import {
-  warnUnsatisfiedRequires, warnMixedApiFrameworks, warnLibrarySelectionMismatch,
+  stableNameIndex, warnUnsatisfiedRequires, warnMixedApiFrameworks, warnLibrarySelectionMismatch,
 } from "./catalog-gates.js";
 import { libraryManifests, splitLayerToken } from "@metaobjectsdev/metadata/library";
 import { generatorRegistry, type GeneratorRegistryEntry } from "./generator-registry.js";
@@ -546,9 +546,14 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // `dateValues: true` for a Date-mode timestamp column and the parser coerces with
   // `new Date(...)` — so the warning was removed rather than left to cry wolf.)
 
+  const catalog = opts.catalog ?? generatorRegistry;
+  const stableNames = stableNameIndex(catalog);
   const targets = config.targets;
   const targetOf = (g: Generator): ResolvedTarget => {
-    const name = g.target ?? DEFAULT_TARGET_NAME;
+    // A documentation generator is known by its registry layer, so an owned copy that sets
+    // no `target` (a 1.0 copy) writes to the `docs` target as the packaged factory does.
+    const isDocs = catalog[stableNames.get(g.name) ?? ""]?.layer === "docs";
+    const name = g.target ?? (isDocs ? DOCS_TARGET_NAME : DEFAULT_TARGET_NAME);
     const t = targets[name];
     if (!t && name === DOCS_TARGET_NAME) {
       // ADR-0034 Amendment 9: documentation is never written into the code's output
@@ -676,7 +681,6 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
 
   // Codegen is opt-in, so `meta gen` is the post-selection audit: the two ways a legal
   // selection still surprises you. Warnings only — see catalog-gates.ts.
-  const catalog = opts.catalog ?? generatorRegistry;
   warnUnsatisfiedRequires(config.generators, catalog, (m) => warnings.push(m));
   warnMixedApiFrameworks(config.generators, catalog, (m) => warnings.push(m));
   // FR-043 §6 — only when the caller actually told us what was selected. A programmatic
@@ -733,11 +737,10 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   };
 
   // `--generators`: the declared generators this run executes.
-  const catalogForNames = opts.catalog ?? generatorRegistry;
   let selected: readonly Generator[] = config.generators;
   if (opts.generatorNames !== undefined) {
     const wanted = new Set(opts.generatorNames);
-    const declared = config.generators.map((g) => stableGeneratorName(g, catalogForNames));
+    const declared = config.generators.map((g) => stableGeneratorName(g, catalog));
     const unknown = [...wanted].filter((n) => !declared.includes(n));
     if (unknown.length > 0) throw new Error(undeclaredGeneratorsMessage(unknown, declared));
     selected = config.generators.filter((_, i) => wanted.has(declared[i]!));
