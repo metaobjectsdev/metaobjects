@@ -42,7 +42,7 @@ All published to Maven Central under `com.metaobjects:*` at `8.0.0`:
 | `metaobjects-omdb-ktx` | Kotlin facade over OMDB |
 | `metaobjects-core-spring` | Spring auto-configuration + `MetaDataService` |
 | `metaobjects-spring-boot-starter` | Spring Boot starter — OMDB autoconfiguration |
-| `metaobjects-maven-plugin` | `mvn metaobjects:generate` / `:verify` (codegen + template drift) / `:editor` / `:docs` |
+| `metaobjects-maven-plugin` | `mvn metaobjects:generate` (codegen + docs generators) / `:verify` (codegen + template drift) / `:editor` / `:eject` |
 
 The `archetype` and `examples` directories were removed in 7.1.0 (they had been out of the reactor since 7.0.0 and were not deployed to Central).
 
