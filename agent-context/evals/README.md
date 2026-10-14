@@ -18,7 +18,7 @@ prompts, model edits that need no generated output) forbid it.
 agent-context/evals/run-skill-triggers.sh <out-dir>
 ```
 
-It starts real Claude sessions on your own login (24 cases x 3 runs = 72 sessions, a few
+It starts real Claude sessions on your own login (25 cases x 3 runs = 75 sessions, a few
 minutes with `-j 4`) and writes `<out-dir>/result.json`. Use `--case '<glob>'` to run a
 subset. It is not part of CI because model behaviour is not deterministic; CI only checks
 that the cases parse and name existing skills
