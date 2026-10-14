@@ -63,7 +63,7 @@ public static class CodegenDrift
         public IReadOnlyList<string> DriftedFiles { get; init; } = [];
         /// <summary>Human-readable, one-line-per-file drift summary.</summary>
         public IReadOnlyList<string> Lines { get; init; } = [];
-        /// <summary>Set when the gate could not run (e.g. no committed output to diff against).</summary>
+        /// <summary>Set when the gate could not run (e.g. the regen failed).</summary>
         public string? Error { get; init; }
     }
 
@@ -94,23 +94,8 @@ public static class CodegenDrift
                 roots.Add((dir, g.OutDir!.TrimEnd('/', '\\') + "/"));
         }
 
-        // No --out to diff against → a usage/configuration problem (exit 2 at the CLI), not
-        // a drift result. Mirrors the TS "no outDir configured" branch. An entry's own
-        // directory is created only when it writes a file, and git keeps no empty one, so a
-        // missing entry directory is an empty committed tree.
-        var outRoot = Path.GetFullPath(config.OutDir);
-        if (roots.Any(r => r.Label.Length == 0) && !Directory.Exists(outRoot))
-        {
-            return new Result
-            {
-                Clean = false,
-                Error =
-                    $"verify --codegen: no committed generated output at \"{config.OutDir}\" — " +
-                    "cannot locate the output to diff against. Run 'dotnet meta gen' first " +
-                    "(or run without --codegen).",
-            };
-        }
-
+        // A directory is created only when gen writes a file into it, and git keeps no empty
+        // one, so a missing directory, --out included, is an empty committed tree.
         var tempRoot = Path.Combine(Path.GetTempPath(), "meta-verify-codegen-" + Guid.NewGuid().ToString("N"));
         try
         {

@@ -122,12 +122,13 @@ public sealed class CodegenDriftTests : IDisposable
     }
 
     [Fact]
-    public void No_committed_output_dir_is_an_error_not_clean()
+    public void No_committed_output_dir_reports_every_file_a_regen_would_emit()
     {
-        // Never ran gen; OutDir does not exist. Nothing to diff against → error.
         var drift = RunDrift();
+        Assert.Null(drift.Error);
         Assert.False(drift.Clean);
-        Assert.NotNull(drift.Error);
+        Assert.NotEmpty(drift.Lines);
+        Assert.All(drift.Lines, l => Assert.StartsWith("+ ", l));
     }
 
     [Fact]

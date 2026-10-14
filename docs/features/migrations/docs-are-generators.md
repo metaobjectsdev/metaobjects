@@ -454,7 +454,7 @@ targets:
     generators: [entity, filter-allowlist, routes]
   docs:
     outDir: docs/generated
-    generators: [api-docs]   # an owned copy: "codegen.generators.api_docs_generator:api_docs_generator"
+    generators: [api-docs]   # an owned copy: "codegen.generators.api_docs:api_docs_generator"
 apiDocs:
   projectName: shop
   modelBaseUrl: https://docs.example.com/model

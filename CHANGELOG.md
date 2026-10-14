@@ -1103,7 +1103,8 @@ until you regenerate.
     (`IGenerator.OutDir`, a default interface member returning `null`, which writes under
     `--out`), and `verify --codegen` compares each entry's directory; `RequirementTestsGenerator`
     takes one (`OutDir`), so the xUnit tests go to the test project in the same run. A
-    `verify --codegen --generators` narrowing compares only what the named entries write. The
+    `verify --codegen --generators` narrowing compares only what the named entries write. A
+    blank `--generators` exits 2 rather than running the whole list. The
     owned runner now also refuses an unknown flag and an unknown `--baseline` value, as
     `dotnet meta gen` did.
   - **A 1.0 `codegen/Program.cs` is refused.** One that does not run `Generators.All` would
@@ -1142,6 +1143,11 @@ until you regenerate.
     `found 1.0 template-spec configuration`. `--generators` narrows a run to declared entries and refuses a name no target
     declares; `--column-naming`, `--entities`, `--provider`, `--templates` and `--baseline` now
     apply to the config's list.
+  - **New refusals.** A target with no `generators` key exits 2 with the migration line
+    (`generators: []` still writes nothing and says so). An `--entities` name that matches no
+    object exits 2, where it used to warn and exit 0. A blank `--generators` (an unset shell
+    variable) exits 2 rather than running the whole list. A `generators` entry holding a comma
+    (`"entity, routes"`) is refused: list each generator as its own entry.
   - Removed public API, all added after 1.0.13 and never released: `DocsRunFacts`,
     `GenContext.docs`, `DOCS_SURFACE_API`, `ProjectConfig.docs_generators`,
     `GeneratorEntry.docs_surface` and the `metaobjects.codegen.docs_run` module.

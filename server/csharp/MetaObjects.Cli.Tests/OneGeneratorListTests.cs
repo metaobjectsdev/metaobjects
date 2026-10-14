@@ -561,6 +561,25 @@ public sealed class OneGeneratorListTests : IDisposable
     }
 
     [Fact]
+    public void A_list_of_entries_with_their_own_directories_verifies_clean_in_a_fresh_checkout()
+    {
+        var testsDir = Path.Combine(_tmp, "tests", "Generated");
+        IReadOnlyList<IGenerator> declared =
+        [
+            new ApiDocsGenerator { OutDir = DocsDir },
+            new RequirementTestsGenerator { OutDir = testsDir, WarnUncovered = false },
+        ];
+        Assert.Equal(0, OwnedRunner.Run(_tmp, declared, "gen", MetaDir, "--out", OutDir).ExitCode);
+        Assert.Empty(FilesUnder(OutDir));
+        Directory.Delete(OutDir);
+        Assert.False(Directory.Exists(testsDir));
+
+        var verify = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--out", OutDir);
+
+        Assert.True(verify.ExitCode == 0, $"exit={verify.ExitCode}\nstdout={verify.Stdout}\nstderr={verify.Stderr}");
+    }
+
+    [Fact]
     public void Verify_codegen_of_a_list_that_declares_nothing_is_clean()
     {
         Assert.Equal(0, OwnedRunner.Run(_tmp, Array.Empty<IGenerator>(), "gen", MetaDir, "--out", OutDir).ExitCode);
