@@ -1,6 +1,5 @@
 package com.metaobjects.mojo;
 
-import com.metaobjects.generator.DocsGenerator;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.util.GeneratedFileWriter;
@@ -44,10 +43,6 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         // a green build. Opening the run here is what makes the check reach a real build.
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
             for( Generator gen : generatorImpls ) {
-                if ( gen instanceof DocsGenerator ) {
-                    logSkippedDocsGenerator("MetaData Mojo", gen.getClass().getName());
-                    continue;
-                }
                 getLog().info("MetaData Mojo > Executing Generator: " + gen.getClass().getName() );
                 run.attributeTo( gen.getClass().getSimpleName() );
                 gen.execute( loader );

@@ -27,7 +27,7 @@ import kotlin.test.assertTrue
  *
  * This loads the SAME input metadata the other ports load, builds the [KotlinApiModel] via
  * [KotlinApiModelBuilder], and for each manifest unit asserts — using the EXACT path/href math the
- * `metaobjects:docs` goal uses (computed via [DocsPaths], never re-derived here) — that:
+ * `api-docs` generator ([com.metaobjects.generator.kotlin.apidocs.KotlinApiDocsGenerator]) uses (computed via [DocsPaths], never re-derived here) — that:
  * - `apiKotlinSubDir + "/" + docPageOutputPath(PACKAGE, pkg, node)` equals the manifest `apiKotlinPath`;
  * - `modelCrossHref(apiKotlinPath, pagePath, null)` equals the manifest `apiKotlinToModel`;
  * - the rendered unit page actually carries the contract back-link

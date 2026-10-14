@@ -45,8 +45,7 @@ public class EjectedBaseGeneratorsCompileTest {
             "BaseObjectCodeWriter",
             "javacode.JavaCodeWriter",
             "javacode.PojoAwareCodeWriter",
-            "javacode.ValueObjectCodeWriter",
-            "javacode.ExtractorCodeGenerator");
+            "javacode.ValueObjectCodeWriter");
 
     /** What eject copies for {@code extractor}. */
     private static final List<String> EXTRACTOR = List.of(

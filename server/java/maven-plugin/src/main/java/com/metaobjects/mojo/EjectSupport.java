@@ -1,6 +1,5 @@
 package com.metaobjects.mojo;
 
-import com.metaobjects.generator.DocsGenerator;
 import com.metaobjects.generator.GeneratorRegistry;
 import com.metaobjects.generator.kotlin.GeneratorInfo;
 import com.metaobjects.generator.kotlin.GeneratorRegistryKt;
@@ -66,9 +65,6 @@ public final class EjectSupport {
         /** Wiring the generic eject report cannot know, with {@code {owned}} standing for the
          *  owned copy's class name, or {@code null} (see {@link #wiringNote}). */
         public final String note;
-        /** Whether this generator is a {@link DocsGenerator}: {@code metaobjects:docs} runs it
-         *  and {@code metaobjects:generate} skips it. */
-        public final boolean docs;
         /** Fully-qualified names of the classes eject copies WITH this generator into the
          *  same owned package: the rest of its emit (empty for most generators). */
         public final List<String> with;
@@ -100,8 +96,7 @@ public final class EjectSupport {
             this.description = description;
             this.resourcePath = resourcePath;
             this.runtime = List.copyOf(runtime);
-            this.docs = isDocsGenerator(classname);
-            this.note = docs ? stableName + DOCS_NOTE.replace("{surface}", port.id) : note;
+            this.note = API_DOCS.equals(stableName) ? API_DOCS_NOTE : note;
             this.with = List.copyOf(with);
         }
 
@@ -132,13 +127,14 @@ public final class EjectSupport {
 
         /**
          * The package this generator's copies are written in, given the package eject was asked
-         * for. A {@link DocsGenerator}'s copies take a subpackage of their port: the Java and the
+         * for. The {@code api-docs} copies take a subpackage of their port: the Java and the
          * Kotlin api reference name their page model and path classes alike ({@code ApiUnit},
          * {@code DocsPaths}, …), and one owned module may hold both. Every other generator's
          * copies go in {@code basePackage} itself.
          */
         public String ownedPackage(String basePackage) {
-            return docs ? basePackage + "." + DOCS_SUBPACKAGE + "." + port.id : basePackage;
+            return API_DOCS.equals(stableName)
+                    ? basePackage + "." + API_DOCS_SUBPACKAGE + "." + port.id : basePackage;
         }
 
         /** The owned copy's class name: the {@code <generator><classname>} value to wire. */
@@ -152,31 +148,19 @@ public final class EjectSupport {
         }
     }
 
-    /** The subpackage of the owned package a {@link DocsGenerator}'s copies are written under,
-     *  above the one named for its port (see {@link Entry#ownedPackage}). */
-    public static final String DOCS_SUBPACKAGE = "apidocs";
+    /** The stable name both ports register their api reference generator under. */
+    public static final String API_DOCS = "api-docs";
 
-    /** What eject prints for a {@link DocsGenerator}, on either port, after its stable name: no pom
-     *  lists one until its owner adds it. {@code {surface}} is the port it documents. */
-    private static final String DOCS_NOTE =
-            ": `mvn metaobjects:docs` runs this generator, not `metaobjects:generate`, which "
-                + "skips it. List it with <classname>{owned}</classname> in the <generators> the docs "
-                + "goal reads, which is the plugin-level <configuration> or the docs execution's own, "
-                + "and the docs goal runs your copy for the {surface} surface in place of the packaged "
-                + "one. A <generators> list inside another execution's <configuration>, the generate "
-                + "execution's for one, is not read by the docs goal.";
+    /** What eject prints for {@link #API_DOCS}, on either port. A pom carried over from 8.0 ran
+     *  the api reference through the removed docs goal, so it may hold no entry to change. */
+    private static final String API_DOCS_NOTE =
+            "api-docs: `mvn metaobjects:generate` runs this generator like any other. If your "
+                + "<generators> has no entry for it, add <generator><classname>{owned}</classname>"
+                + "<args><outputDir>your docs directory</outputDir></args></generator>.";
 
-    /** Whether the registered generator class {@code classname} is a {@link DocsGenerator}.
-     *  Every registered class is on this plugin's classpath. */
-    private static boolean isDocsGenerator(String classname) {
-        if (classname == null) return false;
-        try {
-            return DocsGenerator.class.isAssignableFrom(
-                    Class.forName(classname, false, EjectSupport.class.getClassLoader()));
-        } catch (ClassNotFoundException e) {
-            throw new IllegalStateException("registered generator class is not on the classpath: " + classname, e);
-        }
-    }
+    /** The subpackage of the owned package the {@link #API_DOCS} copies are written under,
+     *  above the one named for their port (see {@link Entry#ownedPackage}). */
+    public static final String API_DOCS_SUBPACKAGE = "apidocs";
 
     /** The simple name of a fully-qualified class name. */
     public static String simpleNameOf(String classname) {

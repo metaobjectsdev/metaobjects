@@ -116,7 +116,7 @@ class ReportingInertTest {
      * held to the same inertness by [api docs gain exactly the view-backed report's page], which
      * compares its pages unit by unit.
      */
-    private val codeGenerators get() = GENERATOR_REGISTRY.values.filter { it.factory() !is com.metaobjects.generator.DocsGenerator }
+    private val codeGenerators get() = GENERATOR_REGISTRY.values.filter { it.name != "api-docs" }
 
     /** What a generator may add for the with-model: one file of the view-backed report, from five generators. */
     private fun allowedFor(info: GeneratorInfo): Set<String> = setOfNotNull(STORE_TOTALS_FILES[info.name])

@@ -12,11 +12,13 @@
     </dependencies>
 
     <build>
-        <directory>target/docs-mojo-test-kotlin</directory>
+        <directory>target/docs-8-0-test</directory>
         <plugins>
             <plugin>
                 <groupId>com.metaobjects</groupId>
                 <artifactId>metaobjects-maven-plugin</artifactId>
+                <!-- An 8.0 pom, kept as it was written: the docs goal bound, and its parameters
+                     in the plugin-level <configuration> beside the generate goal's list. -->
                 <configuration>
                     <!-- #96: the shared fixture carries a custom @simple::fruitbasket::isKey
                          attribute (declared by no registered provider); this docs test is
@@ -24,19 +26,28 @@
                     <lax>true</lax>
                     <loader>
                         <classname>com.metaobjects.loader.MetaDataLoader</classname>
-                        <name>docs-mojo-test-kotlin-pom</name>
+                        <name>docs-8-0-test-pom</name>
                         <sourceDir>./src/test/resources</sourceDir>
                         <sources>
                             <source>mojo/mojo-test-metadata.json</source>
                         </sources>
                     </loader>
-                    <outputDirectory>target/docs-mojo-test-kotlin/docs</outputDirectory>
-                    <language>kotlin</language>
+                    <outputDirectory>target/docs-8-0-test/docs</outputDirectory>
+                    <language>java,kotlin</language>
                     <layout>package</layout>
+                    <generators>
+                        <generator>
+                            <classname>com.metaobjects.generator.spring.SpringDtoGenerator</classname>
+                            <args>
+                                <outputDir>target/docs-8-0-test/generated</outputDir>
+                            </args>
+                        </generator>
+                    </generators>
                 </configuration>
                 <executions>
                     <execution>
                         <goals>
+                            <goal>generate</goal>
                             <goal>docs</goal>
                         </goals>
                     </execution>

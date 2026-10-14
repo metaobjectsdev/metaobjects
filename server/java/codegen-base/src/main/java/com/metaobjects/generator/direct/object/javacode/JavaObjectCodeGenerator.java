@@ -1,13 +1,8 @@
 package com.metaobjects.generator.direct.object.javacode;
 
 // Eject note (ADR-0034 Amendment 6): `mvn metaobjects:eject -Dnames=entity` copies this file
-// together with JavaCodeGenerator, BaseObjectCodeGenerator, the four writers and
-// ExtractorCodeGenerator, into one package. The classes named bare below are those copies.
-// ExtractorCodeGenerator is the `extractor` generator too, and eject points the import below
-// at its copy, so an owned `entity` writes its extractors through owned code.
-import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;
-
-import com.metaobjects.generator.EmitsObjectExtractors;
+// together with JavaCodeGenerator, BaseObjectCodeGenerator and the four writers, into one
+// package. The classes named bare below are those copies.
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.direct.GenerationContext;
 import com.metaobjects.generator.direct.object.BaseObjectCodeWriter;
@@ -50,8 +45,13 @@ import java.util.Map;
  * {@link JavaCodeWriter}, {@link PojoAwareCodeWriter}, {@link ValueObjectCodeWriter}). This
  * file holds which flavors exist and which writer each one gets ({@link #createWriter}),
  * the {@code ObjectClassBindingProvider} source and its {@code META-INF/services}
- * registration, and whether the Extractors are written here. To change a field, a
- * constructor or an accessor, edit the writer.</p>
+ * registration. To change a field, a constructor or an accessor, edit the writer.</p>
+ *
+ * <p><b>It writes no {@code <Name>Extractor}.</b> Through 8.0 it wrote one beside every
+ * concrete class, for a pom that listed only this generator. A file no {@code <generator>}
+ * entry declares is what ADR-0034 Amendment 9 rules out, so those are written by the
+ * {@code extractor} generator ({@link ExtractorCodeGenerator}) and by nothing else: list it,
+ * with this entry's {@code outputDir}, naming args and {@code <filters>}, to get them.</p>
  */
 public class JavaObjectCodeGenerator extends JavaCodeGenerator {
 
@@ -75,16 +75,6 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
     /** Whether this run emits CONCRETE classes (and therefore a binding provider). */
     private boolean isConcreteFlavor() {
         return FLAVOR_POJO_AWARE.equals(getFlavor()) || FLAVOR_VALUE_OBJECT.equals(getFlavor());
-    }
-
-    /**
-     * Whether this generator writes the Extractors itself: the
-     * {@link EmitsObjectExtractors#ARG_EMIT_EXTRACTORS} arg, default {@code true}. The Maven
-     * plugin sets it to {@code false} when a separate {@code extractor} generator is in the
-     * same {@code <generators>} list, so each file has one emitter.
-     */
-    public boolean emitsExtractors() {
-        return Boolean.parseBoolean(getArg(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS, "true"));
     }
 
     // FQN ("pkg::Name") of the generated provider class self-registered via ServiceLoader.
@@ -128,9 +118,7 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
      * self-registering {@link ObjectClassBindingProvider} covering every generated object
      * (keyed on the package-folded metadata resolution key {@code pkg::Name}, which is what
      * {@link MetaObject#newInstance()} looks up), plus its {@code META-INF/services}
-     * registration so the provider is discoverable via {@code ServiceLoader}. It also writes
-     * a {@code <Name>Extractor} beside each concrete class, unless
-     * {@link EmitsObjectExtractors#ARG_EMIT_EXTRACTORS} says a separate extractor generator does.
+     * registration so the provider is discoverable via {@code ServiceLoader}.
      */
     @Override
     public void execute(MetaDataLoader loader) {
@@ -146,31 +134,21 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
         JavaCodeWriter namer = (JavaCodeWriter)
                 createWriter(loader, null, new PrintWriter(new StringWriter()), globalContext);
         Map<String, String> fqnToClass = new LinkedHashMap<>();
-        ExtractorCodeGenerator extractorGen = emitsExtractors() ? new ExtractorCodeGenerator() : null;
         Collection<MetaObject> metadata =
                 GeneratorUtil.getFilteredMetaData(loader, getFilterClass(), getMetaDataFilters());
-        try {
-            for (MetaObject mo : metadata) {
-                // Abstract objects cannot be instantiated via newInstance(), so binding their
-                // resolution key to a generated class would make newInstance() try to construct
-                // a non-instantiable type — and an extractor for one could never produce a typed
-                // graph. Skip BOTH the binding entry and the extractor for abstract metadata
-                // (honors the abstract-codegen invariant: no instance artifacts for abstracts).
-                if (IOUtil.isAbstract(mo)) {
-                    continue;
-                }
-                String javaPkg = namer.getLanguagePackage(mo);
-                String javaClass = namer.getClassName(mo);
-                String generatedFqn = isNotBlank(javaPkg) ? javaPkg + "." + javaClass : javaClass;
-                // Key on the package-folded resolution key — NOT the dotted Java FQN.
-                fqnToClass.put(mo.getName(), generatedFqn);
-                // Emit a <Name>Extractor alongside each CONCRETE flavored class.
-                if (extractorGen != null) {
-                    extractorGen.emit(getOutputDir(), javaPkg, javaClass, mo.getName());
-                }
+        for (MetaObject mo : metadata) {
+            // Abstract objects cannot be instantiated via newInstance(), so binding their
+            // resolution key to a generated class would make newInstance() try to construct
+            // a non-instantiable type. Skip the binding entry for abstract metadata (honors
+            // the abstract-codegen invariant: no instance artifacts for abstracts).
+            if (IOUtil.isAbstract(mo)) {
+                continue;
             }
-        } catch (IOException e) {
-            throw new GeneratorException("Unable to emit generated Extractor: " + e, e);
+            String javaPkg = namer.getLanguagePackage(mo);
+            String javaClass = namer.getClassName(mo);
+            String generatedFqn = isNotBlank(javaPkg) ? javaPkg + "." + javaClass : javaClass;
+            // Key on the package-folded resolution key — NOT the dotted Java FQN.
+            fqnToClass.put(mo.getName(), generatedFqn);
         }
 
         if (fqnToClass.isEmpty()) return;

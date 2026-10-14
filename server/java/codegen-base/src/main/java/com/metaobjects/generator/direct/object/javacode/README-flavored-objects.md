@@ -18,18 +18,17 @@ same metadata emits any flavor.
 | `valueObject`   | `com.metaobjects.object.value.ValueObject`  | Map-backed + extensible; **perf-tuned** — each field's value-holder is bound once and accessors read/write it directly (no per-call keyed lookup). |
 | _(absent)_      | _(interface)_                               | Legacy `JavaCodeWriter` interface emission — unchanged. |
 
-For each concrete flavor, the generator also emits, per object:
-- a self-registering `ObjectClassBindingProvider` (one per run, FQN→class) + its
-  `META-INF/services` registration, so `MetaObject.newInstance()` yields the generated
-  type for that object's FQN;
-- a `<Name>Extractor` with `static <Name> extract(MetaDataLoader, String)` (typed,
-  `orThrow`) and `static ExtractionResult<<Name>> extractLenient(MetaDataLoader, String)`
-  (never-throws), both wrapping the runtime `MetaObjectExtractor.extract`.
+For each concrete flavor, the generator also emits a self-registering
+`ObjectClassBindingProvider` (one per run, FQN→class) + its `META-INF/services`
+registration, so `MetaObject.newInstance()` yields the generated type for that object's FQN.
 
-The Extractors have a generator of their own as well, `ExtractorCodeGenerator`, wirable as
-a separate `<generator>` with the same `outputDir` and naming args. When one is in the run
-`JavaObjectCodeGenerator` leaves the files to it (`emitExtractors=false`, which the Maven
-plugin sets from the generator list; `EmitsObjectExtractors` is the marker it reads).
+The `<Name>Extractor` classes are written by a generator of their own,
+`ExtractorCodeGenerator`, listed as a `<generator>` with the same `outputDir`, naming args
+and `<filters>`. Each has `static <Name> extract(MetaDataLoader, String)` (typed, `orThrow`)
+and `static ExtractionResult<<Name>> extractLenient(MetaDataLoader, String)` (never-throws),
+both wrapping the runtime `MetaObjectExtractor.extract`. `JavaObjectCodeGenerator` writes
+none: through 8.0 it wrote them for a pom that listed no extractor, and a file no
+`<generator>` entry declares is what ADR-0034 Amendment 9 rules out.
 
 Abstract objects are skipped for both the binding entry and the Extractor (they cannot be
 `newInstance()`-d — honors the abstract-codegen invariant: no instance artifacts for abstracts).
@@ -41,8 +40,8 @@ The legacy direct object-codegen framework — `BaseObjectCodeGenerator`,
 (byte-unchanged). All new behavior is added by **subclassing + overriding hooks**:
 
 - `JavaObjectCodeGenerator extends JavaCodeGenerator` — overrides `createWriter` (selects
-  the writer by `flavor`) and `execute` (emits the provider + Extractor after the standard
-  multi-file loop).
+  the writer by `flavor`) and `execute` (emits the provider after the standard multi-file
+  loop).
 - `PojoAwareCodeWriter` / `ValueObjectCodeWriter` `extends JavaCodeWriter` — override
   `writeObjectHeader` (the `extends <base>` clause), `writeObjectMethods` (fields + ctor),
   `writeGetter` / `writeSetter` (concrete bodies); reuse the inherited naming/type hooks
@@ -65,7 +64,7 @@ This module's pom ships the sources under `META-INF/metaobjects/reference/java/`
 
 | Generator | Copied with it, into the same owned package |
 |---|---|
-| `entity` | `JavaCodeGenerator`, `BaseObjectCodeGenerator`, `BaseObjectCodeWriter`, `JavaCodeWriter`, `PojoAwareCodeWriter`, `ValueObjectCodeWriter`, `ExtractorCodeGenerator` |
+| `entity` | `JavaCodeGenerator`, `BaseObjectCodeGenerator`, `BaseObjectCodeWriter`, `JavaCodeWriter`, `PojoAwareCodeWriter`, `ValueObjectCodeWriter` |
 | `extractor` | `JavaCodeWriter`, `BaseObjectCodeWriter` |
 
 Eject rewrites each file's package line and, where one copied class imports another, that
@@ -75,9 +74,6 @@ this module, and so what has to keep working for it:
 
 - `MultiFileDirectGeneratorBase` and `FileDirectWriter`, which the copies extend;
 - `GenerationContext`, `GeneratorUtil`, `JavaIdentifiers` and `GeneratedFileWriter`.
-
-An owned `entity` writes its extractors through its own copy of `ExtractorCodeGenerator`,
-until an `extractor` generator is wired beside it.
 
 Two rules keep a copy set ejectable, and `EjectedBaseGeneratorsCompileTest` fails when
 either is broken. A class in a copy set may name another class of this package by its bare

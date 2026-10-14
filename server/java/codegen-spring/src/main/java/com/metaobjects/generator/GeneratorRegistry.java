@@ -277,8 +277,7 @@ public final class GeneratorRegistry {
     private static final List<String> ENTITY_EMIT = List.of(
             JavaCodeGenerator.class.getName(), BaseObjectCodeGenerator.class.getName(),
             BaseObjectCodeWriter.class.getName(), JavaCodeWriter.class.getName(),
-            PojoAwareCodeWriter.class.getName(), ValueObjectCodeWriter.class.getName(),
-            ExtractorCodeGenerator.class.getName());
+            PojoAwareCodeWriter.class.getName(), ValueObjectCodeWriter.class.getName());
 
     /** The shared and externally-provided enum writer, and the builder a generated record
      *  carries: emit code the DTO and value-object generators each call, so each takes a copy. */
@@ -383,25 +382,22 @@ public final class GeneratorRegistry {
         register(m, "render-helper", SpringRenderHelperGenerator.class.getName(),
                 "Per-renderable-template render helper (typed wrappers; document/email for a template.output, the document shape for a template.prompt).", Tier.NATIVE, Layer.CAPABILITY,
                 ejectPath(SpringRenderHelperGenerator.class));
-        // "extractor" is a generator of its own AND a step "entity" runs when no separate
-        // one is in the run (EmitsObjectExtractors), so an existing pom that wires only
-        // "entity" emits what it always did. The note is what eject prints: unlike every
-        // other generator there may be no <generator> entry to change, only one to add.
+        // "extractor" is the one thing that writes the <Name>Extractor classes. Through 8.0
+        // "entity" wrote them for a pom that listed no extractor; a file nothing declares is
+        // what ADR-0034 Amendment 9 rules out. The note is what eject prints: a pom carried
+        // over from 8.0 may have no <generator> entry to change, only one to add.
         register(m, "extractor", ExtractorCodeGenerator.class.getName(),
                 "Per-object typed <Name>Extractor: tolerant recovery of the typed, flavored object "
-                    + "graph from dirty model text; throws only when a @required field is lost. `entity` "
-                    + "writes these itself with a concrete flavor, unless this generator is in "
-                    + "<generators> too.", Tier.NATIVE, Layer.CAPABILITY,
+                    + "graph from dirty model text; throws only when a @required field is lost. Needs "
+                    + "`entity` with a concrete flavor in the same run.", Tier.NATIVE, Layer.CAPABILITY,
                 ejectPath(ExtractorCodeGenerator.class), List.of(),
-                "extractor: `entity` writes the <Name>Extractor classes itself unless a separate "
-                    + "extractor generator is in <generators>. If yours has no entry for one, add "
+                "extractor: only this generator writes the <Name>Extractor classes; `entity` does "
+                    + "not. If your <generators> has no entry for it, add "
                     + "<generator><classname>{owned}</classname></generator> with the same outputDir, "
                     + "pkgPrefix, pkgSuffix, namePrefix and nameSuffix args, and the same <filters>, as "
                     + "your entity generator: an extractor for an object entity wrote no class for does "
-                    + "not compile. `entity` then leaves those files to it. A pom with more than "
-                    + "one entity entry needs one extractor entry per entity entry, each with that "
-                    + "entry's outputDir, naming args and <filters>: a single extractor generator in "
-                    + "the run stops every entity entry writing its extractors.",
+                    + "not compile. A pom with more than one entity entry needs one extractor entry "
+                    + "per entity entry, each with that entry's outputDir, naming args and <filters>.",
                 OBJECT_NAMING);
         // "template" stays registered but is NOT ejectable: it is already a generic,
         // declaratively-configured primitive (Mustache template + output pattern) with no

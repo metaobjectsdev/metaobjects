@@ -1,6 +1,9 @@
 package com.metaobjects.mojo;
 
-import com.metaobjects.generator.DocsGenerator;
+import com.metaobjects.generator.Generator;
+import com.metaobjects.loader.InMemoryStringSource;
+import com.metaobjects.loader.LoaderOptions;
+import com.metaobjects.loader.MetaDataLoader;
 import com.tschuchort.compiletesting.KotlinCompilation;
 import com.tschuchort.compiletesting.SourceFile;
 import org.apache.maven.model.Dependency;
@@ -35,6 +38,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -48,15 +52,15 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * A project that documents both surfaces ({@code metaobjects:docs} with {@code language=java,kotlin})
- * can own both {@code api-docs} generators in ONE {@code codegen/} module. The two ports name
+ * A project that documents both languages (an {@code api-docs} {@code <generator>} entry for each)
+ * can own both generators in ONE {@code codegen/} module. The two ports name
  * their page model and path classes alike ({@code ApiUnit}, {@code ApiSymbol}, {@code FieldShape},
  * {@code ApiSymbolKind}, {@code DocsPaths}), so the copies have to land where no class is declared
  * twice.
  *
  * <p>Runs the real mojo once per port into one project, then compiles what it wrote with each
  * language's own compiler. The classname eject prints for each port has to load, from that
- * compile, as the docs generator of that surface.</p>
+ * compile, as a generator that writes that language's pages.</p>
  */
 public class ApiDocsEjectBothPortsTest {
 
@@ -196,10 +200,31 @@ public class ApiDocsEjectBothPortsTest {
         return result;
     }
 
-    private static void assertDocsGeneratorOf(String surface, String classname, ClassLoader loader) throws Exception {
-        Object generator = Class.forName(classname, true, loader).getDeclaredConstructor().newInstance();
-        assertTrue(classname + " is not a DocsGenerator", generator instanceof DocsGenerator);
-        assertEquals(classname, surface, ((DocsGenerator) generator).surface());
+    private static final String MODEL = "{ \"metadata.root\": { \"package\": \"acme::shop\", \"children\": ["
+            + " { \"object.value\": { \"name\": \"Money\", \"children\": ["
+            + " { \"field.string\": { \"name\": \"code\" } } ]}} ]}}";
+
+    /** Run the owned generator the way a {@code <generator>} entry does, and require the pages of
+     *  {@code language} and nothing outside them. */
+    private void assertWritesTheApiReferenceOf(String language, String classname, ClassLoader loader)
+            throws Exception {
+        Generator generator = (Generator) Class.forName(classname, true, loader)
+                .getDeclaredConstructor().newInstance();
+        MetaDataLoader model = new MetaDataLoader(
+                LoaderOptions.create(false, false, true), MetaDataLoader.SUBTYPE_MANUAL, "owned-api-docs-" + language);
+        model.init();
+        model.load(List.of(new InMemoryStringSource(MODEL, "owned-api-docs/meta.json")));
+        Path out = tempFolder.newFolder("docs-" + language).toPath();
+        generator.setArgs(Map.of("outputDir", out.toString()));
+        generator.execute(model);
+
+        Set<String> written = new TreeSet<>();
+        try (Stream<Path> s = Files.walk(out)) {
+            s.filter(Files::isRegularFile).forEach(p -> written.add(out.relativize(p).toString()
+                    .replace(File.separatorChar, '/')));
+        }
+        assertEquals(classname, Set.of("api/" + language + "/AGENT-API.md", "api/" + language + "/Money.md",
+                "api/" + language + "/README.md"), written);
     }
 
     // The pom eject writes builds every port the module holds then. It is never edited afterwards,
@@ -290,8 +315,8 @@ public class ApiDocsEjectBothPortsTest {
 
         URL[] javaUrls = {javaClasses.toUri().toURL(), codegen.resolve("src/main/resources/").toUri().toURL()};
         try (URLClassLoader java = new URLClassLoader(javaUrls, getClass().getClassLoader())) {
-            assertDocsGeneratorOf("java", ownedJava, java);
+            assertWritesTheApiReferenceOf("java", ownedJava, java);
         }
-        assertDocsGeneratorOf("kotlin", ownedKotlin, kotlin.getClassLoader());
+        assertWritesTheApiReferenceOf("kotlin", ownedKotlin, kotlin.getClassLoader());
     }
 }

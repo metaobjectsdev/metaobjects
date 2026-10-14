@@ -1,6 +1,5 @@
 package com.metaobjects.mojo;
 
-import com.metaobjects.generator.DocsGenerator;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.verify.TemplateVerify;
@@ -144,6 +143,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     public void execute() throws MojoExecutionException, MojoFailureException {
         // #233: warm the global registry singletons before verify builds its loader,
         // for the same reason as the generate path (this mojo has its own execute()).
+        refuseRemovedDocsConfiguration("verify");
         com.metaobjects.registry.RegistryBootstrap.warmUpDefaults();
         if (getLoader() == null) {
             throw new MojoExecutionException("No <loader> element was defined");
@@ -336,8 +336,6 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
 
         if (getGenerators() != null) {
             for (GeneratorParam g : getGenerators()) {
-                // A docs generator writes pages, not code: nothing here to drift-check.
-                if (isDocsGenerator(g, projectClassLoader)) continue;
                 Map<String, String> merged = mergeAndOverwriteArgs(g);
                 String realDir = merged.get(ARG_OUTPUT_DIR);
                 if (realDir == null) {
@@ -363,10 +361,6 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         List<Generator> generatorImpls = buildGenerators(projectClassLoader, overrides);
         try {
             for (Generator gen : generatorImpls) {
-                if (gen instanceof DocsGenerator) {
-                    logSkippedDocsGenerator("MetaData Verify Mojo", gen.getClass().getName());
-                    continue;
-                }
                 getLog().info("MetaData Verify Mojo > Regenerating (temp): " + gen.getClass().getName());
                 gen.execute(loader);
             }

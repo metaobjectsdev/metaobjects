@@ -257,7 +257,7 @@ public class ReportingInertTest extends SharedRegistryTestBase {
     }
 
     /**
-     * The api docs surface ({@code mvn metaobjects:docs}): every unit page, the index and the
+     * The api docs surface (the {@code api-docs} generator): every unit page, the index and the
      * agent page.
      */
     private Map<String, String> apiDocs(String variant) throws Exception {

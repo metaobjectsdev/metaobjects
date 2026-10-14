@@ -1,6 +1,5 @@
 package com.metaobjects.generator.direct.object;
 
-import com.metaobjects.generator.EmitsObjectExtractors;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;
@@ -30,13 +29,13 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
- * The {@code extractor} generator wired on its own.
+ * The {@code extractor} generator: the one thing that writes a {@code <Name>Extractor}.
  *
- * <p>It used to exist only as a step inside {@code entity}: no {@code <generator>} entry
- * could name it, so it could not be owned or drift-checked apart from {@code entity}. These
- * tests hold the three things that make it a generator in its own right: it writes the same
- * files {@code entity} writes, {@code entity} can be told to leave them to it, and with
- * nothing told, {@code entity} still writes them as it always has.</p>
+ * <p>Through 8.0 the files were a step inside {@code entity}, written for a pom that declared
+ * no such thing. ADR-0034 Amendment 9 rules out output no {@code <generator>} entry declares,
+ * so these tests hold both halves: {@code entity} writes none, and this generator writes one
+ * per concrete object {@code entity} wrote a class for, named by {@code entity}'s naming args
+ * and narrowed by its filters.</p>
  */
 public class StandaloneExtractorGeneratorTest {
 
@@ -103,46 +102,57 @@ public class StandaloneExtractorGeneratorTest {
         return out;
     }
 
-    @Test
-    public void entityStillWritesTheExtractorsWhenNothingElseDoes() throws Exception {
-        Path out = tmp.newFolder("fused").toPath();
-        run(new JavaObjectCodeGenerator(), entityArgs(out, "pojoAware"), loadMeta());
-
-        assertEquals(List.of("acme/shapes/CircleExtractor.java", "acme/shapes/DrawingExtractor.java"),
-                List.copyOf(extractors(out).keySet()));
+    /** {@code entity} and {@code extractor} over one output directory, as a pom lists them. */
+    private Path entityAndExtractor(String dir, String flavor, Map<String, String> naming, List<String> filters)
+            throws Exception {
+        Path out = tmp.newFolder(dir).toPath();
+        JavaObjectCodeGenerator entity = new JavaObjectCodeGenerator();
+        ExtractorCodeGenerator extractor = new ExtractorCodeGenerator();
+        entity.setFilters(filters);
+        extractor.setFilters(filters);
+        Map<String, String> entityArgs = entityArgs(out, flavor);
+        entityArgs.putAll(naming);
+        Map<String, String> extractorArgs = new HashMap<>(naming);
+        extractorArgs.put("outputDir", out.toString());
+        MetaDataLoader loader = loadMeta();
+        run(entity, entityArgs, loader);
+        run(extractor, extractorArgs, loader);
+        return out;
     }
 
     @Test
-    public void entityLeavesTheExtractorsAloneWhenToldASeparateGeneratorWritesThem() throws Exception {
-        Path out = tmp.newFolder("split").toPath();
-        Map<String, String> args = entityArgs(out, "pojoAware");
-        args.put(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS, "false");
-        run(new JavaObjectCodeGenerator(), args, loadMeta());
+    public void entityWritesNoExtractorInEitherConcreteFlavor() throws Exception {
+        for (String flavor : List.of("pojoAware", "valueObject")) {
+            Path out = tmp.newFolder("entity-" + flavor).toPath();
+            run(new JavaObjectCodeGenerator(), entityArgs(out, flavor), loadMeta());
+            ObjectClassRegistry.resetGlobal();
 
-        assertTrue("entity wrote extractors it was told to leave: " + extractors(out).keySet(),
-                extractors(out).isEmpty());
-        // The rest of entity's output is untouched by the arg.
-        assertTrue(Files.exists(out.resolve("acme/shapes/Circle.java")));
-        assertTrue(Files.exists(out.resolve(
-                "com/metaobjects/generated/GeneratedObjectClassBindingProvider.java")));
+            assertTrue(flavor + ": entity wrote an extractor no <generator> entry declared: "
+                    + extractors(out).keySet(), extractors(out).isEmpty());
+            // The rest of entity's output is what it was.
+            assertTrue(Files.exists(out.resolve("acme/shapes/Circle.java")));
+            assertTrue(Files.exists(out.resolve(
+                    "com/metaobjects/generated/GeneratedObjectClassBindingProvider.java")));
+        }
     }
 
     @Test
-    public void onItsOwnItWritesTheSameFilesEntityWrites() throws Exception {
-        Path fused = tmp.newFolder("fused").toPath();
-        run(new JavaObjectCodeGenerator(), entityArgs(fused, "valueObject"), loadMeta());
-
-        Path standalone = tmp.newFolder("standalone").toPath();
+    public void itWritesOneExtractorPerConcreteObjectAndNothingElse() throws Exception {
+        Path out = tmp.newFolder("standalone").toPath();
         Map<String, String> args = new HashMap<>();
-        args.put("outputDir", standalone.toString());
+        args.put("outputDir", out.toString());
         run(new ExtractorCodeGenerator(), args, loadMeta());
 
-        assertFalse(extractors(fused).isEmpty());
-        assertEquals(extractors(fused), extractors(standalone));
-        // And nothing but extractors: the abstract Shape gets none, and no class is written.
-        try (Stream<Path> walk = Files.walk(standalone)) {
+        // The abstract Shape gets none, and no class is written.
+        assertEquals(List.of("acme/shapes/CircleExtractor.java", "acme/shapes/DrawingExtractor.java"),
+                List.copyOf(extractors(out).keySet()));
+        try (Stream<Path> walk = Files.walk(out)) {
             assertEquals(2, walk.filter(Files::isRegularFile).count());
         }
+        String circle = extractors(out).get("acme/shapes/CircleExtractor.java");
+        assertTrue(circle, circle.contains("package acme.shapes;"));
+        assertTrue(circle, circle.contains("public final class CircleExtractor {"));
+        assertTrue(circle, circle.contains("public static Circle extract("));
     }
 
     @Test
@@ -153,39 +163,23 @@ public class StandaloneExtractorGeneratorTest {
         naming.put("namePrefix", "My");
         naming.put("nameSuffix", "Vo");
 
-        Path fused = tmp.newFolder("fused").toPath();
-        Map<String, String> entity = entityArgs(fused, "pojoAware");
-        entity.putAll(naming);
-        run(new JavaObjectCodeGenerator(), entity, loadMeta());
+        Path out = entityAndExtractor("named", "pojoAware", naming, List.of());
 
-        Path standalone = tmp.newFolder("standalone").toPath();
-        Map<String, String> args = new HashMap<>(naming);
-        args.put("outputDir", standalone.toString());
-        run(new ExtractorCodeGenerator(), args, loadMeta());
-
-        assertTrue(extractors(standalone).containsKey(
-                "com/example/acme/shapes/model/MyCircleVoExtractor.java"));
-        assertEquals(extractors(fused), extractors(standalone));
+        // The extractor sits beside the class entity wrote, and casts to it.
+        assertTrue(Files.exists(out.resolve("com/example/acme/shapes/model/MyCircleVo.java")));
+        String extractor = extractors(out).get("com/example/acme/shapes/model/MyCircleVoExtractor.java");
+        assertTrue("no extractor beside MyCircleVo: " + extractors(out).keySet(), extractor != null);
+        assertTrue(extractor, extractor.contains("package com.example.acme.shapes.model;"));
+        assertTrue(extractor, extractor.contains("public static MyCircleVo extract("));
     }
 
     @Test
     public void givenEntitysFiltersItWritesAnExtractorForExactlyTheClassesEntityWrites() throws Exception {
-        List<String> filters = List.of(PKG + "::Drawing");
+        Path out = entityAndExtractor("filtered", "pojoAware", Map.of(), List.of(PKG + "::Drawing"));
 
-        Path fused = tmp.newFolder("fused").toPath();
-        JavaObjectCodeGenerator entity = new JavaObjectCodeGenerator();
-        entity.setFilters(filters);
-        run(entity, entityArgs(fused, "pojoAware"), loadMeta());
-
-        Path standalone = tmp.newFolder("standalone").toPath();
-        ExtractorCodeGenerator extractor = new ExtractorCodeGenerator();
-        extractor.setFilters(filters);
-        Map<String, String> args = new HashMap<>();
-        args.put("outputDir", standalone.toString());
-        run(extractor, args, loadMeta());
-
-        assertEquals(List.of("acme/shapes/DrawingExtractor.java"), List.copyOf(extractors(standalone).keySet()));
-        assertEquals(extractors(fused), extractors(standalone));
+        assertEquals(List.of("acme/shapes/DrawingExtractor.java"), List.copyOf(extractors(out).keySet()));
+        assertTrue(Files.exists(out.resolve("acme/shapes/Drawing.java")));
+        assertFalse(Files.exists(out.resolve("acme/shapes/Circle.java")));
     }
 
     @Test
@@ -196,28 +190,5 @@ public class StandaloneExtractorGeneratorTest {
         } catch (GeneratorException e) {
             assertTrue(e.getMessage(), e.getMessage().contains("outputDir"));
         }
-    }
-
-    @Test
-    public void aRunDerivesTheArgFromTheGeneratorsInIt() {
-        Map<String, String> args = Map.of("outputDir", "out");
-
-        // No separate extractor in the run: the arg stays unset, so entity keeps its default.
-        assertFalse(EmitsObjectExtractors.deriveEmitExtractors(
-                args, List.of(new JavaObjectCodeGenerator()))
-                .containsKey(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS));
-
-        // A separate extractor in the run: entity is told to leave the files to it.
-        assertEquals("false", EmitsObjectExtractors.deriveEmitExtractors(
-                args, List.of(new JavaObjectCodeGenerator(), new ExtractorCodeGenerator()))
-                .get(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS));
-
-        // An explicit "true" does not bring the second emitter back: with a separate
-        // extractor in the run, entity writing them too is the duplicate.
-        Map<String, String> pinned = new HashMap<>(args);
-        pinned.put(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS, "true");
-        assertEquals("false", EmitsObjectExtractors.deriveEmitExtractors(
-                pinned, List.of(new JavaObjectCodeGenerator(), new ExtractorCodeGenerator()))
-                .get(EmitsObjectExtractors.ARG_EMIT_EXTRACTORS));
     }
 }

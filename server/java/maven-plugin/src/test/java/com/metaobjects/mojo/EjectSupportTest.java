@@ -69,8 +69,8 @@ public class EjectSupportTest {
             String ownedPackage = apiDocs ? "com.acme.codegen.apidocs." + e.port.id : "com.acme.codegen";
             assertTrue(note, note.contains("<classname>" + ownedPackage + "." + e.simpleName() + "</classname>"));
             assertFalse(note, note.contains("{owned}"));
-            // No pom lists a docs generator until its owner adds it, on either port.
-            if (apiDocs) assertTrue(note, note.contains("the " + e.port.id + " surface"));
+            // The goal that runs it is the one that runs every generator, on either port.
+            if (apiDocs) assertTrue(note, note.contains("`mvn metaobjects:generate` runs this generator"));
         }
         assertEquals("the Java extractor, and api-docs on each port", 3, noted);
     }

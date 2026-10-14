@@ -107,7 +107,7 @@
       "concept": "Per-entity/template SDK API reference (generated-code API; human + agent forms).",
       "tier": "native",
       "layer": "docs",
-      "note": "Run by the port's docs command (`meta docs`, `dotnet meta docs`, `mvn metaobjects:docs`, `metaobjects docs`) as its api surface (ADR-0025), not by the gen command: a TypeScript `meta gen` config that lists it is warned about and skipped, and `dotnet meta gen` skips it, warning only when `--generators` names it.",
+      "note": "An ordinary generator, listed in the project's generator list and run by the gen command (ADR-0034 Amendment 9). Java and Kotlin do this today: a `<generator>` entry that `mvn metaobjects:generate` runs. TypeScript, C# and Python still run it from the port's docs command (`meta docs`, `dotnet meta docs`, `metaobjects docs`), and their gen commands skip it, until each port's Amendment 9 change lands and removes that command.",
       "eject": "full",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
@@ -363,8 +363,6 @@
         "codegenPackages": ["com.metaobjects.generator.**"],
         "engine": [
           "com.metaobjects.generator.CodeGenMetaDataProvider",
-          "com.metaobjects.generator.DocsGenerator",
-          "com.metaobjects.generator.EmitsObjectExtractors",
           "com.metaobjects.generator.EmitsPhysicalNameConstants",
           "com.metaobjects.generator.FileEmittingGenerator",
           "com.metaobjects.generator.Generator",
@@ -402,7 +400,6 @@
       "kotlin": {
         "codegenPackages": ["com.metaobjects.generator.**"],
         "engine": [
-          "com.metaobjects.generator.DocsGenerator",
           "com.metaobjects.generator.EmitsPhysicalNameConstants",
           "com.metaobjects.generator.FileEmittingGenerator",
           "com.metaobjects.generator.Generator",

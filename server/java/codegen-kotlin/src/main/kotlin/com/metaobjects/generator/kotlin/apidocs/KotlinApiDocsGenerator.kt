@@ -3,7 +3,6 @@ package com.metaobjects.generator.kotlin.apidocs
 // Eject note (ADR-0034 Amendment 8): `mvn metaobjects:eject -Dnames=api-docs` copies this file with the
 // api reference's IR, builder, renderer and page paths. The siblings below stay in their packages as
 // engine, so each is imported by name — a bare same-package reference would not resolve from the copy.
-import com.metaobjects.generator.DocsGenerator
 import com.metaobjects.generator.FileEmittingGenerator
 import com.metaobjects.generator.FileEmittingGenerator.EmittedFile
 import com.metaobjects.generator.GeneratorException
@@ -15,24 +14,26 @@ import com.metaobjects.loader.MetaDataLoader
  * contract): one page per entity, value object, projection, served report and template, an index,
  * and the agent-facing `AGENT-API.md`.
  *
- * Run by `mvn metaobjects:docs`, not by `mvn metaobjects:generate`: it implements [DocsGenerator],
- * which `generate` and `verify` skip. Its files land under `outputDir`, the docs directory, in
- * [DocsGenerator.ARG_API_SUBDIR]. The project label, the layout and the model back-link base come
- * from the [DocsGenerator] args the goal sets, and where a `@provided` enum is referenced from
+ * An ordinary generator: a `<generator>` entry in the list `mvn metaobjects:generate` runs, and
+ * nothing writes these pages for a pom that does not list it (ADR-0034 Amendment 9). Its files
+ * land under `outputDir` in [ARG_API_SUBDIR]; the project label, the layout and the model
+ * back-link base are the other `<args>` below, and where a `@provided` enum is referenced from
  * comes from the same enum args every Kotlin generator takes ([Fr019SharedEnum.ProvidedEnumConfig]).
+ * Give it an `outputDir` that holds generated files only: `mvn metaobjects:verify` compares each
+ * output directory as one tree, so a hand-written page there reads as stale.
  */
-class KotlinApiDocsGenerator : FileEmittingGenerator(), DocsGenerator {
-
-    override fun surface(): String = "kotlin"
+class KotlinApiDocsGenerator : FileEmittingGenerator() {
 
     override fun generate(loader: MetaDataLoader): List<EmittedFile> {
-        val project = getArg(DocsGenerator.ARG_PROJECT_NAME, "project")
-        val subDir = getArg(DocsGenerator.ARG_API_SUBDIR, DEFAULT_API_SUBDIR)
-        val modelBaseUrl = if (hasArg(DocsGenerator.ARG_MODEL_BASE_URL)) getArg(DocsGenerator.ARG_MODEL_BASE_URL) else null
-        val layout = if (getArg(DocsGenerator.ARG_LAYOUT, "flat").equals("package", ignoreCase = true)) {
-            DocsPaths.Layout.PACKAGE
-        } else {
-            DocsPaths.Layout.FLAT
+        val project = getArg(ARG_PROJECT_NAME, "project")
+        val subDir = getArg(ARG_API_SUBDIR, DEFAULT_API_SUBDIR)
+        val modelBaseUrl = if (hasArg(ARG_MODEL_BASE_URL)) getArg(ARG_MODEL_BASE_URL) else null
+        val layout = when (val value = getArg(ARG_LAYOUT, LAYOUT_FLAT)) {
+            LAYOUT_FLAT -> DocsPaths.Layout.FLAT
+            LAYOUT_PACKAGE -> DocsPaths.Layout.PACKAGE
+            // A misspelt layout would otherwise write every page somewhere its links do not point.
+            else -> throw GeneratorException(
+                "api-docs: <$ARG_LAYOUT> must be $LAYOUT_FLAT or $LAYOUT_PACKAGE (got \"$value\")")
         }
 
         val model = KotlinApiModelBuilder(Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args)).build(loader, project)
@@ -55,7 +56,22 @@ class KotlinApiDocsGenerator : FileEmittingGenerator(), DocsGenerator {
     }
 
     companion object {
+        /** Arg: the label the agent page carries in its header. Default `project`. */
+        const val ARG_PROJECT_NAME: String = "projectName"
+
+        /** Arg: where under `outputDir` the pages land. Default [DEFAULT_API_SUBDIR]. */
+        const val ARG_API_SUBDIR: String = "apiSubDir"
+
+        /** Arg: the page layout, `flat` (one file per unit, the default) or `package`. */
+        const val ARG_LAYOUT: String = "layout"
+
+        /** Arg: when set, the base URL the pages' links to the model pages are written against. */
+        const val ARG_MODEL_BASE_URL: String = "modelBaseUrl"
+
         /** The api-surface subdirectory of the cross-port docs contract. */
         const val DEFAULT_API_SUBDIR: String = "api/kotlin"
+
+        private const val LAYOUT_FLAT = "flat"
+        private const val LAYOUT_PACKAGE = "package"
     }
 }
