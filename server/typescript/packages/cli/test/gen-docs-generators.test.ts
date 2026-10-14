@@ -330,6 +330,17 @@ describe("meta verify --codegen checks the documentation the list declares", () 
       "docs/generated: the repository git-ignores every documentation page generated there, so they were not compared.",
     );
   });
+
+  test("on a fresh clone, where the ignored docs directory does not exist, it is still not compared", async () => {
+    const root = project({ config: base(`["entity", docsFile()]`), ownRepo: true });
+    writeFileSync(join(root, ".gitignore"), "docs/\n", "utf8");
+    expect(await run(["gen", "--cwd", root])).toBe(0);
+    rmSync(join(root, "docs"), { recursive: true, force: true });
+    expect(await run(["verify", "--codegen", "--cwd", root])).toBe(0);
+    expect([...out, ...err].join("\n")).toContain(
+      "docs/generated: the repository git-ignores every documentation page generated there, so they were not compared.",
+    );
+  });
 });
 
 describe("an owned docs generator is wired like any other", () => {

@@ -300,8 +300,10 @@ export async function computeCodegenDrift(
       // honourGlobalExcludes: false — a personal ignore file must not change a gate.
       let ignored: ReadonlySet<string> = new Set<string>();
       if (docsDirs.has(committed) && all.size > 0) {
-        const lookup = gitIgnored(committed, [...all].map(toPosix), { honourGlobalExcludes: false });
-        if ("ignored" in lookup) ignored = lookup.ignored;
+        const prefix = toPosix(relative(root, committed));
+        const fromRoot = (rel: string): string => (prefix === "" ? toPosix(rel) : `${prefix}/${toPosix(rel)}`);
+        const lookup = gitIgnored(root, [...all].map(fromRoot), { honourGlobalExcludes: false });
+        if ("ignored" in lookup) ignored = new Set([...all].map(toPosix).filter((rel) => lookup.ignored.has(fromRoot(rel))));
         else docsIgnoreUnavailable = lookup.unavailable;
         const checked = [...freshFiles].filter((rel) => !ignored.has(toPosix(rel)));
         if (freshFiles.size > 0 && checked.length === 0) {
